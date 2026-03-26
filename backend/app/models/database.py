@@ -10,7 +10,7 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = os.environ.get("PNW_BASEBALL_DB", str(Path(__file__).parent.parent.parent / "data" / "pnw_baseball.db"))
+DB_PATH = os.environ.get("PNW_BASEBALL_DB", str(Path(__file__).resolve().parent.parent.parent / "data" / "pnw_baseball.db"))
 
 SCHEMA = """
 -- ============================================================
