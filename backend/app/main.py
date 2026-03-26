@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from .api.routes import router
 from .models.database import init_db, seed_divisions_and_conferences
@@ -60,7 +61,6 @@ if FRONTEND_DIR.exists():
         """Serve the React SPA — all non-API routes return index.html."""
         file_path = FRONTEND_DIR / full_path
         if file_path.exists() and file_path.is_file():
-            from fastapi.responses import FileResponse
             return FileResponse(file_path)
         # For all other routes (React Router), return index.html
         return FileResponse(FRONTEND_DIR / "index.html")
