@@ -68,11 +68,12 @@ const NAV = [
 ]
 
 // ─── Search Bar ───
-function SearchBar() {
+function SearchBar({ mobile = false }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false) // mobile expand state
   const [selectedIdx, setSelectedIdx] = useState(-1)
   const inputRef = useRef(null)
   const containerRef = useRef(null)
@@ -177,6 +178,107 @@ function SearchBar() {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
+  // Mobile: icon-only button that opens a full-width search overlay
+  if (mobile && !expanded) {
+    return (
+      <button
+        onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 100) }}
+        className="p-2 rounded hover:bg-white/10 transition-colors"
+        aria-label="Search"
+      >
+        <svg className="w-5 h-5 text-teal-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </button>
+    )
+  }
+
+  // Mobile expanded: full-width overlay
+  if (mobile && expanded) {
+    return (
+      <div ref={containerRef} className="fixed inset-0 z-[100] bg-nw-teal">
+        <div className="flex items-center gap-2 px-3 h-14">
+          <svg className="w-5 h-5 text-teal-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={handleChange}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setExpanded(false); setQuery(''); setResults(null); setOpen(false) } else handleKeyDown(e) }}
+            placeholder="Search players & teams..."
+            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder-teal-200/50"
+            autoFocus
+          />
+          {loading && (
+            <div className="animate-spin h-4 w-4 border-2 border-teal-200 border-t-transparent rounded-full shrink-0" />
+          )}
+          <button
+            onClick={() => { setExpanded(false); setQuery(''); setResults(null); setOpen(false) }}
+            className="p-2 text-teal-200 hover:text-white"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Results */}
+        {open && flatResults.length > 0 && (
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 56px)' }}>
+            {results.teams.length > 0 && (
+              <div>
+                <div className="px-4 pt-3 pb-1 text-[10px] font-bold text-teal-300/50 uppercase tracking-widest">Teams</div>
+                {results.teams.map((team, i) => (
+                  <button
+                    key={`t-${team.id}`}
+                    onClick={() => { navigateTo({ type: 'team', data: team }); setExpanded(false) }}
+                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors ${selectedIdx === i ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                  >
+                    {team.logo_url && <img src={team.logo_url} alt="" className="w-6 h-6 object-contain shrink-0" onError={(e) => { e.target.style.display = 'none' }} />}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-white truncate">{team.short_name || team.name}</div>
+                      <div className="text-[11px] text-teal-300/50">{team.city}, {team.state}</div>
+                    </div>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${divisionBadgeClass(team.division_level)}`}>{team.division_level}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {results.players.length > 0 && (
+              <div>
+                <div className="px-4 pt-3 pb-1 text-[10px] font-bold text-teal-300/50 uppercase tracking-widest">Players</div>
+                {results.players.map((player, i) => {
+                  const idx = results.teams.length + i
+                  return (
+                    <button
+                      key={`p-${player.id}`}
+                      onClick={() => { navigateTo({ type: 'player', data: player }); setExpanded(false) }}
+                      className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors ${selectedIdx === idx ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                    >
+                      {player.logo_url && <img src={player.logo_url} alt="" className="w-5 h-5 object-contain shrink-0" onError={(e) => { e.target.style.display = 'none' }} />}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-white truncate">{player.first_name} {player.last_name}</div>
+                        <div className="text-[11px] text-teal-300/50">{player.team_short}{player.position ? ` · ${player.position}` : ''}</div>
+                      </div>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${divisionBadgeClass(player.division_level)}`}>{player.division_level}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {open && query.length >= 2 && !loading && flatResults.length === 0 && (
+          <div className="px-4 py-6 text-center text-teal-200/50">No results for "{query}"</div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop: inline search bar
   return (
     <div ref={containerRef} className="relative">
       <div className="flex items-center bg-white/10 rounded-lg px-2.5 py-1.5 focus-within:bg-white/20 transition-colors">
@@ -205,7 +307,7 @@ function SearchBar() {
       {/* Results dropdown */}
       {open && flatResults.length > 0 && (
         <div
-          className="absolute top-full right-0 mt-1.5 w-[calc(100vw-2rem)] sm:w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border border-white/10 z-50"
+          className="absolute top-full right-0 mt-1.5 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border border-white/10 z-50"
           style={{
             background: 'linear-gradient(160deg, #0c2234 0%, #0f3048 50%, #0a4a56 100%)',
           }}
@@ -460,8 +562,8 @@ export default function Header() {
           </div>
 
           {/* Mobile: search + menu button */}
-          <div className="lg:hidden flex items-center gap-2">
-            <SearchBar />
+          <div className="lg:hidden flex items-center gap-1">
+            <SearchBar mobile />
             <button
               className="p-2 rounded hover:bg-white/10 transition-colors"
               onClick={() => setMobileOpen(!mobileOpen)}

@@ -110,15 +110,15 @@ function NationalRankingsWidget({ rankings }) {
   const divisions = (rankings.divisions || []).filter(d => d.division_level !== 'JUCO')
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-bold text-pnw-slate">National Rankings</h2>
+        <h2 className="text-sm sm:text-base font-bold text-pnw-slate">National Rankings</h2>
         <Link to="/national-rankings" className="text-xs text-pnw-teal hover:underline">View all →</Link>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
         {divisions.map((div) => (
           <div key={div.division_level}>
-            <div className={`text-xs font-bold text-white px-2 py-1 rounded-t ${DIV_COLORS[div.division_level] || 'bg-gray-600'}`}>
+            <div className={`text-[10px] sm:text-xs font-bold text-white px-2 py-1 rounded-t ${DIV_COLORS[div.division_level] || 'bg-gray-600'}`}>
               {div.division_level}
             </div>
             <div className="border border-t-0 border-gray-200 rounded-b">
@@ -126,21 +126,21 @@ function NationalRankingsWidget({ rankings }) {
                 <Link
                   key={team.team_id}
                   to={`/team/${team.team_id}`}
-                  className={`flex items-center gap-1.5 px-2 py-1.5 text-xs hover:bg-gray-50 ${
+                  className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[11px] sm:text-xs hover:bg-gray-50 ${
                     i < div.teams.length - 1 && i < 4 ? 'border-b border-gray-100' : ''
                   }`}
                 >
-                  <span className="text-gray-400 w-4 text-right font-mono text-[10px]">
+                  <span className="text-gray-400 w-4 text-right font-mono text-[9px] sm:text-[10px] shrink-0">
                     {Math.round(team.composite_rank)}
                   </span>
                   {team.logo_url && (
-                    <img src={team.logo_url} alt="" className="w-4 h-4 object-contain"
+                    <img src={team.logo_url} alt="" className="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain shrink-0"
                       onError={(e) => { e.target.style.display = 'none' }} />
                   )}
-                  <span className="font-medium text-gray-800 truncate flex-1">{team.short_name}</span>
-                  <span className="text-gray-400 text-[10px]">{team.record}</span>
+                  <span className="font-medium text-gray-800 truncate flex-1 min-w-0">{team.short_name}</span>
+                  <span className="text-gray-400 text-[9px] sm:text-[10px] shrink-0 hidden sm:inline">{team.record}</span>
                   {team.national_percentile && (
-                    <span className={`text-[10px] font-semibold px-1 rounded ${
+                    <span className={`text-[9px] sm:text-[10px] font-semibold px-0.5 sm:px-1 rounded shrink-0 ${
                       team.national_percentile >= 75 ? 'text-green-700 bg-green-50'
                       : team.national_percentile >= 50 ? 'text-amber-700 bg-amber-50'
                       : 'text-gray-500'
