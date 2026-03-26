@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+body {
+  @apply bg-nw-cream text-gray-900 font-sans;
+}
+
+/* Stat table styles */
+.stat-table {
+  @apply w-full text-sm border-collapse;
+}
+
+.stat-table thead th {
+  @apply bg-nw-teal text-white px-3 py-2 text-left font-medium text-xs uppercase tracking-wider cursor-pointer select-none;
+}
+
+.stat-table thead th:hover {
+  @apply bg-nw-teal-dark;
+}
+
+.stat-table thead th.sorted {
+  @apply bg-nw-teal-light;
+}
+
+.stat-table tbody td {
+  @apply px-3 py-2 border-b border-gray-200 whitespace-nowrap;
+}
+
+.stat-table tbody tr:hover {
+  @apply bg-teal-50;
+}
+
+.stat-table tbody tr:nth-child(even) {
+  @apply bg-gray-50;
+}
+
+/* Player name link style */
+.player-link {
+  @apply text-nw-teal hover:text-nw-teal-dark font-medium hover:underline;
+}
+
+/* Filter badge */
+.filter-badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-nw-teal text-white;
+}
+
+/* Division level badges */
+.badge-d1 { @apply bg-red-600 text-white; }
+.badge-d2 { @apply bg-blue-600 text-white; }
+.badge-d3 { @apply bg-green-600 text-white; }
+.badge-naia { @apply bg-purple-600 text-white; }
+.badge-juco { @apply bg-amber-700 text-white; }
+
+/* Tooltip for stat explanations */
+.stat-tooltip {
+  @apply relative cursor-help;
+}
+
+.stat-tooltip::after {
+  content: attr(data-tooltip);
+  @apply absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1
+         bg-gray-900 text-white text-xs rounded whitespace-nowrap
+         opacity-0 pointer-events-none transition-opacity duration-200;
+}
+
+.stat-tooltip:hover::after {
+  @apply opacity-100;
+}
