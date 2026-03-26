@@ -31,8 +31,8 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
-      <div className="flex flex-wrap gap-3 items-end">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-4">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 items-end">
 
         {/* Season */}
         <div className="flex flex-col">

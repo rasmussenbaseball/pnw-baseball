@@ -39,7 +39,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-nw-cream">
       <Header />
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
         <Routes>
           {/* Homepage */}
           <Route path="/" element={<Homepage />} />

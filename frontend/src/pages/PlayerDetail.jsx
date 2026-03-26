@@ -179,17 +179,17 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
       {/* Header bar */}
-      <div className="px-5 pt-5 pb-3">
+      <div className="px-3 sm:px-5 pt-4 sm:pt-5 pb-2 sm:pb-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
-          <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+          <h3 className="text-base sm:text-lg font-bold text-gray-800">{title}</h3>
+          <span className="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wide">
             vs. {divisionLevel || 'Division'}
           </span>
         </div>
       </div>
 
-      {/* Scale legend */}
-      <div className="px-5 mb-2">
+      {/* Scale legend — hidden on very small screens */}
+      <div className="px-3 sm:px-5 mb-2 hidden sm:block">
         <div className="flex items-end" style={{ paddingLeft: 120 }}>
           <div className="flex-1 flex justify-between text-[10px] font-bold tracking-wider">
             <div className="flex flex-col items-center">
@@ -210,7 +210,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
       </div>
 
       {/* Stat rows */}
-      <div className="px-5 pb-5">
+      <div className="px-3 sm:px-5 pb-4 sm:pb-5">
         {available.map((metric, idx) => {
           const { value, percentile } = percentiles[metric.key]
           const color = percentileColor(percentile)
@@ -220,60 +220,60 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
             <div key={metric.key}>
               {/* Dashed separator */}
               {idx > 0 && (
-                <div className="border-t border-dashed border-gray-200" style={{ marginLeft: 120 }} />
+                <div className="border-t border-dashed border-gray-200 ml-16 sm:ml-[120px]" />
               )}
 
-              <div className="flex items-center" style={{ height: 36 }}>
+              <div className="flex items-center h-8 sm:h-9">
                 {/* Stat label — right aligned */}
-                <div className="shrink-0 text-right pr-3" style={{ width: 120 }}>
-                  <span className="text-[13px] font-medium text-gray-600">
+                <div className="shrink-0 text-right pr-2 sm:pr-3 w-16 sm:w-[120px]">
+                  <span className="text-[11px] sm:text-[13px] font-medium text-gray-600">
                     {metric.label}
                   </span>
                 </div>
 
                 {/* Bar area */}
-                <div className="flex-1 relative" style={{ height: 28 }}>
-                  {/* Track background (very subtle) */}
+                <div className="flex-1 relative h-6 sm:h-7">
+                  {/* Track background */}
                   <div
                     className="absolute top-1/2 left-0 right-0 bg-gray-100 rounded"
-                    style={{ height: 8, transform: 'translateY(-50%)' }}
+                    style={{ height: 6, transform: 'translateY(-50%)' }}
                   />
 
                   {/* Colored bar */}
                   <div
                     className="absolute top-1/2 left-0 rounded"
                     style={{
-                      height: 8,
-                      width: `calc(${barWidth}% - 14px)`,
+                      height: 6,
+                      width: `calc(${barWidth}% - 12px)`,
                       transform: 'translateY(-50%)',
                       backgroundColor: color,
                       transition: 'width 0.5s ease',
                     }}
                   />
 
-                  {/* Percentile circle at the end of the bar */}
+                  {/* Percentile circle */}
                   <div
                     className="absolute top-1/2 flex items-center justify-center rounded-full"
                     style={{
                       left: `${barWidth}%`,
                       transform: 'translate(-50%, -50%)',
-                      width: 28,
-                      height: 28,
+                      width: 24,
+                      height: 24,
                       backgroundColor: color,
                       border: '2px solid white',
                       boxShadow: '0 0 0 1px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.1)',
                       transition: 'left 0.5s ease',
                     }}
                   >
-                    <span className="text-white text-[11px] font-bold leading-none">
+                    <span className="text-white text-[10px] sm:text-[11px] font-bold leading-none">
                       {percentile}
                     </span>
                   </div>
                 </div>
 
                 {/* Stat value — right side */}
-                <div className="shrink-0 text-right pl-2" style={{ width: 52 }}>
-                  <span className="text-[13px] font-medium text-gray-700 tabular-nums">
+                <div className="shrink-0 text-right pl-1.5 sm:pl-2 w-11 sm:w-[52px]">
+                  <span className="text-[11px] sm:text-[13px] font-medium text-gray-700 tabular-nums">
                     {formatStat(value, metric.format)}
                   </span>
                 </div>
@@ -284,12 +284,12 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
       </div>
 
       {/* Footer */}
-      <div className="px-5 pb-3 flex items-center justify-between">
+      <div className="px-3 sm:px-5 pb-3 flex items-center justify-between">
         <span className="text-[10px] text-gray-400">
-          Min 50 PA (batting) / 10 IP (pitching) to qualify
+          Min 50 PA / 10 IP to qualify
         </span>
         <span className="text-[10px] text-gray-400 italic">
-          Percentile within {divisionLevel || 'division'}
+          vs. {divisionLevel || 'division'}
         </span>
       </div>
     </div>
@@ -507,16 +507,16 @@ export default function PlayerDetail() {
   return (
     <div>
       {/* ── Player Header ── */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex flex-wrap items-center gap-4">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               {player.first_name} {player.last_name}
               {player.jersey_number && (
                 <span className="text-gray-400 font-normal ml-2">#{player.jersey_number}</span>
               )}
             </h1>
-            <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-gray-600">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-sm text-gray-600">
               <Link
                 to={`/team/${player.team_id}`}
                 className="text-nw-teal hover:underline font-medium flex items-center gap-1.5"
@@ -539,7 +539,7 @@ export default function PlayerDetail() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+          <div className="flex flex-wrap gap-x-3 sm:gap-x-6 gap-y-1 text-xs sm:text-sm text-gray-600">
             {player.position && (
               <div><span className="text-gray-400">Pos</span> <span className="font-medium">{player.position}</span></div>
             )}
@@ -658,21 +658,29 @@ export default function PlayerDetail() {
 
       {/* ── Batting Stats Table (career) ── */}
       {hasBatting && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
-          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
             {batting_stats.length > 1 ? 'Career Batting Stats' : 'Batting Stats'}
           </h3>
-          <StatsTable rows={batting_stats} columns={BATTING_TABLE_COLS} careerRow={battingCareer} />
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
+            <div className="min-w-[700px] px-3 sm:px-0">
+              <StatsTable rows={batting_stats} columns={BATTING_TABLE_COLS} careerRow={battingCareer} />
+            </div>
+          </div>
         </div>
       )}
 
       {/* ── Pitching Stats Table (career) ── */}
       {hasPitching && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
-          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
             {pitching_stats.length > 1 ? 'Career Pitching Stats' : 'Pitching Stats'}
           </h3>
-          <StatsTable rows={pitching_stats} columns={PITCHING_TABLE_COLS} careerRow={pitchingCareer} />
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
+            <div className="min-w-[700px] px-3 sm:px-0">
+              <StatsTable rows={pitching_stats} columns={PITCHING_TABLE_COLS} careerRow={pitchingCareer} />
+            </div>
+          </div>
         </div>
       )}
 

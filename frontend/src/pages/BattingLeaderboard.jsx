@@ -45,7 +45,7 @@ export default function BattingLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-4">Hitting Leaders</h1>
+      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate mb-3 sm:mb-4">Hitting Leaders</h1>
 
       <FilterBar
         filters={filters}
@@ -73,9 +73,9 @@ export default function BattingLeaderboard() {
 
       {/* Pagination */}
       {result && result.total > limit && (
-        <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
+        <div className="flex justify-between items-center mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
           <span>
-            Showing {page * limit + 1}-{Math.min((page + 1) * limit, result.total)} of {result.total}
+            {page * limit + 1}-{Math.min((page + 1) * limit, result.total)} of {result.total}
           </span>
           <div className="flex gap-2">
             <button

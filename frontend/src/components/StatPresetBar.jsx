@@ -4,8 +4,8 @@
  */
 export default function StatPresetBar({ presets, activePreset, onSelect }) {
   return (
-    <div className="flex gap-2 mb-3">
-      <span className="text-xs text-gray-500 self-center mr-1">View:</span>
+    <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+      <span className="text-[10px] sm:text-xs text-gray-500 self-center mr-0.5 sm:mr-1">View:</span>
       {Object.keys(presets).map(preset => (
         <button
           key={preset}

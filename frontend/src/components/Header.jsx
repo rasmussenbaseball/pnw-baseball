@@ -205,7 +205,7 @@ function SearchBar() {
       {/* Results dropdown */}
       {open && flatResults.length > 0 && (
         <div
-          className="absolute top-full right-0 mt-1.5 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border border-white/10 z-50"
+          className="absolute top-full right-0 mt-1.5 w-[calc(100vw-2rem)] sm:w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border border-white/10 z-50"
           style={{
             background: 'linear-gradient(160deg, #0c2234 0%, #0f3048 50%, #0a4a56 100%)',
           }}
@@ -427,14 +427,14 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Brand */}
-          <Link to="/" className="flex items-center gap-3 shrink-0">
+          <Link to="/" className="flex items-center gap-2 sm:gap-3 shrink-0">
             <img
               src="/images/nw-logo.png"
               alt="NW Baseball Stats"
-              className="h-10 w-10 rounded"
+              className="h-8 w-8 sm:h-10 sm:w-10 rounded"
             />
             <div className="flex flex-col leading-tight">
-              <span className="text-xl font-bold tracking-wide font-display">
+              <span className="text-sm sm:text-xl font-bold tracking-wide font-display">
                 NW BASEBALL STATS
               </span>
               <span className="text-[10px] text-teal-200 tracking-widest uppercase hidden sm:block">

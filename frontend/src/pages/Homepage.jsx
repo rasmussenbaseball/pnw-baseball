@@ -34,7 +34,7 @@ export default function Homepage() {
       <LeaderTicker leaders={leaders} />
 
       {/* Main dashboard grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mt-3 sm:mt-5">
         {/* Left column — wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
           <NationalRankingsWidget rankings={rankings} />
@@ -75,7 +75,7 @@ function LeaderTicker({ leaders }) {
               key={cat.key}
               to={cat.key === 'era' || cat.key === 'strikeouts' || cat.key === 'pitching_war' || cat.key === 'fip_plus' || cat.key === 'siera' || cat.key === 'k_minus_bb_pct'
                 ? '/pitching' : '/hitting'}
-              className="flex-none px-4 py-2.5 hover:bg-white/5 transition-colors min-w-0"
+              className="flex-none px-3 sm:px-4 py-2 sm:py-2.5 hover:bg-white/5 transition-colors min-w-0"
             >
               <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">{cat.label} Leader</div>
               <div className="flex items-center gap-2 mt-0.5">

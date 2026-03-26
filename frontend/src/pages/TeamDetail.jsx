@@ -76,13 +76,13 @@ export default function TeamDetail() {
       <Link to="/teams" className="text-sm text-pnw-teal hover:underline mb-3 inline-block">&larr; All Teams</Link>
 
       {/* Team header */}
-      <div className="bg-white rounded-lg shadow-sm border p-5 mb-4">
-        <div className="flex items-center gap-3 mb-2">
+      <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-5 mb-4">
+        <div className="flex items-center gap-2 sm:gap-3 mb-2">
           {team.logo_url && (
             <img
               src={team.logo_url}
               alt=""
-              className="w-10 h-10 object-contain shrink-0"
+              className="w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0"
               loading="lazy"
               onError={(e) => { e.target.style.display = 'none' }}
             />
@@ -90,18 +90,18 @@ export default function TeamDetail() {
           <span className={`px-2 py-0.5 rounded text-xs font-bold ${divisionBadgeClass(team.division_level)}`}>
             {team.division_level}
           </span>
-          <h1 className="text-2xl font-bold text-pnw-slate">{team.name}</h1>
+          <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate">{team.name}</h1>
         </div>
-        <div className="text-sm text-gray-500">
+        <div className="text-xs sm:text-sm text-gray-500">
           {team.city}, {team.state} — {team.conference_name}
         </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 rounded-lg p-1">
         <button
           onClick={() => setActiveTab('season')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+          className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
             activeTab === 'season'
               ? 'bg-white text-pnw-slate shadow-sm'
               : 'text-gray-500 hover:text-gray-700'
@@ -111,7 +111,7 @@ export default function TeamDetail() {
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+          className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
             activeTab === 'history'
               ? 'bg-white text-pnw-slate shadow-sm'
               : 'text-gray-500 hover:text-gray-700'
@@ -125,9 +125,9 @@ export default function TeamDetail() {
       {activeTab === 'season' && (
         <div>
           {/* Summary row */}
-          <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
-            <div className="text-sm text-gray-500 mb-3">{season} Season</div>
-            <div className="flex flex-wrap gap-6 text-sm">
+          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
+            <div className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-3">{season} Season</div>
+            <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm">
               <SummaryCell label="Batters" value={batting.length} />
               <SummaryCell label="Pitchers" value={pitching.length} />
               <SummaryCell label="Team PA" value={teamPA.toLocaleString()} />
@@ -144,8 +144,8 @@ export default function TeamDetail() {
           )}
 
           {/* Batting table */}
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-pnw-slate mb-3">Batting</h2>
+          <div className="mb-6 sm:mb-8">
+            <h2 className="text-lg sm:text-xl font-bold text-pnw-slate mb-2 sm:mb-3">Batting</h2>
             <StatPresetBar
               presets={TEAM_BATTING_PRESETS}
               activePreset={batPreset}
@@ -165,7 +165,7 @@ export default function TeamDetail() {
 
           {/* Pitching table */}
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-pnw-slate mb-3">Pitching</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-pnw-slate mb-2 sm:mb-3">Pitching</h2>
             <StatPresetBar
               presets={TEAM_PITCHING_PRESETS}
               activePreset={pitPreset}
