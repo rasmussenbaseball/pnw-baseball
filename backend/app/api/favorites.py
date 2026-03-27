@@ -24,8 +24,7 @@ class FavoriteRequest(BaseModel):
 # ── Add a favorite ──────────────────────────────────────────
 @favorites_router.post("")
 def add_favorite(body: FavoriteRequest, user_id: str = Depends(get_current_user)):
-    conn = get_connection()
-    try:
+    with get_connection() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO user_favorites (user_id, favorite_type, target_id)
                VALUES (?, ?, ?)""",
@@ -33,15 +32,12 @@ def add_favorite(body: FavoriteRequest, user_id: str = Depends(get_current_user)
         )
         conn.commit()
         return {"status": "ok", "action": "added"}
-    finally:
-        conn.close()
 
 
 # ── Remove a favorite ───────────────────────────────────────
 @favorites_router.delete("")
 def remove_favorite(body: FavoriteRequest, user_id: str = Depends(get_current_user)):
-    conn = get_connection()
-    try:
+    with get_connection() as conn:
         conn.execute(
             """DELETE FROM user_favorites
                WHERE user_id = ? AND favorite_type = ? AND target_id = ?""",
@@ -49,16 +45,13 @@ def remove_favorite(body: FavoriteRequest, user_id: str = Depends(get_current_us
         )
         conn.commit()
         return {"status": "ok", "action": "removed"}
-    finally:
-        conn.close()
 
 
 # ── List all favorites for the current user ─────────────────
 @favorites_router.get("")
 def list_favorites(user_id: str = Depends(get_current_user)):
-    conn = get_connection()
-    conn.row_factory = _dict_factory
-    try:
+    with get_connection() as conn:
+        conn.row_factory = _dict_factory
         rows = conn.execute(
             """SELECT favorite_type, target_id, created_at
                FROM user_favorites
@@ -87,7 +80,7 @@ def list_favorites(user_id: str = Depends(get_current_user)):
             else:
                 player = conn.execute(
                     """SELECT p.id, p.first_name, p.last_name, p.position,
-                              p.year, p.image_url,
+                              p.year_in_school as year,
                               t.name as team_name, t.id as team_id, t.logo_url as team_logo
                        FROM players p
                        LEFT JOIN teams t ON p.team_id = t.id
@@ -99,8 +92,6 @@ def list_favorites(user_id: str = Depends(get_current_user)):
                     players.append(player)
 
         return {"teams": teams, "players": players}
-    finally:
-        conn.close()
 
 
 # ── Check if specific items are favorited (for UI star state) ──
@@ -126,8 +117,7 @@ def check_favorites(
     if not ids:
         return {"favorited": {}}
 
-    conn = get_connection()
-    try:
+    with get_connection() as conn:
         placeholders = ",".join("?" * len(ids))
         rows = conn.execute(
             f"""SELECT target_id FROM user_favorites
@@ -137,8 +127,6 @@ def check_favorites(
 
         favorited = {row[0]: True for row in rows}
         return {"favorited": favorited}
-    finally:
-        conn.close()
 
 
 def _dict_factory(cursor, row):
