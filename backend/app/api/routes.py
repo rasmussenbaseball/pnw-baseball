@@ -485,6 +485,7 @@ def team_ratings(
                 GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1
+              AND t.state IN ('WA', 'OR', 'ID', 'MT')
             ORDER BY d.id, t.short_name
         """, (season, season, season))
         rows = cur.fetchall()
