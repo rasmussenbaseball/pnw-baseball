@@ -30,7 +30,12 @@ def get_connection():
     Returns a connection with RealDictCursor so rows behave like dicts
     (row["column_name"]) — same interface the rest of the code expects.
     """
-    conn = psycopg2.connect(DATABASE_URL)
+    # Ensure SSL is used (required by Supabase pooler)
+    connect_url = DATABASE_URL
+    if connect_url and "sslmode" not in connect_url:
+        separator = "&" if "?" in connect_url else "?"
+        connect_url = connect_url + separator + "sslmode=require"
+    conn = psycopg2.connect(connect_url)
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     try:
         yield conn
