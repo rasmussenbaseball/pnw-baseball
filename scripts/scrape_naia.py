@@ -685,13 +685,15 @@ def get_naia_team_id_map():
     """Build CCC team short_name -> team_id map."""
     short_to_id = {}
     with get_connection() as conn:
-        rows = conn.execute("""
+        cur = conn.cursor()
+        cur.execute("""
             SELECT t.id, t.short_name, t.name
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE d.level = 'NAIA' AND t.is_active = 1
-        """).fetchall()
+            WHERE d.level = %s AND t.is_active = %s
+        """, ('NAIA', 1))
+        rows = cur.fetchall()
         for row in rows:
             short_to_id[row["short_name"]] = row["id"]
 
@@ -699,12 +701,13 @@ def get_naia_team_id_map():
     return short_to_id
 
 
-def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
+def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
-    existing = conn.execute(
-        "SELECT id FROM players WHERE first_name = ? AND last_name = ? AND team_id = ?",
+    cur.execute(
+        "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
         (first_name, last_name, team_id),
-    ).fetchone()
+    )
+    existing = cur.fetchone()
 
     if existing:
         player_id = existing["id"]
@@ -713,19 +716,19 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
         for field in ["position", "year_in_school", "jersey_number", "bats", "throws",
                        "height", "weight", "hometown", "high_school", "previous_school"]:
             if kwargs.get(field):
-                updates.append(f"{field} = COALESCE(?, {field})")
+                updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
         if updates:
             params.append(player_id)
-            conn.execute(
-                f"UPDATE players SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            cur.execute(
+                f"UPDATE players SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                 params,
             )
     else:
-        cursor = conn.execute(
+        cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
                year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -740,7 +743,9 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
                 kwargs.get("previous_school"),
             ),
         )
-        player_id = cursor.lastrowid
+        cur.execute("SELECT lastval() AS id")
+        result = cur.fetchone()
+        player_id = result["id"] if result else None
 
     return player_id
 
@@ -841,6 +846,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
     matched_count = 0
     unmatched_names = []
     with get_connection() as conn:
+        cur = conn.cursor()
         for batter in batting_rows:
             try:
                 player_name = batter.get("Player", "").strip()
@@ -866,7 +872,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 year_in_school = normalize_year(roster_data.get("year"))
 
                 player_id = insert_or_update_player(
-                    conn, first_name, last_name, team_id,
+                    cur, first_name, last_name, team_id,
                     position=norm_pos or None,
                     year_in_school=year_in_school,
                     jersey_number=batter.get("#") or roster_data.get("jersey"),
@@ -917,7 +923,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     plate_appearances=pa, division_level="NAIA",
                 )
 
-                conn.execute(
+                cur.execute(
                     """INSERT INTO batting_stats
                        (player_id, team_id, season, games, games_started,
                         plate_appearances, at_bats,
@@ -926,8 +932,8 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                         caught_stealing, grounded_into_dp, intentional_walks,
                         batting_avg, on_base_pct, slugging_pct, ops,
                         woba, wraa, wrc, wrc_plus, iso, babip, bb_pct, k_pct, offensive_war)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT(player_id, team_id, season) DO UPDATE SET
                         games=excluded.games, games_started=excluded.games_started,
                         plate_appearances=excluded.plate_appearances,
@@ -985,7 +991,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 year_in_school = normalize_year(roster_data.get("year"))
 
                 player_id = insert_or_update_player(
-                    conn, first_name, last_name, team_id,
+                    cur, first_name, last_name, team_id,
                     position=pitch_pos,
                     year_in_school=year_in_school,
                     jersey_number=pitcher.get("#") or roster_data.get("jersey"),
@@ -1038,7 +1044,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 )
                 adv = compute_pitching_advanced(line, division_level="NAIA")
 
-                conn.execute(
+                cur.execute(
                     """INSERT INTO pitching_stats
                        (player_id, team_id, season, games, games_started, wins, losses, saves,
                         complete_games, shutouts, innings_pitched, hits_allowed, runs_allowed,
@@ -1047,8 +1053,8 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                         era, whip, k_per_9, bb_per_9, h_per_9, hr_per_9, k_bb_ratio,
                         k_pct, bb_pct,
                         fip, xfip, siera, kwera, babip_against, lob_pct, pitching_war)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT(player_id, team_id, season) DO UPDATE SET
                         games=excluded.games, games_started=excluded.games_started,
                         wins=excluded.wins, losses=excluded.losses, saves=excluded.saves,

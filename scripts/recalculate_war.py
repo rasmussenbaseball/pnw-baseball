@@ -34,10 +34,12 @@ from app.stats.advanced import (
 def recalculate_all(season: int, verbose: bool = False):
     """Recalculate WAR for all players in the given season."""
     with get_connection() as conn:
+        cur = conn.cursor()
         # ── Step 1: Normalize positions in the players table ──
-        players = conn.execute(
+        cur.execute(
             "SELECT id, position FROM players"
-        ).fetchall()
+        )
+        players = cur.fetchall()
 
         pos_changes = 0
         pos_stats = {}
@@ -52,7 +54,7 @@ def recalculate_all(season: int, verbose: bool = False):
             print(f"  {pos:>4s}: {count}")
 
         # ── Step 2: Recalculate batting WAR ──
-        batters = conn.execute(
+        cur.execute(
             """SELECT bs.id, bs.player_id, bs.plate_appearances, bs.at_bats,
                       bs.hits, bs.doubles, bs.triples, bs.home_runs, bs.walks,
                       COALESCE(bs.intentional_walks, 0) as intentional_walks,
@@ -66,9 +68,10 @@ def recalculate_all(season: int, verbose: bool = False):
                       p.position, p.first_name, p.last_name
                FROM batting_stats bs
                JOIN players p ON bs.player_id = p.id
-               WHERE bs.season = ?""",
+               WHERE bs.season = %s""",
             (season,),
-        ).fetchall()
+        )
+        batters = cur.fetchall()
 
         print(f"\nRecalculating WAR for {len(batters)} batters...")
 
@@ -107,13 +110,13 @@ def recalculate_all(season: int, verbose: bool = False):
                 plate_appearances=pa, division_level="JUCO",
             )
 
-            conn.execute(
+            cur.execute(
                 """UPDATE batting_stats SET
-                    batting_avg = ?, on_base_pct = ?, slugging_pct = ?, ops = ?,
-                    woba = ?, wraa = ?, wrc = ?, wrc_plus = ?,
-                    iso = ?, babip = ?, bb_pct = ?, k_pct = ?,
-                    offensive_war = ?
-                   WHERE id = ?""",
+                    batting_avg = %s, on_base_pct = %s, slugging_pct = %s, ops = %s,
+                    woba = %s, wraa = %s, wrc = %s, wrc_plus = %s,
+                    iso = %s, babip = %s, bb_pct = %s, k_pct = %s,
+                    offensive_war = %s
+                   WHERE id = %s""",
                 (adv.batting_avg, adv.obp, adv.slg, adv.ops,
                  adv.woba, adv.wraa, adv.wrc, adv.wrc_plus,
                  adv.iso, adv.babip, adv.bb_pct, adv.k_pct,
@@ -137,7 +140,7 @@ def recalculate_all(season: int, verbose: bool = False):
                 })
 
         # ── Step 3: Recalculate pitching WAR ──
-        pitchers = conn.execute(
+        cur.execute(
             """SELECT ps.id, ps.innings_pitched, ps.earned_runs, ps.hits_allowed,
                       ps.walks, COALESCE(ps.intentional_walks, 0) as intentional_walks,
                       ps.strikeouts, ps.home_runs_allowed,
@@ -150,9 +153,10 @@ def recalculate_all(season: int, verbose: bool = False):
                       p.first_name, p.last_name
                FROM pitching_stats ps
                JOIN players p ON ps.player_id = p.id
-               WHERE ps.season = ?""",
+               WHERE ps.season = %s""",
             (season,),
-        ).fetchall()
+        )
+        pitchers = cur.fetchall()
 
         print(f"Recalculating WAR for {len(pitchers)} pitchers...")
 
@@ -184,13 +188,13 @@ def recalculate_all(season: int, verbose: bool = False):
             )
             adv = compute_pitching_advanced(line, division_level="JUCO")
 
-            conn.execute(
+            cur.execute(
                 """UPDATE pitching_stats SET
-                    era = ?, whip = ?, fip = ?, xfip = ?, siera = ?,
-                    k_per_9 = ?, bb_per_9 = ?, h_per_9 = ?, hr_per_9 = ?,
-                    k_bb_ratio = ?, k_pct = ?, bb_pct = ?,
-                    babip_against = ?, lob_pct = ?, pitching_war = ?
-                   WHERE id = ?""",
+                    era = %s, whip = %s, fip = %s, xfip = %s, siera = %s,
+                    k_per_9 = %s, bb_per_9 = %s, h_per_9 = %s, hr_per_9 = %s,
+                    k_bb_ratio = %s, k_pct = %s, bb_pct = %s,
+                    babip_against = %s, lob_pct = %s, pitching_war = %s
+                   WHERE id = %s""",
                 (adv.era, adv.whip, adv.fip, adv.xfip, adv.siera,
                  adv.k_per_9, adv.bb_per_9, adv.h_per_9, adv.hr_per_9,
                  adv.k_bb_ratio, adv.k_pct, adv.bb_pct,
@@ -207,8 +211,6 @@ def recalculate_all(season: int, verbose: bool = False):
                     "fip": round(adv.fip, 2),
                     "pwar": round(adv.pitching_war, 2),
                 })
-
-        conn.commit()
 
     # ── Print results ──
     print(f"\n{'='*60}")

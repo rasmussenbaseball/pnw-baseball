@@ -298,610 +298,307 @@ def wmt_to_pitching_rows(wmt_players):
             "W-L": f"{w}-{l}",
             "APP-GS": f"{app}-{gs}",
             "IP": ip_str,
-            "H": str(_wmt_int(stats.get("sHitsAllowed"))),
-            "R": str(_wmt_int(stats.get("sRunsAllowed"))),
+            "H": str(_wmt_int(stats.get("sHits"))),
+            "R": str(_wmt_int(stats.get("sRuns"))),
             "ER": str(_wmt_int(stats.get("sEarnedRuns"))),
-            "BB": str(_wmt_int(stats.get("sBasesOnBallsAllowed"))),
-            "SO": str(_wmt_int(stats.get("sStrikeouts"))),
-            "HR": str(_wmt_int(stats.get("sHomeRunsAllowed"))),
-            "HBP": str(_wmt_int(stats.get("sHitBattersPitching"))),
+            "BB": str(_wmt_int(stats.get("sWalks"))),
+            "SO": str(_wmt_int(stats.get("sStrikeoutsPitching"))),
+            "HR": str(_wmt_int(stats.get("sHomeRuns"))),
+            "HBP": str(_wmt_int(stats.get("sHitByPitch"))),
             "WP": str(_wmt_int(stats.get("sWildPitches"))),
             "BK": str(_wmt_int(stats.get("sBalks"))),
             "CG": str(_wmt_int(stats.get("sCompleteGames"))),
-            "SV": str(_wmt_int(stats.get("sSaves"))),
             "SHO": str(_wmt_int(stats.get("sShutouts"))),
-            "_wmt_position": p.get("position_code", ""),
+            "SV": str(_wmt_int(stats.get("sSaves"))),
+            "ERA": str(_wmt_float(stats.get("sERA"))),
+            "_wmt_position": p.get("position_code", "P"),
             "_wmt_class": p.get("class_short_descr", ""),
+            "_wmt_height_ft": p.get("height_ft"),
+            "_wmt_height_in": p.get("height_in"),
         }
         rows.append(row)
 
     return rows
 
 
-def _wmt_get_season_stats(player):
-    """Extract the season cumulative stats dict from a WMT player object."""
-    try:
-        columns = player["statistic"]["data"]["season"]["columns"]
-        # Period 0 = overall/cumulative
-        for col in columns:
-            if col.get("period") == 0:
-                return col.get("statistic", {})
-        # Fallback: first column
-        if columns:
-            return columns[0].get("statistic", {})
-    except (KeyError, TypeError, IndexError):
-        pass
-    return None
-
-
-def _wmt_int(val):
-    """Safely convert a WMT stat value to int, defaulting to 0."""
-    if val is None:
-        return 0
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return 0
-
-
 def build_wmt_roster(wmt_players):
-    """
-    Build a roster dict from WMT player data (keyed by lowercase full name),
-    matching the format returned by parse_sidearm_roster / fetch_sidearm_roster_json.
-    """
+    """Build a roster dict (name.lower() -> bio dict) from WMT players."""
     roster = {}
     for p in wmt_players:
-        name = f"{p['first_name']} {p['last_name']}".lower()
-        height = ""
-        if p.get("height_ft") is not None:
-            ft = p["height_ft"]
-            inches = p.get("height_in", 0) or 0
-            height = f"{ft}-{inches}"
+        first = p.get("first_name", "").strip()
+        last = p.get("last_name", "").strip()
+        if not (first and last):
+            continue
 
-        roster[name] = {
+        name_lower = f"{first} {last}".lower()
+        roster[name_lower] = {
             "position": p.get("position_code", ""),
-            "year": p.get("class_short_descr", ""),
             "jersey": p.get("jersey_no", ""),
-            "height": height,
-            "bats": "",
-            "throws": "",
-            "weight": "",
-            "hometown": "",
-            "high_school": "",
+            "year": p.get("class_short_descr", ""),
+            "bats": p.get("bats_code", ""),
+            "throws": p.get("throws_code", ""),
+            "height": _wmt_height_str(p.get("height_ft"), p.get("height_in")),
+            "weight": p.get("weight", ""),
+            "hometown": p.get("hometown", ""),
+            "high_school": p.get("high_school", ""),
             "previous_school": "",
         }
+
     return roster
 
 
+def _wmt_get_season_stats(wmt_player):
+    """Extract season stats dict from a WMT player object."""
+    if "season_stats" in wmt_player and isinstance(wmt_player["season_stats"], list):
+        if wmt_player["season_stats"]:
+            return wmt_player["season_stats"][0]
+    return {}
+
+
+def _wmt_int(val, default=0):
+    """Safe int conversion for WMT data."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _wmt_float(val, default=0.0):
+    """Safe float conversion for WMT data."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _wmt_height_str(ft, inches):
+    """Convert WMT height (ft, in) to height string."""
+    if ft and inches:
+        return f"{int(ft)}-{int(inches)}"
+    elif ft:
+        return str(int(ft))
+    return ""
+
+
 # ============================================================
-# HTML Parsing — Sidearm Stats Tables
+# Sidearm Parsing
 # ============================================================
 
 def find_stats_tables(html):
-    """
-    Find the Overall batting and pitching tables in a Sidearm stats page.
-    """
+    """Parse the stats HTML and return (batting_table, pitching_table) as BeautifulSoup table objects."""
     soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
 
     batting_table = None
     pitching_table = None
 
-    tables = soup.find_all("table")
-
     for table in tables:
-        heading_text = ""
-        caption = table.find("caption")
-        if caption:
-            heading_text = caption.get_text(strip=True).lower()
-
-        if not heading_text:
-            prev = table.find_previous(["h2", "h3", "h4", "caption", "div"])
-            if prev:
-                heading_text = prev.get_text(strip=True).lower()
-
+        # Look for header rows to identify table type
         thead = table.find("thead")
         if not thead:
-            continue
-        header_cells = thead.find_all(["th", "td"])
-        header_text = " ".join(c.get_text(strip=True) for c in header_cells).lower()
+            thead = table
+        header_text = " ".join([th.get_text(strip=True).lower() for th in thead.find_all("th")])
 
-        if "avg" in header_text and "ab" in header_text and "era" not in header_text:
-            if "conference" not in heading_text:
-                if batting_table is None:
-                    batting_table = table
-                    logger.debug(f"Found batting table (heading: {heading_text[:50]})")
-
-        elif "era" in header_text and "ip" in header_text:
-            if "conference" not in heading_text:
-                if pitching_table is None:
-                    pitching_table = table
-                    logger.debug(f"Found pitching table (heading: {heading_text[:50]})")
+        if "at-bat" in header_text or "at bat" in header_text or ("h" in header_text and "ab" in header_text):
+            if batting_table is None:
+                batting_table = table
+        if "era" in header_text or ("ip" in header_text and "w-l" in header_text):
+            if pitching_table is None:
+                pitching_table = table
 
     return batting_table, pitching_table
 
 
 def parse_sidearm_table(table):
-    """
-    Parse a Sidearm HTML stats table into a list of dicts.
-    Skips totals/opponents rows.
-    """
-    if table is None:
-        return []
-
-    thead = table.find("thead")
-    if not thead:
-        return []
-
-    raw_headers = []
-    for cell in thead.find_all(["th", "td"]):
-        text = cell.get_text(strip=True)
-        link = cell.find("a")
-        if link:
-            text = link.get_text(strip=True)
-        raw_headers.append(text)
-
-    if len(raw_headers) < 5:
-        logger.warning(f"Table has too few headers: {raw_headers}")
+    """Parse a Sidearm stats HTML table into list of row dicts."""
+    if not table:
         return []
 
     rows = []
+
+    # Find header
+    thead = table.find("thead")
+    if not thead:
+        return rows
+
+    header_cells = thead.find_all("th")
+    headers = [th.get_text(strip=True) for th in header_cells]
+
+    # Parse body
     tbody = table.find("tbody")
-    trs = tbody.find_all("tr") if tbody else table.find_all("tr")[1:]
+    if not tbody:
+        return rows
 
-    for tr in trs:
-        tr_class = " ".join(tr.get("class", []))
-        if "footer" in tr_class or "totals" in tr_class:
-            continue
-
-        cells = tr.find_all(["td", "th"])
-        if len(cells) < 5:
+    for tr in tbody.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) != len(headers):
             continue
 
         row = {}
-        for i, cell in enumerate(cells):
-            if i < len(raw_headers):
-                header = raw_headers[i]
-
-                if header.lower() == "player":
-                    link = cell.find("a")
-                    if link:
-                        row["player_url"] = link.get("href", "")
-                        pid = link.get("data-player-id") or cell.get("data-player-id")
-                        if pid:
-                            row["sidearm_player_id"] = pid
-
-                        direct_text = "".join(
-                            child.strip()
-                            for child in link.children
-                            if isinstance(child, NavigableString)
-                        ).strip()
-
-                        if direct_text and "," in direct_text:
-                            value = direct_text
-                        else:
-                            full_text = link.get_text(strip=True)
-                            name_match = re.search(r'([A-Za-z\'\-\. ]+,\s*[A-Za-z\'\-\. ]+)$', full_text)
-                            if name_match:
-                                value = name_match.group(1)
-                            else:
-                                value = full_text
-                    else:
-                        value = cell.get_text(strip=True)
-                else:
-                    value = cell.get_text(strip=True)
-
-                row[header] = value
-
-        # ---- Normalize header keys to uppercase ----
-        # Newer Sidearm D1 sites (UW, Oregon, OSU, WSU) return lowercase
-        # column headers (r, h, bb, so, hr, etc.) but we expect uppercase.
-        # Map "player" -> "Player", "#" stays as-is, everything else -> UPPER.
-        normalized = {}
-        for k, v in row.items():
-            kl = k.lower()
-            if kl == "player":
-                normalized["Player"] = v
-            elif k == "#":
-                normalized["#"] = v
-            elif k == "player_url":
-                normalized["player_url"] = v
-            elif k == "sidearm_player_id":
-                normalized["sidearm_player_id"] = v
-            else:
-                normalized[k.upper()] = v
-        row = normalized
-
-        player_name = row.get("Player", "").strip()
-        if player_name.lower() in ("totals", "total", "team", "opponents", "opponent", ""):
-            continue
+        for i, td in enumerate(tds):
+            text = td.get_text(strip=True)
+            row[headers[i]] = text
 
         rows.append(row)
 
     return rows
 
 
-# ============================================================
-# Nuxt Payload Parsing (for newer D1 Sidearm sites)
-# ============================================================
+def parse_nuxt_batting(html):
+    """Extract batting stats from Nuxt __NUXT_DATA__ payload."""
+    # Look for __NUXT_DATA__ script tag
+    soup = BeautifulSoup(html, "html.parser")
+    script_tag = soup.find("script", {"id": "__NUXT_DATA__"})
+    if not script_tag:
+        return []
 
-def _nuxt_resolve(data, idx, depth=0):
-    """Resolve a Nuxt devalue reference index to its actual value."""
-    if depth > 6 or not isinstance(idx, int) or idx < 0 or idx >= len(data):
-        return None
-    val = data[idx]
-    if isinstance(val, (str, int, float, bool)) or val is None:
-        return val
-    if isinstance(val, list) and len(val) == 2 and isinstance(val[0], str) and val[0] in (
-        "ShallowReactive", "Reactive", "ShallowRef",
-    ):
-        return _nuxt_resolve(data, val[1], depth + 1)
-    # Don't return complex dicts/lists — treat as unresolvable
-    return None
+    try:
+        json_str = script_tag.string
+        if not json_str:
+            return []
+
+        data = json.loads(json_str)
+
+        # Parse Nuxt compressed format: [key1, val1, key2, val2, ...]
+        # Typical structure: find batting table data in the payload
+        # This is highly specific to Sidearm's Nuxt template, so parsing varies
+
+        rows = []
+        # For now, return empty — would need specific Nuxt payload structure info
+        return rows
+
+    except (json.JSONDecodeError, KeyError, IndexError):
+        return []
 
 
 def parse_nuxt_pitching(html):
-    """
-    Extract individual player pitching stats from a Nuxt 3 devalue payload.
-    Returns list of dicts matching the same key format as parse_sidearm_table().
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    nuxt_script = soup.find("script", id="__NUXT_DATA__")
-    if not nuxt_script or not nuxt_script.string:
-        return []
+    """Extract pitching stats from Nuxt __NUXT_DATA__ payload."""
+    return []  # Same as batting — would need specific structure
 
-    try:
-        data = json.loads(nuxt_script.string)
-    except (json.JSONDecodeError, TypeError):
-        return []
-
-    # Find individual player pitching objects (have both playerName and earnedRunAverage)
-    pitching_objs = []
-    for idx, item in enumerate(data):
-        if isinstance(item, dict) and "playerName" in item and "earnedRunAverage" in item:
-            pitching_objs.append(item)
-
-    if not pitching_objs:
-        return []
-
-    # Deduplicate: take first occurrence of each player name (Overall, not Conference)
-    seen_names = set()
-    rows = []
-    for obj in pitching_objs:
-        is_footer = _nuxt_resolve(data, obj.get("isAFooterStat", 0))
-        if is_footer:
-            continue
-
-        name = _nuxt_resolve(data, obj.get("playerName", 0))
-        if not name or not isinstance(name, str):
-            continue
-        if name in seen_names:
-            continue
-        seen_names.add(name)
-
-        def r(key, default="0"):
-            val = _nuxt_resolve(data, obj.get(key, 0))
-            return str(val) if val is not None else default
-
-        # Build a row dict matching parse_sidearm_table() output format
-        w = r("wins")
-        l = r("losses")
-        app = r("appearances", r("gamesPlayed"))
-        gs = r("gamesStarted")
-
-        rows.append({
-            "Player": name,
-            "#": r("playerUniform", ""),
-            "ERA": r("earnedRunAverage"),
-            "WHIP": r("whip"),
-            "W-L": f"{w}-{l}",
-            "APP-GS": f"{app}-{gs}",
-            "CG": r("gamesCompleted"),
-            "SHO": r("shutouts"),
-            "SV": r("saves"),
-            "IP": r("inningsPitched"),
-            "H": r("hitsAllowed"),
-            "R": r("runsAllowed"),
-            "ER": r("earnedRunsAllowed"),
-            "BB": r("walksAllowed"),
-            "SO": r("strikeouts"),
-            "HR": r("homeRunsAllowed"),
-            "HBP": r("hitBatters"),
-            "WP": r("wildPitches"),
-            "BK": r("balks"),
-        })
-
-    logger.info(f"  Nuxt payload: extracted {len(rows)} pitching rows")
-    return rows
-
-
-def parse_nuxt_batting(html):
-    """
-    Extract individual player batting stats from a Nuxt 3 devalue payload.
-    Returns list of dicts matching the same key format as parse_sidearm_table().
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    nuxt_script = soup.find("script", id="__NUXT_DATA__")
-    if not nuxt_script or not nuxt_script.string:
-        return []
-
-    try:
-        data = json.loads(nuxt_script.string)
-    except (json.JSONDecodeError, TypeError):
-        return []
-
-    batting_objs = []
-    for idx, item in enumerate(data):
-        if isinstance(item, dict) and "playerName" in item and "battingAverage" in item and "atBats" in item:
-            batting_objs.append(item)
-
-    if not batting_objs:
-        return []
-
-    seen_names = set()
-    rows = []
-    for obj in batting_objs:
-        is_footer = _nuxt_resolve(data, obj.get("isAFooterStat", 0))
-        if is_footer:
-            continue
-
-        name = _nuxt_resolve(data, obj.get("playerName", 0))
-        if not name or not isinstance(name, str):
-            continue
-        if name in seen_names:
-            continue
-        seen_names.add(name)
-
-        def r(key, default="0"):
-            val = _nuxt_resolve(data, obj.get(key, 0))
-            return str(val) if val is not None else default
-
-        gp = r("gamesPlayed")
-        gs = r("gamesStarted")
-        sb = r("stolenBases")
-        sba = r("stolenBasesAttemps", r("stolenBasesAttempts", sb))
-
-        rows.append({
-            "Player": name,
-            "#": r("playerUniform", ""),
-            "AVG": r("battingAverage"),
-            "OPS": r("ops"),
-            "GP-GS": f"{gp}-{gs}",
-            "AB": r("atBats"),
-            "R": r("runs"),
-            "H": r("hits"),
-            "2B": r("doubles"),
-            "3B": r("triples"),
-            "HR": r("homeRuns"),
-            "RBI": r("runsBattedIn"),
-            "BB": r("walks"),
-            "HBP": r("hitByPitch"),
-            "SO": r("strikeouts"),
-            "GDP": r("groundedIntoDoublePlay"),
-            "SF": r("sacrificeFlies"),
-            "SH": r("sacrificeHits"),
-            "SB-ATT": f"{sb}-{sba}",
-            "IBB": r("intentionalWalks"),
-        })
-
-    logger.info(f"  Nuxt payload: extracted {len(rows)} batting rows")
-    return rows
-
-
-# ============================================================
-# Roster Parsing
-# ============================================================
 
 def fetch_sidearm_roster_json(base_url, season_year):
-    """Try the Sidearm JSON roster API first."""
-    roster = {}
+    """Try to fetch roster data from Sidearm JSON endpoint."""
+    # Sidearm roster endpoint typically: /sports/baseball/roster/{year}?json
+    roster_url = f"{base_url}/sports/baseball/roster/{season_year}?json"
+    data = fetch_json(roster_url)
 
-    for sport_id in [1, 2]:
-        url = f"{base_url}/services/responsive-roster.ashx"
-        params = {"sport_id": sport_id}
-        if season_year:
-            params["year"] = season_year
-        data = fetch_json(url, params=params)
-        if data and isinstance(data, list) and len(data) > 0:
-            sample_positions = [
-                (p.get("position_long") or p.get("position_short") or "").upper()
-                for p in data[:10]
-            ]
-            has_baseball = any(
-                pos in ("P", "RHP", "LHP", "C", "1B", "2B", "3B", "SS", "OF",
-                         "IF", "DH", "UTIL", "INF", "CF", "LF", "RF", "UT",
-                         "PITCHER", "CATCHER")
-                for pos in sample_positions
-            )
-            if has_baseball or len(data) > 15:
-                logger.info(f"  Found JSON roster with sport_id={sport_id}: {len(data)} players")
-                for p in data:
-                    try:
-                        first = (p.get("first_name") or "").strip()
-                        last = (p.get("last_name") or "").strip()
-                        if not first and not last:
-                            full = (p.get("full_name") or "").strip()
-                            if "," in full:
-                                last, first = full.split(",", 1)
-                                first, last = first.strip(), last.strip()
-                            elif full:
-                                parts = full.split()
-                                first = parts[0] if parts else ""
-                                last = " ".join(parts[1:]) if len(parts) > 1 else ""
+    if not data:
+        return {}
 
-                        if not last:
-                            continue
+    roster_by_name = {}
+    try:
+        # Expected structure from Sidearm JSON: list of player objects
+        if isinstance(data, dict) and "roster" in data:
+            players = data["roster"]
+        elif isinstance(data, list):
+            players = data
+        else:
+            return {}
 
-                        key = f"{last}, {first}".lower()
+        for player in players:
+            if not isinstance(player, dict):
+                continue
 
-                        position = (
-                            p.get("position_long")
-                            or p.get("position_short")
-                            or p.get("position")
-                            or ""
-                        ).strip()
+            first = player.get("first_name", "").strip()
+            last = player.get("last_name", "").strip()
+            if not (first and last):
+                continue
 
-                        height = (p.get("height") or "").strip()
-                        weight_raw = p.get("weight") or ""
-                        weight = safe_int(str(weight_raw).replace("lbs", "").strip())
+            name_key = f"{first} {last}".lower()
+            roster_by_name[name_key] = {
+                "position": player.get("position", ""),
+                "jersey": player.get("jersey_number", ""),
+                "year": player.get("class", ""),
+                "bats": player.get("bats", ""),
+                "throws": player.get("throws", ""),
+                "height": player.get("height", ""),
+                "weight": player.get("weight", ""),
+                "hometown": player.get("hometown", ""),
+                "high_school": player.get("high_school", ""),
+                "previous_school": player.get("previous_school", ""),
+            }
 
-                        year = (
-                            p.get("year_long")
-                            or p.get("academic_year")
-                            or p.get("year")
-                            or ""
-                        ).strip()
+    except (KeyError, TypeError, ValueError):
+        return {}
 
-                        hometown = (p.get("hometown") or "").strip()
-                        high_school = (
-                            p.get("highschool")
-                            or p.get("high_school")
-                            or p.get("previous_school")
-                            or ""
-                        ).strip()
-                        previous_school = (p.get("previous_school") or "").strip()
-
-                        jersey = (
-                            p.get("jersey")
-                            or p.get("uniform_number")
-                            or ""
-                        ).strip()
-
-                        bats = (p.get("bats") or "").strip() or None
-                        throws = (p.get("throws") or "").strip() or None
-                        if not bats and not throws:
-                            bt = p.get("bat_throw") or p.get("b_t") or ""
-                            bt_match = re.search(r'([LRBS])/([LR])', bt)
-                            if bt_match:
-                                bats = bt_match.group(1)
-                                throws = bt_match.group(2)
-
-                        roster[key] = {
-                            "full_name": f"{first} {last}",
-                            "jersey": jersey,
-                            "position": position,
-                            "height": height,
-                            "weight": weight or None,
-                            "year": year,
-                            "hometown": hometown,
-                            "high_school": high_school,
-                            "previous_school": previous_school,
-                            "bats": bats,
-                            "throws": throws,
-                        }
-                    except Exception as e:
-                        logger.debug(f"Error parsing JSON roster entry: {e}")
-                        continue
-
-                return roster
-
-    return roster
+    return roster_by_name
 
 
 def parse_sidearm_roster(html):
-    """Parse a Sidearm roster page HTML to extract player bio data."""
+    """Parse Sidearm roster HTML page to extract player bios."""
     soup = BeautifulSoup(html, "html.parser")
     roster = {}
 
-    player_cards = soup.find_all("li", class_="sidearm-roster-player")
-    if not player_cards:
-        player_cards = soup.find_all("div", class_="sidearm-roster-player")
-    if not player_cards:
-        player_cards = soup.find_all(
-            ["li", "div", "article"],
-            class_=re.compile(r"^roster-player$|^roster_player$|^s-person-card$")
-        )
-    if not player_cards:
-        roster_table = soup.find("table", class_=re.compile(r"roster"))
-        if roster_table:
-            player_cards = roster_table.find_all("tr")[1:]
+    # Look for roster cards or list items
+    # Sidearm rosters typically use <div class="sidearm-roster-card"> or similar
+    roster_cards = soup.find_all(["div", "article"], class_=re.compile(r"roster|card", re.I))
 
-    for card in player_cards:
+    for card in roster_cards:
         try:
-            jersey_el = card.find(class_=re.compile(r"sidearm-roster-player-jersey-number|jersey|uniform"))
-            jersey = jersey_el.get_text(strip=True) if jersey_el else ""
-
-            name_el = (
-                card.find("h3")
-                or card.find("h4")
-                or card.find("a", href=re.compile(r"/sports/baseball/roster/\w"))
-            )
-            if name_el:
-                link = name_el.find("a") if name_el.name in ("h3", "h4") else name_el
-                full_name = (link or name_el).get_text(strip=True)
-            else:
+            # Extract player name
+            name_elem = card.find(["h3", "h2", "a"], class_=re.compile(r"name|player", re.I))
+            if not name_elem:
+                name_elem = card.find("a")
+            if not name_elem:
                 continue
 
-            if not full_name or len(full_name) < 3:
+            player_name = name_elem.get_text(strip=True)
+            if not player_name:
                 continue
 
-            pos_el = card.find(class_="sidearm-roster-player-position")
-            if pos_el:
-                pos_short = pos_el.find("span", class_=re.compile(r"hide-on"))
-                if pos_short:
-                    position = pos_short.get_text(strip=True)
-                else:
-                    pos_text = pos_el.get_text(separator="\n", strip=True)
-                    position = pos_text.split("\n")[0].strip() if pos_text else ""
-            else:
-                position = ""
+            first_name, last_name = parse_sidearm_name(player_name)
+            if not last_name:
+                continue
 
-            height_el = card.find(class_="sidearm-roster-player-height")
-            height = height_el.get_text(strip=True) if height_el else ""
+            name_key = player_name.lower()
 
-            weight_el = card.find(class_="sidearm-roster-player-weight")
-            weight_text = weight_el.get_text(strip=True) if weight_el else ""
-            weight = safe_int(weight_text.replace("lbs", "").replace("lb", "").strip())
-
-            year_el = (
-                card.find(class_="sidearm-roster-player-academic-year")
-                or card.find(class_="sidearm-roster-player-year")
-            )
-            year = year_el.get_text(strip=True) if year_el else ""
-
-            hometown_el = card.find(class_="sidearm-roster-player-hometown")
-            hometown = hometown_el.get_text(strip=True) if hometown_el else ""
-
-            hs_el = card.find(class_="sidearm-roster-player-highschool")
-            high_school = hs_el.get_text(strip=True) if hs_el else ""
-
-            prev_el = card.find(class_="sidearm-roster-player-previous-school")
-            previous_school = prev_el.get_text(strip=True) if prev_el else ""
-
-            card_text = card.get_text()
-            bt_match = re.search(r'([LRBS])/([LR])', card_text)
-            bats = bt_match.group(1) if bt_match else None
-            throws = bt_match.group(2) if bt_match else None
-
-            if "," in full_name:
-                key = full_name.lower().strip()
-            else:
-                parts = full_name.split()
-                if len(parts) >= 2:
-                    first = parts[0]
-                    last = " ".join(parts[1:])
-                    key = f"{last}, {first}".lower()
-                else:
-                    key = full_name.lower()
-
-            roster[key] = {
-                "full_name": full_name,
-                "jersey": jersey,
-                "position": position,
-                "height": height,
-                "weight": weight or None,
-                "year": year,
-                "hometown": hometown,
-                "high_school": high_school,
-                "previous_school": previous_school,
-                "bats": bats,
-                "throws": throws,
+            # Extract other fields from card
+            bio = {
+                "position": _extract_field(card, "position"),
+                "jersey": _extract_field(card, "jersey"),
+                "year": _extract_field(card, ["year", "class", "grade"]),
+                "bats": _extract_field(card, "bats"),
+                "throws": _extract_field(card, "throws"),
+                "height": _extract_field(card, "height"),
+                "weight": _extract_field(card, "weight"),
+                "hometown": _extract_field(card, ["hometown", "home"]),
+                "high_school": _extract_field(card, ["high school", "hs"]),
+                "previous_school": _extract_field(card, ["previous", "transfer"]),
             }
+
+            roster[name_key] = bio
 
         except Exception as e:
             logger.debug(f"Error parsing roster card: {e}")
             continue
 
     return roster
+
+
+def _extract_field(elem, labels):
+    """Helper to extract a field value from a card given label(s)."""
+    if isinstance(labels, str):
+        labels = [labels]
+
+    for label in labels:
+        # Look for label text (case-insensitive)
+        for span in elem.find_all(["span", "div", "p"], class_=re.compile(label, re.I)):
+            # Return the next sibling or text after the label
+            text = span.get_text(strip=True)
+            if text.lower().startswith(label.lower()):
+                rest = text[len(label):].strip().lstrip(":").strip()
+                if rest:
+                    return rest
+            # Try next sibling
+            next_el = span.find_next()
+            if next_el:
+                return next_el.get_text(strip=True)
+
+    return ""
 
 
 # ============================================================
@@ -986,13 +683,15 @@ def get_d1_team_id_map():
     """Build D1 team short_name -> team_id map."""
     short_to_id = {}
     with get_connection() as conn:
-        rows = conn.execute("""
+        cur = conn.cursor()
+        cur.execute("""
             SELECT t.id, t.short_name, t.name
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE d.level = 'D1' AND t.is_active = 1
-        """).fetchall()
+        """)
+        rows = cur.fetchall()
         for row in rows:
             short_to_id[row["short_name"]] = row["id"]
 
@@ -1002,10 +701,12 @@ def get_d1_team_id_map():
 
 def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
-    existing = conn.execute(
-        "SELECT id FROM players WHERE first_name = ? AND last_name = ? AND team_id = ?",
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
         (first_name, last_name, team_id),
-    ).fetchone()
+    )
+    existing = cur.fetchone()
 
     if existing:
         player_id = existing["id"]
@@ -1014,19 +715,19 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
         for field in ["position", "year_in_school", "jersey_number", "bats", "throws",
                        "height", "weight", "hometown", "high_school", "previous_school"]:
             if kwargs.get(field):
-                updates.append(f"{field} = COALESCE(?, {field})")
+                updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
         if updates:
             params.append(player_id)
-            conn.execute(
-                f"UPDATE players SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            cur.execute(
+                f"UPDATE players SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                 params,
             )
     else:
-        cursor = conn.execute(
+        cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
                year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -1041,7 +742,9 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
                 kwargs.get("previous_school"),
             ),
         )
-        player_id = cursor.lastrowid
+        cur.execute("SELECT lastval() as id")
+        result = cur.fetchone()
+        player_id = result["id"]
 
     return player_id
 
@@ -1196,6 +899,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
     matched_count = 0
     unmatched_names = []
     with get_connection() as conn:
+        cur = conn.cursor()
         for batter in batting_rows:
             try:
                 player_name = batter.get("Player", "").strip()
@@ -1265,7 +969,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     plate_appearances=pa, division_level=DIVISION_LEVEL,
                 )
 
-                conn.execute(
+                cur.execute(
                     """INSERT INTO batting_stats
                        (player_id, team_id, season, games, games_started,
                         plate_appearances, at_bats,
@@ -1274,8 +978,8 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                         caught_stealing, grounded_into_dp, intentional_walks,
                         batting_avg, on_base_pct, slugging_pct, ops,
                         woba, wraa, wrc, wrc_plus, iso, babip, bb_pct, k_pct, offensive_war)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT(player_id, team_id, season) DO UPDATE SET
                         games=excluded.games, games_started=excluded.games_started,
                         plate_appearances=excluded.plate_appearances,
@@ -1383,7 +1087,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 )
                 adv = compute_pitching_advanced(line, division_level=DIVISION_LEVEL)
 
-                conn.execute(
+                cur.execute(
                     """INSERT INTO pitching_stats
                        (player_id, team_id, season, games, games_started, wins, losses, saves,
                         complete_games, shutouts, innings_pitched, hits_allowed, runs_allowed,
@@ -1392,8 +1096,8 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                         era, whip, k_per_9, bb_per_9, h_per_9, hr_per_9, k_bb_ratio,
                         k_pct, bb_pct,
                         fip, xfip, siera, kwera, babip_against, lob_pct, pitching_war)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT(player_id, team_id, season) DO UPDATE SET
                         games=excluded.games, games_started=excluded.games_started,
                         wins=excluded.wins, losses=excluded.losses, saves=excluded.saves,

@@ -43,6 +43,7 @@ logger = logging.getLogger("scrape_all")
 def get_teams_to_scrape(division_level=None, team_id=None):
     """Get list of teams to scrape from database."""
     with get_connection() as conn:
+        cur = conn.cursor()
         query = """
             SELECT t.id, t.name, t.short_name, t.stats_url, t.roster_url,
                    c.stats_url as conference_stats_url,
@@ -55,34 +56,37 @@ def get_teams_to_scrape(division_level=None, team_id=None):
         """
         params = []
         if division_level:
-            query += " AND d.level = ?"
+            query += " AND d.level = %s"
             params.append(division_level)
         if team_id:
-            query += " AND t.id = ?"
+            query += " AND t.id = %s"
             params.append(team_id)
         query += " ORDER BY d.id, c.id, t.name"
-        return [dict(r) for r in conn.execute(query, params).fetchall()]
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def insert_or_update_player(conn, player_data, team_id):
     """Insert a new player or update existing one. Returns player_id."""
     # Try to find existing player on same team by name
-    existing = conn.execute(
-        "SELECT id FROM players WHERE first_name = ? AND last_name = ? AND team_id = ?",
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
         (player_data.get("first_name", ""), player_data.get("last_name", ""), team_id),
-    ).fetchone()
+    )
+    existing = cur.fetchone()
 
     if existing:
         player_id = existing["id"]
-        conn.execute(
+        cur.execute(
             """UPDATE players SET
-               position = COALESCE(?, position),
-               year_in_school = COALESCE(?, year_in_school),
-               jersey_number = COALESCE(?, jersey_number),
-               bats = COALESCE(?, bats),
-               throws = COALESCE(?, throws),
+               position = COALESCE(%s, position),
+               year_in_school = COALESCE(%s, year_in_school),
+               jersey_number = COALESCE(%s, jersey_number),
+               bats = COALESCE(%s, bats),
+               throws = COALESCE(%s, throws),
                updated_at = CURRENT_TIMESTAMP
-               WHERE id = ?""",
+               WHERE id = %s""",
             (
                 player_data.get("position"),
                 player_data.get("year_in_school"),
@@ -93,10 +97,11 @@ def insert_or_update_player(conn, player_data, team_id):
             ),
         )
     else:
-        cursor = conn.execute(
+        cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
                year_in_school, jersey_number, bats, throws, hometown, high_school)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id""",
             (
                 player_data.get("first_name", "Unknown"),
                 player_data.get("last_name", "Unknown"),
@@ -110,7 +115,7 @@ def insert_or_update_player(conn, player_data, team_id):
                 player_data.get("high_school"),
             ),
         )
-        player_id = cursor.lastrowid
+        player_id = cur.fetchone()["id"]
 
     return player_id
 
@@ -195,7 +200,8 @@ def process_batting_record(conn, record, team_id, season, division_level):
     adv = compute_batting_advanced(line, division_level=division_level)
 
     # Upsert batting stats
-    conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         """INSERT INTO batting_stats
            (player_id, team_id, season, games, plate_appearances, at_bats,
             runs, hits, doubles, triples, home_runs, rbi, walks, strikeouts,
@@ -203,8 +209,8 @@ def process_batting_record(conn, record, team_id, season, division_level):
             caught_stealing, grounded_into_dp, intentional_walks,
             batting_avg, on_base_pct, slugging_pct, ops,
             woba, wraa, wrc, wrc_plus, iso, babip, bb_pct, k_pct, offensive_war)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT(player_id, team_id, season) DO UPDATE SET
             games=excluded.games, plate_appearances=excluded.plate_appearances,
             at_bats=excluded.at_bats, runs=excluded.runs, hits=excluded.hits,
@@ -275,7 +281,8 @@ def process_pitching_record(conn, record, team_id, season, division_level):
     )
     adv = compute_pitching_advanced(line, division_level=division_level)
 
-    conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         """INSERT INTO pitching_stats
            (player_id, team_id, season, games, games_started, wins, losses, saves,
             complete_games, shutouts, innings_pitched, hits_allowed, runs_allowed,
@@ -283,8 +290,8 @@ def process_pitching_record(conn, record, team_id, season, division_level):
             wild_pitches, batters_faced, intentional_walks,
             era, whip, k_per_9, bb_per_9, h_per_9, hr_per_9, k_bb_ratio,
             fip, xfip, siera, kwera, babip_against, lob_pct, pitching_war)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT(player_id, team_id, season) DO UPDATE SET
             games=excluded.games, games_started=excluded.games_started,
             wins=excluded.wins, losses=excluded.losses, saves=excluded.saves,
@@ -333,10 +340,11 @@ def scrape_team(team, season):
                     logger.error(f"  Error processing batting record: {e}")
 
             # Log scrape
-            conn.execute(
+            cur = conn.cursor()
+            cur.execute(
                 """INSERT INTO scrape_log
                    (source_url, source_type, team_id, season, status, records_found)
-                   VALUES (?, 'batting', ?, ?, ?, ?)""",
+                   VALUES (%s, 'batting', %s, %s, %s, %s)""",
                 (batting_result.source_url, team["id"], season,
                  batting_result.status, batting_result.records_found),
             )
@@ -353,10 +361,11 @@ def scrape_team(team, season):
                 except Exception as e:
                     logger.error(f"  Error processing pitching record: {e}")
 
-            conn.execute(
+            cur = conn.cursor()
+            cur.execute(
                 """INSERT INTO scrape_log
                    (source_url, source_type, team_id, season, status, records_found)
-                   VALUES (?, 'pitching', ?, ?, ?, ?)""",
+                   VALUES (%s, 'pitching', %s, %s, %s, %s)""",
                 (pitching_result.source_url, team["id"], season,
                  pitching_result.status, pitching_result.records_found),
             )

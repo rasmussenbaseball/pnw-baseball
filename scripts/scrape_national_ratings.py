@@ -27,18 +27,19 @@ import random
 import argparse
 import logging
 import re
-import sqlite3
 from pathlib import Path
 from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+from app.models.database import get_connection
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("national_ratings")
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "backend" / "data" / "pnw_baseball.db"
 
 session = requests.Session()
 session.headers.update({
@@ -164,24 +165,18 @@ CBR_URLS = {
 }
 
 
-def get_db():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
-
-
 def get_pnw_teams(conn):
     """Get all PNW teams with their division info."""
-    rows = conn.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         SELECT t.id, t.short_name, t.school_name, d.level as division_level
         FROM teams t
         JOIN conferences c ON t.conference_id = c.id
         JOIN divisions d ON c.division_id = d.id
         WHERE t.is_active = 1
         ORDER BY d.level, t.short_name
-    """).fetchall()
+    """)
+    rows = cur.fetchall()
     return [dict(r) for r in rows]
 
 
@@ -264,21 +259,32 @@ def scrape_pear_ratings(conn, season, teams_by_div):
                 sos_rank = entry.get("SOS")
                 avg_ew = entry.get("avg_expected_wins")  # raw SOS-like metric
 
-                conn.execute("""
-                    INSERT OR REPLACE INTO national_ratings
-                    (team_id, season, source, national_rank, total_teams, rating,
-                     sos, sos_rank, tsr, rqi, source_team_name)
-                    VALUES (?, ?, 'pear', ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    team_id, season,
-                    net_rank, total_teams,
-                    net_score,
-                    avg_ew,       # SOS stored as avg expected wins (raw value)
-                    sos_rank,     # SOS rank within division
-                    tsr,          # Team Strength Rating
-                    rqi_rank,     # Resume Quality Index rank
-                    pear_name,
-                ))
+                with get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO national_ratings
+                        (team_id, season, source, national_rank, total_teams, rating,
+                         sos, sos_rank, tsr, rqi, source_team_name)
+                        VALUES (%s, %s, 'pear', %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (team_id, season, source) DO UPDATE SET
+                            national_rank = EXCLUDED.national_rank,
+                            total_teams = EXCLUDED.total_teams,
+                            rating = EXCLUDED.rating,
+                            sos = EXCLUDED.sos,
+                            sos_rank = EXCLUDED.sos_rank,
+                            tsr = EXCLUDED.tsr,
+                            rqi = EXCLUDED.rqi,
+                            source_team_name = EXCLUDED.source_team_name
+                    """, (
+                        team_id, season,
+                        net_rank, total_teams,
+                        net_score,
+                        avg_ew,       # SOS stored as avg expected wins (raw value)
+                        sos_rank,     # SOS rank within division
+                        tsr,          # Team Strength Rating
+                        rqi_rank,     # Resume Quality Index rank
+                        pear_name,
+                    ))
                 count += 1
                 logger.info(f"    ✓ {team['short_name']}: NET #{net_rank} "
                            f"(Score={net_score:.4f}, TSR={tsr:.2f}, "
@@ -286,7 +292,6 @@ def scrape_pear_ratings(conn, season, teams_by_div):
             else:
                 logger.warning(f"    ✗ Could not find '{pear_name}' in Pear {div_level}")
 
-    conn.commit()
     logger.info(f"\n  Pear: imported {count} team ratings")
     return count
 
@@ -365,20 +370,30 @@ def scrape_massey_ratings(conn, season, teams_by_div, massey_dir=None):
 
             result = _find_massey_team(page_text, massey_name)
             if result:
-                conn.execute("""
-                    INSERT OR REPLACE INTO national_ratings
-                    (team_id, season, source, national_rank, total_teams, rating,
-                     sos, sos_rank, power_rating, source_team_name)
-                    VALUES (?, ?, 'massey', ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    team_id, season,
-                    result["rank"], total_teams,
-                    result["rating"],
-                    result.get("sos"),
-                    result.get("sos_rank"),
-                    result.get("power"),
-                    massey_name,
-                ))
+                with get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO national_ratings
+                        (team_id, season, source, national_rank, total_teams, rating,
+                         sos, sos_rank, power_rating, source_team_name)
+                        VALUES (%s, %s, 'massey', %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (team_id, season, source) DO UPDATE SET
+                            national_rank = EXCLUDED.national_rank,
+                            total_teams = EXCLUDED.total_teams,
+                            rating = EXCLUDED.rating,
+                            sos = EXCLUDED.sos,
+                            sos_rank = EXCLUDED.sos_rank,
+                            power_rating = EXCLUDED.power_rating,
+                            source_team_name = EXCLUDED.source_team_name
+                    """, (
+                        team_id, season,
+                        result["rank"], total_teams,
+                        result["rating"],
+                        result.get("sos"),
+                        result.get("sos_rank"),
+                        result.get("power"),
+                        massey_name,
+                    ))
                 count += 1
                 logger.info(f"    ✓ {team['short_name']}: #{result['rank']} "
                            f"(Rat={result['rating']:.3f}, Pwr={result.get('power', 0):.2f}, "
@@ -386,7 +401,6 @@ def scrape_massey_ratings(conn, season, teams_by_div, massey_dir=None):
             else:
                 logger.warning(f"    ✗ Could not find '{massey_name}' in Massey {div_level}")
 
-    conn.commit()
     logger.info(f"\n  Massey: imported {count} team ratings")
     return count
 
@@ -611,29 +625,40 @@ def scrape_cbr_ratings(conn, season, teams_by_div):
             else:
                 logger.warning(f"    ✗ Could not find {cbr_name} in CBR {div_level}")
 
-    conn.commit()
     logger.info(f"\n  CBR: imported {count} team ratings")
     return count
 
 
 def _insert_cbr_result(conn, team, season, result):
     """Insert a CBR result into national_ratings."""
-    conn.execute("""
-        INSERT OR REPLACE INTO national_ratings
-        (team_id, season, source, national_rank, total_teams, rating,
-         sos, sos_rank, power_rating, sor, wab, source_team_name)
-        VALUES (?, ?, 'cbr', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        team["id"], season,
-        result["rank"], result.get("total_teams", 0),
-        result.get("cbr"),
-        result.get("sos"),          # raw SOS value
-        result.get("sos_rank"),     # derived SOS rank within division
-        result.get("cbr"),
-        result.get("sor"),
-        result.get("wab"),
-        CBR_NAME_MAP.get(team["id"], team["short_name"]),
-    ))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO national_ratings
+            (team_id, season, source, national_rank, total_teams, rating,
+             sos, sos_rank, power_rating, sor, wab, source_team_name)
+            VALUES (%s, %s, 'cbr', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (team_id, season, source) DO UPDATE SET
+                national_rank = EXCLUDED.national_rank,
+                total_teams = EXCLUDED.total_teams,
+                rating = EXCLUDED.rating,
+                sos = EXCLUDED.sos,
+                sos_rank = EXCLUDED.sos_rank,
+                power_rating = EXCLUDED.power_rating,
+                sor = EXCLUDED.sor,
+                wab = EXCLUDED.wab,
+                source_team_name = EXCLUDED.source_team_name
+        """, (
+            team["id"], season,
+            result["rank"], result.get("total_teams", 0),
+            result.get("cbr"),
+            result.get("sos"),          # raw SOS value
+            result.get("sos_rank"),     # derived SOS rank within division
+            result.get("cbr"),
+            result.get("sor"),
+            result.get("wab"),
+            CBR_NAME_MAP.get(team["id"], team["short_name"]),
+        ))
 
 
 def _find_cbr_team_text(page_text, team_name):
@@ -675,127 +700,145 @@ def compute_composite_rankings(conn, season):
     logger.info("COMPUTING COMPOSITE RANKINGS")
     logger.info("=" * 60)
 
-    # Get all PNW teams with division info
-    teams = conn.execute("""
-        SELECT t.id, t.short_name, d.level as division_level
-        FROM teams t
-        JOIN conferences c ON t.conference_id = c.id
-        JOIN divisions d ON c.division_id = d.id
-        WHERE t.is_active = 1
-    """).fetchall()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Get all PNW teams with division info
+        cur.execute("""
+            SELECT t.id, t.short_name, d.level as division_level
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE t.is_active = 1
+        """)
+        teams = cur.fetchall()
 
-    count = 0
+        count = 0
 
-    for team in teams:
-        team_id = team["id"]
-        div_level = team["division_level"]
+        for team in teams:
+            team_id = team["id"]
+            div_level = team["division_level"]
 
-        # Skip JUCO — they use PPI only
-        if div_level == "JUCO":
-            continue
+            # Skip JUCO — they use PPI only
+            if div_level == "JUCO":
+                continue
 
-        # Get all ratings for this team
-        ratings = conn.execute("""
-            SELECT source, national_rank, total_teams, rating, sos, sos_rank
-            FROM national_ratings
-            WHERE team_id = ? AND season = ?
-        """, (team_id, season)).fetchall()
+            # Get all ratings for this team
+            cur.execute("""
+                SELECT source, national_rank, total_teams, rating, sos, sos_rank
+                FROM national_ratings
+                WHERE team_id = %s AND season = %s
+            """, (team_id, season))
+            ratings = cur.fetchall()
 
-        if not ratings:
-            continue
+            if not ratings:
+                continue
 
-        # Collect values per source
-        ranks = []
-        sos_ranks = []
-        pear_rank = massey_rank = cbr_rank = rpi_rank = None
-        pear_sos = massey_sos = cbr_sos = None
-        pear_sos_rank = massey_sos_rank = cbr_sos_rank = None
-        total_teams_in_div = 0
+            # Collect values per source
+            ranks = []
+            sos_ranks = []
+            pear_rank = massey_rank = cbr_rank = rpi_rank = None
+            pear_sos = massey_sos = cbr_sos = None
+            pear_sos_rank = massey_sos_rank = cbr_sos_rank = None
+            total_teams_in_div = 0
 
-        for r in ratings:
-            source = r["source"]
+            for r in ratings:
+                source = r["source"]
 
-            if r["national_rank"]:
-                ranks.append(r["national_rank"])
-            if r["sos_rank"] is not None:
-                sos_ranks.append(r["sos_rank"])
-            if r["total_teams"] and r["total_teams"] > total_teams_in_div:
-                total_teams_in_div = r["total_teams"]
+                if r["national_rank"]:
+                    ranks.append(r["national_rank"])
+                if r["sos_rank"] is not None:
+                    sos_ranks.append(r["sos_rank"])
+                if r["total_teams"] and r["total_teams"] > total_teams_in_div:
+                    total_teams_in_div = r["total_teams"]
 
-            if source == "pear":
-                pear_rank = r["national_rank"]
-                pear_sos = r["sos"]
-                pear_sos_rank = r["sos_rank"]
-            elif source == "massey":
-                massey_rank = r["national_rank"]
-                massey_sos = r["sos"]
-                massey_sos_rank = r["sos_rank"]
-            elif source == "cbr":
-                cbr_rank = r["national_rank"]
-                cbr_sos = r["sos"]
-                cbr_sos_rank = r["sos_rank"]
+                if source == "pear":
+                    pear_rank = r["national_rank"]
+                    pear_sos = r["sos"]
+                    pear_sos_rank = r["sos_rank"]
+                elif source == "massey":
+                    massey_rank = r["national_rank"]
+                    massey_sos = r["sos"]
+                    massey_sos_rank = r["sos_rank"]
+                elif source == "cbr":
+                    cbr_rank = r["national_rank"]
+                    cbr_sos = r["sos"]
+                    cbr_sos_rank = r["sos_rank"]
 
-        if not ranks:
-            continue
+            if not ranks:
+                continue
 
-        # Composite values
-        composite_rank = sum(ranks) / len(ranks)
-        # Use SOS RANKS (not raw values) for composite — sources use different scales
-        composite_sos_rank_val = sum(sos_ranks) / len(sos_ranks) if sos_ranks else None
-        # Keep raw SOS values from each source for display purposes only
-        composite_sos = None  # No longer average raw values (different scales)
+            # Composite values
+            composite_rank = sum(ranks) / len(ranks)
+            # Use SOS RANKS (not raw values) for composite — sources use different scales
+            composite_sos_rank_val = sum(sos_ranks) / len(sos_ranks) if sos_ranks else None
+            # Keep raw SOS values from each source for display purposes only
+            composite_sos = None  # No longer average raw values (different scales)
 
-        # National percentile (higher = better)
-        # If ranked 5th out of 300, percentile = (300 - 5) / 300 * 100 = 98.3%
-        if total_teams_in_div > 0:
-            national_percentile = (total_teams_in_div - composite_rank) / total_teams_in_div * 100
-            national_percentile = max(0, min(100, national_percentile))
-        else:
-            national_percentile = None
+            # National percentile (higher = better)
+            # If ranked 5th out of 300, percentile = (300 - 5) / 300 * 100 = 98.3%
+            if total_teams_in_div > 0:
+                national_percentile = (total_teams_in_div - composite_rank) / total_teams_in_div * 100
+                national_percentile = max(0, min(100, national_percentile))
+            else:
+                national_percentile = None
 
-        # Cross-division score: same as national_percentile for now
-        # This allows comparing a top NAIA team vs a mid D1 team
-        cross_division_score = national_percentile
+            # Cross-division score: same as national_percentile for now
+            # This allows comparing a top NAIA team vs a mid D1 team
+            cross_division_score = national_percentile
 
-        conn.execute("""
-            INSERT OR REPLACE INTO composite_rankings
-            (team_id, season, composite_rank, composite_percentile, composite_sos,
-             composite_sos_rank, num_sources,
-             pear_rank, massey_rank, cbr_rank, rpi_rank,
-             pear_sos, massey_sos, cbr_sos,
-             national_percentile, cross_division_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            team_id, season,
-            round(composite_rank, 1),
-            round(national_percentile, 1) if national_percentile else None,
-            composite_sos,  # None — raw values aren't comparable across sources
-            round(composite_sos_rank_val, 1) if composite_sos_rank_val else None,
-            len(ranks),
-            pear_rank, massey_rank, cbr_rank, rpi_rank,
-            round(pear_sos, 4) if pear_sos else None,
-            round(massey_sos, 4) if massey_sos else None,
-            round(cbr_sos, 4) if cbr_sos else None,
-            round(national_percentile, 1) if national_percentile else None,
-            round(cross_division_score, 1) if cross_division_score else None,
-        ))
-        count += 1
+            cur.execute("""
+                INSERT INTO composite_rankings
+                (team_id, season, composite_rank, composite_percentile, composite_sos,
+                 composite_sos_rank, num_sources,
+                 pear_rank, massey_rank, cbr_rank, rpi_rank,
+                 pear_sos, massey_sos, cbr_sos,
+                 national_percentile, cross_division_score)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (team_id, season) DO UPDATE SET
+                    composite_rank = EXCLUDED.composite_rank,
+                    composite_percentile = EXCLUDED.composite_percentile,
+                    composite_sos = EXCLUDED.composite_sos,
+                    composite_sos_rank = EXCLUDED.composite_sos_rank,
+                    num_sources = EXCLUDED.num_sources,
+                    pear_rank = EXCLUDED.pear_rank,
+                    massey_rank = EXCLUDED.massey_rank,
+                    cbr_rank = EXCLUDED.cbr_rank,
+                    rpi_rank = EXCLUDED.rpi_rank,
+                    pear_sos = EXCLUDED.pear_sos,
+                    massey_sos = EXCLUDED.massey_sos,
+                    cbr_sos = EXCLUDED.cbr_sos,
+                    national_percentile = EXCLUDED.national_percentile,
+                    cross_division_score = EXCLUDED.cross_division_score
+            """, (
+                team_id, season,
+                round(composite_rank, 1),
+                round(national_percentile, 1) if national_percentile else None,
+                composite_sos,  # None — raw values aren't comparable across sources
+                round(composite_sos_rank_val, 1) if composite_sos_rank_val else None,
+                len(ranks),
+                pear_rank, massey_rank, cbr_rank, rpi_rank,
+                round(pear_sos, 4) if pear_sos else None,
+                round(massey_sos, 4) if massey_sos else None,
+                round(cbr_sos, 4) if cbr_sos else None,
+                round(national_percentile, 1) if national_percentile else None,
+                round(cross_division_score, 1) if cross_division_score else None,
+            ))
+            count += 1
 
-        rank_strs = []
-        if pear_rank: rank_strs.append(f"P#{pear_rank}")
-        if cbr_rank: rank_strs.append(f"C#{cbr_rank}")
+            rank_strs = []
+            if pear_rank: rank_strs.append(f"P#{pear_rank}")
+            if cbr_rank: rank_strs.append(f"C#{cbr_rank}")
 
-        sos_strs = []
-        if pear_sos_rank: sos_strs.append(f"P-SOS#{pear_sos_rank}")
-        if cbr_sos_rank: sos_strs.append(f"C-SOS#{cbr_sos_rank}")
+            sos_strs = []
+            if pear_sos_rank: sos_strs.append(f"P-SOS#{pear_sos_rank}")
+            if cbr_sos_rank: sos_strs.append(f"C-SOS#{cbr_sos_rank}")
 
-        sos_display = f" | SOS Rank #{composite_sos_rank_val:.1f} ({', '.join(sos_strs)})" if composite_sos_rank_val else ""
+            sos_display = f" | SOS Rank #{composite_sos_rank_val:.1f} ({', '.join(sos_strs)})" if composite_sos_rank_val else ""
 
-        logger.info(f"  {team['short_name']:20s} → Composite #{composite_rank:5.1f} "
-                    f"({', '.join(rank_strs)}){sos_display} "
-                    f"| Percentile: {national_percentile:.1f}%")
+            logger.info(f"  {team['short_name']:20s} → Composite #{composite_rank:5.1f} "
+                        f"({', '.join(rank_strs)}){sos_display} "
+                        f"| Percentile: {national_percentile:.1f}%")
 
-    conn.commit()
     logger.info(f"\n  Computed composite rankings for {count} teams")
     return count
 
@@ -813,69 +856,69 @@ def main():
                        help="Only recompute composite rankings (skip scraping)")
     args = parser.parse_args()
 
-    conn = get_db()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Get PNW teams grouped by division
+        all_teams = get_pnw_teams(conn)
+        teams_by_div = {}
+        for t in all_teams:
+            div = t["division_level"]
+            if div not in teams_by_div:
+                teams_by_div[div] = []
+            teams_by_div[div].append(t)
 
-    # Get PNW teams grouped by division
-    all_teams = get_pnw_teams(conn)
-    teams_by_div = {}
-    for t in all_teams:
-        div = t["division_level"]
-        if div not in teams_by_div:
-            teams_by_div[div] = []
-        teams_by_div[div].append(t)
+        logger.info(f"PNW teams by division:")
+        for div, teams in sorted(teams_by_div.items()):
+            logger.info(f"  {div}: {len(teams)} teams")
 
-    logger.info(f"PNW teams by division:")
-    for div, teams in sorted(teams_by_div.items()):
-        logger.info(f"  {div}: {len(teams)} teams")
+        if not args.composite_only:
+            # Scrape ratings
+            if args.source in ("pear", "all"):
+                try:
+                    scrape_pear_ratings(conn, args.season, teams_by_div)
+                except Exception as e:
+                    logger.error(f"Pear scraping failed: {e}")
 
-    if not args.composite_only:
-        # Scrape ratings
-        if args.source in ("pear", "all"):
-            try:
-                scrape_pear_ratings(conn, args.season, teams_by_div)
-            except Exception as e:
-                logger.error(f"Pear scraping failed: {e}")
+            if args.source in ("cbr", "all"):
+                try:
+                    scrape_cbr_ratings(conn, args.season, teams_by_div)
+                except Exception as e:
+                    logger.error(f"CBR scraping failed: {e}")
 
-        if args.source in ("cbr", "all"):
-            try:
-                scrape_cbr_ratings(conn, args.season, teams_by_div)
-            except Exception as e:
-                logger.error(f"CBR scraping failed: {e}")
+        # Always compute composites
+        compute_composite_rankings(conn, args.season)
 
-    # Always compute composites
-    compute_composite_rankings(conn, args.season)
+        # Print summary
+        logger.info("\n" + "=" * 60)
+        logger.info("FINAL SUMMARY")
+        logger.info("=" * 60)
 
-    # Print summary
-    logger.info("\n" + "=" * 60)
-    logger.info("FINAL SUMMARY")
-    logger.info("=" * 60)
+        cur.execute("""
+            SELECT cr.*, t.short_name, d.level as division_level
+            FROM composite_rankings cr
+            JOIN teams t ON cr.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE cr.season = %s
+            ORDER BY d.level, cr.composite_rank
+        """, (args.season,))
+        results = cur.fetchall()
 
-    results = conn.execute("""
-        SELECT cr.*, t.short_name, d.level as division_level
-        FROM composite_rankings cr
-        JOIN teams t ON cr.team_id = t.id
-        JOIN conferences c ON t.conference_id = c.id
-        JOIN divisions d ON c.division_id = d.id
-        WHERE cr.season = ?
-        ORDER BY d.level, cr.composite_rank
-    """, (args.season,)).fetchall()
+        current_div = None
+        for r in results:
+            if r["division_level"] != current_div:
+                current_div = r["division_level"]
+                logger.info(f"\n  ── {current_div} ──")
 
-    current_div = None
-    for r in results:
-        if r["division_level"] != current_div:
-            current_div = r["division_level"]
-            logger.info(f"\n  ── {current_div} ──")
+            ranks = []
+            if r["pear_rank"]: ranks.append(f"P#{r['pear_rank']}")
+            if r["massey_rank"]: ranks.append(f"M#{r['massey_rank']}")
+            if r["cbr_rank"]: ranks.append(f"C#{r['cbr_rank']}")
 
-        ranks = []
-        if r["pear_rank"]: ranks.append(f"P#{r['pear_rank']}")
-        if r["massey_rank"]: ranks.append(f"M#{r['massey_rank']}")
-        if r["cbr_rank"]: ranks.append(f"C#{r['cbr_rank']}")
+            logger.info(f"  {r['short_name']:20s} Composite #{r['composite_rank']:6.1f} "
+                        f"| {' '.join(ranks):30s} "
+                        f"| Percentile: {r['national_percentile'] or 0:.1f}%")
 
-        logger.info(f"  {r['short_name']:20s} Composite #{r['composite_rank']:6.1f} "
-                    f"| {' '.join(ranks):30s} "
-                    f"| Percentile: {r['national_percentile'] or 0:.1f}%")
-
-    conn.close()
     logger.info("\nDone!")
 
 

@@ -84,10 +84,11 @@ def extract_record_from_html(html):
     return overall, conference
 
 
-def save_team_record(conn, team_id, season, overall, conference=None):
+def save_team_record(cur, team_id, season, overall, conference=None):
     """
     Save a team's W-L record to team_season_stats.
     Uses upsert so it's safe to call multiple times.
+    Accepts a psycopg2 cursor (cur).
     """
     if not overall:
         return False
@@ -95,14 +96,13 @@ def save_team_record(conn, team_id, season, overall, conference=None):
     w, l = overall
     cw, cl = conference if conference else (0, 0)
 
-    conn.execute("""
+    cur.execute("""
         INSERT INTO team_season_stats (team_id, season, wins, losses, conference_wins, conference_losses)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT(team_id, season) DO UPDATE SET
             wins=excluded.wins, losses=excluded.losses,
             conference_wins=excluded.conference_wins, conference_losses=excluded.conference_losses
     """, (team_id, season, w, l, cw, cl))
-    conn.commit()
 
     logger.info(f"  Record: {w}-{l} ({cw}-{cl} conf)")
     return True

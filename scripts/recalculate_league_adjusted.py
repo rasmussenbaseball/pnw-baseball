@@ -59,7 +59,9 @@ def load_park_factors(conn):
         name_to_pct[team["short_name"]] = team.get("park_factor_pct", 0)
 
     # Map team_id → effective park factor (1.0 = neutral)
-    team_rows = conn.execute("SELECT id, short_name FROM teams").fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT id, short_name FROM teams")
+    team_rows = cur.fetchall()
     park_factors = {}
     for row in team_rows:
         pct = name_to_pct.get(row["short_name"], 0)
@@ -81,18 +83,20 @@ def compute_league_averages(conn, season, multi_year=True):
     league-level stats needed for wRC+, FIP+, and ERA-.
     """
     if multi_year:
-        season_filter = "bs.season BETWEEN 2022 AND ?"
-        pit_season_filter = "ps.season BETWEEN 2022 AND ?"
+        season_filter = "bs.season BETWEEN 2022 AND %s"
+        pit_season_filter = "ps.season BETWEEN 2022 AND %s"
         label = f"2022-{season}"
     else:
-        season_filter = "bs.season = ?"
-        pit_season_filter = "ps.season = ?"
+        season_filter = "bs.season = %s"
+        pit_season_filter = "ps.season = %s"
         label = str(season)
 
     print(f"  Using run environment from: {label}")
 
+    cur = conn.cursor()
+
     # ── Batting aggregates by division ──
-    batting_rows = conn.execute(f"""
+    cur.execute(f"""
         SELECT d.level as division_level,
                COUNT(DISTINCT bs.player_id) as num_batters,
                SUM(bs.plate_appearances) as total_pa,
@@ -114,10 +118,11 @@ def compute_league_averages(conn, season, multi_year=True):
         JOIN divisions d ON c.division_id = d.id
         WHERE {season_filter} AND bs.plate_appearances >= 5
         GROUP BY d.level
-    """, (season,)).fetchall()
+    """, (season,))
+    batting_rows = cur.fetchall()
 
     # ── Pitching aggregates by division ──
-    pitching_rows = conn.execute(f"""
+    cur.execute(f"""
         SELECT d.level as division_level,
                COUNT(DISTINCT ps.player_id) as num_pitchers,
                SUM(ps.innings_pitched) as total_ip,
@@ -135,7 +140,8 @@ def compute_league_averages(conn, season, multi_year=True):
         JOIN divisions d ON c.division_id = d.id
         WHERE {pit_season_filter} AND ps.innings_pitched >= 1
         GROUP BY d.level
-    """, (season,)).fetchall()
+    """, (season,))
+    pitching_rows = cur.fetchall()
 
     pit_map = {r["division_level"]: dict(r) for r in pitching_rows}
 
@@ -232,15 +238,17 @@ def recalculate_all(season, verbose=False, multi_year=True):
     """Recalculate wRC+, FIP+, ERA-, and WAR for all players using real league averages."""
 
     with get_connection() as conn:
+        cur = conn.cursor()
+
         # ── Step 0: Add columns if they don't exist ──
         try:
-            conn.execute("ALTER TABLE pitching_stats ADD COLUMN fip_plus REAL")
+            cur.execute("ALTER TABLE pitching_stats ADD COLUMN fip_plus REAL")
             print("  Added fip_plus column to pitching_stats")
         except Exception:
             pass  # Column already exists
 
         try:
-            conn.execute("ALTER TABLE pitching_stats ADD COLUMN era_minus REAL")
+            cur.execute("ALTER TABLE pitching_stats ADD COLUMN era_minus REAL")
             print("  Added era_minus column to pitching_stats")
         except Exception:
             pass  # Column already exists
@@ -249,7 +257,13 @@ def recalculate_all(season, verbose=False, multi_year=True):
         park_factors = load_park_factors(conn)
         if park_factors:
             sample = list(park_factors.items())[:3]
-            print(f"  Loaded park factors for {len(park_factors)} teams (sample: {[(conn.execute('SELECT short_name FROM teams WHERE id=?', (tid,)).fetchone()[0], f'{pf:.3f}') for tid, pf in sample]})")
+            sample_strs = []
+            for tid, pf in sample:
+                cur.execute('SELECT short_name FROM teams WHERE id=%s', (tid,))
+                row = cur.fetchone()
+                if row:
+                    sample_strs.append((row[0], f'{pf:.3f}'))
+            print(f"  Loaded park factors for {len(park_factors)} teams (sample: {sample_strs})")
         else:
             print("  No park factors loaded — all parks treated as neutral")
 
@@ -268,7 +282,7 @@ def recalculate_all(season, verbose=False, multi_year=True):
         # ── Step 2: Recalculate batting stats (wRC+, wOBA, wRAA, WAR) ──
         print("=== Recalculating batting stats ===\n")
 
-        batters = conn.execute("""
+        cur.execute("""
             SELECT bs.*, p.position, p.first_name, p.last_name,
                    d.level as division_level
             FROM batting_stats bs
@@ -276,8 +290,9 @@ def recalculate_all(season, verbose=False, multi_year=True):
             JOIN teams t ON bs.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE bs.season = ?
-        """, (season,)).fetchall()
+            WHERE bs.season = %s
+        """, (season,))
+        batters = cur.fetchall()
 
         batting_updated = 0
         for b in batters:
@@ -335,14 +350,14 @@ def recalculate_all(season, verbose=False, multi_year=True):
                 plate_appearances=line.pa, division_level=level,
             )
 
-            conn.execute("""
+            cur.execute("""
                 UPDATE batting_stats SET
-                    woba = ?, wraa = ?, wrc = ?, wrc_plus = ?,
-                    iso = ?, babip = ?, bb_pct = ?, k_pct = ?,
-                    batting_avg = ?, on_base_pct = ?, slugging_pct = ?, ops = ?,
-                    offensive_war = ?,
+                    woba = %s, wraa = %s, wrc = %s, wrc_plus = %s,
+                    iso = %s, babip = %s, bb_pct = %s, k_pct = %s,
+                    batting_avg = %s, on_base_pct = %s, slugging_pct = %s, ops = %s,
+                    offensive_war = %s,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE id = %s
             """, (
                 adv.woba, adv.wraa, adv.wrc, wrc_plus,
                 adv.iso, adv.babip, adv.bb_pct, adv.k_pct,
@@ -362,7 +377,7 @@ def recalculate_all(season, verbose=False, multi_year=True):
         # ── Step 3: Recalculate pitching stats (FIP, FIP+, ERA-, WAR) ──
         print("=== Recalculating pitching stats ===\n")
 
-        pitchers = conn.execute("""
+        cur.execute("""
             SELECT ps.*, p.position, p.first_name, p.last_name,
                    d.level as division_level
             FROM pitching_stats ps
@@ -370,8 +385,9 @@ def recalculate_all(season, verbose=False, multi_year=True):
             JOIN teams t ON ps.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE ps.season = ?
-        """, (season,)).fetchall()
+            WHERE ps.season = %s
+        """, (season,))
+        pitchers = cur.fetchall()
 
         pitching_updated = 0
         for p in pitchers:
@@ -434,17 +450,17 @@ def recalculate_all(season, verbose=False, multi_year=True):
             else:
                 era_minus = 0
 
-            conn.execute("""
+            cur.execute("""
                 UPDATE pitching_stats SET
-                    era = ?, whip = ?, k_per_9 = ?, bb_per_9 = ?,
-                    h_per_9 = ?, hr_per_9 = ?, k_bb_ratio = ?,
-                    k_pct = ?, bb_pct = ?,
-                    fip = ?, xfip = ?, siera = ?, kwera = ?,
-                    babip_against = ?, lob_pct = ?,
-                    fip_plus = ?, era_minus = ?,
-                    pitching_war = ?,
+                    era = %s, whip = %s, k_per_9 = %s, bb_per_9 = %s,
+                    h_per_9 = %s, hr_per_9 = %s, k_bb_ratio = %s,
+                    k_pct = %s, bb_pct = %s,
+                    fip = %s, xfip = %s, siera = %s, kwera = %s,
+                    babip_against = %s, lob_pct = %s,
+                    fip_plus = %s, era_minus = %s,
+                    pitching_war = %s,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE id = %s
             """, (
                 adv.era, adv.whip, adv.k_per_9, adv.bb_per_9,
                 adv.h_per_9, adv.hr_per_9, adv.k_bb_ratio,
@@ -466,7 +482,7 @@ def recalculate_all(season, verbose=False, multi_year=True):
 
         # ── Step 4: Summary ──
         print("=== Verification: Top wRC+ by division ===\n")
-        top_batters = conn.execute("""
+        cur.execute("""
             SELECT p.first_name, p.last_name, t.short_name, d.level,
                    bs.wrc_plus, bs.woba, bs.batting_avg, bs.plate_appearances
             FROM batting_stats bs
@@ -474,10 +490,11 @@ def recalculate_all(season, verbose=False, multi_year=True):
             JOIN teams t ON bs.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE bs.season = ? AND bs.plate_appearances >= 50
+            WHERE bs.season = %s AND bs.plate_appearances >= 50
             ORDER BY bs.wrc_plus DESC
             LIMIT 15
-        """, (season,)).fetchall()
+        """, (season,))
+        top_batters = cur.fetchall()
 
         for b in top_batters:
             print(f"  {b['first_name']:12s} {b['last_name']:15s} {b['short_name']:18s} "
@@ -485,7 +502,7 @@ def recalculate_all(season, verbose=False, multi_year=True):
                   f"AVG={b['batting_avg']:.3f} PA={b['plate_appearances']}")
 
         print("\n=== Verification: Top FIP+ by division ===\n")
-        top_pitchers = conn.execute("""
+        cur.execute("""
             SELECT p.first_name, p.last_name, t.short_name, d.level,
                    ps.fip_plus, ps.fip, ps.era, ps.era_minus, ps.innings_pitched
             FROM pitching_stats ps
@@ -493,10 +510,11 @@ def recalculate_all(season, verbose=False, multi_year=True):
             JOIN teams t ON ps.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE ps.season = ? AND ps.innings_pitched >= 20
+            WHERE ps.season = %s AND ps.innings_pitched >= 20
             ORDER BY ps.fip_plus DESC
             LIMIT 15
-        """, (season,)).fetchall()
+        """, (season,))
+        top_pitchers = cur.fetchall()
 
         for pit in top_pitchers:
             print(f"  {pit['first_name']:12s} {pit['last_name']:15s} {pit['short_name']:18s} "

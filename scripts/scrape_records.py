@@ -15,17 +15,18 @@ import random
 import argparse
 import logging
 import re
-import sqlite3
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+from app.models.database import get_connection
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("scrape_records")
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "backend" / "data" / "pnw_baseball.db"
 
 session = requests.Session()
 session.headers.update({
@@ -245,102 +246,101 @@ def main():
     args = parser.parse_args()
     season = args.season
 
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+    with get_connection() as conn:
+        cur = conn.cursor()
 
-    db_teams = conn.execute("""
-        SELECT t.id, t.short_name, t.name, c.division_id
-        FROM teams t JOIN conferences c ON t.conference_id = c.id
-        WHERE t.is_active = 1
-    """).fetchall()
+        cur.execute("""
+            SELECT t.id, t.short_name, t.name, c.division_id
+            FROM teams t JOIN conferences c ON t.conference_id = c.id
+            WHERE t.is_active = 1
+        """)
+        db_teams = [{"id": row[0], "short_name": row[1], "name": row[2], "division_id": row[3]} for row in cur.fetchall()]
 
-    saved = 0
-    not_found = []
+        saved = 0
+        not_found = []
 
-    def save(team_id, short, w, l, cw, cl):
-        nonlocal saved
-        conn.execute("""
-            INSERT INTO team_season_stats (team_id, season, wins, losses, conference_wins, conference_losses)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(team_id, season) DO UPDATE SET
-                wins=excluded.wins, losses=excluded.losses,
-                conference_wins=excluded.conference_wins, conference_losses=excluded.conference_losses
-        """, (team_id, season, w, l, cw, cl))
-        conn.commit()
-        saved += 1
-        logger.info(f"  Saved {short}: {w}-{l} ({cw}-{cl})")
+        def save(team_id, short, w, l, cw, cl):
+            nonlocal saved
+            cur.execute("""
+                INSERT INTO team_season_stats (team_id, season, wins, losses, conference_wins, conference_losses)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT(team_id, season) DO UPDATE SET
+                    wins=excluded.wins, losses=excluded.losses,
+                    conference_wins=excluded.conference_wins, conference_losses=excluded.conference_losses
+            """, (team_id, season, w, l, cw, cl))
+            saved += 1
+            logger.info(f"  Saved {short}: {w}-{l} ({cw}-{cl})")
 
-    # ── Step 1: Conference standings pages (fast, gets most teams) ──
+        # ── Step 1: Conference standings pages (fast, gets most teams) ──
 
-    standings_sources = [
-        ("WCC", "https://wccsports.com/standings.aspx?path=baseball"),
-        ("GNAC", "https://gnacsports.com/standings.aspx?path=baseball"),
-        ("NWC", "https://nwcsports.com/standings.aspx?path=baseball"),
-        ("CCC", "https://cascadeconference.org/standings.aspx?path=baseball"),
-    ]
+        standings_sources = [
+            ("WCC", "https://wccsports.com/standings.aspx?path=baseball"),
+            ("GNAC", "https://gnacsports.com/standings.aspx?path=baseball"),
+            ("NWC", "https://nwcsports.com/standings.aspx?path=baseball"),
+            ("CCC", "https://cascadeconference.org/standings.aspx?path=baseball"),
+        ]
 
-    for conf_name, url in standings_sources:
-        logger.info(f"\n--- Fetching {conf_name} standings ---")
-        records = scrape_sidearm_standings(url)
-        logger.info(f"  Found {len(records)} teams")
+        for conf_name, url in standings_sources:
+            logger.info(f"\n--- Fetching {conf_name} standings ---")
+            records = scrape_sidearm_standings(url)
+            logger.info(f"  Found {len(records)} teams")
 
-        for team_name, data in records.items():
+            for team_name, data in records.items():
+                matched = match_team(team_name, db_teams)
+                if matched:
+                    ov = data.get("overall", (0, 0))
+                    cf = data.get("conf", (0, 0))
+                    save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
+                else:
+                    logger.warning(f"  Could not match: {team_name}")
+
+        # ── Step 2: NWAC standings ──
+
+        logger.info(f"\n--- Fetching NWAC standings ---")
+        nwac_records = scrape_nwac_standings(season)
+        logger.info(f"  Found {len(nwac_records)} teams")
+
+        for team_name, data in nwac_records.items():
             matched = match_team(team_name, db_teams)
             if matched:
                 ov = data.get("overall", (0, 0))
-                cf = data.get("conf", (0, 0))
+                cf = data.get("conf") or (0, 0)
                 save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
             else:
-                logger.warning(f"  Could not match: {team_name}")
+                logger.warning(f"  Could not match NWAC team: {team_name}")
 
-    # ── Step 2: NWAC standings ──
+        # ── Step 3: D1 individual team pages (only for teams not yet found) ──
 
-    logger.info(f"\n--- Fetching NWAC standings ---")
-    nwac_records = scrape_nwac_standings(season)
-    logger.info(f"  Found {len(nwac_records)} teams")
+        cur.execute(
+            "SELECT team_id FROM team_season_stats WHERE season = %s", (season,)
+        )
+        existing = cur.fetchall()
+        found_ids = {r[0] for r in existing}
 
-    for team_name, data in nwac_records.items():
-        matched = match_team(team_name, db_teams)
-        if matched:
-            ov = data.get("overall", (0, 0))
-            cf = data.get("conf") or (0, 0)
-            save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
-        else:
-            logger.warning(f"  Could not match NWAC team: {team_name}")
+        logger.info(f"\n--- Checking D1 team pages for missing teams ---")
+        for short, base_url in D1_TEAMS.items():
+            team = next((t for t in db_teams if t["short_name"] == short), None)
+            if not team or team["id"] in found_ids:
+                continue
 
-    # ── Step 3: D1 individual team pages (only for teams not yet found) ──
+            logger.info(f"  Trying {short}...")
+            overall, conference = scrape_d1_team(base_url)
+            if overall:
+                cf = conference or (0, 0)
+                save(team["id"], short, overall[0], overall[1], cf[0], cf[1])
+            else:
+                not_found.append(short)
+                logger.warning(f"  No record found for {short}")
 
-    found_ids = set()
-    existing = conn.execute(
-        "SELECT team_id FROM team_season_stats WHERE season = ?", (season,)
-    ).fetchall()
-    found_ids = {r["team_id"] for r in existing}
+        # ── Summary ──
 
-    logger.info(f"\n--- Checking D1 team pages for missing teams ---")
-    for short, base_url in D1_TEAMS.items():
-        team = next((t for t in db_teams if t["short_name"] == short), None)
-        if not team or team["id"] in found_ids:
-            continue
-
-        logger.info(f"  Trying {short}...")
-        overall, conference = scrape_d1_team(base_url)
-        if overall:
-            cf = conference or (0, 0)
-            save(team["id"], short, overall[0], overall[1], cf[0], cf[1])
-        else:
-            not_found.append(short)
-            logger.warning(f"  No record found for {short}")
-
-    # ── Summary ──
-
-    # Check what's still missing
-    all_saved = conn.execute(
-        "SELECT team_id FROM team_season_stats WHERE season = ?", (season,)
-    ).fetchall()
-    saved_ids = {r["team_id"] for r in all_saved}
-    missing = [t["short_name"] for t in db_teams if t["id"] not in saved_ids]
-
-    conn.close()
+        # Check what's still missing
+        cur.execute(
+            "SELECT team_id FROM team_season_stats WHERE season = %s", (season,)
+        )
+        all_saved = cur.fetchall()
+        saved_ids = {r[0] for r in all_saved}
+        missing = [t["short_name"] for t in db_teams if t["id"] not in saved_ids]
 
     print(f"\n{'='*50}")
     print(f"Done! {len(saved_ids)}/{len(db_teams)} teams have records.")
