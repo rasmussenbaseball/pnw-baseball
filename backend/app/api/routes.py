@@ -81,6 +81,10 @@ def _apply_year_filter(query: str, params: list, year_in_school: str, col: str =
 
 router = APIRouter()
 
+# Include favorites sub-router (requires Supabase auth)
+from .favorites import favorites_router
+router.include_router(favorites_router)
+
 
 # ============================================================
 # BROWSE: Divisions, Conferences, Teams
@@ -165,6 +169,7 @@ def teams_summary(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE t.is_active = 1
+              AND t.state IN ('WA', 'OR', 'ID', 'MT')
         """
         team_params = []
         if division_id:
@@ -291,6 +296,8 @@ def standings(
         all_teams = []
         for r in rows:
             team = dict(r)
+            # Flag PNW teams (WA, OR, ID, MT)
+            team["is_pnw"] = team.get("state", "") in ("WA", "OR", "ID", "MT")
             # Compute win percentages
             total_games = team["wins"] + team["losses"]
             team["win_pct"] = round(team["wins"] / total_games, 3) if total_games > 0 else 0

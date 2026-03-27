@@ -192,7 +192,7 @@ function InfoCard() {
             </div>
           </div>
           <p>
-            Each component is z-score normalized within the division — so a score of 65 in "Off" means that team's offense is one standard deviation above its division average. Teams are only compared to their direct peers, not across divisions.
+            Each component is z-score normalized within the division. So a score of 65 in "Off" means that team's offense is one standard deviation above its division average. Teams are only compared to their direct peers, not across divisions.
           </p>
         </div>
       )}
@@ -221,7 +221,7 @@ export default function TeamRatings() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Team Ratings</h1>
-      <p className="text-sm text-gray-500 mb-4">PNW Power Index — within-division talent rankings · 2026</p>
+      <p className="text-sm text-gray-500 mb-4">PNW Power Index | within-division talent rankings · 2026</p>
 
       <InfoCard />
 

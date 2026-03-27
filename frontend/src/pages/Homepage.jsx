@@ -7,7 +7,7 @@ const SEASON = 2026
 
 // ─── Stat value formatting ───
 function fmtVal(value, format) {
-  if (value == null) return '—'
+  if (value == null) return '-'
   if (format === 'int') return Math.round(value)
   if (format === 'avg') return value.toFixed(3).replace(/^0/, '')
   if (format === 'float1') return value.toFixed(1)
@@ -30,18 +30,18 @@ export default function Homepage() {
 
   return (
     <div>
-      {/* Hero ticker — stat leaders marquee */}
+      {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
 
       {/* Main dashboard grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mt-3 sm:mt-5">
-        {/* Left column — wider (2/3) */}
+        {/* Left column - wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
           <NationalRankingsWidget rankings={rankings} />
           <StandingsWidget standings={standings} />
         </div>
 
-        {/* Right column — sidebar (1/3) */}
+        {/* Right column - sidebar (1/3) */}
         <div className="flex flex-col gap-5">
           <StatLeadersWidget leaders={leaders} />
           <PowerRankingsWidget ratings={ratings} />
@@ -163,7 +163,6 @@ function NationalRankingsWidget({ rankings }) {
 // STANDINGS WIDGET (compact conference standings)
 // ════════════════════════════════════════════
 function StandingsWidget({ standings }) {
-  const [showAll, setShowAll] = useState(false)
   if (!standings) return <WidgetSkeleton title="Standings" />
 
   const conferences = standings.conferences || []
@@ -176,24 +175,15 @@ function StandingsWidget({ standings }) {
   })
 
   const divOrder = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
-  const visibleDivs = showAll ? divOrder : divOrder.filter(d => d !== 'JUCO')
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-bold text-pnw-slate">Conference Standings</h2>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowAll(!showAll)}
-            className="text-xs text-pnw-teal hover:underline"
-          >
-            {showAll ? 'Hide JUCO' : 'Show JUCO'}
-          </button>
-          <Link to="/standings" className="text-xs text-pnw-teal hover:underline">Full standings →</Link>
-        </div>
+        <Link to="/standings" className="text-xs text-pnw-teal hover:underline">Full standings →</Link>
       </div>
 
-      {visibleDivs.map(divLevel => {
+      {divOrder.map(divLevel => {
         const confs = byDiv[divLevel]
         if (!confs) return null
         return (
@@ -205,30 +195,35 @@ function StandingsWidget({ standings }) {
               {confs.map(conf => (
                 <div key={conf.conference_id} className="border border-gray-200 rounded text-xs">
                   <div className="bg-gray-50 px-2 py-1 font-semibold text-gray-700 border-b border-gray-200 flex justify-between">
-                    <span>{conf.conference_abbrev || conf.conference_name}</span>
+                    <span>{conf.conference_abbrev === 'IND' ? 'Independent' : (conf.conference_abbrev || conf.conference_name)}</span>
                     <span className="text-gray-400 font-normal">Conf / Overall</span>
                   </div>
-                  {conf.teams.map((team) => (
-                    <Link
-                      key={team.id}
-                      to={`/team/${team.id}`}
-                      className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-50 border-b border-gray-50 last:border-b-0"
-                    >
-                      {team.logo_url && (
-                        <img src={team.logo_url} alt="" className="w-4 h-4 object-contain"
-                          onError={(e) => { e.target.style.display = 'none' }} />
-                      )}
-                      <span className="font-medium text-gray-800 truncate flex-1">{team.short_name}</span>
-                      <span className="text-gray-500 font-mono text-[10px] w-12 text-right">
-                        {team.conf_wins + team.conf_losses > 0
-                          ? `${team.conf_wins}-${team.conf_losses}`
-                          : '—'}
-                      </span>
-                      <span className="text-gray-400 font-mono text-[10px] w-12 text-right">
-                        {team.wins}-{team.losses}
-                      </span>
-                    </Link>
-                  ))}
+                  {conf.teams.map((team) => {
+                    const isPnw = team.is_pnw
+                    const Row = isPnw ? Link : 'div'
+                    const rowProps = isPnw
+                      ? { to: `/team/${team.id}`, className: "flex items-center gap-1.5 px-2 py-1 hover:bg-teal-50/50 border-b border-gray-50 last:border-b-0" }
+                      : { className: "flex items-center gap-1.5 px-2 py-1 border-b border-gray-50 last:border-b-0 opacity-50" }
+                    return (
+                      <Row key={team.id} {...rowProps}>
+                        {team.logo_url && (
+                          <img src={team.logo_url} alt="" className={`w-4 h-4 object-contain ${isPnw ? '' : 'grayscale'}`}
+                            onError={(e) => { e.target.style.display = 'none' }} />
+                        )}
+                        <span className={`font-medium truncate flex-1 ${isPnw ? 'text-nw-teal font-semibold' : 'text-gray-400'}`}>{team.short_name}</span>
+                        <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-500' : 'text-gray-400'}`}>
+                          {team.conf_wins + team.conf_losses > 0
+                            ? `${team.conf_wins}-${team.conf_losses}`
+                            : '-'}
+                        </span>
+                        <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-400' : 'text-gray-300'}`}>
+                          {team.wins || team.losses
+                            ? `${team.wins}-${team.losses}`
+                            : '-'}
+                        </span>
+                      </Row>
+                    )
+                  })}
                 </div>
               ))}
             </div>

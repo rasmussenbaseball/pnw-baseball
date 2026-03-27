@@ -197,7 +197,7 @@ export default function TeamComparison() {
                               className={`py-1.5 px-3 text-center font-mono text-sm
                                 ${isBest ? 'text-pnw-forest font-bold' : 'text-gray-700'}`}
                             >
-                              {val != null ? formatStat(val, stat.format) : '—'}
+                              {val != null ? formatStat(val, stat.format) : '-'}
                             </td>
                           )
                         })}

@@ -111,7 +111,7 @@ function TeamCard({ team }) {
         )}
       </div>
       <div className="text-xs text-gray-500 mb-3 flex items-center justify-between">
-        <span>{team.city}, {team.state} — {team.conference_abbrev}</span>
+        <span>{team.city}, {team.state} · {team.conference_abbrev}</span>
         {team.wins != null && (
           <span className="font-mono font-semibold text-pnw-slate">
             {team.wins}-{team.losses}

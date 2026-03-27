@@ -69,15 +69,30 @@ def load_park_factors(conn):
     return park_factors
 
 
-def compute_league_averages(conn, season):
+def compute_league_averages(conn, season, multi_year=True):
     """
     Compute actual league averages from the database for each division level.
+
+    When multi_year=True (default), averages across all seasons from 2022 to
+    the current season. This produces a more stable run environment than using
+    a single season, especially early in the year when sample sizes are small.
 
     Returns a dict keyed by division level ('D1', 'D2', etc.) with all the
     league-level stats needed for wRC+, FIP+, and ERA-.
     """
+    if multi_year:
+        season_filter = "bs.season BETWEEN 2022 AND ?"
+        pit_season_filter = "ps.season BETWEEN 2022 AND ?"
+        label = f"2022-{season}"
+    else:
+        season_filter = "bs.season = ?"
+        pit_season_filter = "ps.season = ?"
+        label = str(season)
+
+    print(f"  Using run environment from: {label}")
+
     # ── Batting aggregates by division ──
-    batting_rows = conn.execute("""
+    batting_rows = conn.execute(f"""
         SELECT d.level as division_level,
                COUNT(DISTINCT bs.player_id) as num_batters,
                SUM(bs.plate_appearances) as total_pa,
@@ -97,12 +112,12 @@ def compute_league_averages(conn, season):
         JOIN teams t ON bs.team_id = t.id
         JOIN conferences c ON t.conference_id = c.id
         JOIN divisions d ON c.division_id = d.id
-        WHERE bs.season = ? AND bs.plate_appearances >= 5
+        WHERE {season_filter} AND bs.plate_appearances >= 5
         GROUP BY d.level
     """, (season,)).fetchall()
 
     # ── Pitching aggregates by division ──
-    pitching_rows = conn.execute("""
+    pitching_rows = conn.execute(f"""
         SELECT d.level as division_level,
                COUNT(DISTINCT ps.player_id) as num_pitchers,
                SUM(ps.innings_pitched) as total_ip,
@@ -118,7 +133,7 @@ def compute_league_averages(conn, season):
         JOIN teams t ON ps.team_id = t.id
         JOIN conferences c ON t.conference_id = c.id
         JOIN divisions d ON c.division_id = d.id
-        WHERE ps.season = ? AND ps.innings_pitched >= 1
+        WHERE {pit_season_filter} AND ps.innings_pitched >= 1
         GROUP BY d.level
     """, (season,)).fetchall()
 
@@ -213,7 +228,7 @@ def compute_league_averages(conn, season):
     return league_avgs
 
 
-def recalculate_all(season, verbose=False):
+def recalculate_all(season, verbose=False, multi_year=True):
     """Recalculate wRC+, FIP+, ERA-, and WAR for all players using real league averages."""
 
     with get_connection() as conn:
@@ -240,7 +255,7 @@ def recalculate_all(season, verbose=False):
 
         # ── Step 1: Compute real league averages ──
         print(f"\n=== Computing league averages for {season} ===\n")
-        league_avgs = compute_league_averages(conn, season)
+        league_avgs = compute_league_averages(conn, season, multi_year=multi_year)
 
         for level, avgs in league_avgs.items():
             print(f"  {level}:")
@@ -495,5 +510,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Recalculate league-adjusted stats")
     parser.add_argument("--season", type=int, required=True, help="Season year")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show per-player details")
+    parser.add_argument("--single-year", action="store_true", help="Only use the current season for league averages (default: multi-year 2022+)")
     args = parser.parse_args()
-    recalculate_all(args.season, verbose=args.verbose)
+    recalculate_all(args.season, verbose=args.verbose, multi_year=not args.single_year)

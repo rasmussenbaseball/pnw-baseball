@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSeasons } from '../hooks/useApi'
 
 /**
- * FilterBar — the main control panel for the dashboard.
+ * FilterBar - the main control panel for the dashboard.
  * Lets users filter by division, conference, state, season,
  * and set PA/IP minimums for qualified leaderboards.
  */

@@ -8,7 +8,11 @@ Main entry point. Run with:
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
+
+# Load .env from project root (for SUPABASE_* vars)
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles

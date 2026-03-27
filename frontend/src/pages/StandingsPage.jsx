@@ -46,35 +46,59 @@ function ConferenceTable({ conference }) {
           {conference.teams.map((team, i) => (
             <tr
               key={team.id}
-              className={`border-t border-gray-50 hover:bg-teal-50/50 transition-colors ${i === 0 ? '' : ''}`}
+              className={`border-t border-gray-50 transition-colors ${
+                team.is_pnw
+                  ? 'hover:bg-teal-50/50'
+                  : 'opacity-50'
+              }`}
             >
               <td className="pl-3 pr-1 py-1.5">
-                <Link
-                  to={`/team/${team.id}`}
-                  className="flex items-center gap-1.5 hover:text-nw-teal transition-colors"
-                >
-                  {team.logo_url && (
-                    <img
-                      src={team.logo_url}
-                      alt=""
-                      className="w-4 h-4 object-contain shrink-0"
-                      onError={(e) => { e.target.style.display = 'none' }}
-                    />
-                  )}
-                  <span className="font-medium text-gray-800 truncate">{team.short_name}</span>
-                </Link>
+                {team.is_pnw ? (
+                  <Link
+                    to={`/team/${team.id}`}
+                    className="flex items-center gap-1.5 hover:text-nw-teal transition-colors"
+                  >
+                    {team.logo_url && (
+                      <img
+                        src={team.logo_url}
+                        alt=""
+                        className="w-4 h-4 object-contain shrink-0"
+                        onError={(e) => { e.target.style.display = 'none' }}
+                      />
+                    )}
+                    <span className="font-semibold text-nw-teal truncate">{team.short_name}</span>
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    {team.logo_url && (
+                      <img
+                        src={team.logo_url}
+                        alt=""
+                        className="w-4 h-4 object-contain shrink-0 grayscale"
+                        onError={(e) => { e.target.style.display = 'none' }}
+                      />
+                    )}
+                    <span className="font-medium text-gray-400 truncate">{team.short_name}</span>
+                  </div>
+                )}
               </td>
-              <td className="text-center px-1 py-1.5 text-gray-600">
+              <td className={`text-center px-1 py-1.5 ${team.is_pnw ? 'text-gray-600' : 'text-gray-400'}`}>
                 {team.conf_wins || team.conf_losses
                   ? `${team.conf_wins}-${team.conf_losses}`
-                  : <span className="text-gray-300">—</span>
+                  : <span className="text-gray-300">-</span>
                 }
               </td>
-              <td className="text-center px-1 py-1.5 text-gray-600">
-                {team.wins}-{team.losses}
+              <td className={`text-center px-1 py-1.5 ${team.is_pnw ? 'text-gray-600' : 'text-gray-400'}`}>
+                {team.wins || team.losses
+                  ? `${team.wins}-${team.losses}`
+                  : <span className="text-gray-300">-</span>
+                }
               </td>
-              <td className="text-center px-1 pr-3 py-1.5 font-mono text-gray-500">
-                {formatPct(team.conf_win_pct)}
+              <td className={`text-center px-1 pr-3 py-1.5 font-mono ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
+                {team.conf_wins || team.conf_losses
+                  ? formatPct(team.conf_win_pct)
+                  : <span className="text-gray-300">-</span>
+                }
               </td>
             </tr>
           ))}
@@ -172,7 +196,8 @@ export default function StandingsPage() {
   }
 
   const conferences = data?.conferences || []
-  const overall = data?.overall || []
+  // Overall table: only PNW teams (non-PNW won't have stats)
+  const overall = (data?.overall || []).filter(t => t.is_pnw)
 
   // Group conferences by division for visual grouping
   const divisionGroups = {}

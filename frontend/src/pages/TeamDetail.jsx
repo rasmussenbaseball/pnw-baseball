@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useTeamStats, useTeamRankings, useTeamHistory } from '../hooks/useApi'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
+import FavoriteButton from '../components/FavoriteButton'
 import { BATTING_COLUMNS, PITCHING_COLUMNS,
          formatStat, divisionBadgeClass } from '../utils/stats'
 
@@ -91,9 +92,10 @@ export default function TeamDetail() {
             {team.division_level}
           </span>
           <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate">{team.name}</h1>
+          <FavoriteButton type="team" targetId={team.id} />
         </div>
         <div className="text-xs sm:text-sm text-gray-500">
-          {team.city}, {team.state} — {team.conference_name}
+          {team.city}, {team.state} · {team.conference_name}
         </div>
       </div>
 
@@ -230,7 +232,7 @@ function TeamHistoryTab({ history, loading }) {
           />
           <SummaryCell
             label="Win %"
-            value={all_time_summary.win_pct != null ? all_time_summary.win_pct.toFixed(3) : '—'}
+            value={all_time_summary.win_pct != null ? all_time_summary.win_pct.toFixed(3) : '-'}
             highlight={all_time_summary.win_pct >= 0.600}
           />
           <SummaryCell
@@ -239,7 +241,7 @@ function TeamHistoryTab({ history, loading }) {
           />
           <SummaryCell
             label="Conf Win %"
-            value={all_time_summary.conf_win_pct != null ? all_time_summary.conf_win_pct.toFixed(3) : '—'}
+            value={all_time_summary.conf_win_pct != null ? all_time_summary.conf_win_pct.toFixed(3) : '-'}
             highlight={all_time_summary.conf_win_pct >= 0.600}
           />
           <SummaryCell
@@ -279,7 +281,7 @@ function TeamHistoryTab({ history, loading }) {
               {seasons.map((s) => {
                 const w = s.wins || 0
                 const l = s.losses || 0
-                const winPct = w + l > 0 ? (w / (w + l)).toFixed(3) : '—'
+                const winPct = w + l > 0 ? (w / (w + l)).toFixed(3) : '-'
                 const diff = s.run_differential || 0
                 return (
                   <tr key={s.season} className="border-b border-gray-100 hover:bg-gray-50">
@@ -291,32 +293,32 @@ function TeamHistoryTab({ history, loading }) {
                     <td className="text-center py-2 px-2">
                       {(s.conference_wins || 0) + (s.conference_losses || 0) > 0
                         ? `${s.conference_wins}-${s.conference_losses}`
-                        : '—'}
+                        : '-'}
                     </td>
-                    <td className="text-center py-2 px-2">{s.runs_scored || '—'}</td>
-                    <td className="text-center py-2 px-2">{s.runs_allowed || '—'}</td>
+                    <td className="text-center py-2 px-2">{s.runs_scored || '-'}</td>
+                    <td className="text-center py-2 px-2">{s.runs_allowed || '-'}</td>
                     <td className={`text-center py-2 px-2 font-medium ${
                       diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-500' : ''
                     }`}>
                       {diff > 0 ? `+${diff}` : diff}
                     </td>
                     <td className="text-center py-2 px-2">
-                      {s.team_era != null ? s.team_era.toFixed(2) : '—'}
+                      {s.team_era != null ? s.team_era.toFixed(2) : '-'}
                     </td>
                     <td className="text-center py-2 px-2">
-                      {s.team_batting_avg != null ? s.team_batting_avg.toFixed(3) : '—'}
+                      {s.team_batting_avg != null ? s.team_batting_avg.toFixed(3) : '-'}
                     </td>
                     <td className="text-center py-2 px-2 font-medium">
-                      {s.team_wrc_plus != null ? s.team_wrc_plus.toFixed(0) : '—'}
+                      {s.team_wrc_plus != null ? s.team_wrc_plus.toFixed(0) : '-'}
                     </td>
                     <td className="text-center py-2 px-2">
-                      {s.team_fip != null ? s.team_fip.toFixed(2) : '—'}
+                      {s.team_fip != null ? s.team_fip.toFixed(2) : '-'}
                     </td>
                     <td className="text-center py-2 px-2 font-medium">
-                      {s.total_war != null ? s.total_war.toFixed(1) : '—'}
+                      {s.total_war != null ? s.total_war.toFixed(1) : '-'}
                     </td>
                     <td className="text-center py-2 px-2">
-                      {s.composite_rank ? `#${Math.round(s.composite_rank)}` : '—'}
+                      {s.composite_rank ? `#${Math.round(s.composite_rank)}` : '-'}
                     </td>
                   </tr>
                 )
@@ -555,7 +557,7 @@ function RankingsCard({ rankings }) {
         {/* Conference Rank */}
         <div className="bg-gray-50 rounded-lg p-4 text-center">
           <div className="text-3xl font-bold text-pnw-slate">
-            {rankings.conference_rank ? `#${rankings.conference_rank}` : '—'}
+            {rankings.conference_rank ? `#${rankings.conference_rank}` : '-'}
           </div>
           <div className="text-xs text-gray-500 mt-1">
             Conference Rank
@@ -591,7 +593,7 @@ function RankingsCard({ rankings }) {
         {/* Strength of Schedule */}
         <div className="bg-gray-50 rounded-lg p-4 text-center">
           <div className="text-3xl font-bold text-pnw-slate">
-            {comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '—'}
+            {comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
           </div>
           <div className="text-xs text-gray-500 mt-1">
             Strength of Schedule

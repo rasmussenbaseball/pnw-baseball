@@ -123,7 +123,7 @@ const STAT_PRESETS = {
 
 // ─── Format helpers ───
 function fmt(val, format) {
-  if (val == null || val === '') return '—'
+  if (val == null || val === '') return '-'
   switch (format) {
     case 'avg': return Number(val).toFixed(3).replace(/^0/, '')
     case 'era': return Number(val).toFixed(2)
@@ -223,7 +223,7 @@ export default function SocialGraphics() {
       link.click()
     } catch (err) {
       console.error('Export failed:', err)
-      alert('Export failed — check console for details')
+      alert('Export failed. Check console for details')
     } finally {
       setExporting(false)
     }
@@ -421,7 +421,7 @@ const LeaderCard = forwardRef(function LeaderCard(
   // Logo size based on row height
   const logoSize = Math.min(Math.floor(rowH * 0.55), 32)
 
-  // Column widths — main stat is wider, extras are narrower to fit 5 cols
+  // Column widths - main stat is wider, extras are narrower to fit 5 cols
   const mainStatW = Math.floor(w * 0.10)
   const extraW = Math.floor(w * 0.09)
   const rankW = Math.floor(w * 0.045)
@@ -543,7 +543,7 @@ const LeaderCard = forwardRef(function LeaderCard(
           players.slice(0, count).map((p, i) => {
             const name = p.first_name && p.last_name
               ? `${p.first_name} ${p.last_name}`
-              : p.name || '—'
+              : p.name || '-'
             const team = p.team_short || p.short_name || p.team_name || ''
             const level = p.division_level || ''
             const logoUrl = p.logo_url || ''

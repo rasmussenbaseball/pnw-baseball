@@ -1,5 +1,5 @@
 /**
- * StatPresetBar — quick toggles to switch between stat views.
+ * StatPresetBar - quick toggles to switch between stat views.
  * e.g., "Standard", "Advanced", "Power", "Discipline" for batting.
  */
 export default function StatPresetBar({ presets, activePreset, onSelect }) {

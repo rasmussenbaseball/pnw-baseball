@@ -27,7 +27,7 @@ function percentileBg(pct) {
 }
 
 function PercentileBar({ value }) {
-  if (!value && value !== 0) return <span className="text-gray-400 text-xs">—</span>
+  if (!value && value !== 0) return <span className="text-gray-400 text-xs">-</span>
   const width = Math.max(2, Math.min(100, value))
   const color = value >= 75 ? 'bg-emerald-500' : value >= 50 ? 'bg-teal-400' : value >= 25 ? 'bg-orange-400' : 'bg-red-400'
   return (
@@ -117,7 +117,7 @@ function DivisionSection({ division }) {
                   {/* Composite Rank */}
                   <td className="px-5 py-3">
                     <span className="text-lg font-bold text-gray-900">
-                      #{team.composite_rank ? team.composite_rank.toFixed(0) : '—'}
+                      #{team.composite_rank ? team.composite_rank.toFixed(0) : '-'}
                     </span>
                   </td>
 
@@ -179,7 +179,7 @@ function DivisionSection({ division }) {
         </div>
       )}
 
-      {/* JUCO fallback — no composite data */}
+      {/* JUCO fallback - no composite data */}
       {expanded && !hasData && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -264,7 +264,7 @@ function CrossDivisionTable({ teams }) {
                   </td>
                   <td className="px-3 py-2.5">{team.record}</td>
                   <td className="px-3 py-2.5 font-medium">
-                    #{team.composite_rank ? team.composite_rank.toFixed(0) : '—'}
+                    #{team.composite_rank ? team.composite_rank.toFixed(0) : '-'}
                     <span className="text-xs text-gray-400 ml-0.5">
                       ({team.num_sources} src{team.num_sources !== 1 ? 's' : ''})
                     </span>
@@ -320,8 +320,8 @@ function InfoCard() {
           </div>
           <p>
             The <strong>Composite Rank</strong> is the simple average of each team's rank across available sources.
-            The <strong>National Percentile</strong> shows where a team stands among ALL teams in their division nationally —
-            this enables <strong>cross-division comparison</strong>. A team at the 95th percentile in NAIA is performing
+            The <strong>National Percentile</strong> shows where a team stands among ALL teams in their division nationally.
+            This enables <strong>cross-division comparison</strong>. A team at the 95th percentile in NAIA is performing
             comparably to a team at the 95th percentile in D1, relative to their respective peers.
           </p>
           <p className="text-xs text-gray-400">
@@ -372,7 +372,7 @@ export default function NationalRankings() {
         <div>
           <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">National Rankings</h1>
           <p className="text-gray-500 mt-1">
-            Where PNW teams rank nationally — composite of Pear & CBR ratings
+            Where PNW teams rank nationally | composite of Pear & CBR ratings
           </p>
         </div>
 

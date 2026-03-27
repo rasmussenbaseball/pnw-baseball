@@ -4,7 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
 
 /**
- * JUCO Tracker — the recruiting tool.
+ * JUCO Tracker - the recruiting tool.
  * Shows uncommitted NWAC players with their stats,
  * so 4-year schools can identify transfer targets.
  */
@@ -88,15 +88,15 @@ export default function JucoTracker() {
     const val = row[col.key]
     if (col.key === 'player') return null // handled separately
     if (col.key === 'team') return row.team_short || row.team_name
-    if (col.key === 'committed_to') return row.committed_to || '—'
-    if (col.key === 'hometown') return row.hometown || '—'
-    if (col.key === 'position') return row.position || '—'
-    if (col.key === 'year_in_school') return row.year_in_school || '—'
+    if (col.key === 'committed_to') return row.committed_to || '-'
+    if (col.key === 'hometown') return row.hometown || '-'
+    if (col.key === 'position') return row.position || '-'
+    if (col.key === 'year_in_school') return row.year_in_school || '-'
     if (col.key === 'total_war') return formatStat(row.total_war, 'war')
-    if (col.format === 'int') return val != null ? Math.round(val) : '—'
-    if (col.format === 'ip') return val ? formatStat(val, 'ip') : '—'
+    if (col.format === 'int') return val != null ? Math.round(val) : '-'
+    if (col.format === 'ip') return val ? formatStat(val, 'ip') : '-'
     if (col.format) return formatStat(val, col.format)
-    return val ?? '—'
+    return val ?? '-'
   }
 
   return (

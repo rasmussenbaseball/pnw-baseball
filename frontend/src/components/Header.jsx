@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
+import { useAuth } from '../context/AuthContext'
 
 // ─── Navigation structure ───
 const NAV = [
@@ -515,8 +516,24 @@ function NavTab({ section, isActive }) {
 // ─── Main Header ───
 export default function Header() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileExpanded, setMobileExpanded] = useState(null)
+  const { user, signOut } = useAuth()
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const handleClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [userMenuOpen])
 
   // Check if current path is active for a section
   const isSectionActive = (section) => {
@@ -540,7 +557,7 @@ export default function Header() {
                 NW BASEBALL STATS
               </span>
               <span className="text-[10px] text-teal-200 tracking-widest uppercase hidden sm:block">
-                Pacific Northwest College Baseball Analytics
+                Northwest Baseball Statistics
               </span>
             </div>
           </Link>
@@ -558,6 +575,57 @@ export default function Header() {
             </nav>
             <div className="ml-2 border-l border-white/15 pl-2">
               <SearchBar />
+            </div>
+
+            {/* Auth: Login button or User menu */}
+            <div className="ml-2 border-l border-white/15 pl-2 relative" ref={userMenuRef}>
+              {user ? (
+                <>
+                  <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm
+                               hover:bg-white/10 transition-colors text-teal-100"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    <svg className={`w-3 h-3 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`}
+                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {userMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg
+                                    border py-1 z-50">
+                      <div className="px-3 py-2 text-xs text-gray-400 truncate border-b">
+                        {user.email}
+                      </div>
+                      <Link
+                        to="/favorites"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        My Favorites
+                      </Link>
+                      <button
+                        onClick={() => { signOut(); setUserMenuOpen(false) }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Log Out
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  className="px-3 py-1.5 rounded-md text-sm font-medium
+                             bg-white/10 hover:bg-white/20 transition-colors text-white"
+                >
+                  Log In
+                </Link>
+              )}
             </div>
           </div>
 
@@ -637,6 +705,36 @@ export default function Header() {
                 </div>
               )
             })}
+
+            {/* Mobile auth links */}
+            <div className="border-t border-white/10 mt-2 pt-2">
+              {user ? (
+                <>
+                  <div className="px-3 py-1 text-xs text-teal-200/50 truncate">{user.email}</div>
+                  <Link
+                    to="/favorites"
+                    onClick={() => setMobileOpen(false)}
+                    className="block px-3 py-2 rounded text-sm text-teal-100 hover:text-white hover:bg-white/10"
+                  >
+                    My Favorites
+                  </Link>
+                  <button
+                    onClick={() => { signOut(); setMobileOpen(false) }}
+                    className="w-full text-left px-3 py-2 rounded text-sm text-teal-100 hover:text-white hover:bg-white/10"
+                  >
+                    Log Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-3 py-2 rounded text-sm font-medium text-white bg-white/10 text-center"
+                >
+                  Log In / Sign Up
+                </Link>
+              )}
+            </div>
           </nav>
         )}
       </div>

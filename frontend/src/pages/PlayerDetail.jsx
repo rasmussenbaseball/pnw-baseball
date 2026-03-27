@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
+import FavoriteButton from '../components/FavoriteButton'
 
 // ── Percentile bubble configs ──────────────────────────────────
 const BATTING_PERCENTILE_METRICS = [
@@ -86,7 +87,7 @@ const PITCHING_TABLE_COLS = [
 // ── Helpers ────────────────────────────────────────────────────
 
 /**
- * Baseball Savant-style percentile color — matches their blue→gray→red gradient.
+ * Baseball Savant-style percentile color - matches their blue->gray->red gradient.
  * Uses linear interpolation between color stops for a smooth result.
  */
 function percentileColor(pct) {
@@ -188,7 +189,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
         </div>
       </div>
 
-      {/* Scale legend — hidden on very small screens */}
+      {/* Scale legend - hidden on very small screens */}
       <div className="px-3 sm:px-5 mb-2 hidden sm:block">
         <div className="flex items-end" style={{ paddingLeft: 120 }}>
           <div className="flex-1 flex justify-between text-[10px] font-bold tracking-wider">
@@ -224,7 +225,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
               )}
 
               <div className="flex items-center h-8 sm:h-9">
-                {/* Stat label — right aligned */}
+                {/* Stat label - right aligned */}
                 <div className="shrink-0 text-right pr-2 sm:pr-3 w-16 sm:w-[120px]">
                   <span className="text-[11px] sm:text-[13px] font-medium text-gray-600">
                     {metric.label}
@@ -271,7 +272,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
                   </div>
                 </div>
 
-                {/* Stat value — right side */}
+                {/* Stat value - right side */}
                 <div className="shrink-0 text-right pl-1.5 sm:pl-2 w-11 sm:w-[52px]">
                   <span className="text-[11px] sm:text-[13px] font-medium text-gray-700 tabular-nums">
                     {formatStat(value, metric.format)}
@@ -319,7 +320,7 @@ function StatsTable({ rows, columns, careerRow }) {
             <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
               {columns.map(col => (
                 <td key={col.key} className="px-2 py-1.5 text-right first:text-left whitespace-nowrap">
-                  {col.format ? formatStat(row[col.key], col.format) : (row[col.key] ?? '—')}
+                  {col.format ? formatStat(row[col.key], col.format) : (row[col.key] ?? '-')}
                 </td>
               ))}
             </tr>
@@ -510,12 +511,15 @@ export default function PlayerDetail() {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-              {player.first_name} {player.last_name}
-              {player.jersey_number && (
-                <span className="text-gray-400 font-normal ml-2">#{player.jersey_number}</span>
-              )}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+                {player.first_name} {player.last_name}
+                {player.jersey_number && (
+                  <span className="text-gray-400 font-normal ml-2">#{player.jersey_number}</span>
+                )}
+              </h1>
+              <FavoriteButton type="player" targetId={player.id} />
+            </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-sm text-gray-600">
               <Link
                 to={`/team/${player.team_id}`}
@@ -547,7 +551,7 @@ export default function PlayerDetail() {
               <div><span className="text-gray-400">Yr</span> <span className="font-medium">{player.year_in_school}</span></div>
             )}
             {(player.bats || player.throws) && (
-              <div><span className="text-gray-400">B/T</span> <span className="font-medium">{player.bats || '—'}/{player.throws || '—'}</span></div>
+              <div><span className="text-gray-400">B/T</span> <span className="font-medium">{player.bats || '-'}/{player.throws || '-'}</span></div>
             )}
             {player.height && (
               <div><span className="text-gray-400">Ht</span> <span className="font-medium">{player.height}</span></div>
@@ -641,7 +645,7 @@ export default function PlayerDetail() {
         <PercentileBars
           percentiles={batting_percentiles}
           metrics={BATTING_PERCENTILE_METRICS}
-          title={`Batting — ${percentileLabel}`}
+          title={`Batting · ${percentileLabel}`}
           divisionLevel={player.division_level}
         />
       )}
@@ -651,7 +655,7 @@ export default function PlayerDetail() {
         <PercentileBars
           percentiles={pitching_percentiles}
           metrics={PITCHING_PERCENTILE_METRICS}
-          title={`Pitching — ${percentileLabel}`}
+          title={`Pitching · ${percentileLabel}`}
           divisionLevel={player.division_level}
         />
       )}

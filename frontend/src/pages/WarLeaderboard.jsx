@@ -73,8 +73,8 @@ export default function WarLeaderboard() {
     const hasPitching = row.innings_pitched > 0
 
     // Check if this column applies to the player
-    if (col.needs === 'batting' && !hasBatting) return '—'
-    if (col.needs === 'pitching' && !hasPitching) return '—'
+    if (col.needs === 'batting' && !hasBatting) return '-'
+    if (col.needs === 'pitching' && !hasPitching) return '-'
 
     // Special W-L render
     if (col.renderFn === 'wl') return `${row.wins}-${row.losses}`
@@ -82,11 +82,11 @@ export default function WarLeaderboard() {
     // WAR/PA and WAR/IP custom format
     if (col.key === 'war_per_pa' || col.key === 'war_per_ip') {
       const val = row[col.key]
-      return val != null ? val.toFixed(3) : '—'
+      return val != null ? val.toFixed(3) : '-'
     }
 
     const val = row[col.key]
-    if (val === null || val === undefined) return '—'
+    if (val === null || val === undefined) return '-'
 
     // WAR columns
     if (col.key === 'total_war' || col.key === 'offensive_war' || col.key === 'pitching_war') {
@@ -163,7 +163,7 @@ export default function WarLeaderboard() {
                       {row.division_level}
                     </span>
                   </td>
-                  <td>{row.year_in_school || '—'}</td>
+                  <td>{row.year_in_school || '-'}</td>
                   <td>{row.position}</td>
                   {COLUMNS.map(col => (
                     <td

@@ -107,7 +107,7 @@ export default function PlayerSearch() {
                   <td>{p.position}</td>
                   <td>{p.year_in_school}</td>
                   <td className="text-gray-500">{p.bats}/{p.throws}</td>
-                  <td className="text-gray-500">{p.hometown || '—'}</td>
+                  <td className="text-gray-500">{p.hometown || '-'}</td>
                   <td>
                     {p.is_committed
                       ? <span className="text-green-600 font-medium">{p.committed_to}</span>

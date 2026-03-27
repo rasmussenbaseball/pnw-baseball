@@ -4,7 +4,7 @@ import { useDivisions, useConferences } from '../hooks/useApi'
 import { Link } from 'react-router-dom'
 
 /**
- * Offensive Rating gauge — circular badge showing 0-100 rating.
+ * Offensive Rating gauge - circular badge showing 0-100 rating.
  */
 function OffensiveRatingBadge({ rating, size = 'md' }) {
   if (rating == null) return null
@@ -31,10 +31,10 @@ function OffensiveRatingBadge({ rating, size = 'md' }) {
 }
 
 /**
- * Runs +/- badge — shows predicted extra runs per game.
+ * Runs +/- badge - shows predicted extra runs per game.
  */
 function RunsPlusMinus({ value }) {
-  if (value == null) return <span className="text-gray-400 text-xs">—</span>
+  if (value == null) return <span className="text-gray-400 text-xs">-</span>
   const isPositive = value > 0
   const color = value >= 1 ? 'text-red-600' : value >= 0.3 ? 'text-orange-500' : value > -0.3 ? 'text-gray-600' : value > -1 ? 'text-blue-600' : 'text-indigo-700'
   return (
@@ -45,7 +45,7 @@ function RunsPlusMinus({ value }) {
 }
 
 /**
- * Elevation bar — visual indicator of elevation relative to max (~4100ft).
+ * Elevation bar - visual indicator of elevation relative to max (~4100ft).
  */
 function ElevationBar({ elevation }) {
   const max = 4200
@@ -148,7 +148,7 @@ function SurfaceBadge({ surface }) {
 }
 
 /**
- * Individual park card — now with offensive rating prominently displayed.
+ * Individual park card - now with offensive rating prominently displayed.
  */
 function ParkCard({ park }) {
   const [expanded, setExpanded] = useState(false)
@@ -221,7 +221,7 @@ function ParkCard({ park }) {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <StatPill label="March Temp" value={park.march_avg_temp_f || '—'} unit="°F" color={tempColor} />
+          <StatPill label="March Temp" value={park.march_avg_temp_f || '-'} unit="°F" color={tempColor} />
           <StatPill label="Precip" value={park.annual_precip_in} unit="″" color={precipColor} />
         </div>
       </div>
@@ -268,7 +268,7 @@ function ParkCard({ park }) {
 
 
 /**
- * Summary stats bar at top of page — now with offensive rating highlights.
+ * Summary stats bar at top of page - now with offensive rating highlights.
  */
 function SummaryBar({ teams }) {
   const stats = useMemo(() => {
@@ -344,7 +344,7 @@ function SummaryBar({ teams }) {
 
 
 /**
- * ParkFactors — main page component.
+ * ParkFactors - main page component.
  */
 export default function ParkFactors() {
   const [stateFilter, setStateFilter] = useState('')

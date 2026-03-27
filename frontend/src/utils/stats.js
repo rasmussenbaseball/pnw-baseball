@@ -38,13 +38,13 @@ export const BATTING_COLUMNS = [
 
   // Advanced
   { key: 'woba', label: 'wOBA', width: 55, format: 'avg',
-    tooltip: 'Weighted On-Base Average — weights each way of reaching base by its run value' },
+    tooltip: 'Weighted On-Base Average: weights each way of reaching base by its run value' },
   { key: 'wrc_plus', label: 'wRC+', width: 55, format: 'int',
-    tooltip: 'Weighted Runs Created Plus — 100 = league average, adjusts for park and league' },
+    tooltip: 'Weighted Runs Created Plus: 100 = league average, adjusts for park and league' },
   { key: 'iso', label: 'ISO', width: 55, format: 'avg',
     tooltip: 'Isolated Power = SLG - AVG, measures raw power' },
   { key: 'babip', label: 'BABIP', width: 55, format: 'avg',
-    tooltip: 'Batting Avg on Balls In Play — helps identify luck vs. skill' },
+    tooltip: 'Batting Avg on Balls In Play: helps identify luck vs. skill' },
   { key: 'bb_pct', label: 'BB%', width: 55, format: 'pct',
     tooltip: 'Walk Rate = BB/PA' },
   { key: 'k_pct', label: 'K%', width: 55, format: 'pct',
@@ -84,25 +84,25 @@ export const PITCHING_COLUMNS = [
   { key: 'bb_pct', label: 'BB%', width: 55, format: 'pct',
     tooltip: 'Walk Rate = BB/BF' },
   { key: 'k_bb_pct', label: 'K-BB%', width: 55, format: 'pct',
-    tooltip: 'Strikeout minus Walk Rate — measures command advantage' },
+    tooltip: 'Strikeout minus Walk Rate: measures command advantage' },
   { key: 'k_bb_ratio', label: 'K/BB', width: 55, format: 'era',
     tooltip: 'Strikeout to Walk ratio' },
 
   // Advanced
   { key: 'fip', label: 'FIP', width: 55, format: 'era',
-    tooltip: 'Fielding Independent Pitching — estimates ERA from K, BB, HBP, HR' },
+    tooltip: 'Fielding Independent Pitching: estimates ERA from K, BB, HBP, HR' },
   { key: 'fip_plus', label: 'FIP+', width: 55, format: 'int',
-    tooltip: 'FIP+ — 100 = league average, higher is better. League-adjusted for cross-division comparison' },
+    tooltip: 'FIP+: 100 = league average, higher is better. League-adjusted for cross-division comparison' },
   { key: 'era_plus', label: 'ERA+', width: 55, format: 'int',
-    tooltip: 'ERA+ — 100 = league average, higher is better. League-adjusted for cross-division comparison' },
+    tooltip: 'ERA+: 100 = league average, higher is better. League-adjusted for cross-division comparison' },
   { key: 'xfip', label: 'xFIP', width: 55, format: 'era',
-    tooltip: 'Expected FIP — normalizes HR/FB ratio to league average' },
+    tooltip: 'Expected FIP: normalizes HR/FB ratio to league average' },
   { key: 'siera', label: 'SIERA', width: 55, format: 'era',
-    tooltip: 'Skill-Interactive ERA — accounts for how K and BB interact' },
+    tooltip: 'Skill-Interactive ERA: accounts for how K and BB interact' },
   { key: 'babip_against', label: 'BABIP', width: 55, format: 'avg',
-    tooltip: 'BABIP Against — helps identify luck in hits allowed' },
+    tooltip: 'BABIP Against: helps identify luck in hits allowed' },
   { key: 'lob_pct', label: 'LOB%', width: 55, format: 'pct',
-    tooltip: 'Left On Base % — how often runners are stranded' },
+    tooltip: 'Left On Base %: how often runners are stranded' },
   { key: 'pitching_war', label: 'WAR', width: 55, format: 'war',
     tooltip: 'Pitching Wins Above Replacement' },
 ]
@@ -111,7 +111,7 @@ export const PITCHING_COLUMNS = [
  * Format a stat value for display.
  */
 export function formatStat(value, format) {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
 
   switch (format) {
     case 'avg':

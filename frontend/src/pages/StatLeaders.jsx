@@ -11,7 +11,7 @@ const BADGE_COLORS = {
 }
 
 function formatValue(value, format) {
-  if (value == null) return '—'
+  if (value == null) return '-'
   switch (format) {
     case 'int':
       return Math.round(value).toString()
@@ -96,7 +96,7 @@ function LeaderCard({ category }) {
 
 // ─── Main Page ───
 export default function StatLeaders() {
-  const [qualified, setQualified] = useState(false)
+  const [qualified, setQualified] = useState(true)
   const { data, loading, error } = useStatLeaders(2026, 5, qualified)
 
   if (loading) {

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 
 /**
- * StatsTable — sortable, configurable stats table.
+ * StatsTable - sortable, configurable stats table.
  * Used for both batting and pitching leaderboards.
  */
 export default function StatsTable({
