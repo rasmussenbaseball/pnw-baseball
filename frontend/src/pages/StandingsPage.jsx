@@ -247,18 +247,43 @@ export default function StandingsPage() {
 
       {view === 'conference' ? (
         <div className="space-y-6">
-          {sortedDivisions.map(div => (
-            <div key={div.name}>
-              <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">
-                {div.name}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {div.conferences.map(conf => (
-                  <ConferenceTable key={conf.conference_id} conference={conf} />
-                ))}
+          {sortedDivisions.map(div => {
+            const confs = div.conferences
+            // Separate small conferences (<=3 teams) from large ones
+            const smallConfs = confs.filter(c => c.teams.length <= 3)
+            const largeConfs = confs.filter(c => c.teams.length > 3)
+
+            return (
+              <div key={div.name}>
+                <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  {div.name}
+                </h2>
+                <div className={`grid gap-3 ${
+                  confs.length >= 3 ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' :
+                  confs.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                  largeConfs.length === 1 && smallConfs.length > 0 ? 'grid-cols-1 md:grid-cols-2' :
+                  'grid-cols-1 md:grid-cols-2'
+                }`}>
+                  {/* Large conferences render normally */}
+                  {largeConfs.map(conf => (
+                    <ConferenceTable key={conf.conference_id} conference={conf} />
+                  ))}
+                  {/* Stack small conferences in one column */}
+                  {smallConfs.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                      {smallConfs.map(conf => (
+                        <ConferenceTable key={conf.conference_id} conference={conf} />
+                      ))}
+                    </div>
+                  )}
+                  {/* If no small/large split needed, render single conference */}
+                  {smallConfs.length === 0 && largeConfs.length === 0 && confs.map(conf => (
+                    <ConferenceTable key={conf.conference_id} conference={conf} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       ) : (
         <OverallTable teams={overall} />

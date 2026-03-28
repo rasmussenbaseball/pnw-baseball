@@ -298,13 +298,13 @@ def wmt_to_pitching_rows(wmt_players):
             "W-L": f"{w}-{l}",
             "APP-GS": f"{app}-{gs}",
             "IP": ip_str,
-            "H": str(_wmt_int(stats.get("sHits"))),
-            "R": str(_wmt_int(stats.get("sRuns"))),
+            "H": str(_wmt_int(stats.get("sHitsAllowed"))),
+            "R": str(_wmt_int(stats.get("sRunsAllowed"))),
             "ER": str(_wmt_int(stats.get("sEarnedRuns"))),
-            "BB": str(_wmt_int(stats.get("sWalks"))),
-            "SO": str(_wmt_int(stats.get("sStrikeoutsPitching"))),
-            "HR": str(_wmt_int(stats.get("sHomeRuns"))),
-            "HBP": str(_wmt_int(stats.get("sHitByPitch"))),
+            "BB": str(_wmt_int(stats.get("sBasesOnBallsAllowed"))),
+            "SO": str(_wmt_int(stats.get("sStrikeouts"))),
+            "HR": str(_wmt_int(stats.get("sHomeRunsAllowed"))),
+            "HBP": str(_wmt_int(stats.get("sHitBattersPitching"))),
             "WP": str(_wmt_int(stats.get("sWildPitches"))),
             "BK": str(_wmt_int(stats.get("sBalks"))),
             "CG": str(_wmt_int(stats.get("sCompleteGames"))),
@@ -347,12 +347,20 @@ def build_wmt_roster(wmt_players):
     return roster
 
 
-def _wmt_get_season_stats(wmt_player):
-    """Extract season stats dict from a WMT player object."""
-    if "season_stats" in wmt_player and isinstance(wmt_player["season_stats"], list):
-        if wmt_player["season_stats"]:
-            return wmt_player["season_stats"][0]
-    return {}
+def _wmt_get_season_stats(player):
+    """Extract the season cumulative stats dict from a WMT player object."""
+    try:
+        columns = player["statistic"]["data"]["season"]["columns"]
+        # Period 0 = overall/cumulative
+        for col in columns:
+            if col.get("period") == 0:
+                return col.get("statistic", {})
+        # Fallback: first column
+        if columns:
+            return columns[0].get("statistic", {})
+    except (KeyError, TypeError, IndexError):
+        pass
+    return None
 
 
 def _wmt_int(val, default=0):
@@ -389,95 +397,308 @@ def _wmt_height_str(ft, inches):
 # ============================================================
 
 def find_stats_tables(html):
-    """Parse the stats HTML and return (batting_table, pitching_table) as BeautifulSoup table objects."""
+    """
+    Find the Overall batting and pitching tables in a Sidearm stats page.
+    """
     soup = BeautifulSoup(html, "html.parser")
-    tables = soup.find_all("table")
 
     batting_table = None
     pitching_table = None
 
+    tables = soup.find_all("table")
+
     for table in tables:
-        # Look for header rows to identify table type
+        heading_text = ""
+        caption = table.find("caption")
+        if caption:
+            heading_text = caption.get_text(strip=True).lower()
+
+        if not heading_text:
+            prev = table.find_previous(["h2", "h3", "h4", "caption", "div"])
+            if prev:
+                heading_text = prev.get_text(strip=True).lower()
+
         thead = table.find("thead")
         if not thead:
-            thead = table
-        header_text = " ".join([th.get_text(strip=True).lower() for th in thead.find_all("th")])
+            continue
+        header_cells = thead.find_all(["th", "td"])
+        header_text = " ".join(c.get_text(strip=True) for c in header_cells).lower()
 
-        if "at-bat" in header_text or "at bat" in header_text or ("h" in header_text and "ab" in header_text):
-            if batting_table is None:
-                batting_table = table
-        if "era" in header_text or ("ip" in header_text and "w-l" in header_text):
-            if pitching_table is None:
-                pitching_table = table
+        if "avg" in header_text and "ab" in header_text and "era" not in header_text:
+            if "conference" not in heading_text:
+                if batting_table is None:
+                    batting_table = table
+                    logger.debug(f"Found batting table (heading: {heading_text[:50]})")
+
+        elif "era" in header_text and "ip" in header_text:
+            if "conference" not in heading_text:
+                if pitching_table is None:
+                    pitching_table = table
+                    logger.debug(f"Found pitching table (heading: {heading_text[:50]})")
 
     return batting_table, pitching_table
 
 
 def parse_sidearm_table(table):
-    """Parse a Sidearm stats HTML table into list of row dicts."""
-    if not table:
+    """
+    Parse a Sidearm HTML stats table into a list of dicts.
+    Skips totals/opponents rows.
+    """
+    if table is None:
+        return []
+
+    thead = table.find("thead")
+    if not thead:
+        return []
+
+    raw_headers = []
+    for cell in thead.find_all(["th", "td"]):
+        text = cell.get_text(strip=True)
+        link = cell.find("a")
+        if link:
+            text = link.get_text(strip=True)
+        raw_headers.append(text)
+
+    if len(raw_headers) < 5:
+        logger.warning(f"Table has too few headers: {raw_headers}")
         return []
 
     rows = []
-
-    # Find header
-    thead = table.find("thead")
-    if not thead:
-        return rows
-
-    header_cells = thead.find_all("th")
-    headers = [th.get_text(strip=True) for th in header_cells]
-
-    # Parse body
     tbody = table.find("tbody")
-    if not tbody:
-        return rows
+    trs = tbody.find_all("tr") if tbody else table.find_all("tr")[1:]
 
-    for tr in tbody.find_all("tr"):
-        tds = tr.find_all("td")
-        if len(tds) != len(headers):
+    for tr in trs:
+        tr_class = " ".join(tr.get("class", []))
+        if "footer" in tr_class or "totals" in tr_class:
+            continue
+
+        cells = tr.find_all(["td", "th"])
+        if len(cells) < 5:
             continue
 
         row = {}
-        for i, td in enumerate(tds):
-            text = td.get_text(strip=True)
-            row[headers[i]] = text
+        for i, cell in enumerate(cells):
+            if i < len(raw_headers):
+                header = raw_headers[i]
+
+                if header.lower() == "player":
+                    link = cell.find("a")
+                    if link:
+                        row["player_url"] = link.get("href", "")
+                        pid = link.get("data-player-id") or cell.get("data-player-id")
+                        if pid:
+                            row["sidearm_player_id"] = pid
+
+                        direct_text = "".join(
+                            child.strip()
+                            for child in link.children
+                            if isinstance(child, NavigableString)
+                        ).strip()
+
+                        if direct_text and "," in direct_text:
+                            value = direct_text
+                        else:
+                            full_text = link.get_text(strip=True)
+                            name_match = re.search(r'([A-Za-z\'\-\. ]+,\s*[A-Za-z\'\-\. ]+)$', full_text)
+                            if name_match:
+                                value = name_match.group(1)
+                            else:
+                                value = full_text
+                    else:
+                        value = cell.get_text(strip=True)
+                else:
+                    value = cell.get_text(strip=True)
+
+                row[header] = value
+
+        # ---- Normalize header keys to uppercase ----
+        # Newer Sidearm D1 sites (UW, Oregon, OSU, WSU) return lowercase
+        # column headers (r, h, bb, so, hr, etc.) but we expect uppercase.
+        normalized = {}
+        for k, v in row.items():
+            kl = k.lower()
+            if kl == "player":
+                normalized["Player"] = v
+            elif k == "#":
+                normalized["#"] = v
+            elif k == "player_url":
+                normalized["player_url"] = v
+            elif k == "sidearm_player_id":
+                normalized["sidearm_player_id"] = v
+            else:
+                normalized[k.upper()] = v
+        row = normalized
+
+        player_name = row.get("Player", "").strip()
+        if player_name.lower() in ("totals", "total", "team", "opponents", "opponent", ""):
+            continue
 
         rows.append(row)
 
     return rows
 
 
-def parse_nuxt_batting(html):
-    """Extract batting stats from Nuxt __NUXT_DATA__ payload."""
-    # Look for __NUXT_DATA__ script tag
-    soup = BeautifulSoup(html, "html.parser")
-    script_tag = soup.find("script", {"id": "__NUXT_DATA__"})
-    if not script_tag:
-        return []
-
-    try:
-        json_str = script_tag.string
-        if not json_str:
-            return []
-
-        data = json.loads(json_str)
-
-        # Parse Nuxt compressed format: [key1, val1, key2, val2, ...]
-        # Typical structure: find batting table data in the payload
-        # This is highly specific to Sidearm's Nuxt template, so parsing varies
-
-        rows = []
-        # For now, return empty — would need specific Nuxt payload structure info
-        return rows
-
-    except (json.JSONDecodeError, KeyError, IndexError):
-        return []
+def _nuxt_resolve(data, idx, depth=0):
+    """Resolve a Nuxt devalue reference index to its actual value."""
+    if depth > 6 or not isinstance(idx, int) or idx < 0 or idx >= len(data):
+        return None
+    val = data[idx]
+    if isinstance(val, (str, int, float, bool)) or val is None:
+        return val
+    if isinstance(val, list) and len(val) == 2 and isinstance(val[0], str) and val[0] in (
+        "ShallowReactive", "Reactive", "ShallowRef",
+    ):
+        return _nuxt_resolve(data, val[1], depth + 1)
+    # Don't return complex dicts/lists — treat as unresolvable
+    return None
 
 
 def parse_nuxt_pitching(html):
-    """Extract pitching stats from Nuxt __NUXT_DATA__ payload."""
-    return []  # Same as batting — would need specific structure
+    """
+    Extract individual player pitching stats from a Nuxt 3 devalue payload.
+    Returns list of dicts matching the same key format as parse_sidearm_table().
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    nuxt_script = soup.find("script", id="__NUXT_DATA__")
+    if not nuxt_script or not nuxt_script.string:
+        return []
+
+    try:
+        data = json.loads(nuxt_script.string)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    # Find individual player pitching objects (have both playerName and earnedRunAverage)
+    pitching_objs = []
+    for idx, item in enumerate(data):
+        if isinstance(item, dict) and "playerName" in item and "earnedRunAverage" in item:
+            pitching_objs.append(item)
+
+    if not pitching_objs:
+        return []
+
+    # Deduplicate: take first occurrence of each player name (Overall, not Conference)
+    seen_names = set()
+    rows = []
+    for obj in pitching_objs:
+        is_footer = _nuxt_resolve(data, obj.get("isAFooterStat", 0))
+        if is_footer:
+            continue
+
+        name = _nuxt_resolve(data, obj.get("playerName", 0))
+        if not name or not isinstance(name, str):
+            continue
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+
+        def r(key, default="0"):
+            val = _nuxt_resolve(data, obj.get(key, 0))
+            return str(val) if val is not None else default
+
+        # Build a row dict matching parse_sidearm_table() output format
+        w = r("wins")
+        l = r("losses")
+        app = r("appearances", r("gamesPlayed"))
+        gs = r("gamesStarted")
+
+        rows.append({
+            "Player": name,
+            "#": r("playerUniform", ""),
+            "ERA": r("earnedRunAverage"),
+            "WHIP": r("whip"),
+            "W-L": f"{w}-{l}",
+            "APP-GS": f"{app}-{gs}",
+            "CG": r("gamesCompleted"),
+            "SHO": r("shutouts"),
+            "SV": r("saves"),
+            "IP": r("inningsPitched"),
+            "H": r("hitsAllowed"),
+            "R": r("runsAllowed"),
+            "ER": r("earnedRunsAllowed"),
+            "BB": r("walksAllowed"),
+            "SO": r("strikeouts"),
+            "HR": r("homeRunsAllowed"),
+            "HBP": r("hitBatters"),
+            "WP": r("wildPitches"),
+            "BK": r("balks"),
+        })
+
+    logger.info(f"  Nuxt payload: extracted {len(rows)} pitching rows")
+    return rows
+
+
+def parse_nuxt_batting(html):
+    """
+    Extract individual player batting stats from a Nuxt 3 devalue payload.
+    Returns list of dicts matching the same key format as parse_sidearm_table().
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    nuxt_script = soup.find("script", id="__NUXT_DATA__")
+    if not nuxt_script or not nuxt_script.string:
+        return []
+
+    try:
+        data = json.loads(nuxt_script.string)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    batting_objs = []
+    for idx, item in enumerate(data):
+        if isinstance(item, dict) and "playerName" in item and "battingAverage" in item and "atBats" in item:
+            batting_objs.append(item)
+
+    if not batting_objs:
+        return []
+
+    seen_names = set()
+    rows = []
+    for obj in batting_objs:
+        is_footer = _nuxt_resolve(data, obj.get("isAFooterStat", 0))
+        if is_footer:
+            continue
+
+        name = _nuxt_resolve(data, obj.get("playerName", 0))
+        if not name or not isinstance(name, str):
+            continue
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+
+        def r(key, default="0"):
+            val = _nuxt_resolve(data, obj.get(key, 0))
+            return str(val) if val is not None else default
+
+        gp = r("gamesPlayed")
+        gs = r("gamesStarted")
+        sb = r("stolenBases")
+        sba = r("stolenBasesAttemps", r("stolenBasesAttempts", sb))
+
+        rows.append({
+            "Player": name,
+            "#": r("playerUniform", ""),
+            "AVG": r("battingAverage"),
+            "OPS": r("ops"),
+            "GP-GS": f"{gp}-{gs}",
+            "AB": r("atBats"),
+            "R": r("runs"),
+            "H": r("hits"),
+            "2B": r("doubles"),
+            "3B": r("triples"),
+            "HR": r("homeRuns"),
+            "RBI": r("runsBattedIn"),
+            "BB": r("walks"),
+            "HBP": r("hitByPitch"),
+            "SO": r("strikeouts"),
+            "GDP": r("groundedIntoDoublePlay"),
+            "SF": r("sacrificeFlies"),
+            "SH": r("sacrificeHits"),
+            "SB-ATT": f"{sb}-{sba}",
+            "IBB": r("intentionalWalks"),
+        })
+
+    logger.info(f"  Nuxt payload: extracted {len(rows)} batting rows")
+    return rows
 
 
 def fetch_sidearm_roster_json(base_url, season_year):
@@ -800,7 +1021,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     overall, conf = extract_record_from_html(sched_html)
                     if overall:
                         with get_connection() as rconn:
-                            save_team_record(rconn, team_id, int(season_year), overall, conf)
+                            save_team_record(rconn.cursor(), team_id, int(season_year), overall, conf)
 
                 logger.info(f"  WMT API — Batting: {len(batting_rows)} players, Pitching: {len(pitching_rows)} players")
                 if roster_by_name:
@@ -843,7 +1064,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 overall, conf = extract_record_from_html(sched_html)
         if overall:
             with get_connection() as rconn:
-                save_team_record(rconn, team_id, int(season_year), overall, conf)
+                save_team_record(rconn.cursor(), team_id, int(season_year), overall, conf)
 
         # ---- Parse tables ----
         batting_table, pitching_table = find_stats_tables(stats_html)

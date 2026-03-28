@@ -13,28 +13,29 @@ const NAV = [
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
       { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
-      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats' },
+      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats', locked: true },
     ],
   },
   {
     label: 'Teams',
     items: [
       { to: '/teams', label: 'Team Pages', desc: 'Rosters, stats & profiles' },
+      { to: '/results', label: 'Results', desc: 'Game scores & box scores' },
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
       { to: '/team-history', label: 'History', desc: 'Historical team performance' },
-      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns' },
+      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
     ],
   },
   {
     label: 'Recruiting',
     items: [
-      { to: '/recruiting/rankings', label: 'Rankings', desc: 'Player recruiting rankings' },
-      { to: '/recruiting/map', label: 'Map', desc: 'Where programs recruit from' },
-      { to: '/recruiting/breakdowns', label: 'Breakdowns', desc: 'Analysis by region & position' },
-      { to: '/recruiting/history', label: 'History', desc: 'Historical recruiting trends' },
-      { to: '/recruiting/field', label: 'Field', desc: 'Field-level visualization' },
+      { to: '/recruiting/rankings', label: 'Rankings', desc: 'Player recruiting rankings', locked: true },
+      { to: '/recruiting/map', label: 'Map', desc: 'Where programs recruit from', locked: true },
+      { to: '/recruiting/breakdowns', label: 'Breakdowns', desc: 'Analysis by region & position', locked: true },
+      { to: '/recruiting/history', label: 'History', desc: 'Historical recruiting trends', locked: true },
+      { to: '/recruiting/field', label: 'Field', desc: 'Field-level visualization', locked: true },
     ],
   },
   {
@@ -42,18 +43,18 @@ const NAV = [
     items: [
       { to: '/juco-tracker', label: 'JUCO Tracker', desc: 'Track JUCO transfer talent' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
-      { to: '/player-scouting', label: 'Player Scouting', desc: 'Individual scouting reports' },
-      { to: '/team-scouting', label: 'Team Scouting', desc: 'Team tendencies & reports' },
-      { to: '/enhanced-scouting', label: 'Enhanced Scouting', desc: 'Advanced scouting tools' },
+      { to: '/player-scouting', label: 'Player Scouting', desc: 'Individual scouting reports', locked: true },
+      { to: '/team-scouting', label: 'Team Scouting', desc: 'Team tendencies & reports', locked: true },
+      { to: '/enhanced-scouting', label: 'Enhanced Scouting', desc: 'Advanced scouting tools', locked: true },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
     ],
   },
   {
     label: 'Draft',
     items: [
-      { to: '/draft/2026', label: "Draft Board '26", desc: '2026 MLB Draft prospects' },
-      { to: '/draft/2027', label: "Draft Board '27", desc: '2027 MLB Draft prospects' },
-      { to: '/draft/2028', label: "Draft Board '28", desc: '2028 MLB Draft prospects' },
+      { to: '/draft/2026', label: "Draft Board '26", desc: '2026 MLB Draft prospects', locked: true },
+      { to: '/draft/2027', label: "Draft Board '27", desc: '2027 MLB Draft prospects', locked: true },
+      { to: '/draft/2028', label: "Draft Board '28", desc: '2028 MLB Draft prospects', locked: true },
     ],
   },
   {
@@ -429,13 +430,21 @@ function DropdownPanel({ items, onClose }) {
           key={item.to}
           to={item.to}
           onClick={onClose}
-          className="flex flex-col px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors group"
+          className={`flex flex-col px-3 py-2.5 rounded-lg transition-colors group ${
+            item.locked ? 'opacity-50 hover:bg-white/5' : 'hover:bg-white/10'
+          }`}
         >
-          <span className="text-sm font-semibold text-white group-hover:text-teal-200 transition-colors">
+          <span className="text-sm font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5">
             {item.label}
+            {item.locked && (
+              <svg className="w-3 h-3 text-teal-300/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+            )}
           </span>
           <span className="text-xs text-teal-300/60 mt-0.5">
-            {item.desc}
+            {item.locked ? 'Coming soon' : item.desc}
           </span>
         </Link>
       ))}
@@ -691,13 +700,20 @@ export default function Header() {
                           key={item.to}
                           to={item.to}
                           onClick={() => { setMobileOpen(false); setMobileExpanded(null) }}
-                          className={`block px-3 py-1.5 rounded text-sm transition-colors
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors
+                            ${item.locked ? 'opacity-50' : ''}
                             ${location.pathname === item.to
                               ? 'bg-white/15 text-white font-medium'
                               : 'text-teal-200/70 hover:text-white hover:bg-white/10'
                             }`}
                         >
                           {item.label}
+                          {item.locked && (
+                            <svg className="w-3 h-3 text-teal-300/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0110 0v4" />
+                            </svg>
+                          )}
                         </Link>
                       ))}
                     </div>

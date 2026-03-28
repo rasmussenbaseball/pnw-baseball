@@ -675,7 +675,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
     overall, conf = extract_record_from_html(stats_html)
     if overall:
         with get_connection() as rconn:
-            save_team_record(rconn, team_id, int(season_year), overall, conf)
+            save_team_record(rconn.cursor(), team_id, int(season_year), overall, conf)
 
     # ---- Parse tables ----
     batting_table, pitching_table = find_stats_tables(stats_html)

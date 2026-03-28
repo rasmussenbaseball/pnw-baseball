@@ -20,6 +20,8 @@ import Homepage from './pages/Homepage'
 import SummerballData from './pages/SummerballData'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
+import ResultsPage from './pages/ResultsPage'
+import GameDetail from './pages/GameDetail'
 import TeamRatings from './pages/TeamRatings'
 import TeamHistory from './pages/TeamHistory'
 import RecruitingClasses from './pages/RecruitingClasses'
@@ -59,6 +61,8 @@ export default function App() {
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
           <Route path="/standings" element={<StandingsPage />} />
+          <Route path="/results" element={<ResultsPage />} />
+          <Route path="/game/:gameId" element={<GameDetail />} />
           <Route path="/team/:teamId" element={<TeamDetail />} />
           <Route path="/team-ratings" element={<TeamRatings />} />
           <Route path="/national-rankings" element={<NationalRankings />} />

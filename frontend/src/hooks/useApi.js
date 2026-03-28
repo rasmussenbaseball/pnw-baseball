@@ -171,3 +171,51 @@ export function useParkFactors(filters = {}) {
 export function useTeamHistory(teamId) {
   return useApi(`/teams/${teamId}/history`, {}, [teamId])
 }
+
+// ─── Game Results & Box Scores ───
+
+/**
+ * Fetch recent game results (for results page).
+ */
+export function useRecentGames(season = 2026, limit = 50, teamId = null, division = null) {
+  return useApi('/games/recent', {
+    season, limit,
+    team_id: teamId || undefined,
+    division: division || undefined,
+  }, [season, limit, teamId, division])
+}
+
+/**
+ * Fetch full box score for a single game.
+ */
+export function useGameDetail(gameId) {
+  return useApi(`/games/${gameId}`, {}, [gameId])
+}
+
+/**
+ * Fetch all games for a team in a season.
+ */
+export function useTeamGames(teamId, season = 2026) {
+  return useApi(`/teams/${teamId}/games`, { season }, [teamId, season])
+}
+
+/**
+ * Fetch compact ticker data (most recent results).
+ */
+export function useGamesTicker(season = 2026, limit = 12) {
+  return useApi('/games/ticker', { season, limit }, [season, limit])
+}
+
+/**
+ * Quality starts leaderboard.
+ */
+export function useQualityStarts(season = 2026, limit = 25) {
+  return useApi('/games/quality-starts', { season, limit }, [season, limit])
+}
+
+/**
+ * Top game scores leaderboard.
+ */
+export function useGameScores(season = 2026, limit = 25) {
+  return useApi('/games/game-scores', { season, limit }, [season, limit])
+}

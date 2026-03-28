@@ -63,7 +63,7 @@ export default function JucoTracker() {
     sort_dir: sortDir,
     min_ab: minAb || 0,
     min_ip: minIp || 0,
-    limit: 200,
+    limit: 500,
   }, [season, position, classYear, sortBy, sortDir, minAb, minIp])
 
   const positions = ['C', 'IF', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH', 'P', 'UT']
@@ -130,9 +130,9 @@ export default function JucoTracker() {
               onChange={(e) => setClassYear(e.target.value)}
               className="rounded border border-gray-300 px-3 py-1.5 text-sm"
             >
-              <option value="">All</option>
               <option value="So">Sophomores</option>
               <option value="Fr">Freshmen</option>
+              <option value="">All</option>
             </select>
           </div>
 

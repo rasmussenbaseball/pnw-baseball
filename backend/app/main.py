@@ -5,11 +5,25 @@ Main entry point. Run with:
     uvicorn app.main:app --reload --port 8000
 """
 
+import json
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal objects from Postgres."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            # Return int if no decimal part, else float
+            if obj == int(obj):
+                return int(obj)
+            return float(obj)
+        return super().default(obj)
 
 # Load .env from project root (for SUPABASE_* vars)
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
@@ -19,6 +33,12 @@ from fastapi.staticfiles import StaticFiles
 from .api.routes import router
 from .models.database import init_db, seed_divisions_and_conferences
 
+class DecimalJSONResponse(JSONResponse):
+    """JSONResponse that can serialize Decimal objects from Postgres."""
+    def render(self, content) -> bytes:
+        return json.dumps(content, cls=DecimalEncoder, ensure_ascii=False).encode("utf-8")
+
+
 app = FastAPI(
     title="PNW College Baseball Analytics",
     description=(
@@ -27,6 +47,7 @@ app = FastAPI(
         "Includes advanced metrics: FIP, xFIP, SIERA, wOBA, wRC+, and custom college WAR."
     ),
     version="0.1.0",
+    default_response_class=DecimalJSONResponse,
 )
 
 # CORS — allow React dev server (local development)

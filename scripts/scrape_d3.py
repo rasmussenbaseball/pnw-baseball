@@ -415,7 +415,7 @@ def scrape_team_presto(base_url, sport_path, slug, db_short, team_id, season_yea
         overall, conf = extract_record_from_html(team_page_html)
         if overall:
             with get_connection() as rconn:
-                save_team_record(rconn, team_id, int(season_year), overall, conf)
+                save_team_record(rconn.cursor(), team_id, int(season_year), overall, conf)
 
     if not batting_rows and not pitching_rows:
         logger.error(f"  No stats found for {db_short}")
@@ -933,13 +933,14 @@ def get_d3_team_id_map():
     short_to_id = {}
     with get_connection() as conn:
         cur = conn.cursor()
-        rows = cur.execute("""
+        cur.execute("""
             SELECT t.id, t.short_name, t.name
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE d.level = 'D3' AND t.is_active = 1
-        """).fetchall()
+        """)
+        rows = cur.fetchall()
         for row in rows:
             short_to_id[row["short_name"]] = row["id"]
 
@@ -949,10 +950,11 @@ def get_d3_team_id_map():
 
 def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
-    existing = cur.execute(
+    cur.execute(
         "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
         (first_name, last_name, team_id),
-    ).fetchone()
+    )
+    existing = cur.fetchone()
 
     if existing:
         player_id = existing["id"]
@@ -970,10 +972,11 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
                 params,
             )
     else:
-        cursor = cur.execute(
+        cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
                year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -988,7 +991,7 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
                 kwargs.get("previous_school"),
             ),
         )
-        player_id = cursor.lastrowid
+        player_id = cur.fetchone()["id"]
 
     return player_id
 
@@ -1028,7 +1031,7 @@ def scrape_team(base_url, sport_path, db_short, team_id, season_year, skip_roste
     overall, conf = extract_record_from_html(stats_html)
     if overall:
         with get_connection() as rconn:
-            save_team_record(rconn, team_id, int(season_year), overall, conf)
+            save_team_record(rconn.cursor(), team_id, int(season_year), overall, conf)
 
     # ---- Parse tables ----
     batting_table, pitching_table = find_stats_tables(stats_html)

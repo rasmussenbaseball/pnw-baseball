@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useStandings, useNationalRankings, useTeamRatings } from '../hooks/useApi'
+import { useStatLeaders, useStandings, useNationalRankings, useTeamRatings, useGamesTicker } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 
 const SEASON = 2026
@@ -27,9 +27,13 @@ export default function Homepage() {
   const { data: standings } = useStandings(SEASON)
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
+  const { data: recentGames } = useGamesTicker(SEASON, 12)
 
   return (
     <div>
+      {/* Game results ticker */}
+      <GameResultsTicker games={recentGames} />
+
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
 
@@ -47,6 +51,71 @@ export default function Homepage() {
           <PowerRankingsWidget ratings={ratings} />
           <QuickLinksWidget />
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// GAME RESULTS TICKER (horizontal scroll of recent scores)
+// ════════════════════════════════════════════
+function GameResultsTicker({ games }) {
+  if (!games || games.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-3">
+      <div className="flex items-center">
+        <div className="flex-none px-3 py-2 bg-pnw-slate text-white">
+          <Link to="/results" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors">
+            Scores
+          </Link>
+        </div>
+        <div className="flex overflow-x-auto scrollbar-hide gap-0 divide-x divide-gray-100 flex-1">
+          {games.map((g) => {
+            const homeWon = g.home_score > g.away_score
+            return (
+              <Link
+                key={g.id}
+                to={`/game/${g.id}`}
+                className="flex-none px-3 py-1.5 hover:bg-gray-50 transition-colors min-w-[120px]"
+              >
+                {/* Away */}
+                <div className={`flex items-center justify-between gap-2 ${homeWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
+                  <div className="flex items-center gap-1 min-w-0">
+                    {g.away_logo && (
+                      <img src={g.away_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-[11px] truncate">{g.away_name}</span>
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums">{g.away_score}</span>
+                </div>
+                {/* Home */}
+                <div className={`flex items-center justify-between gap-2 ${homeWon ? 'font-semibold text-gray-800' : 'text-gray-400'}`}>
+                  <div className="flex items-center gap-1 min-w-0">
+                    {g.home_logo && (
+                      <img src={g.home_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-[11px] truncate">{g.home_name}</span>
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums">{g.home_score}</span>
+                </div>
+                {/* Date */}
+                <div className="text-[9px] text-gray-300 text-center mt-0.5">
+                  {g.game_date ? new Date(g.game_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                  {g.innings && g.innings !== 9 ? ` (${g.innings})` : ''}
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+        <Link to="/results" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
       </div>
     </div>
   )
@@ -183,51 +252,103 @@ function StandingsWidget({ standings }) {
         <Link to="/standings" className="text-xs text-pnw-teal hover:underline">Full standings →</Link>
       </div>
 
-      {divOrder.map(divLevel => {
-        const confs = byDiv[divLevel]
-        if (!confs) return null
+      {/* D1: has multiple conferences, needs special layout for Independent */}
+      {byDiv['D1'] && (() => {
+        const confs = byDiv['D1']
+        const smallConfs = confs.filter(c => c.teams.length <= 3)
+        const largeConfs = confs.filter(c => c.teams.length > 3)
         return (
-          <div key={divLevel} className="mb-3 last:mb-0">
-            <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS[divLevel] || 'bg-gray-600'} inline-block mb-1.5`}>
-              {divLevel}
-            </div>
-            <div className={`grid gap-3 ${confs.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-              {confs.map(conf => (
-                <div key={conf.conference_id} className="border border-gray-200 rounded text-xs">
-                  <div className="bg-gray-50 px-2 py-1 font-semibold text-gray-700 border-b border-gray-200 flex justify-between">
-                    <span>{conf.conference_abbrev === 'IND' ? 'Independent' : (conf.conference_abbrev || conf.conference_name)}</span>
-                    <span className="text-gray-400 font-normal">Conf / Overall</span>
-                  </div>
-                  {conf.teams.map((team) => {
-                    const isPnw = team.is_pnw
-                    const Row = isPnw ? Link : 'div'
-                    const rowProps = isPnw
-                      ? { to: `/team/${team.id}`, className: "flex items-center gap-1.5 px-2 py-1 hover:bg-teal-50/50 border-b border-gray-50 last:border-b-0" }
-                      : { className: "flex items-center gap-1.5 px-2 py-1 border-b border-gray-50 last:border-b-0 opacity-50" }
-                    return (
-                      <Row key={team.id} {...rowProps}>
-                        {team.logo_url && (
-                          <img src={team.logo_url} alt="" className={`w-4 h-4 object-contain ${isPnw ? '' : 'grayscale'}`}
-                            onError={(e) => { e.target.style.display = 'none' }} />
-                        )}
-                        <span className={`font-medium truncate flex-1 ${isPnw ? 'text-nw-teal font-semibold' : 'text-gray-400'}`}>{team.short_name}</span>
-                        <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-500' : 'text-gray-400'}`}>
-                          {team.conf_wins + team.conf_losses > 0
-                            ? `${team.conf_wins}-${team.conf_losses}`
-                            : '-'}
-                        </span>
-                        <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-400' : 'text-gray-300'}`}>
-                          {team.wins || team.losses
-                            ? `${team.wins}-${team.losses}`
-                            : '-'}
-                        </span>
-                      </Row>
-                    )
-                  })}
+          <div className="mb-3">
+            <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS['D1']} inline-block mb-1.5`}>D1</div>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+              {largeConfs.map(conf => (
+                <StandingsConf key={conf.conference_id} conf={conf} />
+              ))}
+              {smallConfs.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {smallConfs.map(conf => (
+                    <StandingsConf key={conf.conference_id} conf={conf} />
+                  ))}
                 </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* D2, D3, NAIA: compact row — one conference each, side by side */}
+      {(['D2', 'D3', 'NAIA'].some(d => byDiv[d])) && (
+        <div className="mb-3">
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
+            {['D2', 'D3', 'NAIA'].map(divLevel => {
+              const confs = byDiv[divLevel]
+              if (!confs) return null
+              return (
+                <div key={divLevel}>
+                  <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS[divLevel] || 'bg-gray-600'} inline-block mb-1.5`}>
+                    {divLevel}
+                  </div>
+                  {confs.map(conf => (
+                    <StandingsConf key={conf.conference_id} conf={conf} />
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* JUCO: multiple NWAC conferences, 2-column grid */}
+      {byDiv['JUCO'] && (() => {
+        const confs = byDiv['JUCO']
+        return (
+          <div className="mb-3 last:mb-0">
+            <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS['JUCO']} inline-block mb-1.5`}>JUCO</div>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+              {confs.map(conf => (
+                <StandingsConf key={conf.conference_id} conf={conf} />
               ))}
             </div>
           </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+
+// ─── Conference standings card (reused in StandingsWidget) ───
+function StandingsConf({ conf }) {
+  return (
+    <div className="border border-gray-200 rounded text-xs">
+      <div className="bg-gray-50 px-2 py-1 font-semibold text-gray-700 border-b border-gray-200 flex justify-between">
+        <span>{conf.conference_abbrev === 'IND' ? 'Independent' : (conf.conference_abbrev || conf.conference_name)}</span>
+        <span className="text-gray-400 font-normal">Conf / Overall</span>
+      </div>
+      {conf.teams.map((team) => {
+        const isPnw = team.is_pnw
+        const Row = isPnw ? Link : 'div'
+        const rowProps = isPnw
+          ? { to: `/team/${team.id}`, className: "flex items-center gap-1.5 px-2 py-1 hover:bg-teal-50/50 border-b border-gray-50 last:border-b-0" }
+          : { className: "flex items-center gap-1.5 px-2 py-1 border-b border-gray-50 last:border-b-0 opacity-50" }
+        return (
+          <Row key={team.id} {...rowProps}>
+            {team.logo_url && (
+              <img src={team.logo_url} alt="" className={`w-4 h-4 object-contain ${isPnw ? '' : 'grayscale'}`}
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <span className={`font-medium truncate flex-1 ${isPnw ? 'text-nw-teal font-semibold' : 'text-gray-400'}`}>{team.short_name}</span>
+            <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-500' : 'text-gray-400'}`}>
+              {team.conf_wins + team.conf_losses > 0
+                ? `${team.conf_wins}-${team.conf_losses}`
+                : '-'}
+            </span>
+            <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-400' : 'text-gray-300'}`}>
+              {team.wins || team.losses
+                ? `${team.wins}-${team.losses}`
+                : '-'}
+            </span>
+          </Row>
         )
       })}
     </div>

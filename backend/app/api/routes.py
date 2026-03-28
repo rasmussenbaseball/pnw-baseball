@@ -73,7 +73,7 @@ def _add_era_plus(row: dict) -> dict:
 def _apply_year_filter(query: str, params: list, year_in_school: str, col: str = "p.year_in_school"):
     """Append a year_in_school filter to a SQL query, grouping redshirt with regular."""
     years = _YEAR_GROUPS.get(year_in_school, (year_in_school,))
-    placeholders = ",".join("%s" * len(years))
+    placeholders = ",".join(["%s"] * len(years))
     query += f" AND {col} IN ({placeholders})"
     params.extend(years)
     return query
@@ -177,7 +177,7 @@ def teams_summary(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE t.is_active = 1
-              AND t.state IN ('WA', 'OR', 'ID', 'MT')
+              AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
         """
         team_params = []
         if division_id:
@@ -313,7 +313,7 @@ def standings(
         for r in rows:
             team = dict(r)
             # Flag PNW teams (WA, OR, ID, MT)
-            team["is_pnw"] = team.get("state", "") in ("WA", "OR", "ID", "MT")
+            team["is_pnw"] = team.get("state", "") in ("WA", "OR", "ID", "MT", "BC")
             # Compute win percentages
             total_games = team["wins"] + team["losses"]
             team["win_pct"] = round(team["wins"] / total_games, 3) if total_games > 0 else 0
@@ -485,7 +485,7 @@ def team_ratings(
                 GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1
-              AND t.state IN ('WA', 'OR', 'ID', 'MT')
+              AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
             ORDER BY d.id, t.short_name
         """, (season, season, season))
         rows = cur.fetchall()
@@ -702,17 +702,17 @@ def compare_teams(
                        SUM(strikeouts) as total_k,
                        SUM(stolen_bases) as total_sb,
                        CASE WHEN SUM(at_bats) > 0
-                            THEN ROUND(CAST(SUM(hits) AS REAL) / SUM(at_bats), 3) ELSE 0 END as team_avg,
+                            THEN ROUND(SUM(hits)::numeric / SUM(at_bats), 3) ELSE 0 END as team_avg,
                        CASE WHEN SUM(plate_appearances) > 0
-                            THEN ROUND(CAST(SUM(hits) + SUM(walks) + SUM(hit_by_pitch) AS REAL) / SUM(plate_appearances), 3) ELSE 0 END as team_obp,
+                            THEN ROUND((SUM(hits) + SUM(walks) + SUM(hit_by_pitch))::numeric / SUM(plate_appearances), 3) ELSE 0 END as team_obp,
                        CASE WHEN SUM(at_bats) > 0
-                            THEN ROUND(CAST(SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs) AS REAL) / SUM(at_bats), 3) ELSE 0 END as team_slg,
-                       ROUND(AVG(woba), 3) as avg_woba,
-                       ROUND(AVG(wrc_plus), 0) as avg_wrc_plus,
-                       ROUND(AVG(iso), 3) as avg_iso,
-                       ROUND(AVG(bb_pct), 3) as avg_bb_pct,
-                       ROUND(AVG(k_pct), 3) as avg_k_pct,
-                       ROUND(SUM(offensive_war), 1) as total_owar
+                            THEN ROUND((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats), 3) ELSE 0 END as team_slg,
+                       ROUND(AVG(woba)::numeric, 3) as avg_woba,
+                       ROUND(AVG(wrc_plus)::numeric, 0) as avg_wrc_plus,
+                       ROUND(AVG(iso)::numeric, 3) as avg_iso,
+                       ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                       ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
+                       ROUND(SUM(offensive_war)::numeric, 1) as total_owar
                    FROM batting_stats
                    WHERE team_id = %s AND season = %s AND plate_appearances >= 10""",
                 (tid, season),
@@ -730,16 +730,16 @@ def compare_teams(
                        SUM(home_runs_allowed) as total_hr,
                        SUM(hit_batters) as total_hbp,
                        CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND(CAST(SUM(earned_runs) AS REAL) * 9 / SUM(innings_pitched), 2) ELSE 0 END as team_era,
+                            THEN ROUND(SUM(earned_runs)::numeric * 9 / SUM(innings_pitched), 2) ELSE 0 END as team_era,
                        CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND(CAST(SUM(walks) + SUM(hits_allowed) AS REAL) / SUM(innings_pitched), 2) ELSE 0 END as team_whip,
-                       ROUND(AVG(fip), 2) as avg_fip,
-                       ROUND(AVG(fip_plus), 0) as avg_fip_plus,
-                       ROUND(AVG(era_minus), 0) as avg_era_minus,
-                       ROUND(AVG(xfip), 2) as avg_xfip,
-                       ROUND(AVG(k_pct), 3) as avg_k_pct,
-                       ROUND(AVG(bb_pct), 3) as avg_bb_pct,
-                       ROUND(SUM(pitching_war), 1) as total_pwar
+                            THEN ROUND((SUM(walks) + SUM(hits_allowed))::numeric / SUM(innings_pitched), 2) ELSE 0 END as team_whip,
+                       ROUND(AVG(fip)::numeric, 2) as avg_fip,
+                       ROUND(AVG(fip_plus)::numeric, 0) as avg_fip_plus,
+                       ROUND(AVG(era_minus)::numeric, 0) as avg_era_minus,
+                       ROUND(AVG(xfip)::numeric, 2) as avg_xfip,
+                       ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
+                       ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                       ROUND(SUM(pitching_war)::numeric, 1) as total_pwar
                    FROM pitching_stats
                    WHERE team_id = %s AND season = %s AND innings_pitched >= 3""",
                 (tid, season),
@@ -773,7 +773,7 @@ def team_scatter(
         "total_hr", "total_sb", "total_runs", "total_rbi",
         "avg_woba", "avg_wrc_plus", "avg_iso", "total_owar",
         "avg_bb_pct", "avg_k_pct",
-        "team_era", "team_whip", "avg_fip", "avg_xfip",
+        "team_era", "team_whip", "avg_fip", "avg_fip_plus", "avg_era_plus", "avg_xfip",
         "total_k", "total_pwar", "pitching_k_pct", "pitching_bb_pct",
         "total_ip", "total_war",
     }
@@ -997,9 +997,9 @@ def get_team_rankings(
                 WHERE t.conference_id = %s AND t.is_active = 1
                 ORDER BY
                     CASE WHEN (COALESCE(s.conference_wins, 0) + COALESCE(s.conference_losses, 0)) > 0
-                         THEN CAST(COALESCE(s.conference_wins, 0) AS FLOAT) /
+                         THEN CAST(COALESCE(s.conference_wins, 0) AS numeric) /
                               (COALESCE(s.conference_wins, 0) + COALESCE(s.conference_losses, 0))
-                         ELSE CAST(COALESCE(s.wins, 0) AS FLOAT) /
+                         ELSE CAST(COALESCE(s.wins, 0) AS numeric) /
                               NULLIF(COALESCE(s.wins, 0) + COALESCE(s.losses, 0), 0)
                     END DESC,
                     COALESCE(s.wins, 0) DESC
@@ -1046,7 +1046,7 @@ def batting_leaderboard(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = Query(None, description="Filter by division"),
     conference_id: Optional[int] = Query(None, description="Filter by conference"),
-    state: Optional[str] = Query(None, description="Filter by state (WA, OR, ID, MT)"),
+    state: Optional[str] = Query(None, description="Filter by state (WA, OR, ID, MT, BC)"),
     team_id: Optional[int] = Query(None, description="Filter by team"),
     min_pa: int = Query(0, description="Minimum plate appearances"),
     min_ab: int = Query(0, description="Minimum at-bats"),
@@ -1122,7 +1122,7 @@ def batting_leaderboard(
                 "UT": ("UT", "DH"),
             }
             positions = pos_groups.get(pg, (pg,))
-            placeholders_pg = ",".join("%s" * len(positions))
+            placeholders_pg = ",".join(["%s"] * len(positions))
             query += f" AND p.position IN ({placeholders_pg})"
             params.extend(positions)
 
@@ -1172,12 +1172,13 @@ def batting_leaderboard(
                 "UT": ("UT", "DH"),
             }
             positions = pos_groups.get(pg, (pg,))
-            placeholders_pg = ",".join("%s" * len(positions))
+            placeholders_pg = ",".join(["%s"] * len(positions))
             count_q += f" AND p.position IN ({placeholders_pg})"
             count_params.extend(positions)
 
-        total = cur.execute(count_q, count_params)["total"]
-        total = cur.fetchone()
+        cur.execute(count_q, count_params)
+        total_row = cur.fetchone()
+        total = total_row["total"] if total_row else 0
 
         return {
             "data": [dict(r) for r in rows],
@@ -1228,11 +1229,13 @@ def pitching_leaderboard(
         "k_pct", "bb_pct", "k_bb_pct",
         "babip_against", "lob_pct", "pitching_war",
         "fip_plus", "era_minus", "era_plus",
+        "quality_starts",
     }
     # Computed column aliases that can't use ps.{name} in ORDER BY
     computed_sort_expressions = {
         "k_bb_pct": "(COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0))",
         "era_plus": "CASE WHEN ps.era_minus > 0 THEN 10000.0 / ps.era_minus END",
+        "quality_starts": "COALESCE(ps.quality_starts, 0)",
     }
     if sort_by not in allowed_sort:
         sort_by = "era"
@@ -1377,7 +1380,7 @@ def war_leaderboard(
                 "UT": ("UT", "DH"),
             }
             positions = pos_groups.get(pg, (pg,))
-            placeholders_pg = ",".join("%s" * len(positions))
+            placeholders_pg = ",".join(["%s"] * len(positions))
             batting_query += f" AND p.position IN ({placeholders_pg})"
             params_b.extend(positions)
 
@@ -1412,7 +1415,7 @@ def war_leaderboard(
         if position_group:
             pg = position_group.upper()
             positions = pos_groups.get(pg, (pg,))
-            placeholders_pg = ",".join("%s" * len(positions))
+            placeholders_pg = ",".join(["%s"] * len(positions))
             pitching_query += f" AND p.position IN ({placeholders_pg})"
             params_p.extend(positions)
 
@@ -1433,23 +1436,24 @@ def war_leaderboard(
                    MAX(wins) as wins, MAX(losses) as losses,
                    MAX(strikeouts_p) as strikeouts_p, MAX(walks_p) as walks_p,
                    CASE WHEN MAX(plate_appearances) > 0
-                        THEN ROUND(SUM(offensive_war) * 1.0 / MAX(plate_appearances), 4)
+                        THEN ROUND((SUM(offensive_war) / MAX(plate_appearances))::numeric, 4)
                         ELSE NULL END as war_per_pa,
                    CASE WHEN MAX(innings_pitched) > 0
-                        THEN ROUND(SUM(pitching_war) * 1.0 / MAX(innings_pitched), 4)
+                        THEN ROUND((SUM(pitching_war) / MAX(innings_pitched))::numeric, 4)
                         ELSE NULL END as war_per_ip
             FROM (
                 {batting_query}
                 UNION ALL
                 {pitching_query}
-            )
-            GROUP BY player_id
+            ) AS combined_stats
+            GROUP BY player_id, first_name, last_name, position, year_in_school,
+                     team_id, team_name, team_short, logo_url, division_name, division_level, conference_abbrev
             ORDER BY {sort_by} {sort_direction} NULLS LAST
             LIMIT %s OFFSET %s
         """
         params_combined = params_b + params_p + [limit, offset]
 
-        rows = cur.execute(combined_query, params_combined)
+        cur.execute(combined_query, params_combined)
         rows = cur.fetchall()
         return {
             "data": [_add_era_plus(dict(r)) for r in rows],
@@ -1481,7 +1485,7 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE t.is_active = 1
-              AND (t.name LIKE %s OR t.short_name LIKE %s OR t.mascot LIKE %s)
+              AND (t.name ILIKE %s OR t.short_name ILIKE %s OR t.mascot ILIKE %s)
             ORDER BY t.short_name
             LIMIT %s
         """, (search, search, search, limit))
@@ -1498,8 +1502,8 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
-              AND (p.first_name LIKE %s OR p.last_name LIKE %s
-                   OR (p.first_name || ' ' || p.last_name) LIKE %s)
+              AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
+                   OR (p.first_name || ' ' || p.last_name) ILIKE %s)
             ORDER BY p.last_name, p.first_name
             LIMIT %s
         """, (search, search, search, limit))
@@ -1543,8 +1547,8 @@ def search_players(
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
-              AND (p.first_name LIKE %s OR p.last_name LIKE %s
-                   OR (p.first_name || ' ' || p.last_name) LIKE %s)
+              AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
+                   OR (p.first_name || ' ' || p.last_name) ILIKE %s)
         """
         search = f"%{q}%"
         params: list = [search, search, search]
@@ -1626,6 +1630,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
         """
 
     result = {}
+    cur = conn.cursor()
     for stat_key, meta in metrics.items():
         player_val = player_stats.get(stat_key)
         if stat_key == "k_bb_pct" and player_val is None:
@@ -1639,7 +1644,8 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             continue
 
         q = base_query.format(col=meta["col"])
-        all_vals = [row[0] for row in cur.execute(q, (division_level, season))]
+        cur.execute(q, (division_level, season))
+        all_vals = [row["val"] for row in cur.fetchall()]
 
         if len(all_vals) < 5:
             continue
@@ -1768,6 +1774,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
     Compute percentiles for career aggregates by comparing against all players'
     career aggregates within the same division who have 2+ seasons.
     """
+    cur = conn.cursor()
     if stat_type == "batting":
         metrics = {
             "woba":          {"higher_better": True},
@@ -1901,6 +1908,7 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
         all_player_ids = [player_id]
     player_id_set = set(all_player_ids)
 
+    cur = conn.cursor()
     # Look up team info for this team_id
     cur.execute(
         "SELECT short_name, logo_url FROM teams WHERE id = %s", (team_id,)
@@ -2002,9 +2010,9 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
         for col, label, desc in bat_career_cats:
             # AVG needs special handling (can't just SUM it)
             if col == "batting_avg":
-                agg_expr = "ROUND(CAST(SUM(bs.hits) AS FLOAT) / NULLIF(SUM(bs.at_bats), 0), 3)"
+                agg_expr = "ROUND(CAST(SUM(bs.hits) AS numeric) / NULLIF(SUM(bs.at_bats), 0), 3)"
             elif col == "offensive_war":
-                agg_expr = "ROUND(SUM(bs.offensive_war), 1)"
+                agg_expr = "ROUND(SUM(bs.offensive_war)::numeric, 1)"
             else:
                 agg_expr = f"SUM(bs.{col})"
 
@@ -2049,11 +2057,11 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
     if pitching_list:
         for col, label, desc in pit_career_cats:
             if col == "era":
-                agg_expr = "ROUND(9.0 * CAST(SUM(ps.earned_runs) AS FLOAT) / NULLIF(SUM(ps.innings_pitched), 0), 2)"
+                agg_expr = "ROUND((9.0 * SUM(ps.earned_runs) / NULLIF(SUM(ps.innings_pitched), 0))::numeric, 2)"
             elif col == "pitching_war":
-                agg_expr = "ROUND(SUM(ps.pitching_war), 1)"
+                agg_expr = "ROUND(SUM(ps.pitching_war)::numeric, 1)"
             elif col == "innings_pitched":
-                agg_expr = "ROUND(SUM(ps.innings_pitched), 1)"
+                agg_expr = "ROUND(SUM(ps.innings_pitched)::numeric, 1)"
             else:
                 agg_expr = f"SUM(ps.{col})"
 
@@ -2148,7 +2156,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         )
         linked_ids = cur.fetchall()
         all_player_ids = [player_id] + [r["linked_id"] for r in linked_ids]
-        id_placeholders = ",".join("%s" * len(all_player_ids))
+        id_placeholders = ",".join(["%s"] * len(all_player_ids))
 
         # ── Build linked_players info for frontend (team badges per school) ──
         linked_players = []
@@ -2306,7 +2314,7 @@ def uncommitted_juco_players(
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
     min_ab: int = Query(0, description="Minimum at-bats (batting filter)"),
     min_ip: float = Query(0, description="Minimum innings pitched (pitching filter)"),
-    limit: int = Query(200),
+    limit: int = Query(500),
 ):
     """
     Find uncommitted JUCO players — the primary recruiting tool.
@@ -2351,7 +2359,7 @@ def uncommitted_juco_players(
         if year_in_school:
             query = _apply_year_filter(query, params, year_in_school)
         if position:
-            query += " AND p.position LIKE %s"
+            query += " AND p.position ILIKE %s"
             params.append(f"%{position}%")
         if min_ab > 0:
             query += " AND COALESCE(bs.at_bats, 0) >= %s"
@@ -2965,18 +2973,18 @@ def team_history(team_id: int):
                       SUM(bs.stolen_bases) as career_sb,
                       SUM(bs.offensive_war) as career_owar,
                       CASE WHEN SUM(bs.at_bats) > 0
-                           THEN ROUND(CAST(SUM(bs.hits) AS FLOAT) / SUM(bs.at_bats), 3)
+                           THEN ROUND(CAST(SUM(bs.hits) AS numeric) / SUM(bs.at_bats), 3)
                            ELSE NULL END as career_avg,
                       CASE WHEN SUM(bs.at_bats) > 0
-                           THEN ROUND(CAST(SUM(bs.home_runs) AS FLOAT) / SUM(bs.at_bats) +
+                           THEN ROUND(CAST(SUM(bs.home_runs) AS numeric) / SUM(bs.at_bats) +
                                       CAST(SUM(bs.hits) - SUM(bs.home_runs) - SUM(bs.triples) -
-                                           SUM(bs.doubles) AS FLOAT) / SUM(bs.at_bats) +
-                                      2.0 * CAST(SUM(bs.doubles) AS FLOAT) / SUM(bs.at_bats) +
-                                      3.0 * CAST(SUM(bs.triples) AS FLOAT) / SUM(bs.at_bats) +
-                                      4.0 * CAST(SUM(bs.home_runs) AS FLOAT) / SUM(bs.at_bats), 3)
+                                           SUM(bs.doubles) AS numeric) / SUM(bs.at_bats) +
+                                      2.0 * CAST(SUM(bs.doubles) AS numeric) / SUM(bs.at_bats) +
+                                      3.0 * CAST(SUM(bs.triples) AS numeric) / SUM(bs.at_bats) +
+                                      4.0 * CAST(SUM(bs.home_runs) AS numeric) / SUM(bs.at_bats), 3)
                            ELSE NULL END as career_slg,
                       CASE WHEN (SUM(bs.at_bats) + SUM(bs.walks) + COALESCE(SUM(bs.hit_by_pitch), 0) + COALESCE(SUM(bs.sacrifice_flies), 0)) > 0
-                           THEN ROUND(CAST(SUM(bs.hits) + SUM(bs.walks) + COALESCE(SUM(bs.hit_by_pitch), 0) AS FLOAT) /
+                           THEN ROUND(CAST(SUM(bs.hits) + SUM(bs.walks) + COALESCE(SUM(bs.hit_by_pitch), 0) AS numeric) /
                                 (SUM(bs.at_bats) + SUM(bs.walks) + COALESCE(SUM(bs.hit_by_pitch), 0) + COALESCE(SUM(bs.sacrifice_flies), 0)), 3)
                            ELSE NULL END as career_obp
                FROM batting_stats bs
@@ -3035,10 +3043,10 @@ def team_history(team_id: int):
                       SUM(ps.hits_allowed) as career_ha,
                       SUM(ps.pitching_war) as career_pwar,
                       CASE WHEN SUM(ps.innings_pitched) > 0
-                           THEN ROUND(9.0 * CAST(SUM(ps.earned_runs) AS FLOAT) / SUM(ps.innings_pitched), 2)
+                           THEN ROUND((9.0 * SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched))::numeric, 2)
                            ELSE NULL END as career_era,
                       CASE WHEN SUM(ps.innings_pitched) > 0
-                           THEN ROUND((CAST(SUM(ps.walks) AS FLOAT) + SUM(ps.hits_allowed)) / SUM(ps.innings_pitched), 2)
+                           THEN ROUND(((SUM(ps.walks) + SUM(ps.hits_allowed))::numeric / SUM(ps.innings_pitched))::numeric, 2)
                            ELSE NULL END as career_whip
                FROM pitching_stats ps
                JOIN players p ON ps.player_id = p.id
@@ -3115,3 +3123,317 @@ def team_history(team_id: int):
             "career_pitching_leaders": career_pit_leaders,
             "all_time_summary": all_time_summary,
         }
+
+
+# ============================================================
+# GAME RESULTS & BOX SCORES
+# ============================================================
+
+@router.get("/games/recent")
+def recent_games(
+    season: int = 2026,
+    limit: int = 20,
+    team_id: Optional[int] = None,
+    division: Optional[str] = None,
+):
+    """
+    Get recent game results, newest first.
+    Used for the homepage ticker and results page.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        conditions = ["g.season = %s", "g.status = 'final'"]
+        params = [season]
+
+        if team_id:
+            conditions.append("(g.home_team_id = %s OR g.away_team_id = %s)")
+            params.extend([team_id, team_id])
+
+        if division:
+            conditions.append("""
+                (g.home_team_id IN (
+                    SELECT t.id FROM teams t
+                    JOIN conferences c ON t.conference_id = c.id
+                    JOIN divisions d ON c.division_id = d.id
+                    WHERE d.level = %s
+                ) OR g.away_team_id IN (
+                    SELECT t.id FROM teams t
+                    JOIN conferences c ON t.conference_id = c.id
+                    JOIN divisions d ON c.division_id = d.id
+                    WHERE d.level = %s
+                ))
+            """)
+            params.extend([division, division])
+
+        where = " AND ".join(conditions)
+
+        cur.execute(f"""
+            SELECT
+                g.id, g.season, g.game_date, g.game_time,
+                g.home_team_id, g.away_team_id,
+                g.home_team_name, g.away_team_name,
+                g.home_score, g.away_score,
+                g.innings, g.is_conference_game,
+                g.home_hits, g.home_errors,
+                g.away_hits, g.away_errors,
+                g.home_line_score, g.away_line_score,
+                g.game_score, g.status,
+                ht.short_name AS home_short,
+                ht.logo_url AS home_logo,
+                at2.short_name AS away_short,
+                at2.logo_url AS away_logo,
+                hd.level AS home_division,
+                ad.level AS away_division
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            LEFT JOIN conferences hc ON ht.conference_id = hc.id
+            LEFT JOIN divisions hd ON hc.division_id = hd.id
+            LEFT JOIN conferences ac ON at2.conference_id = ac.id
+            LEFT JOIN divisions ad ON ac.division_id = ad.id
+            WHERE {where}
+            ORDER BY g.game_date DESC, g.id DESC
+            LIMIT %s
+        """, params + [limit])
+
+        games = cur.fetchall()
+        return [dict(g) for g in games]
+
+
+@router.get("/games/ticker")
+def games_ticker(
+    season: int = 2026,
+    limit: int = 12,
+):
+    """
+    Get the most recent games for the homepage ticker.
+    Returns a compact format optimized for the ticker display.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                g.id, g.game_date,
+                g.home_score, g.away_score,
+                g.innings,
+                COALESCE(ht.short_name, g.home_team_name) AS home_name,
+                ht.logo_url AS home_logo,
+                COALESCE(at2.short_name, g.away_team_name) AS away_name,
+                at2.logo_url AS away_logo,
+                g.is_conference_game
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.season = %s AND g.status = 'final'
+            ORDER BY g.game_date DESC, g.id DESC
+            LIMIT %s
+        """, (season, limit))
+
+        return [dict(g) for g in cur.fetchall()]
+
+
+@router.get("/games/quality-starts")
+def quality_starts_leaderboard(
+    season: int = 2026,
+    limit: int = 25,
+):
+    """
+    Quality starts leaderboard — pitchers ranked by QS count.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                gp.player_id,
+                COALESCE(p.first_name || ' ' || p.last_name, gp.player_name) AS player_name,
+                t.short_name AS team_name,
+                t.logo_url,
+                d.level AS division_level,
+                COUNT(*) FILTER (WHERE gp.is_quality_start = TRUE) AS quality_starts,
+                COUNT(*) FILTER (WHERE gp.is_starter = TRUE) AS games_started,
+                ROUND(AVG(gp.game_score)::numeric, 1) AS avg_game_score,
+                MAX(gp.game_score) AS best_game_score,
+                ROUND(AVG(gp.innings_pitched)::numeric, 1) AS avg_ip,
+                ROUND(AVG(gp.earned_runs)::numeric, 2) AS avg_er
+            FROM game_pitching gp
+            JOIN games g ON gp.game_id = g.id
+            LEFT JOIN players p ON gp.player_id = p.id
+            LEFT JOIN teams t ON gp.team_id = t.id
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            WHERE g.season = %s
+              AND gp.is_starter = TRUE
+            GROUP BY gp.player_id, p.first_name, p.last_name, gp.player_name,
+                     t.short_name, t.logo_url, d.level
+            HAVING COUNT(*) FILTER (WHERE gp.is_starter = TRUE) >= 3
+            ORDER BY quality_starts DESC, avg_game_score DESC
+            LIMIT %s
+        """, (season, limit))
+
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/games/game-scores")
+def game_score_leaderboard(
+    season: int = 2026,
+    limit: int = 25,
+):
+    """
+    Top individual game scores (Bill James Game Score) for the season.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                gp.game_id,
+                gp.player_id,
+                COALESCE(p.first_name || ' ' || p.last_name, gp.player_name) AS player_name,
+                t.short_name AS team_name,
+                t.logo_url,
+                d.level AS division_level,
+                g.game_date,
+                gp.game_score,
+                gp.innings_pitched,
+                gp.hits_allowed,
+                gp.earned_runs,
+                gp.walks,
+                gp.strikeouts,
+                gp.is_quality_start,
+                gp.decision,
+                g.home_score, g.away_score,
+                COALESCE(opp.short_name, g.away_team_name) AS opponent
+            FROM game_pitching gp
+            JOIN games g ON gp.game_id = g.id
+            LEFT JOIN players p ON gp.player_id = p.id
+            LEFT JOIN teams t ON gp.team_id = t.id
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN teams opp ON (
+                CASE WHEN g.home_team_id = gp.team_id THEN g.away_team_id
+                     ELSE g.home_team_id END
+            ) = opp.id
+            WHERE g.season = %s
+              AND gp.game_score IS NOT NULL
+              AND gp.is_starter = TRUE
+            ORDER BY gp.game_score DESC
+            LIMIT %s
+        """, (season, limit))
+
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/games/{game_id}")
+def game_detail(game_id: int):
+    """
+    Get full box score for a single game.
+    Includes line score, batting lines, and pitching lines.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Game info
+        cur.execute("""
+            SELECT
+                g.*,
+                ht.short_name AS home_short,
+                ht.logo_url AS home_logo,
+                ht.school_name AS home_school,
+                at2.short_name AS away_short,
+                at2.logo_url AS away_logo,
+                at2.school_name AS away_school,
+                hd.level AS home_division,
+                ad.level AS away_division
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            LEFT JOIN conferences hc ON ht.conference_id = hc.id
+            LEFT JOIN divisions hd ON hc.division_id = hd.id
+            LEFT JOIN conferences ac ON at2.conference_id = ac.id
+            LEFT JOIN divisions ad ON ac.division_id = ad.id
+            WHERE g.id = %s
+        """, (game_id,))
+
+        game = cur.fetchone()
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        # Batting lines
+        cur.execute("""
+            SELECT
+                gb.*,
+                p.first_name, p.last_name
+            FROM game_batting gb
+            LEFT JOIN players p ON gb.player_id = p.id
+            WHERE gb.game_id = %s
+            ORDER BY gb.team_id, gb.batting_order
+        """, (game_id,))
+        batting_lines = cur.fetchall()
+
+        # Pitching lines
+        cur.execute("""
+            SELECT
+                gp.*,
+                p.first_name, p.last_name
+            FROM game_pitching gp
+            LEFT JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id = %s
+            ORDER BY gp.team_id, gp.pitch_order
+        """, (game_id,))
+        pitching_lines = cur.fetchall()
+
+        # Group by team
+        home_id = game["home_team_id"]
+        away_id = game["away_team_id"]
+
+        home_batting = [dict(b) for b in batting_lines if b["team_id"] == home_id]
+        away_batting = [dict(b) for b in batting_lines if b["team_id"] == away_id]
+        home_pitching = [dict(p) for p in pitching_lines if p["team_id"] == home_id]
+        away_pitching = [dict(p) for p in pitching_lines if p["team_id"] == away_id]
+
+        return {
+            "game": dict(game),
+            "home_batting": home_batting,
+            "away_batting": away_batting,
+            "home_pitching": home_pitching,
+            "away_pitching": away_pitching,
+        }
+
+
+@router.get("/teams/{team_id}/games")
+def team_games(
+    team_id: int,
+    season: int = 2026,
+):
+    """Get all games for a specific team in a season."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                g.id, g.season, g.game_date, g.game_time,
+                g.home_team_id, g.away_team_id,
+                g.home_team_name, g.away_team_name,
+                g.home_score, g.away_score,
+                g.innings, g.is_conference_game,
+                g.home_hits, g.home_errors,
+                g.away_hits, g.away_errors,
+                g.game_score, g.status,
+                ht.short_name AS home_short,
+                ht.logo_url AS home_logo,
+                at2.short_name AS away_short,
+                at2.logo_url AS away_logo
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.season = %s
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+              AND g.status = 'final'
+            ORDER BY g.game_date ASC, g.id ASC
+        """, (season, team_id, team_id))
+
+        games = cur.fetchall()
+        return [dict(g) for g in games]

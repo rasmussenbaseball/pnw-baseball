@@ -8,9 +8,11 @@ export default function TeamHistory() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
 
+  const PNW_STATES = ['WA', 'OR', 'ID', 'MT']
   const filteredTeams = (teams || []).filter(t =>
-    t.name?.toLowerCase().includes(search.toLowerCase()) ||
-    t.short_name?.toLowerCase().includes(search.toLowerCase())
+    PNW_STATES.includes(t.state || '') &&
+    (t.name?.toLowerCase().includes(search.toLowerCase()) ||
+     t.short_name?.toLowerCase().includes(search.toLowerCase()))
   )
 
   // Group by division

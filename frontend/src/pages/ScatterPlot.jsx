@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { divisionBadgeClass } from '../utils/stats'
 
 const API_BASE = '/api/v1'
@@ -33,14 +33,6 @@ const STAT_OPTIONS = [
   { value: 'total_war', label: 'Total WAR', group: 'Overall' },
 ]
 
-const DIVISION_COLORS = {
-  'D1': '#1e40af',
-  'D2': '#059669',
-  'D3': '#d97706',
-  'NAIA': '#7c3aed',
-  'JUCO': '#dc2626',
-}
-
 // Compute percentile rank (0-100) for a value within a sorted array
 function percentileRank(sortedVals, value) {
   let count = 0
@@ -59,14 +51,25 @@ function perfPercentile(sortedVals, value, lowerBetter) {
 
 // Determine dot color based on both-axis percentiles
 function getDotColor(xPerf, yPerf) {
-  if (xPerf >= 75 && yPerf >= 75) return '#16a34a'  // green - top 25th in both
+  if (xPerf >= 75 && yPerf >= 75) return '#059669'  // emerald - top 25th in both
   if (xPerf <= 25 && yPerf <= 25) return '#dc2626'  // red - bottom 25th in both
-  return '#ca8a04' // yellow/gold - everything else
+  return '#ca8a04' // gold - everything else
 }
 
-const MARGIN = { top: 30, right: 30, bottom: 50, left: 60 }
-const WIDTH = 700
-const HEIGHT = 500
+// Brand colors
+const BRAND = {
+  teal: '#00687a',
+  tealDark: '#004d5a',
+  tealLight: '#008a9e',
+  cream: '#faf8f5',
+}
+
+// SVG dimensions — larger for better quality
+const HEADER_H = 52
+const FOOTER_H = 28
+const MARGIN = { top: HEADER_H + 20, right: 35, bottom: 55 + FOOTER_H, left: 65 }
+const WIDTH = 850
+const HEIGHT = 600
 
 export default function ScatterPlot() {
   const [xStat, setXStat] = useState('team_avg')
@@ -76,6 +79,52 @@ export default function ScatterPlot() {
   const [points, setPoints] = useState([])
   const [loading, setLoading] = useState(false)
   const [hoveredTeam, setHoveredTeam] = useState(null)
+  const svgRef = useRef(null)
+
+  const handleSaveImage = useCallback(async () => {
+    const svg = svgRef.current
+    if (!svg) return
+
+    // Clone the SVG so we can inline logos as base64
+    const clone = svg.cloneNode(true)
+    const images = clone.querySelectorAll('image')
+
+    await Promise.all(Array.from(images).map(async (imgEl) => {
+      const href = imgEl.getAttribute('href')
+      if (!href || href.startsWith('data:')) return
+      try {
+        const resp = await fetch(href)
+        const blob = await resp.blob()
+        const dataUrl = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result)
+          reader.readAsDataURL(blob)
+        })
+        imgEl.setAttribute('href', dataUrl)
+      } catch {
+        // If logo fails to load, skip it
+      }
+    }))
+
+    const svgData = new XMLSerializer().serializeToString(clone)
+    const canvas = document.createElement('canvas')
+    const scale = 2
+    canvas.width = WIDTH * scale
+    canvas.height = HEIGHT * scale
+    const ctx = canvas.getContext('2d')
+    ctx.scale(scale, scale)
+    const img = new Image()
+    img.onload = () => {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, WIDTH, HEIGHT)
+      ctx.drawImage(img, 0, 0, WIDTH, HEIGHT)
+      const link = document.createElement('a')
+      link.download = `nwbb-${xStat}-vs-${yStat}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    }
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+  }, [xStat, yStat])
 
   // Fetch divisions
   useEffect(() => {
@@ -116,7 +165,6 @@ export default function ScatterPlot() {
     const plotW = WIDTH - MARGIN.left - MARGIN.right
     const plotH = HEIGHT - MARGIN.top - MARGIN.bottom
 
-    // For "lower is better" stats, flip: higher raw value maps to LEFT/BOTTOM
     const xFlip = xOpt?.lowerBetter
     const yFlip = yOpt?.lowerBetter
 
@@ -126,11 +174,9 @@ export default function ScatterPlot() {
     }
     const yScale = (v) => {
       const ratio = (v - (yMin - yPad)) / ((yMax + yPad) - (yMin - yPad))
-      // SVG y increases downward, so invert; also handle "lower is better" flip
       return MARGIN.top + (yFlip ? ratio : (1 - ratio)) * plotH
     }
 
-    // Generate ~5 tick values for each axis
     const makeTicks = (min, max, count = 5) => {
       const step = (max - min) / (count - 1)
       return Array.from({ length: count }, (_, i) => {
@@ -156,7 +202,6 @@ export default function ScatterPlot() {
     const xLower = xOpt?.lowerBetter || false
     const yLower = yOpt?.lowerBetter || false
 
-    // Performance percentile per team
     const perf = {}
     points.forEach(pt => {
       perf[pt.team_id] = {
@@ -165,49 +210,59 @@ export default function ScatterPlot() {
       }
     })
 
-    // Zone thresholds: find raw values at given performance percentile cutoffs
-    // For "top Nth percentile in both", we need the raw value where perf >= (100 - N)
-    // That means: for normal stats, the value at the (100 - N)th raw percentile
-    //             for lowerBetter stats, the value at the Nth raw percentile
     const rawPercentile = (sortedArr, pct) => {
       const idx = Math.floor((pct / 100) * (sortedArr.length - 1))
       return sortedArr[Math.min(idx, sortedArr.length - 1)]
     }
 
-    // Top 33rd: performance >= 67  →  raw percentile 67 (normal) or 33 (lowerBetter)
-    // Top 10th: performance >= 90  →  raw percentile 90 (normal) or 10 (lowerBetter)
-    const x33 = rawPercentile(xVals, xLower ? 33 : 67)
+    const x50 = rawPercentile(xVals, 50)
     const x10 = rawPercentile(xVals, xLower ? 10 : 90)
-    const y33 = rawPercentile(yVals, yLower ? 33 : 67)
+    const y50 = rawPercentile(yVals, 50)
     const y10 = rawPercentile(yVals, yLower ? 10 : 90)
 
-    // Best raw values (the 100th percentile edge for zones)
-    // For normal stats, best = max; for lowerBetter, best = min
     const xBest = xLower ? xVals[0] : xVals[xVals.length - 1]
     const yBest = yLower ? yVals[0] : yVals[yVals.length - 1]
 
     return {
       pointPerf: perf,
-      zoneThresholds: { x33, x10, y33, y10, xBest, yBest },
+      zoneThresholds: { x50, x10, y50, y10, xBest, yBest },
     }
   }, [points, xOpt, yOpt])
 
   const plotW = WIDTH - MARGIN.left - MARGIN.right
   const plotH = HEIGHT - MARGIN.top - MARGIN.bottom
 
+  // Build subtitle for the chart header
+  const divLabel = divisionId
+    ? divisions.find(d => d.id === divisionId)?.name || ''
+    : 'All Divisions'
+
+  // Select component
+  const Select = ({ label, value, onChange, children }) => (
+    <div>
+      <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={onChange}
+        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-pnw-sky/40 focus:border-pnw-sky transition-all"
+      >
+        {children}
+      </select>
+    </div>
+  )
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-4">Team Scatter Plot</h1>
+      {/* Page header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-pnw-slate">Team Scatter Plot</h1>
+        <p className="text-sm text-gray-400 mt-0.5">Compare team performance across any two stats · 2026 Season</p>
+      </div>
 
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3 mb-6 items-end">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">X-Axis</label>
-          <select
-            value={xStat}
-            onChange={(e) => setXStat(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm"
-          >
+      {/* Controls bar */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-5">
+        <div className="flex flex-wrap gap-4 items-end">
+          <Select label="X-Axis" value={xStat} onChange={(e) => setXStat(e.target.value)}>
             {['Batting', 'Pitching', 'Overall'].map(group => (
               <optgroup key={group} label={group}>
                 {STAT_OPTIONS.filter(s => s.group === group).map(s => (
@@ -215,16 +270,9 @@ export default function ScatterPlot() {
                 ))}
               </optgroup>
             ))}
-          </select>
-        </div>
+          </Select>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Y-Axis</label>
-          <select
-            value={yStat}
-            onChange={(e) => setYStat(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm"
-          >
+          <Select label="Y-Axis" value={yStat} onChange={(e) => setYStat(e.target.value)}>
             {['Batting', 'Pitching', 'Overall'].map(group => (
               <optgroup key={group} label={group}>
                 {STAT_OPTIONS.filter(s => s.group === group).map(s => (
@@ -232,110 +280,151 @@ export default function ScatterPlot() {
                 ))}
               </optgroup>
             ))}
-          </select>
-        </div>
+          </Select>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Division</label>
-          <select
-            value={divisionId || ''}
-            onChange={(e) => setDivisionId(e.target.value ? parseInt(e.target.value) : null)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm"
-          >
+          <Select label="Division" value={divisionId || ''} onChange={(e) => setDivisionId(e.target.value ? parseInt(e.target.value) : null)}>
             <option value="">All Divisions</option>
             {divisions.map(d => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
-          </select>
+          </Select>
+
+          {points.length > 0 && (
+            <button
+              onClick={handleSaveImage}
+              className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-lg bg-pnw-green text-white text-sm font-semibold hover:bg-pnw-forest shadow-sm transition-all active:scale-95"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Save Image
+            </button>
+          )}
         </div>
+
+        {(xOpt?.lowerBetter || yOpt?.lowerBetter) && (
+          <div className="text-[11px] text-gray-400 mt-3 italic">
+            {xOpt?.lowerBetter && `${xOpt.label} axis is flipped (lower = better → right). `}
+            {yOpt?.lowerBetter && `${yOpt.label} axis is flipped (lower = better → top).`}
+          </div>
+        )}
       </div>
 
-      {(xOpt?.lowerBetter || yOpt?.lowerBetter) && (
-        <div className="text-xs text-gray-400 mb-3 italic">
-          {xOpt?.lowerBetter && `${xOpt.label} axis is flipped (lower = better → right). `}
-          {yOpt?.lowerBetter && `${yOpt.label} axis is flipped (lower = better → top).`}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-6 h-6 border-2 border-pnw-green border-t-transparent rounded-full animate-spin" />
+          <span className="ml-3 text-gray-400 text-sm">Loading data...</span>
         </div>
       )}
 
-      {loading && <div className="text-gray-400 animate-pulse">Loading...</div>}
-
       {!loading && points.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border p-4 overflow-x-auto">
-          <svg width={WIDTH} height={HEIGHT} className="mx-auto">
-            {/* Grid lines */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-5 overflow-x-auto">
+          <svg ref={svgRef} width={WIDTH} height={HEIGHT} className="mx-auto block" xmlns="http://www.w3.org/2000/svg"
+               style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+            <defs>
+              {/* Performance gradient */}
+              <linearGradient id="perfGradient" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0%" stopColor="#fca5a5" stopOpacity="0.30" />
+                <stop offset="45%" stopColor="#fde68a" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#86efac" stopOpacity="0.30" />
+              </linearGradient>
+              {/* Drop shadow for tooltips */}
+              <filter id="tooltipShadow" x="-10%" y="-10%" width="130%" height="130%">
+                <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
+              </filter>
+            </defs>
+
+            {/* ── Branded header bar ── */}
+            <rect x={0} y={0} width={WIDTH} height={HEADER_H} fill={BRAND.teal} rx={0} />
+            <text x={20} y={32} fontSize={18} fontWeight="700" fill="white" letterSpacing="0.5">
+              NW BASEBALL STATS
+            </text>
+            <text x={WIDTH - 20} y={28} fontSize={11} fill="rgba(255,255,255,0.7)" textAnchor="end">
+              {xOpt?.label} vs {yOpt?.label}
+            </text>
+            <text x={WIDTH - 20} y={42} fontSize={10} fill="rgba(255,255,255,0.5)" textAnchor="end">
+              {divLabel} · 2026 Season
+            </text>
+
+            {/* ── Plot background ── */}
+            <rect x={MARGIN.left} y={MARGIN.top}
+                  width={plotW} height={plotH}
+                  fill="url(#perfGradient)" rx={4} />
+
+            {/* ── Grid lines ── */}
             {xTicks.map((v, i) => (
               <line key={`xg-${i}`} x1={xScale(v)} x2={xScale(v)}
                     y1={MARGIN.top} y2={HEIGHT - MARGIN.bottom}
-                    stroke="#e5e7eb" strokeWidth={1} />
+                    stroke="rgba(255,255,255,0.6)" strokeWidth={1} />
             ))}
             {yTicks.map((v, i) => (
               <line key={`yg-${i}`} x1={MARGIN.left} x2={WIDTH - MARGIN.right}
                     y1={yScale(v)} y2={yScale(v)}
-                    stroke="#e5e7eb" strokeWidth={1} />
+                    stroke="rgba(255,255,255,0.6)" strokeWidth={1} />
             ))}
 
-            {/* Axes */}
+            {/* ── Axes ── */}
             <line x1={MARGIN.left} x2={WIDTH - MARGIN.right}
                   y1={HEIGHT - MARGIN.bottom} y2={HEIGHT - MARGIN.bottom}
-                  stroke="#9ca3af" strokeWidth={1} />
+                  stroke="#94a3b8" strokeWidth={1.5} />
             <line x1={MARGIN.left} x2={MARGIN.left}
                   y1={MARGIN.top} y2={HEIGHT - MARGIN.bottom}
-                  stroke="#9ca3af" strokeWidth={1} />
+                  stroke="#94a3b8" strokeWidth={1.5} />
 
-            {/* X-axis ticks & labels */}
+            {/* ── X-axis ticks & labels ── */}
             {xTicks.map((v, i) => (
-              <text key={`xt-${i}`} x={xScale(v)} y={HEIGHT - MARGIN.bottom + 18}
-                    textAnchor="middle" fontSize={10} fill="#6b7280">
-                {typeof v === 'number' && v < 1 && v > 0 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : Math.round(v)}
-              </text>
+              <g key={`xt-${i}`}>
+                <line x1={xScale(v)} x2={xScale(v)}
+                      y1={HEIGHT - MARGIN.bottom} y2={HEIGHT - MARGIN.bottom + 5}
+                      stroke="#94a3b8" strokeWidth={1} />
+                <text x={xScale(v)} y={HEIGHT - MARGIN.bottom + 18}
+                      textAnchor="middle" fontSize={10} fill="#64748b" fontWeight="500">
+                  {typeof v === 'number' && v < 1 && v > 0 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : Math.round(v)}
+                </text>
+              </g>
             ))}
 
-            {/* Y-axis ticks & labels */}
+            {/* ── Y-axis ticks & labels ── */}
             {yTicks.map((v, i) => (
-              <text key={`yt-${i}`} x={MARGIN.left - 8} y={yScale(v) + 3}
-                    textAnchor="end" fontSize={10} fill="#6b7280">
-                {typeof v === 'number' && v < 1 && v > 0 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : Math.round(v)}
-              </text>
+              <g key={`yt-${i}`}>
+                <line x1={MARGIN.left - 5} x2={MARGIN.left}
+                      y1={yScale(v)} y2={yScale(v)}
+                      stroke="#94a3b8" strokeWidth={1} />
+                <text x={MARGIN.left - 10} y={yScale(v) + 4}
+                      textAnchor="end" fontSize={10} fill="#64748b" fontWeight="500">
+                  {typeof v === 'number' && v < 1 && v > 0 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : Math.round(v)}
+                </text>
+              </g>
             ))}
 
-            {/* Axis labels */}
-            <text x={WIDTH / 2} y={HEIGHT - 5} textAnchor="middle" fontSize={12}
-                  fontWeight="600" fill="#374151">
-              {xOpt?.label || xStat} {xOpt?.lowerBetter ? '← Better' : '→ Better'}
+            {/* ── Axis labels ── */}
+            <text x={MARGIN.left + plotW / 2} y={HEIGHT - MARGIN.bottom + 38}
+                  textAnchor="middle" fontSize={12} fontWeight="700" fill="#334155">
+              {xOpt?.label || xStat}
+              <tspan fontSize={10} fontWeight="400" fill="#94a3b8">
+                {xOpt?.lowerBetter ? '  ← Better' : '  Better →'}
+              </tspan>
             </text>
-            <text x={15} y={HEIGHT / 2} textAnchor="middle" fontSize={12}
-                  fontWeight="600" fill="#374151"
-                  transform={`rotate(-90, 15, ${HEIGHT / 2})`}>
-              {yOpt?.label || yStat} {yOpt?.lowerBetter ? '' : '↑ Better'}
+            <text x={18} y={MARGIN.top + plotH / 2} textAnchor="middle" fontSize={12}
+                  fontWeight="700" fill="#334155"
+                  transform={`rotate(-90, 18, ${MARGIN.top + plotH / 2})`}>
+              {yOpt?.label || yStat}
+              <tspan fontSize={10} fontWeight="400" fill="#94a3b8">
+                {yOpt?.lowerBetter ? '' : '  ↑ Better'}
+              </tspan>
             </text>
 
-            {/* "Better" arrow in top-right */}
-            <text x={WIDTH - MARGIN.right - 5} y={MARGIN.top + 15}
-                  textAnchor="end" fontSize={10} fill="#059669" fontWeight="bold">
-              ★ Better
-            </text>
-
-            {/* Percentile zone boxes */}
+            {/* ── Percentile zone boxes ── */}
             {zoneThresholds && (() => {
-              const xFlip = xOpt?.lowerBetter
-              const yFlip = yOpt?.lowerBetter
-
-              // Top 33rd zone: from threshold to the "better" edge
-              // For normal stats, better = higher raw value (right/top of plot)
-              // For lowerBetter, better = lower raw value (also right/top after flip)
-              // So the zone always extends from the threshold pixel toward the top-right corner
-              const x33px = xScale(zoneThresholds.x33)
-              const y33px = yScale(zoneThresholds.y33)
+              const x50px = xScale(zoneThresholds.x50)
+              const y50px = yScale(zoneThresholds.y50)
               const x10px = xScale(zoneThresholds.x10)
               const y10px = yScale(zoneThresholds.y10)
 
-              // Use the best data point values as the zone edges, plus padding
-              // so the best team's logo circle fits fully inside the box
-              const PAD = 20 // roughly the circle radius
+              const PAD = 20
               const xBestPx = xScale(zoneThresholds.xBest) + PAD
               const yBestPx = yScale(zoneThresholds.yBest) - PAD
 
-              // Clamp to plot area so boxes don't overflow
               const clampX = (v) => Math.max(MARGIN.left, Math.min(v, WIDTH - MARGIN.right))
               const clampY = (v) => Math.max(MARGIN.top, Math.min(v, HEIGHT - MARGIN.bottom))
 
@@ -344,35 +433,24 @@ export default function ScatterPlot() {
 
               return (
                 <>
-                  {/* Top 33rd percentile zone */}
                   <rect
-                    x={Math.min(x33px, cxBest)} y={Math.min(y33px, cyBest)}
-                    width={Math.abs(cxBest - x33px)} height={Math.abs(y33px - cyBest)}
-                    fill="none" stroke="#16a34a" strokeWidth={1.5}
-                    strokeDasharray="6,3" opacity={0.5} rx={3}
+                    x={Math.min(x50px, cxBest)} y={Math.min(y50px, cyBest)}
+                    width={Math.abs(cxBest - x50px)} height={Math.abs(y50px - cyBest)}
+                    fill="none" stroke="#059669" strokeWidth={1.5}
+                    strokeDasharray="8,4" opacity={0.4} rx={4}
                   />
-                  <text x={Math.min(x33px, cxBest) + 4} y={Math.min(y33px, cyBest) + 12} fontSize={9}
-                        fill="#16a34a" opacity={0.7} fontWeight="600">
-                    Top 33%
-                  </text>
-
-                  {/* Top 10th percentile zone */}
                   <rect
                     x={Math.min(x10px, cxBest)} y={Math.min(y10px, cyBest)}
                     width={Math.abs(cxBest - x10px)} height={Math.abs(y10px - cyBest)}
-                    fill="#16a34a" fillOpacity={0.04}
-                    stroke="#16a34a" strokeWidth={2}
-                    strokeDasharray="4,2" opacity={0.7} rx={3}
+                    fill="#059669" fillOpacity={0.05}
+                    stroke="#059669" strokeWidth={2}
+                    strokeDasharray="6,3" opacity={0.6} rx={4}
                   />
-                  <text x={Math.min(x10px, cxBest) + 4} y={Math.min(y10px, cyBest) + 14} fontSize={9}
-                        fill="#16a34a" opacity={0.9} fontWeight="700">
-                    Top 10%
-                  </text>
                 </>
               )
             })()}
 
-            {/* Data points */}
+            {/* ── Data points ── */}
             {points.map(pt => {
               const cx = xScale(pt.x)
               const cy = yScale(pt.y)
@@ -385,10 +463,16 @@ export default function ScatterPlot() {
                    onMouseEnter={() => setHoveredTeam(pt.team_id)}
                    onMouseLeave={() => setHoveredTeam(null)}
                    style={{ cursor: 'pointer' }}>
+                  {/* Outer glow on hover */}
+                  {isHovered && (
+                    <circle cx={cx} cy={cy} r={23} fill="none"
+                            stroke={color} strokeWidth={1.5} opacity={0.3} />
+                  )}
                   {/* Background circle */}
-                  <circle cx={cx} cy={cy} r={isHovered ? 20 : 16}
-                          fill="white" stroke={color} strokeWidth={isHovered ? 2.5 : 1.5}
-                          opacity={isHovered ? 1 : 0.9} />
+                  <circle cx={cx} cy={cy} r={isHovered ? 18 : 15}
+                          fill="white" stroke={color}
+                          strokeWidth={isHovered ? 2.5 : 1.5}
+                          opacity={isHovered ? 1 : 0.92} />
 
                   {/* Team logo or abbreviation */}
                   {pt.logo_url ? (
@@ -396,7 +480,7 @@ export default function ScatterPlot() {
                            width={20} height={20}
                            style={{ pointerEvents: 'none' }} />
                   ) : (
-                    <text x={cx} y={cy + 3} textAnchor="middle" fontSize={8}
+                    <text x={cx} y={cy + 3} textAnchor="middle" fontSize={7}
                           fontWeight="bold" fill={color}
                           style={{ pointerEvents: 'none' }}>
                       {pt.short_name}
@@ -405,54 +489,73 @@ export default function ScatterPlot() {
 
                   {/* Hover tooltip */}
                   {isHovered && (
-                    <>
-                      <rect x={cx + 22} y={cy - 28} width={140} height={52}
-                            rx={4} fill="white" stroke="#e5e7eb" strokeWidth={1}
-                            filter="drop-shadow(0 1px 3px rgba(0,0,0,0.1))" />
-                      <text x={cx + 28} y={cy - 12} fontSize={11} fontWeight="bold" fill="#1f2937">
+                    <g>
+                      <rect x={cx + 24} y={cy - 34} width={170} height={64}
+                            rx={8} fill="white" stroke="#e2e8f0" strokeWidth={1}
+                            filter="url(#tooltipShadow)" />
+                      {/* Accent bar */}
+                      <rect x={cx + 24} y={cy - 34} width={4} height={64}
+                            rx={2} fill={BRAND.teal} />
+                      <text x={cx + 36} y={cy - 16} fontSize={12} fontWeight="700" fill="#1e293b">
                         {pt.name}
                       </text>
-                      <text x={cx + 28} y={cy + 2} fontSize={10} fill="#6b7280">
+                      <text x={cx + 36} y={cy - 2} fontSize={10} fill="#64748b">
                         {pt.division_level} · {pt.conference_abbrev}
                       </text>
-                      <text x={cx + 28} y={cy + 16} fontSize={10} fill="#374151" fontFamily="monospace">
-                        x: {pt.x}  y: {pt.y}
+                      <text x={cx + 36} y={cy + 14} fontSize={9} fill="#94a3b8" fontFamily="monospace">
+                        {xOpt?.label}: {pt.x}
                       </text>
-                    </>
+                      <text x={cx + 36} y={cy + 24} fontSize={9} fill="#94a3b8" fontFamily="monospace">
+                        {yOpt?.label}: {pt.y}
+                      </text>
+                    </g>
                   )}
                 </g>
               )
             })}
+
+            {/* ── Footer watermark ── */}
+            <rect x={0} y={HEIGHT - FOOTER_H} width={WIDTH} height={FOOTER_H} fill="#f8fafc" />
+            <line x1={0} x2={WIDTH} y1={HEIGHT - FOOTER_H} y2={HEIGHT - FOOTER_H} stroke="#e2e8f0" strokeWidth={1} />
+            <text x={20} y={HEIGHT - 10} fontSize={9} fill="#94a3b8" fontWeight="600">
+              nwbaseballstats.com
+            </text>
+            <text x={WIDTH - 20} y={HEIGHT - 10} fontSize={9} fill="#cbd5e1" textAnchor="end">
+              {points.length} teams · Data updated 2026
+            </text>
           </svg>
 
-          {/* Legend */}
-          <div className="flex flex-wrap justify-center gap-4 mt-4 text-xs">
+          {/* Legend below the chart */}
+          <div className="flex flex-wrap justify-center gap-5 mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500">
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: '#16a34a' }} />
-              <span className="text-gray-600">Top 25th pctl (both axes)</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#059669', border: '1.5px solid #059669' }} />
+              <span>Top 25th pctl (both axes)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: '#ca8a04' }} />
-              <span className="text-gray-600">Middle</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ca8a04', border: '1.5px solid #ca8a04' }} />
+              <span>Middle</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: '#dc2626' }} />
-              <span className="text-gray-600">Bottom 25th pctl (both axes)</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#dc2626', border: '1.5px solid #dc2626' }} />
+              <span>Bottom 25th pctl (both axes)</span>
             </div>
-            <div className="flex items-center gap-1.5 ml-4 pl-4 border-l border-gray-200">
-              <div className="w-4 h-3 border border-dashed rounded-sm" style={{ borderColor: '#16a34a' }} />
-              <span className="text-gray-600">Top 33% zone</span>
+            <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200">
+              <div className="w-4 h-3 border border-dashed rounded" style={{ borderColor: '#059669' }} />
+              <span>Top 50% zone</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-4 h-3 border-2 border-dashed rounded-sm" style={{ borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.04)' }} />
-              <span className="text-gray-600">Top 10% zone</span>
+              <div className="w-4 h-3 border-2 border-dashed rounded" style={{ borderColor: '#059669', backgroundColor: 'rgba(5,150,105,0.05)' }} />
+              <span>Top 10% zone</span>
             </div>
           </div>
         </div>
       )}
 
       {!loading && points.length === 0 && (
-        <div className="text-gray-400 text-sm italic mt-4">No data available for the selected options.</div>
+        <div className="text-center py-16">
+          <div className="text-gray-300 text-4xl mb-2">&#9898;</div>
+          <div className="text-gray-400 text-sm">No data available for the selected options.</div>
+        </div>
       )}
     </div>
   )

@@ -40,8 +40,12 @@ logging.basicConfig(
 logger = logging.getLogger("scrape_all")
 
 
-def get_teams_to_scrape(division_level=None, team_id=None):
-    """Get list of teams to scrape from database."""
+def get_teams_to_scrape(division_level=None, team_id=None, pnw_only=True):
+    """Get list of teams to scrape from database.
+
+    By default only scrapes PNW teams (WA, OR, ID, MT, BC).
+    Non-PNW teams are kept in the DB for standings/context but not scraped.
+    """
     with get_connection() as conn:
         cur = conn.cursor()
         query = """
@@ -55,6 +59,8 @@ def get_teams_to_scrape(division_level=None, team_id=None):
             WHERE t.is_active = 1
         """
         params = []
+        if pnw_only:
+            query += " AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')"
         if division_level:
             query += " AND d.level = %s"
             params.append(division_level)
@@ -376,6 +382,7 @@ def main():
     parser.add_argument("--season", type=int, required=True, help="Season year to scrape")
     parser.add_argument("--division", type=str, help="Filter by division level (D1, D2, D3, NAIA, JUCO)")
     parser.add_argument("--team-id", type=int, help="Scrape a specific team by ID")
+    parser.add_argument("--all-teams", action="store_true", help="Scrape all teams, not just PNW")
     parser.add_argument("--init-db", action="store_true", help="Initialize database before scraping")
     args = parser.parse_args()
 
@@ -384,7 +391,7 @@ def main():
         seed_divisions_and_conferences()
         logger.info("Database initialized and seeded")
 
-    teams = get_teams_to_scrape(division_level=args.division, team_id=args.team_id)
+    teams = get_teams_to_scrape(division_level=args.division, team_id=args.team_id, pnw_only=not args.all_teams)
     logger.info(f"Found {len(teams)} teams to scrape")
 
     success = 0

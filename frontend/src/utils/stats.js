@@ -67,6 +67,8 @@ export const PITCHING_COLUMNS = [
   { key: 'saves', label: 'SV', width: 35, format: 'int' },
   { key: 'games', label: 'G', width: 35, format: 'int' },
   { key: 'games_started', label: 'GS', width: 35, format: 'int' },
+  { key: 'quality_starts', label: 'QS', width: 35, format: 'int',
+    tooltip: 'Quality Starts: 6+ IP and 3 or fewer ER' },
   { key: 'innings_pitched', label: 'IP', width: 50, format: 'ip' },
   { key: 'strikeouts', label: 'K', width: 40, format: 'int' },
   { key: 'walks', label: 'BB', width: 40, format: 'int' },
@@ -161,8 +163,8 @@ export const BATTING_PRESETS = {
 }
 
 export const PITCHING_PRESETS = {
-  'Standard': ['wins', 'losses', 'saves', 'games', 'games_started', 'innings_pitched', 'strikeouts', 'walks', 'hits_allowed', 'earned_runs', 'era', 'whip'],
-  'Advanced': ['innings_pitched', 'era', 'era_plus', 'fip', 'fip_plus', 'xfip', 'siera', 'k_pct', 'bb_pct', 'k_bb_pct', 'babip_against', 'lob_pct', 'pitching_war'],
+  'Standard': ['wins', 'losses', 'saves', 'games', 'games_started', 'quality_starts', 'innings_pitched', 'strikeouts', 'walks', 'hits_allowed', 'earned_runs', 'era', 'whip'],
+  'Advanced': ['innings_pitched', 'quality_starts', 'era', 'era_plus', 'fip', 'fip_plus', 'xfip', 'siera', 'k_pct', 'bb_pct', 'k_bb_pct', 'babip_against', 'lob_pct', 'pitching_war'],
   'Strikeouts': ['innings_pitched', 'strikeouts', 'k_pct', 'bb_pct', 'k_bb_pct', 'k_bb_ratio', 'walks'],
   'Relievers': ['games', 'saves', 'innings_pitched', 'era', 'era_plus', 'fip', 'fip_plus', 'whip', 'k_pct', 'bb_pct', 'k_bb_pct', 'pitching_war'],
 }
