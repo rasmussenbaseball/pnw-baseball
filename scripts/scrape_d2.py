@@ -502,7 +502,8 @@ def parse_sidearm_name(name_str):
     """Parse Sidearm name format 'Last, First' into (first, last)."""
     if not name_str:
         return "", ""
-    name = name_str.strip()
+    # Strip leading jersey numbers that may be concatenated (e.g., "35Jaha, Jackson")
+    name = re.sub(r'^\d+', '', name_str).strip()
 
     if "," in name:
         parts = name.split(",", 1)

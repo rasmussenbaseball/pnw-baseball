@@ -3129,6 +3129,47 @@ def team_history(team_id: int):
 # GAME RESULTS & BOX SCORES
 # ============================================================
 
+import re as _re
+
+def _game_words(game):
+    """Extract lowercase words (3+ chars) from both team display names."""
+    home = game.get("home_name") or game.get("home_short") or game.get("home_team_name") or ""
+    away = game.get("away_name") or game.get("away_short") or game.get("away_team_name") or ""
+    return set(_re.findall(r"[a-z]{3,}", (home + " " + away).lower()))
+
+
+def _is_duplicate(a, b):
+    """True if b is a duplicate of a (same real-world game)."""
+    # Must be on the same date
+    if str(a.get("game_date")) != str(b.get("game_date")):
+        return False
+    # Scores must match (possibly swapped home/away)
+    if not (
+        (a.get("home_score") == b.get("away_score") and a.get("away_score") == b.get("home_score"))
+        or (a.get("home_score") == b.get("home_score") and a.get("away_score") == b.get("away_score"))
+    ):
+        return False
+    # Check 1: team ID overlap (reliable when IDs are resolved)
+    ids_a = {a.get("home_team_id"), a.get("away_team_id")} - {None}
+    ids_b = {b.get("home_team_id"), b.get("away_team_id")} - {None}
+    if ids_a & ids_b:
+        return True
+    # Check 2: at least 2 common name-words (catches unresolved team names
+    # like "Lewis-Clark State College (Idaho)" vs "LCSC" + "College of Idaho")
+    if len(_game_words(a) & _game_words(b)) >= 2:
+        return True
+    return False
+
+
+def _dedup_games(games, limit):
+    """Remove duplicate game records, keeping the first (lower id) version."""
+    deduped = []
+    for g in games:
+        if not any(_is_duplicate(prev, g) for prev in deduped):
+            deduped.append(g)
+    return deduped[:limit]
+
+
 @router.get("/games/recent")
 def recent_games(
     season: int = 2026,
@@ -3168,6 +3209,7 @@ def recent_games(
 
         where = " AND ".join(conditions)
 
+        # Fetch extra rows so we have room after dedup
         cur.execute(f"""
             SELECT
                 g.id, g.season, g.game_date, g.game_time,
@@ -3195,10 +3237,10 @@ def recent_games(
             WHERE {where}
             ORDER BY g.game_date DESC, g.id DESC
             LIMIT %s
-        """, params + [limit])
+        """, params + [limit * 3])
 
-        games = cur.fetchall()
-        return [dict(g) for g in games]
+        games = [dict(g) for g in cur.fetchall()]
+        return _dedup_games(games, limit)
 
 
 @router.get("/games/ticker")
@@ -3213,11 +3255,13 @@ def games_ticker(
     with get_connection() as conn:
         cur = conn.cursor()
 
+        # Fetch more than needed so we have room after dedup
         cur.execute("""
             SELECT
                 g.id, g.game_date,
                 g.home_score, g.away_score,
                 g.innings,
+                g.home_team_id, g.away_team_id,
                 COALESCE(ht.short_name, g.home_team_name) AS home_name,
                 ht.logo_url AS home_logo,
                 COALESCE(at2.short_name, g.away_team_name) AS away_name,
@@ -3229,9 +3273,17 @@ def games_ticker(
             WHERE g.season = %s AND g.status = 'final'
             ORDER BY g.game_date DESC, g.id DESC
             LIMIT %s
-        """, (season, limit))
+        """, (season, limit * 3))
 
-        return [dict(g) for g in cur.fetchall()]
+        rows = [dict(g) for g in cur.fetchall()]
+        deduped = _dedup_games(rows, limit)
+
+        # Strip internal team IDs before returning
+        for g in deduped:
+            g.pop("home_team_id", None)
+            g.pop("away_team_id", None)
+
+        return deduped
 
 
 @router.get("/games/quality-starts")

@@ -1507,10 +1507,10 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
 
                     if box:
                         # Update game data with box score details
-                        if box.get("home_score") is not None:
-                            game_data["home_score"] = box["home_score"]
-                        if box.get("away_score") is not None:
-                            game_data["away_score"] = box["away_score"]
+                        # NOTE: Do NOT override home_score/away_score from box score
+                        # parsing — the schedule scores are reliable and the box score
+                        # parser can mis-assign home/away when the scraping team's
+                        # perspective differs from the box score page layout.
                         if box.get("home_hits") is not None:
                             game_data["home_hits"] = box["home_hits"]
                         if box.get("away_hits") is not None:
