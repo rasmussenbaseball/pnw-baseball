@@ -115,6 +115,121 @@ def backfill_game_pitching(cur):
     print(f"\n  Total matched: {total_matched}, remaining unmatched (with team_id): {remaining}")
 
 
+def clean_position_prefixes(cur):
+    """
+    Strip position-code prefixes from player_name in game_batting.
+    The box-score scraper sometimes stores names like "ssIsaac Bateman",
+    "cfChase Elliott", "bPeyton Rickard" (where "b" = 2B, "ss" = SS, etc.).
+    We also extract the position into the position column if it's empty.
+    """
+    print("\nStep 1.5: Cleaning position prefixes from game_batting names...")
+
+    # Known lowercase position prefixes that get stuck on names.
+    # Order matters — check longer prefixes first so "ss" isn't caught by "s".
+    # These are the common ones seen in box score scrapes.
+    prefixes_sql = """
+        CASE
+            WHEN player_name ~ '^(dh)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(ss)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(cf)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(rf)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(lf)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(1b)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(2b)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(3b)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(pr)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(ph)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(dp)[A-Z]'  THEN 2
+            WHEN player_name ~ '^(c)[A-Z]'   THEN 1
+            WHEN player_name ~ '^(p)[A-Z]'   THEN 1
+            WHEN player_name ~ '^(b)[A-Z]'   THEN 1
+            ELSE 0
+        END
+    """
+
+    # Map single-char prefixes to position codes
+    pos_map_sql = """
+        CASE LOWER(SUBSTRING(player_name FROM 1 FOR (
+            CASE
+                WHEN player_name ~ '^(dh)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(ss)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(cf)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(rf)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(lf)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(1b)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(2b)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(3b)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(pr)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(ph)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(dp)[A-Z]'  THEN 2
+                WHEN player_name ~ '^(c)[A-Z]'   THEN 1
+                WHEN player_name ~ '^(p)[A-Z]'   THEN 1
+                WHEN player_name ~ '^(b)[A-Z]'   THEN 1
+                ELSE 0
+            END
+        )))
+            WHEN 'ss' THEN 'SS'
+            WHEN 'cf' THEN 'CF'
+            WHEN 'rf' THEN 'RF'
+            WHEN 'lf' THEN 'LF'
+            WHEN '1b' THEN '1B'
+            WHEN '2b' THEN '2B'
+            WHEN '3b' THEN '3B'
+            WHEN 'dh' THEN 'DH'
+            WHEN 'pr' THEN 'PR'
+            WHEN 'ph' THEN 'PH'
+            WHEN 'dp' THEN 'DH'
+            WHEN 'c'  THEN 'C'
+            WHEN 'p'  THEN 'P'
+            WHEN 'b'  THEN '2B'
+            ELSE NULL
+        END
+    """
+
+    # Update: strip prefix from name, optionally set position if blank
+    cur.execute(f"""
+        UPDATE game_batting
+        SET player_name = SUBSTRING(player_name FROM ({prefixes_sql}) + 1),
+            position = COALESCE(NULLIF(position, ''), ({pos_map_sql}))
+        WHERE ({prefixes_sql}) > 0
+    """)
+    print(f"  Cleaned {cur.rowcount} rows with position prefixes")
+
+
+def clean_game_batting_names(cur):
+    """Normalize messy player_name values before matching."""
+    print("\nStep 1.6: Cleaning game_batting names...")
+
+    # Strip any remaining position prefixes with slash format
+    # e.g. "cf/rfJennings, Albert" → "Jennings, Albert"
+    cur.execute(r"""
+        UPDATE game_batting
+        SET player_name = REGEXP_REPLACE(player_name,
+            '^[a-z0-9/]+(?=[A-Z])', '')
+        WHERE player_id IS NULL
+          AND player_name ~ '^[a-z0-9/]+[A-Z]'
+    """)
+    print(f"  Stripped remaining position prefixes: {cur.rowcount} rows")
+
+    # Normalize extra whitespace: "Shelor , Will" → "Shelor, Will"
+    cur.execute(r"""
+        UPDATE game_batting
+        SET player_name = REGEXP_REPLACE(TRIM(player_name), '\s+', ' ', 'g')
+        WHERE player_id IS NULL
+          AND player_name ~ '\s{2,}'
+    """)
+    print(f"  Normalized extra whitespace: {cur.rowcount} rows")
+
+    # Remove space before comma: "Shelor , Will" → "Shelor, Will"
+    cur.execute(r"""
+        UPDATE game_batting
+        SET player_name = REPLACE(player_name, ' ,', ',')
+        WHERE player_id IS NULL
+          AND player_name LIKE '% ,%'
+    """)
+    print(f"  Removed space-before-comma: {cur.rowcount} rows")
+
+
 def backfill_game_batting(cur):
     """Match game_batting rows to players by name."""
     print("\nStep 2: Backfilling player_id in game_batting...")
@@ -154,6 +269,39 @@ def backfill_game_batting(cur):
               AND LOWER(TRIM(gb.player_name)) = unique_pl.full_name
         """)
         print(f"  Matched {cur.rowcount} rows via '{fmt_name}' (unique name only)")
+
+    # ── "F. Last" initial format → match by first initial + last name + team ──
+    print("\n  Step 2b: Matching 'F. Last' initial format...")
+    cur.execute("""
+        UPDATE game_batting gb
+        SET player_id = pl.id
+        FROM players pl
+        WHERE gb.player_id IS NULL
+          AND gb.team_id = pl.team_id
+          AND gb.player_name ~ '^[A-Z]\. '
+          AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
+          AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
+    """)
+    print(f"  Matched {cur.rowcount} rows via 'F. Last' + team_id")
+
+    # "F. Last" without team — only if unique first-initial + last name
+    cur.execute("""
+        UPDATE game_batting gb
+        SET player_id = unique_pl.id
+        FROM (
+            SELECT LOWER(SUBSTRING(first_name FROM 1 FOR 1)) AS initial,
+                   LOWER(TRIM(last_name)) AS lname,
+                   MIN(id) AS id
+            FROM players
+            GROUP BY LOWER(SUBSTRING(first_name FROM 1 FOR 1)), LOWER(TRIM(last_name))
+            HAVING COUNT(*) = 1
+        ) unique_pl
+        WHERE gb.player_id IS NULL
+          AND gb.player_name ~ '^[A-Z]\. '
+          AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = unique_pl.initial
+          AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = unique_pl.lname
+    """)
+    print(f"  Matched {cur.rowcount} rows via 'F. Last' (unique name only)")
 
 
 def update_quality_starts(cur):
@@ -203,8 +351,18 @@ def backfill_player_ids():
     with get_connection() as conn:
         cur = conn.cursor()
         backfill_game_pitching(cur)
+        clean_position_prefixes(cur)   # strip "ssIsaac" → "Isaac"
+        clean_game_batting_names(cur)  # strip "cf/rf...", fix whitespace
         backfill_game_batting(cur)
         update_quality_starts(cur)
+
+        # Summary stats
+        cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE player_id IS NOT NULL")
+        matched = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE player_id IS NULL AND team_id IS NOT NULL")
+        unmatched = cur.fetchone()["cnt"]
+        print(f"\n  game_batting total matched: {matched}, unmatched (with team): {unmatched}")
+
         conn.commit()
         print("\nDone! All changes committed.")
 

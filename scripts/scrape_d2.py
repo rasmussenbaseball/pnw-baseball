@@ -23,6 +23,7 @@ import random
 import argparse
 import logging
 import re
+import json
 from pathlib import Path
 
 # Add project root to path
@@ -323,6 +324,22 @@ def fetch_sidearm_roster_json(base_url, season_year):
 
                         key = f"{last}, {first}".lower()
 
+                        headshot_url = None
+                        headshot_fields = ["image", "headshot", "photo", "player_image", "profile_image", "roster_image", "thumbnail", "headshot_url", "photo_url", "image_url"]
+                        for field in headshot_fields:
+                            if field in p:
+                                image_val = p.get(field)
+                                if image_val and isinstance(image_val, str) and image_val.strip():
+                                    headshot_url = image_val.strip()
+                                    if headshot_url.startswith(("/", "http://", "https://", "//")):
+                                        if headshot_url.startswith("/") and not headshot_url.startswith("//"):
+                                            if base_url:
+                                                from urllib.parse import urljoin
+                                                headshot_url = urljoin(base_url, headshot_url)
+                                        elif headshot_url.startswith("//"):
+                                            headshot_url = "https:" + headshot_url
+                                    break
+
                         position = (
                             p.get("position_long")
                             or p.get("position_short")
@@ -377,6 +394,7 @@ def fetch_sidearm_roster_json(base_url, season_year):
                             "previous_school": previous_school,
                             "bats": bats,
                             "throws": throws,
+                            "headshot_url": headshot_url,
                         }
                     except Exception as e:
                         logger.debug(f"Error parsing JSON roster entry: {e}")
@@ -385,6 +403,108 @@ def fetch_sidearm_roster_json(base_url, season_year):
                 return roster
 
     return roster
+
+
+def parse_nuxt_roster(html, base_url=""):
+    """
+    Extract player roster data (including headshot URLs) from Nuxt 3 devalue payload.
+
+    Modern Sidearm sites render rosters client-side from a __NUXT_DATA__ script tag.
+    BeautifulSoup can't see the rendered DOM, but we can parse the payload directly.
+
+    Returns dict keyed by "first last" (lowercase) with bio fields + headshot_url.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    nuxt_script = soup.find("script", id="__NUXT_DATA__")
+    if not nuxt_script or not nuxt_script.string:
+        return {}
+
+    try:
+        data = json.loads(nuxt_script.string)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+    def resolve(idx):
+        """Resolve a devalue index to its primitive value."""
+        if not isinstance(idx, int) or idx < 0 or idx >= len(data):
+            return None
+        val = data[idx]
+        if isinstance(val, (str, int, float, bool)) or val is None:
+            return val
+        if isinstance(val, list) and len(val) >= 2 and val[0] in (
+            "ShallowReactive", "Reactive", "ShallowRef",
+        ):
+            return resolve(val[1])
+        return None
+
+    roster_by_name = {}
+
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            continue
+        if "players" not in item or "season" not in item or "sport" not in item:
+            continue
+
+        players_idx = item["players"]
+        if not isinstance(players_idx, int) or players_idx >= len(data):
+            continue
+        players_arr = data[players_idx]
+        if not isinstance(players_arr, list):
+            continue
+
+        for p_idx in players_arr:
+            if not isinstance(p_idx, int) or p_idx >= len(data):
+                continue
+            player = data[p_idx]
+            if not isinstance(player, dict):
+                continue
+            if "firstName" not in player or "lastName" not in player:
+                continue
+
+            first = resolve(player["firstName"]) or ""
+            last = resolve(player["lastName"]) or ""
+            if not first or not last:
+                continue
+
+            headshot = ""
+            img_idx = player.get("image")
+            if isinstance(img_idx, int) and img_idx < len(data):
+                img_obj = data[img_idx]
+                if isinstance(img_obj, dict):
+                    for url_key in ("absoluteUrl", "url"):
+                        url_idx = img_obj.get(url_key)
+                        if url_idx is not None:
+                            url_val = resolve(url_idx)
+                            if url_val and isinstance(url_val, str) and "/" in url_val:
+                                if url_val.startswith("http"):
+                                    headshot = url_val
+                                elif url_val.startswith("/"):
+                                    headshot = base_url.rstrip("/") + url_val
+                                break
+
+            ft = resolve(player.get("heightFeet", -1))
+            inches = resolve(player.get("heightInches", -1))
+            height = f"{ft}-{inches}" if ft and inches else ""
+
+            name_key = f"{first} {last}".lower()
+            roster_by_name[name_key] = {
+                "position": resolve(player.get("positionShort", -1)) or "",
+                "jersey": resolve(player.get("jerseyNumber", -1)) or "",
+                "year": resolve(player.get("academicYearShort", -1)) or "",
+                "bats": "",
+                "throws": "",
+                "height": height,
+                "weight": str(resolve(player.get("weight", -1)) or ""),
+                "hometown": resolve(player.get("hometown", -1)) or "",
+                "high_school": resolve(player.get("highSchool", -1)) or "",
+                "previous_school": resolve(player.get("previousSchool", -1)) or "",
+                "headshot_url": headshot,
+            }
+
+        if roster_by_name:
+            break
+
+    return roster_by_name
 
 
 def parse_sidearm_roster(html):
@@ -462,6 +582,21 @@ def parse_sidearm_roster(html):
             bats = bt_match.group(1) if bt_match else None
             throws = bt_match.group(2) if bt_match else None
 
+            headshot_url = None
+            img_el = card.find("img")
+            if img_el:
+                img_src = img_el.get("src") or img_el.get("data-src")
+                if img_src and isinstance(img_src, str) and img_src.strip():
+                    img_src = img_src.strip()
+                    placeholder_keywords = ["placeholder", "default", "loading", "image-placeholder", "no-photo", "noimage"]
+                    if not any(keyword.lower() in img_src.lower() for keyword in placeholder_keywords):
+                        headshot_url = img_src
+                        if headshot_url.startswith("//"):
+                            headshot_url = "https:" + headshot_url
+                        elif headshot_url.startswith("/"):
+                            from urllib.parse import urljoin
+                            headshot_url = urljoin("https://example.com", headshot_url)
+
             if "," in full_name:
                 key = full_name.lower().strip()
             else:
@@ -485,6 +620,7 @@ def parse_sidearm_roster(html):
                 "previous_school": previous_school,
                 "bats": bats,
                 "throws": throws,
+                "headshot_url": headshot_url,
             }
 
         except Exception as e:
@@ -606,7 +742,7 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
         updates = []
         params = []
         for field in ["position", "year_in_school", "jersey_number", "bats", "throws",
-                       "height", "weight", "hometown", "high_school", "previous_school"]:
+                       "height", "weight", "hometown", "high_school", "previous_school", "headshot_url"]:
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
@@ -619,8 +755,8 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
     else:
         cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
-               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school, headshot_url)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -633,6 +769,7 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
                 kwargs.get("hometown"),
                 kwargs.get("high_school"),
                 kwargs.get("previous_school"),
+                kwargs.get("headshot_url"),
             ),
         )
         cur.execute("SELECT lastval() AS id")
@@ -714,7 +851,13 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
             logger.info(f"  Fetching roster HTML: {roster_url}")
             roster_html = fetch_page(roster_url)
             if roster_html:
-                roster_by_name = parse_sidearm_roster(roster_html)
+                # Try Nuxt payload first (modern Sidearm sites are JS-rendered)
+                roster_by_name = parse_nuxt_roster(roster_html, base_url)
+                if roster_by_name:
+                    logger.info(f"  Parsed {len(roster_by_name)} players from Nuxt payload")
+                else:
+                    # Fall back to BeautifulSoup HTML parsing
+                    roster_by_name = parse_sidearm_roster(roster_html)
 
         logger.info(f"  Roster: {len(roster_by_name)} players parsed")
 
@@ -756,6 +899,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     hometown=roster_data.get("hometown"),
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
+                    headshot_url=roster_data.get("headshot_url"),
                 )
 
                 gp, gs = split_compound(batter.get("GP-GS"))
@@ -871,6 +1015,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     hometown=roster_data.get("hometown"),
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
+                    headshot_url=roster_data.get("headshot_url"),
                 )
 
                 w, l = split_compound(pitcher.get("W-L"))

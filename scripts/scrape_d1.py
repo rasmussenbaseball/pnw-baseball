@@ -729,6 +729,22 @@ def fetch_sidearm_roster_json(base_url, season_year):
             if not (first and last):
                 continue
 
+            # Try common image field names from Sidearm JSON
+            headshot = ""
+            for img_field in ["image", "headshot", "photo", "player_image",
+                              "profile_image", "roster_image", "thumbnail",
+                              "headshot_url", "photo_url", "image_url"]:
+                val = player.get(img_field, "")
+                if val and isinstance(val, str) and ("/" in val or "http" in val.lower()):
+                    # Make absolute URL if relative
+                    if val.startswith("//"):
+                        headshot = "https:" + val
+                    elif val.startswith("/"):
+                        headshot = base_url.rstrip("/") + val
+                    else:
+                        headshot = val
+                    break
+
             name_key = f"{first} {last}".lower()
             roster_by_name[name_key] = {
                 "position": player.get("position", ""),
@@ -741,6 +757,7 @@ def fetch_sidearm_roster_json(base_url, season_year):
                 "hometown": player.get("hometown", ""),
                 "high_school": player.get("high_school", ""),
                 "previous_school": player.get("previous_school", ""),
+                "headshot_url": headshot,
             }
 
     except (KeyError, TypeError, ValueError):
@@ -749,14 +766,19 @@ def fetch_sidearm_roster_json(base_url, season_year):
     return roster_by_name
 
 
-def parse_sidearm_roster(html):
+def parse_sidearm_roster(html, base_url=""):
     """Parse Sidearm roster HTML page to extract player bios."""
     soup = BeautifulSoup(html, "html.parser")
     roster = {}
 
     # Look for roster cards or list items
-    # Sidearm rosters typically use <div class="sidearm-roster-card"> or similar
-    roster_cards = soup.find_all(["div", "article"], class_=re.compile(r"roster|card", re.I))
+    # Newer Sidearm: <div class="sidearm-roster-card"> or similar
+    # Older Sidearm: <li class="sidearm-roster-player">
+    roster_cards = soup.find_all(["div", "article", "li"], class_=re.compile(r"sidearm-roster-player(?!s)|roster.*card|card.*roster", re.I))
+
+    # Fallback to broader search if nothing found
+    if not roster_cards:
+        roster_cards = soup.find_all(["div", "article"], class_=re.compile(r"roster|card", re.I))
 
     for card in roster_cards:
         try:
@@ -777,6 +799,22 @@ def parse_sidearm_roster(html):
 
             name_key = player_name.lower()
 
+            # Extract headshot image from card
+            headshot = ""
+            img = card.find("img")
+            if img:
+                src = img.get("src") or img.get("data-src") or ""
+                # Skip placeholder/default images
+                if src and "placeholder" not in src.lower() and "default" not in src.lower():
+                    if src.startswith("//"):
+                        headshot = "https:" + src
+                    elif src.startswith("/") and base_url:
+                        headshot = base_url.rstrip("/") + src
+                    elif src.startswith("/"):
+                        headshot = src
+                    else:
+                        headshot = src
+
             # Extract other fields from card
             bio = {
                 "position": _extract_field(card, "position"),
@@ -789,6 +827,7 @@ def parse_sidearm_roster(html):
                 "hometown": _extract_field(card, ["hometown", "home"]),
                 "high_school": _extract_field(card, ["high school", "hs"]),
                 "previous_school": _extract_field(card, ["previous", "transfer"]),
+                "headshot_url": headshot,
             }
 
             roster[name_key] = bio
@@ -820,6 +859,115 @@ def _extract_field(elem, labels):
                 return next_el.get_text(strip=True)
 
     return ""
+
+
+def parse_nuxt_roster(html, base_url=""):
+    """
+    Extract player roster data (including headshot URLs) from Nuxt 3 devalue payload.
+
+    Modern Sidearm sites render rosters client-side from a __NUXT_DATA__ script tag.
+    BeautifulSoup can't see the rendered DOM, but we can parse the payload directly.
+
+    Returns dict keyed by "first last" (lowercase) with bio fields + headshot_url.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    nuxt_script = soup.find("script", id="__NUXT_DATA__")
+    if not nuxt_script or not nuxt_script.string:
+        return {}
+
+    try:
+        data = json.loads(nuxt_script.string)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+    def resolve(idx):
+        """Resolve a devalue index to its primitive value."""
+        if not isinstance(idx, int) or idx < 0 or idx >= len(data):
+            return None
+        val = data[idx]
+        if isinstance(val, (str, int, float, bool)) or val is None:
+            return val
+        if isinstance(val, list) and len(val) >= 2 and val[0] in (
+            "ShallowReactive", "Reactive", "ShallowRef",
+        ):
+            return resolve(val[1])
+        return None  # Complex object — don't recurse further
+
+    # Find the roster data: walk through top-level data to find the "roster" store
+    # Structure: data[root] -> ... -> roster -> {seasonId: rosterObj} -> players -> [playerObjs]
+    roster_by_name = {}
+
+    # Search all objects in the payload for a "players" array containing player-like objects
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            continue
+        if "players" not in item or "season" not in item or "sport" not in item:
+            continue
+
+        # Found the season roster object — get players array
+        players_idx = item["players"]
+        if not isinstance(players_idx, int) or players_idx >= len(data):
+            continue
+        players_arr = data[players_idx]
+        if not isinstance(players_arr, list):
+            continue
+
+        for p_idx in players_arr:
+            if not isinstance(p_idx, int) or p_idx >= len(data):
+                continue
+            player = data[p_idx]
+            if not isinstance(player, dict):
+                continue
+            if "firstName" not in player or "lastName" not in player:
+                continue
+
+            first = resolve(player["firstName"]) or ""
+            last = resolve(player["lastName"]) or ""
+            if not first or not last:
+                continue
+
+            # Extract headshot URL from image object
+            headshot = ""
+            img_idx = player.get("image")
+            if isinstance(img_idx, int) and img_idx < len(data):
+                img_obj = data[img_idx]
+                if isinstance(img_obj, dict):
+                    # Try absoluteUrl first, then url
+                    for url_key in ("absoluteUrl", "url"):
+                        url_idx = img_obj.get(url_key)
+                        if url_idx is not None:
+                            url_val = resolve(url_idx)
+                            if url_val and isinstance(url_val, str) and "/" in url_val:
+                                if url_val.startswith("http"):
+                                    headshot = url_val
+                                elif url_val.startswith("/"):
+                                    headshot = base_url.rstrip("/") + url_val
+                                break
+
+            # Build height string
+            ft = resolve(player.get("heightFeet", -1))
+            inches = resolve(player.get("heightInches", -1))
+            height = f"{ft}-{inches}" if ft and inches else ""
+
+            name_key = f"{first} {last}".lower()
+            roster_by_name[name_key] = {
+                "position": resolve(player.get("positionShort", -1)) or "",
+                "jersey": resolve(player.get("jerseyNumber", -1)) or "",
+                "year": resolve(player.get("academicYearShort", -1)) or "",
+                "bats": "",  # Not in Nuxt payload typically
+                "throws": "",
+                "height": height,
+                "weight": str(resolve(player.get("weight", -1)) or ""),
+                "hometown": resolve(player.get("hometown", -1)) or "",
+                "high_school": resolve(player.get("highSchool", -1)) or "",
+                "previous_school": resolve(player.get("previousSchool", -1)) or "",
+                "headshot_url": headshot,
+            }
+
+        if roster_by_name:
+            break  # Found players, stop searching
+
+    return roster_by_name
 
 
 # ============================================================
@@ -935,7 +1083,8 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
         updates = []
         params = []
         for field in ["position", "year_in_school", "jersey_number", "bats", "throws",
-                       "height", "weight", "hometown", "high_school", "previous_school"]:
+                       "height", "weight", "hometown", "high_school", "previous_school",
+                       "headshot_url"]:
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
@@ -948,8 +1097,9 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
     else:
         cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
-               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               year_in_school, jersey_number, bats, throws, height, weight, hometown,
+               high_school, previous_school, headshot_url)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -962,6 +1112,7 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
                 kwargs.get("hometown"),
                 kwargs.get("high_school"),
                 kwargs.get("previous_school"),
+                kwargs.get("headshot_url"),
             ),
         )
         cur.execute("SELECT lastval() as id")
@@ -1113,7 +1264,13 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
             logger.info(f"  Fetching roster HTML: {roster_url}")
             roster_html = fetch_page(roster_url)
             if roster_html:
-                roster_by_name = parse_sidearm_roster(roster_html)
+                # Try Nuxt payload first (modern Sidearm sites are JS-rendered)
+                roster_by_name = parse_nuxt_roster(roster_html, base_url)
+                if roster_by_name:
+                    logger.info(f"  Parsed {len(roster_by_name)} players from Nuxt payload")
+                else:
+                    # Fall back to BeautifulSoup HTML parsing
+                    roster_by_name = parse_sidearm_roster(roster_html, base_url)
 
         logger.info(f"  Roster: {len(roster_by_name)} players parsed")
 
@@ -1132,8 +1289,13 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 if not last_name:
                     continue
 
-                roster_key = player_name.lower()
-                roster_data = roster_by_name.get(roster_key, {})
+                # Try multiple key formats: "Last, First", "first last", "last first"
+                roster_data = (
+                    roster_by_name.get(player_name.lower())
+                    or roster_by_name.get(f"{first_name} {last_name}".lower())
+                    or roster_by_name.get(f"{last_name} {first_name}".lower())
+                    or {}
+                )
                 if roster_data:
                     matched_count += 1
                 else:
@@ -1155,6 +1317,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     hometown=roster_data.get("hometown"),
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
+                    headshot_url=roster_data.get("headshot_url"),
                 )
 
                 gp, gs = split_compound(batter.get("GP-GS"))
@@ -1251,8 +1414,12 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                 if not last_name:
                     continue
 
-                roster_key = player_name.lower()
-                roster_data = roster_by_name.get(roster_key, {})
+                roster_data = (
+                    roster_by_name.get(player_name.lower())
+                    or roster_by_name.get(f"{first_name} {last_name}".lower())
+                    or roster_by_name.get(f"{last_name} {first_name}".lower())
+                    or {}
+                )
 
                 raw_position = roster_data.get("position", "P")
                 pitch_pos = normalize_position(raw_position) or "P"
@@ -1270,6 +1437,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     hometown=roster_data.get("hometown"),
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
+                    headshot_url=roster_data.get("headshot_url"),
                 )
 
                 w, l = split_compound(pitcher.get("W-L"))

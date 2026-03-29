@@ -343,6 +343,9 @@ def parse_game_date(date_str, season_year):
 
     date_str = date_str.strip()
 
+    # Normalize abbreviated months with periods: "Mar." -> "Mar", "Feb." -> "Feb"
+    date_str = re.sub(r'(\b[A-Z][a-z]{2})\.', r'\1', date_str)
+
     # Try full date formats
     for fmt in ("%m/%d/%Y", "%b %d, %Y", "%B %d, %Y", "%m/%d/%y", "%Y-%m-%d"):
         try:
@@ -427,32 +430,274 @@ def build_sidearm_schedule_url(base_url, sport, season_year):
 def parse_sidearm_schedule(html, base_url, season_year):
     """
     Parse a Sidearm Sports schedule page.
-
-    Sidearm uses a list-based layout where each game is an <li> containing:
-      - A button with label: "Hide/Show ... For {Opponent} - {Month} {Day}, {Year}"
-      - Generic spans for date, time, and score (e.g. "0-5")
-      - Links to box score pages (/sports/baseball/stats/{year}/.../boxscore/{id})
-
+    Tries the new c-events__item format first, then falls back to the legacy
+    <li> + <button> format.
     Returns list of game dicts.
     """
     if not html:
         return []
 
+    # Try new Sidearm Vue/Nuxt format first (c-events__item containers)
+    games = _parse_sidearm_schedule_v2(html, base_url, season_year)
+    if games:
+        logger.info(f"  Parsed {len(games)} completed games from Sidearm schedule (v2)")
+        return games
+
+    # Try s-game-card format (Oregon, OSU, WSU, etc.)
+    games = _parse_sidearm_schedule_v3(html, base_url, season_year)
+    if games:
+        logger.info(f"  Parsed {len(games)} completed games from Sidearm schedule (v3/game-card)")
+        return games
+
+    # Fall back to legacy format
     soup = BeautifulSoup(html, "html.parser")
     games = []
-
-    # Find all list items on the page that contain a box-score-like button
     all_items = soup.find_all("li")
 
     for li in all_items:
         game = _parse_sidearm_list_item(li, base_url, season_year)
         if game and game.get("team_score") is not None:
-            # Detect doubleheaders
             if games and games[-1].get("date") == game.get("date") and games[-1].get("opponent") == game.get("opponent"):
                 game["game_number"] = games[-1].get("game_number", 1) + 1
             games.append(game)
 
-    logger.info(f"  Parsed {len(games)} completed games from Sidearm schedule")
+    logger.info(f"  Parsed {len(games)} completed games from Sidearm schedule (legacy)")
+    return games
+
+
+def _parse_sidearm_schedule_v2(html, base_url, season_year):
+    """
+    Parse the modern Sidearm Nuxt/Vue schedule format (2025+).
+
+    Each game is a <div class="c-events__item"> containing:
+      - <time class="c-events__date" datetime="Mar. 20, 2026">
+      - <div class="c-events__team--opponent"> with opponent name
+      - <div class="c-events__team-score"> (two: team score, then opponent score)
+      - <a href="/boxscore.aspx?id=..."> with aria-label containing game info
+      - <span class="sr-only"> with text like "Completed Event: ... Loss , 0, to, 5"
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    games = []
+
+    # Find all event items — the top-level game container has class
+    # "c-events__item ... c-events__item--result" for completed games
+    event_items = soup.find_all("div", class_=re.compile(r"c-events__item--result"))
+    logger.info(f"  v2 parser: found {len(event_items)} result items in {len(html)} bytes")
+    if not event_items:
+        # Try broader match
+        all_events = soup.find_all("div", class_=re.compile(r"c-events__item\s"))
+        logger.info(f"  v2 parser: broader match found {len(all_events)} event items")
+        if not all_events:
+            return []
+        event_items = all_events
+
+    for item in event_items:
+        game = {
+            "is_conference": False,
+            "innings": 9,
+            "game_number": 1,
+        }
+
+        # ─── Check if this is a completed game (has a boxscore link) ───
+        box_link = item.find("a", href=re.compile(r"boxscore", re.I))
+        if not box_link:
+            continue  # Future game or no box score
+
+        href = box_link.get("href", "")
+        if not href.startswith("http"):
+            href = base_url.rstrip("/") + "/" + href.lstrip("/")
+        game["box_score_url"] = href
+        aria = box_link.get("aria-label", "")
+
+        # ─── Extract date ───
+        time_el = item.find("time", class_=re.compile(r"c-events__date"))
+        if time_el and time_el.get("datetime"):
+            game["date"] = parse_game_date(time_el["datetime"], season_year)
+        elif aria:
+            date_m = re.search(r'on\s+(\w+\s+\d+,?\s*\d{4})', aria)
+            if date_m:
+                game["date"] = parse_game_date(date_m.group(1), season_year)
+
+        if not game.get("date"):
+            continue
+
+        # ─── Extract opponent ───
+        opp_el = item.find("div", class_=re.compile(r"c-events__team--opponent"))
+        if opp_el:
+            opp_text = opp_el.get_text(strip=True)
+            game["opponent"] = re.sub(r'^#\d+\s+', '', opp_text).strip()
+        elif aria:
+            opp_m = re.search(r'Boxscore for Baseball (?:vs\.?|at)\s+(.+?)\s+on\s+', aria)
+            if opp_m:
+                game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
+
+        if not game.get("opponent"):
+            continue
+
+        # ─── Extract scores ───
+        score_divs = item.find_all("div", class_=re.compile(r"c-events__team-score"))
+        if len(score_divs) >= 2:
+            try:
+                game["team_score"] = int(score_divs[0].get_text(strip=True))
+                game["opp_score"] = int(score_divs[1].get_text(strip=True))
+                if game["team_score"] > game["opp_score"]:
+                    game["result"] = "W"
+                elif game["team_score"] < game["opp_score"]:
+                    game["result"] = "L"
+                else:
+                    game["result"] = "T"
+            except ValueError:
+                continue
+        else:
+            # Try parsing from sr-only text: "Completed Event: ... Loss , 0, to, 5"
+            sr = item.find("span", class_="sr-only", string=re.compile(r"Completed Event", re.I))
+            if sr:
+                score_m = re.search(r'(Win|Loss|Tie)\s*,\s*(\d+)\s*,?\s*to\s*,?\s*(\d+)', sr.get_text(), re.I)
+                if score_m:
+                    game["team_score"] = int(score_m.group(2))
+                    game["opp_score"] = int(score_m.group(3))
+                    game["result"] = {"win": "W", "loss": "L", "tie": "T"}.get(score_m.group(1).lower(), "T")
+
+        if game.get("team_score") is None:
+            continue
+
+        # ─── Extra innings ───
+        postscore = item.find(class_=re.compile(r"postscore"))
+        if postscore:
+            inn_m = re.search(r'\((\d+)\)', postscore.get_text())
+            if inn_m:
+                game["innings"] = int(inn_m.group(1))
+
+        # ─── Conference indicator ───
+        if "*" in item.get_text():
+            game["is_conference"] = True
+
+        # ─── Detect doubleheaders ───
+        if games and games[-1].get("date") == game.get("date") and games[-1].get("opponent") == game.get("opponent"):
+            game["game_number"] = games[-1].get("game_number", 1) + 1
+
+        games.append(game)
+
+    return games
+
+
+def _parse_sidearm_schedule_v3(html, base_url, season_year):
+    """
+    Parse the Sidearm 's-game-card' schedule format (Oregon, OSU, WSU, etc.).
+
+    Each completed game is a <div class="s-game-card ..."> containing:
+      - A score/time div with class 's-game-card__header__game-score-time'
+        Text like "W, 6-2Feb 13(Fri) 3:05 p.m."
+      - Links including one to the boxscore:
+        <a href="/sports/baseball/stats/2026/opponent-slug/boxscore/ID">
+        or <a href="/boxscore.aspx?id=ID">
+        with optional aria-label like "Box Score of Team vs Opponent on Month Day"
+      - Opponent name in <a> tag linking to opponent site, or in aria-label
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    games = []
+    seen_urls = set()  # Deduplicate — page often has duplicate card layouts
+
+    # Find all s-game-card containers
+    all_cards = soup.find_all("div", class_=re.compile(r"\bs-game-card\b"))
+    logger.info(f"  v3 parser: found {len(all_cards)} s-game-card elements in {len(html)} bytes")
+    if not all_cards:
+        return []
+
+    for card in all_cards:
+        game = {
+            "is_conference": False,
+            "innings": 9,
+            "game_number": 1,
+        }
+
+        # ─── Find boxscore link ───
+        box_link = card.find("a", href=re.compile(r"boxscore", re.I))
+        if not box_link:
+            continue  # Not a completed game or no box score
+
+        href = box_link.get("href", "")
+        if not href.startswith("http"):
+            href = base_url.rstrip("/") + "/" + href.lstrip("/")
+        if href in seen_urls:
+            continue  # Skip duplicate card layout
+        seen_urls.add(href)
+        game["box_score_url"] = href
+        aria = box_link.get("aria-label", "") or ""
+
+        # ─── Extract result and scores from score-time text ───
+        score_time_el = card.find(class_=re.compile(r"game-score-time"))
+        if score_time_el:
+            st_text = score_time_el.get_text(strip=True)
+            # Pattern: "W, 6-2Feb 13(Fri) 3:05 p.m." or "L, 1-8Feb 14(Sat) 10 a.m."
+            score_m = re.match(r'([WLT]),\s*(\d+)-(\d+)', st_text)
+            if score_m:
+                game["result"] = score_m.group(1)
+                game["team_score"] = int(score_m.group(2))
+                game["opp_score"] = int(score_m.group(3))
+
+                # Extract date from remaining text after score
+                rest = st_text[score_m.end():]
+                # e.g. "Feb 13(Fri) 3:05 p.m." or "Mar. 20(Thu) 2 p.m."
+                date_m = re.match(r'([A-Z][a-z]{2}\.?\s+\d{1,2})', rest)
+                if date_m:
+                    date_str = f"{date_m.group(1)}, {season_year}"
+                    game["date"] = parse_game_date(date_str, season_year)
+
+        # ─── Fallback date from aria-label ───
+        if not game.get("date") and aria:
+            # "Box Score of University of Oregon vs George Mason on February 13"
+            date_m = re.search(r'on\s+(\w+\s+\d{1,2})', aria)
+            if date_m:
+                date_str = f"{date_m.group(1)}, {season_year}"
+                game["date"] = parse_game_date(date_str, season_year)
+
+        if not game.get("date") or game.get("team_score") is None:
+            continue
+
+        # ─── Extract opponent ───
+        if aria:
+            # "Box Score of University of Oregon vs George Mason on February 13"
+            opp_m = re.search(r'(?:vs\.?|at)\s+(.+?)\s+on\s+', aria)
+            if opp_m:
+                game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
+
+        if not game.get("opponent"):
+            # Try the team-event-info area — opponent name is usually in a link
+            team_el = card.find(class_=re.compile(r"s-game-card__header__team-event-info"))
+            if team_el:
+                # First text link is usually the opponent
+                opp_link = team_el.find("a")
+                if opp_link:
+                    game["opponent"] = re.sub(r'\s*\(GM\d+\)', '', opp_link.get_text(strip=True)).strip()
+
+        if not game.get("opponent"):
+            # Last resort: check team header area
+            team_header = card.find(class_=re.compile(r"s-game-card__header__team\b"))
+            if team_header:
+                opp_link = team_header.find("a")
+                if opp_link:
+                    game["opponent"] = re.sub(r'\s*\(GM\d+\)', '', opp_link.get_text(strip=True)).strip()
+
+        if not game.get("opponent"):
+            continue
+
+        # ─── Conference indicator ───
+        if "*" in card.get_text():
+            game["is_conference"] = True
+
+        # ─── Extra innings ───
+        st_text = score_time_el.get_text(strip=True) if score_time_el else ""
+        inn_m = re.search(r'\((\d+)\s*inn', st_text, re.I)
+        if inn_m:
+            game["innings"] = int(inn_m.group(1))
+
+        # ─── Detect doubleheaders ───
+        if games and games[-1].get("date") == game.get("date") and games[-1].get("opponent") == game.get("opponent"):
+            game["game_number"] = games[-1].get("game_number", 1) + 1
+
+        games.append(game)
+
     return games
 
 

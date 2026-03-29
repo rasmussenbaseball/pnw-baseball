@@ -141,8 +141,8 @@ NWAC_TEAM_SLUGS = {
 }
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ]
 
 
@@ -151,30 +151,65 @@ USER_AGENTS = [
 # ============================================================
 
 session = requests.Session()
+# Set default headers on the session so cookies persist properly
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+})
 last_request_time = 0
+_session_warmed = False
+
+
+def _warm_session():
+    """Visit the main NWAC baseball page once to establish cookies."""
+    global _session_warmed, last_request_time
+    if _session_warmed:
+        return
+    logger.info("Warming session — visiting NWAC main page...")
+    try:
+        resp = session.get(f"{BASE_URL}/sports/bsb/2025-26", timeout=30)
+        last_request_time = time.time()
+        logger.info(f"Session warmed ({len(resp.text)} bytes, cookies: {len(session.cookies)})")
+        time.sleep(random.uniform(2.0, 4.0))
+    except Exception as e:
+        logger.warning(f"Session warmup failed: {e}")
+    _session_warmed = True
 
 
 def fetch_page(url, retries=3):
     """Fetch a URL with rate limiting and retries."""
     global last_request_time
+    _warm_session()
 
     for attempt in range(retries):
         try:
             elapsed = time.time() - last_request_time
-            delay = random.uniform(1.5, 3.0)
+            delay = random.uniform(3.5, 6.0)
             if elapsed < delay:
                 time.sleep(delay - elapsed)
 
-            headers = {
-                "User-Agent": random.choice(USER_AGENTS),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "X-Requested-With": "XMLHttpRequest",
-            }
-            resp = session.get(url, headers=headers, timeout=30)
+            # Use AJAX-style headers for template endpoints
+            extra = {}
+            if "tmpl=" in url:
+                extra["X-Requested-With"] = "XMLHttpRequest"
+                extra["Sec-Fetch-Dest"] = "empty"
+                extra["Sec-Fetch-Mode"] = "cors"
+                extra["Referer"] = url.split("?")[0]
+
+            resp = session.get(url, headers=extra, timeout=30)
             last_request_time = time.time()
             resp.raise_for_status()
-            logger.debug(f"Fetched {url} ({len(resp.text)} bytes)")
+            logger.info(f"Fetched {url} ({len(resp.text)} bytes, has_table={'<table' in resp.text})")
+            if '<table' not in resp.text and len(resp.text) < 3000:
+                logger.info(f"Response snippet: {resp.text[:300]}")
             return resp.text
 
         except requests.RequestException as e:
@@ -335,6 +370,18 @@ def parse_roster_table(html):
                 if link and "/players/" in (link.get("href", "")):
                     row["player_url"] = link["href"]
 
+        # Check for headshot image in the row
+        img = tr.find("img")
+        if img:
+            src = img.get("src") or img.get("data-src") or ""
+            if src and "placeholder" not in src.lower() and "default" not in src.lower():
+                if src.startswith("//"):
+                    row["headshot_url"] = "https:" + src
+                elif src.startswith("/"):
+                    row["headshot_url"] = BASE_URL + src
+                else:
+                    row["headshot_url"] = src
+
         if row.get("name"):
             rows.append(row)
 
@@ -445,7 +492,7 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
         updates = []
         params = []
         for field in ["position", "year_in_school", "jersey_number", "bats", "throws",
-                       "height", "weight", "hometown"]:
+                       "height", "weight", "hometown", "headshot_url"]:
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
@@ -458,8 +505,8 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     else:
         cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
-               year_in_school, jersey_number, bats, throws, height, weight, hometown)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               year_in_school, jersey_number, bats, throws, height, weight, hometown, headshot_url)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -470,6 +517,7 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
                 kwargs.get("height"),
                 kwargs.get("weight"),
                 kwargs.get("hometown"),
+                kwargs.get("headshot_url"),
             ),
         )
         cur.execute("SELECT lastval() AS id")
@@ -604,6 +652,7 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                         height=roster_data.get("height"),
                         weight=safe_int(roster_data.get("weight")) or None,
                         hometown=roster_data.get("hometown"),
+                        headshot_url=roster_data.get("headshot_url"),
                     )
 
                     # Batting counting stats
@@ -718,6 +767,7 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                         height=roster_data.get("height"),
                         weight=safe_int(roster_data.get("weight")) or None,
                         hometown=roster_data.get("hometown"),
+                        headshot_url=roster_data.get("headshot_url"),
                     )
 
                     # Pitching stats

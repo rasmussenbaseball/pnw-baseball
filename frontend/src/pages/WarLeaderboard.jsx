@@ -142,7 +142,7 @@ export default function WarLeaderboard() {
             </thead>
             <tbody>
               {(result?.data || []).map((row, i) => (
-                <tr key={row.player_id}>
+                <tr key={row.player_id} className={row.is_qualified === false ? 'italic text-gray-500' : ''}>
                   <td>{page * limit + i + 1}</td>
                   <td>
                     <Link to={`/player/${row.player_id}`} className="player-link">

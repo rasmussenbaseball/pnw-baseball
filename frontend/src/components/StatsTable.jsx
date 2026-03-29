@@ -122,7 +122,7 @@ export default function StatsTable({
         </thead>
         <tbody>
           {data.map((row, i) => (
-            <tr key={row.id || row.player_id || i}>
+            <tr key={row.id || row.player_id || i} className={row.is_qualified === false ? 'italic text-gray-500' : ''}>
               {displayColumns.map(col => (
                 <td key={col.key} className={col.format === 'avg' || col.format === 'era' || col.format === 'war' ? 'font-mono text-right' : ''}>
                   {renderCell(row, col, i)}

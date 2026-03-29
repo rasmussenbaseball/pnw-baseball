@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { usePlayer } from '../hooks/useApi'
+import { usePlayer, usePlayerGameLogs } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 
@@ -343,7 +343,7 @@ function StatsTable({ rows, columns, careerRow }) {
 
 // ── Team Awards ─────────────────────────────────────────────────
 
-function TeamAwards({ awards, careerRankings, teamShort }) {
+function TeamAwards({ awards, careerRankings, pnwRankings, teamShort }) {
   // Group season awards by year + team
   const bySeason = {}
   awards.forEach(a => {
@@ -358,12 +358,21 @@ function TeamAwards({ awards, careerRankings, teamShort }) {
 
   const hasSeasonAwards = awards.length > 0
   const hasCareerRankings = careerRankings && careerRankings.length > 0
+  const hasPnwRankings = pnwRankings && pnwRankings.length > 0
 
-  function formatVal(cat, val) {
-    if (cat === 'AVG') return val.toFixed(3)
-    if (cat === 'ERA' || cat === 'FIP' || cat === 'WHIP') return val.toFixed(2)
-    if (cat === 'oWAR' || cat === 'pWAR' || cat === 'IP') return val.toFixed(1)
-    if (cat === 'wRC+') return Math.round(val)
+  function formatVal(cat, val, fmt) {
+    // If a format hint is provided (from PNW rankings), use it
+    if (fmt === 'avg') return Number(val).toFixed(3)
+    if (fmt === 'float1') return Number(val).toFixed(1)
+    if (fmt === 'float2') return Number(val).toFixed(2)
+    if (fmt === 'int') return Math.round(val)
+    if (fmt === 'pct') return Number(val).toFixed(1) + '%'
+    // Fallback: format by category name
+    if (cat === 'AVG' || cat === 'ISO') return Number(val).toFixed(3)
+    if (cat === 'ERA' || cat === 'FIP' || cat === 'WHIP' || cat === 'SIERA') return Number(val).toFixed(2)
+    if (cat === 'oWAR' || cat === 'pWAR' || cat === 'IP') return Number(val).toFixed(1)
+    if (cat === 'wRC+' || cat === 'FIP+') return Math.round(val)
+    if (cat === 'K-BB%') return Number(val).toFixed(1) + '%'
     return val
   }
 
@@ -423,6 +432,37 @@ function TeamAwards({ awards, careerRankings, teamShort }) {
         </div>
       )}
 
+      {/* PNW Rankings */}
+      {hasPnwRankings && (
+        <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100' : ''}>
+          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+            PNW Rankings
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {pnwRankings.map((r, i) => (
+              <div
+                key={i}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                  r.rank === 1
+                    ? 'bg-teal-50 text-teal-800 border-teal-300'
+                    : r.rank <= 3
+                    ? 'bg-teal-50 text-teal-700 border-teal-200'
+                    : 'bg-gray-50 text-teal-700 border-teal-200'
+                }`}
+              >
+                <img src="/favicon.png" alt="NW" className="w-4 h-4 object-contain shrink-0" />
+                <span className="font-bold">
+                  {ordinal(r.rank)}
+                </span>
+                <span>in {r.category}</span>
+                <span className="opacity-60">({formatVal(r.category, r.value, r.format)})</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">Top 10 across all PNW divisions (2026, qualified)</p>
+        </div>
+      )}
+
       {/* Career Rankings */}
       {hasCareerRankings && (
         <div>
@@ -460,12 +500,212 @@ function TeamAwards({ awards, careerRankings, teamShort }) {
 }
 
 
+// ── Position Pie Chart ─────────────────────────────────────────
+const POS_COLORS = {
+  'C': '#0d9488', 'SS': '#0891b2', 'CF': '#2563eb', '2B': '#7c3aed',
+  '3B': '#c026d3', 'RF': '#e11d48', 'LF': '#ea580c', '1B': '#d97706',
+  'OF': '#059669', 'IF': '#4f46e5', 'DH': '#6b7280', 'UT': '#9ca3af', 'N/A': '#d1d5db',
+}
+
+function PositionPieChart({ breakdown }) {
+  if (!breakdown || breakdown.length === 0) return null
+  const total = breakdown.reduce((s, b) => s + b.games, 0)
+  if (total === 0) return null
+
+  // If only one position at 100%, show a compact inline display
+  if (breakdown.length === 1) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4 sm:mb-6">
+        <div className="flex items-center gap-3">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0">Position</h3>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
+              style={{ backgroundColor: POS_COLORS[breakdown[0].position] || '#6b7280' }}>
+              {breakdown[0].position}
+            </div>
+            <span className="text-sm text-gray-500">100% ({breakdown[0].games} gm)</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Build SVG pie chart
+  const size = 80
+  const cx = size / 2, cy = size / 2, r = 36
+  let cumAngle = -Math.PI / 2 // start at top
+  const slices = breakdown.map((b) => {
+    const frac = b.games / total
+    const startAngle = cumAngle
+    const endAngle = cumAngle + frac * 2 * Math.PI
+    cumAngle = endAngle
+    const largeArc = frac > 0.5 ? 1 : 0
+    const x1 = cx + r * Math.cos(startAngle)
+    const y1 = cy + r * Math.sin(startAngle)
+    const x2 = cx + r * Math.cos(endAngle)
+    const y2 = cy + r * Math.sin(endAngle)
+    const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+    return { ...b, d, frac, color: POS_COLORS[b.position] || '#6b7280' }
+  })
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4 sm:mb-6">
+      <div className="flex items-center gap-4 flex-wrap">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0">Position</h3>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+          {slices.map((s, i) => (
+            <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth="1.5" />
+          ))}
+        </svg>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {slices.map((s, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-sm">
+              <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="font-bold text-gray-900">{s.position}</span>
+              <span className="text-gray-400">{s.percentage}%</span>
+              <span className="text-gray-400 text-xs">({s.games})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Game Log Tables ──────────────────────────────────────────
+
+const BATTING_GAMELOG_COLS = [
+  { key: 'game_date',  label: 'Date' },
+  { key: 'opponent',   label: 'Opp' },
+  { key: 'result',     label: 'Score' },
+  { key: 'position',   label: 'Pos' },
+  { key: 'ab',         label: 'AB' },
+  { key: 'r',          label: 'R' },
+  { key: 'h',          label: 'H' },
+  { key: 'rbi',        label: 'RBI' },
+  { key: 'bb',         label: 'BB' },
+  { key: 'k',          label: 'K' },
+  { key: 'lob',        label: 'LOB' },
+]
+
+const PITCHING_GAMELOG_COLS = [
+  { key: 'game_date',  label: 'Date' },
+  { key: 'opponent',   label: 'Opp' },
+  { key: 'result',     label: 'Score' },
+  { key: 'decision',   label: 'Dec' },
+  { key: 'ip',         label: 'IP' },
+  { key: 'h',          label: 'H' },
+  { key: 'r',          label: 'R' },
+  { key: 'er',         label: 'ER' },
+  { key: 'bb',         label: 'BB' },
+  { key: 'k',          label: 'K' },
+  { key: 'hbp',        label: 'HBP' },
+  { key: 'wp',         label: 'WP' },
+  { key: 'bf',         label: 'BF' },
+  { key: 'pitches',    label: 'NP' },
+  { key: 'game_score', label: 'GSc' },
+]
+
+function formatDate(dateStr) {
+  if (!dateStr) return '-'
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function GameLogTable({ title, logs, columns }) {
+  if (!logs || logs.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
+        {title}
+      </h3>
+      <div className="overflow-x-auto -mx-3 sm:mx-0 max-h-[500px] overflow-y-auto">
+        <div className="min-w-[700px] px-3 sm:px-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="border-b-2 border-nw-teal/30">
+                  {columns.map(col => (
+                    <th
+                      key={col.key}
+                      className="px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right first:text-left bg-white"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((row, i) => {
+                  const won = row.team_score > row.opp_score
+                  const resultText = `${won ? 'W' : 'L'} ${row.team_score}-${row.opp_score}`
+
+                  return (
+                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                      {columns.map(col => {
+                        let val
+                        if (col.key === 'game_date') {
+                          val = formatDate(row.game_date)
+                        } else if (col.key === 'opponent') {
+                          val = (
+                            <span className="flex items-center gap-1">
+                              <span className="text-gray-400 text-xs">{row.home_away}</span>
+                              {row.opponent_logo && (
+                                <img
+                                  src={row.opponent_logo}
+                                  alt=""
+                                  className="w-4 h-4 object-contain"
+                                  onError={(e) => { e.target.style.display = 'none' }}
+                                />
+                              )}
+                              <span>{row.opponent_short || '?'}</span>
+                            </span>
+                          )
+                        } else if (col.key === 'result') {
+                          val = (
+                            <span className={won ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+                              {resultText}
+                            </span>
+                          )
+                        } else if (col.key === 'ip') {
+                          val = row.ip != null ? row.ip.toFixed(1) : '-'
+                        } else if (col.key === 'decision') {
+                          val = row.decision || '-'
+                        } else if (col.key === 'position') {
+                          val = row.position || '-'
+                        } else {
+                          val = row[col.key] != null ? row[col.key] : '-'
+                        }
+
+                        return (
+                          <td key={col.key} className="px-2 py-1.5 text-right first:text-left whitespace-nowrap">
+                            {val}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function PlayerDetail() {
   const { playerId } = useParams()
   const [percentileSeason, setPercentileSeason] = useState(null) // null = most recent (default)
+  const [headshotError, setHeadshotError] = useState(false)
   const { data, loading, error } = usePlayer(playerId, percentileSeason)
+  const { data: gameLogs } = usePlayerGameLogs(playerId, 2026)
 
   if (loading && !data) {
     return (
@@ -483,7 +723,7 @@ export default function PlayerDetail() {
     )
   }
 
-  const { player, batting_stats, pitching_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, linked_players } = data
+  const { player, batting_stats, pitching_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players } = data
   const isTransfer = linked_players && linked_players.length > 1
   const hasBatting = batting_stats && batting_stats.length > 0
   const hasPitching = pitching_stats && pitching_stats.length > 0
@@ -510,6 +750,21 @@ export default function PlayerDetail() {
       {/* ── Player Header ── */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          {/* Player Headshot */}
+          {player.headshot_url && !headshotError ? (
+            <img
+              src={player.headshot_url}
+              alt={`${player.first_name} ${player.last_name}`}
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border-2 border-gray-200 shrink-0"
+              onError={() => setHeadshotError(true)}
+            />
+          ) : (
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shrink-0 border-2 border-gray-200">
+              <span className="text-lg sm:text-xl font-bold text-gray-500">
+                {(player.first_name?.[0] || '')}{(player.last_name?.[0] || '')}
+              </span>
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
@@ -599,8 +854,8 @@ export default function PlayerDetail() {
       )}
 
       {/* ── Team Awards & Career Rankings ── */}
-      {((awards && awards.length > 0) || (career_rankings && career_rankings.length > 0)) && (
-        <TeamAwards awards={awards || []} careerRankings={career_rankings || []} teamShort={player.team_short} />
+      {((awards && awards.length > 0) || (career_rankings && career_rankings.length > 0) || (pnw_rankings && pnw_rankings.length > 0)) && (
+        <TeamAwards awards={awards || []} careerRankings={career_rankings || []} pnwRankings={pnw_rankings || []} teamShort={player.team_short} />
       )}
 
       {/* ── Season Filter (only show if player has multiple seasons) ── */}
@@ -660,6 +915,11 @@ export default function PlayerDetail() {
         />
       )}
 
+      {/* ── Position Breakdown (pie chart from game logs) ── */}
+      {position_breakdown && position_breakdown.length > 0 && (
+        <PositionPieChart breakdown={position_breakdown} />
+      )}
+
       {/* ── Batting Stats Table (career) ── */}
       {hasBatting && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
@@ -686,6 +946,22 @@ export default function PlayerDetail() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Game Logs ── */}
+      {gameLogs?.batting?.length > 0 && (
+        <GameLogTable
+          title="Batting Game Log"
+          logs={gameLogs.batting}
+          columns={BATTING_GAMELOG_COLS}
+        />
+      )}
+      {gameLogs?.pitching?.length > 0 && (
+        <GameLogTable
+          title="Pitching Game Log"
+          logs={gameLogs.pitching}
+          columns={PITCHING_GAMELOG_COLS}
+        />
       )}
 
       {/* ── Empty state ── */}

@@ -385,11 +385,16 @@ def compute_pitching_advanced(
     result.lob_pct = _safe_div(lob_num, lob_denom)
     result.lob_pct = max(0, min(result.lob_pct, 1.0))  # Clamp 0-1
 
-    # Pitching WAR (simplified)
+    # Pitching WAR
     # WAR = (lgFIP - FIP) / runs_per_win * (IP / 9) + replacement_level_wins
-    # Replacement level: roughly 0.380 win% for starters, 0.470 for relievers
+    # Replacement level differs for starters vs relievers:
+    #   Starters:  ~0.03 WAR per 9 IP (harder to replace)
+    #   Relievers: ~0.02 WAR per 9 IP (easier to find replacement)
+    # Blend based on GS/G ratio for pitchers who do both
     if ip > 0:
-        replacement_level = 0.03 * (ip / 9)  # ~0.03 WAR per 9 IP for replacement
+        gs_frac = line.gs / line.games if line.games > 0 else 0.5
+        repl_per_9 = 0.03 * gs_frac + 0.02 * (1 - gs_frac)
+        replacement_level = repl_per_9 * (ip / 9)
         result.pitching_war = (
             (league_fip - result.fip) / runs_per_win * (ip / 9)
         ) + replacement_level
@@ -570,28 +575,57 @@ class CollegeWAR:
 #
 # Net scale: 0.278 * 0.50 ≈ 0.139
 #
-FULL_SEASON_PA = 220  # approximate full JUCO season for a starter
-SEASON_SCALE = 45 / 162  # NWAC-to-MLB season ratio
-CONFIDENCE_DISCOUNT = 0.50  # halved because roster positions are unreliable
-POS_SCALE = SEASON_SCALE * CONFIDENCE_DISCOUNT
-
-# Positional run values per full JUCO season (scaled + discounted)
-POSITION_ADJUSTMENTS = {
-    "C":  12.5 * POS_SCALE,     # +1.74 runs
-    "SS":  7.5 * POS_SCALE,     # +1.04 runs
-    "CF":  2.5 * POS_SCALE,     # +0.35 runs
-    "2B":  2.5 * POS_SCALE,     # +0.35 runs
-    "3B":  2.0 * POS_SCALE,     # +0.28 runs
-    "RF": -7.5 * POS_SCALE,     # -1.04 runs
-    "LF": -7.5 * POS_SCALE,     # -1.04 runs
-    "1B": -12.5 * POS_SCALE,    # -1.74 runs
-    "DH": -17.5 * POS_SCALE,    # -2.43 runs
-    "P":   0.0,                  # pitchers use pitching WAR
-    # Conservative values for ambiguous roster positions:
-    "OF":  0.0,                  # could be CF or LF/RF — neutral
-    "IF":  0.5 * POS_SCALE,     # could be SS or 3B — slight positive
-    "UT":  0.0,                  # utility — neutral
+# Division-specific season parameters:
+# games = typical regular-season games, pa = full-season PA for a starter
+DIVISION_SEASON = {
+    "D1":   {"games": 56, "pa": 280},
+    "D2":   {"games": 50, "pa": 250},
+    "D3":   {"games": 40, "pa": 200},
+    "NAIA": {"games": 50, "pa": 250},
+    "NWAC": {"games": 45, "pa": 220},
+    "JUCO": {"games": 45, "pa": 220},
 }
+_MLB_GAMES = 162
+
+# Fallback for unknown divisions
+FULL_SEASON_PA = 220  # default (NWAC/JUCO)
+SEASON_SCALE = 45 / _MLB_GAMES  # default season ratio
+
+# When we have actual game-log position data, we use full positional
+# adjustments (no discount needed — the data is real).
+# When falling back to roster-only positions, we halve the adjustment
+# because roster positions are unreliable ("OF" might be CF or LF, etc.).
+CONFIDENCE_FULL = 1.0    # game-log-derived positions — full weight
+CONFIDENCE_ROSTER = 0.50 # roster-only fallback — halved
+
+POS_SCALE_FULL = SEASON_SCALE * CONFIDENCE_FULL
+POS_SCALE_ROSTER = SEASON_SCALE * CONFIDENCE_ROSTER
+
+# MLB positional run values per 162 games (raw, before scaling)
+_RAW_POS_RUNS = {
+    "C":  12.5,
+    "SS":  7.5,
+    "CF":  2.5,
+    "2B":  2.5,
+    "3B":  2.0,
+    "RF": -7.5,
+    "LF": -7.5,
+    "1B": -12.5,
+    "DH": -17.5,
+    "P":   0.0,
+    "OF":  0.0,   # ambiguous — neutral
+    "IF":  0.5,   # could be SS or 3B — slight positive
+    "UT":  0.0,   # utility — neutral
+}
+
+# Full-confidence positional adjustments (used when game-log data available)
+POSITION_ADJUSTMENTS_FULL = {k: v * POS_SCALE_FULL for k, v in _RAW_POS_RUNS.items()}
+
+# Roster-only positional adjustments (fallback when no game logs)
+POSITION_ADJUSTMENTS_ROSTER = {k: v * POS_SCALE_ROSTER for k, v in _RAW_POS_RUNS.items()}
+
+# Default: use roster-based (backward compatible)
+POSITION_ADJUSTMENTS = POSITION_ADJUSTMENTS_ROSTER
 
 # Replacement level: 20 runs below average per 600 PA (MLB standard),
 # scaled to college. A full-season JUCO starter (~220 PA) gets about
@@ -606,15 +640,22 @@ def compute_college_war(
     plate_appearances: int = 0,
     innings_pitched: float = 0,
     division_level: str = "D1",
+    position_weights: Optional[dict] = None,
 ) -> CollegeWAR:
     """
     Compute custom College WAR for a player.
 
     Offensive WAR formula:
         batting_runs = wRAA (already computed in BattingAdvanced)
-        positional_runs = pos_adj_per_season * (PA / FULL_SEASON_PA)
+        positional_runs = weighted positional adjustment * (PA / FULL_SEASON_PA)
         replacement_runs = REPL_PER_600 * (PA / 600)
         oWAR = (batting_runs + positional_runs + replacement_runs) / runs_per_win
+
+    position_weights: optional dict of {position: fraction} derived from game logs.
+        e.g. {"2B": 0.9, "SS": 0.1} means 90% of games at 2B, 10% at SS.
+        When provided, the positional adjustment is a weighted average using
+        full-confidence values (no roster discount).
+        When None, falls back to single roster position with halved discount.
 
     Pitching WAR is computed separately in compute_pitching_advanced()
     and passed through here.
@@ -624,15 +665,29 @@ def compute_college_war(
     weights = DEFAULT_WEIGHTS.get(division_level, DEFAULT_WEIGHTS["D1"])
     war = CollegeWAR()
 
+    # Division-specific season parameters
+    div_params = DIVISION_SEASON.get(division_level, DIVISION_SEASON.get("NWAC"))
+    div_season_scale = div_params["games"] / _MLB_GAMES
+    div_full_season_pa = div_params["pa"]
+
     # ── Offensive component ──
     if batting and plate_appearances > 0:
         # Batting runs = wRAA (runs above average from hitting)
         war.batting_runs = batting.wraa
 
         # Positional adjustment scaled by playing time
-        # If a catcher has 110 PA (half a season), he gets half the catcher bonus
-        pos_adj_full_season = POSITION_ADJUSTMENTS.get(position, 0.0)
-        pa_fraction = plate_appearances / FULL_SEASON_PA
+        if position_weights:
+            # Game-log-derived: weighted average of raw position runs,
+            # scaled by this division's season length
+            pos_adj_full_season = sum(
+                _RAW_POS_RUNS.get(pos, 0.0) * div_season_scale * CONFIDENCE_FULL * frac
+                for pos, frac in position_weights.items()
+            )
+        else:
+            # Roster fallback: single position with halved confidence
+            pos_adj_full_season = _RAW_POS_RUNS.get(position, 0.0) * div_season_scale * CONFIDENCE_ROSTER
+
+        pa_fraction = plate_appearances / div_full_season_pa
         war.positional_runs = pos_adj_full_season * pa_fraction
 
         # Replacement level: credit for being on the field

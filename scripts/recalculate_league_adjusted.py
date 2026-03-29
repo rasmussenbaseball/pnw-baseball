@@ -25,6 +25,7 @@ import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
+from collections import defaultdict
 from app.models.database import get_connection
 from app.stats.advanced import (
     BattingLine, PitchingLine, LinearWeights,
@@ -234,6 +235,40 @@ def compute_league_averages(conn, season, multi_year=True):
     return league_avgs
 
 
+def build_position_weights(conn, season):
+    """
+    Build game-log-derived position weights for every player.
+    Returns {player_id: {"2B": 0.9, "SS": 0.1, ...}} or empty dict if no data.
+    Uses COUNT(DISTINCT (game_date, game_number)) to handle duplicates + doubleheaders.
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT gb.player_id, gb.position, COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as cnt
+        FROM game_batting gb
+        JOIN games g ON g.id = gb.game_id
+        WHERE g.season = %s
+          AND gb.player_id IS NOT NULL
+          AND gb.position IS NOT NULL
+          AND TRIM(gb.position) != ''
+        GROUP BY gb.player_id, gb.position
+    """, (season,))
+
+    pos_counts = defaultdict(lambda: defaultdict(int))
+    for r in cur.fetchall():
+        norm = normalize_position(r["position"])
+        if norm and norm != "P":
+            pos_counts[r["player_id"]][norm] += r["cnt"]
+
+    # Convert counts to fractions
+    result = {}
+    for pid, counts in pos_counts.items():
+        total = sum(counts.values())
+        if total > 0:
+            result[pid] = {pos: cnt / total for pos, cnt in counts.items()}
+
+    return result
+
+
 def recalculate_all(season, verbose=False, multi_year=True):
     """Recalculate wRC+, FIP+, ERA-, and WAR for all players using real league averages."""
 
@@ -243,15 +278,17 @@ def recalculate_all(season, verbose=False, multi_year=True):
         # ── Step 0: Add columns if they don't exist ──
         try:
             cur.execute("ALTER TABLE pitching_stats ADD COLUMN fip_plus REAL")
+            conn.commit()
             print("  Added fip_plus column to pitching_stats")
         except Exception:
-            pass  # Column already exists
+            conn.rollback()  # Clear failed transaction state
 
         try:
             cur.execute("ALTER TABLE pitching_stats ADD COLUMN era_minus REAL")
+            conn.commit()
             print("  Added era_minus column to pitching_stats")
         except Exception:
-            pass  # Column already exists
+            conn.rollback()  # Clear failed transaction state
 
         # ── Step 0.5: Load park factors ──
         park_factors = load_park_factors(conn)
@@ -262,7 +299,7 @@ def recalculate_all(season, verbose=False, multi_year=True):
                 cur.execute('SELECT short_name FROM teams WHERE id=%s', (tid,))
                 row = cur.fetchone()
                 if row:
-                    sample_strs.append((row[0], f'{pf:.3f}'))
+                    sample_strs.append((row["short_name"], f'{pf:.3f}'))
             print(f"  Loaded park factors for {len(park_factors)} teams (sample: {sample_strs})")
         else:
             print("  No park factors loaded — all parks treated as neutral")
@@ -278,6 +315,12 @@ def recalculate_all(season, verbose=False, multi_year=True):
             print(f"    wOBA={avgs['lg_woba']:.3f}, R/PA={avgs['lg_r_per_pa']:.4f}")
             print(f"    ERA={avgs['lg_era']:.2f}, FIP={avgs['lg_fip']:.2f}, FIP constant={avgs['fip_constant']:.2f}")
             print()
+
+        # ── Step 1.5: Build game-log position weights ──
+        print("=== Building game-log position weights ===\n")
+        player_pos_weights = build_position_weights(conn, season)
+        gamelog_count = len(player_pos_weights)
+        print(f"  Found position weights for {gamelog_count} players from game logs\n")
 
         # ── Step 2: Recalculate batting stats (wRC+, wOBA, wRAA, WAR) ──
         print("=== Recalculating batting stats ===\n")
@@ -345,9 +388,11 @@ def recalculate_all(season, verbose=False, multi_year=True):
 
             # Compute WAR with real league context
             norm_pos = normalize_position(b["position"]) or "UT"
+            pw = player_pos_weights.get(b["player_id"])
             war = compute_college_war(
                 batting=adv, position=norm_pos,
                 plate_appearances=line.pa, division_level=level,
+                position_weights=pw,
             )
 
             cur.execute("""

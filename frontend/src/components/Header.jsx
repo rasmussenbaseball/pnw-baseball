@@ -32,7 +32,7 @@ const NAV = [
     label: 'Recruiting',
     items: [
       { to: '/recruiting/rankings', label: 'Rankings', desc: 'Player recruiting rankings', locked: true },
-      { to: '/recruiting/map', label: 'Map', desc: 'Where programs recruit from', locked: true },
+      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
       { to: '/recruiting/breakdowns', label: 'Breakdowns', desc: 'Analysis by region & position', locked: true },
       { to: '/recruiting/history', label: 'History', desc: 'Historical recruiting trends', locked: true },
       { to: '/recruiting/field', label: 'Field', desc: 'Field-level visualization', locked: true },

@@ -110,6 +110,13 @@ export function usePlayer(playerId, percentileSeason = null) {
 }
 
 /**
+ * Fetch player game logs (batting + pitching) for a season.
+ */
+export function usePlayerGameLogs(playerId, season = 2026) {
+  return useApi(`/players/${playerId}/gamelogs`, { season }, [playerId, season])
+}
+
+/**
  * Fetch stat leaders (top N per category).
  */
 export function useStatLeaders(season, limit = 5, qualified = false) {

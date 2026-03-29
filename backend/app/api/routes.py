@@ -19,6 +19,7 @@ from ..stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
     normalize_position, DEFAULT_WEIGHTS,
+    POSITION_ADJUSTMENTS_FULL,
 )
 from ..stats.ppi import compute_ppi_for_division
 
@@ -57,14 +58,14 @@ QUALIFIED_PITCHING_WHERE = (
 def _add_era_plus(row: dict) -> dict:
     """Convert era_minus to era_plus (higher=better). ERA+ = 10000/ERA-."""
     em = row.get("era_minus")
-    if em and em > 0:
-        row["era_plus"] = round(10000.0 / em)
+    if em and float(em) > 0:
+        row["era_plus"] = round(10000.0 / float(em))
     else:
         row["era_plus"] = None
     # Also handle avg_era_minus → avg_era_plus for team aggregates
     aem = row.get("avg_era_minus")
-    if aem and aem > 0:
-        row["avg_era_plus"] = round(10000.0 / aem)
+    if aem and float(aem) > 0:
+        row["avg_era_plus"] = round(10000.0 / float(aem))
     else:
         row.setdefault("avg_era_plus", None)
     return row
@@ -361,13 +362,13 @@ def stat_leaders(
     with get_connection() as conn:
         cur = conn.cursor()
         min_pa = 30
-        min_ip = 10
+        min_ip = 20
 
         batting_categories = [
             {"key": "wrc_plus", "label": "wRC+", "col": "bs.wrc_plus", "order": "DESC", "format": "int"},
+            {"key": "offensive_war", "label": "WAR", "col": "bs.offensive_war", "order": "DESC", "format": "float1"},
             {"key": "home_runs", "label": "HR", "col": "bs.home_runs", "order": "DESC", "format": "int"},
             {"key": "stolen_bases", "label": "SB", "col": "bs.stolen_bases", "order": "DESC", "format": "int"},
-            {"key": "offensive_war", "label": "oWAR", "col": "bs.offensive_war", "order": "DESC", "format": "float1"},
             {"key": "batting_avg", "label": "AVG", "col": "bs.batting_avg", "order": "DESC", "format": "avg"},
             {"key": "iso", "label": "ISO", "col": "bs.iso", "order": "DESC", "format": "avg"},
         ]
@@ -375,10 +376,10 @@ def stat_leaders(
         pitching_categories = [
             {"key": "pitching_war", "label": "pWAR", "col": "ps.pitching_war", "order": "DESC", "format": "float1"},
             {"key": "fip_plus", "label": "FIP+", "col": "ps.fip_plus", "order": "DESC", "format": "int"},
-            {"key": "siera", "label": "SIERA", "col": "ps.siera", "order": "ASC", "format": "float2"},
+            {"key": "quality_starts", "label": "QS", "col": "COALESCE(ps.quality_starts, 0)", "order": "DESC", "format": "int"},
+            {"key": "strikeouts", "label": "K", "col": "ps.strikeouts", "order": "DESC", "format": "int"},
             {"key": "k_minus_bb_pct", "label": "K-BB%", "col": "(ps.k_pct - ps.bb_pct)", "order": "DESC", "format": "pct"},
             {"key": "era", "label": "ERA", "col": "ps.era", "order": "ASC", "format": "float2"},
-            {"key": "strikeouts", "label": "K", "col": "ps.strikeouts", "order": "DESC", "format": "int"},
         ]
 
         def fetch_batting_leaders(cat):
@@ -388,12 +389,16 @@ def stat_leaders(
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                        t.id as team_id, t.short_name, t.logo_url,
                        d.level as division_level,
-                       {cat['col']} as value
+                       {cat['col']} as value,
+                       CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss2.wins,0) + COALESCE(tss2.losses,0) + COALESCE(tss2.ties,0))
+                            THEN true ELSE false END as is_qualified
                 FROM batting_stats bs
                 JOIN players p ON bs.player_id = p.id
                 JOIN teams t ON bs.team_id = t.id
                 JOIN conferences c ON t.conference_id = c.id
                 JOIN divisions d ON c.division_id = d.id
+                LEFT JOIN team_season_stats tss2
+                  ON tss2.team_id = bs.team_id AND tss2.season = bs.season
                 {q_join}
                 WHERE bs.season = %s AND bs.plate_appearances >= %s
                   AND {cat['col']} IS NOT NULL
@@ -416,12 +421,16 @@ def stat_leaders(
                 SELECT p.id as player_id, p.first_name, p.last_name,
                        t.id as team_id, t.short_name, t.logo_url,
                        d.level as division_level,
-                       {cat['col']} as value
+                       {cat['col']} as value,
+                       CASE WHEN ps.innings_pitched >= {QUALIFIED_IP_PER_GAME} * (COALESCE(tss2.wins,0) + COALESCE(tss2.losses,0) + COALESCE(tss2.ties,0))
+                            THEN true ELSE false END as is_qualified
                 FROM pitching_stats ps
                 JOIN players p ON ps.player_id = p.id
                 JOIN teams t ON ps.team_id = t.id
                 JOIN conferences c ON t.conference_id = c.id
                 JOIN divisions d ON c.division_id = d.id
+                LEFT JOIN team_season_stats tss2
+                  ON tss2.team_id = ps.team_id AND tss2.season = ps.season
                 {q_join}
                 WHERE ps.season = %s AND ps.innings_pitched >= %s
                   AND {cat['col']} IS NOT NULL
@@ -702,11 +711,11 @@ def compare_teams(
                        SUM(strikeouts) as total_k,
                        SUM(stolen_bases) as total_sb,
                        CASE WHEN SUM(at_bats) > 0
-                            THEN ROUND(SUM(hits)::numeric / SUM(at_bats), 3) ELSE 0 END as team_avg,
+                            THEN ROUND((SUM(hits)::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_avg,
                        CASE WHEN SUM(plate_appearances) > 0
-                            THEN ROUND((SUM(hits) + SUM(walks) + SUM(hit_by_pitch))::numeric / SUM(plate_appearances), 3) ELSE 0 END as team_obp,
+                            THEN ROUND(((SUM(hits) + SUM(walks) + SUM(hit_by_pitch))::numeric / SUM(plate_appearances))::numeric, 3) ELSE 0 END as team_obp,
                        CASE WHEN SUM(at_bats) > 0
-                            THEN ROUND((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats), 3) ELSE 0 END as team_slg,
+                            THEN ROUND(((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_slg,
                        ROUND(AVG(woba)::numeric, 3) as avg_woba,
                        ROUND(AVG(wrc_plus)::numeric, 0) as avg_wrc_plus,
                        ROUND(AVG(iso)::numeric, 3) as avg_iso,
@@ -730,9 +739,9 @@ def compare_teams(
                        SUM(home_runs_allowed) as total_hr,
                        SUM(hit_batters) as total_hbp,
                        CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND(SUM(earned_runs)::numeric * 9 / SUM(innings_pitched), 2) ELSE 0 END as team_era,
+                            THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_era,
                        CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND((SUM(walks) + SUM(hits_allowed))::numeric / SUM(innings_pitched), 2) ELSE 0 END as team_whip,
+                            THEN ROUND(((SUM(walks) + SUM(hits_allowed)) / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_whip,
                        ROUND(AVG(fip)::numeric, 2) as avg_fip,
                        ROUND(AVG(fip_plus)::numeric, 0) as avg_fip_plus,
                        ROUND(AVG(era_minus)::numeric, 0) as avg_era_minus,
@@ -746,11 +755,54 @@ def compare_teams(
             )
             pitching_agg = cur.fetchone()
 
+            # Team record
+            cur.execute(
+                """SELECT wins, losses, ties
+                   FROM team_season_stats
+                   WHERE team_id = %s AND season = %s""",
+                (tid, season),
+            )
+            record = cur.fetchone()
+
+            # Top 3 hitters by oWAR
+            cur.execute(
+                """SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                          bs.batting_avg, bs.on_base_pct, bs.slugging_pct,
+                          bs.home_runs, bs.rbi, bs.stolen_bases,
+                          bs.wrc_plus, bs.woba, bs.offensive_war,
+                          bs.plate_appearances, bs.hits, bs.iso
+                   FROM batting_stats bs
+                   JOIN players p ON bs.player_id = p.id
+                   WHERE bs.team_id = %s AND bs.season = %s AND bs.plate_appearances >= 10
+                   ORDER BY bs.offensive_war DESC NULLS LAST
+                   LIMIT 3""",
+                (tid, season),
+            )
+            top_hitters = [dict(r) for r in cur.fetchall()]
+
+            # Top 3 pitchers by pWAR
+            cur.execute(
+                """SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                          ps.era, ps.innings_pitched, ps.strikeouts, ps.walks,
+                          ps.fip, ps.fip_plus, ps.pitching_war, ps.whip,
+                          ps.k_pct, ps.bb_pct, ps.era_minus
+                   FROM pitching_stats ps
+                   JOIN players p ON ps.player_id = p.id
+                   WHERE ps.team_id = %s AND ps.season = %s AND ps.innings_pitched >= 3
+                   ORDER BY ps.pitching_war DESC NULLS LAST
+                   LIMIT 3""",
+                (tid, season),
+            )
+            top_pitchers = [_add_era_plus(dict(r)) for r in cur.fetchall()]
+
             row = dict(team)
+            row["record"] = dict(record) if record else {"wins": 0, "losses": 0, "ties": 0}
             row["batting"] = dict(batting_agg) if batting_agg else {}
             row["pitching"] = _add_era_plus(dict(pitching_agg)) if pitching_agg else {}
+            row["top_hitters"] = top_hitters
+            row["top_pitchers"] = top_pitchers
             row["total_war"] = round(
-                (batting_agg["total_owar"] or 0) + (pitching_agg["total_pwar"] or 0), 1
+                float(batting_agg["total_owar"] or 0) + float(pitching_agg["total_pwar"] or 0), 1
             ) if batting_agg and pitching_agg else 0
             results.append(row)
 
@@ -1074,7 +1126,6 @@ def batting_leaderboard(
 
     with get_connection() as conn:
         cur = conn.cursor()
-        q_join = QUALIFIED_BATTING_JOIN if qualified else ""
         q_where = QUALIFIED_BATTING_WHERE if qualified else ""
         query = f"""
             SELECT bs.*,
@@ -1084,13 +1135,15 @@ def batting_leaderboard(
                    t.name as team_name, t.short_name as team_short, t.logo_url,
                    t.state as team_state,
                    c.name as conference_name, c.abbreviation as conference_abbrev,
-                   d.name as division_name, d.level as division_level
+                   d.name as division_name, d.level as division_level,
+                   CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                        THEN true ELSE false END as is_qualified
             FROM batting_stats bs
             JOIN players p ON bs.player_id = p.id
             JOIN teams t ON bs.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            {q_join}
+            {QUALIFIED_BATTING_JOIN}
             WHERE bs.season = %s
               AND bs.plate_appearances >= %s
               AND bs.at_bats >= %s
@@ -1141,7 +1194,7 @@ def batting_leaderboard(
             JOIN teams t ON bs.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            {q_join}
+            {QUALIFIED_BATTING_JOIN}
             WHERE bs.season = %s
               AND bs.plate_appearances >= %s
               AND bs.at_bats >= %s
@@ -1339,9 +1392,7 @@ def war_leaderboard(
 
     with get_connection() as conn:
         cur = conn.cursor()
-        qb_join = QUALIFIED_BATTING_JOIN if qualified else ""
         qb_where = QUALIFIED_BATTING_WHERE if qualified else ""
-        qp_join = QUALIFIED_PITCHING_JOIN if qualified else ""
         qp_where = QUALIFIED_PITCHING_WHERE if qualified else ""
         # Get offensive WAR for batters
         batting_query = f"""
@@ -1353,13 +1404,15 @@ def war_leaderboard(
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.woba, bs.wrc_plus,
                    0.0 as pitching_war, 0.0 as innings_pitched,
                    NULL as era, NULL as whip, NULL as fip, NULL as fip_plus, NULL as era_minus, NULL as k_per_9,
-                   NULL as wins, NULL as losses, 0 as strikeouts_p, 0 as walks_p
+                   NULL as wins, NULL as losses, 0 as strikeouts_p, 0 as walks_p,
+                   CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                        THEN 1 ELSE 0 END as is_qualified_batting
             FROM batting_stats bs
             JOIN players p ON bs.player_id = p.id
             JOIN teams t ON bs.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            {qb_join}
+            {QUALIFIED_BATTING_JOIN}
             WHERE bs.season = %s AND bs.plate_appearances >= %s
             {qb_where}
         """
@@ -1395,13 +1448,14 @@ def war_leaderboard(
                    NULL as woba, NULL as wrc_plus,
                    ps.pitching_war, ps.innings_pitched,
                    ps.era, ps.whip, ps.fip, ps.fip_plus, ps.era_minus, ps.k_per_9,
-                   ps.wins, ps.losses, ps.strikeouts as strikeouts_p, ps.walks as walks_p
+                   ps.wins, ps.losses, ps.strikeouts as strikeouts_p, ps.walks as walks_p,
+                   0 as is_qualified_batting
             FROM pitching_stats ps
             JOIN players p ON ps.player_id = p.id
             JOIN teams t ON ps.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            {qp_join}
+            {QUALIFIED_PITCHING_JOIN}
             WHERE ps.season = %s AND ps.innings_pitched >= %s
             {qp_where}
         """
@@ -1440,7 +1494,8 @@ def war_leaderboard(
                         ELSE NULL END as war_per_pa,
                    CASE WHEN MAX(innings_pitched) > 0
                         THEN ROUND((SUM(pitching_war) / MAX(innings_pitched))::numeric, 4)
-                        ELSE NULL END as war_per_ip
+                        ELSE NULL END as war_per_ip,
+                   CASE WHEN MAX(is_qualified_batting) = 1 THEN true ELSE false END as is_qualified
             FROM (
                 {batting_query}
                 UNION ALL
@@ -2185,7 +2240,9 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                JOIN teams t ON bs.team_id = t.id
                JOIN conferences c ON t.conference_id = c.id
                JOIN divisions d ON c.division_id = d.id
-               WHERE bs.player_id IN ({id_placeholders}) ORDER BY bs.season""",
+               WHERE bs.player_id IN ({id_placeholders})
+                 AND (COALESCE(bs.at_bats, 0) > 0 OR COALESCE(bs.games, 0) > 0)
+               ORDER BY bs.season""",
             all_player_ids,
         )
         batting = cur.fetchall()
@@ -2200,7 +2257,9 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                JOIN teams t ON ps.team_id = t.id
                JOIN conferences c ON t.conference_id = c.id
                JOIN divisions d ON c.division_id = d.id
-               WHERE ps.player_id IN ({id_placeholders}) ORDER BY ps.season""",
+               WHERE ps.player_id IN ({id_placeholders})
+                 AND (COALESCE(ps.innings_pitched, 0) > 0 OR COALESCE(ps.games, 0) > 0)
+               ORDER BY ps.season""",
             all_player_ids,
         )
         pitching = cur.fetchall()
@@ -2291,6 +2350,138 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         all_awards["season_awards"].sort(key=lambda a: (-a["season"], a["category"]))
         all_awards["career_rankings"].sort(key=lambda r: (r["rank"], r["category"]))
 
+        # ── PNW Top 10 rankings (qualified, current season) ──
+        pnw_rankings = []
+        current_season = 2026
+        min_pa = 30
+        min_ip = 10
+
+        batting_cats = [
+            {"key": "wrc_plus", "label": "wRC+", "col": "bs.wrc_plus", "order": "DESC", "format": "int"},
+            {"key": "home_runs", "label": "HR", "col": "bs.home_runs", "order": "DESC", "format": "int"},
+            {"key": "stolen_bases", "label": "SB", "col": "bs.stolen_bases", "order": "DESC", "format": "int"},
+            {"key": "offensive_war", "label": "oWAR", "col": "bs.offensive_war", "order": "DESC", "format": "float1"},
+            {"key": "batting_avg", "label": "AVG", "col": "bs.batting_avg", "order": "DESC", "format": "avg"},
+            {"key": "iso", "label": "ISO", "col": "bs.iso", "order": "DESC", "format": "avg"},
+        ]
+
+        pitching_cats = [
+            {"key": "pitching_war", "label": "pWAR", "col": "ps.pitching_war", "order": "DESC", "format": "float1"},
+            {"key": "fip_plus", "label": "FIP+", "col": "ps.fip_plus", "order": "DESC", "format": "int"},
+            {"key": "siera", "label": "SIERA", "col": "ps.siera", "order": "ASC", "format": "float2"},
+            {"key": "k_minus_bb_pct", "label": "K-BB%", "col": "(ps.k_pct - ps.bb_pct)", "order": "DESC", "format": "pct"},
+            {"key": "era", "label": "ERA", "col": "ps.era", "order": "ASC", "format": "float2"},
+            {"key": "strikeouts", "label": "K", "col": "ps.strikeouts", "order": "DESC", "format": "int"},
+        ]
+
+        # Check batting categories
+        for cat in batting_cats:
+            cur.execute(f"""
+                SELECT ranked.player_id, ranked.rank, ranked.value
+                FROM (
+                    SELECT bs.player_id,
+                           RANK() OVER (ORDER BY {cat['col']} {cat['order']}) as rank,
+                           {cat['col']} as value
+                    FROM batting_stats bs
+                    JOIN players p ON bs.player_id = p.id
+                    JOIN teams t ON bs.team_id = t.id
+                    {QUALIFIED_BATTING_JOIN}
+                    WHERE bs.season = %s AND bs.plate_appearances >= %s
+                      AND {cat['col']} IS NOT NULL
+                      {QUALIFIED_BATTING_WHERE}
+                ) ranked
+                WHERE ranked.player_id IN ({id_placeholders}) AND ranked.rank <= 10
+            """, [current_season, min_pa] + all_player_ids)
+            row = cur.fetchone()
+            if row:
+                pnw_rankings.append({
+                    "category": cat["label"],
+                    "rank": row["rank"],
+                    "value": row["value"],
+                    "format": cat["format"],
+                    "type": "batting",
+                })
+
+        # Check pitching categories
+        for cat in pitching_cats:
+            cur.execute(f"""
+                SELECT ranked.player_id, ranked.rank, ranked.value
+                FROM (
+                    SELECT ps.player_id,
+                           RANK() OVER (ORDER BY {cat['col']} {cat['order']}) as rank,
+                           {cat['col']} as value
+                    FROM pitching_stats ps
+                    JOIN players p ON ps.player_id = p.id
+                    JOIN teams t ON ps.team_id = t.id
+                    {QUALIFIED_PITCHING_JOIN}
+                    WHERE ps.season = %s AND ps.innings_pitched >= %s
+                      AND {cat['col']} IS NOT NULL
+                      {QUALIFIED_PITCHING_WHERE}
+                ) ranked
+                WHERE ranked.player_id IN ({id_placeholders}) AND ranked.rank <= 10
+            """, [current_season, min_ip] + all_player_ids)
+            row = cur.fetchone()
+            if row:
+                pnw_rankings.append({
+                    "category": cat["label"],
+                    "rank": row["rank"],
+                    "value": row["value"],
+                    "format": cat["format"],
+                    "type": "pitching",
+                })
+
+        pnw_rankings.sort(key=lambda r: (r["rank"], r["category"]))
+
+        # ── Position breakdown from game logs ──
+        # Shows what % of games the player played at each position.
+        # Use COUNT(DISTINCT game_date) to avoid double-counting when the
+        # same real-world game was scraped from both teams' box scores.
+        # Include ALL games (even those without position data) so totals
+        # match the player's actual game count.
+        cur.execute("""
+            SELECT gb.position, COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE gb.player_id IN %s
+              AND g.season = 2026
+            GROUP BY gb.position
+            ORDER BY games DESC
+        """, (tuple(all_player_ids),))
+        pos_rows = cur.fetchall()
+        position_breakdown = []
+        total_all_games = sum(r["games"] for r in pos_rows)
+        if total_all_games > 0:
+            unknown_games = 0
+            for r in pos_rows:
+                raw_pos = r["position"]
+                # Count games with no position data
+                if not raw_pos or not raw_pos.strip() or raw_pos.strip() == '-':
+                    unknown_games += r["games"]
+                    continue
+                norm = normalize_position(raw_pos)
+                if not norm or norm == "P":
+                    continue
+                # Merge rows that normalize to the same position
+                existing = next((p for p in position_breakdown if p["position"] == norm), None)
+                if existing:
+                    existing["games"] += r["games"]
+                else:
+                    position_breakdown.append({
+                        "position": norm,
+                        "games": r["games"],
+                    })
+            # Calculate percentages based on total games (including unknown)
+            for p in position_breakdown:
+                p["percentage"] = round(p["games"] / total_all_games * 100, 1)
+            # If there are games with no position data, add an "Unknown" entry
+            if unknown_games > 0:
+                position_breakdown.append({
+                    "position": "N/A",
+                    "games": unknown_games,
+                    "percentage": round(unknown_games / total_all_games * 100, 1),
+                })
+            position_breakdown.sort(key=lambda x: -x["games"])
+
         return {
             "player": player_dict,
             "batting_stats": batting_list,
@@ -2301,6 +2492,8 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "percentile_season": percentile_label,
             "awards": all_awards["season_awards"],
             "career_rankings": all_awards["career_rankings"],
+            "pnw_rankings": pnw_rankings,
+            "position_breakdown": position_breakdown,
             "linked_players": linked_players,
         }
 
@@ -2444,6 +2637,21 @@ def team_stats(team_id: int, season: int = Query(...)):
         )
         batting = cur.fetchall()
 
+        # Compute is_qualified for each batter based on team games played
+        team_games = 0
+        if team_stats_row:
+            team_games = (
+                (team_stats_row.get("wins") or 0)
+                + (team_stats_row.get("losses") or 0)
+                + (team_stats_row.get("ties") or 0)
+            )
+        qualified_pa = QUALIFIED_PA_PER_GAME * team_games
+        batting_list = []
+        for r in batting:
+            d = dict(r)
+            d["is_qualified"] = (d.get("plate_appearances") or 0) >= qualified_pa
+            batting_list.append(d)
+
         cur.execute(
             """SELECT ps.*,
                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
@@ -2459,7 +2667,7 @@ def team_stats(team_id: int, season: int = Query(...)):
         return {
             "team": dict(team_info),
             "team_stats": dict(team_stats_row) if team_stats_row else None,
-            "batting": [dict(r) for r in batting],
+            "batting": batting_list,
             "pitching": [_add_era_plus(dict(r)) for r in pitching],
         }
 
@@ -2620,6 +2828,35 @@ def recalculate_war(season: int = Query(..., description="Season to recalculate"
     """
     with get_connection() as conn:
         cur = conn.cursor()
+
+        # ── Build game-log position weights for every player ──
+        # {player_id: {"2B": 0.9, "SS": 0.1, ...}}
+        from collections import defaultdict
+        _pos_counts = defaultdict(lambda: defaultdict(int))
+        cur.execute("""
+            SELECT gb.player_id, gb.position, COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as cnt
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE g.season = %s
+              AND gb.player_id IS NOT NULL
+              AND gb.position IS NOT NULL
+              AND TRIM(gb.position) != ''
+            GROUP BY gb.player_id, gb.position
+        """, (season,))
+        for r in cur.fetchall():
+            norm = normalize_position(r["position"])
+            if norm and norm != "P":
+                _pos_counts[r["player_id"]][norm] += r["cnt"]
+
+        # Convert counts to fractions
+        player_position_weights = {}
+        for pid, counts in _pos_counts.items():
+            total = sum(counts.values())
+            if total > 0:
+                player_position_weights[pid] = {
+                    pos: cnt / total for pos, cnt in counts.items()
+                }
+
         # ── Recalculate batting WAR ──
         cur.execute(
             """SELECT bs.id, bs.player_id, bs.plate_appearances, bs.at_bats,
@@ -2627,30 +2864,44 @@ def recalculate_war(season: int = Query(..., description="Season to recalculate"
                       bs.intentional_walks, bs.hit_by_pitch, bs.sacrifice_flies,
                       bs.sacrifice_bunts, bs.strikeouts, bs.stolen_bases,
                       bs.caught_stealing, bs.grounded_into_dp, bs.wraa,
-                      p.position
+                      p.position, d.level as division_level
                FROM batting_stats bs
                JOIN players p ON bs.player_id = p.id
+               JOIN teams t ON bs.team_id = t.id
+               JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id
                WHERE bs.season = %s""",
             (season,),
         )
         batters = cur.fetchall()
 
         batting_updated = 0
+        gamelog_used = 0
+        roster_fallback = 0
         for b in batters:
             pos = normalize_position(b["position"]) or "UT"
             pa = b["plate_appearances"] or 0
+            pid = b["player_id"]
 
             # Use stored wRAA to avoid recomputing everything
-            # We rebuild a minimal BattingAdvanced just for the WAR calc
             class _MinBatting:
                 wraa = b["wraa"] or 0.0
                 off_war = 0.0  # will be overwritten
 
+            # Check if we have game-log position weights for this player
+            pw = player_position_weights.get(pid)
+            if pw:
+                gamelog_used += 1
+            else:
+                roster_fallback += 1
+
+            div_level = b.get("division_level", "NWAC")
             war = compute_college_war(
                 batting=_MinBatting(),
                 position=pos,
                 plate_appearances=pa,
-                division_level="JUCO",
+                division_level=div_level,
+                position_weights=pw,  # None = roster fallback
             )
 
             cur.execute(
@@ -2665,8 +2916,12 @@ def recalculate_war(season: int = Query(..., description="Season to recalculate"
                       ps.walks, ps.intentional_walks, ps.strikeouts,
                       ps.home_runs_allowed, ps.hit_batters, ps.batters_faced,
                       ps.wild_pitches, ps.wins, ps.losses, ps.saves,
-                      ps.games, ps.games_started, ps.runs_allowed
+                      ps.games, ps.games_started, ps.runs_allowed,
+                      d.level as division_level
                FROM pitching_stats ps
+               JOIN teams t ON ps.team_id = t.id
+               JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id
                WHERE ps.season = %s""",
             (season,),
         )
@@ -2696,7 +2951,8 @@ def recalculate_war(season: int = Query(..., description="Season to recalculate"
                 games=p["games"] or 0,
                 gs=p["games_started"] or 0,
             )
-            adv = compute_pitching_advanced(line, division_level="JUCO")
+            pit_div_level = p.get("division_level", "NWAC")
+            adv = compute_pitching_advanced(line, division_level=pit_div_level)
 
             cur.execute(
                 "UPDATE pitching_stats SET pitching_war = %s, fip = %s, xfip = %s, siera = %s, "
@@ -2713,6 +2969,302 @@ def recalculate_war(season: int = Query(..., description="Season to recalculate"
         "season": season,
         "batting_updated": batting_updated,
         "pitching_updated": pitching_updated,
+        "gamelog_positions_used": gamelog_used,
+        "roster_fallback_used": roster_fallback,
+    }
+
+
+@router.get("/admin/unmatched-game-batting")
+def unmatched_game_batting(limit: int = Query(50)):
+    """Show unmatched game_batting rows to debug name matching."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT gb.player_name, gb.team_id, gb.position, t.short_name,
+                   COUNT(*) as games
+            FROM game_batting gb
+            LEFT JOIN teams t ON gb.team_id = t.id
+            WHERE gb.player_id IS NULL
+              AND gb.team_id IS NOT NULL
+            GROUP BY gb.player_name, gb.team_id, gb.position, t.short_name
+            ORDER BY games DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+
+        # Also get total counts
+        cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE player_id IS NULL AND team_id IS NOT NULL")
+        unmatched_with_team = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE player_id IS NULL AND team_id IS NULL")
+        unmatched_no_team = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE player_id IS NOT NULL")
+        matched = cur.fetchone()["cnt"]
+
+        return {
+            "matched": matched,
+            "unmatched_with_team": unmatched_with_team,
+            "unmatched_no_team": unmatched_no_team,
+            "sample_unmatched": [dict(r) for r in rows],
+        }
+
+
+@router.get("/admin/debug-player-games/{player_id}")
+def debug_player_games(player_id: int):
+    """Debug: show all game_batting rows for a player + unmatched rows for their team."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get player info
+        cur.execute("SELECT first_name, last_name, team_id, position FROM players WHERE id = %s", (player_id,))
+        player = cur.fetchone()
+        if not player:
+            return {"error": "player not found"}
+
+        team_id = player["team_id"]
+        full_name = f"{player['first_name']} {player['last_name']}"
+
+        # Matched game_batting rows for this player
+        cur.execute("""
+            SELECT gb.player_name, gb.position, g.game_date, g.home_team_name, g.away_team_name
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE gb.player_id = %s AND g.season = 2026
+            ORDER BY g.game_date
+        """, (player_id,))
+        matched = [dict(r) for r in cur.fetchall()]
+
+        # Unmatched rows on this team that might be this player
+        cur.execute("""
+            SELECT gb.player_name, gb.position, g.game_date, g.home_team_name, g.away_team_name
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE gb.player_id IS NULL
+              AND gb.team_id = %s
+              AND g.season = 2026
+              AND (
+                LOWER(gb.player_name) LIKE %s
+                OR LOWER(gb.player_name) LIKE %s
+              )
+            ORDER BY g.game_date
+        """, (team_id, f"%{player['last_name'].lower()}%", f"%{player['first_name'].lower()}%"))
+        unmatched_maybe = [dict(r) for r in cur.fetchall()]
+
+        # Also show ALL distinct player names for this team that are unmatched
+        cur.execute("""
+            SELECT gb.player_name, COUNT(*) as rows
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE gb.player_id IS NULL
+              AND gb.team_id = %s
+              AND g.season = 2026
+            GROUP BY gb.player_name
+            ORDER BY rows DESC
+        """, (team_id,))
+        all_unmatched_names = [dict(r) for r in cur.fetchall()]
+
+        # How many total games does this team have?
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM games
+            WHERE season = 2026 AND (home_team_id = %s OR away_team_id = %s)
+        """, (team_id, team_id))
+        team_games = cur.fetchone()["cnt"]
+
+        # How many of those games have ANY game_batting data?
+        cur.execute("""
+            SELECT COUNT(DISTINCT g.id) as cnt
+            FROM games g
+            JOIN game_batting gb ON gb.game_id = g.id
+            WHERE g.season = 2026 AND (g.home_team_id = %s OR g.away_team_id = %s)
+        """, (team_id, team_id))
+        games_with_batting = cur.fetchone()["cnt"]
+
+        # Distinct game dates with batting data for this team
+        cur.execute("""
+            SELECT COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as cnt
+            FROM games g
+            JOIN game_batting gb ON gb.game_id = g.id
+            WHERE g.season = 2026 AND (g.home_team_id = %s OR g.away_team_id = %s)
+        """, (team_id, team_id))
+        distinct_dates_with_batting = cur.fetchone()["cnt"]
+
+        # For each game, show whether this player appears (matched or unmatched)
+        cur.execute("""
+            SELECT g.game_date, g.game_number, g.source_url,
+                   g.home_team_name, g.away_team_name,
+                   EXISTS(
+                       SELECT 1 FROM game_batting gb2
+                       WHERE gb2.game_id = g.id AND gb2.player_id = %s
+                   ) as player_matched,
+                   EXISTS(
+                       SELECT 1 FROM game_batting gb2
+                       WHERE gb2.game_id = g.id AND gb2.player_id IS NULL
+                         AND gb2.team_id = %s
+                         AND (LOWER(gb2.player_name) LIKE %s OR LOWER(gb2.player_name) LIKE %s)
+                   ) as player_unmatched_maybe,
+                   (SELECT COUNT(*) FROM game_batting gb2
+                    WHERE gb2.game_id = g.id AND gb2.team_id = %s) as team_batting_rows
+            FROM games g
+            WHERE g.season = 2026
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+            ORDER BY g.game_date, g.game_number
+        """, (player_id, team_id,
+              f"%{player['last_name'].lower()}%", f"%{player['first_name'].lower()}%",
+              team_id, team_id, team_id))
+        game_coverage = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "player": full_name,
+            "team_id": team_id,
+            "team_total_games_in_db": team_games,
+            "team_games_with_batting_data": games_with_batting,
+            "team_distinct_dates_with_batting": distinct_dates_with_batting,
+            "player_matched_rows": len(matched),
+            "player_distinct_dates": len(set(r["game_date"].isoformat() if r["game_date"] else "" for r in matched)),
+            "unmatched_maybe_rows": len(unmatched_maybe),
+            "all_unmatched_names_on_team": all_unmatched_names[:30],
+            "game_by_game": game_coverage,
+        }
+
+
+@router.get("/admin/team-game-coverage/{team_id}")
+def team_game_coverage(team_id: int):
+    """Show which games have box score data and which don't."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT g.id, g.game_date, g.game_number, g.source_url,
+                   g.home_team_name, g.away_team_name, g.home_score, g.away_score,
+                   (SELECT COUNT(*) FROM game_batting gb WHERE gb.game_id = g.id) as batting_rows
+            FROM games g
+            WHERE g.season = 2026
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+            ORDER BY g.game_date, g.game_number
+        """, (team_id, team_id))
+        rows = cur.fetchall()
+
+        with_data = [dict(r) for r in rows if r["batting_rows"] > 0]
+        without_data = [dict(r) for r in rows if r["batting_rows"] == 0]
+
+        return {
+            "team_id": team_id,
+            "total_game_records": len(rows),
+            "games_with_batting_data": len(with_data),
+            "games_without_batting_data": len(without_data),
+            "without_data": without_data,
+        }
+
+
+# ============================================================
+# ADMIN: Derive primary positions from game logs
+# ============================================================
+
+@router.post("/admin/derive-positions")
+def derive_positions(
+    season: int = Query(..., description="Season to analyse"),
+    threshold: float = Query(0.6, description="Min fraction to assign a single position (default 0.6 = 60%)"),
+):
+    """
+    Look at game_batting to see what position each player actually played
+    in each game. If one position accounts for >= threshold of their games,
+    set that as the player's position. Otherwise label them UT (utility).
+
+    Pitchers (players who appear in game_pitching but NOT game_batting,
+    or whose roster position is already P with no batting game logs)
+    are left untouched.
+
+    Returns a summary of how many players were updated and a sample of changes.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get every player's game-by-game position from box scores
+        cur.execute("""
+            SELECT gb.player_id,
+                   gb.position,
+                   COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games_at_pos
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE g.season = %s
+              AND gb.player_id IS NOT NULL
+              AND gb.position IS NOT NULL
+              AND TRIM(gb.position) != ''
+            GROUP BY gb.player_id, gb.position
+            ORDER BY gb.player_id, games_at_pos DESC
+        """, (season,))
+        rows = cur.fetchall()
+
+        # Build a dict: player_id -> {position: count, ...}
+        from collections import defaultdict
+        player_pos_counts = defaultdict(dict)
+        for r in rows:
+            pid = r["player_id"]
+            raw_pos = r["position"]
+            # Normalize the game-log position the same way we do roster positions
+            norm = normalize_position(raw_pos)
+            if norm and norm != "P":
+                # Accumulate (game logs may have slightly different raw strings
+                # that normalize to the same thing, e.g. "SS" and "ss")
+                player_pos_counts[pid][norm] = player_pos_counts[pid].get(norm, 0) + r["games_at_pos"]
+
+        updated = 0
+        skipped = 0
+        changes = []  # sample of changes for the response
+
+        for pid, pos_dict in player_pos_counts.items():
+            total_games = sum(pos_dict.values())
+            if total_games == 0:
+                skipped += 1
+                continue
+
+            # Sort positions by games played descending
+            sorted_positions = sorted(pos_dict.items(), key=lambda x: -x[1])
+            top_pos, top_count = sorted_positions[0]
+            fraction = top_count / total_games
+
+            if fraction >= threshold:
+                new_position = top_pos
+            else:
+                new_position = "UT"
+
+            # Get current position to see if it changed
+            cur.execute("SELECT position FROM players WHERE id = %s", (pid,))
+            current = cur.fetchone()
+            if not current:
+                skipped += 1
+                continue
+
+            old_position = current["position"]
+            old_norm = normalize_position(old_position) if old_position else None
+
+            # Only update if position actually changed
+            if old_norm != new_position:
+                cur.execute(
+                    "UPDATE players SET position = %s WHERE id = %s",
+                    (new_position, pid),
+                )
+                updated += 1
+                if len(changes) < 25:  # keep first 25 changes as sample
+                    changes.append({
+                        "player_id": pid,
+                        "old": old_position,
+                        "old_normalized": old_norm,
+                        "new": new_position,
+                        "games": total_games,
+                        "breakdown": {k: v for k, v in sorted_positions},
+                    })
+            else:
+                skipped += 1
+
+        conn.commit()
+
+    return {
+        "status": "ok",
+        "season": season,
+        "threshold": threshold,
+        "players_with_gamelogs": len(player_pos_counts),
+        "positions_updated": updated,
+        "unchanged": skipped,
+        "sample_changes": changes,
     }
 
 
@@ -2746,7 +3298,6 @@ def get_park_factors(
     # Enrich with division/conference from DB and apply filters
     with get_connection() as conn:
         cur = conn.cursor()
-        conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
 
         # Get team → division/conference mapping
         team_info = {}
@@ -3489,3 +4040,218 @@ def team_games(
 
         games = cur.fetchall()
         return [dict(g) for g in games]
+
+
+# ── Player Game Logs ──────────────────────────────────────────────────
+
+@router.get("/players/{player_id}/gamelogs")
+def get_player_gamelogs(
+    player_id: int,
+    season: int = Query(2026),
+):
+    """
+    Return game-by-game batting and pitching lines for a player,
+    including opponent, score, and date context.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Resolve canonical player (follow transfer links)
+        cur.execute(
+            "SELECT canonical_id FROM player_links WHERE linked_id = %s",
+            (player_id,),
+        )
+        canonical_link = cur.fetchone()
+        if canonical_link:
+            player_id = canonical_link["canonical_id"]
+
+        # Gather all player IDs (canonical + linked)
+        cur.execute(
+            "SELECT linked_id FROM player_links WHERE canonical_id = %s",
+            (player_id,),
+        )
+        linked_ids = cur.fetchall()
+        all_player_ids = [player_id] + [r["linked_id"] for r in linked_ids]
+        id_placeholders = ",".join(["%s"] * len(all_player_ids))
+
+        # Get all team IDs this player has been on (for home/away detection)
+        player_team_ids = set()
+        for pid in all_player_ids:
+            cur.execute("SELECT team_id FROM players WHERE id = %s", (pid,))
+            row = cur.fetchone()
+            if row and row["team_id"]:
+                player_team_ids.add(row["team_id"])
+
+        # Helper: resolve opponent info from a game row.
+        # Uses the player's known team IDs to determine home/away,
+        # falling back to gb.team_id, then to game name fields.
+        def resolve_game_context(r):
+            home_tid = r["home_team_id"]
+            away_tid = r["away_team_id"]
+
+            # Determine if player's team is home or away.
+            # Priority: check player's known team IDs against game record,
+            # then fall back to gb/gp.team_id comparison.
+            if home_tid in player_team_ids:
+                is_home = True
+            elif away_tid in player_team_ids:
+                is_home = False
+            else:
+                # Neither side matches player's team IDs (e.g. opponent
+                # not in DB so away_team_id is NULL). Fall back to
+                # gb.team_id matching.
+                row_team_id = r["team_id"]
+                is_home = (row_team_id == home_tid)
+
+            if is_home:
+                team_score = r["home_score"]
+                opp_score = r["away_score"]
+                opp_short = r["away_team_short"] or r["away_team_name"] or "?"
+                opp_logo = r["away_team_logo"]
+                home_away = "vs"
+            else:
+                team_score = r["away_score"]
+                opp_score = r["home_score"]
+                opp_short = r["home_team_short"] or r["home_team_name"] or "?"
+                opp_logo = r["home_team_logo"]
+                home_away = "@"
+
+            return {
+                "team_score": team_score,
+                "opp_score": opp_score,
+                "opponent_short": opp_short,
+                "opponent_logo": opp_logo,
+                "home_away": home_away,
+            }
+
+        # ── Batting game logs ──
+        cur.execute(f"""
+            SELECT
+                g.game_date, g.game_number, g.home_team_id, g.away_team_id,
+                g.home_score, g.away_score, g.innings,
+                g.home_team_name, g.away_team_name,
+                g.is_conference_game,
+                gb.team_id,
+                gb.position,
+                gb.at_bats, gb.runs, gb.hits,
+                gb.doubles, gb.triples, gb.home_runs,
+                gb.rbi, gb.walks, gb.strikeouts,
+                gb.hit_by_pitch, gb.stolen_bases, gb.caught_stealing,
+                gb.sacrifice_flies, gb.sacrifice_bunts,
+                ht.short_name AS home_team_short, ht.logo_url AS home_team_logo,
+                at2.short_name AS away_team_short, at2.logo_url AS away_team_logo
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            LEFT JOIN teams ht ON ht.id = g.home_team_id
+            LEFT JOIN teams at2 ON at2.id = g.away_team_id
+            WHERE gb.player_id IN ({id_placeholders})
+              AND g.season = %s
+              AND g.status = 'final'
+            ORDER BY g.game_date ASC, g.id ASC
+        """, (*all_player_ids, season))
+        batting_rows = cur.fetchall()
+
+        # Deduplicate: same real-world game may be scraped from both teams' sites.
+        # Key on (date, game_number) to keep one row per actual game.
+        batting_logs = []
+        seen_batting = set()
+        for r in batting_rows:
+            dedup_key = (str(r["game_date"]), r["game_number"] or 1)
+            if dedup_key in seen_batting:
+                continue
+            seen_batting.add(dedup_key)
+
+            ctx = resolve_game_context(r)
+            batting_logs.append({
+                "game_date": str(r["game_date"]),
+                "opponent_short": ctx["opponent_short"],
+                "opponent_logo": ctx["opponent_logo"],
+                "home_away": ctx["home_away"],
+                "team_score": ctx["team_score"],
+                "opp_score": ctx["opp_score"],
+                "innings": r["innings"],
+                "is_conference": r["is_conference_game"],
+                "position": r["position"],
+                "ab": r["at_bats"],
+                "r": r["runs"],
+                "h": r["hits"],
+                "2b": r["doubles"],
+                "3b": r["triples"],
+                "hr": r["home_runs"],
+                "rbi": r["rbi"],
+                "bb": r["walks"],
+                "k": r["strikeouts"],
+                "hbp": r["hit_by_pitch"],
+                "sb": r["stolen_bases"],
+                "cs": r["caught_stealing"],
+                "sf": r["sacrifice_flies"],
+                "sh": r["sacrifice_bunts"],
+            })
+
+        # ── Pitching game logs ──
+        cur.execute(f"""
+            SELECT
+                g.game_date, g.game_number, g.home_team_id, g.away_team_id,
+                g.home_score, g.away_score, g.innings,
+                g.home_team_name, g.away_team_name,
+                g.is_conference_game,
+                gp.team_id,
+                gp.is_starter, gp.decision,
+                gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
+                gp.earned_runs, gp.walks, gp.strikeouts,
+                gp.home_runs_allowed, gp.hit_batters,
+                gp.wild_pitches, gp.batters_faced,
+                gp.pitches_thrown, gp.strikes,
+                gp.game_score, gp.is_quality_start,
+                ht.short_name AS home_team_short, ht.logo_url AS home_team_logo,
+                at2.short_name AS away_team_short, at2.logo_url AS away_team_logo
+            FROM game_pitching gp
+            JOIN games g ON g.id = gp.game_id
+            LEFT JOIN teams ht ON ht.id = g.home_team_id
+            LEFT JOIN teams at2 ON at2.id = g.away_team_id
+            WHERE gp.player_id IN ({id_placeholders})
+              AND g.season = %s
+              AND g.status = 'final'
+            ORDER BY g.game_date ASC, g.id ASC
+        """, (*all_player_ids, season))
+        pitching_rows = cur.fetchall()
+
+        pitching_logs = []
+        seen_pitching = set()
+        for r in pitching_rows:
+            dedup_key = (str(r["game_date"]), r["game_number"] or 1)
+            if dedup_key in seen_pitching:
+                continue
+            seen_pitching.add(dedup_key)
+            ctx = resolve_game_context(r)
+            pitching_logs.append({
+                "game_date": str(r["game_date"]),
+                "opponent_short": ctx["opponent_short"],
+                "opponent_logo": ctx["opponent_logo"],
+                "home_away": ctx["home_away"],
+                "team_score": ctx["team_score"],
+                "opp_score": ctx["opp_score"],
+                "innings": r["innings"],
+                "is_conference": r["is_conference_game"],
+                "is_starter": r["is_starter"],
+                "decision": r["decision"],
+                "ip": float(r["innings_pitched"]) if r["innings_pitched"] else None,
+                "h": r["hits_allowed"],
+                "r": r["runs_allowed"],
+                "er": r["earned_runs"],
+                "bb": r["walks"],
+                "k": r["strikeouts"],
+                "hr": r["home_runs_allowed"],
+                "hbp": r["hit_batters"],
+                "wp": r["wild_pitches"],
+                "bf": r["batters_faced"],
+                "pitches": r["pitches_thrown"],
+                "strikes": r["strikes"],
+                "game_score": r["game_score"],
+                "is_quality_start": r["is_quality_start"],
+            })
+
+        return {
+            "batting": batting_logs,
+            "pitching": pitching_logs,
+        }

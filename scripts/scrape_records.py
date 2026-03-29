@@ -69,7 +69,24 @@ def scrape_sidearm_standings(url):
     tables = soup.find_all("table")
     for table in tables:
         rows = table.find_all("tr")
-        for row in rows:
+        if not rows:
+            continue
+
+        # ── Find header row and identify column indices ──
+        header_row = rows[0]
+        header_cells = header_row.find_all(["td", "th"])
+        headers = [c.get_text(strip=True).lower() for c in header_cells]
+
+        # Find the column indices for conference and overall records
+        conf_idx = None
+        overall_idx = None
+        for i, h in enumerate(headers):
+            if h in ("conf", "conference", "ccc", "wcc", "gnac", "nwc", "league"):
+                conf_idx = i
+            elif h == "overall":
+                overall_idx = i
+
+        for row in rows[1:]:
             cells = row.find_all(["td", "th"])
             if len(cells) < 4:
                 continue
@@ -82,19 +99,34 @@ def scrape_sidearm_standings(url):
             if not team_name or len(team_name) < 2:
                 continue
 
-            # Collect all W-L patterns from cells
-            found = []
-            for cell in cells:
-                text = cell.get_text(strip=True)
-                rec = parse_record(text)
-                if rec:
-                    found.append(rec)
+            # If we found header indices, use them directly
+            conf_rec = None
+            overall_rec = None
+            if conf_idx is not None and conf_idx < len(cells):
+                conf_rec = parse_record(cells[conf_idx].get_text(strip=True))
+            if overall_idx is not None and overall_idx < len(cells):
+                overall_rec = parse_record(cells[overall_idx].get_text(strip=True))
 
-            if found:
-                # Sidearm standings: first record = conference, last = overall (usually)
+            # Fallback: collect first two W-L patterns (conf first, overall second)
+            if not conf_rec or not overall_rec:
+                found = []
+                for cell in cells:
+                    text = cell.get_text(strip=True)
+                    rec = parse_record(text)
+                    if rec:
+                        found.append(rec)
+                if found:
+                    if not conf_rec:
+                        conf_rec = found[0]
+                    if not overall_rec and len(found) >= 2:
+                        overall_rec = found[1]
+                    elif not overall_rec:
+                        overall_rec = found[0]
+
+            if conf_rec or overall_rec:
                 records[team_name] = {
-                    "conf": found[0],
-                    "overall": found[-1] if len(found) >= 2 else found[0],
+                    "conf": conf_rec or (0, 0),
+                    "overall": overall_rec or conf_rec or (0, 0),
                 }
 
     return records
@@ -133,7 +165,7 @@ def scrape_nwac_standings(season):
             if found and team_name:
                 records[team_name] = {
                     "conf": found[0],
-                    "overall": found[-1] if len(found) >= 2 else found[0],
+                    "overall": found[1] if len(found) >= 2 else found[0],
                 }
 
     return records
@@ -150,15 +182,28 @@ def scrape_d1_team(base_url):
     overall = None
     conference = None
 
-    # Look for record text anywhere on the page
-    text = soup.get_text()
-    # Pattern: "Overall: 23-5" or "Overall 23-5"
-    om = re.search(r'overall\s*[:\s]\s*(\d+-\d+)', text, re.I)
-    if om:
-        overall = parse_record(om.group(1))
-    cm = re.search(r'conf(?:erence)?\s*[:\s]\s*(\d+-\d+)', text, re.I)
-    if cm:
-        conference = parse_record(cm.group(1))
+    # Method 1: Look for structured record elements (newer Sidearm sites like Oregon)
+    # These have elements with class containing "record" and text like "OverallWins22Losses5"
+    record_el = soup.find(class_=re.compile(r'schedule-record', re.I))
+    if record_el:
+        rec_text = record_el.get_text()
+        # Pattern: "OverallWins22Losses5" or "Overall Wins 22 Losses 5"
+        om = re.search(r'overall\s*wins?\s*(\d+)\s*loss(?:es)?\s*(\d+)', rec_text, re.I)
+        if om:
+            overall = (int(om.group(1)), int(om.group(2)))
+        cm = re.search(r'conf\s*wins?\s*(\d+)\s*loss(?:es)?\s*(\d+)', rec_text, re.I)
+        if cm:
+            conference = (int(cm.group(1)), int(cm.group(2)))
+
+    # Method 2: Plain text "Overall: 23-5" or "Overall 23-5" (older Sidearm sites)
+    if not overall:
+        text = soup.get_text()
+        om = re.search(r'overall\s*[:\s]\s*(\d+-\d+)', text, re.I)
+        if om:
+            overall = parse_record(om.group(1))
+        cm = re.search(r'conf(?:erence)?\s*[:\s]\s*(\d+-\d+)', text, re.I)
+        if cm:
+            conference = parse_record(cm.group(1))
 
     return overall, conference
 
@@ -183,8 +228,10 @@ NAME_ALIASES = {
     "willamette": "Willamette",
     # NAIA (CCC)
     "bushnell": "Bushnell", "college of idaho": "C of I", "corban": "Corban",
-    "eastern oregon": "EOU", "lewis-clark state": "LCSC", "lcsc": "LCSC",
-    "multnomah": "Multnomah", "oregon tech": "OIT", "southern oregon": "SOU",
+    "eastern oregon": "EOU", "eastern oregon university": "EOU",
+    "lewis-clark state": "LCSC", "lcsc": "LCSC",
+    "multnomah": "Multnomah", "oregon tech": "OIT", "oregon institute of technology": "OIT",
+    "southern oregon": "SOU", "southern oregon university": "SOU",
     "ubc": "UBC", "british columbia": "UBC",
     "warner pacific": "Warner Pacific", "walla walla": "Walla Walla",
     # NWAC
@@ -193,7 +240,7 @@ NAME_ALIASES = {
     "clark": "Clark", "columbia basin": "Columbia Basin", "douglas": "Douglas",
     "edmonds": "Edmonds", "everett": "Everett", "green river": "GRC",
     "grays harbor": "Grays Harbor", "lane": "Lane", "linn-benton": "Linn-Benton",
-    "lower columbia": "Lower Columbia", "mt. hood": "Mt. Hood", "olympic": "Olympic",
+    "lower columbia": "Lower Columbia", "mt. hood": "Mt. Hood", "mt hood": "Mt. Hood", "olympic": "Olympic",
     "pierce": "Pierce", "shoreline": "Shoreline", "skagit valley": "Skagit",
     "skagit": "Skagit", "spokane": "Spokane",
     "spokane falls": "Spokane", "sw oregon": "SW Oregon",
@@ -207,22 +254,31 @@ def match_team(name, db_teams):
     """Try to match a scraped team name to a DB team."""
     name_lower = name.lower().strip()
 
-    # Direct short_name match
+    # Direct short_name match (exact)
     for t in db_teams:
         if t["short_name"].lower() == name_lower:
             return t
 
-    # Alias match
-    for alias, short in NAME_ALIASES.items():
-        if alias in name_lower or name_lower in alias:
+    # Direct full name match (exact)
+    for t in db_teams:
+        if t["name"].lower() == name_lower:
+            return t
+
+    # Alias match — try longest aliases first so "central washington" beats "washington"
+    sorted_aliases = sorted(NAME_ALIASES.items(), key=lambda x: len(x[0]), reverse=True)
+    for alias, short in sorted_aliases:
+        if alias == name_lower:
+            # Exact alias match
             for t in db_teams:
                 if t["short_name"] == short:
                     return t
 
-    # Fuzzy: check if any DB team name is contained in the scraped name
-    for t in db_teams:
-        if t["short_name"].lower() in name_lower or name_lower in t["name"].lower():
-            return t
+    # Alias substring match — only check if alias is IN the scraped name (not the reverse)
+    for alias, short in sorted_aliases:
+        if alias in name_lower:
+            for t in db_teams:
+                if t["short_name"] == short:
+                    return t
 
     return None
 
@@ -254,7 +310,7 @@ def main():
             FROM teams t JOIN conferences c ON t.conference_id = c.id
             WHERE t.is_active = 1
         """)
-        db_teams = [{"id": row[0], "short_name": row[1], "name": row[2], "division_id": row[3]} for row in cur.fetchall()]
+        db_teams = [{"id": row["id"], "short_name": row["short_name"], "name": row["name"], "division_id": row["division_id"]} for row in cur.fetchall()]
 
         saved = 0
         not_found = []
@@ -312,12 +368,12 @@ def main():
         # ── Step 3: D1 individual team pages (only for teams not yet found) ──
 
         cur.execute(
-            "SELECT team_id FROM team_season_stats WHERE season = %s", (season,)
+            "SELECT team_id FROM team_season_stats WHERE season = %s AND (wins > 0 OR losses > 0)", (season,)
         )
         existing = cur.fetchall()
-        found_ids = {r[0] for r in existing}
+        found_ids = {r["team_id"] for r in existing}
 
-        logger.info(f"\n--- Checking D1 team pages for missing teams ---")
+        logger.info(f"\n--- Checking D1 team pages for missing or 0-0 teams ---")
         for short, base_url in D1_TEAMS.items():
             team = next((t for t in db_teams if t["short_name"] == short), None)
             if not team or team["id"] in found_ids:
@@ -339,7 +395,7 @@ def main():
             "SELECT team_id FROM team_season_stats WHERE season = %s", (season,)
         )
         all_saved = cur.fetchall()
-        saved_ids = {r[0] for r in all_saved}
+        saved_ids = {r["team_id"] for r in all_saved}
         missing = [t["short_name"] for t in db_teams if t["id"] not in saved_ids]
 
     print(f"\n{'='*50}")

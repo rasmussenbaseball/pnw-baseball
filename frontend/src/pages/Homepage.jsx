@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useStandings, useNationalRankings, useTeamRatings, useGamesTicker } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 
 const SEASON = 2026
@@ -24,7 +24,6 @@ const DIV_COLORS = {
 
 export default function Homepage() {
   const { data: leaders } = useStatLeaders(SEASON, 5, true)
-  const { data: standings } = useStandings(SEASON)
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
   const { data: recentGames } = useGamesTicker(SEASON, 12)
@@ -42,12 +41,11 @@ export default function Homepage() {
         {/* Left column - wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
           <NationalRankingsWidget rankings={rankings} />
-          <StandingsWidget standings={standings} />
+          <StatLeadersWidget leaders={leaders} />
         </div>
 
         {/* Right column - sidebar (1/3) */}
         <div className="flex flex-col gap-5">
-          <StatLeadersWidget leaders={leaders} />
           <PowerRankingsWidget ratings={ratings} />
           <QuickLinksWidget />
         </div>
@@ -142,7 +140,7 @@ function LeaderTicker({ leaders }) {
           return (
             <Link
               key={cat.key}
-              to={cat.key === 'era' || cat.key === 'strikeouts' || cat.key === 'pitching_war' || cat.key === 'fip_plus' || cat.key === 'siera' || cat.key === 'k_minus_bb_pct'
+              to={cat.key === 'era' || cat.key === 'strikeouts' || cat.key === 'pitching_war' || cat.key === 'fip_plus' || cat.key === 'quality_starts' || cat.key === 'k_minus_bb_pct'
                 ? '/pitching' : '/hitting'}
               className="flex-none px-3 sm:px-4 py-2 sm:py-2.5 hover:bg-white/5 transition-colors min-w-0"
             >
@@ -229,187 +227,66 @@ function NationalRankingsWidget({ rankings }) {
 
 
 // ════════════════════════════════════════════
-// STANDINGS WIDGET (compact conference standings)
-// ════════════════════════════════════════════
-function StandingsWidget({ standings }) {
-  if (!standings) return <WidgetSkeleton title="Standings" />
-
-  const conferences = standings.conferences || []
-  // Group by division level for cleaner display
-  const byDiv = {}
-  conferences.forEach(c => {
-    const lvl = c.division_level
-    if (!byDiv[lvl]) byDiv[lvl] = []
-    byDiv[lvl].push(c)
-  })
-
-  const divOrder = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-bold text-pnw-slate">Conference Standings</h2>
-        <Link to="/standings" className="text-xs text-pnw-teal hover:underline">Full standings →</Link>
-      </div>
-
-      {/* D1: has multiple conferences, needs special layout for Independent */}
-      {byDiv['D1'] && (() => {
-        const confs = byDiv['D1']
-        const smallConfs = confs.filter(c => c.teams.length <= 3)
-        const largeConfs = confs.filter(c => c.teams.length > 3)
-        return (
-          <div className="mb-3">
-            <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS['D1']} inline-block mb-1.5`}>D1</div>
-            <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
-              {largeConfs.map(conf => (
-                <StandingsConf key={conf.conference_id} conf={conf} />
-              ))}
-              {smallConfs.length > 0 && (
-                <div className="flex flex-col gap-3">
-                  {smallConfs.map(conf => (
-                    <StandingsConf key={conf.conference_id} conf={conf} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* D2, D3, NAIA: compact row — one conference each, side by side */}
-      {(['D2', 'D3', 'NAIA'].some(d => byDiv[d])) && (
-        <div className="mb-3">
-          <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
-            {['D2', 'D3', 'NAIA'].map(divLevel => {
-              const confs = byDiv[divLevel]
-              if (!confs) return null
-              return (
-                <div key={divLevel}>
-                  <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS[divLevel] || 'bg-gray-600'} inline-block mb-1.5`}>
-                    {divLevel}
-                  </div>
-                  {confs.map(conf => (
-                    <StandingsConf key={conf.conference_id} conf={conf} />
-                  ))}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* JUCO: multiple NWAC conferences, 2-column grid */}
-      {byDiv['JUCO'] && (() => {
-        const confs = byDiv['JUCO']
-        return (
-          <div className="mb-3 last:mb-0">
-            <div className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${DIV_COLORS['JUCO']} inline-block mb-1.5`}>JUCO</div>
-            <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
-              {confs.map(conf => (
-                <StandingsConf key={conf.conference_id} conf={conf} />
-              ))}
-            </div>
-          </div>
-        )
-      })()}
-    </div>
-  )
-}
-
-
-// ─── Conference standings card (reused in StandingsWidget) ───
-function StandingsConf({ conf }) {
-  return (
-    <div className="border border-gray-200 rounded text-xs">
-      <div className="bg-gray-50 px-2 py-1 font-semibold text-gray-700 border-b border-gray-200 flex justify-between">
-        <span>{conf.conference_abbrev === 'IND' ? 'Independent' : (conf.conference_abbrev || conf.conference_name)}</span>
-        <span className="text-gray-400 font-normal">Conf / Overall</span>
-      </div>
-      {conf.teams.map((team) => {
-        const isPnw = team.is_pnw
-        const Row = isPnw ? Link : 'div'
-        const rowProps = isPnw
-          ? { to: `/team/${team.id}`, className: "flex items-center gap-1.5 px-2 py-1 hover:bg-teal-50/50 border-b border-gray-50 last:border-b-0" }
-          : { className: "flex items-center gap-1.5 px-2 py-1 border-b border-gray-50 last:border-b-0 opacity-50" }
-        return (
-          <Row key={team.id} {...rowProps}>
-            {team.logo_url && (
-              <img src={team.logo_url} alt="" className={`w-4 h-4 object-contain ${isPnw ? '' : 'grayscale'}`}
-                onError={(e) => { e.target.style.display = 'none' }} />
-            )}
-            <span className={`font-medium truncate flex-1 ${isPnw ? 'text-nw-teal font-semibold' : 'text-gray-400'}`}>{team.short_name}</span>
-            <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-500' : 'text-gray-400'}`}>
-              {team.conf_wins + team.conf_losses > 0
-                ? `${team.conf_wins}-${team.conf_losses}`
-                : '-'}
-            </span>
-            <span className={`font-mono text-[10px] w-12 text-right ${isPnw ? 'text-gray-400' : 'text-gray-300'}`}>
-              {team.wins || team.losses
-                ? `${team.wins}-${team.losses}`
-                : '-'}
-            </span>
-          </Row>
-        )
-      })}
-    </div>
-  )
-}
-
-
-// ════════════════════════════════════════════
-// STAT LEADERS WIDGET (sidebar)
+// STAT LEADERS WIDGET (main area, top 5 per category)
 // ════════════════════════════════════════════
 function StatLeadersWidget({ leaders }) {
   if (!leaders) return <WidgetSkeleton title="Stat Leaders" />
 
-  // Pick the most interesting categories for the sidebar
-  const battingCats = (leaders.batting || []).slice(0, 3) // wRC+, HR, SB
-  const pitchingCats = (leaders.pitching || []).slice(0, 3) // pWAR, FIP+, SIERA
+  const battingCats = leaders.batting || []
+  const pitchingCats = leaders.pitching || []
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-bold text-pnw-slate">Stat Leaders</h2>
+        <h2 className="text-sm sm:text-base font-bold text-pnw-slate">Stat Leaders</h2>
         <Link to="/stat-leaders" className="text-xs text-pnw-teal hover:underline">View all →</Link>
       </div>
 
-      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Batting</div>
-      {battingCats.map(cat => (
-        <LeaderCategory key={cat.key} cat={cat} type="batting" />
-      ))}
+      {/* Batting */}
+      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Batting</div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-3 mb-4">
+        {battingCats.map(cat => (
+          <LeaderCategory key={cat.key} cat={cat} type="batting" />
+        ))}
+      </div>
 
-      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 mt-3">Pitching</div>
-      {pitchingCats.map(cat => (
-        <LeaderCategory key={cat.key} cat={cat} type="pitching" />
-      ))}
+      {/* Pitching */}
+      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Pitching</div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-3">
+        {pitchingCats.map(cat => (
+          <LeaderCategory key={cat.key} cat={cat} type="pitching" />
+        ))}
+      </div>
     </div>
   )
 }
 
 function LeaderCategory({ cat, type }) {
+  const linkTo = type === 'pitching' ? '/pitching' : '/hitting'
   return (
-    <div className="mb-2.5 last:mb-0">
-      <div className="text-xs font-semibold text-pnw-slate mb-1">{cat.label}</div>
-      {cat.leaders?.slice(0, 3).map((p, i) => (
+    <div>
+      <Link to={linkTo} className="text-xs font-semibold text-pnw-slate hover:text-pnw-teal transition-colors mb-1 block">
+        {cat.label}
+      </Link>
+      {cat.leaders?.slice(0, 5).map((p, i) => (
         <Link
           key={p.player_id}
           to={`/player/${p.player_id}`}
-          className="flex items-center gap-1.5 py-0.5 text-xs hover:bg-gray-50 rounded px-1 -mx-1"
+          className={`flex items-center gap-1 py-[3px] text-xs hover:bg-gray-50 rounded px-1 -mx-1 ${p.is_qualified === false ? 'italic text-gray-400' : ''}`}
         >
-          <span className={`w-4 text-right font-mono text-[10px] ${
+          <span className={`w-3.5 text-right font-mono text-[10px] shrink-0 ${
             i === 0 ? 'text-amber-500 font-bold' : 'text-gray-400'
           }`}>
             {i + 1}
           </span>
           {p.logo_url && (
-            <img src={p.logo_url} alt="" className="w-3.5 h-3.5 object-contain"
+            <img src={p.logo_url} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
               onError={(e) => { e.target.style.display = 'none' }} />
           )}
-          <span className="text-gray-700 truncate flex-1">
+          <span className="text-gray-700 truncate flex-1 min-w-0">
             {p.first_name[0]}. {p.last_name}
           </span>
-          <span className="text-[10px] text-gray-400">{p.short_name}</span>
-          <span className="font-bold text-pnw-slate ml-1 font-mono">
+          <span className="font-bold text-pnw-slate font-mono text-[11px] shrink-0">
             {fmtVal(p.value, cat.format)}
           </span>
         </Link>
