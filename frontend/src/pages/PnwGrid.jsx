@@ -256,14 +256,24 @@ export default function PnwGrid() {
                   >
                     {cell ? (
                       <div className="flex flex-col items-center gap-0 p-1 w-full">
-                        {/* Player image */}
-                        {cell.headshot_url ? (
-                          <img
-                            src={cell.headshot_url}
-                            alt=""
-                            className="w-9 h-9 rounded-full object-cover border border-gray-200"
-                            onError={(e) => { e.target.style.display = 'none' }}
-                          />
+                        {/* Team logos at top */}
+                        {cell.all_teams && cell.all_teams.length > 0 ? (
+                          <div className="flex items-center justify-center gap-1">
+                            {cell.all_teams.map((team, ti) => (
+                              team.logo_url ? (
+                                <img
+                                  key={ti}
+                                  src={team.logo_url}
+                                  alt={team.short_name}
+                                  title={team.short_name}
+                                  className="w-7 h-7 object-contain"
+                                  onError={(e) => { e.target.style.display = 'none' }}
+                                />
+                              ) : (
+                                <span key={ti} className="text-[8px] text-gray-400 font-medium">{team.short_name}</span>
+                              )
+                            ))}
+                          </div>
                         ) : cell.logo_url ? (
                           <img src={cell.logo_url} alt="" className="w-7 h-7 object-contain" />
                         ) : (
@@ -278,28 +288,6 @@ export default function PnwGrid() {
                         <span className="text-[9px] font-semibold text-gray-700 text-center leading-tight truncate w-full mt-0.5">
                           {cell.first_name?.[0]}. {cell.last_name}
                         </span>
-
-                        {/* All team logos row */}
-                        {cell.all_teams && cell.all_teams.length > 0 ? (
-                          <div className="flex items-center justify-center gap-0.5 mt-0.5">
-                            {cell.all_teams.map((team, ti) => (
-                              team.logo_url ? (
-                                <img
-                                  key={ti}
-                                  src={team.logo_url}
-                                  alt={team.short_name}
-                                  title={team.short_name}
-                                  className="w-3.5 h-3.5 object-contain"
-                                  onError={(e) => { e.target.style.display = 'none' }}
-                                />
-                              ) : (
-                                <span key={ti} className="text-[7px] text-gray-400">{team.short_name}</span>
-                              )
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-[7px] text-gray-400">{cell.team_short}</span>
-                        )}
 
                         {/* Stat year(s) */}
                         {cell.stat_years && (
