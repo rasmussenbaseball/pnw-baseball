@@ -193,9 +193,10 @@ def scrape_batting_stats(session, league_id, season_id):
     headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
     col_map = {h: i for i, h in enumerate(headers)}
 
+    min_cols = max(col_map.values()) + 1 if col_map else 10
     for row in stats_table.find_all("tr"):
         cells = row.find_all("td")
-        if len(cells) < 10:
+        if len(cells) < min_cols:
             continue
 
         # Player name — first cell, may be a link
@@ -315,9 +316,10 @@ def scrape_pitching_stats(session, league_id, season_id):
     headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
     col_map = {h: i for i, h in enumerate(headers)}
 
+    min_cols = max(col_map.values()) + 1 if col_map else 10
     for row in stats_table.find_all("tr"):
         cells = row.find_all("td")
-        if len(cells) < 10:
+        if len(cells) < min_cols:
             continue
 
         player_cell = cells[col_map.get("Player", 0)]
