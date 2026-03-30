@@ -930,7 +930,8 @@ const LeaderCard = forwardRef(function LeaderCard(
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    lineHeight: 1.2,
+                    lineHeight: 1.5,
+                    padding: '3px 0',
                   }}>
                     {name}
                   </div>
