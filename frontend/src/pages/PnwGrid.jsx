@@ -9,7 +9,7 @@ export default function PnwGrid() {
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const { data: config, loading, error } = useGridConfig()
-  const [grid, setGrid] = useState(Array(9).fill(null)) // 3x3 = 9 cells
+  const [grid, setGrid] = useState(Array(9).fill(null))
   const [activeCell, setActiveCell] = useState(null)
   const [guessesUsed, setGuessesUsed] = useState(0)
   const [usedPlayerIds, setUsedPlayerIds] = useState(new Set())
@@ -17,9 +17,11 @@ export default function PnwGrid() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
-  const [feedback, setFeedback] = useState(null) // {cell, correct} for animation
+  const [feedback, setFeedback] = useState(null)
+  const [saving, setSaving] = useState(false)
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
+  const gridRef = useRef(null)
 
   // Search with debounce
   useEffect(() => {
@@ -83,6 +85,8 @@ export default function PnwGrid() {
         newGrid[activeCell] = {
           ...result.player,
           correct: true,
+          all_teams: result.all_teams || [],
+          stat_years: result.stat_years || null,
         }
         setGrid(newGrid)
         setUsedPlayerIds(prev => new Set([...prev, player.id]))
@@ -93,7 +97,6 @@ export default function PnwGrid() {
 
       setGuessesUsed(newGuesses)
 
-      // Check if game is over
       const filledCount = grid.filter(Boolean).length + (result.correct ? 1 : 0)
       if (newGuesses >= MAX_GUESSES || filledCount >= 9) {
         setGameOver(true)
@@ -103,7 +106,6 @@ export default function PnwGrid() {
       setSearchQuery('')
       setSearchResults([])
 
-      // Clear feedback after animation
       setTimeout(() => setFeedback(null), 800)
     } catch {
       // Handle error
@@ -119,6 +121,39 @@ export default function PnwGrid() {
     setSearchQuery('')
     setSearchResults([])
     setFeedback(null)
+  }
+
+  const handleSaveImage = async () => {
+    if (!gridRef.current) return
+    setSaving(true)
+    try {
+      const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')
+      const canvas = await html2canvas(gridRef.current, {
+        backgroundColor: '#f5f3ef',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      })
+      const link = document.createElement('a')
+      link.download = `pnw-grid-${config?.title?.replace(/[^a-zA-Z0-9]/g, '-') || 'result'}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } catch (err) {
+      console.error('Save failed:', err)
+    }
+    setSaving(false)
+  }
+
+  // Format stat years for display
+  const formatStatYears = (statYears) => {
+    if (!statYears) return ''
+    if (statYears.type === 'career') {
+      return statYears.span || ''
+    }
+    if (statYears.type === 'seasons' && statYears.years?.length) {
+      return statYears.years.join(', ')
+    }
+    return ''
   }
 
   if (authLoading || loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
@@ -146,110 +181,169 @@ export default function PnwGrid() {
 
   return (
     <div className="max-w-xl mx-auto">
-      {/* Header */}
-      <div className="text-center mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">PNW Grid</h1>
-        {config.title && (
-          <p className="text-xs text-gray-400 mt-0.5">{config.title}</p>
+      {/* === Capturable area for screenshot === */}
+      <div ref={gridRef} style={{ backgroundColor: '#f5f3ef', padding: '20px 16px 16px' }}>
+
+        {/* Branded header */}
+        <div className="text-center mb-3">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <img src="/images/nw-logo-white.png" alt="NW" className="h-7 w-7 rounded" style={{ background: '#00687a', padding: '3px' }} />
+            <span className="text-lg font-extrabold tracking-tight" style={{ color: '#00687a' }}>PNW GRID</span>
+          </div>
+          {config.title && (
+            <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">{config.title}</p>
+          )}
+          <div className="flex items-center justify-center gap-4 mt-1.5 text-sm">
+            <span className="text-gray-500">
+              Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>/{MAX_GUESSES}
+            </span>
+            <span className="text-gray-500">
+              Score: <span className="font-bold" style={{ color: '#00687a' }}>{score}</span>/9
+            </span>
+          </div>
+        </div>
+
+        {/* Grid */}
+        <div className="grid grid-cols-4 gap-0 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+          {/* Top-left branded cell */}
+          <div className="border-b border-r border-gray-200 p-2 flex items-center justify-center" style={{ backgroundColor: '#00687a' }}>
+            <img src="/images/nw-logo-white.png" alt="NW" className="h-6 w-6 opacity-80" />
+          </div>
+
+          {/* Column headers */}
+          {columns.map((col, i) => (
+            <div
+              key={`col-${i}`}
+              className="border-b border-r border-gray-200 p-2 flex items-center justify-center text-center last:border-r-0"
+              style={{ backgroundColor: '#00687a' }}
+            >
+              <span className="text-xs font-bold text-white leading-tight">{col.label}</span>
+            </div>
+          ))}
+
+          {/* Rows */}
+          {rows.map((row, ri) => (
+            <div key={`row-group-${ri}`} className="contents">
+              {/* Row header */}
+              <div
+                className="border-b border-r border-gray-200 p-2 flex items-center justify-center text-center"
+                style={{ backgroundColor: '#00687a' }}
+              >
+                <span className="text-xs font-bold text-white leading-tight">{row.label}</span>
+              </div>
+
+              {/* Grid cells */}
+              {columns.map((col, ci) => {
+                const idx = ri * 3 + ci
+                const cell = grid[idx]
+                const isActive = activeCell === idx
+                const fb = feedback?.cell === idx ? feedback : null
+
+                return (
+                  <div
+                    key={`cell-${ri}-${ci}`}
+                    onClick={() => handleCellClick(idx)}
+                    className={`
+                      border-b border-r border-gray-200 aspect-square
+                      flex items-center justify-center relative
+                      transition-all duration-200
+                      ${ri === 2 ? 'border-b-0' : ''}
+                      ${ci === 2 ? 'border-r-0' : ''}
+                      ${cell ? 'bg-emerald-50' : isActive ? 'bg-blue-50 ring-2 ring-inset ring-nw-teal' : 'bg-white hover:bg-gray-50 cursor-pointer'}
+                      ${fb?.correct === true ? 'animate-correct' : ''}
+                      ${fb?.correct === false ? 'animate-incorrect' : ''}
+                    `}
+                  >
+                    {cell ? (
+                      <div className="flex flex-col items-center gap-0 p-1 w-full">
+                        {/* Player image */}
+                        {cell.headshot_url ? (
+                          <img
+                            src={cell.headshot_url}
+                            alt=""
+                            className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                            onError={(e) => { e.target.style.display = 'none' }}
+                          />
+                        ) : cell.logo_url ? (
+                          <img src={cell.logo_url} alt="" className="w-7 h-7 object-contain" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
+                            <span className="text-emerald-600 text-xs font-bold">
+                              {cell.first_name?.[0]}{cell.last_name?.[0]}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Player name */}
+                        <span className="text-[9px] font-semibold text-gray-700 text-center leading-tight truncate w-full mt-0.5">
+                          {cell.first_name?.[0]}. {cell.last_name}
+                        </span>
+
+                        {/* All team logos row */}
+                        {cell.all_teams && cell.all_teams.length > 0 ? (
+                          <div className="flex items-center justify-center gap-0.5 mt-0.5">
+                            {cell.all_teams.map((team, ti) => (
+                              team.logo_url ? (
+                                <img
+                                  key={ti}
+                                  src={team.logo_url}
+                                  alt={team.short_name}
+                                  title={team.short_name}
+                                  className="w-3.5 h-3.5 object-contain"
+                                  onError={(e) => { e.target.style.display = 'none' }}
+                                />
+                              ) : (
+                                <span key={ti} className="text-[7px] text-gray-400">{team.short_name}</span>
+                              )
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[7px] text-gray-400">{cell.team_short}</span>
+                        )}
+
+                        {/* Stat year(s) */}
+                        {cell.stat_years && (
+                          <span className="text-[7px] text-gray-400 leading-none mt-0.5">
+                            {formatStatYears(cell.stat_years)}
+                          </span>
+                        )}
+                      </div>
+                    ) : isActive ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs text-nw-teal font-medium">Type below...</span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-200 text-2xl font-light">+</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* Game over result (inside capturable area) */}
+        {gameOver && (
+          <div className="mt-3 text-center">
+            <div className={`inline-block px-4 py-2 rounded-lg text-sm font-bold ${
+              score === 9 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {score === 9 ? 'Perfect! 9/9!' : `Game Over — ${score}/9`}
+            </div>
+          </div>
         )}
-        <div className="flex items-center justify-center gap-4 mt-2 text-sm">
-          <span className="text-gray-500">
-            Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>/{MAX_GUESSES}
-          </span>
-          <span className="text-gray-500">
-            Score: <span className="font-bold text-nw-teal">{score}</span>/9
-          </span>
+
+        {/* Branded footer watermark (inside capturable area) */}
+        <div className="flex items-center justify-center gap-1.5 mt-3 opacity-60">
+          <img src="/images/nw-logo-white.png" alt="" className="h-3.5 w-3.5 rounded-sm" style={{ background: '#00687a', padding: '1.5px' }} />
+          <span className="text-[9px] font-bold tracking-wide" style={{ color: '#00687a' }}>nwbaseballstats.com</span>
         </div>
       </div>
+      {/* === End capturable area === */}
 
-      {/* Grid */}
-      <div className="grid grid-cols-4 gap-0 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-        {/* Top-left empty cell */}
-        <div className="bg-gray-50 border-b border-r border-gray-200 p-2" />
-
-        {/* Column headers */}
-        {columns.map((col, i) => (
-          <div
-            key={`col-${i}`}
-            className="bg-gray-50 border-b border-r border-gray-200 p-2 flex items-center justify-center text-center last:border-r-0"
-          >
-            <span className="text-xs font-bold text-gray-700 leading-tight">{col.label}</span>
-          </div>
-        ))}
-
-        {/* Rows */}
-        {rows.map((row, ri) => (
-          <>
-            {/* Row header */}
-            <div
-              key={`row-${ri}`}
-              className="bg-gray-50 border-b border-r border-gray-200 p-2 flex items-center justify-center text-center last:border-b-0"
-            >
-              <span className="text-xs font-bold text-gray-700 leading-tight">{row.label}</span>
-            </div>
-
-            {/* Grid cells */}
-            {columns.map((col, ci) => {
-              const idx = ri * 3 + ci
-              const cell = grid[idx]
-              const isActive = activeCell === idx
-              const fb = feedback?.cell === idx ? feedback : null
-
-              return (
-                <div
-                  key={`cell-${ri}-${ci}`}
-                  onClick={() => handleCellClick(idx)}
-                  className={`
-                    border-b border-r border-gray-200 aspect-square
-                    flex items-center justify-center relative
-                    transition-all duration-200
-                    ${ri === 2 ? 'border-b-0' : ''}
-                    ${ci === 2 ? 'border-r-0' : ''}
-                    ${cell ? 'bg-emerald-50' : isActive ? 'bg-blue-50 ring-2 ring-inset ring-nw-teal' : 'bg-white hover:bg-gray-50 cursor-pointer'}
-                    ${fb?.correct === true ? 'animate-correct' : ''}
-                    ${fb?.correct === false ? 'animate-incorrect' : ''}
-                  `}
-                >
-                  {cell ? (
-                    <div className="flex flex-col items-center gap-0.5 p-1 w-full">
-                      {cell.headshot_url ? (
-                        <img
-                          src={cell.headshot_url}
-                          alt=""
-                          className="w-10 h-10 rounded-full object-cover border border-gray-200"
-                          onError={(e) => { e.target.style.display = 'none' }}
-                        />
-                      ) : cell.logo_url ? (
-                        <img src={cell.logo_url} alt="" className="w-8 h-8 object-contain" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                          <span className="text-emerald-600 text-xs font-bold">
-                            {cell.first_name?.[0]}{cell.last_name?.[0]}
-                          </span>
-                        </div>
-                      )}
-                      <span className="text-[9px] font-semibold text-gray-700 text-center leading-tight truncate w-full">
-                        {cell.first_name?.[0]}. {cell.last_name}
-                      </span>
-                      <span className="text-[8px] text-gray-400">{cell.team_short}</span>
-                    </div>
-                  ) : isActive ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-xs text-nw-teal font-medium">Type below...</span>
-                    </div>
-                  ) : (
-                    <span className="text-gray-200 text-2xl font-light">+</span>
-                  )}
-                </div>
-              )
-            })}
-          </>
-        ))}
-      </div>
-
-      {/* Search input (shown when a cell is active) */}
+      {/* Search input (outside capturable area) */}
       {activeCell !== null && !gameOver && (
-        <div className="mt-3 relative">
+        <div className="mt-3 relative px-4">
           <input
             ref={searchRef}
             type="text"
@@ -259,14 +353,14 @@ export default function PnwGrid() {
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-nw-teal focus:border-transparent"
           />
           {searching && (
-            <div className="absolute right-3 top-3">
+            <div className="absolute right-7 top-3">
               <div className="w-4 h-4 border-2 border-gray-300 border-t-nw-teal rounded-full animate-spin" />
             </div>
           )}
 
           {/* Search results dropdown */}
           {searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+            <div className="absolute top-full left-4 right-4 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
               {searchResults.map((player) => (
                 <button
                   key={player.id}
@@ -298,32 +392,48 @@ export default function PnwGrid() {
           )}
 
           {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-center text-sm text-gray-400">
+            <div className="absolute top-full left-4 right-4 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-center text-sm text-gray-400">
               No players found
             </div>
           )}
         </div>
       )}
 
-      {/* Game over */}
+      {/* Action buttons (outside capturable area) */}
       {gameOver && (
-        <div className="mt-4 text-center">
-          <div className={`inline-block px-4 py-2 rounded-lg text-sm font-bold ${
-            score === 9 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-          }`}>
-            {score === 9 ? 'Perfect! 9/9!' : `Game Over — ${score}/9`}
-          </div>
+        <div className="mt-3 flex items-center justify-center gap-3 px-4">
           <button
             onClick={handleReset}
-            className="block mx-auto mt-2 text-sm text-nw-teal hover:underline font-medium"
+            className="text-sm font-medium hover:underline"
+            style={{ color: '#00687a' }}
           >
             Play Again
+          </button>
+          <button
+            onClick={handleSaveImage}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition"
+            style={{ backgroundColor: '#00687a' }}
+          >
+            {saving ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Save as Image
+              </>
+            )}
           </button>
         </div>
       )}
 
       {/* Rules */}
-      <div className="mt-6 bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+      <div className="mt-5 mx-4 bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
         <p className="font-semibold text-gray-600 mb-1">How to play</p>
         <p>Select a cell and search for a player who fits <strong>both</strong> the row and column criteria.
         Each player can only be used once. You have {MAX_GUESSES} guesses to fill the 3×3 grid.</p>

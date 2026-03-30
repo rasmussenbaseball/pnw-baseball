@@ -4698,12 +4698,87 @@ def _check_stat_criteria(cur, player_id, criteria):
     return False
 
 
+def _get_player_teams(cur, player_id):
+    """Get all teams a player has been on (across linked records), with logos."""
+    all_ids = _get_all_player_ids(cur, player_id)
+    id_ph = ",".join(["%s"] * len(all_ids))
+    cur.execute(f"""
+        SELECT DISTINCT t.short_name, t.logo_url
+        FROM players p
+        JOIN teams t ON p.team_id = t.id
+        WHERE p.id IN ({id_ph})
+        ORDER BY t.short_name
+    """, tuple(all_ids))
+    return [{"short_name": r["short_name"], "logo_url": r["logo_url"]} for r in cur.fetchall()]
+
+
+def _get_stat_years(cur, player_id, criteria):
+    """
+    Get the years a player met a stat criteria.
+    Returns a list of seasons (years) or a career span string.
+    """
+    all_ids = _get_all_player_ids(cur, player_id)
+    id_ph = ",".join(["%s"] * len(all_ids))
+    ctype = criteria["type"]
+    stat = criteria["stat"]
+    op = criteria.get("operator", ">=")
+    threshold = criteria["threshold"]
+    sql_op = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}.get(op, ">=")
+
+    rate_stats_batting = {"batting_avg", "on_base_pct", "slugging_pct", "ops",
+                          "iso", "babip", "bb_pct", "k_pct", "woba", "wrc_plus"}
+    rate_stats_pitching = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
+                           "hr_per_9", "k_bb_ratio", "fip", "babip_against",
+                           "era_minus", "fip_plus"}
+
+    if ctype == "season_batting":
+        cur.execute(f"""
+            SELECT DISTINCT bs.season FROM batting_stats bs
+            WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {sql_op} %s
+            ORDER BY bs.season
+        """, (*all_ids, threshold))
+        return {"type": "seasons", "years": [r["season"] for r in cur.fetchall()]}
+
+    if ctype == "season_pitching":
+        cur.execute(f"""
+            SELECT DISTINCT ps.season FROM pitching_stats ps
+            WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {sql_op} %s
+            ORDER BY ps.season
+        """, (*all_ids, threshold))
+        return {"type": "seasons", "years": [r["season"] for r in cur.fetchall()]}
+
+    if ctype == "career_batting":
+        # Get all seasons this player has batting stats
+        cur.execute(f"""
+            SELECT DISTINCT bs.season FROM batting_stats bs
+            WHERE bs.player_id IN ({id_ph})
+            ORDER BY bs.season
+        """, tuple(all_ids))
+        seasons = [r["season"] for r in cur.fetchall()]
+        if seasons:
+            return {"type": "career", "years": seasons, "span": f"{min(seasons)}-{max(seasons)}"}
+        return {"type": "career", "years": [], "span": ""}
+
+    if ctype == "career_pitching":
+        cur.execute(f"""
+            SELECT DISTINCT ps.season FROM pitching_stats ps
+            WHERE ps.player_id IN ({id_ph})
+            ORDER BY ps.season
+        """, tuple(all_ids))
+        seasons = [r["season"] for r in cur.fetchall()]
+        if seasons:
+            return {"type": "career", "years": seasons, "span": f"{min(seasons)}-{max(seasons)}"}
+        return {"type": "career", "years": [], "span": ""}
+
+    return {"type": "unknown", "years": []}
+
+
 @router.get("/grid/check/{player_id}/{row}/{col}")
 def grid_check_guess(player_id: int, row: int, col: int):
     """
     Check if a player fits a specific grid cell (row, col).
     Row = 0-2, Col = 0-2.
-    Returns whether the guess is correct and the player info.
+    Returns whether the guess is correct, player info, all teams, and year details.
     """
     config = _load_grid_config()
     if not config:
@@ -4737,9 +4812,18 @@ def grid_check_guess(player_id: int, row: int, col: int):
 
         correct = col_match and row_match
 
+        # If correct, get extra detail
+        all_teams = []
+        stat_years = None
+        if correct:
+            all_teams = _get_player_teams(cur, player_id)
+            stat_years = _get_stat_years(cur, player_id, row_criteria)
+
         return {
             "correct": correct,
             "player": dict(player),
             "col_match": col_match,
             "row_match": row_match,
+            "all_teams": all_teams,
+            "stat_years": stat_years,
         }
