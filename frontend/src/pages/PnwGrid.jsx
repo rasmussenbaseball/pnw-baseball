@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { useGridConfig, gridSearchPlayers, gridCheckGuess } from '../hooks/useApi'
 
 const MAX_GUESSES = 9
 
 export default function PnwGrid() {
+  const { user, loading: authLoading } = useAuth()
+  const navigate = useNavigate()
   const { data: config, loading, error } = useGridConfig()
   const [grid, setGrid] = useState(Array(9).fill(null)) // 3x3 = 9 cells
   const [activeCell, setActiveCell] = useState(null)
@@ -117,7 +121,19 @@ export default function PnwGrid() {
     setFeedback(null)
   }
 
-  if (loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
+  if (authLoading || loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
+  if (!user) return (
+    <div className="text-center py-12 text-gray-400">
+      <p className="text-lg font-medium mb-2">Log in to play PNW Grid</p>
+      <p className="text-sm mb-4">Create a free account or log in to access this game.</p>
+      <button
+        onClick={() => navigate('/login')}
+        className="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+      >
+        Log In / Sign Up
+      </button>
+    </div>
+  )
   if (error || !config) return (
     <div className="text-center py-12 text-gray-400">
       <p className="text-lg font-medium">No PNW Grid available right now</p>

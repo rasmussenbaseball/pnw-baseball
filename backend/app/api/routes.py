@@ -4526,10 +4526,37 @@ def grid_player_search(q: str = Query(..., min_length=2), limit: int = Query(10)
         return results
 
 
+def _get_all_player_ids(cur, player_id):
+    """
+    Resolve a player_id to all related IDs (canonical + linked).
+    Handles transfers where old and new records are linked.
+    Returns a list of all player IDs for this person.
+    """
+    # Check if this player is a linked (old) record pointing to a canonical
+    cur.execute(
+        "SELECT canonical_id FROM player_links WHERE linked_id = %s",
+        (player_id,),
+    )
+    row = cur.fetchone()
+    if row:
+        canonical_id = row["canonical_id"]
+    else:
+        canonical_id = player_id
+
+    # Get all linked IDs for this canonical player
+    cur.execute(
+        "SELECT linked_id FROM player_links WHERE canonical_id = %s",
+        (canonical_id,),
+    )
+    linked_ids = [r["linked_id"] for r in cur.fetchall()]
+    return [canonical_id] + linked_ids
+
+
 def _check_team_criteria(cur, player_id, criteria):
     """
     Check if a player has ever been on a team matching the criteria.
     Criteria type can be: 'team', 'conference', 'division'.
+    Includes all linked player records (transfers).
     Returns True/False.
     """
     ctype = criteria["type"]
@@ -4539,52 +4566,55 @@ def _check_team_criteria(cur, player_id, criteria):
         # Any PNW school — always true if the player exists
         return True
 
+    all_ids = _get_all_player_ids(cur, player_id)
+    id_ph = ",".join(["%s"] * len(all_ids))
+
     if ctype == "team":
-        cur.execute("""
+        cur.execute(f"""
             SELECT 1 FROM player_seasons ps
             JOIN teams t ON ps.team_id = t.id
-            WHERE ps.player_id = %s AND t.short_name = %s
+            WHERE ps.player_id IN ({id_ph}) AND t.short_name = %s
             UNION
             SELECT 1 FROM players p
             JOIN teams t ON p.team_id = t.id
-            WHERE p.id = %s AND t.short_name = %s
+            WHERE p.id IN ({id_ph}) AND t.short_name = %s
             LIMIT 1
-        """, (player_id, value, player_id, value))
+        """, (*all_ids, value, *all_ids, value))
         return cur.fetchone() is not None
 
     if ctype == "conference":
-        cur.execute("""
+        cur.execute(f"""
             SELECT 1 FROM player_seasons ps
             JOIN teams t ON ps.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
-            WHERE ps.player_id = %s
+            WHERE ps.player_id IN ({id_ph})
               AND (c.abbreviation ILIKE %s OR c.name ILIKE %s)
             UNION
             SELECT 1 FROM players p
             JOIN teams t ON p.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
-            WHERE p.id = %s
+            WHERE p.id IN ({id_ph})
               AND (c.abbreviation ILIKE %s OR c.name ILIKE %s)
             LIMIT 1
-        """, (player_id, value, f"%{value}%",
-              player_id, value, f"%{value}%"))
+        """, (*all_ids, value, f"%{value}%",
+              *all_ids, value, f"%{value}%"))
         return cur.fetchone() is not None
 
     if ctype == "division":
-        cur.execute("""
+        cur.execute(f"""
             SELECT 1 FROM player_seasons ps
             JOIN teams t ON ps.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE ps.player_id = %s AND d.level = %s
+            WHERE ps.player_id IN ({id_ph}) AND d.level = %s
             UNION
             SELECT 1 FROM players p
             JOIN teams t ON p.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE p.id = %s AND d.level = %s
+            WHERE p.id IN ({id_ph}) AND d.level = %s
             LIMIT 1
-        """, (player_id, value, player_id, value))
+        """, (*all_ids, value, *all_ids, value))
         return cur.fetchone() is not None
 
     return False
@@ -4594,6 +4624,7 @@ def _check_stat_criteria(cur, player_id, criteria):
     """
     Check if a player meets a stat criteria.
     Types: season_batting, season_pitching, career_batting, career_pitching.
+    Includes all linked player records (transfers).
     """
     ctype = criteria["type"]
     stat = criteria["stat"]
@@ -4604,46 +4635,43 @@ def _check_stat_criteria(cur, player_id, criteria):
     sql_op = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}
     op_str = sql_op.get(op, ">=")
 
+    all_ids = _get_all_player_ids(cur, player_id)
+    id_ph = ",".join(["%s"] * len(all_ids))
+
     if ctype == "season_batting":
-        # Check if any single season meets the criteria
         cur.execute(f"""
             SELECT 1 FROM batting_stats bs
-            WHERE bs.player_id = %s AND bs.{stat} {op_str} %s
+            WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {op_str} %s
             LIMIT 1
-        """, (player_id, threshold))
+        """, (*all_ids, threshold))
         return cur.fetchone() is not None
 
     if ctype == "career_batting":
-        # Sum career stats and check
-        # For rate stats (avg, obp, slg, ops), we need to recalculate
         rate_stats = {"batting_avg", "on_base_pct", "slugging_pct", "ops",
                       "iso", "babip", "bb_pct", "k_pct", "woba", "wrc_plus"}
         if stat in rate_stats:
-            # For rate stats, check if any single season qualifies
-            # (career rate stats would need full recalculation)
             cur.execute(f"""
                 SELECT 1 FROM batting_stats bs
-                WHERE bs.player_id = %s AND bs.{stat} {op_str} %s
+                WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {op_str} %s
                 LIMIT 1
-            """, (player_id, threshold))
+            """, (*all_ids, threshold))
         else:
-            # Counting stats — sum across seasons
             cur.execute(f"""
                 SELECT 1 FROM (
                     SELECT SUM(bs.{stat}) as career_total
                     FROM batting_stats bs
-                    WHERE bs.player_id = %s
+                    WHERE bs.player_id IN ({id_ph})
                 ) sub
                 WHERE sub.career_total {op_str} %s
-            """, (player_id, threshold))
+            """, (*all_ids, threshold))
         return cur.fetchone() is not None
 
     if ctype == "season_pitching":
         cur.execute(f"""
             SELECT 1 FROM pitching_stats ps
-            WHERE ps.player_id = %s AND ps.{stat} {op_str} %s
+            WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {op_str} %s
             LIMIT 1
-        """, (player_id, threshold))
+        """, (*all_ids, threshold))
         return cur.fetchone() is not None
 
     if ctype == "career_pitching":
@@ -4653,18 +4681,18 @@ def _check_stat_criteria(cur, player_id, criteria):
         if stat in rate_stats:
             cur.execute(f"""
                 SELECT 1 FROM pitching_stats ps
-                WHERE ps.player_id = %s AND ps.{stat} {op_str} %s
+                WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {op_str} %s
                 LIMIT 1
-            """, (player_id, threshold))
+            """, (*all_ids, threshold))
         else:
             cur.execute(f"""
                 SELECT 1 FROM (
                     SELECT SUM(ps.{stat}) as career_total
                     FROM pitching_stats ps
-                    WHERE ps.player_id = %s
+                    WHERE ps.player_id IN ({id_ph})
                 ) sub
                 WHERE sub.career_total {op_str} %s
-            """, (player_id, threshold))
+            """, (*all_ids, threshold))
         return cur.fetchone() is not None
 
     return False
