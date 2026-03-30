@@ -67,14 +67,29 @@ def find_matches(conn):
         JOIN divisions d ON c.division_id = d.id
     """).fetchall()
 
-    # Get already-linked player IDs
+    # Build a map of existing links so we can chain 3+ school players
     existing_links = conn.execute(
         "SELECT canonical_id, linked_id FROM player_links"
     ).fetchall()
-    already_linked = set()
+    # Map any player_id → their canonical_id
+    canonical_map = {}
     for link in existing_links:
-        already_linked.add(link["canonical_id"])
-        already_linked.add(link["linked_id"])
+        canonical_map[link["linked_id"]] = link["canonical_id"]
+        # Canonical points to itself
+        canonical_map[link["canonical_id"]] = link["canonical_id"]
+
+    def get_canonical(pid):
+        """Follow the chain to find the root canonical_id."""
+        seen = set()
+        while pid in canonical_map and pid != canonical_map[pid]:
+            if pid in seen:
+                break
+            seen.add(pid)
+            pid = canonical_map[pid]
+        return pid
+
+    # Track which linked_ids already exist (UNIQUE constraint)
+    already_linked_as_linked = set(link["linked_id"] for link in existing_links)
 
     # Group by normalized name
     by_name = defaultdict(list)
@@ -105,9 +120,20 @@ def find_matches(conn):
                 if a["team_id"] == b["team_id"]:
                     continue
 
-                # Skip if either already linked
-                if a["id"] in already_linked or b["id"] in already_linked:
+                # Skip if BOTH are already linked as linked_ids (nothing new to link)
+                a_is_linked = a["id"] in already_linked_as_linked
+                b_is_linked = b["id"] in already_linked_as_linked
+                if a_is_linked and b_is_linked:
+                    # Both already linked — check if they share the same canonical
+                    # If so, nothing to do. If not, we might need to merge (skip for now).
                     continue
+
+                # If one is already part of a link chain, the new record
+                # should link to the same canonical
+                a_canonical = get_canonical(a["id"]) if a["id"] in canonical_map else None
+                b_canonical = get_canonical(b["id"]) if b["id"] in canonical_map else None
+                if a_canonical and b_canonical and a_canonical == b_canonical:
+                    continue  # Already linked to the same canonical
 
                 # Check for overlapping seasons
                 overlap = a["seasons"] & b["seasons"]
@@ -159,8 +185,16 @@ def find_matches(conn):
 
                 confidence = min(confidence, 1.0)
 
-                # Determine canonical (prefer: more recent, 4-year over JUCO, more seasons)
-                if a_max > b_max:
+                # Determine canonical (prefer: already-canonical, more recent, 4-year over JUCO, more seasons)
+                # If one is already a canonical in the link chain, keep it as canonical
+                if a_canonical and not b_is_linked:
+                    canonical, linked = a, b
+                    # Override canonical to the chain root
+                    canonical = {**a, "_override_canonical_id": a_canonical}
+                elif b_canonical and not a_is_linked:
+                    canonical, linked = b, a
+                    canonical = {**b, "_override_canonical_id": b_canonical}
+                elif a_max > b_max:
                     canonical, linked = a, b
                 elif b_max > a_max:
                     canonical, linked = b, a
@@ -262,13 +296,16 @@ def main():
         for m in linkable:
             c = m["canonical"]
             l = m["linked"]
+            # Use the chain root canonical_id if this is a 3+ school case
+            canonical_id = c.get("_override_canonical_id", c["id"])
             try:
                 conn.execute("""
                     INSERT INTO player_links (canonical_id, linked_id, match_type, confidence)
                     VALUES (?, ?, 'auto', ?)
-                """, (c["id"], l["id"], m["confidence"]))
+                """, (canonical_id, l["id"], m["confidence"]))
                 print(f"  Linked: {c['first_name']} {c['last_name']} "
-                      f"({c['team_short']} ← {l['team_short']})")
+                      f"({c['team_short']} ← {l['team_short']})"
+                      + (f" [chained to canonical #{canonical_id}]" if canonical_id != c["id"] else ""))
             except sqlite3.IntegrityError:
                 print(f"  Already linked: {l['first_name']} {l['last_name']}")
         conn.commit()

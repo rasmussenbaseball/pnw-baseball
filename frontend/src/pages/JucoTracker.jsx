@@ -183,7 +183,7 @@ export default function JucoTracker() {
               {/* Category header row */}
               <tr className="sticky top-0 z-20 bg-pnw-slate">
                 {/* Frozen info columns */}
-                <th colSpan={6} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+                <th colSpan={6} style={{width:366,minWidth:366,maxWidth:366}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
                   Player Info
                 </th>
                 {/* WAR */}
@@ -200,12 +200,12 @@ export default function JucoTracker() {
               {/* Column header row */}
               <tr className="sticky top-[25px] z-20 bg-gray-50 border-b border-gray-200">
                 {/* Frozen: #, Player, Team, Pos, Yr, Committed */}
-                <th className="sticky left-0 z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-right w-7 border-r border-gray-100">#</th>
-                <th className="sticky left-7 z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left min-w-[120px]">Player</th>
-                <th className="sticky left-[127px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left min-w-[80px]">Team</th>
-                <th className="sticky left-[207px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left w-8">Pos</th>
-                <th className="sticky left-[239px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left w-7">Yr</th>
-                <th className="sticky left-[262px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left min-w-[80px] border-r border-gray-200">Committed</th>
+                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-right border-r border-gray-100">#</th>
+                <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left">Player</th>
+                <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left">Team</th>
+                <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Pos</th>
+                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[268px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Yr</th>
+                <th style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[296px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left border-r border-gray-200">Committed</th>
                 {/* Stat columns */}
                 {STAT_COLS.map(col => (
                   <th
@@ -224,14 +224,14 @@ export default function JucoTracker() {
               {(data || []).map((row, i) => (
                 <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                   {/* Frozen columns */}
-                  <td className="sticky left-0 z-10 bg-inherit px-1.5 py-1 text-gray-400 text-right text-[10px] border-r border-gray-100">{i + 1}</td>
-                  <td className="sticky left-7 z-10 bg-inherit px-1.5 py-1 font-medium">
-                    <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline whitespace-nowrap">
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 text-right text-[10px] border-r border-gray-100">{i + 1}</td>
+                  <td style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
+                    <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline whitespace-nowrap block truncate">
                       {row.first_name} {row.last_name}
                     </Link>
                   </td>
-                  <td className="sticky left-[127px] z-10 bg-inherit px-1.5 py-1">
-                    <div className="flex items-center gap-1">
+                  <td style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-10 bg-inherit px-1.5 py-1 overflow-hidden">
+                    <div className="flex items-center gap-1 max-w-full">
                       {row.logo_url && (
                         <img src={row.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
                           onError={(e) => { e.target.style.display = 'none' }} />
@@ -239,9 +239,9 @@ export default function JucoTracker() {
                       <span className="text-gray-600 truncate">{row.team_short || row.team_name}</span>
                     </div>
                   </td>
-                  <td className="sticky left-[207px] z-10 bg-inherit px-1.5 py-1 text-gray-500">{row.position || '-'}</td>
-                  <td className="sticky left-[239px] z-10 bg-inherit px-1.5 py-1 text-gray-500">{row.year_in_school || '-'}</td>
-                  <td className="sticky left-[262px] z-10 bg-inherit px-1.5 py-1 text-gray-400 border-r border-gray-200">{row.committed_to || '-'}</td>
+                  <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.position || '-'}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+                  <td style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[296px] z-10 bg-inherit px-1.5 py-1 text-gray-400 border-r border-gray-200 truncate overflow-hidden">{row.committed_to || '-'}</td>
                   {/* Stat columns */}
                   {STAT_COLS.map(col => (
                     <td
