@@ -173,3 +173,86 @@ export const PITCHING_PRESETS = {
 export const PITCHING_PRESET_FILTERS = {
   'Relievers': { max_gs: 0, min_ip: 10 },
 }
+
+// ============================================================
+// Summer League Stats
+// ============================================================
+
+export const SUMMER_BATTING_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'name', label: 'Player', width: 160, sortable: false,
+    render: (row) => `${row.first_name} ${row.last_name}` },
+  { key: 'team_short', label: 'Team', width: 80, sortable: false },
+  { key: 'league_abbrev', label: 'League', width: 55, sortable: false },
+  { key: 'college', label: 'College', width: 100, sortable: false },
+
+  // Counting stats
+  { key: 'games', label: 'G', width: 40, format: 'int' },
+  { key: 'plate_appearances', label: 'PA', width: 45, format: 'int' },
+  { key: 'at_bats', label: 'AB', width: 45, format: 'int' },
+  { key: 'hits', label: 'H', width: 40, format: 'int' },
+  { key: 'doubles', label: '2B', width: 40, format: 'int' },
+  { key: 'triples', label: '3B', width: 40, format: 'int' },
+  { key: 'home_runs', label: 'HR', width: 40, format: 'int' },
+  { key: 'runs', label: 'R', width: 40, format: 'int' },
+  { key: 'rbi', label: 'RBI', width: 45, format: 'int' },
+  { key: 'walks', label: 'BB', width: 40, format: 'int' },
+  { key: 'strikeouts', label: 'K', width: 40, format: 'int' },
+  { key: 'stolen_bases', label: 'SB', width: 40, format: 'int' },
+
+  // Rates
+  { key: 'batting_avg', label: 'AVG', width: 55, format: 'avg' },
+  { key: 'on_base_pct', label: 'OBP', width: 55, format: 'avg' },
+  { key: 'slugging_pct', label: 'SLG', width: 55, format: 'avg' },
+  { key: 'ops', label: 'OPS', width: 55, format: 'avg' },
+
+  // Advanced
+  { key: 'iso', label: 'ISO', width: 55, format: 'avg' },
+  { key: 'babip', label: 'BABIP', width: 55, format: 'avg' },
+  { key: 'bb_pct', label: 'BB%', width: 55, format: 'pct' },
+  { key: 'k_pct', label: 'K%', width: 55, format: 'pct' },
+]
+
+export const SUMMER_BATTING_PRESETS = {
+  'Standard': ['games', 'plate_appearances', 'at_bats', 'hits', 'doubles', 'triples', 'home_runs', 'runs', 'rbi', 'walks', 'strikeouts', 'stolen_bases', 'batting_avg', 'on_base_pct', 'slugging_pct', 'ops'],
+  'Advanced': ['plate_appearances', 'batting_avg', 'on_base_pct', 'slugging_pct', 'iso', 'babip', 'bb_pct', 'k_pct'],
+  'Power': ['plate_appearances', 'home_runs', 'doubles', 'triples', 'slugging_pct', 'iso', 'rbi'],
+  'Discipline': ['plate_appearances', 'walks', 'strikeouts', 'bb_pct', 'k_pct', 'on_base_pct'],
+  'Speed': ['games', 'stolen_bases', 'caught_stealing', 'triples', 'batting_avg'],
+}
+
+export const SUMMER_PITCHING_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'name', label: 'Player', width: 160, sortable: false,
+    render: (row) => `${row.first_name} ${row.last_name}` },
+  { key: 'team_short', label: 'Team', width: 80, sortable: false },
+  { key: 'league_abbrev', label: 'League', width: 55, sortable: false },
+  { key: 'college', label: 'College', width: 100, sortable: false },
+
+  // Traditional
+  { key: 'wins', label: 'W', width: 35, format: 'int' },
+  { key: 'losses', label: 'L', width: 35, format: 'int' },
+  { key: 'saves', label: 'SV', width: 35, format: 'int' },
+  { key: 'games', label: 'G', width: 35, format: 'int' },
+  { key: 'games_started', label: 'GS', width: 35, format: 'int' },
+  { key: 'innings_pitched', label: 'IP', width: 50, format: 'ip' },
+  { key: 'strikeouts', label: 'K', width: 40, format: 'int' },
+  { key: 'walks', label: 'BB', width: 40, format: 'int' },
+  { key: 'hits_allowed', label: 'H', width: 40, format: 'int' },
+  { key: 'earned_runs', label: 'ER', width: 40, format: 'int' },
+
+  // Rates
+  { key: 'era', label: 'ERA', width: 55, format: 'era' },
+  { key: 'whip', label: 'WHIP', width: 55, format: 'era' },
+  { key: 'k_per_9', label: 'K/9', width: 55, format: 'era' },
+  { key: 'bb_per_9', label: 'BB/9', width: 55, format: 'era' },
+  { key: 'k_bb_ratio', label: 'K/BB', width: 55, format: 'era' },
+  { key: 'k_pct', label: 'K%', width: 55, format: 'pct' },
+  { key: 'bb_pct', label: 'BB%', width: 55, format: 'pct' },
+]
+
+export const SUMMER_PITCHING_PRESETS = {
+  'Standard': ['wins', 'losses', 'saves', 'games', 'games_started', 'innings_pitched', 'strikeouts', 'walks', 'hits_allowed', 'earned_runs', 'era', 'whip'],
+  'Advanced': ['innings_pitched', 'era', 'whip', 'k_per_9', 'bb_per_9', 'k_bb_ratio', 'k_pct', 'bb_pct'],
+  'Strikeouts': ['innings_pitched', 'strikeouts', 'k_per_9', 'k_pct', 'bb_pct', 'k_bb_ratio', 'walks'],
+}

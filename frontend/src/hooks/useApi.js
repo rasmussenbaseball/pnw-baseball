@@ -102,6 +102,42 @@ export function useWarLeaderboard(params) {
 }
 
 /**
+ * Summer league batting leaderboard.
+ */
+export function useSummerBattingLeaderboard(params) {
+  return useApi('/leaderboards/summer/batting', params, [JSON.stringify(params)])
+}
+
+/**
+ * Summer league pitching leaderboard.
+ */
+export function useSummerPitchingLeaderboard(params) {
+  return useApi('/leaderboards/summer/pitching', params, [JSON.stringify(params)])
+}
+
+/**
+ * Summer leagues list.
+ */
+export function useSummerLeagues() {
+  return useApi('/summer/leagues')
+}
+
+/**
+ * Summer teams list.
+ */
+export function useSummerTeams(league = null) {
+  const params = league ? { league } : {}
+  return useApi('/summer/teams', params, [league])
+}
+
+/**
+ * Available summer seasons.
+ */
+export function useSummerSeasons() {
+  return useApi('/summer/seasons')
+}
+
+/**
  * Fetch player profile.
  */
 export function usePlayer(playerId, percentileSeason = null) {

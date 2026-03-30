@@ -5101,3 +5101,245 @@ def grid_check_custom(data: dict = Body(...)):
     with get_connection() as conn:
         cur = conn.cursor()
         return _do_grid_check(cur, player_id, row_criteria, col_criteria)
+
+
+# ============================================================
+# SUMMER LEADERBOARDS
+# ============================================================
+
+@router.get("/leaderboards/summer/batting")
+def summer_batting_leaderboard(
+    season: int = Query(..., description="Season year"),
+    league: Optional[str] = Query(None, description="Filter by league abbreviation (WCL, PIL)"),
+    team_id: Optional[int] = Query(None, description="Filter by summer team"),
+    min_pa: int = Query(0, description="Minimum plate appearances"),
+    min_ab: int = Query(0, description="Minimum at-bats"),
+    sort_by: str = Query("batting_avg", description="Sort column"),
+    sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
+    limit: int = Query(50, description="Results per page"),
+    offset: int = Query(0, description="Pagination offset"),
+):
+    """Summer league batting leaderboard — WCL, PIL, or all."""
+    allowed_sort = {
+        "batting_avg", "on_base_pct", "slugging_pct", "ops",
+        "home_runs", "rbi", "hits", "runs", "stolen_bases", "walks",
+        "strikeouts", "doubles", "triples", "plate_appearances", "iso",
+        "babip", "bb_pct", "k_pct", "at_bats", "games",
+        "hit_by_pitch", "sacrifice_flies", "caught_stealing",
+        "grounded_into_dp", "wrc_plus", "woba", "offensive_war",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "batting_avg"
+    sort_direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT sbs.*,
+                   sp.first_name, sp.last_name, sp.position, sp.college,
+                   sp.year_in_school,
+                   st.name as team_name, st.short_name as team_short,
+                   st.logo_url, st.city as team_city,
+                   sl.name as league_name, sl.abbreviation as league_abbrev
+            FROM summer_batting_stats sbs
+            JOIN summer_players sp ON sbs.player_id = sp.id
+            JOIN summer_teams st ON sbs.team_id = st.id
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            WHERE sbs.season = %s
+              AND sbs.plate_appearances >= %s
+              AND sbs.at_bats >= %s
+        """
+        params: list = [season, min_pa, min_ab]
+
+        if league:
+            query += " AND sl.abbreviation = %s"
+            params.append(league.upper())
+        if team_id:
+            query += " AND sbs.team_id = %s"
+            params.append(team_id)
+
+        # Count total
+        count_q = """
+            SELECT COUNT(*) as total
+            FROM summer_batting_stats sbs
+            JOIN summer_players sp ON sbs.player_id = sp.id
+            JOIN summer_teams st ON sbs.team_id = st.id
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            WHERE sbs.season = %s
+              AND sbs.plate_appearances >= %s
+              AND sbs.at_bats >= %s
+        """
+        count_params: list = [season, min_pa, min_ab]
+        if league:
+            count_q += " AND sl.abbreviation = %s"
+            count_params.append(league.upper())
+        if team_id:
+            count_q += " AND sbs.team_id = %s"
+            count_params.append(team_id)
+
+        cur.execute(count_q, count_params)
+        total = cur.fetchone()["total"]
+
+        query += f" ORDER BY sbs.{sort_by} {sort_direction} NULLS LAST"
+        query += " LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        return {
+            "data": [dict(r) for r in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "season": season,
+            "filters": {
+                "league": league,
+                "team_id": team_id,
+                "min_pa": min_pa,
+                "min_ab": min_ab,
+            },
+        }
+
+
+@router.get("/leaderboards/summer/pitching")
+def summer_pitching_leaderboard(
+    season: int = Query(..., description="Season year"),
+    league: Optional[str] = Query(None, description="Filter by league abbreviation (WCL, PIL)"),
+    team_id: Optional[int] = Query(None, description="Filter by summer team"),
+    min_ip: float = Query(0, description="Minimum innings pitched"),
+    sort_by: str = Query("era", description="Sort column"),
+    sort_dir: str = Query("asc", description="Sort direction"),
+    limit: int = Query(50, description="Results per page"),
+    offset: int = Query(0, description="Pagination offset"),
+):
+    """Summer league pitching leaderboard — WCL, PIL, or all."""
+    allowed_sort = {
+        "era", "whip", "wins", "losses", "saves", "strikeouts",
+        "innings_pitched", "k_per_9", "bb_per_9", "hr_per_9",
+        "k_bb_ratio", "k_pct", "bb_pct", "games", "games_started",
+        "complete_games", "hits_allowed", "earned_runs", "walks",
+        "fip", "pitching_war",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "era"
+    ascending_stats = {"era", "whip", "fip", "bb_per_9", "bb_pct", "hr_per_9", "losses"}
+    default_dir = "ASC" if sort_by in ascending_stats else "DESC"
+    sort_direction = sort_dir.upper() if sort_dir.upper() in ("ASC", "DESC") else default_dir
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT sps.*,
+                   sp.first_name, sp.last_name, sp.position, sp.college,
+                   sp.year_in_school,
+                   st.name as team_name, st.short_name as team_short,
+                   st.logo_url, st.city as team_city,
+                   sl.name as league_name, sl.abbreviation as league_abbrev
+            FROM summer_pitching_stats sps
+            JOIN summer_players sp ON sps.player_id = sp.id
+            JOIN summer_teams st ON sps.team_id = st.id
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            WHERE sps.season = %s
+              AND sps.innings_pitched >= %s
+        """
+        params: list = [season, min_ip]
+
+        if league:
+            query += " AND sl.abbreviation = %s"
+            params.append(league.upper())
+        if team_id:
+            query += " AND sps.team_id = %s"
+            params.append(team_id)
+
+        # Count total
+        count_q = """
+            SELECT COUNT(*) as total
+            FROM summer_pitching_stats sps
+            JOIN summer_players sp ON sps.player_id = sp.id
+            JOIN summer_teams st ON sps.team_id = st.id
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            WHERE sps.season = %s
+              AND sps.innings_pitched >= %s
+        """
+        count_params: list = [season, min_ip]
+        if league:
+            count_q += " AND sl.abbreviation = %s"
+            count_params.append(league.upper())
+        if team_id:
+            count_q += " AND sps.team_id = %s"
+            count_params.append(team_id)
+
+        cur.execute(count_q, count_params)
+        total = cur.fetchone()["total"]
+
+        query += f" ORDER BY sps.{sort_by} {sort_direction} NULLS LAST"
+        query += " LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        return {
+            "data": [dict(r) for r in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "season": season,
+            "filters": {
+                "league": league,
+                "team_id": team_id,
+                "min_ip": min_ip,
+            },
+        }
+
+
+@router.get("/summer/leagues")
+def summer_leagues_list():
+    """List all summer leagues."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM summer_leagues WHERE is_active = TRUE ORDER BY name")
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/summer/teams")
+def summer_teams_list(
+    league: Optional[str] = Query(None, description="Filter by league abbreviation"),
+):
+    """List summer teams, optionally filtered by league."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT st.*, sl.abbreviation as league_abbrev, sl.name as league_name
+            FROM summer_teams st
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            WHERE st.is_active = TRUE
+        """
+        params = []
+        if league:
+            query += " AND sl.abbreviation = %s"
+            params.append(league.upper())
+        query += " ORDER BY sl.name, st.name"
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/summer/seasons")
+def summer_available_seasons():
+    """Return available seasons for summer stats."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT sbs.season, sl.abbreviation as league
+            FROM summer_batting_stats sbs
+            JOIN summer_teams st ON sbs.team_id = st.id
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            UNION
+            SELECT DISTINCT sps.season, sl.abbreviation as league
+            FROM summer_pitching_stats sps
+            JOIN summer_teams st ON sps.team_id = st.id
+            JOIN summer_leagues sl ON st.league_id = sl.id
+            ORDER BY season DESC, league
+        """)
+        return [dict(r) for r in cur.fetchall()]
