@@ -4495,9 +4495,176 @@ async def proxy_image(url: str = Query(...)):
 # ============================================================
 
 import json as _grid_json
+import random as _grid_random
 from pathlib import Path as _GridPath
+from fastapi import Body
 
 _GRID_CONFIG_PATH = _GridPath(__file__).resolve().parent.parent.parent / "data" / "pnw_grid.json"
+
+# --------------- Grid Category Pools ---------------
+
+_TEAM_POOL = [
+    {"type": "conference", "label": "NWAC North", "value": "NWAC-N", "group": "nwac"},
+    {"type": "conference", "label": "NWAC South", "value": "NWAC-S", "group": "nwac"},
+    {"type": "conference", "label": "NWAC East", "value": "NWAC-E", "group": "nwac"},
+    {"type": "conference", "label": "NWAC West", "value": "NWAC-W", "group": "nwac"},
+    {"type": "conference", "label": "CCC", "value": "CCC", "group": "4yr"},
+    {"type": "conference", "label": "GNAC", "value": "GNAC", "group": "4yr"},
+    {"type": "conference", "label": "NWC", "value": "NWC", "group": "4yr"},
+    {"type": "division", "label": "D1", "value": "D1", "group": "d1"},
+    {"type": "division", "label": "NWAC", "value": "JUCO", "group": "nwac"},
+    {"type": "division", "label": "Non-D1 4-Year", "value": "non_d1_4yr", "group": "4yr"},
+]
+
+_NWAC_CATS = [c for c in _TEAM_POOL if c["group"] == "nwac"]
+_4YR_CATS = [c for c in _TEAM_POOL if c["group"] in ("4yr", "d1")]
+
+_SEASON_BATTING_POOL = [
+    {"type": "season_batting", "label": "50+ Games", "category": "Season Batting", "stat": "games", "operator": ">=", "threshold": 50},
+    {"type": "season_batting", "label": "40+ Hits", "category": "Season Batting", "stat": "hits", "operator": ">=", "threshold": 40},
+    {"type": "season_batting", "label": "10+ Doubles", "category": "Season Batting", "stat": "doubles", "operator": ">=", "threshold": 10},
+    {"type": "season_batting", "label": "5+ HR", "category": "Season Batting", "stat": "home_runs", "operator": ">=", "threshold": 5},
+    {"type": "season_batting", "label": "10+ HR", "category": "Season Batting", "stat": "home_runs", "operator": ">=", "threshold": 10},
+    {"type": "season_batting", "label": "30+ RBI", "category": "Season Batting", "stat": "rbi", "operator": ">=", "threshold": 30},
+    {"type": "season_batting", "label": "10+ SB", "category": "Season Batting", "stat": "stolen_bases", "operator": ">=", "threshold": 10},
+    {"type": "season_batting", "label": ".300+ AVG", "category": "Season Batting", "stat": "batting_avg", "operator": ">=", "threshold": 0.300, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
+    {"type": "season_batting", "label": ".350+ AVG", "category": "Season Batting", "stat": "batting_avg", "operator": ">=", "threshold": 0.350, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
+    {"type": "season_batting", "label": "1.000+ OPS", "category": "Season Batting", "stat": "ops", "operator": ">=", "threshold": 1.000, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
+    {"type": "season_batting", "label": "12%+ BB%", "category": "Season Batting", "stat": "bb_pct", "operator": ">=", "threshold": 0.12, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
+    {"type": "season_batting", "label": "150+ wRC+", "category": "Season Batting", "stat": "wrc_plus", "operator": ">=", "threshold": 150, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
+    {"type": "season_batting", "label": "1.5+ WAR", "category": "Season Batting", "stat": "offensive_war", "operator": ">=", "threshold": 1.5},
+]
+
+_CAREER_BATTING_POOL = [
+    {"type": "career_batting", "label": "100+ Career G", "category": "Career Batting", "stat": "games", "operator": ">=", "threshold": 100},
+    {"type": "career_batting", "label": "100+ Career H", "category": "Career Batting", "stat": "hits", "operator": ">=", "threshold": 100},
+    {"type": "career_batting", "label": "25+ Career 2B", "category": "Career Batting", "stat": "doubles", "operator": ">=", "threshold": 25},
+    {"type": "career_batting", "label": "8+ Career HR", "category": "Career Batting", "stat": "home_runs", "operator": ">=", "threshold": 8},
+    {"type": "career_batting", "label": "15+ Career HR", "category": "Career Batting", "stat": "home_runs", "operator": ">=", "threshold": 15},
+    {"type": "career_batting", "label": "50+ Career RBI", "category": "Career Batting", "stat": "rbi", "operator": ">=", "threshold": 50},
+    {"type": "career_batting", "label": "25+ Career SB", "category": "Career Batting", "stat": "stolen_bases", "operator": ">=", "threshold": 25},
+    {"type": "career_batting", "label": "3+ Career WAR", "category": "Career Batting", "stat": "offensive_war", "operator": ">=", "threshold": 3},
+]
+
+_SEASON_PITCHING_POOL = [
+    {"type": "season_pitching", "label": "4+ Wins", "category": "Season Pitching", "stat": "wins", "operator": ">=", "threshold": 4},
+    {"type": "season_pitching", "label": "4+ Losses", "category": "Season Pitching", "stat": "losses", "operator": ">=", "threshold": 4},
+    {"type": "season_pitching", "label": "2+ Saves", "category": "Season Pitching", "stat": "saves", "operator": ">=", "threshold": 2},
+    {"type": "season_pitching", "label": "40+ IP", "category": "Season Pitching", "stat": "innings_pitched", "operator": ">=", "threshold": 40},
+    {"type": "season_pitching", "label": "Sub-3.00 ERA", "category": "Season Pitching", "stat": "era", "operator": "<", "threshold": 3.00, "qualified": True, "q_stat": "innings_pitched", "q_min": 20},
+    {"type": "season_pitching", "label": "50+ K", "category": "Season Pitching", "stat": "strikeouts", "operator": ">=", "threshold": 50},
+    {"type": "season_pitching", "label": "0.75+ WAR", "category": "Season Pitching", "stat": "pitching_war", "operator": ">=", "threshold": 0.75},
+]
+
+_CAREER_PITCHING_POOL = [
+    {"type": "career_pitching", "label": "8+ Career W", "category": "Career Pitching", "stat": "wins", "operator": ">=", "threshold": 8},
+    {"type": "career_pitching", "label": "8+ Career L", "category": "Career Pitching", "stat": "losses", "operator": ">=", "threshold": 8},
+    {"type": "career_pitching", "label": "5+ Career SV", "category": "Career Pitching", "stat": "saves", "operator": ">=", "threshold": 5},
+    {"type": "career_pitching", "label": "75+ Career IP", "category": "Career Pitching", "stat": "innings_pitched", "operator": ">=", "threshold": 75},
+    {"type": "career_pitching", "label": "Sub-4.00 Career ERA", "category": "Career Pitching", "stat": "era", "operator": "<", "threshold": 4.00,
+     "career_rate": True, "numerator": "earned_runs", "denominator": "innings_pitched", "multiplier": 9,
+     "qualified": True, "q_stat": "innings_pitched", "q_min": 75},
+    {"type": "career_pitching", "label": "75+ Career K", "category": "Career Pitching", "stat": "strikeouts", "operator": ">=", "threshold": 75},
+    {"type": "career_pitching", "label": "40+ Career BB", "category": "Career Pitching", "stat": "walks", "operator": ">=", "threshold": 40},
+    {"type": "career_pitching", "label": "1.5+ Career WAR", "category": "Career Pitching", "stat": "pitching_war", "operator": ">=", "threshold": 1.5},
+]
+
+
+# --------------- Random Grid Generator ---------------
+
+def _pick_diverse_teams(rng, count):
+    """Pick `count` diverse team/conference/division categories."""
+    pool = list(_TEAM_POOL)
+    rng.shuffle(pool)
+
+    picked = []
+    used_groups = {}
+
+    for cat in pool:
+        if len(picked) >= count:
+            break
+        group = cat.get("group", "")
+        value = cat["value"]
+
+        # Max 2 from any single group
+        if used_groups.get(group, 0) >= 2:
+            continue
+        # Don't pick NWAC (overall) + specific NWAC conference
+        nwac_confs = {"NWAC-N", "NWAC-S", "NWAC-E", "NWAC-W"}
+        if group == "nwac" and value == "JUCO" and any(p["value"] in nwac_confs for p in picked):
+            continue
+        if group == "nwac" and value in nwac_confs and any(p["value"] == "JUCO" for p in picked):
+            continue
+
+        picked.append(dict(cat))  # copy
+        used_groups[group] = used_groups.get(group, 0) + 1
+
+    return picked
+
+
+def _pick_diverse_stats(rng, pool, count):
+    """Pick `count` stat categories with no duplicate stat columns."""
+    shuffled = list(pool)
+    rng.shuffle(shuffled)
+    picked = []
+    used_stats = set()
+    for cat in shuffled:
+        if len(picked) >= count:
+            break
+        # Avoid two categories using the same stat column (e.g. 5+ HR and 10+ HR)
+        if cat["stat"] in used_stats:
+            continue
+        picked.append(dict(cat))
+        used_stats.add(cat["stat"])
+    return picked
+
+
+def _generate_random_grid():
+    """Generate a random PNW Grid configuration."""
+    rng = _grid_random.Random()
+
+    # Pick stat type: batting (70%) or pitching (30%)
+    stat_type = rng.choices(["batting", "pitching"], weights=[70, 30])[0]
+    if stat_type == "batting":
+        stat_pool = _SEASON_BATTING_POOL + _CAREER_BATTING_POOL
+    else:
+        stat_pool = _SEASON_PITCHING_POOL + _CAREER_PITCHING_POOL
+
+    # Pick layout:
+    #   80% standard = 3 team cols + 3 stat rows
+    #   10% flipped  = 3 stat cols + 3 team rows
+    #   10% transfer = 3 team cols + 2 stat rows + 1 cross-group team row
+    layout = rng.choices(["standard", "flipped", "transfer"], weights=[80, 10, 10])[0]
+
+    teams = _pick_diverse_teams(rng, 3)
+    stats = _pick_diverse_stats(rng, stat_pool, 3)
+
+    if layout == "standard":
+        columns = teams
+        rows = stats
+    elif layout == "flipped":
+        columns = stats
+        rows = teams
+    else:
+        # Transfer grid: columns are teams, rows are 2 stats + 1 cross-group team
+        col_groups = {t.get("group") for t in teams}
+        if "nwac" in col_groups:
+            cross_pool = list(_4YR_CATS)
+        else:
+            cross_pool = list(_NWAC_CATS)
+        rng.shuffle(cross_pool)
+        cross_team = dict(cross_pool[0])
+        stats_2 = _pick_diverse_stats(rng, stat_pool, 2)
+        rows = stats_2 + [cross_team]
+        rng.shuffle(rows)
+        columns = teams
+
+    return {
+        "title": "Random Grid",
+        "mode": "random",
+        "columns": columns,
+        "rows": rows,
+    }
 
 
 def _load_grid_config():
@@ -4516,6 +4683,12 @@ def grid_config():
     if not config:
         raise HTTPException(status_code=404, detail="No grid configured")
     return config
+
+
+@router.get("/grid/random")
+def grid_random():
+    """Generate a random PNW Grid configuration."""
+    return _generate_random_grid()
 
 
 @router.get("/grid/search")
@@ -4627,6 +4800,24 @@ def _check_team_criteria(cur, player_id, criteria):
         return cur.fetchone() is not None
 
     if ctype == "division":
+        # Handle "non_d1_4yr" = D2 + D3 + NAIA
+        if value == "non_d1_4yr":
+            cur.execute(f"""
+                SELECT 1 FROM player_seasons ps
+                JOIN teams t ON ps.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE ps.player_id IN ({id_ph}) AND d.level IN ('D2', 'D3', 'NAIA')
+                UNION
+                SELECT 1 FROM players p
+                JOIN teams t ON p.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE p.id IN ({id_ph}) AND d.level IN ('D2', 'D3', 'NAIA')
+                LIMIT 1
+            """, (*all_ids, *all_ids))
+            return cur.fetchone() is not None
+
         cur.execute(f"""
             SELECT 1 FROM player_seasons ps
             JOIN teams t ON ps.team_id = t.id
@@ -4651,11 +4842,15 @@ def _check_stat_criteria(cur, player_id, criteria):
     Check if a player meets a stat criteria.
     Types: season_batting, season_pitching, career_batting, career_pitching.
     Includes all linked player records (transfers).
+    Supports qualification minimums for rate stats.
     """
     ctype = criteria["type"]
     stat = criteria["stat"]
     op = criteria.get("operator", ">=")
     threshold = criteria["threshold"]
+    qualified = criteria.get("qualified", False)
+    q_stat = criteria.get("q_stat", "")
+    q_min = criteria.get("q_min", 0)
 
     # Map operators
     sql_op = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}
@@ -4664,23 +4859,31 @@ def _check_stat_criteria(cur, player_id, criteria):
     all_ids = _get_all_player_ids(cur, player_id)
     id_ph = ",".join(["%s"] * len(all_ids))
 
+    # Build qualification clause for season-level queries
+    q_clause = ""
+    q_params = []
+    if qualified and q_stat and q_min:
+        q_clause = f" AND bs.{q_stat} >= %s" if "batting" in ctype else f" AND ps.{q_stat} >= %s"
+        q_params = [q_min]
+
     if ctype == "season_batting":
         cur.execute(f"""
             SELECT 1 FROM batting_stats bs
-            WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {op_str} %s
+            WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {op_str} %s{q_clause}
             LIMIT 1
-        """, (*all_ids, threshold))
+        """, (*all_ids, threshold, *q_params))
         return cur.fetchone() is not None
 
     if ctype == "career_batting":
         rate_stats = {"batting_avg", "on_base_pct", "slugging_pct", "ops",
                       "iso", "babip", "bb_pct", "k_pct", "woba", "wrc_plus"}
         if stat in rate_stats:
+            # For career rate stats, check any single qualified season
             cur.execute(f"""
                 SELECT 1 FROM batting_stats bs
-                WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {op_str} %s
+                WHERE bs.player_id IN ({id_ph}) AND bs.{stat} {op_str} %s{q_clause}
                 LIMIT 1
-            """, (*all_ids, threshold))
+            """, (*all_ids, threshold, *q_params))
         else:
             cur.execute(f"""
                 SELECT 1 FROM (
@@ -4695,21 +4898,37 @@ def _check_stat_criteria(cur, player_id, criteria):
     if ctype == "season_pitching":
         cur.execute(f"""
             SELECT 1 FROM pitching_stats ps
-            WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {op_str} %s
+            WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {op_str} %s{q_clause}
             LIMIT 1
-        """, (*all_ids, threshold))
+        """, (*all_ids, threshold, *q_params))
         return cur.fetchone() is not None
 
     if ctype == "career_pitching":
+        # Special handling for career rate stats computed from raw components
+        if criteria.get("career_rate"):
+            num_col = criteria["numerator"]
+            den_col = criteria["denominator"]
+            mult = criteria.get("multiplier", 1)
+            cur.execute(f"""
+                SELECT 1 FROM (
+                    SELECT SUM(ps.{num_col}) * {mult} / NULLIF(SUM(ps.{den_col}), 0) as career_rate,
+                           SUM(ps.{den_col}) as total_den
+                    FROM pitching_stats ps
+                    WHERE ps.player_id IN ({id_ph})
+                ) sub
+                WHERE sub.total_den >= %s AND sub.career_rate {op_str} %s
+            """, (*all_ids, q_min, threshold))
+            return cur.fetchone() is not None
+
         rate_stats = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
                       "hr_per_9", "k_bb_ratio", "fip", "babip_against",
                       "era_minus", "fip_plus"}
         if stat in rate_stats:
             cur.execute(f"""
                 SELECT 1 FROM pitching_stats ps
-                WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {op_str} %s
+                WHERE ps.player_id IN ({id_ph}) AND ps.{stat} {op_str} %s{q_clause}
                 LIMIT 1
-            """, (*all_ids, threshold))
+            """, (*all_ids, threshold, *q_params))
         else:
             cur.execute(f"""
                 SELECT 1 FROM (
@@ -4799,12 +5018,58 @@ def _get_stat_years(cur, player_id, criteria):
     return {"type": "unknown", "years": []}
 
 
+def _check_any_criteria(cur, player_id, criteria):
+    """Check any criteria type — team/conference/division or stat."""
+    ctype = criteria.get("type", "")
+    if ctype in ("team", "conference", "division"):
+        return _check_team_criteria(cur, player_id, criteria)
+    return _check_stat_criteria(cur, player_id, criteria)
+
+
+def _do_grid_check(cur, player_id, row_criteria, col_criteria):
+    """Core grid check logic shared by weekly and custom endpoints."""
+    # Get player info
+    cur.execute("""
+        SELECT p.id, p.first_name, p.last_name, p.position,
+               p.year_in_school, p.headshot_url,
+               t.short_name as team_short, t.logo_url
+        FROM players p
+        JOIN teams t ON p.team_id = t.id
+        WHERE p.id = %s
+    """, (player_id,))
+    player = cur.fetchone()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    col_match = _check_any_criteria(cur, player_id, col_criteria)
+    row_match = _check_any_criteria(cur, player_id, row_criteria)
+    correct = col_match and row_match
+
+    all_teams = []
+    stat_years = None
+    if correct:
+        all_teams = _get_player_teams(cur, player_id)
+        # Get stat years from whichever criteria is a stat type
+        for crit in (row_criteria, col_criteria):
+            if crit.get("type", "") not in ("team", "conference", "division"):
+                stat_years = _get_stat_years(cur, player_id, crit)
+                break
+
+    return {
+        "correct": correct,
+        "player": dict(player),
+        "col_match": col_match,
+        "row_match": row_match,
+        "all_teams": all_teams,
+        "stat_years": stat_years,
+    }
+
+
 @router.get("/grid/check/{player_id}/{row}/{col}")
 def grid_check_guess(player_id: int, row: int, col: int):
     """
-    Check if a player fits a specific grid cell (row, col).
+    Check if a player fits a specific grid cell (row, col) for the weekly grid.
     Row = 0-2, Col = 0-2.
-    Returns whether the guess is correct, player info, all teams, and year details.
     """
     config = _load_grid_config()
     if not config:
@@ -4818,38 +5083,21 @@ def grid_check_guess(player_id: int, row: int, col: int):
 
     with get_connection() as conn:
         cur = conn.cursor()
+        return _do_grid_check(cur, player_id, row_criteria, col_criteria)
 
-        # Get player info
-        cur.execute("""
-            SELECT p.id, p.first_name, p.last_name, p.position,
-                   p.year_in_school, p.headshot_url,
-                   t.short_name as team_short, t.logo_url
-            FROM players p
-            JOIN teams t ON p.team_id = t.id
-            WHERE p.id = %s
-        """, (player_id,))
-        player = cur.fetchone()
-        if not player:
-            raise HTTPException(status_code=404, detail="Player not found")
 
-        # Check both criteria
-        col_match = _check_team_criteria(cur, player_id, col_criteria)
-        row_match = _check_stat_criteria(cur, player_id, row_criteria)
+@router.post("/grid/check-custom")
+def grid_check_custom(data: dict = Body(...)):
+    """
+    Check if a player fits custom grid criteria (for random mode).
+    Body: {player_id, row_criteria: {...}, col_criteria: {...}}
+    """
+    player_id = data.get("player_id")
+    row_criteria = data.get("row_criteria")
+    col_criteria = data.get("col_criteria")
+    if not player_id or not row_criteria or not col_criteria:
+        raise HTTPException(status_code=400, detail="Missing player_id, row_criteria, or col_criteria")
 
-        correct = col_match and row_match
-
-        # If correct, get extra detail
-        all_teams = []
-        stat_years = None
-        if correct:
-            all_teams = _get_player_teams(cur, player_id)
-            stat_years = _get_stat_years(cur, player_id, row_criteria)
-
-        return {
-            "correct": correct,
-            "player": dict(player),
-            "col_match": col_match,
-            "row_match": row_match,
-            "all_teams": all_teams,
-            "stat_years": stat_years,
-        }
+    with get_connection() as conn:
+        cur = conn.cursor()
+        return _do_grid_check(cur, player_id, row_criteria, col_criteria)

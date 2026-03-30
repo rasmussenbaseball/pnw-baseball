@@ -242,6 +242,15 @@ export function useGridConfig() {
 }
 
 /**
+ * Fetch a random PNW Grid configuration.
+ */
+export async function gridFetchRandom() {
+  const resp = await fetch(`${API_BASE}/grid/random`)
+  if (!resp.ok) throw new Error('Failed to fetch random grid')
+  return resp.json()
+}
+
+/**
  * PNW Grid player search (for autocomplete).
  */
 export async function gridSearchPlayers(query) {
@@ -252,10 +261,27 @@ export async function gridSearchPlayers(query) {
 }
 
 /**
- * PNW Grid guess check.
+ * PNW Grid guess check (weekly mode).
  */
 export async function gridCheckGuess(playerId, row, col) {
   const resp = await fetch(`${API_BASE}/grid/check/${playerId}/${row}/${col}`)
+  if (!resp.ok) throw new Error('Check failed')
+  return resp.json()
+}
+
+/**
+ * PNW Grid guess check (random/custom mode).
+ */
+export async function gridCheckCustom(playerId, rowCriteria, colCriteria) {
+  const resp = await fetch(`${API_BASE}/grid/check-custom`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      player_id: playerId,
+      row_criteria: rowCriteria,
+      col_criteria: colCriteria,
+    }),
+  })
   if (!resp.ok) throw new Error('Check failed')
   return resp.json()
 }

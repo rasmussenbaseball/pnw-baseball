@@ -1,14 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useGridConfig, gridSearchPlayers, gridCheckGuess } from '../hooks/useApi'
+import { useGridConfig, gridSearchPlayers, gridCheckGuess, gridFetchRandom, gridCheckCustom } from '../hooks/useApi'
 
 const MAX_GUESSES = 9
 
 export default function PnwGrid() {
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
-  const { data: config, loading, error } = useGridConfig()
+
+  // Mode: 'weekly' or 'random'
+  const [mode, setMode] = useState('weekly')
+  const { data: weeklyConfig, loading: weeklyLoading, error: weeklyError } = useGridConfig()
+  const [randomConfig, setRandomConfig] = useState(null)
+  const [randomLoading, setRandomLoading] = useState(false)
+
+  const config = mode === 'weekly' ? weeklyConfig : randomConfig
+  const loading = mode === 'weekly' ? weeklyLoading : randomLoading
+
   const [grid, setGrid] = useState(Array(9).fill(null))
   const [activeCell, setActiveCell] = useState(null)
   const [guessesUsed, setGuessesUsed] = useState(0)
@@ -22,6 +31,39 @@ export default function PnwGrid() {
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
   const gridRef = useRef(null)
+
+  const isRandom = mode === 'random'
+
+  // Fetch random grid on mode switch or "new grid"
+  const fetchRandomGrid = useCallback(async () => {
+    setRandomLoading(true)
+    try {
+      const cfg = await gridFetchRandom()
+      setRandomConfig(cfg)
+    } catch {
+      setRandomConfig(null)
+    }
+    setRandomLoading(false)
+  }, [])
+
+  // When switching to random mode, fetch a grid if we don't have one
+  useEffect(() => {
+    if (mode === 'random' && !randomConfig) {
+      fetchRandomGrid()
+    }
+  }, [mode, randomConfig, fetchRandomGrid])
+
+  // Reset game state when config changes
+  const resetGame = useCallback(() => {
+    setGrid(Array(9).fill(null))
+    setGuessesUsed(0)
+    setUsedPlayerIds(new Set())
+    setGameOver(false)
+    setActiveCell(null)
+    setSearchQuery('')
+    setSearchResults([])
+    setFeedback(null)
+  }, [])
 
   // Search with debounce
   useEffect(() => {
@@ -77,7 +119,15 @@ export default function PnwGrid() {
     const col = activeCell % 3
 
     try {
-      const result = await gridCheckGuess(player.id, row, col)
+      let result
+      if (isRandom && config) {
+        // Random mode: send criteria to custom endpoint
+        result = await gridCheckCustom(player.id, config.rows[row], config.columns[col])
+      } else {
+        // Weekly mode: use row/col indices
+        result = await gridCheckGuess(player.id, row, col)
+      }
+
       const newGuesses = guessesUsed + 1
 
       if (result.correct) {
@@ -98,7 +148,8 @@ export default function PnwGrid() {
       setGuessesUsed(newGuesses)
 
       const filledCount = grid.filter(Boolean).length + (result.correct ? 1 : 0)
-      if (newGuesses >= MAX_GUESSES || filledCount >= 9) {
+      // Weekly: game over at MAX_GUESSES or 9 filled. Random: only when 9 filled.
+      if (filledCount >= 9 || (!isRandom && newGuesses >= MAX_GUESSES)) {
         setGameOver(true)
       }
 
@@ -110,17 +161,21 @@ export default function PnwGrid() {
     } catch {
       // Handle error
     }
-  }, [activeCell, gameOver, guessesUsed, grid])
+  }, [activeCell, gameOver, guessesUsed, grid, isRandom, config])
 
   const handleReset = () => {
-    setGrid(Array(9).fill(null))
-    setGuessesUsed(0)
-    setUsedPlayerIds(new Set())
-    setGameOver(false)
-    setActiveCell(null)
-    setSearchQuery('')
-    setSearchResults([])
-    setFeedback(null)
+    resetGame()
+  }
+
+  const handleNewRandomGrid = async () => {
+    resetGame()
+    await fetchRandomGrid()
+  }
+
+  const handleModeSwitch = (newMode) => {
+    if (newMode === mode) return
+    resetGame()
+    setMode(newMode)
   }
 
   const handleSaveImage = async () => {
@@ -156,7 +211,7 @@ export default function PnwGrid() {
     return ''
   }
 
-  if (authLoading || loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
+  if (authLoading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
   if (!user) return (
     <div className="text-center py-12 text-gray-400">
       <p className="text-lg font-medium mb-2">Log in to play PNW Grid</p>
@@ -169,10 +224,29 @@ export default function PnwGrid() {
       </button>
     </div>
   )
-  if (error || !config) return (
+
+  if (loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
+
+  // Weekly mode: show error if no config. Random mode: should always have config after loading.
+  if (!config) return (
     <div className="text-center py-12 text-gray-400">
       <p className="text-lg font-medium">No PNW Grid available right now</p>
       <p className="text-sm mt-1">Check back soon!</p>
+      {/* Still show the mode toggle so they can switch to random */}
+      <div className="flex items-center justify-center gap-1 mt-4 bg-gray-100 rounded-lg p-1 mx-auto w-fit">
+        <button
+          onClick={() => handleModeSwitch('weekly')}
+          className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'weekly' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Weekly
+        </button>
+        <button
+          onClick={() => handleModeSwitch('random')}
+          className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'random' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Random
+        </button>
+      </div>
     </div>
   )
 
@@ -181,6 +255,22 @@ export default function PnwGrid() {
 
   return (
     <div className="max-w-xl mx-auto">
+      {/* Mode toggle */}
+      <div className="flex items-center justify-center gap-1 mb-3 bg-gray-100 rounded-lg p-1 mx-4">
+        <button
+          onClick={() => handleModeSwitch('weekly')}
+          className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'weekly' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Weekly
+        </button>
+        <button
+          onClick={() => handleModeSwitch('random')}
+          className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'random' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Random
+        </button>
+      </div>
+
       {/* === Capturable area for screenshot === */}
       <div ref={gridRef} style={{ backgroundColor: '#f5f3ef', padding: '20px 16px 16px' }}>
 
@@ -194,9 +284,16 @@ export default function PnwGrid() {
             <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">{config.title}</p>
           )}
           <div className="flex items-center justify-center gap-4 mt-1.5 text-sm">
-            <span className="text-gray-500">
-              Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>/{MAX_GUESSES}
-            </span>
+            {!isRandom && (
+              <span className="text-gray-500">
+                Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>/{MAX_GUESSES}
+              </span>
+            )}
+            {isRandom && (
+              <span className="text-gray-500">
+                Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>
+              </span>
+            )}
             <span className="text-gray-500">
               Score: <span className="font-bold" style={{ color: '#00687a' }}>{score}</span>/9
             </span>
@@ -214,9 +311,15 @@ export default function PnwGrid() {
           {columns.map((col, i) => (
             <div
               key={`col-${i}`}
-              className="border-b border-r border-gray-200 p-2 flex items-center justify-center text-center last:border-r-0"
+              className="border-b border-r border-gray-200 p-2 flex flex-col items-center justify-center text-center last:border-r-0"
               style={{ backgroundColor: '#00687a' }}
             >
+              {col.category && (
+                <span className="text-[8px] uppercase tracking-wider text-teal-300 font-semibold leading-tight mb-0.5">{col.category}</span>
+              )}
+              {col.logo_url && (
+                <img src={col.logo_url} alt="" className="w-6 h-6 object-contain mb-0.5" onError={(e) => { e.target.style.display = 'none' }} />
+              )}
               <span className="text-xs font-bold text-white leading-tight">{col.label}</span>
             </div>
           ))}
@@ -231,6 +334,9 @@ export default function PnwGrid() {
               >
                 {row.category && (
                   <span className="text-[8px] uppercase tracking-wider text-teal-300 font-semibold leading-tight mb-0.5">{row.category}</span>
+                )}
+                {row.logo_url && (
+                  <img src={row.logo_url} alt="" className="w-6 h-6 object-contain mb-0.5" onError={(e) => { e.target.style.display = 'none' }} />
                 )}
                 <span className="text-xs font-bold text-white leading-tight">{row.label}</span>
               </div>
@@ -391,15 +497,28 @@ export default function PnwGrid() {
       )}
 
       {/* Action buttons (outside capturable area) */}
-      {gameOver && (
+      {(gameOver || (isRandom && score === 9)) && (
         <div className="mt-3 flex items-center justify-center gap-3 px-4">
-          <button
-            onClick={handleReset}
-            className="text-sm font-medium hover:underline"
-            style={{ color: '#00687a' }}
-          >
-            Play Again
-          </button>
+          {isRandom ? (
+            <button
+              onClick={handleNewRandomGrid}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition"
+              style={{ backgroundColor: '#00687a' }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              New Grid
+            </button>
+          ) : (
+            <button
+              onClick={handleReset}
+              className="text-sm font-medium hover:underline"
+              style={{ color: '#00687a' }}
+            >
+              Play Again
+            </button>
+          )}
           <button
             onClick={handleSaveImage}
             disabled={saving}
@@ -423,12 +542,29 @@ export default function PnwGrid() {
         </div>
       )}
 
+      {/* New Grid button visible during random play (not just at game over) */}
+      {isRandom && !gameOver && score < 9 && (
+        <div className="mt-3 flex items-center justify-center px-4">
+          <button
+            onClick={handleNewRandomGrid}
+            className="flex items-center gap-1.5 text-xs font-medium hover:underline"
+            style={{ color: '#00687a' }}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            New Grid
+          </button>
+        </div>
+      )}
+
       {/* Rules */}
       <div className="mt-5 mx-4 bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
         <p className="font-semibold text-gray-600 mb-1">How to play</p>
         <p>Select a cell and search for a player who fits <strong>both</strong> the row and column criteria.
-        Each player can only be used once. You have {MAX_GUESSES} guesses to fill the 3×3 grid.</p>
-        <p className="mt-1.5 text-gray-400">Data includes the 2022 season and later only.</p>
+        Each player can only be used once.{!isRandom && ` You have ${MAX_GUESSES} guesses to fill the 3×3 grid.`}
+        {isRandom && ' Unlimited guesses — keep going until you fill the grid!'}</p>
+        <p className="mt-1.5 text-gray-400">Data includes the 2022 season and later only. Rate stats require qualification (50+ PA for hitters, 20+ IP for pitchers).</p>
       </div>
     </div>
   )
