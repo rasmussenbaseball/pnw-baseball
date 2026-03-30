@@ -1519,6 +1519,179 @@ def war_leaderboard(
 
 
 # ============================================================
+# TEAM LEADERBOARD
+# ============================================================
+
+@router.get("/leaderboards/teams")
+def team_leaderboard(
+    season: int = Query(..., description="Season year"),
+    sort_by: str = Query("total_hr", description="Stat to rank by"),
+    sort_dir: str = Query("desc", description="asc or desc"),
+    division_id: Optional[int] = Query(None),
+    limit: int = Query(10),
+):
+    """
+    Rank teams by any aggregate stat.  Returns team info + all computed
+    batting / pitching aggregates so the frontend can pick extra columns.
+    """
+    # ── allowed stats (same set as /teams/scatter) ──
+    LOWER_IS_BETTER = {"team_era", "team_whip", "avg_fip", "avg_xfip",
+                        "avg_era_minus", "avg_k_pct_bat", "pitching_bb_pct"}
+
+    all_allowed = {
+        # batting
+        "team_avg", "team_obp", "team_slg", "team_ops",
+        "total_hr", "total_sb", "total_runs", "total_rbi", "total_hits",
+        "avg_woba", "avg_wrc_plus", "avg_iso", "total_owar",
+        "avg_bb_pct", "avg_k_pct",
+        # pitching
+        "team_era", "team_whip", "avg_fip", "avg_fip_plus", "avg_era_plus",
+        "avg_xfip", "total_k", "total_pwar", "pitching_k_pct",
+        "pitching_bb_pct", "total_ip",
+        # combined
+        "total_war",
+    }
+
+    if sort_by not in all_allowed:
+        sort_by = "total_hr"
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "desc"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── fetch active teams (optionally filtered by division) ──
+        q = """SELECT t.id, t.name, t.short_name, t.logo_url, t.city, t.state,
+                      c.abbreviation as conference_abbrev,
+                      d.level as division_level, d.id as division_id
+               FROM teams t
+               JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id
+               WHERE t.is_active = 1"""
+        params = []
+        if division_id:
+            q += " AND c.division_id = %s"
+            params.append(division_id)
+        q += " ORDER BY t.name"
+        cur.execute(q, params)
+        teams = cur.fetchall()
+
+        results = []
+        for team in teams:
+            tid = team["id"]
+
+            # ── batting aggregates ──
+            cur.execute("""
+                SELECT COUNT(*) as n,
+                       SUM(plate_appearances) as pa, SUM(at_bats) as ab,
+                       SUM(hits) as h, SUM(doubles) as d2b, SUM(triples) as d3b,
+                       SUM(home_runs) as hr, SUM(runs) as r, SUM(rbi) as rbi,
+                       SUM(walks) as bb, SUM(strikeouts) as k,
+                       SUM(stolen_bases) as sb, SUM(hit_by_pitch) as hbp,
+                       AVG(woba) as avg_woba, AVG(wrc_plus) as avg_wrc_plus,
+                       AVG(iso) as avg_iso, AVG(bb_pct) as avg_bb_pct,
+                       AVG(k_pct) as avg_k_pct, SUM(offensive_war) as total_owar
+                FROM batting_stats
+                WHERE team_id = %s AND season = %s AND plate_appearances >= 10
+            """, (tid, season))
+            b = cur.fetchone()
+
+            # ── pitching aggregates ──
+            cur.execute("""
+                SELECT COUNT(*) as n,
+                       SUM(innings_pitched) as ip, SUM(earned_runs) as er,
+                       SUM(walks) as bb, SUM(hits_allowed) as h,
+                       SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
+                       AVG(fip) as avg_fip, AVG(fip_plus) as avg_fip_plus,
+                       AVG(era_minus) as avg_era_minus, AVG(xfip) as avg_xfip,
+                       AVG(k_pct) as avg_k_pct, AVG(bb_pct) as avg_bb_pct,
+                       SUM(pitching_war) as total_pwar
+                FROM pitching_stats
+                WHERE team_id = %s AND season = %s AND innings_pitched >= 3
+            """, (tid, season))
+            p = cur.fetchone()
+
+            if not b or (b["n"] or 0) == 0:
+                continue
+
+            # ── team record ──
+            cur.execute(
+                "SELECT wins, losses FROM team_season_stats WHERE team_id = %s AND season = %s",
+                (tid, season),
+            )
+            rec = cur.fetchone()
+
+            # ── compute all stats into a flat dict ──
+            ab = b["ab"] or 0
+            pa = b["pa"] or 0
+            ip = (p["ip"] or 0) if p else 0
+
+            row = {
+                "team_id": tid,
+                "name": team["name"],
+                "short_name": team["short_name"],
+                "logo_url": team["logo_url"],
+                "city": team["city"],
+                "state": team["state"],
+                "conference_abbrev": team["conference_abbrev"],
+                "division_level": team["division_level"],
+                "division_id": team["division_id"],
+                "wins": rec["wins"] if rec else 0,
+                "losses": rec["losses"] if rec else 0,
+                # batting
+                "team_avg": round(b["h"] / ab, 3) if ab else None,
+                "team_obp": round((b["h"] + b["bb"] + b["hbp"]) / pa, 3) if pa else None,
+                "team_slg": None,
+                "team_ops": None,
+                "total_hits": b["h"],
+                "total_hr": b["hr"],
+                "total_sb": b["sb"],
+                "total_runs": b["r"],
+                "total_rbi": b["rbi"],
+                "avg_woba": round(float(b["avg_woba"]), 3) if b["avg_woba"] else None,
+                "avg_wrc_plus": round(float(b["avg_wrc_plus"])) if b["avg_wrc_plus"] else None,
+                "avg_iso": round(float(b["avg_iso"]), 3) if b["avg_iso"] else None,
+                "avg_bb_pct": round(float(b["avg_bb_pct"]), 3) if b["avg_bb_pct"] else None,
+                "avg_k_pct": round(float(b["avg_k_pct"]), 3) if b["avg_k_pct"] else None,
+                "total_owar": round(float(b["total_owar"]), 1) if b["total_owar"] else 0,
+                # pitching
+                "team_era": round(float(p["er"]) * 9 / ip, 2) if ip > 0 else None,
+                "team_whip": round((float(p["bb"]) + float(p["h"])) / ip, 2) if ip > 0 else None,
+                "avg_fip": round(float(p["avg_fip"]), 2) if p and p["avg_fip"] else None,
+                "avg_fip_plus": round(float(p["avg_fip_plus"])) if p and p["avg_fip_plus"] else None,
+                "avg_era_plus": round(10000.0 / float(p["avg_era_minus"])) if p and p["avg_era_minus"] and float(p["avg_era_minus"]) > 0 else None,
+                "avg_xfip": round(float(p["avg_xfip"]), 2) if p and p["avg_xfip"] else None,
+                "total_k": p["k"] if p else None,
+                "total_pwar": round(float(p["total_pwar"]), 1) if p and p["total_pwar"] else 0,
+                "pitching_k_pct": round(float(p["avg_k_pct"]), 3) if p and p["avg_k_pct"] else None,
+                "pitching_bb_pct": round(float(p["avg_bb_pct"]), 3) if p and p["avg_bb_pct"] else None,
+                "total_ip": round(float(p["ip"]), 1) if p and p["ip"] else None,
+                # combined
+                "total_war": round(float(b["total_owar"] or 0) + float(p["total_pwar"] or 0 if p else 0), 1),
+            }
+
+            # SLG and OPS
+            if ab > 0:
+                tb = (b["h"] - b["d2b"] - b["d3b"] - b["hr"]) + 2 * b["d2b"] + 3 * b["d3b"] + 4 * b["hr"]
+                row["team_slg"] = round(tb / ab, 3)
+                if row["team_obp"] is not None:
+                    row["team_ops"] = round(row["team_obp"] + row["team_slg"], 3)
+
+            results.append(row)
+
+        # ── sort ──
+        reverse = sort_dir == "desc"
+        results.sort(key=lambda r: (r.get(sort_by) is not None, r.get(sort_by) or 0), reverse=reverse)
+
+        return {
+            "data": results[:limit],
+            "total": len(results),
+            "sort_by": sort_by,
+            "sort_dir": sort_dir,
+        }
+
+
+# ============================================================
 # QUICK SEARCH (players + teams)
 # ============================================================
 

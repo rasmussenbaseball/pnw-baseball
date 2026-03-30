@@ -80,6 +80,12 @@ run_step "NWAC stats (JUCO)" \
 run_step "Box scores (all divisions)" \
     python3 scripts/scrape_boxscores.py --season "$SEASON"
 
+# ── Step 2b: Update player positions from game logs ────────
+# Uses most-played position from box scores instead of generic roster data.
+
+run_step "Update positions from game logs" \
+    python3 scripts/update_positions.py --season "$SEASON"
+
 # ── Step 3: Scrape team records/standings ───────────────────
 # Pulls W-L records from conference standings pages.
 

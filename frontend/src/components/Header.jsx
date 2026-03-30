@@ -557,7 +557,7 @@ export default function Header() {
           {/* Logo / Brand */}
           <Link to="/" className="flex items-center gap-2 sm:gap-3 shrink-0">
             <img
-              src="/images/nw-logo.png"
+              src="/images/nw-logo-white.png"
               alt="NW Baseball Stats"
               className="h-8 w-8 sm:h-10 sm:w-10 rounded"
             />

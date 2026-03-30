@@ -8,6 +8,90 @@ const SIZE_PRESETS = [
   { label: 'Twitter / X', w: 1200, h: 675 },
 ]
 
+// ─── Card theme ───
+const THEME = {
+  bg: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)',
+  accent: '#7dd3fc',
+  accentGlow: 'rgba(125,211,252,0.3)',
+  highlight: 'rgba(0,138,158,',
+  textPrimary: '#ffffff',
+  textSecondary: 'rgba(255,255,255,0.45)',
+  textMuted: 'rgba(255,255,255,0.25)',
+  border: 'rgba(255,255,255,0.08)',
+  rowAlt: 'rgba(255,255,255,0.025)',
+  orb1: 'rgba(0,104,122,0.3)',
+  orb2: 'rgba(0,138,158,0.15)',
+}
+
+// ─── All available stats with metadata ───
+const ALL_BATTING_STATS = [
+  { key: 'wrc_plus',     label: 'wRC+',   format: 'int',  dir: 'desc' },
+  { key: 'batting_avg',  label: 'AVG',    format: 'avg',  dir: 'desc' },
+  { key: 'home_runs',    label: 'HR',     format: 'int',  dir: 'desc' },
+  { key: 'stolen_bases', label: 'SB',     format: 'int',  dir: 'desc' },
+  { key: 'woba',         label: 'wOBA',   format: 'avg',  dir: 'desc' },
+  { key: 'offensive_war',label: 'oWAR',   format: 'war',  dir: 'desc' },
+  { key: 'on_base_pct',  label: 'OBP',    format: 'avg',  dir: 'desc' },
+  { key: 'slugging_pct', label: 'SLG',    format: 'avg',  dir: 'desc' },
+  { key: 'ops',          label: 'OPS',    format: 'avg',  dir: 'desc' },
+  { key: 'iso',          label: 'ISO',    format: 'avg',  dir: 'desc' },
+  { key: 'hits',         label: 'H',      format: 'int',  dir: 'desc' },
+  { key: 'runs',         label: 'R',      format: 'int',  dir: 'desc' },
+  { key: 'rbi',          label: 'RBI',    format: 'int',  dir: 'desc' },
+  { key: 'bb_pct',       label: 'BB%',    format: 'pct',  dir: 'desc' },
+  { key: 'k_pct',        label: 'K%',     format: 'pct',  dir: 'asc'  },
+  { key: 'plate_appearances', label: 'PA', format: 'int', dir: 'desc' },
+]
+
+const ALL_PITCHING_STATS = [
+  { key: 'fip_plus',     label: 'FIP+',   format: 'int',  dir: 'desc' },
+  { key: 'era',          label: 'ERA',    format: 'era',  dir: 'asc'  },
+  { key: 'era_plus',     label: 'ERA+',   format: 'int',  dir: 'desc' },
+  { key: 'strikeouts',   label: 'K',      format: 'int',  dir: 'desc' },
+  { key: 'pitching_war', label: 'pWAR',   format: 'war',  dir: 'desc' },
+  { key: 'fip',          label: 'FIP',    format: 'era',  dir: 'asc'  },
+  { key: 'whip',         label: 'WHIP',   format: 'era',  dir: 'asc'  },
+  { key: 'k_pct',        label: 'K%',     format: 'pct',  dir: 'desc' },
+  { key: 'bb_pct',       label: 'BB%',    format: 'pct',  dir: 'asc'  },
+  { key: 'xfip',         label: 'xFIP',   format: 'era',  dir: 'asc'  },
+  { key: 'siera',        label: 'SIERA',  format: 'era',  dir: 'asc'  },
+  { key: 'innings_pitched', label: 'IP',  format: 'ip',   dir: 'desc' },
+]
+
+const ALL_TEAM_BATTING_STATS = [
+  { key: 'total_hr',      label: 'HR',     format: 'int',  dir: 'desc' },
+  { key: 'team_avg',      label: 'AVG',    format: 'avg',  dir: 'desc' },
+  { key: 'total_runs',    label: 'R',      format: 'int',  dir: 'desc' },
+  { key: 'total_rbi',     label: 'RBI',    format: 'int',  dir: 'desc' },
+  { key: 'total_sb',      label: 'SB',     format: 'int',  dir: 'desc' },
+  { key: 'total_hits',    label: 'H',      format: 'int',  dir: 'desc' },
+  { key: 'team_obp',      label: 'OBP',    format: 'avg',  dir: 'desc' },
+  { key: 'team_slg',      label: 'SLG',    format: 'avg',  dir: 'desc' },
+  { key: 'team_ops',      label: 'OPS',    format: 'avg',  dir: 'desc' },
+  { key: 'avg_woba',      label: 'wOBA',   format: 'avg',  dir: 'desc' },
+  { key: 'avg_wrc_plus',  label: 'wRC+',   format: 'int',  dir: 'desc' },
+  { key: 'avg_iso',       label: 'ISO',    format: 'avg',  dir: 'desc' },
+  { key: 'total_owar',    label: 'oWAR',   format: 'war',  dir: 'desc' },
+]
+
+const ALL_TEAM_PITCHING_STATS = [
+  { key: 'team_era',      label: 'ERA',    format: 'era',  dir: 'asc'  },
+  { key: 'team_whip',     label: 'WHIP',   format: 'era',  dir: 'asc'  },
+  { key: 'avg_fip',       label: 'FIP',    format: 'era',  dir: 'asc'  },
+  { key: 'avg_fip_plus',  label: 'FIP+',   format: 'int',  dir: 'desc' },
+  { key: 'avg_era_plus',  label: 'ERA+',   format: 'int',  dir: 'desc' },
+  { key: 'avg_xfip',      label: 'xFIP',   format: 'era',  dir: 'asc'  },
+  { key: 'total_k',       label: 'K',      format: 'int',  dir: 'desc' },
+  { key: 'total_pwar',    label: 'pWAR',   format: 'war',  dir: 'desc' },
+  { key: 'total_ip',      label: 'IP',     format: 'ip',   dir: 'desc' },
+  { key: 'pitching_k_pct',  label: 'K%',   format: 'pct',  dir: 'desc' },
+  { key: 'pitching_bb_pct', label: 'BB%',  format: 'pct',  dir: 'asc'  },
+]
+
+const ALL_TEAM_COMBINED_STATS = [
+  { key: 'total_war',     label: 'WAR',    format: 'war',  dir: 'desc' },
+]
+
 // ─── Stat presets for quick access ───
 const STAT_PRESETS = {
   batting: [
@@ -119,6 +203,50 @@ const STAT_PRESETS = {
         { key: 'era', label: 'ERA', format: 'era' },
       ] },
   ],
+  teams: [
+    { key: 'total_hr',     label: 'HR',     sort: 'total_hr',     dir: 'desc', format: 'int',  title: 'Team HR Leaders', endpoint: '/leaderboards/teams',
+      extra: [
+        { key: 'team_slg', label: 'SLG', format: 'avg' },
+        { key: 'total_runs', label: 'R', format: 'int' },
+        { key: 'avg_wrc_plus', label: 'wRC+', format: 'int' },
+        { key: 'avg_iso', label: 'ISO', format: 'avg' },
+      ] },
+    { key: 'team_avg',     label: 'AVG',    sort: 'team_avg',     dir: 'desc', format: 'avg',  title: 'Team AVG Leaders', endpoint: '/leaderboards/teams',
+      extra: [
+        { key: 'team_obp', label: 'OBP', format: 'avg' },
+        { key: 'team_slg', label: 'SLG', format: 'avg' },
+        { key: 'total_hits', label: 'H', format: 'int' },
+        { key: 'avg_wrc_plus', label: 'wRC+', format: 'int' },
+      ] },
+    { key: 'team_era',     label: 'ERA',    sort: 'team_era',     dir: 'asc',  format: 'era',  title: 'Team ERA Leaders', endpoint: '/leaderboards/teams',
+      extra: [
+        { key: 'team_whip', label: 'WHIP', format: 'era' },
+        { key: 'avg_fip', label: 'FIP', format: 'era' },
+        { key: 'total_k', label: 'K', format: 'int' },
+        { key: 'total_ip', label: 'IP', format: 'ip' },
+      ] },
+    { key: 'total_war',    label: 'WAR',    sort: 'total_war',    dir: 'desc', format: 'war',  title: 'Team WAR Leaders', endpoint: '/leaderboards/teams',
+      extra: [
+        { key: 'total_owar', label: 'oWAR', format: 'war' },
+        { key: 'total_pwar', label: 'pWAR', format: 'war' },
+        { key: 'avg_wrc_plus', label: 'wRC+', format: 'int' },
+        { key: 'team_era', label: 'ERA', format: 'era' },
+      ] },
+    { key: 'total_runs',   label: 'R',      sort: 'total_runs',   dir: 'desc', format: 'int',  title: 'Team Runs Leaders', endpoint: '/leaderboards/teams',
+      extra: [
+        { key: 'team_avg', label: 'AVG', format: 'avg' },
+        { key: 'total_hr', label: 'HR', format: 'int' },
+        { key: 'total_rbi', label: 'RBI', format: 'int' },
+        { key: 'team_obp', label: 'OBP', format: 'avg' },
+      ] },
+    { key: 'total_sb',     label: 'SB',     sort: 'total_sb',     dir: 'desc', format: 'int',  title: 'Team SB Leaders', endpoint: '/leaderboards/teams',
+      extra: [
+        { key: 'team_avg', label: 'AVG', format: 'avg' },
+        { key: 'total_runs', label: 'R', format: 'int' },
+        { key: 'team_obp', label: 'OBP', format: 'avg' },
+        { key: 'avg_wrc_plus', label: 'wRC+', format: 'int' },
+      ] },
+  ],
 }
 
 // ─── Format helpers ───
@@ -150,12 +278,20 @@ function loadHtml2Canvas() {
   return html2canvasPromise
 }
 
+// ─── Helper: get available stats list for custom picker ───
+function getAvailableStats(category) {
+  if (category === 'batting') return ALL_BATTING_STATS
+  if (category === 'pitching') return ALL_PITCHING_STATS
+  if (category === 'teams') return [...ALL_TEAM_BATTING_STATS, ...ALL_TEAM_PITCHING_STATS, ...ALL_TEAM_COMBINED_STATS]
+  return [] // war uses fixed preset
+}
+
 // ─── The main component ───
 export default function SocialGraphics() {
   const cardRef = useRef(null)
 
   // ─── State ───
-  const [category, setCategory] = useState('pitching')
+  const [category, setCategory] = useState('batting')
   const [presetIdx, setPresetIdx] = useState(0)
   const [sizeIdx, setSizeIdx] = useState(0)
   const [count, setCount] = useState(10)
@@ -165,43 +301,99 @@ export default function SocialGraphics() {
   const [minQual, setMinQual] = useState('')
   const [customTitle, setCustomTitle] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [qualified, setQualified] = useState(true)
+  const [mode, setMode] = useState('preset') // 'preset' or 'custom'
+
+  // Custom stat picker state
+  const [customMainStat, setCustomMainStat] = useState('')
+  const [customExtraCols, setCustomExtraCols] = useState([])
 
   const { data: divisions } = useDivisions()
-  const preset = STAT_PRESETS[category][presetIdx]
+  const preset = STAT_PRESETS[category]?.[presetIdx] || STAT_PRESETS[category]?.[0]
   const size = SIZE_PRESETS[sizeIdx]
+  const theme = THEME
 
   // Reset preset index when switching categories
-  useEffect(() => { setPresetIdx(0) }, [category])
+  useEffect(() => {
+    setPresetIdx(0)
+    setCustomMainStat('')
+    setCustomExtraCols([])
+    setMode('preset')
+  }, [category])
+
+  // ─── Build the active stat config (preset or custom) ───
+  const activeConfig = (() => {
+    if (mode === 'custom' && customMainStat) {
+      const allStats = getAvailableStats(category)
+      const mainDef = allStats.find(s => s.key === customMainStat)
+      if (!mainDef) return preset
+      const endpoint = category === 'teams' ? '/leaderboards/teams'
+        : category === 'batting' ? '/leaderboards/batting'
+        : category === 'pitching' ? '/leaderboards/pitching'
+        : '/leaderboards/war'
+      return {
+        key: mainDef.key,
+        label: mainDef.label,
+        sort: mainDef.key,
+        dir: mainDef.dir,
+        format: mainDef.format,
+        title: `${mainDef.label} Leaders`,
+        endpoint,
+        extra: customExtraCols.map(k => {
+          const def = allStats.find(s => s.key === k)
+          return def ? { key: def.key, label: def.label, format: def.format } : null
+        }).filter(Boolean),
+      }
+    }
+    return preset
+  })()
 
   // Build API params
   const apiParams = {
     season,
-    sort_by: preset.sort,
-    sort_dir: preset.dir,
+    sort_by: activeConfig.sort,
+    sort_dir: activeConfig.dir,
     limit: count,
     ...(divisionId && { division_id: divisionId }),
-    ...(yearFilter && { year_in_school: yearFilter }),
-  }
-  if (preset.endpoint.includes('batting')) {
-    apiParams.min_pa = minQual || 50
-  } else if (preset.endpoint.includes('pitching')) {
-    apiParams.min_ip = minQual || 20
-  } else {
-    apiParams.min_pa = minQual || 30
-    apiParams.min_ip = minQual || 10
+    ...(yearFilter && category !== 'teams' && { year_in_school: yearFilter }),
   }
 
-  const { data: rawData, loading } = useApi(preset.endpoint, apiParams, [
-    season, preset.sort, preset.dir, count, divisionId, yearFilter, minQual, preset.endpoint
+  if (category === 'teams') {
+    // team endpoint has no min_pa/min_ip or qualified toggle
+  } else if (activeConfig.endpoint.includes('batting')) {
+    if (qualified) {
+      apiParams.qualified = true
+    } else {
+      apiParams.min_pa = minQual || 1
+    }
+  } else if (activeConfig.endpoint.includes('pitching')) {
+    if (qualified) {
+      apiParams.qualified = true
+    } else {
+      apiParams.min_ip = minQual || 1
+    }
+  } else {
+    // WAR
+    if (qualified) {
+      apiParams.qualified = true
+    } else {
+      apiParams.min_pa = minQual || 1
+      apiParams.min_ip = minQual || 1
+    }
+  }
+
+  const { data: rawData, loading } = useApi(activeConfig.endpoint, apiParams, [
+    season, activeConfig.sort, activeConfig.dir, count, divisionId, yearFilter, minQual, activeConfig.endpoint, qualified
   ])
 
-  const players = Array.isArray(rawData) ? rawData : rawData?.data || []
+  const items = Array.isArray(rawData) ? rawData : rawData?.data || []
+  const isTeamMode = category === 'teams'
 
   const divLabel = divisionId
     ? (divisions || []).find(d => d.id === Number(divisionId))?.name || ''
     : 'PNW'
-  const titleText = customTitle || `Top ${count} ${divLabel} ${preset.title}`
-  const subtitle = `${season} Season${yearFilter ? ` • ${yearFilter} Only` : ''}`
+  const titleText = customTitle || `Top ${count} ${divLabel} ${activeConfig.title}`
+  const subtitle = `${season} Season${yearFilter && !isTeamMode ? ` • ${yearFilter} Only` : ''}${!qualified && !isTeamMode ? ' • Unqualified' : ''}`
 
   // ─── Export handler ───
   const handleExport = useCallback(async () => {
@@ -218,7 +410,7 @@ export default function SocialGraphics() {
         height: size.h,
       })
       const link = document.createElement('a')
-      link.download = `nwbb-${preset.key}-top${count}-${season}.png`
+      link.download = `nwbb-${activeConfig.key}-top${count}-${season}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
     } catch (err) {
@@ -227,11 +419,20 @@ export default function SocialGraphics() {
     } finally {
       setExporting(false)
     }
-  }, [size, preset, count, season])
+  }, [size, activeConfig, count, season])
 
   const isVertical = size.h > size.w
   const isTall = size.h / size.w > 1.5
   const scale = Math.min(600 / size.w, 800 / size.h)
+
+  // Toggle a custom extra col on/off (max 5)
+  const toggleExtraCol = (key) => {
+    setCustomExtraCols(prev => {
+      if (prev.includes(key)) return prev.filter(k => k !== key)
+      if (prev.length >= 5) return prev
+      return [...prev, key]
+    })
+  }
 
   return (
     <div>
@@ -242,28 +443,79 @@ export default function SocialGraphics() {
 
       <div className="flex flex-col lg:flex-row gap-6">
         {/* ═══ LEFT: Controls ═══ */}
-        <div className="lg:w-72 shrink-0 space-y-4">
+        <div className="lg:w-80 shrink-0 space-y-4">
           {/* Category */}
           <div className="bg-white rounded-lg shadow-sm border p-4">
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Category</label>
             <div className="flex gap-1">
-              {['batting', 'pitching', 'war'].map(c => (
+              {['batting', 'pitching', 'war', 'teams'].map(c => (
                 <button key={c} onClick={() => setCategory(c)}
                   className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
                     ${category === c ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >{c === 'war' ? 'WAR' : c.charAt(0).toUpperCase() + c.slice(1)}</button>
+                >{c === 'war' ? 'WAR' : c === 'teams' ? 'Teams' : c.charAt(0).toUpperCase() + c.slice(1)}</button>
               ))}
             </div>
 
-            <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Stat</label>
-            <div className="flex flex-wrap gap-1">
-              {STAT_PRESETS[category].map((p, i) => (
-                <button key={p.key} onClick={() => setPresetIdx(i)}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-all
-                    ${presetIdx === i ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >{p.label}</button>
-              ))}
-            </div>
+            {/* Mode toggle (preset vs custom) */}
+            {category !== 'war' && (
+              <>
+                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Mode</label>
+                <div className="flex gap-1">
+                  <button onClick={() => setMode('preset')}
+                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
+                      ${mode === 'preset' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >Presets</button>
+                  <button onClick={() => setMode('custom')}
+                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
+                      ${mode === 'custom' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >Custom</button>
+                </div>
+              </>
+            )}
+
+            {/* Preset stat buttons */}
+            {mode === 'preset' && (
+              <>
+                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Stat</label>
+                <div className="flex flex-wrap gap-1">
+                  {STAT_PRESETS[category].map((p, i) => (
+                    <button key={p.key} onClick={() => setPresetIdx(i)}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded transition-all
+                        ${presetIdx === i ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                    >{p.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Custom stat picker */}
+            {mode === 'custom' && (
+              <>
+                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Main Stat (ranked by)</label>
+                <select value={customMainStat} onChange={e => setCustomMainStat(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm">
+                  <option value="">Select stat...</option>
+                  {getAvailableStats(category).map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+
+                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">
+                  Extra Columns ({customExtraCols.length}/5)
+                </label>
+                <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                  {getAvailableStats(category).filter(s => s.key !== customMainStat).map(s => (
+                    <button key={s.key} onClick={() => toggleExtraCol(s.key)}
+                      className={`px-2 py-0.5 text-xs rounded transition-all
+                        ${customExtraCols.includes(s.key)
+                          ? 'bg-nw-teal text-white shadow'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+                        ${!customExtraCols.includes(s.key) && customExtraCols.length >= 5 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    >{s.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Filters */}
@@ -287,24 +539,45 @@ export default function SocialGraphics() {
               </select>
             </div>
 
-            <div>
-              <label className="text-xs text-gray-500">Class Year</label>
-              <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
-                className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                <option value="">All</option>
-                {['Fr', 'So', 'Jr', 'Sr'].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+            {!isTeamMode && (
+              <div>
+                <label className="text-xs text-gray-500">Class Year</label>
+                <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
+                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                  <option value="">All</option>
+                  {['Fr', 'So', 'Jr', 'Sr'].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            )}
+
+            {/* Qualified toggle */}
+            {!isTeamMode && (
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-gray-500">Qualified Only</label>
+                <button
+                  onClick={() => setQualified(!qualified)}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${qualified ? 'bg-nw-teal' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${qualified ? 'left-5' : 'left-0.5'}`} />
+                </button>
+              </div>
+            )}
+
+            {/* Min PA/IP (only when unqualified) */}
+            {!isTeamMode && !qualified && (
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">Min {activeConfig.endpoint.includes('batting') ? 'PA' : 'IP'}</label>
+                  <input type="number" value={minQual} onChange={e => setMinQual(e.target.value)}
+                    placeholder="1"
+                    className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm" />
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2">
               <div className="flex-1">
-                <label className="text-xs text-gray-500">Min {preset.endpoint.includes('batting') ? 'PA' : 'IP'}</label>
-                <input type="number" value={minQual} onChange={e => setMinQual(e.target.value)}
-                  placeholder={preset.endpoint.includes('batting') ? '50' : '20'}
-                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm" />
-              </div>
-              <div className="flex-1">
-                <label className="text-xs text-gray-500"># Players</label>
+                <label className="text-xs text-gray-500"># {isTeamMode ? 'Teams' : 'Players'}</label>
                 <select value={count} onChange={e => setCount(+e.target.value)}
                   className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
                   {[5, 10, 15, 20].map(n => <option key={n} value={n}>Top {n}</option>)}
@@ -338,7 +611,7 @@ export default function SocialGraphics() {
 
             <button
               onClick={handleExport}
-              disabled={exporting || loading || !players.length}
+              disabled={exporting || loading || !items.length}
               className="w-full py-2.5 rounded-lg bg-nw-teal text-white font-bold text-sm
                 hover:bg-nw-teal-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed
                 flex items-center justify-center gap-2"
@@ -371,8 +644,8 @@ export default function SocialGraphics() {
             }}>
               <LeaderCard
                 ref={cardRef}
-                players={players}
-                preset={preset}
+                items={items}
+                config={activeConfig}
                 title={titleText}
                 subtitle={subtitle}
                 size={size}
@@ -380,6 +653,9 @@ export default function SocialGraphics() {
                 isVertical={isVertical}
                 isTall={isTall}
                 count={count}
+                theme={theme}
+                isTeamMode={isTeamMode}
+                qualified={qualified}
               />
             </div>
           </div>
@@ -394,13 +670,13 @@ export default function SocialGraphics() {
 // ═══════════════════════════════════════════════════════════
 
 const LeaderCard = forwardRef(function LeaderCard(
-  { players, preset, title, subtitle, size, loading, isVertical, isTall, count },
+  { items, config, title, subtitle, size, loading, isVertical, isTall, count, theme, isTeamMode, qualified },
   ref
 ) {
   const w = size.w
   const h = size.h
   const isLandscape = w > h
-  const extraCols = preset.extra || []
+  const extraCols = config.extra || []
 
   // ─── Dynamic sizing: rows FILL the available space ───
   const headerH = isTall ? h * 0.10 : isLandscape ? h * 0.15 : h * 0.16
@@ -421,11 +697,14 @@ const LeaderCard = forwardRef(function LeaderCard(
   // Logo size based on row height
   const logoSize = Math.min(Math.floor(rowH * 0.55), 32)
 
-  // Column widths - main stat is wider, extras are narrower to fit 5 cols
+  // Column widths
   const mainStatW = Math.floor(w * 0.10)
   const extraW = Math.floor(w * 0.09)
   const rankW = Math.floor(w * 0.045)
   const logoW = logoSize + 8
+
+  // For team mode, show record column
+  const recordW = isTeamMode ? Math.floor(w * 0.08) : 0
 
   return (
     <div
@@ -433,9 +712,9 @@ const LeaderCard = forwardRef(function LeaderCard(
       style={{
         width: w,
         height: h,
-        background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)',
+        background: theme.bg,
         fontFamily: "'Inter', 'Helvetica Neue', system-ui, sans-serif",
-        color: '#ffffff',
+        color: theme.textPrimary,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -447,14 +726,14 @@ const LeaderCard = forwardRef(function LeaderCard(
         position: 'absolute', top: -120, right: -120,
         width: 400, height: 400,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(0,104,122,0.3) 0%, transparent 70%)',
+        background: `radial-gradient(circle, ${theme.orb1} 0%, transparent 70%)`,
         pointerEvents: 'none',
       }} />
       <div style={{
         position: 'absolute', bottom: -80, left: -80,
         width: 300, height: 300,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(0,138,158,0.15) 0%, transparent 70%)',
+        background: `radial-gradient(circle, ${theme.orb2} 0%, transparent 70%)`,
         pointerEvents: 'none',
       }} />
 
@@ -465,13 +744,13 @@ const LeaderCard = forwardRef(function LeaderCard(
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        borderBottom: '2px solid rgba(255,255,255,0.08)',
+        borderBottom: `2px solid ${theme.border}`,
         position: 'relative',
         zIndex: 1,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: isLandscape ? 5 : 8, marginBottom: isLandscape ? 1 : 4 }}>
           <img
-            src="/images/nw-logo.png"
+            src="/favicon.png"
             alt=""
             style={{ width: Math.floor(titleSize * 0.8), height: Math.floor(titleSize * 0.8), borderRadius: 3 }}
             crossOrigin="anonymous"
@@ -481,7 +760,7 @@ const LeaderCard = forwardRef(function LeaderCard(
             fontWeight: 800,
             letterSpacing: '0.15em',
             textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.5)',
+            color: theme.textSecondary,
           }}>NWBB Stats</span>
         </div>
         <div style={{
@@ -489,16 +768,14 @@ const LeaderCard = forwardRef(function LeaderCard(
           fontWeight: 900,
           lineHeight: 1.05,
           letterSpacing: '-0.02em',
-          background: 'linear-gradient(90deg, #ffffff 0%, #7dd3fc 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
+          color: '#ffffff',
+          textShadow: `0 0 40px ${theme.accentGlow}, 0 1px 2px rgba(0,0,0,0.3)`,
         }}>
           {title}
         </div>
         <div style={{
           fontSize: subtitleSize,
-          color: 'rgba(255,255,255,0.45)',
+          color: theme.textSecondary,
           fontWeight: 500,
           marginTop: 1,
           letterSpacing: '0.05em',
@@ -524,12 +801,13 @@ const LeaderCard = forwardRef(function LeaderCard(
           paddingLeft: rankW + logoW + 4,
           fontSize: Math.floor(fontSize * 0.6),
           fontWeight: 700,
-          color: 'rgba(255,255,255,0.3)',
+          color: theme.textMuted,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
         }}>
-          <span style={{ flex: 1 }}>Player</span>
-          <span style={{ width: mainStatW, textAlign: 'right' }}>{preset.label}</span>
+          <span style={{ flex: 1 }}>{isTeamMode ? 'Team' : 'Player'}</span>
+          {isTeamMode && <span style={{ width: recordW, textAlign: 'right' }}>Record</span>}
+          <span style={{ width: mainStatW, textAlign: 'right' }}>{config.label}</span>
           {extraCols.map(col => (
             <span key={col.key} style={{ width: extraW, textAlign: 'right' }}>{col.label}</span>
           ))}
@@ -540,19 +818,21 @@ const LeaderCard = forwardRef(function LeaderCard(
             Loading...
           </div>
         ) : (
-          players.slice(0, count).map((p, i) => {
-            const name = p.first_name && p.last_name
-              ? `${p.first_name} ${p.last_name}`
-              : p.name || '-'
-            const team = p.team_short || p.short_name || p.team_name || ''
+          items.slice(0, count).map((p, i) => {
+            const name = isTeamMode
+              ? (p.short_name || p.name || '-')
+              : (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.name || '-')
+            const team = isTeamMode
+              ? (p.conference_abbrev || '')
+              : (p.team_short || p.short_name || p.team_name || '')
             const level = p.division_level || ''
             const logoUrl = p.logo_url || ''
-            const mainVal = p[preset.key] ?? p[preset.sort]
+            const mainVal = p[config.key] ?? p[config.sort]
             const isTop3 = i < 3
 
             return (
               <div
-                key={p.id || p.player_id || i}
+                key={p.id || p.player_id || p.team_id || i}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -560,11 +840,13 @@ const LeaderCard = forwardRef(function LeaderCard(
                   padding: `0 ${Math.floor(w * 0.01)}px`,
                   borderRadius: 6,
                   background: isTop3
-                    ? `linear-gradient(90deg, rgba(0,138,158,${0.22 - i * 0.05}) 0%, rgba(0,104,122,0.04) 100%)`
+                    ? `linear-gradient(90deg, ${theme.highlight}${(0.22 - i * 0.05).toFixed(2)}) 0%, ${theme.highlight}0.04) 100%)`
                     : i % 2 === 0
-                      ? 'rgba(255,255,255,0.025)'
+                      ? theme.rowAlt
                       : 'transparent',
-                  borderLeft: isTop3 ? `3px solid rgba(125,211,252,${0.8 - i * 0.2})` : '3px solid transparent',
+                  borderLeft: isTop3 ? `3px solid ${theme.accent}` : '3px solid transparent',
+                  borderLeftColor: isTop3 ? theme.accent : 'transparent',
+                  opacity: isTop3 ? 1 : undefined,
                 }}
               >
                 {/* Rank */}
@@ -572,7 +854,7 @@ const LeaderCard = forwardRef(function LeaderCard(
                   width: rankW,
                   fontSize: rankSize,
                   fontWeight: 900,
-                  color: isTop3 ? '#7dd3fc' : 'rgba(255,255,255,0.25)',
+                  color: isTop3 ? theme.accent : theme.textMuted,
                   fontFeatureSettings: '"tnum"',
                   textAlign: 'center',
                 }}>
@@ -611,14 +893,14 @@ const LeaderCard = forwardRef(function LeaderCard(
                       justifyContent: 'center',
                       fontSize: Math.floor(logoSize * 0.35),
                       fontWeight: 700,
-                      color: 'rgba(255,255,255,0.3)',
+                      color: theme.textMuted,
                     }}>
-                      {team.slice(0, 3)}
+                      {(isTeamMode ? p.short_name || p.name : team).slice(0, 3)}
                     </div>
                   )}
                 </div>
 
-                {/* Player info */}
+                {/* Name info */}
                 <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', paddingLeft: 4 }}>
                   <div style={{
                     fontSize: fontSize,
@@ -638,7 +920,7 @@ const LeaderCard = forwardRef(function LeaderCard(
                   }}>
                     <span style={{
                       fontSize: Math.floor(fontSize * 0.68),
-                      color: 'rgba(255,255,255,0.45)',
+                      color: theme.textSecondary,
                       fontWeight: 500,
                     }}>
                       {team}
@@ -647,7 +929,7 @@ const LeaderCard = forwardRef(function LeaderCard(
                       <span style={{
                         fontSize: Math.floor(fontSize * 0.55),
                         fontWeight: 600,
-                        color: 'rgba(255,255,255,0.25)',
+                        color: theme.textMuted,
                         letterSpacing: '0.04em',
                       }}>
                         {level}
@@ -656,6 +938,20 @@ const LeaderCard = forwardRef(function LeaderCard(
                   </div>
                 </div>
 
+                {/* Record (teams only) */}
+                {isTeamMode && (
+                  <div style={{
+                    width: recordW,
+                    textAlign: 'right',
+                    fontSize: Math.floor(fontSize * 0.75),
+                    fontWeight: 600,
+                    color: theme.textSecondary,
+                    fontFeatureSettings: '"tnum"',
+                  }}>
+                    {p.wins ?? 0}-{p.losses ?? 0}
+                  </div>
+                )}
+
                 {/* Main stat (big) */}
                 <div style={{
                   width: mainStatW,
@@ -663,10 +959,10 @@ const LeaderCard = forwardRef(function LeaderCard(
                   fontSize: Math.floor(fontSize * 1.25),
                   fontWeight: 900,
                   fontFeatureSettings: '"tnum"',
-                  color: isTop3 ? '#7dd3fc' : '#e0f2fe',
-                  textShadow: isTop3 ? '0 0 20px rgba(125,211,252,0.3)' : 'none',
+                  color: isTop3 ? theme.accent : '#e0f2fe',
+                  textShadow: isTop3 ? `0 0 20px ${theme.accentGlow}` : 'none',
                 }}>
-                  {fmt(mainVal, preset.format)}
+                  {fmt(mainVal, config.format)}
                 </div>
 
                 {/* Extra stat columns */}
@@ -676,7 +972,7 @@ const LeaderCard = forwardRef(function LeaderCard(
                     textAlign: 'right',
                     fontSize: Math.floor(fontSize * 0.75),
                     fontWeight: 500,
-                    color: 'rgba(255,255,255,0.45)',
+                    color: theme.textSecondary,
                     fontFeatureSettings: '"tnum"',
                   }}>
                     {fmt(p[col.key], col.format)}
@@ -695,23 +991,23 @@ const LeaderCard = forwardRef(function LeaderCard(
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: `0 ${Math.floor(w * 0.04)}px`,
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        borderTop: `1px solid ${theme.border}`,
         position: 'relative',
         zIndex: 1,
       }}>
         <span style={{
           fontSize: Math.floor(fontSize * 0.58),
-          color: 'rgba(255,255,255,0.25)',
+          color: theme.textMuted,
           fontWeight: 500,
         }}>
           nwbaseballstats.com
         </span>
         <span style={{
           fontSize: Math.floor(fontSize * 0.52),
-          color: 'rgba(255,255,255,0.18)',
+          color: theme.textMuted,
           fontWeight: 400,
         }}>
-          Min {preset.endpoint.includes('batting') ? '50 PA' : '20 IP'}
+          {isTeamMode ? 'Team Stats' : qualified ? 'Qualified' : `Min ${config.endpoint.includes('batting') ? `${1} PA` : `${1} IP`}`}
         </span>
       </div>
     </div>
