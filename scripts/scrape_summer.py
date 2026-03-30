@@ -139,7 +139,7 @@ def ensure_teams_in_db(cur, league_db_id, teams):
     """
     team_map = {}
     for t in teams:
-        # Check if exists
+        # Check if exists by pointstreak_team_id
         cur.execute(
             "SELECT id FROM summer_teams WHERE pointstreak_team_id = %s AND league_id = %s",
             (t["pointstreak_team_id"], league_db_id),
@@ -147,16 +147,27 @@ def ensure_teams_in_db(cur, league_db_id, teams):
         row = cur.fetchone()
         if row:
             team_map[t["pointstreak_team_id"]] = row["id"]
-        else:
-            # Generate short name from team name
-            short = t["name"].split()[-1] if t["name"] else t["name"]
-            cur.execute("""
-                INSERT INTO summer_teams (name, short_name, city, league_id, pointstreak_team_id)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-            """, (t["name"], short, t["city"], league_db_id, t["pointstreak_team_id"]))
-            team_map[t["pointstreak_team_id"]] = cur.fetchone()["id"]
-            logger.info(f"  Created team: {t['name']} (PS ID {t['pointstreak_team_id']})")
+            continue
+
+        # Also check by name (same team may have different PS IDs across seasons)
+        cur.execute(
+            "SELECT id FROM summer_teams WHERE name = %s AND league_id = %s",
+            (t["name"], league_db_id),
+        )
+        row = cur.fetchone()
+        if row:
+            team_map[t["pointstreak_team_id"]] = row["id"]
+            continue
+
+        # New team — insert
+        short = t["name"].split()[-1] if t["name"] else t["name"]
+        cur.execute("""
+            INSERT INTO summer_teams (name, short_name, city, league_id, pointstreak_team_id)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        """, (t["name"], short, t["city"], league_db_id, t["pointstreak_team_id"]))
+        team_map[t["pointstreak_team_id"]] = cur.fetchone()["id"]
+        logger.info(f"  Created team: {t['name']} (PS ID {t['pointstreak_team_id']})")
     return team_map
 
 
