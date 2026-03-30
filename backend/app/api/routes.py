@@ -2708,6 +2708,7 @@ def uncommitted_juco_players(
                    bs.woba, bs.wrc_plus, bs.offensive_war,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
                    ps2.era, ps2.fip, ps2.fip_plus, ps2.era_minus, ps2.xfip, ps2.strikeouts as pitch_k,
+                   ps2.k_pct as pitch_k_pct, ps2.bb_pct as pitch_bb_pct,
                    ps2.innings_pitched, ps2.pitching_war,
                    COALESCE(bs.offensive_war, 0) + COALESCE(ps2.pitching_war, 0) as total_war
             FROM players p
