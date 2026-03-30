@@ -13,7 +13,7 @@ const NAV = [
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
       { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
-      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats', locked: true },
+      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
     ],
   },
   {
