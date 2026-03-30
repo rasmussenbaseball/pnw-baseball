@@ -4465,6 +4465,31 @@ def get_player_gamelogs(
 
 
 # ============================================================
+# ============================================================
+# IMAGE PROXY — for canvas export (avoids CORS issues)
+# ============================================================
+import httpx as _httpx
+from fastapi.responses import Response as _ImgResponse
+
+@router.get("/proxy-image")
+async def proxy_image(url: str = Query(...)):
+    """Proxy an external image to avoid CORS issues in canvas exports."""
+    if not url.startswith("http"):
+        raise HTTPException(400, "Invalid URL")
+    try:
+        async with _httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            raise HTTPException(resp.status_code, "Upstream error")
+        ct = resp.headers.get("content-type", "image/png")
+        if not ct.startswith("image/"):
+            raise HTTPException(400, "Not an image")
+        return _ImgResponse(content=resp.content, media_type=ct,
+                            headers={"Cache-Control": "public, max-age=86400"})
+    except _httpx.RequestError:
+        raise HTTPException(502, "Failed to fetch image")
+
+
 # PNW GRID — Immaculate Grid for PNW College Baseball
 # ============================================================
 

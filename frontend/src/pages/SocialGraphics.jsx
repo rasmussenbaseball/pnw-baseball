@@ -264,15 +264,27 @@ function fmt(val, format) {
 }
 
 // ─── Canvas Export Helpers ───
-function loadExportImage(src) {
-  return new Promise((resolve) => {
-    if (!src) { resolve(null); return }
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
-    img.src = src.startsWith('/') ? window.location.origin + src : src
-  })
+async function loadExportImage(src) {
+  if (!src) return null
+  // For external URLs, route through our proxy to avoid CORS issues
+  const isExternal = src.startsWith('http') && !src.includes(window.location.hostname)
+  const url = isExternal
+    ? `/api/v1/proxy-image?url=${encodeURIComponent(src)}`
+    : src.startsWith('/') ? src : src
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return null
+    const blob = await resp.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    return await new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => { resolve(img); URL.revokeObjectURL(objectUrl) }
+      img.onerror = () => { resolve(null); URL.revokeObjectURL(objectUrl) }
+      img.src = objectUrl
+    })
+  } catch {
+    return null
+  }
 }
 
 function drawImageContain(ctx, img, x, y, boxW, boxH) {
@@ -511,15 +523,22 @@ export default function SocialGraphics() {
       if (faviconImg) {
         drawImageContain(ctx, faviconImg, headerPadX, curY, nwLogoSz, nwLogoSz)
       }
-      ctx.font = `800 ${Math.floor(titleSize * 0.35)}px ${font}`
+      // Draw "NWBB STATS" with manual letter spacing
+      const nwbbText = 'NWBB STATS'
+      const nwbbFontSize = Math.floor(titleSize * 0.35)
+      ctx.font = `800 ${nwbbFontSize}px ${font}`
       ctx.fillStyle = theme.textSecondary
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      ctx.letterSpacing = '0.15em'
-      ctx.fillText('NWBB STATS', headerPadX + nwLogoSz + (isLandscapeLocal ? 5 : 8), curY + nwLogoSz / 2)
-      ctx.letterSpacing = '0px'
+      const nwbbX = headerPadX + nwLogoSz + (isLandscapeLocal ? 5 : 8)
+      const nwbbSpacing = nwbbFontSize * 0.15
+      let charX = nwbbX
+      for (const ch of nwbbText) {
+        ctx.fillText(ch, charX, curY + nwLogoSz / 2)
+        charX += ctx.measureText(ch).width + nwbbSpacing
+      }
 
-      curY += nwLogoSz + (isLandscapeLocal ? 1 : 4)
+      curY += nwLogoSz + (isLandscapeLocal ? 2 : 6)
 
       // Title
       ctx.font = `900 ${titleSize}px ${font}`
@@ -531,7 +550,7 @@ export default function SocialGraphics() {
       ctx.shadowBlur = 0
       ctx.shadowColor = 'transparent'
 
-      curY += titleSize * 1.05 + 1
+      curY += titleSize * 1.4 + 2
 
       // Subtitle
       ctx.font = `500 ${subtitleSz}px ${font}`
