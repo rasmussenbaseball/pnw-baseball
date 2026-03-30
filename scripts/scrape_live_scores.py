@@ -365,27 +365,24 @@ def format_game(game, team_name, team_info):
 def parse_html_schedule(html, team_name, team_info, today):
     """
     Fallback parser for older Sidearm sites that don't use Nuxt 3.
-    Looks for game data in the rendered HTML using common Sidearm patterns.
+    These sites use the 'sidearm-schedule-game' class with a predictable structure:
+      - .sidearm-schedule-game-opponent-date  → "Mar 27 (Fri) 12:00 p.m."
+      - .sidearm-schedule-game-opponent-name  → opponent name link
+      - .sidearm-schedule-game-opponent-text  → starts with "at" or "vs"
+      - Score in fulltext as "W, 3-2" or "L, 0-5"
     """
     soup = BeautifulSoup(html, "html.parser")
     games = []
 
-    # Try multiple Sidearm HTML patterns
-    # Pattern 1: c-events__item (newer non-Nuxt3 Sidearm)
-    event_items = soup.find_all("div", class_=re.compile(r"c-events__item"))
-    # Pattern 2: s-game-card (Oregon, OSU style)
-    if not event_items:
-        event_items = soup.find_all("div", class_=re.compile(r"\bs-game-card\b"))
-    # Pattern 3: sidearm-schedule-game (legacy)
-    if not event_items:
-        event_items = soup.find_all("div", class_=re.compile(r"sidearm-schedule-game"))
-    # Pattern 4: generic list items with score data
-    if not event_items:
-        event_items = soup.find_all("li", class_=re.compile(r"schedule|game", re.I))
+    # Primary pattern: legacy Sidearm schedule
+    game_items = soup.find_all("div", class_="sidearm-schedule-game")
+    if not game_items:
+        # Try broader match
+        game_items = soup.find_all("div", class_=re.compile(r"sidearm-schedule-game\b"))
 
-    for item in event_items:
+    for item in game_items:
         try:
-            game = _parse_html_game_item(item, team_name, team_info, today)
+            game = _parse_legacy_sidearm_game(item, team_name, team_info, today)
             if game:
                 games.append(game)
         except Exception:
@@ -395,125 +392,91 @@ def parse_html_schedule(html, team_name, team_info, today):
     return games
 
 
-def _parse_html_game_item(item, team_name, team_info, today):
-    """Parse a single game element from HTML."""
-    text = item.get_text(" ", strip=True)
-
-    # Look for date
-    time_el = item.find("time")
-    date_str = None
-    if time_el:
-        date_str = time_el.get("datetime") or time_el.get_text(strip=True)
-    else:
-        # Try to find date in a span or div
-        date_el = item.find(class_=re.compile(r"date|time|when", re.I))
-        if date_el:
-            date_str = date_el.get_text(strip=True)
-
-    if not date_str:
+def _parse_legacy_sidearm_game(item, team_name, team_info, today):
+    """Parse a game from legacy Sidearm HTML format."""
+    # Get date
+    date_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-date"))
+    if not date_el:
         return None
 
-    # Parse the date
+    date_text = date_el.get_text(" ", strip=True)
+    # Format: "Mar 27 (Fri) 12:00 p.m." or "Jan 31 (Sat) 3:00 p.m."
+    # Extract just month and day
+    date_match = re.match(r'(\w+)\s+(\d+)', date_text)
+    if not date_match:
+        return None
+
+    month_str = date_match.group(1)
+    day_str = date_match.group(2)
+
+    # Parse into a date
     game_date = None
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%b %d, %Y", "%B %d, %Y", "%m/%d/%Y",
-                "%b. %d, %Y", "%b %d", "%B %d"):
+    for fmt in ("%b %d", "%B %d"):
         try:
-            cleaned = re.sub(r'\s+', ' ', date_str.strip())
-            cleaned = re.sub(r'(\b[A-Z][a-z]{2})\.', r'\1', cleaned)
-            dt = datetime.strptime(cleaned.split('T')[0] if 'T' in cleaned else cleaned, fmt.replace('.', ''))
-            if dt.year < 2000:
-                dt = dt.replace(year=2026)
-            game_date = dt.date()
+            dt = datetime.strptime(f"{month_str} {day_str}", fmt)
+            game_date = dt.replace(year=2026).date()
             break
         except ValueError:
             continue
 
     if not game_date:
-        # Try ISO format
-        m = re.search(r'(\d{4}-\d{2}-\d{2})', date_str)
-        if m:
-            try:
-                game_date = datetime.strptime(m.group(1), "%Y-%m-%d").date()
-            except ValueError:
-                return None
-
-    if not game_date:
         return None
 
-    # Check if today or recent
+    # Filter: only today, recent (2 days ago), or upcoming (3 days ahead)
     days_diff = (today - game_date).days
-    if days_diff < 0 and days_diff < -3:  # More than 3 days in future
-        return None
-    if days_diff > 2:  # More than 2 days ago
+    if days_diff > 2 or days_diff < -3:
         return None
 
-    # Find opponent
-    opp_el = item.find(class_=re.compile(r"opponent|team-name", re.I))
-    opponent = opp_el.get_text(strip=True) if opp_el else None
-    if not opponent:
-        # Try aria-label on links
-        links = item.find_all("a", attrs={"aria-label": True})
-        for link in links:
-            label = link.get("aria-label", "")
-            m = re.search(r'(?:vs\.?|at)\s+(.+?)(?:\s+on\s+|\s*$)', label, re.I)
-            if m:
-                opponent = m.group(1).strip()
-                break
-
-    if not opponent:
+    # Get opponent name
+    name_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-name"))
+    if not name_el:
         return None
 
-    # Clean opponent name (remove ranking prefix)
+    # The opponent name is usually in an <a> tag inside
+    opp_link = name_el.find("a")
+    opponent = opp_link.get_text(strip=True) if opp_link else name_el.get_text(strip=True)
+
+    # Clean up: remove "(DH)" suffix, rankings, etc.
+    opponent = re.sub(r'\s*\(DH\)\s*', '', opponent).strip()
     opponent_display = opponent
-    opponent = re.sub(r'^#\d+\s+', '', opponent).strip()
+    opponent_clean = re.sub(r'^#\d+\s+', '', opponent).strip()
 
-    # Find scores
+    # Determine at/vs (home or away)
+    text_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-text"))
+    location = "home"
+    if text_el:
+        at_vs_text = text_el.get_text(" ", strip=True)
+        if at_vs_text.lower().startswith("at"):
+            location = "away"
+
+    # Get score from fulltext: "W, 3-2" or "L, 0-5"
+    full_text = item.get_text(" ", strip=True)
     team_score = None
     opp_score = None
     status = "scheduled"
 
-    score_els = item.find_all(class_=re.compile(r"score", re.I))
-    if len(score_els) >= 2:
-        try:
-            team_score = int(re.search(r'\d+', score_els[0].get_text()).group())
-            opp_score = int(re.search(r'\d+', score_els[1].get_text()).group())
-            status = "final"
-        except (ValueError, AttributeError):
-            pass
+    score_match = re.search(r'([WLT]),?\s*(\d+)\s*-\s*(\d+)', full_text)
+    if score_match:
+        team_score = int(score_match.group(2))
+        opp_score = int(score_match.group(3))
+        status = "final"
 
-    # Also check for "W, 8-3" or "L, 4-10" patterns in text
-    if team_score is None:
-        score_m = re.search(r'([WLT])\s*,?\s*(\d+)\s*-\s*(\d+)', text)
-        if score_m:
-            team_score = int(score_m.group(2))
-            opp_score = int(score_m.group(3))
-            status = "final"
-
-    # Check for live indicators
-    if re.search(r'\b(live|in progress|in\s*game|top|bot|bottom|mid)\b', text, re.I):
+    # Check for live game indicators
+    if re.search(r'\b(live|in progress|in\s*game)\b', full_text, re.I):
         status = "live"
 
-    # Determine location
-    location = "home"
-    if re.search(r'\bat\b|\baway\b', text, re.I) or item.find(string=re.compile(r'^at$|^@', re.I)):
-        location = "away"
-    loc_el = item.find(class_=re.compile(r"location", re.I))
-    if loc_el and re.search(r'at|away', loc_el.get_text(), re.I):
-        location = "away"
+    # Extract time from date text (e.g., "12:00 p.m.")
+    time_match = re.search(r'(\d{1,2}:\d{2}\s*[ap]\.?m\.?)', date_text, re.I)
+    time_text = time_match.group(1) if time_match else ""
 
-    # Extract time
-    time_text = ""
-    time_display = item.find(class_=re.compile(r"time|start", re.I))
-    if time_display:
-        time_text = time_display.get_text(strip=True)
-
-    is_today = game_date == today
+    # Conference game?
+    is_conf = bool(item.find(class_=re.compile(r"conference")))
 
     return {
         "id": None,
         "team": team_name,
         "team_division": team_info.get("division", ""),
-        "opponent": opponent,
+        "opponent": opponent_clean,
         "opponent_display": opponent_display,
         "opponent_image": "",
         "date": game_date.isoformat() + "T00:00:00",
@@ -525,7 +488,7 @@ def _parse_html_game_item(item, team_name, team_info, today):
         "opponent_score": str(opp_score) if opp_score is not None else None,
         "result_status": None,
         "line_scores": None,
-        "is_conference": False,
+        "is_conference": is_conf,
     }
 
 
