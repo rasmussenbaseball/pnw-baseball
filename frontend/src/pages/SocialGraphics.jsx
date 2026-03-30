@@ -819,7 +819,8 @@ const LeaderCard = forwardRef(function LeaderCard(
           display: 'flex',
           alignItems: 'center',
           height: colHeaderH,
-          paddingLeft: rankW + logoW + 4,
+          padding: `0 ${Math.floor(w * 0.01)}px`,
+          paddingLeft: Math.floor(w * 0.01) + 3 + rankW + logoW + 4,
           fontSize: Math.floor(fontSize * 0.6),
           fontWeight: 700,
           color: theme.textMuted,
@@ -922,14 +923,14 @@ const LeaderCard = forwardRef(function LeaderCard(
                 </div>
 
                 {/* Name info */}
-                <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', paddingLeft: 4 }}>
+                <div style={{ flex: 1, minWidth: 0, paddingLeft: 4, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <div style={{
                     fontSize: fontSize,
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    lineHeight: 1.15,
+                    lineHeight: 1.2,
                   }}>
                     {name}
                   </div>
@@ -937,7 +938,8 @@ const LeaderCard = forwardRef(function LeaderCard(
                     display: 'flex',
                     alignItems: 'center',
                     gap: 5,
-                    marginTop: 1,
+                    marginTop: 0,
+                    lineHeight: 1.2,
                   }}>
                     <span style={{
                       fontSize: Math.floor(fontSize * 0.68),
