@@ -196,6 +196,10 @@ function GameCard({ game }) {
         {/* Team (away perspective or whatever team we scraped from) */}
         <div className={`flex items-center justify-between py-1 ${oppWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
+            {game.team_logo && (
+              <img src={game.team_logo} alt="" className="w-5 h-5 object-contain shrink-0"
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
             <span className="text-sm font-semibold text-gray-800 truncate">{game.team}</span>
           </div>
           {teamScore != null ? (
@@ -214,7 +218,7 @@ function GameCard({ game }) {
               <img
                 src={game.opponent_image}
                 alt=""
-                className="w-4 h-4 object-contain shrink-0"
+                className="w-5 h-5 object-contain shrink-0"
                 onError={(e) => { e.target.style.display = 'none' }}
               />
             )}
@@ -239,11 +243,23 @@ function GameCard({ game }) {
         )}
       </div>
 
-      {/* Footer — date and time (skip time if already shown in card body) */}
+      {/* Footer — date, time, and box score link */}
       <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
         <div className="text-[10px] text-gray-400 flex items-center justify-between">
           <span>{gameDate}</span>
-          <span>{!isScheduled ? gameTime : ''}</span>
+          <div className="flex items-center gap-2">
+            {!isScheduled && gameTime && <span>{gameTime}</span>}
+            {isFinal && game.box_score_url && (
+              <a
+                href={game.box_score_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] font-semibold text-nw-teal hover:underline"
+              >
+                Box Score
+              </a>
+            )}
+          </div>
         </div>
       </div>
     </div>

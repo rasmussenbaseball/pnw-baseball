@@ -122,6 +122,39 @@ TEAM_NAME_ALIASES = {
 }
 
 
+# Maps our team keys to their logo file paths (matches database logo_url values)
+TEAM_LOGOS = {
+    "UW": "/logos/teams/uw.svg",
+    "Oregon": "/logos/teams/oregon.svg",
+    "Oregon St.": "/logos/teams/oregon_st.svg",
+    "Wash. St.": "/logos/washington_state.png",
+    "Gonzaga": "/logos/teams/gonzaga.png",
+    "Portland": "/logos/teams/portland.svg",
+    "Seattle U": "/logos/teams/seattle_u.svg",
+    "CWU": "/logos/teams/cwu.svg",
+    "SMU": "/logos/teams/smu.png",
+    "MSUB": "/logos/teams/msub.png",
+    "WOU": "/logos/teams/wou.png",
+    "NNU": "/logos/teams/nnu.png",
+    "UPS": "/logos/teams/ups.png",
+    "PLU": "/logos/teams/plu.svg",
+    "Whitman": "/logos/teams/whitman.svg",
+    "Whitworth": "/logos/teams/whitworth.png",
+    "L&C": "/logos/teams/landc.png",
+    "Pacific": "/logos/teams/pacific.png",
+    "Linfield": "/logos/linfield.svg",
+    "GFU": "/logos/george_fox.png",
+    "LCSC": "/logos/teams/lcsc.svg",
+    "EOU": "/logos/teams/eou.png",
+    "OIT": "/logos/teams/oit.svg",
+    "C of I": "/logos/teams/c_of_i.svg",
+    "Corban": "/logos/teams/corban.svg",
+    "Bushnell": "/logos/bushnell.png",
+    "Warner Pacific": "/logos/teams/warner_pacific.png",
+    "UBC": "/logos/teams/ubc.svg",
+}
+
+
 def normalize_team_name(name):
     """Map an opponent name to our standard team key, or return the original."""
     if not name:
@@ -394,13 +427,20 @@ def format_game(game, team_name, team_info):
                 "away_scores": ls.get("period_away_score", []),
             }
 
+    # Look up logos
+    team_logo = TEAM_LOGOS.get(team_name, "")
+    opp_clean = re.sub(r'^#\d+\s+', '', opp_name).strip()
+    opp_key = normalize_team_name(opp_clean)
+    opponent_logo = TEAM_LOGOS.get(opp_key, "") or opp_image
+
     formatted = {
         "id": game.get("id"),
         "team": team_name,
         "team_division": team_info.get("division", ""),
-        "opponent": re.sub(r'^#\d+\s+', '', opp_name).strip(),
+        "team_logo": team_logo,
+        "opponent": opp_clean,
         "opponent_display": opp_name,  # Keep ranking prefix for display
-        "opponent_image": opp_image,
+        "opponent_image": opponent_logo,
         "date": game.get("date", ""),
         "time": game.get("time", ""),
         "status": status,
@@ -411,6 +451,7 @@ def format_game(game, team_name, team_info):
         "result_status": result.get("status") if isinstance(result, dict) else None,
         "line_scores": line_scores,
         "is_conference": game.get("conference", False),
+        "box_score_url": game.get("url", ""),  # Nuxt games may have a URL field
     }
 
     return formatted
@@ -530,13 +571,31 @@ def _parse_legacy_sidearm_game(item, team_name, team_info, today):
     # Conference game?
     is_conf = bool(item.find(class_=re.compile(r"conference")))
 
+    # Look up logos for both teams
+    team_logo = TEAM_LOGOS.get(team_name, "")
+    opp_key = normalize_team_name(opponent_clean)
+    opponent_logo = TEAM_LOGOS.get(opp_key, "")
+
+    # Extract box score URL if available
+    box_score_url = ""
+    box_link = item.find("a", string=re.compile(r"box\s*score", re.I))
+    if box_link and box_link.get("href"):
+        href = box_link["href"]
+        # Make it a full URL
+        base_url = team_info.get("url", "")
+        if href.startswith("/"):
+            box_score_url = base_url + href
+        elif href.startswith("http"):
+            box_score_url = href
+
     return {
         "id": None,
         "team": team_name,
         "team_division": team_info.get("division", ""),
+        "team_logo": team_logo,
         "opponent": opponent_clean,
         "opponent_display": opponent_display,
-        "opponent_image": "",
+        "opponent_image": opponent_logo,
         "date": game_date.isoformat() + "T00:00:00",
         "time": time_text,
         "status": status,
@@ -547,6 +606,7 @@ def _parse_legacy_sidearm_game(item, team_name, team_info, today):
         "result_status": None,
         "line_scores": None,
         "is_conference": is_conf,
+        "box_score_url": box_score_url,
     }
 
 
@@ -629,12 +689,25 @@ def main():
         try:
             games = scrape_team_scores(team_name, team_info, args.season, today)
             for g in games:
-                if g["status"] == "live" or is_today_or_recent(g["date"], today)[0]:
+                # Parse the game date for proper categorization
+                game_date = None
+                try:
+                    game_date = datetime.fromisoformat(
+                        g["date"].replace("Z", "+00:00")
+                    ).date()
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+                is_today = game_date == today if game_date else False
+                is_future = game_date > today if game_date else False
+
+                if g["status"] == "live" or is_today:
                     all_games["today"].append(g)
-                elif g["status"] == "final":
-                    all_games["recent"].append(g)
-                else:
+                elif is_future:
                     all_games["upcoming"].append(g)
+                else:
+                    # Past games (with or without scores) go to recent
+                    all_games["recent"].append(g)
         except Exception as e:
             logger.error(f"Error scraping {team_name}: {e}")
             continue
