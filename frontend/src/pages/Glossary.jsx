@@ -373,35 +373,118 @@ function AboutSection() {
     <div>
       <Card title="Why This Site Exists">
         <P>
-          NW Baseball Stats was created to bring modern analytics to Northwest baseball. While MLB has FanGraphs, Baseball Reference, and Statcast, college baseball, especially at the D2, D3, NAIA, and JUCO levels, has almost no publicly available advanced statistics. We wanted to change that.
+          NW Baseball Stats was created to bring modern analytics to Northwest baseball. While MLB has FanGraphs, Baseball Reference, and Statcast, college baseball — especially at the D2, D3, NAIA, and JUCO levels — has almost no publicly available advanced statistics. We wanted to change that.
         </P>
         <P>
           Every player at every level deserves to have their contributions measured fairly. A catcher at a JUCO who's putting up a 150 wRC+ should be visible to four-year programs looking for transfers. A D3 pitcher with a 2.50 FIP should be recognized even if their ERA is inflated by poor defense. That's the gap this site fills.
         </P>
       </Card>
 
+      <Card title="What You Can Do on This Site" subtitle="A full breakdown of every feature available">
+        <div className="my-4 space-y-4">
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Leaderboards</h4>
+            <p className="text-sm text-gray-600">
+              Browse batting, pitching, and WAR leaderboards with full filtering by division, conference, year class, and season. The Stat Leaders page shows the top 5 in key categories at a glance. Every leaderboard supports both traditional stats and advanced metrics like wRC+, FIP, SIERA, and WAR.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Player Profiles</h4>
+            <p className="text-sm text-gray-600">
+              Every player has a detailed profile page showing their full stat line, career numbers, percentile rankings against their division, game logs, and WAR breakdown. Players who transferred between programs are linked across their records so their full career is visible in one place, with logos for every team they've played for.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Team Pages & Standings</h4>
+            <p className="text-sm text-gray-600">
+              Each team has a dedicated page with its full roster, team stats, win-loss record, conference standings, and national ranking context. The Standings page shows conference races across all divisions. Team Ratings uses our PPI (Power Performance Index) to rank teams within their division.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Scores, Results & Box Scores</h4>
+            <p className="text-sm text-gray-600">
+              The Scoreboard shows live and recent games across the Northwest. The Results page lets you browse completed games with score, date, and opponent. Every game has a detailed box score page with full batting and pitching lines for both teams, plus a play-by-play summary when available.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Scatter Plot Tool</h4>
+            <p className="text-sm text-gray-600">
+              A visual analysis tool that lets you plot any two stats against each other — for example, K% vs. BB% for pitchers, or wRC+ vs. batting average for hitters. Filter by division, conference, or position to compare players in context.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Team Comparison & Matchups</h4>
+            <p className="text-sm text-gray-600">
+              Compare any two teams head-to-head across key stats. Useful for previewing upcoming matchups or evaluating programs side-by-side.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">JUCO Tracker</h4>
+            <p className="text-sm text-gray-600">
+              A dedicated tool for tracking JUCO talent across the NWAC. Filter by position, stats, and commitment status to find uncommitted players who might be available for four-year programs.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Social Graphics</h4>
+            <p className="text-sm text-gray-600">
+              Create shareable leaderboard graphics for social media. Choose any stat, pick a size preset (Instagram post, IG Story, Twitter/X), customize the player count and filters, and download a high-quality PNG. Built for coaches, fans, and media who want to share PNW baseball stats.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">PNW Grid</h4>
+            <p className="text-sm text-gray-600">
+              An Immaculate Grid-style game built specifically for PNW college baseball. A 3x3 grid with team, conference, and stat-based criteria — guess players who fit each cell. Tracks players across transfers, so a player who hit .300 at Bellevue CC and later played at LC State counts for both programs. Requires a free account to play.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">User Accounts & Favorites</h4>
+            <p className="text-sm text-gray-600">
+              Create a free account to unlock features like PNW Grid and Favorites. Star your favorite teams and players to build a personalized dashboard and keep tabs on the programs and prospects you care about.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Search</h4>
+            <p className="text-sm text-gray-600">
+              A global search bar (press "/" to open) lets you quickly find any player or team across all divisions. The Players page also supports advanced filtering by position, year class, division, and more.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Recruiting Map</h4>
+            <p className="text-sm text-gray-600">
+              A visual map of all PNW baseball programs showing their locations, divisions, and conferences. Helpful for understanding the geographic landscape of Northwest college baseball.
+            </p>
+          </div>
+        </div>
+      </Card>
+
       <Card title="How the Site Was Built" subtitle="Full transparency into our tech stack and process">
         <P>
-          This entire site (frontend, backend, database, scrapers, advanced stats engine, and all) was built collaboratively by a human and an AI (Claude by Anthropic). The AI handled the coding implementation while the human drove the vision, design decisions, data validation, and quality control. Neither could have built this alone.
+          This entire site — frontend, backend, database, scrapers, advanced stats engine, and all — was built collaboratively by a human and an AI (Claude by Anthropic). The AI handled the coding implementation while the human drove the vision, design decisions, data validation, and quality control. Neither could have built this alone.
         </P>
 
         <div className="my-4 space-y-4">
           <div>
             <h4 className="text-sm font-bold text-gray-800 mb-1">Frontend</h4>
             <p className="text-sm text-gray-600">
-              React 18 with React Router for navigation. Styled with Tailwind CSS for a consistent, responsive design. Vite as the build tool for fast development. Recharts and TanStack Table for data visualization and sortable tables.
+              React 18 with React Router for navigation. Styled with Tailwind CSS for a consistent, responsive design. Vite as the build tool for fast development. Recharts and TanStack Table for data visualization and sortable tables. Supabase for user authentication.
             </p>
           </div>
           <div>
             <h4 className="text-sm font-bold text-gray-800 mb-1">Backend</h4>
             <p className="text-sm text-gray-600">
-              Python FastAPI serving a REST API. SQLite as the database, which is lightweight, portable, and more than sufficient for our data volume. The entire database is a single file that can be backed up or moved easily.
+              Python FastAPI serving a REST API. SQLite as the database, which is lightweight, portable, and more than sufficient for our data volume. The entire database is a single file that can be backed up or moved easily. Hosted on a DigitalOcean droplet with Nginx as a reverse proxy.
             </p>
           </div>
           <div>
             <h4 className="text-sm font-bold text-gray-800 mb-1">Data Collection</h4>
             <p className="text-sm text-gray-600">
-              Five custom Python scrapers (one per division) collect stats from each team's official athletics website. D1/D2/D3/NAIA teams use Sidearm Sports platforms; NWAC uses PrestoSports. The scrapers handle multiple site formats, JavaScript-rendered pages, and various HTML structures using BeautifulSoup and Requests. Win-loss records are automatically extracted during each scraper run.
+              Custom Python scrapers collect season stats, box scores, and game results from each team's official athletics website. D1/D2/D3/NAIA teams use Sidearm Sports platforms; NWAC uses PrestoSports. The scrapers handle multiple HTML formats (Sidearm v2, v3, and legacy layouts) using BeautifulSoup and Requests. Box scores are scraped individually to provide game-level detail and game logs. Win-loss records and standings are automatically extracted during each run.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-1">Player Linking</h4>
+            <p className="text-sm text-gray-600">
+              When a player transfers between schools, they get a new record in the source data. Our player linking system connects these records so a player's full career — across every program they've played for — is visible in a single profile. This also powers PNW Grid, where a player's stats at all their schools count toward grid criteria.
             </p>
           </div>
           <div>
@@ -413,7 +496,7 @@ function AboutSection() {
           <div>
             <h4 className="text-sm font-bold text-gray-800 mb-1">Data Pipeline</h4>
             <p className="text-sm text-gray-600">
-              Scrape raw stats → compute traditional rates → compute advanced metrics (wOBA, FIP, SIERA) → compute league averages per division → recalculate league-adjusted stats (wRC+, FIP+, ERA+) → compute WAR. This pipeline runs on demand and can be triggered for individual divisions or all at once.
+              Scrape raw stats → scrape box scores → compute traditional rates → compute advanced metrics (wOBA, FIP, SIERA) → compute league averages per division → recalculate league-adjusted stats (wRC+, FIP+, ERA+) → compute WAR. This pipeline runs daily during the season and can be triggered for individual divisions or all at once.
             </p>
           </div>
         </div>
@@ -427,31 +510,35 @@ function AboutSection() {
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">D1, D2, D3, NAIA:</span> Sidearm Sports platform, individual team stats pages hosted on each school's athletics domain.</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NWAC:</span> PrestoSports (nwacsports.com), centralized stats platform for all NWAC teams.</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">D3 (Willamette):</span> PrestoSports (nwcsports.com), Northwest Conference stats platform.</p>
+          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Box scores:</span> Individual game box scores scraped from each team's schedule/results page, providing game-level batting and pitching lines.</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Win-loss records:</span> Automatically extracted from stats/schedule pages during each scraper run, with fallback to conference standings pages.</p>
         </div>
       </Card>
 
       <Card title="Coverage">
         <P>
-          We currently track 57 teams across five divisions in the Northwest, covering Washington, Oregon, Idaho, Montana, and British Columbia:
+          We currently track 57 teams across five divisions in the Pacific Northwest, covering Washington, Oregon, Idaho, Montana, and British Columbia:
         </P>
         <div className="my-3 space-y-1.5">
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NCAA D1 (7 teams):</span> Oregon, Oregon State, Washington, Washington State, Gonzaga, Portland, Seattle U</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NCAA D2 (5 teams):</span> Central Washington, Montana State Billings, Northwest Nazarene, Saint Martin's, Western Oregon</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NCAA D3 (9 teams):</span> George Fox, Lewis & Clark, Linfield, Pacific, PLU, UPS, Whitman, Whitworth, Willamette</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NAIA (8 teams):</span> Bushnell, College of Idaho, Corban, Eastern Oregon, Lewis-Clark State, Oregon Tech, UBC, Warner Pacific</p>
-          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NWAC (28 teams):</span> All community college programs across four divisions (East, North, South, West)</p>
+          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NWAC (28 teams):</span> All community college programs across four sub-conferences (East, North, South, West)</p>
         </div>
       </Card>
 
-      <Card title="Open Questions & Future Work">
+      <Card title="Coming Soon">
         <P>
-          This is a living project. Things we're actively working on or thinking about:
+          This is a living project. Here's what we're building next:
         </P>
         <div className="my-3 space-y-1.5 text-sm text-gray-600">
-          <p><span className="font-semibold text-gray-700">Park factors:</span> We plan to develop team-specific park factors based on home/away run differentials once we have enough game-level data.</p>
-          <p><span className="font-semibold text-gray-700">Baserunning value:</span> Adding stolen base and baserunning components to oWAR when we can source game-level base advancement data.</p>
-          <p><span className="font-semibold text-gray-700">Historical data:</span> Building out prior seasons to enable year-over-year comparisons and development tracking for multi-year players.</p>
+          <p><span className="font-semibold text-gray-700">Recruiting tools:</span> Rankings, class breakdowns, historical recruiting trends, and a field-level visualization for PNW programs.</p>
+          <p><span className="font-semibold text-gray-700">Scouting reports:</span> Player and team scouting pages with tendencies, strengths, and areas to target.</p>
+          <p><span className="font-semibold text-gray-700">Draft boards:</span> MLB Draft prospect rankings for PNW players across the 2026, 2027, and 2028 classes.</p>
+          <p><span className="font-semibold text-gray-700">Summerball data:</span> Stats from summer collegiate leagues to track player development year-round.</p>
+          <p><span className="font-semibold text-gray-700">Park factors:</span> Team-specific park factors based on home/away run differentials once we have enough game-level data.</p>
+          <p><span className="font-semibold text-gray-700">Historical seasons:</span> Building out prior years to enable year-over-year comparisons and development tracking for multi-year players.</p>
           <p><span className="font-semibold text-gray-700">Feedback welcome:</span> If you spot a data error, have a methodology suggestion, or just want to talk PNW baseball, we'd love to hear from you.</p>
         </div>
       </Card>

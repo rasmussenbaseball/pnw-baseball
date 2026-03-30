@@ -226,9 +226,12 @@ export default function PnwGrid() {
             <div key={`row-group-${ri}`} className="contents">
               {/* Row header */}
               <div
-                className="border-b border-r border-gray-200 p-2 flex items-center justify-center text-center"
+                className="border-b border-r border-gray-200 p-2 flex flex-col items-center justify-center text-center"
                 style={{ backgroundColor: '#00687a' }}
               >
+                {row.category && (
+                  <span className="text-[8px] uppercase tracking-wider text-teal-300 font-semibold leading-tight mb-0.5">{row.category}</span>
+                )}
                 <span className="text-xs font-bold text-white leading-tight">{row.label}</span>
               </div>
 
@@ -425,6 +428,7 @@ export default function PnwGrid() {
         <p className="font-semibold text-gray-600 mb-1">How to play</p>
         <p>Select a cell and search for a player who fits <strong>both</strong> the row and column criteria.
         Each player can only be used once. You have {MAX_GUESSES} guesses to fill the 3×3 grid.</p>
+        <p className="mt-1.5 text-gray-400">Data includes the 2022 season and later only.</p>
       </div>
     </div>
   )

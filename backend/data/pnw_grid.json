@@ -7,8 +7,8 @@
     {"type": "division", "label": "Any PNW School", "value": "ALL"}
   ],
   "rows": [
-    {"type": "season_batting", "label": "Season AVG > .300", "stat": "batting_avg", "operator": ">", "threshold": 0.300},
-    {"type": "career_batting", "label": "5+ Career HR", "stat": "home_runs", "operator": ">=", "threshold": 5},
-    {"type": "season_pitching", "label": "5+ Games Started", "stat": "games_started", "operator": ">=", "threshold": 5}
+    {"type": "season_batting", "label": "Season AVG > .300", "category": "Season Batting", "stat": "batting_avg", "operator": ">", "threshold": 0.300},
+    {"type": "career_batting", "label": "5+ Career HR", "category": "Career Batting", "stat": "home_runs", "operator": ">=", "threshold": 5},
+    {"type": "season_pitching", "label": "5+ Games Started", "category": "Season Pitching", "stat": "games_started", "operator": ">=", "threshold": 5}
   ]
 }

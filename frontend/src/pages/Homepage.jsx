@@ -26,7 +26,7 @@ export default function Homepage() {
   const { data: leaders } = useStatLeaders(SEASON, 5, true)
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
-  const { data: recentGames } = useGamesTicker(SEASON, 12)
+  const { data: recentGames } = useGamesTicker(SEASON, 20)
   const { data: liveData } = useLiveScores()
 
   // If there are live/today games, show those in the ticker area
@@ -141,7 +141,7 @@ function LiveGamesTicker({ games, hasLive }) {
         <div className={`flex-none px-3 py-2 ${hasLive ? 'bg-red-600' : 'bg-pnw-slate'} text-white`}>
           <Link to="/scoreboard" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors flex items-center gap-1">
             {hasLive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-            {hasLive ? 'Live' : 'Today'}
+            {hasLive ? 'Live' : 'Recent'}
           </Link>
         </div>
         <div className="flex overflow-x-auto scrollbar-hide gap-0 divide-x divide-gray-100 flex-1">
@@ -161,14 +161,26 @@ function LiveGamesTicker({ games, hasLive }) {
               >
                 {/* Team */}
                 <div className={`flex items-center justify-between gap-2 ${oppWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
-                  <span className="text-[11px] truncate">{g.team}</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    {g.team_logo && (
+                      <img src={g.team_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-[11px] truncate">{g.team}</span>
+                  </div>
                   {teamScore != null ? (
                     <span className="text-[11px] font-mono tabular-nums">{teamScore}</span>
                   ) : null}
                 </div>
                 {/* Opponent */}
                 <div className={`flex items-center justify-between gap-2 ${teamWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
-                  <span className="text-[11px] truncate">{g.location === 'away' ? '@ ' : ''}{g.opponent}</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    {g.opponent_logo && (
+                      <img src={g.opponent_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-[11px] truncate">{g.location === 'away' ? '@ ' : ''}{g.opponent}</span>
+                  </div>
                   {oppScore != null ? (
                     <span className="text-[11px] font-mono tabular-nums">{oppScore}</span>
                   ) : null}

@@ -567,9 +567,6 @@ export default function Header() {
               <span className="text-sm sm:text-xl font-bold tracking-wide font-display">
                 NW BASEBALL STATS
               </span>
-              <span className="text-[10px] text-teal-200 tracking-widest uppercase hidden sm:block">
-                Northwest Baseball Statistics
-              </span>
             </div>
           </Link>
 
