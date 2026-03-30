@@ -38,6 +38,7 @@ import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
 import Glossary from './pages/Glossary'
+import PnwGrid from './pages/PnwGrid'
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
 
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/draft/2028" element={<DraftBoard year="28" />} />
 
           {/* Misc */}
+          <Route path="/pnw-grid" element={<PnwGrid />} />
           <Route path="/graphics" element={<SocialGraphics />} />
           <Route path="/players" element={<PlayerSearch />} />
 

@@ -233,3 +233,29 @@ export function useQualityStarts(season = 2026, limit = 25) {
 export function useGameScores(season = 2026, limit = 25) {
   return useApi('/games/game-scores', { season, limit }, [season, limit])
 }
+
+/**
+ * PNW Grid configuration.
+ */
+export function useGridConfig() {
+  return useApi('/grid/config', {}, [])
+}
+
+/**
+ * PNW Grid player search (for autocomplete).
+ */
+export async function gridSearchPlayers(query) {
+  if (!query || query.length < 2) return []
+  const resp = await fetch(`${API_BASE}/grid/search?q=${encodeURIComponent(query)}&limit=8`)
+  if (!resp.ok) return []
+  return resp.json()
+}
+
+/**
+ * PNW Grid guess check.
+ */
+export async function gridCheckGuess(playerId, row, col) {
+  const resp = await fetch(`${API_BASE}/grid/check/${playerId}/${row}/${col}`)
+  if (!resp.ok) throw new Error('Check failed')
+  return resp.json()
+}

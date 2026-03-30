@@ -4462,3 +4462,256 @@ def get_player_gamelogs(
             "batting": batting_logs,
             "pitching": pitching_logs,
         }
+
+
+# ============================================================
+# PNW GRID — Immaculate Grid for PNW College Baseball
+# ============================================================
+
+import json as _grid_json
+from pathlib import Path as _GridPath
+
+_GRID_CONFIG_PATH = _GridPath(__file__).resolve().parent.parent.parent / "data" / "pnw_grid.json"
+
+
+def _load_grid_config():
+    """Load the current PNW Grid configuration."""
+    try:
+        with open(_GRID_CONFIG_PATH) as f:
+            return _grid_json.load(f)
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+@router.get("/grid/config")
+def grid_config():
+    """Return the current PNW Grid puzzle configuration."""
+    config = _load_grid_config()
+    if not config:
+        raise HTTPException(status_code=404, detail="No grid configured")
+    return config
+
+
+@router.get("/grid/search")
+def grid_player_search(q: str = Query(..., min_length=2), limit: int = Query(10)):
+    """
+    Search players for the PNW Grid. Returns players with basic info
+    including all teams they've played for.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        search = f"%{q}%"
+
+        cur.execute("""
+            SELECT DISTINCT p.id, p.first_name, p.last_name, p.position,
+                   p.year_in_school, p.headshot_url,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN player_links pl ON p.id = pl.linked_id
+            WHERE pl.linked_id IS NULL
+              AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
+                   OR (p.first_name || ' ' || p.last_name) ILIKE %s)
+            ORDER BY p.last_name, p.first_name
+            LIMIT %s
+        """, (search, search, search, limit))
+
+        results = []
+        for r in cur.fetchall():
+            results.append(dict(r))
+
+        return results
+
+
+def _check_team_criteria(cur, player_id, criteria):
+    """
+    Check if a player has ever been on a team matching the criteria.
+    Criteria type can be: 'team', 'conference', 'division'.
+    Returns True/False.
+    """
+    ctype = criteria["type"]
+    value = criteria.get("value", "")
+
+    if ctype == "division" and value == "ALL":
+        # Any PNW school — always true if the player exists
+        return True
+
+    if ctype == "team":
+        cur.execute("""
+            SELECT 1 FROM player_seasons ps
+            JOIN teams t ON ps.team_id = t.id
+            WHERE ps.player_id = %s AND t.short_name = %s
+            UNION
+            SELECT 1 FROM players p
+            JOIN teams t ON p.team_id = t.id
+            WHERE p.id = %s AND t.short_name = %s
+            LIMIT 1
+        """, (player_id, value, player_id, value))
+        return cur.fetchone() is not None
+
+    if ctype == "conference":
+        cur.execute("""
+            SELECT 1 FROM player_seasons ps
+            JOIN teams t ON ps.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            WHERE ps.player_id = %s
+              AND (c.abbreviation ILIKE %s OR c.name ILIKE %s)
+            UNION
+            SELECT 1 FROM players p
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            WHERE p.id = %s
+              AND (c.abbreviation ILIKE %s OR c.name ILIKE %s)
+            LIMIT 1
+        """, (player_id, value, f"%{value}%",
+              player_id, value, f"%{value}%"))
+        return cur.fetchone() is not None
+
+    if ctype == "division":
+        cur.execute("""
+            SELECT 1 FROM player_seasons ps
+            JOIN teams t ON ps.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE ps.player_id = %s AND d.level = %s
+            UNION
+            SELECT 1 FROM players p
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE p.id = %s AND d.level = %s
+            LIMIT 1
+        """, (player_id, value, player_id, value))
+        return cur.fetchone() is not None
+
+    return False
+
+
+def _check_stat_criteria(cur, player_id, criteria):
+    """
+    Check if a player meets a stat criteria.
+    Types: season_batting, season_pitching, career_batting, career_pitching.
+    """
+    ctype = criteria["type"]
+    stat = criteria["stat"]
+    op = criteria.get("operator", ">=")
+    threshold = criteria["threshold"]
+
+    # Map operators
+    sql_op = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}
+    op_str = sql_op.get(op, ">=")
+
+    if ctype == "season_batting":
+        # Check if any single season meets the criteria
+        cur.execute(f"""
+            SELECT 1 FROM batting_stats bs
+            WHERE bs.player_id = %s AND bs.{stat} {op_str} %s
+            LIMIT 1
+        """, (player_id, threshold))
+        return cur.fetchone() is not None
+
+    if ctype == "career_batting":
+        # Sum career stats and check
+        # For rate stats (avg, obp, slg, ops), we need to recalculate
+        rate_stats = {"batting_avg", "on_base_pct", "slugging_pct", "ops",
+                      "iso", "babip", "bb_pct", "k_pct", "woba", "wrc_plus"}
+        if stat in rate_stats:
+            # For rate stats, check if any single season qualifies
+            # (career rate stats would need full recalculation)
+            cur.execute(f"""
+                SELECT 1 FROM batting_stats bs
+                WHERE bs.player_id = %s AND bs.{stat} {op_str} %s
+                LIMIT 1
+            """, (player_id, threshold))
+        else:
+            # Counting stats — sum across seasons
+            cur.execute(f"""
+                SELECT 1 FROM (
+                    SELECT SUM(bs.{stat}) as career_total
+                    FROM batting_stats bs
+                    WHERE bs.player_id = %s
+                ) sub
+                WHERE sub.career_total {op_str} %s
+            """, (player_id, threshold))
+        return cur.fetchone() is not None
+
+    if ctype == "season_pitching":
+        cur.execute(f"""
+            SELECT 1 FROM pitching_stats ps
+            WHERE ps.player_id = %s AND ps.{stat} {op_str} %s
+            LIMIT 1
+        """, (player_id, threshold))
+        return cur.fetchone() is not None
+
+    if ctype == "career_pitching":
+        rate_stats = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
+                      "hr_per_9", "k_bb_ratio", "fip", "babip_against",
+                      "era_minus", "fip_plus"}
+        if stat in rate_stats:
+            cur.execute(f"""
+                SELECT 1 FROM pitching_stats ps
+                WHERE ps.player_id = %s AND ps.{stat} {op_str} %s
+                LIMIT 1
+            """, (player_id, threshold))
+        else:
+            cur.execute(f"""
+                SELECT 1 FROM (
+                    SELECT SUM(ps.{stat}) as career_total
+                    FROM pitching_stats ps
+                    WHERE ps.player_id = %s
+                ) sub
+                WHERE sub.career_total {op_str} %s
+            """, (player_id, threshold))
+        return cur.fetchone() is not None
+
+    return False
+
+
+@router.get("/grid/check/{player_id}/{row}/{col}")
+def grid_check_guess(player_id: int, row: int, col: int):
+    """
+    Check if a player fits a specific grid cell (row, col).
+    Row = 0-2, Col = 0-2.
+    Returns whether the guess is correct and the player info.
+    """
+    config = _load_grid_config()
+    if not config:
+        raise HTTPException(status_code=404, detail="No grid configured")
+
+    if row < 0 or row > 2 or col < 0 or col > 2:
+        raise HTTPException(status_code=400, detail="Row and col must be 0-2")
+
+    row_criteria = config["rows"][row]
+    col_criteria = config["columns"][col]
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get player info
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position,
+                   p.year_in_school, p.headshot_url,
+                   t.short_name as team_short, t.logo_url
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            WHERE p.id = %s
+        """, (player_id,))
+        player = cur.fetchone()
+        if not player:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+        # Check both criteria
+        col_match = _check_team_criteria(cur, player_id, col_criteria)
+        row_match = _check_stat_criteria(cur, player_id, row_criteria)
+
+        correct = col_match and row_match
+
+        return {
+            "correct": correct,
+            "player": dict(player),
+            "col_match": col_match,
+            "row_match": row_match,
+        }

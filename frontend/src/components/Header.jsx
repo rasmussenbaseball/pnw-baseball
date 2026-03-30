@@ -61,6 +61,7 @@ const NAV = [
   {
     label: 'Misc',
     items: [
+      { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
       { to: '/graphics', label: 'Graphics', desc: 'Create social media images' },
     ],
   },

@@ -1,0 +1,14 @@
+{
+  "title": "PNW Grid #1",
+  "date": "2026-03-29",
+  "columns": [
+    {"type": "conference", "label": "NWAC North", "value": "NWAC North"},
+    {"type": "conference", "label": "CCC", "value": "CCC"},
+    {"type": "division", "label": "Any PNW School", "value": "ALL"}
+  ],
+  "rows": [
+    {"type": "season_batting", "label": "Season AVG > .300", "stat": "batting_avg", "operator": ">", "threshold": 0.300},
+    {"type": "career_batting", "label": "5+ Career HR", "stat": "home_runs", "operator": ">=", "threshold": 5},
+    {"type": "season_pitching", "label": "5+ Games Started", "stat": "games_started", "operator": ">=", "threshold": 5}
+  ]
+}
