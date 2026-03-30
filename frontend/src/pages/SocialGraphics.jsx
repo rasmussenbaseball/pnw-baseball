@@ -401,7 +401,21 @@ export default function SocialGraphics() {
     setExporting(true)
     try {
       const html2canvas = await loadHtml2Canvas()
-      const canvas = await html2canvas(cardRef.current, {
+      const el = cardRef.current
+
+      // Temporarily move the card to an off-screen container at full size
+      // so html2canvas isn't confused by the CSS scale transform
+      const offscreen = document.createElement('div')
+      offscreen.style.cssText = `position:fixed;left:-9999px;top:0;width:${size.w}px;height:${size.h}px;overflow:visible;z-index:-1;`
+      document.body.appendChild(offscreen)
+
+      const parent = el.parentNode
+      const next = el.nextSibling
+      const origTransform = el.style.transform
+      el.style.transform = 'none'
+      offscreen.appendChild(el)
+
+      const canvas = await html2canvas(el, {
         scale: 2,
         backgroundColor: null,
         useCORS: true,
@@ -409,6 +423,13 @@ export default function SocialGraphics() {
         width: size.w,
         height: size.h,
       })
+
+      // Move the card back to its original position
+      el.style.transform = origTransform
+      if (next) parent.insertBefore(el, next)
+      else parent.appendChild(el)
+      document.body.removeChild(offscreen)
+
       const link = document.createElement('a')
       link.download = `nwbb-${activeConfig.key}-top${count}-${season}.png`
       link.href = canvas.toDataURL('image/png')
