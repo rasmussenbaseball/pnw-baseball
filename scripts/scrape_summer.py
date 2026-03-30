@@ -189,9 +189,12 @@ def scrape_batting_stats(session, league_id, season_id):
         logger.warning("  Could not find batting stats table")
         return []
 
-    # Parse header indices
+    # Parse header indices — only keep first occurrence (headers repeat in the table)
     headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
-    col_map = {h: i for i, h in enumerate(headers)}
+    col_map = {}
+    for i, h in enumerate(headers):
+        if h not in col_map:
+            col_map[h] = i
 
     min_cols = max(col_map.values()) + 1 if col_map else 10
     for row in stats_table.find_all("tr"):
@@ -314,7 +317,10 @@ def scrape_pitching_stats(session, league_id, season_id):
         return []
 
     headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
-    col_map = {h: i for i, h in enumerate(headers)}
+    col_map = {}
+    for i, h in enumerate(headers):
+        if h not in col_map:
+            col_map[h] = i
 
     min_cols = max(col_map.values()) + 1 if col_map else 10
     for row in stats_table.find_all("tr"):
