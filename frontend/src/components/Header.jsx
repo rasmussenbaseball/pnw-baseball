@@ -19,6 +19,7 @@ const NAV = [
   {
     label: 'Teams',
     items: [
+      { to: '/scoreboard', label: 'Scoreboard', desc: 'Live scores & today\'s games' },
       { to: '/teams', label: 'Team Pages', desc: 'Rosters, stats & profiles' },
       { to: '/results', label: 'Results', desc: 'Game scores & box scores' },
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },

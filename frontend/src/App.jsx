@@ -36,6 +36,7 @@ import EnhancedScouting from './pages/EnhancedScouting'
 import ParkFactors from './pages/ParkFactors'
 import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
+import Scoreboard from './pages/Scoreboard'
 import Glossary from './pages/Glossary'
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/teams" element={<TeamsPage />} />
           <Route path="/standings" element={<StandingsPage />} />
           <Route path="/results" element={<ResultsPage />} />
+          <Route path="/scoreboard" element={<Scoreboard />} />
           <Route path="/game/:gameId" element={<GameDetail />} />
           <Route path="/team/:teamId" element={<TeamDetail />} />
           <Route path="/team-ratings" element={<TeamRatings />} />

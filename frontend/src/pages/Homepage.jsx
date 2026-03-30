@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 
 const SEASON = 2026
@@ -27,11 +27,20 @@ export default function Homepage() {
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
   const { data: recentGames } = useGamesTicker(SEASON, 12)
+  const { data: liveData } = useLiveScores()
+
+  // If there are live/today games, show those in the ticker area
+  const todayGames = liveData?.today || []
+  const hasLiveGames = todayGames.some(g => g.status === 'live')
 
   return (
     <div>
-      {/* Game results ticker */}
-      <GameResultsTicker games={recentGames} />
+      {/* Game results ticker — shows live games when available, otherwise recent results */}
+      {todayGames.length > 0 ? (
+        <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
+      ) : (
+        <GameResultsTicker games={recentGames} />
+      )}
 
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
@@ -110,6 +119,77 @@ function GameResultsTicker({ games }) {
           })}
         </div>
         <Link to="/results" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// LIVE GAMES TICKER (shows today's games with live indicators)
+// ════════════════════════════════════════════
+function LiveGamesTicker({ games, hasLive }) {
+  if (!games || games.length === 0) return null
+
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border overflow-hidden mb-3 ${hasLive ? 'border-red-200' : 'border-gray-200'}`}>
+      <div className="flex items-center">
+        <div className={`flex-none px-3 py-2 ${hasLive ? 'bg-red-600' : 'bg-pnw-slate'} text-white`}>
+          <Link to="/scoreboard" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors flex items-center gap-1">
+            {hasLive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+            {hasLive ? 'Live' : 'Today'}
+          </Link>
+        </div>
+        <div className="flex overflow-x-auto scrollbar-hide gap-0 divide-x divide-gray-100 flex-1">
+          {games.map((g, i) => {
+            const isLive = g.status === 'live'
+            const isFinal = g.status === 'final'
+            const teamScore = g.team_score != null ? parseInt(g.team_score) : null
+            const oppScore = g.opponent_score != null ? parseInt(g.opponent_score) : null
+            const teamWon = isFinal && teamScore > oppScore
+            const oppWon = isFinal && oppScore > teamScore
+
+            return (
+              <Link
+                key={`${g.id}-${g.team}-${i}`}
+                to="/scoreboard"
+                className={`flex-none px-3 py-1.5 hover:bg-gray-50 transition-colors min-w-[130px] ${isLive ? 'bg-red-50/50' : ''}`}
+              >
+                {/* Team */}
+                <div className={`flex items-center justify-between gap-2 ${oppWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
+                  <span className="text-[11px] truncate">{g.team}</span>
+                  {teamScore != null ? (
+                    <span className="text-[11px] font-mono tabular-nums">{teamScore}</span>
+                  ) : null}
+                </div>
+                {/* Opponent */}
+                <div className={`flex items-center justify-between gap-2 ${teamWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
+                  <span className="text-[11px] truncate">{g.location === 'away' ? '@ ' : ''}{g.opponent}</span>
+                  {oppScore != null ? (
+                    <span className="text-[11px] font-mono tabular-nums">{oppScore}</span>
+                  ) : null}
+                </div>
+                {/* Status */}
+                <div className="text-[9px] text-center mt-0.5">
+                  {isLive ? (
+                    <span className="text-red-500 font-bold animate-pulse">
+                      {g.game_state_display && g.game_state_display !== 'SCHEDULED' ? g.game_state_display : 'LIVE'}
+                    </span>
+                  ) : isFinal ? (
+                    <span className="text-gray-300">Final</span>
+                  ) : (
+                    <span className="text-gray-300">{g.time || 'TBD'}</span>
+                  )}
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+        <Link to="/scoreboard" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>

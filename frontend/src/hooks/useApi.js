@@ -214,6 +214,13 @@ export function useGamesTicker(season = 2026, limit = 12) {
 }
 
 /**
+ * Live scores / scoreboard data.
+ */
+export function useLiveScores() {
+  return useApi('/games/live', {}, [])
+}
+
+/**
  * Quality starts leaderboard.
  */
 export function useQualityStarts(season = 2026, limit = 25) {
