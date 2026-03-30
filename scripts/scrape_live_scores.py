@@ -82,6 +82,64 @@ SIDEARM_TEAMS = {
     "UBC":           {"url": "https://gothunderbirds.ca",    "sport": "baseball", "division": "NAIA"},
 }
 
+# Maps opponent names (as they appear on other teams' sites) to our team keys.
+# Used by dedup to recognize that "Western Oregon" = "WOU", etc.
+TEAM_NAME_ALIASES = {
+    # D1
+    "washington": "UW", "huskies": "UW", "university of washington": "UW",
+    "oregon": "Oregon", "ducks": "Oregon", "university of oregon": "Oregon",
+    "oregon state": "Oregon St.", "oregon st.": "Oregon St.", "oregon st": "Oregon St.", "beavers": "Oregon St.",
+    "washington state": "Wash. St.", "wash. st.": "Wash. St.", "washington st.": "Wash. St.", "cougars": "Wash. St.", "wsu": "Wash. St.",
+    "gonzaga": "Gonzaga", "bulldogs": "Gonzaga", "gonzaga university": "Gonzaga",
+    "portland": "Portland", "pilots": "Portland", "university of portland": "Portland",
+    "seattle": "Seattle U", "seattle u": "Seattle U", "seattle university": "Seattle U",
+    # D2
+    "central washington": "CWU", "cwu": "CWU", "central washington university": "CWU",
+    "saint martin's": "SMU", "saint martin's university": "SMU", "st. martin's": "SMU", "saint martins": "SMU", "smu": "SMU",
+    "montana state billings": "MSUB", "msub": "MSUB", "msu billings": "MSUB",
+    "western oregon": "WOU", "wou": "WOU", "western oregon university": "WOU",
+    "northwest nazarene": "NNU", "nnu": "NNU", "northwest nazarene university": "NNU",
+    # D3
+    "puget sound": "UPS", "ups": "UPS", "university of puget sound": "UPS",
+    "pacific lutheran": "PLU", "plu": "PLU", "pacific lutheran university": "PLU",
+    "whitman": "Whitman", "whitman college": "Whitman",
+    "whitworth": "Whitworth", "whitworth university": "Whitworth",
+    "lewis & clark": "L&C", "l&c": "L&C", "lewis and clark": "L&C",
+    "pacific": "Pacific", "pacific university": "Pacific", "pacific (ore.)": "Pacific", "boxers": "Pacific",
+    "linfield": "Linfield", "linfield university": "Linfield", "wildcats": "Linfield",
+    "george fox": "GFU", "gfu": "GFU", "george fox university": "GFU",
+    # NAIA
+    "lewis-clark state": "LCSC", "lcsc": "LCSC", "lewis-clark state college": "LCSC",
+    "lewis-clark state college (idaho)": "LCSC", "lewis-clark state (idaho)": "LCSC",
+    "eastern oregon": "EOU", "eou": "EOU", "eastern oregon university": "EOU",
+    "oregon tech": "OIT", "oit": "OIT", "oregon institute of technology": "OIT",
+    "college of idaho": "C of I", "c of i": "C of I", "the college of idaho": "C of I",
+    "corban": "Corban", "corban university": "Corban",
+    "bushnell": "Bushnell", "bushnell university": "Bushnell",
+    "warner pacific": "Warner Pacific", "warner pacific university": "Warner Pacific",
+    "warner pacific university (ore.)": "Warner Pacific",
+    "british columbia": "UBC", "ubc": "UBC", "university of british columbia": "UBC",
+}
+
+
+def normalize_team_name(name):
+    """Map an opponent name to our standard team key, or return the original."""
+    if not name:
+        return name
+    # Direct match to our team keys
+    if name in SIDEARM_TEAMS:
+        return name
+    # Try alias lookup (case-insensitive)
+    lower = name.lower().strip()
+    if lower in TEAM_NAME_ALIASES:
+        return TEAM_NAME_ALIASES[lower]
+    # Try partial matching — check if any alias is contained in the name
+    for alias, key in sorted(TEAM_NAME_ALIASES.items(), key=lambda x: -len(x[0])):
+        if alias in lower:
+            return key
+    return name
+
+
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -586,10 +644,10 @@ def main():
     all_games["recent"] = deduplicate_games(all_games["recent"])
     all_games["upcoming"] = deduplicate_games(all_games["upcoming"])
 
-    # Sort: live games first, then by time
+    # Sort: live games first, then final (most interesting), then scheduled
     all_games["today"].sort(key=lambda g: (
-        0 if g["status"] == "live" else 1 if g["status"] == "scheduled" else 2,
-        g.get("date", ""),
+        0 if g["status"] == "live" else 1 if g["status"] == "final" else 2,
+        g.get("time", "") or "99:99",
     ))
     all_games["recent"].sort(key=lambda g: g.get("date", ""), reverse=True)
     all_games["upcoming"].sort(key=lambda g: g.get("date", ""))
@@ -613,10 +671,24 @@ def deduplicate_games(games):
     """
     seen = {}
     for g in games:
-        # Create a key from the two teams, date, and time (for doubleheaders)
-        teams = sorted([g["team"], g["opponent"]])
+        # Normalize both team names so "WOU" and "Western Oregon" map to the same key
+        norm_team = normalize_team_name(g["team"])
+        norm_opp = normalize_team_name(g["opponent"])
+        teams = sorted([norm_team, norm_opp])
         date_key = g.get("date", "")[:10]  # Just the date part
-        time_key = g.get("time", "").strip()
+
+        # For doubleheaders, parse the time to a rough hour so "4 p.m." and "4:00 PM" match
+        time_str = g.get("time", "").strip().lower()
+        hour_match = re.search(r'(\d{1,2})', time_str)
+        is_pm = 'p' in time_str
+        if hour_match:
+            hour = int(hour_match.group(1))
+            if is_pm and hour != 12:
+                hour += 12
+            time_key = str(hour)
+        else:
+            time_key = ""
+
         key = f"{teams[0]}_{teams[1]}_{date_key}_{time_key}"
 
         if key not in seen:

@@ -239,11 +239,11 @@ function GameCard({ game }) {
         )}
       </div>
 
-      {/* Footer — time/date */}
+      {/* Footer — date and time (skip time if already shown in card body) */}
       <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
         <div className="text-[10px] text-gray-400 flex items-center justify-between">
           <span>{gameDate}</span>
-          <span>{gameTime || ''}</span>
+          <span>{!isScheduled ? gameTime : ''}</span>
         </div>
       </div>
     </div>
