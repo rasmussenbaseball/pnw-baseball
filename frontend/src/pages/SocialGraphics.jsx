@@ -263,19 +263,45 @@ function fmt(val, format) {
   }
 }
 
-// ─── Load html2canvas from CDN ───
-let html2canvasPromise = null
-function loadHtml2Canvas() {
-  if (html2canvasPromise) return html2canvasPromise
-  html2canvasPromise = new Promise((resolve, reject) => {
-    if (window.html2canvas) { resolve(window.html2canvas); return }
-    const script = document.createElement('script')
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
-    script.onload = () => resolve(window.html2canvas)
-    script.onerror = () => reject(new Error('Failed to load html2canvas'))
-    document.head.appendChild(script)
+// ─── Canvas Export Helpers ───
+function loadExportImage(src) {
+  return new Promise((resolve) => {
+    if (!src) { resolve(null); return }
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = src.startsWith('/') ? window.location.origin + src : src
   })
-  return html2canvasPromise
+}
+
+function drawImageContain(ctx, img, x, y, boxW, boxH) {
+  if (!img) return
+  const scale = Math.min(boxW / img.width, boxH / img.height)
+  const dw = img.width * scale
+  const dh = img.height * scale
+  ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, dw, dh)
+}
+
+function canvasRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function truncText(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text
+  let t = text
+  while (t.length > 0 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
+  return t + '…'
 }
 
 // ─── Helper: get available stats list for custom picker ───
@@ -397,39 +423,286 @@ export default function SocialGraphics() {
 
   // ─── Export handler ───
   const handleExport = useCallback(async () => {
-    if (!cardRef.current) return
+    if (!items.length) return
     setExporting(true)
     try {
-      const html2canvas = await loadHtml2Canvas()
-      const el = cardRef.current
+      const dpr = 2
+      const w = size.w, h = size.h
+      const isLandscapeLocal = w > h
+      const isTallLocal = h / w > 1.5
+      const config = activeConfig
+      const extraCols = config.extra || []
 
-      // Temporarily move the card to an off-screen container at full size
-      // so html2canvas isn't confused by the CSS scale transform
-      const offscreen = document.createElement('div')
-      offscreen.style.cssText = `position:fixed;left:-9999px;top:0;width:${size.w}px;height:${size.h}px;overflow:visible;z-index:-1;`
-      document.body.appendChild(offscreen)
+      // Layout calculations (matching LeaderCard exactly)
+      const headerH = isTallLocal ? h * 0.10 : isLandscapeLocal ? h * 0.15 : h * 0.16
+      const footerH = isLandscapeLocal ? 30 : isTallLocal ? 36 : 40
+      const bodyPadY = Math.floor(isLandscapeLocal ? 4 : isTallLocal ? w * 0.015 : w * 0.015)
+      const bodyH = h - headerH - footerH - bodyPadY * 2
+      const colHeaderH = isLandscapeLocal ? 18 : 24
+      const actualCount = Math.max(count, 1)
+      const rowH = Math.floor((bodyH - colHeaderH) / actualCount)
+      const fontSize = Math.min(Math.max(Math.floor(w / 55), 13), 22)
+      const titleSize = isLandscapeLocal
+        ? Math.min(Math.max(Math.floor(w / 30), 18), 34)
+        : Math.min(Math.max(Math.floor(w / 24), 20), 42)
+      const subtitleSz = Math.max(Math.floor(titleSize * 0.42), 10)
+      const rankSize = Math.max(fontSize + 2, 16)
+      const logoSize = Math.min(Math.floor(rowH * 0.55), 32)
+      const mainStatW = Math.floor(w * 0.10)
+      const extraW = Math.floor(w * 0.09)
+      const rankW = Math.floor(w * 0.045)
+      const logoW = logoSize + 8
+      const recordW = isTeamMode ? Math.floor(w * 0.08) : 0
+      const bodyPadX = Math.floor(w * 0.035)
+      const rowPadX = Math.floor(w * 0.01)
+      const headerPadX = Math.floor(w * 0.04)
+      const font = 'Inter, Helvetica Neue, sans-serif'
 
-      const parent = el.parentNode
-      const next = el.nextSibling
-      const origTransform = el.style.transform
-      el.style.transform = 'none'
-      offscreen.appendChild(el)
+      // Pre-load all images in parallel
+      const [faviconImg, ...logoImgs] = await Promise.all([
+        loadExportImage('/favicon.png'),
+        ...items.slice(0, count).map(p => loadExportImage(p.logo_url))
+      ])
 
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        backgroundColor: null,
-        useCORS: true,
-        logging: false,
-        width: size.w,
-        height: size.h,
-      })
+      // Create canvas
+      const canvas = document.createElement('canvas')
+      canvas.width = w * dpr
+      canvas.height = h * dpr
+      const ctx = canvas.getContext('2d')
+      ctx.scale(dpr, dpr)
 
-      // Move the card back to its original position
-      el.style.transform = origTransform
-      if (next) parent.insertBefore(el, next)
-      else parent.appendChild(el)
-      document.body.removeChild(offscreen)
+      // ─── Background gradient ───
+      // CSS: linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)
+      const ang = 160 * Math.PI / 180
+      const sinA = Math.sin(ang), cosA = Math.cos(ang)
+      const halfDiag = (Math.abs(w * sinA) + Math.abs(h * cosA)) / 2
+      const cxG = w / 2, cyG = h / 2
+      const grad = ctx.createLinearGradient(
+        cxG - halfDiag * sinA, cyG + halfDiag * cosA,
+        cxG + halfDiag * sinA, cyG - halfDiag * cosA
+      )
+      grad.addColorStop(0, '#0a1628')
+      grad.addColorStop(0.35, '#0f2744')
+      grad.addColorStop(1, '#00687a')
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, w, h)
 
+      // ─── Decorative orbs ───
+      const orb1 = ctx.createRadialGradient(w - 80, 80, 0, w - 80, 80, 200)
+      orb1.addColorStop(0, 'rgba(0,104,122,0.3)')
+      orb1.addColorStop(0.7, 'rgba(0,104,122,0)')
+      orb1.addColorStop(1, 'rgba(0,104,122,0)')
+      ctx.fillStyle = orb1
+      ctx.fillRect(0, 0, w, h)
+
+      const orb2 = ctx.createRadialGradient(70, h - 70, 0, 70, h - 70, 150)
+      orb2.addColorStop(0, 'rgba(0,138,158,0.15)')
+      orb2.addColorStop(0.7, 'rgba(0,138,158,0)')
+      orb2.addColorStop(1, 'rgba(0,138,158,0)')
+      ctx.fillStyle = orb2
+      ctx.fillRect(0, 0, w, h)
+
+      // ─── Header ───
+      const headerPadTop = Math.floor(headerH * 0.12)
+      let curY = headerPadTop
+
+      // NW logo + "NWBB STATS"
+      const nwLogoSz = Math.floor(titleSize * 0.8)
+      if (faviconImg) {
+        drawImageContain(ctx, faviconImg, headerPadX, curY, nwLogoSz, nwLogoSz)
+      }
+      ctx.font = `800 ${Math.floor(titleSize * 0.35)}px ${font}`
+      ctx.fillStyle = theme.textSecondary
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.letterSpacing = '0.15em'
+      ctx.fillText('NWBB STATS', headerPadX + nwLogoSz + (isLandscapeLocal ? 5 : 8), curY + nwLogoSz / 2)
+      ctx.letterSpacing = '0px'
+
+      curY += nwLogoSz + (isLandscapeLocal ? 1 : 4)
+
+      // Title
+      ctx.font = `900 ${titleSize}px ${font}`
+      ctx.fillStyle = '#ffffff'
+      ctx.textBaseline = 'top'
+      ctx.shadowColor = 'rgba(125,211,252,0.3)'
+      ctx.shadowBlur = 40
+      ctx.fillText(titleText, headerPadX, curY)
+      ctx.shadowBlur = 0
+      ctx.shadowColor = 'transparent'
+
+      curY += titleSize * 1.05 + 1
+
+      // Subtitle
+      ctx.font = `500 ${subtitleSz}px ${font}`
+      ctx.fillStyle = theme.textSecondary
+      ctx.textBaseline = 'top'
+      ctx.fillText(subtitle, headerPadX, curY)
+
+      // Header bottom border
+      ctx.strokeStyle = theme.border
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(0, headerH)
+      ctx.lineTo(w, headerH)
+      ctx.stroke()
+
+      // ─── Column header row ───
+      const bodyStartY = headerH + bodyPadY
+      const colLeftPad = bodyPadX + rowPadX + 3 + rankW + logoW + 4
+
+      ctx.font = `700 ${Math.floor(fontSize * 0.6)}px ${font}`
+      ctx.fillStyle = theme.textMuted
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.fillText(isTeamMode ? 'TEAM' : 'PLAYER', colLeftPad, bodyStartY + colHeaderH / 2)
+
+      // Stat headers from right
+      let hdrX = w - bodyPadX - rowPadX
+      for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+        ctx.textAlign = 'right'
+        ctx.fillText(extraCols[ei].label, hdrX, bodyStartY + colHeaderH / 2)
+        hdrX -= extraW
+      }
+      ctx.textAlign = 'right'
+      ctx.fillText(config.label, hdrX, bodyStartY + colHeaderH / 2)
+      hdrX -= mainStatW
+      if (isTeamMode) {
+        ctx.fillText('RECORD', hdrX, bodyStartY + colHeaderH / 2)
+      }
+
+      // ─── Data rows ───
+      const rowStartY = bodyStartY + colHeaderH
+
+      for (let i = 0; i < Math.min(count, items.length); i++) {
+        const p = items[i]
+        const name = isTeamMode
+          ? (p.short_name || p.name || '-')
+          : (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.name || '-')
+        const teamName = isTeamMode
+          ? (p.conference_abbrev || '')
+          : (p.team_short || p.short_name || p.team_name || '')
+        const level = p.division_level || ''
+        const mainVal = p[config.key] ?? p[config.sort]
+        const isTop3 = i < 3
+
+        const rowY = rowStartY + i * rowH
+        const rowLeft = bodyPadX
+        const rowWidth = w - bodyPadX * 2
+
+        // Row background
+        if (isTop3) {
+          const opacity = (0.22 - i * 0.05)
+          ctx.fillStyle = `rgba(0,138,158,${opacity})`
+          canvasRoundRect(ctx, rowLeft, rowY, rowWidth, rowH, 6)
+          ctx.fill()
+          // Left accent bar
+          ctx.fillStyle = '#7dd3fc'
+          ctx.fillRect(rowLeft, rowY + 2, 3, rowH - 4)
+        } else if (i % 2 === 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.025)'
+          canvasRoundRect(ctx, rowLeft, rowY, rowWidth, rowH, 6)
+          ctx.fill()
+        }
+
+        let cellX = rowLeft + rowPadX + 3
+        const cellCY = rowY + rowH / 2
+
+        // Rank
+        ctx.font = `900 ${rankSize}px ${font}`
+        ctx.fillStyle = isTop3 ? '#7dd3fc' : theme.textMuted
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(i + 1), cellX + rankW / 2, cellCY)
+        cellX += rankW
+
+        // Logo
+        const logoImg = logoImgs[i]
+        if (logoImg) {
+          drawImageContain(ctx, logoImg, cellX + 4, cellCY - logoSize / 2, logoSize, logoSize)
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.08)'
+          canvasRoundRect(ctx, cellX + 4, cellCY - logoSize / 2, logoSize, logoSize, 4)
+          ctx.fill()
+          ctx.font = `700 ${Math.floor(logoSize * 0.35)}px ${font}`
+          ctx.fillStyle = theme.textMuted
+          ctx.textAlign = 'center'
+          ctx.fillText((isTeamMode ? (p.short_name || p.name) : teamName).slice(0, 3), cellX + 4 + logoSize / 2, cellCY)
+        }
+        cellX += logoW
+
+        // Name + team/level
+        const nameX = cellX + 4
+        const statsEndX = w - bodyPadX - rowPadX
+        const nameMaxW = statsEndX - extraCols.length * extraW - mainStatW - recordW - nameX - 12
+
+        // Player name
+        ctx.font = `700 ${fontSize}px ${font}`
+        ctx.fillStyle = '#ffffff'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(truncText(ctx, name, nameMaxW), nameX, cellCY - fontSize * 0.35)
+
+        // Team + division level
+        ctx.font = `500 ${Math.floor(fontSize * 0.68)}px ${font}`
+        ctx.fillStyle = theme.textSecondary
+        ctx.fillText(teamName, nameX, cellCY + fontSize * 0.5)
+        if (level) {
+          const tw = ctx.measureText(teamName).width
+          ctx.font = `600 ${Math.floor(fontSize * 0.55)}px ${font}`
+          ctx.fillStyle = theme.textMuted
+          ctx.fillText(level, nameX + tw + 5, cellCY + fontSize * 0.5)
+        }
+
+        // Stats from right edge
+        let sX = statsEndX
+        for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+          ctx.font = `500 ${Math.floor(fontSize * 0.75)}px ${font}`
+          ctx.fillStyle = theme.textSecondary
+          ctx.textAlign = 'right'
+          ctx.fillText(fmt(p[extraCols[ei].key], extraCols[ei].format), sX, cellCY)
+          sX -= extraW
+        }
+
+        // Main stat
+        ctx.font = `900 ${Math.floor(fontSize * 1.25)}px ${font}`
+        ctx.fillStyle = isTop3 ? '#7dd3fc' : '#e0f2fe'
+        ctx.textAlign = 'right'
+        if (isTop3) { ctx.shadowColor = 'rgba(125,211,252,0.3)'; ctx.shadowBlur = 20 }
+        ctx.fillText(fmt(mainVal, config.format), sX, cellCY)
+        ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
+        sX -= mainStatW
+
+        // Record (teams only)
+        if (isTeamMode) {
+          ctx.font = `600 ${Math.floor(fontSize * 0.75)}px ${font}`
+          ctx.fillStyle = theme.textSecondary
+          ctx.textAlign = 'right'
+          ctx.fillText(`${p.wins ?? 0}-${p.losses ?? 0}`, sX, cellCY)
+        }
+      }
+
+      // ─── Footer ───
+      const footerY = h - footerH
+      ctx.strokeStyle = theme.border
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(0, footerY)
+      ctx.lineTo(w, footerY)
+      ctx.stroke()
+
+      ctx.font = `500 ${Math.floor(fontSize * 0.58)}px ${font}`
+      ctx.fillStyle = theme.textMuted
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('nwbaseballstats.com', headerPadX, footerY + footerH / 2)
+
+      ctx.textAlign = 'right'
+      ctx.font = `400 ${Math.floor(fontSize * 0.52)}px ${font}`
+      const qualText = isTeamMode ? 'Team Stats' : qualified ? 'Qualified' : `Min ${config.endpoint.includes('batting') ? '1 PA' : '1 IP'}`
+      ctx.fillText(qualText, w - headerPadX, footerY + footerH / 2)
+
+      // ─── Download ───
       const link = document.createElement('a')
       link.download = `nwbb-${activeConfig.key}-top${count}-${season}.png`
       link.href = canvas.toDataURL('image/png')
@@ -440,7 +713,7 @@ export default function SocialGraphics() {
     } finally {
       setExporting(false)
     }
-  }, [size, activeConfig, count, season])
+  }, [items, size, activeConfig, count, season, theme, isTeamMode, qualified, titleText, subtitle])
 
   const isVertical = size.h > size.w
   const isTall = size.h / size.w > 1.5
