@@ -175,123 +175,115 @@ def ensure_teams_in_db(cur, league_db_id, teams):
 # Stats Scraping
 # ============================================================
 
-def scrape_batting_stats(session, league_id, season_id):
-    """
-    Scrape batting stats from Pointstreak.
-    Returns list of dicts with raw stat values.
-    """
-    url = f"{BASE_URL}/stats.html?leagueid={league_id}&seasonid={season_id}&view=batting"
-    logger.info(f"Fetching batting stats: {url}")
-    resp = session.get(url, timeout=30)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    players = []
-    # Find the stats table — it has headers: Player, Team, P, AVG, G, AB, ...
-    tables = soup.find_all("table")
-    stats_table = None
-    for table in tables:
+def _parse_table(soup, required_headers):
+    """Find a stats table containing all required_headers. Returns (table, col_map) or (None, None)."""
+    for table in soup.find_all("table"):
         headers = [th.get_text(strip=True) for th in table.find_all("th")]
-        if "Player" in headers and "AVG" in headers and "AB" in headers:
-            stats_table = table
-            break
+        if all(h in headers for h in required_headers):
+            col_map = {}
+            for i, h in enumerate(headers):
+                if h not in col_map:
+                    col_map[h] = i
+            return table, col_map
+    return None, None
 
-    if not stats_table:
-        logger.warning("  Could not find batting stats table")
-        return []
 
-    # Parse header indices — only keep first occurrence (headers repeat in the table)
-    headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
-    col_map = {}
-    for i, h in enumerate(headers):
-        if h not in col_map:
-            col_map[h] = i
-
-    min_cols = max(col_map.values()) + 1 if col_map else 10
-    for row in stats_table.find_all("tr"):
+def _parse_player_rows(table, col_map):
+    """Yield (cells, player_name, ps_player_id, first_name, last_name) for each valid row."""
+    min_cols = max(col_map.values()) + 1 if col_map else 5
+    for row in table.find_all("tr"):
         cells = row.find_all("td")
         if len(cells) < min_cols:
             continue
 
-        # Player name — first cell, may be a link
-        player_cell = cells[col_map.get("Player", 0)]
+        player_cell = cells[col_map["Player"]]
         player_link = player_cell.find("a")
         player_name = player_link.get_text(strip=True) if player_link else player_cell.get_text(strip=True)
-        if not player_name or player_name == "Player":
+        if not player_name or player_name in ("Player", "Totals", "TOTALS", "Total"):
             continue
 
-        # Extract Pointstreak player ID from link if available
+        # Pointstreak player ID from link
         ps_player_id = None
         if player_link and player_link.get("href"):
             m = re.search(r"playerid=(\d+)", player_link["href"])
             if m:
                 ps_player_id = int(m.group(1))
 
-        # Team abbreviation — may be a link
-        team_cell = cells[col_map.get("Team", 1)]
-        team_link = team_cell.find("a")
-        team_abbr = team_link.get_text(strip=True) if team_link else team_cell.get_text(strip=True)
+        # Parse "Last, F" name format
+        name_parts = player_name.split(",")
+        if len(name_parts) == 2:
+            last_name = name_parts[0].strip()
+            first_name = name_parts[1].strip()
+        else:
+            parts = player_name.strip().split()
+            first_name = parts[0] if parts else ""
+            last_name = " ".join(parts[1:]) if len(parts) > 1 else parts[0]
 
-        # Extract team ID from link
-        ps_team_id = None
-        if team_link and team_link.get("href"):
-            m = re.search(r"teamid=(\d+)", team_link["href"])
-            if m:
-                ps_team_id = int(m.group(1))
+        yield cells, player_name, ps_player_id, first_name, last_name
 
-        def safe_int(idx, default=0):
+
+def scrape_team_batting(session, ps_team_id, season_id, team_name):
+    """Scrape batting stats for a single team (all players, no qualification filter)."""
+    url = f"{BASE_URL}/team_stats.html?teamid={ps_team_id}&seasonid={season_id}"
+    logger.info(f"  Batting: {team_name}")
+    resp = session.get(url, timeout=30)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Team page batting table has: Player, P, AVG, G, AB, R, H, 2B, 3B, HR, RBI, BB, HBP, SO, SF, SH, SB, CS, DP, E
+    table, col_map = _parse_table(soup, ["Player", "AVG", "AB"])
+    if not table:
+        logger.warning(f"    Could not find batting table for {team_name}")
+        return []
+
+    players = []
+    for cells, _name, ps_player_id, first_name, last_name in _parse_player_rows(table, col_map):
+        def safe_int(col_name, default=0):
+            idx = col_map.get(col_name)
+            if idx is None:
+                return default
             try:
                 return int(cells[idx].get_text(strip=True))
             except (ValueError, IndexError):
                 return default
 
-        def safe_float(idx, default=None):
+        def safe_float(col_name, default=None):
+            idx = col_map.get(col_name)
+            if idx is None:
+                return default
             try:
                 val = cells[idx].get_text(strip=True)
                 return float(val) if val else default
             except (ValueError, IndexError):
                 return default
 
-        # Parse player name: "Last, F" format
-        name_parts = player_name.split(",")
-        if len(name_parts) == 2:
-            last_name = name_parts[0].strip()
-            first_name = name_parts[1].strip()
-        else:
-            # Might be "First Last" or just one name
-            parts = player_name.strip().split()
-            first_name = parts[0] if parts else ""
-            last_name = " ".join(parts[1:]) if len(parts) > 1 else parts[0]
-
-        position = cells[col_map.get("P", 2)].get_text(strip=True) if "P" in col_map else ""
+        position = cells[col_map["P"]].get_text(strip=True) if "P" in col_map else ""
 
         player = {
             "first_name": first_name,
             "last_name": last_name,
             "position": position,
-            "team_abbr": team_abbr,
             "ps_player_id": ps_player_id,
             "ps_team_id": ps_team_id,
-            "batting_avg": safe_float(col_map.get("AVG", 3)),
-            "games": safe_int(col_map.get("G", 4)),
-            "at_bats": safe_int(col_map.get("AB", 5)),
-            "runs": safe_int(col_map.get("R", 6)),
-            "hits": safe_int(col_map.get("H", 7)),
-            "doubles": safe_int(col_map.get("2B", 8)),
-            "triples": safe_int(col_map.get("3B", 9)),
-            "home_runs": safe_int(col_map.get("HR", 10)),
-            "rbi": safe_int(col_map.get("RBI", 11)),
-            "walks": safe_int(col_map.get("BB", 12)),
-            "hit_by_pitch": safe_int(col_map.get("HBP", 13)),
-            "strikeouts": safe_int(col_map.get("SO", 14)),
-            "sacrifice_flies": safe_int(col_map.get("SF", 15)),
-            "sacrifice_bunts": safe_int(col_map.get("SH", 16)),
-            "stolen_bases": safe_int(col_map.get("SB", 17)),
-            "caught_stealing": safe_int(col_map.get("CS", 18)),
-            "grounded_into_dp": safe_int(col_map.get("DP", 19)),
+            "batting_avg": safe_float("AVG"),
+            "games": safe_int("G"),
+            "at_bats": safe_int("AB"),
+            "runs": safe_int("R"),
+            "hits": safe_int("H"),
+            "doubles": safe_int("2B"),
+            "triples": safe_int("3B"),
+            "home_runs": safe_int("HR"),
+            "rbi": safe_int("RBI"),
+            "walks": safe_int("BB"),
+            "hit_by_pitch": safe_int("HBP"),
+            "strikeouts": safe_int("SO"),
+            "sacrifice_flies": safe_int("SF"),
+            "sacrifice_bunts": safe_int("SH"),
+            "stolen_bases": safe_int("SB"),
+            "caught_stealing": safe_int("CS"),
+            "grounded_into_dp": safe_int("DP"),
         }
 
-        # Compute plate appearances
         player["plate_appearances"] = (
             player["at_bats"] + player["walks"] + player["hit_by_pitch"]
             + player["sacrifice_flies"] + player["sacrifice_bunts"]
@@ -299,121 +291,75 @@ def scrape_batting_stats(session, league_id, season_id):
 
         players.append(player)
 
-    logger.info(f"  Parsed {len(players)} batters")
+    logger.info(f"    {len(players)} batters")
     return players
 
 
-def scrape_pitching_stats(session, league_id, season_id):
-    """
-    Scrape pitching stats from Pointstreak.
-    Returns list of dicts with raw stat values.
-    """
-    url = f"{BASE_URL}/stats.html?leagueid={league_id}&seasonid={season_id}&view=pitching"
-    logger.info(f"Fetching pitching stats: {url}")
+def scrape_team_pitching(session, ps_team_id, season_id, team_name):
+    """Scrape pitching stats for a single team (all players, no qualification filter)."""
+    url = f"{BASE_URL}/team_stats.html?teamid={ps_team_id}&seasonid={season_id}&view=pitching"
+    logger.info(f"  Pitching: {team_name}")
     resp = session.get(url, timeout=30)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    players = []
-    tables = soup.find_all("table")
-    stats_table = None
-    for table in tables:
-        headers = [th.get_text(strip=True) for th in table.find_all("th")]
-        if "Player" in headers and "ERA" in headers and "IP" in headers:
-            stats_table = table
-            break
-
-    if not stats_table:
-        logger.warning("  Could not find pitching stats table")
+    # Team page pitching table: Player, G, GS, CG, IP, H, R, ER, BB, SO, W, L, SV, 2B, 3B, ERA
+    table, col_map = _parse_table(soup, ["Player", "ERA", "IP"])
+    if not table:
+        logger.warning(f"    Could not find pitching table for {team_name}")
         return []
 
-    headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
-    col_map = {}
-    for i, h in enumerate(headers):
-        if h not in col_map:
-            col_map[h] = i
-
-    min_cols = max(col_map.values()) + 1 if col_map else 10
-    for row in stats_table.find_all("tr"):
-        cells = row.find_all("td")
-        if len(cells) < min_cols:
-            continue
-
-        player_cell = cells[col_map.get("Player", 0)]
-        player_link = player_cell.find("a")
-        player_name = player_link.get_text(strip=True) if player_link else player_cell.get_text(strip=True)
-        if not player_name or player_name == "Player":
-            continue
-
-        ps_player_id = None
-        if player_link and player_link.get("href"):
-            m = re.search(r"playerid=(\d+)", player_link["href"])
-            if m:
-                ps_player_id = int(m.group(1))
-
-        team_cell = cells[col_map.get("Team", 1)]
-        team_link = team_cell.find("a")
-        team_abbr = team_link.get_text(strip=True) if team_link else team_cell.get_text(strip=True)
-
-        ps_team_id = None
-        if team_link and team_link.get("href"):
-            m = re.search(r"teamid=(\d+)", team_link["href"])
-            if m:
-                ps_team_id = int(m.group(1))
-
-        def safe_int(idx, default=0):
+    players = []
+    for cells, _name, ps_player_id, first_name, last_name in _parse_player_rows(table, col_map):
+        def safe_int(col_name, default=0):
+            idx = col_map.get(col_name)
+            if idx is None:
+                return default
             try:
                 return int(cells[idx].get_text(strip=True))
             except (ValueError, IndexError):
                 return default
 
-        def safe_float(idx, default=None):
+        def safe_float(col_name, default=None):
+            idx = col_map.get(col_name)
+            if idx is None:
+                return default
             try:
                 val = cells[idx].get_text(strip=True)
                 return float(val) if val else default
             except (ValueError, IndexError):
                 return default
 
-        name_parts = player_name.split(",")
-        if len(name_parts) == 2:
-            last_name = name_parts[0].strip()
-            first_name = name_parts[1].strip()
-        else:
-            parts = player_name.strip().split()
-            first_name = parts[0] if parts else ""
-            last_name = " ".join(parts[1:]) if len(parts) > 1 else parts[0]
-
         player = {
             "first_name": first_name,
             "last_name": last_name,
-            "team_abbr": team_abbr,
             "ps_player_id": ps_player_id,
             "ps_team_id": ps_team_id,
-            "games": safe_int(col_map.get("G", 2)),
-            "games_started": safe_int(col_map.get("GS", 3)),
-            "complete_games": safe_int(col_map.get("CG", 4)),
-            "innings_pitched": safe_float(col_map.get("IP", 5), 0),
-            "hits_allowed": safe_int(col_map.get("H", 6)),
-            "runs_allowed": safe_int(col_map.get("R", 7)),
-            "earned_runs": safe_int(col_map.get("ER", 8)),
-            "walks": safe_int(col_map.get("BB", 9)),
-            "strikeouts": safe_int(col_map.get("SO", 10)),
-            "wins": safe_int(col_map.get("W", 11)),
-            "losses": safe_int(col_map.get("L", 12)),
-            "saves": safe_int(col_map.get("SV", 13)),
-            "home_runs_allowed": 0,  # Not always available
-            "era": safe_float(col_map.get("ERA", -1)),
+            "games": safe_int("G"),
+            "games_started": safe_int("GS"),
+            "complete_games": safe_int("CG"),
+            "innings_pitched": safe_float("IP", 0),
+            "hits_allowed": safe_int("H"),
+            "runs_allowed": safe_int("R"),
+            "earned_runs": safe_int("ER"),
+            "walks": safe_int("BB"),
+            "strikeouts": safe_int("SO"),
+            "wins": safe_int("W"),
+            "losses": safe_int("L"),
+            "saves": safe_int("SV"),
+            "home_runs_allowed": 0,  # Not on team page
+            "era": safe_float("ERA"),
         }
 
-        # Estimate batters faced if not available
+        # Estimate batters faced
         player["batters_faced"] = (
             player.get("hits_allowed", 0) + player.get("walks", 0)
-            + player.get("strikeouts", 0) + player.get("hit_batters", 0)
+            + player.get("strikeouts", 0)
         )
 
         players.append(player)
 
-    logger.info(f"  Parsed {len(players)} pitchers")
+    logger.info(f"    {len(players)} pitchers")
     return players
 
 
@@ -685,21 +631,32 @@ def scrape_league_season(league_abbr, season_year, batting=True, pitching=True):
         team_map = ensure_teams_in_db(cur, league_db_id, teams)
         conn.commit()
 
-        # Scrape batting
-        if batting:
-            batters = scrape_batting_stats(session, league_id, season_id)
-            polite_sleep()
-            save_batting_stats(cur, batters, team_map, season_year)
-            conn.commit()
-            logger.info(f"  Batting stats committed")
+        # Scrape each team individually (gets ALL players, not just qualified)
+        total_batters = 0
+        total_pitchers = 0
+        for t in teams:
+            ps_tid = t["pointstreak_team_id"]
 
-        # Scrape pitching
-        if pitching:
-            pitchers = scrape_pitching_stats(session, league_id, season_id)
-            polite_sleep()
-            save_pitching_stats(cur, pitchers, team_map, season_year)
+            if batting:
+                batters = scrape_team_batting(session, ps_tid, season_id, t["name"])
+                polite_sleep()
+                # Attach ps_team_id so save function can look up team
+                for b in batters:
+                    b["ps_team_id"] = ps_tid
+                save_batting_stats(cur, batters, team_map, season_year)
+                total_batters += len(batters)
+
+            if pitching:
+                pitchers = scrape_team_pitching(session, ps_tid, season_id, t["name"])
+                polite_sleep()
+                for p in pitchers:
+                    p["ps_team_id"] = ps_tid
+                save_pitching_stats(cur, pitchers, team_map, season_year)
+                total_pitchers += len(pitchers)
+
             conn.commit()
-            logger.info(f"  Pitching stats committed")
+
+        logger.info(f"  Total: {total_batters} batters, {total_pitchers} pitchers")
 
     logger.info(f"=== Done: {league_abbr} {season_year} ===\n")
 
