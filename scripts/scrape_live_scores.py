@@ -461,12 +461,12 @@ def _parse_legacy_sidearm_game(item, team_name, team_info, today):
         opp_score = int(score_match.group(3))
         status = "final"
 
-    # Check for live game indicators
-    if re.search(r'\b(live|in progress|in\s*game)\b', full_text, re.I):
-        status = "live"
+    # NOTE: We do NOT check for "live" in fulltext because "Live Stats"
+    # links on Sidearm pages create false positives. HTML-scraped games
+    # can only be "final" (has score) or "scheduled" (no score yet).
 
-    # Extract time from date text (e.g., "12:00 p.m.")
-    time_match = re.search(r'(\d{1,2}:\d{2}\s*[ap]\.?m\.?)', date_text, re.I)
+    # Extract time from date text — handles both "12:00 p.m." and "1 p.m."
+    time_match = re.search(r'(\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?)', date_text, re.I)
     time_text = time_match.group(1) if time_match else ""
 
     # Conference game?
@@ -613,16 +613,20 @@ def deduplicate_games(games):
     """
     seen = {}
     for g in games:
-        # Create a key from the two teams and date
+        # Create a key from the two teams, date, and time (for doubleheaders)
         teams = sorted([g["team"], g["opponent"]])
         date_key = g.get("date", "")[:10]  # Just the date part
-        key = f"{teams[0]}_{teams[1]}_{date_key}"
+        time_key = g.get("time", "").strip()
+        key = f"{teams[0]}_{teams[1]}_{date_key}_{time_key}"
 
         if key not in seen:
             seen[key] = g
         else:
-            # Prefer home team's perspective
-            if g["location"] == "home":
+            # Prefer home team's perspective, or the one with more data
+            existing = seen[key]
+            if g["location"] == "home" and existing["location"] != "home":
+                seen[key] = g
+            elif g.get("team_score") is not None and existing.get("team_score") is None:
                 seen[key] = g
 
     return list(seen.values())

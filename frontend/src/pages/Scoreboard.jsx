@@ -198,10 +198,12 @@ function GameCard({ game }) {
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="text-sm font-semibold text-gray-800 truncate">{game.team}</span>
           </div>
-          {teamScore != null && (
+          {teamScore != null ? (
             <span className={`text-lg font-bold tabular-nums ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
               {teamScore}
             </span>
+          ) : isScheduled && (
+            <span className="text-xs text-gray-300">—</span>
           )}
         </div>
 
@@ -220,19 +222,28 @@ function GameCard({ game }) {
               {game.location === 'away' ? '@ ' : ''}{game.opponent_display || game.opponent}
             </span>
           </div>
-          {oppScore != null && (
+          {oppScore != null ? (
             <span className={`text-lg font-bold tabular-nums ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
               {oppScore}
             </span>
+          ) : isScheduled && (
+            <span className="text-xs text-gray-300">—</span>
           )}
         </div>
+
+        {/* Show time prominently for scheduled games */}
+        {isScheduled && gameTime && (
+          <div className="text-center pt-1 border-t border-gray-100 mt-1">
+            <span className="text-xs font-medium text-gray-500">{gameTime}</span>
+          </div>
+        )}
       </div>
 
       {/* Footer — time/date */}
       <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
         <div className="text-[10px] text-gray-400 flex items-center justify-between">
           <span>{gameDate}</span>
-          <span>{isScheduled ? gameTime : ''}</span>
+          <span>{gameTime || ''}</span>
         </div>
       </div>
     </div>
