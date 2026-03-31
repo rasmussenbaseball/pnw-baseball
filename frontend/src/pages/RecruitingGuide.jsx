@@ -717,6 +717,7 @@ export default function RecruitingGuide() {
             <p className="text-sm">View roster analysis, trends, hometowns, and more for any PNW program.</p>
           </div>
         )}
+      </div>
     </div>
   )
 }
