@@ -38,7 +38,7 @@ QUALIFIED_IP_PER_GAME = 0.75     # Pitchers: 0.75 IP per team game
 
 # SQL fragments for qualified filter — join team_season_stats to get team games
 QUALIFIED_BATTING_JOIN = """
-    JOIN team_season_stats tss
+    LEFT JOIN team_season_stats tss
       ON tss.team_id = bs.team_id AND tss.season = bs.season
 """
 QUALIFIED_BATTING_WHERE = (
@@ -46,7 +46,7 @@ QUALIFIED_BATTING_WHERE = (
     .format(pa_per_game=QUALIFIED_PA_PER_GAME)
 )
 QUALIFIED_PITCHING_JOIN = """
-    JOIN team_season_stats tss
+    LEFT JOIN team_season_stats tss
       ON tss.team_id = ps.team_id AND tss.season = ps.season
 """
 QUALIFIED_PITCHING_WHERE = (
@@ -1808,9 +1808,16 @@ def search_players(
 def _compute_percentiles(conn, division_level: str, season: int, player_stats: dict, stat_type: str):
     """
     Compute Baseball Savant-style percentiles for a player within their division.
-    Only qualified players (50+ PA for batters, 10+ IP for pitchers) form the distribution.
+    Player must have 10+ PA (batters) or 5+ IP (pitchers) to get percentiles.
+    Comparison pool: 10+ PA for batters, 5+ IP for pitchers.
     Returns dict of { stat_key: { value, percentile } }.
     """
+    # Check player qualification thresholds
+    if stat_type == "batting" and (player_stats.get("plate_appearances") or 0) < 10:
+        return {}
+    if stat_type == "pitching" and (player_stats.get("innings_pitched") or 0) < 5:
+        return {}
+
     if stat_type == "batting":
         metrics = {
             "woba":          {"col": "bs.woba",          "higher_better": True},
@@ -1829,7 +1836,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE d.level = %s AND bs.season = %s
-              AND bs.plate_appearances >= 50
+              AND bs.plate_appearances >= 10
               AND {col} IS NOT NULL
             ORDER BY {col}
         """
@@ -1852,7 +1859,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE d.level = %s AND ps.season = %s
-              AND ps.innings_pitched >= 10
+              AND ps.innings_pitched >= 5
               AND {col} IS NOT NULL
             ORDER BY {col}
         """
@@ -2655,6 +2662,54 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                 })
             position_breakdown.sort(key=lambda x: -x["games"])
 
+        # ── Summer ball stats (via summer_player_links) ──
+        summer_batting = []
+        summer_pitching = []
+        cur.execute(
+            """SELECT spl.summer_player_id, spl.confidence
+               FROM summer_player_links spl
+               WHERE spl.spring_player_id IN ({ids})""".format(
+                ids=",".join(["%s"] * len(all_player_ids))
+            ),
+            all_player_ids,
+        )
+        summer_links = cur.fetchall()
+        if summer_links:
+            summer_player_ids = [r["summer_player_id"] for r in summer_links]
+            sp_placeholders = ",".join(["%s"] * len(summer_player_ids))
+
+            cur.execute(
+                f"""SELECT sbs.*,
+                           sp.first_name, sp.last_name, sp.college,
+                           st.name as team_name, st.short_name as team_short,
+                           st.logo_url as team_logo,
+                           sl.name as league_name, sl.abbreviation as league_abbrev
+                    FROM summer_batting_stats sbs
+                    JOIN summer_players sp ON sbs.player_id = sp.id
+                    JOIN summer_teams st ON sbs.team_id = st.id
+                    JOIN summer_leagues sl ON st.league_id = sl.id
+                    WHERE sbs.player_id IN ({sp_placeholders})
+                    ORDER BY sbs.season""",
+                summer_player_ids,
+            )
+            summer_batting = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                f"""SELECT sps.*,
+                           sp.first_name, sp.last_name, sp.college,
+                           st.name as team_name, st.short_name as team_short,
+                           st.logo_url as team_logo,
+                           sl.name as league_name, sl.abbreviation as league_abbrev
+                    FROM summer_pitching_stats sps
+                    JOIN summer_players sp ON sps.player_id = sp.id
+                    JOIN summer_teams st ON sps.team_id = st.id
+                    JOIN summer_leagues sl ON st.league_id = sl.id
+                    WHERE sps.player_id IN ({sp_placeholders})
+                    ORDER BY sps.season""",
+                summer_player_ids,
+            )
+            summer_pitching = [dict(r) for r in cur.fetchall()]
+
         return {
             "player": player_dict,
             "batting_stats": batting_list,
@@ -2668,6 +2723,8 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "pnw_rankings": pnw_rankings,
             "position_breakdown": position_breakdown,
             "linked_players": linked_players,
+            "summer_batting": summer_batting,
+            "summer_pitching": summer_pitching,
         }
 
 
@@ -4520,7 +4577,7 @@ _NWAC_CATS = [c for c in _TEAM_POOL if c["group"] == "nwac"]
 _4YR_CATS = [c for c in _TEAM_POOL if c["group"] in ("4yr", "d1")]
 
 _SEASON_BATTING_POOL = [
-    {"type": "season_batting", "label": "50+ Games", "category": "Season Batting", "stat": "games", "operator": ">=", "threshold": 50},
+    {"type": "season_batting", "label": "40+ Games", "category": "Season Batting", "stat": "games", "operator": ">=", "threshold": 40},
     {"type": "season_batting", "label": "40+ Hits", "category": "Season Batting", "stat": "hits", "operator": ">=", "threshold": 40},
     {"type": "season_batting", "label": "10+ Doubles", "category": "Season Batting", "stat": "doubles", "operator": ">=", "threshold": 10},
     {"type": "season_batting", "label": "5+ HR", "category": "Season Batting", "stat": "home_runs", "operator": ">=", "threshold": 5},
@@ -4568,6 +4625,179 @@ _CAREER_PITCHING_POOL = [
     {"type": "career_pitching", "label": "40+ Career BB", "category": "Career Pitching", "stat": "walks", "operator": ">=", "threshold": 40},
     {"type": "career_pitching", "label": "1.5+ Career WAR", "category": "Career Pitching", "stat": "pitching_war", "operator": ">=", "threshold": 1.5},
 ]
+
+
+# --------------- Grid Validation ---------------
+
+def _count_players_for_cell(cur, team_criteria, stat_criteria):
+    """
+    Count distinct players matching both a team criteria and stat criteria.
+    Returns the count (capped at 4 for efficiency — we only need to know if >= 3).
+    """
+    tc_type = team_criteria["type"]
+    tc_value = team_criteria.get("value", "")
+
+    sc_type = stat_criteria["type"]
+    sc_stat = stat_criteria["stat"]
+    sc_op = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}.get(
+        stat_criteria.get("operator", ">="), ">="
+    )
+    sc_threshold = stat_criteria["threshold"]
+    sc_qualified = stat_criteria.get("qualified", False)
+    sc_q_stat = stat_criteria.get("q_stat", "")
+    sc_q_min = stat_criteria.get("q_min", 0)
+
+    # Build team join/filter
+    if tc_type == "division" and tc_value == "ALL":
+        team_join = ""
+        team_where = ""
+        team_params = []
+    elif tc_type == "team":
+        team_join = "JOIN teams t ON p.team_id = t.id"
+        team_where = "AND t.short_name = %s"
+        team_params = [tc_value]
+    elif tc_type == "conference":
+        team_join = "JOIN teams t ON p.team_id = t.id JOIN conferences c ON t.conference_id = c.id"
+        team_where = "AND (c.abbreviation ILIKE %s OR c.name ILIKE %s)"
+        team_params = [tc_value, f"%{tc_value}%"]
+    elif tc_type == "division":
+        if tc_value == "non_d1_4yr":
+            team_join = "JOIN teams t ON p.team_id = t.id JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id"
+            team_where = "AND d.level IN ('D2', 'D3', 'NAIA')"
+            team_params = []
+        else:
+            team_join = "JOIN teams t ON p.team_id = t.id JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id"
+            team_where = "AND d.level = %s"
+            team_params = [tc_value]
+    else:
+        return 0
+
+    # Build stat filter
+    q_clause = ""
+    q_params = []
+    if sc_qualified and sc_q_stat and sc_q_min:
+        tbl = "bs" if "batting" in sc_type else "ps"
+        q_clause = f" AND {tbl}.{sc_q_stat} >= %s"
+        q_params = [sc_q_min]
+
+    if sc_type in ("season_batting", "career_batting"):
+        stat_table = "batting_stats"
+        stat_alias = "bs"
+    else:
+        stat_table = "pitching_stats"
+        stat_alias = "ps"
+
+    # For career counting stats, we need SUM; for season stats or rate stats, direct comparison
+    is_career = sc_type.startswith("career_")
+    career_rate = stat_criteria.get("career_rate", False)
+
+    if is_career and career_rate:
+        # Career rate stat (e.g., career ERA)
+        num_col = stat_criteria["numerator"]
+        den_col = stat_criteria["denominator"]
+        mult = stat_criteria.get("multiplier", 1)
+        sql = f"""
+            SELECT COUNT(*) FROM (
+                SELECT {stat_alias}.player_id
+                FROM {stat_table} {stat_alias}
+                JOIN players p ON {stat_alias}.player_id = p.id
+                {team_join}
+                WHERE 1=1 {team_where}
+                GROUP BY {stat_alias}.player_id
+                HAVING SUM({stat_alias}.{den_col}) >= %s
+                   AND SUM({stat_alias}.{num_col}) * {mult} / NULLIF(SUM({stat_alias}.{den_col}), 0) {sc_op} %s
+                LIMIT 4
+            ) sub
+        """
+        params = team_params + [sc_q_min, sc_threshold]
+    elif is_career:
+        rate_stats_b = {"batting_avg", "on_base_pct", "slugging_pct", "ops",
+                        "iso", "babip", "bb_pct", "k_pct", "woba", "wrc_plus"}
+        rate_stats_p = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
+                        "hr_per_9", "k_bb_ratio", "fip", "babip_against"}
+        rate_stats = rate_stats_b if "batting" in sc_type else rate_stats_p
+        if sc_stat in rate_stats:
+            # Career rate stat — check any single qualified season
+            sql = f"""
+                SELECT COUNT(DISTINCT {stat_alias}.player_id) FROM {stat_table} {stat_alias}
+                JOIN players p ON {stat_alias}.player_id = p.id
+                {team_join}
+                WHERE {stat_alias}.{sc_stat} {sc_op} %s {team_where}{q_clause}
+            """
+            params = [sc_threshold] + team_params + q_params
+        else:
+            # Career counting stat — SUM across seasons
+            sql = f"""
+                SELECT COUNT(*) FROM (
+                    SELECT {stat_alias}.player_id
+                    FROM {stat_table} {stat_alias}
+                    JOIN players p ON {stat_alias}.player_id = p.id
+                    {team_join}
+                    WHERE 1=1 {team_where}
+                    GROUP BY {stat_alias}.player_id
+                    HAVING SUM({stat_alias}.{sc_stat}) {sc_op} %s
+                    LIMIT 4
+                ) sub
+            """
+            params = team_params + [sc_threshold]
+    else:
+        # Season stat — direct comparison
+        sql = f"""
+            SELECT COUNT(DISTINCT {stat_alias}.player_id) FROM {stat_table} {stat_alias}
+            JOIN players p ON {stat_alias}.player_id = p.id
+            {team_join}
+            WHERE {stat_alias}.{sc_stat} {sc_op} %s {team_where}{q_clause}
+        """
+        params = [sc_threshold] + team_params + q_params
+
+    try:
+        cur.execute(sql, tuple(params))
+        row = cur.fetchone()
+        if not row:
+            return 0
+        # RealDictCursor returns dicts — get the first value
+        return list(row.values())[0] or 0
+    except Exception:
+        return 0
+
+
+def _validate_grid(columns, rows):
+    """
+    Check that every cell in the grid has at least 3 matching players.
+    For team-vs-team cells (transfer grids), skip validation.
+    Returns True if all stat cells have 3+ answers, False otherwise.
+    """
+    # Identify which items are team criteria vs stat criteria
+    stat_types = {"season_batting", "career_batting", "season_pitching", "career_pitching"}
+
+    stat_items_in_cols = [c for c in columns if c.get("type") in stat_types]
+    stat_items_in_rows = [r for r in rows if r.get("type") in stat_types]
+    team_items_in_cols = [c for c in columns if c.get("type") not in stat_types]
+    team_items_in_rows = [r for r in rows if r.get("type") not in stat_types]
+
+    # We need to check team x stat intersections
+    cells_to_check = []
+    for tc in team_items_in_cols:
+        for sr in stat_items_in_rows:
+            cells_to_check.append((tc, sr))
+    for tr in team_items_in_rows:
+        for sc in stat_items_in_cols:
+            cells_to_check.append((tr, sc))
+
+    if not cells_to_check:
+        return True
+
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            for team_crit, stat_crit in cells_to_check:
+                count = _count_players_for_cell(cur, team_crit, stat_crit)
+                if count < 3:
+                    return False
+        return True
+    except Exception:
+        # If DB unavailable, skip validation
+        return True
 
 
 # --------------- Random Grid Generator ---------------
@@ -4619,46 +4849,94 @@ def _pick_diverse_stats(rng, pool, count):
     return picked
 
 
+def _pick_mixed_stats(rng, count):
+    """Pick `count` stat categories mixing batting and pitching, no duplicate stat columns."""
+    batting_pool = _SEASON_BATTING_POOL + _CAREER_BATTING_POOL
+    pitching_pool = _SEASON_PITCHING_POOL + _CAREER_PITCHING_POOL
+
+    # Guarantee at least 1 batting and 1 pitching
+    # For count=2: always 1 batting + 1 pitching
+    # For count=3: either 2 batting + 1 pitching (70%) or 1 batting + 2 pitching (30%)
+    if count <= 2:
+        batting_count = 1
+    else:
+        batting_count = rng.choices([2, 1], weights=[70, 30])[0]
+    pitching_count = count - batting_count
+
+    rng.shuffle(batting_pool)
+    rng.shuffle(pitching_pool)
+
+    picked = []
+    used_stats = set()
+
+    # Pick batting stats
+    for cat in batting_pool:
+        if len(picked) >= batting_count:
+            break
+        if cat["stat"] in used_stats:
+            continue
+        picked.append(dict(cat))
+        used_stats.add(cat["stat"])
+
+    # Pick pitching stats
+    for cat in pitching_pool:
+        if len(picked) >= count:
+            break
+        if cat["stat"] in used_stats:
+            continue
+        picked.append(dict(cat))
+        used_stats.add(cat["stat"])
+
+    rng.shuffle(picked)
+    return picked
+
+
 def _generate_random_grid():
-    """Generate a random PNW Grid configuration."""
+    """Generate a random PNW Grid configuration.
+    Validates that every team×stat cell has 3+ matching players.
+    Retries up to 20 times if validation fails."""
     rng = _grid_random.Random()
 
-    # Pick stat type: batting (70%) or pitching (30%)
-    stat_type = rng.choices(["batting", "pitching"], weights=[70, 30])[0]
-    if stat_type == "batting":
-        stat_pool = _SEASON_BATTING_POOL + _CAREER_BATTING_POOL
-    else:
-        stat_pool = _SEASON_PITCHING_POOL + _CAREER_PITCHING_POOL
+    for _attempt in range(20):
+        # Pick layout:
+        #   80% standard = 3 team cols + 3 stat rows
+        #   10% flipped  = 3 stat cols + 3 team rows
+        #   10% transfer = 3 team cols + 2 stat rows + 1 cross-group team row
+        layout = rng.choices(["standard", "flipped", "transfer"], weights=[80, 10, 10])[0]
 
-    # Pick layout:
-    #   80% standard = 3 team cols + 3 stat rows
-    #   10% flipped  = 3 stat cols + 3 team rows
-    #   10% transfer = 3 team cols + 2 stat rows + 1 cross-group team row
-    layout = rng.choices(["standard", "flipped", "transfer"], weights=[80, 10, 10])[0]
+        teams = _pick_diverse_teams(rng, 3)
+        stats = _pick_mixed_stats(rng, 3)
 
-    teams = _pick_diverse_teams(rng, 3)
-    stats = _pick_diverse_stats(rng, stat_pool, 3)
-
-    if layout == "standard":
-        columns = teams
-        rows = stats
-    elif layout == "flipped":
-        columns = stats
-        rows = teams
-    else:
-        # Transfer grid: columns are teams, rows are 2 stats + 1 cross-group team
-        col_groups = {t.get("group") for t in teams}
-        if "nwac" in col_groups:
-            cross_pool = list(_4YR_CATS)
+        if layout == "standard":
+            columns = teams
+            rows = stats
+        elif layout == "flipped":
+            columns = stats
+            rows = teams
         else:
-            cross_pool = list(_NWAC_CATS)
-        rng.shuffle(cross_pool)
-        cross_team = dict(cross_pool[0])
-        stats_2 = _pick_diverse_stats(rng, stat_pool, 2)
-        rows = stats_2 + [cross_team]
-        rng.shuffle(rows)
-        columns = teams
+            # Transfer grid: columns are teams, rows are 2 stats + 1 cross-group team
+            col_groups = {t.get("group") for t in teams}
+            if "nwac" in col_groups:
+                cross_pool = list(_4YR_CATS)
+            else:
+                cross_pool = list(_NWAC_CATS)
+            rng.shuffle(cross_pool)
+            cross_team = dict(cross_pool[0])
+            stats_2 = _pick_mixed_stats(rng, 2)
+            rows = stats_2 + [cross_team]
+            rng.shuffle(rows)
+            columns = teams
 
+        # Validate: every team×stat cell must have 3+ matching players
+        if _validate_grid(columns, rows):
+            return {
+                "title": "Random Grid",
+                "mode": "random",
+                "columns": columns,
+                "rows": rows,
+            }
+
+    # Fallback after 20 failed attempts — return last generated grid anyway
     return {
         "title": "Random Grid",
         "mode": "random",
@@ -5103,6 +5381,213 @@ def grid_check_custom(data: dict = Body(...)):
         return _do_grid_check(cur, player_id, row_criteria, col_criteria)
 
 
+@router.post("/grid/solutions")
+def grid_solutions(data: dict = Body(...)):
+    """
+    Return all valid players for each cell of a grid.
+    Body: {rows: [...], columns: [...]}
+    Returns: {cells: {"0-0": [...], "0-1": [...], ...}}
+    Each player list is ordered by most recent season (desc), capped at 50 per cell.
+    """
+    rows = data.get("rows")
+    columns = data.get("columns")
+    if not rows or not columns:
+        raise HTTPException(status_code=400, detail="Missing rows or columns")
+
+    stat_types = {"season_batting", "career_batting", "season_pitching", "career_pitching"}
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cells = {}
+        for ri, row_crit in enumerate(rows):
+            for ci, col_crit in enumerate(columns):
+                # Figure out which is team and which is stat
+                if row_crit.get("type") in stat_types and col_crit.get("type") not in stat_types:
+                    team_crit, stat_crit = col_crit, row_crit
+                elif col_crit.get("type") in stat_types and row_crit.get("type") not in stat_types:
+                    team_crit, stat_crit = row_crit, col_crit
+                else:
+                    # Both are teams (transfer cell) or both stats — skip
+                    cells[f"{ri}-{ci}"] = []
+                    continue
+
+                players = _find_players_for_cell(cur, team_crit, stat_crit)
+                cells[f"{ri}-{ci}"] = players
+
+        return {"cells": cells}
+
+
+def _find_players_for_cell(cur, team_criteria, stat_criteria, limit=50):
+    """
+    Find all players matching both team and stat criteria for a grid cell.
+    Returns list of player dicts ordered by most recent season (desc).
+    """
+    tc_type = team_criteria["type"]
+    tc_value = team_criteria.get("value", "")
+
+    sc_type = stat_criteria["type"]
+    sc_stat = stat_criteria["stat"]
+    sc_op = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}.get(
+        stat_criteria.get("operator", ">="), ">="
+    )
+    sc_threshold = stat_criteria["threshold"]
+    sc_qualified = stat_criteria.get("qualified", False)
+    sc_q_stat = stat_criteria.get("q_stat", "")
+    sc_q_min = stat_criteria.get("q_min", 0)
+
+    # Build team join/filter
+    if tc_type == "division" and tc_value == "ALL":
+        team_join = ""
+        team_where = ""
+        team_params = []
+    elif tc_type == "team":
+        team_join = "JOIN teams t ON p.team_id = t.id"
+        team_where = "AND t.short_name = %s"
+        team_params = [tc_value]
+    elif tc_type == "conference":
+        team_join = "JOIN teams t ON p.team_id = t.id JOIN conferences c ON t.conference_id = c.id"
+        team_where = "AND (c.abbreviation ILIKE %s OR c.name ILIKE %s)"
+        team_params = [tc_value, f"%{tc_value}%"]
+    elif tc_type == "division":
+        if tc_value == "non_d1_4yr":
+            team_join = "JOIN teams t ON p.team_id = t.id JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id"
+            team_where = "AND d.level IN ('D2', 'D3', 'NAIA')"
+            team_params = []
+        else:
+            team_join = "JOIN teams t ON p.team_id = t.id JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id"
+            team_where = "AND d.level = %s"
+            team_params = [tc_value]
+    else:
+        return []
+
+    # Stat table and alias
+    if sc_type in ("season_batting", "career_batting"):
+        stat_table = "batting_stats"
+        stat_alias = "bs"
+    else:
+        stat_table = "pitching_stats"
+        stat_alias = "ps"
+
+    # Qualification clause
+    q_clause = ""
+    q_params = []
+    if sc_qualified and sc_q_stat and sc_q_min:
+        q_clause = f" AND {stat_alias}.{sc_q_stat} >= %s"
+        q_params = [sc_q_min]
+
+    is_career = sc_type.startswith("career_")
+    career_rate = stat_criteria.get("career_rate", False)
+
+    if is_career and career_rate:
+        num_col = stat_criteria["numerator"]
+        den_col = stat_criteria["denominator"]
+        mult = stat_criteria.get("multiplier", 1)
+        sql = f"""
+            SELECT {stat_alias}.player_id,
+                   p.first_name, p.last_name, p.headshot_url,
+                   t2.short_name as team_short, t2.logo_url,
+                   MAX({stat_alias}.season) as last_season
+            FROM {stat_table} {stat_alias}
+            JOIN players p ON {stat_alias}.player_id = p.id
+            JOIN teams t2 ON p.team_id = t2.id
+            {team_join}
+            WHERE 1=1 {team_where}
+            GROUP BY {stat_alias}.player_id, p.first_name, p.last_name, p.headshot_url,
+                     t2.short_name, t2.logo_url
+            HAVING SUM({stat_alias}.{den_col}) >= %s
+               AND SUM({stat_alias}.{num_col}) * {mult} / NULLIF(SUM({stat_alias}.{den_col}), 0) {sc_op} %s
+            ORDER BY last_season DESC, p.last_name, p.first_name
+            LIMIT %s
+        """
+        params = team_params + [sc_q_min, sc_threshold, limit]
+    elif is_career:
+        rate_stats_b = {"batting_avg", "on_base_pct", "slugging_pct", "ops",
+                        "iso", "babip", "bb_pct", "k_pct", "woba", "wrc_plus"}
+        rate_stats_p = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
+                        "hr_per_9", "k_bb_ratio", "fip", "babip_against"}
+        rate_stats = rate_stats_b if "batting" in sc_type else rate_stats_p
+        if sc_stat in rate_stats:
+            sql = f"""
+                SELECT DISTINCT ON ({stat_alias}.player_id)
+                       {stat_alias}.player_id,
+                       p.first_name, p.last_name, p.headshot_url,
+                       t2.short_name as team_short, t2.logo_url,
+                       {stat_alias}.season as last_season
+                FROM {stat_table} {stat_alias}
+                JOIN players p ON {stat_alias}.player_id = p.id
+                JOIN teams t2 ON p.team_id = t2.id
+                {team_join}
+                WHERE {stat_alias}.{sc_stat} {sc_op} %s {team_where}{q_clause}
+                ORDER BY {stat_alias}.player_id, {stat_alias}.season DESC
+            """
+            params = [sc_threshold] + team_params + q_params
+            # Wrap to re-sort by last_season desc
+            sql = f"""
+                SELECT * FROM ({sql}) sub
+                ORDER BY last_season DESC, last_name, first_name
+                LIMIT %s
+            """
+            params.append(limit)
+        else:
+            sql = f"""
+                SELECT {stat_alias}.player_id,
+                       p.first_name, p.last_name, p.headshot_url,
+                       t2.short_name as team_short, t2.logo_url,
+                       MAX({stat_alias}.season) as last_season
+                FROM {stat_table} {stat_alias}
+                JOIN players p ON {stat_alias}.player_id = p.id
+                JOIN teams t2 ON p.team_id = t2.id
+                {team_join}
+                WHERE 1=1 {team_where}
+                GROUP BY {stat_alias}.player_id, p.first_name, p.last_name, p.headshot_url,
+                         t2.short_name, t2.logo_url
+                HAVING SUM({stat_alias}.{sc_stat}) {sc_op} %s
+                ORDER BY last_season DESC, p.last_name, p.first_name
+                LIMIT %s
+            """
+            params = team_params + [sc_threshold, limit]
+    else:
+        # Season stat
+        sql = f"""
+            SELECT DISTINCT ON ({stat_alias}.player_id)
+                   {stat_alias}.player_id,
+                   p.first_name, p.last_name, p.headshot_url,
+                   t2.short_name as team_short, t2.logo_url,
+                   {stat_alias}.season as last_season
+            FROM {stat_table} {stat_alias}
+            JOIN players p ON {stat_alias}.player_id = p.id
+            JOIN teams t2 ON p.team_id = t2.id
+            {team_join}
+            WHERE {stat_alias}.{sc_stat} {sc_op} %s {team_where}{q_clause}
+            ORDER BY {stat_alias}.player_id, {stat_alias}.season DESC
+        """
+        params = [sc_threshold] + team_params + q_params
+        # Wrap to re-sort
+        sql = f"""
+            SELECT * FROM ({sql}) sub
+            ORDER BY last_season DESC, last_name, first_name
+            LIMIT %s
+        """
+        params.append(limit)
+
+    try:
+        cur.execute(sql, tuple(params))
+        results = []
+        for row in cur.fetchall():
+            results.append({
+                "player_id": row["player_id"],
+                "first_name": row["first_name"],
+                "last_name": row["last_name"],
+                "headshot_url": row["headshot_url"],
+                "team_short": row["team_short"],
+                "logo_url": row["logo_url"],
+                "last_season": row["last_season"],
+            })
+        return results
+    except Exception:
+        return []
+
+
 # ============================================================
 # SUMMER LEADERBOARDS
 # ============================================================
@@ -5140,11 +5625,13 @@ def summer_batting_leaderboard(
                    sp.year_in_school,
                    st.name as team_name, st.short_name as team_short,
                    st.logo_url, st.city as team_city,
-                   sl.name as league_name, sl.abbreviation as league_abbrev
+                   sl.name as league_name, sl.abbreviation as league_abbrev,
+                   spl.spring_player_id
             FROM summer_batting_stats sbs
             JOIN summer_players sp ON sbs.player_id = sp.id
             JOIN summer_teams st ON sbs.team_id = st.id
             JOIN summer_leagues sl ON st.league_id = sl.id
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
             WHERE sbs.season = %s
               AND sbs.plate_appearances >= %s
               AND sbs.at_bats >= %s
@@ -5235,11 +5722,13 @@ def summer_pitching_leaderboard(
                    sp.year_in_school,
                    st.name as team_name, st.short_name as team_short,
                    st.logo_url, st.city as team_city,
-                   sl.name as league_name, sl.abbreviation as league_abbrev
+                   sl.name as league_name, sl.abbreviation as league_abbrev,
+                   spl.spring_player_id
             FROM summer_pitching_stats sps
             JOIN summer_players sp ON sps.player_id = sp.id
             JOIN summer_teams st ON sps.team_id = st.id
             JOIN summer_leagues sl ON st.league_id = sl.id
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
             WHERE sps.season = %s
               AND sps.innings_pitched >= %s
         """

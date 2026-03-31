@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useGridConfig, gridSearchPlayers, gridCheckGuess, gridFetchRandom, gridCheckCustom } from '../hooks/useApi'
+import { useGridConfig, gridSearchPlayers, gridCheckGuess, gridFetchRandom, gridCheckCustom, gridFetchSolutions } from '../hooks/useApi'
 
 const MAX_GUESSES = 9
 
@@ -28,6 +28,10 @@ export default function PnwGrid() {
   const [searching, setSearching] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [solutions, setSolutions] = useState(null)
+  const [solutionsLoading, setSolutionsLoading] = useState(false)
+  const [showSolutions, setShowSolutions] = useState(false)
+  const [expandedCell, setExpandedCell] = useState(null)
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
   const gridRef = useRef(null)
@@ -63,7 +67,27 @@ export default function PnwGrid() {
     setSearchQuery('')
     setSearchResults([])
     setFeedback(null)
+    setSolutions(null)
+    setShowSolutions(false)
+    setExpandedCell(null)
   }, [])
+
+  const handleShowSolutions = useCallback(async () => {
+    if (solutions) {
+      setShowSolutions(s => !s)
+      return
+    }
+    if (!config) return
+    setSolutionsLoading(true)
+    try {
+      const data = await gridFetchSolutions(config.rows, config.columns)
+      setSolutions(data.cells)
+      setShowSolutions(true)
+    } catch {
+      // silently fail
+    }
+    setSolutionsLoading(false)
+  }, [solutions, config])
 
   // Search with debounce
   useEffect(() => {
@@ -539,6 +563,98 @@ export default function PnwGrid() {
               </>
             )}
           </button>
+          <button
+            onClick={handleShowSolutions}
+            disabled={solutionsLoading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition border"
+            style={{ borderColor: '#00687a', color: '#00687a', backgroundColor: 'transparent' }}
+          >
+            {solutionsLoading ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                {showSolutions ? 'Hide Answers' : 'All Answers'}
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Solutions panel */}
+      {showSolutions && solutions && config && (
+        <div className="mt-4 px-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#00687a' }}>
+              <h3 className="text-sm font-bold text-white">All Possible Answers</h3>
+            </div>
+            {config.rows.map((row, ri) =>
+              config.columns.map((col, ci) => {
+                const key = `${ri}-${ci}`
+                const players = solutions[key] || []
+                const isExpanded = expandedCell === key
+                const previewCount = 5
+
+                return (
+                  <div key={key} className="border-b border-gray-100 last:border-0">
+                    <button
+                      onClick={() => setExpandedCell(isExpanded ? null : key)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition text-left"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold text-gray-400 shrink-0">{ri + 1},{ci + 1}</span>
+                        <span className="text-xs font-semibold text-gray-700 truncate">
+                          {row.label} + {col.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#e6f3f5', color: '#00687a' }}>
+                          {players.length}
+                        </span>
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-4 pb-3 max-h-64 overflow-y-auto">
+                        {players.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic py-2">No matching players found</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {players.map((p, pi) => (
+                              <div key={pi} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50">
+                                {p.logo_url ? (
+                                  <img src={p.logo_url} alt="" className="w-5 h-5 object-contain shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
+                                ) : (
+                                  <div className="w-5 h-5 shrink-0" />
+                                )}
+                                <span className="text-xs font-medium text-gray-700 truncate">
+                                  {p.first_name} {p.last_name}
+                                </span>
+                                <span className="text-[10px] text-gray-400 ml-auto shrink-0">
+                                  {p.team_short} · {p.last_season}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
         </div>
       )}
 

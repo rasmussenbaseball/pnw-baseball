@@ -321,3 +321,16 @@ export async function gridCheckCustom(playerId, rowCriteria, colCriteria) {
   if (!resp.ok) throw new Error('Check failed')
   return resp.json()
 }
+
+/**
+ * Fetch all valid players for each cell of a grid.
+ */
+export async function gridFetchSolutions(rows, columns) {
+  const resp = await fetch(`${API_BASE}/grid/solutions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows, columns }),
+  })
+  if (!resp.ok) throw new Error('Failed to fetch solutions')
+  return resp.json()
+}
