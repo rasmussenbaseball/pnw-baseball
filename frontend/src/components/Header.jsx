@@ -31,7 +31,9 @@ const NAV = [
   },
   {
     label: 'Recruiting',
+    adminOnly: true,
     items: [
+      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
       { to: '/recruiting/rankings', label: 'Rankings', desc: 'Player recruiting rankings', locked: true },
       { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
       { to: '/recruiting/breakdowns', label: 'Breakdowns', desc: 'Analysis by region & position', locked: true },
@@ -465,7 +467,9 @@ function NavTab({ section, isActive, user }) {
   const tabRef = useRef(null)
   const navigate = useNavigate()
 
-  const isLocked = section.authRequired && !user
+  const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com']
+  const isAdmin = user && ADMIN_EMAILS.includes(user.email)
+  const isLocked = (section.authRequired && !user) || (section.adminOnly && !isAdmin)
 
   const handleEnter = () => {
     clearTimeout(timeoutRef.current)
@@ -704,7 +708,8 @@ export default function Header() {
 
               // Expandable section
               const isExpanded = mobileExpanded === section.label
-              const isMobileLocked = section.authRequired && !user
+              const mobileIsAdmin = user && ['nate.rasmussen26@gmail.com'].includes(user.email)
+              const isMobileLocked = (section.authRequired && !user) || (section.adminOnly && !mobileIsAdmin)
 
               // Auth-gated: show lock, redirect to login
               if (isMobileLocked) {

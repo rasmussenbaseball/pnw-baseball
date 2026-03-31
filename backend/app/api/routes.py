@@ -5994,3 +5994,497 @@ def list_feature_requests():
             LIMIT 100
         """)
         return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/recruiting/guide/{team_id}")
+def get_recruiting_guide(team_id: int):
+    """
+    Comprehensive recruiting guide for a team.
+
+    Returns:
+    - Basic team info with division/conference
+    - 5-year W-L trend
+    - 5-year team stats (ERA, batting avg, OPS, runs)
+    - Roster overview and class breakdown
+    - Freshman production metrics
+    - Roster turnover rates
+    - Redshirt rate
+    - Four-year retention (for 4-year schools)
+    - Average physical attributes by position
+    - Player hometowns
+    - Hometown breakdown by state and metro area
+    - Top 10 all-time players by WAR
+    - Team WAR by season
+    - Placeholder for user-submitted ratings
+    """
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+
+            # ============ TEAM INFO ============
+            cur.execute("""
+                SELECT t.id, t.name, t.school_name, t.short_name, t.mascot,
+                       t.city, t.state, t.logo_url, t.stats_url, t.roster_url,
+                       c.name as conference_name, d.name as division_name
+                FROM teams t
+                LEFT JOIN conferences c ON t.conference_id = c.id
+                LEFT JOIN divisions d ON c.division_id = d.id
+                WHERE t.id = %s
+            """, (team_id,))
+            team_row = cur.fetchone()
+            if not team_row:
+                return {"error": "Team not found"}, 404
+
+            team_info = dict(team_row)
+
+            # ============ SEASON RECORDS (Last 5 years) ============
+            cur.execute("""
+                SELECT season, wins, losses, ties
+                FROM team_season_stats
+                WHERE team_id = %s
+                ORDER BY season DESC
+                LIMIT 5
+            """, (team_id,))
+            season_records = [dict(r) for r in cur.fetchall()]
+            season_records.reverse()
+
+            # ============ SEASON STATS (Last 5 years) ============
+            cur.execute("""
+                SELECT season, team_era, team_batting_avg, team_ops,
+                       runs_scored, runs_allowed
+                FROM team_season_stats
+                WHERE team_id = %s
+                ORDER BY season DESC
+                LIMIT 5
+            """, (team_id,))
+            season_stats = [dict(r) for r in cur.fetchall()]
+            season_stats.reverse()
+
+            # ============ CURRENT ROSTER OVERVIEW ============
+            cur.execute("""
+                SELECT DISTINCT p.id, p.position, p.year_in_school
+                FROM players p
+                WHERE p.team_id = %s AND p.year_in_school IS NOT NULL
+                ORDER BY p.id
+            """, (team_id,))
+            roster_rows = cur.fetchall()
+
+            total_players = len(roster_rows)
+            pitcher_count = sum(1 for r in roster_rows
+                              if r['position'] and
+                              ('%P%' in r['position'] or 'RHP' in r['position'] or 'LHP' in r['position']))
+            hitter_count = total_players - pitcher_count
+
+            # Class breakdown
+            class_breakdown = {"Fr": 0, "So": 0, "Jr": 0, "Sr": 0, "R-Fr": 0, "R-So": 0, "other": 0}
+            for r in roster_rows:
+                year = r['year_in_school']
+                if year in class_breakdown:
+                    class_breakdown[year] += 1
+                else:
+                    class_breakdown["other"] += 1
+
+            roster_overview = {
+                "total_players": total_players,
+                "pitcher_count": pitcher_count,
+                "hitter_count": hitter_count,
+                "by_class": class_breakdown
+            }
+
+            # ============ FRESHMAN PRODUCTION ============
+            cur.execute("""
+                SELECT DISTINCT season FROM batting_stats
+                WHERE team_id = %s
+                UNION
+                SELECT DISTINCT season FROM pitching_stats
+                WHERE team_id = %s
+                ORDER BY season DESC
+                LIMIT 5
+            """, (team_id, team_id))
+            seasons = [r[0] for r in cur.fetchall()]
+            seasons.sort()
+
+            freshman_production = []
+            for season in seasons:
+                # Batting: Fr/R-Fr players
+                cur.execute("""
+                    SELECT SUM(bs.plate_appearances) as fr_pa
+                    FROM batting_stats bs
+                    JOIN players p ON bs.player_id = p.id
+                    WHERE bs.team_id = %s AND bs.season = %s
+                      AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
+                """, (team_id, season))
+                fr_pa = cur.fetchone()[0] or 0
+
+                cur.execute("""
+                    SELECT SUM(bs.plate_appearances) as total_pa
+                    FROM batting_stats bs
+                    WHERE bs.team_id = %s AND bs.season = %s
+                """, (team_id, season))
+                total_pa = cur.fetchone()[0] or 0
+
+                fr_pa_pct = (fr_pa / total_pa * 100) if total_pa > 0 else 0
+
+                # Pitching: Fr/R-Fr pitchers
+                cur.execute("""
+                    SELECT SUM(ps.innings_pitched) as fr_ip
+                    FROM pitching_stats ps
+                    JOIN players p ON ps.player_id = p.id
+                    WHERE ps.team_id = %s AND ps.season = %s
+                      AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
+                """, (team_id, season))
+                fr_ip = cur.fetchone()[0] or 0
+
+                cur.execute("""
+                    SELECT SUM(ps.innings_pitched) as total_ip
+                    FROM pitching_stats ps
+                    WHERE ps.team_id = %s AND ps.season = %s
+                """, (team_id, season))
+                total_ip = cur.fetchone()[0] or 0
+
+                fr_ip_pct = (fr_ip / total_ip * 100) if total_ip > 0 else 0
+
+                # Freshman WAR
+                cur.execute("""
+                    SELECT SUM(COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0)) as fr_war
+                    FROM players p
+                    LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.team_id = %s AND bs.season = %s
+                    LEFT JOIN pitching_stats ps ON p.id = ps.player_id AND ps.team_id = %s AND ps.season = %s
+                    WHERE p.team_id = %s
+                      AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
+                """, (team_id, season, team_id, season, team_id))
+                fr_war = cur.fetchone()[0] or 0
+
+                freshman_production.append({
+                    "season": season,
+                    "batting_pa_pct": round(fr_pa_pct, 2),
+                    "pitching_ip_pct": round(fr_ip_pct, 2),
+                    "total_war": round(fr_war, 2)
+                })
+
+            # ============ ROSTER TURNOVER ============
+            roster_turnover = []
+            for i in range(len(seasons) - 1):
+                season_n = seasons[i]
+                season_n1 = seasons[i + 1]
+
+                # Players with stats in season N
+                cur.execute("""
+                    SELECT DISTINCT player_id FROM batting_stats
+                    WHERE team_id = %s AND season = %s
+                    UNION
+                    SELECT DISTINCT player_id FROM pitching_stats
+                    WHERE team_id = %s AND season = %s
+                """, (team_id, season_n, team_id, season_n))
+                players_n = set(r[0] for r in cur.fetchall())
+
+                # Players with stats in season N+1
+                cur.execute("""
+                    SELECT DISTINCT player_id FROM batting_stats
+                    WHERE team_id = %s AND season = %s
+                    UNION
+                    SELECT DISTINCT player_id FROM pitching_stats
+                    WHERE team_id = %s AND season = %s
+                """, (team_id, season_n1, team_id, season_n1))
+                players_n1 = set(r[0] for r in cur.fetchall())
+
+                returnees = len(players_n & players_n1)
+                total = len(players_n1)
+
+                roster_turnover.append({
+                    "from_season": season_n,
+                    "to_season": season_n1,
+                    "returnees": returnees,
+                    "total": total
+                })
+
+            # ============ REDSHIRT RATE ============
+            cur.execute("""
+                SELECT COUNT(*) as redshirt_count
+                FROM players
+                WHERE team_id = %s AND year_in_school LIKE 'R-%'
+            """, (team_id,))
+            redshirt_count = cur.fetchone()[0] or 0
+
+            redshirt_rate = {
+                "redshirt_count": redshirt_count,
+                "total_roster": total_players,
+                "redshirt_pct": round((redshirt_count / total_players * 100), 2) if total_players > 0 else 0
+            }
+
+            # ============ FOUR-YEAR RETENTION ============
+            # Check if this is a 4-year school (not NWAC)
+            cur.execute("""
+                SELECT d.name FROM conferences c
+                JOIN divisions d ON c.division_id = d.id
+                WHERE c.id = (SELECT conference_id FROM teams WHERE id = %s)
+            """, (team_id,))
+            div_result = cur.fetchone()
+            division_name = div_result[0] if div_result else None
+
+            four_year_retention = {"count": 0, "pct": 0}
+            if division_name != "NWAC":
+                cur.execute("""
+                    SELECT player_id, COUNT(DISTINCT season) as season_count
+                    FROM (
+                        SELECT DISTINCT player_id, season FROM batting_stats WHERE team_id = %s
+                        UNION ALL
+                        SELECT DISTINCT player_id, season FROM pitching_stats WHERE team_id = %s
+                    )
+                    GROUP BY player_id
+                    HAVING season_count >= 4
+                """, (team_id, team_id))
+                four_yr_players = len(cur.fetchall())
+                four_year_retention = {
+                    "count": four_yr_players,
+                    "pct": round((four_yr_players / total_players * 100), 2) if total_players > 0 else 0
+                }
+
+            # ============ AVERAGE SIZE BY POSITION ============
+            position_groups = {
+                "Catcher": ["C"],
+                "Middle Infield": ["SS", "2B"],
+                "Corner Infield": ["1B", "3B"],
+                "Outfield": ["OF", "CF", "LF", "RF"],
+                "Pitcher": ["P", "RHP", "LHP", "SP", "RP"]
+            }
+
+            avg_size_by_position = {}
+            for group_name, positions in position_groups.items():
+                pos_filter = " OR ".join([f"position LIKE '%{p}%'" for p in positions])
+                cur.execute(f"""
+                    SELECT height, weight FROM players
+                    WHERE team_id = %s AND ({pos_filter})
+                """, (team_id,))
+                players_in_group = cur.fetchall()
+
+                if players_in_group:
+                    heights_inches = []
+                    weights = []
+                    for p in players_in_group:
+                        h, w = p['height'], p['weight']
+                        if h:
+                            parts = h.split()
+                            if len(parts) == 2:
+                                try:
+                                    feet, inches = int(parts[0]), int(parts[1])
+                                    heights_inches.append(feet * 12 + inches)
+                                except:
+                                    pass
+                        if w:
+                            try:
+                                weights.append(int(w))
+                            except:
+                                pass
+
+                    avg_height = sum(heights_inches) / len(heights_inches) if heights_inches else None
+                    avg_weight = sum(weights) / len(weights) if weights else None
+
+                    avg_size_by_position[group_name] = {
+                        "avg_height_inches": round(avg_height, 1) if avg_height else None,
+                        "avg_weight": round(avg_weight, 1) if avg_weight else None
+                    }
+
+            # ============ PLAYER HOMETOWNS ============
+            cur.execute("""
+                SELECT id, first_name, last_name, hometown, height, weight
+                FROM players
+                WHERE team_id = %s AND hometown IS NOT NULL AND hometown != ''
+                ORDER BY last_name, first_name
+            """, (team_id,))
+
+            player_hometowns = []
+            for p in cur.fetchall():
+                player_hometowns.append({
+                    "name": f"{p['first_name']} {p['last_name']}",
+                    "hometown": p['hometown'],
+                    "state": None,
+                    "lat": None,
+                    "lng": None
+                })
+
+            # ============ HOMETOWN BREAKDOWN ============
+            metro_keywords = {
+                "Seattle Metro": {
+                    "keywords": ["Seattle"],
+                    "cities": ["Bellevue", "Tacoma", "Kent", "Renton", "Auburn", "Federal Way",
+                              "Kirkland", "Redmond", "Bothell", "Issaquah", "Sammamish", "Woodinville",
+                              "Lynnwood", "Edmonds", "Shoreline", "Burien", "Tukwila", "Mercer Island",
+                              "Kenmore", "Lake Stevens", "Marysville", "Everett", "Snohomish", "Monroe",
+                              "Mukilteo", "Mountlake Terrace", "Mill Creek"],
+                    "state": "WA"
+                },
+                "Portland Metro": {
+                    "keywords": ["Portland"],
+                    "cities": ["Beaverton", "Hillsboro", "Gresham", "Lake Oswego", "Tigard", "Tualatin",
+                              "West Linn", "Oregon City", "Milwaukie", "Clackamas", "Happy Valley",
+                              "Sherwood", "Wilsonville", "Canby", "Troutdale", "Camas", "Washougal",
+                              "Vancouver"],
+                    "state": "OR"
+                },
+                "Boise Metro": {
+                    "keywords": ["Boise"],
+                    "cities": ["Meridian", "Nampa", "Caldwell", "Eagle", "Kuna", "Star"],
+                    "state": "ID"
+                },
+                "Spokane Metro": {
+                    "keywords": ["Spokane"],
+                    "cities": ["Liberty Lake", "Cheney", "Airway Heights", "Medical Lake"],
+                    "state": "WA"
+                }
+            }
+
+            hometown_by_state = {}
+            hometown_by_metro = {}
+
+            for p in player_hometowns:
+                hometown = p['hometown']
+                # Try to extract state (simple logic - look for ", XX" at end)
+                state = None
+                if ", " in hometown:
+                    state = hometown.split(", ")[-1].strip().upper()
+
+                # Count by state
+                if state:
+                    hometown_by_state[state] = hometown_by_state.get(state, 0) + 1
+
+                # Assign to metro area
+                metro = "Other"
+                for metro_name, metro_data in metro_keywords.items():
+                    for keyword in metro_data["keywords"]:
+                        if keyword in hometown:
+                            metro = metro_name
+                            break
+                    if metro != "Other":
+                        break
+                    for city in metro_data["cities"]:
+                        if city in hometown and state == metro_data["state"]:
+                            metro = metro_name
+                            break
+                    if metro != "Other":
+                        break
+
+                hometown_by_metro[metro] = hometown_by_metro.get(metro, 0) + 1
+
+            hometown_breakdown = {
+                "by_state": hometown_by_state,
+                "by_metro_area": hometown_by_metro
+            }
+
+            # ============ BEST PLAYERS (Top 10 by WAR) ============
+            # Offensive WAR
+            cur.execute("""
+                SELECT p.id, p.first_name, p.last_name, p.position,
+                       SUM(bs.offensive_war) as total_war,
+                       GROUP_CONCAT(DISTINCT bs.season) as seasons
+                FROM players p
+                LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.team_id = %s
+                WHERE p.team_id = %s AND bs.offensive_war IS NOT NULL
+                GROUP BY p.id
+                ORDER BY total_war DESC
+                LIMIT 10
+            """, (team_id, team_id))
+            offensive_top_10 = [
+                {
+                    "name": f"{r['first_name']} {r['last_name']}",
+                    "position": r['position'],
+                    "seasons": r['seasons'],
+                    "total_war": round(r['total_war'], 2)
+                } for r in cur.fetchall()
+            ]
+
+            # Pitching WAR
+            cur.execute("""
+                SELECT p.id, p.first_name, p.last_name, p.position,
+                       SUM(ps.pitching_war) as total_war,
+                       GROUP_CONCAT(DISTINCT ps.season) as seasons
+                FROM players p
+                LEFT JOIN pitching_stats ps ON p.id = ps.player_id AND ps.team_id = %s
+                WHERE p.team_id = %s AND ps.pitching_war IS NOT NULL
+                GROUP BY p.id
+                ORDER BY total_war DESC
+                LIMIT 10
+            """, (team_id, team_id))
+            pitching_top_10 = [
+                {
+                    "name": f"{r['first_name']} {r['last_name']}",
+                    "position": r['position'],
+                    "seasons": r['seasons'],
+                    "total_war": round(r['total_war'], 2)
+                } for r in cur.fetchall()
+            ]
+
+            best_players = {
+                "offensive_top_10": offensive_top_10,
+                "pitching_top_10": pitching_top_10
+            }
+
+            # ============ WAR BY SEASON ============
+            war_by_season = []
+            for season in seasons:
+                cur.execute("""
+                    SELECT COALESCE(SUM(bs.offensive_war), 0) + COALESCE(SUM(ps.pitching_war), 0) as total_war
+                    FROM batting_stats bs
+                    FULL OUTER JOIN pitching_stats ps
+                      ON bs.team_id = ps.team_id AND bs.season = ps.season
+                    WHERE bs.team_id = %s AND bs.season = %s
+                      OR ps.team_id = %s AND ps.season = %s
+                """, (team_id, season, team_id, season))
+                result = cur.fetchone()
+                total_war = result[0] if result else 0
+                war_by_season.append({
+                    "season": season,
+                    "total_war": round(total_war, 2)
+                })
+
+            # ============ COACHING STAFF ============
+            coaching_staff = []
+            try:
+                cur.execute("""
+                    SELECT name, title, role, photo_url, email, alma_mater, years_at_school, bio
+                    FROM coaches
+                    WHERE team_id = %s
+                    ORDER BY
+                        CASE WHEN role = 'head_coach' THEN 0
+                             WHEN role = 'pitching' THEN 1
+                             WHEN role = 'hitting' THEN 2
+                             WHEN role = 'assistant' THEN 3
+                             ELSE 4 END,
+                        name
+                """, (team_id,))
+                coaching_staff = [dict(r) for r in cur.fetchall()]
+            except Exception:
+                pass  # Table may not exist yet
+
+            # ============ RATINGS PLACEHOLDER ============
+            ratings = {
+                "field": None,
+                "coaching": None,
+                "facilities": None,
+                "academics": None,
+                "fan_support": None,
+                "location": None,
+                "competitiveness": None
+            }
+
+            # ============ ASSEMBLE RESPONSE ============
+            return {
+                "team_info": team_info,
+                "season_records": season_records,
+                "season_stats": season_stats,
+                "roster_overview": roster_overview,
+                "freshman_production": freshman_production,
+                "roster_turnover": roster_turnover,
+                "redshirt_rate": redshirt_rate,
+                "four_year_retention": four_year_retention,
+                "avg_size_by_position": avg_size_by_position,
+                "player_hometowns": player_hometowns,
+                "hometown_breakdown": hometown_breakdown,
+                "best_players": best_players,
+                "war_by_season": war_by_season,
+                "coaching_staff": coaching_staff,
+                "ratings": ratings
+            }
+
+    except Exception as e:
+        return {"error": str(e)}, 500

@@ -10,6 +10,16 @@ function RequireAuth({ children }) {
   return children
 }
 
+// Admin-only guard — only allows specific email(s)
+const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com']
+function RequireAdmin({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (!ADMIN_EMAILS.includes(user.email)) return <Navigate to="/" replace />
+  return children
+}
+
 // ─── Existing pages ───
 import BattingLeaderboard from './pages/BattingLeaderboard'
 import PitchingLeaderboard from './pages/PitchingLeaderboard'
@@ -38,6 +48,7 @@ import RecruitingMap from './pages/RecruitingMap'
 import RecruitingBreakdowns from './pages/RecruitingBreakdowns'
 import RecruitingHistory from './pages/RecruitingHistory'
 import RecruitingField from './pages/RecruitingField'
+import RecruitingGuide from './pages/RecruitingGuide'
 import PlayerScouting from './pages/PlayerScouting'
 import TeamScouting from './pages/TeamScouting'
 import EnhancedScouting from './pages/EnhancedScouting'
@@ -82,12 +93,13 @@ export default function App() {
           <Route path="/team-history" element={<TeamHistory />} />
           <Route path="/recruiting-classes" element={<RecruitingClasses />} />
 
-          {/* Recruiting */}
-          <Route path="/recruiting/rankings" element={<RecruitingRankings />} />
-          <Route path="/recruiting/map" element={<RecruitingMap />} />
-          <Route path="/recruiting/breakdowns" element={<RecruitingBreakdowns />} />
-          <Route path="/recruiting/history" element={<RecruitingHistory />} />
-          <Route path="/recruiting/field" element={<RecruitingField />} />
+          {/* Recruiting (admin only) */}
+          <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />
+          <Route path="/recruiting/rankings" element={<RequireAdmin><RecruitingRankings /></RequireAdmin>} />
+          <Route path="/recruiting/map" element={<RequireAdmin><RecruitingMap /></RequireAdmin>} />
+          <Route path="/recruiting/breakdowns" element={<RequireAdmin><RecruitingBreakdowns /></RequireAdmin>} />
+          <Route path="/recruiting/history" element={<RequireAdmin><RecruitingHistory /></RequireAdmin>} />
+          <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
 
           {/* Coaching (auth required) */}
           <Route path="/juco-tracker" element={<RequireAuth><JucoTracker /></RequireAuth>} />
