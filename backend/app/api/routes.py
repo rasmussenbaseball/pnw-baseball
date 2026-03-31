@@ -2360,7 +2360,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             # Redirect to the canonical player page
             from fastapi.responses import RedirectResponse
             return RedirectResponse(
-                url=f"/api/players/{canonical_link['canonical_id']}"
+                url=f"/api/v1/players/{canonical_link['canonical_id']}"
                 + (f"?percentile_season={percentile_season}" if percentile_season else ""),
                 status_code=307,
             )
