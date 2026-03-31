@@ -1,6 +1,14 @@
-import { Routes, Route } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
+
+// Auth guard — redirects to login if not signed in
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  return children
+}
 
 // ─── Existing pages ───
 import BattingLeaderboard from './pages/BattingLeaderboard'
@@ -79,22 +87,22 @@ export default function App() {
           <Route path="/recruiting/history" element={<RecruitingHistory />} />
           <Route path="/recruiting/field" element={<RecruitingField />} />
 
-          {/* Coaching */}
-          <Route path="/juco-tracker" element={<JucoTracker />} />
-          <Route path="/compare" element={<TeamComparison />} />
-          <Route path="/player-scouting" element={<PlayerScouting />} />
-          <Route path="/team-scouting" element={<TeamScouting />} />
-          <Route path="/enhanced-scouting" element={<EnhancedScouting />} />
-          <Route path="/park-factors" element={<ParkFactors />} />
+          {/* Coaching (auth required) */}
+          <Route path="/juco-tracker" element={<RequireAuth><JucoTracker /></RequireAuth>} />
+          <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
+          <Route path="/player-scouting" element={<RequireAuth><PlayerScouting /></RequireAuth>} />
+          <Route path="/team-scouting" element={<RequireAuth><TeamScouting /></RequireAuth>} />
+          <Route path="/enhanced-scouting" element={<RequireAuth><EnhancedScouting /></RequireAuth>} />
+          <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
 
           {/* Draft */}
           <Route path="/draft/2026" element={<DraftBoard year="26" />} />
           <Route path="/draft/2027" element={<DraftBoard year="27" />} />
           <Route path="/draft/2028" element={<DraftBoard year="28" />} />
 
-          {/* Misc */}
-          <Route path="/pnw-grid" element={<PnwGrid />} />
-          <Route path="/graphics" element={<SocialGraphics />} />
+          {/* Misc (auth required) */}
+          <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
+          <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
 
           {/* Glossary */}

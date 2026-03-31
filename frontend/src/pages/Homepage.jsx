@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
+import { useAuth } from '../context/AuthContext'
 
 const SEASON = 2026
 
@@ -28,6 +29,7 @@ export default function Homepage() {
   const { data: ratings } = useTeamRatings(SEASON)
   const { data: recentGames } = useGamesTicker(SEASON, 20)
   const { data: liveData } = useLiveScores()
+  const { user } = useAuth()
 
   // Only show live ticker when games are actually in progress
   const todayGames = liveData?.today || []
@@ -55,6 +57,8 @@ export default function Homepage() {
         {/* Right column - sidebar (1/3) */}
         <div className="flex flex-col gap-5">
           <PowerRankingsWidget ratings={ratings} />
+          <PnwGridWidget />
+          {!user && <SignUpWidget />}
           <QuickLinksWidget />
         </div>
       </div>
@@ -463,6 +467,71 @@ function PowerRankingsWidget({ ratings }) {
         ))}
       </div>
       <div className="text-[10px] text-gray-400 text-right mt-1">Ranked by Team WAR</div>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// PNW GRID WIDGET (daily trivia game link)
+// ════════════════════════════════════════════
+function PnwGridWidget() {
+  return (
+    <Link
+      to="/pnw-grid"
+      className="block bg-gradient-to-br from-pnw-slate to-pnw-slate/90 rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow group"
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-pnw-teal/20 rounded-lg flex items-center justify-center shrink-0">
+          <svg className="w-6 h-6 text-pnw-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-white group-hover:text-pnw-teal transition-colors">
+            PNW Grid
+          </div>
+          <div className="text-[11px] text-gray-400">
+            Daily trivia game — test your PNW baseball knowledge
+          </div>
+        </div>
+        <svg className="w-4 h-4 text-gray-500 group-hover:text-pnw-teal transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    </Link>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// SIGN UP CTA WIDGET (shown only to logged-out users)
+// ════════════════════════════════════════════
+function SignUpWidget() {
+  return (
+    <div className="bg-gradient-to-br from-pnw-teal/5 to-pnw-teal/10 rounded-xl shadow-sm border border-pnw-teal/20 p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 bg-pnw-teal/15 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+          <svg className="w-5 h-5 text-pnw-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-sm font-bold text-pnw-slate">Create a Free Account</h3>
+          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+            Sign up with your email to unlock coaching tools, JUCO tracker, matchup breakdowns, social graphics, and more.
+          </p>
+        </div>
+      </div>
+      <Link
+        to="/login"
+        className="mt-3 block w-full text-center px-4 py-2 bg-pnw-teal text-white text-sm font-semibold rounded-lg hover:bg-pnw-teal/90 transition-colors"
+      >
+        Sign Up Free
+      </Link>
+      <p className="text-[10px] text-gray-400 text-center mt-2">
+        No credit card required — just an email address
+      </p>
     </div>
   )
 }
