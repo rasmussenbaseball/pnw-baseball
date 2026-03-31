@@ -327,16 +327,17 @@ export default function PlayerGraphic() {
   const pnwRankings = rawData?.pnw_rankings || []
   const awards = rawData?.awards || []
 
-  // Build leaderboard badges
+  // Build leaderboard badges with clear context
+  const seasonLabel = activeSeason === 'career' ? 'Career' : `${activeSeason}`
   const badges = []
   for (const r of pnwRankings) {
     if (r.rank <= 3) {
-      badges.push({ scope: 'PNW', rank: r.rank, category: r.category, value: r.value, format: r.format })
+      badges.push({ scope: `#${r.rank} in PNW · ${seasonLabel}`, rank: r.rank, category: r.category })
     }
   }
   for (const a of awards) {
     if (a.season === activeSeason || activeSeason === 'career') {
-      badges.push({ scope: a.team_short || 'Team', rank: 1, category: a.category, value: a.value, format: 'int' })
+      badges.push({ scope: `Team Leader · ${a.team_short || 'Team'}`, rank: 1, category: a.category })
     }
   }
 
@@ -439,11 +440,11 @@ export default function PlayerGraphic() {
       ctx.fillText(info.team_name || '', nameX + 1, y + 124)
 
       // Season label
-      const seasonLabel = activeSeason === 'career' ? 'CAREER' : `${activeSeason} SEASON`
+      const canvasSeasonLabel = activeSeason === 'career' ? 'CAREER' : `${activeSeason} SEASON`
       ctx.font = `700 14px ${font}`
       ctx.fillStyle = 'rgba(255,255,255,0.35)'
       ctx.textAlign = 'right'
-      ctx.fillText(seasonLabel, W - pad, y + 82)
+      ctx.fillText(canvasSeasonLabel, W - pad, y + 82)
 
       // Division badge
       if (info.division_level) {
@@ -452,13 +453,13 @@ export default function PlayerGraphic() {
         ctx.fillText(info.division_level, W - pad, y + 102)
       }
 
-      y += 170
+      y += 158
 
       // ── Divider
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'
       ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
-      y += 20
+      y += 14
 
       // Determine which stats to draw
       const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
@@ -483,11 +484,11 @@ export default function PlayerGraphic() {
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
           ctx.textAlign = 'center'
           ctx.fillText(coreStats[i].label, cx, y)
-          ctx.font = `bold 26px ${font}`
+          ctx.font = `bold 24px ${font}`
           ctx.fillStyle = '#ffffff'
-          ctx.fillText(fmtCanvas(statsRow[coreStats[i].key], coreStats[i].format), cx, y + 30)
+          ctx.fillText(fmtCanvas(statsRow[coreStats[i].key], coreStats[i].format), cx, y + 26)
         }
-        y += 56
+        y += 48
 
         // ── Advanced stats row
         ctx.font = `700 13px ${font}`
@@ -504,11 +505,11 @@ export default function PlayerGraphic() {
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
           ctx.textAlign = 'center'
           ctx.fillText(advStats[i].label, cx, y)
-          ctx.font = `bold 24px ${font}`
+          ctx.font = `bold 22px ${font}`
           ctx.fillStyle = '#ffffff'
-          ctx.fillText(fmtCanvas(statsRow[advStats[i].key], advStats[i].format), cx, y + 28)
+          ctx.fillText(fmtCanvas(statsRow[advStats[i].key], advStats[i].format), cx, y + 26)
         }
-        y += 54
+        y += 46
       }
 
       // ── Divider
@@ -517,9 +518,9 @@ export default function PlayerGraphic() {
       y += 16
 
       // ══ PERCENTILE BARS ══
-      const availablePerc = percMetrics.filter(m => percentiles[m.key])
+      const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
       if (availablePerc.length > 0) {
-        ctx.font = `700 13px ${font}`
+        ctx.font = `700 12px ${font}`
         ctx.fillStyle = 'rgba(255,255,255,0.35)'
         ctx.textAlign = 'left'
         ctx.fillText('PERCENTILE RANKINGS', pad, y)
@@ -527,9 +528,9 @@ export default function PlayerGraphic() {
         ctx.font = `500 10px ${font}`
         ctx.textAlign = 'right'
         ctx.fillText(`vs. ${info.division_level || 'Division'}`, W - pad, y)
-        y += 20
+        y += 16
 
-        const barH = 30
+        const barH = 26
         const labelW = 70
         const valueW = 60
         const circleR = 13
@@ -580,53 +581,44 @@ export default function PlayerGraphic() {
       ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
       y += 14
 
-      // ══ LEADERBOARD BADGES ══
-      const topBadges = badges.slice(0, 6)
+      // ══ LEADERBOARD BADGES (compact, single row of up to 3) ══
+      const topBadges = badges.slice(0, 3)
       if (topBadges.length > 0) {
-        ctx.font = `700 13px ${font}`
+        ctx.font = `700 12px ${font}`
         ctx.fillStyle = 'rgba(255,255,255,0.35)'
         ctx.textAlign = 'left'
         ctx.fillText('LEADERBOARD', pad, y)
-        y += 18
+        y += 14
 
-        const badgeCols = Math.min(topBadges.length, 3)
-        const badgeW = (W - pad * 2 - (badgeCols - 1) * 12) / badgeCols
-        const badgeH = 48
+        const badgeCols = topBadges.length
+        const badgeW = (W - pad * 2 - (badgeCols - 1) * 10) / badgeCols
+        const badgeH = 42
 
         for (let i = 0; i < topBadges.length; i++) {
-          const col = i % badgeCols
-          const row = Math.floor(i / badgeCols)
-          const bx = pad + col * (badgeW + 12)
-          const by = y + row * (badgeH + 8)
+          const bx = pad + i * (badgeW + 10)
+          const by = y
           const b = topBadges[i]
 
-          canvasRoundRect(ctx, bx, by, badgeW, badgeH, 8)
+          canvasRoundRect(ctx, bx, by, badgeW, badgeH, 6)
           ctx.fillStyle = 'rgba(255,255,255,0.05)'
           ctx.fill()
           ctx.strokeStyle = 'rgba(255,255,255,0.1)'
           ctx.lineWidth = 1
           ctx.stroke()
 
-          const rankColors = ['#f59e0b', '#94a3b8', '#cd7f32']
-          ctx.beginPath()
-          ctx.arc(bx + 24, by + badgeH / 2, 14, 0, Math.PI * 2)
-          ctx.fillStyle = rankColors[Math.min(b.rank - 1, 2)] || '#64748b'
-          ctx.fill()
-          ctx.font = `bold 14px ${font}`
-          ctx.fillStyle = '#ffffff'
-          ctx.textAlign = 'center'
-          ctx.fillText(String(b.rank), bx + 24, by + badgeH / 2 + 5)
-
+          // Category name (bold)
           ctx.textAlign = 'left'
-          ctx.font = `600 14px ${font}`
+          ctx.font = `700 13px ${font}`
           ctx.fillStyle = '#ffffff'
-          ctx.fillText(b.category, bx + 46, by + 20)
-          ctx.font = `500 11px ${font}`
+          ctx.fillText(b.category, bx + 12, by + 17)
+
+          // Context line (e.g. "#1 in PNW · 2026" or "Team Leader · Bushnell")
+          ctx.font = `400 10px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
-          ctx.fillText(b.scope, bx + 46, by + 37)
+          ctx.fillText(b.scope, bx + 12, by + 33)
         }
 
-        y += Math.ceil(topBadges.length / badgeCols) * (badgeH + 8) + 4
+        y += badgeH + 6
       }
 
       // ══ FOOTER ══
@@ -640,7 +632,7 @@ export default function PlayerGraphic() {
       ctx.textAlign = 'left'
       ctx.fillText('nwbaseballstats.com', pad, footerY + 22)
       ctx.textAlign = 'right'
-      ctx.fillText(seasonLabel, W - pad, footerY + 22)
+      ctx.fillText(canvasSeasonLabel, W - pad, footerY + 22)
 
       // ── Download
       const link = document.createElement('a')
@@ -802,18 +794,12 @@ export default function PlayerGraphic() {
                       <div>
                         <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">Leaderboard</div>
                         <div className="grid grid-cols-3 gap-2">
-                          {badges.slice(0, 6).map((b, i) => {
-                            const rankColors = ['#f59e0b', '#94a3b8', '#cd7f32']
-                            return (
-                              <div key={i} className="rounded-lg p-2 text-center" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                <div className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white mb-1" style={{ backgroundColor: rankColors[Math.min(b.rank - 1, 2)] || '#64748b' }}>
-                                  {b.rank}
-                                </div>
-                                <div className="text-xs font-semibold text-white">{b.category}</div>
-                                <div className="text-[10px] text-white/40">{b.scope}</div>
-                              </div>
-                            )
-                          })}
+                          {badges.slice(0, 3).map((b, i) => (
+                            <div key={i} className="rounded-md px-2.5 py-2" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              <div className="text-xs font-bold text-white">{b.category}</div>
+                              <div className="text-[9px] text-white/40 mt-0.5">{b.scope}</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </>
