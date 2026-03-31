@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
 
@@ -54,7 +54,7 @@ function computeCareerTotals(seasons, type) {
     totals.slugging_pct = ab > 0 ? tb / ab : null
     totals.ops = (totals.on_base_pct || 0) + (totals.slugging_pct || 0)
     totals.iso = ab > 0 ? (totals.slugging_pct - totals.batting_avg) : null
-    totals.woba = null // API computes this
+    totals.woba = null
     totals.wrc_plus = null
     totals.bb_pct = pa > 0 ? bb / pa : null
     totals.k_pct = pa > 0 ? totals.strikeouts / pa : null
@@ -139,52 +139,6 @@ const PITCHING_ADVANCED = [
   { key: 'pitching_war', label: 'WAR', format: 'war' },
 ]
 
-// ─── Canvas export helpers ────────────────────────────────────
-async function loadExportImage(src) {
-  if (!src) return null
-  const isExternal = src.startsWith('http') && !src.includes(window.location.hostname)
-  const url = isExternal ? `/api/v1/proxy-image?url=${encodeURIComponent(src)}` : src
-  try {
-    const resp = await fetch(url)
-    if (!resp.ok) return null
-    const blob = await resp.blob()
-    const objectUrl = URL.createObjectURL(blob)
-    return await new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => { resolve(img); URL.revokeObjectURL(objectUrl) }
-      img.onerror = () => { resolve(null); URL.revokeObjectURL(objectUrl) }
-      img.src = objectUrl
-    })
-  } catch { return null }
-}
-
-function canvasRoundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.lineTo(x + w - r, y)
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
-  ctx.lineTo(x + w, y + h - r)
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
-  ctx.lineTo(x + r, y + h)
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
-  ctx.lineTo(x, y + r)
-  ctx.quadraticCurveTo(x, y, x + r, y)
-  ctx.closePath()
-}
-
-function fmtCanvas(value, format) {
-  if (value === null || value === undefined) return '-'
-  switch (format) {
-    case 'avg': return value >= 1 ? value.toFixed(3) : value.toFixed(3).replace('0.', '.')
-    case 'era': return value.toFixed(2)
-    case 'pct': return (value * 100).toFixed(1) + '%'
-    case 'war': return value.toFixed(1)
-    case 'ip':  return value.toFixed(1)
-    case 'int': return Math.round(value).toString()
-    default: return String(value)
-  }
-}
-
 // ─── Player Search Component ──────────────────────────────────
 function PlayerSearchBox({ onSelect }) {
   const [query, setQuery] = useState('')
@@ -248,23 +202,23 @@ function PlayerSearchBox({ onSelect }) {
   )
 }
 
-// ─── Percentile Bar Row (on-screen preview) ───────────────────
+// ─── Percentile Bar Row ──────────────────────────────────────
 function PercentileBar({ label, value, percentile, format }) {
   const color = percentileColor(percentile)
   const barWidth = Math.max(4, percentile)
   return (
     <div className="flex items-center h-7">
-      <div className="w-14 text-right pr-2 text-[11px] font-medium text-gray-200 shrink-0">{label}</div>
-      <div className="flex-1 relative h-5">
+      <div className="w-12 text-right pr-2 text-[11px] font-semibold text-gray-200 shrink-0">{label}</div>
+      <div className="flex-1 relative h-5 mx-1">
         <div className="absolute top-1/2 left-0 right-0 h-1.5 rounded-full" style={{ transform: 'translateY(-50%)', backgroundColor: 'rgba(255,255,255,0.1)' }} />
         <div className="absolute top-1/2 left-0 h-1.5 rounded-full" style={{ transform: 'translateY(-50%)', width: `${barWidth}%`, backgroundColor: color, transition: 'width 0.5s ease' }} />
       </div>
-      <div className="w-10 text-center shrink-0">
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: color }}>
+      <div className="w-8 flex items-center justify-center shrink-0">
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: color }}>
           {percentile}
         </span>
       </div>
-      <div className="w-14 text-right text-[11px] text-gray-300 shrink-0">{fmtCanvas(value, format)}</div>
+      <div className="w-12 text-right text-[11px] text-gray-300 shrink-0">{formatStat(value, format)}</div>
     </div>
   )
 }
@@ -273,7 +227,7 @@ function PercentileBar({ label, value, percentile, format }) {
 function StatCell({ label, value, format }) {
   return (
     <div className="text-center">
-      <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
+      <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
       <div className="text-sm font-bold text-white">{formatStat(value, format)}</div>
     </div>
   )
@@ -286,8 +240,6 @@ function StatCell({ label, value, format }) {
 export default function PlayerGraphic() {
   const [playerId, setPlayerId] = useState(null)
   const [selectedSeason, setSelectedSeason] = useState('latest')
-  const [exporting, setExporting] = useState(false)
-  const cardRef = useRef(null)
 
   // Determine percentile_season param
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
@@ -318,7 +270,7 @@ export default function PlayerGraphic() {
     ? computeCareerTotals(pitchingStats, 'pitching')
     : pitchingStats.find(s => s.season === activeSeason)
 
-  // Percentiles — API splits them into batting_percentiles and pitching_percentiles
+  // Percentiles
   const battingPercentiles = rawData?.batting_percentiles || {}
   const pitchingPercentiles = rawData?.pitching_percentiles || {}
   const percentiles = { ...battingPercentiles, ...pitchingPercentiles }
@@ -327,7 +279,7 @@ export default function PlayerGraphic() {
   const pnwRankings = rawData?.pnw_rankings || []
   const awards = rawData?.awards || []
 
-  // Build leaderboard badges with clear context
+  // Build leaderboard badges with context
   const seasonLabel = activeSeason === 'career' ? 'Career' : `${activeSeason}`
   const badges = []
   for (const r of pnwRankings) {
@@ -341,353 +293,28 @@ export default function PlayerGraphic() {
     }
   }
 
-  // ─── Canvas Export ────────────────────────────────────────────
-  const handleExport = useCallback(async () => {
-    if (!rawData) return
-    setExporting(true)
-
-    try {
-      const W = 1080, H = 1080
-      const canvas = document.createElement('canvas')
-      canvas.width = W; canvas.height = H
-      const ctx = canvas.getContext('2d')
-      const font = 'Inter, system-ui, -apple-system, sans-serif'
-
-      // ── Background gradient
-      const grad = ctx.createLinearGradient(0, 0, W, H)
-      grad.addColorStop(0, '#0a1628')
-      grad.addColorStop(0.35, '#0f2744')
-      grad.addColorStop(1, '#00687a')
-      ctx.fillStyle = grad
-      ctx.fillRect(0, 0, W, H)
-
-      // ── Subtle decorative orbs
-      ctx.beginPath()
-      ctx.arc(W * 0.82, H * 0.12, 180, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(0,104,122,0.15)'
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(W * 0.15, H * 0.88, 220, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(0,138,158,0.08)'
-      ctx.fill()
-
-      const pad = 44
-      const contentW = W - pad * 2
-
-      // ── Load images
-      const [headshot, logo] = await Promise.all([
-        loadExportImage(info.headshot_url),
-        loadExportImage(info.logo_url),
-      ])
-
-      // Determine which stats to draw
-      const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
-      const statsRow = isPitcher ? pitchingRow : battingRow
-      const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
-      const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
-      const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-      const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
-      const topBadges = badges.slice(0, 3)
-      const canvasSeasonLabel = activeSeason === 'career' ? 'CAREER' : `${activeSeason} SEASON`
-
-      // ══════════════════════════════════════════════════
-      // HEADER — player info (y ≈ 44 → 210)
-      // ══════════════════════════════════════════════════
-      let y = pad
-
-      // Team logo (top-right, faded)
-      if (logo) {
-        const logoSize = 64
-        ctx.globalAlpha = 0.4
-        ctx.drawImage(logo, W - pad - logoSize, y, logoSize, logoSize)
-        ctx.globalAlpha = 1
-      }
-
-      // Headshot (large circle)
-      const hsSize = 140
-      const hsX = pad, hsY = y
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(hsX + hsSize / 2, hsY + hsSize / 2, hsSize / 2, 0, Math.PI * 2)
-      ctx.closePath()
-      ctx.clip()
-      if (headshot) {
-        ctx.drawImage(headshot, hsX, hsY, hsSize, hsSize)
-      } else {
-        ctx.fillStyle = '#1a3a5c'
-        ctx.fillRect(hsX, hsY, hsSize, hsSize)
-        ctx.font = `bold 48px ${font}`
-        ctx.fillStyle = 'rgba(255,255,255,0.4)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(
-          (info.first_name?.[0] || '') + (info.last_name?.[0] || ''),
-          hsX + hsSize / 2, hsY + hsSize / 2
-        )
-      }
-      ctx.restore()
-
-      // Headshot border ring
-      ctx.beginPath()
-      ctx.arc(hsX + hsSize / 2, hsY + hsSize / 2, hsSize / 2, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)'
-      ctx.lineWidth = 2
-      ctx.stroke()
-
-      // Name (right of headshot)
-      const nameX = hsX + hsSize + 24
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-      ctx.font = `800 44px ${font}`
-      ctx.fillStyle = '#ffffff'
-      ctx.fillText(info.first_name || '', nameX, y + 10)
-      ctx.fillText(info.last_name || '', nameX, y + 58)
-
-      // Info line (position, number, bats/throws, year)
-      const infoItems = [
-        info.position,
-        info.jersey_number ? `#${info.jersey_number}` : null,
-        info.bats && info.throws ? `${info.bats}/${info.throws}` : null,
-        info.year_in_school,
-      ].filter(Boolean)
-      ctx.font = `500 17px ${font}`
-      ctx.fillStyle = 'rgba(255,255,255,0.55)'
-      ctx.fillText(infoItems.join('  ·  '), nameX, y + 108)
-
-      // Team name
-      ctx.font = `600 19px ${font}`
-      ctx.fillStyle = '#7dd3fc'
-      ctx.fillText(info.team_name || '', nameX, y + 130)
-
-      // Season + division (top-right under logo)
-      ctx.textAlign = 'right'
-      ctx.font = `700 14px ${font}`
-      ctx.fillStyle = 'rgba(255,255,255,0.3)'
-      ctx.fillText(canvasSeasonLabel, W - pad, y + 78)
-      if (info.division_level) {
-        ctx.font = `600 13px ${font}`
-        ctx.fillStyle = 'rgba(125,211,252,0.6)'
-        ctx.fillText(info.division_level, W - pad, y + 96)
-      }
-
-      y += hsSize + 16
-
-      // ── Thin divider
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-      ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
-      y += 16
-
-      // ══════════════════════════════════════════════════
-      // STATS — two rows in a single block
-      // ══════════════════════════════════════════════════
-      if (statsRow) {
-        // Section header
-        ctx.font = `700 13px ${font}`
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'
-        ctx.textAlign = 'left'
-        ctx.fillText('SEASON STATS', pad, y)
-        y += 20
-
-        // Row 1 — core stats (8 cols)
-        const cols = coreStats.length
-        const cellW = contentW / cols
-        for (let i = 0; i < cols; i++) {
-          const cx = pad + cellW * i + cellW / 2
-          // Label
-          ctx.font = `600 11px ${font}`
-          ctx.fillStyle = 'rgba(255,255,255,0.4)'
-          ctx.textAlign = 'center'
-          ctx.fillText(coreStats[i].label, cx, y)
-          // Value
-          ctx.font = `bold 26px ${font}`
-          ctx.fillStyle = '#ffffff'
-          ctx.fillText(fmtCanvas(statsRow[coreStats[i].key], coreStats[i].format), cx, y + 28)
-        }
-        y += 52
-
-        // Thin separator between rows
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-        ctx.beginPath(); ctx.moveTo(pad + 20, y); ctx.lineTo(W - pad - 20, y); ctx.stroke()
-        y += 12
-
-        // Row 2 — advanced stats (8 cols)
-        const advCols = advStats.length
-        const advCellW = contentW / advCols
-        for (let i = 0; i < advCols; i++) {
-          const cx = pad + advCellW * i + advCellW / 2
-          ctx.font = `600 11px ${font}`
-          ctx.fillStyle = 'rgba(255,255,255,0.4)'
-          ctx.textAlign = 'center'
-          ctx.fillText(advStats[i].label, cx, y)
-          ctx.font = `bold 24px ${font}`
-          ctx.fillStyle = '#ffffff'
-          ctx.fillText(fmtCanvas(statsRow[advStats[i].key], advStats[i].format), cx, y + 26)
-        }
-        y += 50
-      }
-
-      // ── Divider
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)'
-      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
-      y += 16
-
-      // ══════════════════════════════════════════════════
-      // PERCENTILE BARS — label | bar | circle | value
-      // ══════════════════════════════════════════════════
-      if (availablePerc.length > 0) {
-        ctx.font = `700 12px ${font}`
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'
-        ctx.textAlign = 'left'
-        ctx.fillText('PERCENTILE RANKINGS', pad, y)
-        ctx.font = `500 10px ${font}`
-        ctx.textAlign = 'right'
-        ctx.fillStyle = 'rgba(255,255,255,0.25)'
-        ctx.fillText(`vs. ${info.division_level || 'Division'}`, W - pad, y)
-        y += 18
-
-        // Layout constants — generous right margin so circles never clip
-        const labelW = 68
-        const circleR = 14
-        const valueW = 58
-        const rightMargin = circleR * 2 + 12 + valueW  // circle + gap + value text
-        const barAreaW = contentW - labelW - rightMargin - 10
-        const barH = 30
-
-        for (const metric of availablePerc) {
-          const { value, percentile } = percentiles[metric.key]
-          const color = percentileColor(percentile)
-          const rowCenterY = y + barH / 2
-
-          // Label (right-aligned before bar)
-          ctx.font = `600 13px ${font}`
-          ctx.fillStyle = 'rgba(255,255,255,0.6)'
-          ctx.textAlign = 'right'
-          ctx.fillText(metric.label, pad + labelW - 8, rowCenterY + 5)
-
-          // Track background
-          const barX = pad + labelW
-          canvasRoundRect(ctx, barX, rowCenterY - 4, barAreaW, 8, 4)
-          ctx.fillStyle = 'rgba(255,255,255,0.07)'
-          ctx.fill()
-
-          // Filled bar
-          const fillW = Math.max(8, (Math.max(4, percentile) / 100) * barAreaW)
-          canvasRoundRect(ctx, barX, rowCenterY - 4, fillW, 8, 4)
-          ctx.fillStyle = color
-          ctx.fill()
-
-          // Percentile circle (positioned right after bar area)
-          const circX = barX + barAreaW + 10 + circleR
-          ctx.beginPath()
-          ctx.arc(circX, rowCenterY, circleR, 0, Math.PI * 2)
-          ctx.fillStyle = color
-          ctx.fill()
-          ctx.font = `bold 13px ${font}`
-          ctx.fillStyle = '#ffffff'
-          ctx.textAlign = 'center'
-          ctx.fillText(String(percentile), circX, rowCenterY + 5)
-
-          // Raw value (right edge)
-          ctx.font = `500 12px ${font}`
-          ctx.fillStyle = 'rgba(255,255,255,0.45)'
-          ctx.textAlign = 'right'
-          ctx.fillText(fmtCanvas(value, metric.format), W - pad, rowCenterY + 4)
-
-          y += barH
-        }
-        y += 10
-      }
-
-      // ══════════════════════════════════════════════════
-      // LEADERBOARD BADGES — compact single row
-      // ══════════════════════════════════════════════════
-      if (topBadges.length > 0) {
-        // Divider
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
-        y += 14
-
-        ctx.font = `700 12px ${font}`
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'
-        ctx.textAlign = 'left'
-        ctx.fillText('LEADERBOARD', pad, y)
-        y += 16
-
-        const gap = 10
-        const badgeCols = topBadges.length
-        const badgeW = (contentW - (badgeCols - 1) * gap) / badgeCols
-        const badgeH = 44
-
-        for (let i = 0; i < topBadges.length; i++) {
-          const bx = pad + i * (badgeW + gap)
-          const by = y
-          const b = topBadges[i]
-
-          canvasRoundRect(ctx, bx, by, badgeW, badgeH, 8)
-          ctx.fillStyle = 'rgba(255,255,255,0.05)'
-          ctx.fill()
-          ctx.strokeStyle = 'rgba(255,255,255,0.1)'
-          ctx.lineWidth = 1
-          ctx.stroke()
-
-          // Category (bold white)
-          ctx.textAlign = 'left'
-          ctx.font = `700 14px ${font}`
-          ctx.fillStyle = '#ffffff'
-          ctx.fillText(b.category, bx + 12, by + 18)
-
-          // Context line
-          ctx.font = `400 10px ${font}`
-          ctx.fillStyle = 'rgba(255,255,255,0.4)'
-          ctx.fillText(b.scope, bx + 12, by + 35)
-        }
-
-        y += badgeH + 8
-      }
-
-      // ══════════════════════════════════════════════════
-      // FOOTER — anchored to bottom
-      // ══════════════════════════════════════════════════
-      const footerY = H - 44
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-      ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(pad, footerY); ctx.lineTo(W - pad, footerY); ctx.stroke()
-
-      ctx.font = `600 14px ${font}`
-      ctx.fillStyle = 'rgba(255,255,255,0.3)'
-      ctx.textAlign = 'left'
-      ctx.fillText('nwbaseballstats.com', pad, footerY + 24)
-      ctx.textAlign = 'right'
-      ctx.fillText(canvasSeasonLabel, W - pad, footerY + 24)
-
-      // ── Download
-      const link = document.createElement('a')
-      const safeName = `${info.first_name}_${info.last_name}`.replace(/\s/g, '_')
-      link.download = `nwbb-${safeName}-${activeSeason}.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-    } catch (err) {
-      console.error('Export failed:', err)
-      alert('Export failed — check console for details.')
-    } finally {
-      setExporting(false)
-    }
-  }, [rawData, info, activeSeason, percentiles, badges, hasBatting, hasPitching, battingRow, pitchingRow])
+  // Determine stat type
+  const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
+  const statsRow = isPitcher ? pitchingRow : battingRow
+  const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
+  const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
+  const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
+  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+  const topBadges = badges.slice(0, 3)
 
   // ═══════════════════════════════════════════════════════════════
-  // ON-SCREEN PREVIEW
+  // RENDER
   // ═══════════════════════════════════════════════════════════════
   return (
     <div className="space-y-6">
       {/* Page title + search */}
       <div>
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Player Pages</h1>
-        <p className="text-sm text-gray-500 mb-4">Generate a social media-ready graphic for any player.</p>
+        <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic. Screenshot to save.</p>
         <PlayerSearchBox onSelect={setPlayerId} />
       </div>
 
-      {/* Loading / error states */}
+      {/* Loading / error */}
       {playerId && loading && (
         <div className="text-center py-12 text-gray-500">Loading player data...</div>
       )}
@@ -695,7 +322,7 @@ export default function PlayerGraphic() {
         <div className="text-center py-12 text-red-500">Failed to load player. Try another search.</div>
       )}
 
-      {/* Controls */}
+      {/* Season selector */}
       {rawData && (
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -709,99 +336,86 @@ export default function PlayerGraphic() {
             ))}
             <option value="career">Career</option>
           </select>
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            className="px-4 py-1.5 bg-nw-teal text-white text-sm font-medium rounded-lg hover:bg-nw-teal-dark transition-colors disabled:opacity-50"
-          >
-            {exporting ? 'Exporting...' : 'Download PNG'}
-          </button>
         </div>
       )}
 
-      {/* Card preview */}
+      {/* ═══ THE CARD (perfect square, screenshot-friendly) ═══ */}
       {rawData && (
         <div className="flex justify-center">
           <div
-            ref={cardRef}
-            className="w-full max-w-lg aspect-square rounded-xl overflow-hidden shadow-2xl"
-            style={{ background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)' }}
+            className="rounded-xl overflow-hidden shadow-2xl flex flex-col"
+            style={{
+              width: '540px',
+              height: '540px',
+              background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)',
+            }}
           >
             {/* ── Header ── */}
-            <div className="p-5 pb-3 flex items-start gap-4">
+            <div className="px-5 pt-5 pb-3 flex items-start gap-4 shrink-0">
               <div className="shrink-0">
                 {info.headshot_url ? (
-                  <img src={info.headshot_url} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-white/20" />
+                  <img src={info.headshot_url} alt="" className="w-[72px] h-[72px] rounded-full object-cover border-2 border-white/20" />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-xl font-bold text-white/40">
+                  <div className="w-[72px] h-[72px] rounded-full bg-white/10 flex items-center justify-center text-xl font-bold text-white/40">
                     {info.first_name?.[0]}{info.last_name?.[0]}
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-2xl font-extrabold text-white leading-tight">{info.first_name}</div>
-                <div className="text-2xl font-extrabold text-white leading-tight">{info.last_name}</div>
-                <div className="text-xs text-white/50 mt-1">
+                <div className="text-[22px] font-extrabold text-white leading-tight">{info.first_name} {info.last_name}</div>
+                <div className="text-[11px] text-white/50 mt-0.5">
                   {[info.position, info.jersey_number ? `#${info.jersey_number}` : null, info.bats && info.throws ? `${info.bats}/${info.throws}` : null, info.year_in_school].filter(Boolean).join('  ·  ')}
                 </div>
-                <div className="text-sm font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{info.team_name}</div>
+                <div className="text-[13px] font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{info.team_name}</div>
               </div>
               <div className="shrink-0 text-right">
                 {info.logo_url && (
-                  <img src={info.logo_url} alt="" className="w-12 h-12 object-contain opacity-50 mb-1" />
+                  <img src={info.logo_url} alt="" className="w-10 h-10 object-contain opacity-40 mb-1" />
                 )}
-                <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
-                  {activeSeason === 'career' ? 'Career' : activeSeason}
+                <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider">
+                  {activeSeason === 'career' ? 'Career' : `${activeSeason}`}
                 </div>
                 {info.division_level && (
-                  <div className="text-[10px] font-bold mt-0.5" style={{ color: 'rgba(125,211,252,0.7)' }}>{info.division_level}</div>
+                  <div className="text-[9px] font-semibold mt-0.5" style={{ color: 'rgba(125,211,252,0.6)' }}>{info.division_level}</div>
                 )}
               </div>
             </div>
 
             <div className="border-t border-white/10 mx-5" />
 
-            {/* ── Stats ── */}
-            {(() => {
-              const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
-              const row = isPitcher ? pitchingRow : battingRow
-              const core = isPitcher ? PITCHING_CORE : BATTING_CORE
-              const adv = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
-              const perc = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-
-              if (!row) return <div className="p-5 text-white/40 text-sm">No stats for this season.</div>
-
-              return (
-                <div className="p-5 pt-3 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100% - 140px)' }}>
+            {/* ── Stats body (fills remaining space) ── */}
+            <div className="flex-1 flex flex-col px-5 py-3 overflow-hidden gap-2">
+              {statsRow ? (
+                <>
                   {/* Core stats grid */}
                   <div>
-                    <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">
+                    <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider mb-1.5">
                       {isPitcher ? 'Pitching' : 'Batting'}
                     </div>
-                    <div className="grid grid-cols-4 gap-y-2 gap-x-1">
-                      {core.map(s => <StatCell key={s.key} label={s.label} value={row[s.key]} format={s.format} />)}
+                    <div className="grid grid-cols-4 gap-y-1.5 gap-x-1">
+                      {coreStats.map(s => <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} />)}
                     </div>
                   </div>
 
                   {/* Advanced stats grid */}
                   <div>
-                    <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">Advanced</div>
-                    <div className="grid grid-cols-4 gap-y-2 gap-x-1">
-                      {adv.map(s => <StatCell key={s.key} label={s.label} value={row[s.key]} format={s.format} />)}
+                    <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider mb-1.5">Advanced</div>
+                    <div className="grid grid-cols-4 gap-y-1.5 gap-x-1">
+                      {advStats.map(s => <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} />)}
                     </div>
                   </div>
 
                   <div className="border-t border-white/[0.06]" />
 
                   {/* Percentile bars */}
-                  {perc.filter(m => percentiles[m.key]).length > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Percentile Rankings</div>
-                        <div className="text-[9px] text-white/25">vs. {info.division_level || 'Division'}</div>
+                  {availablePerc.length > 0 && (
+                    <div className="flex-1 min-h-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider">Percentile Rankings</div>
+                        <div className="text-[8px] text-white/20">vs. {info.division_level || 'Division'}</div>
                       </div>
-                      <div className="space-y-0.5">
-                        {perc.filter(m => percentiles[m.key]).map(m => (
+                      <div className="space-y-0">
+                        {availablePerc.map(m => (
                           <PercentileBar
                             key={m.key}
                             label={m.label}
@@ -815,31 +429,33 @@ export default function PlayerGraphic() {
                   )}
 
                   {/* Leaderboard badges */}
-                  {badges.length > 0 && (
+                  {topBadges.length > 0 && (
                     <>
                       <div className="border-t border-white/[0.06]" />
                       <div>
-                        <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">Leaderboard</div>
-                        <div className="grid grid-cols-3 gap-2">
-                          {badges.slice(0, 3).map((b, i) => (
-                            <div key={i} className="rounded-md px-2.5 py-2" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                              <div className="text-xs font-bold text-white">{b.category}</div>
-                              <div className="text-[9px] text-white/40 mt-0.5">{b.scope}</div>
+                        <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider mb-1.5">Leaderboard</div>
+                        <div className={`grid gap-2 ${topBadges.length === 1 ? 'grid-cols-1' : topBadges.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                          {topBadges.map((b, i) => (
+                            <div key={i} className="rounded-md px-2 py-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              <div className="text-[11px] font-bold text-white truncate">{b.category}</div>
+                              <div className="text-[8px] text-white/35 mt-0.5 truncate">{b.scope}</div>
                             </div>
                           ))}
                         </div>
                       </div>
                     </>
                   )}
-                </div>
-              )
-            })()}
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-white/40 text-sm">No stats for this season.</div>
+              )}
+            </div>
 
             {/* ── Footer ── */}
             <div className="border-t border-white/[0.06] mx-5" />
-            <div className="px-5 py-2 flex items-center justify-between">
-              <span className="text-[10px] text-white/25 font-medium">nwbaseballstats.com</span>
-              <span className="text-[10px] text-white/25 font-medium">{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
+            <div className="px-5 py-2 flex items-center justify-between shrink-0">
+              <span className="text-[9px] text-white/20 font-medium">nwbaseballstats.com</span>
+              <span className="text-[9px] text-white/20 font-medium">{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
             </div>
           </div>
         </div>
