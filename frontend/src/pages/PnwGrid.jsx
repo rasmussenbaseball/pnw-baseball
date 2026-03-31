@@ -196,6 +196,13 @@ export default function PnwGrid() {
     await fetchRandomGrid()
   }
 
+  const handleGiveUp = () => {
+    setGameOver(true)
+    setActiveCell(null)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
   const handleModeSwitch = (newMode) => {
     if (newMode === mode) return
     resetGame()
@@ -660,7 +667,7 @@ export default function PnwGrid() {
 
       {/* New Grid button visible during random play (not just at game over) */}
       {isRandom && !gameOver && score < 9 && (
-        <div className="mt-3 flex items-center justify-center px-4">
+        <div className="mt-3 flex items-center justify-center gap-4 px-4">
           <button
             onClick={handleNewRandomGrid}
             className="flex items-center gap-1.5 text-xs font-medium hover:underline"
@@ -670,6 +677,12 @@ export default function PnwGrid() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             New Grid
+          </button>
+          <button
+            onClick={handleGiveUp}
+            className="flex items-center gap-1.5 text-xs font-medium hover:underline text-gray-400"
+          >
+            Give Up & Reveal
           </button>
         </div>
       )}

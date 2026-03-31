@@ -4561,16 +4561,80 @@ _GRID_CONFIG_PATH = _GridPath(__file__).resolve().parent.parent.parent / "data" 
 # --------------- Grid Category Pools ---------------
 
 _TEAM_POOL = [
-    {"type": "conference", "label": "NWAC North", "value": "NWAC-N", "group": "nwac"},
-    {"type": "conference", "label": "NWAC South", "value": "NWAC-S", "group": "nwac"},
-    {"type": "conference", "label": "NWAC East", "value": "NWAC-E", "group": "nwac"},
-    {"type": "conference", "label": "NWAC West", "value": "NWAC-W", "group": "nwac"},
-    {"type": "conference", "label": "CCC", "value": "CCC", "group": "4yr"},
-    {"type": "conference", "label": "GNAC", "value": "GNAC", "group": "4yr"},
-    {"type": "conference", "label": "NWC", "value": "NWC", "group": "4yr"},
+    # Conference / division categories
+    {"type": "conference", "label": "NWAC North (NWAC)", "value": "NWAC-N", "group": "nwac"},
+    {"type": "conference", "label": "NWAC South (NWAC)", "value": "NWAC-S", "group": "nwac"},
+    {"type": "conference", "label": "NWAC East (NWAC)", "value": "NWAC-E", "group": "nwac"},
+    {"type": "conference", "label": "NWAC West (NWAC)", "value": "NWAC-W", "group": "nwac"},
+    {"type": "conference", "label": "CCC (NAIA)", "value": "CCC", "group": "4yr"},
+    {"type": "conference", "label": "GNAC (D2)", "value": "GNAC", "group": "4yr"},
+    {"type": "conference", "label": "NWC (D3)", "value": "NWC", "group": "4yr"},
     {"type": "division", "label": "D1", "value": "D1", "group": "d1"},
     {"type": "division", "label": "NWAC", "value": "JUCO", "group": "nwac"},
     {"type": "division", "label": "Non-D1 4-Year", "value": "non_d1_4yr", "group": "4yr"},
+    # Individual teams — D1
+    {"type": "team", "label": "Gonzaga (D1)", "value": "Gonzaga", "group": "team"},
+    {"type": "team", "label": "Oregon (D1)", "value": "Oregon", "group": "team"},
+    {"type": "team", "label": "Oregon St. (D1)", "value": "Oregon St.", "group": "team"},
+    {"type": "team", "label": "UW (D1)", "value": "UW", "group": "team"},
+    {"type": "team", "label": "Wash. St. (D1)", "value": "Wash. St.", "group": "team"},
+    {"type": "team", "label": "Portland (D1)", "value": "Portland", "group": "team"},
+    {"type": "team", "label": "Seattle U (D1)", "value": "Seattle U", "group": "team"},
+    # Individual teams — D2
+    {"type": "team", "label": "CWU (D2)", "value": "CWU", "group": "team"},
+    {"type": "team", "label": "WOU (D2)", "value": "WOU", "group": "team"},
+    {"type": "team", "label": "NNU (D2)", "value": "NNU", "group": "team"},
+    {"type": "team", "label": "MSUB (D2)", "value": "MSUB", "group": "team"},
+    {"type": "team", "label": "SMU (D2)", "value": "SMU", "group": "team"},
+    # Individual teams — D3
+    {"type": "team", "label": "Linfield (D3)", "value": "Linfield", "group": "team"},
+    {"type": "team", "label": "GFU (D3)", "value": "GFU", "group": "team"},
+    {"type": "team", "label": "PLU (D3)", "value": "PLU", "group": "team"},
+    {"type": "team", "label": "UPS (D3)", "value": "UPS", "group": "team"},
+    {"type": "team", "label": "L&C (D3)", "value": "L&C", "group": "team"},
+    {"type": "team", "label": "Whitworth (D3)", "value": "Whitworth", "group": "team"},
+    {"type": "team", "label": "Whitman (D3)", "value": "Whitman", "group": "team"},
+    {"type": "team", "label": "Willamette (D3)", "value": "Willamette", "group": "team"},
+    {"type": "team", "label": "Pacific (D3)", "value": "Pacific", "group": "team"},
+    # Individual teams — NAIA
+    {"type": "team", "label": "Bushnell (NAIA)", "value": "Bushnell", "group": "team"},
+    {"type": "team", "label": "Corban (NAIA)", "value": "Corban", "group": "team"},
+    {"type": "team", "label": "C of I (NAIA)", "value": "C of I", "group": "team"},
+    {"type": "team", "label": "EOU (NAIA)", "value": "EOU", "group": "team"},
+    {"type": "team", "label": "LCSC (NAIA)", "value": "LCSC", "group": "team"},
+    {"type": "team", "label": "OIT (NAIA)", "value": "OIT", "group": "team"},
+    {"type": "team", "label": "Warner Pacific (NAIA)", "value": "Warner Pacific", "group": "team"},
+    {"type": "team", "label": "UBC (NAIA)", "value": "UBC", "group": "team"},
+    # Individual teams — NWAC
+    {"type": "team", "label": "Lower Columbia (NWAC)", "value": "Lower Columbia", "group": "team"},
+    {"type": "team", "label": "Edmonds (NWAC)", "value": "Edmonds", "group": "team"},
+    {"type": "team", "label": "Everett (NWAC)", "value": "Everett", "group": "team"},
+    {"type": "team", "label": "Bellevue (NWAC)", "value": "Bellevue", "group": "team"},
+    {"type": "team", "label": "Spokane (NWAC)", "value": "Spokane", "group": "team"},
+    {"type": "team", "label": "Walla Walla (NWAC)", "value": "Walla Walla", "group": "team"},
+    {"type": "team", "label": "Mt. Hood (NWAC)", "value": "Mt. Hood", "group": "team"},
+    {"type": "team", "label": "Centralia (NWAC)", "value": "Centralia", "group": "team"},
+    {"type": "team", "label": "Columbia Basin (NWAC)", "value": "Columbia Basin", "group": "team"},
+    {"type": "team", "label": "Yakima Valley (NWAC)", "value": "Yakima Valley", "group": "team"},
+    {"type": "team", "label": "Clackamas (NWAC)", "value": "Clackamas", "group": "team"},
+    {"type": "team", "label": "Linn-Benton (NWAC)", "value": "Linn-Benton", "group": "team"},
+    {"type": "team", "label": "Lane (NWAC)", "value": "Lane", "group": "team"},
+    {"type": "team", "label": "Pierce (NWAC)", "value": "Pierce", "group": "team"},
+    {"type": "team", "label": "Chemeketa (NWAC)", "value": "Chemeketa", "group": "team"},
+    {"type": "team", "label": "Clark (NWAC)", "value": "Clark", "group": "team"},
+    {"type": "team", "label": "Big Bend (NWAC)", "value": "Big Bend", "group": "team"},
+    {"type": "team", "label": "Wenatchee Valley (NWAC)", "value": "Wenatchee Valley", "group": "team"},
+    {"type": "team", "label": "Skagit (NWAC)", "value": "Skagit", "group": "team"},
+    {"type": "team", "label": "Tacoma (NWAC)", "value": "Tacoma", "group": "team"},
+    {"type": "team", "label": "Shoreline (NWAC)", "value": "Shoreline", "group": "team"},
+    {"type": "team", "label": "Olympic (NWAC)", "value": "Olympic", "group": "team"},
+    {"type": "team", "label": "Treasure Valley (NWAC)", "value": "Treasure Valley", "group": "team"},
+    {"type": "team", "label": "Grays Harbor (NWAC)", "value": "Grays Harbor", "group": "team"},
+    {"type": "team", "label": "Douglas (NWAC)", "value": "Douglas", "group": "team"},
+    {"type": "team", "label": "SW Oregon (NWAC)", "value": "SW Oregon", "group": "team"},
+    {"type": "team", "label": "Umpqua (NWAC)", "value": "Umpqua", "group": "team"},
+    {"type": "team", "label": "Blue Mountain (NWAC)", "value": "Blue Mountain", "group": "team"},
+    {"type": "team", "label": "GRC (NWAC)", "value": "GRC", "group": "team"},
 ]
 
 _NWAC_CATS = [c for c in _TEAM_POOL if c["group"] == "nwac"]
@@ -4584,10 +4648,8 @@ _SEASON_BATTING_POOL = [
     {"type": "season_batting", "label": "10+ HR", "category": "Season Batting", "stat": "home_runs", "operator": ">=", "threshold": 10},
     {"type": "season_batting", "label": "30+ RBI", "category": "Season Batting", "stat": "rbi", "operator": ">=", "threshold": 30},
     {"type": "season_batting", "label": "10+ SB", "category": "Season Batting", "stat": "stolen_bases", "operator": ">=", "threshold": 10},
-    {"type": "season_batting", "label": ".300+ AVG", "category": "Season Batting", "stat": "batting_avg", "operator": ">=", "threshold": 0.300, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
     {"type": "season_batting", "label": ".350+ AVG", "category": "Season Batting", "stat": "batting_avg", "operator": ">=", "threshold": 0.350, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
     {"type": "season_batting", "label": "1.000+ OPS", "category": "Season Batting", "stat": "ops", "operator": ">=", "threshold": 1.000, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
-    {"type": "season_batting", "label": "12%+ BB%", "category": "Season Batting", "stat": "bb_pct", "operator": ">=", "threshold": 0.12, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
     {"type": "season_batting", "label": "150+ wRC+", "category": "Season Batting", "stat": "wrc_plus", "operator": ">=", "threshold": 150, "qualified": True, "q_stat": "plate_appearances", "q_min": 50},
     {"type": "season_batting", "label": "1.5+ WAR", "category": "Season Batting", "stat": "offensive_war", "operator": ">=", "threshold": 1.5},
 ]
@@ -4816,8 +4878,10 @@ def _pick_diverse_teams(rng, count):
         group = cat.get("group", "")
         value = cat["value"]
 
-        # Max 2 from any single group
-        if used_groups.get(group, 0) >= 2:
+        # Max 1 individual team per grid, max 2 from other groups
+        if group == "team" and used_groups.get("team", 0) >= 1:
+            continue
+        if group != "team" and used_groups.get(group, 0) >= 2:
             continue
         # Don't pick NWAC (overall) + specific NWAC conference
         nwac_confs = {"NWAC-N", "NWAC-S", "NWAC-E", "NWAC-W"}
