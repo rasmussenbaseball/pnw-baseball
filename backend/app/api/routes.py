@@ -2405,7 +2405,36 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                 )
                 lp = cur.fetchone()
                 if lp:
-                    linked_players.append(dict(lp))
+                    lp_dict = dict(lp)
+                    # Get this player's earliest season for sorting
+                    cur.execute(
+                        """SELECT MIN(season) as min_season, MAX(season) as max_season FROM (
+                               SELECT season FROM batting_stats WHERE player_id = %s
+                               UNION
+                               SELECT season FROM pitching_stats WHERE player_id = %s
+                           ) s""",
+                        (lid, lid),
+                    )
+                    seasons = cur.fetchone()
+                    lp_dict["_min_season"] = seasons["min_season"] or 9999
+                    lp_dict["_max_season"] = seasons["max_season"] or 0
+                    linked_players.append(lp_dict)
+
+            # Sort oldest → newest by earliest season at each school
+            linked_players.sort(key=lambda x: x["_min_season"])
+
+            # Use the most recent school's info for the page header
+            most_recent = max(linked_players, key=lambda x: x["_max_season"])
+            player_dict["team_name"] = most_recent["team_name"]
+            player_dict["team_short"] = most_recent["team_short"]
+            player_dict["logo_url"] = most_recent["logo_url"]
+            player_dict["division_level"] = most_recent["division_level"]
+            player_dict["team_id"] = most_recent["team_id"]
+
+            # Clean up internal keys before sending to frontend
+            for lp in linked_players:
+                del lp["_min_season"]
+                del lp["_max_season"]
 
         # Get all batting seasons (across all linked IDs)
         cur.execute(
