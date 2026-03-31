@@ -383,8 +383,8 @@ export default function PlayerGraphic() {
 
             <div className="border-t border-white/10 mx-4" />
 
-            {/* ── Stats body ── */}
-            <div className="flex-1 flex flex-col px-4 py-2 gap-1.5">
+            {/* ── Stats body — evenly distributed ── */}
+            <div className="flex-1 flex flex-col justify-evenly px-4">
               {statsRow ? (
                 <>
                   {/* Core stats — single row of 8 */}
