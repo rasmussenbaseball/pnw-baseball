@@ -44,8 +44,16 @@ export default function StatsTable({
 
     if (col.key === 'name' || col.render) {
       const name = col.render ? col.render(row) : `${row.first_name} ${row.last_name}`
+      if (col.noLink) {
+        return <span className="font-medium text-gray-900">{name}</span>
+      }
+      // linkKey: use an alternate row field for the player ID (e.g. spring_player_id for summer players)
+      const linkId = col.linkKey ? row[col.linkKey] : (row.player_id || row.id)
+      if (!linkId) {
+        return <span className="font-medium text-gray-900">{name}</span>
+      }
       return (
-        <Link to={`/player/${row.player_id || row.id}`} className="player-link">
+        <Link to={`/player/${linkId}`} className="player-link">
           {name}
         </Link>
       )
@@ -60,8 +68,8 @@ export default function StatsTable({
     }
 
     if (col.key === 'team_short') {
-      return (
-        <Link to={`/team/${row.team_id}`} className="text-gray-700 hover:text-pnw-sky flex items-center gap-1.5">
+      const teamContent = (
+        <span className={`flex items-center gap-1.5 ${col.noLink ? 'text-gray-700' : 'text-gray-700 hover:text-pnw-sky'}`}>
           {row.logo_url && (
             <img
               src={row.logo_url}
@@ -72,8 +80,10 @@ export default function StatsTable({
             />
           )}
           {row.team_short || row.team_name}
-        </Link>
+        </span>
       )
+      if (col.noLink) return teamContent
+      return <Link to={`/team/${row.team_id}`}>{teamContent}</Link>
     }
 
     // Format stat value
