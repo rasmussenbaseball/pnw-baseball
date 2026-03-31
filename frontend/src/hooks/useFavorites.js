@@ -94,3 +94,33 @@ export function useAllFavorites() {
 
   return { teams, players, loading, refresh }
 }
+
+/**
+ * Hook to fetch enriched favorites dashboard data.
+ * Usage: const { data, loading, refresh } = useFavoritesDashboard()
+ */
+export function useFavoritesDashboard(season = 2026) {
+  const { session, user } = useAuth()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const refresh = useCallback(() => {
+    if (!user || !session) {
+      setData(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    fetch(`${API_BASE}/favorites/dashboard?season=${season}`, {
+      headers: authHeaders(session),
+    })
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [user, session, season])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  return { data, loading, refresh }
+}

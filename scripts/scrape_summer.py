@@ -172,6 +172,182 @@ def ensure_teams_in_db(cur, league_db_id, teams):
 
 
 # ============================================================
+# Roster Scraping (full names, college, hometown, etc.)
+# ============================================================
+
+def scrape_team_roster(session, ps_team_id, season_id, team_name):
+    """
+    Scrape the roster page for a team to get full player names and bio info.
+    Returns dict: pointstreak_player_id -> {first_name, last_name, college, ...}
+    """
+    url = f"{BASE_URL}/team_roster.html?teamid={ps_team_id}&seasonid={season_id}"
+    logger.info(f"  Roster: {team_name}")
+    try:
+        resp = session.get(url, timeout=30)
+        resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"    Failed to fetch roster for {team_name}: {e}")
+        return {}
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    roster = {}
+    for table in soup.find_all("table"):
+        headers = [th.get_text(strip=True) for th in table.find_all("th")]
+        if "Player" not in headers:
+            continue
+
+        # Build column map
+        col_map = {}
+        for i, h in enumerate(headers):
+            if h not in col_map:
+                col_map[h] = i
+
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 2:
+                continue
+
+            player_idx = col_map.get("Player", 1)
+            player_cell = cells[player_idx]
+            player_link = player_cell.find("a")
+            if not player_link:
+                continue
+
+            # Get Pointstreak player ID
+            href = player_link.get("href", "")
+            m = re.search(r"playerid=(\d+)", href)
+            if not m:
+                continue
+            ps_player_id = int(m.group(1))
+
+            # Full name from roster (e.g., "Blake Wilson")
+            full_name = player_link.get_text(strip=True)
+            if not full_name:
+                continue
+
+            # Parse "First Last" format (roster uses this, not "Last, F")
+            parts = full_name.strip().split()
+            first_name = parts[0] if parts else ""
+            last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+
+            info = {
+                "first_name": first_name,
+                "last_name": last_name,
+                "full_name": full_name,
+            }
+
+            # Extract optional fields from remaining columns
+            if "#" in col_map:
+                try:
+                    info["jersey_number"] = cells[col_map["#"]].get_text(strip=True)
+                except IndexError:
+                    pass
+            if "B/T" in col_map:
+                try:
+                    bt = cells[col_map["B/T"]].get_text(strip=True)
+                    if "/" in bt:
+                        info["bats"] = bt.split("/")[0]
+                        info["throws"] = bt.split("/")[1]
+                except IndexError:
+                    pass
+            if "Ht" in col_map:
+                try:
+                    info["height"] = cells[col_map["Ht"]].get_text(strip=True)
+                except IndexError:
+                    pass
+            if "Wt" in col_map:
+                try:
+                    wt = cells[col_map["Wt"]].get_text(strip=True)
+                    info["weight"] = wt.replace(" lbs", "").strip() if wt else ""
+                except IndexError:
+                    pass
+            if "College" in col_map:
+                try:
+                    info["college"] = cells[col_map["College"]].get_text(strip=True)
+                except IndexError:
+                    pass
+            if "Class" in col_map:
+                try:
+                    info["year_in_school"] = cells[col_map["Class"]].get_text(strip=True)
+                except IndexError:
+                    pass
+            if "Hometown" in col_map:
+                try:
+                    info["hometown"] = cells[col_map["Hometown"]].get_text(strip=True)
+                except IndexError:
+                    pass
+
+            roster[ps_player_id] = info
+
+    logger.info(f"    {len(roster)} players on roster")
+    return roster
+
+
+def update_players_from_roster(cur, roster, team_db_id):
+    """
+    Update summer_players records with full names and bio info from roster data.
+    Matches by pointstreak_player_id.
+    """
+    updated = 0
+    for ps_player_id, info in roster.items():
+        # Find existing player record by pointstreak ID + team
+        cur.execute(
+            "SELECT id FROM summer_players WHERE pointstreak_player_id = %s AND team_id = %s",
+            (ps_player_id, team_db_id),
+        )
+        row = cur.fetchone()
+
+        if row:
+            # Update with full name and bio data
+            cur.execute("""
+                UPDATE summer_players SET
+                    first_name = %s,
+                    last_name = %s,
+                    college = %s,
+                    year_in_school = %s,
+                    jersey_number = %s,
+                    bats = %s,
+                    throws = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (
+                info.get("first_name", ""),
+                info.get("last_name", ""),
+                info.get("college"),
+                info.get("year_in_school"),
+                info.get("jersey_number"),
+                info.get("bats"),
+                info.get("throws"),
+                row["id"],
+            ))
+            updated += 1
+        else:
+            # Player exists on roster but not in stats — create a record anyway
+            cur.execute("""
+                INSERT INTO summer_players (
+                    first_name, last_name, team_id, position,
+                    pointstreak_player_id, college, year_in_school,
+                    jersey_number, bats, throws
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+            """, (
+                info.get("first_name", ""),
+                info.get("last_name", ""),
+                team_db_id,
+                "",
+                ps_player_id,
+                info.get("college"),
+                info.get("year_in_school"),
+                info.get("jersey_number"),
+                info.get("bats"),
+                info.get("throws"),
+            ))
+
+    logger.info(f"    Updated {updated} players with roster info")
+    return updated
+
+
+# ============================================================
 # Stats Scraping
 # ============================================================
 
@@ -201,6 +377,10 @@ def _parse_player_rows(table, col_map):
         player_name = player_link.get_text(strip=True) if player_link else player_cell.get_text(strip=True)
         if not player_name or player_name in ("Player", "Totals", "TOTALS", "Total"):
             continue
+
+        # Pointstreak prefixes released/inactive players with "x " — strip it
+        if player_name.startswith("x "):
+            player_name = player_name[2:]
 
         # Pointstreak player ID from link
         ps_player_id = None
@@ -600,7 +780,7 @@ def save_pitching_stats(cur, players, team_map, season_year):
 # Main Scrape Logic
 # ============================================================
 
-def scrape_league_season(league_abbr, season_year, batting=True, pitching=True):
+def scrape_league_season(league_abbr, season_year, batting=True, pitching=True, roster=True):
     """Scrape a single league + season combo."""
     key = (league_abbr, season_year)
     if key not in SEASON_IDS:
@@ -634,8 +814,10 @@ def scrape_league_season(league_abbr, season_year, batting=True, pitching=True):
         # Scrape each team individually (gets ALL players, not just qualified)
         total_batters = 0
         total_pitchers = 0
+        total_roster = 0
         for t in teams:
             ps_tid = t["pointstreak_team_id"]
+            team_db_id = team_map[ps_tid]
 
             if batting:
                 batters = scrape_team_batting(session, ps_tid, season_id, t["name"])
@@ -654,9 +836,14 @@ def scrape_league_season(league_abbr, season_year, batting=True, pitching=True):
                 save_pitching_stats(cur, pitchers, team_map, season_year)
                 total_pitchers += len(pitchers)
 
+            if roster:
+                roster_data = scrape_team_roster(session, ps_tid, season_id, t["name"])
+                polite_sleep()
+                total_roster += update_players_from_roster(cur, roster_data, team_db_id)
+
             conn.commit()
 
-        logger.info(f"  Total: {total_batters} batters, {total_pitchers} pitchers")
+        logger.info(f"  Total: {total_batters} batters, {total_pitchers} pitchers, {total_roster} roster updates")
 
     logger.info(f"=== Done: {league_abbr} {season_year} ===\n")
 
@@ -668,16 +855,23 @@ def main():
     parser.add_argument("--all", action="store_true", help="Scrape all configured leagues and seasons")
     parser.add_argument("--batting-only", action="store_true", help="Only scrape batting stats")
     parser.add_argument("--pitching-only", action="store_true", help="Only scrape pitching stats")
+    parser.add_argument("--roster-only", action="store_true", help="Only scrape roster info (full names, college, etc.)")
     args = parser.parse_args()
 
-    batting = not args.pitching_only
-    pitching = not args.batting_only
+    if args.roster_only:
+        batting = False
+        pitching = False
+        roster = True
+    else:
+        batting = not args.pitching_only
+        pitching = not args.batting_only
+        roster = True  # Always scrape roster unless stats-only
 
     if args.all:
         for (league, year) in sorted(SEASON_IDS.keys()):
-            scrape_league_season(league, year, batting=batting, pitching=pitching)
+            scrape_league_season(league, year, batting=batting, pitching=pitching, roster=roster)
     elif args.league and args.season:
-        scrape_league_season(args.league, args.season, batting=batting, pitching=pitching)
+        scrape_league_season(args.league, args.season, batting=batting, pitching=pitching, roster=roster)
     else:
         parser.error("Either --all or both --league and --season are required")
 

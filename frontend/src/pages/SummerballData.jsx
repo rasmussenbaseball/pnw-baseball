@@ -165,7 +165,7 @@ export default function SummerballData() {
           onClick={() => handleTabChange('batting')}
           className={`px-4 py-1.5 font-medium transition-colors ${
             tab === 'batting'
-              ? 'bg-pnw-blue text-white'
+              ? 'bg-nw-teal text-white'
               : 'bg-white text-gray-600 hover:bg-gray-50'
           }`}
         >
@@ -175,7 +175,7 @@ export default function SummerballData() {
           onClick={() => handleTabChange('pitching')}
           className={`px-4 py-1.5 font-medium transition-colors ${
             tab === 'pitching'
-              ? 'bg-pnw-blue text-white'
+              ? 'bg-nw-teal text-white'
               : 'bg-white text-gray-600 hover:bg-gray-50'
           }`}
         >

@@ -49,6 +49,7 @@ import Glossary from './pages/Glossary'
 import PnwGrid from './pages/PnwGrid'
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
+import FeatureRequest from './pages/FeatureRequest'
 
 export default function App() {
   return (
@@ -103,6 +104,7 @@ export default function App() {
           {/* Misc (auth required) */}
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
+          <Route path="/feature-request" element={<RequireAuth><FeatureRequest /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
 
           {/* Glossary */}

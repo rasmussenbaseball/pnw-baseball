@@ -5943,3 +5943,54 @@ def summer_available_seasons():
             ORDER BY season DESC, league
         """)
         return [dict(r) for r in cur.fetchall()]
+
+
+# ════════════════════════════════════════════════════════════════
+# FEATURE REQUESTS
+# ════════════════════════════════════════════════════════════════
+
+@router.post("/feature-requests")
+def submit_feature_request(data: dict = Body(...)):
+    """Submit a feature request or feedback."""
+    message = (data.get("message") or "").strip()
+    email = (data.get("email") or "").strip()
+    category = (data.get("category") or "feature").strip()
+
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+    if len(message) > 2000:
+        raise HTTPException(status_code=400, detail="Message too long (max 2000 chars)")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Create table if it doesn't exist
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS feature_requests (
+                id SERIAL PRIMARY KEY,
+                email TEXT,
+                category TEXT DEFAULT 'feature',
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute(
+            """INSERT INTO feature_requests (email, category, message)
+               VALUES (%s, %s, %s) RETURNING id""",
+            (email or None, category, message),
+        )
+        req_id = list(cur.fetchone().values())[0]
+        return {"id": req_id, "status": "received"}
+
+
+@router.get("/feature-requests")
+def list_feature_requests():
+    """List all feature requests (admin use)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, email, category, message, created_at
+            FROM feature_requests
+            ORDER BY created_at DESC
+            LIMIT 100
+        """)
+        return [dict(r) for r in cur.fetchall()]

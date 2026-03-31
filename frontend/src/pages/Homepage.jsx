@@ -105,8 +105,8 @@ function BetaBanner({ onDismiss, user }) {
         The first advanced analytics platform for Pacific Northwest college baseball.
         We cover <span className="text-white font-medium">D1, D2, D3, NAIA, and NWAC</span> programs
         with stats, WAR, leaderboards, scouting tools, and more.
-        Data is available from the <span className="text-white font-medium">2019 season to present</span> for
-        four-year schools and 2022 onward for NWAC.
+        Data is available from the <span className="text-white font-medium">2018 season to present</span> for
+        four-year schools and 2019 onward for NWAC.
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-3 text-xs text-gray-400">

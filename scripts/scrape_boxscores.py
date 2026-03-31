@@ -1345,11 +1345,10 @@ def find_player_id(cur, team_id, player_name, season):
         first, last = parts
         cur.execute("""
             SELECT p.id FROM players p
-            JOIN player_seasons ps ON ps.player_id = p.id
-            WHERE ps.team_id = %s AND ps.season = %s
+            WHERE p.team_id = %s
               AND LOWER(p.first_name) = LOWER(%s) AND LOWER(p.last_name) = LOWER(%s)
             LIMIT 1
-        """, (team_id, season, first, last))
+        """, (team_id, first, last))
         row = cur.fetchone()
         if row:
             return row["id"]
@@ -1361,11 +1360,10 @@ def find_player_id(cur, team_id, player_name, season):
         first = parts[1].strip()
         cur.execute("""
             SELECT p.id FROM players p
-            JOIN player_seasons ps ON ps.player_id = p.id
-            WHERE ps.team_id = %s AND ps.season = %s
+            WHERE p.team_id = %s
               AND LOWER(p.first_name) = LOWER(%s) AND LOWER(p.last_name) = LOWER(%s)
             LIMIT 1
-        """, (team_id, season, first, last))
+        """, (team_id, first, last))
         row = cur.fetchone()
         if row:
             return row["id"]
@@ -1373,11 +1371,10 @@ def find_player_id(cur, team_id, player_name, season):
     # Fallback: partial match
     cur.execute("""
         SELECT p.id FROM players p
-        JOIN player_seasons ps ON ps.player_id = p.id
-        WHERE ps.team_id = %s AND ps.season = %s
+        WHERE p.team_id = %s
           AND LOWER(p.last_name) || ', ' || LOWER(p.first_name) LIKE LOWER(%s)
         LIMIT 1
-    """, (team_id, season, f"%{name}%"))
+    """, (team_id, f"%{name}%"))
     row = cur.fetchone()
     return row["id"] if row else None
 
@@ -1495,6 +1492,7 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
                 %s, %s, %s
             )
             ON CONFLICT (game_id, team_id, player_name, batting_order) DO UPDATE SET
+                player_id = COALESCE(EXCLUDED.player_id, game_batting.player_id),
                 at_bats = EXCLUDED.at_bats,
                 runs = EXCLUDED.runs,
                 hits = EXCLUDED.hits,
@@ -1558,6 +1556,7 @@ def insert_game_pitching(cur, game_id, team_id, pitcher_lines, season):
                 %s, %s
             )
             ON CONFLICT (game_id, team_id, player_name) DO UPDATE SET
+                player_id = COALESCE(EXCLUDED.player_id, game_pitching.player_id),
                 innings_pitched = EXCLUDED.innings_pitched,
                 hits_allowed = EXCLUDED.hits_allowed,
                 runs_allowed = EXCLUDED.runs_allowed,
