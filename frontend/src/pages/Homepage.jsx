@@ -29,18 +29,17 @@ export default function Homepage() {
   const { data: recentGames } = useGamesTicker(SEASON, 20)
   const { data: liveData } = useLiveScores()
 
-  // If there are live/today games, show those in the ticker area
+  // Only show live ticker when games are actually in progress
   const todayGames = liveData?.today || []
   const hasLiveGames = todayGames.some(g => g.status === 'live')
 
   return (
     <div>
-      {/* Game results ticker — shows live games when available, otherwise recent results */}
-      {todayGames.length > 0 ? (
+      {/* Game results ticker — shows live ticker only when games are in progress, otherwise recent results */}
+      {hasLiveGames && (
         <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
-      ) : (
-        <GameResultsTicker games={recentGames} />
       )}
+      <GameResultsTicker games={recentGames} />
 
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
