@@ -207,18 +207,18 @@ function PercentileBar({ label, value, percentile, format }) {
   const color = percentileColor(percentile)
   const barWidth = Math.max(4, percentile)
   return (
-    <div className="flex items-center h-7">
-      <div className="w-12 text-right pr-2 text-[11px] font-semibold text-gray-200 shrink-0">{label}</div>
-      <div className="flex-1 relative h-5 mx-1">
-        <div className="absolute top-1/2 left-0 right-0 h-1.5 rounded-full" style={{ transform: 'translateY(-50%)', backgroundColor: 'rgba(255,255,255,0.1)' }} />
-        <div className="absolute top-1/2 left-0 h-1.5 rounded-full" style={{ transform: 'translateY(-50%)', width: `${barWidth}%`, backgroundColor: color, transition: 'width 0.5s ease' }} />
+    <div className="flex items-center h-5">
+      <div className="w-11 text-right pr-1.5 text-[10px] font-semibold text-gray-200 shrink-0">{label}</div>
+      <div className="flex-1 relative h-4 mx-1">
+        <div className="absolute top-1/2 left-0 right-0 h-1 rounded-full" style={{ transform: 'translateY(-50%)', backgroundColor: 'rgba(255,255,255,0.1)' }} />
+        <div className="absolute top-1/2 left-0 h-1 rounded-full" style={{ transform: 'translateY(-50%)', width: `${barWidth}%`, backgroundColor: color, transition: 'width 0.5s ease' }} />
       </div>
-      <div className="w-8 flex items-center justify-center shrink-0">
-        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: color }}>
+      <div className="w-7 flex items-center justify-center shrink-0">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold text-white" style={{ backgroundColor: color }}>
           {percentile}
         </span>
       </div>
-      <div className="w-12 text-right text-[11px] text-gray-300 shrink-0">{formatStat(value, format)}</div>
+      <div className="w-11 text-right text-[10px] text-gray-300 shrink-0">{formatStat(value, format)}</div>
     </div>
   )
 }
@@ -227,8 +227,8 @@ function PercentileBar({ label, value, percentile, format }) {
 function StatCell({ label, value, format }) {
   return (
     <div className="text-center">
-      <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
-      <div className="text-sm font-bold text-white">{formatStat(value, format)}</div>
+      <div className="text-[8px] uppercase tracking-wider text-gray-400">{label}</div>
+      <div className="text-[13px] font-bold text-white leading-tight">{formatStat(value, format)}</div>
     </div>
   )
 }
@@ -299,7 +299,7 @@ export default function PlayerGraphic() {
   const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
   const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
   const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 5)
   const topBadges = badges.slice(0, 3)
 
   // ═══════════════════════════════════════════════════════════════
@@ -351,70 +351,70 @@ export default function PlayerGraphic() {
             }}
           >
             {/* ── Header ── */}
-            <div className="px-5 pt-5 pb-3 flex items-start gap-4 shrink-0">
+            <div className="px-4 pt-4 pb-2 flex items-start gap-3 shrink-0">
               <div className="shrink-0">
                 {info.headshot_url ? (
-                  <img src={info.headshot_url} alt="" className="w-[72px] h-[72px] rounded-full object-cover border-2 border-white/20" />
+                  <img src={info.headshot_url} alt="" className="w-[60px] h-[60px] rounded-full object-cover border-2 border-white/20" />
                 ) : (
-                  <div className="w-[72px] h-[72px] rounded-full bg-white/10 flex items-center justify-center text-xl font-bold text-white/40">
+                  <div className="w-[60px] h-[60px] rounded-full bg-white/10 flex items-center justify-center text-lg font-bold text-white/40">
                     {info.first_name?.[0]}{info.last_name?.[0]}
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[22px] font-extrabold text-white leading-tight">{info.first_name} {info.last_name}</div>
-                <div className="text-[11px] text-white/50 mt-0.5">
+                <div className="text-xl font-extrabold text-white leading-tight">{info.first_name} {info.last_name}</div>
+                <div className="text-[10px] text-white/50 mt-0.5">
                   {[info.position, info.jersey_number ? `#${info.jersey_number}` : null, info.bats && info.throws ? `${info.bats}/${info.throws}` : null, info.year_in_school].filter(Boolean).join('  ·  ')}
                 </div>
-                <div className="text-[13px] font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{info.team_name}</div>
+                <div className="text-[12px] font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{info.team_name}</div>
               </div>
               <div className="shrink-0 text-right">
                 {info.logo_url && (
-                  <img src={info.logo_url} alt="" className="w-10 h-10 object-contain opacity-40 mb-1" />
+                  <img src={info.logo_url} alt="" className="w-9 h-9 object-contain opacity-40 mb-0.5" />
                 )}
-                <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider">
+                <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider">
                   {activeSeason === 'career' ? 'Career' : `${activeSeason}`}
                 </div>
                 {info.division_level && (
-                  <div className="text-[9px] font-semibold mt-0.5" style={{ color: 'rgba(125,211,252,0.6)' }}>{info.division_level}</div>
+                  <div className="text-[8px] font-semibold mt-0.5" style={{ color: 'rgba(125,211,252,0.6)' }}>{info.division_level}</div>
                 )}
               </div>
             </div>
 
-            <div className="border-t border-white/10 mx-5" />
+            <div className="border-t border-white/10 mx-4" />
 
-            {/* ── Stats body (fills remaining space) ── */}
-            <div className="flex-1 flex flex-col px-5 py-3 overflow-hidden gap-2">
+            {/* ── Stats body ── */}
+            <div className="flex-1 flex flex-col px-4 py-2 gap-1.5">
               {statsRow ? (
                 <>
-                  {/* Core stats grid */}
+                  {/* Core stats — single row of 8 */}
                   <div>
-                    <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider mb-1.5">
+                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">
                       {isPitcher ? 'Pitching' : 'Batting'}
                     </div>
-                    <div className="grid grid-cols-4 gap-y-1.5 gap-x-1">
+                    <div className="grid grid-cols-8 gap-x-0">
                       {coreStats.map(s => <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} />)}
                     </div>
                   </div>
 
-                  {/* Advanced stats grid */}
+                  {/* Advanced stats — single row of 8 */}
                   <div>
-                    <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider mb-1.5">Advanced</div>
-                    <div className="grid grid-cols-4 gap-y-1.5 gap-x-1">
+                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Advanced</div>
+                    <div className="grid grid-cols-8 gap-x-0">
                       {advStats.map(s => <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} />)}
                     </div>
                   </div>
 
                   <div className="border-t border-white/[0.06]" />
 
-                  {/* Percentile bars */}
+                  {/* Percentile bars (max 5) */}
                   {availablePerc.length > 0 && (
-                    <div className="flex-1 min-h-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider">Percentile Rankings</div>
-                        <div className="text-[8px] text-white/20">vs. {info.division_level || 'Division'}</div>
+                    <div>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider">Percentile Rankings</div>
+                        <div className="text-[7px] text-white/20">vs. {info.division_level || 'Division'}</div>
                       </div>
-                      <div className="space-y-0">
+                      <div>
                         {availablePerc.map(m => (
                           <PercentileBar
                             key={m.key}
@@ -433,12 +433,12 @@ export default function PlayerGraphic() {
                     <>
                       <div className="border-t border-white/[0.06]" />
                       <div>
-                        <div className="text-[9px] font-bold text-white/25 uppercase tracking-wider mb-1.5">Leaderboard</div>
-                        <div className={`grid gap-2 ${topBadges.length === 1 ? 'grid-cols-1' : topBadges.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                        <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Leaderboard</div>
+                        <div className={`grid gap-1.5 ${topBadges.length === 1 ? 'grid-cols-1' : topBadges.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                           {topBadges.map((b, i) => (
-                            <div key={i} className="rounded-md px-2 py-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                              <div className="text-[11px] font-bold text-white truncate">{b.category}</div>
-                              <div className="text-[8px] text-white/35 mt-0.5 truncate">{b.scope}</div>
+                            <div key={i} className="rounded px-2 py-1" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              <div className="text-[10px] font-bold text-white truncate">{b.category}</div>
+                              <div className="text-[7px] text-white/35 truncate">{b.scope}</div>
                             </div>
                           ))}
                         </div>
@@ -452,10 +452,10 @@ export default function PlayerGraphic() {
             </div>
 
             {/* ── Footer ── */}
-            <div className="border-t border-white/[0.06] mx-5" />
-            <div className="px-5 py-2 flex items-center justify-between shrink-0">
-              <span className="text-[9px] text-white/20 font-medium">nwbaseballstats.com</span>
-              <span className="text-[9px] text-white/20 font-medium">{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
+            <div className="border-t border-white/[0.06] mx-4 shrink-0" />
+            <div className="px-4 py-1.5 flex items-center justify-between shrink-0">
+              <span className="text-[8px] text-white/20 font-medium">nwbaseballstats.com</span>
+              <span className="text-[8px] text-white/20 font-medium">{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
             </div>
           </div>
         </div>
