@@ -291,34 +291,41 @@ export default function PlayerGraphic() {
 
   // Determine percentile_season param
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
-  const { data: player, loading, error } = usePlayer(playerId, percentileSeason)
+  const { data: rawData, loading, error } = usePlayer(playerId, percentileSeason)
+
+  // API returns { player: {...}, batting_stats: [...], pitching_stats: [...], ... }
+  const info = rawData?.player || {}
+  const battingStats = rawData?.batting_stats || []
+  const pitchingStats = rawData?.pitching_stats || []
 
   // Available seasons
-  const battingSeasons = player?.batting_stats?.map(s => s.season) || []
-  const pitchingSeasons = player?.pitching_stats?.map(s => s.season) || []
+  const battingSeasons = battingStats.map(s => s.season)
+  const pitchingSeasons = pitchingStats.map(s => s.season)
   const allSeasons = [...new Set([...battingSeasons, ...pitchingSeasons])].sort((a, b) => b - a)
   const latestSeason = allSeasons[0] || 2026
 
   // Active season data
   const activeSeason = selectedSeason === 'latest' ? latestSeason : selectedSeason === 'career' ? 'career' : Number(selectedSeason)
 
-  const hasBatting = player?.batting_stats?.length > 0
-  const hasPitching = player?.pitching_stats?.length > 0
+  const hasBatting = battingStats.length > 0
+  const hasPitching = pitchingStats.length > 0
 
   // Get the stats row for the selected season
   const battingRow = activeSeason === 'career'
-    ? computeCareerTotals(player?.batting_stats || [], 'batting')
-    : player?.batting_stats?.find(s => s.season === activeSeason)
+    ? computeCareerTotals(battingStats, 'batting')
+    : battingStats.find(s => s.season === activeSeason)
   const pitchingRow = activeSeason === 'career'
-    ? computeCareerTotals(player?.pitching_stats || [], 'pitching')
-    : player?.pitching_stats?.find(s => s.season === activeSeason)
+    ? computeCareerTotals(pitchingStats, 'pitching')
+    : pitchingStats.find(s => s.season === activeSeason)
 
-  // Percentiles from API
-  const percentiles = player?.percentiles || {}
+  // Percentiles — API splits them into batting_percentiles and pitching_percentiles
+  const battingPercentiles = rawData?.batting_percentiles || {}
+  const pitchingPercentiles = rawData?.pitching_percentiles || {}
+  const percentiles = { ...battingPercentiles, ...pitchingPercentiles }
 
   // Rankings / awards
-  const pnwRankings = player?.pnw_rankings || []
-  const awards = player?.awards || []
+  const pnwRankings = rawData?.pnw_rankings || []
+  const awards = rawData?.awards || []
 
   // Build leaderboard badges
   const badges = []
@@ -335,7 +342,7 @@ export default function PlayerGraphic() {
 
   // ─── Canvas Export ────────────────────────────────────────────
   const handleExport = useCallback(async () => {
-    if (!player) return
+    if (!rawData) return
     setExporting(true)
 
     try {
@@ -367,8 +374,8 @@ export default function PlayerGraphic() {
 
       // ── Load images
       const [headshot, logo] = await Promise.all([
-        loadExportImage(player.headshot_url),
-        loadExportImage(player.logo_url),
+        loadExportImage(info.headshot_url),
+        loadExportImage(info.logo_url),
       ])
 
       // ══ HEADER SECTION (y: 0 → ~200) ══
@@ -400,7 +407,7 @@ export default function PlayerGraphic() {
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(
-          (player.first_name?.[0] || '') + (player.last_name?.[0] || ''),
+          (info.first_name?.[0] || '') + (info.last_name?.[0] || ''),
           hsX + hsSize / 2, hsY + hsSize / 2
         )
       }
@@ -412,15 +419,15 @@ export default function PlayerGraphic() {
       ctx.textBaseline = 'top'
       ctx.font = `800 42px ${font}`
       ctx.fillStyle = '#ffffff'
-      ctx.fillText(player.first_name || '', nameX, y + 8)
-      ctx.fillText(player.last_name || '', nameX, y + 52)
+      ctx.fillText(info.first_name || '', nameX, y + 8)
+      ctx.fillText(info.last_name || '', nameX, y + 52)
 
       // Info line
       const infoItems = [
-        player.position,
-        player.jersey_number ? `#${player.jersey_number}` : null,
-        player.bats && player.throws ? `${player.bats}/${player.throws}` : null,
-        player.year_in_school,
+        info.position,
+        info.jersey_number ? `#${info.jersey_number}` : null,
+        info.bats && info.throws ? `${info.bats}/${info.throws}` : null,
+        info.year_in_school,
       ].filter(Boolean)
       ctx.font = `500 18px ${font}`
       ctx.fillStyle = 'rgba(255,255,255,0.6)'
@@ -429,7 +436,7 @@ export default function PlayerGraphic() {
       // Team / school
       ctx.font = `600 20px ${font}`
       ctx.fillStyle = '#7dd3fc'
-      ctx.fillText(player.team_name || '', nameX + 1, y + 124)
+      ctx.fillText(info.team_name || '', nameX + 1, y + 124)
 
       // Season label
       const seasonLabel = activeSeason === 'career' ? 'CAREER' : `${activeSeason} SEASON`
@@ -439,10 +446,10 @@ export default function PlayerGraphic() {
       ctx.fillText(seasonLabel, W - pad, y + 82)
 
       // Division badge
-      if (player.division_level) {
+      if (info.division_level) {
         ctx.font = `700 13px ${font}`
         ctx.fillStyle = 'rgba(125,211,252,0.7)'
-        ctx.fillText(player.division_level, W - pad, y + 102)
+        ctx.fillText(info.division_level, W - pad, y + 102)
       }
 
       y += 170
@@ -472,12 +479,10 @@ export default function PlayerGraphic() {
         const cellW = (W - pad * 2) / cols
         for (let i = 0; i < cols; i++) {
           const cx = pad + cellW * i + cellW / 2
-          // Label
           ctx.font = `600 11px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
           ctx.textAlign = 'center'
           ctx.fillText(coreStats[i].label, cx, y)
-          // Value
           ctx.font = `bold 26px ${font}`
           ctx.fillStyle = '#ffffff'
           ctx.fillText(fmtCanvas(statsRow[coreStats[i].key], coreStats[i].format), cx, y + 30)
@@ -521,7 +526,7 @@ export default function PlayerGraphic() {
 
         ctx.font = `500 10px ${font}`
         ctx.textAlign = 'right'
-        ctx.fillText(`vs. ${player.division_level || 'Division'}`, W - pad, y)
+        ctx.fillText(`vs. ${info.division_level || 'Division'}`, W - pad, y)
         y += 20
 
         const barH = 30
@@ -536,24 +541,20 @@ export default function PlayerGraphic() {
           const bx = pad + labelW
           const barY = y + barH / 2
 
-          // Label
           ctx.font = `600 13px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.6)'
           ctx.textAlign = 'right'
           ctx.fillText(metric.label, bx - 10, barY + 4)
 
-          // Track
           canvasRoundRect(ctx, bx, barY - 3, barArea, 6, 3)
           ctx.fillStyle = 'rgba(255,255,255,0.08)'
           ctx.fill()
 
-          // Bar
           const bw = Math.max(6, (Math.max(4, percentile) / 100) * barArea)
           canvasRoundRect(ctx, bx, barY - 3, bw, 6, 3)
           ctx.fillStyle = color
           ctx.fill()
 
-          // Circle with percentile number
           const circX = bx + barArea + 16 + circleR
           ctx.beginPath()
           ctx.arc(circX, barY, circleR, 0, Math.PI * 2)
@@ -564,7 +565,6 @@ export default function PlayerGraphic() {
           ctx.textAlign = 'center'
           ctx.fillText(String(percentile), circX, barY + 4)
 
-          // Value
           ctx.font = `500 12px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.5)'
           ctx.textAlign = 'right'
@@ -607,7 +607,6 @@ export default function PlayerGraphic() {
           ctx.lineWidth = 1
           ctx.stroke()
 
-          // Rank circle
           const rankColors = ['#f59e0b', '#94a3b8', '#cd7f32']
           ctx.beginPath()
           ctx.arc(bx + 24, by + badgeH / 2, 14, 0, Math.PI * 2)
@@ -618,7 +617,6 @@ export default function PlayerGraphic() {
           ctx.textAlign = 'center'
           ctx.fillText(String(b.rank), bx + 24, by + badgeH / 2 + 5)
 
-          // Category + scope
           ctx.textAlign = 'left'
           ctx.font = `600 14px ${font}`
           ctx.fillStyle = '#ffffff'
@@ -646,7 +644,7 @@ export default function PlayerGraphic() {
 
       // ── Download
       const link = document.createElement('a')
-      const safeName = `${player.first_name}_${player.last_name}`.replace(/\s/g, '_')
+      const safeName = `${info.first_name}_${info.last_name}`.replace(/\s/g, '_')
       link.download = `nwbb-${safeName}-${activeSeason}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
@@ -656,7 +654,7 @@ export default function PlayerGraphic() {
     } finally {
       setExporting(false)
     }
-  }, [player, activeSeason, percentiles, badges, hasBatting, hasPitching, battingRow, pitchingRow])
+  }, [rawData, info, activeSeason, percentiles, badges, hasBatting, hasPitching, battingRow, pitchingRow])
 
   // ═══════════════════════════════════════════════════════════════
   // ON-SCREEN PREVIEW
@@ -679,7 +677,7 @@ export default function PlayerGraphic() {
       )}
 
       {/* Controls */}
-      {player && (
+      {rawData && (
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedSeason}
@@ -703,41 +701,41 @@ export default function PlayerGraphic() {
       )}
 
       {/* Card preview */}
-      {player && (
+      {rawData && (
         <div className="flex justify-center">
           <div
             ref={cardRef}
-            className="w-full max-w-lg aspect-square rounded-xl overflow-hidden shadow-2xl"
+            className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl"
             style={{ background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)' }}
           >
             {/* ── Header ── */}
             <div className="p-5 pb-3 flex items-start gap-4">
               <div className="shrink-0">
-                {player.headshot_url ? (
-                  <img src={player.headshot_url} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-white/20" />
+                {info.headshot_url ? (
+                  <img src={info.headshot_url} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-white/20" />
                 ) : (
                   <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-xl font-bold text-white/40">
-                    {player.first_name?.[0]}{player.last_name?.[0]}
+                    {info.first_name?.[0]}{info.last_name?.[0]}
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-2xl font-extrabold text-white leading-tight">{player.first_name}</div>
-                <div className="text-2xl font-extrabold text-white leading-tight">{player.last_name}</div>
+                <div className="text-2xl font-extrabold text-white leading-tight">{info.first_name}</div>
+                <div className="text-2xl font-extrabold text-white leading-tight">{info.last_name}</div>
                 <div className="text-xs text-white/50 mt-1">
-                  {[player.position, player.jersey_number ? `#${player.jersey_number}` : null, player.bats && player.throws ? `${player.bats}/${player.throws}` : null, player.year_in_school].filter(Boolean).join('  ·  ')}
+                  {[info.position, info.jersey_number ? `#${info.jersey_number}` : null, info.bats && info.throws ? `${info.bats}/${info.throws}` : null, info.year_in_school].filter(Boolean).join('  ·  ')}
                 </div>
-                <div className="text-sm font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{player.team_name}</div>
+                <div className="text-sm font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{info.team_name}</div>
               </div>
               <div className="shrink-0 text-right">
-                {player.logo_url && (
-                  <img src={player.logo_url} alt="" className="w-12 h-12 object-contain opacity-50 mb-1" />
+                {info.logo_url && (
+                  <img src={info.logo_url} alt="" className="w-12 h-12 object-contain opacity-50 mb-1" />
                 )}
                 <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
                   {activeSeason === 'career' ? 'Career' : activeSeason}
                 </div>
-                {player.division_level && (
-                  <div className="text-[10px] font-bold mt-0.5" style={{ color: 'rgba(125,211,252,0.7)' }}>{player.division_level}</div>
+                {info.division_level && (
+                  <div className="text-[10px] font-bold mt-0.5" style={{ color: 'rgba(125,211,252,0.7)' }}>{info.division_level}</div>
                 )}
               </div>
             </div>
@@ -755,7 +753,7 @@ export default function PlayerGraphic() {
               if (!row) return <div className="p-5 text-white/40 text-sm">No stats for this season.</div>
 
               return (
-                <div className="p-5 pt-3 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100% - 160px)' }}>
+                <div className="p-5 pt-3 space-y-3">
                   {/* Core stats grid */}
                   <div>
                     <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">
@@ -781,7 +779,7 @@ export default function PlayerGraphic() {
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Percentile Rankings</div>
-                        <div className="text-[9px] text-white/25">vs. {player.division_level || 'Division'}</div>
+                        <div className="text-[9px] text-white/25">vs. {info.division_level || 'Division'}</div>
                       </div>
                       <div className="space-y-0.5">
                         {perc.filter(m => percentiles[m.key]).map(m => (
