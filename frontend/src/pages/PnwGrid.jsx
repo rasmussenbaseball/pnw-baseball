@@ -680,7 +680,7 @@ export default function PnwGrid() {
         <p>Select a cell and search for a player who fits <strong>both</strong> the row and column criteria.
         Each player can only be used once.{!isRandom && ` You have ${MAX_GUESSES} guesses to fill the 3×3 grid.`}
         {isRandom && ' Unlimited guesses — keep going until you fill the grid!'}</p>
-        <p className="mt-1.5 text-gray-400">Data includes the 2022 season and later only. Rate stats require qualification (50+ PA for hitters, 20+ IP for pitchers).</p>
+        <p className="mt-1.5 text-gray-400">Data includes the 2018 season and later for 4-year schools and 2019 and later for NWAC. Rate stats require qualification (50+ PA for hitters, 20+ IP for pitchers).</p>
       </div>
     </div>
   )
