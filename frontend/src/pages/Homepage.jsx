@@ -30,6 +30,14 @@ export default function Homepage() {
   const { data: recentGames } = useGamesTicker(SEASON, 20)
   const { data: liveData } = useLiveScores()
   const { user } = useAuth()
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    try { return sessionStorage.getItem('beta-banner-dismissed') === '1' } catch { return false }
+  })
+
+  const dismissBanner = () => {
+    setBannerDismissed(true)
+    try { sessionStorage.setItem('beta-banner-dismissed', '1') } catch {}
+  }
 
   // Only show live ticker when games are actually in progress
   const todayGames = liveData?.today || []
@@ -42,6 +50,9 @@ export default function Homepage() {
         <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
       )}
       <GameResultsTicker games={recentGames} />
+
+      {/* Beta intro banner */}
+      {!bannerDismissed && <BetaBanner onDismiss={dismissBanner} user={user} />}
 
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
@@ -62,6 +73,82 @@ export default function Homepage() {
           <QuickLinksWidget />
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// BETA INTRO BANNER
+// ════════════════════════════════════════════
+function BetaBanner({ onDismiss, user }) {
+  return (
+    <div className="relative bg-gradient-to-r from-pnw-slate to-pnw-slate/95 rounded-xl shadow-sm border border-white/10 p-4 sm:p-5 mb-3 text-white overflow-hidden">
+      {/* Dismiss button */}
+      <button
+        onClick={onDismiss}
+        className="absolute top-2.5 right-2.5 p-1 rounded-full hover:bg-white/10 transition-colors text-white/40 hover:text-white/80"
+        aria-label="Dismiss"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      {/* Beta badge */}
+      <div className="flex items-center gap-2 mb-2">
+        <span className="px-2 py-0.5 bg-pnw-teal rounded text-[10px] font-bold uppercase tracking-wider">Beta</span>
+        <h2 className="text-base sm:text-lg font-bold">Welcome to NW Baseball Stats</h2>
+      </div>
+
+      <p className="text-sm text-gray-300 leading-relaxed max-w-3xl">
+        The first advanced analytics platform for Pacific Northwest college baseball.
+        We cover <span className="text-white font-medium">D1, D2, D3, NAIA, and NWAC</span> programs
+        with stats, WAR, leaderboards, scouting tools, and more.
+        Data is available from the <span className="text-white font-medium">2019 season to present</span> for
+        four-year schools and 2022 onward for NWAC.
+      </p>
+
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-3 text-xs text-gray-400">
+        <div className="flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-pnw-teal shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+          </svg>
+          <span>Custom WAR, wRC+, FIP+ for every player</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-pnw-teal shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+          </svg>
+          <span>National rankings across all divisions</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-pnw-teal shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+          </svg>
+          <span>Live scores and box scores</span>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-400 mt-3 leading-relaxed max-w-3xl">
+        This site is still a work in progress — we're actively adding features and fixing bugs.
+        If you notice anything off, have ideas, or just want to follow along,
+        reach out on <a href="https://x.com/NWBBStats" target="_blank" rel="noopener noreferrer" className="text-pnw-teal hover:underline">X @NWBBStats</a> or <a href="https://instagram.com/nwbbstats" target="_blank" rel="noopener noreferrer" className="text-pnw-teal hover:underline">Instagram</a>.
+      </p>
+
+      {!user && (
+        <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-3">
+          <Link
+            to="/login"
+            className="px-4 py-1.5 bg-pnw-teal text-white text-xs font-semibold rounded-lg hover:bg-pnw-teal/90 transition-colors"
+          >
+            Create Free Account
+          </Link>
+          <span className="text-xs text-gray-500">
+            Signing up unlocks coaching tools, JUCO tracker, matchup breakdowns, and helps us grow the site.
+          </span>
+        </div>
+      )}
     </div>
   )
 }
