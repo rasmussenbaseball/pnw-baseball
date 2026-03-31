@@ -140,16 +140,16 @@ export default function StatsTable({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border overflow-x-auto">
+    <div className="bg-white rounded-lg shadow-sm border overflow-auto max-h-[80vh]">
       <table className="stat-table">
-        <thead>
+        <thead className="sticky top-0 z-30">
           <tr>
             {displayColumns.map(col => (
               <th
                 key={col.key}
                 onClick={() => handleHeaderClick(col)}
                 className={`${sortBy === col.key ? 'sorted' : ''} ${col.sortable === false ? 'cursor-default' : ''} ${stickyClass(col, true)}`}
-                style={{ ...( stickyMeta[col.key] ? stickyStyle(col, true) : { minWidth: col.width }) }}
+                style={{ ...( stickyMeta[col.key] ? stickyStyle(col, true) : { minWidth: col.width }), ...(stickyMeta[col.key] ? { zIndex: 40 } : {}) }}
                 title={col.tooltip || col.label}
               >
                 <div className="flex items-center gap-1">

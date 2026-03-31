@@ -13,7 +13,7 @@ body {
 }
 
 .stat-table thead th {
-  @apply bg-nw-teal text-white px-1.5 sm:px-3 py-1.5 sm:py-2 text-left font-medium text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none;
+  @apply bg-nw-teal text-white px-1.5 sm:px-3 py-1.5 sm:py-2 text-left font-medium text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none border-b-2 border-nw-teal-dark;
 }
 
 .stat-table thead th:hover {

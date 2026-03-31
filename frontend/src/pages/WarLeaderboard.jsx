@@ -117,12 +117,12 @@ export default function WarLeaderboard() {
           Loading WAR data...
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border overflow-x-auto">
+        <div className="bg-white rounded-lg shadow-sm border overflow-auto max-h-[80vh]">
           <table className="stat-table">
-            <thead>
+            <thead className="sticky top-0 z-30">
               <tr>
-                <th className="sticky-col" style={{ width: 28, minWidth: 28, position: 'sticky', left: 0, zIndex: 20 }}>#</th>
-                <th className="sticky-col sticky-col-last" style={{ width: 110, minWidth: 110, maxWidth: 160, position: 'sticky', left: 28, zIndex: 20 }}>Player</th>
+                <th className="sticky-col" style={{ width: 28, minWidth: 28, position: 'sticky', left: 0, zIndex: 40 }}>#</th>
+                <th className="sticky-col sticky-col-last" style={{ width: 110, minWidth: 110, maxWidth: 160, position: 'sticky', left: 28, zIndex: 40 }}>Player</th>
                 <th style={{ width: 75 }}>Team</th>
                 <th style={{ width: 44 }}>Lvl</th>
                 <th style={{ width: 36 }}>Yr</th>
