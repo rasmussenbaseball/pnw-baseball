@@ -269,7 +269,7 @@ export default function PnwGrid() {
           onClick={() => handleModeSwitch('weekly')}
           className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'weekly' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Weekly
+          Daily
         </button>
         <button
           onClick={() => handleModeSwitch('random')}
@@ -292,7 +292,7 @@ export default function PnwGrid() {
           onClick={() => handleModeSwitch('weekly')}
           className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'weekly' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Weekly
+          Daily
         </button>
         <button
           onClick={() => handleModeSwitch('random')}

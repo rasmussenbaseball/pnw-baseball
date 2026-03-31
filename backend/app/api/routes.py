@@ -4955,11 +4955,12 @@ def _pick_mixed_stats(rng, count):
     return picked
 
 
-def _generate_random_grid():
+def _generate_random_grid(seed=None):
     """Generate a random PNW Grid configuration.
     Validates that every team×stat cell has 3+ matching players.
-    Retries up to 20 times if validation fails."""
-    rng = _grid_random.Random()
+    Retries up to 20 times if validation fails.
+    Optional seed for deterministic generation (e.g. daily grids)."""
+    rng = _grid_random.Random(seed)
 
     for _attempt in range(20):
         # Pick layout:
@@ -5009,22 +5010,44 @@ def _generate_random_grid():
     }
 
 
-def _load_grid_config():
-    """Load the current PNW Grid configuration."""
+import datetime as _grid_datetime
+
+def _get_daily_grid():
+    """Get today's daily grid. Uses date as seed for deterministic generation.
+    Caches in the config JSON file so it's only generated once per day."""
+    today = _grid_datetime.date.today().isoformat()  # e.g. "2026-03-31"
+
+    # Check if we have a cached grid for today
     try:
         with open(_GRID_CONFIG_PATH) as f:
-            return _grid_json.load(f)
+            cached = _grid_json.load(f)
+            if cached and cached.get("date") == today:
+                return cached
     except (FileNotFoundError, ValueError):
-        return None
+        pass
+
+    # Generate a new grid seeded by today's date
+    seed = f"pnw-grid-{today}"
+    grid = _generate_random_grid(seed=seed)
+    grid["title"] = _grid_datetime.date.today().strftime("%B %d, %Y")
+    grid["mode"] = "daily"
+    grid["date"] = today
+
+    # Cache it
+    try:
+        _GRID_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_GRID_CONFIG_PATH, "w") as f:
+            _grid_json.dump(grid, f)
+    except Exception:
+        pass  # Still return the grid even if caching fails
+
+    return grid
 
 
 @router.get("/grid/config")
 def grid_config():
-    """Return the current PNW Grid puzzle configuration."""
-    config = _load_grid_config()
-    if not config:
-        raise HTTPException(status_code=404, detail="No grid configured")
-    return config
+    """Return today's daily PNW Grid puzzle configuration."""
+    return _get_daily_grid()
 
 
 @router.get("/grid/random")
