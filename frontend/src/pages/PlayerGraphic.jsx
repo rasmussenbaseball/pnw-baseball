@@ -697,7 +697,7 @@ export default function PlayerGraphic() {
         <div className="flex justify-center">
           <div
             ref={cardRef}
-            className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl"
+            className="w-full max-w-lg aspect-square rounded-xl overflow-hidden shadow-2xl"
             style={{ background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)' }}
           >
             {/* ── Header ── */}
@@ -745,7 +745,7 @@ export default function PlayerGraphic() {
               if (!row) return <div className="p-5 text-white/40 text-sm">No stats for this season.</div>
 
               return (
-                <div className="p-5 pt-3 space-y-3">
+                <div className="p-5 pt-3 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100% - 140px)' }}>
                   {/* Core stats grid */}
                   <div>
                     <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">
