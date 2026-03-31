@@ -36,6 +36,37 @@ body {
   @apply bg-gray-50;
 }
 
+/* Sticky columns for mobile horizontal scroll */
+.stat-table thead th.sticky-col {
+  @apply bg-nw-teal;
+}
+
+.stat-table thead th.sticky-col.sorted {
+  @apply bg-nw-teal-light;
+}
+
+.stat-table tbody td.sticky-col {
+  @apply bg-white;
+}
+
+.stat-table tbody tr:nth-child(even) td.sticky-col {
+  @apply bg-gray-50;
+}
+
+.stat-table tbody tr:hover td.sticky-col {
+  @apply bg-teal-50;
+}
+
+/* Right shadow on last sticky column */
+.sticky-col-last {
+  box-shadow: 2px 0 4px -1px rgba(0, 0, 0, 0.08);
+}
+
+/* Generic hover fix for sticky cols in any table */
+tr:hover td.sticky-col {
+  @apply bg-teal-50;
+}
+
 /* Player name link style */
 .player-link {
   @apply text-nw-teal hover:text-nw-teal-dark font-medium hover:underline;

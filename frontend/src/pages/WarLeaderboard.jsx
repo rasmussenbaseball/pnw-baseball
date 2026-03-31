@@ -121,8 +121,8 @@ export default function WarLeaderboard() {
           <table className="stat-table">
             <thead>
               <tr>
-                <th style={{ width: 36 }}>#</th>
-                <th style={{ width: 150 }}>Player</th>
+                <th className="sticky-col" style={{ width: 28, minWidth: 28, position: 'sticky', left: 0, zIndex: 20 }}>#</th>
+                <th className="sticky-col sticky-col-last" style={{ width: 110, minWidth: 110, maxWidth: 160, position: 'sticky', left: 28, zIndex: 20 }}>Player</th>
                 <th style={{ width: 75 }}>Team</th>
                 <th style={{ width: 44 }}>Lvl</th>
                 <th style={{ width: 36 }}>Yr</th>
@@ -143,8 +143,8 @@ export default function WarLeaderboard() {
             <tbody>
               {(result?.data || []).map((row, i) => (
                 <tr key={row.player_id} className={row.is_qualified === false ? 'italic text-gray-500' : ''}>
-                  <td>{page * limit + i + 1}</td>
-                  <td>
+                  <td className="sticky-col" style={{ position: 'sticky', left: 0, zIndex: 10 }}>{page * limit + i + 1}</td>
+                  <td className="sticky-col sticky-col-last" style={{ position: 'sticky', left: 28, zIndex: 10 }}>
                     <Link to={`/player/${row.player_id}`} className="player-link">
                       {row.first_name} {row.last_name}
                     </Link>

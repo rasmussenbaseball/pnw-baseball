@@ -107,6 +107,38 @@ export default function StatsTable({
     )
   }
 
+  // Determine which columns should be sticky (rank + name on mobile)
+  // We track cumulative left offsets for sticky positioning
+  const stickyKeys = ['rank', 'name']
+  let cumulativeLeft = 0
+  const stickyMeta = {}
+  displayColumns.forEach(col => {
+    if (stickyKeys.includes(col.key)) {
+      stickyMeta[col.key] = { left: cumulativeLeft }
+      // Use compact widths for sticky cols on mobile
+      const w = col.key === 'rank' ? 28 : 110
+      cumulativeLeft += w
+    }
+  })
+
+  const stickyStyle = (col, isHeader = false) => {
+    if (!stickyMeta[col.key]) return {}
+    return {
+      position: 'sticky',
+      left: stickyMeta[col.key].left,
+      zIndex: isHeader ? 20 : 10,
+      minWidth: col.key === 'rank' ? 28 : 110,
+      maxWidth: col.key === 'rank' ? 28 : 160,
+    }
+  }
+
+  const stickyClass = (col, isHeader = false) => {
+    if (!stickyMeta[col.key]) return ''
+    // Shadow on the last sticky column to indicate scroll boundary
+    const isLast = col.key === stickyKeys[stickyKeys.length - 1]
+    return `sticky-col ${isLast ? 'sticky-col-last' : ''}`
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm border overflow-x-auto">
       <table className="stat-table">
@@ -116,8 +148,8 @@ export default function StatsTable({
               <th
                 key={col.key}
                 onClick={() => handleHeaderClick(col)}
-                className={`${sortBy === col.key ? 'sorted' : ''} ${col.sortable === false ? 'cursor-default' : ''}`}
-                style={{ minWidth: col.width }}
+                className={`${sortBy === col.key ? 'sorted' : ''} ${col.sortable === false ? 'cursor-default' : ''} ${stickyClass(col, true)}`}
+                style={{ ...( stickyMeta[col.key] ? stickyStyle(col, true) : { minWidth: col.width }) }}
                 title={col.tooltip || col.label}
               >
                 <div className="flex items-center gap-1">
@@ -134,7 +166,11 @@ export default function StatsTable({
           {data.map((row, i) => (
             <tr key={row.id || row.player_id || i} className={row.is_qualified === false ? 'italic text-gray-500' : ''}>
               {displayColumns.map(col => (
-                <td key={col.key} className={col.format === 'avg' || col.format === 'era' || col.format === 'war' ? 'font-mono text-right' : ''}>
+                <td
+                  key={col.key}
+                  className={`${col.format === 'avg' || col.format === 'era' || col.format === 'war' ? 'font-mono text-right' : ''} ${stickyClass(col)}`}
+                  style={stickyMeta[col.key] ? stickyStyle(col) : undefined}
+                >
                   {renderCell(row, col, i)}
                 </td>
               ))}

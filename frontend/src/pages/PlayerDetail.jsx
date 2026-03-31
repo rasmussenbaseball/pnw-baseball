@@ -84,6 +84,49 @@ const PITCHING_TABLE_COLS = [
   { key: 'pitching_war', label: 'WAR',   format: 'war' },
 ]
 
+// ── Summer stat table column configs ──────────────────────────
+const SUMMER_BATTING_TABLE_COLS = [
+  { key: 'season',       label: 'Year',   format: null },
+  { key: 'team_name',    label: 'Team',   format: null },
+  { key: 'league_abbrev', label: 'League', format: null },
+  { key: 'games',        label: 'G',      format: 'int' },
+  { key: 'plate_appearances', label: 'PA', format: 'int' },
+  { key: 'at_bats',      label: 'AB',     format: 'int' },
+  { key: 'hits',         label: 'H',      format: 'int' },
+  { key: 'doubles',      label: '2B',     format: 'int' },
+  { key: 'triples',      label: '3B',     format: 'int' },
+  { key: 'home_runs',    label: 'HR',     format: 'int' },
+  { key: 'runs',         label: 'R',      format: 'int' },
+  { key: 'rbi',          label: 'RBI',    format: 'int' },
+  { key: 'walks',        label: 'BB',     format: 'int' },
+  { key: 'strikeouts',   label: 'K',      format: 'int' },
+  { key: 'stolen_bases', label: 'SB',     format: 'int' },
+  { key: 'batting_avg',  label: 'AVG',    format: 'avg' },
+  { key: 'on_base_pct',  label: 'OBP',    format: 'avg' },
+  { key: 'slugging_pct', label: 'SLG',    format: 'avg' },
+  { key: 'ops',          label: 'OPS',    format: 'avg' },
+]
+
+const SUMMER_PITCHING_TABLE_COLS = [
+  { key: 'season',       label: 'Year',   format: null },
+  { key: 'team_name',    label: 'Team',   format: null },
+  { key: 'league_abbrev', label: 'League', format: null },
+  { key: 'wins',         label: 'W',      format: 'int' },
+  { key: 'losses',       label: 'L',      format: 'int' },
+  { key: 'saves',        label: 'SV',     format: 'int' },
+  { key: 'games',        label: 'G',      format: 'int' },
+  { key: 'games_started', label: 'GS',    format: 'int' },
+  { key: 'innings_pitched', label: 'IP',  format: 'ip' },
+  { key: 'strikeouts',   label: 'K',      format: 'int' },
+  { key: 'walks',        label: 'BB',     format: 'int' },
+  { key: 'hits_allowed', label: 'H',      format: 'int' },
+  { key: 'earned_runs',  label: 'ER',     format: 'int' },
+  { key: 'era',          label: 'ERA',    format: 'era' },
+  { key: 'whip',         label: 'WHIP',   format: 'era' },
+  { key: 'k_per_9',      label: 'K/9',    format: 'era' },
+  { key: 'bb_per_9',     label: 'BB/9',   format: 'era' },
+]
+
 // ── Helpers ────────────────────────────────────────────────────
 
 /**
@@ -287,7 +330,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
       {/* Footer */}
       <div className="px-3 sm:px-5 pb-3 flex items-center justify-between">
         <span className="text-[10px] text-gray-400">
-          Min 50 PA / 10 IP to qualify
+          Min 10 PA / 5 IP to qualify
         </span>
         <span className="text-[10px] text-gray-400 italic">
           vs. {divisionLevel || 'division'}
@@ -300,15 +343,19 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
 function StatsTable({ rows, columns, careerRow }) {
   if (!rows.length) return null
 
+  // First column (Season/Year) is sticky on mobile
+  const firstKey = columns[0]?.key
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b-2 border-nw-teal/30">
-            {columns.map(col => (
+            {columns.map((col, ci) => (
               <th
                 key={col.key}
-                className="px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right first:text-left"
+                className={`px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right first:text-left ${ci === 0 ? 'sticky-col sticky-col-last bg-white' : ''}`}
+                style={ci === 0 ? { position: 'sticky', left: 0, zIndex: 10 } : undefined}
               >
                 {col.label}
               </th>
@@ -318,8 +365,12 @@ function StatsTable({ rows, columns, careerRow }) {
         <tbody>
           {rows.map((row, i) => (
             <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-              {columns.map(col => (
-                <td key={col.key} className="px-2 py-1.5 text-right first:text-left whitespace-nowrap">
+              {columns.map((col, ci) => (
+                <td
+                  key={col.key}
+                  className={`px-2 py-1.5 text-right first:text-left whitespace-nowrap ${ci === 0 ? 'sticky-col sticky-col-last bg-white' : ''}`}
+                  style={ci === 0 ? { position: 'sticky', left: 0, zIndex: 5 } : undefined}
+                >
                   {col.format ? formatStat(row[col.key], col.format) : (row[col.key] ?? '-')}
                 </td>
               ))}
@@ -327,8 +378,12 @@ function StatsTable({ rows, columns, careerRow }) {
           ))}
           {careerRow && (
             <tr className="border-t-2 border-nw-teal/30 font-semibold bg-gray-50">
-              {columns.map(col => (
-                <td key={col.key} className="px-2 py-1.5 text-right first:text-left whitespace-nowrap">
+              {columns.map((col, ci) => (
+                <td
+                  key={col.key}
+                  className={`px-2 py-1.5 text-right first:text-left whitespace-nowrap ${ci === 0 ? 'sticky-col sticky-col-last bg-gray-50' : ''}`}
+                  style={ci === 0 ? { position: 'sticky', left: 0, zIndex: 5 } : undefined}
+                >
                   {col.format ? formatStat(careerRow[col.key], col.format) : (careerRow[col.key] ?? '')}
                 </td>
               ))}
@@ -723,10 +778,13 @@ export default function PlayerDetail() {
     )
   }
 
-  const { player, batting_stats, pitching_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players } = data
+  const { player, batting_stats, pitching_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players, summer_batting, summer_pitching } = data
   const isTransfer = linked_players && linked_players.length > 1
   const hasBatting = batting_stats && batting_stats.length > 0
   const hasPitching = pitching_stats && pitching_stats.length > 0
+  const hasSummerBatting = summer_batting && summer_batting.length > 0
+  const hasSummerPitching = summer_pitching && summer_pitching.length > 0
+  const hasSummerStats = hasSummerBatting || hasSummerPitching
   const battingCareer = hasBatting ? computeCareerTotals(batting_stats, 'batting') : null
   const pitchingCareer = hasPitching ? computeCareerTotals(pitching_stats, 'pitching') : null
 
@@ -948,8 +1006,41 @@ export default function PlayerDetail() {
         </div>
       )}
 
+      {/* ── Summer Ball Stats ── */}
+      {hasSummerStats && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg shadow-sm border border-amber-200 p-3 sm:p-5 mb-4 sm:mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-sm sm:text-base font-bold text-amber-800 uppercase tracking-wider">
+              Summer Ball
+            </h3>
+          </div>
+
+          {hasSummerBatting && (
+            <div className="mb-4">
+              <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Batting</h4>
+              <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
+                <div className="min-w-[650px]">
+                  <StatsTable rows={summer_batting} columns={SUMMER_BATTING_TABLE_COLS} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hasSummerPitching && (
+            <div>
+              <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Pitching</h4>
+              <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
+                <div className="min-w-[650px]">
+                  <StatsTable rows={summer_pitching} columns={SUMMER_PITCHING_TABLE_COLS} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Game Logs ── */}
-      {gameLogs?.batting?.length > 0 && (
+      {gameLogs?.batting?.length > 0 && gameLogs.batting.some(g => (g.ab || 0) + (g.bb || 0) + (g.hbp || 0) + (g.sf || 0) + (g.sh || 0) > 0) && (
         <GameLogTable
           title="Batting Game Log"
           logs={gameLogs.batting}
