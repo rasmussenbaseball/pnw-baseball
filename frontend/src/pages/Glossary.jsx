@@ -2,11 +2,43 @@ import { useState } from 'react'
 
 // ─── Section nav tabs ───
 const SECTIONS = [
+  { id: 'updates', label: 'Updates' },
   { id: 'batting', label: 'Batting Stats' },
   { id: 'pitching', label: 'Pitching Stats' },
   { id: 'war', label: 'WAR Methodology' },
   { id: 'environment', label: 'Run Environments' },
   { id: 'about', label: 'About the Site' },
+]
+
+// ─── Site Updates / Changelog ───
+const UPDATES = [
+  {
+    version: '1.1',
+    date: 'March 31, 2026',
+    title: 'Player Pages, Feature Requests & UI Polish',
+    changes: [
+      'Added Player Pages under Misc — search any player and get a shareable stat graphic with core stats, advanced stats, Savant-style percentile bars, and leaderboard badges',
+      'Added Feature Request page under Misc — users can submit ideas and feedback for the site',
+      'Updated the OG banner image (the preview that shows when you share the site link) with the new NW logo',
+      'Player Pages include career and per-season views with percentile rankings vs. division',
+    ],
+  },
+  {
+    version: '1.0',
+    date: 'March 30, 2026',
+    title: 'Launch Features & Core Improvements',
+    changes: [
+      'Added beta intro banner to homepage with feature highlights and signup CTA',
+      'Sticky table headers on leaderboards — column headers stay visible when scrolling',
+      'Mobile improvements — sticky rank & player columns on leaderboard tables, sticky season on player stat pages',
+      'Added PNW Grid link and signup CTA to homepage',
+      'Gated Coaching and Misc tabs behind authentication',
+      'Fixed transfer player pages to show most recent team in header and sort schools oldest to newest',
+      'Fixed homepage ticker to always show recent scores',
+      'Fixed summer player links using spring_player_id',
+      'Added WAF safeguard to skip NWAC scrape when blocked',
+    ],
+  },
 ]
 
 // ─── Stat definition component ───
@@ -368,6 +400,37 @@ function EnvironmentSection() {
 // ============================================================
 // ABOUT SECTION
 // ============================================================
+// ─── Updates Section ───
+function UpdatesSection() {
+  return (
+    <div className="space-y-6">
+      <Card title="Site Updates" subtitle="A running log of features, fixes, and improvements.">
+        <div className="space-y-6">
+          {UPDATES.map((update) => (
+            <div key={update.version} className="pb-5 border-b border-gray-100 last:border-0 last:pb-0">
+              <div className="flex items-baseline gap-3 mb-2">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-nw-teal text-white">
+                  v{update.version}
+                </span>
+                <span className="text-sm font-semibold text-gray-800">{update.title}</span>
+                <span className="text-xs text-gray-400 ml-auto shrink-0">{update.date}</span>
+              </div>
+              <ul className="space-y-1.5 ml-1">
+                {update.changes.map((change, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-gray-600">
+                    <span className="text-nw-teal mt-1 shrink-0">•</span>
+                    <span>{change}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 function AboutSection() {
   return (
     <div>
@@ -550,16 +613,17 @@ function AboutSection() {
 // MAIN GLOSSARY PAGE
 // ============================================================
 export default function Glossary() {
-  const [activeSection, setActiveSection] = useState('batting')
+  const [activeSection, setActiveSection] = useState('updates')
 
   const renderSection = () => {
     switch (activeSection) {
+      case 'updates': return <UpdatesSection />
       case 'batting': return <BattingSection />
       case 'pitching': return <PitchingSection />
       case 'war': return <WarSection />
       case 'environment': return <EnvironmentSection />
       case 'about': return <AboutSection />
-      default: return <BattingSection />
+      default: return <UpdatesSection />
     }
   }
 
