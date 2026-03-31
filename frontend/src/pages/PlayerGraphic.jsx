@@ -361,17 +361,18 @@ export default function PlayerGraphic() {
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, W, H)
 
-      // ── Subtle orbs
+      // ── Subtle decorative orbs
       ctx.beginPath()
-      ctx.arc(W * 0.8, H * 0.15, 200, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(0,104,122,0.2)'
+      ctx.arc(W * 0.82, H * 0.12, 180, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(0,104,122,0.15)'
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(W * 0.2, H * 0.85, 250, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(0,138,158,0.1)'
+      ctx.arc(W * 0.15, H * 0.88, 220, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(0,138,158,0.08)'
       ctx.fill()
 
-      const pad = 48
+      const pad = 44
+      const contentW = W - pad * 2
 
       // ── Load images
       const [headshot, logo] = await Promise.all([
@@ -379,19 +380,31 @@ export default function PlayerGraphic() {
         loadExportImage(info.logo_url),
       ])
 
-      // ══ HEADER SECTION (y: 0 → ~200) ══
+      // Determine which stats to draw
+      const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
+      const statsRow = isPitcher ? pitchingRow : battingRow
+      const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
+      const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
+      const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
+      const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+      const topBadges = badges.slice(0, 3)
+      const canvasSeasonLabel = activeSeason === 'career' ? 'CAREER' : `${activeSeason} SEASON`
+
+      // ══════════════════════════════════════════════════
+      // HEADER — player info (y ≈ 44 → 210)
+      // ══════════════════════════════════════════════════
       let y = pad
 
-      // Logo in top-right
+      // Team logo (top-right, faded)
       if (logo) {
-        const logoSize = 70
-        ctx.globalAlpha = 0.5
+        const logoSize = 64
+        ctx.globalAlpha = 0.4
         ctx.drawImage(logo, W - pad - logoSize, y, logoSize, logoSize)
         ctx.globalAlpha = 1
       }
 
-      // Headshot circle
-      const hsSize = 120
+      // Headshot (large circle)
+      const hsSize = 140
       const hsX = pad, hsY = y
       ctx.save()
       ctx.beginPath()
@@ -403,7 +416,7 @@ export default function PlayerGraphic() {
       } else {
         ctx.fillStyle = '#1a3a5c'
         ctx.fillRect(hsX, hsY, hsSize, hsSize)
-        ctx.font = `bold 40px ${font}`
+        ctx.font = `bold 48px ${font}`
         ctx.fillStyle = 'rgba(255,255,255,0.4)'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
@@ -414,225 +427,239 @@ export default function PlayerGraphic() {
       }
       ctx.restore()
 
-      // Name
-      const nameX = hsX + hsSize + 20
+      // Headshot border ring
+      ctx.beginPath()
+      ctx.arc(hsX + hsSize / 2, hsY + hsSize / 2, hsSize / 2, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // Name (right of headshot)
+      const nameX = hsX + hsSize + 24
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.font = `800 42px ${font}`
+      ctx.font = `800 44px ${font}`
       ctx.fillStyle = '#ffffff'
-      ctx.fillText(info.first_name || '', nameX, y + 8)
-      ctx.fillText(info.last_name || '', nameX, y + 52)
+      ctx.fillText(info.first_name || '', nameX, y + 10)
+      ctx.fillText(info.last_name || '', nameX, y + 58)
 
-      // Info line
+      // Info line (position, number, bats/throws, year)
       const infoItems = [
         info.position,
         info.jersey_number ? `#${info.jersey_number}` : null,
         info.bats && info.throws ? `${info.bats}/${info.throws}` : null,
         info.year_in_school,
       ].filter(Boolean)
-      ctx.font = `500 18px ${font}`
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'
-      ctx.fillText(infoItems.join('  ·  '), nameX, y + 100)
+      ctx.font = `500 17px ${font}`
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'
+      ctx.fillText(infoItems.join('  ·  '), nameX, y + 108)
 
-      // Team / school
-      ctx.font = `600 20px ${font}`
+      // Team name
+      ctx.font = `600 19px ${font}`
       ctx.fillStyle = '#7dd3fc'
-      ctx.fillText(info.team_name || '', nameX + 1, y + 124)
+      ctx.fillText(info.team_name || '', nameX, y + 130)
 
-      // Season label
-      const canvasSeasonLabel = activeSeason === 'career' ? 'CAREER' : `${activeSeason} SEASON`
-      ctx.font = `700 14px ${font}`
-      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      // Season + division (top-right under logo)
       ctx.textAlign = 'right'
-      ctx.fillText(canvasSeasonLabel, W - pad, y + 82)
-
-      // Division badge
+      ctx.font = `700 14px ${font}`
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'
+      ctx.fillText(canvasSeasonLabel, W - pad, y + 78)
       if (info.division_level) {
-        ctx.font = `700 13px ${font}`
-        ctx.fillStyle = 'rgba(125,211,252,0.7)'
-        ctx.fillText(info.division_level, W - pad, y + 102)
+        ctx.font = `600 13px ${font}`
+        ctx.fillStyle = 'rgba(125,211,252,0.6)'
+        ctx.fillText(info.division_level, W - pad, y + 96)
       }
 
-      y += 158
+      y += hsSize + 16
 
-      // ── Divider
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+      // ── Thin divider
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
       ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
-      y += 14
+      y += 16
 
-      // Determine which stats to draw
-      const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
-      const statsRow = isPitcher ? pitchingRow : battingRow
-      const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
-      const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
-      const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-
-      // ══ CORE STATS GRID ══
+      // ══════════════════════════════════════════════════
+      // STATS — two rows in a single block
+      // ══════════════════════════════════════════════════
       if (statsRow) {
+        // Section header
         ctx.font = `700 13px ${font}`
         ctx.fillStyle = 'rgba(255,255,255,0.35)'
         ctx.textAlign = 'left'
-        ctx.fillText(isPitcher ? 'PITCHING' : 'BATTING', pad, y)
-        y += 22
+        ctx.fillText('SEASON STATS', pad, y)
+        y += 20
 
+        // Row 1 — core stats (8 cols)
         const cols = coreStats.length
-        const cellW = (W - pad * 2) / cols
+        const cellW = contentW / cols
         for (let i = 0; i < cols; i++) {
           const cx = pad + cellW * i + cellW / 2
+          // Label
           ctx.font = `600 11px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
           ctx.textAlign = 'center'
           ctx.fillText(coreStats[i].label, cx, y)
-          ctx.font = `bold 24px ${font}`
+          // Value
+          ctx.font = `bold 26px ${font}`
           ctx.fillStyle = '#ffffff'
-          ctx.fillText(fmtCanvas(statsRow[coreStats[i].key], coreStats[i].format), cx, y + 26)
+          ctx.fillText(fmtCanvas(statsRow[coreStats[i].key], coreStats[i].format), cx, y + 28)
         }
-        y += 48
+        y += 52
 
-        // ── Advanced stats row
-        ctx.font = `700 13px ${font}`
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'
-        ctx.textAlign = 'left'
-        ctx.fillText('ADVANCED', pad, y)
-        y += 22
+        // Thin separator between rows
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+        ctx.beginPath(); ctx.moveTo(pad + 20, y); ctx.lineTo(W - pad - 20, y); ctx.stroke()
+        y += 12
 
+        // Row 2 — advanced stats (8 cols)
         const advCols = advStats.length
-        const advCellW = (W - pad * 2) / advCols
+        const advCellW = contentW / advCols
         for (let i = 0; i < advCols; i++) {
           const cx = pad + advCellW * i + advCellW / 2
           ctx.font = `600 11px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
           ctx.textAlign = 'center'
           ctx.fillText(advStats[i].label, cx, y)
-          ctx.font = `bold 22px ${font}`
+          ctx.font = `bold 24px ${font}`
           ctx.fillStyle = '#ffffff'
           ctx.fillText(fmtCanvas(statsRow[advStats[i].key], advStats[i].format), cx, y + 26)
         }
-        y += 46
+        y += 50
       }
 
       // ── Divider
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'
       ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
       y += 16
 
-      // ══ PERCENTILE BARS ══
-      const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+      // ══════════════════════════════════════════════════
+      // PERCENTILE BARS — label | bar | circle | value
+      // ══════════════════════════════════════════════════
       if (availablePerc.length > 0) {
         ctx.font = `700 12px ${font}`
         ctx.fillStyle = 'rgba(255,255,255,0.35)'
         ctx.textAlign = 'left'
         ctx.fillText('PERCENTILE RANKINGS', pad, y)
-
         ctx.font = `500 10px ${font}`
         ctx.textAlign = 'right'
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'
         ctx.fillText(`vs. ${info.division_level || 'Division'}`, W - pad, y)
-        y += 16
+        y += 18
 
-        const barH = 26
-        const labelW = 70
-        const valueW = 60
-        const circleR = 13
-        const barArea = W - pad * 2 - labelW - valueW - circleR * 2 - 20
+        // Layout constants — generous right margin so circles never clip
+        const labelW = 68
+        const circleR = 14
+        const valueW = 58
+        const rightMargin = circleR * 2 + 12 + valueW  // circle + gap + value text
+        const barAreaW = contentW - labelW - rightMargin - 10
+        const barH = 30
 
         for (const metric of availablePerc) {
           const { value, percentile } = percentiles[metric.key]
           const color = percentileColor(percentile)
-          const bx = pad + labelW
-          const barY = y + barH / 2
+          const rowCenterY = y + barH / 2
 
+          // Label (right-aligned before bar)
           ctx.font = `600 13px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.6)'
           ctx.textAlign = 'right'
-          ctx.fillText(metric.label, bx - 10, barY + 4)
+          ctx.fillText(metric.label, pad + labelW - 8, rowCenterY + 5)
 
-          canvasRoundRect(ctx, bx, barY - 3, barArea, 6, 3)
-          ctx.fillStyle = 'rgba(255,255,255,0.08)'
+          // Track background
+          const barX = pad + labelW
+          canvasRoundRect(ctx, barX, rowCenterY - 4, barAreaW, 8, 4)
+          ctx.fillStyle = 'rgba(255,255,255,0.07)'
           ctx.fill()
 
-          const bw = Math.max(6, (Math.max(4, percentile) / 100) * barArea)
-          canvasRoundRect(ctx, bx, barY - 3, bw, 6, 3)
+          // Filled bar
+          const fillW = Math.max(8, (Math.max(4, percentile) / 100) * barAreaW)
+          canvasRoundRect(ctx, barX, rowCenterY - 4, fillW, 8, 4)
           ctx.fillStyle = color
           ctx.fill()
 
-          const circX = bx + barArea + 16 + circleR
+          // Percentile circle (positioned right after bar area)
+          const circX = barX + barAreaW + 10 + circleR
           ctx.beginPath()
-          ctx.arc(circX, barY, circleR, 0, Math.PI * 2)
+          ctx.arc(circX, rowCenterY, circleR, 0, Math.PI * 2)
           ctx.fillStyle = color
           ctx.fill()
-          ctx.font = `bold 12px ${font}`
+          ctx.font = `bold 13px ${font}`
           ctx.fillStyle = '#ffffff'
           ctx.textAlign = 'center'
-          ctx.fillText(String(percentile), circX, barY + 4)
+          ctx.fillText(String(percentile), circX, rowCenterY + 5)
 
+          // Raw value (right edge)
           ctx.font = `500 12px ${font}`
-          ctx.fillStyle = 'rgba(255,255,255,0.5)'
+          ctx.fillStyle = 'rgba(255,255,255,0.45)'
           ctx.textAlign = 'right'
-          ctx.fillText(fmtCanvas(value, metric.format), W - pad, barY + 4)
+          ctx.fillText(fmtCanvas(value, metric.format), W - pad, rowCenterY + 4)
 
           y += barH
         }
-        y += 8
+        y += 10
       }
 
-      // ── Divider
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
-      y += 14
-
-      // ══ LEADERBOARD BADGES (compact, single row of up to 3) ══
-      const topBadges = badges.slice(0, 3)
+      // ══════════════════════════════════════════════════
+      // LEADERBOARD BADGES — compact single row
+      // ══════════════════════════════════════════════════
       if (topBadges.length > 0) {
+        // Divider
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
+        y += 14
+
         ctx.font = `700 12px ${font}`
         ctx.fillStyle = 'rgba(255,255,255,0.35)'
         ctx.textAlign = 'left'
         ctx.fillText('LEADERBOARD', pad, y)
-        y += 14
+        y += 16
 
+        const gap = 10
         const badgeCols = topBadges.length
-        const badgeW = (W - pad * 2 - (badgeCols - 1) * 10) / badgeCols
-        const badgeH = 42
+        const badgeW = (contentW - (badgeCols - 1) * gap) / badgeCols
+        const badgeH = 44
 
         for (let i = 0; i < topBadges.length; i++) {
-          const bx = pad + i * (badgeW + 10)
+          const bx = pad + i * (badgeW + gap)
           const by = y
           const b = topBadges[i]
 
-          canvasRoundRect(ctx, bx, by, badgeW, badgeH, 6)
+          canvasRoundRect(ctx, bx, by, badgeW, badgeH, 8)
           ctx.fillStyle = 'rgba(255,255,255,0.05)'
           ctx.fill()
           ctx.strokeStyle = 'rgba(255,255,255,0.1)'
           ctx.lineWidth = 1
           ctx.stroke()
 
-          // Category name (bold)
+          // Category (bold white)
           ctx.textAlign = 'left'
-          ctx.font = `700 13px ${font}`
+          ctx.font = `700 14px ${font}`
           ctx.fillStyle = '#ffffff'
-          ctx.fillText(b.category, bx + 12, by + 17)
+          ctx.fillText(b.category, bx + 12, by + 18)
 
-          // Context line (e.g. "#1 in PNW · 2026" or "Team Leader · Bushnell")
+          // Context line
           ctx.font = `400 10px ${font}`
           ctx.fillStyle = 'rgba(255,255,255,0.4)'
-          ctx.fillText(b.scope, bx + 12, by + 33)
+          ctx.fillText(b.scope, bx + 12, by + 35)
         }
 
-        y += badgeH + 6
+        y += badgeH + 8
       }
 
-      // ══ FOOTER ══
-      const footerY = H - 40
+      // ══════════════════════════════════════════════════
+      // FOOTER — anchored to bottom
+      // ══════════════════════════════════════════════════
+      const footerY = H - 44
       ctx.strokeStyle = 'rgba(255,255,255,0.08)'
       ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(pad, footerY); ctx.lineTo(W - pad, footerY); ctx.stroke()
 
-      ctx.font = `500 13px ${font}`
+      ctx.font = `600 14px ${font}`
       ctx.fillStyle = 'rgba(255,255,255,0.3)'
       ctx.textAlign = 'left'
-      ctx.fillText('nwbaseballstats.com', pad, footerY + 22)
+      ctx.fillText('nwbaseballstats.com', pad, footerY + 24)
       ctx.textAlign = 'right'
-      ctx.fillText(canvasSeasonLabel, W - pad, footerY + 22)
+      ctx.fillText(canvasSeasonLabel, W - pad, footerY + 24)
 
       // ── Download
       const link = document.createElement('a')
