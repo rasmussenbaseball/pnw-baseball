@@ -41,6 +41,12 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
+try:
+    import cloudscraper
+    _have_cloudscraper = True
+except ImportError:
+    _have_cloudscraper = False
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -150,10 +156,7 @@ USER_AGENTS = [
 # HTTP Fetching
 # ============================================================
 
-session = requests.Session()
-# Set default headers on the session so cookies persist properly
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+_DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
@@ -163,31 +166,46 @@ session.headers.update({
     "Sec-Fetch-Site": "same-origin",
     "Sec-Fetch-User": "?1",
     "Upgrade-Insecure-Requests": "1",
-})
+}
+
+if _have_cloudscraper:
+    logger.info("Using cloudscraper (AWS WAF bypass enabled)")
+    session = cloudscraper.create_scraper(
+        browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+    )
+else:
+    logger.info("cloudscraper not available — falling back to requests.Session()")
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    })
+
+session.headers.update(_DEFAULT_HEADERS)
 last_request_time = 0
-_session_warmed = False
+_session_warmed_for = None   # track which season we warmed for
 
 
-def _warm_session():
-    """Visit the main NWAC baseball page once to establish cookies."""
-    global _session_warmed, last_request_time
-    if _session_warmed:
+def _warm_session(season_str=None):
+    """Visit the NWAC baseball page for the target season to establish cookies."""
+    global _session_warmed_for, last_request_time
+    target = season_str or "2025-26"
+    if _session_warmed_for == target:
         return
-    logger.info("Warming session — visiting NWAC main page...")
+    logger.info(f"Warming session — visiting NWAC {target} page...")
     try:
-        resp = session.get(f"{BASE_URL}/sports/bsb/2025-26", timeout=30)
+        resp = session.get(f"{BASE_URL}/sports/bsb/{target}", timeout=30)
         last_request_time = time.time()
-        logger.info(f"Session warmed ({len(resp.text)} bytes, cookies: {len(session.cookies)})")
+        logger.info(f"Session warmed for {target} ({len(resp.text)} bytes, cookies: {len(session.cookies)})")
         time.sleep(random.uniform(2.0, 4.0))
     except Exception as e:
         logger.warning(f"Session warmup failed: {e}")
-    _session_warmed = True
+    _session_warmed_for = target
 
 
-def fetch_page(url, retries=3):
+def fetch_page(url, retries=3, season_str=None):
     """Fetch a URL with rate limiting and retries."""
     global last_request_time
-    _warm_session()
+    _warm_session(season_str)
 
     for attempt in range(retries):
         try:
@@ -215,7 +233,7 @@ def fetch_page(url, retries=3):
         except requests.RequestException as e:
             logger.warning(f"  Attempt {attempt+1}/{retries} failed for {url}: {e}")
             if attempt < retries - 1:
-                time.sleep(3 ** attempt)
+                time.sleep(3 ** (attempt + 1))
 
     logger.error(f"All retries failed for {url}")
     return None
@@ -538,7 +556,7 @@ def scrape_team_template(season_str, team_slug, pos):
     Returns list of dicts from parse_template_table.
     """
     url = f"{BASE_URL}/sports/bsb/{season_str}/teams/{team_slug}?tmpl=brief-category-template&pos={pos}&r=0"
-    html = fetch_page(url)
+    html = fetch_page(url, season_str=season_str)
     if not html:
         return []
     return parse_template_table(html)
@@ -547,7 +565,7 @@ def scrape_team_template(season_str, team_slug, pos):
 def scrape_team_roster(season_str, team_slug):
     """Scrape roster from the main team page."""
     url = f"{BASE_URL}/sports/bsb/{season_str}/teams/{team_slug}?view=lineup&r=0&pos=h"
-    html = fetch_page(url)
+    html = fetch_page(url, season_str=season_str)
     if not html:
         return []
     return parse_roster_table(html)
@@ -588,7 +606,7 @@ def process_all_data(season_str, season_year, skip_rosters=False):
 
             # ---- Extract team W-L record from team overview page ----
             team_page_url = f"{BASE_URL}/sports/bsb/{season_str}/teams/{slug}"
-            team_page_html = fetch_page(team_page_url)
+            team_page_html = fetch_page(team_page_url, season_str=season_str)
             if team_page_html:
                 overall, conf_rec = extract_record_from_html(team_page_html)
                 if overall:
@@ -846,6 +864,16 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                 except Exception as e:
                     logger.error(f"  Error processing pitching: {pitcher.get('name')} ({db_short}) - {e}")
                     pitching_errors += 1
+
+    # ---- WAF safeguard ----
+    if batting_count == 0 and pitching_count == 0:
+        logger.warning("=" * 60)
+        logger.warning("WARNING: Got 0 batting AND 0 pitching players!")
+        logger.warning("This usually means the AWS WAF blocked all requests.")
+        logger.warning("Existing NWAC data in the database is UNCHANGED.")
+        logger.warning("Run the NWAC scrape from a local machine with Playwright to bypass the WAF.")
+        logger.warning("=" * 60)
+        return
 
     # ---- Summary ----
     logger.info("=" * 60)
