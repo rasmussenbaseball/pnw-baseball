@@ -201,7 +201,7 @@ function PlayerSearchBox({ onSelect }) {
       try {
         const res = await fetch(`/api/v1/players/search?q=${encodeURIComponent(query)}`)
         const data = await res.json()
-        setResults(data.players || [])
+        setResults(Array.isArray(data) ? data : data.players || [])
         setOpen(true)
       } catch { setResults([]) }
       setLoading(false)
