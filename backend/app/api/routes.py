@@ -13,6 +13,7 @@ import json
 import os
 
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import JSONResponse
 from typing import Optional
 from ..models.database import get_connection
 from ..stats.advanced import (
@@ -139,6 +140,7 @@ def list_teams(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE t.is_active = 1
+              AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
         """
         params = []
 
@@ -6033,7 +6035,7 @@ def get_recruiting_guide(team_id: int):
             """, (team_id,))
             team_row = cur.fetchone()
             if not team_row:
-                return {"error": "Team not found"}, 404
+                return JSONResponse(content={"error": "Team not found"}, status_code=404)
 
             team_info = dict(team_row)
 
@@ -6072,7 +6074,7 @@ def get_recruiting_guide(team_id: int):
             total_players = len(roster_rows)
             pitcher_count = sum(1 for r in roster_rows
                               if r['position'] and
-                              ('%P%' in r['position'] or 'RHP' in r['position'] or 'LHP' in r['position']))
+                              ('P' in r['position'] or 'RHP' in r['position'] or 'LHP' in r['position']))
             hitter_count = total_players - pitcher_count
 
             # Class breakdown
@@ -6157,8 +6159,8 @@ def get_recruiting_guide(team_id: int):
 
                 freshman_production.append({
                     "season": season,
-                    "batting_pa_pct": round(fr_pa_pct, 2),
-                    "pitching_ip_pct": round(fr_ip_pct, 2),
+                    "fresh_pa_pct": round(fr_pa_pct / 100, 4) if fr_pa_pct else 0,
+                    "fresh_ip_pct": round(fr_ip_pct / 100, 4) if fr_ip_pct else 0,
                     "total_war": round(fr_war, 2)
                 })
 
@@ -6195,7 +6197,8 @@ def get_recruiting_guide(team_id: int):
                     "from_season": season_n,
                     "to_season": season_n1,
                     "returnees": returnees,
-                    "total": total
+                    "total": total,
+                    "retention_pct": round(returnees / total, 4) if total > 0 else 0
                 })
 
             # ============ REDSHIRT RATE ============
@@ -6208,8 +6211,8 @@ def get_recruiting_guide(team_id: int):
 
             redshirt_rate = {
                 "redshirt_count": redshirt_count,
-                "total_roster": total_players,
-                "redshirt_pct": round((redshirt_count / total_players * 100), 2) if total_players > 0 else 0
+                "total": total_players,
+                "rate": round(redshirt_count / total_players, 4) if total_players > 0 else 0
             }
 
             # ============ FOUR-YEAR RETENTION ============
@@ -6222,8 +6225,14 @@ def get_recruiting_guide(team_id: int):
             div_result = cur.fetchone()
             division_name = div_result['name'] if div_result else None
 
-            four_year_retention = {"count": 0, "pct": 0}
-            if division_name != "NWAC":
+            is_four_year = division_name != "NWAC"
+            four_year_retention = {
+                "is_four_year_school": is_four_year,
+                "four_year_players": 0,
+                "total_tracked": total_players,
+                "rate": 0
+            }
+            if is_four_year:
                 cur.execute("""
                     SELECT player_id, COUNT(DISTINCT season) as season_count
                     FROM (
@@ -6236,8 +6245,10 @@ def get_recruiting_guide(team_id: int):
                 """, (team_id, team_id))
                 four_yr_players = len(cur.fetchall())
                 four_year_retention = {
-                    "count": four_yr_players,
-                    "pct": round((four_yr_players / total_players * 100), 2) if total_players > 0 else 0
+                    "is_four_year_school": True,
+                    "four_year_players": four_yr_players,
+                    "total_tracked": total_players,
+                    "rate": round(four_yr_players / total_players, 4) if total_players > 0 else 0
                 }
 
             # ============ AVERAGE SIZE BY POSITION ============
@@ -6249,9 +6260,9 @@ def get_recruiting_guide(team_id: int):
                 "Pitcher": ["P", "RHP", "LHP", "SP", "RP"]
             }
 
-            avg_size_by_position = {}
+            avg_size_by_position = []
             for group_name, positions in position_groups.items():
-                pos_filter = " OR ".join([f"position LIKE '%{p}%'" for p in positions])
+                pos_filter = " OR ".join([f"position LIKE '%%{p}%%'" for p in positions])
                 cur.execute(f"""
                     SELECT height, weight FROM players
                     WHERE team_id = %s AND ({pos_filter})
@@ -6280,10 +6291,12 @@ def get_recruiting_guide(team_id: int):
                     avg_height = sum(heights_inches) / len(heights_inches) if heights_inches else None
                     avg_weight = sum(weights) / len(weights) if weights else None
 
-                    avg_size_by_position[group_name] = {
+                    avg_size_by_position.append({
+                        "position_group": group_name,
                         "avg_height_inches": round(avg_height, 1) if avg_height else None,
-                        "avg_weight": round(avg_weight, 1) if avg_weight else None
-                    }
+                        "avg_weight": round(avg_weight, 1) if avg_weight else None,
+                        "count": len(players_in_group)
+                    })
 
             # ============ PLAYER HOMETOWNS ============
             cur.execute("""
@@ -6367,8 +6380,8 @@ def get_recruiting_guide(team_id: int):
                 hometown_by_metro[metro] = hometown_by_metro.get(metro, 0) + 1
 
             hometown_breakdown = {
-                "by_state": hometown_by_state,
-                "by_metro_area": hometown_by_metro
+                "by_state": [{"state": s, "count": c} for s, c in sorted(hometown_by_state.items(), key=lambda x: -x[1])],
+                "by_metro": [{"metro": m, "count": c} for m, c in sorted(hometown_by_metro.items(), key=lambda x: -x[1])]
             }
 
             # ============ BEST PLAYERS (Top 10 by WAR) ============
@@ -6376,11 +6389,11 @@ def get_recruiting_guide(team_id: int):
             cur.execute("""
                 SELECT p.id, p.first_name, p.last_name, p.position,
                        SUM(bs.offensive_war) as total_war,
-                       GROUP_CONCAT(DISTINCT bs.season) as seasons
+                       STRING_AGG(DISTINCT bs.season::text, ',') as seasons
                 FROM players p
                 LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.team_id = %s
                 WHERE p.team_id = %s AND bs.offensive_war IS NOT NULL
-                GROUP BY p.id
+                GROUP BY p.id, p.first_name, p.last_name, p.position
                 ORDER BY total_war DESC
                 LIMIT 10
             """, (team_id, team_id))
@@ -6388,7 +6401,7 @@ def get_recruiting_guide(team_id: int):
                 {
                     "name": f"{r['first_name']} {r['last_name']}",
                     "position": r['position'],
-                    "seasons": r['seasons'],
+                    "seasons": sorted(r['seasons'].split(',')) if r['seasons'] else [],
                     "total_war": round(r['total_war'], 2)
                 } for r in cur.fetchall()
             ]
@@ -6397,11 +6410,11 @@ def get_recruiting_guide(team_id: int):
             cur.execute("""
                 SELECT p.id, p.first_name, p.last_name, p.position,
                        SUM(ps.pitching_war) as total_war,
-                       GROUP_CONCAT(DISTINCT ps.season) as seasons
+                       STRING_AGG(DISTINCT ps.season::text, ',') as seasons
                 FROM players p
                 LEFT JOIN pitching_stats ps ON p.id = ps.player_id AND ps.team_id = %s
                 WHERE p.team_id = %s AND ps.pitching_war IS NOT NULL
-                GROUP BY p.id
+                GROUP BY p.id, p.first_name, p.last_name, p.position
                 ORDER BY total_war DESC
                 LIMIT 10
             """, (team_id, team_id))
@@ -6409,37 +6422,46 @@ def get_recruiting_guide(team_id: int):
                 {
                     "name": f"{r['first_name']} {r['last_name']}",
                     "position": r['position'],
-                    "seasons": r['seasons'],
+                    "seasons": sorted(r['seasons'].split(',')) if r['seasons'] else [],
                     "total_war": round(r['total_war'], 2)
                 } for r in cur.fetchall()
             ]
 
             best_players = {
-                "offensive_top_10": offensive_top_10,
-                "pitching_top_10": pitching_top_10
+                "batting": offensive_top_10,
+                "pitching": pitching_top_10
             }
 
             # ============ WAR BY SEASON ============
             war_by_season = []
             for season in seasons:
                 cur.execute("""
-                    SELECT COALESCE(SUM(bs.offensive_war), 0) + COALESCE(SUM(ps.pitching_war), 0) as total_war
-                    FROM batting_stats bs
-                    FULL OUTER JOIN pitching_stats ps
-                      ON bs.team_id = ps.team_id AND bs.season = ps.season
-                    WHERE bs.team_id = %s AND bs.season = %s
-                      OR ps.team_id = %s AND ps.season = %s
-                """, (team_id, season, team_id, season))
-                result = cur.fetchone()
-                total_war = result['total_war'] if result else 0
+                    SELECT COALESCE(SUM(offensive_war), 0) as total_owar
+                    FROM batting_stats
+                    WHERE team_id = %s AND season = %s
+                """, (team_id, season))
+                owar_result = cur.fetchone()
+                total_owar = owar_result['total_owar'] if owar_result else 0
+
+                cur.execute("""
+                    SELECT COALESCE(SUM(pitching_war), 0) as total_pwar
+                    FROM pitching_stats
+                    WHERE team_id = %s AND season = %s
+                """, (team_id, season))
+                pwar_result = cur.fetchone()
+                total_pwar = pwar_result['total_pwar'] if pwar_result else 0
+
                 war_by_season.append({
                     "season": season,
-                    "total_war": round(total_war, 2)
+                    "total_owar": round(float(total_owar), 2),
+                    "total_pwar": round(float(total_pwar), 2),
+                    "total_war": round(float(total_owar) + float(total_pwar), 2)
                 })
 
             # ============ COACHING STAFF ============
             coaching_staff = []
             try:
+                cur.execute("SAVEPOINT coaches_sp")
                 cur.execute("""
                     SELECT name, title, role, photo_url, email, alma_mater, years_at_school, bio
                     FROM coaches
@@ -6453,8 +6475,9 @@ def get_recruiting_guide(team_id: int):
                         name
                 """, (team_id,))
                 coaching_staff = [dict(r) for r in cur.fetchall()]
+                cur.execute("RELEASE SAVEPOINT coaches_sp")
             except Exception:
-                pass  # Table may not exist yet
+                cur.execute("ROLLBACK TO SAVEPOINT coaches_sp")  # Keep transaction usable
 
             # ============ RATINGS PLACEHOLDER ============
             ratings = {
@@ -6487,4 +6510,6 @@ def get_recruiting_guide(team_id: int):
             }
 
     except Exception as e:
-        return {"error": str(e)}, 500
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
