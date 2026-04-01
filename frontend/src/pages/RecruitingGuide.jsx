@@ -104,16 +104,103 @@ function TeamHeader({ teamInfo, loading }) {
   )
 }
 
-// Program Ratings Component (Placeholder)
-function ProgramRatings({ loading }) {
-  const categories = ['Field', 'Coaching', 'Facilities', 'Reputation', 'Development', 'Location', 'Academic']
+
+// Season History Table Component
+function SeasonHistory({ seasonRecords, loading }) {
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100 animate-pulse">
+        <div className="h-6 bg-gray-300 rounded w-1/4 mb-6"></div>
+        <div className="h-48 bg-gray-200 rounded"></div>
+      </div>
+    )
+  }
+
+  if (!seasonRecords || seasonRecords.length === 0) {
+    return null
+  }
+
+  // Sort descending (most recent first) for the table
+  const sorted = [...seasonRecords].sort((a, b) => b.season - a.season)
+
+  // Compute totals
+  const totals = sorted.reduce(
+    (acc, r) => {
+      acc.wins += r.wins || 0
+      acc.losses += r.losses || 0
+      acc.ties += r.ties || 0
+      acc.confWins += r.conf_wins || 0
+      acc.confLosses += r.conf_losses || 0
+      return acc
+    },
+    { wins: 0, losses: 0, ties: 0, confWins: 0, confLosses: 0 }
+  )
+
+  const fmtPct = (w, l) => {
+    const total = w + l
+    if (total === 0) return '-'
+    return (w / total).toFixed(3).replace(/^0/, '')
+  }
+
+  const fmtRecord = (w, l, t) => {
+    if (t && t > 0) return `${w}-${l}-${t}`
+    return `${w}-${l}`
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100">
-      <h2 className="text-xl font-bold text-gray-900 mb-6">Program Ratings</h2>
-      <div className="text-center py-8 text-gray-600">
-        <p className="font-medium mb-2">Ratings coming soon</p>
-        <p className="text-sm">Visit back soon for community ratings on field, coaching, facilities, and more.</p>
+      <h2 className="text-xl font-bold text-gray-900 mb-4">Year-by-Year Record</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 font-semibold text-gray-900">Season</th>
+              <th className="text-center py-3 px-4 font-semibold text-gray-900">Overall</th>
+              <th className="text-center py-3 px-4 font-semibold text-gray-900">Win%</th>
+              <th className="text-center py-3 px-4 font-semibold text-gray-900">Conference</th>
+              <th className="text-center py-3 px-4 font-semibold text-gray-900">Conf%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r, idx) => {
+              const overallPct = fmtPct(r.wins, r.losses)
+              const confPct = fmtPct(r.conf_wins || 0, r.conf_losses || 0)
+              const hasConf = (r.conf_wins || 0) + (r.conf_losses || 0) > 0
+              return (
+                <tr key={r.season} className={idx % 2 === 0 ? 'bg-gray-50' : ''}>
+                  <td className="py-3 px-4 font-semibold text-nw-teal">{r.season}</td>
+                  <td className="py-3 px-4 text-center font-medium text-gray-900">
+                    {fmtRecord(r.wins, r.losses, r.ties)}
+                  </td>
+                  <td className="py-3 px-4 text-center text-gray-700">{overallPct}</td>
+                  <td className="py-3 px-4 text-center font-medium text-gray-900">
+                    {hasConf ? `${r.conf_wins}-${r.conf_losses}` : '-'}
+                  </td>
+                  <td className="py-3 px-4 text-center text-gray-700">{hasConf ? confPct : '-'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 bg-nw-teal/5 font-semibold">
+              <td className="py-3 px-4 text-gray-900">Totals ({sorted.length} seasons)</td>
+              <td className="py-3 px-4 text-center text-gray-900">
+                {fmtRecord(totals.wins, totals.losses, totals.ties)}
+              </td>
+              <td className="py-3 px-4 text-center text-gray-700">{fmtPct(totals.wins, totals.losses)}</td>
+              <td className="py-3 px-4 text-center text-gray-900">
+                {totals.confWins + totals.confLosses > 0
+                  ? `${totals.confWins}-${totals.confLosses}`
+                  : '-'}
+              </td>
+              <td className="py-3 px-4 text-center text-gray-700">
+                {totals.confWins + totals.confLosses > 0
+                  ? fmtPct(totals.confWins, totals.confLosses)
+                  : '-'}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   )
@@ -592,55 +679,6 @@ function BestPlayers({ bestPlayers, loading }) {
   )
 }
 
-// Coaching Info Component
-function CoachingInfo({ coachingStaff, loading }) {
-  if (loading) {
-    return (
-      <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100 animate-pulse">
-        <div className="h-6 bg-gray-200 rounded w-40 mb-4" />
-        <div className="h-20 bg-gray-100 rounded" />
-      </div>
-    )
-  }
-
-  const coaches = coachingStaff || []
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100">
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Coaching Staff</h2>
-      {coaches.length === 0 ? (
-        <div className="text-center py-8 text-gray-600">
-          <p className="font-medium mb-2">Coaching data coming soon</p>
-          <p className="text-sm">Check back soon for detailed coaching staff information.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {coaches.map((coach, i) => (
-            <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
-              {coach.photo_url ? (
-                <img src={coach.photo_url} alt="" className="w-14 h-14 rounded-full object-cover shrink-0" />
-              ) : (
-                <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-xs shrink-0">
-                  {coach.name?.split(' ').map(n => n[0]).join('')}
-                </div>
-              )}
-              <div className="min-w-0">
-                <div className="font-semibold text-gray-900 text-sm">{coach.name}</div>
-                <div className="text-xs text-nw-teal font-medium">{coach.title || coach.role}</div>
-                {coach.alma_mater && (
-                  <div className="text-xs text-gray-500 mt-0.5">{coach.alma_mater}</div>
-                )}
-                {coach.years_at_school && (
-                  <div className="text-xs text-gray-400 mt-0.5">{coach.years_at_school} yr{coach.years_at_school > 1 ? 's' : ''} at program</div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // Main Component
 export default function RecruitingGuide() {
@@ -672,8 +710,8 @@ export default function RecruitingGuide() {
             {/* Team Header */}
             <TeamHeader teamInfo={guideData?.team_info} loading={loading} />
 
-            {/* Program Ratings */}
-            <ProgramRatings loading={loading} />
+            {/* Year-by-Year Record */}
+            <SeasonHistory seasonRecords={guideData?.season_records} loading={loading} />
 
             {/* Team Trends */}
             <TeamTrends seasonRecords={guideData?.season_records} seasonStats={guideData?.season_stats} warBySeason={guideData?.war_by_season} loading={loading} />
@@ -702,8 +740,6 @@ export default function RecruitingGuide() {
             {/* Best Players */}
             <BestPlayers bestPlayers={guideData?.best_players} loading={loading} />
 
-            {/* Coaching Info */}
-            <CoachingInfo coachingStaff={guideData?.coaching_staff} loading={loading} />
           </>
         )}
 

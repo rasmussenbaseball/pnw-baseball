@@ -6037,25 +6037,25 @@ def get_recruiting_guide(team_id: int):
 
             team_info = dict(team_row)
 
-            # ============ SEASON RECORDS (Last 5 years) ============
+            # ============ SEASON RECORDS (All years) ============
             cur.execute("""
-                SELECT season, wins, losses, ties
+                SELECT season, wins, losses, ties,
+                       COALESCE(conference_wins, 0) as conf_wins,
+                       COALESCE(conference_losses, 0) as conf_losses
                 FROM team_season_stats
                 WHERE team_id = %s
                 ORDER BY season DESC
-                LIMIT 5
             """, (team_id,))
             season_records = [dict(r) for r in cur.fetchall()]
             season_records.reverse()
 
-            # ============ SEASON STATS (Last 5 years) ============
+            # ============ SEASON STATS (All years) ============
             cur.execute("""
                 SELECT season, team_era, team_batting_avg, team_ops,
                        runs_scored, runs_allowed
                 FROM team_season_stats
                 WHERE team_id = %s
                 ORDER BY season DESC
-                LIMIT 5
             """, (team_id,))
             season_stats = [dict(r) for r in cur.fetchall()]
             season_stats.reverse()
