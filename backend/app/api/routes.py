@@ -5473,7 +5473,7 @@ def grid_check_guess(player_id: int, row: int, col: int):
     Check if a player fits a specific grid cell (row, col) for the weekly grid.
     Row = 0-2, Col = 0-2.
     """
-    config = _load_grid_config()
+    config = _get_daily_grid()
     if not config:
         raise HTTPException(status_code=404, detail="No grid configured")
 
