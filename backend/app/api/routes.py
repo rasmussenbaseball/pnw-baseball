@@ -6101,7 +6101,7 @@ def get_recruiting_guide(team_id: int):
                 ORDER BY season DESC
                 LIMIT 5
             """, (team_id, team_id))
-            seasons = [r[0] for r in cur.fetchall()]
+            seasons = [r['season'] for r in cur.fetchall()]
             seasons.sort()
 
             freshman_production = []
@@ -6487,6 +6487,4 @@ def get_recruiting_guide(team_id: int):
             }
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e), "traceback": traceback.format_exc()}, 500
+        return {"error": str(e)}, 500
