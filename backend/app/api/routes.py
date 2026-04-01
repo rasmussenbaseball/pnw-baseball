@@ -11,6 +11,7 @@ Provides endpoints for:
 
 import json
 import os
+import re
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
@@ -6063,33 +6064,56 @@ def get_recruiting_guide(team_id: int):
             season_stats.reverse()
 
             # ============ CURRENT ROSTER OVERVIEW ============
+            # Get ALL players on the roster (not just those with year_in_school)
             cur.execute("""
                 SELECT DISTINCT p.id, p.position, p.year_in_school
                 FROM players p
-                WHERE p.team_id = %s AND p.year_in_school IS NOT NULL
+                WHERE p.team_id = %s
                 ORDER BY p.id
             """, (team_id,))
-            roster_rows = cur.fetchall()
+            all_roster_rows = cur.fetchall()
 
-            total_players = len(roster_rows)
-            pitcher_count = sum(1 for r in roster_rows
-                              if r['position'] and
-                              ('P' in r['position'] or 'RHP' in r['position'] or 'LHP' in r['position']))
+            total_players = len(all_roster_rows)
+
+            # Pitcher detection: check for exact position matches
+            pitcher_positions = {'P', 'RHP', 'LHP', 'SP', 'RP'}
+            pitcher_count = 0
+            for r in all_roster_rows:
+                pos = r['position'] or ''
+                # Split on "/" or "," to handle multi-position like "RHP/1B"
+                pos_parts = [p.strip() for p in pos.replace(',', '/').split('/')]
+                if any(pp in pitcher_positions for pp in pos_parts):
+                    pitcher_count += 1
             hitter_count = total_players - pitcher_count
 
-            # Class breakdown
+            # Class breakdown (only for players with year_in_school)
             class_breakdown = {"Fr": 0, "So": 0, "Jr": 0, "Sr": 0, "R-Fr": 0, "R-So": 0, "other": 0}
-            for r in roster_rows:
+            for r in all_roster_rows:
                 year = r['year_in_school']
-                if year in class_breakdown:
+                if year and year in class_breakdown:
                     class_breakdown[year] += 1
-                else:
+                elif year:
                     class_breakdown["other"] += 1
+
+            # Count players who appeared in at least one game
+            cur.execute("""
+                SELECT COUNT(DISTINCT player_id) as appeared
+                FROM (
+                    SELECT DISTINCT player_id FROM batting_stats
+                    WHERE team_id = %s AND season = (SELECT MAX(season) FROM batting_stats WHERE team_id = %s)
+                    UNION
+                    SELECT DISTINCT player_id FROM pitching_stats
+                    WHERE team_id = %s AND season = (SELECT MAX(season) FROM pitching_stats WHERE team_id = %s)
+                ) AS combined
+            """, (team_id, team_id, team_id, team_id))
+            appeared_result = cur.fetchone()
+            players_appeared = appeared_result['appeared'] if appeared_result else 0
 
             roster_overview = {
                 "total_players": total_players,
                 "pitcher_count": pitcher_count,
                 "hitter_count": hitter_count,
+                "players_appeared": players_appeared,
                 "by_class": class_breakdown
             }
 
@@ -6190,15 +6214,28 @@ def get_recruiting_guide(team_id: int):
                 """, (team_id, season_n1, team_id, season_n1))
                 players_n1 = set(r['player_id'] for r in cur.fetchall())
 
-                returnees = len(players_n & players_n1)
-                total = len(players_n1)
+                # Seniors in season N (Sr or R-Sr)
+                cur.execute("""
+                    SELECT DISTINCT p.id FROM players p
+                    WHERE p.team_id = %s AND p.id = ANY(%s)
+                      AND p.year_in_school IN ('Sr', 'R-Sr')
+                """, (team_id, list(players_n) if players_n else [0]))
+                seniors_n = set(r['id'] for r in cur.fetchall())
+
+                non_seniors_n = players_n - seniors_n
+                returnees = len(non_seniors_n & players_n1)
+                new_players = len(players_n1 - players_n)
+                seniors_graduated = len(seniors_n)
+                non_senior_total = len(non_seniors_n)
 
                 roster_turnover.append({
                     "from_season": season_n,
                     "to_season": season_n1,
-                    "returnees": returnees,
-                    "total": total,
-                    "retention_pct": round(returnees / total, 4) if total > 0 else 0
+                    "seniors_graduated": seniors_graduated,
+                    "non_seniors_returned": returnees,
+                    "non_seniors_total": non_senior_total,
+                    "new_players": new_players,
+                    "retention_pct": round(returnees / non_senior_total, 4) if non_senior_total > 0 else 0
                 })
 
             # ============ REDSHIRT RATE ============
@@ -6253,21 +6290,30 @@ def get_recruiting_guide(team_id: int):
 
             # ============ AVERAGE SIZE BY POSITION ============
             position_groups = {
-                "Catcher": ["C"],
-                "Middle Infield": ["SS", "2B"],
-                "Corner Infield": ["1B", "3B"],
-                "Outfield": ["OF", "CF", "LF", "RF"],
-                "Pitcher": ["P", "RHP", "LHP", "SP", "RP"]
+                "Catcher": {"C"},
+                "Middle Infield": {"SS", "2B"},
+                "Corner Infield": {"1B", "3B"},
+                "Outfield": {"OF", "CF", "LF", "RF"},
+                "Pitcher": {"P", "RHP", "LHP", "SP", "RP"}
             }
 
+            # Fetch all players once, then group in Python with exact matching
+            cur.execute("""
+                SELECT position, height, weight FROM players
+                WHERE team_id = %s AND position IS NOT NULL AND position != ''
+            """, (team_id,))
+            all_players_for_size = cur.fetchall()
+
+            def get_pos_parts(pos_str):
+                """Split position like 'RHP/1B' or 'C, OF' into individual parts."""
+                return [p.strip() for p in pos_str.replace(',', '/').split('/')]
+
             avg_size_by_position = []
-            for group_name, positions in position_groups.items():
-                pos_filter = " OR ".join([f"position LIKE '%%{p}%%'" for p in positions])
-                cur.execute(f"""
-                    SELECT height, weight FROM players
-                    WHERE team_id = %s AND ({pos_filter})
-                """, (team_id,))
-                players_in_group = cur.fetchall()
+            for group_name, valid_positions in position_groups.items():
+                players_in_group = [
+                    p for p in all_players_for_size
+                    if any(pp in valid_positions for pp in get_pos_parts(p['position']))
+                ]
 
                 if players_in_group:
                     heights_inches = []
@@ -6275,16 +6321,17 @@ def get_recruiting_guide(team_id: int):
                     for p in players_in_group:
                         h, w = p['height'], p['weight']
                         if h:
-                            parts = h.split()
-                            if len(parts) == 2:
+                            # Handle formats like "6 2", "6-2", "6'2"
+                            match = re.match(r"(\d+)['\s\-]+(\d+)", str(h))
+                            if match:
                                 try:
-                                    feet, inches = int(parts[0]), int(parts[1])
+                                    feet, inches = int(match.group(1)), int(match.group(2))
                                     heights_inches.append(feet * 12 + inches)
                                 except:
                                     pass
                         if w:
                             try:
-                                weights.append(int(w))
+                                weights.append(int(str(w).replace('lbs', '').strip()))
                             except:
                                 pass
 

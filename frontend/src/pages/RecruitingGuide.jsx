@@ -1,7 +1,5 @@
 import React, { useState, useMemo } from 'react'
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
   PieChart,
@@ -207,7 +205,7 @@ function SeasonHistory({ seasonRecords, loading }) {
 }
 
 // Team Trends Component
-function TeamTrends({ seasonRecords, seasonStats, warBySeason, loading }) {
+function TeamTrends({ seasonRecords, warBySeason, loading }) {
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100 animate-pulse">
@@ -221,21 +219,13 @@ function TeamTrends({ seasonRecords, seasonStats, warBySeason, loading }) {
     return null
   }
 
-  // Prepare data for W-L chart
-  const recordsData = seasonRecords.map((r) => ({
-    season: r.season,
-    wins: r.wins,
-    losses: r.losses,
-  }))
-
-  // Prepare data for ERA and Batting AVG chart
-  const statsData = seasonStats
-    ? seasonStats.map((s) => ({
-        season: s.season,
-        era: parseFloat(s.team_era) || 0,
-        ba: (parseFloat(s.team_batting_avg) || 0).toFixed(3),
-      }))
-    : []
+  // Prepare data for W-L stacked bar chart (Win% / Loss%)
+  const recordsData = seasonRecords.map((r) => {
+    const total = (r.wins || 0) + (r.losses || 0)
+    const winPct = total > 0 ? parseFloat(((r.wins || 0) / total * 100).toFixed(1)) : 0
+    const lossPct = total > 0 ? parseFloat(((r.losses || 0) / total * 100).toFixed(1)) : 0
+    return { season: r.season, winPct, lossPct }
+  })
 
   // Prepare WAR data
   const warData = warBySeason
@@ -249,70 +239,24 @@ function TeamTrends({ seasonRecords, seasonStats, warBySeason, loading }) {
 
   return (
     <div className="space-y-8 mb-8">
-      {/* Win-Loss Trends */}
+      {/* Win-Loss % Stacked Bar */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">Win-Loss Record Trends</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-4">Win-Loss % by Season</h3>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={recordsData}>
+          <BarChart data={recordsData} stackOffset="none">
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="season" stroke="#6b7280" />
-            <YAxis stroke="#6b7280" />
-            <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} />
+            <YAxis stroke="#6b7280" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+            <Tooltip
+              contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }}
+              formatter={(v) => `${v}%`}
+            />
             <Legend />
-            <Line
-              type="monotone"
-              dataKey="wins"
-              stroke={TEAL_PRIMARY}
-              strokeWidth={2}
-              dot={{ fill: TEAL_PRIMARY, r: 4 }}
-              name="Wins"
-            />
-            <Line
-              type="monotone"
-              dataKey="losses"
-              stroke="#ef4444"
-              strokeWidth={2}
-              dot={{ fill: '#ef4444', r: 4 }}
-              name="Losses"
-            />
-          </LineChart>
+            <Bar dataKey="winPct" stackId="wl" fill={TEAL_PRIMARY} name="Win %" />
+            <Bar dataKey="lossPct" stackId="wl" fill="#ef4444" name="Loss %" radius={[4, 4, 0, 0]} />
+          </BarChart>
         </ResponsiveContainer>
       </div>
-
-      {/* ERA and Batting Average */}
-      {statsData.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Team ERA & Batting Average</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={statsData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="season" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" yAxisId="left" />
-              <YAxis stroke="#6b7280" yAxisId="right" orientation="right" />
-              <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} />
-              <Legend />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="era"
-                stroke={TEAL_PRIMARY}
-                strokeWidth={2}
-                dot={{ fill: TEAL_PRIMARY, r: 4 }}
-                name="Team ERA"
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="ba"
-                stroke="#f97316"
-                strokeWidth={2}
-                dot={{ fill: '#f97316', r: 4 }}
-                name="Batting Avg"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
 
       {/* Total WAR by Season */}
       {warData.length > 0 && (
@@ -336,7 +280,7 @@ function TeamTrends({ seasonRecords, seasonStats, warBySeason, loading }) {
 }
 
 // Roster Overview Component
-function RosterOverview({ rosterOverview, rosterTurnover, redshirtRate, fourYearRetention, loading }) {
+function RosterOverview({ rosterOverview, fourYearRetention, loading }) {
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100 animate-pulse">
@@ -359,10 +303,14 @@ function RosterOverview({ rosterOverview, rosterTurnover, redshirtRate, fourYear
   return (
     <div className="space-y-8 mb-8">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <p className="text-sm font-semibold text-gray-600 uppercase mb-2">Total Roster Size</p>
+          <p className="text-sm font-semibold text-gray-600 uppercase mb-2">Roster Size</p>
           <p className="text-3xl font-bold text-nw-teal">{rosterOverview.total_players}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <p className="text-sm font-semibold text-gray-600 uppercase mb-2">Appeared in Games</p>
+          <p className="text-3xl font-bold text-green-600">{rosterOverview.players_appeared || 0}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
           <p className="text-sm font-semibold text-gray-600 uppercase mb-2">Pitchers</p>
@@ -388,28 +336,6 @@ function RosterOverview({ rosterOverview, rosterTurnover, redshirtRate, fourYear
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Redshirt Rate */}
-      {redshirtRate && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Redshirt Rate</h3>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <div className="w-full bg-gray-200 rounded-full h-8 overflow-hidden">
-                <div
-                  className="bg-nw-teal h-full flex items-center justify-center text-white font-semibold text-sm"
-                  style={{ width: `${Math.min((redshirtRate.rate * 100).toFixed(1), 100)}%` }}
-                >
-                  {(redshirtRate.rate * 100).toFixed(1)}%
-                </div>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 whitespace-nowrap">
-              {redshirtRate.redshirt_count} of {redshirtRate.total}
-            </p>
-          </div>
         </div>
       )}
 
@@ -447,7 +373,7 @@ function FreshmanProduction({ freshmanProduction, loading }) {
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="season" stroke="#6b7280" />
-            <YAxis stroke="#6b7280" />
+            <YAxis stroke="#6b7280" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
             <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} formatter={(v) => `${v}%`} />
             <Bar dataKey="pa_pct" fill={TEAL_PRIMARY} name="Freshman PA %" />
           </BarChart>
@@ -460,7 +386,7 @@ function FreshmanProduction({ freshmanProduction, loading }) {
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="season" stroke="#6b7280" />
-            <YAxis stroke="#6b7280" />
+            <YAxis stroke="#6b7280" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
             <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} formatter={(v) => `${v}%`} />
             <Bar dataKey="ip_pct" fill="#3b82f6" name="Freshman IP %" />
           </BarChart>
@@ -477,22 +403,38 @@ function RosterTurnover({ rosterTurnover, loading }) {
   }
 
   const data = rosterTurnover.map((rt) => ({
-    transition: `${rt.from_season}-${rt.to_season}`,
-    retention: (parseFloat(rt.retention_pct) * 100).toFixed(1),
+    transition: `${rt.from_season} → ${rt.to_season}`,
+    seniors_graduated: rt.seniors_graduated || 0,
+    non_seniors_returned: rt.non_seniors_returned || 0,
+    new_players: rt.new_players || 0,
+    retention_pct: (parseFloat(rt.retention_pct) * 100).toFixed(1),
   }))
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">Roster Retention Year-over-Year</h3>
+      <h3 className="text-lg font-bold text-gray-900 mb-4">Roster Turnover Year-over-Year</h3>
+      <p className="text-sm text-gray-500 mb-4">Retention % excludes graduating seniors</p>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="transition" stroke="#6b7280" />
           <YAxis stroke="#6b7280" />
-          <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} formatter={(v) => `${v}%`} />
-          <Bar dataKey="retention" fill={TEAL_PRIMARY} name="Retention %" />
+          <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} />
+          <Legend />
+          <Bar dataKey="non_seniors_returned" stackId="roster" fill={TEAL_PRIMARY} name="Returning Non-Seniors" />
+          <Bar dataKey="seniors_graduated" stackId="roster" fill="#94a3b8" name="Seniors Graduated" />
+          <Bar dataKey="new_players" stackId="roster" fill="#f97316" name="New Players" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        {data.map((d, idx) => (
+          <div key={idx} className="text-center p-2 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">{d.transition}</p>
+            <p className="text-lg font-bold text-nw-teal">{d.retention_pct}%</p>
+            <p className="text-xs text-gray-500">non-senior retention</p>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -542,29 +484,8 @@ function PlayerHometowns({ playerHometowns, hometownBreakdown, loading }) {
     ? hometownBreakdown.by_state.map((s) => ({ name: s.state, value: s.count }))
     : []
 
-  const metroData = hometownBreakdown.by_metro
-    ? hometownBreakdown.by_metro.map((m) => ({ name: m.metro, value: m.count }))
-    : []
-
   return (
     <div className="space-y-8 mb-8">
-      {/* Metro breakdown */}
-      {metroData.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Player Hometowns by Metro Area</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie data={metroData} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={100} fill="#8884d8" dataKey="value">
-                {metroData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
       {/* State breakdown */}
       {stateData.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -598,7 +519,7 @@ function PlayerHometowns({ playerHometowns, hometownBreakdown, loading }) {
                   <tr key={idx} className={idx % 2 === 0 ? 'bg-gray-50' : ''}>
                     <td className="py-3 px-4 font-medium text-gray-900">{player.name}</td>
                     <td className="py-3 px-4 text-gray-700">
-                      {player.hometown}, {player.state}
+                      {player.hometown}
                     </td>
                   </tr>
                 ))}
@@ -714,13 +635,11 @@ export default function RecruitingGuide() {
             <SeasonHistory seasonRecords={guideData?.season_records} loading={loading} />
 
             {/* Team Trends */}
-            <TeamTrends seasonRecords={guideData?.season_records} seasonStats={guideData?.season_stats} warBySeason={guideData?.war_by_season} loading={loading} />
+            <TeamTrends seasonRecords={guideData?.season_records} warBySeason={guideData?.war_by_season} loading={loading} />
 
             {/* Roster Overview */}
             <RosterOverview
               rosterOverview={guideData?.roster_overview}
-              rosterTurnover={guideData?.roster_turnover}
-              redshirtRate={guideData?.redshirt_rate}
               fourYearRetention={guideData?.four_year_retention}
               loading={loading}
             />
