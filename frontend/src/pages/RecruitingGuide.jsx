@@ -361,7 +361,8 @@ function FreshmanProduction({ freshmanProduction, loading }) {
   return (
     <div className="space-y-8 mb-8">
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">Freshman Offensive Production</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Freshman Offensive Production</h3>
+        <p className="text-xs text-gray-500 mb-3">% of plate appearances by freshmen</p>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -374,7 +375,8 @@ function FreshmanProduction({ freshmanProduction, loading }) {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">Freshman Pitching Production</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Freshman Pitching Production</h3>
+        <p className="text-xs text-gray-500 mb-3">% of innings pitched by freshmen</p>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />

@@ -6130,17 +6130,20 @@ def get_recruiting_guide(team_id: int):
 
             # Class breakdown — map redshirt classes to their base class
             # R-Fr → Fr, R-So → So, R-Jr → Jr, R-Sr → Sr, Gr → Sr
+            # Players with NULL year_in_school counted as "Unknown"
             class_map = {
                 "Fr": "Fr", "So": "So", "Jr": "Jr", "Sr": "Sr",
                 "R-Fr": "Fr", "R-So": "So", "R-Jr": "Jr", "R-Sr": "Sr",
                 "Gr": "Sr", "GR": "Sr",
             }
-            class_breakdown = {"Fr": 0, "So": 0, "Jr": 0, "Sr": 0, "other": 0}
+            class_breakdown = {"Fr": 0, "So": 0, "Jr": 0, "Sr": 0, "Unknown": 0}
             for r in all_roster_rows:
                 year = r['year_in_school']
                 if year:
-                    mapped = class_map.get(year, class_map.get(year.strip(), "other"))
+                    mapped = class_map.get(year.strip(), "Unknown")
                     class_breakdown[mapped] += 1
+                else:
+                    class_breakdown["Unknown"] += 1
 
             # Count players who appeared in at least one game in the most recent season
             cur.execute("""
@@ -6166,6 +6169,17 @@ def get_recruiting_guide(team_id: int):
             }
 
             # ============ FRESHMAN PRODUCTION ============
+            # Back-calculate each player's freshman year from their current
+            # year_in_school. E.g. a Jr in 2026 was a Fr in 2024.
+            # Offset = how many years ago they were a freshman
+            class_to_offset = {
+                "Fr": 0, "R-Fr": 0,
+                "So": 1, "R-So": 1,
+                "Jr": 2, "R-Jr": 2,
+                "Sr": 3, "R-Sr": 3,
+                "Gr": 4, "GR": 4,
+            }
+
             cur.execute("""
                 SELECT DISTINCT season FROM batting_stats
                 WHERE team_id = %s
@@ -6178,18 +6192,58 @@ def get_recruiting_guide(team_id: int):
             seasons = [r['season'] for r in cur.fetchall()]
             seasons.sort()
 
+            # Get all players who've had stats at this team, with their
+            # year_in_school and the most recent season they were active
+            cur.execute("""
+                SELECT p.id, p.year_in_school,
+                       COALESCE(p.roster_year, (
+                           SELECT MAX(season) FROM (
+                               SELECT season FROM batting_stats WHERE player_id = p.id AND team_id = %s
+                               UNION
+                               SELECT season FROM pitching_stats WHERE player_id = p.id AND team_id = %s
+                           ) s
+                       )) as ref_year
+                FROM players p
+                WHERE p.team_id = %s AND p.year_in_school IS NOT NULL
+            """, (team_id, team_id, team_id))
+
+            # Build set of freshman player IDs per season
+            freshmen_by_season = {}
+            for r in cur.fetchall():
+                yis = (r['year_in_school'] or '').strip()
+                ref_year = r['ref_year']
+                if not yis or not ref_year or yis not in class_to_offset:
+                    continue
+                fr_year = ref_year - class_to_offset[yis]
+                if fr_year not in freshmen_by_season:
+                    freshmen_by_season[fr_year] = set()
+                freshmen_by_season[fr_year].add(r['id'])
+
             freshman_production = []
             for season in seasons:
-                # Batting: Fr/R-Fr players
-                cur.execute("""
+                fresh_ids = freshmen_by_season.get(season, set())
+                if not fresh_ids:
+                    freshman_production.append({
+                        "season": season,
+                        "fresh_pa_pct": 0,
+                        "fresh_ip_pct": 0,
+                        "total_war": 0
+                    })
+                    continue
+
+                id_placeholders = ','.join(['%s'] * len(fresh_ids))
+                fresh_id_list = list(fresh_ids)
+
+                # Freshman PA
+                cur.execute(f"""
                     SELECT SUM(bs.plate_appearances) as fr_pa
                     FROM batting_stats bs
-                    JOIN players p ON bs.player_id = p.id
                     WHERE bs.team_id = %s AND bs.season = %s
-                      AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
-                """, (team_id, season))
+                      AND bs.player_id IN ({id_placeholders})
+                """, [team_id, season] + fresh_id_list)
                 fr_pa = (cur.fetchone() or {}).get('fr_pa') or 0
 
+                # Total PA
                 cur.execute("""
                     SELECT SUM(bs.plate_appearances) as total_pa
                     FROM batting_stats bs
@@ -6199,34 +6253,38 @@ def get_recruiting_guide(team_id: int):
 
                 fr_pa_pct = (fr_pa / total_pa * 100) if total_pa > 0 else 0
 
-                # Pitching: Fr/R-Fr pitchers
-                cur.execute("""
-                    SELECT SUM(ps.innings_pitched) as fr_ip
-                    FROM pitching_stats ps
-                    JOIN players p ON ps.player_id = p.id
-                    WHERE ps.team_id = %s AND ps.season = %s
-                      AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
-                """, (team_id, season))
+                # Freshman IP
+                cur.execute(f"""
+                    SELECT SUM(ps2.innings_pitched) as fr_ip
+                    FROM pitching_stats ps2
+                    WHERE ps2.team_id = %s AND ps2.season = %s
+                      AND ps2.player_id IN ({id_placeholders})
+                """, [team_id, season] + fresh_id_list)
                 fr_ip = (cur.fetchone() or {}).get('fr_ip') or 0
 
+                # Total IP
                 cur.execute("""
-                    SELECT SUM(ps.innings_pitched) as total_ip
-                    FROM pitching_stats ps
-                    WHERE ps.team_id = %s AND ps.season = %s
+                    SELECT SUM(ps2.innings_pitched) as total_ip
+                    FROM pitching_stats ps2
+                    WHERE ps2.team_id = %s AND ps2.season = %s
                 """, (team_id, season))
                 total_ip = (cur.fetchone() or {}).get('total_ip') or 0
 
                 fr_ip_pct = (fr_ip / total_ip * 100) if total_ip > 0 else 0
 
                 # Freshman WAR
-                cur.execute("""
-                    SELECT SUM(COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0)) as fr_war
-                    FROM players p
-                    LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.team_id = %s AND bs.season = %s
-                    LEFT JOIN pitching_stats ps ON p.id = ps.player_id AND ps.team_id = %s AND ps.season = %s
-                    WHERE p.team_id = %s
-                      AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
-                """, (team_id, season, team_id, season, team_id))
+                cur.execute(f"""
+                    SELECT COALESCE(SUM(COALESCE(owar, 0) + COALESCE(pwar, 0)), 0) as fr_war
+                    FROM (
+                        SELECT bs.offensive_war as owar, NULL as pwar
+                        FROM batting_stats bs
+                        WHERE bs.team_id = %s AND bs.season = %s AND bs.player_id IN ({id_placeholders})
+                        UNION ALL
+                        SELECT NULL as owar, ps3.pitching_war as pwar
+                        FROM pitching_stats ps3
+                        WHERE ps3.team_id = %s AND ps3.season = %s AND ps3.player_id IN ({id_placeholders})
+                    ) sub
+                """, [team_id, season] + fresh_id_list + [team_id, season] + fresh_id_list)
                 fr_war = (cur.fetchone() or {}).get('fr_war') or 0
 
                 freshman_production.append({
