@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 
@@ -29,6 +29,7 @@ export default function Homepage() {
   const { data: ratings } = useTeamRatings(SEASON)
   const { data: recentGames } = useGamesTicker(SEASON, 20)
   const { data: liveData } = useLiveScores()
+  const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
   const { user } = useAuth()
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try { return sessionStorage.getItem('beta-banner-dismissed') === '1' } catch { return false }
@@ -68,9 +69,10 @@ export default function Homepage() {
         {/* Right column - sidebar (1/3) */}
         <div className="flex flex-col gap-5">
           <PowerRankingsWidget ratings={ratings} />
+          <DraftBoardWidget />
+          <WclLeadersWidget leaders={wclLeaders} />
           <PnwGridWidget />
           {!user && <SignUpWidget />}
-          <QuickLinksWidget />
         </div>
       </div>
     </div>
@@ -101,7 +103,7 @@ function BetaBanner({ onDismiss, user }) {
         <h2 className="text-base sm:text-lg font-bold">Welcome to NW Baseball Stats</h2>
       </div>
 
-      <p className="text-sm text-gray-300 leading-relaxed max-w-3xl">
+      <p className="text-sm text-white/80 leading-relaxed max-w-3xl">
         The first advanced analytics platform for Pacific Northwest college baseball.
         We cover <span className="text-white font-medium">D1, D2, D3, NAIA, and NWAC</span> programs
         with stats, WAR, leaderboards, scouting tools, and more.
@@ -109,7 +111,7 @@ function BetaBanner({ onDismiss, user }) {
         four-year schools and 2019 onward for NWAC.
       </p>
 
-      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-3 text-xs text-gray-400">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-3 text-xs text-white/70">
         <div className="flex items-center gap-1.5">
           <svg className="w-3.5 h-3.5 text-pnw-teal shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
@@ -130,7 +132,7 @@ function BetaBanner({ onDismiss, user }) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-400 mt-3 leading-relaxed max-w-3xl">
+      <p className="text-xs text-white/60 mt-3 leading-relaxed max-w-3xl">
         This site is still a work in progress — we're actively adding features and fixing bugs.
         If you notice anything off, have ideas, or just want to follow along,
         reach out on <a href="https://x.com/NWBBStats" target="_blank" rel="noopener noreferrer" className="text-pnw-teal hover:underline">X @NWBBStats</a> or <a href="https://instagram.com/nwbbstats" target="_blank" rel="noopener noreferrer" className="text-pnw-teal hover:underline">Instagram</a>.
@@ -144,7 +146,7 @@ function BetaBanner({ onDismiss, user }) {
           >
             Create Free Account
           </Link>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-white/60">
             Signing up unlocks coaching tools, JUCO tracker, matchup breakdowns, and helps us grow the site.
           </span>
         </div>
@@ -560,6 +562,104 @@ function PowerRankingsWidget({ ratings }) {
 
 
 // ════════════════════════════════════════════
+// DRAFT BOARD WIDGET (top 5 prospects)
+// ════════════════════════════════════════════
+const DRAFT_PROSPECTS = [
+  { rank: 1, name: 'Maddox Molony', pos: 'SS', school: 'Oregon', playerId: 3506 },
+  { rank: 2, name: 'Sean Duncan', pos: 'LHP', school: 'Terry Fox (BC)', playerId: null },
+  { rank: 3, name: 'Eli Herst', pos: 'RHP', school: 'Seattle Academy (WA)', playerId: null },
+  { rank: 4, name: 'Ethan Kleinschmit', pos: 'LHP', school: 'Oregon State', playerId: 3644 },
+  { rank: 5, name: 'Cal Scolari', pos: 'RHP', school: 'Oregon', playerId: 3632 },
+]
+
+const POS_BADGE = {
+  SS: 'bg-blue-100 text-blue-700', C: 'bg-amber-100 text-amber-700',
+  RHP: 'bg-red-100 text-red-700', LHP: 'bg-emerald-100 text-emerald-700',
+}
+
+function DraftBoardWidget() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-base font-bold text-pnw-slate">2026 Draft Board</h2>
+        <Link to="/draft/2026" className="text-xs text-pnw-teal hover:underline">Full board →</Link>
+      </div>
+      <div className="space-y-0">
+        {DRAFT_PROSPECTS.map((p) => (
+          <div key={p.rank} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+            <span className={`w-4 text-right font-mono text-[10px] font-bold ${p.rank <= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+              {p.rank}
+            </span>
+            <div className="flex-1 min-w-0">
+              {p.playerId ? (
+                <Link to={`/player/${p.playerId}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block">
+                  {p.name}
+                </Link>
+              ) : (
+                <span className="text-xs font-semibold text-gray-800 truncate block">{p.name}</span>
+              )}
+              <span className="text-[10px] text-gray-400">{p.school}</span>
+            </div>
+            <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${POS_BADGE[p.pos] || 'bg-gray-100 text-gray-600'}`}>
+              {p.pos}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// WCL STAT LEADERS WIDGET
+// ════════════════════════════════════════════
+function WclLeadersWidget({ leaders }) {
+  if (!leaders) return null
+  const allCats = [...(leaders.batting || []), ...(leaders.pitching || [])]
+  if (allCats.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-base font-bold text-pnw-slate">WCL Leaders</h2>
+        <Link to="/summerball" className="text-xs text-pnw-teal hover:underline">Full stats →</Link>
+      </div>
+      <div className="text-[10px] text-gray-400 mb-2">2025 West Coast League · Qualified</div>
+      <div className="space-y-2">
+        {allCats.map(cat => {
+          const top = cat.leaders?.[0]
+          if (!top) return null
+          return (
+            <div key={cat.key} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
+              <span className="text-[10px] font-bold text-gray-400 uppercase w-8">{cat.label}</span>
+              <div className="flex-1 min-w-0">
+                {top.spring_player_id ? (
+                  <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block">
+                    {top.first_name} {top.last_name}
+                  </Link>
+                ) : (
+                  <span className="text-xs font-semibold text-gray-800 truncate block">
+                    {top.first_name} {top.last_name}
+                  </span>
+                )}
+                <span className="text-[10px] text-gray-400">{top.team_short}</span>
+              </div>
+              <span className="text-sm font-bold text-pnw-slate tabular-nums">
+                {cat.format === 'avg' ? top.value?.toFixed(3).replace(/^0/, '') :
+                 cat.format === 'float2' ? top.value?.toFixed(2) :
+                 Math.round(top.value)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
 // PNW GRID WIDGET (daily trivia game link)
 // ════════════════════════════════════════════
 function PnwGridWidget() {
@@ -578,7 +678,7 @@ function PnwGridWidget() {
           <div className="text-sm font-bold text-white group-hover:text-pnw-teal transition-colors">
             PNW Grid
           </div>
-          <div className="text-[11px] text-gray-400">
+          <div className="text-[11px] text-white/50">
             Daily trivia game — test your PNW baseball knowledge
           </div>
         </div>
@@ -624,37 +724,6 @@ function SignUpWidget() {
 }
 
 
-// ════════════════════════════════════════════
-// QUICK LINKS WIDGET
-// ════════════════════════════════════════════
-function QuickLinksWidget() {
-  const links = [
-    { to: '/juco-tracker', label: 'JUCO Tracker', desc: 'Uncommitted sophomores' },
-    { to: '/war', label: 'WAR Leaders', desc: 'Top players by WAR' },
-    { to: '/hitting', label: 'Batting Leaders', desc: 'Full batting leaderboard' },
-    { to: '/pitching', label: 'Pitching Leaders', desc: 'Full pitching leaderboard' },
-    { to: '/compare', label: 'Team Compare', desc: 'Head-to-head team stats' },
-    { to: '/glossary', label: 'Glossary', desc: 'Stat definitions & methodology' },
-  ]
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <h2 className="text-base font-bold text-pnw-slate mb-2">Quick Links</h2>
-      <div className="grid grid-cols-2 gap-1.5">
-        {links.map(link => (
-          <Link
-            key={link.to}
-            to={link.to}
-            className="px-2.5 py-2 rounded-lg border border-gray-100 hover:border-pnw-teal hover:bg-pnw-teal/5 transition-colors"
-          >
-            <div className="text-xs font-semibold text-pnw-slate">{link.label}</div>
-            <div className="text-[10px] text-gray-400">{link.desc}</div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 
 // ════════════════════════════════════════════

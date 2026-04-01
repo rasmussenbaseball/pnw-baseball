@@ -123,6 +123,13 @@ export function useSummerLeagues() {
 }
 
 /**
+ * Summer stat leaders (compact, for homepage widget).
+ */
+export function useSummerStatLeaders(season, league = 'WCL') {
+  return useApi('/summer/stat-leaders', { season, league }, [season, league])
+}
+
+/**
  * Summer teams list.
  */
 export function useSummerTeams(league = null) {

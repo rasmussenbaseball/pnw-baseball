@@ -4607,7 +4607,7 @@ _TEAM_POOL = [
     {"type": "conference", "label": "CCC (NAIA)", "value": "CCC", "group": "4yr"},
     {"type": "conference", "label": "GNAC (D2)", "value": "GNAC", "group": "4yr"},
     {"type": "conference", "label": "NWC (D3)", "value": "NWC", "group": "4yr"},
-    {"type": "division", "label": "D1", "value": "D1", "group": "d1"},
+    {"type": "division", "label": "PNW D1", "value": "D1", "group": "d1"},
     {"type": "division", "label": "NWAC", "value": "JUCO", "group": "nwac"},
     {"type": "division", "label": "Non-D1 4-Year", "value": "non_d1_4yr", "group": "4yr"},
     # Individual teams — D1
@@ -5760,6 +5760,8 @@ def summer_batting_leaderboard(
             WHERE sbs.season = %s
               AND sbs.plate_appearances >= %s
               AND sbs.at_bats >= %s
+              AND sp.first_name NOT ILIKE '%%total%%'
+              AND sp.last_name NOT ILIKE '%%total%%'
         """
         params: list = [season, min_pa, min_ab]
 
@@ -5780,6 +5782,8 @@ def summer_batting_leaderboard(
             WHERE sbs.season = %s
               AND sbs.plate_appearances >= %s
               AND sbs.at_bats >= %s
+              AND sp.first_name NOT ILIKE '%%total%%'
+              AND sp.last_name NOT ILIKE '%%total%%'
         """
         count_params: list = [season, min_pa, min_ab]
         if league:
@@ -5856,6 +5860,8 @@ def summer_pitching_leaderboard(
             LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
             WHERE sps.season = %s
               AND sps.innings_pitched >= %s
+              AND sp.first_name NOT ILIKE '%%total%%'
+              AND sp.last_name NOT ILIKE '%%total%%'
         """
         params: list = [season, min_ip]
 
@@ -5875,6 +5881,8 @@ def summer_pitching_leaderboard(
             JOIN summer_leagues sl ON st.league_id = sl.id
             WHERE sps.season = %s
               AND sps.innings_pitched >= %s
+              AND sp.first_name NOT ILIKE '%%total%%'
+              AND sp.last_name NOT ILIKE '%%total%%'
         """
         count_params: list = [season, min_ip]
         if league:
@@ -5906,6 +5914,84 @@ def summer_pitching_leaderboard(
                 "min_ip": min_ip,
             },
         }
+
+
+@router.get("/summer/stat-leaders")
+def summer_stat_leaders(
+    season: int = Query(..., description="Season year"),
+    league: str = Query("WCL", description="League abbreviation"),
+    limit: int = Query(3, description="Leaders per category"),
+):
+    """Compact summer league stat leaders for homepage widget."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        batting_cats = [
+            {"key": "home_runs", "label": "HR", "col": "sbs.home_runs", "order": "DESC", "format": "int", "min_pa": 30},
+            {"key": "batting_avg", "label": "AVG", "col": "sbs.batting_avg", "order": "DESC", "format": "avg", "min_pa": 50},
+        ]
+        pitching_cats = [
+            {"key": "era", "label": "ERA", "col": "sps.era", "order": "ASC", "format": "float2", "min_ip": 20},
+            {"key": "strikeouts", "label": "K", "col": "sps.strikeouts", "order": "DESC", "format": "int", "min_ip": 10},
+        ]
+
+        results = {"batting": [], "pitching": [], "season": season, "league": league}
+
+        for cat in batting_cats:
+            cur.execute(f"""
+                SELECT sp.id as player_id, sp.first_name, sp.last_name,
+                       st.short_name as team_short, st.logo_url,
+                       {cat['col']} as value,
+                       spl.spring_player_id
+                FROM summer_batting_stats sbs
+                JOIN summer_players sp ON sbs.player_id = sp.id
+                JOIN summer_teams st ON sbs.team_id = st.id
+                JOIN summer_leagues sl ON st.league_id = sl.id
+                LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
+                WHERE sbs.season = %s
+                  AND sl.abbreviation = %s
+                  AND sbs.plate_appearances >= %s
+                  AND {cat['col']} IS NOT NULL
+                  AND sp.first_name NOT ILIKE '%%total%%'
+                ORDER BY {cat['col']} {cat['order']}
+                LIMIT %s
+            """, (season, league.upper(), cat['min_pa'], limit))
+            rows = cur.fetchall()
+            results["batting"].append({
+                "key": cat["key"],
+                "label": cat["label"],
+                "format": cat["format"],
+                "leaders": [dict(r) for r in rows],
+            })
+
+        for cat in pitching_cats:
+            cur.execute(f"""
+                SELECT sp.id as player_id, sp.first_name, sp.last_name,
+                       st.short_name as team_short, st.logo_url,
+                       {cat['col']} as value,
+                       spl.spring_player_id
+                FROM summer_pitching_stats sps
+                JOIN summer_players sp ON sps.player_id = sp.id
+                JOIN summer_teams st ON sps.team_id = st.id
+                JOIN summer_leagues sl ON st.league_id = sl.id
+                LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
+                WHERE sps.season = %s
+                  AND sl.abbreviation = %s
+                  AND sps.innings_pitched >= %s
+                  AND {cat['col']} IS NOT NULL
+                  AND sp.first_name NOT ILIKE '%%total%%'
+                ORDER BY {cat['col']} {cat['order']}
+                LIMIT %s
+            """, (season, league.upper(), cat['min_ip'], limit))
+            rows = cur.fetchall()
+            results["pitching"].append({
+                "key": cat["key"],
+                "label": cat["label"],
+                "format": cat["format"],
+                "leaders": [dict(r) for r in rows],
+            })
+
+        return results
 
 
 @router.get("/summer/leagues")
