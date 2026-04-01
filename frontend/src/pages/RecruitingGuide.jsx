@@ -24,7 +24,7 @@ const TEAL_LIGHT = '#7dd3fc'
 const inchesToFeetStr = (inches) => {
   if (!inches) return '-'
   const feet = Math.floor(inches / 12)
-  const remaining = inches % 12
+  const remaining = Math.round(inches % 12)
   return `${feet}'${remaining}"`
 }
 
@@ -463,7 +463,7 @@ function AverageSizeByPosition({ avgSizeByPosition, loading }) {
               <tr key={idx} className={idx % 2 === 0 ? 'bg-gray-50' : ''}>
                 <td className="py-3 px-4 font-medium text-gray-900">{pos.position_group}</td>
                 <td className="py-3 px-4 text-gray-700">{inchesToFeetStr(pos.avg_height_inches)}</td>
-                <td className="py-3 px-4 text-gray-700">{pos.avg_weight ? `${pos.avg_weight} lbs` : '-'}</td>
+                <td className="py-3 px-4 text-gray-700">{pos.avg_weight ? `${Math.round(pos.avg_weight)} lbs` : '-'}</td>
                 <td className="py-3 px-4 text-gray-700">{pos.count}</td>
               </tr>
             ))}
