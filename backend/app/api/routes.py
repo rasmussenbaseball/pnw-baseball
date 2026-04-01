@@ -6114,14 +6114,14 @@ def get_recruiting_guide(team_id: int):
                     WHERE bs.team_id = %s AND bs.season = %s
                       AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
                 """, (team_id, season))
-                fr_pa = cur.fetchone()[0] or 0
+                fr_pa = (cur.fetchone() or {}).get('fr_pa') or 0
 
                 cur.execute("""
                     SELECT SUM(bs.plate_appearances) as total_pa
                     FROM batting_stats bs
                     WHERE bs.team_id = %s AND bs.season = %s
                 """, (team_id, season))
-                total_pa = cur.fetchone()[0] or 0
+                total_pa = (cur.fetchone() or {}).get('total_pa') or 0
 
                 fr_pa_pct = (fr_pa / total_pa * 100) if total_pa > 0 else 0
 
@@ -6133,14 +6133,14 @@ def get_recruiting_guide(team_id: int):
                     WHERE ps.team_id = %s AND ps.season = %s
                       AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
                 """, (team_id, season))
-                fr_ip = cur.fetchone()[0] or 0
+                fr_ip = (cur.fetchone() or {}).get('fr_ip') or 0
 
                 cur.execute("""
                     SELECT SUM(ps.innings_pitched) as total_ip
                     FROM pitching_stats ps
                     WHERE ps.team_id = %s AND ps.season = %s
                 """, (team_id, season))
-                total_ip = cur.fetchone()[0] or 0
+                total_ip = (cur.fetchone() or {}).get('total_ip') or 0
 
                 fr_ip_pct = (fr_ip / total_ip * 100) if total_ip > 0 else 0
 
@@ -6153,7 +6153,7 @@ def get_recruiting_guide(team_id: int):
                     WHERE p.team_id = %s
                       AND (p.year_in_school = 'Fr' OR p.year_in_school = 'R-Fr')
                 """, (team_id, season, team_id, season, team_id))
-                fr_war = cur.fetchone()[0] or 0
+                fr_war = (cur.fetchone() or {}).get('fr_war') or 0
 
                 freshman_production.append({
                     "season": season,
@@ -6176,7 +6176,7 @@ def get_recruiting_guide(team_id: int):
                     SELECT DISTINCT player_id FROM pitching_stats
                     WHERE team_id = %s AND season = %s
                 """, (team_id, season_n, team_id, season_n))
-                players_n = set(r[0] for r in cur.fetchall())
+                players_n = set(r['player_id'] for r in cur.fetchall())
 
                 # Players with stats in season N+1
                 cur.execute("""
@@ -6186,7 +6186,7 @@ def get_recruiting_guide(team_id: int):
                     SELECT DISTINCT player_id FROM pitching_stats
                     WHERE team_id = %s AND season = %s
                 """, (team_id, season_n1, team_id, season_n1))
-                players_n1 = set(r[0] for r in cur.fetchall())
+                players_n1 = set(r['player_id'] for r in cur.fetchall())
 
                 returnees = len(players_n & players_n1)
                 total = len(players_n1)
@@ -6204,7 +6204,7 @@ def get_recruiting_guide(team_id: int):
                 FROM players
                 WHERE team_id = %s AND year_in_school LIKE 'R-%'
             """, (team_id,))
-            redshirt_count = cur.fetchone()[0] or 0
+            redshirt_count = (cur.fetchone() or {}).get('redshirt_count') or 0
 
             redshirt_rate = {
                 "redshirt_count": redshirt_count,
@@ -6220,7 +6220,7 @@ def get_recruiting_guide(team_id: int):
                 WHERE c.id = (SELECT conference_id FROM teams WHERE id = %s)
             """, (team_id,))
             div_result = cur.fetchone()
-            division_name = div_result[0] if div_result else None
+            division_name = div_result['name'] if div_result else None
 
             four_year_retention = {"count": 0, "pct": 0}
             if division_name != "NWAC":
@@ -6230,9 +6230,9 @@ def get_recruiting_guide(team_id: int):
                         SELECT DISTINCT player_id, season FROM batting_stats WHERE team_id = %s
                         UNION ALL
                         SELECT DISTINCT player_id, season FROM pitching_stats WHERE team_id = %s
-                    )
+                    ) AS combined
                     GROUP BY player_id
-                    HAVING season_count >= 4
+                    HAVING COUNT(DISTINCT season) >= 4
                 """, (team_id, team_id))
                 four_yr_players = len(cur.fetchall())
                 four_year_retention = {
@@ -6431,7 +6431,7 @@ def get_recruiting_guide(team_id: int):
                       OR ps.team_id = %s AND ps.season = %s
                 """, (team_id, season, team_id, season))
                 result = cur.fetchone()
-                total_war = result[0] if result else 0
+                total_war = result['total_war'] if result else 0
                 war_by_season.append({
                     "season": season,
                     "total_war": round(total_war, 2)
