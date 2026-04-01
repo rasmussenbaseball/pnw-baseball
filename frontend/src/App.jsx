@@ -57,6 +57,7 @@ import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
 import About from './pages/About'
+import RecruitingBreakdown from './pages/RecruitingBreakdown'
 import PnwGrid from './pages/PnwGrid'
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/national-rankings" element={<NationalRankings />} />
           <Route path="/team-history" element={<TeamHistory />} />
           <Route path="/recruiting-classes" element={<RecruitingClasses />} />
+          <Route path="/recruiting/breakdown" element={<RecruitingBreakdown />} />
 
           {/* Recruiting (admin only) */}
           <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />

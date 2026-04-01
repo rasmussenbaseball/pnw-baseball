@@ -30,8 +30,8 @@ const NAV = [
   },
   {
     label: 'Recruiting',
-    adminOnly: true,
     items: [
+      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends' },
       { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
       { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
       { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },

@@ -343,3 +343,10 @@ export async function gridFetchSolutions(rows, columns) {
   if (!resp.ok) throw new Error('Failed to fetch solutions')
   return resp.json()
 }
+
+/**
+ * Recruiting Breakdown — team-level recruiting metrics.
+ */
+export function useRecruitingBreakdown(season = 2026) {
+  return useApi('/recruiting/breakdown', { season }, [season])
+}

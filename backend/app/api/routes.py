@@ -6757,3 +6757,189 @@ def get_recruiting_guide(team_id: int):
         import traceback
         traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# ============================================================
+# RECRUITING BREAKDOWN
+# ============================================================
+
+@router.get("/recruiting/breakdown")
+def recruiting_breakdown(season: int = 2026):
+    """
+    Team-level recruiting breakdown table.
+    Returns per-team: record, W-L%, 3-year trend, freshman PA%, freshman IP%,
+    WAR/G, team wRC+, team FIP, with division info.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # 1) Current season records + W-L% for current and prior 2 seasons
+        cur.execute("""
+            SELECT tss.team_id, t.name, t.short_name, t.logo_url,
+                   d.level AS division,
+                   tss.season, tss.wins, tss.losses
+            FROM team_season_stats tss
+            JOIN teams t ON tss.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE tss.season BETWEEN %s AND %s
+              AND t.is_active = 1
+            ORDER BY tss.team_id, tss.season
+        """, (season - 2, season))
+        records_rows = cur.fetchall()
+
+        # Build per-team record data
+        team_records = {}  # team_id -> {season -> {wins, losses}}
+        team_info = {}     # team_id -> {name, short_name, logo_url, division}
+        for r in records_rows:
+            tid = r[0]
+            if tid not in team_info:
+                team_info[tid] = {
+                    "team_id": tid,
+                    "name": r[1],
+                    "short_name": r[2],
+                    "logo_url": r[3],
+                    "division": r[4],
+                }
+            if tid not in team_records:
+                team_records[tid] = {}
+            s = r[5]
+            w, l = r[6] or 0, r[7] or 0
+            team_records[tid][s] = {"wins": w, "losses": l, "win_pct": round(w / (w + l), 3) if (w + l) > 0 else 0}
+
+        # Only include teams that have current season data
+        active_teams = [tid for tid in team_records if season in team_records[tid]]
+
+        if not active_teams:
+            return []
+
+        placeholders = ",".join(["%s"] * len(active_teams))
+
+        # 2) Freshman PA% — Fr + R-Fr plate appearances as % of team total
+        cur.execute(f"""
+            SELECT bs.team_id,
+                   SUM(CASE WHEN p.year_in_school IN ('Fr', 'R-Fr') THEN bs.plate_appearances ELSE 0 END) AS fr_pa,
+                   SUM(bs.plate_appearances) AS total_pa
+            FROM batting_stats bs
+            JOIN players p ON bs.player_id = p.id
+            WHERE bs.season = %s AND bs.team_id IN ({placeholders})
+            GROUP BY bs.team_id
+        """, [season] + active_teams)
+        fr_pa_data = {r[0]: {"fr_pa": r[1] or 0, "total_pa": r[2] or 0} for r in cur.fetchall()}
+
+        # 3) Freshman IP% — Fr + R-Fr innings as % of team total
+        cur.execute(f"""
+            SELECT ps.team_id,
+                   SUM(CASE WHEN p.year_in_school IN ('Fr', 'R-Fr') THEN ps.innings_pitched ELSE 0 END) AS fr_ip,
+                   SUM(ps.innings_pitched) AS total_ip
+            FROM pitching_stats ps
+            JOIN players p ON ps.player_id = p.id
+            WHERE ps.season = %s AND ps.team_id IN ({placeholders})
+            GROUP BY ps.team_id
+        """, [season] + active_teams)
+        fr_ip_data = {r[0]: {"fr_ip": float(r[1] or 0), "total_ip": float(r[2] or 0)} for r in cur.fetchall()}
+
+        # 4) Team WAR totals (offensive + pitching) and games played
+        cur.execute(f"""
+            SELECT bs.team_id, SUM(COALESCE(bs.offensive_war, 0)) AS total_owar,
+                   MAX(tss.wins) + MAX(tss.losses) AS games
+            FROM batting_stats bs
+            JOIN team_season_stats tss ON bs.team_id = tss.team_id AND bs.season = tss.season
+            WHERE bs.season = %s AND bs.team_id IN ({placeholders})
+            GROUP BY bs.team_id
+        """, [season] + active_teams)
+        owar_data = {r[0]: {"owar": float(r[1] or 0), "games": r[2] or 0} for r in cur.fetchall()}
+
+        cur.execute(f"""
+            SELECT ps.team_id, SUM(COALESCE(ps.pitching_war, 0)) AS total_pwar
+            FROM pitching_stats ps
+            WHERE ps.season = %s AND ps.team_id IN ({placeholders})
+            GROUP BY ps.team_id
+        """, [season] + active_teams)
+        pwar_data = {r[0]: float(r[1] or 0) for r in cur.fetchall()}
+
+        # 5) Team avg wRC+ (weighted by PA)
+        cur.execute(f"""
+            SELECT bs.team_id,
+                   SUM(bs.wrc_plus * bs.plate_appearances) / NULLIF(SUM(bs.plate_appearances), 0) AS avg_wrc_plus
+            FROM batting_stats bs
+            WHERE bs.season = %s AND bs.team_id IN ({placeholders})
+              AND bs.plate_appearances >= 20
+              AND bs.wrc_plus IS NOT NULL
+            GROUP BY bs.team_id
+        """, [season] + active_teams)
+        wrc_data = {r[0]: round(float(r[1]), 1) if r[1] else None for r in cur.fetchall()}
+
+        # 6) Team avg FIP (weighted by IP)
+        cur.execute(f"""
+            SELECT ps.team_id,
+                   SUM(ps.fip * ps.innings_pitched) / NULLIF(SUM(ps.innings_pitched), 0) AS avg_fip
+            FROM pitching_stats ps
+            WHERE ps.season = %s AND ps.team_id IN ({placeholders})
+              AND ps.innings_pitched >= 5
+              AND ps.fip IS NOT NULL
+            GROUP BY ps.team_id
+        """, [season] + active_teams)
+        fip_data = {r[0]: round(float(r[1]), 2) if r[1] else None for r in cur.fetchall()}
+
+        # Build the response
+        results = []
+        for tid in active_teams:
+            info = team_info[tid]
+            rec = team_records[tid]
+            curr = rec.get(season, {})
+            prev1 = rec.get(season - 1, {})
+            prev2 = rec.get(season - 2, {})
+
+            # 3-year trend: weighted linear trend of W-L%
+            # Use simple difference: current - average of prior 2 (if available)
+            trend_seasons = []
+            if prev2 and prev2.get("wins", 0) + prev2.get("losses", 0) > 0:
+                trend_seasons.append(prev2["win_pct"])
+            if prev1 and prev1.get("wins", 0) + prev1.get("losses", 0) > 0:
+                trend_seasons.append(prev1["win_pct"])
+
+            trend = None
+            if trend_seasons:
+                prior_avg = sum(trend_seasons) / len(trend_seasons)
+                trend = round(curr.get("win_pct", 0) - prior_avg, 3)
+
+            # Freshman PA%
+            fpa = fr_pa_data.get(tid, {})
+            fr_pa_pct = round(fpa.get("fr_pa", 0) / fpa["total_pa"] * 100, 1) if fpa.get("total_pa", 0) > 0 else 0
+
+            # Freshman IP%
+            fip_ip = fr_ip_data.get(tid, {})
+            fr_ip_pct = round(fip_ip.get("fr_ip", 0) / fip_ip["total_ip"] * 100, 1) if fip_ip.get("total_ip", 0) > 0 else 0
+
+            # WAR/G
+            owar_info = owar_data.get(tid, {"owar": 0, "games": 0})
+            pwar_val = pwar_data.get(tid, 0)
+            total_war = owar_info["owar"] + pwar_val
+            games = owar_info["games"]
+            war_per_game = round(total_war / games, 2) if games > 0 else 0
+
+            results.append({
+                "team_id": tid,
+                "name": info["name"],
+                "short_name": info["short_name"],
+                "logo_url": info["logo_url"],
+                "division": info["division"],
+                "wins": curr.get("wins", 0),
+                "losses": curr.get("losses", 0),
+                "win_pct": curr.get("win_pct", 0),
+                "prev1_win_pct": prev1.get("win_pct") if prev1 else None,
+                "prev2_win_pct": prev2.get("win_pct") if prev2 else None,
+                "trend": trend,
+                "fr_pa_pct": fr_pa_pct,
+                "fr_ip_pct": fr_ip_pct,
+                "war_per_game": war_per_game,
+                "team_wrc_plus": wrc_data.get(tid),
+                "team_fip": fip_data.get(tid),
+                "games": games,
+                "total_war": round(total_war, 1),
+            })
+
+        # Sort by win_pct descending by default
+        results.sort(key=lambda x: x["win_pct"], reverse=True)
+        return results
