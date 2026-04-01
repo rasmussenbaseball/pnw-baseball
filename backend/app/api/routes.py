@@ -6883,6 +6883,34 @@ def recruiting_breakdown(season: int = 2026):
         """, [season] + active_teams)
         fip_data = {r["team_id"]: round(float(r["avg_fip"]), 2) if r["avg_fip"] else None for r in cur.fetchall()}
 
+        # 7) National composite rankings (D1/D2/D3/NAIA)
+        cur.execute(f"""
+            SELECT team_id, composite_rank
+            FROM composite_rankings
+            WHERE season = %s AND team_id IN ({placeholders})
+        """, [season] + active_teams)
+        rank_data = {r["team_id"]: int(r["composite_rank"]) if r["composite_rank"] else None for r in cur.fetchall()}
+
+        # 8) PPI rankings for NWAC (no national rankings available)
+        #    Compute PPI inline: rank JUCO teams by WAR/G within NWAC
+        juco_teams = [tid for tid in active_teams if team_info[tid]["division"] == "JUCO"]
+        ppi_data = {}
+        if juco_teams:
+            # Use WAR + win_pct to create a simple PPI rank
+            juco_scores = []
+            for tid in juco_teams:
+                oinfo = owar_data.get(tid, {"owar": 0, "games": 0})
+                pw = pwar_data.get(tid, 0)
+                g = oinfo["games"]
+                wpct = team_records[tid].get(season, {}).get("win_pct", 0)
+                warg = (oinfo["owar"] + pw) / g if g > 0 else 0
+                # Composite: 50% WAR/G + 50% W-L%
+                score = warg * 0.5 + wpct * 0.5
+                juco_scores.append((tid, score))
+            juco_scores.sort(key=lambda x: x[1], reverse=True)
+            for rank, (tid, _) in enumerate(juco_scores, 1):
+                ppi_data[tid] = rank
+
         # Build the response
         results = []
         for tid in active_teams:
@@ -6939,6 +6967,8 @@ def recruiting_breakdown(season: int = 2026):
                 "team_fip": fip_data.get(tid),
                 "games": games,
                 "total_war": round(total_war, 1),
+                "national_rank": rank_data.get(tid),
+                "ppi_rank": ppi_data.get(tid),
             })
 
         # Sort by win_pct descending by default
