@@ -6128,14 +6128,19 @@ def get_recruiting_guide(team_id: int):
                     pitcher_count += 1
             hitter_count = total_players - pitcher_count
 
-            # Class breakdown (only for players with year_in_school)
-            class_breakdown = {"Fr": 0, "So": 0, "Jr": 0, "Sr": 0, "R-Fr": 0, "R-So": 0, "other": 0}
+            # Class breakdown — map redshirt classes to their base class
+            # R-Fr → Fr, R-So → So, R-Jr → Jr, R-Sr → Sr, Gr → Sr
+            class_map = {
+                "Fr": "Fr", "So": "So", "Jr": "Jr", "Sr": "Sr",
+                "R-Fr": "Fr", "R-So": "So", "R-Jr": "Jr", "R-Sr": "Sr",
+                "Gr": "Sr", "GR": "Sr",
+            }
+            class_breakdown = {"Fr": 0, "So": 0, "Jr": 0, "Sr": 0, "other": 0}
             for r in all_roster_rows:
                 year = r['year_in_school']
-                if year and year in class_breakdown:
-                    class_breakdown[year] += 1
-                elif year:
-                    class_breakdown["other"] += 1
+                if year:
+                    mapped = class_map.get(year, class_map.get(year.strip(), "other"))
+                    class_breakdown[mapped] += 1
 
             # Count players who appeared in at least one game in the most recent season
             cur.execute("""
@@ -6156,7 +6161,8 @@ def get_recruiting_guide(team_id: int):
                 "pitcher_count": pitcher_count,
                 "hitter_count": hitter_count,
                 "players_appeared": players_appeared,
-                "by_class": class_breakdown
+                "by_class": class_breakdown,
+                "season": current_season
             }
 
             # ============ FRESHMAN PRODUCTION ============

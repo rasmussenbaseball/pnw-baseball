@@ -307,7 +307,7 @@ function RosterOverview({ rosterOverview, loading }) {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <p className="text-sm font-semibold text-gray-600 uppercase mb-2">Roster Size</p>
+          <p className="text-sm font-semibold text-gray-600 uppercase mb-2">{rosterOverview.season || ''} Roster Size</p>
           <p className="text-3xl font-bold text-nw-teal">{rosterOverview.total_players}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
