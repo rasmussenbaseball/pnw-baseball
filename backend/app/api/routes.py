@@ -6792,19 +6792,19 @@ def recruiting_breakdown(season: int = 2026):
         team_records = {}  # team_id -> {season -> {wins, losses}}
         team_info = {}     # team_id -> {name, short_name, logo_url, division}
         for r in records_rows:
-            tid = r[0]
+            tid = r["team_id"]
             if tid not in team_info:
                 team_info[tid] = {
                     "team_id": tid,
-                    "name": r[1],
-                    "short_name": r[2],
-                    "logo_url": r[3],
-                    "division": r[4],
+                    "name": r["name"],
+                    "short_name": r["short_name"],
+                    "logo_url": r["logo_url"],
+                    "division": r["division"],
                 }
             if tid not in team_records:
                 team_records[tid] = {}
-            s = r[5]
-            w, l = r[6] or 0, r[7] or 0
+            s = r["season"]
+            w, l = r["wins"] or 0, r["losses"] or 0
             team_records[tid][s] = {"wins": w, "losses": l, "win_pct": round(w / (w + l), 3) if (w + l) > 0 else 0}
 
         # Only include teams that have current season data
@@ -6825,7 +6825,7 @@ def recruiting_breakdown(season: int = 2026):
             WHERE bs.season = %s AND bs.team_id IN ({placeholders})
             GROUP BY bs.team_id
         """, [season] + active_teams)
-        fr_pa_data = {r[0]: {"fr_pa": r[1] or 0, "total_pa": r[2] or 0} for r in cur.fetchall()}
+        fr_pa_data = {r["team_id"]: {"fr_pa": r["fr_pa"] or 0, "total_pa": r["total_pa"] or 0} for r in cur.fetchall()}
 
         # 3) Freshman IP% — Fr + R-Fr innings as % of team total
         cur.execute(f"""
@@ -6837,7 +6837,7 @@ def recruiting_breakdown(season: int = 2026):
             WHERE ps.season = %s AND ps.team_id IN ({placeholders})
             GROUP BY ps.team_id
         """, [season] + active_teams)
-        fr_ip_data = {r[0]: {"fr_ip": float(r[1] or 0), "total_ip": float(r[2] or 0)} for r in cur.fetchall()}
+        fr_ip_data = {r["team_id"]: {"fr_ip": float(r["fr_ip"] or 0), "total_ip": float(r["total_ip"] or 0)} for r in cur.fetchall()}
 
         # 4) Team WAR totals (offensive + pitching) and games played
         cur.execute(f"""
@@ -6848,7 +6848,7 @@ def recruiting_breakdown(season: int = 2026):
             WHERE bs.season = %s AND bs.team_id IN ({placeholders})
             GROUP BY bs.team_id
         """, [season] + active_teams)
-        owar_data = {r[0]: {"owar": float(r[1] or 0), "games": r[2] or 0} for r in cur.fetchall()}
+        owar_data = {r["team_id"]: {"owar": float(r["total_owar"] or 0), "games": r["games"] or 0} for r in cur.fetchall()}
 
         cur.execute(f"""
             SELECT ps.team_id, SUM(COALESCE(ps.pitching_war, 0)) AS total_pwar
@@ -6856,7 +6856,7 @@ def recruiting_breakdown(season: int = 2026):
             WHERE ps.season = %s AND ps.team_id IN ({placeholders})
             GROUP BY ps.team_id
         """, [season] + active_teams)
-        pwar_data = {r[0]: float(r[1] or 0) for r in cur.fetchall()}
+        pwar_data = {r["team_id"]: float(r["total_pwar"] or 0) for r in cur.fetchall()}
 
         # 5) Team avg wRC+ (weighted by PA)
         cur.execute(f"""
@@ -6868,7 +6868,7 @@ def recruiting_breakdown(season: int = 2026):
               AND bs.wrc_plus IS NOT NULL
             GROUP BY bs.team_id
         """, [season] + active_teams)
-        wrc_data = {r[0]: round(float(r[1]), 1) if r[1] else None for r in cur.fetchall()}
+        wrc_data = {r["team_id"]: round(float(r["avg_wrc_plus"]), 1) if r["avg_wrc_plus"] else None for r in cur.fetchall()}
 
         # 6) Team avg FIP (weighted by IP)
         cur.execute(f"""
@@ -6880,7 +6880,7 @@ def recruiting_breakdown(season: int = 2026):
               AND ps.fip IS NOT NULL
             GROUP BY ps.team_id
         """, [season] + active_teams)
-        fip_data = {r[0]: round(float(r[1]), 2) if r[1] else None for r in cur.fetchall()}
+        fip_data = {r["team_id"]: round(float(r["avg_fip"]), 2) if r["avg_fip"] else None for r in cur.fetchall()}
 
         # Build the response
         results = []
