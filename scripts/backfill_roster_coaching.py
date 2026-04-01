@@ -570,7 +570,7 @@ def update_player_roster_fields(team_id, roster_dict, season=2026):
         with conn.cursor() as cur:
             # Get all players for this team
             cur.execute("""
-                SELECT id, name_lower FROM players
+                SELECT id, first_name, last_name FROM players
                 WHERE team_id = %s
             """, (team_id,))
 
@@ -581,7 +581,7 @@ def update_player_roster_fields(team_id, roster_dict, season=2026):
 
             for player in players:
                 player_id = player["id"]
-                name_key = player["name_lower"]
+                name_key = f"{player['first_name']} {player['last_name']}".lower()
 
                 if name_key not in roster_dict:
                     continue
