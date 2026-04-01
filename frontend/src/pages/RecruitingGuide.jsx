@@ -294,10 +294,12 @@ function RosterOverview({ rosterOverview, fourYearRetention, loading }) {
 
   const byClassData =
     rosterOverview.by_class && Object.entries(rosterOverview.by_class).length > 0
-      ? Object.entries(rosterOverview.by_class).map(([cls, count]) => ({
-          name: cls,
-          value: count,
-        }))
+      ? Object.entries(rosterOverview.by_class)
+          .filter(([, count]) => count > 0)
+          .map(([cls, count]) => ({
+            name: cls,
+            value: count,
+          }))
       : []
 
   return (
@@ -328,12 +330,13 @@ function RosterOverview({ rosterOverview, fourYearRetention, loading }) {
           <h3 className="text-lg font-bold text-gray-900 mb-4">Roster by Class</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
-              <Pie data={byClassData} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={100} fill="#8884d8" dataKey="value">
+              <Pie data={byClassData} cx="50%" cy="50%" outerRadius={90} innerRadius={0} paddingAngle={2} fill="#8884d8" dataKey="value" label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''} labelLine={false}>
                 {byClassData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip formatter={(value, name) => [`${value} players`, name]} />
+              <Legend />
             </PieChart>
           </ResponsiveContainer>
         </div>

@@ -6064,13 +6064,21 @@ def get_recruiting_guide(team_id: int):
             season_stats.reverse()
 
             # ============ CURRENT ROSTER OVERVIEW ============
-            # Get ALL players on the roster (not just those with year_in_school)
+            # Find the most recent season for this team
+            cur.execute("""
+                SELECT MAX(season) as max_season FROM player_seasons WHERE team_id = %s
+            """, (team_id,))
+            max_season_row = cur.fetchone()
+            current_season = max_season_row['max_season'] if max_season_row else None
+
+            # Get players from the current season only
             cur.execute("""
                 SELECT DISTINCT p.id, p.position, p.year_in_school
                 FROM players p
+                JOIN player_seasons ps ON p.id = ps.player_id AND ps.team_id = %s AND ps.season = %s
                 WHERE p.team_id = %s
                 ORDER BY p.id
-            """, (team_id,))
+            """, (team_id, current_season, team_id))
             all_roster_rows = cur.fetchall()
 
             total_players = len(all_roster_rows)
@@ -6095,17 +6103,17 @@ def get_recruiting_guide(team_id: int):
                 elif year:
                     class_breakdown["other"] += 1
 
-            # Count players who appeared in at least one game
+            # Count players who appeared in at least one game in the current season
             cur.execute("""
                 SELECT COUNT(DISTINCT player_id) as appeared
                 FROM (
                     SELECT DISTINCT player_id FROM batting_stats
-                    WHERE team_id = %s AND season = (SELECT MAX(season) FROM batting_stats WHERE team_id = %s)
+                    WHERE team_id = %s AND season = %s
                     UNION
                     SELECT DISTINCT player_id FROM pitching_stats
-                    WHERE team_id = %s AND season = (SELECT MAX(season) FROM pitching_stats WHERE team_id = %s)
+                    WHERE team_id = %s AND season = %s
                 ) AS combined
-            """, (team_id, team_id, team_id, team_id))
+            """, (team_id, current_season, team_id, current_season))
             appeared_result = cur.fetchone()
             players_appeared = appeared_result['appeared'] if appeared_result else 0
 
@@ -6297,11 +6305,12 @@ def get_recruiting_guide(team_id: int):
                 "Pitcher": {"P", "RHP", "LHP", "SP", "RP"}
             }
 
-            # Fetch all players once, then group in Python with exact matching
+            # Fetch current season players only, then group in Python with exact matching
             cur.execute("""
-                SELECT position, height, weight FROM players
-                WHERE team_id = %s AND position IS NOT NULL AND position != ''
-            """, (team_id,))
+                SELECT p.position, p.height, p.weight FROM players p
+                JOIN player_seasons ps ON p.id = ps.player_id AND ps.team_id = %s AND ps.season = %s
+                WHERE p.team_id = %s AND p.position IS NOT NULL AND p.position != ''
+            """, (team_id, current_season, team_id))
             all_players_for_size = cur.fetchall()
 
             def get_pos_parts(pos_str):
@@ -6347,11 +6356,12 @@ def get_recruiting_guide(team_id: int):
 
             # ============ PLAYER HOMETOWNS ============
             cur.execute("""
-                SELECT id, first_name, last_name, hometown, height, weight
-                FROM players
-                WHERE team_id = %s AND hometown IS NOT NULL AND hometown != ''
-                ORDER BY last_name, first_name
-            """, (team_id,))
+                SELECT p.id, p.first_name, p.last_name, p.hometown, p.height, p.weight
+                FROM players p
+                JOIN player_seasons ps ON p.id = ps.player_id AND ps.team_id = %s AND ps.season = %s
+                WHERE p.team_id = %s AND p.hometown IS NOT NULL AND p.hometown != ''
+                ORDER BY p.last_name, p.first_name
+            """, (team_id, current_season, team_id))
 
             player_hometowns = []
             for p in cur.fetchall():
