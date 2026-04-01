@@ -6202,8 +6202,8 @@ def get_recruiting_guide(team_id: int):
             cur.execute("""
                 SELECT COUNT(*) as redshirt_count
                 FROM players
-                WHERE team_id = %s AND year_in_school LIKE 'R-%'
-            """, (team_id,))
+                WHERE team_id = %s AND year_in_school LIKE %s
+            """, (team_id, 'R-%'))
             redshirt_count = (cur.fetchone() or {}).get('redshirt_count') or 0
 
             redshirt_rate = {
@@ -6487,6 +6487,4 @@ def get_recruiting_guide(team_id: int):
             }
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e), "traceback": traceback.format_exc()}, 500
+        return {"error": str(e)}, 500
