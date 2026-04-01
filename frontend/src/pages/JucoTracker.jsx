@@ -101,7 +101,7 @@ export default function JucoTracker() {
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-2">JUCO Tracker</h1>
       <p className="text-sm text-gray-500 mb-4">
-        Uncommitted NWAC players available for transfer to 4-year programs.
+        NWAC players available for transfer to 4-year programs.
       </p>
 
       {/* Filters */}
@@ -241,7 +241,13 @@ export default function JucoTracker() {
                   </td>
                   <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.position || '-'}</td>
                   <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
-                  <td style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[296px] z-10 bg-inherit px-1.5 py-1 text-gray-400 border-r border-gray-200 truncate overflow-hidden">{row.committed_to || '-'}</td>
+                  <td style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[296px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 truncate overflow-hidden">
+                    {row.committed_to ? (
+                      <span className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
                   {/* Stat columns */}
                   {STAT_COLS.map(col => (
                     <td

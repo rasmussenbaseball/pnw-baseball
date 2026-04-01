@@ -2813,7 +2813,6 @@ def uncommitted_juco_players(
             LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.season = %s
             LEFT JOIN pitching_stats ps2 ON p.id = ps2.player_id AND ps2.season = %s
             WHERE d.level = 'JUCO'
-              AND p.is_committed = 0
               AND (bs.player_id IS NOT NULL OR ps2.player_id IS NOT NULL)
         """
         params: list = [season, season]
