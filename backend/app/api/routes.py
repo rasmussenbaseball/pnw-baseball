@@ -356,6 +356,7 @@ def stat_leaders(
     season: int = Query(..., description="Season year"),
     limit: int = Query(5, description="Number of leaders per category"),
     qualified: bool = Query(False, description="Only qualified players (2 PA/game batting, 0.75 IP/game pitching)"),
+    level: str = Query(None, description="Filter by division level (D1, D2, D3, NAIA, JUCO)"),
 ):
     """
     Return top N players for key batting and pitching categories.
@@ -385,9 +386,16 @@ def stat_leaders(
             {"key": "era", "label": "ERA", "col": "ps.era", "order": "ASC", "format": "float2"},
         ]
 
+        level_filter = ""
+        level_params = []
+        if level:
+            level_filter = "AND d.level = %s"
+            level_params = [level]
+
         def fetch_batting_leaders(cat):
             q_join = QUALIFIED_BATTING_JOIN if qualified else ""
             q_where = QUALIFIED_BATTING_WHERE if qualified else ""
+            params = [season, min_pa] + level_params + [limit]
             cur.execute(f"""
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                        t.id as team_id, t.short_name, t.logo_url,
@@ -406,9 +414,10 @@ def stat_leaders(
                 WHERE bs.season = %s AND bs.plate_appearances >= %s
                   AND {cat['col']} IS NOT NULL
                   {q_where}
+                  {level_filter}
                 ORDER BY {cat['col']} {cat['order']}
                 LIMIT %s
-            """, (season, min_pa, limit))
+            """, params)
             rows = cur.fetchall()
             return {
                 "key": cat["key"],
@@ -420,6 +429,7 @@ def stat_leaders(
         def fetch_pitching_leaders(cat):
             q_join = QUALIFIED_PITCHING_JOIN if qualified else ""
             q_where = QUALIFIED_PITCHING_WHERE if qualified else ""
+            params = [season, min_ip] + level_params + [limit]
             cur.execute(f"""
                 SELECT p.id as player_id, p.first_name, p.last_name,
                        t.id as team_id, t.short_name, t.logo_url,
@@ -438,9 +448,10 @@ def stat_leaders(
                 WHERE ps.season = %s AND ps.innings_pitched >= %s
                   AND {cat['col']} IS NOT NULL
                   {q_where}
+                  {level_filter}
                 ORDER BY {cat['col']} {cat['order']}
                 LIMIT %s
-            """, (season, min_ip, limit))
+            """, params)
             rows = cur.fetchall()
             return {
                 "key": cat["key"],

@@ -155,8 +155,10 @@ export function usePlayerGameLogs(playerId, season = 2026) {
 /**
  * Fetch stat leaders (top N per category).
  */
-export function useStatLeaders(season, limit = 5, qualified = false) {
-  return useApi('/stat-leaders', { season, limit, qualified }, [season, limit, qualified])
+export function useStatLeaders(season, limit = 5, qualified = false, level = null) {
+  const params = { season, limit, qualified }
+  if (level) params.level = level
+  return useApi('/stat-leaders', params, [season, limit, qualified, level])
 }
 
 /**

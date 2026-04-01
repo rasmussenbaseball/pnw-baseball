@@ -26,7 +26,6 @@ const NAV = [
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
       { to: '/team-history', label: 'History', desc: 'Historical team performance' },
-      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
     ],
   },
   {
@@ -34,10 +33,8 @@ const NAV = [
     adminOnly: true,
     items: [
       { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
-      { to: '/recruiting/rankings', label: 'Rankings', desc: 'Player recruiting rankings', locked: true },
       { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
-      { to: '/recruiting/breakdowns', label: 'Breakdowns', desc: 'Analysis by region & position', locked: true },
-      { to: '/recruiting/history', label: 'History', desc: 'Historical recruiting trends', locked: true },
+      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
       { to: '/recruiting/field', label: 'Field', desc: 'Field-level visualization', locked: true },
     ],
   },

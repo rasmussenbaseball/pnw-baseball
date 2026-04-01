@@ -95,9 +95,12 @@ function LeaderCard({ category }) {
 }
 
 // ─── Main Page ───
+const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
+
 export default function StatLeaders() {
   const [qualified, setQualified] = useState(true)
-  const { data, loading, error } = useStatLeaders(2026, 5, qualified)
+  const [level, setLevel] = useState('All')
+  const { data, loading, error } = useStatLeaders(2026, 5, qualified, level === 'All' ? null : level)
 
   if (loading) {
     return (
@@ -116,20 +119,37 @@ export default function StatLeaders() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-pnw-slate mb-1">Stat Leaders</h1>
           <p className="text-sm text-gray-500">Top 5 in key categories · 2026 season</p>
         </div>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={qualified}
-            onChange={(e) => setQualified(e.target.checked)}
-            className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
-          />
-          <span className="text-sm font-medium text-gray-700">Qualified</span>
-        </label>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1">
+            {LEVELS.map(l => (
+              <button
+                key={l}
+                onClick={() => setLevel(l)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  level === l
+                    ? 'bg-nw-teal text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={qualified}
+              onChange={(e) => setQualified(e.target.checked)}
+              className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
+            />
+            <span className="text-sm font-medium text-gray-700">Qualified</span>
+          </label>
+        </div>
       </div>
 
       {/* Batting Leaders */}
