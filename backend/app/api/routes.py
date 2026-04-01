@@ -6041,14 +6041,20 @@ def get_recruiting_guide(team_id: int):
             team_info = dict(team_row)
 
             # ============ SEASON RECORDS (All years) ============
+            # Only show seasons where the team actually had players with stats,
+            # to filter out fake/bad data for programs that didn't exist yet
             cur.execute("""
-                SELECT season, wins, losses, ties,
-                       COALESCE(conference_wins, 0) as conf_wins,
-                       COALESCE(conference_losses, 0) as conf_losses
-                FROM team_season_stats
-                WHERE team_id = %s
+                SELECT tss.season, tss.wins, tss.losses, tss.ties,
+                       COALESCE(tss.conference_wins, 0) as conf_wins,
+                       COALESCE(tss.conference_losses, 0) as conf_losses
+                FROM team_season_stats tss
+                WHERE tss.team_id = %s
+                  AND (
+                    EXISTS (SELECT 1 FROM batting_stats WHERE team_id = %s AND season = tss.season)
+                    OR EXISTS (SELECT 1 FROM pitching_stats WHERE team_id = %s AND season = tss.season)
+                  )
                 ORDER BY season DESC
-            """, (team_id,))
+            """, (team_id, team_id, team_id))
             season_records = [dict(r) for r in cur.fetchall()]
             season_records.reverse()
 
@@ -6064,21 +6070,39 @@ def get_recruiting_guide(team_id: int):
             season_stats.reverse()
 
             # ============ CURRENT ROSTER OVERVIEW ============
-            # Use updated_at to identify current roster players.
-            # The roster scraper updates updated_at when it runs, so current
-            # players will have recent timestamps while old players won't.
-            # Filter to players updated within 90 days of the most recently
-            # updated player on this team.
+            # Get the most recent season with stats for this team
+            cur.execute("""
+                SELECT MAX(season) as max_season FROM (
+                    SELECT MAX(season) as season FROM batting_stats WHERE team_id = %s
+                    UNION ALL
+                    SELECT MAX(season) as season FROM pitching_stats WHERE team_id = %s
+                ) s
+            """, (team_id, team_id))
+            max_season_row = cur.fetchone()
+            current_season = max_season_row['max_season'] if max_season_row else 2026
+
+            # Current roster = players who have stats in the current season
+            # OR were recently updated by the roster scraper (within 7 days of
+            # the most recently updated player on this team)
             cur.execute("""
                 SELECT DISTINCT p.id, p.position, p.year_in_school
                 FROM players p
                 WHERE p.team_id = %s
-                  AND p.updated_at >= (
-                    SELECT MAX(updated_at) - INTERVAL '90 days'
-                    FROM players WHERE team_id = %s
+                  AND (
+                    p.updated_at >= (
+                      SELECT MAX(updated_at) - INTERVAL '7 days'
+                      FROM players WHERE team_id = %s
+                    )
+                    OR p.id IN (
+                      SELECT DISTINCT player_id FROM batting_stats
+                      WHERE team_id = %s AND season = %s
+                      UNION
+                      SELECT DISTINCT player_id FROM pitching_stats
+                      WHERE team_id = %s AND season = %s
+                    )
                   )
                 ORDER BY p.id
-            """, (team_id, team_id))
+            """, (team_id, team_id, team_id, current_season, team_id, current_season))
             all_roster_rows = cur.fetchall()
 
             total_players = len(all_roster_rows)
@@ -6260,41 +6284,7 @@ def get_recruiting_guide(team_id: int):
                 "rate": round(redshirt_count / total_players, 4) if total_players > 0 else 0
             }
 
-            # ============ FOUR-YEAR RETENTION ============
-            # Check if this is a 4-year school (not NWAC)
-            cur.execute("""
-                SELECT d.name FROM conferences c
-                JOIN divisions d ON c.division_id = d.id
-                WHERE c.id = (SELECT conference_id FROM teams WHERE id = %s)
-            """, (team_id,))
-            div_result = cur.fetchone()
-            division_name = div_result['name'] if div_result else None
-
-            is_four_year = division_name != "NWAC"
-            four_year_retention = {
-                "is_four_year_school": is_four_year,
-                "four_year_players": 0,
-                "total_tracked": total_players,
-                "rate": 0
-            }
-            if is_four_year:
-                cur.execute("""
-                    SELECT player_id, COUNT(DISTINCT season) as season_count
-                    FROM (
-                        SELECT DISTINCT player_id, season FROM batting_stats WHERE team_id = %s
-                        UNION ALL
-                        SELECT DISTINCT player_id, season FROM pitching_stats WHERE team_id = %s
-                    ) AS combined
-                    GROUP BY player_id
-                    HAVING COUNT(DISTINCT season) >= 4
-                """, (team_id, team_id))
-                four_yr_players = len(cur.fetchall())
-                four_year_retention = {
-                    "is_four_year_school": True,
-                    "four_year_players": four_yr_players,
-                    "total_tracked": total_players,
-                    "rate": round(four_yr_players / total_players, 4) if total_players > 0 else 0
-                }
+            # (Four-year retention removed)
 
             # ============ AVERAGE SIZE BY POSITION ============
             position_groups = {
@@ -6309,11 +6299,20 @@ def get_recruiting_guide(team_id: int):
             cur.execute("""
                 SELECT p.position, p.height, p.weight FROM players p
                 WHERE p.team_id = %s AND p.position IS NOT NULL AND p.position != ''
-                  AND p.updated_at >= (
-                    SELECT MAX(updated_at) - INTERVAL '90 days'
-                    FROM players WHERE team_id = %s
+                  AND (
+                    p.updated_at >= (
+                      SELECT MAX(updated_at) - INTERVAL '7 days'
+                      FROM players WHERE team_id = %s
+                    )
+                    OR p.id IN (
+                      SELECT DISTINCT player_id FROM batting_stats
+                      WHERE team_id = %s AND season = %s
+                      UNION
+                      SELECT DISTINCT player_id FROM pitching_stats
+                      WHERE team_id = %s AND season = %s
+                    )
                   )
-            """, (team_id, team_id))
+            """, (team_id, team_id, team_id, current_season, team_id, current_season))
             all_players_for_size = cur.fetchall()
 
             def get_pos_parts(pos_str):
@@ -6362,12 +6361,21 @@ def get_recruiting_guide(team_id: int):
                 SELECT p.id, p.first_name, p.last_name, p.hometown, p.height, p.weight
                 FROM players p
                 WHERE p.team_id = %s AND p.hometown IS NOT NULL AND p.hometown != ''
-                  AND p.updated_at >= (
-                    SELECT MAX(updated_at) - INTERVAL '90 days'
-                    FROM players WHERE team_id = %s
+                  AND (
+                    p.updated_at >= (
+                      SELECT MAX(updated_at) - INTERVAL '7 days'
+                      FROM players WHERE team_id = %s
+                    )
+                    OR p.id IN (
+                      SELECT DISTINCT player_id FROM batting_stats
+                      WHERE team_id = %s AND season = %s
+                      UNION
+                      SELECT DISTINCT player_id FROM pitching_stats
+                      WHERE team_id = %s AND season = %s
+                    )
                   )
                 ORDER BY p.last_name, p.first_name
-            """, (team_id, team_id))
+            """, (team_id, team_id, team_id, current_season, team_id, current_season))
 
             player_hometowns = []
             for p in cur.fetchall():
@@ -6562,7 +6570,6 @@ def get_recruiting_guide(team_id: int):
                 "freshman_production": freshman_production,
                 "roster_turnover": roster_turnover,
                 "redshirt_rate": redshirt_rate,
-                "four_year_retention": four_year_retention,
                 "avg_size_by_position": avg_size_by_position,
                 "player_hometowns": player_hometowns,
                 "hometown_breakdown": hometown_breakdown,

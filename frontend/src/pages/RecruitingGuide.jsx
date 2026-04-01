@@ -280,7 +280,7 @@ function TeamTrends({ seasonRecords, warBySeason, loading }) {
 }
 
 // Roster Overview Component
-function RosterOverview({ rosterOverview, fourYearRetention, loading }) {
+function RosterOverview({ rosterOverview, loading }) {
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100 animate-pulse">
@@ -342,16 +342,6 @@ function RosterOverview({ rosterOverview, fourYearRetention, loading }) {
         </div>
       )}
 
-      {/* 4-Year Retention */}
-      {fourYearRetention && fourYearRetention.is_four_year_school && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Four-Year Retention</h3>
-          <p className="text-3xl font-bold text-nw-teal mb-2">{(fourYearRetention.rate * 100).toFixed(1)}%</p>
-          <p className="text-sm text-gray-600">
-            {fourYearRetention.four_year_players} of {fourYearRetention.total_tracked} players complete 4 years
-          </p>
-        </div>
-      )}
     </div>
   )
 }
@@ -643,7 +633,6 @@ export default function RecruitingGuide() {
             {/* Roster Overview */}
             <RosterOverview
               rosterOverview={guideData?.roster_overview}
-              fourYearRetention={guideData?.four_year_retention}
               loading={loading}
             />
 
