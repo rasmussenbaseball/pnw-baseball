@@ -6784,6 +6784,7 @@ def recruiting_breakdown(season: int = 2026):
             JOIN divisions d ON c.division_id = d.id
             WHERE tss.season BETWEEN %s AND %s
               AND t.is_active = 1
+              AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
             ORDER BY tss.team_id, tss.season
         """, (season - 2, season))
         records_rows = cur.fetchall()
