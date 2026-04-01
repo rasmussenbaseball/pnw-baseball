@@ -7,6 +7,7 @@ const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 const COLUMNS = [
   { key: 'short_name', label: 'Team', sortable: false },
   { key: 'division', label: 'Div', sortable: true },
+  { key: 'ranking', label: 'Rank', sortable: true, tooltip: 'National composite rank (D1-NAIA) or PPI rank (NWAC)' },
   { key: 'record', label: 'Record', sortable: false },
   { key: 'win_pct', label: 'W-L%', sortable: true },
   { key: 'trend', label: 'Trend', sortable: true, tooltip: 'Change in W-L% vs. prior 2-year average' },
@@ -77,7 +78,7 @@ export default function RecruitingBreakdown() {
     } else {
       setSortKey(key)
       // Default sort direction based on stat
-      setSortDir(key === 'team_fip' ? 'asc' : 'desc')
+      setSortDir((key === 'team_fip' || key === 'ranking') ? 'asc' : 'desc')
     }
   }
 
@@ -88,8 +89,15 @@ export default function RecruitingBreakdown() {
       rows = rows.filter(r => r.division === level)
     }
     rows.sort((a, b) => {
-      let aVal = a[sortKey]
-      let bVal = b[sortKey]
+      let aVal, bVal
+      if (sortKey === 'ranking') {
+        // Use national_rank for D1-NAIA, ppi_rank for JUCO
+        aVal = a.division === 'JUCO' ? a.ppi_rank : a.national_rank
+        bVal = b.division === 'JUCO' ? b.ppi_rank : b.national_rank
+      } else {
+        aVal = a[sortKey]
+        bVal = b[sortKey]
+      }
       // Handle nulls — push to bottom
       if (aVal === null || aVal === undefined) return 1
       if (bVal === null || bVal === undefined) return -1
@@ -183,6 +191,14 @@ export default function RecruitingBreakdown() {
                   <span className="text-[10px] font-bold text-gray-400 uppercase">{team.division}</span>
                 </td>
 
+                {/* Ranking */}
+                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
+                  {team.division === 'JUCO'
+                    ? (team.ppi_rank != null ? <span title="PPI rank (NWAC internal)">PPI #{team.ppi_rank}</span> : '—')
+                    : (team.national_rank != null ? <span title="National composite rank">#{team.national_rank}</span> : '—')
+                  }
+                </td>
+
                 {/* Record */}
                 <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">
                   {team.wins}-{team.losses}
@@ -230,6 +246,7 @@ export default function RecruitingBreakdown() {
 
       {/* Legend */}
       <div className="mt-4 px-1 text-[10px] text-gray-400 space-y-1">
+        <p><strong>Rank</strong> — National composite ranking for D1/D2/D3/NAIA teams. NWAC teams show PPI rank (internal power index based on WAR/G and W-L%).</p>
         <p><strong>Trend</strong> — Change in W-L% compared to the average of the prior two seasons (2024-2025). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
         <p><strong>Fr PA% / Fr IP%</strong> — Freshman (Fr + R-Fr) plate appearances or innings pitched as a percentage of the team total. Higher = more freshman playing time.</p>
         <p><strong>WAR/G</strong> — Total team WAR (offensive + pitching) divided by games played. Measures overall roster talent density.</p>
