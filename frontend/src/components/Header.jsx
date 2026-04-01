@@ -69,8 +69,8 @@ const NAV = [
     ],
   },
   {
-    label: 'Glossary',
-    to: '/glossary', // direct link, no dropdown
+    label: 'About',
+    to: '/about', // direct link, no dropdown
   },
 ]
 
