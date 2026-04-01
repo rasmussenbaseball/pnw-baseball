@@ -824,13 +824,13 @@ def main():
         with conn.cursor() as cur:
             if args.team:
                 cur.execute("""
-                    SELECT id, name, short_name, stats_url, stats_format
+                    SELECT id, name, short_name, stats_url
                     FROM teams
                     WHERE short_name = %s AND stats_url IS NOT NULL
                 """, (args.team,))
             else:
                 cur.execute("""
-                    SELECT id, name, short_name, stats_url, stats_format
+                    SELECT id, name, short_name, stats_url
                     FROM teams
                     WHERE stats_url IS NOT NULL
                     ORDER BY short_name
