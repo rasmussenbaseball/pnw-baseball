@@ -514,6 +514,10 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
+        # Set roster_year if provided (from roster scraping, not stats scraping)
+        if kwargs.get("roster_year"):
+            updates.append("roster_year = %s")
+            params.append(kwargs["roster_year"])
         if updates:
             params.append(player_id)
             cur.execute(
@@ -523,8 +527,8 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     else:
         cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
-               year_in_school, jersey_number, bats, throws, height, weight, hometown, headshot_url)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               year_in_school, jersey_number, bats, throws, height, weight, hometown, headshot_url, roster_year)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -536,6 +540,7 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
                 kwargs.get("weight"),
                 kwargs.get("hometown"),
                 kwargs.get("headshot_url"),
+                kwargs.get("roster_year"),
             ),
         )
         cur.execute("SELECT lastval() AS id")
@@ -671,6 +676,7 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                         weight=safe_int(roster_data.get("weight")) or None,
                         hometown=roster_data.get("hometown"),
                         headshot_url=roster_data.get("headshot_url"),
+                        roster_year=season_year,
                     )
 
                     # Batting counting stats
@@ -786,6 +792,7 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                         weight=safe_int(roster_data.get("weight")) or None,
                         hometown=roster_data.get("hometown"),
                         headshot_url=roster_data.get("headshot_url"),
+                        roster_year=season_year,
                     )
 
                     # Pitching stats

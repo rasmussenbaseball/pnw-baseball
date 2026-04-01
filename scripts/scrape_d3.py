@@ -447,6 +447,7 @@ def scrape_team_presto(base_url, sport_path, slug, db_short, team_id, season_yea
                     year_in_school=year_in_school,
                     jersey_number=batter.get("jersey"),
                     headshot_url=None,
+                    roster_year=season_year,
                 )
 
                 # Basic batting: g, ab, r, h, 2b, 3b, hr, rbi, bb, k, sb, cs, avg, obp, slg
@@ -555,6 +556,7 @@ def scrape_team_presto(base_url, sport_path, slug, db_short, team_id, season_yea
                     year_in_school=year_in_school,
                     jersey_number=pitcher.get("jersey"),
                     headshot_url=None,
+                    roster_year=season_year,
                 )
 
                 app = safe_int(pitcher.get("app"))
@@ -1096,6 +1098,10 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
+        # Set roster_year if provided (from roster scraping, not stats scraping)
+        if kwargs.get("roster_year"):
+            updates.append("roster_year = %s")
+            params.append(kwargs["roster_year"])
         if updates:
             params.append(player_id)
             cur.execute(
@@ -1105,8 +1111,8 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     else:
         cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
-               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school, headshot_url)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school, headshot_url, roster_year)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id""",
             (
                 first_name, last_name, team_id,
@@ -1121,6 +1127,7 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
                 kwargs.get("high_school"),
                 kwargs.get("previous_school"),
                 kwargs.get("headshot_url"),
+                kwargs.get("roster_year"),
             ),
         )
         player_id = cur.fetchone()["id"]
@@ -1250,6 +1257,7 @@ def scrape_team(base_url, sport_path, db_short, team_id, season_year, skip_roste
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
                     headshot_url=roster_data.get("headshot_url"),
+                    roster_year=season_year,
                 )
 
                 gp, gs = split_compound(batter.get("GP-GS"))
@@ -1366,6 +1374,7 @@ def scrape_team(base_url, sport_path, db_short, team_id, season_year, skip_roste
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
                     headshot_url=roster_data.get("headshot_url"),
+                    roster_year=season_year,
                 )
 
                 w, l = split_compound(pitcher.get("W-L"))

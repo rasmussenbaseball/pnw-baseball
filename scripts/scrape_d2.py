@@ -746,6 +746,10 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
                 params.append(kwargs[field])
+        # Set roster_year if provided (from roster scraping, not stats scraping)
+        if kwargs.get("roster_year"):
+            updates.append("roster_year = %s")
+            params.append(kwargs["roster_year"])
         if updates:
             params.append(player_id)
             cur.execute(
@@ -755,8 +759,8 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
     else:
         cur.execute(
             """INSERT INTO players (first_name, last_name, team_id, position,
-               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school, headshot_url)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               year_in_school, jersey_number, bats, throws, height, weight, hometown, high_school, previous_school, headshot_url, roster_year)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 first_name, last_name, team_id,
                 kwargs.get("position"),
@@ -770,6 +774,7 @@ def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
                 kwargs.get("high_school"),
                 kwargs.get("previous_school"),
                 kwargs.get("headshot_url"),
+                kwargs.get("roster_year"),
             ),
         )
         cur.execute("SELECT lastval() AS id")
@@ -900,6 +905,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
                     headshot_url=roster_data.get("headshot_url"),
+                    roster_year=season_year,
                 )
 
                 gp, gs = split_compound(batter.get("GP-GS"))
@@ -1016,6 +1022,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     high_school=roster_data.get("high_school"),
                     previous_school=roster_data.get("previous_school"),
                     headshot_url=roster_data.get("headshot_url"),
+                    roster_year=season_year,
                 )
 
                 w, l = split_compound(pitcher.get("W-L"))

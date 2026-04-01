@@ -6081,28 +6081,38 @@ def get_recruiting_guide(team_id: int):
             max_season_row = cur.fetchone()
             current_season = max_season_row['max_season'] if max_season_row else 2026
 
-            # Current roster = players who have stats in the current season
-            # OR were recently updated by the roster scraper (within 7 days of
-            # the most recently updated player on this team)
+            # Use roster_year to identify current roster players.
+            # If roster_year is populated, use it; otherwise fall back to
+            # players with stats in the current season.
             cur.execute("""
-                SELECT DISTINCT p.id, p.position, p.year_in_school
-                FROM players p
-                WHERE p.team_id = %s
-                  AND (
-                    p.updated_at >= (
-                      SELECT MAX(updated_at) - INTERVAL '7 days'
-                      FROM players WHERE team_id = %s
-                    )
-                    OR p.id IN (
-                      SELECT DISTINCT player_id FROM batting_stats
-                      WHERE team_id = %s AND season = %s
-                      UNION
-                      SELECT DISTINCT player_id FROM pitching_stats
-                      WHERE team_id = %s AND season = %s
-                    )
-                  )
-                ORDER BY p.id
-            """, (team_id, team_id, team_id, current_season, team_id, current_season))
+                SELECT COUNT(*) as cnt FROM players
+                WHERE team_id = %s AND roster_year = %s
+            """, (team_id, current_season))
+            roster_year_count = cur.fetchone()['cnt']
+
+            if roster_year_count > 0:
+                # Use roster_year filter (preferred)
+                cur.execute("""
+                    SELECT DISTINCT p.id, p.position, p.year_in_school
+                    FROM players p
+                    WHERE p.team_id = %s AND p.roster_year = %s
+                    ORDER BY p.id
+                """, (team_id, current_season))
+            else:
+                # Fallback: players with stats in current season
+                cur.execute("""
+                    SELECT DISTINCT p.id, p.position, p.year_in_school
+                    FROM players p
+                    WHERE p.team_id = %s
+                      AND p.id IN (
+                        SELECT DISTINCT player_id FROM batting_stats
+                        WHERE team_id = %s AND season = %s
+                        UNION
+                        SELECT DISTINCT player_id FROM pitching_stats
+                        WHERE team_id = %s AND season = %s
+                      )
+                    ORDER BY p.id
+                """, (team_id, team_id, current_season, team_id, current_season))
             all_roster_rows = cur.fetchall()
 
             total_players = len(all_roster_rows)
@@ -6296,23 +6306,24 @@ def get_recruiting_guide(team_id: int):
             }
 
             # Fetch current roster players only, then group in Python with exact matching
-            cur.execute("""
-                SELECT p.position, p.height, p.weight FROM players p
-                WHERE p.team_id = %s AND p.position IS NOT NULL AND p.position != ''
-                  AND (
-                    p.updated_at >= (
-                      SELECT MAX(updated_at) - INTERVAL '7 days'
-                      FROM players WHERE team_id = %s
-                    )
-                    OR p.id IN (
-                      SELECT DISTINCT player_id FROM batting_stats
-                      WHERE team_id = %s AND season = %s
-                      UNION
-                      SELECT DISTINCT player_id FROM pitching_stats
-                      WHERE team_id = %s AND season = %s
-                    )
-                  )
-            """, (team_id, team_id, team_id, current_season, team_id, current_season))
+            if roster_year_count > 0:
+                cur.execute("""
+                    SELECT p.position, p.height, p.weight FROM players p
+                    WHERE p.team_id = %s AND p.roster_year = %s
+                      AND p.position IS NOT NULL AND p.position != ''
+                """, (team_id, current_season))
+            else:
+                cur.execute("""
+                    SELECT p.position, p.height, p.weight FROM players p
+                    WHERE p.team_id = %s AND p.position IS NOT NULL AND p.position != ''
+                      AND p.id IN (
+                        SELECT DISTINCT player_id FROM batting_stats
+                        WHERE team_id = %s AND season = %s
+                        UNION
+                        SELECT DISTINCT player_id FROM pitching_stats
+                        WHERE team_id = %s AND season = %s
+                      )
+                """, (team_id, team_id, current_season, team_id, current_season))
             all_players_for_size = cur.fetchall()
 
             def get_pos_parts(pos_str):
@@ -6357,25 +6368,28 @@ def get_recruiting_guide(team_id: int):
                     })
 
             # ============ PLAYER HOMETOWNS ============
-            cur.execute("""
-                SELECT p.id, p.first_name, p.last_name, p.hometown, p.height, p.weight
-                FROM players p
-                WHERE p.team_id = %s AND p.hometown IS NOT NULL AND p.hometown != ''
-                  AND (
-                    p.updated_at >= (
-                      SELECT MAX(updated_at) - INTERVAL '7 days'
-                      FROM players WHERE team_id = %s
-                    )
-                    OR p.id IN (
-                      SELECT DISTINCT player_id FROM batting_stats
-                      WHERE team_id = %s AND season = %s
-                      UNION
-                      SELECT DISTINCT player_id FROM pitching_stats
-                      WHERE team_id = %s AND season = %s
-                    )
-                  )
-                ORDER BY p.last_name, p.first_name
-            """, (team_id, team_id, team_id, current_season, team_id, current_season))
+            if roster_year_count > 0:
+                cur.execute("""
+                    SELECT p.id, p.first_name, p.last_name, p.hometown, p.height, p.weight
+                    FROM players p
+                    WHERE p.team_id = %s AND p.roster_year = %s
+                      AND p.hometown IS NOT NULL AND p.hometown != ''
+                    ORDER BY p.last_name, p.first_name
+                """, (team_id, current_season))
+            else:
+                cur.execute("""
+                    SELECT p.id, p.first_name, p.last_name, p.hometown, p.height, p.weight
+                    FROM players p
+                    WHERE p.team_id = %s AND p.hometown IS NOT NULL AND p.hometown != ''
+                      AND p.id IN (
+                        SELECT DISTINCT player_id FROM batting_stats
+                        WHERE team_id = %s AND season = %s
+                        UNION
+                        SELECT DISTINCT player_id FROM pitching_stats
+                        WHERE team_id = %s AND season = %s
+                      )
+                    ORDER BY p.last_name, p.first_name
+                """, (team_id, team_id, current_season, team_id, current_season))
 
             player_hometowns = []
             for p in cur.fetchall():
