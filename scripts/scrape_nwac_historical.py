@@ -9,7 +9,7 @@ You solve the CAPTCHA once, then the script fetches all team stats automatically
 Runs LOCALLY on your Mac and writes directly to the Supabase database.
 
 Usage:
-    export DATABASE_URL='postgresql://postgres.bsyqemdjdkhotmaduldv:7UQFnZIFs4fd2O6x@aws-0-us-west-2.pooler.supabase.com:6543/postgres'
+    export DATABASE_URL='postgresql://...'  # Set your Supabase connection string
     cd pnw-baseball
     PYTHONPATH=backend python3 scripts/scrape_nwac_historical.py --season 2018-19
     PYTHONPATH=backend python3 scripts/scrape_nwac_historical.py --all
@@ -664,7 +664,7 @@ def main():
 
     if not os.environ.get("DATABASE_URL"):
         print("ERROR: DATABASE_URL environment variable not set.")
-        print("Run: export DATABASE_URL='postgresql://postgres.bsyqemdjdkhotmaduldv:7UQFnZIFs4fd2O6x@aws-0-us-west-2.pooler.supabase.com:6543/postgres'")
+        print("Run: export DATABASE_URL='postgresql://...'  (your Supabase connection string)")
         sys.exit(1)
 
     seasons = ALL_SEASONS if args.all else [args.season]
