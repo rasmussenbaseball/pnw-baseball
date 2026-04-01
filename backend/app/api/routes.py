@@ -6487,4 +6487,6 @@ def get_recruiting_guide(team_id: int):
             }
 
     except Exception as e:
-        return {"error": str(e)}, 500
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "traceback": traceback.format_exc()}, 500
