@@ -6448,6 +6448,10 @@ def get_recruiting_guide(team_id: int):
                 if total == 0:
                     continue
 
+                # Skip if no prior season data — can't determine returners vs new
+                if (s - 1) not in players_by_season:
+                    continue
+
                 prev = players_by_season.get(s - 1, set())
                 returners = roster & prev
                 new_players = roster - prev
