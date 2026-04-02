@@ -4,6 +4,23 @@ import { Link } from 'react-router-dom'
 // ─── Site Updates / Changelog ───
 const UPDATES = [
   {
+    version: '1.2',
+    date: 'April 1, 2026',
+    title: 'Recruiting Tools, Draft Board & Homepage Refresh',
+    changes: [
+      'Added Recruiting Breakdown page — sortable table of every PNW team with W-L% trends, freshman PA% and IP%, WAR/G, wRC+, FIP, and national/PPI rankings',
+      'Overhauled Recruiting Guide — added year-by-year W-L history, fixed roster counts, position matching, and freshman production calculations',
+      'Moved Recruiting Classes under the Recruiting tab with division-level filters on stat leaders',
+      'Built 2026 MLB Draft Board featuring 12 PNW prospects linked to their college player pages',
+      'Homepage refresh — draft board widget, WCL summer leaders section, improved text readability, and D1 label on PNW Grid',
+      'JUCO Tracker now shows committed NWAC players with a green commitment tag',
+      'Renamed Glossary to About and redesigned the page with bio, run environments, updates log, and stat glossary',
+      'Added site footer with brand info, site links, data sources, and social links',
+      'Fixed PNW Grid daily mode — clicking a player in the dropdown now works correctly',
+      'Fixed summer stat totals filtering and various roster display bugs',
+    ],
+  },
+  {
     version: '1.1',
     date: 'March 31, 2026',
     title: 'Player Pages, Feature Requests & UI Polish',
