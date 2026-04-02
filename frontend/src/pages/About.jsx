@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 
 // ─── Site Updates / Changelog ───
@@ -560,6 +560,14 @@ const PAGE_SECTIONS = [
 // ============================================================
 export default function About() {
   const [activeGlossary, setActiveGlossary] = useState('batting')
+  const [siteStats, setSiteStats] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/v1/site-stats')
+      .then(r => r.json())
+      .then(d => setSiteStats(d))
+      .catch(() => {})
+  }, [])
 
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -569,6 +577,20 @@ export default function About() {
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">About NW Baseball Stats</h1>
       <p className="text-sm text-gray-500 mb-4">The story behind the site, our methodology, and every stat we track.</p>
+
+      {/* Site-wide counters */}
+      {siteStats && (
+        <div className="flex gap-4 mb-5">
+          <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 px-5 py-4 text-center">
+            <p className="text-2xl font-bold text-nw-teal">{siteStats.total_players.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider">Players Tracked</p>
+          </div>
+          <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 px-5 py-4 text-center">
+            <p className="text-2xl font-bold text-nw-teal">{siteStats.total_games.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider">Games Tracked</p>
+          </div>
+        </div>
+      )}
 
       {/* Jump-link nav */}
       <div className="flex gap-1 mb-5 overflow-x-auto pb-1">

@@ -90,6 +90,22 @@ router.include_router(favorites_router)
 
 
 # ============================================================
+# SITE-WIDE STATS (player/game counts for About page)
+# ============================================================
+
+@router.get("/site-stats")
+def site_stats():
+    """Return aggregate counts displayed on the About page."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) AS cnt FROM players")
+        total_players = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM games")
+        total_games = cur.fetchone()["cnt"]
+    return {"total_players": total_players, "total_games": total_games}
+
+
+# ============================================================
 # BROWSE: Divisions, Conferences, Teams
 # ============================================================
 
