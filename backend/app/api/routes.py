@@ -106,6 +106,55 @@ def site_stats():
 
 
 # ============================================================
+# HOMETOWN SEARCH
+# ============================================================
+
+@router.get("/hometown-search")
+def hometown_search(q: str = Query("", min_length=0)):
+    """Search players by hometown. Returns players whose hometown contains the query string."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # If no query, return the top 30 most common cities for the browse view
+        if not q.strip():
+            cur.execute("""
+                SELECT hometown, COUNT(*) AS player_count
+                FROM players
+                WHERE hometown IS NOT NULL AND hometown != ''
+                GROUP BY hometown
+                ORDER BY COUNT(*) DESC
+                LIMIT 30
+            """)
+            return {"query": "", "cities": [dict(r) for r in cur.fetchall()], "players": []}
+
+        like_q = f"%{q.strip()}%"
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.hometown, p.high_school,
+                   p.position, p.year_in_school,
+                   t.id AS team_id, t.name AS team,
+                   d.name AS division
+            FROM players p
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE LOWER(p.hometown) LIKE LOWER(%s)
+            ORDER BY t.name, p.last_name, p.first_name
+        """, (like_q,))
+        players = [dict(r) for r in cur.fetchall()]
+
+        # Also return a grouped summary of teams these players went to
+        team_counts = {}
+        for p in players:
+            key = p["team"]
+            if key not in team_counts:
+                team_counts[key] = {"team": key, "team_id": p["team_id"], "division": p["division"], "count": 0}
+            team_counts[key]["count"] += 1
+        teams = sorted(team_counts.values(), key=lambda x: -x["count"])
+
+        return {"query": q.strip(), "cities": [], "players": players, "teams": teams}
+
+
+# ============================================================
 # BROWSE: Divisions, Conferences, Teams
 # ============================================================
 

@@ -63,6 +63,7 @@ import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
 import FeatureRequest from './pages/FeatureRequest'
 import PlayerGraphic from './pages/PlayerGraphic'
+import HometownSearch from './pages/HometownSearch'
 
 export default function App() {
   return (
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/team-history" element={<TeamHistory />} />
           <Route path="/recruiting-classes" element={<RecruitingClasses />} />
           <Route path="/recruiting/breakdown" element={<RecruitingBreakdown />} />
+          <Route path="/recruiting/hometown" element={<HometownSearch />} />
 
           {/* Recruiting (admin only) */}
           <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />
