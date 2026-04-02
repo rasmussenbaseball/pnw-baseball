@@ -3670,12 +3670,15 @@ def get_park_factors(
         park["conference_id"] = info.get("conference_id")
         result.append(park)
 
-    # Sort by elevation (highest first) as a default interesting sort
-    result.sort(key=lambda x: x.get("elevation_ft", 0), reverse=True)
+    # Sort by park factor (highest first) as default
+    result.sort(key=lambda x: x.get("park_factor_pct", 0), reverse=True)
 
     return {
         "teams": result,
-        "qualification_notes": park_data.get("qualification_notes", {}),
+        "methodology": park_data.get("methodology", ""),
+        "baseline_dimensions": park_data.get("baseline_dimensions", ""),
+        "baseline_temperature_f": park_data.get("baseline_temperature_f", 60),
+        "last_updated": park_data.get("last_updated", ""),
         "total": len(result),
     }
 
