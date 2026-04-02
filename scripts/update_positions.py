@@ -78,8 +78,15 @@ def main():
         changed = 0
         skipped = 0
 
+        # Tiebreaker: when game counts are equal, prefer real defensive
+        # positions over DH/UT (lower rank = preferred)
+        pos_priority = {"C": 0, "1B": 1, "2B": 1, "3B": 1, "SS": 1,
+                        "LF": 2, "CF": 2, "RF": 2, "OF": 2,
+                        "RHP": 3, "LHP": 3, "P": 3,
+                        "UT": 4, "DH": 5}
+
         for pid, pos_counts in player_positions.items():
-            best_pos = max(pos_counts, key=pos_counts.get)
+            best_pos = max(pos_counts, key=lambda p: (pos_counts[p], -pos_priority.get(p, 9)))
             best_games = pos_counts[best_pos]
 
             cur.execute("SELECT position, first_name, last_name FROM players WHERE id = %s", (pid,))

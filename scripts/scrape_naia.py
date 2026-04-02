@@ -846,7 +846,9 @@ def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
         player_id = existing["id"]
         updates = []
         params = []
-        for field in ["position", "year_in_school", "jersey_number", "bats", "throws",
+        # position is intentionally excluded — it's managed by update_positions.py
+        # from box score data, not roster data
+        for field in ["year_in_school", "jersey_number", "bats", "throws",
                        "height", "weight", "hometown", "high_school", "previous_school", "headshot_url"]:
             if kwargs.get(field):
                 updates.append(f"{field} = COALESCE(%s, {field})")
