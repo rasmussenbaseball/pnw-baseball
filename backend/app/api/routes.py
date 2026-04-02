@@ -95,14 +95,42 @@ router.include_router(favorites_router)
 
 @router.get("/site-stats")
 def site_stats():
-    """Return aggregate counts displayed on the About page."""
+    """Return aggregate counts and a random player for the homepage."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) AS cnt FROM players")
         total_players = cur.fetchone()["cnt"]
         cur.execute("SELECT COUNT(*) AS cnt FROM games")
         total_games = cur.fetchone()["cnt"]
-    return {"total_players": total_players, "total_games": total_games}
+        cur.execute("SELECT COUNT(DISTINCT team_id) AS cnt FROM batting_stats")
+        total_teams = cur.fetchone()["cnt"]
+
+        # Random player — pick someone with real stats so the card is interesting
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.hometown,
+                   p.headshot_url, p.year_in_school,
+                   t.name AS team, t.short_name AS team_short,
+                   d.name AS division,
+                   bs.season, bs.batting_avg, bs.on_base_pct, bs.slugging_pct,
+                   bs.home_runs, bs.hits, bs.plate_appearances,
+                   bs.wrc_plus, bs.offensive_war
+            FROM batting_stats bs
+            JOIN players p ON p.id = bs.player_id
+            JOIN teams t ON t.id = bs.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE bs.plate_appearances >= 30
+            ORDER BY RANDOM()
+            LIMIT 1
+        """)
+        random_player = cur.fetchone()
+
+    return {
+        "total_players": total_players,
+        "total_games": total_games,
+        "total_teams": total_teams,
+        "random_player": dict(random_player) if random_player else None,
+    }
 
 
 # ============================================================

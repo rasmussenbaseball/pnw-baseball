@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
@@ -64,6 +64,7 @@ export default function Homepage() {
         <div className="lg:col-span-2 flex flex-col gap-5">
           <NationalRankingsWidget rankings={rankings} />
           <StatLeadersWidget leaders={leaders} />
+          <ByTheNumbersWidget />
         </div>
 
         {/* Right column - sidebar (1/3) */}
@@ -660,6 +661,115 @@ function WclLeadersWidget({ leaders }) {
 
 
 // ════════════════════════════════════════════
+// ════════════════════════════════════════════
+// BY THE NUMBERS + RANDOM PLAYER
+// ════════════════════════════════════════════
+function ByTheNumbersWidget() {
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const fetchData = () => {
+    setLoading(true)
+    fetch('/api/v1/site-stats')
+      .then(r => r.json())
+      .then(d => { setStats(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchData() }, [])
+
+  if (!stats) return null
+
+  const p = stats.random_player
+  const fmtAvg = (v) => v != null ? Number(v).toFixed(3).replace(/^0/, '') : '—'
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
+      <h2 className="text-sm sm:text-base font-bold text-pnw-slate mb-3">By the Numbers</h2>
+
+      {/* Stat counters */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
+          <div className="text-xl sm:text-2xl font-bold text-nw-teal">{stats.total_players?.toLocaleString()}</div>
+          <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Players</div>
+        </div>
+        <div className="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
+          <div className="text-xl sm:text-2xl font-bold text-nw-teal">{stats.total_games?.toLocaleString()}</div>
+          <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Games</div>
+        </div>
+        <div className="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
+          <div className="text-xl sm:text-2xl font-bold text-nw-teal">{stats.total_teams?.toLocaleString()}</div>
+          <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Teams</div>
+        </div>
+      </div>
+
+      {/* Random player card */}
+      {p && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Random Player</div>
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="text-[10px] text-nw-teal hover:underline font-medium disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : 'Shuffle ↻'}
+            </button>
+          </div>
+          <Link
+            to={`/player/${p.id}`}
+            className="block bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200 p-3 hover:border-nw-teal hover:shadow transition-all"
+          >
+            <div className="flex items-center gap-3">
+              {p.headshot_url ? (
+                <img src={p.headshot_url} alt="" className="w-12 h-12 rounded-full object-cover bg-gray-200 shrink-0"
+                  onError={(e) => { e.target.style.display = 'none' }} />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
+                  <span className="text-lg font-bold text-gray-400">{p.first_name?.[0]}{p.last_name?.[0]}</span>
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-gray-800">{p.first_name} {p.last_name}</div>
+                <div className="text-xs text-gray-500">{p.team_short} · {p.division} · {p.position || 'UT'}</div>
+                {p.hometown && <div className="text-[10px] text-gray-400 mt-0.5">{p.hometown}</div>}
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs text-gray-400">{p.season}</div>
+                <div className="text-sm font-bold text-pnw-slate">{fmtAvg(p.batting_avg)}</div>
+                <div className="text-[10px] text-gray-500">{p.hits} H · {p.home_runs} HR</div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-2 pt-2 border-t border-gray-100">
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-gray-400">AVG</div>
+                <div className="text-xs font-bold text-gray-700">{fmtAvg(p.batting_avg)}</div>
+              </div>
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-gray-400">OBP</div>
+                <div className="text-xs font-bold text-gray-700">{fmtAvg(p.on_base_pct)}</div>
+              </div>
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-gray-400">SLG</div>
+                <div className="text-xs font-bold text-gray-700">{fmtAvg(p.slugging_pct)}</div>
+              </div>
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-gray-400">wRC+</div>
+                <div className="text-xs font-bold text-gray-700">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '—'}</div>
+              </div>
+              <div className="text-center flex-1">
+                <div className="text-[10px] text-gray-400">oWAR</div>
+                <div className="text-xs font-bold text-gray-700">{p.offensive_war != null ? Number(p.offensive_war).toFixed(1) : '—'}</div>
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // PNW GRID WIDGET (daily trivia game link)
 // ════════════════════════════════════════════
 function PnwGridWidget() {
