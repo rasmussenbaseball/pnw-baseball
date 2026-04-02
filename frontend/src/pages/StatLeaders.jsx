@@ -96,11 +96,13 @@ function LeaderCard({ category }) {
 
 // ─── Main Page ───
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
+const SPLITS = ['All', 'Home', 'Road']
 
 export default function StatLeaders() {
   const [qualified, setQualified] = useState(true)
   const [level, setLevel] = useState('All')
-  const { data, loading, error } = useStatLeaders(2026, 5, qualified, level === 'All' ? null : level)
+  const [split, setSplit] = useState('All')
+  const { data, loading, error } = useStatLeaders(2026, 5, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
 
   if (loading) {
     return (
@@ -122,9 +124,9 @@ export default function StatLeaders() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-pnw-slate mb-1">Stat Leaders</h1>
-          <p className="text-sm text-gray-500">Top 5 in key categories · 2026 season</p>
+          <p className="text-sm text-gray-500">Top 5 in key categories · 2026 season{split !== 'All' ? ` · ${split} games` : ''}</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
             {LEVELS.map(l => (
               <button
@@ -137,6 +139,21 @@ export default function StatLeaders() {
                 }`}
               >
                 {l}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            {SPLITS.map(s => (
+              <button
+                key={s}
+                onClick={() => setSplit(s)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  split === s
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {s}
               </button>
             ))}
           </div>

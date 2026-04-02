@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { usePlayer, usePlayerGameLogs } from '../hooks/useApi'
+import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 
@@ -753,6 +753,139 @@ function GameLogTable({ title, logs, columns }) {
 }
 
 
+// ── Home / Road Splits ────────────────────────────────────────
+
+const BATTING_SPLIT_COLS = [
+  { key: 'split',  label: 'Split' },
+  { key: 'g',      label: 'G' },
+  { key: 'pa',     label: 'PA' },
+  { key: 'ab',     label: 'AB' },
+  { key: 'h',      label: 'H' },
+  { key: 'r',      label: 'R' },
+  { key: 'rbi',    label: 'RBI' },
+  { key: 'bb',     label: 'BB' },
+  { key: 'k',      label: 'K' },
+  { key: 'avg',    label: 'AVG' },
+  { key: 'obp',    label: 'OBP' },
+]
+
+const PITCHING_SPLIT_COLS = [
+  { key: 'split',     label: 'Split' },
+  { key: 'g',         label: 'G' },
+  { key: 'gs',        label: 'GS' },
+  { key: 'w',         label: 'W' },
+  { key: 'l',         label: 'L' },
+  { key: 'sv',        label: 'SV' },
+  { key: 'ip_display', label: 'IP' },
+  { key: 'h',         label: 'H' },
+  { key: 'er',        label: 'ER' },
+  { key: 'bb',        label: 'BB' },
+  { key: 'k',         label: 'K' },
+  { key: 'hr',        label: 'HR' },
+  { key: 'era',       label: 'ERA' },
+  { key: 'whip',      label: 'WHIP' },
+  { key: 'k_per_9',   label: 'K/9' },
+  { key: 'bb_per_9',  label: 'BB/9' },
+  { key: 'k_pct',     label: 'K%' },
+  { key: 'bb_pct',    label: 'BB%' },
+]
+
+function formatSplitVal(val, key) {
+  if (val == null) return '-'
+  if (['avg', 'obp', 'slg', 'ops'].includes(key)) {
+    return val >= 1 ? val.toFixed(3) : val.toFixed(3).replace(/^0/, '')
+  }
+  if (['era', 'whip', 'k_per_9', 'bb_per_9'].includes(key)) return val.toFixed(2)
+  if (['k_pct', 'bb_pct'].includes(key)) return (val * 100).toFixed(1) + '%'
+  if (key === 'ip_display') return val.toFixed(1)
+  return val
+}
+
+function SplitsSection({ splits }) {
+  if (!splits) return null
+  const { batting, pitching } = splits
+  if (!batting && !pitching) return null
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        Home / Road Splits
+      </h3>
+
+      {batting && (batting.home.g > 0 || batting.away.g > 0) && (
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Batting</h4>
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
+            <div className="min-w-[650px] px-3 sm:px-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    {BATTING_SPLIT_COLS.map(col => (
+                      <th key={col.key} className={`px-2 py-1.5 font-semibold text-gray-500 ${col.key === 'split' ? 'text-left' : 'text-right'}`}>
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { ...batting.home, split: 'Home' },
+                    { ...batting.away, split: 'Road' },
+                  ].map(row => (
+                    <tr key={row.split} className="border-b border-gray-100 hover:bg-gray-50">
+                      {BATTING_SPLIT_COLS.map(col => (
+                        <td key={col.key} className={`px-2 py-1.5 ${col.key === 'split' ? 'text-left font-semibold text-gray-700' : 'text-right tabular-nums'}`}>
+                          {col.key === 'split' ? row.split : formatSplitVal(row[col.key], col.key)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pitching && (pitching.home.g > 0 || pitching.away.g > 0) && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Pitching</h4>
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
+            <div className="min-w-[700px] px-3 sm:px-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    {PITCHING_SPLIT_COLS.map(col => (
+                      <th key={col.key} className={`px-2 py-1.5 font-semibold text-gray-500 ${col.key === 'split' ? 'text-left' : 'text-right'}`}>
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { ...pitching.home, split: 'Home' },
+                    { ...pitching.away, split: 'Road' },
+                  ].map(row => (
+                    <tr key={row.split} className="border-b border-gray-100 hover:bg-gray-50">
+                      {PITCHING_SPLIT_COLS.map(col => (
+                        <td key={col.key} className={`px-2 py-1.5 ${col.key === 'split' ? 'text-left font-semibold text-gray-700' : 'text-right tabular-nums'}`}>
+                          {col.key === 'split' ? row.split : formatSplitVal(row[col.key], col.key)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function PlayerDetail() {
@@ -761,6 +894,7 @@ export default function PlayerDetail() {
   const [headshotError, setHeadshotError] = useState(false)
   const { data, loading, error } = usePlayer(playerId, percentileSeason)
   const { data: gameLogs } = usePlayerGameLogs(playerId, 2026)
+  const { data: splits } = usePlayerSplits(playerId, 2026)
 
   if (loading && !data) {
     return (
@@ -1005,6 +1139,9 @@ export default function PlayerDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Home / Road Splits ── */}
+      <SplitsSection splits={splits} />
 
       {/* ── Summer Ball Stats ── */}
       {hasSummerStats && (

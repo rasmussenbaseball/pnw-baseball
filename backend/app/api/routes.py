@@ -450,17 +450,170 @@ def stat_leaders(
     limit: int = Query(5, description="Number of leaders per category"),
     qualified: bool = Query(False, description="Only qualified players (2 PA/game batting, 0.75 IP/game pitching)"),
     level: str = Query(None, description="Filter by division level (D1, D2, D3, NAIA, JUCO)"),
+    split: str = Query(None, description="Filter by split: 'home' or 'road'"),
 ):
     """
     Return top N players for key batting and pitching categories.
-    Batting: wRC+, HR, SB, oWAR, AVG, ISO
-    Pitching: pWAR, FIP+, SIERA, K-BB%, ERA, K
+    When split=home or split=road, aggregates from game-level data.
+    Batting: wRC+, HR, SB, oWAR, AVG, ISO (or AVG, OBP, SLG, OPS, HR, RBI for splits)
+    Pitching: pWAR, FIP+, SIERA, K-BB%, ERA, K (or ERA, WHIP, K, K/9, W, SV for splits)
     """
     with get_connection() as conn:
         cur = conn.cursor()
         min_pa = 30
         min_ip = 20
 
+        level_filter = ""
+        level_params = []
+        if level:
+            level_filter = "AND d.level = %s"
+            level_params = [level]
+
+        # ── Split mode: aggregate from game-level data ──
+        if split in ("home", "road"):
+            is_home = split == "home"
+            min_pa_split = 15  # Lower threshold for splits
+
+            # Build a CTE that aggregates game_batting by player, filtered to home or road
+            # Home = player's team_id matches game's home_team_id
+            # Road = player's team_id matches game's away_team_id
+            home_road_condition = "gb.team_id = g.home_team_id" if is_home else "gb.team_id = g.away_team_id"
+
+            batting_split_categories = [
+                {"key": "batting_avg", "label": "AVG", "col": "agg.avg", "order": "DESC", "format": "avg"},
+                {"key": "on_base_pct", "label": "OBP", "col": "agg.obp", "order": "DESC", "format": "avg"},
+                {"key": "hits", "label": "H", "col": "agg.h", "order": "DESC", "format": "int"},
+                {"key": "runs", "label": "R", "col": "agg.r", "order": "DESC", "format": "int"},
+                {"key": "rbi", "label": "RBI", "col": "agg.rbi", "order": "DESC", "format": "int"},
+                {"key": "bb", "label": "BB", "col": "agg.bb", "order": "DESC", "format": "int"},
+            ]
+
+            def fetch_batting_split_leaders(cat):
+                params = [season] + level_params + [min_pa_split, limit]
+                cur.execute(f"""
+                    WITH agg AS (
+                        SELECT gb.player_id,
+                            COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games,
+                            SUM(COALESCE(gb.at_bats, 0)) as ab,
+                            SUM(COALESCE(gb.hits, 0)) as h,
+                            SUM(COALESCE(gb.runs, 0)) as r,
+                            SUM(COALESCE(gb.rbi, 0)) as rbi,
+                            SUM(COALESCE(gb.walks, 0)) as bb,
+                            SUM(COALESCE(gb.strikeouts, 0)) as k,
+                            SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) as pa,
+                            CASE WHEN SUM(COALESCE(gb.at_bats,0)) > 0
+                                 THEN ROUND(SUM(COALESCE(gb.hits,0))::numeric / SUM(gb.at_bats), 3)
+                                 ELSE NULL END as avg,
+                            CASE WHEN SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) > 0
+                                 THEN ROUND((SUM(COALESCE(gb.hits,0)) + SUM(COALESCE(gb.walks,0)))::numeric / (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0))), 3)
+                                 ELSE NULL END as obp
+                        FROM game_batting gb
+                        JOIN games g ON g.id = gb.game_id
+                        WHERE g.season = %s AND g.status = 'final'
+                          AND {home_road_condition}
+                        GROUP BY gb.player_id
+                    )
+                    SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                           t.id as team_id, t.short_name, t.logo_url,
+                           d.level as division_level,
+                           {cat['col']} as value,
+                           true as is_qualified
+                    FROM agg
+                    JOIN players p ON agg.player_id = p.id
+                    JOIN teams t ON p.team_id = t.id
+                    JOIN conferences c ON t.conference_id = c.id
+                    JOIN divisions d ON c.division_id = d.id
+                    WHERE agg.pa >= %s
+                      AND {cat['col']} IS NOT NULL
+                      {level_filter}
+                    ORDER BY {cat['col']} {cat['order']}
+                    LIMIT %s
+                """, params)
+                rows = cur.fetchall()
+                return {
+                    "key": cat["key"],
+                    "label": cat["label"],
+                    "format": cat["format"],
+                    "leaders": [dict(r) for r in rows],
+                }
+
+            # Pitching splits
+            pit_home_road_condition = "gp.team_id = g.home_team_id" if is_home else "gp.team_id = g.away_team_id"
+            min_ip_split = 10
+
+            pitching_split_categories = [
+                {"key": "era", "label": "ERA", "col": "agg.era", "order": "ASC", "format": "float2"},
+                {"key": "whip", "label": "WHIP", "col": "agg.whip", "order": "ASC", "format": "float2"},
+                {"key": "strikeouts", "label": "K", "col": "agg.k", "order": "DESC", "format": "int"},
+                {"key": "k_per_9", "label": "K/9", "col": "agg.k_per_9", "order": "DESC", "format": "float1"},
+                {"key": "wins", "label": "W", "col": "agg.w", "order": "DESC", "format": "int"},
+                {"key": "saves", "label": "SV", "col": "agg.sv", "order": "DESC", "format": "int"},
+            ]
+
+            def fetch_pitching_split_leaders(cat):
+                params = [season] + level_params + [min_ip_split, limit]
+                cur.execute(f"""
+                    WITH agg AS (
+                        SELECT gp.player_id,
+                            COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games,
+                            SUM(CASE WHEN gp.is_starter THEN 1 ELSE 0 END) as gs,
+                            SUM(CASE WHEN UPPER(gp.decision) = 'W' THEN 1 ELSE 0 END) as w,
+                            SUM(CASE WHEN UPPER(gp.decision) = 'L' THEN 1 ELSE 0 END) as l,
+                            SUM(CASE WHEN UPPER(gp.decision) IN ('SV', 'S') THEN 1 ELSE 0 END) as sv,
+                            SUM(COALESCE(gp.innings_pitched, 0)) as ip_raw,
+                            SUM(COALESCE(gp.hits_allowed, 0)) as h,
+                            SUM(COALESCE(gp.earned_runs, 0)) as er,
+                            SUM(COALESCE(gp.walks, 0)) as bb,
+                            SUM(COALESCE(gp.strikeouts, 0)) as k,
+                            SUM(COALESCE(gp.home_runs_allowed, 0)) as hr,
+                            SUM(COALESCE(gp.batters_faced, 0)) as bf,
+                            -- Convert fractional IP (5.1 = 5 1/3) to real innings
+                            (SUM(FLOOR(COALESCE(gp.innings_pitched, 0))) + SUM(COALESCE(gp.innings_pitched, 0) - FLOOR(COALESCE(gp.innings_pitched, 0))) * 10.0 / 3.0)::numeric as real_ip,
+                            CASE WHEN (SUM(FLOOR(COALESCE(gp.innings_pitched,0))) + SUM(COALESCE(gp.innings_pitched,0) - FLOOR(COALESCE(gp.innings_pitched,0))) * 10.0 / 3.0)::numeric > 0
+                                 THEN ROUND(SUM(COALESCE(gp.earned_runs,0))::numeric * 9 / (SUM(FLOOR(COALESCE(gp.innings_pitched,0))) + SUM(COALESCE(gp.innings_pitched,0) - FLOOR(COALESCE(gp.innings_pitched,0))) * 10.0 / 3.0)::numeric, 2)
+                                 ELSE NULL END as era,
+                            CASE WHEN (SUM(FLOOR(COALESCE(gp.innings_pitched,0))) + SUM(COALESCE(gp.innings_pitched,0) - FLOOR(COALESCE(gp.innings_pitched,0))) * 10.0 / 3.0)::numeric > 0
+                                 THEN ROUND((SUM(COALESCE(gp.walks,0)) + SUM(COALESCE(gp.hits_allowed,0)))::numeric / (SUM(FLOOR(COALESCE(gp.innings_pitched,0))) + SUM(COALESCE(gp.innings_pitched,0) - FLOOR(COALESCE(gp.innings_pitched,0))) * 10.0 / 3.0)::numeric, 2)
+                                 ELSE NULL END as whip,
+                            CASE WHEN (SUM(FLOOR(COALESCE(gp.innings_pitched,0))) + SUM(COALESCE(gp.innings_pitched,0) - FLOOR(COALESCE(gp.innings_pitched,0))) * 10.0 / 3.0)::numeric > 0
+                                 THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric * 9 / (SUM(FLOOR(COALESCE(gp.innings_pitched,0))) + SUM(COALESCE(gp.innings_pitched,0) - FLOOR(COALESCE(gp.innings_pitched,0))) * 10.0 / 3.0)::numeric, 1)
+                                 ELSE NULL END as k_per_9
+                        FROM game_pitching gp
+                        JOIN games g ON g.id = gp.game_id
+                        WHERE g.season = %s AND g.status = 'final'
+                          AND {pit_home_road_condition}
+                        GROUP BY gp.player_id
+                    )
+                    SELECT p.id as player_id, p.first_name, p.last_name,
+                           t.id as team_id, t.short_name, t.logo_url,
+                           d.level as division_level,
+                           {cat['col']} as value,
+                           true as is_qualified
+                    FROM agg
+                    JOIN players p ON agg.player_id = p.id
+                    JOIN teams t ON p.team_id = t.id
+                    JOIN conferences c ON t.conference_id = c.id
+                    JOIN divisions d ON c.division_id = d.id
+                    WHERE agg.real_ip >= %s
+                      AND {cat['col']} IS NOT NULL
+                      {level_filter}
+                    ORDER BY {cat['col']} {cat['order']}
+                    LIMIT %s
+                """, params)
+                rows = cur.fetchall()
+                return {
+                    "key": cat["key"],
+                    "label": cat["label"],
+                    "format": cat["format"],
+                    "leaders": [dict(r) for r in rows],
+                }
+
+            return {
+                "batting": [fetch_batting_split_leaders(c) for c in batting_split_categories],
+                "pitching": [fetch_pitching_split_leaders(c) for c in pitching_split_categories],
+            }
+
+        # ── Normal mode: use pre-aggregated season stats ──
         batting_categories = [
             {"key": "wrc_plus", "label": "wRC+", "col": "bs.wrc_plus", "order": "DESC", "format": "int"},
             {"key": "offensive_war", "label": "WAR", "col": "bs.offensive_war", "order": "DESC", "format": "float1"},
@@ -478,12 +631,6 @@ def stat_leaders(
             {"key": "k_minus_bb_pct", "label": "K-BB%", "col": "(ps.k_pct - ps.bb_pct)", "order": "DESC", "format": "pct"},
             {"key": "era", "label": "ERA", "col": "ps.era", "order": "ASC", "format": "float2"},
         ]
-
-        level_filter = ""
-        level_params = []
-        if level:
-            level_filter = "AND d.level = %s"
-            level_params = [level]
 
         def fetch_batting_leaders(cat):
             q_join = QUALIFIED_BATTING_JOIN if qualified else ""
@@ -4652,6 +4799,219 @@ def get_player_gamelogs(
         return {
             "batting": batting_logs,
             "pitching": pitching_logs,
+        }
+
+
+@router.get("/players/{player_id}/splits")
+def get_player_splits(
+    player_id: int,
+    season: int = Query(None, description="Season year; omit for career splits"),
+):
+    """
+    Return home / road batting and pitching splits for a player.
+    Aggregates from game_batting / game_pitching + games tables.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Resolve canonical player (follow transfer links)
+        cur.execute(
+            "SELECT canonical_id FROM player_links WHERE linked_id = %s",
+            (player_id,),
+        )
+        canonical_link = cur.fetchone()
+        if canonical_link:
+            player_id = canonical_link["canonical_id"]
+
+        # Gather all player IDs (canonical + linked)
+        cur.execute(
+            "SELECT linked_id FROM player_links WHERE canonical_id = %s",
+            (player_id,),
+        )
+        linked_ids = cur.fetchall()
+        all_player_ids = [player_id] + [r["linked_id"] for r in linked_ids]
+        id_placeholders = ",".join(["%s"] * len(all_player_ids))
+
+        # Get all team IDs this player has been on (for home/away detection)
+        player_team_ids = set()
+        for pid in all_player_ids:
+            cur.execute("SELECT team_id FROM players WHERE id = %s", (pid,))
+            row = cur.fetchone()
+            if row and row["team_id"]:
+                player_team_ids.add(row["team_id"])
+
+        season_filter = ""
+        season_params = []
+        if season:
+            season_filter = "AND g.season = %s"
+            season_params = [season]
+
+        # ── Batting splits ──
+        cur.execute(f"""
+            SELECT
+                g.home_team_id, g.away_team_id,
+                gb.team_id,
+                gb.at_bats, gb.hits, gb.doubles, gb.triples, gb.home_runs,
+                gb.runs, gb.rbi, gb.walks, gb.strikeouts,
+                gb.hit_by_pitch, gb.stolen_bases, gb.caught_stealing,
+                gb.sacrifice_flies, gb.sacrifice_bunts,
+                g.game_date, g.game_number
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE gb.player_id IN ({id_placeholders})
+              AND g.status = 'final'
+              {season_filter}
+            ORDER BY g.game_date
+        """, (*all_player_ids, *season_params))
+        batting_rows = cur.fetchall()
+
+        def make_bat_split():
+            return {
+                "g": 0, "ab": 0, "h": 0,
+                "r": 0, "rbi": 0, "bb": 0, "k": 0,
+            }
+
+        bat_home = make_bat_split()
+        bat_away = make_bat_split()
+        seen_bat = set()
+
+        for r in batting_rows:
+            dedup_key = (str(r["game_date"]), r["game_number"] or 1)
+            if dedup_key in seen_bat:
+                continue
+            seen_bat.add(dedup_key)
+
+            home_tid = r["home_team_id"]
+            away_tid = r["away_team_id"]
+            row_team_id = r["team_id"]
+
+            if home_tid in player_team_ids:
+                is_home = True
+            elif away_tid in player_team_ids:
+                is_home = False
+            else:
+                is_home = (row_team_id == home_tid)
+
+            bucket = bat_home if is_home else bat_away
+            bucket["g"] += 1
+            bucket["ab"] += r["at_bats"] or 0
+            bucket["h"] += r["hits"] or 0
+            bucket["r"] += r["runs"] or 0
+            bucket["rbi"] += r["rbi"] or 0
+            bucket["bb"] += r["walks"] or 0
+            bucket["k"] += r["strikeouts"] or 0
+
+        def calc_bat_rates(s):
+            ab = s["ab"]
+            h = s["h"]
+            bb = s["bb"]
+            pa = ab + bb
+            s["pa"] = pa
+            s["avg"] = round(h / ab, 3) if ab > 0 else None
+            s["obp"] = round((h + bb) / pa, 3) if pa > 0 else None
+            return s
+
+        calc_bat_rates(bat_home)
+        calc_bat_rates(bat_away)
+
+        # ── Pitching splits ──
+        cur.execute(f"""
+            SELECT
+                g.home_team_id, g.away_team_id,
+                gp.team_id,
+                gp.innings_pitched, gp.hits_allowed, gp.earned_runs, gp.runs_allowed,
+                gp.walks, gp.strikeouts, gp.home_runs_allowed,
+                gp.hit_batters, gp.batters_faced,
+                gp.is_starter, gp.decision,
+                g.game_date, g.game_number
+            FROM game_pitching gp
+            JOIN games g ON g.id = gp.game_id
+            WHERE gp.player_id IN ({id_placeholders})
+              AND g.status = 'final'
+              {season_filter}
+            ORDER BY g.game_date
+        """, (*all_player_ids, *season_params))
+        pitching_rows = cur.fetchall()
+
+        def make_pit_split():
+            return {
+                "g": 0, "gs": 0, "w": 0, "l": 0, "sv": 0,
+                "ip": 0.0, "h": 0, "er": 0, "r": 0,
+                "bb": 0, "k": 0, "hr": 0, "hbp": 0, "bf": 0,
+            }
+
+        pit_home = make_pit_split()
+        pit_away = make_pit_split()
+        seen_pit = set()
+
+        for r in pitching_rows:
+            dedup_key = (str(r["game_date"]), r["game_number"] or 1)
+            if dedup_key in seen_pit:
+                continue
+            seen_pit.add(dedup_key)
+
+            home_tid = r["home_team_id"]
+            away_tid = r["away_team_id"]
+            row_team_id = r["team_id"]
+
+            if home_tid in player_team_ids:
+                is_home = True
+            elif away_tid in player_team_ids:
+                is_home = False
+            else:
+                is_home = (row_team_id == home_tid)
+
+            bucket = pit_home if is_home else pit_away
+            bucket["g"] += 1
+            if r["is_starter"]:
+                bucket["gs"] += 1
+            dec = (r["decision"] or "").upper()
+            if dec == "W":
+                bucket["w"] += 1
+            elif dec == "L":
+                bucket["l"] += 1
+            elif dec == "SV" or dec == "S":
+                bucket["sv"] += 1
+            bucket["ip"] += float(r["innings_pitched"] or 0)
+            bucket["h"] += r["hits_allowed"] or 0
+            bucket["er"] += r["earned_runs"] or 0
+            bucket["r"] += r["runs_allowed"] or 0
+            bucket["bb"] += r["walks"] or 0
+            bucket["k"] += r["strikeouts"] or 0
+            bucket["hr"] += r["home_runs_allowed"] or 0
+            bucket["hbp"] += r["hit_batters"] or 0
+            bucket["bf"] += r["batters_faced"] or 0
+
+        def calc_pit_rates(s):
+            ip = s["ip"]
+            # Convert fractional innings (e.g. 5.1 → 5.333)
+            whole = int(ip)
+            frac = ip - whole
+            real_ip = whole + (frac * 10) / 3.0
+            s["ip_display"] = round(ip, 1)
+            s["era"] = round(s["er"] * 9 / real_ip, 2) if real_ip > 0 else None
+            s["whip"] = round((s["bb"] + s["h"]) / real_ip, 2) if real_ip > 0 else None
+            s["k_per_9"] = round(s["k"] * 9 / real_ip, 1) if real_ip > 0 else None
+            s["bb_per_9"] = round(s["bb"] * 9 / real_ip, 1) if real_ip > 0 else None
+            s["k_pct"] = round(s["k"] / s["bf"], 3) if s["bf"] > 0 else None
+            s["bb_pct"] = round(s["bb"] / s["bf"], 3) if s["bf"] > 0 else None
+            return s
+
+        calc_pit_rates(pit_home)
+        calc_pit_rates(pit_away)
+
+        has_batting = bat_home["g"] + bat_away["g"] > 0
+        has_pitching = pit_home["g"] + pit_away["g"] > 0
+
+        return {
+            "batting": {
+                "home": bat_home,
+                "away": bat_away,
+            } if has_batting else None,
+            "pitching": {
+                "home": pit_home,
+                "away": pit_away,
+            } if has_pitching else None,
         }
 
 

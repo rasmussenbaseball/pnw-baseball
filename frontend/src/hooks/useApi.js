@@ -160,12 +160,21 @@ export function usePlayerGameLogs(playerId, season = 2026) {
 }
 
 /**
+ * Fetch player home/road splits for a season (or career if season is null).
+ */
+export function usePlayerSplits(playerId, season = 2026) {
+  const params = season ? { season } : {}
+  return useApi(`/players/${playerId}/splits`, params, [playerId, season])
+}
+
+/**
  * Fetch stat leaders (top N per category).
  */
-export function useStatLeaders(season, limit = 5, qualified = false, level = null) {
+export function useStatLeaders(season, limit = 5, qualified = false, level = null, split = null) {
   const params = { season, limit, qualified }
   if (level) params.level = level
-  return useApi('/stat-leaders', params, [season, limit, qualified, level])
+  if (split) params.split = split
+  return useApi('/stat-leaders', params, [season, limit, qualified, level, split])
 }
 
 /**
