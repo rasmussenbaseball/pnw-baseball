@@ -474,10 +474,15 @@ def stat_leaders(
             is_home = split == "home"
             min_pa_split = 15  # Lower threshold for splits
 
-            # Build a CTE that aggregates game_batting by player, filtered to home or road
-            # Home = player's team_id matches game's home_team_id
-            # Road = player's team_id matches game's away_team_id
-            home_road_condition = "gb.team_id = g.home_team_id" if is_home else "gb.team_id = g.away_team_id"
+            # Build a CTE that aggregates game_batting by player, filtered to home or road.
+            # Use the player's team from the players table (p2.team_id) since gb.team_id
+            # is often NULL. Check if the player's team is the home or away team.
+            # When away_team_id is NULL, use: home = player's team IS home_team,
+            # road = player's team IS NOT home_team.
+            if is_home:
+                home_road_condition = "p2.team_id = g.home_team_id"
+            else:
+                home_road_condition = "(p2.team_id = g.away_team_id OR (g.away_team_id IS NULL AND p2.team_id != g.home_team_id))"
 
             batting_split_categories = [
                 {"key": "batting_avg", "label": "AVG", "col": "agg.avg", "order": "DESC", "format": "avg"},
@@ -509,6 +514,7 @@ def stat_leaders(
                                  ELSE NULL END as obp
                         FROM game_batting gb
                         JOIN games g ON g.id = gb.game_id
+                        JOIN players p2 ON p2.id = gb.player_id
                         WHERE g.season = %s AND g.status = 'final'
                           AND {home_road_condition}
                         GROUP BY gb.player_id
@@ -537,8 +543,11 @@ def stat_leaders(
                     "leaders": [dict(r) for r in rows],
                 }
 
-            # Pitching splits
-            pit_home_road_condition = "gp.team_id = g.home_team_id" if is_home else "gp.team_id = g.away_team_id"
+            # Pitching splits — same logic: use player's team from players table
+            if is_home:
+                pit_home_road_condition = "p2.team_id = g.home_team_id"
+            else:
+                pit_home_road_condition = "(p2.team_id = g.away_team_id OR (g.away_team_id IS NULL AND p2.team_id != g.home_team_id))"
             min_ip_split = 10
 
             pitching_split_categories = [
@@ -580,6 +589,7 @@ def stat_leaders(
                                  ELSE NULL END as k_per_9
                         FROM game_pitching gp
                         JOIN games g ON g.id = gp.game_id
+                        JOIN players p2 ON p2.id = gp.player_id
                         WHERE g.season = %s AND g.status = 'final'
                           AND {pit_home_road_condition}
                         GROUP BY gp.player_id
@@ -4833,12 +4843,37 @@ def get_player_splits(
         id_placeholders = ",".join(["%s"] * len(all_player_ids))
 
         # Get all team IDs this player has been on (for home/away detection)
+        # Check players table AND batting/pitching stats for full history
         player_team_ids = set()
         for pid in all_player_ids:
             cur.execute("SELECT team_id FROM players WHERE id = %s", (pid,))
             row = cur.fetchone()
             if row and row["team_id"]:
                 player_team_ids.add(row["team_id"])
+        cur.execute(f"""
+            SELECT DISTINCT team_id FROM batting_stats WHERE player_id IN ({id_placeholders})
+            UNION
+            SELECT DISTINCT team_id FROM pitching_stats WHERE player_id IN ({id_placeholders})
+        """, (*all_player_ids, *all_player_ids))
+        for row in cur.fetchall():
+            if row["team_id"]:
+                player_team_ids.add(row["team_id"])
+
+        def resolve_home_away(home_tid, away_tid, row_team_id):
+            """Determine if a game was home or away for this player.
+            Returns True for home, False for away."""
+            if home_tid in player_team_ids:
+                return True
+            if away_tid and away_tid in player_team_ids:
+                return False
+            # Neither matched by ID. If home_team_id is set but NOT the player's
+            # team, the player must be the away team (common when away_team_id is NULL).
+            if home_tid and home_tid not in player_team_ids:
+                return False
+            # Last resort: use gb/gp.team_id
+            if row_team_id:
+                return row_team_id == home_tid
+            return True  # Unknown, default to home
 
         season_filter = ""
         season_params = []
@@ -4851,10 +4886,8 @@ def get_player_splits(
             SELECT
                 g.home_team_id, g.away_team_id,
                 gb.team_id,
-                gb.at_bats, gb.hits, gb.doubles, gb.triples, gb.home_runs,
+                gb.at_bats, gb.hits,
                 gb.runs, gb.rbi, gb.walks, gb.strikeouts,
-                gb.hit_by_pitch, gb.stolen_bases, gb.caught_stealing,
-                gb.sacrifice_flies, gb.sacrifice_bunts,
                 g.game_date, g.game_number
             FROM game_batting gb
             JOIN games g ON g.id = gb.game_id
@@ -4873,24 +4906,35 @@ def get_player_splits(
 
         bat_home = make_bat_split()
         bat_away = make_bat_split()
-        seen_bat = set()
 
+        def dedup_score(home_tid, away_tid):
+            """Score how confidently we can determine home/away.
+            Higher = better. Prefer rows where BOTH teams are identified
+            and the player's team is clearly one of them."""
+            score = 0
+            both_set = home_tid is not None and away_tid is not None
+            if both_set:
+                score += 10  # Strongly prefer rows with both teams identified
+            if away_tid and away_tid in player_team_ids:
+                score += 5  # Player is clearly away
+            elif home_tid in player_team_ids and both_set:
+                score += 5  # Player is clearly home (and we know the opponent)
+            elif home_tid in player_team_ids:
+                score += 2  # Player might be home, but away_team unknown
+            elif home_tid and home_tid not in player_team_ids:
+                score += 3  # Player is likely away (home is someone else)
+            return score
+
+        # Group rows by game, then pick the best row per game.
+        bat_by_game = {}
         for r in batting_rows:
             dedup_key = (str(r["game_date"]), r["game_number"] or 1)
-            if dedup_key in seen_bat:
-                continue
-            seen_bat.add(dedup_key)
+            score = dedup_score(r["home_team_id"], r["away_team_id"])
+            if dedup_key not in bat_by_game or score > bat_by_game[dedup_key][1]:
+                bat_by_game[dedup_key] = (r, score)
 
-            home_tid = r["home_team_id"]
-            away_tid = r["away_team_id"]
-            row_team_id = r["team_id"]
-
-            if home_tid in player_team_ids:
-                is_home = True
-            elif away_tid in player_team_ids:
-                is_home = False
-            else:
-                is_home = (row_team_id == home_tid)
+        for (r, _) in bat_by_game.values():
+            is_home = resolve_home_away(r["home_team_id"], r["away_team_id"], r["team_id"])
 
             bucket = bat_home if is_home else bat_away
             bucket["g"] += 1
@@ -4942,24 +4986,17 @@ def get_player_splits(
 
         pit_home = make_pit_split()
         pit_away = make_pit_split()
-        seen_pit = set()
 
+        # Group by game, pick best row (same dedup_score logic as batting)
+        pit_by_game = {}
         for r in pitching_rows:
             dedup_key = (str(r["game_date"]), r["game_number"] or 1)
-            if dedup_key in seen_pit:
-                continue
-            seen_pit.add(dedup_key)
+            score = dedup_score(r["home_team_id"], r["away_team_id"])
+            if dedup_key not in pit_by_game or score > pit_by_game[dedup_key][1]:
+                pit_by_game[dedup_key] = (r, score)
 
-            home_tid = r["home_team_id"]
-            away_tid = r["away_team_id"]
-            row_team_id = r["team_id"]
-
-            if home_tid in player_team_ids:
-                is_home = True
-            elif away_tid in player_team_ids:
-                is_home = False
-            else:
-                is_home = (row_team_id == home_tid)
+        for (r, _) in pit_by_game.values():
+            is_home = resolve_home_away(r["home_team_id"], r["away_team_id"], r["team_id"])
 
             bucket = pit_home if is_home else pit_away
             bucket["g"] += 1
@@ -5000,7 +5037,7 @@ def get_player_splits(
         calc_pit_rates(pit_home)
         calc_pit_rates(pit_away)
 
-        has_batting = bat_home["g"] + bat_away["g"] > 0
+        has_batting = bat_home["pa"] + bat_away["pa"] > 0
         has_pitching = pit_home["g"] + pit_away["g"] > 0
 
         return {
