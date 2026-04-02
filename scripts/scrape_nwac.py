@@ -746,9 +746,8 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                             grounded_into_dp=excluded.grounded_into_dp,
                             batting_avg=excluded.batting_avg, on_base_pct=excluded.on_base_pct,
                             slugging_pct=excluded.slugging_pct, ops=excluded.ops,
-                            woba=excluded.woba, wraa=excluded.wraa, wrc=excluded.wrc,
-                            wrc_plus=excluded.wrc_plus, iso=excluded.iso, babip=excluded.babip,
-                            bb_pct=excluded.bb_pct, k_pct=excluded.k_pct, offensive_war=excluded.offensive_war,
+                            iso=excluded.iso, babip=excluded.babip,
+                            bb_pct=excluded.bb_pct, k_pct=excluded.k_pct,
                             updated_at=CURRENT_TIMESTAMP""",
                         (
                             player_id, team_id, season_year, g, pa, ab, r, h, doubles, triples, hr,
@@ -851,10 +850,7 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                             bb_per_9=excluded.bb_per_9, h_per_9=excluded.h_per_9,
                             hr_per_9=excluded.hr_per_9, k_bb_ratio=excluded.k_bb_ratio,
                             k_pct=excluded.k_pct, bb_pct=excluded.bb_pct,
-                            fip=excluded.fip, xfip=excluded.xfip, siera=excluded.siera,
-                            kwera=excluded.kwera,
                             babip_against=excluded.babip_against, lob_pct=excluded.lob_pct,
-                            pitching_war=excluded.pitching_war,
                             updated_at=CURRENT_TIMESTAMP""",
                         (
                             player_id, team_id, season_year, g, gs, w, l, sv, cg, 0,
