@@ -6390,54 +6390,85 @@ def get_recruiting_guide(team_id: int):
                     "total_war": round(fr_war, 2)
                 })
 
-            # ============ ROSTER TURNOVER ============
-            roster_turnover = []
-            for i in range(len(seasons) - 1):
-                season_n = seasons[i]
-                season_n1 = seasons[i + 1]
+            # ============ ROSTER COMPOSITION ============
+            # Year-by-year: % returners, % freshmen, % transfers
+            # A "returner" was on the same team the previous season.
+            # A "freshman" has year_in_school Fr or R-Fr (back-calculated).
+            # A "transfer" is new to the team and not a freshman.
+            roster_composition = []
 
-                # Players with stats in season N
+            # Build player sets per season (reuse for efficiency)
+            players_by_season = {}
+            for s in seasons:
                 cur.execute("""
                     SELECT DISTINCT player_id FROM batting_stats
                     WHERE team_id = %s AND season = %s
                     UNION
                     SELECT DISTINCT player_id FROM pitching_stats
                     WHERE team_id = %s AND season = %s
-                """, (team_id, season_n, team_id, season_n))
-                players_n = set(r['player_id'] for r in cur.fetchall())
+                """, (team_id, s, team_id, s))
+                players_by_season[s] = set(r['player_id'] for r in cur.fetchall())
 
-                # Players with stats in season N+1
-                cur.execute("""
-                    SELECT DISTINCT player_id FROM batting_stats
-                    WHERE team_id = %s AND season = %s
-                    UNION
-                    SELECT DISTINCT player_id FROM pitching_stats
-                    WHERE team_id = %s AND season = %s
-                """, (team_id, season_n1, team_id, season_n1))
-                players_n1 = set(r['player_id'] for r in cur.fetchall())
+            # Build freshman set per season using back-calculated class year
+            # (reuse class_to_offset from freshman production section above)
+            fresh_by_season = {}
+            for s in seasons:
+                fresh_ids = set()
+                for pid in players_by_season.get(s, set()):
+                    # Look up this player's year_in_school and ref_year
+                    # to back-calculate if they were a freshman in season s
+                    pass
+                fresh_by_season[s] = fresh_ids
 
-                # Seniors in season N (Sr or R-Sr)
-                cur.execute("""
-                    SELECT DISTINCT p.id FROM players p
-                    WHERE p.team_id = %s AND p.id = ANY(%s)
-                      AND p.year_in_school IN ('Sr', 'R-Sr')
-                """, (team_id, list(players_n) if players_n else [0]))
-                seniors_n = set(r['id'] for r in cur.fetchall())
+            # Use the same back-calculation approach as freshman production
+            # Get all players with year_in_school for this team
+            cur.execute("""
+                SELECT p.id, p.year_in_school,
+                       COALESCE(p.roster_year, (
+                           SELECT MAX(season) FROM (
+                               SELECT season FROM batting_stats WHERE player_id = p.id AND team_id = %s
+                               UNION
+                               SELECT season FROM pitching_stats WHERE player_id = p.id AND team_id = %s
+                           ) s
+                       )) as ref_year
+                FROM players p
+                WHERE p.team_id = %s AND p.year_in_school IS NOT NULL
+            """, (team_id, team_id, team_id))
 
-                non_seniors_n = players_n - seniors_n
-                returnees = len(non_seniors_n & players_n1)
-                new_players = len(players_n1 - players_n)
-                seniors_graduated = len(seniors_n)
-                non_senior_total = len(non_seniors_n)
+            # Map player_id -> their freshman season
+            player_fresh_season = {}
+            for r in cur.fetchall():
+                offset = class_to_offset.get(r['year_in_school'])
+                if offset is not None and r['ref_year']:
+                    player_fresh_season[r['id']] = int(r['ref_year']) - offset
 
-                roster_turnover.append({
-                    "from_season": season_n,
-                    "to_season": season_n1,
-                    "seniors_graduated": seniors_graduated,
-                    "non_seniors_returned": returnees,
-                    "non_seniors_total": non_senior_total,
-                    "new_players": new_players,
-                    "retention_pct": round(returnees / non_senior_total, 4) if non_senior_total > 0 else 0
+            for s in seasons:
+                roster = players_by_season.get(s, set())
+                total = len(roster)
+                if total == 0:
+                    continue
+
+                prev = players_by_season.get(s - 1, set())
+                returners = roster & prev
+                new_players = roster - prev
+
+                freshmen = set()
+                transfers = set()
+                for pid in new_players:
+                    if player_fresh_season.get(pid) == s:
+                        freshmen.add(pid)
+                    else:
+                        transfers.add(pid)
+
+                roster_composition.append({
+                    "season": s,
+                    "total": total,
+                    "returners": len(returners),
+                    "freshmen": len(freshmen),
+                    "transfers": len(transfers),
+                    "returner_pct": round(len(returners) / total, 4),
+                    "freshman_pct": round(len(freshmen) / total, 4),
+                    "transfer_pct": round(len(transfers) / total, 4),
                 })
 
             # ============ REDSHIRT RATE ============
@@ -6742,7 +6773,7 @@ def get_recruiting_guide(team_id: int):
                 "season_stats": season_stats,
                 "roster_overview": roster_overview,
                 "freshman_production": freshman_production,
-                "roster_turnover": roster_turnover,
+                "roster_composition": roster_composition,
                 "redshirt_rate": redshirt_rate,
                 "avg_size_by_position": avg_size_by_position,
                 "player_hometowns": player_hometowns,

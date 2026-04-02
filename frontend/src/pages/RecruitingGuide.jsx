@@ -391,44 +391,69 @@ function FreshmanProduction({ freshmanProduction, loading }) {
   )
 }
 
-// Roster Turnover Component
-function RosterTurnover({ rosterTurnover, loading }) {
-  if (loading || !rosterTurnover || rosterTurnover.length === 0) {
+// Roster Composition Component
+function RosterComposition({ rosterComposition, loading }) {
+  if (loading || !rosterComposition || rosterComposition.length === 0) {
     return null
   }
 
-  const data = rosterTurnover.map((rt) => ({
-    transition: `${rt.from_season} → ${rt.to_season}`,
-    seniors_graduated: rt.seniors_graduated || 0,
-    non_seniors_returned: rt.non_seniors_returned || 0,
-    new_players: rt.new_players || 0,
-    retention_pct: (parseFloat(rt.retention_pct) * 100).toFixed(1),
+  const data = rosterComposition.map((rc) => ({
+    season: String(rc.season),
+    Returners: rc.returners || 0,
+    Freshmen: rc.freshmen || 0,
+    Transfers: rc.transfers || 0,
+    total: rc.total || 0,
+    returner_pct: (parseFloat(rc.returner_pct) * 100).toFixed(1),
+    freshman_pct: (parseFloat(rc.freshman_pct) * 100).toFixed(1),
+    transfer_pct: (parseFloat(rc.transfer_pct) * 100).toFixed(1),
   }))
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border border-gray-100">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">Roster Turnover Year-over-Year</h3>
-      <p className="text-sm text-gray-500 mb-4">Retention % excludes graduating seniors</p>
+      <h3 className="text-lg font-bold text-gray-900 mb-4">Roster Composition</h3>
+      <p className="text-sm text-gray-500 mb-4">Year-by-year breakdown of returners, freshmen, and transfers</p>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="transition" stroke="#6b7280" />
+          <XAxis dataKey="season" stroke="#6b7280" />
           <YAxis stroke="#6b7280" />
-          <Tooltip contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }} />
+          <Tooltip
+            contentStyle={{ backgroundColor: '#fff', border: `1px solid ${TEAL_PRIMARY}` }}
+            formatter={(value, name, props) => {
+              const total = props.payload.total
+              const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
+              return [`${value} (${pct}%)`, name]
+            }}
+          />
           <Legend />
-          <Bar dataKey="non_seniors_returned" stackId="roster" fill={TEAL_PRIMARY} name="Returning Non-Seniors" />
-          <Bar dataKey="seniors_graduated" stackId="roster" fill="#94a3b8" name="Seniors Graduated" />
-          <Bar dataKey="new_players" stackId="roster" fill="#f97316" name="New Players" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="Returners" stackId="roster" fill={TEAL_PRIMARY} name="Returners" />
+          <Bar dataKey="Freshmen" stackId="roster" fill="#f97316" name="Freshmen" />
+          <Bar dataKey="Transfers" stackId="roster" fill="#8b5cf6" name="Transfers" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
-      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-        {data.map((d, idx) => (
-          <div key={idx} className="text-center p-2 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500">{d.transition}</p>
-            <p className="text-lg font-bold text-nw-teal">{d.retention_pct}%</p>
-            <p className="text-xs text-gray-500">non-senior retention</p>
-          </div>
-        ))}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-2 px-3 font-semibold text-gray-900">Season</th>
+              <th className="text-center py-2 px-3 font-semibold text-gray-900">Roster</th>
+              <th className="text-center py-2 px-3 font-semibold" style={{ color: TEAL_PRIMARY }}>Returners</th>
+              <th className="text-center py-2 px-3 font-semibold text-orange-500">Freshmen</th>
+              <th className="text-center py-2 px-3 font-semibold text-violet-500">Transfers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d, idx) => (
+              <tr key={idx} className="border-b border-gray-100">
+                <td className="py-2 px-3 font-medium text-gray-900">{d.season}</td>
+                <td className="py-2 px-3 text-center text-gray-600">{d.total}</td>
+                <td className="py-2 px-3 text-center font-semibold" style={{ color: TEAL_PRIMARY }}>{d.Returners} <span className="text-xs text-gray-400">({d.returner_pct}%)</span></td>
+                <td className="py-2 px-3 text-center font-semibold text-orange-500">{d.Freshmen} <span className="text-xs text-gray-400">({d.freshman_pct}%)</span></td>
+                <td className="py-2 px-3 text-center font-semibold text-violet-500">{d.Transfers} <span className="text-xs text-gray-400">({d.transfer_pct}%)</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
@@ -641,8 +666,8 @@ export default function RecruitingGuide() {
             {/* Freshman Production */}
             <FreshmanProduction freshmanProduction={guideData?.freshman_production} loading={loading} />
 
-            {/* Roster Turnover */}
-            <RosterTurnover rosterTurnover={guideData?.roster_turnover} loading={loading} />
+            {/* Roster Composition */}
+            <RosterComposition rosterComposition={guideData?.roster_composition} loading={loading} />
 
             {/* Average Size by Position */}
             <AverageSizeByPosition avgSizeByPosition={guideData?.avg_size_by_position} loading={loading} />
