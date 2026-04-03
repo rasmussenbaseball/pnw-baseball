@@ -247,8 +247,12 @@ def _warm_nwac_session(season_year):
 
 
 def _nwac_fetch(url, timeout=30):
-    """Fetch a URL from nwacsports.com using the warmed cloudscraper session."""
-    global _nwac_session
+    """Fetch a URL from nwacsports.com using the warmed cloudscraper session.
+
+    If the session gets rate-limited (non-200 with small response), force a
+    fresh session + warmup before raising so the retry loop gets a clean session.
+    """
+    global _nwac_session, _nwac_warmed_for
     if _nwac_session is None:
         _warm_nwac_session(2026)
 
@@ -261,6 +265,10 @@ def _nwac_fetch(url, timeout=30):
             logger.info(f"    NWAC: got status {status} but response has content ({len(text)} bytes) — using it")
         return text
 
+    # Rate-limited or WAF challenge — force fresh session on next attempt
+    logger.info(f"    NWAC: session appears rate-limited (HTTP {status}, {len(text)} bytes) — will re-warm")
+    _nwac_warmed_for = None  # Force re-warmup on next call
+    _nwac_session = None
     raise requests.RequestException(f"HTTP Error {status}: {len(text)} bytes, has_table={'<table' in text}")
 
 
@@ -293,7 +301,13 @@ def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
         except Exception as e:
             logger.warning(f"  Attempt {attempt+1}/{retries} failed for {url}: {e}")
             if attempt < retries - 1:
-                time.sleep(random.uniform(3.0, 6.0) if use_nwac else 3 ** attempt)
+                if use_nwac:
+                    # Longer backoff for NWAC — WAF rate limits aggressively
+                    backoff = random.uniform(8.0, 15.0) * (attempt + 1)
+                    logger.info(f"    NWAC backoff: waiting {backoff:.0f}s before retry...")
+                    time.sleep(backoff)
+                else:
+                    time.sleep(3 ** attempt)
 
     logger.error(f"All retries failed for {url}")
     return None
@@ -1402,17 +1416,39 @@ def get_team_id_by_name(cur, short_name):
     return row["id"] if row else None
 
 
-def get_team_id_by_school(cur, name_fragment):
-    """Fuzzy lookup team by school_name or short_name."""
+def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
+    """Fuzzy lookup team by school_name or short_name.
+
+    If prefer_division_of_team_id is given, prefer teams in the same division
+    to avoid e.g. 'Clark' matching L&C (D3) instead of Clark College (NWAC).
+    """
     cur.execute("""
-        SELECT id, short_name FROM teams
-        WHERE LOWER(short_name) = LOWER(%s)
-           OR LOWER(school_name) LIKE LOWER(%s)
-           OR LOWER(name) LIKE LOWER(%s)
-        LIMIT 1
+        SELECT t.id, t.short_name, c.division_id FROM teams t
+        JOIN conferences c ON c.id = t.conference_id
+        WHERE LOWER(t.short_name) = LOWER(%s)
+           OR LOWER(t.school_name) LIKE LOWER(%s)
+           OR LOWER(t.name) LIKE LOWER(%s)
     """, (name_fragment, f"%{name_fragment}%", f"%{name_fragment}%"))
-    row = cur.fetchone()
-    return row["id"] if row else None
+    rows = cur.fetchall()
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]["id"]
+
+    # Multiple matches — prefer same division if we know which division to prefer
+    if prefer_division_of_team_id:
+        cur.execute("""
+            SELECT c.division_id FROM teams t
+            JOIN conferences c ON c.id = t.conference_id
+            WHERE t.id = %s
+        """, (prefer_division_of_team_id,))
+        div_row = cur.fetchone()
+        if div_row:
+            same_div = [r for r in rows if r["division_id"] == div_row["division_id"]]
+            if same_div:
+                return same_div[0]["id"]
+
+    return rows[0]["id"]
 
 
 def find_player_id(cur, team_id, player_name, season):
@@ -1470,38 +1506,75 @@ def upsert_game(cur, game_data):
     """
     source_url = game_data.get("source_url") or game_data.get("box_score_url") or ""
 
-    # Check if game already exists
+    # Check if game already exists — first by source_url, then by date + teams
+    game_id = None
+
     if source_url:
         cur.execute("SELECT id FROM games WHERE source_url = %s", (source_url,))
         existing = cur.fetchone()
         if existing:
             game_id = existing["id"]
-            # Update score if it changed
+
+    # If no source_url match, check by date + team IDs (either home/away order)
+    # This prevents duplicates when both teams' schedules are scraped
+    if not game_id:
+        home_id = game_data.get("home_team_id")
+        away_id = game_data.get("away_team_id")
+        gdate = game_data.get("game_date")
+        gnum = game_data.get("game_number", 1)
+        h_score = game_data.get("home_score")
+        a_score = game_data.get("away_score")
+
+        if home_id and away_id and gdate:
+            # Check both orientations — the same game might be stored with teams swapped
             cur.execute("""
-                UPDATE games SET
-                    home_score = COALESCE(%s, home_score),
-                    away_score = COALESCE(%s, away_score),
-                    home_hits = COALESCE(%s, home_hits),
-                    away_hits = COALESCE(%s, away_hits),
-                    home_errors = COALESCE(%s, home_errors),
-                    away_errors = COALESCE(%s, away_errors),
-                    home_line_score = COALESCE(%s, home_line_score),
-                    away_line_score = COALESCE(%s, away_line_score),
-                    innings = COALESCE(%s, innings),
-                    game_score = COALESCE(%s, game_score),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (
-                game_data.get("home_score"), game_data.get("away_score"),
-                game_data.get("home_hits"), game_data.get("away_hits"),
-                game_data.get("home_errors"), game_data.get("away_errors"),
-                json.dumps(game_data["home_line_score"]) if game_data.get("home_line_score") else None,
-                json.dumps(game_data["away_line_score"]) if game_data.get("away_line_score") else None,
-                game_data.get("innings"),
-                game_data.get("game_score"),
-                game_id,
-            ))
-            return game_id
+                SELECT id, home_team_id, away_team_id, home_score, away_score FROM games
+                WHERE game_date = %s AND game_number = %s AND (
+                    (home_team_id = %s AND away_team_id = %s)
+                    OR (home_team_id = %s AND away_team_id = %s)
+                )
+            """, (gdate, gnum, home_id, away_id, away_id, home_id))
+            matches = cur.fetchall()
+            for m in matches:
+                # Verify scores match (in either orientation)
+                if h_score is not None and a_score is not None:
+                    if (m["home_score"] == h_score and m["away_score"] == a_score):
+                        game_id = m["id"]
+                        break
+                    if (m["home_score"] == a_score and m["away_score"] == h_score):
+                        game_id = m["id"]
+                        break
+                else:
+                    game_id = m["id"]
+                    break
+
+    if game_id:
+        # Update existing game
+        cur.execute("""
+            UPDATE games SET
+                home_score = COALESCE(%s, home_score),
+                away_score = COALESCE(%s, away_score),
+                home_hits = COALESCE(%s, home_hits),
+                away_hits = COALESCE(%s, away_hits),
+                home_errors = COALESCE(%s, home_errors),
+                away_errors = COALESCE(%s, away_errors),
+                home_line_score = COALESCE(%s, home_line_score),
+                away_line_score = COALESCE(%s, away_line_score),
+                innings = COALESCE(%s, innings),
+                game_score = COALESCE(%s, game_score),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (
+            game_data.get("home_score"), game_data.get("away_score"),
+            game_data.get("home_hits"), game_data.get("away_hits"),
+            game_data.get("home_errors"), game_data.get("away_errors"),
+            json.dumps(game_data["home_line_score"]) if game_data.get("home_line_score") else None,
+            json.dumps(game_data["away_line_score"]) if game_data.get("away_line_score") else None,
+            game_data.get("innings"),
+            game_data.get("game_score"),
+            game_id,
+        ))
+        return game_id
 
     # Insert new game
     cur.execute("""
@@ -1799,7 +1872,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             # Try to resolve opponent team_id
             with get_connection() as conn:
                 cur = conn.cursor()
-                opp_id = get_team_id_by_school(cur, opponent_clean)
+                opp_id = get_team_id_by_school(cur, opponent_clean, prefer_division_of_team_id=team_id)
                 if opp_id:
                     if is_away:
                         game_data["home_team_id"] = opp_id
@@ -1963,7 +2036,17 @@ def main():
     total_scraped = 0
     total_errors = 0
 
+    nwac_team_count = 0
     for short_name, config in teams_to_scrape.items():
+        # Add extra delay between NWAC teams to avoid WAF rate limiting
+        is_nwac = short_name in NWAC_TEAM_SLUGS
+        if is_nwac:
+            nwac_team_count += 1
+            if nwac_team_count > 1:
+                pause = random.uniform(5.0, 10.0)
+                logger.info(f"  NWAC inter-team pause: {pause:.0f}s")
+                time.sleep(pause)
+
         found, scraped, errs = scrape_team_boxscores(
             short_name, config, args.season, dry_run=args.dry_run,
             since_date=args.since
