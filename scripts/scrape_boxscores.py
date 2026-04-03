@@ -180,6 +180,15 @@ TEAM_ALIASES = {
     "shoreline": "Shoreline", "spokane": "Spokane", "tacoma": "Tacoma",
     "bellevue": "Bellevue", "centralia": "Centralia",
     "clackamas": "Clackamas", "pierce": "Pierce",
+    "bigbend": "Big Bend", "bluemountain": "Blue Mountain",
+    "chemeketa": "Chemeketa", "columbiabasin": "Columbia Basin",
+    "douglas": "Douglas", "graysharbor": "Grays Harbor",
+    "greenriver": "GRC", "lane": "Lane", "linnbenton": "Linn-Benton",
+    "lowercolumbia": "Lower Columbia", "mthood": "Mt. Hood",
+    "olympic": "Olympic", "skagitvalley": "Skagit",
+    "southwesternoregon": "SW Oregon", "treasurevalley": "Treasure Valley",
+    "umpqua": "Umpqua", "wallawalla": "Walla Walla",
+    "wenatcheevalley": "Wenatchee Valley", "yakimavalley": "Yakima Valley",
 }
 
 
