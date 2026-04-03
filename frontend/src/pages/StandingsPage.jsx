@@ -55,7 +55,7 @@ function ConferenceTable({ conference }) {
                 <div className="flex items-center gap-1.5 min-w-0">
                   {team.rank && team.is_pnw && (
                     <span className="text-[9px] font-bold text-gray-400 w-4 text-right shrink-0">
-                      {team.rank}
+                      {Math.round(team.rank)}
                     </span>
                   )}
                   {team.is_pnw ? (
@@ -162,7 +162,7 @@ function OverallTable({ teams }) {
                     </span>
                   </td>
                   <td className="text-center px-0.5 py-1 text-[10px] font-mono text-gray-500">
-                    {team.rank || <span className="text-gray-300">-</span>}
+                    {team.rank ? Math.round(team.rank) : <span className="text-gray-300">-</span>}
                   </td>
                   <td className="text-center px-0.5 py-1 text-gray-500">
                     {team.conf_wins || team.conf_losses

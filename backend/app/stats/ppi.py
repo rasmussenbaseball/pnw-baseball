@@ -84,6 +84,8 @@ def compute_ppi_for_division(teams: list[dict]) -> list[dict]:
     # Invert FIP: lower FIP is better, so negate for z-score
     fips = [t["team_fip"] for t in teams]
     win_pcts = [t["win_pct"] for t in teams]
+    # For conf win%, only use teams that actually play conference games
+    conf_pcts_active = [t["conf_win_pct"] for t in teams if t["conf_wins"] + t["conf_losses"] > 0]
     conf_pcts = [t["conf_win_pct"] for t in teams]
 
     # ── Compute means and standard deviations ──
@@ -91,7 +93,9 @@ def compute_ppi_for_division(teams: list[dict]) -> list[dict]:
     off_mean, off_std = _mean(offenses), _std_dev(offenses)
     fip_mean, fip_std = _mean(fips), _std_dev(fips)
     win_mean, win_std = _mean(win_pcts), _std_dev(win_pcts)
-    conf_mean, conf_std = _mean(conf_pcts), _std_dev(conf_pcts)
+    # Use only conference-playing teams for conf stats
+    conf_mean = _mean(conf_pcts_active) if conf_pcts_active else 0.0
+    conf_std = _std_dev(conf_pcts_active) if conf_pcts_active else 0.0
 
     # ── Score each team ──
     for t in teams:
@@ -100,7 +104,9 @@ def compute_ppi_for_division(teams: list[dict]) -> list[dict]:
         z_off = _z_score(t["team_wrc_plus"], off_mean, off_std)
         z_fip = -_z_score(t["team_fip"], fip_mean, fip_std)  # inverted
         z_win = _z_score(t["win_pct"], win_mean, win_std)
-        z_conf = _z_score(t["conf_win_pct"], conf_mean, conf_std)
+        # Teams with no conference games get a neutral z-score (0) instead of being penalized
+        has_conf_games = t["conf_wins"] + t["conf_losses"] > 0
+        z_conf = _z_score(t["conf_win_pct"], conf_mean, conf_std) if has_conf_games else 0.0
 
         # Weighted composite z-score
         composite_z = (
