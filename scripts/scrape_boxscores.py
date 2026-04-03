@@ -215,22 +215,33 @@ def _warm_nwac_session(season_year):
 
 
 def _nwac_fetch(url, timeout=30):
-    """Fetch a URL from nwacsports.com using curl_cffi or cloudscraper."""
+    """Fetch a URL from nwacsports.com using curl_cffi or cloudscraper.
+
+    PrestoSports behind AWS WAF often returns 405 status even when the
+    response body contains the actual page content. We check for HTML
+    table content rather than relying on status codes.
+    """
+    resp = None
     if _have_curl_cffi:
         resp = cffi_requests.get(url, impersonate="chrome", timeout=timeout)
-        resp.raise_for_status()
-        return resp.text
     elif _have_cloudscraper:
         sess = cloudscraper.create_scraper(
             browser={"browser": "chrome", "platform": "darwin", "mobile": False},
         )
         resp = sess.get(url, timeout=timeout)
-        resp.raise_for_status()
-        return resp.text
     else:
         resp = requests.get(url, headers={"User-Agent": USER_AGENTS[0]}, timeout=timeout)
-        resp.raise_for_status()
-        return resp.text
+
+    text = resp.text
+    status = resp.status_code
+
+    # WAF sometimes returns 405 but with real page content
+    if status == 200 or (status in (403, 405) and len(text) > 10000 and "<table" in text):
+        if status != 200:
+            logger.info(f"    NWAC: got status {status} but response has content ({len(text)} bytes) — using it")
+        return text
+
+    raise requests.RequestException(f"HTTP Error {status}: {len(text)} bytes, has_table={'<table' in text}")
 
 
 def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
