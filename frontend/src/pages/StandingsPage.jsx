@@ -23,80 +23,84 @@ function ConferenceTable({ conference }) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
+      <div className="px-2.5 py-1.5 border-b border-gray-100 flex items-center gap-2">
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
           {conference.division_level}
         </span>
-        <h3 className="text-sm font-bold text-gray-800 truncate">
+        <h3 className="text-xs font-bold text-gray-800 truncate">
           {conference.conference_name}
         </h3>
       </div>
 
       {/* Table */}
-      <table className="w-full text-xs">
+      <table className="w-full text-[11px]">
         <thead>
-          <tr className="text-[10px] text-gray-500 uppercase tracking-wider">
-            <th className="text-left pl-3 pr-1 py-1.5 font-semibold">Team</th>
-            <th className="text-center px-1 py-1.5 font-semibold w-16">Conf</th>
-            <th className="text-center px-1 py-1.5 font-semibold w-16">Overall</th>
-            <th className="text-center px-1 pr-3 py-1.5 font-semibold w-12">Pct</th>
+          <tr className="text-[9px] text-gray-400 uppercase tracking-wider">
+            <th className="text-left pl-2.5 pr-1 py-1 font-semibold">Team</th>
+            <th className="text-center px-0.5 py-1 font-semibold w-[52px]">Conf</th>
+            <th className="text-center px-0.5 py-1 font-semibold w-10">Pct</th>
+            <th className="text-center px-0.5 py-1 font-semibold w-[52px]">All</th>
+            <th className="text-center px-0.5 pr-2.5 py-1 font-semibold w-10">Pct</th>
           </tr>
         </thead>
         <tbody>
-          {conference.teams.map((team, i) => (
+          {conference.teams.map((team) => (
             <tr
               key={team.id}
-              className={`border-t border-gray-50 transition-colors ${
-                team.is_pnw
-                  ? 'hover:bg-teal-50/50'
-                  : 'opacity-50'
+              className={`border-t border-gray-50 ${
+                team.is_pnw ? 'hover:bg-teal-50/50' : 'opacity-50'
               }`}
             >
-              <td className="pl-3 pr-1 py-1.5">
-                {team.is_pnw ? (
-                  <Link
-                    to={`/team/${team.id}`}
-                    className="flex items-center gap-1.5 hover:text-nw-teal transition-colors"
-                  >
-                    {team.logo_url && (
-                      <img
-                        src={team.logo_url}
-                        alt=""
-                        className="w-4 h-4 object-contain shrink-0"
-                        onError={(e) => { e.target.style.display = 'none' }}
-                      />
-                    )}
-                    <span className="font-semibold text-nw-teal truncate">{team.short_name}</span>
-                  </Link>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    {team.logo_url && (
-                      <img
-                        src={team.logo_url}
-                        alt=""
-                        className="w-4 h-4 object-contain shrink-0 grayscale"
-                        onError={(e) => { e.target.style.display = 'none' }}
-                      />
-                    )}
-                    <span className="font-medium text-gray-400 truncate">{team.short_name}</span>
-                  </div>
-                )}
+              <td className="pl-2.5 pr-1 py-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {team.rank && team.is_pnw && (
+                    <span className="text-[9px] font-bold text-gray-400 w-4 text-right shrink-0">
+                      {team.rank}
+                    </span>
+                  )}
+                  {team.is_pnw ? (
+                    <Link
+                      to={`/team/${team.id}`}
+                      className="flex items-center gap-1 hover:text-nw-teal transition-colors min-w-0"
+                    >
+                      {team.logo_url && (
+                        <img src={team.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                          onError={(e) => { e.target.style.display = 'none' }} />
+                      )}
+                      <span className="font-semibold text-nw-teal truncate">{team.short_name}</span>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-1 min-w-0">
+                      {team.logo_url && (
+                        <img src={team.logo_url} alt="" className="w-4 h-4 object-contain shrink-0 grayscale"
+                          onError={(e) => { e.target.style.display = 'none' }} />
+                      )}
+                      <span className="font-medium text-gray-400 truncate">{team.short_name}</span>
+                    </div>
+                  )}
+                </div>
               </td>
-              <td className={`text-center px-1 py-1.5 ${team.is_pnw ? 'text-gray-600' : 'text-gray-400'}`}>
+              <td className={`text-center px-0.5 py-1 ${team.is_pnw ? 'text-gray-600' : 'text-gray-400'}`}>
                 {team.conf_wins || team.conf_losses
                   ? `${team.conf_wins}-${team.conf_losses}`
                   : <span className="text-gray-300">-</span>
                 }
               </td>
-              <td className={`text-center px-1 py-1.5 ${team.is_pnw ? 'text-gray-600' : 'text-gray-400'}`}>
+              <td className={`text-center px-0.5 py-1 font-mono text-[10px] ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
+                {team.conf_wins || team.conf_losses
+                  ? formatPct(team.conf_win_pct)
+                  : <span className="text-gray-300">-</span>
+                }
+              </td>
+              <td className={`text-center px-0.5 py-1 ${team.is_pnw ? 'text-gray-600' : 'text-gray-400'}`}>
                 {team.wins || team.losses
                   ? `${team.wins}-${team.losses}`
                   : <span className="text-gray-300">-</span>
                 }
               </td>
-              <td className={`text-center px-1 pr-3 py-1.5 font-mono ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
-                {team.conf_wins || team.conf_losses
-                  ? formatPct(team.conf_win_pct)
+              <td className={`text-center px-0.5 pr-2.5 py-1 font-mono text-[10px] ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
+                {team.wins || team.losses
+                  ? formatPct(team.win_pct)
                   : <span className="text-gray-300">-</span>
                 }
               </td>
@@ -112,21 +116,23 @@ function ConferenceTable({ conference }) {
 function OverallTable({ teams }) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <h3 className="text-base font-bold text-gray-800">Overall PNW Standings</h3>
-        <p className="text-xs text-gray-500 mt-0.5">All 57 teams ranked by overall win percentage</p>
+      <div className="px-3 py-2 border-b border-gray-100">
+        <h3 className="text-sm font-bold text-gray-800">Overall PNW Standings</h3>
+        <p className="text-[10px] text-gray-500 mt-0.5">All PNW teams ranked by overall win percentage</p>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-[10px] text-gray-500 uppercase tracking-wider bg-gray-50">
-              <th className="text-center px-2 py-2 font-semibold w-8">#</th>
-              <th className="text-left pl-3 pr-1 py-2 font-semibold">Team</th>
-              <th className="text-center px-2 py-2 font-semibold w-12">Div</th>
-              <th className="text-center px-2 py-2 font-semibold w-14">Conf</th>
-              <th className="text-center px-2 py-2 font-semibold w-16">Overall</th>
-              <th className="text-center px-2 py-2 font-semibold w-12">Pct</th>
+            <tr className="text-[9px] text-gray-400 uppercase tracking-wider bg-gray-50">
+              <th className="text-center pl-2 pr-0.5 py-1.5 font-semibold w-6">#</th>
+              <th className="text-left pl-2 pr-1 py-1.5 font-semibold">Team</th>
+              <th className="text-center px-1 py-1.5 font-semibold w-9">Div</th>
+              <th className="text-center px-0.5 py-1.5 font-semibold w-8">Rank</th>
+              <th className="text-center px-0.5 py-1.5 font-semibold w-[52px]">Conf</th>
+              <th className="text-center px-0.5 py-1.5 font-semibold w-10">Pct</th>
+              <th className="text-center px-0.5 py-1.5 font-semibold w-[52px]">All</th>
+              <th className="text-center px-0.5 pr-2 py-1.5 font-semibold w-10">Pct</th>
             </tr>
           </thead>
           <tbody>
@@ -135,37 +141,45 @@ function OverallTable({ teams }) {
               return (
                 <tr
                   key={team.id}
-                  className={`border-t border-gray-50 hover:bg-teal-50/50 transition-colors ${i < 3 ? 'bg-amber-50/30' : ''}`}
+                  className={`border-t border-gray-50 hover:bg-teal-50/50 ${i < 3 ? 'bg-amber-50/30' : ''}`}
                 >
-                  <td className="text-center px-2 py-1.5 text-gray-400 font-mono">{i + 1}</td>
-                  <td className="pl-3 pr-1 py-1.5">
+                  <td className="text-center pl-2 pr-0.5 py-1 text-gray-400 font-mono text-[10px]">{i + 1}</td>
+                  <td className="pl-2 pr-1 py-1">
                     <Link
                       to={`/team/${team.id}`}
                       className="flex items-center gap-1.5 hover:text-nw-teal transition-colors"
                     >
                       {team.logo_url && (
-                        <img
-                          src={team.logo_url}
-                          alt=""
-                          className="w-4 h-4 object-contain shrink-0"
-                          onError={(e) => { e.target.style.display = 'none' }}
-                        />
+                        <img src={team.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                          onError={(e) => { e.target.style.display = 'none' }} />
                       )}
                       <span className="font-medium text-gray-800">{team.short_name}</span>
                     </Link>
                   </td>
-                  <td className="text-center px-2 py-1.5">
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
+                  <td className="text-center px-1 py-1">
+                    <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${badgeClass}`}>
                       {team.division_level}
                     </span>
                   </td>
-                  <td className="text-center px-2 py-1.5 text-gray-500">
-                    {team.conference_abbrev}
+                  <td className="text-center px-0.5 py-1 text-[10px] font-mono text-gray-500">
+                    {team.rank || <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="text-center px-2 py-1.5 text-gray-600 font-medium">
+                  <td className="text-center px-0.5 py-1 text-gray-500">
+                    {team.conf_wins || team.conf_losses
+                      ? `${team.conf_wins}-${team.conf_losses}`
+                      : <span className="text-gray-300">-</span>
+                    }
+                  </td>
+                  <td className="text-center px-0.5 py-1 font-mono text-[10px] text-gray-500">
+                    {team.conf_wins || team.conf_losses
+                      ? formatPct(team.conf_win_pct)
+                      : <span className="text-gray-300">-</span>
+                    }
+                  </td>
+                  <td className="text-center px-0.5 py-1 text-gray-600 font-medium">
                     {team.wins}-{team.losses}
                   </td>
-                  <td className="text-center px-2 py-1.5 font-mono text-gray-700 font-medium">
+                  <td className="text-center px-0.5 pr-2 py-1 font-mono text-[10px] text-gray-700 font-medium">
                     {formatPct(team.win_pct)}
                   </td>
                 </tr>
@@ -255,7 +269,7 @@ export default function StandingsPage() {
 
             return (
               <div key={div.name}>
-                <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">
+                <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                   {div.name}
                 </h2>
                 <div className={`grid gap-3 ${

@@ -394,15 +394,59 @@ def standings(
                    d.id as division_id, d.name as division_name, d.level as division_level,
                    COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
                    COALESCE(s.conference_wins, 0) as conf_wins,
+                   COALESCE(s.conference_losses, 0) as conf_losses,
+                   cr.composite_rank as national_rank
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
+            WHERE t.is_active = 1
+            ORDER BY d.id, c.name, t.short_name
+        """, (season, season))
+        rows = cur.fetchall()
+
+        # Fetch PPI ranks for JUCO teams (no national rankings exist for them)
+        cur.execute("""
+            SELECT t.id,
+                   COALESCE(bat.total_owar, 0) as team_owar,
+                   COALESCE(pit.total_pwar, 0) as team_pwar,
+                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
+                   COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
+                   COALESCE(pit.team_fip, 4.5) as team_fip,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(s.conference_wins, 0) as conf_wins,
                    COALESCE(s.conference_losses, 0) as conf_losses
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
-            WHERE t.is_active = 1
-            ORDER BY d.id, c.name, t.short_name
-        """, (season,))
-        rows = cur.fetchall()
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(offensive_war) as total_owar,
+                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as team_wrc_plus
+                FROM batting_stats WHERE season = %s GROUP BY team_id
+            ) bat ON bat.team_id = t.id
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(pitching_war) as total_pwar,
+                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as team_fip
+                FROM pitching_stats WHERE season = %s GROUP BY team_id
+            ) pit ON pit.team_id = t.id
+            WHERE t.is_active = 1 AND d.level = 'JUCO'
+        """, (season, season, season))
+        juco_rows = cur.fetchall()
+        # Compute PPI and build lookup
+        juco_teams_for_ppi = []
+        for r in juco_rows:
+            t = dict(r)
+            total = t["wins"] + t["losses"]
+            t["win_pct"] = round(t["wins"] / total, 3) if total > 0 else 0.0
+            conf_total = t["conf_wins"] + t["conf_losses"]
+            t["conf_win_pct"] = round(t["conf_wins"] / conf_total, 3) if conf_total > 0 else 0.0
+            juco_teams_for_ppi.append(t)
+        juco_ranked = compute_ppi_for_division(juco_teams_for_ppi)
+        ppi_lookup = {t["id"]: t.get("ppi_rank") for t in juco_ranked}
 
         # Group by conference
         conferences = {}
@@ -416,6 +460,13 @@ def standings(
             team["win_pct"] = round(team["wins"] / total_games, 3) if total_games > 0 else 0
             conf_games = team["conf_wins"] + team["conf_losses"]
             team["conf_win_pct"] = round(team["conf_wins"] / conf_games, 3) if conf_games > 0 else 0
+            # Attach ranking: national_rank for D1-NAIA, ppi_rank for JUCO
+            if team["division_level"] == "JUCO":
+                team["rank"] = ppi_lookup.get(team["id"])
+                team["rank_label"] = "PPI"
+            else:
+                team["rank"] = team.get("national_rank")
+                team["rank_label"] = "Natl"
 
             cid = team["conference_id"]
             if cid not in conferences:
