@@ -45,6 +45,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    import cloudscraper
+    _have_cloudscraper = True
+except ImportError:
+    _have_cloudscraper = False
+
 from app.models.database import get_connection
 
 logging.basicConfig(
@@ -184,10 +190,59 @@ USER_AGENTS = [
 session = requests.Session()
 last_request_time = 0
 
+# NWAC session — uses cloudscraper to bypass AWS WAF on nwacsports.com
+_nwac_session = None
+_nwac_session_warmed = False
 
-def fetch_page(url, retries=3, delay_range=(1.5, 3.0)):
+def _get_nwac_session():
+    """Get a cloudscraper session for NWAC, or fall back to requests."""
+    global _nwac_session
+    if _nwac_session is not None:
+        return _nwac_session
+    if _have_cloudscraper:
+        logger.info("Using cloudscraper for NWAC (AWS WAF bypass)")
+        _nwac_session = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+        )
+    else:
+        logger.warning("cloudscraper not installed — NWAC fetches may fail (pip install cloudscraper)")
+        _nwac_session = requests.Session()
+    _nwac_session.headers.update({
+        "User-Agent": USER_AGENTS[0],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+    })
+    return _nwac_session
+
+
+def _warm_nwac_session(season_year):
+    """Visit the NWAC baseball landing page to establish cookies before scraping."""
+    global _nwac_session_warmed
+    if _nwac_session_warmed:
+        return
+    nwac_sess = _get_nwac_session()
+    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
+    warmup_url = f"https://nwacsports.com/sports/bsb/{presto_season}"
+    logger.info(f"Warming NWAC session: {warmup_url}")
+    try:
+        resp = nwac_sess.get(warmup_url, timeout=30)
+        logger.info(f"NWAC session warmed ({len(resp.text)} bytes, cookies: {len(nwac_sess.cookies)})")
+        time.sleep(random.uniform(2.0, 4.0))
+    except Exception as e:
+        logger.warning(f"NWAC session warmup failed: {e}")
+    _nwac_session_warmed = True
+
+
+def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
     """Fetch a URL with rate limiting and retries."""
     global last_request_time
+    sess = _get_nwac_session() if use_nwac else session
 
     for attempt in range(retries):
         try:
@@ -196,12 +251,15 @@ def fetch_page(url, retries=3, delay_range=(1.5, 3.0)):
             if elapsed < delay:
                 time.sleep(delay - elapsed)
 
-            headers = {
-                "User-Agent": random.choice(USER_AGENTS),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            }
-            resp = session.get(url, headers=headers, timeout=30)
+            if use_nwac:
+                resp = sess.get(url, timeout=30)
+            else:
+                headers = {
+                    "User-Agent": random.choice(USER_AGENTS),
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                }
+                resp = sess.get(url, headers=headers, timeout=30)
             last_request_time = time.time()
             resp.raise_for_status()
             return resp.text
@@ -1605,13 +1663,15 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             return 0, 0, 1
 
     # ─── Step 1: Fetch schedule page and parse game list ───
+    is_nwac = db_short in NWAC_TEAM_SLUGS
     if platform == "presto":
         # PrestoSports URL format
-        if db_short in NWAC_TEAM_SLUGS:
+        if is_nwac:
             slug = NWAC_TEAM_SLUGS[db_short]
             # NWAC uses academic-year seasons (e.g., "2025-26")
             presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
             schedule_url = build_presto_schedule_url(base_url, sport, slug, presto_season)
+            _warm_nwac_session(season_year)
         elif db_short == "Willamette":
             presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
             schedule_url = build_presto_schedule_url(base_url, sport, "willamette", presto_season)
@@ -1620,7 +1680,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             return 0, 0, 1
 
         logger.info(f"  Fetching schedule: {schedule_url}")
-        html = fetch_page(schedule_url)
+        html = fetch_page(schedule_url, use_nwac=is_nwac)
         schedule = parse_presto_schedule(html, base_url, season_year)
     else:
         # Sidearm Sports
@@ -1741,7 +1801,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             real_box_url = sched_game.get("box_score_url")
             if real_box_url:
                 logger.info(f"    Fetching box score: {real_box_url}")
-                box_html = fetch_page(real_box_url, retries=2, delay_range=(1.0, 2.0))
+                box_html = fetch_page(real_box_url, retries=2, delay_range=(1.0, 2.0), use_nwac=is_nwac)
 
                 if box_html:
                     if platform == "presto":
