@@ -3025,6 +3025,8 @@ def uncommitted_juco_players(
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
     min_ab: int = Query(0, description="Minimum at-bats (batting filter)"),
     min_ip: float = Query(0, description="Minimum innings pitched (pitching filter)"),
+    bats: Optional[str] = Query(None, description="Filter by batting hand: L, R, or S"),
+    throws: Optional[str] = Query(None, description="Filter by throwing hand: L or R"),
     limit: int = Query(500),
 ):
     """
@@ -3078,6 +3080,12 @@ def uncommitted_juco_players(
         if min_ip > 0:
             query += " AND COALESCE(ps2.innings_pitched, 0) >= %s"
             params.append(min_ip)
+        if bats:
+            query += " AND p.bats = %s"
+            params.append(bats)
+        if throws:
+            query += " AND p.throws = %s"
+            params.append(throws)
 
         # Use the computed total_war alias or COALESCE for other columns
         if sort_by == "total_war":

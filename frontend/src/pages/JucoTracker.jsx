@@ -58,6 +58,8 @@ export default function JucoTracker() {
   const [sortDir, setSortDir] = useState('desc')
   const [minAb, setMinAb] = useState(0)
   const [minIp, setMinIp] = useState(0)
+  const [bats, setBats] = useState('')
+  const [throws_, setThrows] = useState('')
 
   const { data, loading } = useApi('/players/juco/uncommitted', {
     season,
@@ -67,8 +69,10 @@ export default function JucoTracker() {
     sort_dir: sortDir,
     min_ab: minAb || 0,
     min_ip: minIp || 0,
+    bats: bats || undefined,
+    throws: throws_ || undefined,
     limit: 500,
-  }, [season, position, classYear, sortBy, sortDir, minAb, minIp])
+  }, [season, position, classYear, sortBy, sortDir, minAb, minIp, bats, throws_])
 
   const positions = ['C', 'IF', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH', 'P', 'UT']
 
@@ -168,6 +172,33 @@ export default function JucoTracker() {
               className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
             />
           </div>
+
+          <div className="flex flex-col">
+            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Bats</label>
+            <select
+              value={bats}
+              onChange={(e) => setBats(e.target.value)}
+              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+            >
+              <option value="">All</option>
+              <option value="L">LHH</option>
+              <option value="R">RHH</option>
+              <option value="S">SHH</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Throws</label>
+            <select
+              value={throws_}
+              onChange={(e) => setThrows(e.target.value)}
+              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+            >
+              <option value="">All</option>
+              <option value="L">LHP</option>
+              <option value="R">RHP</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -183,7 +214,7 @@ export default function JucoTracker() {
               {/* Category header row */}
               <tr className="sticky top-0 z-20 bg-pnw-slate">
                 {/* Frozen info columns */}
-                <th colSpan={6} style={{width:366,minWidth:366,maxWidth:366}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+                <th colSpan={7} style={{width:398,minWidth:398,maxWidth:398}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
                   Player Info
                 </th>
                 {/* WAR */}
@@ -204,8 +235,9 @@ export default function JucoTracker() {
                 <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left">Player</th>
                 <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left">Team</th>
                 <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Pos</th>
-                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[268px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Yr</th>
-                <th style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[296px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left border-r border-gray-200">Committed</th>
+                <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">B/T</th>
+                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Yr</th>
+                <th style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[328px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left border-r border-gray-200">Committed</th>
                 {/* Stat columns */}
                 {STAT_COLS.map(col => (
                   <th
@@ -240,8 +272,9 @@ export default function JucoTracker() {
                     </div>
                   </td>
                   <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.position || '-'}</td>
-                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
-                  <td style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[296px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 truncate overflow-hidden">
+                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+                  <td style={{width:70,minWidth:70,maxWidth:70}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 truncate overflow-hidden">
                     {row.committed_to ? (
                       <span className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
                     ) : (
