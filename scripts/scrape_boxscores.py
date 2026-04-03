@@ -230,12 +230,25 @@ def _warm_nwac_session(season_year):
     presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
     warmup_url = f"https://nwacsports.com/sports/bsb/{presto_season}"
     logger.info(f"Warming NWAC session: {warmup_url}")
-    try:
-        resp = nwac_sess.get(warmup_url, timeout=30)
-        logger.info(f"NWAC session warmed ({len(resp.text)} bytes, cookies: {len(nwac_sess.cookies)})")
-        time.sleep(random.uniform(2.0, 4.0))
-    except Exception as e:
-        logger.warning(f"NWAC session warmup failed: {e}")
+    for attempt in range(3):
+        try:
+            resp = nwac_sess.get(warmup_url, timeout=30)
+            size = len(resp.text)
+            logger.info(f"NWAC warmup attempt {attempt+1}: {resp.status_code}, {size} bytes, cookies: {len(nwac_sess.cookies)}")
+            if size > 10000:
+                # Got real content — WAF bypass worked
+                logger.info("NWAC session warmed successfully")
+                _nwac_session_warmed = True
+                time.sleep(random.uniform(3.0, 5.0))
+                return
+            else:
+                # Got a tiny response — likely WAF challenge page
+                logger.warning(f"NWAC warmup got small response ({size} bytes), retrying...")
+                time.sleep(random.uniform(3.0, 5.0))
+        except Exception as e:
+            logger.warning(f"NWAC warmup attempt {attempt+1} failed: {e}")
+            time.sleep(3)
+    logger.warning("NWAC session warmup incomplete — scraping may fail")
     _nwac_session_warmed = True
 
 
@@ -243,11 +256,12 @@ def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
     """Fetch a URL with rate limiting and retries."""
     global last_request_time
     sess = _get_nwac_session() if use_nwac else session
+    actual_delay = (3.5, 6.0) if use_nwac else delay_range
 
     for attempt in range(retries):
         try:
             elapsed = time.time() - last_request_time
-            delay = random.uniform(*delay_range)
+            delay = random.uniform(*actual_delay)
             if elapsed < delay:
                 time.sleep(delay - elapsed)
 
@@ -267,7 +281,7 @@ def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
         except requests.RequestException as e:
             logger.warning(f"  Attempt {attempt+1}/{retries} failed for {url}: {e}")
             if attempt < retries - 1:
-                time.sleep(3 ** attempt)
+                time.sleep(random.uniform(3.0, 6.0) if use_nwac else 3 ** attempt)
 
     logger.error(f"All retries failed for {url}")
     return None
