@@ -655,22 +655,28 @@ export default function SocialGraphics() {
         const statsEndX = w - bodyPadX - rowPadX
         const nameMaxW = statsEndX - extraCols.length * extraW - mainStatW - recordW - nameX - 12
 
-        // Player name
+        // Player name — position both lines relative to center
+        const subFontSize = Math.floor(fontSize * 0.68)
+        const lineGap = Math.floor(fontSize * 0.15)
+        const totalTextH = fontSize + subFontSize + lineGap
+        const nameY = cellCY - totalTextH / 2 + fontSize / 2
+        const teamY = nameY + fontSize / 2 + lineGap + subFontSize / 2
+
         ctx.font = `700 ${fontSize}px ${font}`
         ctx.fillStyle = '#ffffff'
         ctx.textAlign = 'left'
         ctx.textBaseline = 'middle'
-        ctx.fillText(truncText(ctx, name, nameMaxW), nameX, cellCY - fontSize * 0.35)
+        ctx.fillText(truncText(ctx, name, nameMaxW), nameX, nameY)
 
         // Team + division level
-        ctx.font = `500 ${Math.floor(fontSize * 0.68)}px ${font}`
+        ctx.font = `500 ${subFontSize}px ${font}`
         ctx.fillStyle = theme.textSecondary
-        ctx.fillText(teamName, nameX, cellCY + fontSize * 0.5)
+        ctx.fillText(teamName, nameX, teamY)
         if (level) {
           const tw = ctx.measureText(teamName).width
           ctx.font = `600 ${Math.floor(fontSize * 0.55)}px ${font}`
           ctx.fillStyle = theme.textMuted
-          ctx.fillText(level, nameX + tw + 5, cellCY + fontSize * 0.5)
+          ctx.fillText(level, nameX + tw + 5, teamY)
         }
 
         // Stats from right edge
