@@ -46,6 +46,12 @@ import requests
 from bs4 import BeautifulSoup
 
 try:
+    from curl_cffi import requests as cffi_requests
+    _have_curl_cffi = True
+except ImportError:
+    _have_curl_cffi = False
+
+try:
     import cloudscraper
     _have_cloudscraper = True
 except ImportError:
@@ -190,72 +196,46 @@ USER_AGENTS = [
 session = requests.Session()
 last_request_time = 0
 
-# NWAC session — uses cloudscraper to bypass AWS WAF on nwacsports.com
-_nwac_session = None
-_nwac_session_warmed = False
-
-def _get_nwac_session():
-    """Get a cloudscraper session for NWAC, or fall back to requests."""
-    global _nwac_session
-    if _nwac_session is not None:
-        return _nwac_session
-    if _have_cloudscraper:
-        logger.info("Using cloudscraper for NWAC (AWS WAF bypass)")
-        _nwac_session = cloudscraper.create_scraper(
-            browser={"browser": "chrome", "platform": "darwin", "mobile": False},
-        )
-    else:
-        logger.warning("cloudscraper not installed — NWAC fetches may fail (pip install cloudscraper)")
-        _nwac_session = requests.Session()
-    _nwac_session.headers.update({
-        "User-Agent": USER_AGENTS[0],
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-    })
-    return _nwac_session
-
+# NWAC fetching — uses curl_cffi to bypass AWS WAF on nwacsports.com
+# curl_cffi impersonates real browser TLS fingerprints, which is what WAFs check
+_nwac_ready = False
 
 def _warm_nwac_session(season_year):
-    """Visit the NWAC baseball landing page to establish cookies before scraping."""
-    global _nwac_session_warmed
-    if _nwac_session_warmed:
+    """Log readiness status for NWAC scraping."""
+    global _nwac_ready
+    if _nwac_ready:
         return
-    nwac_sess = _get_nwac_session()
-    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
-    warmup_url = f"https://nwacsports.com/sports/bsb/{presto_season}"
-    logger.info(f"Warming NWAC session: {warmup_url}")
-    for attempt in range(3):
-        try:
-            resp = nwac_sess.get(warmup_url, timeout=30)
-            size = len(resp.text)
-            logger.info(f"NWAC warmup attempt {attempt+1}: {resp.status_code}, {size} bytes, cookies: {len(nwac_sess.cookies)}")
-            if size > 10000:
-                # Got real content — WAF bypass worked
-                logger.info("NWAC session warmed successfully")
-                _nwac_session_warmed = True
-                time.sleep(random.uniform(3.0, 5.0))
-                return
-            else:
-                # Got a tiny response — likely WAF challenge page
-                logger.warning(f"NWAC warmup got small response ({size} bytes), retrying...")
-                time.sleep(random.uniform(3.0, 5.0))
-        except Exception as e:
-            logger.warning(f"NWAC warmup attempt {attempt+1} failed: {e}")
-            time.sleep(3)
-    logger.warning("NWAC session warmup incomplete — scraping may fail")
-    _nwac_session_warmed = True
+    if _have_curl_cffi:
+        logger.info("Using curl_cffi for NWAC (TLS fingerprint impersonation)")
+    elif _have_cloudscraper:
+        logger.info("Using cloudscraper for NWAC (fallback — may not bypass WAF)")
+    else:
+        logger.warning("Neither curl_cffi nor cloudscraper installed — NWAC will likely fail")
+    _nwac_ready = True
+
+
+def _nwac_fetch(url, timeout=30):
+    """Fetch a URL from nwacsports.com using curl_cffi or cloudscraper."""
+    if _have_curl_cffi:
+        resp = cffi_requests.get(url, impersonate="chrome", timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
+    elif _have_cloudscraper:
+        sess = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+        )
+        resp = sess.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
+    else:
+        resp = requests.get(url, headers={"User-Agent": USER_AGENTS[0]}, timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
 
 
 def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
     """Fetch a URL with rate limiting and retries."""
     global last_request_time
-    sess = _get_nwac_session() if use_nwac else session
     actual_delay = (3.5, 6.0) if use_nwac else delay_range
 
     for attempt in range(retries):
@@ -266,19 +246,20 @@ def fetch_page(url, retries=3, delay_range=(1.5, 3.0), use_nwac=False):
                 time.sleep(delay - elapsed)
 
             if use_nwac:
-                resp = sess.get(url, timeout=30)
+                text = _nwac_fetch(url)
             else:
                 headers = {
                     "User-Agent": random.choice(USER_AGENTS),
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language": "en-US,en;q=0.5",
                 }
-                resp = sess.get(url, headers=headers, timeout=30)
+                resp = session.get(url, headers=headers, timeout=30)
+                resp.raise_for_status()
+                text = resp.text
             last_request_time = time.time()
-            resp.raise_for_status()
-            return resp.text
+            return text
 
-        except requests.RequestException as e:
+        except Exception as e:
             logger.warning(f"  Attempt {attempt+1}/{retries} failed for {url}: {e}")
             if attempt < retries - 1:
                 time.sleep(random.uniform(3.0, 6.0) if use_nwac else 3 ** attempt)
