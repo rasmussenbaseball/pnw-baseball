@@ -196,46 +196,66 @@ USER_AGENTS = [
 session = requests.Session()
 last_request_time = 0
 
-# NWAC fetching — uses curl_cffi to bypass AWS WAF on nwacsports.com
-# curl_cffi impersonates real browser TLS fingerprints, which is what WAFs check
-_nwac_ready = False
+# NWAC fetching — uses cloudscraper with session warmup to bypass AWS WAF
+# Key: persistent session + warmup visit + browser-like headers
+_nwac_session = None
+_nwac_warmed_for = None
+
+_NWAC_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 def _warm_nwac_session(season_year):
-    """Log readiness status for NWAC scraping."""
-    global _nwac_ready
-    if _nwac_ready:
+    """Create a persistent cloudscraper session and warm it by visiting the NWAC page."""
+    global _nwac_session, _nwac_warmed_for, last_request_time
+    season_str = f"{season_year - 1}-{str(season_year)[2:]}"
+    if _nwac_warmed_for == season_str:
         return
-    if _have_curl_cffi:
-        logger.info("Using curl_cffi for NWAC (TLS fingerprint impersonation)")
-    elif _have_cloudscraper:
-        logger.info("Using cloudscraper for NWAC (fallback — may not bypass WAF)")
+
+    if _have_cloudscraper:
+        _nwac_session = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+        )
+        logger.info("Using cloudscraper for NWAC (persistent session + warmup)")
     else:
-        logger.warning("Neither curl_cffi nor cloudscraper installed — NWAC will likely fail")
-    _nwac_ready = True
+        _nwac_session = requests.Session()
+        _nwac_session.headers.update({"User-Agent": USER_AGENTS[0]})
+        logger.warning("cloudscraper not available — NWAC may fail")
+
+    _nwac_session.headers.update(_NWAC_HEADERS)
+
+    # Visit the main NWAC baseball page to establish cookies/session
+    warmup_url = f"https://nwacsports.com/sports/bsb/{season_str}"
+    logger.info(f"Warming NWAC session — visiting {warmup_url}...")
+    try:
+        resp = _nwac_session.get(warmup_url, timeout=30)
+        last_request_time = time.time()
+        logger.info(f"NWAC session warmed ({len(resp.text)} bytes, HTTP {resp.status_code}, cookies: {len(_nwac_session.cookies)})")
+        time.sleep(random.uniform(2.0, 4.0))
+    except Exception as e:
+        logger.warning(f"NWAC session warmup failed: {e}")
+
+    _nwac_warmed_for = season_str
 
 
 def _nwac_fetch(url, timeout=30):
-    """Fetch a URL from nwacsports.com using curl_cffi or cloudscraper.
+    """Fetch a URL from nwacsports.com using the warmed cloudscraper session."""
+    global _nwac_session
+    if _nwac_session is None:
+        _warm_nwac_session(2026)
 
-    PrestoSports behind AWS WAF often returns 405 status even when the
-    response body contains the actual page content. We check for HTML
-    table content rather than relying on status codes.
-    """
-    resp = None
-    if _have_curl_cffi:
-        resp = cffi_requests.get(url, impersonate="chrome", timeout=timeout)
-    elif _have_cloudscraper:
-        sess = cloudscraper.create_scraper(
-            browser={"browser": "chrome", "platform": "darwin", "mobile": False},
-        )
-        resp = sess.get(url, timeout=timeout)
-    else:
-        resp = requests.get(url, headers={"User-Agent": USER_AGENTS[0]}, timeout=timeout)
-
+    resp = _nwac_session.get(url, timeout=timeout)
     text = resp.text
     status = resp.status_code
 
-    # WAF sometimes returns 405 but with real page content
     if status == 200 or (status in (403, 405) and len(text) > 10000 and "<table" in text):
         if status != 200:
             logger.info(f"    NWAC: got status {status} but response has content ({len(text)} bytes) — using it")
