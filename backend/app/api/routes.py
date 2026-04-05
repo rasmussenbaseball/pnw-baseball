@@ -4463,7 +4463,7 @@ def games_by_date(
                 g.id
         """, params)
 
-        games = [dict(g) for g in cur.fetchall()]
+        games = _dedup_games([dict(g) for g in cur.fetchall()], limit=500)
         return {"games": games, "date": date, "count": len(games)}
 
 
