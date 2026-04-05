@@ -176,17 +176,7 @@ export default function Scoreboard() {
                 </div>
               )}
 
-              {recentGames.length > 0 && (
-                <Section title="Recent Results" count={recentGames.length}>
-                  <GameGrid games={recentGames} />
-                </Section>
-              )}
-
-              {upcomingGames.length > 0 && (
-                <Section title="Upcoming" count={upcomingGames.length}>
-                  <GameGrid games={upcomingGames} />
-                </Section>
-              )}
+              {/* Recent/upcoming removed — use date arrows to browse other days */}
             </>
           )}
 
