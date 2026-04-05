@@ -1318,9 +1318,14 @@ def _parse_batting_table(table):
                     name = re.sub(r'^\d+\s*', '', val)  # Remove leading jersey #
                     name = re.sub(r'\s*(ph|pr|cr|dh|eh)\s*$', '', name, flags=re.I)  # Remove role suffixes
                     # Remove leading position prefixes stuck to name (e.g. "dhStevens, Nate", "b/phSmith, John")
+                    # Single-letter positions (c, b, p) only match in slash combos (c/dh, b/ph)
+                    # to avoid stripping the first letter of names like Connor, Brooks, Porter.
                     pos_prefix_m = re.match(
-                        r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
-                        name, re.I
+                        r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name
+                    ) or re.match(
+                        r'^(?:c|b|p)/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name
                     )
                     if pos_prefix_m:
                         if not player.get("position"):
@@ -1422,10 +1427,17 @@ def _parse_pitching_table(table):
 
                     name = re.sub(r'^\d+\s*', '', name)  # Remove jersey #
                     # Remove leading position prefixes stuck to name
-                    name = re.sub(
-                        r'^(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
-                        '', name, flags=re.I
+                    # Single-letter positions (c, b, p) only in slash combos to avoid
+                    # stripping first letter of names like Connor, Brooks, Porter.
+                    pfx = re.match(
+                        r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name
+                    ) or re.match(
+                        r'^(?:c|b|p)/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name
                     )
+                    if pfx:
+                        name = name[pfx.end():]
                     pitcher["player_name"] = name.strip()
                 elif key == "ip":
                     pitcher["ip"] = parse_innings_pitched(val)
