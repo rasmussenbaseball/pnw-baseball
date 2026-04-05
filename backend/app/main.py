@@ -71,6 +71,17 @@ def startup():
     seed_divisions_and_conferences()
 
 
+# ── Serve headshots from a persistent directory (survives deploys) ──
+# On the server, headshots live in /opt/headshots/ (outside the git repo).
+# Locally, fall back to frontend/public/headshots/.
+HEADSHOT_DIR_SERVER = Path("/opt/headshots")
+HEADSHOT_DIR_LOCAL = Path(__file__).resolve().parent.parent.parent / "frontend" / "public" / "headshots"
+HEADSHOT_DIR = HEADSHOT_DIR_SERVER if HEADSHOT_DIR_SERVER.exists() else HEADSHOT_DIR_LOCAL
+
+if HEADSHOT_DIR.exists():
+    app.mount("/headshots", StaticFiles(directory=str(HEADSHOT_DIR)), name="headshots")
+
+
 # ── Serve React frontend in production ──
 # After building the frontend (npm run build), the static files go in frontend/dist.
 # In production, FastAPI serves them so everything runs on a single server.

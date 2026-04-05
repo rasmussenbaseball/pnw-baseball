@@ -32,10 +32,14 @@ from app.models.database import get_connection
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("download_headshots")
 
-# Where to save headshots (Vite copies public/ → dist/ on build)
+# Where to save headshots.
+# On the server, use /opt/headshots/ (outside git repo — survives deploys).
+# Locally, fall back to frontend/public/headshots/ (Vite copies public/ → dist/ on build).
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-HEADSHOT_DIR = PROJECT_ROOT / "frontend" / "public" / "headshots"
+HEADSHOT_DIR_SERVER = Path("/opt/headshots")
+HEADSHOT_DIR_LOCAL = PROJECT_ROOT / "frontend" / "public" / "headshots"
+HEADSHOT_DIR = HEADSHOT_DIR_SERVER if HEADSHOT_DIR_SERVER.exists() else HEADSHOT_DIR_LOCAL
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
