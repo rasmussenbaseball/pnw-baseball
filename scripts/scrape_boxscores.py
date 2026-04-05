@@ -1470,16 +1470,23 @@ def get_team_id_by_name(cur, short_name):
 def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     """Fuzzy lookup team by school_name or short_name.
 
+    Checks both directions: whether the DB value contains the fragment,
+    AND whether the fragment contains the DB value. This handles cases like
+    "Lewis-Clark State College (Idaho)" matching school_name "Lewis-Clark State College".
+
     If prefer_division_of_team_id is given, prefer teams in the same division
     to avoid e.g. 'Clark' matching L&C (D3) instead of Clark College (NWAC).
     """
     cur.execute("""
-        SELECT t.id, t.short_name, c.division_id FROM teams t
+        SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
         JOIN conferences c ON c.id = t.conference_id
         WHERE LOWER(t.short_name) = LOWER(%s)
            OR LOWER(t.school_name) LIKE LOWER(%s)
            OR LOWER(t.name) LIKE LOWER(%s)
-    """, (name_fragment, f"%{name_fragment}%", f"%{name_fragment}%"))
+           OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
+           OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
+    """, (name_fragment, f"%{name_fragment}%", f"%{name_fragment}%",
+          name_fragment, name_fragment))
     rows = cur.fetchall()
     if not rows:
         return None
