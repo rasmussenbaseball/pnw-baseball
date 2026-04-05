@@ -13,9 +13,13 @@ const STATUS_LABELS = {
   final: { text: 'Final', class: 'bg-gray-200 text-gray-600' },
 }
 
-/** Format YYYY-MM-DD as "Fri, Apr 4" */
+/** Format a date string as "Fri, Apr 4". Handles both YYYY-MM-DD and ISO datetime. */
 function formatDateLabel(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00')
+  if (!dateStr) return ''
+  // Extract just the date portion if it's an ISO datetime
+  const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
+  const d = new Date(datePart + 'T12:00:00')
+  if (isNaN(d)) return ''
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
