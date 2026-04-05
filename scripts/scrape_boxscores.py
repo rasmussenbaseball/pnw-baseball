@@ -1317,11 +1317,23 @@ def _parse_batting_table(table):
                     # Clean up player name (remove jersey number, position)
                     name = re.sub(r'^\d+\s*', '', val)  # Remove leading jersey #
                     name = re.sub(r'\s*(ph|pr|cr|dh|eh)\s*$', '', name, flags=re.I)  # Remove role suffixes
+                    # Remove leading position prefixes stuck to name (e.g. "dhStevens, Nate", "b/phSmith, John")
+                    pos_prefix_m = re.match(
+                        r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name, re.I
+                    )
+                    if pos_prefix_m:
+                        if not player.get("position"):
+                            # Use the first position in the prefix
+                            first_pos = re.match(r'(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)', name, re.I)
+                            if first_pos:
+                                player["position"] = first_pos.group(1).upper()
+                        name = name[pos_prefix_m.end():]
                     player["player_name"] = name.strip()
 
                     # Extract position if embedded
                     pos_m = re.search(r'\b(P|C|1B|2B|3B|SS|LF|CF|RF|DH|PH|PR)\b', val, re.I)
-                    if pos_m:
+                    if pos_m and not player.get("position"):
                         player["position"] = pos_m.group(1).upper()
                 elif key == "pos":
                     player["position"] = val.upper() if val else None
@@ -1409,6 +1421,11 @@ def _parse_pitching_table(table):
                             name = name[:-len(suffix)].strip()
 
                     name = re.sub(r'^\d+\s*', '', name)  # Remove jersey #
+                    # Remove leading position prefixes stuck to name
+                    name = re.sub(
+                        r'^(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        '', name, flags=re.I
+                    )
                     pitcher["player_name"] = name.strip()
                 elif key == "ip":
                     pitcher["ip"] = parse_innings_pitched(val)

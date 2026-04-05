@@ -606,12 +606,18 @@ def stat_leaders(
                 {"key": "whip", "label": "WHIP", "col": "agg.whip", "order": "ASC", "format": "float2"},
                 {"key": "strikeouts", "label": "K", "col": "agg.k", "order": "DESC", "format": "int"},
                 {"key": "k_per_9", "label": "K/9", "col": "agg.k_per_9", "order": "DESC", "format": "float1"},
-                {"key": "wins", "label": "W", "col": "agg.w", "order": "DESC", "format": "int"},
-                {"key": "saves", "label": "SV", "col": "agg.sv", "order": "DESC", "format": "int"},
+                {"key": "wins", "label": "W", "col": "agg.w", "order": "DESC", "format": "int", "skip_ip_min": True},
+                {"key": "saves", "label": "SV", "col": "agg.sv", "order": "DESC", "format": "int", "skip_ip_min": True},
             ]
 
             def fetch_pitching_split_leaders(cat):
-                params = [season] + level_params + [min_ip_split, limit]
+                skip_ip = cat.get("skip_ip_min", False)
+                if skip_ip:
+                    ip_filter = "agg.real_ip > 0"
+                    params = [season] + level_params + [limit]
+                else:
+                    ip_filter = "agg.real_ip >= %s"
+                    params = [season] + level_params + [min_ip_split, limit]
                 cur.execute(f"""
                     WITH agg AS (
                         SELECT gp.player_id,
@@ -655,7 +661,7 @@ def stat_leaders(
                     JOIN teams t ON p.team_id = t.id
                     JOIN conferences c ON t.conference_id = c.id
                     JOIN divisions d ON c.division_id = d.id
-                    WHERE agg.real_ip >= %s
+                    WHERE {ip_filter}
                       AND {cat['col']} IS NOT NULL
                       {level_filter}
                     ORDER BY {cat['col']} {cat['order']}
@@ -734,14 +740,16 @@ def stat_leaders(
             }
 
         def fetch_pitching_leaders(cat):
-            q_join = QUALIFIED_PITCHING_JOIN if qualified else ""
-            q_where = QUALIFIED_PITCHING_WHERE if qualified else ""
-            # For counting stats (W, SV), skip the IP minimum so relievers/closers appear
+            # For counting stats (W, SV), skip ALL IP minimums so relievers/closers appear
             skip_ip = cat.get("skip_ip_min", False)
             if skip_ip:
+                q_join = ""
+                q_where = ""
                 ip_condition = "ps.innings_pitched > 0"
                 params = [season] + level_params + [limit]
             else:
+                q_join = QUALIFIED_PITCHING_JOIN if qualified else ""
+                q_where = QUALIFIED_PITCHING_WHERE if qualified else ""
                 ip_condition = "ps.innings_pitched >= %s"
                 params = [season, min_ip] + level_params + [limit]
             cur.execute(f"""
