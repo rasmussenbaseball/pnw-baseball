@@ -1467,27 +1467,78 @@ def get_team_id_by_name(cur, short_name):
     return row["id"] if row else None
 
 
+# Known aliases for teams that don't match via fuzzy lookup
+_TEAM_ALIASES = {
+    "montana state billings": "MSUB",
+    "montana state-billings": "MSUB",
+    "msu billings": "MSUB",
+    "msu-billings": "MSUB",
+    "mt hood": "Mt. Hood",
+    "mt hood cc": "Mt. Hood",
+    "mount hood": "Mt. Hood",
+    "st. martin's": "SMU",
+    "saint martin's": "SMU",
+    "st martins": "SMU",
+    "saint martins": "SMU",
+    "college of idaho": "C of I",
+    "the college of idaho": "C of I",
+    "lewis-clark state": "LCSC",
+    "lewis-clark st": "LCSC",
+    "lewis-clark st.": "LCSC",
+    "lc state": "LCSC",
+    "northwest nazarene": "NNU",
+}
+
+
+def _normalize_opponent(name):
+    """Strip rankings, parenthetical state tags, and periods from opponent names."""
+    import re
+    name = re.sub(r'^#\d+\s+', '', name)        # "#5 Lewis-Clark State" -> "Lewis-Clark State"
+    name = re.sub(r'\s*\(.*?\)\s*$', '', name)  # "Pacific (Ore.)" -> "Pacific"
+    return name.strip()
+
+
 def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     """Fuzzy lookup team by school_name or short_name.
 
     Checks both directions: whether the DB value contains the fragment,
-    AND whether the fragment contains the DB value. This handles cases like
-    "Lewis-Clark State College (Idaho)" matching school_name "Lewis-Clark State College".
+    AND whether the fragment contains the DB value. Also checks a known
+    alias table and normalizes rankings/parenthetical tags.
 
     If prefer_division_of_team_id is given, prefer teams in the same division
     to avoid e.g. 'Clark' matching L&C (D3) instead of Clark College (NWAC).
     """
-    cur.execute("""
-        SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
-        JOIN conferences c ON c.id = t.conference_id
-        WHERE LOWER(t.short_name) = LOWER(%s)
-           OR LOWER(t.school_name) LIKE LOWER(%s)
-           OR LOWER(t.name) LIKE LOWER(%s)
-           OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
-           OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
-    """, (name_fragment, f"%{name_fragment}%", f"%{name_fragment}%",
-          name_fragment, name_fragment))
-    rows = cur.fetchall()
+    # Check aliases first (on both raw and normalized name)
+    raw_lower = name_fragment.strip().lower()
+    norm_lower = _normalize_opponent(name_fragment).lower()
+    for alias_key, alias_short in _TEAM_ALIASES.items():
+        if raw_lower == alias_key or norm_lower == alias_key:
+            cur.execute("SELECT t.id FROM teams t WHERE LOWER(t.short_name) = LOWER(%s)", (alias_short,))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+
+    # Also try normalized name for the DB lookup
+    names_to_try = [name_fragment]
+    normalized = _normalize_opponent(name_fragment)
+    if normalized.lower() != name_fragment.strip().lower():
+        names_to_try.append(normalized)
+
+    rows = []
+    for frag in names_to_try:
+        cur.execute("""
+            SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
+            JOIN conferences c ON c.id = t.conference_id
+            WHERE LOWER(t.short_name) = LOWER(%s)
+               OR LOWER(t.school_name) LIKE LOWER(%s)
+               OR LOWER(t.name) LIKE LOWER(%s)
+               OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
+               OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
+        """, (frag, f"%{frag}%", f"%{frag}%", frag, frag))
+        rows = cur.fetchall()
+        if rows:
+            break
+
     if not rows:
         return None
     if len(rows) == 1:

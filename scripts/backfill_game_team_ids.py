@@ -19,14 +19,69 @@ from app.models.database import get_connection
 
 DRY_RUN = "--dry-run" in sys.argv
 
+# Known aliases that don't match via fuzzy lookup.
+# Maps scraped opponent name (lowercased) -> team short_name in our DB.
+TEAM_ALIASES = {
+    "montana state billings": "MSUB",
+    "montana state-billings": "MSUB",
+    "msu billings": "MSUB",
+    "msu-billings": "MSUB",
+    "mt hood": "Mt. Hood",
+    "mt. hood cc": "Mt. Hood",
+    "mount hood": "Mt. Hood",
+    "st. martin's": "SMU",
+    "saint martin's": "SMU",
+    "st martins": "SMU",
+    "saint martins": "SMU",
+    "c of i": "C of I",
+    "college of idaho": "C of I",
+    "the college of idaho": "C of I",
+    "lewis-clark state": "LCSC",
+    "lewis-clark st": "LCSC",
+    "lewis-clark st.": "LCSC",
+    "lc state": "LCSC",
+    "nnu": "NNU",
+    "northwest nazarene": "NNU",
+}
+
+
+def normalize_name(name):
+    """Normalize a team name for matching: strip periods, rankings, parens."""
+    import re
+    # Strip leading rankings like "#5 "
+    name = re.sub(r'^#\d+\s+', '', name)
+    # Strip trailing parenthetical like "(Idaho)", "(Ore.)"
+    name = re.sub(r'\s*\(.*?\)\s*$', '', name)
+    # Normalize periods and extra spaces
+    name = name.replace('.', '').strip()
+    return name
+
 
 def get_team_id_by_name(cur, name):
     """Try to match a team name to a team_id using multiple strategies."""
     if not name:
         return None
 
+    import re
+
+    # 0. Check aliases first (exact match on lowercased name or normalized name)
+    lower = name.strip().lower()
+    normalized = normalize_name(name).lower()
+    for alias_key, alias_short in TEAM_ALIASES.items():
+        if lower == alias_key or normalized == alias_key:
+            cur.execute("SELECT id FROM teams WHERE LOWER(short_name) = LOWER(%s)", (alias_short,))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+
     # 1. Exact short_name match
     cur.execute("SELECT id FROM teams WHERE LOWER(short_name) = LOWER(%s)", (name,))
+    row = cur.fetchone()
+    if row:
+        return row["id"]
+
+    # 1b. Exact short_name match on normalized name
+    cur.execute("SELECT id FROM teams WHERE LOWER(short_name) = LOWER(%s)", (normalize_name(name),))
     row = cur.fetchone()
     if row:
         return row["id"]
@@ -51,10 +106,9 @@ def get_team_id_by_name(cur, name):
     if len(rows) == 1:
         return rows[0]["id"]
 
-    # 4. Try stripping parenthetical suffixes: "Lewis-Clark State College (Idaho)" -> "Lewis-Clark State College"
-    import re
-    stripped = re.sub(r'\s*\(.*?\)\s*$', '', name).strip()
-    if stripped != name:
+    # 4. Try with normalized name (strip rankings, parens, periods)
+    stripped = normalize_name(name)
+    if stripped.lower() != name.strip().lower():
         return get_team_id_by_name(cur, stripped)
 
     return None
