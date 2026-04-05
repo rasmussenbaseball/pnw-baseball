@@ -440,7 +440,7 @@ def format_game(game, team_name, team_info):
         "team_logo": team_logo,
         "opponent": opp_clean,
         "opponent_display": opp_name,  # Keep ranking prefix for display
-        "opponent_image": opponent_logo,
+        "opponent_logo": opponent_logo,
         "date": game.get("date", ""),
         "time": game.get("time", ""),
         "status": status,
@@ -595,7 +595,7 @@ def _parse_legacy_sidearm_game(item, team_name, team_info, today):
         "team_logo": team_logo,
         "opponent": opponent_clean,
         "opponent_display": opponent_display,
-        "opponent_image": opponent_logo,
+        "opponent_logo": opponent_logo,
         "date": game_date.isoformat() + "T00:00:00",
         "time": time_text,
         "status": status,

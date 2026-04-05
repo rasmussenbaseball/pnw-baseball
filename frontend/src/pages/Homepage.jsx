@@ -277,8 +277,8 @@ function LiveGamesTicker({ games, hasLive }) {
                 {/* Opponent */}
                 <div className={`flex items-center justify-between gap-2 ${teamWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
                   <div className="flex items-center gap-1 min-w-0">
-                    {g.opponent_logo && (
-                      <img src={g.opponent_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
+                    {(g.opponent_logo || g.opponent_image) && (
+                      <img src={g.opponent_logo || g.opponent_image} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
                         onError={(e) => { e.target.style.display = 'none' }} />
                     )}
                     <span className="text-[11px] truncate">{g.location === 'away' ? '@ ' : ''}{g.opponent}</span>
