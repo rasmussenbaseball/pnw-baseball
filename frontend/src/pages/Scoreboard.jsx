@@ -7,6 +7,14 @@ const DIV_COLORS = {
   NAIA: 'bg-red-600', JUCO: 'bg-purple-600',
 }
 
+/** Division display order */
+const DIV_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
+
+const DIV_LABELS = {
+  D1: 'NCAA Division I', D2: 'NCAA Division II', D3: 'NCAA Division III',
+  NAIA: 'NAIA', JUCO: 'NWAC (JUCO)',
+}
+
 const STATUS_LABELS = {
   live: { text: 'LIVE', class: 'bg-red-500 text-white animate-pulse' },
   scheduled: { text: 'Scheduled', class: 'bg-gray-100 text-gray-500' },
@@ -97,6 +105,29 @@ export default function Scoreboard() {
   const upcomingGames = filteredGames.filter(g => g._section === 'upcoming')
   const dateGames = filteredGames.filter(g => g._section === 'date')
 
+  /** Group a list of games by division in D1→D2→D3→NAIA→JUCO order */
+  function groupByDivision(gamesList) {
+    const groups = {}
+    for (const g of gamesList) {
+      const div = g._source === 'live'
+        ? (g.team_division || 'Other')
+        : (g.home_division || g.away_division || 'Other')
+      if (!groups[div]) groups[div] = []
+      groups[div].push(g)
+    }
+    // Return in order
+    return DIV_ORDER
+      .filter(d => groups[d]?.length > 0)
+      .map(d => ({ division: d, label: DIV_LABELS[d] || d, games: groups[d] }))
+      .concat(
+        groups['Other']?.length > 0
+          ? [{ division: 'Other', label: 'Other', games: groups['Other'] }]
+          : []
+      )
+  }
+
+  const showDivGroups = filter === 'all'
+
   const hasLiveGames = todayGames.some(g => g.status === 'live')
   const lastUpdated = liveData?.last_updated
 
@@ -159,13 +190,21 @@ export default function Scoreboard() {
       {/* Content */}
       {hasData && (
         <>
-          {/* Today view: sections for today / recent / upcoming */}
+          {/* Today view */}
           {isToday && (
             <>
               {todayGames.length > 0 && (
-                <Section title="Today's Games" count={todayGames.length}>
-                  <GameGrid games={todayGames} />
-                </Section>
+                showDivGroups ? (
+                  groupByDivision(todayGames).map(grp => (
+                    <DivisionSection key={grp.division} division={grp.division} label={grp.label} count={grp.games.length}>
+                      <GameGrid games={grp.games} />
+                    </DivisionSection>
+                  ))
+                ) : (
+                  <Section title="Today's Games" count={todayGames.length}>
+                    <GameGrid games={todayGames} />
+                  </Section>
+                )
               )}
 
               {todayGames.length === 0 && !loading && (
@@ -175,18 +214,24 @@ export default function Scoreboard() {
                   <p className="text-gray-400 text-sm mt-1">Check back on game days for live scores</p>
                 </div>
               )}
-
-              {/* Recent/upcoming removed — use date arrows to browse other days */}
             </>
           )}
 
-          {/* Past/future date view: flat list */}
+          {/* Past/future date view */}
           {!isToday && (
             <>
               {dateGames.length > 0 ? (
-                <Section title={formatDateLabel(selectedDate)} count={dateGames.length}>
-                  <GameGrid games={dateGames} />
-                </Section>
+                showDivGroups ? (
+                  groupByDivision(dateGames).map(grp => (
+                    <DivisionSection key={grp.division} division={grp.division} label={grp.label} count={grp.games.length}>
+                      <GameGrid games={grp.games} />
+                    </DivisionSection>
+                  ))
+                ) : (
+                  <Section title={formatDateLabel(selectedDate)} count={dateGames.length}>
+                    <GameGrid games={dateGames} />
+                  </Section>
+                )
               ) : (
                 <div className="bg-white rounded-xl border border-gray-200 p-8 text-center mb-6">
                   <div className="text-3xl mb-2">&#9918;</div>
@@ -254,6 +299,22 @@ function Section({ title, count, children }) {
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
         <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">{title}</h2>
+        <span className="text-xs text-gray-400">({count})</span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+
+function DivisionSection({ division, label, count, children }) {
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${DIV_COLORS[division] || 'bg-gray-500'}`}>
+          {division}
+        </span>
+        <h2 className="text-sm font-bold text-gray-700 tracking-wider">{label}</h2>
         <span className="text-xs text-gray-400">({count})</span>
       </div>
       {children}

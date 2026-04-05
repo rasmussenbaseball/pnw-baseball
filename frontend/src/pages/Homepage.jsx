@@ -634,6 +634,10 @@ function WclLeadersWidget({ leaders }) {
           return (
             <div key={cat.key} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
               <span className="text-[10px] font-bold text-gray-400 uppercase w-8">{cat.label}</span>
+              {top.logo_url && (
+                <img src={top.logo_url} alt="" className="w-5 h-5 object-contain shrink-0"
+                  onError={(e) => { e.target.style.display = 'none' }} />
+              )}
               <div className="flex-1 min-w-0">
                 {top.spring_player_id ? (
                   <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block">

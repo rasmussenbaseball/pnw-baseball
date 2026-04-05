@@ -4,6 +4,23 @@ import { Link } from 'react-router-dom'
 // ─── Site Updates / Changelog ───
 const UPDATES = [
   {
+    version: '1.3',
+    date: 'April 4, 2026',
+    title: 'Scoreboard Overhaul, Live Scores & Infrastructure',
+    changes: [
+      'Consolidated Scoreboard and Results into a single page with date navigation arrows — browse any day\'s games in one place',
+      'Added live score auto-refresh (every 2 minutes) with LIVE badge and game state display',
+      'Scoreboard now groups games by level: D1 → D2 → D3 → NAIA → NWAC',
+      'Added division filter buttons to the scoreboard (All, D1, D2, D3, NAIA, JUCO)',
+      'Player headshots now served from persistent storage (nginx) — no longer disappear on deploys',
+      'Team logos moved to persistent storage — summer/WCL logos no longer vanish after site updates',
+      'Added WCL team logos to the homepage WCL Leaders widget',
+      'Automated scraping schedule: daily updates at 2 PM, 6 PM, 11 PM PT; live scores every 10 min during game hours (8 AM – 8 PM PT)',
+      'Added nightly game deduplication job to keep data clean',
+      'Fixed scoreboard showing stale data after deploys (live_scores.json no longer tracked in git)',
+    ],
+  },
+  {
     version: '1.2',
     date: 'April 1, 2026',
     title: 'Recruiting Tools, Draft Board & Homepage Refresh',

@@ -1,9 +1,8 @@
 #!/bin/bash
-# Download summer team logos to serve locally
-# Logos go in public/ so they survive npm run build (Vite copies public/ → dist/)
+# Download summer team logos to /opt/logos/summer/ (served by nginx, survives deploys)
 # Run on server: bash /opt/pnw-baseball/scripts/download_summer_logos.sh
 
-LOGO_DIR="/opt/pnw-baseball/frontend/public/logos/summer"
+LOGO_DIR="/opt/logos/summer"
 mkdir -p "$LOGO_DIR"
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 

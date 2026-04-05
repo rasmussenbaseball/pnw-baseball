@@ -1,5 +1,5 @@
 -- Set summer team logo URLs
--- These logos live in /opt/pnw-baseball/frontend/public/logos/summer/ (Vite copies them to dist/ on build)
+-- These logos live in /opt/logos/summer/ (served directly by nginx, independent of git/builds)
 
 -- WCL Teams
 UPDATE summer_teams SET logo_url = '/logos/summer/bellingham-bells.png' WHERE id = 1;
