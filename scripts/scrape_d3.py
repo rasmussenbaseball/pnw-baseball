@@ -68,6 +68,9 @@ NWC_TEAMS = {
     "Willamette": ("https://www.wubearcats.com",      "bsb",     "presto"),
 }
 
+# Teams to skip — handled by scrape_browser_stats.py (Playwright)
+SKIP_TEAMS = {"Willamette"}
+
 # PrestoSports config for Willamette
 PRESTO_CONFIG = {
     "Willamette": {
@@ -1468,6 +1471,9 @@ def process_all(season_year, team_filter=None, skip_rosters=False):
 
     for db_short, (base_url, sport_path, platform) in NWC_TEAMS.items():
         if team_filter and db_short != team_filter:
+            continue
+        if db_short in SKIP_TEAMS and not team_filter:
+            logger.info(f"Skipping {db_short} (handled by scrape_browser_stats.py)")
             continue
 
         team_id = team_id_map.get(db_short)

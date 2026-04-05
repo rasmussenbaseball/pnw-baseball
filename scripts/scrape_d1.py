@@ -61,7 +61,7 @@ D1_TEAMS = {
 }
 
 # Teams whose stats pages don't follow standard Sidearm patterns
-SKIP_TEAMS = set()  # Add team short_names here to skip (e.g., {"Seattle U"})
+SKIP_TEAMS = {"Seattle U"}  # Handled by scrape_browser_stats.py (WMT Games API)
 
 # Short aliases for CLI --team flag
 TEAM_ALIASES = {
