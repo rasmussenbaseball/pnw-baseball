@@ -6280,6 +6280,125 @@ def grid_solutions(data: dict = Body(...)):
         return {"cells": cells}
 
 
+@router.get("/grid/options")
+def grid_options():
+    """Return all available criteria for the custom grid builder."""
+    teams = []
+    conferences = []
+    divisions = []
+    for item in _TEAM_POOL:
+        entry = {"label": item["label"], "value": item.get("value", ""), "type": item["type"], "group": item.get("group", "")}
+        if item.get("logo_url"):
+            entry["logo_url"] = item["logo_url"]
+        if item["type"] == "team":
+            teams.append(entry)
+        elif item["type"] == "conference":
+            conferences.append(entry)
+        elif item["type"] == "division":
+            divisions.append(entry)
+
+    stats = {
+        "season_batting": [{"label": s["label"], "category": s.get("category", ""), **{k: v for k, v in s.items() if k != "label" and k != "category"}} for s in _SEASON_BATTING_POOL],
+        "career_batting": [{"label": s["label"], "category": s.get("category", ""), **{k: v for k, v in s.items() if k != "label" and k != "category"}} for s in _CAREER_BATTING_POOL],
+        "season_pitching": [{"label": s["label"], "category": s.get("category", ""), **{k: v for k, v in s.items() if k != "label" and k != "category"}} for s in _SEASON_PITCHING_POOL],
+        "career_pitching": [{"label": s["label"], "category": s.get("category", ""), **{k: v for k, v in s.items() if k != "label" and k != "category"}} for s in _CAREER_PITCHING_POOL],
+    }
+
+    return {
+        "teams": sorted(teams, key=lambda t: t["label"]),
+        "conferences": conferences,
+        "divisions": divisions,
+        "stats": stats,
+    }
+
+
+@router.post("/grid/validate-custom")
+def grid_validate_custom(data: dict = Body(...)):
+    """
+    Validate a custom grid — check that every cell has at least 1 matching player.
+    Body: {rows: [...], columns: [...]}
+    Returns: {valid: bool, cell_counts: {"0-0": n, ...}, invalid_cells: [...]}
+    """
+    rows = data.get("rows")
+    columns = data.get("columns")
+    if not rows or not columns or len(rows) != 3 or len(columns) != 3:
+        raise HTTPException(status_code=400, detail="Need exactly 3 rows and 3 columns")
+
+    stat_types = {"season_batting", "career_batting", "season_pitching", "career_pitching"}
+
+    cell_counts = {}
+    invalid_cells = []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for ri, row_crit in enumerate(rows):
+            for ci, col_crit in enumerate(columns):
+                key = f"{ri}-{ci}"
+                # Figure out team vs stat
+                if row_crit.get("type") in stat_types and col_crit.get("type") not in stat_types:
+                    team_crit, stat_crit = col_crit, row_crit
+                elif col_crit.get("type") in stat_types and row_crit.get("type") not in stat_types:
+                    team_crit, stat_crit = row_crit, col_crit
+                elif row_crit.get("type") not in stat_types and col_crit.get("type") not in stat_types:
+                    # Both are team criteria — check if any player has been on both
+                    count = _count_dual_team_cell(cur, row_crit, col_crit)
+                    cell_counts[key] = count
+                    if count < 1:
+                        invalid_cells.append(key)
+                    continue
+                else:
+                    # Both stats — invalid combo
+                    cell_counts[key] = 0
+                    invalid_cells.append(key)
+                    continue
+
+                count = _count_players_for_cell(cur, team_crit, stat_crit)
+                cell_counts[key] = count
+                if count < 1:
+                    invalid_cells.append(key)
+
+    return {
+        "valid": len(invalid_cells) == 0,
+        "cell_counts": cell_counts,
+        "invalid_cells": invalid_cells,
+    }
+
+
+def _count_dual_team_cell(cur, team_a, team_b):
+    """Count players who have been on teams matching both team criteria."""
+    # Build WHERE clauses for each team criteria
+    def _team_subquery(crit, alias):
+        tc_type = crit["type"]
+        tc_value = crit.get("value", "")
+        if tc_type == "team":
+            return f"SELECT p.id FROM players p JOIN teams t ON p.team_id = t.id WHERE t.short_name = %s", [tc_value]
+        elif tc_type == "conference":
+            return (f"SELECT p.id FROM players p JOIN teams t ON p.team_id = t.id "
+                    f"JOIN conferences c ON t.conference_id = c.id "
+                    f"WHERE c.abbreviation ILIKE %s OR c.name ILIKE %s"), [tc_value, f"%{tc_value}%"]
+        elif tc_type == "division":
+            if tc_value == "non_d1_4yr":
+                return (f"SELECT p.id FROM players p JOIN teams t ON p.team_id = t.id "
+                        f"JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id "
+                        f"WHERE d.level IN ('D2','D3','NAIA')"), []
+            elif tc_value == "ALL":
+                return "SELECT p.id FROM players p", []
+            return (f"SELECT p.id FROM players p JOIN teams t ON p.team_id = t.id "
+                    f"JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id "
+                    f"WHERE d.level = %s"), [tc_value]
+        return "SELECT NULL WHERE FALSE", []
+
+    sq_a, params_a = _team_subquery(team_a, "a")
+    sq_b, params_b = _team_subquery(team_b, "b")
+
+    sql = f"SELECT COUNT(*) FROM ({sq_a}) a_ids INNER JOIN ({sq_b}) b_ids ON a_ids.id = b_ids.id"
+    try:
+        cur.execute(sql, tuple(params_a + params_b))
+        row = cur.fetchone()
+        return list(row.values())[0] or 0
+    except Exception:
+        return 0
+
+
 def _find_players_for_cell(cur, team_criteria, stat_criteria, limit=50):
     """
     Find all players matching both team and stat criteria for a grid cell.

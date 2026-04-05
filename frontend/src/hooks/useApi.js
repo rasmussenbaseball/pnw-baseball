@@ -388,6 +388,28 @@ export async function gridFetchSolutions(rows, columns) {
 }
 
 /**
+ * Fetch available grid options (teams, stats, conferences) for custom grid builder.
+ */
+export async function gridFetchOptions() {
+  const resp = await fetch(`${API_BASE}/grid/options`)
+  if (!resp.ok) throw new Error('Failed to fetch grid options')
+  return resp.json()
+}
+
+/**
+ * Validate a custom grid — check that every cell has at least 1 matching player.
+ */
+export async function gridValidateCustom(rows, columns) {
+  const resp = await fetch(`${API_BASE}/grid/validate-custom`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows, columns }),
+  })
+  if (!resp.ok) throw new Error('Validation failed')
+  return resp.json()
+}
+
+/**
  * Recruiting Breakdown — team-level recruiting metrics.
  */
 export function useRecruitingBreakdown(season = 2026) {

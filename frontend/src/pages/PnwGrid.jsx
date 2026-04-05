@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useGridConfig, gridSearchPlayers, gridCheckGuess, gridFetchRandom, gridCheckCustom, gridFetchSolutions } from '../hooks/useApi'
+import { useGridConfig, gridSearchPlayers, gridCheckGuess, gridFetchRandom, gridCheckCustom, gridFetchSolutions, gridFetchOptions, gridValidateCustom } from '../hooks/useApi'
 
 const MAX_GUESSES = 9
 
@@ -9,14 +9,21 @@ export default function PnwGrid() {
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
 
-  // Mode: 'weekly' or 'random'
+  // Mode: 'weekly', 'random', or 'custom'
   const [mode, setMode] = useState('weekly')
   const { data: weeklyConfig, loading: weeklyLoading, error: weeklyError } = useGridConfig()
   const [randomConfig, setRandomConfig] = useState(null)
   const [randomLoading, setRandomLoading] = useState(false)
+  const [customConfig, setCustomConfig] = useState(null)
+  const [customBuilding, setCustomBuilding] = useState(true)
+  const [gridOptions, setGridOptions] = useState(null)
+  const [customRows, setCustomRows] = useState([null, null, null])
+  const [customColumns, setCustomColumns] = useState([null, null, null])
+  const [validating, setValidating] = useState(false)
+  const [customError, setCustomError] = useState(null)
 
-  const config = mode === 'weekly' ? weeklyConfig : randomConfig
-  const loading = mode === 'weekly' ? weeklyLoading : randomLoading
+  const config = mode === 'weekly' ? weeklyConfig : mode === 'random' ? randomConfig : customConfig
+  const loading = mode === 'weekly' ? weeklyLoading : mode === 'random' ? randomLoading : validating
 
   const [grid, setGrid] = useState(Array(9).fill(null))
   const [activeCell, setActiveCell] = useState(null)
@@ -37,6 +44,7 @@ export default function PnwGrid() {
   const gridRef = useRef(null)
 
   const isRandom = mode === 'random'
+  const isCustom = mode === 'custom'
 
   // Fetch random grid on mode switch or "new grid"
   const fetchRandomGrid = useCallback(async () => {
@@ -56,6 +64,21 @@ export default function PnwGrid() {
       fetchRandomGrid()
     }
   }, [mode, randomConfig, fetchRandomGrid])
+
+  // Fetch options when switching to custom mode
+  useEffect(() => {
+    if (mode === 'custom' && !gridOptions) {
+      const fetchOpts = async () => {
+        try {
+          const opts = await gridFetchOptions()
+          setGridOptions(opts)
+        } catch {
+          setGridOptions(null)
+        }
+      }
+      fetchOpts()
+    }
+  }, [mode, gridOptions])
 
   // Reset game state when config changes
   const resetGame = useCallback(() => {
@@ -144,8 +167,8 @@ export default function PnwGrid() {
 
     try {
       let result
-      if (isRandom && config) {
-        // Random mode: send criteria to custom endpoint
+      if ((isRandom || isCustom) && config) {
+        // Random/custom mode: send criteria to custom endpoint
         result = await gridCheckCustom(player.id, config.rows[row], config.columns[col])
       } else {
         // Weekly mode: use row/col indices
@@ -172,8 +195,8 @@ export default function PnwGrid() {
       setGuessesUsed(newGuesses)
 
       const filledCount = grid.filter(Boolean).length + (result.correct ? 1 : 0)
-      // Weekly: game over at MAX_GUESSES or 9 filled. Random: only when 9 filled.
-      if (filledCount >= 9 || (!isRandom && newGuesses >= MAX_GUESSES)) {
+      // Weekly: game over at MAX_GUESSES or 9 filled. Random/Custom: only when 9 filled.
+      if (filledCount >= 9 || (!isRandom && !isCustom && newGuesses >= MAX_GUESSES)) {
         setGameOver(true)
       }
 
@@ -185,7 +208,7 @@ export default function PnwGrid() {
     } catch {
       // Handle error
     }
-  }, [activeCell, gameOver, guessesUsed, grid, isRandom, config])
+  }, [activeCell, gameOver, guessesUsed, grid, isRandom, isCustom, config])
 
   const handleReset = () => {
     resetGame()
@@ -194,6 +217,38 @@ export default function PnwGrid() {
   const handleNewRandomGrid = async () => {
     resetGame()
     await fetchRandomGrid()
+  }
+
+  const handleCreateCustomGrid = async () => {
+    if (customRows.some(r => !r) || customColumns.some(c => !c)) return
+
+    setValidating(true)
+    setCustomError(null)
+    try {
+      const result = await gridValidateCustom(customRows, customColumns)
+      if (result.valid) {
+        setCustomConfig({ rows: customRows, columns: customColumns, title: 'Custom Grid', mode: 'custom' })
+        setCustomBuilding(false)
+        resetGame()
+      } else {
+        // Show which cells have no valid answers
+        const badCells = (result.invalid_cells || []).map(key => {
+          const [ri, ci] = key.split('-').map(Number)
+          const rowLabel = customRows[ri]?.label || `Row ${ri + 1}`
+          const colLabel = customColumns[ci]?.label || `Col ${ci + 1}`
+          return `${rowLabel} + ${colLabel}`
+        })
+        setCustomError(`No valid answers for: ${badCells.join(', ')}. Try different combinations.`)
+      }
+    } catch {
+      setCustomError('Something went wrong validating the grid. Please try again.')
+    }
+    setValidating(false)
+  }
+
+  const handleBackToBuilder = () => {
+    setCustomBuilding(true)
+    resetGame()
   }
 
   const handleGiveUp = () => {
@@ -207,6 +262,11 @@ export default function PnwGrid() {
     if (newMode === mode) return
     resetGame()
     setMode(newMode)
+    if (newMode === 'custom') {
+      setCustomBuilding(true)
+      setCustomRows([null, null, null])
+      setCustomColumns([null, null, null])
+    }
   }
 
   const handleSaveImage = async () => {
@@ -259,11 +319,16 @@ export default function PnwGrid() {
   if (loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
 
   // Weekly mode: show error if no config. Random mode: should always have config after loading.
+  // Show custom builder if in custom mode and building
+  if (isCustom && customBuilding) {
+    return <CustomBuilder gridOptions={gridOptions} customRows={customRows} customColumns={customColumns} setCustomRows={(v) => { setCustomRows(v); setCustomError(null) }} setCustomColumns={(v) => { setCustomColumns(v); setCustomError(null) }} onCreateGrid={handleCreateCustomGrid} validating={validating} customError={customError} mode={mode} handleModeSwitch={handleModeSwitch} />
+  }
+
   if (!config) return (
     <div className="text-center py-12 text-gray-400">
       <p className="text-lg font-medium">No PNW Grid available right now</p>
       <p className="text-sm mt-1">Check back soon!</p>
-      {/* Still show the mode toggle so they can switch to random */}
+      {/* Still show the mode toggle so they can switch to random/custom */}
       <div className="flex items-center justify-center gap-1 mt-4 bg-gray-100 rounded-lg p-1 mx-auto w-fit">
         <button
           onClick={() => handleModeSwitch('weekly')}
@@ -276,6 +341,12 @@ export default function PnwGrid() {
           className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'random' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
         >
           Random
+        </button>
+        <button
+          onClick={() => handleModeSwitch('custom')}
+          className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'custom' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Custom
         </button>
       </div>
     </div>
@@ -300,6 +371,12 @@ export default function PnwGrid() {
         >
           Random
         </button>
+        <button
+          onClick={() => handleModeSwitch('custom')}
+          className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'custom' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Custom
+        </button>
       </div>
 
       {/* === Capturable area for screenshot === */}
@@ -312,15 +389,15 @@ export default function PnwGrid() {
             <span className="text-lg font-extrabold tracking-tight" style={{ color: '#00687a' }}>PNW GRID</span>
           </div>
           {config.title && (
-            <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">{config.title}</p>
+            <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">{isCustom ? 'CUSTOM GRID' : config.title}</p>
           )}
           <div className="flex items-center justify-center gap-4 mt-1.5 text-sm">
-            {!isRandom && (
+            {!isRandom && !isCustom && (
               <span className="text-gray-500">
                 Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>/{MAX_GUESSES}
               </span>
             )}
-            {isRandom && (
+            {(isRandom || isCustom) && (
               <span className="text-gray-500">
                 Guesses: <span className="font-bold text-gray-800">{guessesUsed}</span>
               </span>
@@ -528,18 +605,18 @@ export default function PnwGrid() {
       )}
 
       {/* Action buttons (outside capturable area) */}
-      {(gameOver || (isRandom && score === 9)) && (
+      {(gameOver || (isRandom && score === 9) || (isCustom && score === 9)) && (
         <div className="mt-3 flex items-center justify-center gap-3 px-4">
-          {isRandom ? (
+          {isRandom || isCustom ? (
             <button
-              onClick={handleNewRandomGrid}
+              onClick={isCustom ? handleBackToBuilder : handleNewRandomGrid}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition"
               style={{ backgroundColor: '#00687a' }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              New Grid
+              {isCustom ? 'New Grid' : 'New Grid'}
             </button>
           ) : (
             <button
@@ -665,11 +742,11 @@ export default function PnwGrid() {
         </div>
       )}
 
-      {/* New Grid button visible during random play (not just at game over) */}
-      {isRandom && !gameOver && score < 9 && (
+      {/* New Grid button visible during random/custom play (not just at game over) */}
+      {(isRandom || isCustom) && !gameOver && score < 9 && (
         <div className="mt-3 flex items-center justify-center gap-4 px-4">
           <button
-            onClick={handleNewRandomGrid}
+            onClick={isCustom ? handleBackToBuilder : handleNewRandomGrid}
             className="flex items-center gap-1.5 text-xs font-medium hover:underline"
             style={{ color: '#00687a' }}
           >
@@ -691,10 +768,279 @@ export default function PnwGrid() {
       <div className="mt-5 mx-4 bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
         <p className="font-semibold text-gray-600 mb-1">How to play</p>
         <p>Select a cell and search for a player who fits <strong>both</strong> the row and column criteria.
-        Each player can only be used once.{!isRandom && ` You have ${MAX_GUESSES} guesses to fill the 3×3 grid.`}
-        {isRandom && ' Unlimited guesses — keep going until you fill the grid!'}</p>
+        Each player can only be used once.{!isRandom && !isCustom && ` You have ${MAX_GUESSES} guesses to fill the 3×3 grid.`}
+        {(isRandom || isCustom) && ' Unlimited guesses — keep going until you fill the grid!'}</p>
         <p className="mt-1.5 text-gray-400">Data includes the 2018 season and later for 4-year schools and 2019 and later for NWAC. Rate stats require qualification (50+ PA for hitters, 20+ IP for pitchers).</p>
       </div>
+    </div>
+  )
+}
+
+
+/* ─────────────── Custom Grid Builder ─────────────── */
+
+function CriteriaSelect({ value, onChange, options, label, index }) {
+  const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState('')
+  const ref = useRef(null)
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Build grouped options from the flat options object
+  const groups = []
+  if (options) {
+    // Teams
+    if (options.teams?.length) groups.push({ label: 'Teams', items: options.teams.map(t => ({ ...t, _display: t.label })) })
+    if (options.conferences?.length) groups.push({ label: 'Conferences / Divisions', items: [...options.conferences, ...options.divisions].map(t => ({ ...t, _display: t.label })) })
+    // Stats
+    const statGroups = [
+      { key: 'season_batting', label: 'Season Batting' },
+      { key: 'career_batting', label: 'Career Batting' },
+      { key: 'season_pitching', label: 'Season Pitching' },
+      { key: 'career_pitching', label: 'Career Pitching' },
+    ]
+    for (const sg of statGroups) {
+      const items = options.stats?.[sg.key]
+      if (items?.length) {
+        groups.push({ label: sg.label, items: items.map(s => ({ ...s, _display: s.label })) })
+      }
+    }
+  }
+
+  // Filter
+  const lowerFilter = filter.toLowerCase()
+  const filtered = groups.map(g => ({
+    ...g,
+    items: g.items.filter(i => i._display.toLowerCase().includes(lowerFilter)),
+  })).filter(g => g.items.length > 0)
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition ${
+          value ? 'bg-white border-teal-400 text-gray-800 font-medium' : 'bg-gray-50 border-gray-200 text-gray-400'
+        }`}
+      >
+        <span className="text-[10px] uppercase tracking-wider text-gray-400 block leading-tight">{label} {index + 1}</span>
+        <span className="truncate block">{value ? value.label : 'Select...'}</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-gray-100">
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search..."
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400"
+              autoFocus
+            />
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {filtered.map((group) => (
+              <div key={group.label}>
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-gray-400 bg-gray-50 sticky top-0">
+                  {group.label}
+                </div>
+                {group.items.map((item, i) => (
+                  <button
+                    key={`${group.label}-${i}`}
+                    onClick={() => { onChange(item); setOpen(false); setFilter('') }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition border-b border-gray-50 last:border-0"
+                  >
+                    {item._display}
+                  </button>
+                ))}
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <p className="p-3 text-sm text-gray-400 text-center">No matching options</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function CustomBuilder({ gridOptions, customRows, customColumns, setCustomRows, setCustomColumns, onCreateGrid, validating, customError, mode, handleModeSwitch }) {
+  const allSelected = customRows.every(Boolean) && customColumns.every(Boolean)
+
+  // Check for duplicate selections
+  const allSelections = [...customRows, ...customColumns].filter(Boolean)
+  const hasDupes = new Set(allSelections.map(s => JSON.stringify(s))).size < allSelections.length
+
+  // Check for invalid combos: both stat on same axis? Both rows can't both be stats AND both columns be stats
+  const statTypes = new Set(['season_batting', 'career_batting', 'season_pitching', 'career_pitching'])
+  const rowStatCount = customRows.filter(r => r && statTypes.has(r.type)).length
+  const colStatCount = customColumns.filter(c => c && statTypes.has(c.type)).length
+  const rowTeamCount = customRows.filter(r => r && !statTypes.has(r.type)).length
+  const colTeamCount = customColumns.filter(c => c && !statTypes.has(c.type)).length
+
+  // Need at least one team axis and one stat axis for valid intersections
+  // Or: rows are all teams + cols are all stats, or vice versa, or mixed
+  // Invalid: if a row is stat AND the matching col is also stat → that cell has no answer
+  const hasInvalidAxis = rowStatCount === 3 && colStatCount === 3
+
+  let warning = null
+  if (hasDupes) warning = 'Remove duplicate selections'
+  else if (hasInvalidAxis) warning = "Can't have all stats on both rows and columns"
+  else if (rowStatCount > 0 && colStatCount > 0) warning = 'Tip: put teams on one axis and stats on the other for best results'
+
+  return (
+    <div className="max-w-xl mx-auto">
+      {/* Mode toggle */}
+      <div className="flex items-center justify-center gap-1 mb-3 bg-gray-100 rounded-lg p-1 mx-4">
+        <button
+          onClick={() => handleModeSwitch('weekly')}
+          className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'weekly' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Daily
+        </button>
+        <button
+          onClick={() => handleModeSwitch('random')}
+          className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'random' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Random
+        </button>
+        <button
+          onClick={() => handleModeSwitch('custom')}
+          className={`flex-1 px-4 py-1.5 rounded-md text-xs font-semibold transition ${mode === 'custom' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Custom
+        </button>
+      </div>
+
+      {/* Header */}
+      <div className="text-center mb-4 px-4">
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <img src="/images/nw-logo-white.png" alt="NW" className="h-7 w-7 rounded" style={{ background: '#00687a', padding: '3px' }} />
+          <span className="text-lg font-extrabold tracking-tight" style={{ color: '#00687a' }}>BUILD YOUR GRID</span>
+        </div>
+        <p className="text-xs text-gray-400">Choose 3 rows and 3 columns. Only valid combinations (with real answers) are allowed.</p>
+      </div>
+
+      {!gridOptions ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Loading options...</div>
+      ) : (
+        <div className="px-4 space-y-4">
+          {/* Columns */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Columns (across the top)</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {customColumns.map((col, i) => (
+                <CriteriaSelect
+                  key={`col-${i}`}
+                  value={col}
+                  onChange={(v) => {
+                    const next = [...customColumns]
+                    next[i] = v
+                    setCustomColumns(next)
+                  }}
+                  options={gridOptions}
+                  label="Col"
+                  index={i}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Rows */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Rows (down the side)</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {customRows.map((row, i) => (
+                <CriteriaSelect
+                  key={`row-${i}`}
+                  value={row}
+                  onChange={(v) => {
+                    const next = [...customRows]
+                    next[i] = v
+                    setCustomRows(next)
+                  }}
+                  options={gridOptions}
+                  label="Row"
+                  index={i}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Preview grid */}
+          {allSelected && !hasInvalidAxis && !hasDupes && (
+            <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+              <div className="grid grid-cols-4 gap-0">
+                {/* Top-left */}
+                <div className="border-b border-r border-gray-200 p-2 flex items-center justify-center" style={{ backgroundColor: '#00687a' }}>
+                  <img src="/images/nw-logo-white.png" alt="NW" className="h-5 w-5 opacity-80" />
+                </div>
+                {/* Column headers */}
+                {customColumns.map((col, i) => (
+                  <div key={`ph-col-${i}`} className="border-b border-r border-gray-200 p-1.5 flex items-center justify-center text-center last:border-r-0" style={{ backgroundColor: '#00687a' }}>
+                    <span className="text-[10px] font-bold text-white leading-tight">{col?.label || '?'}</span>
+                  </div>
+                ))}
+                {/* Rows */}
+                {customRows.map((row, ri) => (
+                  <div key={`ph-row-${ri}`} className="contents">
+                    <div className="border-b border-r border-gray-200 p-1.5 flex items-center justify-center text-center" style={{ backgroundColor: '#00687a' }}>
+                      <span className="text-[10px] font-bold text-white leading-tight">{row?.label || '?'}</span>
+                    </div>
+                    {customColumns.map((_, ci) => (
+                      <div key={`ph-cell-${ri}-${ci}`} className="border-b border-r border-gray-200 aspect-square flex items-center justify-center last:border-r-0">
+                        <span className="text-gray-200 text-lg font-light">?</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Warning */}
+          {warning && (
+            <p className="text-xs text-amber-600 text-center font-medium">{warning}</p>
+          )}
+
+          {/* Validation error */}
+          {customError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-600 text-center font-medium">
+              {customError}
+            </div>
+          )}
+
+          {/* Create button */}
+          <button
+            onClick={onCreateGrid}
+            disabled={!allSelected || hasDupes || hasInvalidAxis || validating}
+            className="w-full py-2.5 rounded-lg text-sm font-bold text-white transition disabled:opacity-40"
+            style={{ backgroundColor: '#00687a' }}
+          >
+            {validating ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Checking for valid answers...
+              </span>
+            ) : (
+              'Create Grid'
+            )}
+          </button>
+
+          {/* Tip */}
+          <p className="text-[11px] text-gray-400 text-center">
+            Tip: put teams/conferences on one axis and stat categories on the other.
+            The grid will only be created if every cell has at least one valid answer.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
