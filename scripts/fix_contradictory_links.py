@@ -6,7 +6,7 @@ Some players appear as BOTH canonical_id and linked_id, which causes
 ALL of their entries to be hidden from search. This script:
 1. Finds all contradictory links
 2. Groups affected players by name
-3. Picks the best canonical (highest division level, then highest player ID)
+3. Picks the best canonical (has 2026 stats first, then division level, then newest ID)
 4. Deletes bad links and re-creates them cleanly
 
 Usage:
@@ -57,14 +57,18 @@ def main():
                 all_related.add(r["canonical_id"])
                 all_related.add(r["linked_id"])
 
-        # Step 3: Get player details for all related players
+        # Step 3: Get player details for all related players, including 2026 stats check
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, t.short_name, t.id as team_id,
-                   d.level as division_level
+                   d.level as division_level,
+                   CASE WHEN bs.player_id IS NOT NULL OR ps.player_id IS NOT NULL
+                        THEN 1 ELSE 0 END AS has_2026_stats
             FROM players p
             JOIN teams t ON p.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.season = 2026
+            LEFT JOIN pitching_stats ps ON p.id = ps.player_id AND ps.season = 2026
             WHERE p.id = ANY(%s)
         """, (list(all_related),))
         players = {r["id"]: dict(r) for r in cur.fetchall()}
@@ -83,9 +87,9 @@ def main():
             if len(group) < 2:
                 continue
 
-            # Sort by division priority (desc), then player ID (desc = newer)
+            # Sort by: has 2026 stats first, then division priority, then newest ID
             group.sort(
-                key=lambda p: (DIV_PRIORITY.get(p["division_level"], 0), p["id"]),
+                key=lambda p: (p["has_2026_stats"], DIV_PRIORITY.get(p["division_level"], 0), p["id"]),
                 reverse=True,
             )
             canonical = group[0]
