@@ -1571,9 +1571,13 @@ def upsert_game(cur, game_data):
                     break
 
     if game_id:
-        # Update existing game
+        # Update existing game (including home/away teams in case they were wrong)
         cur.execute("""
             UPDATE games SET
+                home_team_id = COALESCE(%s, home_team_id),
+                away_team_id = COALESCE(%s, away_team_id),
+                home_team_name = COALESCE(%s, home_team_name),
+                away_team_name = COALESCE(%s, away_team_name),
                 home_score = COALESCE(%s, home_score),
                 away_score = COALESCE(%s, away_score),
                 home_hits = COALESCE(%s, home_hits),
@@ -1587,6 +1591,8 @@ def upsert_game(cur, game_data):
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (
+            game_data.get("home_team_id"), game_data.get("away_team_id"),
+            game_data.get("home_team_name"), game_data.get("away_team_name"),
             game_data.get("home_score"), game_data.get("away_score"),
             game_data.get("home_hits"), game_data.get("away_hits"),
             game_data.get("home_errors"), game_data.get("away_errors"),
@@ -1972,6 +1978,12 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     logger.warning(f"    Failed to upsert game")
                     errors += 1
                     continue
+
+                # Delete old game-level stats before re-inserting
+                # (ensures correct team_id assignments if home/away changed)
+                if box_batting or box_pitching:
+                    cur.execute("DELETE FROM game_batting WHERE game_id = %s", (game_id,))
+                    cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (game_id,))
 
                 # Insert batting lines
                 home_team = game_data.get("home_team_id")
