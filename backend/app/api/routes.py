@@ -4467,6 +4467,94 @@ def games_by_date(
         return {"games": games, "date": date, "count": len(games)}
 
 
+def _dedup_live_games(games):
+    """Remove duplicate live-score entries.
+
+    The live_scores.json has one row per *team* per game, so CWU-at-MSUB
+    appears twice (CWU's row and MSUB's row).  We keep whichever row
+    comes first and drop the mirror.  Two rows are duplicates when:
+      • same date
+      • one's team matches the other's opponent (name overlap)
+      • scores match (possibly swapped)
+    When keeping one, prefer the row that has a box_score_url.
+    """
+    # Build a lookup: team short_name / name / school_name → id
+    # so "CWU" and "Central Washington University" both resolve to the same id.
+    _team_id_cache = {}
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, short_name, name, school_name FROM teams")
+            for row in cur.fetchall():
+                for field in ("short_name", "name", "school_name"):
+                    val = row[field]
+                    if val:
+                        _team_id_cache[val.strip().lower()] = row["id"]
+    except Exception:
+        pass
+
+    def _resolve(name):
+        """Return team id for a name, or None."""
+        if not name:
+            return None
+        return _team_id_cache.get(name.strip().lower())
+
+    def _is_live_dup(a, b):
+        if str(a.get("date", ""))[:10] != str(b.get("date", ""))[:10]:
+            return False
+        # Resolve team ids via the lookup
+        a_team_id = _resolve(a.get("team"))
+        a_opp_id = _resolve(a.get("opponent"))
+        b_team_id = _resolve(b.get("team"))
+        b_opp_id = _resolve(b.get("opponent"))
+
+        # Check if teams are swapped (a.team ≈ b.opponent AND a.opponent ≈ b.team)
+        teams_swapped = False
+        # ID-based match (most reliable)
+        if a_team_id and b_opp_id and a_team_id == b_opp_id:
+            if a_opp_id and b_team_id and a_opp_id == b_team_id:
+                teams_swapped = True
+            elif not a_opp_id or not b_team_id:
+                teams_swapped = True  # one side unresolved, trust the other
+        # Fallback: exact string match (handles non-DB teams)
+        if not teams_swapped:
+            a_team_s = str(a.get("team", "")).lower()
+            b_opp_s = str(b.get("opponent", "")).lower()
+            b_team_s = str(b.get("team", "")).lower()
+            a_opp_s = str(a.get("opponent", "")).lower()
+            teams_swapped = (a_team_s == b_opp_s and b_team_s == a_opp_s)
+        if not teams_swapped:
+            return False
+
+        # Scores must match (swapped perspective)
+        a_ts = a.get("team_score")
+        a_os = a.get("opponent_score")
+        b_ts = b.get("team_score")
+        b_os = b.get("opponent_score")
+        # Both scheduled (no scores yet) counts as a match
+        if a_ts is None and b_ts is None:
+            return True
+        try:
+            return int(a_ts) == int(b_os) and int(a_os) == int(b_ts)
+        except (TypeError, ValueError):
+            return False
+
+    deduped = []
+    for g in games:
+        dup_idx = None
+        for i, prev in enumerate(deduped):
+            if _is_live_dup(prev, g):
+                dup_idx = i
+                break
+        if dup_idx is not None:
+            # Keep whichever has a box_score_url
+            if g.get("box_score_url") and not deduped[dup_idx].get("box_score_url"):
+                deduped[dup_idx] = g
+        else:
+            deduped.append(g)
+    return deduped
+
+
 @router.get("/games/live")
 def games_live():
     """
@@ -4490,6 +4578,12 @@ def games_live():
     try:
         with open(live_scores_path) as f:
             data = _json.load(f)
+
+        # Dedup live-score entries — the JSON has one entry per team per game,
+        # so CWU-vs-MSUB appears twice (once from each team's schedule).
+        for section in ("today", "recent", "upcoming"):
+            data[section] = _dedup_live_games(data.get(section, []))
+
         return data
     except (ValueError, OSError):
         return {
