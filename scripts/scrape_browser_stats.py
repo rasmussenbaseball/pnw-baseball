@@ -506,8 +506,8 @@ def insert_pitching_stats(cur, player_id, team_id, season, pitching_data):
         """INSERT INTO pitching_stats
            (player_id, team_id, season, games, games_started, wins, losses,
             innings_pitched, hits_allowed, runs_allowed, earned_runs, walks, strikeouts,
-            home_runs_allowed, era, whip, k_per_9, k_pct, bb_pct)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            home_runs_allowed, batters_faced, era, whip, k_per_9, k_pct, bb_pct)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT(player_id, team_id, season) DO UPDATE SET
             games=excluded.games, games_started=excluded.games_started,
             wins=excluded.wins, losses=excluded.losses, innings_pitched=excluded.innings_pitched,
@@ -515,6 +515,7 @@ def insert_pitching_stats(cur, player_id, team_id, season, pitching_data):
             earned_runs=excluded.earned_runs,
             walks=excluded.walks, strikeouts=excluded.strikeouts,
             home_runs_allowed=excluded.home_runs_allowed,
+            batters_faced=excluded.batters_faced,
             era=excluded.era, whip=excluded.whip, k_per_9=excluded.k_per_9,
             k_pct=excluded.k_pct, bb_pct=excluded.bb_pct,
             updated_at=CURRENT_TIMESTAMP""",
@@ -531,6 +532,7 @@ def insert_pitching_stats(cur, player_id, team_id, season, pitching_data):
             pitching_data.get("bb", 0),
             pitching_data.get("k", 0),
             pitching_data.get("hr", 0),
+            pitching_data.get("bf", 0),
             pitching_data.get("era", 0.0),
             pitching_data.get("whip", 0.0),
             pitching_data.get("k9", 0.0),
@@ -752,14 +754,22 @@ def scrape_seattle_u(season, season_year, headless=False):
                     p_bb = safe_int(stats.get("sBasesOnBallsAllowed"))
                     p_k = safe_int(stats.get("sStrikeouts"))
                     p_hr = safe_int(stats.get("sHomeRunsAllowed"))
+                    p_hbp = safe_int(stats.get("sHitBattersPitching"))
                     w = safe_int(stats.get("sIndWon"))
                     l = safe_int(stats.get("sIndLost"))
                     sv = safe_int(stats.get("sSaves"))
                     p_gp = safe_int(stats.get("sPitchingAppearances")) or gp
                     p_gs = safe_int(stats.get("sPitcherGamesStarted")) or gs
+                    p_bf = safe_int(stats.get("sBattersFaced"))
+
+                    # Estimate BF if not provided by API
+                    if not p_bf and ip > 0:
+                        outs = int(ip) * 3 + int(round((ip - int(ip)) * 10))
+                        p_bf = outs + p_h + p_bb + p_hbp
 
                     line = PitchingLine(
-                        ip=ip, hits=p_h, runs=p_r, er=er, bb=p_bb, k=p_k, hr=p_hr
+                        ip=ip, hits=p_h, runs=p_r, er=er, bb=p_bb, k=p_k, hr=p_hr,
+                        hbp=p_hbp, bf=p_bf,
                     )
                     adv = compute_pitching_advanced(line)
 
@@ -767,6 +777,7 @@ def scrape_seattle_u(season, season_year, headless=False):
                         "games": p_gp, "gs": p_gs, "w": w, "l": l,
                         "ip": ip, "h": p_h, "r": p_r, "er": er,
                         "bb": p_bb, "k": p_k, "hr": p_hr,
+                        "bf": p_bf,
                         "era": adv.era, "whip": adv.whip,
                         "k9": adv.k_per_9, "k_pct": adv.k_pct,
                         "bb_pct": adv.bb_pct,
@@ -984,12 +995,20 @@ def scrape_presto_team(team_name, team_db_short, slug, season, season_year, head
                 bb = safe_int(pitcher.get("bb"))
                 k = safe_int(pitcher.get("k"))
                 hr = safe_int(pitcher.get("hr"))
+                hbp = safe_int(pitcher.get("hb") or pitcher.get("hbp"))
 
                 if ip == 0 and gp == 0:
                     continue
 
+                # Estimate batters faced: outs + hits + walks + HBP
+                if ip > 0:
+                    outs = int(ip) * 3 + int(round((ip - int(ip)) * 10))
+                    bf = outs + h + bb + hbp
+                else:
+                    bf = 0
+
                 line = PitchingLine(
-                    ip=ip, hits=h, runs=r, er=er, bb=bb, k=k, hr=hr
+                    ip=ip, hits=h, runs=r, er=er, bb=bb, k=k, hr=hr, hbp=hbp, bf=bf
                 )
                 div_level = "D3" if "Willamette" in team_name else "JUCO"
                 adv = compute_pitching_advanced(line)
@@ -1006,6 +1025,7 @@ def scrape_presto_team(team_name, team_db_short, slug, season, season_year, head
                     "bb": bb,
                     "k": k,
                     "hr": hr,
+                    "bf": bf,
                     "era": adv.era,
                     "whip": adv.whip,
                     "k9": adv.k_per_9,
