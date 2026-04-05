@@ -167,7 +167,7 @@ function GameResultsTicker({ games }) {
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-3">
       <div className="flex items-center">
         <div className="flex-none px-3 py-2 bg-pnw-slate text-white">
-          <Link to="/results" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors">
+          <Link to="/scoreboard" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors">
             Scores
           </Link>
         </div>
@@ -211,7 +211,7 @@ function GameResultsTicker({ games }) {
             )
           })}
         </div>
-        <Link to="/results" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
+        <Link to="/scoreboard" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>

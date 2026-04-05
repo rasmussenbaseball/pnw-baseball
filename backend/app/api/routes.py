@@ -4374,6 +4374,78 @@ def recent_games(
         return _dedup_games(games, limit)
 
 
+@router.get("/games/by-date")
+def games_by_date(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    division: Optional[str] = None,
+):
+    """
+    Get all games for a specific date. Used by the scoreboard date picker.
+    Returns games ordered by status (live first, then final, then scheduled).
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        conditions = ["g.game_date = %s"]
+        params: list = [date]
+
+        if division:
+            conditions.append("""
+                (g.home_team_id IN (
+                    SELECT t.id FROM teams t
+                    JOIN conferences c ON t.conference_id = c.id
+                    JOIN divisions d ON c.division_id = d.id
+                    WHERE d.level = %s
+                ) OR g.away_team_id IN (
+                    SELECT t.id FROM teams t
+                    JOIN conferences c ON t.conference_id = c.id
+                    JOIN divisions d ON c.division_id = d.id
+                    WHERE d.level = %s
+                ))
+            """)
+            params.extend([division, division])
+
+        where = " AND ".join(conditions)
+
+        cur.execute(f"""
+            SELECT
+                g.id, g.season, g.game_date, g.game_time,
+                g.home_team_id, g.away_team_id,
+                g.home_team_name, g.away_team_name,
+                g.home_score, g.away_score,
+                g.innings, g.is_conference_game,
+                g.home_hits, g.home_errors,
+                g.away_hits, g.away_errors,
+                g.home_line_score, g.away_line_score,
+                g.game_score, g.status,
+                ht.short_name AS home_short,
+                ht.logo_url AS home_logo,
+                at2.short_name AS away_short,
+                at2.logo_url AS away_logo,
+                hd.level AS home_division,
+                ad.level AS away_division
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            LEFT JOIN conferences hc ON ht.conference_id = hc.id
+            LEFT JOIN divisions hd ON hc.division_id = hd.id
+            LEFT JOIN conferences ac ON at2.conference_id = ac.id
+            LEFT JOIN divisions ad ON ac.division_id = ad.id
+            WHERE {where}
+            ORDER BY
+                CASE g.status
+                    WHEN 'live' THEN 0
+                    WHEN 'final' THEN 1
+                    ELSE 2
+                END,
+                g.game_time ASC NULLS LAST,
+                g.id
+        """, params)
+
+        games = [dict(g) for g in cur.fetchall()]
+        return {"games": games, "date": date, "count": len(games)}
+
+
 @router.get("/games/live")
 def games_live():
     """

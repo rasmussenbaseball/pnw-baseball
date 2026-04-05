@@ -275,6 +275,40 @@ export function useLiveScores() {
 }
 
 /**
+ * Games for a specific date (used by scoreboard date picker).
+ * Pass null to skip fetching (e.g., when viewing today's live scores).
+ */
+export function useGamesByDate(date) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!date) {
+      setData(null)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    fetch(`${API_BASE}/games/by-date?date=${date}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`API error: ${r.status}`)
+        return r.json()
+      })
+      .then(result => { if (!cancelled) setData(result) })
+      .catch(err => { if (!cancelled) setError(err.message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+
+    return () => { cancelled = true }
+  }, [date])
+
+  return { data, loading, error }
+}
+
+/**
  * Quality starts leaderboard.
  */
 export function useQualityStarts(season = 2026, limit = 25) {

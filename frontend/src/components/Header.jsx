@@ -19,9 +19,8 @@ const NAV = [
   {
     label: 'Teams',
     items: [
-      { to: '/scoreboard', label: 'Scoreboard', desc: 'Live scores & today\'s games' },
+      { to: '/scoreboard', label: 'Scoreboard', desc: 'Scores, results & schedules' },
       { to: '/teams', label: 'Team Pages', desc: 'Rosters, stats & profiles' },
-      { to: '/results', label: 'Results', desc: 'Game scores & box scores' },
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
