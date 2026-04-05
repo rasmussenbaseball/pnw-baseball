@@ -124,6 +124,22 @@ HEADERS = {
 }
 
 
+def clean_headshot_url(url):
+    """Remove size-limiting query params (width, quality) so we get the full-size image."""
+    if not url:
+        return url
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    parsed = urlparse(url)
+    if not parsed.query:
+        return url
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    # Remove size-limiting params
+    for key in ("width", "height", "quality", "w", "h", "q", "max_width", "max_height"):
+        params.pop(key, None)
+    new_query = urlencode(params, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
 def fetch_page(url):
     """Fetch a URL with retries."""
     for attempt in range(2):
@@ -222,7 +238,7 @@ def parse_nuxt_roster(html, base_url=""):
 
             if headshot:
                 name_key = f"{first} {last}".lower()
-                roster[name_key] = headshot
+                roster[name_key] = clean_headshot_url(headshot)
 
         if roster:
             break
@@ -306,7 +322,7 @@ def parse_sidearm_json_roster(base_url, season_year=None):
 
             if headshot:
                 name_key = f"{first} {last}".lower()
-                roster[name_key] = headshot
+                roster[name_key] = clean_headshot_url(headshot)
 
         if roster:
             break
@@ -372,7 +388,7 @@ def parse_sidearm_html_roster(html, base_url=""):
 
         if first and last:
             name_key = f"{first} {last}".lower()
-            roster[name_key] = src
+            roster[name_key] = clean_headshot_url(src)
 
     return roster
 
@@ -405,7 +421,7 @@ def parse_prestoports_roster(html, base_url=""):
                 first = parts[0] if len(parts) >= 1 else name
                 last = parts[1] if len(parts) >= 2 else ""
                 if first and last:
-                    roster[f"{first} {last}".lower()] = src
+                    roster[f"{first} {last}".lower()] = clean_headshot_url(src)
 
     return roster
 
