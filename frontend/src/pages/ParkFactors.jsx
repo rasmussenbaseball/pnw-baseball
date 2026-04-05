@@ -154,8 +154,13 @@ function ParkCard({ park }) {
           <div className="text-xs font-bold text-gray-700">{dims.avg_of || '—'} ft</div>
         </div>
         <div>
-          <div className="text-[10px] text-gray-400">Game Temp</div>
-          <div className="text-xs font-bold text-gray-700">{park.march_avg_temp_f || '—'}°F</div>
+          <div className="text-[10px] text-gray-400">Avg Temp</div>
+          <div className="text-xs font-bold text-gray-700">
+            {park.season_avg_temp_f ? `${park.season_avg_temp_f}°F` : park.march_avg_temp_f ? `${park.march_avg_temp_f}°F` : '—'}
+          </div>
+          {park.march_avg_temp_f && park.april_avg_temp_f && (
+            <div className="text-[9px] text-gray-400">{park.march_avg_temp_f}° Mar / {park.april_avg_temp_f}° Apr</div>
+          )}
         </div>
       </div>
 
@@ -350,7 +355,7 @@ function TableView({ teams }) {
               <th className="px-2 py-2 text-[10px] font-semibold text-gray-500 uppercase text-right">H/R</th>
               <SortHeader k="elevation_ft" right>Elev ft</SortHeader>
               <SortHeader k="dims" right>OF Avg</SortHeader>
-              <SortHeader k="march_avg_temp_f" right>Temp°F</SortHeader>
+              <SortHeader k="season_avg_temp_f" right>Temp°F</SortHeader>
             </tr>
           </thead>
           <tbody>
@@ -380,7 +385,7 @@ function TableView({ teams }) {
                   <td className="px-2 py-1.5 text-right text-xs text-gray-600">
                     {t.dimensions?.avg_of || '—'}{t.dimensions?.status === 'estimated' ? '*' : ''}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-xs text-gray-600">{t.march_avg_temp_f || '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-xs text-gray-600">{t.season_avg_temp_f || t.march_avg_temp_f || '—'}</td>
                 </tr>
               )
             })}
@@ -507,9 +512,10 @@ export default function ParkFactors() {
             <h3 className="text-xs font-bold text-gray-700 mb-1">Temperature</h3>
             <p className="text-[11px] text-gray-600 leading-relaxed">
               Warmer air is less dense, so balls carry further in warm weather. We estimate
-              approximately +1% per 10°F above a 60°F baseline. Most PNW spring games are played
-              in 50-60°F weather, so this effect is small but real — and it slightly penalizes
-              cold-weather parks like those in Montana and eastern Washington.
+              approximately +1% per 10°F above a 60°F baseline. Temperature is calculated as the
+              average of March and April highs for each city — the core of the PNW spring season.
+              Most parks sit in the 56-65°F range, so this effect is small but real — and it
+              slightly penalizes cold-weather parks like those in Montana and eastern Washington.
             </p>
           </div>
           <div className="bg-gray-50 rounded-lg p-3">

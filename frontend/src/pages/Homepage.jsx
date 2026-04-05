@@ -28,7 +28,7 @@ export default function Homepage() {
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
   const { data: recentGames } = useGamesTicker(SEASON, 20)
-  const { data: liveData } = useLiveScores()
+  const { data: liveData, refetch: refetchLive } = useLiveScores()
   const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
   const { user } = useAuth()
   const [bannerDismissed, setBannerDismissed] = useState(() => {
@@ -40,17 +40,26 @@ export default function Homepage() {
     try { sessionStorage.setItem('beta-banner-dismissed', '1') } catch {}
   }
 
-  // Only show live ticker when games are actually in progress
+  // Show live ticker when there are any today games (live, final, or scheduled)
   const todayGames = liveData?.today || []
   const hasLiveGames = todayGames.some(g => g.status === 'live')
+  const hasTodayGames = todayGames.length > 0
+
+  // Auto-refresh live scores every 2 minutes
+  useEffect(() => {
+    if (!refetchLive) return
+    const interval = setInterval(() => refetchLive(), 120000)
+    return () => clearInterval(interval)
+  }, [refetchLive])
 
   return (
     <div>
-      {/* Game results ticker — shows live ticker only when games are in progress, otherwise recent results */}
-      {hasLiveGames && (
+      {/* Game scores ticker — shows today's games (live/final/scheduled), falls back to recent DB results */}
+      {hasTodayGames ? (
         <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
+      ) : (
+        <GameResultsTicker games={recentGames} />
       )}
-      <GameResultsTicker games={recentGames} />
 
       {/* Beta intro banner */}
       {!bannerDismissed && <BetaBanner onDismiss={dismissBanner} user={user} />}
