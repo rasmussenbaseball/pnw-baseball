@@ -27,3 +27,4 @@ Thumbs.db
 backend/data/.fuse_hidden*
 backend/data/cache/
 *.db-wal
+backend/data/live_scores.json
