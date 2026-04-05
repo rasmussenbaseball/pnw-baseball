@@ -695,8 +695,8 @@ def stat_leaders(
             {"key": "k_minus_bb_pct", "label": "K-BB%", "col": "(ps.k_pct - ps.bb_pct)", "order": "DESC", "format": "pct"},
             {"key": "era", "label": "ERA", "col": "ps.era", "order": "ASC", "format": "float2"},
             {"key": "bb_pct_low", "label": "Low BB%", "col": "ps.bb_pct", "order": "ASC", "format": "pct"},
-            {"key": "wins", "label": "W", "col": "ps.wins", "order": "DESC", "format": "int"},
-            {"key": "saves", "label": "SV", "col": "ps.saves", "order": "DESC", "format": "int"},
+            {"key": "wins", "label": "W", "col": "ps.wins", "order": "DESC", "format": "int", "skip_ip_min": True},
+            {"key": "saves", "label": "SV", "col": "ps.saves", "order": "DESC", "format": "int", "skip_ip_min": True},
         ]
 
         def fetch_batting_leaders(cat):
@@ -736,7 +736,14 @@ def stat_leaders(
         def fetch_pitching_leaders(cat):
             q_join = QUALIFIED_PITCHING_JOIN if qualified else ""
             q_where = QUALIFIED_PITCHING_WHERE if qualified else ""
-            params = [season, min_ip] + level_params + [limit]
+            # For counting stats (W, SV), skip the IP minimum so relievers/closers appear
+            skip_ip = cat.get("skip_ip_min", False)
+            if skip_ip:
+                ip_condition = "ps.innings_pitched > 0"
+                params = [season] + level_params + [limit]
+            else:
+                ip_condition = "ps.innings_pitched >= %s"
+                params = [season, min_ip] + level_params + [limit]
             cur.execute(f"""
                 SELECT p.id as player_id, p.first_name, p.last_name,
                        t.id as team_id, t.short_name, t.logo_url,
@@ -752,7 +759,7 @@ def stat_leaders(
                 LEFT JOIN team_season_stats tss2
                   ON tss2.team_id = ps.team_id AND tss2.season = ps.season
                 {q_join}
-                WHERE ps.season = %s AND ps.innings_pitched >= %s
+                WHERE ps.season = %s AND {ip_condition}
                   AND {cat['col']} IS NOT NULL
                   {q_where}
                   {level_filter}

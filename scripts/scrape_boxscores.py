@@ -628,7 +628,7 @@ def _parse_sidearm_schedule_v2(html, base_url, season_year):
         if not game.get("date"):
             continue
 
-        # ─── Extract opponent ───
+        # ─── Extract opponent and home/away ───
         opp_el = item.find("div", class_=re.compile(r"c-events__team--opponent"))
         if opp_el:
             opp_text = opp_el.get_text(strip=True)
@@ -637,6 +637,13 @@ def _parse_sidearm_schedule_v2(html, base_url, season_year):
             opp_m = re.search(r'Boxscore for Baseball (?:vs\.?|at)\s+(.+?)\s+on\s+', aria)
             if opp_m:
                 game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
+
+        # Determine home/away from aria-label ("at" = away, "vs" = home)
+        if aria:
+            if re.search(r'(?:Baseball|Softball)\s+at\s+', aria):
+                game["is_away"] = True
+            elif re.search(r'(?:Baseball|Softball)\s+vs\.?\s+', aria):
+                game["is_away"] = False
 
         if not game.get("opponent"):
             continue
@@ -762,12 +769,18 @@ def _parse_sidearm_schedule_v3(html, base_url, season_year):
         if not game.get("date") or game.get("team_score") is None:
             continue
 
-        # ─── Extract opponent ───
+        # ─── Extract opponent and home/away ───
         if aria:
             # "Box Score of University of Oregon vs George Mason on February 13"
             opp_m = re.search(r'(?:vs\.?|at)\s+(.+?)\s+on\s+', aria)
             if opp_m:
                 game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
+
+            # Determine home/away from aria-label ("at" = away, "vs" = home)
+            if re.search(r'\bat\s+', aria):
+                game["is_away"] = True
+            elif re.search(r'\bvs\.?\s+', aria):
+                game["is_away"] = False
 
         if not game.get("opponent"):
             # Try the team-event-info area — opponent name is usually in a link
@@ -1837,9 +1850,12 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                        f"{sched_game.get('date')} vs {sched_game.get('opponent')} "
                        f"({sched_game.get('team_score')}-{sched_game.get('opp_score')})")
 
-            # Determine home/away — if opponent starts with "at " or "@", we're away
+            # Determine home/away — prefer is_away flag set by parser, fall back to text check
             opponent = sched_game.get("opponent", "")
-            is_away = opponent.lower().startswith(("at ", "@"))
+            if "is_away" in sched_game:
+                is_away = sched_game["is_away"]
+            else:
+                is_away = opponent.lower().startswith(("at ", "@"))
             opponent_clean = re.sub(r'^(?:at |@ |vs\.?\s*)', '', opponent, flags=re.I).strip()
 
             # Build a unique source_url even if no box score page exists
