@@ -328,6 +328,12 @@ def main():
             logger.info(f"  Saved {short}: {w}-{l} ({cw}-{cl})")
 
         # ── Step 1: Conference standings pages (fast, gets most teams) ──
+        # IMPORTANT: These pages only show the CURRENT season standings.
+        # They do NOT support historical seasons, so we must skip them
+        # when scraping a past season to avoid inserting fake data.
+
+        from datetime import date as _date
+        _current_year = _date.today().year
 
         standings_sources = [
             ("WCC", "https://wccsports.com/standings.aspx?path=baseball"),
@@ -336,19 +342,22 @@ def main():
             ("CCC", "https://cascadeconference.org/standings.aspx?path=baseball"),
         ]
 
-        for conf_name, url in standings_sources:
-            logger.info(f"\n--- Fetching {conf_name} standings ---")
-            records = scrape_sidearm_standings(url)
-            logger.info(f"  Found {len(records)} teams")
+        if season != _current_year:
+            logger.info(f"\n--- Skipping conference standings (only show current year, requested {season}) ---")
+        else:
+            for conf_name, url in standings_sources:
+                logger.info(f"\n--- Fetching {conf_name} standings ---")
+                records = scrape_sidearm_standings(url)
+                logger.info(f"  Found {len(records)} teams")
 
-            for team_name, data in records.items():
-                matched = match_team(team_name, db_teams)
-                if matched:
-                    ov = data.get("overall", (0, 0))
-                    cf = data.get("conf", (0, 0))
-                    save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
-                else:
-                    logger.warning(f"  Could not match: {team_name}")
+                for team_name, data in records.items():
+                    matched = match_team(team_name, db_teams)
+                    if matched:
+                        ov = data.get("overall", (0, 0))
+                        cf = data.get("conf", (0, 0))
+                        save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
+                    else:
+                        logger.warning(f"  Could not match: {team_name}")
 
         # ── Step 2: NWAC standings ──
 
@@ -366,27 +375,31 @@ def main():
                 logger.warning(f"  Could not match NWAC team: {team_name}")
 
         # ── Step 3: D1 individual team pages (only for teams not yet found) ──
+        # These pages also only show the current season.
 
-        cur.execute(
-            "SELECT team_id FROM team_season_stats WHERE season = %s AND (wins > 0 OR losses > 0)", (season,)
-        )
-        existing = cur.fetchall()
-        found_ids = {r["team_id"] for r in existing}
+        if season != _current_year:
+            logger.info(f"\n--- Skipping D1 team pages (only show current year, requested {season}) ---")
+        else:
+            cur.execute(
+                "SELECT team_id FROM team_season_stats WHERE season = %s AND (wins > 0 OR losses > 0)", (season,)
+            )
+            existing = cur.fetchall()
+            found_ids = {r["team_id"] for r in existing}
 
-        logger.info(f"\n--- Checking D1 team pages for missing or 0-0 teams ---")
-        for short, base_url in D1_TEAMS.items():
-            team = next((t for t in db_teams if t["short_name"] == short), None)
-            if not team or team["id"] in found_ids:
-                continue
+            logger.info(f"\n--- Checking D1 team pages for missing or 0-0 teams ---")
+            for short, base_url in D1_TEAMS.items():
+                team = next((t for t in db_teams if t["short_name"] == short), None)
+                if not team or team["id"] in found_ids:
+                    continue
 
-            logger.info(f"  Trying {short}...")
-            overall, conference = scrape_d1_team(base_url)
-            if overall:
-                cf = conference or (0, 0)
-                save(team["id"], short, overall[0], overall[1], cf[0], cf[1])
-            else:
-                not_found.append(short)
-                logger.warning(f"  No record found for {short}")
+                logger.info(f"  Trying {short}...")
+                overall, conference = scrape_d1_team(base_url)
+                if overall:
+                    cf = conference or (0, 0)
+                    save(team["id"], short, overall[0], overall[1], cf[0], cf[1])
+                else:
+                    not_found.append(short)
+                    logger.warning(f"  No record found for {short}")
 
         # ── Summary ──
 
