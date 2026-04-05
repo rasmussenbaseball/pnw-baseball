@@ -102,7 +102,7 @@ export default function StatLeaders() {
   const [qualified, setQualified] = useState(true)
   const [level, setLevel] = useState('All')
   const [split, setSplit] = useState('All')
-  const { data, loading, error } = useStatLeaders(2026, 5, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
+  const { data, loading, error } = useStatLeaders(2026, 10, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
 
   if (loading) {
     return (
@@ -124,7 +124,7 @@ export default function StatLeaders() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-pnw-slate mb-1">Stat Leaders</h1>
-          <p className="text-sm text-gray-500">Top 5 in key categories · 2026 season{split !== 'All' ? ` · ${split} games` : ''}</p>
+          <p className="text-sm text-gray-500">Top 10 in key categories · 2026 season{split !== 'All' ? ` · ${split} games` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">

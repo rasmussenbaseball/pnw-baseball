@@ -679,9 +679,12 @@ def stat_leaders(
             {"key": "wrc_plus", "label": "wRC+", "col": "bs.wrc_plus", "order": "DESC", "format": "int"},
             {"key": "offensive_war", "label": "WAR", "col": "bs.offensive_war", "order": "DESC", "format": "float1"},
             {"key": "home_runs", "label": "HR", "col": "bs.home_runs", "order": "DESC", "format": "int"},
+            {"key": "xbh", "label": "XBH", "col": "(bs.doubles + bs.triples + bs.home_runs)", "order": "DESC", "format": "int"},
             {"key": "stolen_bases", "label": "SB", "col": "bs.stolen_bases", "order": "DESC", "format": "int"},
             {"key": "batting_avg", "label": "AVG", "col": "bs.batting_avg", "order": "DESC", "format": "avg"},
             {"key": "iso", "label": "ISO", "col": "bs.iso", "order": "DESC", "format": "avg"},
+            {"key": "bb_pct", "label": "BB%", "col": "bs.bb_pct", "order": "DESC", "format": "pct"},
+            {"key": "k_pct_low", "label": "Low K%", "col": "bs.k_pct", "order": "ASC", "format": "pct"},
         ]
 
         pitching_categories = [
@@ -691,6 +694,9 @@ def stat_leaders(
             {"key": "strikeouts", "label": "K", "col": "ps.strikeouts", "order": "DESC", "format": "int"},
             {"key": "k_minus_bb_pct", "label": "K-BB%", "col": "(ps.k_pct - ps.bb_pct)", "order": "DESC", "format": "pct"},
             {"key": "era", "label": "ERA", "col": "ps.era", "order": "ASC", "format": "float2"},
+            {"key": "bb_pct_low", "label": "Low BB%", "col": "ps.bb_pct", "order": "ASC", "format": "pct"},
+            {"key": "wins", "label": "W", "col": "ps.wins", "order": "DESC", "format": "int"},
+            {"key": "saves", "label": "SV", "col": "ps.saves", "order": "DESC", "format": "int"},
         ]
 
         def fetch_batting_leaders(cat):

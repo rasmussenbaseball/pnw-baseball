@@ -8,7 +8,7 @@ const NAV = [
   {
     label: 'Stats',
     items: [
-      { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 5 in key categories' },
+      { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 10 in key categories' },
       { to: '/hitting', label: 'Hitting', desc: 'Batting leaderboards & stats' },
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
