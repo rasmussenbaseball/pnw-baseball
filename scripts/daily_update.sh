@@ -107,15 +107,10 @@ run_step "Recalculate league-adjusted stats (wRC+, FIP+, ERA-)" \
 run_step "Recalculate WAR" \
     python3 scripts/recalculate_war.py --season "$SEASON"
 
-# ── Step 6: Backfill & download headshots ─────────────────
-# Scrapes headshot URLs from roster pages for any players missing them,
-# then downloads all external headshots locally so they always load.
-
-run_step "Backfill headshot URLs (4-year schools)" \
-    python3 scripts/backfill_headshots.py
-
-run_step "Download headshots locally" \
-    python3 scripts/download_headshots.py
+# ── Headshots ─────────────────────────────────────────────
+# Headshots are stored in /opt/headshots/ (outside git repo) and persist
+# across deploys. Run backfill_headshots.py + download_headshots.py
+# manually from Mac when rosters change (e.g., start of season).
 
 # ── Summary ────────────────────────────────────────────────
 echo "============================================"
