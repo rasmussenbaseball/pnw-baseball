@@ -254,16 +254,19 @@ export default function PlayoffProjections() {
     playoffCountByConf[bracket.conference] = bracket.teams?.length || 0
   }
 
+  // Exclude D1 (no conference playoff format applies to PNW D1 teams)
+  const nonD1Conferences = conferences.filter(c => c.division_level !== 'D1')
+
   // Filter conferences by division
   const filteredConferences = divFilter === 'all'
-    ? conferences
-    : conferences.filter(c => c.division_level === divFilter)
+    ? nonD1Conferences
+    : nonD1Conferences.filter(c => c.division_level === divFilter)
 
   const filteredPlayoffs = divFilter === 'all'
     ? playoffs
     : playoffs.filter(b => b.division_level === divFilter)
 
-  const DIVISIONS = ['all', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
+  const DIVISIONS = ['all', 'D2', 'D3', 'NAIA', 'JUCO']
 
   return (
     <div className="max-w-6xl mx-auto">
