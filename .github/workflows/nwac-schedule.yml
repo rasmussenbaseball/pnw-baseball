@@ -2,8 +2,9 @@ name: NWAC Schedule Scraper
 
 on:
   schedule:
-    # Run daily at 8 AM Pacific (3 PM UTC) during baseball season
-    - cron: '0 15 * * *'
+    # Run every 2 hours from 11 AM to 9 PM Pacific (6 PM to 4 AM UTC next day)
+    # 11am=18, 1pm=20, 3pm=22, 5pm=0, 7pm=2, 9pm=4 UTC
+    - cron: '0 18,20,22,0,2,4 * * *'
   workflow_dispatch:  # Allow manual runs
 
 jobs:
