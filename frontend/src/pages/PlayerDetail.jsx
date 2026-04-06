@@ -969,7 +969,7 @@ export default function PlayerDetail() {
               </h1>
               <FavoriteButton type="player" targetId={player.id} />
               <Link
-                to={`/player-graphic?id=${player.id}`}
+                to={`/player-pages?id=${player.id}`}
                 className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-nw-teal bg-teal-50 hover:bg-teal-100 rounded transition-colors"
                 title="View shareable player graphic"
               >
