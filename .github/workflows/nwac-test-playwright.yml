@@ -1,0 +1,77 @@
+name: Test NWAC Playwright Access
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-waf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install chromium
+          python -m playwright install-deps
+
+      - name: Test NWAC access with Playwright
+        run: |
+          python3 -c "
+          from playwright.sync_api import sync_playwright
+          import time
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              context = browser.new_context(
+                  user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+              )
+              page = context.new_page()
+
+              # Test 1: Main NWAC baseball page
+              print('--- Test 1: Main page ---')
+              page.goto('https://nwacsports.com/sports/bsb/2025-26', wait_until='networkidle', timeout=30000)
+              time.sleep(3)
+              html = page.content()
+              print(f'Page length: {len(html)} bytes')
+              print(f'Has table: {\"<table\" in html}')
+              print(f'Has schedule: {\"schedule\" in html.lower()}')
+              blocked_signs = ['captcha', 'blocked', 'access denied', 'cf-browser-verification', 'challenge-platform']
+              for sign in blocked_signs:
+                  if sign in html.lower():
+                      print(f'WARNING: Found \"{sign}\" in page — may be blocked')
+
+              # Test 2: A specific box score XML
+              print()
+              print('--- Test 2: Box score XML ---')
+              page.goto('https://nwacsports.com/sports/bsb/2025-26/boxscores/20260405_254w.xml', wait_until='networkidle', timeout=30000)
+              time.sleep(2)
+              html2 = page.content()
+              print(f'Page length: {len(html2)} bytes')
+              print(f'Has linescore: {\"linescore\" in html2.lower() or \"line score\" in html2.lower()}')
+              print(f'Has batting: {\"batting\" in html2.lower() or \"AB\" in html2}')
+
+              # Test 3: Schedule page
+              print()
+              print('--- Test 3: Schedule page ---')
+              page.goto('https://nwacsports.com/sports/bsb/2025-26/teams/clark?view=schedule', wait_until='networkidle', timeout=30000)
+              time.sleep(2)
+              html3 = page.content()
+              print(f'Page length: {len(html3)} bytes')
+              print(f'Has table: {\"<table\" in html3}')
+              print(f'Has Final: {\"Final\" in html3}')
+
+              # Print first blocked indicators if any test is suspiciously small
+              for i, (name, h) in enumerate([('Main', html), ('BoxScore', html2), ('Schedule', html3)]):
+                  if len(h) < 5000:
+                      print(f'WARNING: {name} page is very small ({len(h)} bytes) — likely blocked')
+                      print(f'First 500 chars: {h[:500]}')
+
+              browser.close()
+              print()
+              print('=== TEST COMPLETE ===')
+          "
