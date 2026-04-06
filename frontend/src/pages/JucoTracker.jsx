@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 /**
  * JUCO Tracker - the recruiting tool.
@@ -303,6 +304,8 @@ export default function JucoTracker() {
           )}
         </div>
       )}
+
+      <StatsLastUpdated levels={['JUCO']} className="mt-3" />
     </div>
   )
 }

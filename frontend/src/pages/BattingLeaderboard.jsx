@@ -2,6 +2,7 @@ import { useState } from 'react'
 import FilterBar from '../components/FilterBar'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 import { useBattingLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { BATTING_COLUMNS, BATTING_PRESETS } from '../utils/stats'
 
@@ -59,6 +60,8 @@ export default function BattingLeaderboard() {
         activePreset={preset}
         onSelect={setPreset}
       />
+
+      <StatsLastUpdated className="mb-2" />
 
       <StatsTable
         data={result?.data || []}

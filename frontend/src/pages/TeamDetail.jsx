@@ -4,6 +4,7 @@ import { useTeamStats, useTeamRankings, useTeamHistory } from '../hooks/useApi'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 import { BATTING_COLUMNS, PITCHING_COLUMNS,
          formatStat, divisionBadgeClass } from '../utils/stats'
 
@@ -636,6 +637,8 @@ function RankingsCard({ rankings }) {
           </div>
         </div>
       )}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

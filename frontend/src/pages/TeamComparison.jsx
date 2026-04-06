@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 const API_BASE = '/api/v1'
 const PNW_STATES = ['WA', 'OR', 'ID', 'MT', 'BC']
@@ -522,6 +523,8 @@ export default function TeamComparison() {
           </div>
         </div>
       )}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

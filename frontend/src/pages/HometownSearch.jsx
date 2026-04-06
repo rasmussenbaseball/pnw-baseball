@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 const API_BASE = '/api/v1'
 
@@ -209,6 +210,8 @@ export default function HometownSearch() {
           )}
         </div>
       )}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

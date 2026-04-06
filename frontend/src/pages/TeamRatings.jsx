@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTeamRatings } from '../hooks/useApi'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 const BADGE_COLORS = {
   D1: 'bg-red-600 text-white',
@@ -228,6 +229,8 @@ export default function TeamRatings() {
       {divisions.map(div => (
         <DivisionTable key={div.division_id} division={div} />
       ))}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

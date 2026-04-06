@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 // ── Percentile bubble configs ──────────────────────────────────
 const BATTING_PERCENTILE_METRICS = [
@@ -1211,6 +1212,8 @@ export default function PlayerDetail() {
           No stats recorded for this player yet.
         </div>
       )}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

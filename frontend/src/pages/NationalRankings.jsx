@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useNationalRankings } from '../hooks/useApi'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 const BADGE_COLORS = {
   D1: 'bg-red-600 text-white',
@@ -424,6 +425,8 @@ export default function NationalRankings() {
       {view === 'cross-division' && (
         <CrossDivisionTable teams={crossDivision} />
       )}
+
+      <StatsLastUpdated className="mt-4" />
 
       {/* Data sources footer */}
       <div className="text-xs text-gray-400 text-center pt-4 space-y-1">

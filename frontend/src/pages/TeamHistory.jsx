@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTeams } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 export default function TeamHistory() {
   const { data: teams, loading } = useTeams()
@@ -75,6 +76,8 @@ export default function TeamHistory() {
           </div>
         )
       })}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

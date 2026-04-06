@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import FilterBar from '../components/FilterBar'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 import { useWarLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { Link } from 'react-router-dom'
@@ -111,6 +112,8 @@ export default function WarLeaderboard() {
         divisions={divisions}
         conferences={conferences}
       />
+
+      <StatsLastUpdated className="mb-2" />
 
       {loading ? (
         <div className="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 animate-pulse">

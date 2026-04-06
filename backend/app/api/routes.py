@@ -133,6 +133,49 @@ def site_stats():
     }
 
 
+# ── Stats last-updated timestamps ─────────────────────────────────
+@router.get("/stats/last-updated")
+def stats_last_updated_top(season: int = 2026):
+    """Return the most recent updated_at timestamp per division level."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT d.level AS division_level,
+                   MAX(GREATEST(
+                       COALESCE(bat.max_bat, '1970-01-01'::timestamp),
+                       COALESCE(pit.max_pit, '1970-01-01'::timestamp)
+                   )) AS last_updated
+            FROM divisions d
+            JOIN conferences c ON c.division_id = d.id
+            JOIN teams t ON t.conference_id = c.id
+            LEFT JOIN (
+                SELECT bs.team_id, MAX(bs.updated_at) AS max_bat
+                FROM batting_stats bs
+                WHERE bs.season = %s
+                GROUP BY bs.team_id
+            ) bat ON bat.team_id = t.id
+            LEFT JOIN (
+                SELECT ps.team_id, MAX(ps.updated_at) AS max_pit
+                FROM pitching_stats ps
+                WHERE ps.season = %s
+                GROUP BY ps.team_id
+            ) pit ON pit.team_id = t.id
+            WHERE t.is_active = 1
+            GROUP BY d.level
+            ORDER BY d.level
+        """, (season, season))
+        rows = cur.fetchall()
+
+        result = {}
+        for row in rows:
+            level = row["division_level"]
+            ts = row["last_updated"]
+            if ts and str(ts) != "1970-01-01 00:00:00":
+                result[level] = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+
+        return result
+
+
 # ============================================================
 # HOMETOWN SEARCH
 # ============================================================

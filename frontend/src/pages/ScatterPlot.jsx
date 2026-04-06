@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { divisionBadgeClass } from '../utils/stats'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 const API_BASE = '/api/v1'
 
@@ -557,6 +558,8 @@ export default function ScatterPlot() {
           <div className="text-gray-400 text-sm">No data available for the selected options.</div>
         </div>
       )}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

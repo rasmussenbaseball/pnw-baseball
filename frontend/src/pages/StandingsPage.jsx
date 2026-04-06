@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStandings } from '../hooks/useApi'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 // Division level → badge color classes
 const BADGE_COLORS = {
@@ -302,6 +303,8 @@ export default function StandingsPage() {
       ) : (
         <OverallTable teams={overall} />
       )}
+
+      <StatsLastUpdated className="mt-4" />
     </div>
   )
 }

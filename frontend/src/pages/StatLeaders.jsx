@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStatLeaders } from '../hooks/useApi'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 
 const BADGE_COLORS = {
   D1: 'bg-red-600 text-white',
@@ -168,6 +169,8 @@ export default function StatLeaders() {
           </label>
         </div>
       </div>
+
+      <StatsLastUpdated className="mb-3" />
 
       {/* Batting Leaders */}
       <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Hitting</h2>

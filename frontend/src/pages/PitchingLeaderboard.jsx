@@ -2,6 +2,7 @@ import { useState } from 'react'
 import FilterBar from '../components/FilterBar'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
+import StatsLastUpdated from '../components/StatsLastUpdated'
 import { usePitchingLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { PITCHING_COLUMNS, PITCHING_PRESETS, PITCHING_PRESET_FILTERS } from '../utils/stats'
 
@@ -62,6 +63,8 @@ export default function PitchingLeaderboard() {
         activePreset={preset}
         onSelect={(p) => { setPreset(p); setPage(0) }}
       />
+
+      <StatsLastUpdated className="mb-2" />
 
       <StatsTable
         data={result?.data || []}
