@@ -4650,8 +4650,9 @@ def games_live():
 
         with get_connection() as conn:
             cur = conn.cursor()
+            # Use DISTINCT ON to avoid duplicate games (same date + teams)
             cur.execute("""
-                SELECT
+                SELECT DISTINCT ON (g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number)
                     g.id, g.game_date, g.game_time,
                     g.home_score, g.away_score,
                     g.innings, g.is_conference_game, g.status,
@@ -4672,7 +4673,7 @@ def games_live():
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
                   AND (hd.level = 'JUCO' OR ad.level = 'JUCO')
-                ORDER BY g.game_date, g.id
+                ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
             """, (recent_start, today))
 
             for row in cur.fetchall():
@@ -4709,6 +4710,10 @@ def games_live():
     except Exception:
         # Don't break the live endpoint if NWAC merge fails
         pass
+
+    # Dedup again after NWAC games are merged in
+    for section in ("today", "recent", "upcoming"):
+        data[section] = _dedup_live_games(data.get(section, []))
 
     return data
 
