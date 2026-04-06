@@ -881,6 +881,30 @@ def main():
     all_games = deduplicate_future_games(all_games)
     logger.info(f"Deduplicated: {before_count} -> {len(all_games)} games")
 
+    # 4b. Validate is_conference: teams from different conferences can't play conf games
+    # Build team_id -> conference_id lookup
+    team_conf_map = {}
+    for name, entry in team_map.items():
+        if isinstance(entry, list):
+            for e in entry:
+                team_conf_map[e["team_id"]] = e["conference_id"]
+        else:
+            team_conf_map[entry["team_id"]] = entry["conference_id"]
+
+    conf_fixes = 0
+    for g in all_games:
+        if g.get("is_conference"):
+            home_id = g.get("home_team_id")
+            away_id = g.get("away_team_id")
+            if home_id and away_id:
+                home_conf = team_conf_map.get(home_id)
+                away_conf = team_conf_map.get(away_id)
+                if home_conf and away_conf and home_conf != away_conf:
+                    g["is_conference"] = False
+                    conf_fixes += 1
+    if conf_fixes:
+        logger.info(f"Fixed {conf_fixes} games incorrectly marked as conference")
+
     # 5. Sort by date
     all_games.sort(key=lambda g: g["game_date"])
 
