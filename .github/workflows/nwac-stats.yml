@@ -1,0 +1,49 @@
+name: NWAC + Willamette + Seattle U Stats Scraper
+
+on:
+  schedule:
+    # Run daily at 7 PM Pacific (2 AM UTC next day)
+    # ~120 ScraperAPI credits per run x 30 days = ~3,600/month (within 5,000 free tier)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual runs
+    inputs:
+      team:
+        description: 'Team group to scrape (nwac, willamette, seattle-u, or blank for all)'
+        required: false
+        default: ''
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 psycopg2-binary python-dotenv
+
+      - name: Scrape stats
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          TEAM_FLAG="${{ github.event.inputs.team }}"
+          if [ -n "$TEAM_FLAG" ]; then
+            PYTHONPATH=backend python3 scripts/scrape_nwac.py --season 2025-26 --skip-rosters --team "$TEAM_FLAG"
+          else
+            PYTHONPATH=backend python3 scripts/scrape_nwac.py --season 2025-26 --skip-rosters
+          fi
+
+      - name: Recalculate league-adjusted stats
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          PYTHONPATH=backend python3 scripts/recalculate_league_adjusted.py --season 2026

@@ -68,7 +68,7 @@ NWC_TEAMS = {
     "Willamette": ("https://www.wubearcats.com",      "bsb",     "presto"),
 }
 
-# Teams to skip — handled by scrape_browser_stats.py (Playwright)
+# Teams to skip — handled by scrape_nwac.py (automated via GitHub Actions)
 SKIP_TEAMS = {"Willamette"}
 
 # PrestoSports config for Willamette

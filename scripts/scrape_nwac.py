@@ -151,10 +151,31 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ]
 
+# Additional PrestoSports teams to scrape alongside NWAC
+EXTRA_PRESTO_TEAMS = {
+    "Willamette": {
+        "base_url": "https://www.wubearcats.com",
+        "slug": "willamette",
+        "sport_path": "bsb",
+    },
+}
+
+# Seattle U uses WMT Games API (no WAF issue)
+WMT_TEAMS = {
+    "Seattle U": {
+        "wmt_domain": "goseattleu",
+        "wmt_team_ids": {2026: 614833, 2025: 552115},
+    },
+}
+
 
 # ============================================================
 # HTTP Fetching
 # ============================================================
+
+# Check if we should use ScraperAPI (for GitHub Actions / server)
+SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
+_use_scraper_api = bool(SCRAPER_API_KEY)
 
 _DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -168,17 +189,21 @@ _DEFAULT_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
-if _have_cloudscraper:
-    logger.info("Using cloudscraper (AWS WAF bypass enabled)")
-    session = cloudscraper.create_scraper(
-        browser={"browser": "chrome", "platform": "darwin", "mobile": False},
-    )
-else:
-    logger.info("cloudscraper not available — falling back to requests.Session()")
+if _use_scraper_api:
+    logger.info("Using ScraperAPI for WAF bypass")
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    })
+else:
+    if _have_cloudscraper:
+        logger.info("Using cloudscraper (AWS WAF bypass enabled)")
+        session = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "darwin", "mobile": False},
+        )
+    else:
+        logger.info("cloudscraper not available — falling back to requests.Session()")
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        })
 
 session.headers.update(_DEFAULT_HEADERS)
 last_request_time = 0
@@ -188,6 +213,9 @@ _session_warmed_for = None   # track which season we warmed for
 def _warm_session(season_str=None):
     """Visit the NWAC baseball page for the target season to establish cookies."""
     global _session_warmed_for, last_request_time
+    if _use_scraper_api:
+        _session_warmed_for = season_str or "2025-26"
+        return  # ScraperAPI doesn't need session warming
     target = season_str or "2025-26"
     if _session_warmed_for == target:
         return
@@ -203,27 +231,49 @@ def _warm_session(season_str=None):
 
 
 def fetch_page(url, retries=3, season_str=None):
-    """Fetch a URL with rate limiting and retries."""
+    """Fetch a URL with rate limiting and retries.
+
+    When SCRAPER_API_KEY is set, routes requests through ScraperAPI
+    to bypass AWS WAF on PrestoSports sites.
+    """
     global last_request_time
     _warm_session(season_str)
 
     for attempt in range(retries):
         try:
-            elapsed = time.time() - last_request_time
-            delay = random.uniform(3.5, 6.0)
-            if elapsed < delay:
-                time.sleep(delay - elapsed)
+            if _use_scraper_api:
+                # Route through ScraperAPI — shorter delays since proxy handles rate limits
+                elapsed = time.time() - last_request_time
+                delay = random.uniform(1.0, 2.0)
+                if elapsed < delay:
+                    time.sleep(delay - elapsed)
 
-            # Use AJAX-style headers for template endpoints
-            extra = {}
-            if "tmpl=" in url:
-                extra["X-Requested-With"] = "XMLHttpRequest"
-                extra["Sec-Fetch-Dest"] = "empty"
-                extra["Sec-Fetch-Mode"] = "cors"
-                extra["Referer"] = url.split("?")[0]
+                api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={url}"
+                resp = session.get(api_url, timeout=90)
+                last_request_time = time.time()
+                resp.raise_for_status()
 
-            resp = session.get(url, headers=extra, timeout=30)
-            last_request_time = time.time()
+                # Check for ScraperAPI failure
+                if resp.status_code == 200 and len(resp.text) < 500 and "Request failed" in resp.text:
+                    raise requests.RequestException(f"ScraperAPI error: {resp.text[:200]}")
+            else:
+                # Direct request (from Mac or server with cloudscraper)
+                elapsed = time.time() - last_request_time
+                delay = random.uniform(3.5, 6.0)
+                if elapsed < delay:
+                    time.sleep(delay - elapsed)
+
+                # Use AJAX-style headers for template endpoints
+                extra = {}
+                if "tmpl=" in url:
+                    extra["X-Requested-With"] = "XMLHttpRequest"
+                    extra["Sec-Fetch-Dest"] = "empty"
+                    extra["Sec-Fetch-Mode"] = "cors"
+                    extra["Referer"] = url.split("?")[0]
+
+                resp = session.get(url, headers=extra, timeout=30)
+                last_request_time = time.time()
+
             resp.raise_for_status()
             logger.info(f"Fetched {url} ({len(resp.text)} bytes, has_table={'<table' in resp.text})")
             if '<table' not in resp.text and len(resp.text) < 3000:
@@ -495,6 +545,15 @@ def get_team_id_map():
 
     logger.info(f"Mapped {len(team_map)} NWAC teams to database IDs")
     return team_map, short_to_id
+
+
+def get_team_id_by_short_name(short_name):
+    """Look up a single team_id by short_name (any division)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM teams WHERE short_name = %s AND is_active = 1", (short_name,))
+        row = cur.fetchone()
+        return row["id"] if row else None
 
 
 def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
@@ -890,11 +949,536 @@ def process_all_data(season_str, season_year, skip_rosters=False):
 
 
 # ============================================================
+# Willamette (PrestoSports — same parsing as NWAC)
+# ============================================================
+
+def process_willamette(season_str, season_year, skip_rosters=False):
+    """Scrape Willamette stats using the same PrestoSports template endpoint."""
+    config = EXTRA_PRESTO_TEAMS["Willamette"]
+    base_url = config["base_url"]
+    slug = config["slug"]
+    sport = config["sport_path"]
+
+    team_id = get_team_id_by_short_name("Willamette")
+    if not team_id:
+        logger.warning("Willamette not found in database — skipping")
+        return
+
+    logger.info("=" * 60)
+    logger.info(f"Scraping Willamette (PrestoSports)")
+
+    batting_count = 0
+    pitching_count = 0
+
+    # Fetch stats via template endpoint (same pattern as NWAC)
+    def _wil_template(pos):
+        url = f"{base_url}/sports/{sport}/{season_str}/teams/{slug}?tmpl=brief-category-template&pos={pos}&r=0"
+        html = fetch_page(url, season_str=season_str)
+        return parse_template_table(html) if html else []
+
+    batting_rows = _wil_template("h")
+    logger.info(f"  Batting: {len(batting_rows)} players")
+
+    ext_rows = _wil_template("he")
+    logger.info(f"  Extended hitting: {len(ext_rows)} players")
+
+    pitching_rows = _wil_template("p")
+    logger.info(f"  Pitching: {len(pitching_rows)} players")
+
+    # Optional roster
+    roster = []
+    if not skip_rosters:
+        roster_url = f"{base_url}/sports/{sport}/{season_str}/teams/{slug}?view=lineup&r=0&pos=h"
+        roster_html = fetch_page(roster_url, season_str=season_str)
+        if roster_html:
+            roster = parse_roster_table(roster_html)
+        logger.info(f"  Roster: {len(roster)} players")
+
+    # Team record
+    team_page_url = f"{base_url}/sports/{sport}/{season_str}/teams/{slug}"
+    team_page_html = fetch_page(team_page_url, season_str=season_str)
+    if team_page_html:
+        overall, conf_rec = extract_record_from_html(team_page_html)
+        if overall:
+            with get_connection() as conn:
+                save_team_record(conn.cursor(), team_id, int(season_year), overall, conf_rec)
+                conn.commit()
+
+    ext_lookup = {e.get("name", "").strip().lower(): e for e in ext_rows if e.get("name")}
+    roster_by_name = {r.get("name", "").strip().lower(): r for r in roster if r.get("name")}
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Process batting (same logic as NWAC but division_level="D3")
+        for batter in batting_rows:
+            try:
+                full_name = batter.get("name", "").strip()
+                if not full_name:
+                    continue
+                first_name, last_name = parse_full_name(full_name)
+                if not last_name:
+                    continue
+
+                roster_data = roster_by_name.get(full_name.lower(), {})
+                raw_year = batter.get("year") or roster_data.get("year")
+                year_in_school = normalize_year(raw_year)
+                raw_position = batter.get("pos") or roster_data.get("position")
+                norm_pos = normalize_position(raw_position) or "UT"
+
+                player_id = insert_or_update_player(
+                    cur, first_name, last_name, team_id,
+                    position=raw_position or None,
+                    year_in_school=year_in_school,
+                    jersey_number=batter.get("jersey") or roster_data.get("#"),
+                    bats=roster_data.get("bats"),
+                    throws=roster_data.get("throws"),
+                    height=roster_data.get("height"),
+                    weight=safe_int(roster_data.get("weight")) or None,
+                    hometown=roster_data.get("hometown"),
+                    headshot_url=roster_data.get("headshot_url"),
+                    roster_year=season_year,
+                )
+
+                g = safe_int(batter.get("g"))
+                ab = safe_int(batter.get("ab"))
+                r = safe_int(batter.get("r"))
+                h = safe_int(batter.get("h"))
+                doubles = safe_int(batter.get("2b"))
+                triples = safe_int(batter.get("3b"))
+                hr = safe_int(batter.get("hr"))
+                rbi = safe_int(batter.get("rbi"))
+                bb = safe_int(batter.get("bb"))
+                k = safe_int(batter.get("k"))
+                sb = safe_int(batter.get("sb"))
+                cs = safe_int(batter.get("cs"))
+
+                ext = ext_lookup.get(full_name.lower(), {})
+                hbp = safe_int(ext.get("hbp"))
+                sf = safe_int(ext.get("sf"))
+                sh = safe_int(ext.get("sh"))
+                pa = safe_int(ext.get("pa"))
+                gidp = safe_int(ext.get("hdp"))
+
+                if pa == 0 and ab > 0:
+                    pa = ab + bb + hbp + sf + sh
+
+                if ab == 0 and g == 0:
+                    continue
+
+                line = BattingLine(
+                    pa=pa, ab=ab, hits=h, doubles=doubles, triples=triples,
+                    hr=hr, bb=bb, ibb=0, hbp=hbp, sf=sf, sh=sh, k=k,
+                    sb=sb, cs=cs, gidp=gidp,
+                )
+                adv = compute_batting_advanced(line, division_level="D3")
+                war = compute_college_war(
+                    batting=adv, position=norm_pos,
+                    plate_appearances=pa, division_level="D3",
+                )
+
+                cur.execute(
+                    """INSERT INTO batting_stats
+                       (player_id, team_id, season, games, plate_appearances, at_bats,
+                        runs, hits, doubles, triples, home_runs, rbi, walks, strikeouts,
+                        hit_by_pitch, sacrifice_flies, sacrifice_bunts, stolen_bases,
+                        caught_stealing, grounded_into_dp, intentional_walks,
+                        batting_avg, on_base_pct, slugging_pct, ops,
+                        woba, wraa, wrc, wrc_plus, iso, babip, bb_pct, k_pct, offensive_war)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT(player_id, team_id, season) DO UPDATE SET
+                        games=excluded.games, plate_appearances=excluded.plate_appearances,
+                        at_bats=excluded.at_bats, runs=excluded.runs, hits=excluded.hits,
+                        doubles=excluded.doubles, triples=excluded.triples,
+                        home_runs=excluded.home_runs, rbi=excluded.rbi, walks=excluded.walks,
+                        strikeouts=excluded.strikeouts, hit_by_pitch=excluded.hit_by_pitch,
+                        sacrifice_flies=excluded.sacrifice_flies,
+                        sacrifice_bunts=excluded.sacrifice_bunts,
+                        stolen_bases=excluded.stolen_bases,
+                        caught_stealing=excluded.caught_stealing,
+                        grounded_into_dp=excluded.grounded_into_dp,
+                        batting_avg=excluded.batting_avg, on_base_pct=excluded.on_base_pct,
+                        slugging_pct=excluded.slugging_pct, ops=excluded.ops,
+                        iso=excluded.iso, babip=excluded.babip,
+                        bb_pct=excluded.bb_pct, k_pct=excluded.k_pct,
+                        updated_at=CURRENT_TIMESTAMP""",
+                    (
+                        player_id, team_id, season_year, g, pa, ab, r, h, doubles, triples, hr,
+                        rbi, bb, k, hbp, sf, sh, sb, cs, gidp, 0,
+                        adv.batting_avg, adv.obp, adv.slg, adv.ops,
+                        adv.woba, adv.wraa, adv.wrc, adv.wrc_plus,
+                        adv.iso, adv.babip, adv.bb_pct, adv.k_pct, war.offensive_war,
+                    ),
+                )
+                batting_count += 1
+
+            except Exception as e:
+                logger.error(f"  Error processing Willamette batting: {batter.get('name')} - {e}")
+
+        # Process pitching (same logic as NWAC but division_level="D3")
+        for pitcher in pitching_rows:
+            try:
+                full_name = pitcher.get("name", "").strip()
+                if not full_name:
+                    continue
+                first_name, last_name = parse_full_name(full_name)
+                if not last_name:
+                    continue
+
+                roster_data = roster_by_name.get(full_name.lower(), {})
+                raw_year = pitcher.get("year") or roster_data.get("year")
+                year_in_school = normalize_year(raw_year)
+                position = pitcher.get("pos") or roster_data.get("position") or "P"
+
+                player_id = insert_or_update_player(
+                    cur, first_name, last_name, team_id,
+                    position=position,
+                    year_in_school=year_in_school,
+                    jersey_number=pitcher.get("jersey") or roster_data.get("#"),
+                    roster_year=season_year,
+                )
+
+                g = safe_int(pitcher.get("app"))
+                gs = safe_int(pitcher.get("gs"))
+                w = safe_int(pitcher.get("w"))
+                l = safe_int(pitcher.get("l"))
+                sv = safe_int(pitcher.get("sv"))
+                cg = safe_int(pitcher.get("cg"))
+                ip = safe_float(pitcher.get("ip"))
+                h_allowed = safe_int(pitcher.get("h"))
+                runs = safe_int(pitcher.get("r"))
+                er = safe_int(pitcher.get("er"))
+                bb = safe_int(pitcher.get("bb"))
+                k = safe_int(pitcher.get("k"))
+                hr_allowed = safe_int(pitcher.get("hr"))
+
+                if ip == 0 and g == 0:
+                    continue
+
+                if ip > 0:
+                    outs = int(ip) * 3 + int(round((ip - int(ip)) * 10))
+                    bf = outs + h_allowed + bb
+                else:
+                    bf = 0
+
+                line = PitchingLine(
+                    ip=ip, hits=h_allowed, er=er, runs=runs, bb=bb, ibb=0,
+                    k=k, hr=hr_allowed, hbp=0, bf=bf, wp=0,
+                    wins=w, losses=l, saves=sv, games=g, gs=gs,
+                )
+                adv = compute_pitching_advanced(line, division_level="D3")
+
+                cur.execute(
+                    """INSERT INTO pitching_stats
+                       (player_id, team_id, season, games, games_started, wins, losses, saves,
+                        complete_games, shutouts, innings_pitched, hits_allowed, runs_allowed,
+                        earned_runs, walks, strikeouts, home_runs_allowed, hit_batters,
+                        wild_pitches, batters_faced, intentional_walks,
+                        era, whip, k_per_9, bb_per_9, h_per_9, hr_per_9, k_bb_ratio,
+                        k_pct, bb_pct,
+                        fip, xfip, siera, kwera, babip_against, lob_pct, pitching_war)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT(player_id, team_id, season) DO UPDATE SET
+                        games=excluded.games, games_started=excluded.games_started,
+                        wins=excluded.wins, losses=excluded.losses, saves=excluded.saves,
+                        complete_games=excluded.complete_games,
+                        innings_pitched=excluded.innings_pitched, hits_allowed=excluded.hits_allowed,
+                        runs_allowed=excluded.runs_allowed,
+                        earned_runs=excluded.earned_runs, walks=excluded.walks,
+                        strikeouts=excluded.strikeouts, home_runs_allowed=excluded.home_runs_allowed,
+                        era=excluded.era, whip=excluded.whip, k_per_9=excluded.k_per_9,
+                        bb_per_9=excluded.bb_per_9, h_per_9=excluded.h_per_9,
+                        hr_per_9=excluded.hr_per_9, k_bb_ratio=excluded.k_bb_ratio,
+                        k_pct=excluded.k_pct, bb_pct=excluded.bb_pct,
+                        babip_against=excluded.babip_against, lob_pct=excluded.lob_pct,
+                        updated_at=CURRENT_TIMESTAMP""",
+                    (
+                        player_id, team_id, season_year, g, gs, w, l, sv, cg, 0,
+                        ip, h_allowed, runs, er, bb, k, hr_allowed, 0, 0, bf, 0,
+                        adv.era, adv.whip, adv.k_per_9, adv.bb_per_9, adv.h_per_9,
+                        adv.hr_per_9, adv.k_bb_ratio,
+                        adv.k_pct, adv.bb_pct,
+                        adv.fip, adv.xfip, adv.siera, adv.kwera,
+                        adv.babip_against, adv.lob_pct, adv.pitching_war,
+                    ),
+                )
+                pitching_count += 1
+
+            except Exception as e:
+                logger.error(f"  Error processing Willamette pitching: {pitcher.get('name')} - {e}")
+
+        conn.commit()
+
+    logger.info(f"  Willamette totals: {batting_count} batting, {pitching_count} pitching")
+
+
+# ============================================================
+# Seattle U (WMT Games API — no WAF issue)
+# ============================================================
+
+def process_seattle_u(season_year):
+    """Scrape Seattle U stats via the WMT Games API."""
+    config = WMT_TEAMS["Seattle U"]
+
+    team_id = get_team_id_by_short_name("Seattle U")
+    if not team_id:
+        logger.warning("Seattle U not found in database — skipping")
+        return
+
+    logger.info("=" * 60)
+    logger.info("Scraping Seattle U (WMT Games API)")
+
+    # Get WMT team_id for this season
+    wmt_team_id = config["wmt_team_ids"].get(season_year)
+    if not wmt_team_id:
+        # Try to discover it from the school endpoint
+        logger.info(f"  Looking up WMT team_id for season {season_year}...")
+        try:
+            r = requests.get(
+                f"https://api.wmt.games/api/schools/{config['wmt_domain']}",
+                headers={"User-Agent": random.choice(USER_AGENTS)},
+                timeout=15,
+            )
+            school_data = r.json().get("data", {})
+            school_id = school_data.get("statistic_configuration", {}).get("school_id")
+            if school_id:
+                r2 = requests.get(
+                    "https://api.wmt.games/api/statistics/teams",
+                    params={"filter[org_id]": school_id, "filter[sport_code]": "MBA",
+                            "filter[season_academic_year]": season_year, "per_page": 5},
+                    headers={"User-Agent": random.choice(USER_AGENTS)},
+                    timeout=15,
+                )
+                teams = r2.json().get("data", [])
+                if teams:
+                    wmt_team_id = teams[0]["id"]
+                    logger.info(f"  Found WMT team_id: {wmt_team_id}")
+        except Exception as e:
+            logger.warning(f"  Could not discover WMT team_id: {e}")
+
+    if not wmt_team_id:
+        logger.error(f"No WMT team_id for Seattle U season {season_year} — skipping")
+        return
+
+    # Fetch all players with stats
+    api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/players?per_page=150"
+    logger.info(f"  Fetching: {api_url}")
+
+    try:
+        resp = requests.get(api_url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=30)
+        resp.raise_for_status()
+        players = resp.json().get("data", [])
+    except Exception as e:
+        logger.error(f"  API request failed: {e}")
+        return
+
+    logger.info(f"  Got {len(players)} players from WMT API")
+
+    # Fetch team record
+    try:
+        team_resp = requests.get(
+            f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}",
+            headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=15,
+        )
+        team_data = team_resp.json().get("data", {})
+        wins = team_data.get("wins", 0)
+        losses = team_data.get("losses", 0)
+        if wins or losses:
+            overall = (wins, losses)
+            with get_connection() as conn:
+                save_team_record(conn.cursor(), team_id, int(season_year), overall, None)
+                conn.commit()
+            logger.info(f"  Record: {wins}-{losses}")
+    except Exception as e:
+        logger.warning(f"  Could not fetch team record: {e}")
+
+    batting_count = 0
+    pitching_count = 0
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        for player in players:
+            try:
+                first_name = player.get("first_name", "").strip()
+                last_name = player.get("last_name", "").strip()
+                if not last_name:
+                    continue
+
+                raw_pos = player.get("position_code", "")
+                norm_pos = normalize_position(raw_pos) or "UT"
+                year_class = player.get("class_short_descr", "")
+                year_in_school = normalize_year(year_class)
+                jersey = player.get("jersey_no")
+
+                player_id = insert_or_update_player(
+                    cur, first_name, last_name, team_id,
+                    position=norm_pos,
+                    year_in_school=year_in_school,
+                    jersey_number=jersey,
+                    roster_year=season_year,
+                )
+
+                # Extract season stats
+                stat_data = player.get("statistic", {})
+                if not stat_data or not stat_data.get("data"):
+                    continue
+                season_data = stat_data["data"].get("season")
+                if not season_data or not season_data.get("columns"):
+                    continue
+
+                stats = season_data["columns"][0].get("statistic", {})
+                gp = season_data.get("gamesPlayed", 0)
+                gs = season_data.get("gamesStarted", 0)
+
+                has_pitching = stats.get("sInningsPitched") is not None and stats.get("sInningsPitched", 0) > 0
+                has_batting = stats.get("sAtBats") is not None and stats.get("sAtBats", 0) > 0
+
+                # Process batting
+                if has_batting:
+                    ab = safe_int(stats.get("sAtBats"))
+                    h = safe_int(stats.get("sHits"))
+                    r = safe_int(stats.get("sRuns"))
+                    d2 = safe_int(stats.get("sDoubles"))
+                    d3 = safe_int(stats.get("sTriples"))
+                    hr = safe_int(stats.get("sHomeRuns"))
+                    rbi = safe_int(stats.get("sRunsBattedIn"))
+                    bb = safe_int(stats.get("sWalks"))
+                    hbp = safe_int(stats.get("sHitByPitch"))
+                    k = safe_int(stats.get("sStrikeoutsHitting"))
+                    sb = safe_int(stats.get("sStolenBases"))
+                    cs = safe_int(stats.get("sCaughtStealing"))
+                    sf = safe_int(stats.get("sSacrificeFlies"))
+                    sh = safe_int(stats.get("sSacrificeHits"))
+                    pa = safe_int(stats.get("cPlateAppearances")) or (ab + bb + hbp + sf + sh)
+
+                    line = BattingLine(
+                        pa=pa, ab=ab, hits=h, doubles=d2, triples=d3,
+                        hr=hr, bb=bb, hbp=hbp, sf=sf, sh=sh, k=k,
+                        sb=sb, cs=cs,
+                    )
+                    adv = compute_batting_advanced(line, division_level="D1")
+                    war = compute_college_war(
+                        batting=adv, position=norm_pos,
+                        plate_appearances=pa, division_level="D1",
+                    )
+
+                    cur.execute(
+                        """INSERT INTO batting_stats
+                           (player_id, team_id, season, games, plate_appearances, at_bats,
+                            runs, hits, doubles, triples, home_runs, rbi, walks, strikeouts,
+                            hit_by_pitch, sacrifice_flies, sacrifice_bunts, stolen_bases,
+                            caught_stealing, grounded_into_dp, intentional_walks,
+                            batting_avg, on_base_pct, slugging_pct, ops,
+                            woba, wraa, wrc, wrc_plus, iso, babip, bb_pct, k_pct, offensive_war)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                           ON CONFLICT(player_id, team_id, season) DO UPDATE SET
+                            games=excluded.games, plate_appearances=excluded.plate_appearances,
+                            at_bats=excluded.at_bats, runs=excluded.runs, hits=excluded.hits,
+                            doubles=excluded.doubles, triples=excluded.triples,
+                            home_runs=excluded.home_runs, rbi=excluded.rbi, walks=excluded.walks,
+                            strikeouts=excluded.strikeouts, hit_by_pitch=excluded.hit_by_pitch,
+                            sacrifice_flies=excluded.sacrifice_flies,
+                            sacrifice_bunts=excluded.sacrifice_bunts,
+                            stolen_bases=excluded.stolen_bases,
+                            caught_stealing=excluded.caught_stealing,
+                            grounded_into_dp=excluded.grounded_into_dp,
+                            batting_avg=excluded.batting_avg, on_base_pct=excluded.on_base_pct,
+                            slugging_pct=excluded.slugging_pct, ops=excluded.ops,
+                            iso=excluded.iso, babip=excluded.babip,
+                            bb_pct=excluded.bb_pct, k_pct=excluded.k_pct,
+                            updated_at=CURRENT_TIMESTAMP""",
+                        (
+                            player_id, team_id, season_year, gp, pa, ab, r, h, d2, d3, hr,
+                            rbi, bb, k, hbp, sf, sh, sb, cs, 0, 0,
+                            adv.batting_avg, adv.obp, adv.slg, adv.ops,
+                            adv.woba, adv.wraa, adv.wrc, adv.wrc_plus,
+                            adv.iso, adv.babip, adv.bb_pct, adv.k_pct, war.offensive_war,
+                        ),
+                    )
+                    batting_count += 1
+
+                # Process pitching
+                if has_pitching:
+                    ip = safe_float(stats.get("sInningsPitched"))
+                    p_h = safe_int(stats.get("sHitsAllowed"))
+                    p_r = safe_int(stats.get("sRunsAllowed"))
+                    er = safe_int(stats.get("sEarnedRuns"))
+                    p_bb = safe_int(stats.get("sBasesOnBallsAllowed"))
+                    p_k = safe_int(stats.get("sStrikeouts"))
+                    p_hr = safe_int(stats.get("sHomeRunsAllowed"))
+                    p_hbp = safe_int(stats.get("sHitBattersPitching"))
+                    w = safe_int(stats.get("sIndWon"))
+                    l = safe_int(stats.get("sIndLost"))
+                    sv = safe_int(stats.get("sSaves"))
+                    p_gp = safe_int(stats.get("sPitchingAppearances")) or gp
+                    p_gs = safe_int(stats.get("sPitcherGamesStarted")) or gs
+                    p_bf = safe_int(stats.get("sBattersFaced"))
+
+                    if not p_bf and ip > 0:
+                        outs = int(ip) * 3 + int(round((ip - int(ip)) * 10))
+                        p_bf = outs + p_h + p_bb + p_hbp
+
+                    line = PitchingLine(
+                        ip=ip, hits=p_h, runs=p_r, er=er, bb=p_bb, k=p_k, hr=p_hr,
+                        hbp=p_hbp, bf=p_bf,
+                    )
+                    adv = compute_pitching_advanced(line, division_level="D1")
+
+                    cur.execute(
+                        """INSERT INTO pitching_stats
+                           (player_id, team_id, season, games, games_started, wins, losses, saves,
+                            complete_games, shutouts, innings_pitched, hits_allowed, runs_allowed,
+                            earned_runs, walks, strikeouts, home_runs_allowed, hit_batters,
+                            wild_pitches, batters_faced, intentional_walks,
+                            era, whip, k_per_9, bb_per_9, h_per_9, hr_per_9, k_bb_ratio,
+                            k_pct, bb_pct,
+                            fip, xfip, siera, kwera, babip_against, lob_pct, pitching_war)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                           ON CONFLICT(player_id, team_id, season) DO UPDATE SET
+                            games=excluded.games, games_started=excluded.games_started,
+                            wins=excluded.wins, losses=excluded.losses, saves=excluded.saves,
+                            complete_games=excluded.complete_games,
+                            innings_pitched=excluded.innings_pitched, hits_allowed=excluded.hits_allowed,
+                            runs_allowed=excluded.runs_allowed,
+                            earned_runs=excluded.earned_runs, walks=excluded.walks,
+                            strikeouts=excluded.strikeouts, home_runs_allowed=excluded.home_runs_allowed,
+                            era=excluded.era, whip=excluded.whip, k_per_9=excluded.k_per_9,
+                            bb_per_9=excluded.bb_per_9, h_per_9=excluded.h_per_9,
+                            hr_per_9=excluded.hr_per_9, k_bb_ratio=excluded.k_bb_ratio,
+                            k_pct=excluded.k_pct, bb_pct=excluded.bb_pct,
+                            babip_against=excluded.babip_against, lob_pct=excluded.lob_pct,
+                            updated_at=CURRENT_TIMESTAMP""",
+                        (
+                            player_id, team_id, season_year, p_gp, p_gs, w, l, sv, 0, 0,
+                            ip, p_h, p_r, er, p_bb, p_k, p_hr, p_hbp, 0, p_bf, 0,
+                            adv.era, adv.whip, adv.k_per_9, adv.bb_per_9, adv.h_per_9,
+                            adv.hr_per_9, adv.k_bb_ratio,
+                            adv.k_pct, adv.bb_pct,
+                            adv.fip, adv.xfip, adv.siera, adv.kwera,
+                            adv.babip_against, adv.lob_pct, adv.pitching_war,
+                        ),
+                    )
+                    pitching_count += 1
+
+            except Exception as e:
+                logger.warning(f"  Error processing Seattle U player {player.get('first_name')} {player.get('last_name')}: {e}")
+
+        conn.commit()
+
+    logger.info(f"  Seattle U totals: {batting_count} batting, {pitching_count} pitching")
+
+
+# ============================================================
 # Main
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape NWAC baseball stats from nwacsports.com")
+    parser = argparse.ArgumentParser(description="Scrape NWAC, Willamette, and Seattle U baseball stats")
     parser.add_argument(
         "--season", type=str, required=True,
         help="Season string, e.g., '2025-26' or '2024-25'"
@@ -907,6 +1491,10 @@ def main():
         "--init-db", action="store_true",
         help="Initialize/seed the database before scraping"
     )
+    parser.add_argument(
+        "--team", type=str, default=None,
+        help="Single team group to scrape: 'nwac', 'willamette', or 'seattle-u' (default: all)"
+    )
     args = parser.parse_args()
 
     season_str = args.season
@@ -917,14 +1505,25 @@ def main():
         logger.error(f"Invalid season format: '{season_str}'. Use format like '2025-26'")
         sys.exit(1)
 
-    logger.info(f"NWAC Baseball Scraper -- Season {season_str} (year={season_year})")
+    logger.info(f"NWAC/Willamette/Seattle U Stats Scraper -- Season {season_str} (year={season_year})")
 
     if args.init_db:
         init_db()
         seed_divisions_and_conferences()
         logger.info("Database initialized and seeded")
 
-    process_all_data(season_str, season_year, skip_rosters=args.skip_rosters)
+    team_filter = (args.team or "").lower().strip()
+
+    if not team_filter or team_filter == "nwac":
+        process_all_data(season_str, season_year, skip_rosters=args.skip_rosters)
+
+    if not team_filter or team_filter == "willamette":
+        process_willamette(season_str, season_year, skip_rosters=args.skip_rosters)
+
+    if not team_filter or team_filter in ("seattle-u", "seattleu", "seattle_u"):
+        process_seattle_u(season_year)
+
+    logger.info("All done!")
 
 
 if __name__ == "__main__":

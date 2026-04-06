@@ -51,11 +51,17 @@ echo ""
 # Step 1: Browser-based stats scrape
 # ============================================================
 
-echo "▶ Step 1: Browser-based stats scrape"
-echo "  Teams: Seattle U, Willamette, NWAC (all teams)"
+echo "▶ Step 1: NWAC + Willamette + Seattle U stats scrape"
+echo "  (Now handled by scrape_nwac.py — uses ScraperAPI for NWAC/Willamette, WMT API for Seattle U)"
 echo ""
 
-python3 scripts/scrape_browser_stats.py --season "$SEASON" $HEADLESS_FLAG
+# Convert season year to season string (e.g. 2026 -> 2025-26)
+SEASON_NUM=$SEASON
+PREV=$((SEASON_NUM - 1))
+SUFFIX=${SEASON: -2}
+SEASON_STR="${PREV}-${SUFFIX}"
+
+python3 scripts/scrape_nwac.py --season "$SEASON_STR"
 
 echo ""
 
