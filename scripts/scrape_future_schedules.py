@@ -48,6 +48,11 @@ from scrape_live_scores import (
     extract_games_from_nuxt,
 )
 
+# URL overrides for teams with non-standard schedule URL patterns
+SCHEDULE_URL_OVERRIDES = {
+    "Seattle U": "{base_url}/sports/baseball/schedule/season/{season}",
+}
+
 # ── NWAC team name mapping (from scrape_nwac_schedule) ──
 NWAC_SCHEDULE_NAME_TO_DB = {
     "Green River": "GRC",
@@ -114,7 +119,14 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
     """Extract all future scheduled games from a Sidearm team's schedule page."""
     base_url = team_info["url"]
     sport = team_info["sport"]
-    url = f"{base_url}/sports/{sport}/schedule/{season}"
+
+    # Check for URL override (e.g., Seattle U uses /schedule/season/YYYY)
+    if team_name in SCHEDULE_URL_OVERRIDES:
+        url = SCHEDULE_URL_OVERRIDES[team_name].format(
+            base_url=base_url, sport=sport, season=season
+        )
+    else:
+        url = f"{base_url}/sports/{sport}/schedule/{season}"
 
     logger.info(f"Fetching {team_name}: {url}")
     html = fetch_page(url)
@@ -207,23 +219,51 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
 
 
 def extract_future_html_games(html, team_name, team_info, today, team_map):
-    """Fallback: extract future games from legacy Sidearm HTML."""
+    """
+    Fallback: extract future games from legacy Sidearm HTML.
+
+    Sidearm schedule pages use <li> elements with these key classes:
+      - sidearm-schedule-game-upcoming   = future/scheduled game
+      - sidearm-schedule-game-completed  = already played
+    Some sites duplicate games for mobile/desktop layouts, so we deduplicate
+    by (date, opponent) within a single team's page.
+    """
     soup = BeautifulSoup(html, "html.parser")
     games = []
+    seen_on_page = set()  # Dedup within a single team's page
 
-    game_items = soup.find_all("div", class_="sidearm-schedule-game")
-    if not game_items:
-        game_items = soup.find_all("div", class_=re.compile(r"sidearm-schedule-game\b"))
+    # Method 1 (best): Find <li> elements with the "upcoming" class
+    upcoming_items = soup.find_all("li", class_=re.compile(r"sidearm-schedule-game-upcoming"))
 
-    for item in game_items:
+    # Method 2 (fallback): Find all game divs, skip ones marked completed
+    if not upcoming_items:
+        all_items = soup.find_all("div", class_="sidearm-schedule-game")
+        upcoming_items = []
+        for item in all_items:
+            # Walk up to parent <li> and check if it's completed
+            parent_li = item.find_parent("li")
+            if parent_li:
+                classes = " ".join(parent_li.get("class", []))
+                if "completed" in classes:
+                    continue
+            # Also skip if there's a final result marker inside
+            if item.find(class_=re.compile(r"result-final|game-result")):
+                full_text = item.get_text(" ", strip=True)
+                if re.search(r'[WLT],?\s*\d+\s*-\s*\d+', full_text):
+                    continue
+            upcoming_items.append(item)
+
+    for item in upcoming_items:
         try:
-            # Get date
+            # Get date element
             date_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-date"))
             if not date_el:
                 continue
 
             date_text = date_el.get_text(" ", strip=True)
-            date_match = re.match(r'(\w+)\s+(\d+)', date_text)
+            # Strip periods from month abbreviations: "Apr." -> "Apr"
+            date_text_clean = date_text.replace(".", "")
+            date_match = re.match(r'(\w+)\s+(\d+)', date_text_clean)
             if not date_match:
                 continue
 
@@ -234,8 +274,8 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             for fmt in ("%b %d", "%B %d"):
                 try:
                     dt = datetime.strptime(f"{month_str} {day_str}", fmt)
-                    # Determine correct year
                     year = today.year
+                    # Handle Jan/Feb games when we're in Oct+ (next calendar year)
                     if dt.month < 3 and today.month > 8:
                         year += 1
                     game_date = dt.replace(year=year).date()
@@ -246,11 +286,6 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             if not game_date or game_date <= today:
                 continue
 
-            # Check if game has a score (if so, it's already played)
-            full_text = item.get_text(" ", strip=True)
-            if re.search(r'[WLT],?\s*\d+\s*-\s*\d+', full_text):
-                continue
-
             # Get opponent
             name_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-name"))
             if not name_el:
@@ -259,7 +294,15 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             opponent = opp_link.get_text(strip=True) if opp_link else name_el.get_text(strip=True)
             opponent = re.sub(r'\s*\(DH\)\s*', '', opponent).strip()
             opp_clean = re.sub(r'^#\d+\s+', '', opponent).strip()
+            if not opp_clean:
+                continue
             opp_key = normalize_team_name(opp_clean)
+
+            # Dedup within same page (mobile/desktop duplication)
+            page_key = (game_date, opp_key)
+            if page_key in seen_on_page:
+                continue
+            seen_on_page.add(page_key)
 
             # Location
             text_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-text"))
@@ -314,13 +357,27 @@ def extract_future_nwac_games(season_year, today, team_map):
     season_str = f"{season_year - 1}-{str(season_year)[2:]}"
     schedule_url = f"https://nwacsports.com/sports/bsb/{season_str}/schedule"
 
+    # Try to load ScraperAPI key from environment or .env file
     api_key = os.environ.get("SCRAPER_API_KEY", "")
+    if not api_key:
+        env_path = Path(__file__).parent.parent / ".env"
+        if env_path.exists():
+            with open(env_path) as f:
+                for line in f:
+                    if line.strip().startswith("SCRAPER_API_KEY="):
+                        api_key = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+
     if api_key:
         url = f"http://api.scraperapi.com?api_key={api_key}&url={schedule_url}"
         logger.info(f"Fetching NWAC schedule via ScraperAPI: {schedule_url}")
     else:
+        logger.warning(
+            "SCRAPER_API_KEY not set - NWAC games will be missing! "
+            "Set it via: SCRAPER_API_KEY=your_key python3 scripts/scrape_future_schedules.py"
+        )
         url = schedule_url
-        logger.info(f"Fetching NWAC schedule directly: {schedule_url}")
+        logger.info(f"Fetching NWAC schedule directly (will likely fail): {schedule_url}")
 
     try:
         resp = requests.get(url, timeout=120)
