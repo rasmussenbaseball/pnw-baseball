@@ -54,12 +54,12 @@ export default function Homepage() {
 
   return (
     <div>
-      {/* Live games ticker — only shows when there are today's games */}
-      {hasTodayGames && (
+      {/* Game scores ticker — shows today's games (live/final/scheduled), falls back to recent DB results */}
+      {hasTodayGames ? (
         <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
+      ) : (
+        <GameResultsTicker games={recentGames} />
       )}
-      {/* Recent results ticker — always shows the 15 latest final results */}
-      <GameResultsTicker games={recentGames} />
 
       {/* Beta intro banner */}
       {!bannerDismissed && <BetaBanner onDismiss={dismissBanner} user={user} />}

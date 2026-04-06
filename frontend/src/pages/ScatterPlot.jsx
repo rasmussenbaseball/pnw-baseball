@@ -5,6 +5,10 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 const API_BASE = '/api/v1'
 
 const STAT_OPTIONS = [
+  // Team record
+  { value: 'win_pct', label: 'Win %', group: 'Record' },
+  { value: 'conf_win_pct', label: 'Conf Win %', group: 'Record' },
+  { value: 'run_diff', label: 'Run Differential', group: 'Record' },
   // Batting
   { value: 'team_avg', label: 'Team AVG', group: 'Batting' },
   { value: 'team_obp', label: 'Team OBP', group: 'Batting' },
@@ -29,6 +33,7 @@ const STAT_OPTIONS = [
   { value: 'total_k', label: 'Total K (Pitching)', group: 'Pitching' },
   { value: 'pitching_k_pct', label: 'K% (Pitching)', group: 'Pitching' },
   { value: 'pitching_bb_pct', label: 'BB% (Pitching)', group: 'Pitching', lowerBetter: true },
+  { value: 'pitching_k_bb_pct', label: 'K-BB% (Pitching)', group: 'Pitching' },
   { value: 'total_pwar', label: 'Pitching WAR', group: 'Pitching' },
   // Combined
   { value: 'total_war', label: 'Total WAR', group: 'Overall' },
@@ -229,6 +234,46 @@ export default function ScatterPlot() {
       zoneThresholds: { x50, x10, y50, y10, xBest, yBest },
     }
   }, [points, xOpt, yOpt])
+
+  // Pearson correlation coefficient (r) and trend line
+  const { r, rLabel, trendLine } = useMemo(() => {
+    if (points.length < 3) return { r: null, rLabel: '', trendLine: null }
+
+    const n = points.length
+    const xs = points.map(p => p.x)
+    const ys = points.map(p => p.y)
+    const sumX = xs.reduce((a, b) => a + b, 0)
+    const sumY = ys.reduce((a, b) => a + b, 0)
+    const sumXY = xs.reduce((a, x, i) => a + x * ys[i], 0)
+    const sumX2 = xs.reduce((a, x) => a + x * x, 0)
+    const sumY2 = ys.reduce((a, y) => a + y * y, 0)
+
+    const num = n * sumXY - sumX * sumY
+    const den = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY))
+    const rVal = den === 0 ? 0 : num / den
+
+    // Strength label
+    const absR = Math.abs(rVal)
+    let strength = 'No'
+    if (absR >= 0.7) strength = 'Strong'
+    else if (absR >= 0.4) strength = 'Moderate'
+    else if (absR >= 0.2) strength = 'Weak'
+
+    const dir = rVal >= 0 ? 'positive' : 'negative'
+    const label = `r = ${rVal >= 0 ? '' : ''}${rVal.toFixed(3)} (${strength} ${dir})`
+
+    // Linear regression for trend line: y = mx + b
+    const m = den === 0 ? 0 : num / (n * sumX2 - sumX * sumX)
+    const b = (sumY - m * sumX) / n
+    const xMin = Math.min(...xs)
+    const xMax = Math.max(...xs)
+
+    return {
+      r: rVal,
+      rLabel: label,
+      trendLine: { x1: xMin, y1: m * xMin + b, x2: xMax, y2: m * xMax + b },
+    }
+  }, [points])
 
   const plotW = WIDTH - MARGIN.left - MARGIN.right
   const plotH = HEIGHT - MARGIN.top - MARGIN.bottom
@@ -451,6 +496,26 @@ export default function ScatterPlot() {
               )
             })()}
 
+            {/* ── Trend line ── */}
+            {trendLine && xScale && yScale && (() => {
+              const x1px = xScale(trendLine.x1)
+              const y1px = yScale(trendLine.y1)
+              const x2px = xScale(trendLine.x2)
+              const y2px = yScale(trendLine.y2)
+              // Clamp to plot area
+              const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+              return (
+                <line
+                  x1={clamp(x1px, MARGIN.left, MARGIN.left + plotW)}
+                  y1={clamp(y1px, MARGIN.top, MARGIN.top + plotH)}
+                  x2={clamp(x2px, MARGIN.left, MARGIN.left + plotW)}
+                  y2={clamp(y2px, MARGIN.top, MARGIN.top + plotH)}
+                  stroke={BRAND.teal} strokeWidth={2}
+                  strokeDasharray="8,4" opacity={0.5}
+                />
+              )
+            })()}
+
             {/* ── Data points ── */}
             {points.map(pt => {
               const cx = xScale(pt.x)
@@ -524,6 +589,18 @@ export default function ScatterPlot() {
             <text x={WIDTH - 20} y={HEIGHT - 10} fontSize={9} fill="#cbd5e1" textAnchor="end">
               {points.length} teams · Data updated 2026
             </text>
+
+            {/* ── Correlation badge ── */}
+            {r !== null && (
+              <g>
+                <rect x={MARGIN.left + 8} y={MARGIN.top + 6} width={rLabel.length * 6.5 + 16} height={22}
+                      rx={4} fill="white" stroke="#e2e8f0" strokeWidth={1} opacity={0.95} />
+                <text x={MARGIN.left + 16} y={MARGIN.top + 21} fontSize={11}
+                      fontWeight="600" fill={Math.abs(r) >= 0.4 ? BRAND.teal : '#6b7280'}>
+                  {rLabel}
+                </text>
+              </g>
+            )}
           </svg>
 
           {/* Legend below the chart */}
@@ -547,6 +624,10 @@ export default function ScatterPlot() {
             <div className="flex items-center gap-1.5">
               <div className="w-4 h-3 border-2 border-dashed rounded" style={{ borderColor: '#059669', backgroundColor: 'rgba(5,150,105,0.05)' }} />
               <span>Top 10% zone</span>
+            </div>
+            <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200">
+              <div className="w-5 h-0 border-t-2 border-dashed" style={{ borderColor: BRAND.teal }} />
+              <span>Trend line</span>
             </div>
           </div>
         </div>

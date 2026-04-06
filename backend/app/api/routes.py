@@ -1210,7 +1210,9 @@ def team_scatter(
         "avg_bb_pct", "avg_k_pct",
         "team_era", "team_whip", "avg_fip", "avg_fip_plus", "avg_era_plus", "avg_xfip",
         "total_k", "total_pwar", "pitching_k_pct", "pitching_bb_pct",
+        "pitching_k_bb_pct",
         "total_ip", "total_war",
+        "win_pct", "conf_win_pct", "run_diff",
     }
 
     if x_stat not in all_allowed or y_stat not in all_allowed:
@@ -1235,6 +1237,14 @@ def team_scatter(
         teams = cur.execute(team_query, team_params)
         teams = cur.fetchall()
 
+        # Pre-fetch team records for win%
+        cur.execute(
+            """SELECT team_id, wins, losses, conference_wins, conference_losses
+               FROM team_season_stats WHERE season = %s""",
+            (season,),
+        )
+        record_map = {r["team_id"]: dict(r) for r in cur.fetchall()}
+
         results = []
         for team in teams:
             tid = team["id"]
@@ -1258,6 +1268,7 @@ def team_scatter(
             cur.execute(
                 """SELECT COUNT(*) as n,
                        SUM(innings_pitched) as ip, SUM(earned_runs) as er,
+                       SUM(runs_allowed) as ra,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
                        AVG(fip) as avg_fip, AVG(fip_plus) as avg_fip_plus,
@@ -1335,6 +1346,26 @@ def team_scatter(
                     owar = b["total_owar"] or 0
                     pwar = (p["total_pwar"] or 0) if p else 0
                     return round(owar + pwar, 1)
+                elif stat_name == "pitching_k_bb_pct":
+                    kp = (p["avg_k_pct"] or 0) if p else 0
+                    bp = (p["avg_bb_pct"] or 0) if p else 0
+                    return round(kp - bp, 3) if p else None
+                elif stat_name == "win_pct":
+                    rec = record_map.get(tid)
+                    if not rec:
+                        return None
+                    total = (rec["wins"] or 0) + (rec["losses"] or 0)
+                    return round(rec["wins"] / total, 3) if total > 0 else None
+                elif stat_name == "conf_win_pct":
+                    rec = record_map.get(tid)
+                    if not rec:
+                        return None
+                    total = (rec["conference_wins"] or 0) + (rec["conference_losses"] or 0)
+                    return round(rec["conference_wins"] / total, 3) if total > 0 else None
+                elif stat_name == "run_diff":
+                    runs_scored = b["r"] or 0
+                    ra = (p["ra"] or p["er"] or 0) if p else 0
+                    return int(runs_scored - ra)
                 return None
 
             x_val = _compute(x_stat)
