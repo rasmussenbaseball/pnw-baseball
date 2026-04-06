@@ -11,9 +11,6 @@ const LEVEL_LABELS = {
 function formatTimestamp(isoString) {
   const d = new Date(isoString)
   const now = new Date()
-  const diffMs = now - d
-  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
   const pacific = { timeZone: 'America/Los_Angeles' }
   const timeStr = d.toLocaleTimeString('en-US', {
@@ -28,12 +25,26 @@ function formatTimestamp(isoString) {
     day: 'numeric',
   })
 
-  if (diffDays === 0) {
+  // Compare dates in Pacific time to get correct "today"/"yesterday"
+  const dPacific = d.toLocaleDateString('en-CA', pacific)   // YYYY-MM-DD
+  const nowPacific = now.toLocaleDateString('en-CA', pacific)
+
+  const diffMs = now - d
+  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
+
+  if (dPacific === nowPacific) {
     if (diffHrs < 1) return `Updated just now`
     return `Updated today at ${timeStr}`
-  } else if (diffDays === 1) {
+  }
+
+  // Check yesterday in Pacific
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayPacific = yesterday.toLocaleDateString('en-CA', pacific)
+  if (dPacific === yesterdayPacific) {
     return `Updated yesterday at ${timeStr}`
   }
+
   return `Updated ${dateStr} at ${timeStr}`
 }
 

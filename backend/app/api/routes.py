@@ -171,7 +171,11 @@ def stats_last_updated_top(season: int = 2026):
             level = row["division_level"]
             ts = row["last_updated"]
             if ts and str(ts) != "1970-01-01 00:00:00":
-                result[level] = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+                # Append UTC indicator so the frontend correctly converts to Pacific
+                iso = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+                if '+' not in iso and 'Z' not in iso:
+                    iso += '+00:00'
+                result[level] = iso
 
         return result
 
