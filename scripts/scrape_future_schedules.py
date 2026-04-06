@@ -173,6 +173,17 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
             opp_name = str(opponent) if opponent else "Unknown"
 
         opp_clean = re.sub(r'^#\d+\s+', '', opp_name).strip()
+
+        # Skip postseason placeholder entries
+        postseason_keywords = [
+            "tournament", "championship", "world series", "opening round",
+            "super regional", "college world", "playoff",
+            "naia opening", "naia world", "ncaa",
+            "begins", "tba", "tbd",
+        ]
+        if any(kw in opp_clean.lower() for kw in postseason_keywords):
+            continue
+
         opp_key = normalize_team_name(opp_clean)
 
         # Location
@@ -230,7 +241,7 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
     """
     soup = BeautifulSoup(html, "html.parser")
     games = []
-    seen_on_page = set()  # Dedup within a single team's page
+    seen_on_page = {}  # Count occurrences for mobile/desktop dedup
 
     # Method 1 (best): Find <li> elements with the "upcoming" class
     upcoming_items = soup.find_all("li", class_=re.compile(r"sidearm-schedule-game-upcoming"))
@@ -296,13 +307,29 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             opp_clean = re.sub(r'^#\d+\s+', '', opponent).strip()
             if not opp_clean:
                 continue
+
+            # Skip postseason placeholder entries (not real games)
+            postseason_keywords = [
+                "tournament", "championship", "world series", "opening round",
+                "super regional", "college world", "playoff",
+                "naia opening", "naia world", "ncaa",
+                "begins", "tba", "tbd",
+            ]
+            opp_lower = opp_clean.lower()
+            if any(kw in opp_lower for kw in postseason_keywords):
+                continue
+
             opp_key = normalize_team_name(opp_clean)
 
-            # Dedup within same page (mobile/desktop duplication)
+            # Handle mobile/desktop duplication while allowing doubleheaders.
+            # Sidearm pages show each game twice (mobile + desktop layout),
+            # so max 2 <li> per game. Use a counter: first 2 hits = game 1 dup,
+            # next 2 = game 2 dup, etc.
             page_key = (game_date, opp_key)
-            if page_key in seen_on_page:
+            seen_on_page[page_key] = seen_on_page.get(page_key, 0) + 1
+            if seen_on_page[page_key] % 2 == 0:
+                # Even count = this is a mobile/desktop duplicate, skip it
                 continue
-            seen_on_page.add(page_key)
 
             # Location
             text_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-text"))

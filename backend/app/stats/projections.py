@@ -99,15 +99,19 @@ CONFERENCE_TO_FORMAT = {
     "NWC": "NWC",
     "Cascade Collegiate Conference": "CCC",
     "CCC": "CCC",
-    # NWAC regions
+    # NWAC regions (DB stores as "NWAC North Division", abbrev "NWAC-N")
+    "NWAC North Division": "NWAC_NORTH",
     "NWAC North": "NWAC_NORTH",
-    "North": "NWAC_NORTH",
+    "NWAC-N": "NWAC_NORTH",
+    "NWAC East Division": "NWAC_EAST",
     "NWAC East": "NWAC_EAST",
-    "East": "NWAC_EAST",
+    "NWAC-E": "NWAC_EAST",
+    "NWAC South Division": "NWAC_SOUTH",
     "NWAC South": "NWAC_SOUTH",
-    "South": "NWAC_SOUTH",
+    "NWAC-S": "NWAC_SOUTH",
+    "NWAC West Division": "NWAC_WEST",
     "NWAC West": "NWAC_WEST",
-    "West": "NWAC_WEST",
+    "NWAC-W": "NWAC_WEST",
 }
 
 
