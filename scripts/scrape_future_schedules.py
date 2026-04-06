@@ -93,11 +93,10 @@ def build_team_id_map():
             WHERE t.is_active = 1
         """)
         rows = cur.fetchall()
-        cols = [desc[0] for desc in cur.description]
 
     team_map = {}
     for row in rows:
-        r = dict(zip(cols, row))
+        r = dict(row)
         team_map[r["short_name"]] = {
             "team_id": r["id"],
             "conference_id": r["conference_id"],
