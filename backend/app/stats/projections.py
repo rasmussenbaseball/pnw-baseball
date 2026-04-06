@@ -18,9 +18,11 @@ Playoff Formats (2026):
 
 import json
 import math
+import random
 import logging
 from pathlib import Path
 from datetime import date
+from collections import defaultdict
 
 logger = logging.getLogger("projections")
 
@@ -234,6 +236,146 @@ def project_remaining_games(future_games, team_ratings):
             projections[away_id]["games"].append(game_proj)
 
     return projections
+
+
+# ============================================================
+# Monte Carlo Simulation
+# ============================================================
+
+def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations=1000):
+    """
+    Simulate the remaining season N times to compute:
+    - Each team's probability of making the playoffs
+    - Each team's probability of finishing in each seed position
+
+    Returns:
+        dict of team_id -> {
+            playoff_pct: float (0-1),
+            seed_probabilities: {1: float, 2: float, ...},
+            avg_conf_wins: float,
+            avg_conf_losses: float,
+        }
+    """
+    # Build name -> id lookup
+    name_to_id = {}
+    for tid, info in team_ratings.items():
+        name_to_id[info["short_name"]] = tid
+
+    # Pre-process games into (home_id, away_id, home_win_prob, is_conference) tuples
+    processed_games = []
+    for game in future_games:
+        home_id = game.get("home_team_id") or name_to_id.get(game.get("home_team"))
+        away_id = game.get("away_team_id") or name_to_id.get(game.get("away_team"))
+        if not home_id and not away_id:
+            continue
+
+        home_rating = team_ratings.get(home_id, {}).get("power_rating") if home_id else None
+        away_rating = team_ratings.get(away_id, {}).get("power_rating") if away_id else None
+
+        if home_rating is not None and away_rating is not None:
+            home_win_prob = elo_win_prob(home_rating + 2.0, away_rating)
+        elif home_rating is not None:
+            home_win_prob = 0.6
+        elif away_rating is not None:
+            home_win_prob = 0.4
+        else:
+            home_win_prob = 0.5
+
+        is_conf = game.get("is_conference", False)
+        processed_games.append((home_id, away_id, home_win_prob, is_conf))
+
+    # Build current records lookup: team_id -> {conf_wins, conf_losses, conference_name}
+    team_base = {}
+    for team in current_standings:
+        tid = team["id"]
+        team_base[tid] = {
+            "conf_wins": team.get("conf_wins", 0) or 0,
+            "conf_losses": team.get("conf_losses", 0) or 0,
+            "conference_name": team.get("conference_name", ""),
+            "division_level": team.get("division_level", ""),
+        }
+
+    # Find which conferences have playoff formats
+    conf_format_map = {}
+    for team in current_standings:
+        conf_name = team.get("conference_name", "")
+        if conf_name not in conf_format_map:
+            format_key = (CONFERENCE_TO_FORMAT.get(conf_name) or
+                          CONFERENCE_TO_FORMAT.get(team.get("conference_abbrev", "")))
+            if format_key and format_key in PLAYOFF_FORMATS:
+                conf_format_map[conf_name] = PLAYOFF_FORMATS[format_key]
+
+    # Track results across simulations
+    # team_id -> {playoff_count, seed_counts: {seed: count}}
+    results = defaultdict(lambda: {"playoff_count": 0, "seed_counts": defaultdict(int),
+                                    "total_conf_wins": 0.0, "total_conf_losses": 0.0})
+
+    for _ in range(n_simulations):
+        # Start with current conference records
+        sim_conf_wins = {}
+        sim_conf_losses = {}
+        for tid, base in team_base.items():
+            sim_conf_wins[tid] = base["conf_wins"]
+            sim_conf_losses[tid] = base["conf_losses"]
+
+        # Simulate each game
+        for home_id, away_id, home_win_prob, is_conf in processed_games:
+            home_wins = random.random() < home_win_prob
+
+            if is_conf:
+                if home_wins:
+                    if home_id:
+                        sim_conf_wins[home_id] = sim_conf_wins.get(home_id, 0) + 1
+                    if away_id:
+                        sim_conf_losses[away_id] = sim_conf_losses.get(away_id, 0) + 1
+                else:
+                    if away_id:
+                        sim_conf_wins[away_id] = sim_conf_wins.get(away_id, 0) + 1
+                    if home_id:
+                        sim_conf_losses[home_id] = sim_conf_losses.get(home_id, 0) + 1
+
+        # Group by conference and determine standings
+        conf_teams = defaultdict(list)
+        for tid, base in team_base.items():
+            cw = sim_conf_wins.get(tid, 0)
+            cl = sim_conf_losses.get(tid, 0)
+            total = cw + cl
+            pct = cw / total if total > 0 else 0
+            conf_teams[base["conference_name"]].append((tid, cw, cl, pct))
+            results[tid]["total_conf_wins"] += cw
+            results[tid]["total_conf_losses"] += cl
+
+        # Sort each conference and assign seeds
+        for conf_name, teams_list in conf_teams.items():
+            fmt = conf_format_map.get(conf_name)
+            if not fmt:
+                continue
+
+            # Sort by conf win pct descending, then wins descending as tiebreaker
+            teams_list.sort(key=lambda t: (t[3], t[1]), reverse=True)
+            num_playoff = min(fmt["num_teams"], len(teams_list))
+
+            for rank, (tid, cw, cl, pct) in enumerate(teams_list):
+                seed = rank + 1
+                if seed <= num_playoff:
+                    results[tid]["playoff_count"] += 1
+                    results[tid]["seed_counts"][seed] += 1
+
+    # Convert counts to probabilities
+    output = {}
+    for tid, data in results.items():
+        seed_probs = {}
+        for seed, count in sorted(data["seed_counts"].items()):
+            seed_probs[seed] = round(count / n_simulations, 3)
+
+        output[tid] = {
+            "playoff_pct": round(data["playoff_count"] / n_simulations, 3),
+            "seed_probabilities": seed_probs,
+            "avg_conf_wins": round(data["total_conf_wins"] / n_simulations, 1),
+            "avg_conf_losses": round(data["total_conf_losses"] / n_simulations, 1),
+        }
+
+    return output
 
 
 def build_projected_standings(current_standings, projections, team_ratings):

@@ -28,6 +28,7 @@ from ..stats.ppi import compute_ppi_for_division
 from ..stats.projections import (
     load_future_schedules,
     project_remaining_games,
+    run_monte_carlo,
     build_projected_standings,
     determine_playoff_fields,
     elo_win_prob,
@@ -2037,16 +2038,37 @@ def playoff_projections(
                     "division_level": r["division_level"],
                 }
 
-        # Project remaining games
+        # Project remaining games (expected value projections)
         projections = project_remaining_games(future_games, team_ratings)
+
+        # Run Monte Carlo simulation for playoff odds
+        mc_results = run_monte_carlo(
+            future_games, team_ratings, standings_rows, n_simulations=1000
+        )
 
         # Build projected standings
         projected_conferences = build_projected_standings(
             standings_rows, projections, team_ratings
         )
 
+        # Inject Monte Carlo odds into each team in standings
+        for conf in projected_conferences:
+            for team in conf["teams"]:
+                tid = team["team_id"]
+                mc = mc_results.get(tid, {})
+                team["playoff_pct"] = mc.get("playoff_pct", 0)
+                team["seed_probabilities"] = mc.get("seed_probabilities", {})
+
         # Determine playoff fields
         playoff_brackets = determine_playoff_fields(projected_conferences)
+
+        # Inject odds into bracket teams too
+        for bracket in playoff_brackets:
+            for team in bracket["teams"]:
+                tid = team["team_id"]
+                mc = mc_results.get(tid, {})
+                team["playoff_pct"] = mc.get("playoff_pct", 0)
+                team["seed_probabilities"] = mc.get("seed_probabilities", {})
 
         return {
             "season": season,
