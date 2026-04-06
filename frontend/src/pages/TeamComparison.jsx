@@ -155,10 +155,10 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
 
   // Confidence label
   let confidence = 'Toss-up'
-  if (spreadAbs >= 4) confidence = 'Heavy favorite'
-  else if (spreadAbs >= 2.5) confidence = 'Strong favorite'
-  else if (spreadAbs >= 1.5) confidence = 'Moderate edge'
-  else if (spreadAbs >= 0.5) confidence = 'Slight edge'
+  if (spreadAbs >= 7) confidence = 'Heavy favorite'
+  else if (spreadAbs >= 4.5) confidence = 'Strong favorite'
+  else if (spreadAbs >= 2.5) confidence = 'Moderate edge'
+  else if (spreadAbs >= 1) confidence = 'Slight edge'
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -210,7 +210,7 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
         </div>
       </div>
 
-      {/* Spread + power ratings */}
+      {/* Spread + power ratings + projected runs */}
       <div className="px-4 py-3">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div>
@@ -229,6 +229,26 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
             <div className="text-[10px] text-gray-400 uppercase">Power Rating</div>
           </div>
         </div>
+
+        {/* Projected score + over/under */}
+        {matchup.proj_total != null && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-base font-bold" style={{ color: colorA.bar }}>{matchup.proj_runs_a}</div>
+                <div className="text-[10px] text-gray-400">Proj. Runs</div>
+              </div>
+              <div>
+                <div className="text-base font-bold text-pnw-slate">O/U {matchup.proj_total}</div>
+                <div className="text-[10px] text-gray-400">Proj. Total</div>
+              </div>
+              <div>
+                <div className="text-base font-bold" style={{ color: colorB.bar }}>{matchup.proj_runs_b}</div>
+                <div className="text-[10px] text-gray-400">Proj. Runs</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Component breakdown */}
