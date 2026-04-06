@@ -596,15 +596,32 @@ def extract_future_willamette_games(season_year, today, team_map):
     )
 
     logger.info(f"Fetching Willamette schedule: {schedule_url}")
-    try:
-        resp = requests.get(schedule_url, timeout=30, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
-        resp.raise_for_status()
-        html = resp.text
-    except Exception as e:
-        logger.error(f"Failed to fetch Willamette schedule: {e}")
-        return []
+
+    # Try direct fetch first, then ScraperAPI as fallback
+    html = fetch_page(schedule_url)
+    if not html or len(html) < 2000:
+        logger.warning("Direct fetch failed for Willamette, trying ScraperAPI...")
+        api_key = os.environ.get("SCRAPER_API_KEY", "")
+        if not api_key:
+            env_path = Path(__file__).parent.parent / ".env"
+            if env_path.exists():
+                with open(env_path) as f:
+                    for line in f:
+                        if line.strip().startswith("SCRAPER_API_KEY="):
+                            api_key = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                            break
+        if api_key:
+            try:
+                api_url = f"http://api.scraperapi.com?api_key={api_key}&url={schedule_url}"
+                resp = requests.get(api_url, timeout=120)
+                resp.raise_for_status()
+                html = resp.text
+            except Exception as e:
+                logger.error(f"ScraperAPI failed for Willamette: {e}")
+                return []
+        else:
+            logger.error("No ScraperAPI key available for Willamette fallback")
+            return []
 
     if len(html) < 2000:
         logger.warning("Willamette schedule page too small")
@@ -649,25 +666,36 @@ def extract_future_willamette_games(season_year, today, team_map):
             if i < len(headers):
                 vals[headers[i]] = cell.get_text(strip=True)
 
-        # Parse date (format: "Mon, Feb 1" or "Sat, Mar 15")
+        # Parse date (formats: "Apr 11", "Mon, Apr 11", "4/11/2026")
         date_str = vals.get("date", "").strip()
         if date_str:
-            # Try parsing "DayName, Mon DD" format
-            date_match = re.match(r'\w+,?\s+(\w+)\s+(\d+)', date_str)
-            if date_match:
-                month_str = date_match.group(1)
-                day_str = date_match.group(2)
-                for fmt in ("%b %d", "%B %d"):
-                    try:
-                        dt = datetime.strptime(f"{month_str} {day_str}", fmt)
-                        year = season_year
-                        # Fall games (Aug-Dec) use season_year - 1
-                        if dt.month >= 8:
-                            year = season_year - 1
-                        current_date = dt.replace(year=year).date()
-                        break
-                    except ValueError:
-                        continue
+            month_str = None
+            day_str = None
+            # Try "M/D/YYYY" format first
+            slash_match = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_str)
+            if slash_match:
+                try:
+                    current_date = date(int(slash_match.group(3)), int(slash_match.group(1)), int(slash_match.group(2)))
+                except ValueError:
+                    pass
+            else:
+                # Try "DayName, Mon DD" or just "Mon DD"
+                date_match = re.match(r'(?:\w+,?\s+)?(\w+)\s+(\d+)', date_str)
+                if date_match:
+                    month_str = date_match.group(1)
+                    day_str = date_match.group(2)
+                if month_str and day_str:
+                    for fmt in ("%b %d", "%B %d"):
+                        try:
+                            dt = datetime.strptime(f"{month_str} {day_str}", fmt)
+                            year = season_year
+                            # Fall games (Aug-Dec) use season_year - 1
+                            if dt.month >= 8:
+                                year = season_year - 1
+                            current_date = dt.replace(year=year).date()
+                            break
+                        except ValueError:
+                            continue
 
         # Check score - future games have "-" or empty
         score_str = vals.get("score", "").strip()
