@@ -241,7 +241,7 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
     """
     soup = BeautifulSoup(html, "html.parser")
     games = []
-    seen_on_page = {}  # Count occurrences for mobile/desktop dedup
+    seen_game_ids = set()  # Dedup using data-game-id when available
 
     # Method 1 (best): Find <li> elements with the "upcoming" class
     upcoming_items = soup.find_all("li", class_=re.compile(r"sidearm-schedule-game-upcoming"))
@@ -321,15 +321,22 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
 
             opp_key = normalize_team_name(opp_clean)
 
-            # Handle mobile/desktop duplication while allowing doubleheaders.
-            # Sidearm pages show each game twice (mobile + desktop layout),
-            # so max 2 <li> per game. Use a counter: first 2 hits = game 1 dup,
-            # next 2 = game 2 dup, etc.
-            page_key = (game_date, opp_key)
-            seen_on_page[page_key] = seen_on_page.get(page_key, 0) + 1
-            if seen_on_page[page_key] % 2 == 0:
-                # Even count = this is a mobile/desktop duplicate, skip it
-                continue
+            # Dedup using data-game-id (handles both mobile/desktop dupes
+            # and doubleheaders correctly). Each real game has a unique ID.
+            # If no data-game-id, let all games through (cross-team dedup
+            # will handle duplicates later).
+            game_id = None
+            if hasattr(item, 'get'):
+                game_id = item.get("data-game-id")
+            if not game_id:
+                parent_li = item.find_parent("li") if item.name != "li" else item
+                if parent_li and hasattr(parent_li, 'get'):
+                    game_id = parent_li.get("data-game-id")
+
+            if game_id:
+                if game_id in seen_game_ids:
+                    continue
+                seen_game_ids.add(game_id)
 
             # Location
             text_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-text"))
@@ -543,33 +550,54 @@ def extract_future_nwac_games(season_year, today, team_map):
 
 def deduplicate_future_games(games):
     """
-    Remove duplicate games that appear from both teams' schedules.
-    Uses (date, home, away) as the dedup key.
-    """
-    seen = {}
-    deduped = []
+    Remove duplicate games that appear from both teams' schedules,
+    while preserving doubleheaders (multiple games on the same date
+    between the same two teams).
 
+    Strategy: Group games by (date, team_pair). For each group, count
+    how many games each source_team reported. The real game count is
+    the max from any single source. Keep that many, preferring entries
+    with team IDs filled in.
+    """
+    from collections import defaultdict
+
+    # Group games by (date, team_pair)
+    groups = defaultdict(list)
     for g in games:
-        # Normalize team names for dedup
         home = normalize_team_name(g["home_team"])
         away = normalize_team_name(g["away_team"])
-        game_date = g["game_date"]
+        key = (g["game_date"], tuple(sorted([home, away])))
+        groups[key].append(g)
 
-        # Create canonical key (sorted teams + date)
-        key = (game_date, tuple(sorted([home, away])))
+    deduped = []
+    for key, group in groups.items():
+        # Count how many games each source team reported for this matchup/date
+        source_counts = defaultdict(int)
+        for g in group:
+            source_counts[g.get("source_team", "")] += 1
 
-        if key not in seen:
-            seen[key] = g
-            deduped.append(g)
-        else:
-            # Prefer version with team IDs
-            existing = seen[key]
-            if not existing.get("home_team_id") and g.get("home_team_id"):
-                seen[key] = g
-                deduped[deduped.index(existing)] = g
-            elif not existing.get("away_team_id") and g.get("away_team_id"):
-                # Merge IDs
-                existing["away_team_id"] = g["away_team_id"]
+        # The real number of games is the max reported by any single source
+        real_count = max(source_counts.values()) if source_counts else 1
+
+        # Sort group to prefer entries with team IDs
+        group.sort(key=lambda g: (
+            1 if g.get("home_team_id") and g.get("away_team_id") else 0
+        ), reverse=True)
+
+        # Keep up to real_count games, merge IDs where possible
+        kept = []
+        for g in group:
+            if len(kept) >= real_count:
+                # Try to merge IDs into existing kept games
+                for k in kept:
+                    if not k.get("home_team_id") and g.get("home_team_id"):
+                        k["home_team_id"] = g["home_team_id"]
+                    if not k.get("away_team_id") and g.get("away_team_id"):
+                        k["away_team_id"] = g["away_team_id"]
+                continue
+            kept.append(g)
+
+        deduped.extend(kept)
 
     return deduped
 

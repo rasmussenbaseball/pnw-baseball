@@ -102,7 +102,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
               <th className="text-center px-1 py-1.5 font-semibold" title="Projected final conference record">Proj Conf</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Projected conference win %">Pct</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Projected final overall record">Proj All</th>
-              <th className="text-center px-1 py-1.5 font-semibold" title="Games remaining">Rem</th>
+              <th className="text-center px-1 py-1.5 font-semibold" title="Conference games remaining">Conf Rem</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Power rating">PWR</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[70px]" title="Playoff probability">Playoff %</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[52px]" title="Miss playoffs probability">Miss %</th>
@@ -167,7 +167,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
                     {formatRecord(team.projected_wins, team.projected_losses)}
                   </td>
                   <td className="text-center px-1 py-1.5 text-gray-400">
-                    {team.games_remaining}
+                    {team.conf_games_remaining}
                   </td>
                   <td className="text-center px-1 py-1.5">
                     {team.power_rating ? (
