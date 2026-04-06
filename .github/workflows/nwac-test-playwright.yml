@@ -13,17 +13,60 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Playwright
+      - name: Install dependencies
         run: |
-          pip install playwright
+          pip install playwright requests
           python -m playwright install chromium
           python -m playwright install-deps
 
-      - name: Test NWAC access with Playwright
+      - name: Test NWAC endpoints
         run: |
           python3 -c "
-          from playwright.sync_api import sync_playwright
+          import requests
           import time
+
+          # First test: raw HTTP requests to data-oriented endpoints
+          # These might bypass WAF since they're meant for automated consumption
+          session = requests.Session()
+          session.headers.update({
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+          })
+
+          endpoints = [
+              ('RSS Feed (completed games)', 'https://nwacsports.com/sports/bsb/composite?print=rss&view=2'),
+              ('RSS Feed (all)', 'https://nwacsports.com/sports/bsb/composite?print=rss'),
+              ('JSON schedule', 'https://nwacsports.com/sports/bsb/2025-26/composite?print=json'),
+              ('AJAX stats template', 'https://nwacsports.com/sports/bsb/2025-26/teams/clark?tmpl=teaminfo-schedule-workspace&view=schedule'),
+              ('Box score XML direct', 'https://nwacsports.com/sports/bsb/2025-26/boxscores/20260405_254w.xml'),
+              ('Scoreboard', 'https://nwacsports.com/sports/bsb/2025-26/scoreboard'),
+          ]
+
+          for name, url in endpoints:
+              print(f'--- {name} ---')
+              print(f'URL: {url}')
+              try:
+                  r = session.get(url, timeout=15, allow_redirects=True)
+                  print(f'Status: {r.status_code}')
+                  print(f'Content-Type: {r.headers.get(\"content-type\", \"unknown\")}')
+                  print(f'Size: {len(r.text)} bytes')
+                  blocked = any(w in r.text.lower() for w in ['captcha', 'challenge', 'blocked', 'access denied', 'aws-waf'])
+                  print(f'Looks blocked: {blocked}')
+                  has_data = any(w in r.text.lower() for w in ['<item>', '<entry>', 'final', 'batting', 'schedule', '<game'])
+                  print(f'Has real data: {has_data}')
+                  if len(r.text) < 2000:
+                      print(f'Content preview: {r.text[:500]}')
+                  elif has_data:
+                      print(f'Content preview: {r.text[:300]}')
+              except Exception as e:
+                  print(f'Error: {e}')
+              print()
+
+          # Second test: Playwright browser for comparison
+          print('========================================')
+          print('=== PLAYWRIGHT BROWSER TESTS ===')
+          print('========================================')
+          from playwright.sync_api import sync_playwright
 
           with sync_playwright() as p:
               browser = p.chromium.launch(headless=True)
@@ -32,46 +75,28 @@ jobs:
               )
               page = context.new_page()
 
-              # Test 1: Main NWAC baseball page
-              print('--- Test 1: Main page ---')
-              page.goto('https://nwacsports.com/sports/bsb/2025-26', wait_until='networkidle', timeout=30000)
-              time.sleep(3)
-              html = page.content()
-              print(f'Page length: {len(html)} bytes')
-              print(f'Has table: {\"<table\" in html}')
-              print(f'Has schedule: {\"schedule\" in html.lower()}')
-              blocked_signs = ['captcha', 'blocked', 'access denied', 'cf-browser-verification', 'challenge-platform']
-              for sign in blocked_signs:
-                  if sign in html.lower():
-                      print(f'WARNING: Found \"{sign}\" in page — may be blocked')
+              pw_endpoints = [
+                  ('RSS Feed', 'https://nwacsports.com/sports/bsb/composite?print=rss&view=2'),
+                  ('AJAX template', 'https://nwacsports.com/sports/bsb/2025-26/teams/clark?tmpl=teaminfo-schedule-workspace&view=schedule'),
+                  ('Box score XML', 'https://nwacsports.com/sports/bsb/2025-26/boxscores/20260405_254w.xml'),
+              ]
 
-              # Test 2: A specific box score XML
-              print()
-              print('--- Test 2: Box score XML ---')
-              page.goto('https://nwacsports.com/sports/bsb/2025-26/boxscores/20260405_254w.xml', wait_until='networkidle', timeout=30000)
-              time.sleep(2)
-              html2 = page.content()
-              print(f'Page length: {len(html2)} bytes')
-              print(f'Has linescore: {\"linescore\" in html2.lower() or \"line score\" in html2.lower()}')
-              print(f'Has batting: {\"batting\" in html2.lower() or \"AB\" in html2}')
-
-              # Test 3: Schedule page
-              print()
-              print('--- Test 3: Schedule page ---')
-              page.goto('https://nwacsports.com/sports/bsb/2025-26/teams/clark?view=schedule', wait_until='networkidle', timeout=30000)
-              time.sleep(2)
-              html3 = page.content()
-              print(f'Page length: {len(html3)} bytes')
-              print(f'Has table: {\"<table\" in html3}')
-              print(f'Has Final: {\"Final\" in html3}')
-
-              # Print first blocked indicators if any test is suspiciously small
-              for i, (name, h) in enumerate([('Main', html), ('BoxScore', html2), ('Schedule', html3)]):
-                  if len(h) < 5000:
-                      print(f'WARNING: {name} page is very small ({len(h)} bytes) — likely blocked')
-                      print(f'First 500 chars: {h[:500]}')
+              for name, url in pw_endpoints:
+                  print(f'--- Playwright: {name} ---')
+                  try:
+                      page.goto(url, wait_until='networkidle', timeout=20000)
+                      time.sleep(2)
+                      html = page.content()
+                      print(f'Size: {len(html)} bytes')
+                      blocked = any(w in html.lower() for w in ['captcha', 'challenge-platform'])
+                      has_data = any(w in html.lower() for w in ['<item>', 'final', 'batting', '<game'])
+                      print(f'Looks blocked: {blocked}')
+                      print(f'Has real data: {has_data}')
+                  except Exception as e:
+                      print(f'Error: {e}')
+                  print()
 
               browser.close()
-              print()
-              print('=== TEST COMPLETE ===')
+
+          print('=== ALL TESTS COMPLETE ===')
           "
