@@ -4645,7 +4645,10 @@ def games_live():
     # games table, but they don't appear in live_scores.json. Pull recent
     # NWAC games from the DB and merge them into the live response.
     try:
-        today = _date.today()
+        from datetime import datetime as _datetime
+        from zoneinfo import ZoneInfo
+        _pacific = ZoneInfo("America/Los_Angeles")
+        today = _datetime.now(_pacific).date()
         recent_start = today - _timedelta(days=2)
 
         with get_connection() as conn:
