@@ -145,8 +145,8 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
   const b = teamMap[matchup.team_b]
   if (!a || !b) return null
 
-  const colorA = colorMap[matchup.team_a]
-  const colorB = colorMap[matchup.team_b]
+  const colorA = colorMap[matchup.team_a] || TEAM_COLORS[0]
+  const colorB = colorMap[matchup.team_b] || TEAM_COLORS[1]
   const pctA = Math.round(matchup.win_prob_a * 100)
   const pctB = Math.round(matchup.win_prob_b * 100)
   const spread = matchup.spread
