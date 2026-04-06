@@ -959,11 +959,11 @@ def stat_records(
             LEFT JOIN team_season_stats tss
               ON tss.team_id = bs.team_id AND tss.season = bs.season
             WHERE bs.plate_appearances >= 2.0 * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
-              AND bs.plate_appearances >= 50
+              AND bs.plate_appearances >= 100
         """)
         all_bat_seasons = [dict(r) for r in cur.fetchall()]
 
-        # Also fetch unqualified rows for counting stats (lower PA threshold)
+        # Also fetch rows for counting stats (same 100 PA minimum)
         cur.execute("""
             SELECT bs.player_id, p.first_name, p.last_name,
                    t.short_name as team_short, t.logo_url,
@@ -976,7 +976,7 @@ def stat_records(
             JOIN teams t ON bs.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE bs.plate_appearances >= 30
+            WHERE bs.plate_appearances >= 100
         """)
         all_bat_counting = [dict(r) for r in cur.fetchall()]
 
@@ -997,7 +997,7 @@ def stat_records(
             LEFT JOIN team_season_stats tss
               ON tss.team_id = ps.team_id AND tss.season = ps.season
             WHERE ps.innings_pitched >= 0.75 * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
-              AND ps.innings_pitched >= 20
+              AND ps.innings_pitched >= 40
         """)
         all_pit_seasons = [dict(r) for r in cur.fetchall()]
 
@@ -1012,7 +1012,7 @@ def stat_records(
             JOIN teams t ON ps.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            WHERE ps.innings_pitched >= 10
+            WHERE ps.innings_pitched >= 40
         """)
         all_pit_counting = [dict(r) for r in cur.fetchall()]
 
@@ -1041,7 +1041,7 @@ def stat_records(
             JOIN divisions d ON c.division_id = d.id
             GROUP BY bs.player_id, p.first_name, p.last_name,
                      t.short_name, t.logo_url, d.level
-            HAVING SUM(bs.plate_appearances) >= 200
+            HAVING SUM(bs.plate_appearances) >= 250
         """)
         career_bat_rows = []
         for r in cur.fetchall():
@@ -1085,7 +1085,7 @@ def stat_records(
             JOIN divisions d ON c.division_id = d.id
             GROUP BY ps.player_id, p.first_name, p.last_name,
                      t.short_name, t.logo_url, d.level
-            HAVING SUM(ps.innings_pitched) >= 50
+            HAVING SUM(ps.innings_pitched) >= 100
         """)
         career_pit_rows = []
         for r in cur.fetchall():
@@ -1125,6 +1125,7 @@ def stat_records(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE bs.plate_appearances > 0
+              AND bs.season != 2020
             GROUP BY bs.team_id, t.short_name, t.logo_url, d.level, bs.season
         """)
         all_team_bat = [dict(r) for r in cur.fetchall()]
@@ -1150,6 +1151,7 @@ def stat_records(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE ps.innings_pitched > 0
+              AND ps.season != 2020
             GROUP BY ps.team_id, t.short_name, t.logo_url, d.level, ps.season
         """)
         all_team_pit = [dict(r) for r in cur.fetchall()]

@@ -230,6 +230,15 @@ export default function RecordsPage() {
 
       {!loading && data && (
         <div className="space-y-8">
+          {/* Qualification note */}
+          <p className="text-xs text-gray-400 italic">
+            {category === 'batting' && scope === 'single_season' && 'Minimum 100 PA for single-season batting records.'}
+            {category === 'batting' && scope === 'career' && 'Minimum 250 career PA for career batting records.'}
+            {category === 'pitching' && scope === 'single_season' && 'Minimum 40 IP for single-season pitching records.'}
+            {category === 'pitching' && scope === 'career' && 'Minimum 100 career IP for career pitching records.'}
+            {category === 'team' && 'Single-season team records (2020 season excluded).'}
+          </p>
+
           {category === 'batting' && (
             <StatSection
               title={`${scope === 'career' ? 'Career' : 'Single-Season'} Batting Records${level !== 'PNW' ? ` - ${level === 'JUCO' ? 'NWAC' : level}` : ''}`}
