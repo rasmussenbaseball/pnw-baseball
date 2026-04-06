@@ -23,12 +23,12 @@ const UPDATES = [
     date: 'April 4, 2026',
     title: 'Scoreboard Overhaul, Live Scores & Infrastructure',
     changes: [
-      'Consolidated Scoreboard and Results into a single page with date navigation arrows — browse any day\'s games in one place',
+      'Consolidated Scoreboard and Results into a single page with date navigation arrows - browse any day\'s games in one place',
       'Added live score auto-refresh (every 2 minutes) with LIVE badge and game state display',
       'Scoreboard now groups games by level: D1 → D2 → D3 → NAIA → NWAC',
       'Added division filter buttons to the scoreboard (All, D1, D2, D3, NAIA, JUCO)',
-      'Player headshots now served from persistent storage (nginx) — no longer disappear on deploys',
-      'Team logos moved to persistent storage — summer/WCL logos no longer vanish after site updates',
+      'Player headshots now served from persistent storage (nginx) - no longer disappear on deploys',
+      'Team logos moved to persistent storage - summer/WCL logos no longer vanish after site updates',
       'Added WCL team logos to the homepage WCL Leaders widget',
       'Automated scraping schedule: daily updates at 2 PM, 6 PM, 11 PM PT; live scores every 10 min during game hours (8 AM – 8 PM PT)',
       'Added nightly game deduplication job to keep data clean',
@@ -40,15 +40,15 @@ const UPDATES = [
     date: 'April 1, 2026',
     title: 'Recruiting Tools, Draft Board & Homepage Refresh',
     changes: [
-      'Added Recruiting Breakdown page — sortable table of every PNW team with W-L% trends, freshman PA% and IP%, WAR/G, wRC+, FIP, and national/PPI rankings',
-      'Overhauled Recruiting Guide — added year-by-year W-L history, fixed roster counts, position matching, and freshman production calculations',
+      'Added Recruiting Breakdown page - sortable table of every PNW team with W-L% trends, freshman PA% and IP%, WAR/G, wRC+, FIP, and national/PPI rankings',
+      'Overhauled Recruiting Guide - added year-by-year W-L history, fixed roster counts, position matching, and freshman production calculations',
       'Moved Recruiting Classes under the Recruiting tab with division-level filters on stat leaders',
       'Built 2026 MLB Draft Board featuring 12 PNW prospects linked to their college player pages',
-      'Homepage refresh — draft board widget, WCL summer leaders section, improved text readability, and D1 label on PNW Grid',
+      'Homepage refresh - draft board widget, WCL summer leaders section, improved text readability, and D1 label on PNW Grid',
       'JUCO Tracker now shows committed NWAC players with a green commitment tag',
       'Renamed Glossary to About and redesigned the page with bio, run environments, updates log, and stat glossary',
       'Added site footer with brand info, site links, data sources, and social links',
-      'Fixed PNW Grid daily mode — clicking a player in the dropdown now works correctly',
+      'Fixed PNW Grid daily mode - clicking a player in the dropdown now works correctly',
       'Fixed summer stat totals filtering and various roster display bugs',
     ],
   },
@@ -57,8 +57,8 @@ const UPDATES = [
     date: 'March 31, 2026',
     title: 'Player Pages, Feature Requests & UI Polish',
     changes: [
-      'Added Player Pages under Misc — search any player and get a shareable stat graphic with core stats, advanced stats, Savant-style percentile bars, and leaderboard badges',
-      'Added Feature Request page under Misc — users can submit ideas and feedback for the site',
+      'Added Player Pages under Misc - search any player and get a shareable stat graphic with core stats, advanced stats, Savant-style percentile bars, and leaderboard badges',
+      'Added Feature Request page under Misc - users can submit ideas and feedback for the site',
       'Updated the OG banner image (the preview that shows when you share the site link) with the new NW logo',
       'Player Pages include career and per-season views with percentile rankings vs. division',
     ],
@@ -69,8 +69,8 @@ const UPDATES = [
     title: 'Launch Features & Core Improvements',
     changes: [
       'Added beta intro banner to homepage with feature highlights and signup CTA',
-      'Sticky table headers on leaderboards — column headers stay visible when scrolling',
-      'Mobile improvements — sticky rank & player columns on leaderboard tables, sticky season on player stat pages',
+      'Sticky table headers on leaderboards - column headers stay visible when scrolling',
+      'Mobile improvements - sticky rank & player columns on leaderboard tables, sticky season on player stat pages',
       'Added PNW Grid link and signup CTA to homepage',
       'Gated Coaching and Misc tabs behind authentication',
       'Fixed transfer player pages to show most recent team in header and sort schools oldest to newest',
@@ -176,13 +176,13 @@ function BioSection() {
 
       <Card title="Why This Site Exists">
         <P>
-          While MLB has FanGraphs, Baseball Reference, and Statcast, college baseball — especially at the D2, D3, NAIA, and JUCO levels — has almost no publicly available advanced statistics. A catcher at a JUCO putting up a 150 wRC+ should be visible to four-year programs. A D3 pitcher with a 2.50 FIP should be recognized even if their ERA is inflated by poor defense. That's the gap this site fills.
+          While MLB has FanGraphs, Baseball Reference, and Statcast, college baseball - especially at the D2, D3, NAIA, and JUCO levels - has almost no publicly available advanced statistics. A catcher at a JUCO putting up a 150 wRC+ should be visible to four-year programs. A D3 pitcher with a 2.50 FIP should be recognized even if their ERA is inflated by poor defense. That's the gap this site fills.
         </P>
       </Card>
 
       <Card title="How the Site Was Built" subtitle="Full transparency into our tech stack and process">
         <P>
-          This entire site — frontend, backend, database, scrapers, advanced stats engine, and all — was built collaboratively by a human and an AI (Claude by Anthropic). The AI handled the coding implementation while the human drove the vision, design decisions, data validation, and quality control.
+          This entire site - frontend, backend, database, scrapers, advanced stats engine, and all - was built collaboratively by a human and an AI (Claude by Anthropic). The AI handled the coding implementation while the human drove the vision, design decisions, data validation, and quality control.
         </P>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-3">
@@ -529,7 +529,7 @@ function WarSection() {
 
       <Card title="Pitching WAR (pWAR)" subtitle="How we measure pitcher value">
         <P>
-          Pitching WAR is built on FIP, not ERA — measuring a pitcher's value based on outcomes they control.
+          Pitching WAR is built on FIP, not ERA - measuring a pitcher's value based on outcomes they control.
         </P>
         <Formula>pWAR = ((League FIP - Player FIP) / Runs Per Win) × (IP / 9) + Replacement Level</Formula>
       </Card>

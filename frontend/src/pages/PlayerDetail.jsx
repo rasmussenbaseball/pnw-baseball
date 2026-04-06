@@ -1025,7 +1025,7 @@ export default function PlayerDetail() {
             )}
           </div>
 
-          {/* Commitment status — NWAC/JUCO players only */}
+          {/* Commitment status - NWAC/JUCO players only */}
           {player.division_level === 'JUCO' && (
             <div className="mt-2">
               {player.is_committed && player.committed_to ? (

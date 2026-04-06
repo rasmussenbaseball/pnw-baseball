@@ -14,6 +14,7 @@ const NAV = [
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
       { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
       { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
+      { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
     ],
   },
   {
@@ -497,7 +498,7 @@ function NavTab({ section, isActive, user }) {
     )
   }
 
-  // Auth-gated section — show lock icon, redirect to login on click
+  // Auth-gated section - show lock icon, redirect to login on click
   if (isLocked) {
     return (
       <button

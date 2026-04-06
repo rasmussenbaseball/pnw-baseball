@@ -1,15 +1,15 @@
 """
-PNW Power Index (PPI) — Phase 1: Within-Division Team Strength Rating.
+PNW Power Index (PPI) - Phase 1: Within-Division Team Strength Rating.
 
 Measures each team's talent level relative to their division peers.
 Produces a 0–100 score where 50 is division average.
 
 Components (weighted):
-  - Team WAR        (35%) — total roster talent (oWAR + pWAR)
-  - Offensive Rating (20%) — PA-weighted team wRC+
-  - Pitching Rating  (20%) — IP-weighted team FIP (inverted: lower FIP = better)
-  - Win Percentage   (15%) — actual results
-  - Conference Win%  (10%) — performance against direct peers
+  - Team WAR        (35%) - total roster talent (oWAR + pWAR)
+  - Offensive Rating (20%) - PA-weighted team wRC+
+  - Pitching Rating  (20%) - IP-weighted team FIP (inverted: lower FIP = better)
+  - Win Percentage   (15%) - actual results
+  - Conference Win%  (10%) - performance against direct peers
 
 Each component is z-score normalized within its division, then
 converted to a 50-centered scale (mean=50, 1 SD=15) to produce

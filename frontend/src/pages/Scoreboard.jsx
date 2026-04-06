@@ -81,7 +81,7 @@ export default function Scoreboard() {
         ...upcoming.map(g => ({ ...g, _source: 'live', _section: 'upcoming' })),
       ]
     }
-    // DB games — normalize to a consistent shape
+    // DB games - normalize to a consistent shape
     return (dbData?.games || []).map(g => ({
       ...g,
       _source: 'db',
@@ -398,7 +398,7 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
               {teamScore}
             </span>
           ) : isScheduled && (
-            <span className="text-xs text-gray-300">—</span>
+            <span className="text-xs text-gray-300">-</span>
           )}
         </div>
 
@@ -417,7 +417,7 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
               {oppScore}
             </span>
           ) : isScheduled && (
-            <span className="text-xs text-gray-300">—</span>
+            <span className="text-xs text-gray-300">-</span>
           )}
         </div>
 
@@ -498,7 +498,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo }) {
               {game.away_score}
             </span>
           ) : (
-            <span className="text-xs text-gray-300">—</span>
+            <span className="text-xs text-gray-300">-</span>
           )}
         </div>
 
@@ -518,7 +518,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo }) {
               {game.home_score}
             </span>
           ) : (
-            <span className="text-xs text-gray-300">—</span>
+            <span className="text-xs text-gray-300">-</span>
           )}
         </div>
 

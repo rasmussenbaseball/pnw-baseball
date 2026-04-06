@@ -533,7 +533,7 @@ export default function PnwGrid() {
             <div className={`inline-block px-4 py-2 rounded-lg text-sm font-bold ${
               score === 9 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
             }`}>
-              {score === 9 ? 'Perfect! 9/9!' : `Game Over — ${score}/9`}
+              {score === 9 ? 'Perfect! 9/9!' : `Game Over - ${score}/9`}
             </div>
           </div>
         )}
@@ -769,7 +769,7 @@ export default function PnwGrid() {
         <p className="font-semibold text-gray-600 mb-1">How to play</p>
         <p>Select a cell and search for a player who fits <strong>both</strong> the row and column criteria.
         Each player can only be used once.{!isRandom && !isCustom && ` You have ${MAX_GUESSES} guesses to fill the 3×3 grid.`}
-        {(isRandom || isCustom) && ' Unlimited guesses — keep going until you fill the grid!'}</p>
+        {(isRandom || isCustom) && ' Unlimited guesses - keep going until you fill the grid!'}</p>
         <p className="mt-1.5 text-gray-400">Data includes the 2018 season and later for 4-year schools and 2019 and later for NWAC. Rate stats require qualification (50+ PA for hitters, 20+ IP for pitchers).</p>
       </div>
     </div>

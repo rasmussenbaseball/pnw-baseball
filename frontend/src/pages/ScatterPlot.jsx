@@ -70,7 +70,7 @@ const BRAND = {
   cream: '#faf8f5',
 }
 
-// SVG dimensions — larger for better quality
+// SVG dimensions - larger for better quality
 const HEADER_H = 52
 const FOOTER_H = 28
 const MARGIN = { top: HEADER_H + 20, right: 35, bottom: 55 + FOOTER_H, left: 65 }
@@ -650,7 +650,7 @@ export default function ScatterPlot() {
 
 
 // ════════════════════════════════════════════
-// CORRELATION TABLE — every stat vs Win%
+// CORRELATION TABLE - every stat vs Win%
 // ════════════════════════════════════════════
 function CorrelationTable({ season, divisionId }) {
   const [rows, setRows] = useState([])

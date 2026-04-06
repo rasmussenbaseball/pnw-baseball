@@ -397,7 +397,7 @@ export async function gridFetchOptions() {
 }
 
 /**
- * Validate a custom grid — check that every cell has at least 1 matching player.
+ * Validate a custom grid - check that every cell has at least 1 matching player.
  */
 export async function gridValidateCustom(rows, columns) {
   const resp = await fetch(`${API_BASE}/grid/validate-custom`, {
@@ -410,7 +410,7 @@ export async function gridValidateCustom(rows, columns) {
 }
 
 /**
- * Recruiting Breakdown — team-level recruiting metrics.
+ * Recruiting Breakdown - team-level recruiting metrics.
  */
 export function useRecruitingBreakdown(season = 2026) {
   return useApi('/recruiting/breakdown', { season }, [season])

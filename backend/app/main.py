@@ -1,5 +1,5 @@
 """
-PNW College Baseball Analytics — FastAPI Application
+PNW College Baseball Analytics - FastAPI Application
 
 Main entry point. Run with:
     uvicorn app.main:app --reload --port 8000
@@ -50,7 +50,7 @@ app = FastAPI(
     default_response_class=DecimalJSONResponse,
 )
 
-# CORS — allow React dev server (local development)
+# CORS - allow React dev server (local development)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -94,7 +94,7 @@ if FRONTEND_DIR.exists():
     # Serve other static files at root (favicon, etc.)
     @app.get("/{full_path:path}")
     def serve_spa(full_path: str):
-        """Serve the React SPA — all non-API routes return index.html."""
+        """Serve the React SPA - all non-API routes return index.html."""
         file_path = FRONTEND_DIR / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)

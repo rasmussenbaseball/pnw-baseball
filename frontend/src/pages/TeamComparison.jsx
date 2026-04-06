@@ -105,7 +105,7 @@ function StatPill({ label, value, highlight }) {
   )
 }
 
-// Power rating gauge — circular display
+// Power rating gauge - circular display
 function PowerGauge({ rating, label, size = 80 }) {
   const radius = (size - 8) / 2
   const circumference = 2 * Math.PI * radius

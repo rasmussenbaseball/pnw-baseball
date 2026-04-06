@@ -408,7 +408,7 @@ def compute_pitching_advanced(
 # POSITION NORMALIZER
 # ============================================================
 #
-# NWAC roster data is wildly inconsistent — teams enter position
+# NWAC roster data is wildly inconsistent - teams enter position
 # data however they want. We normalize every raw position string
 # into one of these primary defensive positions:
 #   C, 1B, 2B, 3B, SS, LF, CF, RF, OF, IF, DH, UT, P
@@ -440,7 +440,7 @@ _POS_TOKEN_MAP = {
     # Generic groups
     "of": "OF", "outfield": "OF", "outfielder": "OF",
     "if": "IF", "inf": "IF", "infield": "IF", "infielder": "IF",
-    "mif": "IF",  # middle infield — could be SS or 2B, use IF
+    "mif": "IF",  # middle infield - could be SS or 2B, use IF
     "cif": "IF",  # corner infield
     # Utility / DH
     "ut": "UT", "utl": "UT", "uti": "UT", "util": "UT", "utility": "UT",
@@ -503,7 +503,7 @@ def normalize_position(raw_pos: Optional[str]) -> Optional[str]:
             continue
         mapped = _POS_TOKEN_MAP[token]
         if mapped is None:
-            # Noise word (e.g., "handed", "right", "left") — skip
+            # Noise word (e.g., "handed", "right", "left") - skip
             continue
         if mapped != "P":
             # For batting WAR, we want the defensive position, not "P"
@@ -548,7 +548,7 @@ class CollegeWAR:
 
     This is necessarily less precise than MLB WAR since we lack
     pitch-level data, batted-ball data, and defensive metrics.
-    Think of it as "box score WAR" — directionally useful for
+    Think of it as "box score WAR" - directionally useful for
     comparing players within the same division.
     """
     batting_runs: float = 0.0       # wRAA (runs above average from batting)
@@ -567,7 +567,7 @@ class CollegeWAR:
 #
 # We apply TWO scale factors:
 #   1. Season length: 45/162 ≈ 0.278 (NWAC vs MLB)
-#   2. Confidence discount: 0.50 — because we only have roster
+#   2. Confidence discount: 0.50 - because we only have roster
 #      positions, NOT actual game-log defensive innings. A guy
 #      listed as "OF" might play CF every day, or rotate corners.
 #      Until we get game-by-game fielding data, we halve the
@@ -592,11 +592,11 @@ FULL_SEASON_PA = 220  # default (NWAC/JUCO)
 SEASON_SCALE = 45 / _MLB_GAMES  # default season ratio
 
 # When we have actual game-log position data, we use full positional
-# adjustments (no discount needed — the data is real).
+# adjustments (no discount needed - the data is real).
 # When falling back to roster-only positions, we halve the adjustment
 # because roster positions are unreliable ("OF" might be CF or LF, etc.).
-CONFIDENCE_FULL = 1.0    # game-log-derived positions — full weight
-CONFIDENCE_ROSTER = 0.50 # roster-only fallback — halved
+CONFIDENCE_FULL = 1.0    # game-log-derived positions - full weight
+CONFIDENCE_ROSTER = 0.50 # roster-only fallback - halved
 
 POS_SCALE_FULL = SEASON_SCALE * CONFIDENCE_FULL
 POS_SCALE_ROSTER = SEASON_SCALE * CONFIDENCE_ROSTER
@@ -613,9 +613,9 @@ _RAW_POS_RUNS = {
     "1B": -12.5,
     "DH": -17.5,
     "P":   0.0,
-    "OF":  0.0,   # ambiguous — neutral
-    "IF":  0.5,   # could be SS or 3B — slight positive
-    "UT":  0.0,   # utility — neutral
+    "OF":  0.0,   # ambiguous - neutral
+    "IF":  0.5,   # could be SS or 3B - slight positive
+    "UT":  0.0,   # utility - neutral
 }
 
 # Full-confidence positional adjustments (used when game-log data available)

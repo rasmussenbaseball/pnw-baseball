@@ -151,12 +151,12 @@ function ParkCard({ park }) {
         </div>
         <div>
           <div className="text-[10px] text-gray-400">Avg OF Depth</div>
-          <div className="text-xs font-bold text-gray-700">{dims.avg_of || '—'} ft</div>
+          <div className="text-xs font-bold text-gray-700">{dims.avg_of || '-'} ft</div>
         </div>
         <div>
           <div className="text-[10px] text-gray-400">Avg Temp</div>
           <div className="text-xs font-bold text-gray-700">
-            {park.season_avg_temp_f ? `${park.season_avg_temp_f}°F` : park.march_avg_temp_f ? `${park.march_avg_temp_f}°F` : '—'}
+            {park.season_avg_temp_f ? `${park.season_avg_temp_f}°F` : park.march_avg_temp_f ? `${park.march_avg_temp_f}°F` : '-'}
           </div>
           {park.march_avg_temp_f && park.april_avg_temp_f && (
             <div className="text-[9px] text-gray-400">{park.march_avg_temp_f}° Mar / {park.april_avg_temp_f}° Apr</div>
@@ -379,13 +379,13 @@ function TableView({ teams }) {
                     {t.temperature_effect_pct >= 0 ? '+' : ''}{t.temperature_effect_pct?.toFixed(1)}%
                   </td>
                   <td className="px-2 py-1.5 text-right text-xs text-gray-500">
-                    {hr.regressed_pct != null ? `${hr.regressed_pct >= 0 ? '+' : ''}${hr.regressed_pct?.toFixed(1)}%` : '—'}
+                    {hr.regressed_pct != null ? `${hr.regressed_pct >= 0 ? '+' : ''}${hr.regressed_pct?.toFixed(1)}%` : '-'}
                   </td>
                   <td className="px-2 py-1.5 text-right text-xs text-gray-600">{(t.elevation_ft || 0).toLocaleString()}</td>
                   <td className="px-2 py-1.5 text-right text-xs text-gray-600">
-                    {t.dimensions?.avg_of || '—'}{t.dimensions?.status === 'estimated' ? '*' : ''}
+                    {t.dimensions?.avg_of || '-'}{t.dimensions?.status === 'estimated' ? '*' : ''}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-xs text-gray-600">{t.season_avg_temp_f || t.march_avg_temp_f || '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-xs text-gray-600">{t.season_avg_temp_f || t.march_avg_temp_f || '-'}</td>
                 </tr>
               )
             })}
@@ -435,7 +435,7 @@ export default function ParkFactors() {
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Park Factors</h1>
       <p className="text-sm text-gray-500 mb-4">
-        How each PNW ballpark affects run scoring — broken down by elevation, field size, temperature, and actual home/road data.
+        How each PNW ballpark affects run scoring - broken down by elevation, field size, temperature, and actual home/road data.
       </p>
 
       <SummaryBar teams={data?.teams} />
@@ -496,7 +496,7 @@ export default function ParkFactors() {
             <p className="text-[11px] text-gray-600 leading-relaxed">
               Higher elevation → less air density → less drag on the ball → more carry.
               Research shows approximately +1.8% more runs per 1,000 feet of elevation.
-              Oregon Tech at 4,108ft is the highest park in the PNW — the ball genuinely carries further there.
+              Oregon Tech at 4,108ft is the highest park in the PNW - the ball genuinely carries further there.
             </p>
           </div>
           <div className="bg-gray-50 rounded-lg p-3">
@@ -513,8 +513,8 @@ export default function ParkFactors() {
             <p className="text-[11px] text-gray-600 leading-relaxed">
               Warmer air is less dense, so balls carry further in warm weather. We estimate
               approximately +1% per 10°F above a 60°F baseline. Temperature is calculated as the
-              average of March and April highs for each city — the core of the PNW spring season.
-              Most parks sit in the 56-65°F range, so this effect is small but real — and it
+              average of March and April highs for each city - the core of the PNW spring season.
+              Most parks sit in the 56-65°F range, so this effect is small but real - and it
               slightly penalizes cold-weather parks like those in Montana and eastern Washington.
             </p>
           </div>
@@ -522,7 +522,7 @@ export default function ParkFactors() {
             <h3 className="text-xs font-bold text-gray-700 mb-1">Home/Road Splits (20% weight)</h3>
             <p className="text-[11px] text-gray-600 leading-relaxed">
               We compare total runs per game in a team's home games vs. their road games.
-              This isolates the park effect from team quality — if a team scores more at home than away,
+              This isolates the park effect from team quality - if a team scores more at home than away,
               their park may be hitter-friendly. Results are regressed toward neutral based on sample size
               (full trust at 100+ games) to avoid small-sample noise.
             </p>

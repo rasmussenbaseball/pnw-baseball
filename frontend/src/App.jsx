@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
 
-// Auth guard — redirects to login if not signed in
+// Auth guard - redirects to login if not signed in
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
@@ -10,7 +10,7 @@ function RequireAuth({ children }) {
   return children
 }
 
-// Admin-only guard — only allows specific email(s)
+// Admin-only guard - only allows specific email(s)
 const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com']
 function RequireAdmin({ children }) {
   const { user, loading } = useAuth()
@@ -38,7 +38,7 @@ import Homepage from './pages/Homepage'
 import SummerballData from './pages/SummerballData'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
-// ResultsPage removed — consolidated into Scoreboard with date picker
+// ResultsPage removed - consolidated into Scoreboard with date picker
 import GameDetail from './pages/GameDetail'
 import TeamRatings from './pages/TeamRatings'
 import TeamHistory from './pages/TeamHistory'
@@ -64,6 +64,7 @@ import FavoritesPage from './pages/FavoritesPage'
 import FeatureRequest from './pages/FeatureRequest'
 import PlayerGraphic from './pages/PlayerGraphic'
 import HometownSearch from './pages/HometownSearch'
+import RecordsPage from './pages/RecordsPage'
 
 export default function App() {
   return (
@@ -82,6 +83,7 @@ export default function App() {
           <Route path="/scatter" element={<ScatterPlot />} />
           <Route path="/summerball" element={<SummerballData />} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
+          <Route path="/records" element={<RecordsPage />} />
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />

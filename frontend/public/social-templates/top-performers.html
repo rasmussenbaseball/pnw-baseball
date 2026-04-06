@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NW Baseball Stats — Top Performers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700;1,800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --teal: #00687a;
+    --teal-light: #008a9e;
+    --teal-glow: #00b4d8;
+    --teal-bright: #22d3ee;
+    --gold: #fbbf24;
+    --silver: #94a3b8;
+    --bronze: #d97706;
+    --bg-dark: #060e18;
+    --font-display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+    --font-body: 'Barlow Condensed', 'Inter', sans-serif;
+    --font-small: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-small);
+    background: var(--bg-dark);
+    color: #ffffff;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .card {
+    width: 1080px;
+    height: 1080px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(170deg, #060e18 0%, #0b1a2e 25%, #0a2235 50%, #091c2d 75%, #060e18 100%);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* BG */
+  .bg-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 54px 54px;
+    mask-image: radial-gradient(ellipse 80% 50% at 50% 35%, rgba(0,0,0,0.4) 0%, transparent 70%);
+  }
+  .bg-glow-top {
+    position: absolute; width: 700px; height: 500px; top: -200px; right: -50px;
+    background: radial-gradient(ellipse, rgba(0,104,122,0.30) 0%, transparent 65%); filter: blur(60px);
+  }
+  .bg-glow-bottom {
+    position: absolute; width: 600px; height: 400px; bottom: -120px; left: -80px;
+    background: radial-gradient(ellipse, rgba(0,138,158,0.18) 0%, transparent 65%); filter: blur(60px);
+  }
+  .top-bar {
+    position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, transparent 5%, var(--teal) 20%, var(--teal-bright) 50%, var(--teal) 80%, transparent 95%);
+    z-index: 5;
+  }
+
+  /* HEADER */
+  .header {
+    position: relative; z-index: 3;
+    padding: 20px 36px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .logo-mark {
+    width: 34px; height: 34px; border-radius: 7px;
+    background: linear-gradient(140deg, var(--teal) 0%, var(--teal-light) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-size: 17px; color: white; letter-spacing: 1px;
+    box-shadow: 0 2px 12px rgba(0,104,122,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .brand-name {
+    font-family: var(--font-body); font-size: 15px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.6);
+  }
+  .brand-url { font-size: 9px; font-weight: 500; color: rgba(255,255,255,0.3); letter-spacing: 0.5px; margin-top: 1px; }
+  .season-badge {
+    display: inline-block; font-family: var(--font-body); font-size: 12px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--teal-bright);
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(0,180,216,0.08); border: 1px solid rgba(0,180,216,0.15);
+  }
+  .date-text { font-size: 9px; font-weight: 500; color: rgba(255,255,255,0.35); margin-top: 3px; text-align: right; }
+
+  /* TITLE */
+  .title-area { position: relative; z-index: 3; padding: 10px 36px 0; flex-shrink: 0; }
+  .title-area h2 {
+    font-family: var(--font-display); font-size: 58px; font-weight: 400;
+    letter-spacing: 3px; line-height: 0.9; text-transform: uppercase;
+    background: linear-gradient(135deg, #ffffff 20%, #a5e8f0 50%, var(--teal-bright) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .title-sub {
+    font-family: var(--font-body); font-size: 14px; font-weight: 500;
+    color: rgba(255,255,255,0.55); margin-top: 2px; letter-spacing: 0.4px;
+  }
+  .divider {
+    margin: 8px 36px 0; height: 1px;
+    background: linear-gradient(90deg, rgba(0,180,216,0.3) 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+    position: relative; z-index: 3; flex-shrink: 0;
+  }
+
+  /* SECTION */
+  .section { position: relative; z-index: 3; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  .section-header {
+    padding: 8px 36px 0;
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .section-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--teal-bright); box-shadow: 0 0 8px var(--teal-bright);
+  }
+  .section-text {
+    font-family: var(--font-body); font-size: 13px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase; color: var(--teal-bright);
+  }
+
+  /* TABLE */
+  .stats-table {
+    flex: 1; display: flex; flex-direction: column;
+    padding: 2px 24px 0;
+  }
+
+  /* Column headers */
+  .col-headers {
+    display: flex; align-items: center;
+    padding: 0 16px; height: 24px; flex-shrink: 0;
+  }
+  .col-headers .col-left { width: 240px; flex-shrink: 0; }
+  .col-headers .col-left span {
+    font-family: var(--font-small); font-size: 9px; font-weight: 700;
+    color: rgba(255,255,255,0.35); letter-spacing: 1px; text-transform: uppercase;
+    padding-left: 4px;
+  }
+  .col-headers .stats-area {
+    flex: 1; display: flex; align-items: center;
+  }
+  .col-headers .stats-area .sh {
+    flex: 1; text-align: center;
+    font-family: var(--font-small); font-size: 9px; font-weight: 700;
+    color: rgba(255,255,255,0.35); letter-spacing: 1px; text-transform: uppercase;
+  }
+  .col-headers .stats-area .sh.main {
+    flex: 0 0 82px;
+    color: rgba(0,180,216,0.6);
+  }
+
+  /* Player rows */
+  .p-row {
+    display: flex; align-items: center;
+    flex: 1; min-height: 0;
+    border-radius: 10px; padding: 0 16px;
+    position: relative; border: 1px solid transparent;
+    margin-bottom: 2px;
+  }
+
+  .p-row.r1 {
+    background: linear-gradient(135deg, rgba(0,104,122,0.28) 0%, rgba(0,180,216,0.10) 50%, rgba(0,104,122,0.16) 100%);
+    border-color: rgba(0,180,216,0.22);
+    box-shadow: 0 2px 16px rgba(0,180,216,0.08), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .p-row.r1::before {
+    content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
+    width: 3px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--teal-bright), var(--teal));
+    box-shadow: 0 0 8px var(--teal-bright);
+  }
+  .p-row.r2 {
+    background: linear-gradient(135deg, rgba(0,104,122,0.14) 0%, rgba(0,180,216,0.04) 100%);
+    border-color: rgba(0,180,216,0.08);
+  }
+  .p-row.r3 { background: rgba(255,255,255,0.025); border-color: rgba(255,255,255,0.03); }
+  .p-row.r4 { background: rgba(255,255,255,0.015); border-color: rgba(255,255,255,0.02); }
+  .p-row.r5 { background: rgba(255,255,255,0.01); border-color: rgba(255,255,255,0.015); }
+
+  /* Left side: rank + headshot + name (fixed width) */
+  .row-left {
+    display: flex; align-items: center;
+    width: 240px; flex-shrink: 0;
+  }
+
+  .rank-num {
+    width: 28px; font-family: var(--font-display); font-size: 28px;
+    text-align: center; flex-shrink: 0; line-height: 1;
+  }
+  .r1 .rank-num { color: var(--gold); text-shadow: 0 0 10px rgba(251,191,36,0.3); }
+  .r2 .rank-num { color: var(--silver); }
+  .r3 .rank-num { color: var(--bronze); }
+  .r4 .rank-num, .r5 .rank-num { color: rgba(255,255,255,0.3); }
+
+  .headshot {
+    width: 40px; height: 40px; border-radius: 50%; overflow: hidden;
+    margin-left: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .r1 .headshot {
+    width: 44px; height: 44px;
+    box-shadow: 0 0 0 2px rgba(0,180,216,0.3), 0 0 12px rgba(0,180,216,0.12);
+  }
+  .headshot img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .headshot-initials {
+    font-family: var(--font-body); font-weight: 700; font-size: 14px;
+    color: rgba(255,255,255,0.2);
+  }
+
+  .info { margin-left: 10px; min-width: 0; flex: 1; }
+  .name {
+    font-family: var(--font-body); font-size: 19px; font-weight: 700;
+    color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: 0.2px; line-height: 1.15;
+  }
+  .r1 .name { font-size: 20px; font-weight: 800; }
+  .r4 .name, .r5 .name { color: rgba(255,255,255,0.8); }
+  .meta { display: flex; align-items: center; gap: 5px; margin-top: 1px; }
+  .team-logo { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; object-fit: contain; }
+  .team { font-family: var(--font-body); font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.5); }
+  .div-pill {
+    font-family: var(--font-small); font-size: 7px; font-weight: 700;
+    padding: 1px 4px; border-radius: 3px;
+    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.35);
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+
+  /* Right side: stats fill remaining space */
+  .stats-area {
+    flex: 1; display: flex; align-items: center;
+  }
+
+  .sv {
+    flex: 1; text-align: center;
+    font-family: var(--font-body); font-size: 18px; font-weight: 600;
+    color: rgba(255,255,255,0.72); line-height: 1;
+  }
+  .r1 .sv { color: rgba(255,255,255,0.9); font-weight: 700; }
+  .r4 .sv { color: rgba(255,255,255,0.5); }
+  .r5 .sv { color: rgba(255,255,255,0.42); }
+
+  /* Main stat (big number on right) */
+  .sv.main {
+    flex: 0 0 82px;
+    font-family: var(--font-display);
+    font-size: 40px;
+    letter-spacing: 1px;
+    color: #d0eef4;
+  }
+  .r1 .sv.main {
+    font-size: 44px;
+    background: linear-gradient(135deg, #ffffff 30%, var(--teal-bright));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    filter: drop-shadow(0 0 12px rgba(0,180,216,0.2));
+  }
+  .r2 .sv.main { color: #c0e4ec; }
+  .r3 .sv.main { color: rgba(255,255,255,0.6); }
+  .r4 .sv.main { color: rgba(255,255,255,0.45); }
+  .r5 .sv.main { color: rgba(255,255,255,0.35); }
+
+  /* FOOTER */
+  .footer {
+    position: relative; z-index: 3; flex-shrink: 0;
+    padding: 8px 36px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .footer::before {
+    content: ''; position: absolute; top: 0; left: 36px; right: 36px; height: 1px;
+    background: linear-gradient(90deg, rgba(0,180,216,0.12), rgba(255,255,255,0.03), transparent);
+  }
+  .footer-brand {
+    font-family: var(--font-body); font-size: 13px; font-weight: 700;
+    letter-spacing: 2px; color: var(--teal-bright); opacity: 0.5; text-transform: uppercase;
+  }
+  .footer-info {
+    font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.22); letter-spacing: 0.4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="card" id="graphic">
+  <div class="bg-grid"></div>
+  <div class="bg-glow-top"></div>
+  <div class="bg-glow-bottom"></div>
+  <div class="top-bar"></div>
+
+  <div class="header">
+    <div class="header-left">
+      <div class="logo-mark">NW</div>
+      <div>
+        <div class="brand-name">NW Baseball Stats</div>
+        <div class="brand-url">pnwbaseballstats.com</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="season-badge">2026 Season</div>
+      <div class="date-text">Week of March 30 — April 5</div>
+    </div>
+  </div>
+
+  <div class="title-area">
+    <h2>Top Performers</h2>
+    <div class="title-sub">Weekly leaders across all PNW divisions</div>
+  </div>
+  <div class="divider"></div>
+
+  <!-- ===== BATTING ===== -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-dot"></div>
+      <span class="section-text">Batting — wRC+ Leaders</span>
+    </div>
+    <div class="stats-table">
+      <div class="col-headers">
+        <div class="col-left"><span>Player</span></div>
+        <div class="stats-area">
+          <span class="sh">PA</span>
+          <span class="sh">K%</span>
+          <span class="sh">BB%</span>
+          <span class="sh">HR</span>
+          <span class="sh">XBH</span>
+          <span class="sh">BB+HBP</span>
+          <span class="sh">SB</span>
+          <span class="sh">AVG</span>
+          <span class="sh main">wRC+</span>
+        </div>
+      </div>
+
+      <div class="p-row r1">
+        <div class="row-left">
+          <div class="rank-num">1</div>
+          <div class="headshot"><span class="headshot-initials">JD</span></div>
+          <div class="info">
+            <div class="name">Jake Dukart</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/gonzaga.png" alt=""><span class="team">Gonzaga</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">112</div>
+          <div class="sv">14.3</div>
+          <div class="sv">13.4</div>
+          <div class="sv">8</div>
+          <div class="sv">18</div>
+          <div class="sv">17</div>
+          <div class="sv">12</div>
+          <div class="sv">.412</div>
+          <div class="sv main">198</div>
+        </div>
+      </div>
+
+      <div class="p-row r2">
+        <div class="row-left">
+          <div class="rank-num">2</div>
+          <div class="headshot"><span class="headshot-initials">MC</span></div>
+          <div class="info">
+            <div class="name">Marcus Chen</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/uw.svg" alt=""><span class="team">Washington</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">105</div>
+          <div class="sv">16.2</div>
+          <div class="sv">11.4</div>
+          <div class="sv">6</div>
+          <div class="sv">15</div>
+          <div class="sv">14</div>
+          <div class="sv">8</div>
+          <div class="sv">.389</div>
+          <div class="sv main">185</div>
+        </div>
+      </div>
+
+      <div class="p-row r3">
+        <div class="row-left">
+          <div class="rank-num">3</div>
+          <div class="headshot"><span class="headshot-initials">TW</span></div>
+          <div class="info">
+            <div class="name">Tyler Wallace</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/osu.svg" alt=""><span class="team">Oregon State</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">98</div>
+          <div class="sv">12.2</div>
+          <div class="sv">15.3</div>
+          <div class="sv">5</div>
+          <div class="sv">14</div>
+          <div class="sv">16</div>
+          <div class="sv">6</div>
+          <div class="sv">.375</div>
+          <div class="sv main">172</div>
+        </div>
+      </div>
+
+      <div class="p-row r4">
+        <div class="row-left">
+          <div class="rank-num">4</div>
+          <div class="headshot"><span class="headshot-initials">BH</span></div>
+          <div class="info">
+            <div class="name">Brandon Hicks</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/gonzaga.png" alt=""><span class="team">Portland</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">94</div>
+          <div class="sv">18.1</div>
+          <div class="sv">10.6</div>
+          <div class="sv">4</div>
+          <div class="sv">11</div>
+          <div class="sv">12</div>
+          <div class="sv">9</div>
+          <div class="sv">.362</div>
+          <div class="sv main">165</div>
+        </div>
+      </div>
+
+      <div class="p-row r5">
+        <div class="row-left">
+          <div class="rank-num">5</div>
+          <div class="headshot"><span class="headshot-initials">NR</span></div>
+          <div class="info">
+            <div class="name">Nolan Rivera</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/osu.svg" alt=""><span class="team">Oregon</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">101</div>
+          <div class="sv">15.8</div>
+          <div class="sv">12.9</div>
+          <div class="sv">7</div>
+          <div class="sv">16</div>
+          <div class="sv">15</div>
+          <div class="sv">5</div>
+          <div class="sv">.355</div>
+          <div class="sv main">159</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PITCHING ===== -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-dot"></div>
+      <span class="section-text">Pitching — FIP Leaders</span>
+    </div>
+    <div class="stats-table">
+      <div class="col-headers">
+        <div class="col-left"><span>Player</span></div>
+        <div class="stats-area">
+          <span class="sh">IP</span>
+          <span class="sh">K%</span>
+          <span class="sh">BB%</span>
+          <span class="sh">ERA</span>
+          <span class="sh">H</span>
+          <span class="sh">BB+HBP</span>
+          <span class="sh main">FIP</span>
+        </div>
+      </div>
+
+      <div class="p-row r1">
+        <div class="row-left">
+          <div class="rank-num">1</div>
+          <div class="headshot"><span class="headshot-initials">RP</span></div>
+          <div class="info">
+            <div class="name">Ryan Park</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/osu.svg" alt=""><span class="team">Oregon State</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">62.1</div>
+          <div class="sv">32.4</div>
+          <div class="sv">5.8</div>
+          <div class="sv">1.42</div>
+          <div class="sv">38</div>
+          <div class="sv">16</div>
+          <div class="sv main">1.89</div>
+        </div>
+      </div>
+
+      <div class="p-row r2">
+        <div class="row-left">
+          <div class="rank-num">2</div>
+          <div class="headshot"><span class="headshot-initials">AJ</span></div>
+          <div class="info">
+            <div class="name">Austin James</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/gonzaga.png" alt=""><span class="team">Gonzaga</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">55.0</div>
+          <div class="sv">28.9</div>
+          <div class="sv">6.7</div>
+          <div class="sv">1.78</div>
+          <div class="sv">42</div>
+          <div class="sv">18</div>
+          <div class="sv main">2.14</div>
+        </div>
+      </div>
+
+      <div class="p-row r3">
+        <div class="row-left">
+          <div class="rank-num">3</div>
+          <div class="headshot"><span class="headshot-initials">KL</span></div>
+          <div class="info">
+            <div class="name">Kevin Liu</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/uw.svg" alt=""><span class="team">Washington</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">48.2</div>
+          <div class="sv">30.1</div>
+          <div class="sv">7.2</div>
+          <div class="sv">2.03</div>
+          <div class="sv">35</div>
+          <div class="sv">15</div>
+          <div class="sv main">2.38</div>
+        </div>
+      </div>
+
+      <div class="p-row r4">
+        <div class="row-left">
+          <div class="rank-num">4</div>
+          <div class="headshot"><span class="headshot-initials">DM</span></div>
+          <div class="info">
+            <div class="name">Derek Mitchell</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/gonzaga.png" alt=""><span class="team">Gonzaga</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">44.0</div>
+          <div class="sv">26.3</div>
+          <div class="sv">8.1</div>
+          <div class="sv">2.45</div>
+          <div class="sv">39</div>
+          <div class="sv">19</div>
+          <div class="sv main">2.55</div>
+        </div>
+      </div>
+
+      <div class="p-row r5">
+        <div class="row-left">
+          <div class="rank-num">5</div>
+          <div class="headshot"><span class="headshot-initials">SJ</span></div>
+          <div class="info">
+            <div class="name">Sam Jensen</div>
+            <div class="meta"><img class="team-logo" src="../logos/teams/uw.svg" alt=""><span class="team">Washington</span><span class="div-pill">D1</span></div>
+          </div>
+        </div>
+        <div class="stats-area">
+          <div class="sv">41.0</div>
+          <div class="sv">25.7</div>
+          <div class="sv">7.9</div>
+          <div class="sv">2.20</div>
+          <div class="sv">36</div>
+          <div class="sv">17</div>
+          <div class="sv main">2.71</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-brand">pnwbaseballstats.com</div>
+    <div class="footer-info">All Divisions &middot; Min 10 PA / 4 IP &middot; 2026 Season</div>
+  </div>
+</div>
+
+</body>
+</html>

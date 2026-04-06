@@ -28,7 +28,7 @@ def get_connection():
     """Context manager for database connections.
 
     Returns a connection with RealDictCursor so rows behave like dicts
-    (row["column_name"]) — same interface the rest of the code expects.
+    (row["column_name"]) - same interface the rest of the code expects.
     """
     # Ensure SSL is used (required by Supabase pooler)
     connect_url = DATABASE_URL
@@ -48,10 +48,10 @@ def get_connection():
 
 
 def init_db():
-    """No-op for Postgres — tables are created via migration script."""
+    """No-op for Postgres - tables are created via migration script."""
     print("Database: using Supabase Postgres")
 
 
 def seed_divisions_and_conferences():
-    """No-op for Postgres — data is already migrated."""
+    """No-op for Postgres - data is already migrated."""
     pass

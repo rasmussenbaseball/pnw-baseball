@@ -372,11 +372,11 @@ export default function PlayerGraphic() {
 
             <div className="border-t border-white/10 mx-4" />
 
-            {/* ── Stats body — evenly distributed ── */}
+            {/* ── Stats body - evenly distributed ── */}
             <div className="flex-1 flex flex-col justify-evenly px-4">
               {statsRow ? (
                 <>
-                  {/* Core stats — single row of 8 */}
+                  {/* Core stats - single row of 8 */}
                   <div>
                     <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">
                       {isPitcher ? 'Pitching' : 'Batting'}
@@ -386,7 +386,7 @@ export default function PlayerGraphic() {
                     </div>
                   </div>
 
-                  {/* Advanced stats — single row of 8 */}
+                  {/* Advanced stats - single row of 8 */}
                   <div>
                     <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Advanced</div>
                     <div className="grid grid-cols-8 gap-x-0">

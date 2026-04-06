@@ -20,7 +20,7 @@ const COLUMNS = [
 
 function TrendArrow({ trend, prev1, prev2 }) {
   if (trend === null || trend === undefined) {
-    return <span className="text-gray-300">—</span>
+    return <span className="text-gray-300">-</span>
   }
 
   const abs = Math.abs(trend)
@@ -98,7 +98,7 @@ export default function RecruitingBreakdown() {
         aVal = a[sortKey]
         bVal = b[sortKey]
       }
-      // Handle nulls — push to bottom
+      // Handle nulls - push to bottom
       if (aVal === null || aVal === undefined) return 1
       if (bVal === null || bVal === undefined) return -1
       if (sortDir === 'desc') return bVal - aVal
@@ -114,7 +114,7 @@ export default function RecruitingBreakdown() {
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Recruiting Breakdown</h1>
       <p className="text-sm text-gray-500 mb-4">
-        Team-level recruiting metrics for the 2026 season. Compare programs side-by-side — who's trending up, who plays freshmen, and where the talent is.
+        Team-level recruiting metrics for the 2026 season. Compare programs side-by-side - who's trending up, who plays freshmen, and where the talent is.
       </p>
 
       {/* Level filter */}
@@ -194,8 +194,8 @@ export default function RecruitingBreakdown() {
                 {/* Ranking */}
                 <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
                   {team.division === 'JUCO'
-                    ? (team.ppi_rank != null ? <span title="PPI rank (NWAC internal)">PPI #{team.ppi_rank}</span> : '—')
-                    : (team.national_rank != null ? <span title="National composite rank">#{team.national_rank}</span> : '—')
+                    ? (team.ppi_rank != null ? <span title="PPI rank (NWAC internal)">PPI #{team.ppi_rank}</span> : '-')
+                    : (team.national_rank != null ? <span title="National composite rank">#{team.national_rank}</span> : '-')
                   }
                 </td>
 
@@ -231,12 +231,12 @@ export default function RecruitingBreakdown() {
 
                 {/* wRC+ */}
                 <td className="px-3 py-2 text-center text-xs text-gray-600">
-                  {team.team_wrc_plus != null ? team.team_wrc_plus.toFixed(0) : '—'}
+                  {team.team_wrc_plus != null ? team.team_wrc_plus.toFixed(0) : '-'}
                 </td>
 
                 {/* FIP */}
                 <td className="px-3 py-2 text-center text-xs text-gray-600">
-                  {team.team_fip != null ? team.team_fip.toFixed(2) : '—'}
+                  {team.team_fip != null ? team.team_fip.toFixed(2) : '-'}
                 </td>
               </tr>
             ))}
@@ -246,11 +246,11 @@ export default function RecruitingBreakdown() {
 
       {/* Legend */}
       <div className="mt-4 px-1 text-[10px] text-gray-400 space-y-1">
-        <p><strong>Rank</strong> — National composite ranking for D1/D2/D3/NAIA teams. NWAC teams show PPI rank (internal power index based on WAR/G and W-L%).</p>
-        <p><strong>Trend</strong> — Change in W-L% compared to the average of the prior two seasons (2024-2025). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
-        <p><strong>Fr PA% / Fr IP%</strong> — Freshman (Fr + R-Fr) plate appearances or innings pitched as a percentage of the team total. Higher = more freshman playing time.</p>
-        <p><strong>WAR/G</strong> — Total team WAR (offensive + pitching) divided by games played. Measures overall roster talent density.</p>
-        <p><strong>wRC+</strong> — PA-weighted team average wRC+. 100 = league average. <strong>FIP</strong> — IP-weighted team average FIP. Lower is better.</p>
+        <p><strong>Rank</strong> - National composite ranking for D1/D2/D3/NAIA teams. NWAC teams show PPI rank (internal power index based on WAR/G and W-L%).</p>
+        <p><strong>Trend</strong> - Change in W-L% compared to the average of the prior two seasons (2024-2025). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
+        <p><strong>Fr PA% / Fr IP%</strong> - Freshman (Fr + R-Fr) plate appearances or innings pitched as a percentage of the team total. Higher = more freshman playing time.</p>
+        <p><strong>WAR/G</strong> - Total team WAR (offensive + pitching) divided by games played. Measures overall roster talent density.</p>
+        <p><strong>wRC+</strong> - PA-weighted team average wRC+. 100 = league average. <strong>FIP</strong> - IP-weighted team average FIP. Lower is better.</p>
         <p className="italic">2026 season is in progress. Stats reflect games played to date.</p>
       </div>
     </div>

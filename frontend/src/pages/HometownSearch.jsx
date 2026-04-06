@@ -190,7 +190,7 @@ export default function HometownSearch() {
                           </td>
                           <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.hometown}</td>
                           <td className="px-3 py-2 text-gray-500 whitespace-nowrap hidden sm:table-cell">
-                            {p.high_school && p.high_school !== 'Full Bio' ? p.high_school : '—'}
+                            {p.high_school && p.high_school !== 'Full Bio' ? p.high_school : '-'}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap">
                             <Link to={`/team/${p.team_id}`} className="text-gray-700 hover:text-nw-teal">
@@ -198,8 +198,8 @@ export default function HometownSearch() {
                             </Link>
                           </td>
                           <td className="px-3 py-2 text-gray-500 whitespace-nowrap hidden sm:table-cell">{p.division}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.position || '—'}</td>
-                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap hidden sm:table-cell">{p.year_in_school || '—'}</td>
+                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.position || '-'}</td>
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap hidden sm:table-cell">{p.year_in_school || '-'}</td>
                         </tr>
                       ))}
                     </tbody>

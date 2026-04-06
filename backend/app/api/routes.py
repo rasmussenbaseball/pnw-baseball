@@ -39,7 +39,7 @@ _YEAR_GROUPS = {
 QUALIFIED_PA_PER_GAME = 2.0      # Batters: 2 PA per team game
 QUALIFIED_IP_PER_GAME = 0.75     # Pitchers: 0.75 IP per team game
 
-# SQL fragments for qualified filter — join team_season_stats to get team games
+# SQL fragments for qualified filter - join team_season_stats to get team games
 QUALIFIED_BATTING_JOIN = """
     LEFT JOIN team_season_stats tss
       ON tss.team_id = bs.team_id AND tss.season = bs.season
@@ -106,7 +106,7 @@ def site_stats():
         cur.execute("SELECT COUNT(DISTINCT team_id) AS cnt FROM batting_stats")
         total_teams = cur.fetchone()["cnt"]
 
-        # Random player — pick someone with real stats so the card is interesting
+        # Random player - pick someone with real stats so the card is interesting
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.hometown,
                    p.headshot_url, p.year_in_school,
@@ -642,7 +642,7 @@ def stat_leaders(
                     "leaders": [dict(r) for r in rows],
                 }
 
-            # Pitching splits — same logic: use player's team from players table
+            # Pitching splits - same logic: use player's team from players table
             if is_home:
                 pit_home_road_condition = "p2.team_id = g.home_team_id"
             else:
@@ -836,6 +836,418 @@ def stat_leaders(
         }
 
 
+# ── Records (single-season, career, team) ─────────────────────
+
+_BATTING_RECORD_STATS = [
+    {"key": "avg", "label": "Batting Average", "col": "batting_avg", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "obp", "label": "On-Base Pct", "col": "on_base_pct", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "slg", "label": "Slugging Pct", "col": "slugging_pct", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "ops", "label": "OPS", "col": "ops", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "woba", "label": "wOBA", "col": "woba", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "wrc_plus", "label": "wRC+", "col": "wrc_plus", "order": "DESC", "rate": True, "format": "int"},
+    {"key": "iso", "label": "ISO", "col": "iso", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "hr", "label": "Home Runs", "col": "home_runs", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "rbi", "label": "RBI", "col": "rbi", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "sb", "label": "Stolen Bases", "col": "stolen_bases", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "runs", "label": "Runs", "col": "runs", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "hits", "label": "Hits", "col": "hits", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "doubles", "label": "Doubles", "col": "doubles", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "triples", "label": "Triples", "col": "triples", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "owar", "label": "oWAR", "col": "offensive_war", "order": "DESC", "rate": False, "format": "war"},
+]
+
+_PITCHING_RECORD_STATS = [
+    {"key": "era", "label": "ERA", "col": "era", "order": "ASC", "rate": True, "format": "era"},
+    {"key": "fip", "label": "FIP", "col": "fip", "order": "ASC", "rate": True, "format": "era"},
+    {"key": "whip", "label": "WHIP", "col": "whip", "order": "ASC", "rate": True, "format": "era"},
+    {"key": "k_per_9", "label": "K/9", "col": "k_per_9", "order": "DESC", "rate": True, "format": "era"},
+    {"key": "bb_per_9", "label": "BB/9", "col": "bb_per_9", "order": "ASC", "rate": True, "format": "era"},
+    {"key": "k_pct", "label": "K%", "col": "k_pct", "order": "DESC", "rate": True, "format": "pct"},
+    {"key": "fip_plus", "label": "FIP+", "col": "fip_plus", "order": "DESC", "rate": True, "format": "int"},
+    {"key": "wins", "label": "Wins", "col": "wins", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "saves", "label": "Saves", "col": "saves", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "strikeouts", "label": "Strikeouts", "col": "strikeouts", "order": "DESC", "rate": False, "format": "int"},
+    {"key": "ip", "label": "Innings Pitched", "col": "innings_pitched", "order": "DESC", "rate": False, "format": "ip"},
+    {"key": "pwar", "label": "pWAR", "col": "pitching_war", "order": "DESC", "rate": False, "format": "war"},
+]
+
+_TEAM_BATTING_STATS = [
+    {"key": "team_avg", "label": "Team AVG", "col": "avg", "order": "DESC", "format": "avg"},
+    {"key": "team_runs", "label": "Runs Scored", "col": "total_runs", "order": "DESC", "format": "int"},
+    {"key": "team_hr", "label": "Team HR", "col": "total_hr", "order": "DESC", "format": "int"},
+    {"key": "team_sb", "label": "Team SB", "col": "total_sb", "order": "DESC", "format": "int"},
+    {"key": "team_wrc_plus", "label": "Team wRC+", "col": "avg_wrc_plus", "order": "DESC", "format": "int"},
+    {"key": "team_owar", "label": "Team oWAR", "col": "total_owar", "order": "DESC", "format": "war"},
+    {"key": "team_hbp", "label": "Team HBP", "col": "total_hbp", "order": "DESC", "format": "int"},
+    {"key": "team_doubles", "label": "Team Doubles", "col": "total_doubles", "order": "DESC", "format": "int"},
+]
+
+_TEAM_PITCHING_STATS = [
+    {"key": "team_era", "label": "Team ERA", "col": "team_era", "order": "ASC", "format": "era"},
+    {"key": "team_fip", "label": "Team FIP", "col": "avg_fip", "order": "ASC", "format": "era"},
+    {"key": "team_whip", "label": "Team WHIP", "col": "team_whip", "order": "ASC", "format": "era"},
+    {"key": "team_k", "label": "Team Strikeouts", "col": "total_k", "order": "DESC", "format": "int"},
+    {"key": "team_pwar", "label": "Team pWAR", "col": "total_pwar", "order": "DESC", "format": "war"},
+    {"key": "team_saves", "label": "Team Saves", "col": "total_saves", "order": "DESC", "format": "int"},
+]
+
+LEVELS = ["D1", "D2", "D3", "NAIA", "JUCO"]
+
+
+@router.get("/records")
+def stat_records(
+    limit: int = Query(5, description="Number of records per category"),
+):
+    """Single-season records, career records, and team records across all divisions."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── Helpers ──
+
+        def _build_leaders(rows, stat_cfg, n):
+            """Sort rows by a stat column and return top N."""
+            col = stat_cfg["col"]
+            desc = stat_cfg["order"] == "DESC"
+            valid = [r for r in rows if r.get(col) is not None]
+            valid.sort(key=lambda r: r[col], reverse=desc)
+            out = []
+            for r in valid[:n]:
+                out.append({
+                    "player_id": r["player_id"],
+                    "first_name": r["first_name"],
+                    "last_name": r["last_name"],
+                    "team_short": r["team_short"],
+                    "logo_url": r.get("logo_url"),
+                    "division_level": r.get("division_level", ""),
+                    "season": r.get("season"),
+                    "value": r[col],
+                })
+            return out
+
+        def _build_team_leaders(rows, stat_cfg, n):
+            col = stat_cfg["col"]
+            desc = stat_cfg["order"] == "DESC"
+            valid = [r for r in rows if r.get(col) is not None]
+            valid.sort(key=lambda r: r[col], reverse=desc)
+            out = []
+            for r in valid[:n]:
+                out.append({
+                    "team_id": r["team_id"],
+                    "team_short": r["team_short"],
+                    "logo_url": r.get("logo_url"),
+                    "division_level": r.get("division_level", ""),
+                    "season": r["season"],
+                    "value": r[col],
+                })
+            return out
+
+        # ── 1) Single-season batting ──
+        cur.execute("""
+            SELECT bs.player_id, p.first_name, p.last_name,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level, bs.season,
+                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
+                   bs.woba, bs.wrc_plus, bs.iso,
+                   bs.home_runs, bs.rbi, bs.stolen_bases, bs.runs,
+                   bs.hits, bs.doubles, bs.triples, bs.offensive_war,
+                   bs.plate_appearances
+            FROM batting_stats bs
+            JOIN players p ON bs.player_id = p.id
+            JOIN teams t ON bs.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats tss
+              ON tss.team_id = bs.team_id AND tss.season = bs.season
+            WHERE bs.plate_appearances >= 2.0 * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+              AND bs.plate_appearances >= 50
+        """)
+        all_bat_seasons = [dict(r) for r in cur.fetchall()]
+
+        # Also fetch unqualified rows for counting stats (lower PA threshold)
+        cur.execute("""
+            SELECT bs.player_id, p.first_name, p.last_name,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level, bs.season,
+                   bs.home_runs, bs.rbi, bs.stolen_bases, bs.runs,
+                   bs.hits, bs.doubles, bs.triples, bs.offensive_war,
+                   bs.plate_appearances
+            FROM batting_stats bs
+            JOIN players p ON bs.player_id = p.id
+            JOIN teams t ON bs.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE bs.plate_appearances >= 30
+        """)
+        all_bat_counting = [dict(r) for r in cur.fetchall()]
+
+        # ── 2) Single-season pitching ──
+        cur.execute("""
+            SELECT ps.player_id, p.first_name, p.last_name,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level, ps.season,
+                   ps.era, ps.fip, ps.whip, ps.k_per_9, ps.bb_per_9,
+                   ps.k_pct, ps.fip_plus,
+                   ps.wins, ps.saves, ps.strikeouts, ps.innings_pitched,
+                   ps.pitching_war
+            FROM pitching_stats ps
+            JOIN players p ON ps.player_id = p.id
+            JOIN teams t ON ps.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats tss
+              ON tss.team_id = ps.team_id AND tss.season = ps.season
+            WHERE ps.innings_pitched >= 0.75 * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+              AND ps.innings_pitched >= 20
+        """)
+        all_pit_seasons = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT ps.player_id, p.first_name, p.last_name,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level, ps.season,
+                   ps.wins, ps.saves, ps.strikeouts, ps.innings_pitched,
+                   ps.pitching_war
+            FROM pitching_stats ps
+            JOIN players p ON ps.player_id = p.id
+            JOIN teams t ON ps.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE ps.innings_pitched >= 10
+        """)
+        all_pit_counting = [dict(r) for r in cur.fetchall()]
+
+        # ── 3) Career batting ──
+        cur.execute("""
+            SELECT bs.player_id, p.first_name, p.last_name,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level,
+                   SUM(bs.plate_appearances) as plate_appearances,
+                   SUM(bs.at_bats) as at_bats,
+                   SUM(bs.hits) as hits,
+                   SUM(bs.doubles) as doubles,
+                   SUM(bs.triples) as triples,
+                   SUM(bs.home_runs) as home_runs,
+                   SUM(bs.rbi) as rbi,
+                   SUM(bs.runs) as runs,
+                   SUM(bs.stolen_bases) as stolen_bases,
+                   SUM(bs.walks) as walks,
+                   SUM(bs.hit_by_pitch) as hbp,
+                   SUM(bs.sacrifice_flies) as sf,
+                   SUM(bs.offensive_war) as offensive_war
+            FROM batting_stats bs
+            JOIN players p ON bs.player_id = p.id
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            GROUP BY bs.player_id, p.first_name, p.last_name,
+                     t.short_name, t.logo_url, d.level
+            HAVING SUM(bs.plate_appearances) >= 200
+        """)
+        career_bat_rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            ab = d["at_bats"] or 0
+            pa = d["plate_appearances"] or 0
+            h = d["hits"] or 0
+            bb = d["walks"] or 0
+            hbp_v = d["hbp"] or 0
+            sf = d["sf"] or 0
+            doubles = d["doubles"] or 0
+            triples = d["triples"] or 0
+            hr = d["home_runs"] or 0
+            tb = h + doubles + 2 * triples + 3 * hr
+            d["batting_avg"] = round(h / ab, 3) if ab > 0 else None
+            d["on_base_pct"] = round((h + bb + hbp_v) / (ab + bb + hbp_v + sf), 3) if (ab + bb + hbp_v + sf) > 0 else None
+            d["slugging_pct"] = round(tb / ab, 3) if ab > 0 else None
+            d["ops"] = round((d["on_base_pct"] or 0) + (d["slugging_pct"] or 0), 3)
+            d["iso"] = round((d["slugging_pct"] or 0) - (d["batting_avg"] or 0), 3)
+            d["season"] = None  # career
+            career_bat_rows.append(d)
+
+        # ── 4) Career pitching ──
+        cur.execute("""
+            SELECT ps.player_id, p.first_name, p.last_name,
+                   t.short_name as team_short, t.logo_url,
+                   d.level as division_level,
+                   SUM(ps.innings_pitched) as innings_pitched,
+                   SUM(ps.earned_runs) as earned_runs,
+                   SUM(ps.hits_allowed) as hits_allowed,
+                   SUM(ps.walks) as walks,
+                   SUM(ps.strikeouts) as strikeouts,
+                   SUM(ps.home_runs_allowed) as hr_allowed,
+                   SUM(ps.wins) as wins,
+                   SUM(ps.saves) as saves,
+                   SUM(ps.pitching_war) as pitching_war
+            FROM pitching_stats ps
+            JOIN players p ON ps.player_id = p.id
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            GROUP BY ps.player_id, p.first_name, p.last_name,
+                     t.short_name, t.logo_url, d.level
+            HAVING SUM(ps.innings_pitched) >= 50
+        """)
+        career_pit_rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            ip = d["innings_pitched"] or 0
+            er = d["earned_runs"] or 0
+            h_a = d["hits_allowed"] or 0
+            bb = d["walks"] or 0
+            k = d["strikeouts"] or 0
+            hr_a = d["hr_allowed"] or 0
+            d["era"] = round((er / ip) * 9, 2) if ip > 0 else None
+            d["whip"] = round((bb + h_a) / ip, 2) if ip > 0 else None
+            d["k_per_9"] = round((k / ip) * 9, 2) if ip > 0 else None
+            d["bb_per_9"] = round((bb / ip) * 9, 2) if ip > 0 else None
+            d["season"] = None
+            career_pit_rows.append(d)
+
+        # ── 5) Team single-season batting ──
+        cur.execute("""
+            SELECT bs.team_id, t.short_name as team_short, t.logo_url,
+                   d.level as division_level, bs.season,
+                   CASE WHEN SUM(bs.at_bats) > 0
+                        THEN ROUND(SUM(bs.hits)::numeric / SUM(bs.at_bats), 3) END as avg,
+                   SUM(bs.runs) as total_runs,
+                   SUM(bs.home_runs) as total_hr,
+                   SUM(bs.stolen_bases) as total_sb,
+                   SUM(bs.doubles) as total_doubles,
+                   SUM(bs.hit_by_pitch) as total_hbp,
+                   SUM(bs.offensive_war) as total_owar,
+                   CASE WHEN SUM(bs.plate_appearances) > 0
+                        THEN ROUND(
+                          SUM(bs.wrc_plus * bs.plate_appearances)::numeric
+                          / SUM(bs.plate_appearances), 1)
+                        END as avg_wrc_plus
+            FROM batting_stats bs
+            JOIN teams t ON bs.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE bs.plate_appearances > 0
+            GROUP BY bs.team_id, t.short_name, t.logo_url, d.level, bs.season
+        """)
+        all_team_bat = [dict(r) for r in cur.fetchall()]
+
+        # ── 6) Team single-season pitching ──
+        cur.execute("""
+            SELECT ps.team_id, t.short_name as team_short, t.logo_url,
+                   d.level as division_level, ps.season,
+                   CASE WHEN SUM(ps.innings_pitched) > 0
+                        THEN ROUND((SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched)) * 9, 2) END as team_era,
+                   CASE WHEN SUM(ps.innings_pitched) > 0
+                        THEN ROUND((SUM(ps.walks + ps.hits_allowed)::numeric / SUM(ps.innings_pitched)), 2) END as team_whip,
+                   CASE WHEN SUM(ps.innings_pitched) > 0
+                        THEN ROUND(
+                          SUM(ps.fip * ps.innings_pitched)::numeric
+                          / SUM(ps.innings_pitched), 2)
+                        END as avg_fip,
+                   SUM(ps.strikeouts) as total_k,
+                   SUM(ps.saves) as total_saves,
+                   SUM(ps.pitching_war) as total_pwar
+            FROM pitching_stats ps
+            JOIN teams t ON ps.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE ps.innings_pitched > 0
+            GROUP BY ps.team_id, t.short_name, t.logo_url, d.level, ps.season
+        """)
+        all_team_pit = [dict(r) for r in cur.fetchall()]
+
+        # ── Build response per level + PNW ──
+        result = {"batting": {}, "pitching": {}, "team": {}}
+
+        for level in LEVELS + ["PNW"]:
+            # Filter rows for this level
+            if level == "PNW":
+                bat_q = all_bat_seasons
+                bat_c = all_bat_counting
+                pit_q = all_pit_seasons
+                pit_c = all_pit_counting
+                car_b = career_bat_rows
+                car_p = career_pit_rows
+                tb = all_team_bat
+                tp = all_team_pit
+            else:
+                bat_q = [r for r in all_bat_seasons if r["division_level"] == level]
+                bat_c = [r for r in all_bat_counting if r["division_level"] == level]
+                pit_q = [r for r in all_pit_seasons if r["division_level"] == level]
+                pit_c = [r for r in all_pit_counting if r["division_level"] == level]
+                car_b = [r for r in career_bat_rows if r["division_level"] == level]
+                car_p = [r for r in career_pit_rows if r["division_level"] == level]
+                tb = [r for r in all_team_bat if r["division_level"] == level]
+                tp = [r for r in all_team_pit if r["division_level"] == level]
+
+            # Single-season batting
+            ss_bat = {}
+            for s in _BATTING_RECORD_STATS:
+                source = bat_q if s["rate"] else bat_c
+                ss_bat[s["key"]] = {
+                    "label": s["label"],
+                    "format": s["format"],
+                    "order": s["order"],
+                    "leaders": _build_leaders(source, s, limit),
+                }
+
+            # Single-season pitching
+            ss_pit = {}
+            for s in _PITCHING_RECORD_STATS:
+                source = pit_q if s["rate"] else pit_c
+                ss_pit[s["key"]] = {
+                    "label": s["label"],
+                    "format": s["format"],
+                    "order": s["order"],
+                    "leaders": _build_leaders(source, s, limit),
+                }
+
+            # Career batting
+            cr_bat = {}
+            for s in _BATTING_RECORD_STATS:
+                if s["col"] in ("woba", "wrc_plus"):
+                    continue  # can't reliably aggregate league-adjusted career rates
+                cr_bat[s["key"]] = {
+                    "label": s["label"],
+                    "format": s["format"],
+                    "order": s["order"],
+                    "leaders": _build_leaders(car_b, s, limit),
+                }
+
+            # Career pitching
+            cr_pit = {}
+            for s in _PITCHING_RECORD_STATS:
+                if s["col"] in ("fip_plus", "fip", "k_pct"):
+                    continue  # can't reliably aggregate league-adjusted career rates
+                cr_pit[s["key"]] = {
+                    "label": s["label"],
+                    "format": s["format"],
+                    "order": s["order"],
+                    "leaders": _build_leaders(car_p, s, limit),
+                }
+
+            # Team single-season
+            tm = {}
+            for s in _TEAM_BATTING_STATS:
+                tm[s["key"]] = {
+                    "label": s["label"],
+                    "format": s["format"],
+                    "order": s["order"],
+                    "leaders": _build_team_leaders(tb, s, limit),
+                }
+            for s in _TEAM_PITCHING_STATS:
+                tm[s["key"]] = {
+                    "label": s["label"],
+                    "format": s["format"],
+                    "order": s["order"],
+                    "leaders": _build_team_leaders(tp, s, limit),
+                }
+
+            result["batting"][level] = {"single_season": ss_bat, "career": cr_bat}
+            result["pitching"][level] = {"single_season": ss_pit, "career": cr_pit}
+            result["team"][level] = {"single_season": tm}
+
+        return result
+
+
 @router.get("/team-ratings")
 def team_ratings(
     season: int = Query(..., description="Season year"),
@@ -1006,7 +1418,7 @@ def national_rankings(
                 "division_name": juco_teams[0]["division_name"],
                 "division_level": "JUCO",
                 "teams": [],
-                "note": "NWAC teams use PPI (internal rating) — no external national rankings available for JUCO"
+                "note": "NWAC teams use PPI (internal rating) - no external national rankings available for JUCO"
             }
             for r in juco_teams:
                 team = dict(r)
@@ -2856,7 +3268,7 @@ def _aggregate_career_batting(seasons):
     totals["k_pct"] = totals["strikeouts"] / pa if pa > 0 else None
     totals["offensive_war"] = sum(s.get("offensive_war", 0) or 0 for s in seasons)
 
-    # wOBA / wRC+ are complex league-adjusted — use PA-weighted average as approximation
+    # wOBA / wRC+ are complex league-adjusted - use PA-weighted average as approximation
     total_pa = sum((s.get("plate_appearances", 0) or 0) for s in seasons)
     if total_pa > 0:
         totals["woba"] = sum((s.get("woba", 0) or 0) * (s.get("plate_appearances", 0) or 0) for s in seasons) / total_pa
@@ -2913,7 +3325,7 @@ def _aggregate_career_pitching(seasons):
     else:
         totals["lob_pct"] = None
 
-    # FIP+ / ERA+ — IP-weighted
+    # FIP+ / ERA+ - IP-weighted
     for metric in ["fip_plus", "era_plus"]:
         if total_ip > 0:
             totals[metric] = sum(
@@ -3693,7 +4105,7 @@ def uncommitted_juco_players(
     limit: int = Query(500),
 ):
     """
-    Find uncommitted JUCO players — the primary recruiting tool.
+    Find uncommitted JUCO players - the primary recruiting tool.
     Shows sophomores (or specified class) who haven't committed to a 4-year school.
     Year filter groups: 'So' matches So and R-So, 'Fr' matches Fr and R-Fr.
     """
@@ -5173,7 +5585,7 @@ def games_live():
             with open(live_scores_path) as f:
                 data = _json.load(f)
 
-            # Dedup live-score entries — the JSON has one entry per team per game,
+            # Dedup live-score entries - the JSON has one entry per team per game,
             # so CWU-vs-MSUB appears twice (once from each team's schedule).
             for section in ("today", "recent", "upcoming"):
                 data[section] = _dedup_live_games(data.get(section, []))
@@ -5323,7 +5735,7 @@ def quality_starts_leaderboard(
     limit: int = 25,
 ):
     """
-    Quality starts leaderboard — pitchers ranked by QS count.
+    Quality starts leaderboard - pitchers ranked by QS count.
     """
     with get_connection() as conn:
         cur = conn.cursor()
@@ -5979,7 +6391,7 @@ def get_player_splits(
 
 # ============================================================
 # ============================================================
-# IMAGE PROXY — for canvas export (avoids CORS issues)
+# IMAGE PROXY - for canvas export (avoids CORS issues)
 # ============================================================
 import httpx as _httpx
 from fastapi.responses import Response as _ImgResponse
@@ -6003,7 +6415,7 @@ async def proxy_image(url: str = Query(...)):
         raise HTTPException(502, "Failed to fetch image")
 
 
-# PNW GRID — Immaculate Grid for PNW College Baseball
+# PNW GRID - Immaculate Grid for PNW College Baseball
 # ============================================================
 
 import json as _grid_json
@@ -6027,7 +6439,7 @@ _TEAM_POOL = [
     {"type": "division", "label": "PNW D1", "value": "D1", "group": "d1"},
     {"type": "division", "label": "NWAC", "value": "JUCO", "group": "nwac"},
     {"type": "division", "label": "Non-D1 4-Year", "value": "non_d1_4yr", "group": "4yr"},
-    # Individual teams — D1
+    # Individual teams - D1
     {"type": "team", "label": "Gonzaga (D1)", "value": "Gonzaga", "group": "team"},
     {"type": "team", "label": "Oregon (D1)", "value": "Oregon", "group": "team"},
     {"type": "team", "label": "Oregon St. (D1)", "value": "Oregon St.", "group": "team"},
@@ -6035,13 +6447,13 @@ _TEAM_POOL = [
     {"type": "team", "label": "Wash. St. (D1)", "value": "Wash. St.", "group": "team"},
     {"type": "team", "label": "Portland (D1)", "value": "Portland", "group": "team"},
     {"type": "team", "label": "Seattle U (D1)", "value": "Seattle U", "group": "team"},
-    # Individual teams — D2
+    # Individual teams - D2
     {"type": "team", "label": "CWU (D2)", "value": "CWU", "group": "team"},
     {"type": "team", "label": "WOU (D2)", "value": "WOU", "group": "team"},
     {"type": "team", "label": "NNU (D2)", "value": "NNU", "group": "team"},
     {"type": "team", "label": "MSUB (D2)", "value": "MSUB", "group": "team"},
     {"type": "team", "label": "SMU (D2)", "value": "SMU", "group": "team"},
-    # Individual teams — D3
+    # Individual teams - D3
     {"type": "team", "label": "Linfield (D3)", "value": "Linfield", "group": "team"},
     {"type": "team", "label": "GFU (D3)", "value": "GFU", "group": "team"},
     {"type": "team", "label": "PLU (D3)", "value": "PLU", "group": "team"},
@@ -6051,7 +6463,7 @@ _TEAM_POOL = [
     {"type": "team", "label": "Whitman (D3)", "value": "Whitman", "group": "team"},
     {"type": "team", "label": "Willamette (D3)", "value": "Willamette", "group": "team"},
     {"type": "team", "label": "Pacific (D3)", "value": "Pacific", "group": "team"},
-    # Individual teams — NAIA
+    # Individual teams - NAIA
     {"type": "team", "label": "Bushnell (NAIA)", "value": "Bushnell", "group": "team"},
     {"type": "team", "label": "Corban (NAIA)", "value": "Corban", "group": "team"},
     {"type": "team", "label": "C of I (NAIA)", "value": "C of I", "group": "team"},
@@ -6060,7 +6472,7 @@ _TEAM_POOL = [
     {"type": "team", "label": "OIT (NAIA)", "value": "OIT", "group": "team"},
     {"type": "team", "label": "Warner Pacific (NAIA)", "value": "Warner Pacific", "group": "team"},
     {"type": "team", "label": "UBC (NAIA)", "value": "UBC", "group": "team"},
-    # Individual teams — NWAC
+    # Individual teams - NWAC
     {"type": "team", "label": "Lower Columbia (NWAC)", "value": "Lower Columbia", "group": "team"},
     {"type": "team", "label": "Edmonds (NWAC)", "value": "Edmonds", "group": "team"},
     {"type": "team", "label": "Everett (NWAC)", "value": "Everett", "group": "team"},
@@ -6149,7 +6561,7 @@ _CAREER_PITCHING_POOL = [
 def _count_players_for_cell(cur, team_criteria, stat_criteria):
     """
     Count distinct players matching both a team criteria and stat criteria.
-    Returns the count (capped at 4 for efficiency — we only need to know if >= 3).
+    Returns the count (capped at 4 for efficiency - we only need to know if >= 3).
     """
     tc_type = team_criteria["type"]
     tc_value = team_criteria.get("value", "")
@@ -6234,7 +6646,7 @@ def _count_players_for_cell(cur, team_criteria, stat_criteria):
                         "hr_per_9", "k_bb_ratio", "fip", "babip_against"}
         rate_stats = rate_stats_b if "batting" in sc_type else rate_stats_p
         if sc_stat in rate_stats:
-            # Career rate stat — check any single qualified season
+            # Career rate stat - check any single qualified season
             sql = f"""
                 SELECT COUNT(DISTINCT {stat_alias}.player_id) FROM {stat_table} {stat_alias}
                 JOIN players p ON {stat_alias}.player_id = p.id
@@ -6243,7 +6655,7 @@ def _count_players_for_cell(cur, team_criteria, stat_criteria):
             """
             params = [sc_threshold] + team_params + q_params
         else:
-            # Career counting stat — SUM across seasons
+            # Career counting stat - SUM across seasons
             sql = f"""
                 SELECT COUNT(*) FROM (
                     SELECT {stat_alias}.player_id
@@ -6258,7 +6670,7 @@ def _count_players_for_cell(cur, team_criteria, stat_criteria):
             """
             params = team_params + [sc_threshold]
     else:
-        # Season stat — direct comparison
+        # Season stat - direct comparison
         sql = f"""
             SELECT COUNT(DISTINCT {stat_alias}.player_id) FROM {stat_table} {stat_alias}
             JOIN players p ON {stat_alias}.player_id = p.id
@@ -6272,7 +6684,7 @@ def _count_players_for_cell(cur, team_criteria, stat_criteria):
         row = cur.fetchone()
         if not row:
             return 0
-        # RealDictCursor returns dicts — get the first value
+        # RealDictCursor returns dicts - get the first value
         return list(row.values())[0] or 0
     except Exception:
         return 0
@@ -6456,7 +6868,7 @@ def _generate_random_grid(seed=None):
                 "rows": rows,
             }
 
-    # Fallback after 20 failed attempts — return last generated grid anyway
+    # Fallback after 20 failed attempts - return last generated grid anyway
     return {
         "title": "Random Grid",
         "mode": "random",
@@ -6582,7 +6994,7 @@ def _check_team_criteria(cur, player_id, criteria):
     value = criteria.get("value", "")
 
     if ctype == "division" and value == "ALL":
-        # Any PNW school — always true if the player exists
+        # Any PNW school - always true if the player exists
         return True
 
     all_ids = _get_all_player_ids(cur, player_id)
@@ -6839,7 +7251,7 @@ def _get_stat_years(cur, player_id, criteria):
 
 
 def _check_any_criteria(cur, player_id, criteria):
-    """Check any criteria type — team/conference/division or stat."""
+    """Check any criteria type - team/conference/division or stat."""
     ctype = criteria.get("type", "")
     if ctype in ("team", "conference", "division"):
         return _check_team_criteria(cur, player_id, criteria)
@@ -6949,7 +7361,7 @@ def grid_solutions(data: dict = Body(...)):
                 elif col_crit.get("type") in stat_types and row_crit.get("type") not in stat_types:
                     team_crit, stat_crit = row_crit, col_crit
                 else:
-                    # Both are teams (transfer cell) or both stats — skip
+                    # Both are teams (transfer cell) or both stats - skip
                     cells[f"{ri}-{ci}"] = []
                     continue
 
@@ -6994,7 +7406,7 @@ def grid_options():
 @router.post("/grid/validate-custom")
 def grid_validate_custom(data: dict = Body(...)):
     """
-    Validate a custom grid — check that every cell has at least 1 matching player.
+    Validate a custom grid - check that every cell has at least 1 matching player.
     Body: {rows: [...], columns: [...]}
     Returns: {valid: bool, cell_counts: {"0-0": n, ...}, invalid_cells: [...]}
     """
@@ -7018,14 +7430,14 @@ def grid_validate_custom(data: dict = Body(...)):
                 elif col_crit.get("type") in stat_types and row_crit.get("type") not in stat_types:
                     team_crit, stat_crit = row_crit, col_crit
                 elif row_crit.get("type") not in stat_types and col_crit.get("type") not in stat_types:
-                    # Both are team criteria — check if any player has been on both
+                    # Both are team criteria - check if any player has been on both
                     count = _count_dual_team_cell(cur, row_crit, col_crit)
                     cell_counts[key] = count
                     if count < 1:
                         invalid_cells.append(key)
                     continue
                 else:
-                    # Both stats — invalid combo
+                    # Both stats - invalid combo
                     cell_counts[key] = 0
                     invalid_cells.append(key)
                     continue
@@ -7265,7 +7677,7 @@ def summer_batting_leaderboard(
     limit: int = Query(50, description="Results per page"),
     offset: int = Query(0, description="Pagination offset"),
 ):
-    """Summer league batting leaderboard — WCL, PIL, or all."""
+    """Summer league batting leaderboard - WCL, PIL, or all."""
     allowed_sort = {
         "batting_avg", "on_base_pct", "slugging_pct", "ops",
         "home_runs", "rbi", "hits", "runs", "stolen_bases", "walks",
@@ -7365,7 +7777,7 @@ def summer_pitching_leaderboard(
     limit: int = Query(50, description="Results per page"),
     offset: int = Query(0, description="Pagination offset"),
 ):
-    """Summer league pitching leaderboard — WCL, PIL, or all."""
+    """Summer league pitching leaderboard - WCL, PIL, or all."""
     allowed_sort = {
         "era", "whip", "wins", "losses", "saves", "strikeouts",
         "innings_pitched", "k_per_9", "bb_per_9", "hr_per_9",
@@ -7761,7 +8173,7 @@ def get_recruiting_guide(team_id: int):
                     pitcher_count += 1
             hitter_count = total_players - pitcher_count
 
-            # Class breakdown — map redshirt classes to their base class
+            # Class breakdown - map redshirt classes to their base class
             # R-Fr → Fr, R-So → So, R-Jr → Jr, R-Sr → Sr, Gr → Sr
             # Players with NULL year_in_school counted as "Unknown"
             class_map = {
@@ -7985,7 +8397,7 @@ def get_recruiting_guide(team_id: int):
                 if total == 0:
                     continue
 
-                # Skip if no prior season data — can't determine returners vs new
+                # Skip if no prior season data - can't determine returners vs new
                 if (s - 1) not in players_by_season:
                     continue
 
@@ -8388,7 +8800,7 @@ def recruiting_breakdown(season: int = 2026):
 
         placeholders = ",".join(["%s"] * len(active_teams))
 
-        # 2) Freshman PA% — Fr + R-Fr plate appearances as % of team total
+        # 2) Freshman PA% - Fr + R-Fr plate appearances as % of team total
         cur.execute(f"""
             SELECT bs.team_id,
                    SUM(CASE WHEN p.year_in_school IN ('Fr', 'R-Fr') THEN bs.plate_appearances ELSE 0 END) AS fr_pa,
@@ -8400,7 +8812,7 @@ def recruiting_breakdown(season: int = 2026):
         """, [season] + active_teams)
         fr_pa_data = {r["team_id"]: {"fr_pa": r["fr_pa"] or 0, "total_pa": r["total_pa"] or 0} for r in cur.fetchall()}
 
-        # 3) Freshman IP% — Fr + R-Fr innings as % of team total
+        # 3) Freshman IP% - Fr + R-Fr innings as % of team total
         cur.execute(f"""
             SELECT ps.team_id,
                    SUM(CASE WHEN p.year_in_school IN ('Fr', 'R-Fr') THEN ps.innings_pitched ELSE 0 END) AS fr_ip,

@@ -655,7 +655,7 @@ export default function SocialGraphics() {
         const statsEndX = w - bodyPadX - rowPadX
         const nameMaxW = statsEndX - extraCols.length * extraW - mainStatW - recordW - nameX - 12
 
-        // Player name — position both lines relative to center
+        // Player name - position both lines relative to center
         const subFontSize = Math.floor(fontSize * 0.68)
         const lineGap = Math.floor(fontSize * 0.15)
         const totalTextH = fontSize + subFontSize + lineGap

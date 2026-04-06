@@ -54,7 +54,7 @@ export default function Homepage() {
 
   return (
     <div>
-      {/* Game scores ticker — shows today's games (live/final/scheduled), falls back to recent DB results */}
+      {/* Game scores ticker - shows today's games (live/final/scheduled), falls back to recent DB results */}
       {hasTodayGames ? (
         <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
       ) : (
@@ -143,7 +143,7 @@ function BetaBanner({ onDismiss, user }) {
       </div>
 
       <p className="text-xs text-white/60 mt-3 leading-relaxed max-w-3xl">
-        This site is still a work in progress — we're actively adding features and fixing bugs.
+        This site is still a work in progress - we're actively adding features and fixing bugs.
         If you notice anything off, have ideas, or just want to follow along,
         reach out on <a href="https://x.com/NWBBStats" target="_blank" rel="noopener noreferrer" className="text-pnw-teal hover:underline">X @NWBBStats</a> or <a href="https://instagram.com/nwbbstats" target="_blank" rel="noopener noreferrer" className="text-pnw-teal hover:underline">Instagram</a>.
       </p>
@@ -694,7 +694,7 @@ function ByTheNumbersWidget() {
   if (!stats) return null
 
   const p = stats.random_player
-  const fmtAvg = (v) => v != null ? Number(v).toFixed(3).replace(/^0/, '') : '—'
+  const fmtAvg = (v) => v != null ? Number(v).toFixed(3).replace(/^0/, '') : '-'
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
@@ -768,11 +768,11 @@ function ByTheNumbersWidget() {
               </div>
               <div className="text-center flex-1">
                 <div className="text-[10px] text-gray-400">wRC+</div>
-                <div className="text-xs font-bold text-gray-700">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '—'}</div>
+                <div className="text-xs font-bold text-gray-700">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '-'}</div>
               </div>
               <div className="text-center flex-1">
                 <div className="text-[10px] text-gray-400">oWAR</div>
-                <div className="text-xs font-bold text-gray-700">{p.offensive_war != null ? Number(p.offensive_war).toFixed(1) : '—'}</div>
+                <div className="text-xs font-bold text-gray-700">{p.offensive_war != null ? Number(p.offensive_war).toFixed(1) : '-'}</div>
               </div>
             </div>
           </Link>
@@ -802,7 +802,7 @@ function PnwGridWidget() {
             PNW Grid
           </div>
           <div className="text-[11px] text-white/50">
-            Daily trivia game — test your PNW baseball knowledge
+            Daily trivia game - test your PNW baseball knowledge
           </div>
         </div>
         <svg className="w-4 h-4 text-gray-500 group-hover:text-pnw-teal transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -840,7 +840,7 @@ function SignUpWidget() {
         Sign Up Free
       </Link>
       <p className="text-[10px] text-gray-400 text-center mt-2">
-        No credit card required — just an email address
+        No credit card required - just an email address
       </p>
     </div>
   )

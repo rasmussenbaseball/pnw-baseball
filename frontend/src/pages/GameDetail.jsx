@@ -98,7 +98,7 @@ function BattingTable({ players, teamName, teamLogo }) {
           <img src={teamLogo} alt="" className="w-4 h-4 object-contain"
             onError={(e) => { e.target.style.display = 'none' }} />
         )}
-        <h3 className="text-sm font-bold text-gray-800">{teamName} — Batting</h3>
+        <h3 className="text-sm font-bold text-gray-800">{teamName} - Batting</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -156,7 +156,7 @@ function PitchingTable({ players, teamName, teamLogo }) {
           <img src={teamLogo} alt="" className="w-4 h-4 object-contain"
             onError={(e) => { e.target.style.display = 'none' }} />
         )}
-        <h3 className="text-sm font-bold text-gray-800">{teamName} — Pitching</h3>
+        <h3 className="text-sm font-bold text-gray-800">{teamName} - Pitching</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
