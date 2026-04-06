@@ -4,6 +4,21 @@ import { Link } from 'react-router-dom'
 // ─── Site Updates / Changelog ───
 const UPDATES = [
   {
+    version: '1.4',
+    date: 'April 5, 2026',
+    title: 'NWAC Automation, Expanded Coverage & Scoreboard Improvements',
+    changes: [
+      'Fully automated NWAC player stats scraping via GitHub Actions with ScraperAPI (no more manual Mac runs)',
+      'Added Willamette (D3) and Seattle U (D1) to the automated stats pipeline alongside NWAC',
+      'NWAC game results now scrape every 2 hours during game hours (11 AM to 9 PM PT)',
+      'League-adjusted stats (wRC+, FIP+, ERA-) automatically recalculate after each scrape',
+      'Homepage recent scores widget now always shows the 15 latest results across all divisions',
+      'Live games ticker and recent results ticker now display simultaneously on game days',
+      'Fixed timezone handling so NWAC games and stat timestamps display correctly in Pacific time',
+      'Fixed duplicate NWAC game records on the scoreboard',
+    ],
+  },
+  {
     version: '1.3',
     date: 'April 4, 2026',
     title: 'Scoreboard Overhaul, Live Scores & Infrastructure',

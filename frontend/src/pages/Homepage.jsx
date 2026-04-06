@@ -27,7 +27,7 @@ export default function Homepage() {
   const { data: leaders } = useStatLeaders(SEASON, 5, true)
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
-  const { data: recentGames } = useGamesTicker(SEASON, 20)
+  const { data: recentGames } = useGamesTicker(SEASON, 15)
   const { data: liveData, refetch: refetchLive } = useLiveScores()
   const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
   const { user } = useAuth()
@@ -54,12 +54,12 @@ export default function Homepage() {
 
   return (
     <div>
-      {/* Game scores ticker — shows today's games (live/final/scheduled), falls back to recent DB results */}
-      {hasTodayGames ? (
+      {/* Live games ticker — only shows when there are today's games */}
+      {hasTodayGames && (
         <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
-      ) : (
-        <GameResultsTicker games={recentGames} />
       )}
+      {/* Recent results ticker — always shows the 15 latest final results */}
+      <GameResultsTicker games={recentGames} />
 
       {/* Beta intro banner */}
       {!bannerDismissed && <BetaBanner onDismiss={dismissBanner} user={user} />}

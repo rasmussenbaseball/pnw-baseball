@@ -71,8 +71,8 @@ run_step "D3 stats (NWC)" \
 run_step "NAIA stats (CCC)" \
     python3 scripts/scrape_naia.py --season "$SEASON"
 
-# NWAC skipped — PrestoSports WAF blocks server requests.
-# Run from Mac instead: bash scripts/scrape_browser_teams.sh 2026 --headless
+# NWAC/Willamette/Seattle U — automated via GitHub Actions (nwac-stats.yml)
+# Runs daily at 7 PM Pacific. No manual Mac runs needed.
 
 # ── Step 2: Scrape box scores (game-by-game stats) ─────────
 # Fetches individual game batting/pitching lines from schedule pages.
