@@ -104,6 +104,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
               <th className="text-center px-1 py-1.5 font-semibold" title="Games remaining">Rem</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Power rating">PWR</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[70px]" title="Playoff probability">Playoff %</th>
+              <th className="text-center px-1 py-1.5 font-semibold min-w-[52px]" title="Miss playoffs probability">Miss %</th>
               {/* Seed probability columns */}
               {Array.from({ length: maxSeed }, (_, i) => (
                 <th key={i} className="text-center px-0.5 py-1.5 font-semibold min-w-[36px]" title={`Probability of finishing as #${i + 1} seed`}>
@@ -173,6 +174,15 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
                   </td>
                   <td className="px-1 py-1.5">
                     <OddsBar pct={playoffPct} />
+                  </td>
+                  <td className="text-center px-1 py-1.5">
+                    <span className={`text-[10px] font-bold ${
+                      (1 - playoffPct) >= 0.5 ? 'text-red-500' :
+                      (1 - playoffPct) >= 0.2 ? 'text-amber-500' :
+                      (1 - playoffPct) > 0.05 ? 'text-gray-400' : 'text-gray-200'
+                    }`}>
+                      {formatOdds(1 - playoffPct)}
+                    </span>
                   </td>
                   {/* Seed probability cells */}
                   {Array.from({ length: maxSeed }, (_, seedIdx) => {
@@ -257,7 +267,7 @@ function BracketTeamRow({ team, isTop }) {
 }
 
 
-// ─── GNAC Bracket (Pod Format) ───
+// ─── GNAC Bracket (Top 3, Round-Robin) ───
 function GNACBracket({ bracket }) {
   const teams = bracket.teams || []
   const getTeam = (seed) => teams.find(t => t.seed === seed)
@@ -275,47 +285,21 @@ function GNACBracket({ bracket }) {
           ))}
         </div>
 
-        {/* Pod Matchups */}
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <div>
-            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide mb-2 text-center">Pod A</p>
-            <div className="space-y-2">
-              <BracketMatchup
-                teamA={getTeam(1)}
-                teamB={getTeam(8)}
-                label="1 vs 8"
-              />
-              <BracketMatchup
-                teamA={getTeam(4)}
-                teamB={getTeam(5)}
-                label="4 vs 5"
-              />
-            </div>
-            <p className="text-[8px] text-gray-400 text-center mt-1.5">Double Elimination</p>
-          </div>
-          <div>
-            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide mb-2 text-center">Pod B</p>
-            <div className="space-y-2">
-              <BracketMatchup
-                teamA={getTeam(2)}
-                teamB={getTeam(7)}
-                label="2 vs 7"
-              />
-              <BracketMatchup
-                teamA={getTeam(3)}
-                teamB={getTeam(6)}
-                label="3 vs 6"
-              />
-            </div>
-            <p className="text-[8px] text-gray-400 text-center mt-1.5">Double Elimination</p>
+        {/* Round-Robin Day 1 */}
+        <div className="space-y-2 mt-3">
+          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide">Day 1 - Round Robin</p>
+          <div className="grid grid-cols-3 gap-2">
+            <BracketMatchup teamA={getTeam(2)} teamB={getTeam(3)} label="Game 1" />
+            <BracketMatchup teamA={getTeam(1)} teamB={getTeam(3)} label="Game 2" />
+            <BracketMatchup teamA={getTeam(1)} teamB={getTeam(2)} label="Game 3" />
           </div>
         </div>
 
-        {/* Championship */}
+        {/* Day 2 */}
         <div className="bg-teal-50 rounded-lg p-2.5 border border-teal-100 text-center">
-          <p className="text-[9px] font-bold text-teal-700 uppercase tracking-wide">Championship</p>
-          <p className="text-[10px] text-teal-600 mt-0.5">Pod A Winner vs Pod B Winner</p>
-          <p className="text-[9px] text-teal-500">Best of 3</p>
+          <p className="text-[9px] font-bold text-teal-700 uppercase tracking-wide">Day 2 - Championship</p>
+          <p className="text-[9px] text-teal-500 mt-0.5">0-2 team eliminated. Remaining 2 teams play for the title.</p>
+          <p className="text-[9px] text-teal-500">If 3-way tie: #1 seed gets bye to championship</p>
         </div>
       </div>
     </div>
@@ -567,6 +551,15 @@ function PlayoffOddsTable({ conferences, playoffCountByConf }) {
                         <OddsBar pct={playoffPct} />
                       </div>
 
+                      {/* Miss % */}
+                      <span className={`text-[10px] font-bold w-10 text-right ${
+                        (1 - playoffPct) >= 0.5 ? 'text-red-500' :
+                        (1 - playoffPct) >= 0.2 ? 'text-amber-500' :
+                        (1 - playoffPct) > 0.05 ? 'text-gray-400' : 'text-gray-200'
+                      }`}>
+                        {formatOdds(1 - playoffPct)}
+                      </span>
+
                       {/* Seed probability mini-bars */}
                       <div className="flex gap-0.5 items-end">
                         {Array.from({ length: maxSeed }, (_, si) => {
@@ -638,7 +631,7 @@ export default function PlayoffProjections() {
 
   // Render the right bracket component based on format
   function renderBracket(bracket) {
-    if (bracket.format_type === 'double_elimination_pods') {
+    if (bracket.format_type === 'round_robin') {
       return <GNACBracket key={bracket.conference} bracket={bracket} />
     }
     if (bracket.format_type === 'nwac_regional') {
@@ -647,10 +640,7 @@ export default function PlayoffProjections() {
     if (bracket.format_name?.includes('CCC') || bracket.conference?.includes('Cascade')) {
       return <CCCBracket key={bracket.conference} bracket={bracket} />
     }
-    if (bracket.format_name?.includes('NWC') || bracket.conference?.includes('Northwest Conference')) {
-      return <NWCBracket key={bracket.conference} bracket={bracket} />
-    }
-    // Fallback - generic double elim
+    // NWC and any other double elimination
     return <NWCBracket key={bracket.conference} bracket={bracket} />
   }
 

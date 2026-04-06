@@ -10,7 +10,7 @@ Uses:
 - Conference playoff format rules
 
 Playoff Formats (2026):
-  GNAC (D2): 8 teams, pods 1/4/5/8 vs 2/3/6/7, double-elim pods, best-of-3 championship
+  GNAC (D2): Top 3, round-robin day 1, elimination/championship day 2
   NWC  (D3): Top 4 by conference win%, double elimination
   CCC  (NAIA): Top 5, double elimination. #1 bye/host, #2v3 and #4v5
   NWAC (JUCO): 4 regions x 4 teams. #1s to final 8, #3v4 single elim, winner vs #2 best-of-3
@@ -35,9 +35,9 @@ PLAYOFF_FORMATS = {
     "GNAC": {
         "name": "GNAC Tournament",
         "division_level": "D2",
-        "num_teams": 8,
-        "format": "double_elimination_pods",
-        "description": "8 teams in two pods (1/4/5/8 vs 2/3/6/7), double-elimination pods, best-of-3 championship",
+        "num_teams": 3,
+        "format": "round_robin",
+        "description": "Top 3 by conference win%. Day 1: round-robin (all 3 play each other). Day 2: 0-2 team eliminated, remaining 2 play championship",
         "seeding_basis": "conference_win_pct",
     },
     "NWC": {
@@ -524,14 +524,7 @@ def determine_playoff_fields(projected_conferences):
             })
 
         # Add matchup info based on format
-        if fmt["format"] == "double_elimination_pods":
-            # GNAC: pods 1/4/5/8 vs 2/3/6/7
-            if len(bracket["teams"]) >= 8:
-                bracket["pods"] = {
-                    "pod_a": [1, 4, 5, 8],
-                    "pod_b": [2, 3, 6, 7],
-                }
-        elif fmt["format"] == "nwac_regional":
+        if fmt["format"] == "nwac_regional":
             # NWAC: #1 auto-advance, #3v4, winner vs #2
             if len(bracket["teams"]) >= 4:
                 bracket["auto_advance"] = [1]
