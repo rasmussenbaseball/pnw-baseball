@@ -86,7 +86,11 @@ def resolve_nwac_name(display_name):
 # ============================================================
 
 def build_team_id_map():
-    """Build a mapping of team short_name -> (team_id, conference_id, division_level)."""
+    """Build a mapping of team short_name -> list of (team_id, conference_id, division_level).
+
+    Some names are shared across divisions (e.g., 'Pacific' exists in both D1 and D3).
+    We store all entries and resolve by division when looking up.
+    """
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -102,13 +106,42 @@ def build_team_id_map():
     team_map = {}
     for row in rows:
         r = dict(row)
-        team_map[r["short_name"]] = {
+        entry = {
             "team_id": r["id"],
             "conference_id": r["conference_id"],
             "division_level": r["division_level"],
             "conference_name": r["conference_name"],
         }
+        name = r["short_name"]
+        if name not in team_map:
+            team_map[name] = entry
+        else:
+            # Store multiple entries as a list
+            existing = team_map[name]
+            if isinstance(existing, list):
+                existing.append(entry)
+            else:
+                team_map[name] = [existing, entry]
     return team_map
+
+
+def resolve_team(team_map, name, preferred_division=None):
+    """Look up a team by name, preferring the given division if there are duplicates."""
+    entry = team_map.get(name)
+    if entry is None:
+        return {}
+    if isinstance(entry, dict):
+        return entry
+    # Multiple entries - pick by division
+    if preferred_division:
+        for e in entry:
+            if e["division_level"] == preferred_division:
+                return e
+    # Fallback: prefer non-D1 (our focus is D2/D3/NAIA/JUCO)
+    for e in entry:
+        if e["division_level"] != "D1":
+            return e
+    return entry[0]
 
 
 # ============================================================
@@ -198,9 +231,10 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
         # Conference game?
         is_conference = game.get("conference", False)
 
-        # Resolve team IDs
-        team_info_db = team_map.get(team_name, {})
-        opp_info_db = team_map.get(opp_key, {})
+        # Resolve team IDs (prefer matching division for duplicate names)
+        div = team_info.get("division", "")
+        team_info_db = resolve_team(team_map, team_name, div)
+        opp_info_db = resolve_team(team_map, opp_key, div)
 
         if location == "home":
             home_team = team_name
@@ -347,8 +381,9 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             # Conference
             is_conf = bool(item.find(class_=re.compile(r"conference")))
 
-            team_info_db = team_map.get(team_name, {})
-            opp_info_db = team_map.get(opp_key, {})
+            div = team_info.get("division", "")
+            team_info_db = resolve_team(team_map, team_name, div)
+            opp_info_db = resolve_team(team_map, opp_key, div)
 
             if location == "home":
                 home_team, away_team = team_name, opp_key
@@ -430,9 +465,35 @@ def extract_future_nwac_games(season_year, today, team_map):
     rows = soup.find_all("tr")
     logger.info(f"NWAC: Found {len(rows)} table rows")
 
-    current_date = None
+    # Month name -> number mapping
+    MONTH_MAP = {
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12,
+    }
+
+    current_month = None  # Tracked from month header rows
+    current_year = season_year  # Academic year: fall = year-1, spring = year
+    current_day = None  # Last seen day number (for doubleheaders with empty date cells)
 
     for row in rows:
+        # Check for month header row: <tr class="month-title ...">
+        row_classes = " ".join(row.get("class", []))
+        if "month-title" in row_classes:
+            month_text = row.get_text(strip=True).lower()
+            for mname, mnum in MONTH_MAP.items():
+                if mname in month_text:
+                    current_month = mnum
+                    # Determine year: fall months (Aug-Dec) = season_year - 1
+                    if mnum >= 8:
+                        current_year = season_year - 1
+                    else:
+                        current_year = season_year
+                    current_day = None
+                    logger.debug(f"NWAC: Month header -> {month_text} ({current_year}-{current_month:02d})")
+                    break
+            continue
+
         cells = row.find_all("td")
         if len(cells) < 4:
             continue
@@ -451,69 +512,37 @@ def extract_future_nwac_games(season_year, today, team_map):
         if not away_name or not home_name:
             continue
 
+        # Parse date from date cell (uses month from header rows)
+        date_cell = row.find("td", class_="date")
+        if date_cell:
+            date_text = date_cell.get_text(strip=True)
+            day_match = re.search(r'(\d+)', date_text)
+            if day_match:
+                current_day = int(day_match.group(1))
+
+        # Also try extracting date from boxscore links (for completed games)
+        if links_cell:
+            link = links_cell.find("a", href=re.compile(r"boxscores/"))
+            if link:
+                href = link.get("href", "")
+                date_match = re.search(r"boxscores/(\d{4})(\d{2})(\d{2})_", href)
+                if date_match:
+                    current_month = int(date_match.group(2))
+                    current_day = int(date_match.group(3))
+                    current_year = int(date_match.group(1))
+
+        # Build game_date from tracked month + day
+        game_date = None
+        if current_month and current_day:
+            try:
+                game_date = dt_module.date(current_year, current_month, current_day)
+            except ValueError:
+                pass
+
         # Check status - skip completed games
         status_text = status_cell.get_text(strip=True) if status_cell else ""
         if "Final" in status_text:
-            # Still extract date from this row for tracking
-            if links_cell:
-                link = links_cell.find("a", href=re.compile(r"boxscores/"))
-                if link:
-                    href = link.get("href", "")
-                    date_match = re.search(r"boxscores/(\d{4})(\d{2})(\d{2})_", href)
-                    if date_match:
-                        try:
-                            current_date = dt_module.date(
-                                int(date_match.group(1)),
-                                int(date_match.group(2)),
-                                int(date_match.group(3)),
-                            )
-                        except ValueError:
-                            pass
             continue
-
-        # Parse date from links or date cell
-        game_date = None
-        if links_cell:
-            link = links_cell.find("a", href=re.compile(r"boxscores/|(\d{8})"))
-            if link:
-                href = link.get("href", "")
-                date_match = re.search(r"(\d{4})(\d{2})(\d{2})", href)
-                if date_match:
-                    try:
-                        game_date = dt_module.date(
-                            int(date_match.group(1)),
-                            int(date_match.group(2)),
-                            int(date_match.group(3)),
-                        )
-                        current_date = game_date
-                    except ValueError:
-                        pass
-
-        # Try date cell if no date from links
-        if not game_date:
-            date_cell = row.find("td", class_="date")
-            if date_cell:
-                date_text = date_cell.get_text(strip=True)
-                # Format varies: "Sun. 14", "Mon. 15", etc
-                day_match = re.search(r'(\d+)', date_text)
-                if day_match and current_date:
-                    day = int(day_match.group(1))
-                    try:
-                        # Use current_date's month/year as base, advance if needed
-                        test = current_date.replace(day=day)
-                        if test < current_date:
-                            # Probably next month
-                            if current_date.month == 12:
-                                test = test.replace(year=current_date.year + 1, month=1)
-                            else:
-                                test = test.replace(month=current_date.month + 1)
-                        game_date = test
-                        current_date = game_date
-                    except ValueError:
-                        pass
-
-        if not game_date:
-            game_date = current_date
 
         if not game_date or game_date <= today:
             continue
@@ -525,8 +554,8 @@ def extract_future_nwac_games(season_year, today, team_map):
         away_db = resolve_nwac_name(away_name)
         home_db = resolve_nwac_name(home_name)
 
-        away_info = team_map.get(away_db, {})
-        home_info = team_map.get(home_db, {})
+        away_info = resolve_team(team_map, away_db, "JUCO")
+        home_info = resolve_team(team_map, home_db, "JUCO")
 
         games.append({
             "game_date": game_date.isoformat(),
@@ -541,6 +570,175 @@ def extract_future_nwac_games(season_year, today, team_map):
         })
 
     logger.info(f"NWAC: {len(games)} future games found")
+    return games
+
+
+# ============================================================
+# Willamette (PrestoSports) Schedule Extraction
+# ============================================================
+
+# NWC team names for conference game detection
+NWC_TEAMS_SET_D3 = {
+    "UPS", "PLU", "Whitman", "Whitworth", "L&C", "Pacific",
+    "Linfield", "GFU", "Willamette",
+}
+
+def extract_future_willamette_games(season_year, today, team_map):
+    """
+    Extract future games for Willamette from their PrestoSports schedule page.
+    Willamette uses wubearcats.com with PrestoSports, not Sidearm.
+    The game-log page has a hitting table where future games show score = "-".
+    """
+    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
+    schedule_url = (
+        f"https://www.wubearcats.com/sports/bsb/{presto_season}"
+        f"/teams/willamette?view=schedule"
+    )
+
+    logger.info(f"Fetching Willamette schedule: {schedule_url}")
+    try:
+        resp = requests.get(schedule_url, timeout=30, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        logger.error(f"Failed to fetch Willamette schedule: {e}")
+        return []
+
+    if len(html) < 2000:
+        logger.warning("Willamette schedule page too small")
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Find the hitting game-log table (has "date", "opponent", "ab" headers)
+    tables = soup.find_all("table")
+    hitting_table = None
+    for table in tables:
+        header_row = table.find("tr")
+        if not header_row:
+            continue
+        header_text = header_row.get_text(strip=True).lower()
+        if "date" in header_text and "opponent" in header_text and "ab" in header_text:
+            hitting_table = table
+            break
+
+    if not hitting_table:
+        logger.warning("Willamette: Could not find hitting game-log table")
+        return []
+
+    rows = hitting_table.find_all("tr")
+    if len(rows) < 2:
+        return []
+
+    # Get headers
+    header_cells = rows[0].find_all(["th", "td"])
+    headers = [c.get_text(strip=True).lower() for c in header_cells]
+
+    games = []
+    current_date = None
+
+    for row in rows[1:]:
+        cells = row.find_all(["td", "th"])
+        if len(cells) < 3:
+            continue
+
+        vals = {}
+        for i, cell in enumerate(cells):
+            if i < len(headers):
+                vals[headers[i]] = cell.get_text(strip=True)
+
+        # Parse date (format: "Mon, Feb 1" or "Sat, Mar 15")
+        date_str = vals.get("date", "").strip()
+        if date_str:
+            # Try parsing "DayName, Mon DD" format
+            date_match = re.match(r'\w+,?\s+(\w+)\s+(\d+)', date_str)
+            if date_match:
+                month_str = date_match.group(1)
+                day_str = date_match.group(2)
+                for fmt in ("%b %d", "%B %d"):
+                    try:
+                        dt = datetime.strptime(f"{month_str} {day_str}", fmt)
+                        year = season_year
+                        # Fall games (Aug-Dec) use season_year - 1
+                        if dt.month >= 8:
+                            year = season_year - 1
+                        current_date = dt.replace(year=year).date()
+                        break
+                    except ValueError:
+                        continue
+
+        # Check score - future games have "-" or empty
+        score_str = vals.get("score", "").strip()
+        if score_str and score_str != "-":
+            # Game already played, skip
+            continue
+
+        if not current_date or current_date <= today:
+            continue
+
+        # Parse opponent
+        opponent = vals.get("opponent", "").strip()
+        if not opponent:
+            continue
+
+        # Skip summary rows
+        if opponent.lower() in ("overall", "conference", "home", "away",
+                                "neutral", "total", "wins", "losses"):
+            continue
+
+        # Detect home/away: "at Team" or "vs Team" or just "Team"
+        location = "home"
+        if opponent.lower().startswith("at "):
+            location = "away"
+            opponent = opponent[3:].strip()
+        elif opponent.lower().startswith("vs "):
+            opponent = opponent[3:].strip()
+
+        # Clean opponent name
+        opponent = re.sub(r'\s*\*+\s*$', '', opponent)  # Remove trailing asterisks
+        opponent = re.sub(r'^#\d+\s+', '', opponent).strip()  # Remove rankings
+
+        # Skip postseason placeholders
+        postseason_keywords = [
+            "tournament", "championship", "world series", "opening round",
+            "super regional", "playoff", "ncaa", "begins", "tba", "tbd",
+        ]
+        if any(kw in opponent.lower() for kw in postseason_keywords):
+            continue
+
+        opp_key = normalize_team_name(opponent)
+
+        # Conference game = opponent is an NWC team
+        is_conference = opp_key in NWC_TEAMS_SET_D3
+
+        # Resolve team IDs
+        willamette_info = resolve_team(team_map, "Willamette", "D3")
+        opp_info = resolve_team(team_map, opp_key, "D3")
+
+        if location == "home":
+            home_team, away_team = "Willamette", opp_key
+            home_id = willamette_info.get("team_id")
+            away_id = opp_info.get("team_id")
+        else:
+            home_team, away_team = opp_key, "Willamette"
+            home_id = opp_info.get("team_id")
+            away_id = willamette_info.get("team_id")
+
+        games.append({
+            "game_date": current_date.isoformat(),
+            "home_team": home_team,
+            "away_team": away_team,
+            "home_team_id": home_id,
+            "away_team_id": away_id,
+            "is_conference": is_conference,
+            "division": "D3",
+            "source_team": "Willamette",
+            "location": location,
+        })
+
+    logger.info(f"Willamette: {len(games)} future games found")
     return games
 
 
@@ -643,15 +841,22 @@ def main():
     except Exception as e:
         logger.error(f"Error scraping NWAC schedule: {e}")
 
-    # 3. Deduplicate
+    # 3. Scrape Willamette (PrestoSports - not in Sidearm)
+    try:
+        wil_games = extract_future_willamette_games(args.season, today, team_map)
+        all_games.extend(wil_games)
+    except Exception as e:
+        logger.error(f"Error scraping Willamette schedule: {e}")
+
+    # 4. Deduplicate
     before_count = len(all_games)
     all_games = deduplicate_future_games(all_games)
     logger.info(f"Deduplicated: {before_count} -> {len(all_games)} games")
 
-    # 4. Sort by date
+    # 5. Sort by date
     all_games.sort(key=lambda g: g["game_date"])
 
-    # 5. Write output
+    # 6. Write output
     output = {
         "last_updated": now_pacific.isoformat(),
         "season": args.season,
