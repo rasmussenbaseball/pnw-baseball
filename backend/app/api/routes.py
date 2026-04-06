@@ -2184,6 +2184,8 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             "xfip":          {"col": "ps.xfip",          "higher_better": False},
             "siera":         {"col": "ps.siera",         "higher_better": False},
             "lob_pct":       {"col": "ps.lob_pct",       "higher_better": True},
+            "h_per_9":       {"col": "ps.h_per_9",       "higher_better": False},
+            "hr_per_9":      {"col": "ps.hr_per_9",      "higher_better": False},
             "pitching_war":  {"col": "ps.pitching_war",  "higher_better": True},
             "k_bb_pct":      {"col": "COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0)", "higher_better": True},
         }
@@ -2406,6 +2408,8 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
             "xfip":          {"higher_better": False},
             "siera":         {"higher_better": False},
             "lob_pct":       {"higher_better": True},
+            "h_per_9":       {"higher_better": False},
+            "hr_per_9":      {"higher_better": False},
             "pitching_war":  {"higher_better": True},
             "k_bb_pct":      {"higher_better": True},
         }
@@ -2413,6 +2417,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
             """SELECT ps.player_id,
                       SUM(ps.innings_pitched) as ip, SUM(ps.earned_runs) as er,
                       SUM(ps.walks) as bb, SUM(ps.hits_allowed) as h,
+                      SUM(ps.home_runs_allowed) as hra,
                       SUM(ps.strikeouts) as k, SUM(ps.batters_faced) as bf,
                       SUM(ps.pitching_war) as pitching_war,
                       COUNT(DISTINCT ps.season) as num_seasons
@@ -2431,6 +2436,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
         for p in all_players:
             pd = dict(p)
             ip, bb, k, bf = pd["ip"], pd["bb"], pd["k"], pd["bf"]
+            h_a, hra = pd["h"], pd["hra"]
             k_pct = k / bf if bf > 0 else None
             bb_pct = bb / bf if bf > 0 else None
             league_stats.append({
@@ -2440,6 +2446,8 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                 "xfip": None,
                 "siera": None,
                 "lob_pct": None,
+                "h_per_9": (h_a / ip) * 9 if ip > 0 else None,
+                "hr_per_9": (hra / ip) * 9 if ip > 0 else None,
                 "pitching_war": pd["pitching_war"],
                 "k_bb_pct": (k_pct or 0) - (bb_pct or 0),
             })

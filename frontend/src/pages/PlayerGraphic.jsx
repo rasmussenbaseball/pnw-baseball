@@ -87,12 +87,12 @@ const PITCHING_PERCENTILE_METRICS = [
   { key: 'k_pct',         label: 'K%',    format: 'pct' },
   { key: 'bb_pct',        label: 'BB%',   format: 'pct' },
   { key: 'fip',           label: 'FIP',   format: 'era' },
-  { key: 'fip_plus',      label: 'FIP+',  format: 'int' },
-  { key: 'era_plus',      label: 'ERA+',  format: 'int' },
   { key: 'xfip',          label: 'xFIP',  format: 'era' },
   { key: 'siera',         label: 'SIERA', format: 'era' },
+  { key: 'lob_pct',       label: 'LOB%',  format: 'pct' },
   { key: 'pitching_war',  label: 'WAR',   format: 'war' },
-  { key: 'k_bb_pct',      label: 'K-BB%', format: 'pct' },
+  { key: 'h_per_9',       label: 'H/9',   format: 'era' },
+  { key: 'hr_per_9',      label: 'HR/9',  format: 'era' },
 ]
 
 const BATTING_CORE = [
@@ -227,8 +227,8 @@ function PercentileBar({ label, value, percentile, format }) {
 function StatCell({ label, value, format }) {
   return (
     <div className="text-center">
-      <div className="text-[8px] uppercase tracking-wider text-gray-400">{label}</div>
-      <div className="text-[13px] font-bold text-white leading-tight">{formatStat(value, format)}</div>
+      <div className="text-[9px] uppercase tracking-wider text-gray-400">{label}</div>
+      <div className="text-[15px] font-bold text-white leading-tight">{formatStat(value, format)}</div>
     </div>
   )
 }
@@ -279,28 +279,13 @@ export default function PlayerGraphic() {
   const pnwRankings = rawData?.pnw_rankings || []
   const awards = rawData?.awards || []
 
-  // Build leaderboard badges with context
-  const seasonLabel = activeSeason === 'career' ? 'Career' : `${activeSeason}`
-  const badges = []
-  for (const r of pnwRankings) {
-    if (r.rank <= 3) {
-      badges.push({ scope: `#${r.rank} in PNW · ${seasonLabel}`, rank: r.rank, category: r.category })
-    }
-  }
-  for (const a of awards) {
-    if (a.season === activeSeason || activeSeason === 'career') {
-      badges.push({ scope: `Team Leader · ${a.team_short || 'Team'}`, rank: 1, category: a.category })
-    }
-  }
-
   // Determine stat type
   const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
   const statsRow = isPitcher ? pitchingRow : battingRow
   const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
   const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
   const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 5)
-  const topBadges = badges.slice(0, 3)
+  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 9)
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -428,23 +413,6 @@ export default function PlayerGraphic() {
                     </div>
                   )}
 
-                  {/* Leaderboard badges */}
-                  {topBadges.length > 0 && (
-                    <>
-                      <div className="border-t border-white/[0.06]" />
-                      <div>
-                        <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Leaderboard</div>
-                        <div className={`grid gap-1.5 ${topBadges.length === 1 ? 'grid-cols-1' : topBadges.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                          {topBadges.map((b, i) => (
-                            <div key={i} className="rounded px-2 py-1" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                              <div className="text-[10px] font-bold text-white truncate">{b.category}</div>
-                              <div className="text-[7px] text-white/35 truncate">{b.scope}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-white/40 text-sm">No stats for this season.</div>
