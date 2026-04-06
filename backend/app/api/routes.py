@@ -4676,9 +4676,22 @@ def games_live():
                 ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
             """, (recent_start, today))
 
+            seen_nwac = set()  # Track (date, home, away, h_score, a_score) to skip DB dupes
             for row in cur.fetchall():
                 game_date_str = str(row["game_date"])
                 division = row["home_div"] or row["away_div"] or "JUCO"
+
+                # Skip duplicate DB records
+                dedup_key = (
+                    game_date_str,
+                    (row["home_name"] or "").lower(),
+                    (row["away_name"] or "").lower(),
+                    row["home_score"],
+                    row["away_score"],
+                )
+                if dedup_key in seen_nwac:
+                    continue
+                seen_nwac.add(dedup_key)
 
                 # Format as live-scores-style object (home team perspective)
                 nwac_game = {
