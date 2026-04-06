@@ -26,6 +26,7 @@ const NAV = [
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
       { to: '/team-history', label: 'History', desc: 'Historical team performance' },
+      { to: '/playoff-projections', label: 'Playoff Projections', desc: 'Projected standings & playoff fields' },
     ],
   },
   {

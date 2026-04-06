@@ -65,6 +65,7 @@ import FeatureRequest from './pages/FeatureRequest'
 import PlayerGraphic from './pages/PlayerGraphic'
 import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
+import PlayoffProjections from './pages/PlayoffProjections'
 
 export default function App() {
   return (
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="/summerball" element={<SummerballData />} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/records" element={<RecordsPage />} />
+          <Route path="/playoff-projections" element={<PlayoffProjections />} />
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />

@@ -25,6 +25,15 @@ from ..stats.advanced import (
     POSITION_ADJUSTMENTS_FULL,
 )
 from ..stats.ppi import compute_ppi_for_division
+from ..stats.projections import (
+    load_future_schedules,
+    project_remaining_games,
+    build_projected_standings,
+    determine_playoff_fields,
+    elo_win_prob,
+    PLAYOFF_FORMATS,
+    CONFERENCE_TO_FORMAT,
+)
 
 # Year groups: selecting "Fr" also matches "R-Fr", etc.
 _YEAR_GROUPS = {
@@ -1928,6 +1937,123 @@ def team_matchup(
         return {
             "teams": team_ratings,
             "matchups": matchups,
+        }
+
+
+# ── Playoff Projections ─────────────────────────────────────
+# Projects end-of-season records and playoff fields using power ratings
+# and future scheduled games.
+
+@router.get("/playoff-projections")
+def playoff_projections(
+    season: int = Query(..., description="Season year"),
+):
+    """
+    Project end-of-season standings and playoff fields for all PNW conferences.
+
+    Uses current records, power ratings, and remaining schedule to project:
+    - Final overall and conference records for each team
+    - Conference standings based on projected conference win%
+    - Playoff fields and seeding based on each league's format
+    """
+    # Load future schedules
+    future_data = load_future_schedules()
+    future_games = future_data.get("games", [])
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get current standings data (same query as /standings)
+        cur.execute("""
+            SELECT t.id, t.short_name, t.logo_url, t.city, t.state,
+                   c.id as conference_id, c.name as conference_name, c.abbreviation as conference_abbrev,
+                   d.id as division_id, d.name as division_name, d.level as division_level,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(s.conference_wins, 0) as conf_wins,
+                   COALESCE(s.conference_losses, 0) as conf_losses
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            WHERE t.is_active = 1
+            ORDER BY d.id, c.name, t.short_name
+        """, (season,))
+        standings_rows = [dict(r) for r in cur.fetchall()]
+
+        # Get power rating data for all teams
+        cur.execute("""
+            SELECT t.id, t.short_name, d.level as division_level,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(bat.rs, 0) as runs_scored,
+                   COALESCE(pit.ra, 0) as runs_allowed,
+                   COALESCE(bat.avg_wrc_plus, 100) as avg_wrc_plus,
+                   COALESCE(pit.avg_fip, 4.5) as avg_fip,
+                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as total_war,
+                   cr.national_percentile
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(runs) as rs,
+                    SUM(offensive_war) as total_owar,
+                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                FROM batting_stats WHERE season = %s
+                GROUP BY team_id
+            ) bat ON bat.team_id = t.id
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(runs_allowed) as ra,
+                    SUM(pitching_war) as total_pwar,
+                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                FROM pitching_stats WHERE season = %s
+                GROUP BY team_id
+            ) pit ON pit.team_id = t.id
+            LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
+            WHERE t.is_active = 1
+        """, (season, season, season, season))
+        rating_rows = cur.fetchall()
+
+        # Compute power ratings
+        team_ratings = {}
+        for r in rating_rows:
+            r = dict(r)
+            wins = r["wins"] or 0
+            losses = r["losses"] or 0
+            if wins + losses < 5:
+                continue
+
+            rating = _compute_power_rating(
+                wins, losses,
+                r["runs_scored"], r["runs_allowed"],
+                r["avg_wrc_plus"], r["avg_fip"], r["total_war"],
+                r["division_level"], r["national_percentile"],
+            )
+            if rating is not None:
+                team_ratings[r["id"]] = {
+                    "power_rating": rating,
+                    "short_name": r["short_name"],
+                    "division_level": r["division_level"],
+                }
+
+        # Project remaining games
+        projections = project_remaining_games(future_games, team_ratings)
+
+        # Build projected standings
+        projected_conferences = build_projected_standings(
+            standings_rows, projections, team_ratings
+        )
+
+        # Determine playoff fields
+        playoff_brackets = determine_playoff_fields(projected_conferences)
+
+        return {
+            "season": season,
+            "schedule_last_updated": future_data.get("last_updated"),
+            "total_future_games": len(future_games),
+            "conferences": projected_conferences,
+            "playoffs": playoff_brackets,
         }
 
 
