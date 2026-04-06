@@ -105,19 +105,22 @@ def parse_schedule_page(html, season_year):
     Parse the NWAC master schedule HTML table into game dicts.
 
     Each row has:
-      - date cell (may be empty for doubleheaders)
+      - date cell (day-of-week + day number only, e.g. "Sun. 14")
       - away team + conference indicator (*)
       - away score (class contains 'awayresult')
       - home team
       - home score (class contains 'homeresult')
       - status (Final, Final - 7 innings, etc.)
-      - links (box score URL)
+      - links (box score URL containing full date as YYYYMMDD)
+
+    Dates are extracted from box score URLs since the date cells
+    don't include the month.
     """
+    import datetime
+
     soup = BeautifulSoup(html, "html.parser")
     games = []
 
-    # Find all table rows that contain game data
-    # Look for rows with team cells
     rows = soup.find_all("tr")
     logger.info(f"Found {len(rows)} table rows total")
 
@@ -136,22 +139,10 @@ def parse_schedule_page(html, season_year):
         away_score_cell = row.find("td", class_=re.compile(r"awayresult"))
         home_score_cell = row.find("td", class_=re.compile(r"homeresult"))
         status_cell = row.find("td", class_="status")
-        date_cell = row.find("td", class_="date")
         links_cell = row.find("td", class_="links")
 
         # Must have both teams and scores
         if not away_team_cell or not home_team_cell:
-            continue
-
-        # Parse date
-        if date_cell:
-            date_text = date_cell.get_text(strip=True)
-            if date_text:
-                parsed_date = parse_schedule_date(date_text, season_year)
-                if parsed_date:
-                    current_date = parsed_date
-
-        if not current_date:
             continue
 
         # Parse team names (strip conference * and whitespace)
@@ -193,8 +184,10 @@ def parse_schedule_page(html, season_year):
         if innings_match:
             innings = int(innings_match.group(1))
 
-        # Parse box score URL
+        # Parse box score URL and extract date from it
         box_score_url = None
+        game_date = None
+
         if links_cell:
             link = links_cell.find("a", href=re.compile(r"boxscores/"))
             if link:
@@ -204,6 +197,28 @@ def parse_schedule_page(html, season_year):
                 elif href.startswith("http"):
                     box_score_url = href
 
+                # Extract date from URL: /boxscores/YYYYMMDD_xxxx.xml
+                date_match = re.search(r"boxscores/(\d{4})(\d{2})(\d{2})_", href)
+                if date_match:
+                    try:
+                        game_date = datetime.date(
+                            int(date_match.group(1)),
+                            int(date_match.group(2)),
+                            int(date_match.group(3)),
+                        )
+                        current_date = game_date
+                    except ValueError:
+                        pass
+
+        # Fall back to current_date for games without box score links
+        if not game_date:
+            game_date = current_date
+
+        if not game_date:
+            logger.warning(f"No date for game: {away_name} @ {home_name} -- skipping")
+            games_skipped += 1
+            continue
+
         # Resolve team names to DB short_names
         away_db_name = resolve_team_name(away_name)
         home_db_name = resolve_team_name(home_name)
@@ -212,14 +227,14 @@ def parse_schedule_page(html, season_year):
         game_number = 1
         if games:
             prev = games[-1]
-            if (prev["game_date"] == current_date
+            if (prev["game_date"] == game_date
                     and prev["away_team_name"] == away_db_name
                     and prev["home_team_name"] == home_db_name):
                 game_number = prev["game_number"] + 1
 
         game = {
             "season": season_year,
-            "game_date": current_date,
+            "game_date": game_date,
             "away_team_name": away_db_name,
             "home_team_name": home_db_name,
             "away_score": away_score,
@@ -236,41 +251,6 @@ def parse_schedule_page(html, season_year):
 
     logger.info(f"Parsed {games_parsed} completed games, skipped {games_skipped}")
     return games
-
-
-def parse_schedule_date(date_str, season_year):
-    """
-    Parse date strings from the NWAC schedule page.
-    Formats seen: 'Sep 14 (Sun)', 'Oct 4 (Sat)', 'Apr 5 (Sat)', etc.
-    """
-    import datetime
-
-    # Strip day-of-week in parentheses
-    date_str = re.sub(r"\s*\(.*?\)\s*", " ", date_str).strip()
-
-    # Try common formats
-    for fmt in ["%b %d", "%B %d", "%m/%d"]:
-        try:
-            parsed = datetime.datetime.strptime(date_str, fmt)
-            # Determine year: Aug-Dec = season_year - 1, Jan-Jul = season_year
-            if parsed.month >= 8:
-                year = season_year - 1
-            else:
-                year = season_year
-            return datetime.date(year, parsed.month, parsed.day)
-        except ValueError:
-            continue
-
-    # Try with year included
-    for fmt in ["%b %d, %Y", "%m/%d/%Y"]:
-        try:
-            parsed = datetime.datetime.strptime(date_str, fmt)
-            return parsed.date()
-        except ValueError:
-            continue
-
-    logger.warning(f"Could not parse date: '{date_str}'")
-    return None
 
 
 def resolve_team_ids(cur, games):
