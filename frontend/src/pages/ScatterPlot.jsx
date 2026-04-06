@@ -640,7 +640,116 @@ export default function ScatterPlot() {
         </div>
       )}
 
+      {/* ── Correlation to Win% Table ── */}
+      <CorrelationTable season={2026} divisionId={divisionId} />
+
       <StatsLastUpdated className="mt-4" />
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// CORRELATION TABLE — every stat vs Win%
+// ════════════════════════════════════════════
+function CorrelationTable({ season, divisionId }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ season })
+    if (divisionId) params.set('division_id', divisionId)
+    fetch(`${API_BASE}/teams/correlations?${params}`)
+      .then(r => r.json())
+      .then(data => { setRows(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [season, divisionId])
+
+  if (loading) return null
+  if (!rows.length) return null
+
+  const strengthLabel = (absR) => {
+    if (absR >= 0.7) return { text: 'Strong', color: 'text-emerald-600' }
+    if (absR >= 0.4) return { text: 'Moderate', color: 'text-amber-600' }
+    if (absR >= 0.2) return { text: 'Weak', color: 'text-gray-400' }
+    return { text: 'None', color: 'text-gray-300' }
+  }
+
+  const barColor = (r) => {
+    if (r >= 0.4) return 'bg-emerald-500'
+    if (r >= 0.2) return 'bg-emerald-300'
+    if (r <= -0.4) return 'bg-red-500'
+    if (r <= -0.2) return 'bg-red-300'
+    return 'bg-gray-300'
+  }
+
+  return (
+    <div className="mt-8 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h3 className="text-base font-bold text-gray-800">Correlation to Win %</h3>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Pearson r for each team stat vs. overall win percentage ({rows[0]?.n || ''} teams)
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <th className="px-5 py-2.5">Stat</th>
+              <th className="px-3 py-2.5">Group</th>
+              <th className="px-3 py-2.5 text-right">r</th>
+              <th className="px-3 py-2.5 w-48">Correlation</th>
+              <th className="px-3 py-2.5">Strength</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {rows.map((row) => {
+              const s = strengthLabel(row.abs_r)
+              const barW = Math.round(row.abs_r * 100)
+              return (
+                <tr key={row.stat} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-5 py-2 font-medium text-gray-800">{row.label}</td>
+                  <td className="px-3 py-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      row.group === 'Batting' ? 'bg-blue-50 text-blue-600' :
+                      row.group === 'Pitching' ? 'bg-orange-50 text-orange-600' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {row.group}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-xs font-semibold">
+                    <span className={row.r >= 0 ? 'text-emerald-600' : 'text-red-500'}>
+                      {row.r >= 0 ? '+' : ''}{row.r.toFixed(3)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1">
+                      {row.r < 0 && (
+                        <div className="flex justify-end" style={{ width: '50%' }}>
+                          <div className={`h-2.5 rounded-full ${barColor(row.r)}`}
+                               style={{ width: `${barW}%`, minWidth: barW > 0 ? '4px' : '0' }} />
+                        </div>
+                      )}
+                      {row.r < 0 && <div className="w-px h-4 bg-gray-300 shrink-0" />}
+                      {row.r >= 0 && <div style={{ width: '50%' }} />}
+                      {row.r >= 0 && <div className="w-px h-4 bg-gray-300 shrink-0" />}
+                      {row.r >= 0 && (
+                        <div className="flex justify-start" style={{ width: '50%' }}>
+                          <div className={`h-2.5 rounded-full ${barColor(row.r)}`}
+                               style={{ width: `${barW}%`, minWidth: barW > 0 ? '4px' : '0' }} />
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className={`px-3 py-2 text-xs font-semibold ${s.color}`}>{s.text}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

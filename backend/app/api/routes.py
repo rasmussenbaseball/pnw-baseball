@@ -1388,6 +1388,186 @@ def team_scatter(
         return results
 
 
+@router.get("/teams/correlations")
+def team_correlations(
+    season: int = Query(..., description="Season year"),
+    division_id: Optional[int] = Query(None, description="Filter by division"),
+):
+    """
+    Compute Pearson r between every stat and win% for a correlation table.
+    Returns a list of {stat, label, group, r, abs_r, n} sorted by |r| descending.
+    """
+    import math as _math
+
+    stat_meta = [
+        ("team_avg", "Team AVG", "Batting"),
+        ("team_obp", "Team OBP", "Batting"),
+        ("team_slg", "Team SLG", "Batting"),
+        ("team_ops", "Team OPS", "Batting"),
+        ("avg_woba", "Avg wOBA", "Batting"),
+        ("avg_wrc_plus", "Avg wRC+", "Batting"),
+        ("avg_iso", "Avg ISO", "Batting"),
+        ("total_hr", "Total HR", "Batting"),
+        ("total_runs", "Total Runs", "Batting"),
+        ("total_sb", "Total SB", "Batting"),
+        ("avg_bb_pct", "BB% (Batting)", "Batting"),
+        ("avg_k_pct", "K% (Batting)", "Batting"),
+        ("total_owar", "Offensive WAR", "Batting"),
+        ("team_era", "Team ERA", "Pitching"),
+        ("team_whip", "Team WHIP", "Pitching"),
+        ("avg_fip", "Avg FIP", "Pitching"),
+        ("avg_xfip", "Avg xFIP", "Pitching"),
+        ("total_k", "Total K (Pitching)", "Pitching"),
+        ("pitching_k_pct", "K% (Pitching)", "Pitching"),
+        ("pitching_bb_pct", "BB% (Pitching)", "Pitching"),
+        ("pitching_k_bb_pct", "K-BB% (Pitching)", "Pitching"),
+        ("total_pwar", "Pitching WAR", "Pitching"),
+        ("total_war", "Total WAR", "Overall"),
+        ("run_diff", "Run Differential", "Overall"),
+    ]
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get teams
+        team_q = """
+            SELECT t.id, t.short_name, d.level as division_level
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE t.is_active = 1
+        """
+        t_params = []
+        if division_id:
+            team_q += " AND c.division_id = %s"
+            t_params.append(division_id)
+        cur.execute(team_q, t_params)
+        teams = cur.fetchall()
+
+        # Get records
+        cur.execute(
+            "SELECT team_id, wins, losses FROM team_season_stats WHERE season = %s",
+            (season,),
+        )
+        rec_map = {r["team_id"]: r for r in cur.fetchall()}
+
+        # For each team, compute all stats + win%
+        team_data = []
+        for team in teams:
+            tid = team["id"]
+            rec = rec_map.get(tid)
+            if not rec:
+                continue
+            total_games = (rec["wins"] or 0) + (rec["losses"] or 0)
+            if total_games < 5:
+                continue
+            win_pct = rec["wins"] / total_games
+
+            cur.execute(
+                """SELECT SUM(plate_appearances) as pa, SUM(at_bats) as ab,
+                       SUM(hits) as h, SUM(doubles) as d2b, SUM(triples) as d3b,
+                       SUM(home_runs) as hr, SUM(runs) as r, SUM(walks) as bb,
+                       SUM(hit_by_pitch) as hbp, SUM(strikeouts) as k,
+                       SUM(stolen_bases) as sb,
+                       AVG(woba) as avg_woba, AVG(wrc_plus) as avg_wrc_plus,
+                       AVG(iso) as avg_iso, AVG(bb_pct) as avg_bb_pct,
+                       AVG(k_pct) as avg_k_pct, SUM(offensive_war) as total_owar
+                   FROM batting_stats
+                   WHERE team_id = %s AND season = %s AND plate_appearances >= 10""",
+                (tid, season),
+            )
+            b = cur.fetchone()
+            if not b or not b["ab"]:
+                continue
+
+            cur.execute(
+                """SELECT SUM(innings_pitched) as ip, SUM(earned_runs) as er,
+                       SUM(runs_allowed) as ra,
+                       SUM(walks) as bb, SUM(hits_allowed) as h,
+                       SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
+                       AVG(fip) as avg_fip, AVG(xfip) as avg_xfip,
+                       AVG(k_pct) as avg_k_pct, AVG(bb_pct) as avg_bb_pct,
+                       SUM(pitching_war) as total_pwar
+                   FROM pitching_stats
+                   WHERE team_id = %s AND season = %s AND innings_pitched >= 3""",
+                (tid, season),
+            )
+            p = cur.fetchone()
+
+            ab = b["ab"] or 1
+            pa = b["pa"] or 1
+            ip = (p["ip"] or 0) if p else 0
+
+            vals = {"win_pct": win_pct}
+            vals["team_avg"] = b["h"] / ab if ab else None
+            vals["team_obp"] = (b["h"] + b["bb"] + b["hbp"]) / pa if pa else None
+            tb = (b["h"] - b["d2b"] - b["d3b"] - b["hr"]) + 2 * b["d2b"] + 3 * b["d3b"] + 4 * b["hr"]
+            vals["team_slg"] = tb / ab if ab else None
+            vals["team_ops"] = (vals["team_obp"] or 0) + (vals["team_slg"] or 0) if vals["team_obp"] and vals["team_slg"] else None
+            vals["avg_woba"] = float(b["avg_woba"]) if b["avg_woba"] else None
+            vals["avg_wrc_plus"] = float(b["avg_wrc_plus"]) if b["avg_wrc_plus"] else None
+            vals["avg_iso"] = float(b["avg_iso"]) if b["avg_iso"] else None
+            vals["total_hr"] = b["hr"]
+            vals["total_runs"] = b["r"]
+            vals["total_sb"] = b["sb"]
+            vals["avg_bb_pct"] = float(b["avg_bb_pct"]) if b["avg_bb_pct"] else None
+            vals["avg_k_pct"] = float(b["avg_k_pct"]) if b["avg_k_pct"] else None
+            vals["total_owar"] = float(b["total_owar"]) if b["total_owar"] else 0
+
+            vals["team_era"] = (p["er"] * 9 / ip) if p and ip > 0 else None
+            vals["team_whip"] = ((p["bb"] + p["h"]) / ip) if p and ip > 0 else None
+            vals["avg_fip"] = float(p["avg_fip"]) if p and p["avg_fip"] else None
+            vals["avg_xfip"] = float(p["avg_xfip"]) if p and p["avg_xfip"] else None
+            vals["total_k"] = p["k"] if p else None
+            vals["pitching_k_pct"] = float(p["avg_k_pct"]) if p and p["avg_k_pct"] else None
+            vals["pitching_bb_pct"] = float(p["avg_bb_pct"]) if p and p["avg_bb_pct"] else None
+            vals["pitching_k_bb_pct"] = (float(p["avg_k_pct"]) - float(p["avg_bb_pct"])) if p and p["avg_k_pct"] and p["avg_bb_pct"] else None
+            vals["total_pwar"] = float(p["total_pwar"]) if p and p["total_pwar"] else 0
+            vals["total_war"] = vals["total_owar"] + vals["total_pwar"]
+            ra = (p["ra"] or p["er"] or 0) if p else 0
+            vals["run_diff"] = (b["r"] or 0) - ra
+
+            team_data.append(vals)
+
+        # Compute Pearson r for each stat vs win%
+        def _pearson(xs, ys):
+            n = len(xs)
+            if n < 3:
+                return None
+            sx = sum(xs)
+            sy = sum(ys)
+            sxy = sum(x * y for x, y in zip(xs, ys))
+            sx2 = sum(x * x for x in xs)
+            sy2 = sum(y * y for y in ys)
+            num = n * sxy - sx * sy
+            den = _math.sqrt((n * sx2 - sx * sx) * (n * sy2 - sy * sy))
+            return num / den if den > 0 else 0
+
+        results = []
+        win_pcts = [d["win_pct"] for d in team_data]
+
+        for stat_key, label, group in stat_meta:
+            pairs = [(d[stat_key], d["win_pct"]) for d in team_data if d.get(stat_key) is not None]
+            if len(pairs) < 5:
+                continue
+            xs = [p[0] for p in pairs]
+            ys = [p[1] for p in pairs]
+            r_val = _pearson(xs, ys)
+            if r_val is None:
+                continue
+            results.append({
+                "stat": stat_key,
+                "label": label,
+                "group": group,
+                "r": round(r_val, 3),
+                "abs_r": round(abs(r_val), 3),
+                "n": len(pairs),
+            })
+
+        results.sort(key=lambda x: x["abs_r"], reverse=True)
+        return results
+
+
 @router.get("/teams/{team_id}")
 def get_team(team_id: int):
     """Get detailed info for a single team."""
