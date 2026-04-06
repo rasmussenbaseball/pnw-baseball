@@ -82,20 +82,18 @@ def resolve_nwac_name(display_name):
 
 def build_team_id_map():
     """Build a mapping of team short_name -> (team_id, conference_id, division_level)."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT t.id, t.short_name, t.conference_id,
-               d.level as division_level, c.name as conference_name
-        FROM teams t
-        JOIN conferences c ON t.conference_id = c.id
-        JOIN divisions d ON c.division_id = d.id
-        WHERE t.is_active = 1
-    """)
-    rows = cur.fetchall()
-    cols = [desc[0] for desc in cur.description]
-    cur.close()
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.id, t.short_name, t.conference_id,
+                   d.level as division_level, c.name as conference_name
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE t.is_active = 1
+        """)
+        rows = cur.fetchall()
+        cols = [desc[0] for desc in cur.description]
 
     team_map = {}
     for row in rows:
