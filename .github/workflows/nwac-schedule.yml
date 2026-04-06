@@ -1,0 +1,32 @@
+name: NWAC Schedule Scraper
+
+on:
+  schedule:
+    # Run daily at 8 AM Pacific (3 PM UTC) during baseball season
+    - cron: '0 15 * * *'
+  workflow_dispatch:  # Allow manual runs
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 psycopg2-binary python-dotenv
+
+      - name: Scrape NWAC schedule
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEASON_YEAR: '2026'
+        run: |
+          cd $GITHUB_WORKSPACE
+          PYTHONPATH=backend python3 scripts/scrape_nwac_schedule.py
