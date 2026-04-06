@@ -1024,6 +1024,24 @@ export default function PlayerDetail() {
               <div><span className="text-gray-400">Prev</span> <span className="font-medium">{player.previous_school}</span></div>
             )}
           </div>
+
+          {/* Commitment status — NWAC/JUCO players only */}
+          {player.division_level === 'JUCO' && (
+            <div className="mt-2">
+              {player.is_committed && player.committed_to ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-sm font-semibold text-green-700">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Committed to {player.committed_to}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-50 border border-gray-200 text-sm font-medium text-gray-500">
+                  Uncommitted
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
