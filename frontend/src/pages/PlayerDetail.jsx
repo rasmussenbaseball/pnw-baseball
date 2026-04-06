@@ -24,6 +24,8 @@ const PITCHING_PERCENTILE_METRICS = [
   { key: 'xfip',         label: 'xFIP',   format: 'era' },
   { key: 'siera',        label: 'SIERA',  format: 'era' },
   { key: 'lob_pct',      label: 'LOB%',   format: 'pct' },
+  { key: 'h_per_9',      label: 'H/9',    format: 'era' },
+  { key: 'hr_per_9',     label: 'HR/9',   format: 'era' },
   { key: 'pitching_war', label: 'WAR',    format: 'war' },
   { key: 'k_bb_pct',     label: 'K-BB%',  format: 'pct' },
 ]
@@ -966,6 +968,17 @@ export default function PlayerDetail() {
                 )}
               </h1>
               <FavoriteButton type="player" targetId={player.id} />
+              <Link
+                to={`/player-graphic?id=${player.id}`}
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-nw-teal bg-teal-50 hover:bg-teal-100 rounded transition-colors"
+                title="View shareable player graphic"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 10.07 4h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 18.07 7H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
+                  <circle cx="12" cy="13" r="3" />
+                </svg>
+                Player Page
+              </Link>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-sm text-gray-600">
               <Link
