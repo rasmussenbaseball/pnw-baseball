@@ -1108,7 +1108,7 @@ def stat_records(
             SELECT bs.team_id, t.short_name as team_short, t.logo_url,
                    d.level as division_level, bs.season,
                    CASE WHEN SUM(bs.at_bats) > 0
-                        THEN ROUND(SUM(bs.hits)::numeric / SUM(bs.at_bats), 3) END as avg,
+                        THEN ROUND(SUM(bs.hits)::numeric / SUM(bs.at_bats)::numeric, 3) END as avg,
                    SUM(bs.runs) as total_runs,
                    SUM(bs.home_runs) as total_hr,
                    SUM(bs.stolen_bases) as total_sb,
@@ -1118,7 +1118,7 @@ def stat_records(
                    CASE WHEN SUM(bs.plate_appearances) > 0
                         THEN ROUND(
                           SUM(bs.wrc_plus * bs.plate_appearances)::numeric
-                          / SUM(bs.plate_appearances), 1)
+                          / SUM(bs.plate_appearances)::numeric, 1)
                         END as avg_wrc_plus
             FROM batting_stats bs
             JOIN teams t ON bs.team_id = t.id
@@ -1134,13 +1134,13 @@ def stat_records(
             SELECT ps.team_id, t.short_name as team_short, t.logo_url,
                    d.level as division_level, ps.season,
                    CASE WHEN SUM(ps.innings_pitched) > 0
-                        THEN ROUND((SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched)) * 9, 2) END as team_era,
+                        THEN ROUND((SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched)::numeric) * 9, 2) END as team_era,
                    CASE WHEN SUM(ps.innings_pitched) > 0
-                        THEN ROUND((SUM(ps.walks + ps.hits_allowed)::numeric / SUM(ps.innings_pitched)), 2) END as team_whip,
+                        THEN ROUND(SUM(ps.walks + ps.hits_allowed)::numeric / SUM(ps.innings_pitched)::numeric, 2) END as team_whip,
                    CASE WHEN SUM(ps.innings_pitched) > 0
                         THEN ROUND(
                           SUM(ps.fip * ps.innings_pitched)::numeric
-                          / SUM(ps.innings_pitched), 2)
+                          / SUM(ps.innings_pitched)::numeric, 2)
                         END as avg_fip,
                    SUM(ps.strikeouts) as total_k,
                    SUM(ps.saves) as total_saves,
