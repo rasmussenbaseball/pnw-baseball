@@ -65,9 +65,13 @@ def recalculate_all(season: int, verbose: bool = False):
                       COALESCE(bs.stolen_bases, 0) as stolen_bases,
                       COALESCE(bs.caught_stealing, 0) as caught_stealing,
                       COALESCE(bs.grounded_into_dp, 0) as grounded_into_dp,
-                      p.position, p.first_name, p.last_name
+                      p.position, p.first_name, p.last_name,
+                      d.level as division_level
                FROM batting_stats bs
                JOIN players p ON bs.player_id = p.id
+               JOIN teams t ON bs.team_id = t.id
+               JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id
                WHERE bs.season = %s""",
             (season,),
         )
@@ -104,10 +108,11 @@ def recalculate_all(season: int, verbose: bool = False):
                 cs=b["caught_stealing"],
                 gidp=b["grounded_into_dp"],
             )
-            adv = compute_batting_advanced(line, division_level="JUCO")
+            level = b["division_level"]
+            adv = compute_batting_advanced(line, division_level=level)
             war = compute_college_war(
                 batting=adv, position=norm_pos,
-                plate_appearances=pa, division_level="JUCO",
+                plate_appearances=pa, division_level=level,
             )
 
             cur.execute(
@@ -150,9 +155,13 @@ def recalculate_all(season: int, verbose: bool = False):
                       ps.wins, ps.losses, ps.saves,
                       ps.games, ps.games_started,
                       COALESCE(ps.runs_allowed, 0) as runs_allowed,
-                      p.first_name, p.last_name
+                      p.first_name, p.last_name,
+                      d.level as division_level
                FROM pitching_stats ps
                JOIN players p ON ps.player_id = p.id
+               JOIN teams t ON ps.team_id = t.id
+               JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id
                WHERE ps.season = %s""",
             (season,),
         )
@@ -186,7 +195,8 @@ def recalculate_all(season: int, verbose: bool = False):
                 games=p["games"] or 0,
                 gs=p["games_started"] or 0,
             )
-            adv = compute_pitching_advanced(line, division_level="JUCO")
+            level = p["division_level"]
+            adv = compute_pitching_advanced(line, division_level=level)
 
             cur.execute(
                 """UPDATE pitching_stats SET

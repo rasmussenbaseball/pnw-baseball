@@ -104,8 +104,12 @@ run_step "National ratings (Pear + CBR)" \
 run_step "Recalculate league-adjusted stats (wRC+, FIP+, ERA-)" \
     python3 scripts/recalculate_league_adjusted.py --season "$SEASON"
 
-run_step "Recalculate WAR" \
-    python3 scripts/recalculate_war.py --season "$SEASON"
+# NOTE: recalculate_war.py is NOT run here.
+# recalculate_league_adjusted.py (above) already computes WAR using
+# real league averages.  Running recalculate_war.py after it would
+# overwrite correct values with hardcoded defaults, causing WAR to
+# oscillate between runs.  Only use recalculate_war.py manually if
+# the WAR *formula* itself changes (and fix its division_level first).
 
 # ── Headshots ─────────────────────────────────────────────
 # Headshots are stored in /opt/headshots/ (outside git repo) and persist
