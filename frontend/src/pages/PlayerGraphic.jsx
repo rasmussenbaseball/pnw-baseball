@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
 
@@ -239,9 +238,9 @@ function StatCell({ label, value, format }) {
 // MAIN PAGE COMPONENT
 // ═══════════════════════════════════════════════════════════════
 export default function PlayerGraphic() {
-  const [searchParams] = useSearchParams()
   const [playerId, setPlayerId] = useState(() => {
-    const id = searchParams.get('id')
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('id')
     return id ? Number(id) : null
   })
   const [selectedSeason, setSelectedSeason] = useState('latest')
