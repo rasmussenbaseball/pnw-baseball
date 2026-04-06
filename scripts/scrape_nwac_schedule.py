@@ -145,9 +145,9 @@ def parse_schedule_page(html, season_year):
         if not away_team_cell or not home_team_cell:
             continue
 
-        # Parse team names (strip conference * and whitespace)
-        away_name = away_team_cell.get_text(strip=True).rstrip("*").strip()
-        home_name = home_team_cell.get_text(strip=True).rstrip("*").strip()
+        # Parse team names (strip conference *, ^, #, and whitespace)
+        away_name = away_team_cell.get_text(strip=True).rstrip("*^# ").strip()
+        home_name = home_team_cell.get_text(strip=True).rstrip("*^# ").strip()
 
         if not away_name or not home_name:
             continue
