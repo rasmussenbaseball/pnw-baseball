@@ -15,12 +15,15 @@ function formatTimestamp(isoString) {
   const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
+  const pacific = { timeZone: 'America/Los_Angeles' }
   const timeStr = d.toLocaleTimeString('en-US', {
+    ...pacific,
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   })
   const dateStr = d.toLocaleDateString('en-US', {
+    ...pacific,
     month: 'short',
     day: 'numeric',
   })
@@ -63,7 +66,7 @@ export default function StatsLastUpdated({ levels, className = '' }) {
   return (
     <div className={`flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400 ${className}`}>
       {entries.map(([level, ts]) => (
-        <span key={level} title={new Date(ts).toLocaleString()}>
+        <span key={level} title={new Date(ts).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }) + ' PT'}>
           <span className="font-medium text-gray-500">{LEVEL_LABELS[level] || level}:</span>{' '}
           {formatTimestamp(ts)}
         </span>
