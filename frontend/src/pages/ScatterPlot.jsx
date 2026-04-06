@@ -309,7 +309,7 @@ export default function ScatterPlot() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-5">
         <div className="flex flex-wrap gap-4 items-end">
           <Select label="X-Axis" value={xStat} onChange={(e) => setXStat(e.target.value)}>
-            {['Batting', 'Pitching', 'Overall'].map(group => (
+            {['Record', 'Batting', 'Pitching', 'Overall'].map(group => (
               <optgroup key={group} label={group}>
                 {STAT_OPTIONS.filter(s => s.group === group).map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
@@ -319,7 +319,7 @@ export default function ScatterPlot() {
           </Select>
 
           <Select label="Y-Axis" value={yStat} onChange={(e) => setYStat(e.target.value)}>
-            {['Batting', 'Pitching', 'Overall'].map(group => (
+            {['Record', 'Batting', 'Pitching', 'Overall'].map(group => (
               <optgroup key={group} label={group}>
                 {STAT_OPTIONS.filter(s => s.group === group).map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
