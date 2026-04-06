@@ -2197,7 +2197,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             WHERE d.level = %s AND ps.season = %s
-              AND ps.innings_pitched >= 5
+              AND ps.innings_pitched >= 20
               AND {col} IS NOT NULL
             ORDER BY {col}
         """
