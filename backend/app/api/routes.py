@@ -1457,25 +1457,15 @@ def team_matchup(
                 win_prob_a = _elo_win_prob(a["power_rating"], b["power_rating"])
                 win_prob_b = 1.0 - win_prob_a
 
-                # --- Run spread from win probability (logit-based) ---
-                # More accurate than raw rating difference because the Elo
-                # curve is already calibrated to real cross-division results.
-                # logit(p) * 3.0 produces:
-                #   90% favorite -> +6.5 runs
-                #   75% favorite -> +3.2 runs
-                #   60% favorite -> +1.2 runs
-                wp_clamped = max(0.005, min(0.995, win_prob_a))
-                logit = math.log(wp_clamped / (1.0 - wp_clamped))
-                rpg_a = _RPG.get(a["division_level"], 5.5)
-                rpg_b = _RPG.get(b["division_level"], 5.5)
-                avg_rpg = (rpg_a + rpg_b) / 2.0
-                spread = round(logit * 3.0 * (avg_rpg / 5.5), 1)
-
                 # --- Projected run total (over/under) ---
                 # Base: league-average RPG for the combined division environment
                 # Adjust by each team's offensive quality (wRC+) and
                 # opponent's pitching quality (FIP), dampened with sqrt
                 # to prevent extreme compounding.
+                rpg_a = _RPG.get(a["division_level"], 5.5)
+                rpg_b = _RPG.get(b["division_level"], 5.5)
+                avg_rpg = (rpg_a + rpg_b) / 2.0
+
                 wrc_a = a["components"]["wrc_plus"] or 100
                 wrc_b = b["components"]["wrc_plus"] or 100
                 fip_a = a["components"]["fip"] or 4.5
@@ -1486,10 +1476,28 @@ def team_matchup(
                 pit_a = math.sqrt(fip_a / 4.5)   # >1 = worse pitching
                 pit_b = math.sqrt(fip_b / 4.5)
 
-                # Team A runs = base * their offense * opponent pitching weakness
-                proj_runs_a = round(avg_rpg * off_a * pit_b, 1)
-                proj_runs_b = round(avg_rpg * off_b * pit_a, 1)
-                proj_total = round((proj_runs_a + proj_runs_b) * 2) / 2  # nearest 0.5
+                # Raw projected runs per team
+                raw_runs_a = avg_rpg * off_a * pit_b
+                raw_runs_b = avg_rpg * off_b * pit_a
+                proj_total = round((raw_runs_a + raw_runs_b) * 2) / 2  # nearest 0.5
+
+                # --- Run spread from win probability (logit-based) ---
+                # logit(p) * 3.0 produces:
+                #   90% favorite -> +6.5 runs, 75% -> +3.2, 60% -> +1.2
+                wp_clamped = max(0.005, min(0.995, win_prob_a))
+                logit = math.log(wp_clamped / (1.0 - wp_clamped))
+                spread = round(logit * 3.0 * (avg_rpg / 5.5), 1)
+
+                # --- Derive per-team runs from total + spread ---
+                # This ensures projected runs are mathematically consistent:
+                #   proj_runs_a = (total + spread) / 2
+                #   proj_runs_b = (total - spread) / 2
+                proj_runs_a = round((proj_total + spread) / 2, 1)
+                proj_runs_b = round((proj_total - spread) / 2, 1)
+                # Floor at 0 (a team can't score negative runs)
+                if proj_runs_b < 0:
+                    proj_runs_b = 0.0
+                    proj_runs_a = proj_total
 
                 matchups.append({
                     "team_a": a["team_id"],
