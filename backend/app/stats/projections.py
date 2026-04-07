@@ -661,36 +661,48 @@ def build_projected_standings(current_standings, projections, team_ratings):
             }
         conferences[conf_key]["teams"].append(projected_team)
 
-    # Normalize conference totals: if a team's schedule data is significantly
-    # incomplete (3+ fewer conference games than the conference median),
-    # pad with .500-projected "unscheduled" games.  Small differences (1-2
-    # games) are normal timing gaps (one team played yesterday, another
-    # plays tomorrow) and should NOT be padded — padding them inflates
-    # game counts and distorts projections.
+    # Normalize conference totals for NWAC divisions ONLY.
+    # NWAC teams often have incomplete schedule data because the WAF blocks
+    # server-side scraping, so some teams show 0-4 games while others show
+    # 20+.  We pad those incomplete teams to match the max active team.
+    # CCC, NWC, and GNAC have reliable per-team schedule data and do NOT
+    # need normalization — small 1-2 game timing gaps are expected and
+    # should be left as-is.
     for conf in conferences.values():
         if conf.get("division_level") == "D1":
             continue  # skip D1 — we don't project them
 
-        # Use the median total (played + remaining) as the expected count.
-        # Median is robust against outlier teams that have extra/missing
-        # games due to scraper issues or schedule quirks.
-        totals = sorted(
-            (team["current_conf_wins"] + team["current_conf_losses"]
-             + team["conf_games_remaining"])
-            for team in conf["teams"]
-        )
-        if not totals:
+        # Only normalize NWAC divisions (NWAC-E, NWAC-N, NWAC-S, NWAC-W)
+        conf_abbrev = conf.get("conference_abbrev", "")
+        if not conf_abbrev.startswith("NWAC"):
             continue
-        mid = len(totals) // 2
-        median_total = totals[mid] if len(totals) % 2 else (totals[mid - 1] + totals[mid]) // 2
 
-        # Only pad teams that are 3+ games below the median (truly missing data).
-        # 1-2 game differences are normal timing gaps, not missing data.
+        # Find the max total from ACTIVE teams only (exclude teams with
+        # 0 played AND 0 remaining — those are inactive/not competing).
+        max_conf_total = 0
         for team in conf["teams"]:
-            total = (team["current_conf_wins"] + team["current_conf_losses"]
-                     + team["conf_games_remaining"])
-            deficit = median_total - total
-            if deficit >= 3:
+            played = team["current_conf_wins"] + team["current_conf_losses"]
+            remaining = team["conf_games_remaining"]
+            if played == 0 and remaining == 0:
+                continue  # skip inactive teams like GRC
+            total = played + remaining
+            if total > max_conf_total:
+                max_conf_total = total
+
+        if max_conf_total == 0:
+            continue
+
+        # Pad teams that are 3+ games below the max active team.
+        threshold = 3
+
+        for team in conf["teams"]:
+            played = team["current_conf_wins"] + team["current_conf_losses"]
+            remaining = team["conf_games_remaining"]
+            if played == 0 and remaining == 0:
+                continue  # don't pad inactive teams
+            total = played + remaining
+            deficit = max_conf_total - total
+            if deficit >= threshold:
                 half = deficit * 0.5
                 team["conf_games_remaining"] += deficit
                 team["games_remaining"] += deficit
