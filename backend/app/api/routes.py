@@ -2057,6 +2057,7 @@ def playoff_projections(
                 tid = team["team_id"]
                 mc = mc_results.get(tid, {})
                 team["playoff_pct"] = mc.get("playoff_pct", 0)
+                team["tourney_win_pct"] = mc.get("tourney_win_pct", 0)
                 team["seed_probabilities"] = mc.get("seed_probabilities", {})
 
         # Determine playoff fields
@@ -2068,6 +2069,7 @@ def playoff_projections(
                 tid = team["team_id"]
                 mc = mc_results.get(tid, {})
                 team["playoff_pct"] = mc.get("playoff_pct", 0)
+                team["tourney_win_pct"] = mc.get("tourney_win_pct", 0)
                 team["seed_probabilities"] = mc.get("seed_probabilities", {})
 
         return {

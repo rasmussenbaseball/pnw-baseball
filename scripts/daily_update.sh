@@ -98,6 +98,12 @@ run_step "Team records & standings" \
 run_step "National ratings (Pear + CBR)" \
     python3 scripts/scrape_national_ratings.py --season "$SEASON"
 
+# ── Step 4b: Scrape future schedules (for playoff projections) ──
+# Pulls remaining schedule data used by the playoff projections page.
+
+run_step "Future schedules (playoff projections)" \
+    python3 scripts/scrape_future_schedules.py --season "$SEASON"
+
 # ── Step 5: Recalculate advanced metrics ───────────────────
 # Must run AFTER all stats are loaded so league averages are current.
 

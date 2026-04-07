@@ -105,6 +105,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
               <th className="text-center px-1 py-1.5 font-semibold" title="Remaining conference games">Rem. Conf</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Power rating">PWR</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[70px]" title="Playoff probability">Playoff %</th>
+              <th className="text-center px-1 py-1.5 font-semibold min-w-[52px]" title="Probability of winning conference tournament">Win Trny</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[52px]" title="Miss playoffs probability">Miss %</th>
               {/* Seed probability columns */}
               {Array.from({ length: maxSeed }, (_, i) => (
@@ -178,6 +179,20 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
                   </td>
                   <td className="px-1 py-1.5">
                     <OddsBar pct={playoffPct} />
+                  </td>
+                  <td className="text-center px-1 py-1.5">
+                    {(() => {
+                      const twp = team.tourney_win_pct || 0
+                      return (
+                        <span className={`text-[10px] font-bold ${
+                          twp >= 0.2 ? 'text-purple-700' :
+                          twp >= 0.05 ? 'text-purple-500' :
+                          twp > 0 ? 'text-gray-400' : 'text-gray-200'
+                        }`}>
+                          {formatOdds(twp)}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="text-center px-1 py-1.5">
                     <span className={`text-[10px] font-bold ${

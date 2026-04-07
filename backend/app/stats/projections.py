@@ -268,6 +268,167 @@ def project_remaining_games(future_games, team_ratings):
 
 
 # ============================================================
+# Tournament Simulation Helpers
+# ============================================================
+
+def _sim_game(team_a_id, team_b_id, team_ratings):
+    """Simulate a single game between two teams. Returns winner's team_id."""
+    r_a = team_ratings.get(team_a_id, {}).get("power_rating")
+    r_b = team_ratings.get(team_b_id, {}).get("power_rating")
+    if r_a is not None and r_b is not None:
+        prob_a = elo_win_prob(r_a, r_b)  # neutral site, no home advantage
+    elif r_a is not None:
+        prob_a = 0.6
+    elif r_b is not None:
+        prob_a = 0.4
+    else:
+        prob_a = 0.5
+    return team_a_id if random.random() < prob_a else team_b_id
+
+
+def _sim_best_of_3(team_a_id, team_b_id, team_ratings):
+    """Simulate a best-of-3 series. Returns winner's team_id."""
+    wins_a = 0
+    wins_b = 0
+    for _ in range(3):
+        winner = _sim_game(team_a_id, team_b_id, team_ratings)
+        if winner == team_a_id:
+            wins_a += 1
+        else:
+            wins_b += 1
+        if wins_a == 2 or wins_b == 2:
+            break
+    return team_a_id if wins_a > wins_b else team_b_id
+
+
+def _simulate_tournaments(conf_seeded, conf_format_map, team_ratings, results):
+    """
+    Simulate each conference tournament once for a single MC iteration.
+    Increments results[tid]["tourney_win_count"] for each tournament winner.
+
+    Tournament formats:
+      GNAC (round_robin, 3 teams): round-robin day 1, top 2 play championship
+      NWC (double_elimination, 4 teams): simplified as #1v4, #2v3, winners play final
+      CCC (double_elimination, 5 teams): #1 bye, #2v3, #4v5, bracket to final
+      NWAC (nwac_division, 4 divisions): cross-conference super regionals + 8-team champ
+    """
+    # Collect NWAC divisions for cross-conference tournament
+    nwac_seeded = {}  # format_key -> [(tid, seed), ...]
+
+    for conf_name, seeded in conf_seeded.items():
+        fmt = conf_format_map.get(conf_name)
+        if not fmt:
+            continue
+
+        format_type = fmt["format"]
+
+        if format_type == "nwac_division":
+            # Find the format key for this conference
+            fk = CONFERENCE_TO_FORMAT.get(conf_name)
+            if fk:
+                nwac_seeded[fk] = seeded
+            continue
+
+        # Get team IDs by seed
+        by_seed = {seed: tid for tid, seed in seeded}
+
+        if format_type == "round_robin" and len(seeded) >= 3:
+            # GNAC: round-robin, top 2 play championship
+            # Simulate round-robin: count wins
+            tids = [by_seed.get(s) for s in [1, 2, 3] if by_seed.get(s)]
+            if len(tids) >= 3:
+                rr_wins = {t: 0 for t in tids}
+                for i in range(len(tids)):
+                    for j in range(i + 1, len(tids)):
+                        w = _sim_game(tids[i], tids[j], team_ratings)
+                        rr_wins[w] += 1
+                # Top 2 by wins (use seed as tiebreaker via original order)
+                sorted_rr = sorted(tids, key=lambda t: rr_wins[t], reverse=True)
+                champ = _sim_game(sorted_rr[0], sorted_rr[1], team_ratings)
+                results[champ]["tourney_win_count"] += 1
+
+        elif format_type == "double_elimination":
+            num = fmt["num_teams"]
+            if num == 4 and len(seeded) >= 4:
+                # NWC: #1v4, #2v3, winners meet in final (simplified double elim)
+                w1 = _sim_game(by_seed[1], by_seed[4], team_ratings)
+                w2 = _sim_game(by_seed[2], by_seed[3], team_ratings)
+                champ = _sim_best_of_3(w1, w2, team_ratings)
+                results[champ]["tourney_win_count"] += 1
+            elif num == 5 and len(seeded) >= 5:
+                # CCC: #4v5, #2v3, winners meet #1 seed in bracket
+                w_45 = _sim_game(by_seed[4], by_seed[5], team_ratings)
+                w_23 = _sim_game(by_seed[2], by_seed[3], team_ratings)
+                # Semis
+                sf1 = _sim_game(by_seed[1], w_45, team_ratings)
+                sf2 = _sim_game(w_23, w_45 if w_45 != sf1 else by_seed[1], team_ratings)
+                # Actually: #1 plays winner of lower bracket; simplify
+                semi_w = _sim_game(w_45, w_23, team_ratings)
+                champ = _sim_best_of_3(by_seed[1], semi_w, team_ratings)
+                results[champ]["tourney_win_count"] += 1
+            elif len(seeded) >= 2:
+                # Fallback: top 2 play final
+                champ = _sim_game(seeded[0][0], seeded[1][0], team_ratings)
+                results[champ]["tourney_win_count"] += 1
+
+    # ── NWAC cross-conference tournament ──
+    if len(nwac_seeded) == 4:
+        # Helper to get team by div + seed
+        def nwac_team(div_key, seed):
+            for tid, s in nwac_seeded.get(div_key, []):
+                if s == seed:
+                    return tid
+            return None
+
+        # 4 super regionals
+        sr_winners = []
+        for region_name, sr_def in NWAC_SUPER_REGIONALS.items():
+            host_div = sr_def["host_division"]
+            host_2 = nwac_team(host_div, 2)
+
+            pia_div, pia_seed = sr_def["play_in"][0]
+            pib_div, pib_seed = sr_def["play_in"][1]
+            play_in_a = nwac_team(pia_div, pia_seed)
+            play_in_b = nwac_team(pib_div, pib_seed)
+
+            if play_in_a and play_in_b:
+                play_in_winner = _sim_game(play_in_a, play_in_b, team_ratings)
+            else:
+                play_in_winner = play_in_a or play_in_b
+
+            if host_2 and play_in_winner:
+                sr_winner = _sim_best_of_3(host_2, play_in_winner, team_ratings)
+            else:
+                sr_winner = host_2 or play_in_winner
+
+            if sr_winner:
+                sr_winners.append(sr_winner)
+
+        # 8-team championship: 4 #1 seeds + 4 SR winners
+        champ_field = []
+        for div_key in ["NWAC_NORTH", "NWAC_EAST", "NWAC_SOUTH", "NWAC_WEST"]:
+            t = nwac_team(div_key, 1)
+            if t:
+                champ_field.append(t)
+        champ_field.extend(sr_winners)
+
+        # Simulate 8-team single elimination bracket
+        if len(champ_field) >= 8:
+            random.shuffle(champ_field)  # random bracket draw
+            # Quarterfinals
+            qf_winners = []
+            for i in range(0, 8, 2):
+                w = _sim_best_of_3(champ_field[i], champ_field[i + 1], team_ratings)
+                qf_winners.append(w)
+            # Semifinals
+            sf1 = _sim_best_of_3(qf_winners[0], qf_winners[1], team_ratings)
+            sf2 = _sim_best_of_3(qf_winners[2], qf_winners[3], team_ratings)
+            # Championship
+            nwac_champ = _sim_best_of_3(sf1, sf2, team_ratings)
+            results[nwac_champ]["tourney_win_count"] += 1
+
+
+# ============================================================
 # Monte Carlo Simulation
 # ============================================================
 
@@ -335,9 +496,10 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
                 conf_format_map[conf_name] = PLAYOFF_FORMATS[format_key]
 
     # Track results across simulations
-    # team_id -> {playoff_count, seed_counts: {seed: count}}
+    # team_id -> {playoff_count, seed_counts: {seed: count}, tourney_win_count}
     results = defaultdict(lambda: {"playoff_count": 0, "seed_counts": defaultdict(int),
-                                    "total_conf_wins": 0.0, "total_conf_losses": 0.0})
+                                    "total_conf_wins": 0.0, "total_conf_losses": 0.0,
+                                    "tourney_win_count": 0})
 
     for _ in range(n_simulations):
         # Start with current conference records
@@ -375,6 +537,9 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
             results[tid]["total_conf_losses"] += cl
 
         # Sort each conference and assign seeds
+        # Also collect seeded teams for tournament simulation
+        conf_seeded = {}  # conf_name -> [(tid, seed), ...]
+
         for conf_name, teams_list in conf_teams.items():
             fmt = conf_format_map.get(conf_name)
             if not fmt:
@@ -384,11 +549,17 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
             teams_list.sort(key=lambda t: (t[3], t[1]), reverse=True)
             num_playoff = min(fmt["num_teams"], len(teams_list))
 
+            seeded = []
             for rank, (tid, cw, cl, pct) in enumerate(teams_list):
                 seed = rank + 1
                 if seed <= num_playoff:
                     results[tid]["playoff_count"] += 1
                     results[tid]["seed_counts"][seed] += 1
+                    seeded.append((tid, seed))
+            conf_seeded[conf_name] = seeded
+
+        # ── Simulate conference tournaments ──
+        _simulate_tournaments(conf_seeded, conf_format_map, team_ratings, results)
 
     # Convert counts to probabilities
     output = {}
@@ -399,6 +570,7 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
 
         output[tid] = {
             "playoff_pct": round(data["playoff_count"] / n_simulations, 3),
+            "tourney_win_pct": round(data["tourney_win_count"] / n_simulations, 3),
             "seed_probabilities": seed_probs,
             "avg_conf_wins": round(data["total_conf_wins"] / n_simulations, 1),
             "avg_conf_losses": round(data["total_conf_losses"] / n_simulations, 1),
