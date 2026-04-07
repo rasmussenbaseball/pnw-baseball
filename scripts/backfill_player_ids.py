@@ -108,6 +108,7 @@ def backfill_game_pitching(cur):
     print(f"  Matched {cur.rowcount} rows via 'Last,First' (unique name only)")
 
     # Game-based matching for pitching (check both teams in game)
+    # Skip rows where updating team_id would violate the unique constraint
     print("\n  Step 1c: Game-based matching for pitching...")
     for fmt_name, name_expr in [
         ("First Last", "LOWER(TRIM(pl.first_name) || ' ' || TRIM(pl.last_name))"),
@@ -123,6 +124,13 @@ def backfill_game_pitching(cur):
             WHERE gp.player_id IS NULL
               AND gp.game_id = g.id
               AND LOWER(TRIM(gp.player_name)) = {name_expr}
+              AND NOT EXISTS (
+                  SELECT 1 FROM game_pitching gp2
+                  WHERE gp2.game_id = gp.game_id
+                    AND gp2.team_id = pl.team_id
+                    AND gp2.player_name = gp.player_name
+                    AND gp2.id != gp.id
+              )
         """)
         print(f"  Matched {cur.rowcount} rows via '{fmt_name}' + game teams")
 
@@ -341,6 +349,13 @@ def backfill_game_batting(cur):
             WHERE gb.player_id IS NULL
               AND gb.game_id = g.id
               AND LOWER(TRIM(gb.player_name)) = {name_expr}
+              AND NOT EXISTS (
+                  SELECT 1 FROM game_batting gb2
+                  WHERE gb2.game_id = gb.game_id
+                    AND gb2.team_id = pl.team_id
+                    AND gb2.player_name = gb.player_name
+                    AND gb2.id != gb.id
+              )
         """)
         print(f"  Matched {cur.rowcount} rows via '{fmt_name}' + game teams")
 
@@ -356,6 +371,13 @@ def backfill_game_batting(cur):
           AND gb.player_name ~ '^[A-Z]\\. '
           AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
           AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
+          AND NOT EXISTS (
+              SELECT 1 FROM game_batting gb2
+              WHERE gb2.game_id = gb.game_id
+                AND gb2.team_id = pl.team_id
+                AND gb2.player_name = gb.player_name
+                AND gb2.id != gb.id
+          )
     """)
     print(f"  Matched {cur.rowcount} rows via 'F. Last' + game teams")
 
