@@ -455,6 +455,24 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
         except Exception:
             continue
 
+    # Secondary dedup: Sidearm pages often have both mobile and desktop
+    # versions of each game.  When data-game-id isn't available, both
+    # survive the per-game dedup above.  Limit to max 2 games per
+    # (date, opponent) — enough for a doubleheader but prevents inflated
+    # counts that throw off the cross-team dedup's max(source_counts).
+    from collections import Counter
+    date_opp_counts = Counter()
+    deduped_games = []
+    for g in games:
+        opp = g["away_team"] if g["home_team"] == team_name else g["home_team"]
+        key = (g["game_date"], opp)
+        date_opp_counts[key] += 1
+        if date_opp_counts[key] <= 2:
+            deduped_games.append(g)
+    if len(deduped_games) < len(games):
+        logger.info(f"  {team_name}: removed {len(games) - len(deduped_games)} duplicate entries (mobile/desktop)")
+    games = deduped_games
+
     logger.info(f"  {team_name}: HTML fallback found {len(games)} future games")
     return games
 
@@ -777,8 +795,13 @@ def deduplicate_future_games(games):
         for g in group:
             source_counts[g.get("source_team", "")] += 1
 
-        # The real number of games is the max reported by any single source
-        real_count = max(source_counts.values()) if source_counts else 1
+        # When 2+ sources report the same matchup, use the minimum count
+        # to avoid inflated counts from mobile/desktop HTML duplicates.
+        # When only 1 source reports, trust its count as-is.
+        if len(source_counts) >= 2:
+            real_count = min(source_counts.values())
+        else:
+            real_count = max(source_counts.values()) if source_counts else 1
 
         # Sort group to prefer entries with team IDs
         group.sort(key=lambda g: (
