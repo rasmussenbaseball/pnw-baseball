@@ -205,73 +205,54 @@ def parse_sidearm_html_fallback(html, db_short=None):
             games.append({"date": game_date, "is_away": is_away, "name": aria})
 
         if games:
-            # Sanity check: if ALL games are the same direction, the aria-labels
+            # Sanity check: if games are extremely lopsided, the aria-labels
             # probably don't distinguish home/away (e.g. D1 v3 pages use "vs" for everything).
             # Fall through to location-based detection instead.
             away_count = sum(1 for g in games if g["is_away"])
             home_count = len(games) - away_count
-            if away_count > 0 and home_count > 0:
+            min_pct = min(away_count, home_count) / max(len(games), 1)
+            if min_pct >= 0.15:  # At least 15% in the minority direction = plausible
                 return _assign_game_numbers(games)
-            else:
-                logger.info(f"  Aria-labels show {home_count} home / {away_count} away (all same) -- trying location fallback")
+            elif db_short and db_short in D1_HOME_CITIES:
+                logger.info(f"  Aria-labels show {home_count} home / {away_count} away ({min_pct:.0%} minority) -- trying location fallback")
                 games = []  # Reset and fall through to Strategy 2
+            else:
+                return _assign_game_numbers(games)  # Non-D1 teams: trust aria-labels
 
     # ── Strategy 2: Location-based detection for D1 v3 pages ──
+    # Uses regex on raw HTML (fast) instead of BeautifulSoup (slow on large pages)
     home_city = D1_HOME_CITIES.get(db_short, "").lower() if db_short else ""
     if not home_city:
         return []
 
     logger.info(f"  Using location-based detection (home city: {home_city})")
 
-    # v3 game cards use s-game-card class
-    cards = soup.find_all(class_=re.compile(r"s-game-card"))
-    if not cards:
-        # Try broader: any container with a boxscore link
-        cards = []
-        for link in box_links:
-            # Walk up to find the game container
-            parent = link.find_parent(["div", "li", "article"])
-            if parent and parent not in cards:
-                cards.append(parent)
+    # Find each boxscore link's aria-label and nearby HTML context
+    # Pattern: find aria-label with date, then check surrounding ~2000 chars for home city
+    html_lower = html.lower()
 
-    for card in cards:
-        # Find boxscore link to confirm this is a completed game
-        box_link = card.find("a", href=re.compile(r"boxscore", re.I))
-        if not box_link:
-            continue
-
-        # Extract date from the card
-        aria = box_link.get("aria-label", "") or ""
+    for link in box_links:
+        aria = link.get("aria-label", "") or ""
         game_date = _extract_date_from_aria(aria)
-
-        if not game_date:
-            # Try score-time text for date
-            score_el = card.find(class_=re.compile(r"game-score-time"))
-            if score_el:
-                st_text = score_el.get_text(strip=True)
-                date_m = re.search(r'([A-Z][a-z]{2}\.?\s+\d{1,2})', st_text)
-                if date_m:
-                    for fmt in ["%b %d, %Y", "%b. %d, %Y"]:
-                        try:
-                            game_date = datetime.strptime(f"{date_m.group(1)}, {SEASON}", fmt).date()
-                            break
-                        except ValueError:
-                            continue
-
         if not game_date or game_date.year < SEASON:
             continue
 
-        # Extract location text from the card
-        # Location appears as text in the card, typically after opponent info
-        card_text = card.get_text(" ", strip=True).lower()
-
-        # Check if the home city appears in the card text
-        if home_city in card_text:
-            is_away = False  # Playing at home
+        # Find where this link appears in the raw HTML, check nearby text for home city
+        href = link.get("href", "")
+        if href:
+            href_pos = html_lower.find(href.lower())
+            if href_pos >= 0:
+                # Check a window around the link for the home city name
+                start = max(0, href_pos - 1500)
+                end = min(len(html_lower), href_pos + 1500)
+                context = html_lower[start:end]
+                is_away = home_city not in context
+            else:
+                is_away = True  # Can't find context, assume away
         else:
-            is_away = True   # Location doesn't mention home city = away
+            is_away = True
 
-        games.append({"date": game_date, "is_away": is_away, "name": aria or card_text[:80]})
+        games.append({"date": game_date, "is_away": is_away, "name": aria})
 
     return _assign_game_numbers(games)
 
