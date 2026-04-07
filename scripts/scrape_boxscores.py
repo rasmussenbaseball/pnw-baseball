@@ -639,10 +639,13 @@ def _parse_sidearm_schedule_v2(html, base_url, season_year):
                 game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
 
         # Determine home/away from aria-label ("at" = away, "vs" = home)
+        # Use broad \b word-boundary match to handle all Sidearm aria formats:
+        #   "Boxscore for Baseball at Opponent..."
+        #   "Boxscore for Team Name at Opponent..."
         if aria:
-            if re.search(r'(?:Baseball|Softball)\s+at\s+', aria):
+            if re.search(r'\bat\s+', aria):
                 game["is_away"] = True
-            elif re.search(r'(?:Baseball|Softball)\s+vs\.?\s+', aria):
+            elif re.search(r'\bvs\.?\s+', aria):
                 game["is_away"] = False
 
         if not game.get("opponent"):

@@ -14,10 +14,12 @@ Usage:
     PYTHONPATH=backend python3 scripts/fix_home_away.py
 """
 import sys
+import os
 import re
 import json
 import logging
 import time
+import requests
 from datetime import datetime
 from pathlib import Path
 
@@ -39,6 +41,29 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 SEASON = 2026
+
+# ScraperAPI for NWAC WAF bypass
+SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
+
+def fetch_with_scraper_api(url, retries=3):
+    """Fetch a URL through ScraperAPI to bypass WAF."""
+    if not SCRAPER_API_KEY:
+        logger.warning("  SCRAPER_API_KEY not set, cannot fetch NWAC pages")
+        return None
+    for attempt in range(retries):
+        try:
+            api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={url}"
+            resp = requests.get(api_url, timeout=90)
+            resp.raise_for_status()
+            if len(resp.text) < 500 or "Request failed" in resp.text:
+                logger.warning(f"  ScraperAPI returned short/error response on attempt {attempt+1}")
+                time.sleep(2)
+                continue
+            return resp.text
+        except Exception as e:
+            logger.warning(f"  ScraperAPI attempt {attempt+1}/{retries} failed: {e}")
+            time.sleep(2)
+    return None
 
 
 def parse_sidearm_json_ld(html):
@@ -123,6 +148,85 @@ def parse_sidearm_json_ld(html):
     return games
 
 
+def parse_sidearm_html_fallback(html):
+    """Fallback parser for Sidearm pages without JSON-LD (e.g. UW, Oregon, OSU, WSU).
+
+    Parses aria-labels from boxscore links on the schedule page:
+      "Box Score of University of Oregon at George Mason on February 13"
+      "Box Score of University of Oregon vs Portland on March 1"
+
+    Returns list of dicts with: date, is_away, game_number
+    """
+    if not html:
+        return []
+
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    games = []
+
+    # Find all boxscore links with aria-labels
+    box_links = soup.find_all("a", href=re.compile(r"boxscore", re.I))
+    for link in box_links:
+        aria = link.get("aria-label", "") or ""
+        if not aria:
+            continue
+
+        # Determine home/away from aria-label
+        is_away = None
+        if re.search(r'\bat\s+', aria):
+            is_away = True
+        elif re.search(r'\bvs\.?\s+', aria):
+            is_away = False
+
+        if is_away is None:
+            continue
+
+        # Extract date from aria-label: "on February 13" or "on Mar. 20, 2026"
+        game_date = None
+        date_m = re.search(r'on\s+(\w+\.?\s+\d{1,2}(?:,?\s*\d{4})?)', aria)
+        if date_m:
+            date_str = date_m.group(1)
+            # Add year if missing
+            if not re.search(r'\d{4}', date_str):
+                date_str = f"{date_str}, {SEASON}"
+            for fmt in ["%B %d, %Y", "%b. %d, %Y", "%b %d, %Y"]:
+                try:
+                    game_date = datetime.strptime(date_str.replace(",", ", ").strip(), fmt).date()
+                    break
+                except ValueError:
+                    continue
+
+        if not game_date:
+            continue
+
+        # Skip fall games
+        if game_date.year < SEASON:
+            continue
+
+        games.append({
+            "date": game_date,
+            "is_away": is_away,
+            "name": aria,
+        })
+
+    # Assign game numbers for doubleheaders
+    from collections import Counter
+    date_counts = Counter()
+    for g in games:
+        date_counts[g["date"]] += 1
+
+    date_seen = Counter()
+    for g in games:
+        date_seen[g["date"]] += 1
+        if date_counts[g["date"]] > 1:
+            g["game_number"] = date_seen[g["date"]]
+        else:
+            g["game_number"] = 1
+
+    return games
+
+
 def fix_sidearm_team(db_short, team_config, team_id):
     """Fix home/away for a Sidearm team by parsing JSON-LD from their schedule."""
     base_url, sport, platform = team_config
@@ -142,7 +246,10 @@ def fix_sidearm_team(db_short, team_config, team_id):
 
     games = parse_sidearm_json_ld(html)
     if not games:
-        logger.warning(f"  No JSON-LD game data found")
+        logger.info(f"  No JSON-LD found, trying HTML aria-label fallback...")
+        games = parse_sidearm_html_fallback(html)
+    if not games:
+        logger.warning(f"  No game data found from JSON-LD or HTML fallback")
         return 0
 
     away_games = [g for g in games if g["is_away"]]
@@ -202,17 +309,24 @@ def fix_presto_team(db_short, team_config, team_id):
         return 0
 
     is_nwac = db_short in NWAC_TEAM_SLUGS
-    if is_nwac:
-        # Skip NWAC -- server gets blocked by WAF
-        return 0
 
     if db_short == "Willamette":
         presto_season = f"{SEASON - 1}-{str(SEASON)[2:]}"
         url = build_presto_schedule_url(base_url, sport, "willamette", presto_season)
+        html = fetch_page(url)
+    elif is_nwac:
+        # NWAC requires ScraperAPI to bypass WAF
+        if not SCRAPER_API_KEY:
+            logger.warning(f"  Skipping {db_short} (NWAC) -- no SCRAPER_API_KEY set")
+            return 0
+        slug = NWAC_TEAM_SLUGS.get(db_short, db_short.lower().replace(" ", "-"))
+        presto_season = f"{SEASON - 1}-{str(SEASON)[2:]}"
+        url = f"{base_url}/sports/{sport}/{presto_season}/teams/{slug}?view=schedule"
+        logger.info(f"  Fetching NWAC schedule via ScraperAPI: {url}")
+        html = fetch_with_scraper_api(url)
     else:
         return 0
 
-    html = fetch_page(url)
     if not html:
         return 0
 
@@ -278,8 +392,7 @@ def fix_home_away():
     all_teams.update(D2_TEAMS)
     all_teams.update(D3_TEAMS)
     all_teams.update(NAIA_TEAMS)
-    # Add Willamette (PrestoSports)
-    # Skip NWAC -- WAF blocks from server
+    all_teams.update(NWAC_TEAMS)  # Now handled via ScraperAPI
 
     total_swapped = 0
 
