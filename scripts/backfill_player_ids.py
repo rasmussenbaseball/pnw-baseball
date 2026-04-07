@@ -107,6 +107,25 @@ def backfill_game_pitching(cur):
     """)
     print(f"  Matched {cur.rowcount} rows via 'Last,First' (unique name only)")
 
+    # Game-based matching for pitching (check both teams in game)
+    print("\n  Step 1c: Game-based matching for pitching...")
+    for fmt_name, name_expr in [
+        ("First Last", "LOWER(TRIM(pl.first_name) || ' ' || TRIM(pl.last_name))"),
+        ("Last, First", "LOWER(TRIM(pl.last_name) || ', ' || TRIM(pl.first_name))"),
+        ("Last,First", "LOWER(TRIM(pl.last_name) || ',' || TRIM(pl.first_name))"),
+    ]:
+        cur.execute(f"""
+            UPDATE game_pitching gp
+            SET player_id = pl.id,
+                team_id = pl.team_id
+            FROM games g
+            JOIN players pl ON pl.team_id IN (g.home_team_id, g.away_team_id)
+            WHERE gp.player_id IS NULL
+              AND gp.game_id = g.id
+              AND LOWER(TRIM(gp.player_name)) = {name_expr}
+        """)
+        print(f"  Matched {cur.rowcount} rows via '{fmt_name}' + game teams")
+
     # Check remaining
     cur.execute("SELECT COUNT(*) as cnt FROM game_pitching WHERE player_id IS NULL AND team_id IS NOT NULL")
     remaining = cur.fetchone()["cnt"]
@@ -284,7 +303,7 @@ def backfill_game_batting(cur):
     """)
     print(f"  Matched {cur.rowcount} rows via 'F. Last' + team_id")
 
-    # "F. Last" without team — only if unique first-initial + last name
+    # "F. Last" without team -- only if unique first-initial + last name
     cur.execute("""
         UPDATE game_batting gb
         SET player_id = unique_pl.id
@@ -302,6 +321,43 @@ def backfill_game_batting(cur):
           AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = unique_pl.lname
     """)
     print(f"  Matched {cur.rowcount} rows via 'F. Last' (unique name only)")
+
+    # ── Step 2c: Game-based matching ──────────────────────────────────────
+    # Many unmatched rows have the WRONG team_id (opponent's team) or NULL
+    # team_id.  Use the game record to find both teams and try matching
+    # against either home or away team.
+    print("\n  Step 2c: Game-based matching (check both teams in game)...")
+    for fmt_name, name_expr in [
+        ("First Last", "LOWER(TRIM(pl.first_name) || ' ' || TRIM(pl.last_name))"),
+        ("Last, First", "LOWER(TRIM(pl.last_name) || ', ' || TRIM(pl.first_name))"),
+        ("Last,First", "LOWER(TRIM(pl.last_name) || ',' || TRIM(pl.first_name))"),
+    ]:
+        cur.execute(f"""
+            UPDATE game_batting gb
+            SET player_id = pl.id,
+                team_id = pl.team_id
+            FROM games g
+            JOIN players pl ON pl.team_id IN (g.home_team_id, g.away_team_id)
+            WHERE gb.player_id IS NULL
+              AND gb.game_id = g.id
+              AND LOWER(TRIM(gb.player_name)) = {name_expr}
+        """)
+        print(f"  Matched {cur.rowcount} rows via '{fmt_name}' + game teams")
+
+    # Game-based "F. Last" initial matching
+    cur.execute("""
+        UPDATE game_batting gb
+        SET player_id = pl.id,
+            team_id = pl.team_id
+        FROM games g
+        JOIN players pl ON pl.team_id IN (g.home_team_id, g.away_team_id)
+        WHERE gb.player_id IS NULL
+          AND gb.game_id = g.id
+          AND gb.player_name ~ '^[A-Z]\\. '
+          AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
+          AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
+    """)
+    print(f"  Matched {cur.rowcount} rows via 'F. Last' + game teams")
 
 
 def update_quality_starts(cur):
