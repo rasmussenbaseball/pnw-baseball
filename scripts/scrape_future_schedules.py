@@ -89,12 +89,30 @@ NWAC_TEAM_SLUGS = {
 NWAC_SCHEDULE_NAME_TO_DB = {
     "Skagit Valley": "Skagit",
     "Mt Hood": "Mt. Hood",
-    "SW Oregon": "SW Oregon",
     "Southwestern Oregon": "SW Oregon",
-    "Linn-Benton": "Linn-Benton",
+    # Note: "SW Oregon" and "Linn-Benton" match NWAC_TEAMS_SET directly,
+    # so they don't need entries here (resolve_nwac_name checks the set).
 }
 
 NWAC_TEAMS_SET = set(NWAC_TEAM_SLUGS.keys())
+
+# ── Per-division NWAC conference sets ──
+# Only games between teams in the SAME division are conference games.
+NWAC_DIVISION_TEAMS = {
+    "NWAC-N": {"Bellevue", "Douglas", "Edmonds", "Everett", "Shoreline", "Skagit"},
+    "NWAC-E": {"Big Bend", "Blue Mountain", "Columbia Basin", "Spokane",
+               "Treasure Valley", "Walla Walla", "Wenatchee Valley", "Yakima Valley"},
+    "NWAC-S": {"Chemeketa", "Clackamas", "Lane", "Linn-Benton", "Mt. Hood",
+               "SW Oregon", "Umpqua"},
+    "NWAC-W": {"Centralia", "Clark", "Grays Harbor", "Lower Columbia", "Olympic",
+               "Pierce", "Tacoma"},
+}
+
+# Reverse lookup: team name -> its division's team set
+NWAC_TEAM_TO_CONF_SET = {}
+for _div, _teams in NWAC_DIVISION_TEAMS.items():
+    for _t in _teams:
+        NWAC_TEAM_TO_CONF_SET[_t] = _teams
 
 
 def resolve_nwac_name(display_name):
@@ -565,7 +583,10 @@ def parse_presto_future_games(html, team_db_name, season_year, today, team_map,
 
         # Try NWAC name resolution first, then general normalization
         opp_key = resolve_nwac_name(opponent)
-        if opp_key == opponent:
+        if opp_key == opponent and opp_key not in NWAC_TEAMS_SET:
+            # Only fall through to normalize_team_name for non-NWAC teams.
+            # normalize_team_name has partial matching that can corrupt
+            # NWAC names (e.g. "SW Oregon" -> "Oregon" via "oregon" alias).
             opp_key = normalize_team_name(opponent)
 
         # Conference game detection
@@ -664,9 +685,11 @@ def extract_future_nwac_games(season_year, today, team_map):
             logger.warning(f"  {db_name}: failed to fetch schedule page")
             continue
 
+        # Use the team's own division set for conference detection
+        team_conf_set = NWAC_TEAM_TO_CONF_SET.get(db_name, NWAC_TEAMS_SET)
         games = parse_presto_future_games(
             html, db_name, season_year, today, team_map,
-            division="JUCO", conf_teams_set=NWAC_TEAMS_SET
+            division="JUCO", conf_teams_set=team_conf_set
         )
         all_games.extend(games)
         logger.info(f"  {db_name}: {len(games)} future games found")
@@ -733,10 +756,13 @@ def deduplicate_future_games(games):
     from collections import defaultdict
 
     # Group games by (date, team_pair)
+    # Use raw team names — normalize_team_name's partial matching can
+    # corrupt NWAC names (e.g. "SW Oregon" -> "Oregon"), merging games
+    # from different matchups into the same dedup bucket.
     groups = defaultdict(list)
     for g in games:
-        home = normalize_team_name(g["home_team"])
-        away = normalize_team_name(g["away_team"])
+        home = g["home_team"]
+        away = g["away_team"]
         key = (g["game_date"], tuple(sorted([home, away])))
         groups[key].append(g)
 
