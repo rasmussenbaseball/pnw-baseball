@@ -20,7 +20,7 @@ def run():
         print("\n=== His game_batting rows ===")
         cur.execute("""
             SELECT gb.player_name, gb.player_id, gb.team_id as gb_team_id, t.short_name as gb_team,
-                   g.game_date, g.opponent
+                   g.game_date
             FROM game_batting gb
             JOIN games g ON gb.game_id = g.id
             LEFT JOIN teams t ON gb.team_id = t.id
