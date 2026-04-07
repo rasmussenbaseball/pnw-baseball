@@ -117,7 +117,7 @@ TEAM_NAME_ALIASES = {
     "corban": "Corban", "corban university": "Corban",
     "bushnell": "Bushnell", "bushnell university": "Bushnell",
     "warner pacific": "Warner Pacific", "warner pacific university": "Warner Pacific",
-    "warner pacific university (ore.)": "Warner Pacific",
+    "warner pacific university (ore.)": "Warner Pacific", "warner pacific (ore.)": "Warner Pacific",
     "british columbia": "UBC", "ubc": "UBC", "university of british columbia": "UBC",
 }
 

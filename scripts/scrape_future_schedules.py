@@ -53,23 +53,50 @@ SCHEDULE_URL_OVERRIDES = {
     "Seattle U": "{base_url}/sports/baseball/schedule/season/{season}",
 }
 
-# ── NWAC team name mapping (from scrape_nwac_schedule) ──
+# ── NWAC team slugs for individual team pages on PrestoSports ──
+NWAC_TEAM_SLUGS = {
+    "Bellevue": "bellevue",
+    "Big Bend": "bigbend",
+    "Blue Mountain": "bluemountain",
+    "Centralia": "centralia",
+    "Chemeketa": "chemeketa",
+    "Clackamas": "clackamas",
+    "Clark": "clark",
+    "Columbia Basin": "columbiabasin",
+    "Douglas": "douglas",
+    "Edmonds": "edmonds",
+    "Everett": "everett",
+    "GRC": "greenriver",
+    "Grays Harbor": "graysharbor",
+    "Lane": "lane",
+    "Linn-Benton": "linnbenton",
+    "Lower Columbia": "lowercolumbia",
+    "Mt. Hood": "mthood",
+    "Olympic": "olympic",
+    "Pierce": "pierce",
+    "Shoreline": "shoreline",
+    "Skagit": "skagitvalley",
+    "SW Oregon": "southwesternoregon",
+    "Spokane": "spokane",
+    "Tacoma": "tacoma",
+    "Treasure Valley": "treasurevalley",
+    "Umpqua": "umpqua",
+    "Walla Walla": "wallawalla",
+    "Wenatchee Valley": "wenatcheevalley",
+    "Yakima Valley": "yakimavalley",
+}
+
+# ── NWAC opponent name mapping ──
 NWAC_SCHEDULE_NAME_TO_DB = {
     "Green River": "GRC",
     "Skagit Valley": "Skagit",
     "Mt Hood": "Mt. Hood",
     "SW Oregon": "SW Oregon",
+    "Southwestern Oregon": "SW Oregon",
     "Linn-Benton": "Linn-Benton",
 }
 
-NWAC_TEAMS_SET = {
-    "Bellevue", "Big Bend", "Blue Mountain", "Centralia", "Chemeketa",
-    "Clackamas", "Clark", "Columbia Basin", "Douglas", "Edmonds",
-    "Everett", "Grays Harbor", "GRC", "Lane", "Linn-Benton",
-    "Lower Columbia", "Mt. Hood", "Olympic", "Pierce", "Shoreline",
-    "Skagit", "SW Oregon", "Spokane", "Tacoma", "Treasure Valley",
-    "Umpqua", "Walla Walla", "Wenatchee Valley", "Yakima Valley",
-}
+NWAC_TEAMS_SET = set(NWAC_TEAM_SLUGS.keys())
 
 
 def resolve_nwac_name(display_name):
@@ -413,220 +440,24 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
 
 
 # ============================================================
-# NWAC Schedule Extraction
+# PrestoSports Game-Log Parser (shared by NWAC + Willamette)
 # ============================================================
 
-def extract_future_nwac_games(season_year, today, team_map):
+def parse_presto_future_games(html, team_db_name, season_year, today, team_map,
+                              division, conf_teams_set=None):
     """
-    Extract future games from the NWAC master schedule page.
-    Uses ScraperAPI if SCRAPER_API_KEY is set, otherwise tries direct fetch.
+    Parse a PrestoSports team game-log page for future games.
+    Future games have empty or "-" scores in the hitting table.
+
+    Args:
+        html: Page HTML
+        team_db_name: DB short_name for this team (e.g., "Bellevue", "Willamette")
+        season_year: Season year (e.g., 2026)
+        today: Today's date
+        team_map: Team ID lookup map
+        division: Division level ("JUCO", "D3", etc.)
+        conf_teams_set: Set of team names in same conference (for is_conference detection)
     """
-    import datetime as dt_module
-
-    season_str = f"{season_year - 1}-{str(season_year)[2:]}"
-    schedule_url = f"https://nwacsports.com/sports/bsb/{season_str}/schedule"
-
-    # Try to load ScraperAPI key from environment or .env file
-    api_key = os.environ.get("SCRAPER_API_KEY", "")
-    if not api_key:
-        env_path = Path(__file__).parent.parent / ".env"
-        if env_path.exists():
-            with open(env_path) as f:
-                for line in f:
-                    if line.strip().startswith("SCRAPER_API_KEY="):
-                        api_key = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
-                        break
-
-    if api_key:
-        url = f"http://api.scraperapi.com?api_key={api_key}&url={schedule_url}"
-        logger.info(f"Fetching NWAC schedule via ScraperAPI: {schedule_url}")
-    else:
-        logger.warning(
-            "SCRAPER_API_KEY not set - NWAC games will be missing! "
-            "Set it via: SCRAPER_API_KEY=your_key python3 scripts/scrape_future_schedules.py"
-        )
-        url = schedule_url
-        logger.info(f"Fetching NWAC schedule directly (will likely fail): {schedule_url}")
-
-    try:
-        resp = requests.get(url, timeout=120)
-        resp.raise_for_status()
-        html = resp.text
-    except Exception as e:
-        logger.error(f"Failed to fetch NWAC schedule: {e}")
-        return []
-
-    if len(html) < 5000:
-        logger.warning("NWAC schedule page too small, may be blocked")
-        return []
-
-    soup = BeautifulSoup(html, "html.parser")
-    games = []
-    rows = soup.find_all("tr")
-    logger.info(f"NWAC: Found {len(rows)} table rows")
-
-    # Month name -> number mapping
-    MONTH_MAP = {
-        "january": 1, "february": 2, "march": 3, "april": 4,
-        "may": 5, "june": 6, "july": 7, "august": 8,
-        "september": 9, "october": 10, "november": 11, "december": 12,
-    }
-
-    current_month = None  # Tracked from month header rows
-    current_year = season_year  # Academic year: fall = year-1, spring = year
-    current_day = None  # Last seen day number (for doubleheaders with empty date cells)
-
-    for row in rows:
-        # Check for month header row: <tr class="month-title ...">
-        row_classes = " ".join(row.get("class", []))
-        if "month-title" in row_classes:
-            month_text = row.get_text(strip=True).lower()
-            for mname, mnum in MONTH_MAP.items():
-                if mname in month_text:
-                    current_month = mnum
-                    # Determine year: fall months (Aug-Dec) = season_year - 1
-                    if mnum >= 8:
-                        current_year = season_year - 1
-                    else:
-                        current_year = season_year
-                    current_day = None
-                    logger.debug(f"NWAC: Month header -> {month_text} ({current_year}-{current_month:02d})")
-                    break
-            continue
-
-        cells = row.find_all("td")
-        if len(cells) < 4:
-            continue
-
-        away_team_cell = row.find("td", class_="awayteam")
-        home_team_cell = row.find("td", class_="hometeam")
-        status_cell = row.find("td", class_="status")
-        links_cell = row.find("td", class_="links")
-
-        if not away_team_cell or not home_team_cell:
-            continue
-
-        away_name = away_team_cell.get_text(strip=True).rstrip("*^# ").strip()
-        home_name = home_team_cell.get_text(strip=True).rstrip("*^# ").strip()
-
-        if not away_name or not home_name:
-            continue
-
-        # Parse date from date cell (uses month from header rows)
-        date_cell = row.find("td", class_="date")
-        if date_cell:
-            date_text = date_cell.get_text(strip=True)
-            day_match = re.search(r'(\d+)', date_text)
-            if day_match:
-                current_day = int(day_match.group(1))
-
-        # Also try extracting date from boxscore links (for completed games)
-        if links_cell:
-            link = links_cell.find("a", href=re.compile(r"boxscores/"))
-            if link:
-                href = link.get("href", "")
-                date_match = re.search(r"boxscores/(\d{4})(\d{2})(\d{2})_", href)
-                if date_match:
-                    current_month = int(date_match.group(2))
-                    current_day = int(date_match.group(3))
-                    current_year = int(date_match.group(1))
-
-        # Build game_date from tracked month + day
-        game_date = None
-        if current_month and current_day:
-            try:
-                game_date = dt_module.date(current_year, current_month, current_day)
-            except ValueError:
-                pass
-
-        # Check status - skip completed games
-        status_text = status_cell.get_text(strip=True) if status_cell else ""
-        if "Final" in status_text:
-            continue
-
-        if not game_date or game_date <= today:
-            continue
-
-        # Conference game?
-        is_conference = bool(away_team_cell.find("span", class_="notation"))
-
-        # Resolve names
-        away_db = resolve_nwac_name(away_name)
-        home_db = resolve_nwac_name(home_name)
-
-        away_info = resolve_team(team_map, away_db, "JUCO")
-        home_info = resolve_team(team_map, home_db, "JUCO")
-
-        games.append({
-            "game_date": game_date.isoformat(),
-            "home_team": home_db,
-            "away_team": away_db,
-            "home_team_id": home_info.get("team_id"),
-            "away_team_id": away_info.get("team_id"),
-            "is_conference": is_conference,
-            "division": "JUCO",
-            "source_team": "NWAC",
-            "location": "home",
-        })
-
-    logger.info(f"NWAC: {len(games)} future games found")
-    return games
-
-
-# ============================================================
-# Willamette (PrestoSports) Schedule Extraction
-# ============================================================
-
-# NWC team names for conference game detection
-NWC_TEAMS_SET_D3 = {
-    "UPS", "PLU", "Whitman", "Whitworth", "L&C", "Pacific",
-    "Linfield", "GFU", "Willamette",
-}
-
-def extract_future_willamette_games(season_year, today, team_map):
-    """
-    Extract future games for Willamette from their PrestoSports schedule page.
-    Willamette uses wubearcats.com with PrestoSports, not Sidearm.
-    The game-log page has a hitting table where future games show score = "-".
-    """
-    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
-    schedule_url = (
-        f"https://www.wubearcats.com/sports/bsb/{presto_season}"
-        f"/teams/willamette?view=schedule"
-    )
-
-    logger.info(f"Fetching Willamette schedule: {schedule_url}")
-
-    # Try direct fetch first, then ScraperAPI as fallback
-    html = fetch_page(schedule_url)
-    if not html or len(html) < 2000:
-        logger.warning("Direct fetch failed for Willamette, trying ScraperAPI...")
-        api_key = os.environ.get("SCRAPER_API_KEY", "")
-        if not api_key:
-            env_path = Path(__file__).parent.parent / ".env"
-            if env_path.exists():
-                with open(env_path) as f:
-                    for line in f:
-                        if line.strip().startswith("SCRAPER_API_KEY="):
-                            api_key = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
-                            break
-        if api_key:
-            try:
-                api_url = f"http://api.scraperapi.com?api_key={api_key}&url={schedule_url}"
-                resp = requests.get(api_url, timeout=120)
-                resp.raise_for_status()
-                html = resp.text
-            except Exception as e:
-                logger.error(f"ScraperAPI failed for Willamette: {e}")
-                return []
-        else:
-            logger.error("No ScraperAPI key available for Willamette fallback")
-            return []
-
-    if len(html) < 2000:
-        logger.warning("Willamette schedule page too small")
-        return []
-
     soup = BeautifulSoup(html, "html.parser")
 
     # Find the hitting game-log table (has "date", "opponent", "ab" headers)
@@ -642,14 +473,12 @@ def extract_future_willamette_games(season_year, today, team_map):
             break
 
     if not hitting_table:
-        logger.warning("Willamette: Could not find hitting game-log table")
         return []
 
     rows = hitting_table.find_all("tr")
     if len(rows) < 2:
         return []
 
-    # Get headers
     header_cells = rows[0].find_all(["th", "td"])
     headers = [c.get_text(strip=True).lower() for c in header_cells]
 
@@ -669,13 +498,13 @@ def extract_future_willamette_games(season_year, today, team_map):
         # Parse date (formats: "Apr 11", "Mon, Apr 11", "4/11/2026")
         date_str = vals.get("date", "").strip()
         if date_str:
-            month_str = None
-            day_str = None
             # Try "M/D/YYYY" format first
             slash_match = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_str)
             if slash_match:
                 try:
-                    current_date = date(int(slash_match.group(3)), int(slash_match.group(1)), int(slash_match.group(2)))
+                    current_date = date(int(slash_match.group(3)),
+                                        int(slash_match.group(1)),
+                                        int(slash_match.group(2)))
                 except ValueError:
                     pass
             else:
@@ -684,12 +513,10 @@ def extract_future_willamette_games(season_year, today, team_map):
                 if date_match:
                     month_str = date_match.group(1)
                     day_str = date_match.group(2)
-                if month_str and day_str:
                     for fmt in ("%b %d", "%B %d"):
                         try:
                             dt = datetime.strptime(f"{month_str} {day_str}", fmt)
                             year = season_year
-                            # Fall games (Aug-Dec) use season_year - 1
                             if dt.month >= 8:
                                 year = season_year - 1
                             current_date = dt.replace(year=year).date()
@@ -700,23 +527,24 @@ def extract_future_willamette_games(season_year, today, team_map):
         # Check score - future games have "-" or empty
         score_str = vals.get("score", "").strip()
         if score_str and score_str != "-":
-            # Game already played, skip
             continue
 
         if not current_date or current_date <= today:
             continue
 
         # Parse opponent
-        opponent = vals.get("opponent", "").strip()
+        opponent = " ".join(vals.get("opponent", "").split())  # collapse whitespace
         if not opponent:
             continue
 
         # Skip summary rows
         if opponent.lower() in ("overall", "conference", "home", "away",
-                                "neutral", "total", "wins", "losses"):
+                                "neutral", "total", "wins", "losses",
+                                "february", "march", "april", "may", "june",
+                                "january", "exhibition"):
             continue
 
-        # Detect home/away: "at Team" or "vs Team" or just "Team"
+        # Detect home/away
         location = "home"
         if opponent.lower().startswith("at "):
             location = "away"
@@ -725,8 +553,9 @@ def extract_future_willamette_games(season_year, today, team_map):
             opponent = opponent[3:].strip()
 
         # Clean opponent name
-        opponent = re.sub(r'\s*\*+\s*$', '', opponent)  # Remove trailing asterisks
-        opponent = re.sub(r'^#\d+\s+', '', opponent).strip()  # Remove rankings
+        opponent = re.sub(r'\s*\*+\s*$', '', opponent)  # trailing asterisks
+        opponent = re.sub(r'^#\d+\s+', '', opponent).strip()  # rankings
+        opponent = re.sub(r'\s*\(DH\)\s*', '', opponent).strip()
 
         # Skip postseason placeholders
         postseason_keywords = [
@@ -736,23 +565,28 @@ def extract_future_willamette_games(season_year, today, team_map):
         if any(kw in opponent.lower() for kw in postseason_keywords):
             continue
 
-        opp_key = normalize_team_name(opponent)
+        # Try NWAC name resolution first, then general normalization
+        opp_key = resolve_nwac_name(opponent)
+        if opp_key == opponent:
+            opp_key = normalize_team_name(opponent)
 
-        # Conference game = opponent is an NWC team
-        is_conference = opp_key in NWC_TEAMS_SET_D3
+        # Conference game detection
+        is_conference = False
+        if conf_teams_set and opp_key in conf_teams_set:
+            is_conference = True
 
         # Resolve team IDs
-        willamette_info = resolve_team(team_map, "Willamette", "D3")
-        opp_info = resolve_team(team_map, opp_key, "D3")
+        team_info_db = resolve_team(team_map, team_db_name, division)
+        opp_info = resolve_team(team_map, opp_key, division)
 
         if location == "home":
-            home_team, away_team = "Willamette", opp_key
-            home_id = willamette_info.get("team_id")
+            home_team, away_team = team_db_name, opp_key
+            home_id = team_info_db.get("team_id")
             away_id = opp_info.get("team_id")
         else:
-            home_team, away_team = opp_key, "Willamette"
+            home_team, away_team = opp_key, team_db_name
             home_id = opp_info.get("team_id")
-            away_id = willamette_info.get("team_id")
+            away_id = team_info_db.get("team_id")
 
         games.append({
             "game_date": current_date.isoformat(),
@@ -761,11 +595,124 @@ def extract_future_willamette_games(season_year, today, team_map):
             "home_team_id": home_id,
             "away_team_id": away_id,
             "is_conference": is_conference,
-            "division": "D3",
-            "source_team": "Willamette",
+            "division": division,
+            "source_team": team_db_name,
             "location": location,
         })
 
+    return games
+
+
+# ============================================================
+# NWAC Schedule Extraction (individual team pages)
+# ============================================================
+
+def get_scraper_api_key():
+    """Load ScraperAPI key from environment or .env file."""
+    api_key = os.environ.get("SCRAPER_API_KEY", "")
+    if not api_key:
+        env_path = Path(__file__).parent.parent / ".env"
+        if env_path.exists():
+            with open(env_path) as f:
+                for line in f:
+                    if line.strip().startswith("SCRAPER_API_KEY="):
+                        api_key = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+    return api_key
+
+
+def fetch_presto_page(url, api_key=None):
+    """Fetch a PrestoSports page, using ScraperAPI if direct fetch fails."""
+    # Try direct fetch first
+    html = fetch_page(url)
+    if html and len(html) > 2000:
+        return html
+
+    # Fallback to ScraperAPI
+    if api_key:
+        try:
+            api_url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
+            resp = requests.get(api_url, timeout=120)
+            resp.raise_for_status()
+            if len(resp.text) > 2000:
+                return resp.text
+        except Exception as e:
+            logger.error(f"ScraperAPI failed for {url}: {e}")
+
+    return None
+
+
+def extract_future_nwac_games(season_year, today, team_map):
+    """
+    Extract future games from individual NWAC team schedule pages.
+    Each team has a PrestoSports game-log page with their full season schedule.
+    """
+    season_str = f"{season_year - 1}-{str(season_year)[2:]}"
+    api_key = get_scraper_api_key()
+
+    if not api_key:
+        logger.warning(
+            "SCRAPER_API_KEY not set - NWAC games will likely be missing! "
+            "Set it via: SCRAPER_API_KEY=your_key python3 scripts/scrape_future_schedules.py"
+        )
+
+    all_games = []
+    for db_name, slug in NWAC_TEAM_SLUGS.items():
+        url = f"https://nwacsports.com/sports/bsb/{season_str}/teams/{slug}?view=schedule"
+        logger.info(f"Fetching NWAC {db_name}: {url}")
+
+        html = fetch_presto_page(url, api_key)
+        if not html:
+            logger.warning(f"  {db_name}: failed to fetch schedule page")
+            continue
+
+        games = parse_presto_future_games(
+            html, db_name, season_year, today, team_map,
+            division="JUCO", conf_teams_set=NWAC_TEAMS_SET
+        )
+        all_games.extend(games)
+        logger.info(f"  {db_name}: {len(games)} future games found")
+
+        # Be nice to the server
+        time.sleep(0.5)
+
+    logger.info(f"NWAC total: {len(all_games)} future games from {len(NWAC_TEAM_SLUGS)} teams")
+    return all_games
+
+
+# ============================================================
+# Willamette (PrestoSports) Schedule Extraction
+# ============================================================
+
+# NWC team names for conference game detection
+NWC_TEAMS_SET_D3 = {
+    "UPS", "PLU", "Whitman", "Whitworth", "L&C", "Pacific",
+    "Linfield", "GFU", "Willamette",
+}
+
+def extract_future_willamette_games(season_year, today, team_map):
+    """
+    Extract future games for Willamette from their PrestoSports schedule page.
+    Uses the shared parse_presto_future_games() parser.
+    """
+    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
+    schedule_url = (
+        f"https://www.wubearcats.com/sports/bsb/{presto_season}"
+        f"/teams/willamette?view=schedule"
+    )
+
+    logger.info(f"Fetching Willamette schedule: {schedule_url}")
+
+    api_key = get_scraper_api_key()
+    html = fetch_presto_page(schedule_url, api_key)
+    if not html:
+        logger.warning("Willamette: failed to fetch schedule page")
+        return []
+
+    games = parse_presto_future_games(
+        html, "Willamette", season_year, today, team_map,
+        division="D3", conf_teams_set=NWC_TEAMS_SET_D3
+    )
     logger.info(f"Willamette: {len(games)} future games found")
     return games
 
