@@ -21,6 +21,7 @@ import json
 import math
 import random
 import logging
+import statistics
 from pathlib import Path
 from datetime import date
 from collections import defaultdict
@@ -661,39 +662,37 @@ def build_projected_standings(current_standings, projections, team_ratings):
             }
         conferences[conf_key]["teams"].append(projected_team)
 
-    # Normalize conference totals for NWAC divisions ONLY.
-    # NWAC teams often have incomplete schedule data because the WAF blocks
-    # server-side scraping, so some teams show 0-4 games while others show
-    # 20+.  We pad those incomplete teams to match the max active team.
-    # CCC, NWC, and GNAC have reliable per-team schedule data and do NOT
-    # need normalization — small 1-2 game timing gaps are expected and
-    # should be left as-is.
+    # Normalize conference totals so every team in a conference ends with
+    # the same number of total conference games.  Uses the MEDIAN total
+    # (played + remaining) from active teams as the target.  Median is
+    # robust against outliers (e.g., PLU showing 28 when everyone else
+    # has 24) and against incomplete scrape data (NWAC teams showing 4
+    # when they should show 20+).  Inactive teams (0 played AND 0
+    # remaining) are excluded from the calculation and not padded.
     for conf in conferences.values():
         if conf.get("division_level") == "D1":
-            continue  # skip D1 — we don't project them
+            continue  # skip D1 -- we don't project them
 
-        # Only normalize NWAC divisions (NWAC-E, NWAC-N, NWAC-S, NWAC-W)
-        conf_abbrev = conf.get("conference_abbrev", "")
-        if not conf_abbrev.startswith("NWAC"):
-            continue
-
-        # Find the max total from ACTIVE teams only (exclude teams with
-        # 0 played AND 0 remaining — those are inactive/not competing).
-        max_conf_total = 0
+        # Collect totals from ACTIVE teams only (exclude teams with
+        # 0 played AND 0 remaining -- those are inactive/not competing).
+        active_totals = []
         for team in conf["teams"]:
             played = team["current_conf_wins"] + team["current_conf_losses"]
             remaining = team["conf_games_remaining"]
             if played == 0 and remaining == 0:
                 continue  # skip inactive teams like GRC
-            total = played + remaining
-            if total > max_conf_total:
-                max_conf_total = total
+            active_totals.append(played + remaining)
 
-        if max_conf_total == 0:
+        if not active_totals:
             continue
 
-        # Pad teams that are 3+ games below the max active team.
-        threshold = 3
+        # Use the median as the "correct" number of conference games.
+        # This is robust against both high outliers (bad scrape data
+        # inflating one team) and low outliers (failed scrapes).
+        target_total = int(statistics.median(active_totals))
+
+        if target_total == 0:
+            continue
 
         for team in conf["teams"]:
             played = team["current_conf_wins"] + team["current_conf_losses"]
@@ -701,8 +700,8 @@ def build_projected_standings(current_standings, projections, team_ratings):
             if played == 0 and remaining == 0:
                 continue  # don't pad inactive teams
             total = played + remaining
-            deficit = max_conf_total - total
-            if deficit >= threshold:
+            deficit = target_total - total
+            if deficit > 0:
                 half = deficit * 0.5
                 team["conf_games_remaining"] += deficit
                 team["games_remaining"] += deficit
@@ -718,6 +717,27 @@ def build_projected_standings(current_standings, projections, team_ratings):
                 team["projected_win_pct"] = round(team["projected_wins"] / w_total, 3) if w_total > 0 else 0
                 c_total = team["projected_conf_wins"] + team["projected_conf_losses"]
                 team["projected_conf_win_pct"] = round(team["projected_conf_wins"] / c_total, 3) if c_total > 0 else 0
+            elif deficit < 0:
+                # Team has MORE games than the median target (outlier).
+                # Cap them down to the target by removing excess from
+                # remaining (don't touch already-played games).
+                excess = -deficit
+                removable = min(excess, team["conf_games_remaining"])
+                if removable > 0:
+                    team["conf_games_remaining"] -= removable
+                    team["games_remaining"] -= removable
+                    half = removable * 0.5
+                    team["projected_additional_wins"] = round(team["projected_additional_wins"] - half, 1)
+                    team["projected_additional_losses"] = round(team["projected_additional_losses"] - half, 1)
+                    team["projected_wins"] = round(team["projected_wins"] - half, 1)
+                    team["projected_losses"] = round(team["projected_losses"] - half, 1)
+                    team["projected_conf_wins"] = round(team["projected_conf_wins"] - half, 1)
+                    team["projected_conf_losses"] = round(team["projected_conf_losses"] - half, 1)
+                    # Recalculate win percentages
+                    w_total = team["projected_wins"] + team["projected_losses"]
+                    team["projected_win_pct"] = round(team["projected_wins"] / w_total, 3) if w_total > 0 else 0
+                    c_total = team["projected_conf_wins"] + team["projected_conf_losses"]
+                    team["projected_conf_win_pct"] = round(team["projected_conf_wins"] / c_total, 3) if c_total > 0 else 0
 
     # Sort teams within each conference by projected conference win%
     for conf in conferences.values():
