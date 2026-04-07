@@ -358,6 +358,52 @@ def backfill_game_batting(cur):
     print(f"  Matched {cur.rowcount} rows via 'F. Last' + game teams")
 
 
+def fix_team_ids(cur):
+    """Fix team_id on rows where player_id was matched but team_id is wrong.
+
+    This happens when a box score is scraped from the opponent's website:
+    the game_batting row gets the opponent's team_id instead of the player's
+    actual team.  Now that player_id is set, we can correct team_id to
+    match the player's real team -- but only when doing so won't violate
+    the unique constraint (game_id, team_id, player_name).
+    """
+    print("\nStep 2d: Fixing team_id on rows where player matched but team is wrong...")
+
+    # Fix game_batting
+    cur.execute("""
+        UPDATE game_batting gb
+        SET team_id = p.team_id
+        FROM players p
+        WHERE gb.player_id = p.id
+          AND gb.team_id != p.team_id
+          AND NOT EXISTS (
+              SELECT 1 FROM game_batting gb2
+              WHERE gb2.game_id = gb.game_id
+                AND gb2.team_id = p.team_id
+                AND gb2.player_name = gb.player_name
+                AND gb2.id != gb.id
+          )
+    """)
+    print(f"  Fixed {cur.rowcount} game_batting rows")
+
+    # Fix game_pitching
+    cur.execute("""
+        UPDATE game_pitching gp
+        SET team_id = p.team_id
+        FROM players p
+        WHERE gp.player_id = p.id
+          AND gp.team_id != p.team_id
+          AND NOT EXISTS (
+              SELECT 1 FROM game_pitching gp2
+              WHERE gp2.game_id = gp.game_id
+                AND gp2.team_id = p.team_id
+                AND gp2.player_name = gp.player_name
+                AND gp2.id != gp.id
+          )
+    """)
+    print(f"  Fixed {cur.rowcount} game_pitching rows")
+
+
 def update_quality_starts(cur):
     """Update pitching_stats.quality_starts from game_pitching data."""
     print("\nStep 3: Updating pitching_stats.quality_starts from game logs...")
@@ -408,6 +454,7 @@ def backfill_player_ids():
         clean_position_prefixes(cur)   # strip "ssIsaac" → "Isaac"
         clean_game_batting_names(cur)  # strip "cf/rf...", fix whitespace
         backfill_game_batting(cur)
+        fix_team_ids(cur)              # correct team_id where player matched but team was wrong
         update_quality_starts(cur)
 
         # Summary stats
