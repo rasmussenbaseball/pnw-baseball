@@ -205,7 +205,16 @@ def parse_sidearm_html_fallback(html, db_short=None):
             games.append({"date": game_date, "is_away": is_away, "name": aria})
 
         if games:
-            return _assign_game_numbers(games)
+            # Sanity check: if ALL games are the same direction, the aria-labels
+            # probably don't distinguish home/away (e.g. D1 v3 pages use "vs" for everything).
+            # Fall through to location-based detection instead.
+            away_count = sum(1 for g in games if g["is_away"])
+            home_count = len(games) - away_count
+            if away_count > 0 and home_count > 0:
+                return _assign_game_numbers(games)
+            else:
+                logger.info(f"  Aria-labels show {home_count} home / {away_count} away (all same) -- trying location fallback")
+                games = []  # Reset and fall through to Strategy 2
 
     # ── Strategy 2: Location-based detection for D1 v3 pages ──
     home_city = D1_HOME_CITIES.get(db_short, "").lower() if db_short else ""
