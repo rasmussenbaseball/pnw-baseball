@@ -171,7 +171,10 @@ def parse_sidearm_html_fallback(html, db_short=None):
 
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, "html.parser")
+    # Truncate large pages to avoid parser hangs (WSU can be >1MB)
+    max_size = 500_000
+    parse_html = html[:max_size] if len(html) > max_size else html
+    soup = BeautifulSoup(parse_html, "html.parser")
     games = []
 
     # ── Strategy 1: aria-label based detection ──
@@ -220,39 +223,67 @@ def parse_sidearm_html_fallback(html, db_short=None):
                 return _assign_game_numbers(games)  # Non-D1 teams: trust aria-labels
 
     # ── Strategy 2: Location-based detection for D1 v3 pages ──
-    # Uses regex on raw HTML (fast) instead of BeautifulSoup (slow on large pages)
+    # Parses game cards with BeautifulSoup, checks location text against home city.
+    # Truncates HTML to avoid hanging on very large pages (WSU).
     home_city = D1_HOME_CITIES.get(db_short, "").lower() if db_short else ""
     if not home_city:
         return []
 
     logger.info(f"  Using location-based detection (home city: {home_city})")
 
-    # Find each boxscore link's aria-label and nearby HTML context
-    # Pattern: find aria-label with date, then check surrounding ~2000 chars for home city
-    html_lower = html.lower()
+    # Reuse the soup already parsed at the top of this function
+    # Find game cards
+    cards = soup.find_all("div", class_=re.compile(r"\bs-game-card\b"))
+    if not cards:
+        logger.info(f"  No s-game-card elements found")
+        return []
 
-    for link in box_links:
-        aria = link.get("aria-label", "") or ""
+    logger.info(f"  Found {len(cards)} game card elements")
+
+    seen_hrefs = set()
+    for card in cards:
+        box_link = card.find("a", href=re.compile(r"boxscore", re.I))
+        if not box_link:
+            continue
+
+        # Deduplicate (pages often have duplicate card layouts)
+        href = box_link.get("href", "")
+        if href in seen_hrefs:
+            continue
+        seen_hrefs.add(href)
+
+        aria = box_link.get("aria-label", "") or ""
         game_date = _extract_date_from_aria(aria)
+
+        if not game_date:
+            # Try score-time text for date
+            score_el = card.find(class_=re.compile(r"game-score-time"))
+            if score_el:
+                st_text = score_el.get_text(strip=True)
+                # "W, 6-2Feb 13(Fri)" or "L, 1-8Mar. 20(Thu)"
+                score_m = re.match(r'[WLT],\s*\d+-\d+', st_text)
+                if score_m:
+                    rest = st_text[score_m.end():]
+                    date_m = re.match(r'([A-Z][a-z]{2}\.?\s+\d{1,2})', rest)
+                    if date_m:
+                        for fmt in ["%b %d, %Y", "%b. %d, %Y"]:
+                            try:
+                                game_date = datetime.strptime(f"{date_m.group(1)}, {SEASON}", fmt).date()
+                                break
+                            except ValueError:
+                                continue
+
         if not game_date or game_date.year < SEASON:
             continue
 
-        # Find where this link appears in the raw HTML, check nearby text for home city
-        href = link.get("href", "")
-        if href:
-            href_pos = html_lower.find(href.lower())
-            if href_pos >= 0:
-                # Check a window around the link for the home city name
-                start = max(0, href_pos - 1500)
-                end = min(len(html_lower), href_pos + 1500)
-                context = html_lower[start:end]
-                is_away = home_city not in context
-            else:
-                is_away = True  # Can't find context, assume away
+        # Check if home city appears anywhere in this card's text
+        card_text = card.get_text(" ", strip=True).lower()
+        if home_city in card_text:
+            is_away = False  # Playing at home
         else:
-            is_away = True
+            is_away = True   # Away game
 
-        games.append({"date": game_date, "is_away": is_away, "name": aria})
+        games.append({"date": game_date, "is_away": is_away, "name": aria or card_text[:80]})
 
     return _assign_game_numbers(games)
 
@@ -311,7 +342,7 @@ def fix_sidearm_team(db_short, team_config, team_id):
 
     away_games = [g for g in games if g["is_away"]]
     home_games = [g for g in games if not g["is_away"]]
-    logger.info(f"  JSON-LD: {len(home_games)} home, {len(away_games)} away games detected")
+    logger.info(f"  Detected: {len(home_games)} home, {len(away_games)} away games")
 
     swapped = 0
     with get_connection() as conn:
@@ -319,36 +350,50 @@ def fix_sidearm_team(db_short, team_config, team_id):
 
         for game in away_games:
             if game["date"].year < 2026:
-                continue  # Skip fall/preseason games
+                continue
 
             # This is an AWAY game. Check if DB has this team as home.
             cur.execute("""
-                SELECT id, home_team_id, away_team_id,
-                       home_score, away_score
-                FROM games
-                WHERE game_date = %s
-                  AND game_number = %s
-                  AND home_team_id = %s
-                  AND season = %s
+                SELECT id FROM games
+                WHERE game_date = %s AND game_number = %s
+                  AND home_team_id = %s AND season = %s
             """, (game["date"], game["game_number"], team_id, SEASON))
 
-            rows = cur.fetchall()
-            for row in rows:
-                # This game has our team as home, but it should be away. Swap.
+            for row in cur.fetchall():
                 cur.execute("""
                     UPDATE games
-                    SET home_team_id = away_team_id,
-                        away_team_id = home_team_id,
-                        home_team_name = away_team_name,
-                        away_team_name = home_team_name,
-                        home_score = away_score,
-                        away_score = home_score,
-                        home_hits = away_hits,
-                        away_hits = home_hits,
-                        home_errors = away_errors,
-                        away_errors = home_errors,
-                        home_line_score = away_line_score,
-                        away_line_score = home_line_score
+                    SET home_team_id = away_team_id, away_team_id = home_team_id,
+                        home_team_name = away_team_name, away_team_name = home_team_name,
+                        home_score = away_score, away_score = home_score,
+                        home_hits = away_hits, away_hits = home_hits,
+                        home_errors = away_errors, away_errors = home_errors,
+                        home_line_score = away_line_score, away_line_score = home_line_score
+                    WHERE id = %s
+                """, (row["id"],))
+                swapped += 1
+
+        # Also fix the REVERSE: home games wrongly set to away.
+        # This corrects over-swaps from previous runs.
+        for game in home_games:
+            if game["date"].year < 2026:
+                continue
+
+            # This is a HOME game. Check if DB has this team as away.
+            cur.execute("""
+                SELECT id FROM games
+                WHERE game_date = %s AND game_number = %s
+                  AND away_team_id = %s AND season = %s
+            """, (game["date"], game["game_number"], team_id, SEASON))
+
+            for row in cur.fetchall():
+                cur.execute("""
+                    UPDATE games
+                    SET home_team_id = away_team_id, away_team_id = home_team_id,
+                        home_team_name = away_team_name, away_team_name = home_team_name,
+                        home_score = away_score, away_score = home_score,
+                        home_hits = away_hits, away_hits = home_hits,
+                        home_errors = away_errors, away_errors = home_errors,
+                        home_line_score = away_line_score, away_line_score = home_line_score
                     WHERE id = %s
                 """, (row["id"],))
                 swapped += 1
@@ -371,6 +416,10 @@ def fix_presto_team(db_short, team_config, team_id):
         presto_season = f"{SEASON - 1}-{str(SEASON)[2:]}"
         url = build_presto_schedule_url(base_url, sport, "willamette", presto_season)
         html = fetch_page(url)
+        if not html and SCRAPER_API_KEY:
+            # Willamette's PrestoSports site also blocks direct requests
+            logger.info(f"  Direct fetch failed, trying ScraperAPI...")
+            html = fetch_with_scraper_api(url)
     elif is_nwac:
         # NWAC requires ScraperAPI to bypass WAF
         if not SCRAPER_API_KEY:
@@ -391,51 +440,56 @@ def fix_presto_team(db_short, team_config, team_id):
     if not schedule:
         return 0
 
+    # Categorize games as home or away
+    away_games = []
+    home_games = []
+    for game in schedule:
+        game_date = game.get("date")
+        if not game_date:
+            continue
+        opp = game.get("opponent", "")
+        if game.get("is_away") or opp.lower().startswith(("at ", "@ ")):
+            away_games.append(game)
+        else:
+            home_games.append(game)
+
+    logger.info(f"  Schedule: {len(home_games)} home, {len(away_games)} away")
+
     swapped = 0
+    swap_sql = """
+        UPDATE games
+        SET home_team_id = away_team_id, away_team_id = home_team_id,
+            home_team_name = away_team_name, away_team_name = home_team_name,
+            home_score = away_score, away_score = home_score,
+            home_hits = away_hits, away_hits = home_hits,
+            home_errors = away_errors, away_errors = home_errors,
+            home_line_score = away_line_score, away_line_score = home_line_score
+        WHERE id = %s
+    """
+
     with get_connection() as conn:
         cur = conn.cursor()
 
-        for game in schedule:
-            game_date = game.get("date")
-            if not game_date:
-                continue
-
-            # Check is_away from the parsed data
-            opp = game.get("opponent", "")
-            if game.get("is_away"):
-                is_away = True
-            elif opp.lower().startswith(("at ", "@ ")):
-                is_away = True
-            else:
-                continue  # Not away or can't determine
-
-            game_number = game.get("game_number", 1)
-
+        # Away games: swap if DB has team as home
+        for game in away_games:
             cur.execute("""
                 SELECT id FROM games
-                WHERE game_date = %s
-                  AND game_number = %s
-                  AND home_team_id = %s
-                  AND season = %s
-            """, (game_date, game_number, team_id, SEASON))
-
+                WHERE game_date = %s AND game_number = %s
+                  AND home_team_id = %s AND season = %s
+            """, (game["date"], game.get("game_number", 1), team_id, SEASON))
             for row in cur.fetchall():
-                cur.execute("""
-                    UPDATE games
-                    SET home_team_id = away_team_id,
-                        away_team_id = home_team_id,
-                        home_team_name = away_team_name,
-                        away_team_name = home_team_name,
-                        home_score = away_score,
-                        away_score = home_score,
-                        home_hits = away_hits,
-                        away_hits = home_hits,
-                        home_errors = away_errors,
-                        away_errors = home_errors,
-                        home_line_score = away_line_score,
-                        away_line_score = home_line_score
-                    WHERE id = %s
-                """, (row["id"],))
+                cur.execute(swap_sql, (row["id"],))
+                swapped += 1
+
+        # Home games: swap if DB has team as away (fixes over-corrections)
+        for game in home_games:
+            cur.execute("""
+                SELECT id FROM games
+                WHERE game_date = %s AND game_number = %s
+                  AND away_team_id = %s AND season = %s
+            """, (game["date"], game.get("game_number", 1), team_id, SEASON))
+            for row in cur.fetchall():
+                cur.execute(swap_sql, (row["id"],))
                 swapped += 1
 
         conn.commit()
