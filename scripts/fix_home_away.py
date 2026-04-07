@@ -42,6 +42,15 @@ logger = logging.getLogger(__name__)
 
 SEASON = 2026
 
+# Home cities for D1 teams whose schedule pages lack at/vs indicators.
+# Location text on the schedule page is compared to this to determine home/away.
+D1_HOME_CITIES = {
+    "UW": "seattle",
+    "Oregon": "eugene",
+    "Oregon St.": "corvallis",
+    "Wash. St.": "pullman",
+}
+
 # ScraperAPI for NWAC WAF bypass
 SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
 
@@ -148,12 +157,12 @@ def parse_sidearm_json_ld(html):
     return games
 
 
-def parse_sidearm_html_fallback(html):
-    """Fallback parser for Sidearm pages without JSON-LD (e.g. UW, Oregon, OSU, WSU).
+def parse_sidearm_html_fallback(html, db_short=None):
+    """Fallback parser for Sidearm pages without JSON-LD.
 
-    Parses aria-labels from boxscore links on the schedule page:
-      "Box Score of University of Oregon at George Mason on February 13"
-      "Box Score of University of Oregon vs Portland on March 1"
+    Strategy 1: Parse aria-labels from boxscore links for "at"/"vs" keywords.
+    Strategy 2: If aria-labels don't have at/vs (D1 v3 pages), use location text
+                compared to the team's known home city.
 
     Returns list of dicts with: date, is_away, game_number
     """
@@ -165,65 +174,123 @@ def parse_sidearm_html_fallback(html):
     soup = BeautifulSoup(html, "html.parser")
     games = []
 
-    # Find all boxscore links with aria-labels
+    # ── Strategy 1: aria-label based detection ──
     box_links = soup.find_all("a", href=re.compile(r"boxscore", re.I))
+    has_at_vs = False
     for link in box_links:
         aria = link.get("aria-label", "") or ""
-        if not aria:
+        if re.search(r'\b(at|vs\.?)\s+', aria):
+            has_at_vs = True
+            break
+
+    if has_at_vs:
+        for link in box_links:
+            aria = link.get("aria-label", "") or ""
+            if not aria:
+                continue
+
+            is_away = None
+            if re.search(r'\bat\s+', aria):
+                is_away = True
+            elif re.search(r'\bvs\.?\s+', aria):
+                is_away = False
+
+            if is_away is None:
+                continue
+
+            game_date = _extract_date_from_aria(aria)
+            if not game_date or game_date.year < SEASON:
+                continue
+
+            games.append({"date": game_date, "is_away": is_away, "name": aria})
+
+        if games:
+            return _assign_game_numbers(games)
+
+    # ── Strategy 2: Location-based detection for D1 v3 pages ──
+    home_city = D1_HOME_CITIES.get(db_short, "").lower() if db_short else ""
+    if not home_city:
+        return []
+
+    logger.info(f"  Using location-based detection (home city: {home_city})")
+
+    # v3 game cards use s-game-card class
+    cards = soup.find_all(class_=re.compile(r"s-game-card"))
+    if not cards:
+        # Try broader: any container with a boxscore link
+        cards = []
+        for link in box_links:
+            # Walk up to find the game container
+            parent = link.find_parent(["div", "li", "article"])
+            if parent and parent not in cards:
+                cards.append(parent)
+
+    for card in cards:
+        # Find boxscore link to confirm this is a completed game
+        box_link = card.find("a", href=re.compile(r"boxscore", re.I))
+        if not box_link:
             continue
 
-        # Determine home/away from aria-label
-        is_away = None
-        if re.search(r'\bat\s+', aria):
-            is_away = True
-        elif re.search(r'\bvs\.?\s+', aria):
-            is_away = False
-
-        if is_away is None:
-            continue
-
-        # Extract date from aria-label: "on February 13" or "on Mar. 20, 2026"
-        game_date = None
-        date_m = re.search(r'on\s+(\w+\.?\s+\d{1,2}(?:,?\s*\d{4})?)', aria)
-        if date_m:
-            date_str = date_m.group(1)
-            # Add year if missing
-            if not re.search(r'\d{4}', date_str):
-                date_str = f"{date_str}, {SEASON}"
-            for fmt in ["%B %d, %Y", "%b. %d, %Y", "%b %d, %Y"]:
-                try:
-                    game_date = datetime.strptime(date_str.replace(",", ", ").strip(), fmt).date()
-                    break
-                except ValueError:
-                    continue
+        # Extract date from the card
+        aria = box_link.get("aria-label", "") or ""
+        game_date = _extract_date_from_aria(aria)
 
         if not game_date:
+            # Try score-time text for date
+            score_el = card.find(class_=re.compile(r"game-score-time"))
+            if score_el:
+                st_text = score_el.get_text(strip=True)
+                date_m = re.search(r'([A-Z][a-z]{2}\.?\s+\d{1,2})', st_text)
+                if date_m:
+                    for fmt in ["%b %d, %Y", "%b. %d, %Y"]:
+                        try:
+                            game_date = datetime.strptime(f"{date_m.group(1)}, {SEASON}", fmt).date()
+                            break
+                        except ValueError:
+                            continue
+
+        if not game_date or game_date.year < SEASON:
             continue
 
-        # Skip fall games
-        if game_date.year < SEASON:
+        # Extract location text from the card
+        # Location appears as text in the card, typically after opponent info
+        card_text = card.get_text(" ", strip=True).lower()
+
+        # Check if the home city appears in the card text
+        if home_city in card_text:
+            is_away = False  # Playing at home
+        else:
+            is_away = True   # Location doesn't mention home city = away
+
+        games.append({"date": game_date, "is_away": is_away, "name": aria or card_text[:80]})
+
+    return _assign_game_numbers(games)
+
+
+def _extract_date_from_aria(aria):
+    """Extract a game date from an aria-label string."""
+    date_m = re.search(r'on\s+(\w+\.?\s+\d{1,2}(?:,?\s*\d{4})?)', aria)
+    if not date_m:
+        return None
+    date_str = date_m.group(1)
+    if not re.search(r'\d{4}', date_str):
+        date_str = f"{date_str}, {SEASON}"
+    for fmt in ["%B %d, %Y", "%b. %d, %Y", "%b %d, %Y"]:
+        try:
+            return datetime.strptime(date_str.replace(",", ", ").strip(), fmt).date()
+        except ValueError:
             continue
+    return None
 
-        games.append({
-            "date": game_date,
-            "is_away": is_away,
-            "name": aria,
-        })
 
-    # Assign game numbers for doubleheaders
+def _assign_game_numbers(games):
+    """Assign game_number for doubleheaders (multiple games on same date)."""
     from collections import Counter
-    date_counts = Counter()
-    for g in games:
-        date_counts[g["date"]] += 1
-
+    date_counts = Counter(g["date"] for g in games)
     date_seen = Counter()
     for g in games:
         date_seen[g["date"]] += 1
-        if date_counts[g["date"]] > 1:
-            g["game_number"] = date_seen[g["date"]]
-        else:
-            g["game_number"] = 1
-
+        g["game_number"] = date_seen[g["date"]] if date_counts[g["date"]] > 1 else 1
     return games
 
 
@@ -247,7 +314,7 @@ def fix_sidearm_team(db_short, team_config, team_id):
     games = parse_sidearm_json_ld(html)
     if not games:
         logger.info(f"  No JSON-LD found, trying HTML aria-label fallback...")
-        games = parse_sidearm_html_fallback(html)
+        games = parse_sidearm_html_fallback(html, db_short=db_short)
     if not games:
         logger.warning(f"  No game data found from JSON-LD or HTML fallback")
         return 0

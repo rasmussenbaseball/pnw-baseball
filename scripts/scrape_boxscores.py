@@ -80,6 +80,15 @@ D1_TEAMS = {
     "Seattle U":  ("https://goseattleu.com",       "baseball", "sidearm"),
 }
 
+# Home cities for D1 teams whose schedule pages lack at/vs indicators.
+# Used by the v3 parser to determine home/away from location text.
+D1_HOME_CITIES = {
+    "UW": "seattle",
+    "Oregon": "eugene",
+    "Oregon St.": "corvallis",
+    "Wash. St.": "pullman",
+}
+
 # D2 (GNAC): Sidearm Sports
 D2_TEAMS = {
     "CWU":   ("https://wildcatsports.com",  "baseball", "sidearm"),
@@ -534,7 +543,7 @@ def build_sidearm_schedule_url(base_url, sport, season_year):
     return f"{base_url}/sports/{sport}/schedule/{season_year}"
 
 
-def parse_sidearm_schedule(html, base_url, season_year):
+def parse_sidearm_schedule(html, base_url, season_year, db_short=None):
     """
     Parse a Sidearm Sports schedule page.
     Tries the new c-events__item format first, then falls back to the legacy
@@ -551,7 +560,7 @@ def parse_sidearm_schedule(html, base_url, season_year):
         return games
 
     # Try s-game-card format (Oregon, OSU, WSU, etc.)
-    games = _parse_sidearm_schedule_v3(html, base_url, season_year)
+    games = _parse_sidearm_schedule_v3(html, base_url, season_year, db_short=db_short)
     if games:
         logger.info(f"  Parsed {len(games)} completed games from Sidearm schedule (v3/game-card)")
         return games
@@ -698,7 +707,7 @@ def _parse_sidearm_schedule_v2(html, base_url, season_year):
     return games
 
 
-def _parse_sidearm_schedule_v3(html, base_url, season_year):
+def _parse_sidearm_schedule_v3(html, base_url, season_year, db_short=None):
     """
     Parse the Sidearm 's-game-card' schedule format (Oregon, OSU, WSU, etc.).
 
@@ -710,6 +719,7 @@ def _parse_sidearm_schedule_v3(html, base_url, season_year):
         or <a href="/boxscore.aspx?id=ID">
         with optional aria-label like "Box Score of Team vs Opponent on Month Day"
       - Opponent name in <a> tag linking to opponent site, or in aria-label
+      - Location text (city) used as fallback for home/away when aria lacks at/vs
     """
     soup = BeautifulSoup(html, "html.parser")
     games = []
@@ -784,6 +794,17 @@ def _parse_sidearm_schedule_v3(html, base_url, season_year):
                 game["is_away"] = True
             elif re.search(r'\bvs\.?\s+', aria):
                 game["is_away"] = False
+
+        # Fallback: location-based detection for D1 teams (UW, Oregon, OSU, WSU)
+        # whose aria-labels don't distinguish home from away
+        if "is_away" not in game and db_short:
+            home_city = D1_HOME_CITIES.get(db_short, "").lower()
+            if home_city:
+                card_text = card.get_text(" ", strip=True).lower()
+                if home_city in card_text:
+                    game["is_away"] = False
+                else:
+                    game["is_away"] = True
 
         if not game.get("opponent"):
             # Try the team-event-info area — opponent name is usually in a link
@@ -1995,7 +2016,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             logger.info(f"  Retrying without year: {schedule_url}")
             html = fetch_page(schedule_url)
 
-        schedule = parse_sidearm_schedule(html, base_url, season_year)
+        schedule = parse_sidearm_schedule(html, base_url, season_year, db_short=db_short)
 
     games_found = len(schedule)
 
