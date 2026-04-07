@@ -996,9 +996,21 @@ def parse_presto_schedule(html, base_url, season_year):
                                  "april", "may", "june", "january", "exhibition"):
             continue
 
+        # Detect home/away from opponent text prefix.
+        # PrestoSports game logs show "at Opponent" or "@ Opponent" for away games,
+        # and just "Opponent" or "vs Opponent" for home games.
+        opp_lower = opponent.lower()
+        if opp_lower.startswith(("at ", "@ ")):
+            is_away = True
+        elif opp_lower.startswith("vs"):
+            is_away = False
+        else:
+            is_away = False  # default to home if no prefix
+
         game = {
             "date": game_date,
             "opponent": opponent,
+            "is_away": is_away,
             "team_score": ts,
             "opp_score": os_val,
             "result": result,
