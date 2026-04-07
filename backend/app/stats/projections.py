@@ -464,6 +464,45 @@ def build_projected_standings(current_standings, projections, team_ratings):
             }
         conferences[conf_key]["teams"].append(projected_team)
 
+    # Normalize conference totals: every team in a conference should have
+    # the same total conference games (played + remaining).  Source schedule
+    # pages sometimes don't list all future games yet, leaving some teams
+    # short.  Pad any shortfall with .500-projected "unscheduled" games so
+    # the displayed totals balance across the conference.
+    for conf in conferences.values():
+        if conf.get("division_level") == "D1":
+            continue  # skip D1 — we don't project them
+
+        # Find the max total (played + remaining) in this conference
+        max_conf_total = 0
+        for team in conf["teams"]:
+            total = (team["current_conf_wins"] + team["current_conf_losses"]
+                     + team["conf_games_remaining"])
+            if total > max_conf_total:
+                max_conf_total = total
+
+        # Pad any team below the max
+        for team in conf["teams"]:
+            total = (team["current_conf_wins"] + team["current_conf_losses"]
+                     + team["conf_games_remaining"])
+            deficit = max_conf_total - total
+            if deficit > 0:
+                half = deficit * 0.5
+                team["conf_games_remaining"] += deficit
+                team["games_remaining"] += deficit
+                # Project unscheduled games at .500
+                team["projected_additional_wins"] = round(team["projected_additional_wins"] + half, 1)
+                team["projected_additional_losses"] = round(team["projected_additional_losses"] + half, 1)
+                team["projected_wins"] = round(team["projected_wins"] + half, 1)
+                team["projected_losses"] = round(team["projected_losses"] + half, 1)
+                team["projected_conf_wins"] = round(team["projected_conf_wins"] + half, 1)
+                team["projected_conf_losses"] = round(team["projected_conf_losses"] + half, 1)
+                # Recalculate win percentages
+                w_total = team["projected_wins"] + team["projected_losses"]
+                team["projected_win_pct"] = round(team["projected_wins"] / w_total, 3) if w_total > 0 else 0
+                c_total = team["projected_conf_wins"] + team["projected_conf_losses"]
+                team["projected_conf_win_pct"] = round(team["projected_conf_wins"] / c_total, 3) if c_total > 0 else 0
+
     # Sort teams within each conference by projected conference win%
     for conf in conferences.values():
         conf["teams"].sort(
