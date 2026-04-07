@@ -97,6 +97,7 @@ TEAM_NAME_ALIASES = {
     "central washington": "CWU", "cwu": "CWU", "central washington university": "CWU",
     "saint martin's": "SMU", "saint martin's university": "SMU", "st. martin's": "SMU", "saint martins": "SMU", "smu": "SMU",
     "montana state billings": "MSUB", "msub": "MSUB", "msu billings": "MSUB",
+    "montana state university billings": "MSUB",
     "western oregon": "WOU", "wou": "WOU", "western oregon university": "WOU",
     "northwest nazarene": "NNU", "nnu": "NNU", "northwest nazarene university": "NNU",
     # D3
@@ -108,6 +109,7 @@ TEAM_NAME_ALIASES = {
     "pacific": "Pacific", "pacific university": "Pacific", "pacific (ore.)": "Pacific", "boxers": "Pacific",
     "linfield": "Linfield", "linfield university": "Linfield", "wildcats": "Linfield",
     "george fox": "GFU", "gfu": "GFU", "george fox university": "GFU",
+    "willamette": "Willamette", "willamette university": "Willamette",
     # NAIA
     "lewis-clark state": "LCSC", "lcsc": "LCSC", "lewis-clark state college": "LCSC",
     "lewis-clark state college (idaho)": "LCSC", "lewis-clark state (idaho)": "LCSC",

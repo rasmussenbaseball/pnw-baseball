@@ -255,7 +255,7 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
             "tournament", "championship", "world series", "opening round",
             "super regional", "college world", "playoff",
             "naia opening", "naia world", "ncaa",
-            "begins", "tba", "tbd",
+            "begins", "tba", "tbd", "conference",
         ]
         if any(kw in opp_clean.lower() for kw in postseason_keywords):
             continue
@@ -271,8 +271,10 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
         else:
             location = "neutral"
 
-        # Conference game?
-        is_conference = game.get("conference", False)
+        # Conference detection: don't trust Sidearm's Nuxt data field —
+        # it's inconsistent across sites.  We'll set is_conference in a
+        # post-processing step using our database's conference_id instead.
+        is_conference = False
 
         # Resolve team IDs (prefer matching division for duplicate names)
         div = team_info.get("division", "")
@@ -390,7 +392,7 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
                 "tournament", "championship", "world series", "opening round",
                 "super regional", "college world", "playoff",
                 "naia opening", "naia world", "ncaa",
-                "begins", "tba", "tbd",
+                "begins", "tba", "tbd", "conference",
             ]
             opp_lower = opp_clean.lower()
             if any(kw in opp_lower for kw in postseason_keywords):
@@ -421,8 +423,10 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             if text_el and text_el.get_text(" ", strip=True).lower().startswith("at"):
                 location = "away"
 
-            # Conference
-            is_conf = bool(item.find(class_=re.compile(r"conference")))
+            # Conference detection: don't trust Sidearm's CSS classes —
+            # they over-detect.  We'll set is_conference in a post-processing
+            # step using our database's conference_id instead.
+            is_conf = False
 
             div = team_info.get("division", "")
             team_info_db = resolve_team(team_map, team_name, div)
@@ -822,8 +826,10 @@ def main():
 
     all_games = []
 
-    # 1. Scrape Sidearm teams (D1, D2, D3, NAIA)
+    # 1. Scrape Sidearm teams (D2, D3, NAIA — skip D1, not needed for projections)
     for team_name, team_info in SIDEARM_TEAMS.items():
+        if team_info.get("division") == "D1":
+            continue
         try:
             games = extract_future_sidearm_games(
                 team_name, team_info, args.season, today, team_map
@@ -852,8 +858,10 @@ def main():
     all_games = deduplicate_future_games(all_games)
     logger.info(f"Deduplicated: {before_count} -> {len(all_games)} games")
 
-    # 4b. Validate is_conference: teams from different conferences can't play conf games
-    # Build team_id -> conference_id lookup
+    # 4b. Set is_conference using database conference_id (authoritative source).
+    # Two teams playing a conference game must share the same conference_id.
+    # This replaces unreliable Sidearm HTML/Nuxt detection for non-NWAC games,
+    # and validates NWAC's team-set-based detection.
     team_conf_map = {}
     for name, entry in team_map.items():
         if isinstance(entry, list):
@@ -862,19 +870,23 @@ def main():
         else:
             team_conf_map[entry["team_id"]] = entry["conference_id"]
 
-    conf_fixes = 0
+    conf_marked = 0
+    conf_unmarked = 0
     for g in all_games:
-        if g.get("is_conference"):
-            home_id = g.get("home_team_id")
-            away_id = g.get("away_team_id")
-            if home_id and away_id:
-                home_conf = team_conf_map.get(home_id)
-                away_conf = team_conf_map.get(away_id)
-                if home_conf and away_conf and home_conf != away_conf:
-                    g["is_conference"] = False
-                    conf_fixes += 1
-    if conf_fixes:
-        logger.info(f"Fixed {conf_fixes} games incorrectly marked as conference")
+        home_id = g.get("home_team_id")
+        away_id = g.get("away_team_id")
+        if home_id and away_id:
+            home_conf = team_conf_map.get(home_id)
+            away_conf = team_conf_map.get(away_id)
+            if home_conf and away_conf and home_conf == away_conf:
+                if not g.get("is_conference"):
+                    conf_marked += 1
+                g["is_conference"] = True
+            else:
+                if g.get("is_conference"):
+                    conf_unmarked += 1
+                g["is_conference"] = False
+    logger.info(f"Conference detection: {conf_marked} marked, {conf_unmarked} unmarked (via DB conference_id)")
 
     # 5. Sort by date
     all_games.sort(key=lambda g: g["game_date"])
