@@ -661,29 +661,36 @@ def build_projected_standings(current_standings, projections, team_ratings):
             }
         conferences[conf_key]["teams"].append(projected_team)
 
-    # Normalize conference totals: every team in a conference should have
-    # the same total conference games (played + remaining).  Source schedule
-    # pages sometimes don't list all future games yet, leaving some teams
-    # short.  Pad any shortfall with .500-projected "unscheduled" games so
-    # the displayed totals balance across the conference.
+    # Normalize conference totals: if a team's schedule data is significantly
+    # incomplete (3+ fewer conference games than the conference median),
+    # pad with .500-projected "unscheduled" games.  Small differences (1-2
+    # games) are normal timing gaps (one team played yesterday, another
+    # plays tomorrow) and should NOT be padded — padding them inflates
+    # game counts and distorts projections.
     for conf in conferences.values():
         if conf.get("division_level") == "D1":
             continue  # skip D1 — we don't project them
 
-        # Find the max total (played + remaining) in this conference
-        max_conf_total = 0
-        for team in conf["teams"]:
-            total = (team["current_conf_wins"] + team["current_conf_losses"]
-                     + team["conf_games_remaining"])
-            if total > max_conf_total:
-                max_conf_total = total
+        # Use the median total (played + remaining) as the expected count.
+        # Median is robust against outlier teams that have extra/missing
+        # games due to scraper issues or schedule quirks.
+        totals = sorted(
+            (team["current_conf_wins"] + team["current_conf_losses"]
+             + team["conf_games_remaining"])
+            for team in conf["teams"]
+        )
+        if not totals:
+            continue
+        mid = len(totals) // 2
+        median_total = totals[mid] if len(totals) % 2 else (totals[mid - 1] + totals[mid]) // 2
 
-        # Pad any team below the max
+        # Only pad teams that are 3+ games below the median (truly missing data).
+        # 1-2 game differences are normal timing gaps, not missing data.
         for team in conf["teams"]:
             total = (team["current_conf_wins"] + team["current_conf_losses"]
                      + team["conf_games_remaining"])
-            deficit = max_conf_total - total
-            if deficit > 0:
+            deficit = median_total - total
+            if deficit >= 3:
                 half = deficit * 0.5
                 team["conf_games_remaining"] += deficit
                 team["games_remaining"] += deficit

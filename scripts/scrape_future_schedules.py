@@ -914,6 +914,27 @@ def main():
     # 5. Sort by date
     all_games.sort(key=lambda g: g["game_date"])
 
+    # 5b. Preserve NWAC games from previous run if current scrape got none.
+    # The NWAC WAF blocks datacenter IPs, so server-side runs often get 0
+    # NWAC games.  In that case, carry forward NWAC games from the existing
+    # file (which was populated by a Mac-side or ScraperAPI run).
+    output_path = Path(__file__).parent.parent / "backend" / "data" / "future_schedules.json"
+    juco_count = sum(1 for g in all_games if g.get("division") == "JUCO")
+    if juco_count == 0 and output_path.exists():
+        try:
+            with open(output_path) as f:
+                prev = json.load(f)
+            prev_juco = [g for g in prev.get("games", [])
+                         if g.get("division") == "JUCO"
+                         and g.get("game_date", "") >= today.isoformat()]
+            if prev_juco:
+                all_games.extend(prev_juco)
+                all_games.sort(key=lambda g: g["game_date"])
+                logger.info(f"Preserved {len(prev_juco)} NWAC games from previous run "
+                           f"(server WAF blocked fresh scrape)")
+        except Exception as e:
+            logger.warning(f"Could not load previous NWAC games: {e}")
+
     # 6. Write output
     output = {
         "last_updated": now_pacific.isoformat(),
@@ -922,7 +943,6 @@ def main():
         "games": all_games,
     }
 
-    output_path = Path(__file__).parent.parent / "backend" / "data" / "future_schedules.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w") as f:
