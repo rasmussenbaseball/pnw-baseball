@@ -1318,13 +1318,19 @@ def _parse_batting_table(table):
                     name = re.sub(r'^\d+\s*', '', val)  # Remove leading jersey #
                     name = re.sub(r'\s*(ph|pr|cr|dh|eh)\s*$', '', name, flags=re.I)  # Remove role suffixes
                     # Remove leading position prefixes stuck to name (e.g. "dhStevens, Nate", "b/phSmith, John")
-                    # Single-letter positions (c, b, p) only match in slash combos (c/dh, b/ph)
-                    # to avoid stripping the first letter of names like Connor, Brooks, Porter.
+                    # Multi-char positions (dh, ss, cf, etc.) match standalone.
+                    # Single-letter positions (c, b, p) match in slash combos (c/dh, b/ph)
+                    # OR when followed by a capital letter that ISN'T a typical name start
+                    # pattern — specifically, "b" followed by a capital + period ("bA. Moon")
+                    # or "b" followed by a capital + lowercase ("bSmith") are stripped.
                     pos_prefix_m = re.match(
                         r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
                         name
                     ) or re.match(
                         r'^(?:c|b|p)/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name
+                    ) or re.match(
+                        r'^[cbp](?=[A-Z][a-z])',
                         name
                     )
                     if pos_prefix_m:
@@ -1427,13 +1433,16 @@ def _parse_pitching_table(table):
 
                     name = re.sub(r'^\d+\s*', '', name)  # Remove jersey #
                     # Remove leading position prefixes stuck to name
-                    # Single-letter positions (c, b, p) only in slash combos to avoid
-                    # stripping first letter of names like Connor, Brooks, Porter.
+                    # Same logic as batting parser: multi-char match standalone,
+                    # single-char (c/b/p) match in slash combos or before CapitalLower.
                     pfx = re.match(
                         r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
                         name
                     ) or re.match(
                         r'^(?:c|b|p)/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
+                        name
+                    ) or re.match(
+                        r'^[cbp](?=[A-Z][a-z])',
                         name
                     )
                     if pfx:
@@ -1561,51 +1570,114 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
 
 
 def find_player_id(cur, team_id, player_name, season):
-    """Try to match a player by name on a given team."""
-    if not player_name:
+    """Try to match a player by name on a given team.
+
+    Matching strategies (in order):
+      1. "First Last" exact match by team
+      2. "Last, First" exact match by team
+      3. "Last,First" (no space) exact match by team
+      4. "F. Last" initial match by team (e.g. "A. Moon" → "Austin Moon")
+      5. Last-name-only match when unique on team
+    """
+    if not player_name or not team_id:
         return None
 
-    # Normalize name
+    # Normalize name — strip position prefixes that may have leaked through
     name = player_name.strip()
+    # Strip any leading lowercase+slash prefixes (e.g. "cf/rfSmith" → "Smith")
+    name = re.sub(r'^[a-z0-9/]+(?=[A-Z])', '', name)
+    name = name.strip()
+    if not name:
+        return None
 
-    # Try "First Last" format
+    # ── Strategy 1: "First Last" format ──
     parts = name.split(None, 1)
     if len(parts) == 2:
         first, last = parts
         cur.execute("""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
-              AND LOWER(p.first_name) = LOWER(%s) AND LOWER(p.last_name) = LOWER(%s)
+              AND LOWER(p.first_name) = LOWER(%s)
+              AND LOWER(p.last_name) = LOWER(%s)
             LIMIT 1
         """, (team_id, first, last))
         row = cur.fetchone()
         if row:
             return row["id"]
 
-    # Try "Last, First" format
+    # ── Strategy 2: "Last, First" format ──
     if "," in name:
         parts = name.split(",", 1)
         last = parts[0].strip()
         first = parts[1].strip()
+        if first and last:
+            cur.execute("""
+                SELECT p.id FROM players p
+                WHERE p.team_id = %s
+                  AND LOWER(p.first_name) = LOWER(%s)
+                  AND LOWER(p.last_name) = LOWER(%s)
+                LIMIT 1
+            """, (team_id, first, last))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+
+    # ── Strategy 3: "F. Last" initial format (e.g. "A. Moon") ──
+    initial_m = re.match(r'^([A-Z])\.\s+(.+)$', name)
+    if initial_m:
+        initial = initial_m.group(1).lower()
+        last = initial_m.group(2).strip()
         cur.execute("""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
-              AND LOWER(p.first_name) = LOWER(%s) AND LOWER(p.last_name) = LOWER(%s)
+              AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = %s
+              AND LOWER(p.last_name) = LOWER(%s)
             LIMIT 1
-        """, (team_id, first, last))
+        """, (team_id, initial, last))
         row = cur.fetchone()
         if row:
             return row["id"]
 
-    # Fallback: partial match
-    cur.execute("""
-        SELECT p.id FROM players p
-        WHERE p.team_id = %s
-          AND LOWER(p.last_name) || ', ' || LOWER(p.first_name) LIKE LOWER(%s)
-        LIMIT 1
-    """, (team_id, f"%{name}%"))
-    row = cur.fetchone()
-    return row["id"] if row else None
+    # ── Strategy 3b: "Last, F." initial format (e.g. "Moon, A.") ──
+    if "," in name:
+        parts = name.split(",", 1)
+        last = parts[0].strip()
+        first_part = parts[1].strip()
+        initial_m2 = re.match(r'^([A-Z])\.?$', first_part)
+        if initial_m2 and last:
+            initial = initial_m2.group(1).lower()
+            cur.execute("""
+                SELECT p.id FROM players p
+                WHERE p.team_id = %s
+                  AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = %s
+                  AND LOWER(p.last_name) = LOWER(%s)
+                LIMIT 1
+            """, (team_id, initial, last))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+
+    # ── Strategy 4: Last-name-only match (unique on team) ──
+    # Extract last name from whatever format we have
+    if "," in name:
+        last = name.split(",", 1)[0].strip()
+    elif len(parts) == 2:
+        last = parts[1]
+    else:
+        last = name
+    if last:
+        cur.execute("""
+            SELECT p.id FROM players p
+            WHERE p.team_id = %s
+              AND LOWER(p.last_name) = LOWER(%s)
+            LIMIT 1
+        """, (team_id, last))
+        rows = cur.fetchall() if hasattr(cur, 'fetchall') else [cur.fetchone()]
+        # Only use if exactly one player with that last name on the team
+        if len(rows) == 1 and rows[0]:
+            return rows[0]["id"]
+
+    return None
 
 
 def upsert_game(cur, game_data):

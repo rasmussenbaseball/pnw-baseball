@@ -104,6 +104,14 @@ run_step "National ratings (Pear + CBR)" \
 run_step "Future schedules (playoff projections)" \
     python3 scripts/scrape_future_schedules.py --season "$SEASON"
 
+# ── Step 4c: Backfill player_id in box score tables ────────
+# Cleans corrupted names (position prefixes like "dhSmith"),
+# then matches game_batting/game_pitching rows to players.
+# Must run AFTER box scores are scraped (Step 2).
+
+run_step "Backfill player IDs in game logs" \
+    python3 scripts/backfill_player_ids.py
+
 # ── Step 5: Recalculate advanced metrics ───────────────────
 # Must run AFTER all stats are loaded so league averages are current.
 
