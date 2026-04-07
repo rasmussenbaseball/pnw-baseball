@@ -212,11 +212,29 @@ def scrape_d1_team(base_url):
 
 # Map variations of team names to our DB short_name
 NAME_ALIASES = {
-    # D1
+    # D1 — PNW
     "gonzaga": "Gonzaga", "portland": "Portland", "seattle": "Seattle U",
     "seattle u": "Seattle U", "washington": "UW", "oregon state": "Oregon St.",
     "oregon st.": "Oregon St.", "oregon": "Oregon", "washington state": "Wash. St.",
     "washington st.": "Wash. St.",
+    # D1 — Big Ten (alias from bigten.org → DB short_name)
+    "ucla": "UCLA", "usc": "USC", "neb": "Nebraska", "ore": "Oregon",
+    "pur": "Purdue", "osu": "Ohio St.", "wash": "UW", "ill": "Illinois",
+    "iowa": "Iowa", "mich": "Michigan", "nu": "Northwestern", "ru": "Rutgers",
+    "ind": "Indiana", "msu": "Michigan St.", "minn": "Minnesota",
+    "psu": "Penn St.", "md": "Maryland",
+    "nebraska": "Nebraska", "purdue": "Purdue", "ohio state": "Ohio St.",
+    "ohio st.": "Ohio St.", "illinois": "Illinois", "iowa": "Iowa",
+    "michigan state": "Michigan St.", "michigan st.": "Michigan St.",
+    "michigan": "Michigan", "northwestern": "Northwestern", "rutgers": "Rutgers",
+    "indiana": "Indiana", "minnesota": "Minnesota", "penn state": "Penn St.",
+    "penn st.": "Penn St.", "maryland": "Maryland",
+    # D1 — MWC
+    "air force": "Air Force", "fresno state": "Fresno St.", "fresno st.": "Fresno St.",
+    "grand canyon": "Grand Canyon", "nevada": "Nevada", "new mexico": "New Mexico",
+    "san jose state": "San Jose St.", "san jose st.": "San Jose St.",
+    "sdsu": "SDSU", "san diego state": "SDSU", "unlv": "UNLV",
+    "utah state": "Utah St.", "utah st.": "Utah St.",
     # D2 (GNAC)
     "central washington": "CWU", "msu billings": "MSUB", "montana state billings": "MSUB",
     "northwest nazarene": "NNU", "saint martin's": "SMU", "saint martin": "SMU",
@@ -294,6 +312,75 @@ D1_TEAMS = {
     "Portland": "https://portlandpilots.com",
     "Seattle U": "https://goseattleu.com",
 }
+
+# MWC teams — scraped individually via Sidearm schedule pages
+MWC_TEAMS = {
+    "Air Force": "https://goairforcefalcons.com",
+    "Fresno St.": "https://gobulldogs.com",
+    "Grand Canyon": "https://gculopes.com",
+    "Nevada": "https://nevadawolfpack.com",
+    "New Mexico": "https://golobos.com",
+    "San Jose St.": "https://sjsuspartans.com",
+    "SDSU": "https://goaztecs.com",
+    "UNLV": "https://unlvrebels.com",
+    "Utah St.": "https://utahstateaggies.com",
+}
+
+
+def scrape_bigten_standings(season):
+    """
+    Scrape Big Ten baseball standings from bigten.org.
+
+    The site uses Next.js with all data embedded in __NEXT_DATA__.
+    Returns dict of team_alias -> {"overall": (w, l), "conf": (cw, cl)}
+    """
+    url = f"https://bigten.org/base/standings/{season}/"
+    html = fetch(url)
+    if not html:
+        return {}
+
+    soup = BeautifulSoup(html, "html.parser")
+    nd = soup.find("script", id="__NEXT_DATA__")
+    if not nd:
+        logger.warning("Big Ten: no __NEXT_DATA__ found")
+        return {}
+
+    import json as _json
+    try:
+        data = _json.loads(nd.string)
+    except Exception as e:
+        logger.warning(f"Big Ten: failed to parse __NEXT_DATA__: {e}")
+        return {}
+
+    fallback = data.get("props", {}).get("pageProps", {}).get("fallback", {})
+    standings_data = None
+    for key in fallback:
+        if "standings" in key:
+            standings_data = fallback[key]
+            break
+
+    if not standings_data:
+        logger.warning("Big Ten: no standings data in fallback")
+        return {}
+
+    results = {}
+    for team in standings_data.get("data", []):
+        alias = team.get("alias", "")
+        # Flatten the data list into a dict
+        d = {}
+        for item in team.get("data", []):
+            d.update(item)
+
+        conf_record = d.get("conf_record", "")
+        ovr_record = d.get("ovr_record", "")
+
+        conf = parse_record(conf_record) if conf_record else (0, 0)
+        ovr = parse_record(ovr_record) if ovr_record else (0, 0)
+
+        if ovr:
+            results[alias] = {"overall": ovr, "conf": conf or (0, 0)}
+
+    return results
 
 
 def main():
@@ -374,7 +461,45 @@ def main():
             else:
                 logger.warning(f"  Could not match NWAC team: {team_name}")
 
-        # ── Step 3: D1 individual team pages (only for teams not yet found) ──
+        # ── Step 2b: Big Ten standings (from bigten.org) ──
+
+        if season != _current_year:
+            logger.info(f"\n--- Skipping Big Ten standings (only show current year) ---")
+        else:
+            logger.info(f"\n--- Fetching Big Ten standings ---")
+            bigten_records = scrape_bigten_standings(season)
+            logger.info(f"  Found {len(bigten_records)} teams")
+
+            for team_alias, data in bigten_records.items():
+                matched = match_team(team_alias, db_teams)
+                if matched:
+                    ov = data.get("overall", (0, 0))
+                    cf = data.get("conf", (0, 0))
+                    save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
+                else:
+                    logger.warning(f"  Could not match Big Ten team: {team_alias}")
+
+        # ── Step 2c: MWC team pages (individual Sidearm schedule pages) ──
+
+        if season != _current_year:
+            logger.info(f"\n--- Skipping MWC team pages (only show current year) ---")
+        else:
+            logger.info(f"\n--- Fetching MWC team records ---")
+            for short, base_url in MWC_TEAMS.items():
+                team = next((t for t in db_teams if t["short_name"] == short), None)
+                if not team:
+                    logger.warning(f"  MWC team not in DB: {short}")
+                    continue
+
+                logger.info(f"  Trying {short}...")
+                overall, conference = scrape_d1_team(base_url)
+                if overall:
+                    cf = conference or (0, 0)
+                    save(team["id"], short, overall[0], overall[1], cf[0], cf[1])
+                else:
+                    logger.warning(f"  No record found for {short}")
+
+        # ── Step 3: D1 individual team pages (only for PNW teams not yet found) ──
         # These pages also only show the current season.
 
         if season != _current_year:
@@ -386,7 +511,7 @@ def main():
             existing = cur.fetchall()
             found_ids = {r["team_id"] for r in existing}
 
-            logger.info(f"\n--- Checking D1 team pages for missing or 0-0 teams ---")
+            logger.info(f"\n--- Checking D1 PNW team pages for missing or 0-0 teams ---")
             for short, base_url in D1_TEAMS.items():
                 team = next((t for t in db_teams if t["short_name"] == short), None)
                 if not team or team["id"] in found_ids:
