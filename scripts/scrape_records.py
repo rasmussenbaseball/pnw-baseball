@@ -205,6 +205,32 @@ def scrape_d1_team(base_url):
         if cm:
             conference = parse_record(cm.group(1))
 
+    # Method 3: Nuxt-based Sidearm sites (SDSU, San Jose St, New Mexico, etc.)
+    # Data is embedded in a __NUXT_DATA__ script tag as a JSON array.
+    # Record dicts have {wins: <idx>, loses: <idx>} where values are array indices.
+    # First dict = overall, second = conference.
+    if not overall:
+        nuxt_el = soup.find("script", id="__NUXT_DATA__")
+        if nuxt_el and nuxt_el.string:
+            try:
+                import json as _json
+                nuxt_data = _json.loads(nuxt_el.string)
+                record_dicts = []
+                for item in nuxt_data:
+                    if isinstance(item, dict) and "wins" in item and "loses" in item:
+                        w_ref = item["wins"]
+                        l_ref = item["loses"]
+                        w = nuxt_data[w_ref] if isinstance(w_ref, int) and w_ref < len(nuxt_data) else w_ref
+                        l = nuxt_data[l_ref] if isinstance(l_ref, int) and l_ref < len(nuxt_data) else l_ref
+                        if isinstance(w, int) and isinstance(l, int):
+                            record_dicts.append((w, l))
+                if len(record_dicts) >= 1:
+                    overall = record_dicts[0]
+                if len(record_dicts) >= 2:
+                    conference = record_dicts[1]
+            except Exception:
+                pass
+
     return overall, conference
 
 
@@ -446,22 +472,11 @@ def main():
                     else:
                         logger.warning(f"  Could not match: {team_name}")
 
-        # ── Step 2: NWAC standings ──
+        # ── NWAC standings — SKIPPED ──
+        # NWAC standings are scraped via GitHub Actions (nwac-stats.yml)
+        # because nwacstats.org blocks datacenter IPs with a WAF.
 
-        logger.info(f"\n--- Fetching NWAC standings ---")
-        nwac_records = scrape_nwac_standings(season)
-        logger.info(f"  Found {len(nwac_records)} teams")
-
-        for team_name, data in nwac_records.items():
-            matched = match_team(team_name, db_teams)
-            if matched:
-                ov = data.get("overall", (0, 0))
-                cf = data.get("conf") or (0, 0)
-                save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
-            else:
-                logger.warning(f"  Could not match NWAC team: {team_name}")
-
-        # ── Step 2b: Big Ten standings (from bigten.org) ──
+        # ── Step 2: Big Ten standings (from bigten.org) ──
 
         if season != _current_year:
             logger.info(f"\n--- Skipping Big Ten standings (only show current year) ---")
