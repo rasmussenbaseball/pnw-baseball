@@ -66,7 +66,6 @@ NWAC_TEAM_SLUGS = {
     "Douglas": "douglas",
     "Edmonds": "edmonds",
     "Everett": "everett",
-    "GRC": "greenriver",
     "Grays Harbor": "graysharbor",
     "Lane": "lane",
     "Linn-Benton": "linnbenton",
@@ -88,7 +87,6 @@ NWAC_TEAM_SLUGS = {
 
 # ── NWAC opponent name mapping ──
 NWAC_SCHEDULE_NAME_TO_DB = {
-    "Green River": "GRC",
     "Skagit Valley": "Skagit",
     "Mt Hood": "Mt. Hood",
     "SW Oregon": "SW Oregon",
