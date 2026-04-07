@@ -13,7 +13,8 @@ Playoff Formats (2026):
   GNAC (D2): Top 3, round-robin day 1, elimination/championship day 2
   NWC  (D3): Top 4 by conference win%, double elimination
   CCC  (NAIA): Top 5, double elimination. #1 bye/host, #2v3 and #4v5
-  NWAC (JUCO): 4 regions x 4 teams. #1s to final 8, #3v4 single elim, winner vs #2 best-of-3
+  NWAC (JUCO): 4 divisions x 4 teams = 16 total. Cross-conference super regionals,
+    then 8-team championship (4 #1 seeds + 4 super regional winners) in Longview, WA
 """
 
 import json
@@ -56,38 +57,62 @@ PLAYOFF_FORMATS = {
         "description": "Top 5, #1 gets bye and hosts, #2v3 and #4v5, double elimination",
         "seeding_basis": "conference_win_pct",
     },
-    # NWAC has 4 sub-regions, each conference sends top 4
+    # NWAC: 4 conferences (N/E/S/W), top 4 from each → 16 teams total
+    # #1 seeds bypass super regionals and go straight to Championship
+    # #2-#4 seeds play in cross-conference super regionals
     "NWAC_NORTH": {
-        "name": "NWAC North Region",
+        "name": "NWAC North",
         "division_level": "JUCO",
         "num_teams": 4,
-        "format": "nwac_regional",
-        "description": "#1 to final 8; #3v4 single elim at #2 field, winner vs #2 best-of-3",
+        "format": "nwac_division",
         "seeding_basis": "conference_win_pct",
     },
     "NWAC_EAST": {
-        "name": "NWAC East Region",
+        "name": "NWAC East",
         "division_level": "JUCO",
         "num_teams": 4,
-        "format": "nwac_regional",
-        "description": "#1 to final 8; #3v4 single elim at #2 field, winner vs #2 best-of-3",
+        "format": "nwac_division",
         "seeding_basis": "conference_win_pct",
     },
     "NWAC_SOUTH": {
-        "name": "NWAC South Region",
+        "name": "NWAC South",
         "division_level": "JUCO",
         "num_teams": 4,
-        "format": "nwac_regional",
-        "description": "#1 to final 8; #3v4 single elim at #2 field, winner vs #2 best-of-3",
+        "format": "nwac_division",
         "seeding_basis": "conference_win_pct",
     },
     "NWAC_WEST": {
-        "name": "NWAC West Region",
+        "name": "NWAC West",
         "division_level": "JUCO",
         "num_teams": 4,
-        "format": "nwac_regional",
-        "description": "#1 to final 8; #3v4 single elim at #2 field, winner vs #2 best-of-3",
+        "format": "nwac_division",
         "seeding_basis": "conference_win_pct",
+    },
+}
+
+# NWAC cross-conference super regional matchups (May 15-16, 2026)
+# Each super regional: #2 seed hosts. Two lower seeds from OTHER conferences
+# play single-elimination, winner faces #2 in best-of-3.
+NWAC_SUPER_REGIONALS = {
+    "North": {
+        "name": "NWAC North Super Regional",
+        "host_division": "NWAC_NORTH",   # N2 hosts
+        "play_in": [("NWAC_WEST", 4), ("NWAC_SOUTH", 3)],  # W4 vs S3
+    },
+    "East": {
+        "name": "NWAC East Super Regional",
+        "host_division": "NWAC_EAST",    # E2 hosts
+        "play_in": [("NWAC_NORTH", 4), ("NWAC_WEST", 3)],  # N4 vs W3
+    },
+    "West": {
+        "name": "NWAC West Super Regional",
+        "host_division": "NWAC_WEST",    # W2 hosts
+        "play_in": [("NWAC_SOUTH", 4), ("NWAC_EAST", 3)],  # S4 vs E3
+    },
+    "South": {
+        "name": "NWAC South Super Regional",
+        "host_division": "NWAC_SOUTH",   # S2 hosts
+        "play_in": [("NWAC_EAST", 4), ("NWAC_NORTH", 3)],  # E4 vs N3
     },
 }
 
@@ -513,6 +538,23 @@ def build_projected_standings(current_standings, projections, team_ratings):
     return list(conferences.values())
 
 
+def _make_team_entry(team, seed, division_label=None):
+    """Helper to build a team dict for bracket display."""
+    entry = {
+        "seed": seed,
+        "team_id": team["team_id"],
+        "short_name": team["short_name"],
+        "logo_url": team["logo_url"],
+        "projected_conf_record": f"{team['projected_conf_wins']:.0f}-{team['projected_conf_losses']:.0f}",
+        "projected_overall_record": f"{team['projected_wins']:.0f}-{team['projected_losses']:.0f}",
+        "projected_conf_win_pct": team["projected_conf_win_pct"],
+        "power_rating": team.get("power_rating"),
+    }
+    if division_label:
+        entry["division"] = division_label
+    return entry
+
+
 def determine_playoff_fields(projected_conferences):
     """
     Based on projected standings and playoff format rules, determine
@@ -521,6 +563,9 @@ def determine_playoff_fields(projected_conferences):
     Returns a list of playoff bracket objects.
     """
     brackets = []
+
+    # Collect NWAC division teams for cross-conference super regionals
+    nwac_divisions = {}  # format_key -> sorted team list
 
     for conf in projected_conferences:
         conf_name = conf["conference_name"]
@@ -543,37 +588,111 @@ def determine_playoff_fields(projected_conferences):
 
         playoff_teams = teams[:num_teams]
 
-        # Build bracket based on format
+        # NWAC divisions: collect teams, don't create individual brackets
+        if fmt["format"] == "nwac_division":
+            nwac_divisions[format_key] = playoff_teams
+            continue
+
+        # Non-NWAC conferences: build bracket as before
         bracket = {
             "conference": conf_name,
             "conference_abbrev": conf_abbrev,
             "division_level": fmt["division_level"],
             "format_name": fmt["name"],
             "format_type": fmt["format"],
-            "description": fmt["description"],
+            "description": fmt.get("description", ""),
             "teams": [],
         }
 
         for i, team in enumerate(playoff_teams):
-            bracket["teams"].append({
-                "seed": i + 1,
-                "team_id": team["team_id"],
-                "short_name": team["short_name"],
-                "logo_url": team["logo_url"],
-                "projected_conf_record": f"{team['projected_conf_wins']:.0f}-{team['projected_conf_losses']:.0f}",
-                "projected_overall_record": f"{team['projected_wins']:.0f}-{team['projected_losses']:.0f}",
-                "projected_conf_win_pct": team["projected_conf_win_pct"],
-                "power_rating": team.get("power_rating"),
-            })
-
-        # Add matchup info based on format
-        if fmt["format"] == "nwac_regional":
-            # NWAC: #1 auto-advance, #3v4, winner vs #2
-            if len(bracket["teams"]) >= 4:
-                bracket["auto_advance"] = [1]
-                bracket["first_round"] = {"matchup": [3, 4], "type": "single_elimination"}
-                bracket["second_round"] = {"matchup": "winner vs #2", "type": "best_of_3"}
+            bracket["teams"].append(_make_team_entry(team, i + 1))
 
         brackets.append(bracket)
+
+    # ── Build NWAC cross-conference super regionals + championship ──
+    if len(nwac_divisions) == 4:
+        # Division short labels for display
+        div_labels = {
+            "NWAC_NORTH": "North",
+            "NWAC_EAST": "East",
+            "NWAC_SOUTH": "South",
+            "NWAC_WEST": "West",
+        }
+
+        # Build 4 super regional brackets
+        for region_name, sr_def in NWAC_SUPER_REGIONALS.items():
+            host_div = sr_def["host_division"]
+            host_teams = nwac_divisions.get(host_div, [])
+            host_2 = host_teams[1] if len(host_teams) >= 2 else None
+
+            # Play-in teams from other conferences
+            play_in_a_div, play_in_a_seed = sr_def["play_in"][0]
+            play_in_b_div, play_in_b_seed = sr_def["play_in"][1]
+
+            play_in_a_teams = nwac_divisions.get(play_in_a_div, [])
+            play_in_b_teams = nwac_divisions.get(play_in_b_div, [])
+
+            play_in_a = play_in_a_teams[play_in_a_seed - 1] if len(play_in_a_teams) >= play_in_a_seed else None
+            play_in_b = play_in_b_teams[play_in_b_seed - 1] if len(play_in_b_teams) >= play_in_b_seed else None
+
+            sr_bracket = {
+                "conference": f"NWAC {region_name} Super Regional",
+                "conference_abbrev": f"NWAC-SR-{region_name[0]}",
+                "division_level": "JUCO",
+                "format_name": sr_def["name"],
+                "format_type": "nwac_super_regional",
+                "description": f"Hosted by {div_labels[host_div]} #2. Play-in: {div_labels[play_in_a_div]} #{play_in_a_seed} vs {div_labels[play_in_b_div]} #{play_in_b_seed} (single elimination). Winner vs {div_labels[host_div]} #2 (best of 3).",
+                "teams": [],
+                "host_team": None,
+                "play_in_a": None,
+                "play_in_b": None,
+            }
+
+            if host_2:
+                host_entry = _make_team_entry(host_2, 2, div_labels[host_div])
+                sr_bracket["teams"].append(host_entry)
+                sr_bracket["host_team"] = host_entry
+
+            if play_in_a:
+                a_entry = _make_team_entry(play_in_a, play_in_a_seed, div_labels[play_in_a_div])
+                sr_bracket["teams"].append(a_entry)
+                sr_bracket["play_in_a"] = a_entry
+
+            if play_in_b:
+                b_entry = _make_team_entry(play_in_b, play_in_b_seed, div_labels[play_in_b_div])
+                sr_bracket["teams"].append(b_entry)
+                sr_bracket["play_in_b"] = b_entry
+
+            brackets.append(sr_bracket)
+
+        # Build NWAC Championship bracket (8 teams: 4 #1 seeds + 4 SR winners)
+        champ_bracket = {
+            "conference": "NWAC Championship",
+            "conference_abbrev": "NWAC-CHAMP",
+            "division_level": "JUCO",
+            "format_name": "NWAC Championship",
+            "format_type": "nwac_championship",
+            "description": "8-team championship in Longview, WA. Four #1 seeds (auto-qualified) plus four super regional winners.",
+            "auto_qualifiers": [],
+            "sr_winners": [],
+            "teams": [],
+        }
+
+        # Add #1 seeds from each division
+        for div_key in ["NWAC_NORTH", "NWAC_EAST", "NWAC_SOUTH", "NWAC_WEST"]:
+            div_teams = nwac_divisions.get(div_key, [])
+            if div_teams:
+                entry = _make_team_entry(div_teams[0], 1, div_labels[div_key])
+                champ_bracket["auto_qualifiers"].append(entry)
+                champ_bracket["teams"].append(entry)
+
+        # Add placeholder slots for super regional winners
+        for region_name in NWAC_SUPER_REGIONALS:
+            champ_bracket["sr_winners"].append({
+                "label": f"{region_name} Super Regional Winner",
+                "region": region_name,
+            })
+
+        brackets.append(champ_bracket)
 
     return brackets

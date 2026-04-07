@@ -396,10 +396,11 @@ function CCCBracket({ bracket }) {
 }
 
 
-// ─── NWAC Regional Bracket ───
-function NWACBracket({ bracket }) {
-  const teams = bracket.teams || []
-  const getTeam = (seed) => teams.find(t => t.seed === seed)
+// ─── NWAC Super Regional Bracket (cross-conference) ───
+function NWACSuperRegionalBracket({ bracket }) {
+  const hostTeam = bracket.host_team
+  const playInA = bracket.play_in_a
+  const playInB = bracket.play_in_b
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -407,44 +408,109 @@ function NWACBracket({ bracket }) {
       <div className="p-3 space-y-3">
         <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
 
-        {/* Seeded Teams */}
+        {/* Teams in this super regional */}
         <div className="space-y-1">
-          {teams.map(team => (
-            <BracketTeamCompact key={team.team_id} team={team} />
-          ))}
+          {hostTeam && <BracketTeamWithDivision team={hostTeam} label="Host" />}
+          {playInA && <BracketTeamWithDivision team={playInA} />}
+          {playInB && <BracketTeamWithDivision team={playInB} />}
         </div>
 
         {/* Bracket Structure */}
         <div className="space-y-2 mt-3">
-          {/* Auto-advance */}
-          <div className="bg-teal-50 rounded-lg p-2 border border-teal-100">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-bold text-teal-700 uppercase">Auto-advance to Final 8:</span>
-              {getTeam(1) && (
-                <span className="text-[10px] font-semibold text-teal-700">
-                  #{getTeam(1).seed} {getTeam(1).short_name}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* First round */}
+          {/* Play-in game */}
           <BracketMatchup
-            teamA={getTeam(3)}
-            teamB={getTeam(4)}
-            label="Regional Play-in"
-            description="Single elimination, hosted by #2 seed"
+            teamA={playInA}
+            teamB={playInB}
+            label="Play-in (Single Elimination)"
+            description={playInA && playInB ? `${playInA.division} #${playInA.seed} vs ${playInB.division} #${playInB.seed}` : null}
           />
 
-          {/* Second round */}
+          {/* Super Regional Final */}
           <BracketMatchup
-            teamA={getTeam(2)}
+            teamA={hostTeam}
             teamB={null}
-            label="Regional Final"
-            description="Winner of #3 vs #4 plays at #2. Best of 3. Winner advances to Final 8."
+            label="Super Regional Final (Best of 3)"
+            description={hostTeam ? `Play-in winner at ${hostTeam.division} #2 ${hostTeam.short_name}. Winner advances to Championship.` : 'Winner advances to Championship.'}
           />
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── NWAC Championship Bracket (8 teams in Longview, WA) ───
+function NWACChampionshipBracket({ bracket }) {
+  const autoQualifiers = bracket.auto_qualifiers || []
+  const srWinners = bracket.sr_winners || []
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden lg:col-span-2">
+      <BracketHeader bracket={bracket} />
+      <div className="p-3 space-y-3">
+        <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Auto-qualifiers (#1 seeds) */}
+          <div>
+            <p className="text-[9px] font-bold text-teal-700 uppercase tracking-wide mb-2">
+              #1 Seeds (Auto-Qualified)
+            </p>
+            <div className="space-y-1">
+              {autoQualifiers.map(team => (
+                <BracketTeamWithDivision key={team.team_id} team={team} label={`${team.division} #1`} />
+              ))}
+            </div>
+          </div>
+
+          {/* Super Regional winner slots */}
+          <div>
+            <p className="text-[9px] font-bold text-amber-700 uppercase tracking-wide mb-2">
+              Super Regional Winners
+            </p>
+            <div className="space-y-1">
+              {srWinners.map(sr => (
+                <div key={sr.region} className="px-2 py-1.5 bg-gray-50 rounded border border-gray-100">
+                  <span className="text-[10px] text-gray-400 italic">{sr.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Team row with division label ───
+function BracketTeamWithDivision({ team, label }) {
+  if (!team) return null
+  return (
+    <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 transition-colors">
+      <span className="text-[9px] font-bold text-amber-600 w-12 shrink-0">
+        {label || `${team.division} #${team.seed}`}
+      </span>
+      {team.logo_url && (
+        <img
+          src={team.logo_url}
+          alt=""
+          className="w-4 h-4 object-contain shrink-0"
+          onError={(e) => { e.target.style.display = 'none' }}
+        />
+      )}
+      <Link
+        to={`/team/${team.team_id}`}
+        className="text-[11px] font-semibold text-gray-800 hover:text-teal-700 truncate"
+      >
+        {team.short_name}
+      </Link>
+      <span className="text-[9px] text-gray-400 ml-auto whitespace-nowrap">
+        {team.projected_conf_record}
+      </span>
+      {team.power_rating && (
+        <span className="text-[9px] font-bold text-teal-600">
+          {team.power_rating.toFixed(1)}
+        </span>
+      )}
     </div>
   )
 }
@@ -618,6 +684,13 @@ export default function PlayoffProjections() {
   for (const bracket of playoffs) {
     playoffCountByConf[bracket.conference] = bracket.teams?.length || 0
   }
+  // NWAC divisions each send top 4 to the postseason (super regionals + championship)
+  // The bracket objects are now super regionals, not per-division, so set count manually
+  for (const conf of conferences) {
+    if (conf.division_level === 'JUCO' && !playoffCountByConf[conf.conference_name]) {
+      playoffCountByConf[conf.conference_name] = 4
+    }
+  }
 
   // Exclude D1
   const nonD1Conferences = conferences.filter(c => c.division_level !== 'D1')
@@ -638,8 +711,11 @@ export default function PlayoffProjections() {
     if (bracket.format_type === 'round_robin') {
       return <GNACBracket key={bracket.conference} bracket={bracket} />
     }
-    if (bracket.format_type === 'nwac_regional') {
-      return <NWACBracket key={bracket.conference} bracket={bracket} />
+    if (bracket.format_type === 'nwac_super_regional') {
+      return <NWACSuperRegionalBracket key={bracket.conference} bracket={bracket} />
+    }
+    if (bracket.format_type === 'nwac_championship') {
+      return <NWACChampionshipBracket key={bracket.conference} bracket={bracket} />
     }
     if (bracket.format_name?.includes('CCC') || bracket.conference?.includes('Cascade')) {
       return <CCCBracket key={bracket.conference} bracket={bracket} />
