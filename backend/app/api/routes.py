@@ -6132,20 +6132,28 @@ def get_player_gamelogs(
         def resolve_game_context(r):
             home_tid = r["home_team_id"]
             away_tid = r["away_team_id"]
+            row_team_id = r["team_id"]
 
             # Determine if player's team is home or away.
-            # Priority: check player's known team IDs against game record,
-            # then fall back to gb/gp.team_id comparison.
-            if home_tid in player_team_ids:
+            # Use multiple signals for robustness:
+            #   1. row's team_id matches a game side directly
+            #   2. player's known team IDs match a game side
+            #   3. fallback: row_team_id vs home_team_id
+            if row_team_id == home_tid:
+                is_home = True
+            elif row_team_id == away_tid:
+                is_home = False
+            elif row_team_id in player_team_ids and home_tid and row_team_id != home_tid:
+                # row's team is the player's team but it's not the home team
+                is_home = False
+            elif home_tid in player_team_ids:
                 is_home = True
             elif away_tid in player_team_ids:
                 is_home = False
             else:
-                # Neither side matches player's team IDs (e.g. opponent
-                # not in DB so away_team_id is NULL). Fall back to
-                # gb.team_id matching.
-                row_team_id = r["team_id"]
-                is_home = (row_team_id == home_tid)
+                # Last resort: if away_team_id is NULL (opponent not in DB),
+                # and row_team_id doesn't match home, assume road
+                is_home = (row_team_id == home_tid) if home_tid else True
 
             if is_home:
                 team_score = r["home_score"]
