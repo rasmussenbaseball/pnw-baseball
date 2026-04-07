@@ -663,15 +663,26 @@ def build_projected_standings(current_standings, projections, team_ratings):
         conferences[conf_key]["teams"].append(projected_team)
 
     # Normalize conference totals so every team in a conference ends with
-    # the same number of total conference games.  Uses the MEDIAN total
-    # (played + remaining) from active teams as the target.  Median is
-    # robust against outliers (e.g., PLU showing 28 when everyone else
-    # has 24) and against incomplete scrape data (NWAC teams showing 4
-    # when they should show 20+).  Inactive teams (0 played AND 0
-    # remaining) are excluded from the calculation and not padded.
+    # the same number of total conference games.  Strategy differs by
+    # conference type:
+    #
+    # - CCC, NWC, GNAC (D2/D3/NAIA): Use MEDIAN of active teams.
+    #   These have reliable per-team data; median handles the rare
+    #   outlier (e.g. PLU showing 28 when others show 24) and also
+    #   caps outliers down to the target.
+    #
+    # - NWAC divisions (NWAC-E/N/S/W): Use MAX of active teams.
+    #   Many NWAC teams have incomplete data due to WAF-blocked scrapes,
+    #   so the median would be dragged down.  The teams with the MOST
+    #   games have the correct/complete data.
+    #
+    # Inactive teams (0 played AND 0 remaining) are always excluded.
     for conf in conferences.values():
         if conf.get("division_level") == "D1":
             continue  # skip D1 -- we don't project them
+
+        conf_abbrev = conf.get("conference_abbrev", "")
+        is_nwac = conf_abbrev.startswith("NWAC")
 
         # Collect totals from ACTIVE teams only (exclude teams with
         # 0 played AND 0 remaining -- those are inactive/not competing).
@@ -686,10 +697,13 @@ def build_projected_standings(current_standings, projections, team_ratings):
         if not active_totals:
             continue
 
-        # Use the median as the "correct" number of conference games.
-        # This is robust against both high outliers (bad scrape data
-        # inflating one team) and low outliers (failed scrapes).
-        target_total = int(statistics.median(active_totals))
+        if is_nwac:
+            # NWAC: use max -- teams with the most games have complete data,
+            # teams with fewer games had failed scrapes.
+            target_total = max(active_totals)
+        else:
+            # D2/D3/NAIA: use median -- robust against single outliers.
+            target_total = int(statistics.median(active_totals))
 
         if target_total == 0:
             continue
@@ -698,7 +712,7 @@ def build_projected_standings(current_standings, projections, team_ratings):
             played = team["current_conf_wins"] + team["current_conf_losses"]
             remaining = team["conf_games_remaining"]
             if played == 0 and remaining == 0:
-                continue  # don't pad inactive teams
+                continue  # don't touch inactive teams
             total = played + remaining
             deficit = target_total - total
             if deficit > 0:
@@ -717,10 +731,9 @@ def build_projected_standings(current_standings, projections, team_ratings):
                 team["projected_win_pct"] = round(team["projected_wins"] / w_total, 3) if w_total > 0 else 0
                 c_total = team["projected_conf_wins"] + team["projected_conf_losses"]
                 team["projected_conf_win_pct"] = round(team["projected_conf_wins"] / c_total, 3) if c_total > 0 else 0
-            elif deficit < 0:
-                # Team has MORE games than the median target (outlier).
-                # Cap them down to the target by removing excess from
-                # remaining (don't touch already-played games).
+            elif deficit < 0 and not is_nwac:
+                # Only cap down for non-NWAC (where we used median).
+                # For NWAC we used max, so no team should exceed it.
                 excess = -deficit
                 removable = min(excess, team["conf_games_remaining"])
                 if removable > 0:
