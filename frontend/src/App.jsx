@@ -11,7 +11,7 @@ function RequireAuth({ children }) {
 }
 
 // Admin-only guard - only allows specific email(s)
-const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com']
+const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com', 'pnwcbr@gmail.com']
 function RequireAdmin({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
