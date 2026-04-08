@@ -36,7 +36,12 @@ function cleanTeamName(name) {
 function getTeamName(game, side) {
   const short = side === 'away' ? game.away_short : game.home_short
   const full = side === 'away' ? game.away_team_name : game.home_team_name
-  // Prefer short_name from teams table, fall back to full name from games table
+  // Safety: if both sides resolved to the same short_name (bad team_id match in DB),
+  // use the raw away_team_name instead so "Oregon St. vs Lamar" doesn't show as "Oregon St. vs Oregon St."
+  if (side === 'away' && game.away_short && game.home_short &&
+      game.away_short === game.home_short && game.away_team_name) {
+    return cleanTeamName(game.away_team_name)
+  }
   return cleanTeamName(short || full)
 }
 
@@ -144,7 +149,19 @@ async function drawGameCard(ctx, game, x, y, w, h) {
     if (logo) {
       try {
         const img = await loadImage(logo)
-        ctx.drawImage(img, logoX, logoY, logoSize, logoSize)
+        // Fit logo within logoSize box while keeping aspect ratio
+        const aspect = img.naturalWidth / img.naturalHeight
+        let drawW, drawH
+        if (aspect >= 1) {
+          drawW = logoSize
+          drawH = logoSize / aspect
+        } else {
+          drawH = logoSize
+          drawW = logoSize * aspect
+        }
+        const drawX = logoX + (logoSize - drawW) / 2
+        const drawY = midY - drawH / 2
+        ctx.drawImage(img, drawX, drawY, drawW, drawH)
         logoDrawn = true
       } catch { /* skip */ }
     }
