@@ -222,9 +222,15 @@ def project_remaining_games(future_games, team_ratings):
         home_rating = team_ratings.get(home_id, {}).get("power_rating") if home_id else None
         away_rating = team_ratings.get(away_id, {}).get("power_rating") if away_id else None
 
-        # Compute win probability (with 2-point home field advantage)
+        # Regress ratings toward mean to account for estimation uncertainty.
+        # This pulls extreme ratings ~15% toward the division average,
+        # preventing over-confident win projections for top/bottom teams.
+        REGRESSION_FACTOR = 0.85  # Use 85% of rating gap from mean
         if home_rating is not None and away_rating is not None:
-            home_win_prob = elo_win_prob(home_rating + 2.0, away_rating)
+            mean_rating = (home_rating + away_rating) / 2.0
+            adj_home = mean_rating + (home_rating - mean_rating) * REGRESSION_FACTOR
+            adj_away = mean_rating + (away_rating - mean_rating) * REGRESSION_FACTOR
+            home_win_prob = elo_win_prob(adj_home + 2.0, adj_away)
         elif home_rating is not None:
             home_win_prob = 0.6  # Default advantage for known vs unknown
         elif away_rating is not None:
@@ -433,7 +439,7 @@ def _simulate_tournaments(conf_seeded, conf_format_map, team_ratings, results):
 # Monte Carlo Simulation
 # ============================================================
 
-def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations=1000):
+def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations=5000):
     """
     Simulate the remaining season N times to compute:
     - Each team's probability of making the playoffs
@@ -452,7 +458,9 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
     for tid, info in team_ratings.items():
         name_to_id[info["short_name"]] = tid
 
-    # Pre-process games into (home_id, away_id, home_win_prob, is_conference) tuples
+    # Pre-process games into (home_id, away_id, is_conference) tuples
+    # Win probabilities are computed per-simulation with jittered ratings
+    # to account for uncertainty in team strength estimates
     processed_games = []
     for game in future_games:
         home_id = game.get("home_team_id") or name_to_id.get(game.get("home_team"))
@@ -460,20 +468,17 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
         if not home_id and not away_id:
             continue
 
-        home_rating = team_ratings.get(home_id, {}).get("power_rating") if home_id else None
-        away_rating = team_ratings.get(away_id, {}).get("power_rating") if away_id else None
-
-        if home_rating is not None and away_rating is not None:
-            home_win_prob = elo_win_prob(home_rating + 2.0, away_rating)
-        elif home_rating is not None:
-            home_win_prob = 0.6
-        elif away_rating is not None:
-            home_win_prob = 0.4
-        else:
-            home_win_prob = 0.5
-
         is_conf = game.get("is_conference", False)
-        processed_games.append((home_id, away_id, home_win_prob, is_conf))
+        processed_games.append((home_id, away_id, is_conf))
+
+    # Rating uncertainty: jitter each team's rating per simulation.
+    # This reflects that power ratings are estimates, not ground truth.
+    # A standard deviation of 5 points on a 0-100 scale means:
+    #   - Teams separated by 5 pts swap ~30% of the time
+    #   - Teams separated by 10 pts swap ~16% of the time
+    #   - Teams separated by 20 pts swap ~2% of the time
+    RATING_JITTER_SD = 5.0
+    HOME_ADVANTAGE = 2.0
 
     # Build current records lookup: team_id -> {conf_wins, conf_losses, conference_name}
     team_base = {}
@@ -510,8 +515,30 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
             sim_conf_wins[tid] = base["conf_wins"]
             sim_conf_losses[tid] = base["conf_losses"]
 
-        # Simulate each game
-        for home_id, away_id, home_win_prob, is_conf in processed_games:
+        # Jitter each team's rating for this simulation
+        # This represents uncertainty in our estimate of true team talent
+        sim_ratings = {}
+        for tid, info in team_ratings.items():
+            base_rating = info.get("power_rating")
+            if base_rating is not None:
+                sim_ratings[tid] = base_rating + random.gauss(0, RATING_JITTER_SD)
+            else:
+                sim_ratings[tid] = None
+
+        # Simulate each game with jittered ratings
+        for home_id, away_id, is_conf in processed_games:
+            home_rating = sim_ratings.get(home_id) if home_id else None
+            away_rating = sim_ratings.get(away_id) if away_id else None
+
+            if home_rating is not None and away_rating is not None:
+                home_win_prob = elo_win_prob(home_rating + HOME_ADVANTAGE, away_rating)
+            elif home_rating is not None:
+                home_win_prob = 0.6
+            elif away_rating is not None:
+                home_win_prob = 0.4
+            else:
+                home_win_prob = 0.5
+
             home_wins = random.random() < home_win_prob
 
             if is_conf:
