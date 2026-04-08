@@ -32,6 +32,7 @@ import PlayerSearch from './pages/PlayerSearch'
 import JucoTracker from './pages/JucoTracker'
 import PlayerDetail from './pages/PlayerDetail'
 import SocialGraphics from './pages/SocialGraphics'
+import DailyScoresGraphic from './pages/DailyScoresGraphic'
 
 // ─── New pages ───
 import Homepage from './pages/Homepage'
@@ -125,6 +126,7 @@ export default function App() {
           {/* Misc (auth required) */}
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
+          <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
           <Route path="/feature-request" element={<RequireAuth><FeatureRequest /></RequireAuth>} />
           <Route path="/player-pages" element={<RequireAuth><PlayerGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
