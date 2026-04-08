@@ -345,7 +345,8 @@ export default function DailyScoresGraphic() {
     setRendered(false)
     try {
       // Fetch from both /games/by-date (database) AND /games/live (live_scores.json + NWAC)
-      // The homepage ticker uses /games/live which has games the database might not
+      // The homepage ticker uses /games/live which has better data: correct team names,
+      // working logos, and games the database might not have (like UBC vs Seattle U).
       const [byDateRes, liveRes] = await Promise.all([
         fetch(`${API_BASE}/games/by-date?date=${d}`),
         fetch(`${API_BASE}/games/live`).catch(() => null),
@@ -359,14 +360,14 @@ export default function DailyScoresGraphic() {
       }
 
       // Parse live games and normalize to the same format
+      // Live dates are like "2026-04-07T12:00:00" so use startsWith to match "2026-04-07"
       let liveGames = []
       if (liveRes?.ok) {
         const liveData = await liveRes.json()
         const allLive = [...(liveData.today || []), ...(liveData.recent || []), ...(liveData.upcoming || [])]
         liveGames = allLive
-          .filter(g => g.date === d && g.status === 'final')
+          .filter(g => g.date && g.date.startsWith(d) && g.status === 'final')
           .map(g => ({
-            // Normalize live_scores format to match by-date format
             home_team_name: g.team || '???',
             away_team_name: g.opponent || g.opponent_display || '???',
             home_short: g.team || null,
@@ -382,19 +383,21 @@ export default function DailyScoresGraphic() {
           }))
       }
 
-      // Merge: start with DB games, then add live games that aren't already present
-      const merged = [...dbGames]
-      for (const lg of liveGames) {
-        const homeN = (lg.home_team_name || '').toLowerCase().trim()
-        const awayN = (lg.away_team_name || '').toLowerCase().trim()
-        const isDupe = merged.some(db => {
-          const dbHome = (db.home_short || db.home_team_name || '').toLowerCase().trim()
-          const dbAway = (db.away_short || db.away_team_name || '').toLowerCase().trim()
-          // Match if either team name pair aligns (home/away could be swapped)
-          return (dbHome.includes(homeN) || homeN.includes(dbHome)) &&
-                 (dbAway.includes(awayN) || awayN.includes(dbAway))
+      // Merge: PREFER live games (they have correct names + logos), then add DB-only games
+      // Live data has "Warner Pacific University (Ore.)" vs DB having both as "Pacific"
+      const merged = [...liveGames]
+      for (const db of dbGames) {
+        const dbHome = cleanTeamName(db.home_short || db.home_team_name || '').toLowerCase()
+        const dbAway = cleanTeamName(db.away_short || db.away_team_name || '').toLowerCase()
+        const isDupe = merged.some(lg => {
+          const lHome = cleanTeamName(lg.home_short || lg.home_team_name || '').toLowerCase()
+          const lAway = cleanTeamName(lg.away_short || lg.away_team_name || '').toLowerCase()
+          return (lHome.includes(dbHome) || dbHome.includes(lHome) ||
+                  lHome.includes(dbAway) || dbAway.includes(lHome)) &&
+                 (lAway.includes(dbAway) || dbAway.includes(lAway) ||
+                  lAway.includes(dbHome) || dbHome.includes(lAway))
         })
-        if (!isDupe) merged.push(lg)
+        if (!isDupe) merged.push(db)
       }
 
       setGames(merged)
