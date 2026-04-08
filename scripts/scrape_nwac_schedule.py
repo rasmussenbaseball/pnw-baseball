@@ -99,6 +99,50 @@ def fetch_schedule(api_key, season_year):
     return resp.text
 
 
+def _infer_date_from_cell(date_text, current_date, season_year):
+    """
+    Infer a full date from the schedule page date cell text.
+
+    Date cells show e.g. "Tue. 8" or "Sun. 14" — day-of-week + day number only.
+    We infer the month from the current_date context (schedule is chronological).
+    """
+    import datetime
+
+    # Extract day number from text like "Tue. 8" or "Sun 14"
+    day_match = re.search(r'(\d+)', date_text)
+    if not day_match:
+        return None
+
+    day = int(day_match.group(1))
+
+    if current_date:
+        # Start from the month of the last known date
+        month = current_date.month
+        year = current_date.year
+
+        # If the new day < current day, we've rolled into the next month
+        if day < current_date.day - 15:  # Allow for reasonable date jumps
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+
+        try:
+            return datetime.date(year, month, day)
+        except ValueError:
+            pass
+
+    # Fallback: try common baseball months (Feb-Jun) in the season year
+    for month in (2, 3, 4, 5, 6):
+        try:
+            candidate = datetime.date(season_year, month, day)
+            return candidate
+        except ValueError:
+            continue
+
+    return None
+
+
 def parse_schedule_page(html, season_year):
     """
     Parse the NWAC master schedule HTML table into game dicts.
@@ -112,8 +156,8 @@ def parse_schedule_page(html, season_year):
       - status (Final, Final - 7 innings, etc.)
       - links (box score URL containing full date as YYYYMMDD)
 
-    Dates are extracted from box score URLs since the date cells
-    don't include the month.
+    Dates are extracted from box score URLs when available (most reliable),
+    then inferred from date cells using context for scheduled games.
     """
     import datetime
 
@@ -124,8 +168,16 @@ def parse_schedule_page(html, season_year):
     logger.info(f"Found {len(rows)} table rows total")
 
     current_date = None
-    games_parsed = 0
+    games_final = 0
+    games_scheduled = 0
     games_skipped = 0
+
+    # Get today's date in Pacific time for filtering scheduled games
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    except Exception:
+        today = datetime.date.today()
 
     for row in rows:
         cells = row.find_all("td")
@@ -139,8 +191,9 @@ def parse_schedule_page(html, season_year):
         home_score_cell = row.find("td", class_=re.compile(r"homeresult"))
         status_cell = row.find("td", class_="status")
         links_cell = row.find("td", class_="links")
+        date_cell = row.find("td", class_=re.compile(r"date|day"))
 
-        # Must have both teams and scores
+        # Must have both teams
         if not away_team_cell or not home_team_cell:
             continue
 
@@ -154,34 +207,33 @@ def parse_schedule_page(html, season_year):
         # Check if conference game (has * notation)
         is_conference = bool(away_team_cell.find("span", class_="notation"))
 
-        # Parse scores
-        if not away_score_cell or not home_score_cell:
-            games_skipped += 1
-            continue
-
-        away_score_text = away_score_cell.get_text(strip=True)
-        home_score_text = home_score_cell.get_text(strip=True)
-
-        try:
-            away_score = int(away_score_text)
-            home_score = int(home_score_text)
-        except (ValueError, TypeError):
-            games_skipped += 1
-            continue
-
         # Parse status
         status_text = status_cell.get_text(strip=True) if status_cell else ""
+        is_final = "Final" in status_text
 
-        # Only process completed games
-        if "Final" not in status_text:
+        # Parse scores (may be empty for scheduled games)
+        away_score = None
+        home_score = None
+        if away_score_cell and home_score_cell:
+            away_score_text = away_score_cell.get_text(strip=True)
+            home_score_text = home_score_cell.get_text(strip=True)
+            try:
+                away_score = int(away_score_text)
+                home_score = int(home_score_text)
+            except (ValueError, TypeError):
+                pass
+
+        # For final games, require valid scores
+        if is_final and (away_score is None or home_score is None):
             games_skipped += 1
             continue
 
         # Parse innings from status (e.g., "Final - 7 innings")
-        innings = 9
-        innings_match = re.search(r"(\d+)\s*inning", status_text)
-        if innings_match:
-            innings = int(innings_match.group(1))
+        innings = 9 if is_final else None
+        if is_final:
+            innings_match = re.search(r"(\d+)\s*inning", status_text)
+            if innings_match:
+                innings = int(innings_match.group(1))
 
         # Parse box score URL and extract date from it
         box_score_url = None
@@ -209,12 +261,26 @@ def parse_schedule_page(html, season_year):
                     except ValueError:
                         pass
 
+        # For scheduled games, try to get date from the date cell
+        if not game_date and date_cell:
+            date_text = date_cell.get_text(strip=True)
+            if date_text:
+                inferred = _infer_date_from_cell(date_text, current_date, season_year)
+                if inferred:
+                    game_date = inferred
+                    current_date = game_date
+
         # Fall back to current_date for games without box score links
         if not game_date:
             game_date = current_date
 
         if not game_date:
             logger.warning(f"No date for game: {away_name} @ {home_name} -- skipping")
+            games_skipped += 1
+            continue
+
+        # For scheduled games, only include today and upcoming (not past unscored games)
+        if not is_final and game_date < today:
             games_skipped += 1
             continue
 
@@ -241,14 +307,17 @@ def parse_schedule_page(html, season_year):
             "innings": innings,
             "is_conference_game": is_conference,
             "game_number": game_number,
-            "status": "final",
+            "status": "final" if is_final else "scheduled",
             "source_url": box_score_url,
         }
 
         games.append(game)
-        games_parsed += 1
+        if is_final:
+            games_final += 1
+        else:
+            games_scheduled += 1
 
-    logger.info(f"Parsed {games_parsed} completed games, skipped {games_skipped}")
+    logger.info(f"Parsed {games_final} final + {games_scheduled} scheduled games, skipped {games_skipped}")
     return games
 
 
@@ -309,12 +378,13 @@ def main():
 
         for game in games:
             try:
-                # Compute game score
-                winner_score = max(game["home_score"], game["away_score"])
-                loser_score = min(game["home_score"], game["away_score"])
-                game["game_score"] = compute_team_game_score(
-                    winner_score, loser_score, game["innings"]
-                )
+                # Compute game score (only for final games with scores)
+                if game["status"] == "final" and game["home_score"] is not None and game["away_score"] is not None:
+                    winner_score = max(game["home_score"], game["away_score"])
+                    loser_score = min(game["home_score"], game["away_score"])
+                    game["game_score"] = compute_team_game_score(
+                        winner_score, loser_score, game["innings"] or 9
+                    )
 
                 # Check if this game already exists
                 existing = None

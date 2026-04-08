@@ -5800,6 +5800,7 @@ def games_live():
         _pacific = ZoneInfo("America/Los_Angeles")
         today = _datetime.now(_pacific).date()
         recent_start = today - _timedelta(days=2)
+        upcoming_end = today + _timedelta(days=1)
 
         with get_connection() as conn:
             cur = conn.cursor()
@@ -5828,7 +5829,7 @@ def games_live():
                   AND (hd.level IN ('JUCO', 'NAIA') OR ad.level IN ('JUCO', 'NAIA'))
                   AND g.home_team_id != g.away_team_id
                 ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
-            """, (recent_start, today))
+            """, (recent_start, upcoming_end))
 
             seen_nwac = set()  # Track (date, home, away, h_score, a_score) to skip DB dupes
             for row in cur.fetchall():
@@ -5871,6 +5872,8 @@ def games_live():
                 # Determine which section this game belongs to
                 if row["game_date"] == today:
                     data["today"].append(nwac_game)
+                elif row["game_date"] > today:
+                    data["upcoming"].append(nwac_game)
                 else:
                     data["recent"].append(nwac_game)
 
