@@ -401,12 +401,13 @@ export default function DailyScoresGraphic() {
       }
 
       // Merge: PREFER live games (they have correct names + logos), then add DB-only games
-      // Live data has "Warner Pacific University (Ore.)" vs DB having both as "Pacific"
+      // Only dedup DB games against LIVE games, not against other DB games
+      // (otherwise doubleheaders get incorrectly removed as duplicates)
       const merged = [...liveGames]
       for (const db of dbGames) {
         const dbHome = cleanTeamName(db.home_short || db.home_team_name || '').toLowerCase()
         const dbAway = cleanTeamName(db.away_short || db.away_team_name || '').toLowerCase()
-        const isDupe = merged.some(lg => {
+        const isDupe = liveGames.some(lg => {
           const lHome = cleanTeamName(lg.home_short || lg.home_team_name || '').toLowerCase()
           const lAway = cleanTeamName(lg.away_short || lg.away_team_name || '').toLowerCase()
           return (lHome.includes(dbHome) || dbHome.includes(lHome) ||
