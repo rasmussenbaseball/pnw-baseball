@@ -6661,7 +6661,6 @@ _TEAM_POOL = [
     {"type": "team", "label": "SW Oregon (NWAC)", "value": "SW Oregon", "group": "team"},
     {"type": "team", "label": "Umpqua (NWAC)", "value": "Umpqua", "group": "team"},
     {"type": "team", "label": "Blue Mountain (NWAC)", "value": "Blue Mountain", "group": "team"},
-    {"type": "team", "label": "GRC (NWAC)", "value": "GRC", "group": "team"},
 ]
 
 _NWAC_CATS = [c for c in _TEAM_POOL if c["group"] == "nwac"]

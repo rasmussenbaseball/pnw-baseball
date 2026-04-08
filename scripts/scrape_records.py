@@ -282,7 +282,7 @@ NAME_ALIASES = {
     "bellevue": "Bellevue", "big bend": "Big Bend", "blue mountain": "Blue Mountain",
     "centralia": "Centralia", "chemeketa": "Chemeketa", "clackamas": "Clackamas",
     "clark": "Clark", "columbia basin": "Columbia Basin", "douglas": "Douglas",
-    "edmonds": "Edmonds", "everett": "Everett", "green river": "GRC",
+    "edmonds": "Edmonds", "everett": "Everett",
     "grays harbor": "Grays Harbor", "lane": "Lane", "linn-benton": "Linn-Benton",
     "lower columbia": "Lower Columbia", "mt. hood": "Mt. Hood", "mt hood": "Mt. Hood", "olympic": "Olympic",
     "pierce": "Pierce", "shoreline": "Shoreline", "skagit valley": "Skagit",

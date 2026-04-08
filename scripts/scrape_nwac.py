@@ -86,7 +86,7 @@ NWAC_TEAM_MAP = {
     "Everett":         "Everett",
     "Grays Harbor":    "Grays Harbor",
     "Gray Harbor":     "Grays Harbor",
-    "Green River":     "GRC",
+    "Green River":     None,
     "Highline":        None,
     "Klamath":         None,
     "Lane":            "Lane",

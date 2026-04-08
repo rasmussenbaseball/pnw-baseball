@@ -691,7 +691,7 @@ def build_projected_standings(current_standings, projections, team_ratings):
             played = team["current_conf_wins"] + team["current_conf_losses"]
             remaining = team["conf_games_remaining"]
             if played == 0 and remaining == 0:
-                continue  # skip inactive teams like GRC
+                continue  # skip inactive/disbanded teams
             active_totals.append(played + remaining)
 
         if not active_totals:

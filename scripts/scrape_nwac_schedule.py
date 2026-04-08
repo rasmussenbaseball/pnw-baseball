@@ -44,7 +44,6 @@ logger = logging.getLogger("nwac_schedule")
 # ── Team name mapping: schedule page display name → DB short_name ──
 # Most names match directly, but some differ
 SCHEDULE_NAME_TO_DB = {
-    "Green River": "GRC",
     "Skagit Valley": "Skagit",
     "Mt Hood": "Mt. Hood",
     "SW Oregon": "SW Oregon",
@@ -55,7 +54,7 @@ SCHEDULE_NAME_TO_DB = {
 NWAC_TEAMS = {
     "Bellevue", "Big Bend", "Blue Mountain", "Centralia", "Chemeketa",
     "Clackamas", "Clark", "Columbia Basin", "Douglas", "Edmonds",
-    "Everett", "Grays Harbor", "GRC", "Lane", "Linn-Benton",
+    "Everett", "Grays Harbor", "Lane", "Linn-Benton",
     "Lower Columbia", "Mt. Hood", "Olympic", "Pierce", "Shoreline",
     "Skagit", "SW Oregon", "Spokane", "Tacoma", "Treasure Valley",
     "Umpqua", "Walla Walla", "Wenatchee Valley", "Yakima Valley",

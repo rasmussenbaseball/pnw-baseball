@@ -76,7 +76,6 @@ NWAC_TEAM_SLUGS = {
     "Walla Walla": "wallawalla",
     "Wenatchee Valley": "wenatcheevalley",
     "Yakima Valley": "yakimavalley",
-    "GRC": "greenriver",
 }
 
 # Seasons to scrape with --all
