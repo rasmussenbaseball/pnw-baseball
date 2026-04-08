@@ -76,13 +76,13 @@ jobs:
         run: |
           pip install requests==2.31.0 beautifulsoup4==4.12.3 lxml==5.1.0 \
             psycopg2-binary==2.9.11 python-dotenv==1.0.0 curl_cffi cloudscraper
-      - name: Scrape batch 3 (9 teams)
+      - name: Scrape batch 3 (10 teams)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PYTHONPATH: backend
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
-          for team in southwesternoregon spokane tacoma treasurevalley umpqua wallawalla wenatcheevalley yakimavalley; do
+          for team in southwesternoregon spokane tacoma treasurevalley umpqua wallawalla wenatcheevalley willamette yakimavalley; do
             echo "--- Scraping: $team ---"
             python3 scripts/scrape_boxscores.py --season "$SEASON" --team "$team" --division JUCO || true
             sleep $(( RANDOM % 6 + 8 ))
