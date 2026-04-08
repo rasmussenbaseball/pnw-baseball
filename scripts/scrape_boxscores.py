@@ -538,6 +538,92 @@ def parse_innings_pitched(ip_str):
 # Sidearm Schedule Parser
 # ============================================================
 
+
+def _extract_json_ld_home_away(html):
+    """
+    Extract home/away info from JSON-LD SportsEvent data on Sidearm pages.
+
+    Sidearm embeds <script type="application/ld+json"> blocks containing
+    SportsEvent entries with names like:
+      "Bushnell University At The College of Idaho"  → away
+      "Bushnell University Vs Corban University"     → home
+
+    Returns a list of dicts: [{"date": date_obj, "name_lower": str, "is_away": bool}, ...]
+    so the schedule parser can cross-reference by date and opponent.
+    """
+    events = []
+    try:
+        soup = BeautifulSoup(html[:500000], "html.parser")  # truncate to avoid hangs
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string or "")
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            # JSON-LD can be a single object or a list
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if item.get("@type") != "SportsEvent":
+                    continue
+                name = item.get("name", "")
+                start = item.get("startDate", "")
+                if not name or not start:
+                    continue
+
+                # Parse date from startDate (ISO format like "2026-03-14T12:00")
+                try:
+                    event_date = datetime.fromisoformat(start.replace("Z", "")).date()
+                except (ValueError, TypeError):
+                    continue
+
+                # Determine home/away from event name
+                name_lower = name.lower()
+                if " at " in name_lower:
+                    is_away = True
+                elif " vs " in name_lower or " vs. " in name_lower:
+                    is_away = False
+                else:
+                    continue  # can't determine, skip
+
+                events.append({
+                    "date": event_date,
+                    "name_lower": name_lower,
+                    "is_away": is_away,
+                })
+    except Exception as e:
+        logger.warning(f"  JSON-LD parsing error: {e}")
+
+    return events
+
+
+def _match_json_ld_event(json_ld_events, game_date, opponent):
+    """
+    Find the JSON-LD is_away value for a game by matching date and opponent name.
+    Returns True (away), False (home), or None (no match).
+    """
+    if not json_ld_events or not game_date or not opponent:
+        return None
+
+    opp_lower = opponent.lower().strip()
+    # Try to find an event on the same date whose name contains the opponent
+    matches = [e for e in json_ld_events
+               if e["date"] == game_date and opp_lower in e["name_lower"]]
+
+    if len(matches) >= 1:
+        # All matches for the same opponent on the same date should agree
+        return matches[0]["is_away"]
+
+    # Fuzzy: try partial match (first word of opponent)
+    opp_first = opp_lower.split()[0] if opp_lower else ""
+    if opp_first and len(opp_first) > 3:
+        matches = [e for e in json_ld_events
+                   if e["date"] == game_date and opp_first in e["name_lower"]]
+        if len(matches) >= 1:
+            return matches[0]["is_away"]
+
+    return None
+
+
 def build_sidearm_schedule_url(base_url, sport, season_year):
     """Build schedule URL for a Sidearm Sports site."""
     return f"{base_url}/sports/{sport}/schedule/{season_year}"
@@ -591,7 +677,15 @@ def _parse_sidearm_schedule_v2(html, base_url, season_year):
       - <div class="c-events__team-score"> (two: team score, then opponent score)
       - <a href="/boxscore.aspx?id=..."> with aria-label containing game info
       - <span class="sr-only"> with text like "Completed Event: ... Loss , 0, to, 5"
+
+    Uses JSON-LD SportsEvent data as the primary source for home/away detection,
+    falling back to aria-label text matching if no JSON-LD match is found.
     """
+    # Extract JSON-LD events for reliable home/away detection
+    json_ld_events = _extract_json_ld_home_away(html)
+    if json_ld_events:
+        logger.info(f"  v2 parser: found {len(json_ld_events)} JSON-LD SportsEvent entries")
+
     soup = BeautifulSoup(html, "html.parser")
     games = []
 
@@ -647,11 +741,12 @@ def _parse_sidearm_schedule_v2(html, base_url, season_year):
             if opp_m:
                 game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
 
-        # Determine home/away from aria-label ("at" = away, "vs" = home)
-        # Use broad \b word-boundary match to handle all Sidearm aria formats:
-        #   "Boxscore for Baseball at Opponent..."
-        #   "Boxscore for Team Name at Opponent..."
-        if aria:
+        # Determine home/away: prefer JSON-LD (most reliable), fall back to aria-label
+        json_ld_result = _match_json_ld_event(json_ld_events, game.get("date"), game.get("opponent"))
+        if json_ld_result is not None:
+            game["is_away"] = json_ld_result
+        elif aria:
+            # Fallback: aria-label ("at" = away, "vs" = home)
             if re.search(r'\bat\s+', aria):
                 game["is_away"] = True
             elif re.search(r'\bvs\.?\s+', aria):
@@ -721,6 +816,11 @@ def _parse_sidearm_schedule_v3(html, base_url, season_year, db_short=None):
       - Opponent name in <a> tag linking to opponent site, or in aria-label
       - Location text (city) used as fallback for home/away when aria lacks at/vs
     """
+    # Extract JSON-LD events for reliable home/away detection
+    json_ld_events = _extract_json_ld_home_away(html)
+    if json_ld_events:
+        logger.info(f"  v3 parser: found {len(json_ld_events)} JSON-LD SportsEvent entries")
+
     soup = BeautifulSoup(html, "html.parser")
     games = []
     seen_urls = set()  # Deduplicate — page often has duplicate card layouts
@@ -789,7 +889,11 @@ def _parse_sidearm_schedule_v3(html, base_url, season_year, db_short=None):
             if opp_m:
                 game["opponent"] = re.sub(r'^#\d+\s+', '', opp_m.group(1)).strip()
 
-            # Determine home/away from aria-label ("at" = away, "vs" = home)
+        # Determine home/away: prefer JSON-LD, then aria-label, then location
+        json_ld_result = _match_json_ld_event(json_ld_events, game.get("date"), game.get("opponent"))
+        if json_ld_result is not None:
+            game["is_away"] = json_ld_result
+        elif aria:
             if re.search(r'\bat\s+', aria):
                 game["is_away"] = True
             elif re.search(r'\bvs\.?\s+', aria):
