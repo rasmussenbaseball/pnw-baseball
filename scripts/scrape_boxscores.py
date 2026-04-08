@@ -1686,20 +1686,57 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     if normalized.lower() != name_fragment.strip().lower():
         names_to_try.append(normalized)
 
-    rows = []
+    # Try exact matches first (short_name, school_name, name), then fuzzy
     for frag in names_to_try:
+        # 1) Exact short_name match — highest confidence
         cur.execute("""
             SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
             JOIN conferences c ON c.id = t.conference_id
             WHERE LOWER(t.short_name) = LOWER(%s)
-               OR LOWER(t.school_name) LIKE LOWER(%s)
-               OR LOWER(t.name) LIKE LOWER(%s)
-               OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
-               OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
-        """, (frag, f"%{frag}%", f"%{frag}%", frag, frag))
+        """, (frag,))
         rows = cur.fetchall()
+        if len(rows) == 1:
+            return rows[0]["id"]
         if rows:
-            break
+            break  # multiple exact matches, handle below
+
+        # 2) Exact school_name or name match
+        cur.execute("""
+            SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
+            JOIN conferences c ON c.id = t.conference_id
+            WHERE LOWER(t.school_name) = LOWER(%s)
+               OR LOWER(t.name) = LOWER(%s)
+        """, (frag, frag))
+        rows = cur.fetchall()
+        if len(rows) == 1:
+            return rows[0]["id"]
+        if rows:
+            break  # multiple exact matches, handle below
+
+    # 3) Fuzzy matching only if no exact match found
+    if not rows:
+        for frag in names_to_try:
+            cur.execute("""
+                SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
+                JOIN conferences c ON c.id = t.conference_id
+                WHERE LOWER(t.school_name) LIKE LOWER(%s)
+                   OR LOWER(t.name) LIKE LOWER(%s)
+                   OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
+                   OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
+            """, (f"%{frag}%", f"%{frag}%", frag, frag))
+            rows = cur.fetchall()
+            if rows:
+                # If fuzzy returned multiple, prefer the shortest name match
+                # (e.g., "Pacific" over "Warner Pacific" when searching "Pacific")
+                if len(rows) > 1:
+                    frag_low = frag.strip().lower()
+                    exact_sub = [r for r in rows if r["school_name"] and r["school_name"].lower() == frag_low]
+                    if exact_sub:
+                        rows = exact_sub
+                    else:
+                        # Prefer team whose short_name or school_name is closest in length
+                        rows.sort(key=lambda r: abs(len(r.get("short_name", "") or "") - len(frag)))
+                break
 
     if not rows:
         return None

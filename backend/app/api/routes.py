@@ -5652,7 +5652,31 @@ def _dedup_live_games(games):
         """Return team id for a name, or None."""
         if not name:
             return None
-        return _team_id_cache.get(name.strip().lower())
+        raw = name.strip().lower()
+        # Try exact match first
+        tid = _team_id_cache.get(raw)
+        if tid:
+            return tid
+        # Strip parenthetical state tags: "Pacific (Ore.)" → "pacific"
+        import re
+        normalized = re.sub(r'\s*\(.*?\)\s*$', '', raw).strip()
+        if normalized != raw:
+            tid = _team_id_cache.get(normalized)
+            if tid:
+                return tid
+        # Strip ranking prefixes: "no. 7 oregon state" → "oregon state"
+        no_rank = re.sub(r'^(?:no\.\s*\d+|#\d+)\s+', '', normalized, flags=re.IGNORECASE).strip()
+        if no_rank != normalized:
+            tid = _team_id_cache.get(no_rank)
+            if tid:
+                return tid
+        # Strip trailing score digits that get concatenated: "gonzaga8" → "gonzaga"
+        no_score = re.sub(r'\d+$', '', no_rank).strip()
+        if no_score != no_rank:
+            tid = _team_id_cache.get(no_score)
+            if tid:
+                return tid
+        return None
 
     def _is_live_dup(a, b):
         if str(a.get("date", ""))[:10] != str(b.get("date", ""))[:10]:
@@ -5693,7 +5717,7 @@ def _dedup_live_games(games):
         if not teams_match and not teams_swapped:
             return False
 
-        # Scores must match (swapped perspective)
+        # Scores must match
         a_ts = a.get("team_score")
         a_os = a.get("opponent_score")
         b_ts = b.get("team_score")
@@ -5705,7 +5729,12 @@ def _dedup_live_games(games):
         if a_ts is None or b_ts is None:
             return True
         try:
-            return int(a_ts) == int(b_os) and int(a_os) == int(b_ts)
+            if teams_match:
+                # Same perspective: scores should match directly
+                return int(a_ts) == int(b_ts) and int(a_os) == int(b_os)
+            else:
+                # Swapped perspective: scores should be swapped
+                return int(a_ts) == int(b_os) and int(a_os) == int(b_ts)
         except (TypeError, ValueError):
             return False
 
