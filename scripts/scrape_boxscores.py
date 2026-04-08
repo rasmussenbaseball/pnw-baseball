@@ -1875,6 +1875,15 @@ def upsert_game(cur, game_data):
     Insert or update a game record.
     Returns game_id.
     """
+    # Safety: never allow a team to play itself (corrupted team ID matching)
+    home_tid = game_data.get("home_team_id")
+    away_tid = game_data.get("away_team_id")
+    if home_tid and away_tid and home_tid == away_tid:
+        print(f"  ⚠️  SKIPPING game: home_team_id == away_team_id ({home_tid}) — "
+              f"{game_data.get('home_team_name')} vs {game_data.get('away_team_name')} "
+              f"on {game_data.get('game_date')}")
+        return None
+
     source_url = game_data.get("source_url") or game_data.get("box_score_url") or ""
 
     # Check if game already exists — first by source_url, then by date + teams

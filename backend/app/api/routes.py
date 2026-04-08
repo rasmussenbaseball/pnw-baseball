@@ -5562,7 +5562,7 @@ def games_by_date(
     with get_connection() as conn:
         cur = conn.cursor()
 
-        conditions = ["g.game_date = %s"]
+        conditions = ["g.game_date = %s", "g.home_team_id != g.away_team_id"]
         params: list = [date]
 
         if division:
@@ -5826,6 +5826,7 @@ def games_live():
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
                   AND (hd.level IN ('JUCO', 'NAIA') OR ad.level IN ('JUCO', 'NAIA'))
+                  AND g.home_team_id != g.away_team_id
                 ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
             """, (recent_start, today))
 
