@@ -652,6 +652,11 @@ def parse_sidearm_schedule(html, base_url, season_year, db_short=None):
         return games
 
     # Fall back to legacy format
+    # Extract JSON-LD for home/away detection (legacy parser doesn't detect it)
+    json_ld_events = _extract_json_ld_home_away(html)
+    if json_ld_events:
+        logger.info(f"  legacy parser: found {len(json_ld_events)} JSON-LD SportsEvent entries for home/away")
+
     soup = BeautifulSoup(html, "html.parser")
     games = []
     all_items = soup.find_all("li")
@@ -659,6 +664,12 @@ def parse_sidearm_schedule(html, base_url, season_year, db_short=None):
     for li in all_items:
         game = _parse_sidearm_list_item(li, base_url, season_year)
         if game and game.get("team_score") is not None:
+            # Apply JSON-LD home/away detection
+            if "is_away" not in game and json_ld_events:
+                json_ld_result = _match_json_ld_event(json_ld_events, game.get("date"), game.get("opponent"))
+                if json_ld_result is not None:
+                    game["is_away"] = json_ld_result
+
             if games and games[-1].get("date") == game.get("date") and games[-1].get("opponent") == game.get("opponent"):
                 game["game_number"] = games[-1].get("game_number", 1) + 1
             games.append(game)
