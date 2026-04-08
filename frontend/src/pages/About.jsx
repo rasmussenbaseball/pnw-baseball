@@ -4,35 +4,45 @@ import { Link } from 'react-router-dom'
 // ─── Site Updates / Changelog ───
 const UPDATES = [
   {
+    version: '1.5',
+    date: 'April 7, 2026',
+    title: 'Game Logs, Coverage Fixes & Data Accuracy',
+    changes: [
+      'Improved home/away detection across all teams for more accurate game log data',
+      'Added full game log support for legacy Sidearm sites (Bushnell, etc.) that were previously missing games',
+      'Added Willamette to automated NWAC coverage',
+      'Removed disbanded Green River (GRC) from all team listings and data',
+      'Player game logs now display every game played regardless of home/away status',
+      'Fixed missing game logs for several teams caused by incorrect opponent tagging',
+      'Out-of-conference opponents (like The Master\'s) now display correctly in game logs and scoreboards',
+    ],
+  },
+  {
     version: '1.4',
     date: 'April 5, 2026',
-    title: 'NWAC Automation, Expanded Coverage & Scoreboard Improvements',
+    title: 'NWAC Automation & Expanded Coverage',
     changes: [
-      'Fully automated NWAC player stats scraping via GitHub Actions with ScraperAPI (no more manual Mac runs)',
-      'Added Willamette (D3) and Seattle U (D1) to the automated stats pipeline alongside NWAC',
-      'NWAC game results now scrape every 2 hours during game hours (11 AM to 9 PM PT)',
-      'League-adjusted stats (wRC+, FIP+, ERA-) automatically recalculate after each scrape',
+      'NWAC game results now update every 2 hours during game hours (11 AM to 9 PM PT)',
+      'Added Willamette and Seattle U to the automated stats pipeline',
+      'League-adjusted stats (wRC+, FIP+, ERA-) now recalculate automatically after every data update',
       'Homepage recent scores widget now always shows the 15 latest results across all divisions',
-      'Live games ticker and recent results ticker now display simultaneously on game days',
-      'Fixed timezone handling so NWAC games and stat timestamps display correctly in Pacific time',
+      'Live games and recent results tickers now display simultaneously on game days',
+      'Fixed timezone display for NWAC games on the scoreboard',
       'Fixed duplicate NWAC game records on the scoreboard',
     ],
   },
   {
     version: '1.3',
     date: 'April 4, 2026',
-    title: 'Scoreboard Overhaul, Live Scores & Infrastructure',
+    title: 'Scoreboard Overhaul & Live Scores',
     changes: [
-      'Consolidated Scoreboard and Results into a single page with date navigation arrows - browse any day\'s games in one place',
+      'Combined Scoreboard and Results into a single page with date navigation arrows',
       'Added live score auto-refresh (every 2 minutes) with LIVE badge and game state display',
-      'Scoreboard now groups games by level: D1 → D2 → D3 → NAIA → NWAC',
-      'Added division filter buttons to the scoreboard (All, D1, D2, D3, NAIA, JUCO)',
-      'Player headshots now served from persistent storage (nginx) - no longer disappear on deploys',
-      'Team logos moved to persistent storage - summer/WCL logos no longer vanish after site updates',
+      'Scoreboard now groups games by division: D1, D2, D3, NAIA, NWAC',
+      'Added division filter buttons to the scoreboard',
+      'Player headshots and team logos no longer disappear after site updates',
       'Added WCL team logos to the homepage WCL Leaders widget',
-      'Automated scraping schedule: daily updates at 2 PM, 6 PM, 11 PM PT; live scores every 10 min during game hours (8 AM – 8 PM PT)',
-      'Added nightly game deduplication job to keep data clean',
-      'Fixed scoreboard showing stale data after deploys (live_scores.json no longer tracked in git)',
+      'Stats now update automatically three times daily (2 PM, 6 PM, 11 PM PT) with live scores every 10 minutes during games',
     ],
   },
   {
@@ -40,43 +50,36 @@ const UPDATES = [
     date: 'April 1, 2026',
     title: 'Recruiting Tools, Draft Board & Homepage Refresh',
     changes: [
-      'Added Recruiting Breakdown page - sortable table of every PNW team with W-L% trends, freshman PA% and IP%, WAR/G, wRC+, FIP, and national/PPI rankings',
-      'Overhauled Recruiting Guide - added year-by-year W-L history, fixed roster counts, position matching, and freshman production calculations',
-      'Moved Recruiting Classes under the Recruiting tab with division-level filters on stat leaders',
-      'Built 2026 MLB Draft Board featuring 12 PNW prospects linked to their college player pages',
-      'Homepage refresh - draft board widget, WCL summer leaders section, improved text readability, and D1 label on PNW Grid',
+      'Added Recruiting Breakdown page with sortable team comparisons: W-L% trends, freshman production, WAR/G, wRC+, FIP, and national rankings',
+      'Overhauled Recruiting Guide with year-by-year W-L history, roster counts, and position matching',
+      'Built 2026 MLB Draft Board featuring 12 PNW prospects linked to their player pages',
+      'Homepage refresh with draft board widget, WCL summer leaders section, and improved readability',
       'JUCO Tracker now shows committed NWAC players with a green commitment tag',
-      'Renamed Glossary to About and redesigned the page with bio, run environments, updates log, and stat glossary',
+      'Redesigned About page with bio, run environments, update log, and stat glossary',
       'Added site footer with brand info, site links, data sources, and social links',
-      'Fixed PNW Grid daily mode - clicking a player in the dropdown now works correctly',
-      'Fixed summer stat totals filtering and various roster display bugs',
+      'Fixed PNW Grid daily mode player dropdown',
     ],
   },
   {
     version: '1.1',
     date: 'March 31, 2026',
-    title: 'Player Pages, Feature Requests & UI Polish',
+    title: 'Player Pages & Feature Requests',
     changes: [
-      'Added Player Pages under Misc - search any player and get a shareable stat graphic with core stats, advanced stats, Savant-style percentile bars, and leaderboard badges',
-      'Added Feature Request page under Misc - users can submit ideas and feedback for the site',
-      'Updated the OG banner image (the preview that shows when you share the site link) with the new NW logo',
+      'Added Player Pages: search any player for a shareable stat graphic with core stats, advanced stats, Savant-style percentile bars, and leaderboard badges',
+      'Added Feature Request page for users to submit ideas and feedback',
       'Player Pages include career and per-season views with percentile rankings vs. division',
+      'Updated the link preview image with the new NW logo',
     ],
   },
   {
     version: '1.0',
     date: 'March 30, 2026',
-    title: 'Launch Features & Core Improvements',
+    title: 'Launch',
     changes: [
-      'Added beta intro banner to homepage with feature highlights and signup CTA',
-      'Sticky table headers on leaderboards - column headers stay visible when scrolling',
-      'Mobile improvements - sticky rank & player columns on leaderboard tables, sticky season on player stat pages',
-      'Added PNW Grid link and signup CTA to homepage',
-      'Gated Coaching and Misc tabs behind authentication',
-      'Fixed transfer player pages to show most recent team in header and sort schools oldest to newest',
-      'Fixed homepage ticker to always show recent scores',
-      'Fixed summer player links using spring_player_id',
-      'Added WAF safeguard to skip NWAC scrape when blocked',
+      'Sticky table headers on leaderboards so column names stay visible when scrolling',
+      'Mobile-friendly leaderboard tables with sticky rank and player columns',
+      'Added PNW Grid and signup CTA to homepage',
+      'Transfer players now show most recent team in their header with schools sorted oldest to newest',
     ],
   },
 ]
@@ -203,18 +206,21 @@ function BioSection() {
             <p className="text-xs text-gray-500">wOBA · FIP · WAR · Division-calibrated weights</p>
           </div>
         </div>
+        <P>
+          The project currently totals over 53,000 lines of code across the frontend, backend, scrapers, and analytics engine.
+        </P>
       </Card>
 
       <Card title="Coverage">
         <P>
-          We currently track 57 teams across five divisions in the Pacific Northwest, plus summer collegiate leagues:
+          We currently track 56 teams across five divisions in the Pacific Northwest, plus summer collegiate leagues:
         </P>
         <div className="my-3 space-y-1.5">
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NCAA D1 (7):</span> Oregon, Oregon State, Washington, Washington State, Gonzaga, Portland, Seattle U</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NCAA D2 (5):</span> Central Washington, Montana State Billings, Northwest Nazarene, Saint Martin's, Western Oregon</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NCAA D3 (9):</span> George Fox, Lewis & Clark, Linfield, Pacific, PLU, UPS, Whitman, Whitworth, Willamette</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NAIA (8):</span> Bushnell, College of Idaho, Corban, Eastern Oregon, Lewis-Clark State, Oregon Tech, UBC, Warner Pacific</p>
-          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NWAC (28):</span> All community college programs across four sub-conferences</p>
+          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">NWAC (27):</span> All community college programs across four sub-conferences</p>
           <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Summer:</span> West Coast League (WCL) and other PNW summer leagues</p>
         </div>
       </Card>
