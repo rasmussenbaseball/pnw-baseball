@@ -5689,6 +5689,9 @@ def _dedup_live_games(games):
         # Both scheduled (no scores yet) counts as a match
         if a_ts is None and b_ts is None:
             return True
+        # One scheduled, one final — same game, DB has the updated result
+        if a_ts is None or b_ts is None:
+            return True
         try:
             return int(a_ts) == int(b_os) and int(a_os) == int(b_ts)
         except (TypeError, ValueError):
@@ -5702,8 +5705,10 @@ def _dedup_live_games(games):
                 dup_idx = i
                 break
         if dup_idx is not None:
-            # Keep whichever has a box_score_url
-            if g.get("box_score_url") and not deduped[dup_idx].get("box_score_url"):
+            prev = deduped[dup_idx]
+            # Prefer final over scheduled, or entry with box_score_url
+            if (g.get("status") == "final" and prev.get("status") != "final") or \
+               (g.get("box_score_url") and not prev.get("box_score_url")):
                 deduped[dup_idx] = g
         else:
             deduped.append(g)
@@ -5744,10 +5749,11 @@ def games_live():
         except (ValueError, OSError):
             pass
 
-    # ── Merge NWAC games from database ──
-    # The NWAC schedule scraper (via ScraperAPI) writes game results to the
-    # games table, but they don't appear in live_scores.json. Pull recent
-    # NWAC games from the DB and merge them into the live response.
+    # ── Merge DB games that live_scores.json may not have ──
+    # live_scores.json only covers D1/D2/D3 games from Sidearm/PrestoSports.
+    # NAIA and JUCO games are scraped separately into the DB. Also, late-finishing
+    # games may still show as "scheduled" in the JSON. Merge ALL recent DB games
+    # with status='final' so the live endpoint always has the latest results.
     try:
         from datetime import datetime as _datetime
         from zoneinfo import ZoneInfo
@@ -5779,7 +5785,7 @@ def games_live():
                 LEFT JOIN divisions ad ON ac.division_id = ad.id
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
-                  AND (hd.level = 'JUCO' OR ad.level = 'JUCO')
+                  AND g.status = 'final'
                 ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
             """, (recent_start, today))
 
