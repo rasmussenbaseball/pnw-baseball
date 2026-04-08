@@ -108,7 +108,6 @@ D3_TEAMS = {
     "Pacific":   ("https://goboxers.com",             "baseball", "sidearm"),
     "Linfield":  ("https://golinfieldwildcats.com",   "baseball", "sidearm"),
     "GFU":       ("https://athletics.georgefox.edu",   "baseball", "sidearm"),
-    "Willamette": ("https://www.wubearcats.com",      "bsb",     "presto"),
 }
 
 # NAIA (CCC): Sidearm Sports
@@ -154,12 +153,16 @@ NWAC_TEAM_SLUGS = {
     "Walla Walla": "wallawalla",
     "Wenatchee Valley": "wenatcheevalley",
     "Yakima Valley": "yakimavalley",
+    "Willamette": "willamette",
 }
 
 NWAC_TEAMS = {
     name: ("https://nwacsports.com", "bsb", "presto")
     for name in NWAC_TEAM_SLUGS
+    if name != "Willamette"
 }
+# Willamette uses PrestoSports like NWAC but has its own domain
+NWAC_TEAMS["Willamette"] = ("https://www.wubearcats.com", "bsb", "presto")
 
 # Division groups
 DIVISION_MAP = {
