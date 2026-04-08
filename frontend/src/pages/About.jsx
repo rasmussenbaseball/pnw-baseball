@@ -307,7 +307,7 @@ function EnvironmentSection() {
 
       <Card title="NWAC" subtitle="Northwest Athletic Conference: East, North, South, West Divisions">
         <P>
-          The NWAC is the two-year college (JUCO) conference covering Washington and Oregon, with 28 programs across four divisions. Batting averages are substantially lower (.243) and OPS is the lowest of any division (.670). NWAC pitching ERAs and strikeout rates are competitive with higher divisions, suggesting pitching development outpaces hitting at this level.
+          The NWAC is the two-year college (JUCO) conference covering Washington and Oregon, with 28 programs across four divisions. Notably, the NWAC is a wood bat league, one of the few college conferences in the country that plays exclusively with wood bats rather than the metal bats used at most levels of college baseball. This significantly affects offensive numbers: batting averages are substantially lower (.243) and OPS is the lowest of any division (.670). NWAC pitching ERAs and strikeout rates are competitive with higher divisions, suggesting pitching development outpaces hitting at this level.
         </P>
         <div className="grid grid-cols-2 gap-3 my-3 text-center">
           <div className="bg-gray-50 rounded p-2"><p className="text-lg font-bold text-gray-800">.243</p><p className="text-[10px] text-gray-500">Avg BA</p></div>
