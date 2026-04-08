@@ -323,7 +323,7 @@ async function renderGraphic(canvas, games, dateShort) {
   ctx.font = '700 11px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText('PNWBASEBALLSTATS.COM', pad, footY)
+  ctx.fillText('NWBASEBALLSTATS.COM', pad, footY)
   ctx.fillStyle = '#94a3b8'
   ctx.font = '500 9px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'right'
@@ -344,11 +344,60 @@ export default function DailyScoresGraphic() {
     setError(null)
     setRendered(false)
     try {
-      const res = await fetch(`${API_BASE}/games/by-date?date=${d}`)
-      if (!res.ok) throw new Error(`API error: ${res.status}`)
-      const data = await res.json()
-      const final = (data.games || data || []).filter(g => g.status === 'final')
-      setGames(final)
+      // Fetch from both /games/by-date (database) AND /games/live (live_scores.json + NWAC)
+      // The homepage ticker uses /games/live which has games the database might not
+      const [byDateRes, liveRes] = await Promise.all([
+        fetch(`${API_BASE}/games/by-date?date=${d}`),
+        fetch(`${API_BASE}/games/live`).catch(() => null),
+      ])
+
+      // Parse database games
+      let dbGames = []
+      if (byDateRes.ok) {
+        const data = await byDateRes.json()
+        dbGames = (data.games || data || []).filter(g => g.status === 'final')
+      }
+
+      // Parse live games and normalize to the same format
+      let liveGames = []
+      if (liveRes?.ok) {
+        const liveData = await liveRes.json()
+        const allLive = [...(liveData.today || []), ...(liveData.recent || []), ...(liveData.upcoming || [])]
+        liveGames = allLive
+          .filter(g => g.date === d && g.status === 'final')
+          .map(g => ({
+            // Normalize live_scores format to match by-date format
+            home_team_name: g.team || '???',
+            away_team_name: g.opponent || g.opponent_display || '???',
+            home_short: g.team || null,
+            away_short: g.opponent || null,
+            home_score: g.team_score != null ? Number(g.team_score) : null,
+            away_score: g.opponent_score != null ? Number(g.opponent_score) : null,
+            home_logo: g.team_logo || null,
+            away_logo: g.opponent_logo || null,
+            status: g.status || 'final',
+            innings: g.innings || null,
+            is_conference_game: g.is_conference || false,
+            _from_live: true,
+          }))
+      }
+
+      // Merge: start with DB games, then add live games that aren't already present
+      const merged = [...dbGames]
+      for (const lg of liveGames) {
+        const homeN = (lg.home_team_name || '').toLowerCase().trim()
+        const awayN = (lg.away_team_name || '').toLowerCase().trim()
+        const isDupe = merged.some(db => {
+          const dbHome = (db.home_short || db.home_team_name || '').toLowerCase().trim()
+          const dbAway = (db.away_short || db.away_team_name || '').toLowerCase().trim()
+          // Match if either team name pair aligns (home/away could be swapped)
+          return (dbHome.includes(homeN) || homeN.includes(dbHome)) &&
+                 (dbAway.includes(awayN) || awayN.includes(dbAway))
+        })
+        if (!isDupe) merged.push(lg)
+      }
+
+      setGames(merged)
     } catch (err) {
       setError(err.message)
       setGames(null)
