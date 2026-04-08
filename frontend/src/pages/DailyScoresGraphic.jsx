@@ -20,6 +20,26 @@ function shortDate(iso) {
   return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+// ── Clean team name for display ──
+function cleanTeamName(name) {
+  if (!name) return '???'
+  let n = name.trim()
+  // Strip ranking prefixes: "No. 7 Oregon State" -> "Oregon State", "#5 UCLA" -> "UCLA"
+  n = n.replace(/^(?:No\.\s*\d+\s+|#\d+\s+|\(\d+\)\s+)/i, '')
+  // Strip trailing digits that got concatenated (e.g. "Gonzaga8" -> "Gonzaga")
+  // Only strip if the last chars are digits NOT preceded by a space (real names like "D3" are fine)
+  n = n.replace(/(?<=[a-zA-Z])(\d+)$/, '')
+  return n.trim() || '???'
+}
+
+// Pick the best available team name
+function getTeamName(game, side) {
+  const short = side === 'away' ? game.away_short : game.home_short
+  const full = side === 'away' ? game.away_team_name : game.home_team_name
+  // Prefer short_name from teams table, fall back to full name from games table
+  return cleanTeamName(short || full)
+}
+
 // ── Image loader with cache ──
 const imgCache = {}
 function loadImage(src) {
@@ -52,8 +72,8 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── Draw a single game card ──
 async function drawGameCard(ctx, game, x, y, w, h) {
-  const away = game.away_short || game.away_team_name || '???'
-  const home = game.home_short || game.home_team_name || '???'
+  const away = getTeamName(game, 'away')
+  const home = getTeamName(game, 'home')
   const aScore = game.away_score ?? '-'
   const hScore = game.home_score ?? '-'
   const aWon = game.status === 'final' && Number(game.away_score) > Number(game.home_score)
@@ -117,7 +137,7 @@ async function drawGameCard(ctx, game, x, y, w, h) {
       ctx.fillRect(x + 6, ry, w - 12, 1)
     }
 
-    // Logo
+    // Logo (skip placeholder if no logo URL - just leave the space)
     const logoX = x + 10
     const logoY = midY - logoSize / 2
     let logoDrawn = false
@@ -128,13 +148,6 @@ async function drawGameCard(ctx, game, x, y, w, h) {
         logoDrawn = true
       } catch { /* skip */ }
     }
-    // Gray circle placeholder if no logo loaded
-    if (!logoDrawn) {
-      ctx.fillStyle = '#e2e8f0'
-      ctx.beginPath()
-      ctx.arc(logoX + logoSize / 2, midY, logoSize / 2, 0, Math.PI * 2)
-      ctx.fill()
-    }
 
     // Measure score width first
     ctx.save()
@@ -142,7 +155,8 @@ async function drawGameCard(ctx, game, x, y, w, h) {
     const scoreW = ctx.measureText(String(score)).width
     ctx.restore()
 
-    const nameStartX = logoX + logoSize + 8
+    // If logo was drawn, name starts after logo; otherwise start closer to edge
+    const nameStartX = logoDrawn ? logoX + logoSize + 8 : x + 10
     const maxNameW = w - (nameStartX - x) - scoreW - 18
 
     // Team name
