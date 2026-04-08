@@ -361,23 +361,11 @@ export default function DailyScoresGraphic() {
     setError(null)
     setRendered(false)
     try {
-      // Fetch from both /games/by-date (database) AND /games/live (live_scores.json + NWAC)
-      // The homepage ticker uses /games/live which has better data: correct team names,
-      // working logos, and games the database might not have (like UBC vs Seattle U).
-      const [byDateRes, liveRes] = await Promise.all([
-        fetch(`${API_BASE}/games/by-date?date=${d}`),
-        fetch(`${API_BASE}/games/live`).catch(() => null),
-      ])
+      // Strategy: use /games/live for recent dates (has correct names, logos, NAIA/JUCO).
+      // Fall back to /games/by-date for older dates the live endpoint doesn't cover.
+      // NEVER merge both — that causes duplicates from name-spelling mismatches.
+      const liveRes = await fetch(`${API_BASE}/games/live`).catch(() => null)
 
-      // Parse database games
-      let dbGames = []
-      if (byDateRes.ok) {
-        const data = await byDateRes.json()
-        dbGames = (data.games || data || []).filter(g => g.status === 'final')
-      }
-
-      // Parse live games and normalize to the same format
-      // Live dates are like "2026-04-07T12:00:00" so use startsWith to match "2026-04-07"
       let liveGames = []
       if (liveRes?.ok) {
         const liveData = await liveRes.json()
@@ -396,29 +384,20 @@ export default function DailyScoresGraphic() {
             status: g.status || 'final',
             innings: g.innings || null,
             is_conference_game: g.is_conference || false,
-            _from_live: true,
           }))
       }
 
-      // Merge: PREFER live games (they have correct names + logos), then add DB-only games
-      // Only dedup DB games against LIVE games, not against other DB games
-      // (otherwise doubleheaders get incorrectly removed as duplicates)
-      const merged = [...liveGames]
-      for (const db of dbGames) {
-        const dbHome = cleanTeamName(db.home_short || db.home_team_name || '').toLowerCase()
-        const dbAway = cleanTeamName(db.away_short || db.away_team_name || '').toLowerCase()
-        const isDupe = liveGames.some(lg => {
-          const lHome = cleanTeamName(lg.home_short || lg.home_team_name || '').toLowerCase()
-          const lAway = cleanTeamName(lg.away_short || lg.away_team_name || '').toLowerCase()
-          return (lHome.includes(dbHome) || dbHome.includes(lHome) ||
-                  lHome.includes(dbAway) || dbAway.includes(lHome)) &&
-                 (lAway.includes(dbAway) || dbAway.includes(lAway) ||
-                  lAway.includes(dbHome) || dbHome.includes(lAway))
-        })
-        if (!isDupe) merged.push(db)
+      // If live endpoint had games for this date, use those (they're the best source)
+      if (liveGames.length > 0) {
+        setGames(liveGames)
+      } else {
+        // Older date not in live data — use database
+        const byDateRes = await fetch(`${API_BASE}/games/by-date?date=${d}`)
+        if (!byDateRes.ok) throw new Error(`API error: ${byDateRes.status}`)
+        const data = await byDateRes.json()
+        const final = (data.games || data || []).filter(g => g.status === 'final')
+        setGames(final)
       }
-
-      setGames(merged)
     } catch (err) {
       setError(err.message)
       setGames(null)

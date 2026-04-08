@@ -5663,22 +5663,34 @@ def _dedup_live_games(games):
         b_team_id = _resolve(b.get("team"))
         b_opp_id = _resolve(b.get("opponent"))
 
+        # Check same perspective (a.team ≈ b.team AND a.opponent ≈ b.opponent)
+        # This catches DB "final" entries replacing stale live "scheduled" entries
+        # where the same game appears twice with different name spellings (EOU vs Eastern Oregon University)
+        teams_match = False
+        if a_team_id and b_team_id and a_team_id == b_team_id:
+            if a_opp_id and b_opp_id and a_opp_id == b_opp_id:
+                teams_match = True
+            elif not a_opp_id or not b_opp_id:
+                teams_match = True  # one side unresolved, trust the other
+
         # Check if teams are swapped (a.team ≈ b.opponent AND a.opponent ≈ b.team)
         teams_swapped = False
-        # ID-based match (most reliable)
-        if a_team_id and b_opp_id and a_team_id == b_opp_id:
-            if a_opp_id and b_team_id and a_opp_id == b_team_id:
-                teams_swapped = True
-            elif not a_opp_id or not b_team_id:
-                teams_swapped = True  # one side unresolved, trust the other
-        # Fallback: exact string match (handles non-DB teams)
-        if not teams_swapped:
-            a_team_s = str(a.get("team", "")).lower()
-            b_opp_s = str(b.get("opponent", "")).lower()
-            b_team_s = str(b.get("team", "")).lower()
-            a_opp_s = str(a.get("opponent", "")).lower()
-            teams_swapped = (a_team_s == b_opp_s and b_team_s == a_opp_s)
-        if not teams_swapped:
+        if not teams_match:
+            # ID-based match (most reliable)
+            if a_team_id and b_opp_id and a_team_id == b_opp_id:
+                if a_opp_id and b_team_id and a_opp_id == b_team_id:
+                    teams_swapped = True
+                elif not a_opp_id or not b_team_id:
+                    teams_swapped = True  # one side unresolved, trust the other
+            # Fallback: exact string match (handles non-DB teams)
+            if not teams_swapped:
+                a_team_s = str(a.get("team", "")).lower()
+                b_opp_s = str(b.get("opponent", "")).lower()
+                b_team_s = str(b.get("team", "")).lower()
+                a_opp_s = str(a.get("opponent", "")).lower()
+                teams_swapped = (a_team_s == b_opp_s and b_team_s == a_opp_s)
+
+        if not teams_match and not teams_swapped:
             return False
 
         # Scores must match (swapped perspective)
@@ -5749,11 +5761,10 @@ def games_live():
         except (ValueError, OSError):
             pass
 
-    # ── Merge DB games that live_scores.json may not have ──
-    # live_scores.json only covers D1/D2/D3 games from Sidearm/PrestoSports.
-    # NAIA and JUCO games are scraped separately into the DB. Also, late-finishing
-    # games may still show as "scheduled" in the JSON. Merge ALL recent DB games
-    # with status='final' so the live endpoint always has the latest results.
+    # ── Merge NAIA + JUCO games from database ──
+    # live_scores.json covers D1/D2/D3 games from Sidearm/PrestoSports reliably.
+    # NAIA and JUCO game scores come from separate scrapers that write to the DB,
+    # so we merge those here. Also replaces stale "scheduled" entries with finals.
     try:
         from datetime import datetime as _datetime
         from zoneinfo import ZoneInfo
@@ -5785,7 +5796,7 @@ def games_live():
                 LEFT JOIN divisions ad ON ac.division_id = ad.id
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
-                  AND g.status = 'final'
+                  AND (hd.level IN ('JUCO', 'NAIA') OR ad.level IN ('JUCO', 'NAIA'))
                 ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
             """, (recent_start, today))
 
