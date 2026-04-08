@@ -709,7 +709,6 @@ function GameLogTable({ title, logs, columns }) {
                         } else if (col.key === 'opponent') {
                           val = (
                             <span className="flex items-center gap-1">
-                              <span className="text-gray-400 text-xs">{row.home_away}</span>
                               {row.opponent_logo && (
                                 <img
                                   src={row.opponent_logo}
@@ -1171,9 +1170,6 @@ export default function PlayerDetail() {
           </div>
         </div>
       )}
-
-      {/* ── Home / Road Splits ── */}
-      <SplitsSection splits={splits} />
 
       {/* ── Summer Ball Stats ── */}
       {hasSummerStats && (
