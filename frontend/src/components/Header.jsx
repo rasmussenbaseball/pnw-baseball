@@ -56,8 +56,8 @@ const NAV = [
     label: 'Draft',
     items: [
       { to: '/draft/2026', label: "Draft Board '26", desc: '2026 MLB Draft prospects' },
-      { to: '/draft/2027', label: "Draft Board '27", desc: '2027 MLB Draft prospects', locked: true },
-      { to: '/draft/2028', label: "Draft Board '28", desc: '2028 MLB Draft prospects', locked: true },
+      { to: '/draft/2027', label: "Draft Board '27", desc: '2027 MLB Draft prospects' },
+      { to: '/draft/2028', label: "Draft Board '28", desc: '2028 MLB Draft prospects' },
     ],
   },
   {
