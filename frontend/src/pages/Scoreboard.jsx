@@ -404,8 +404,8 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
 
         <div className={`flex items-center justify-between py-1 ${teamWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            {game.opponent_image && (
-              <img src={game.opponent_image} alt="" className="w-5 h-5 object-contain shrink-0"
+            {(game.opponent_logo || game.opponent_image) && (
+              <img src={game.opponent_logo || game.opponent_image} alt="" className="w-5 h-5 object-contain shrink-0"
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
             <span className="text-sm font-semibold text-gray-800 truncate">
