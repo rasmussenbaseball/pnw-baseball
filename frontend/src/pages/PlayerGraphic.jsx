@@ -244,6 +244,7 @@ export default function PlayerGraphic() {
     return id ? Number(id) : null
   })
   const [selectedSeason, setSelectedSeason] = useState('latest')
+  const [statMode, setStatMode] = useState(null) // null = auto-detect, 'batting', or 'pitching'
 
   // Determine percentile_season param
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
@@ -283,8 +284,10 @@ export default function PlayerGraphic() {
   const pnwRankings = rawData?.pnw_rankings || []
   const awards = rawData?.awards || []
 
-  // Determine stat type
-  const isPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
+  // Determine stat type (respect user toggle if set)
+  const isTwoWay = hasBatting && hasPitching
+  const autoIsPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
+  const isPitcher = statMode ? statMode === 'pitching' : autoIsPitcher
   const statsRow = isPitcher ? pitchingRow : battingRow
   const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
   const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
@@ -311,7 +314,7 @@ export default function PlayerGraphic() {
         <div className="text-center py-12 text-red-500">Failed to load player. Try another search.</div>
       )}
 
-      {/* Season selector */}
+      {/* Season selector + two-way toggle */}
       {rawData && (
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -325,6 +328,26 @@ export default function PlayerGraphic() {
             ))}
             <option value="career">Career</option>
           </select>
+          {isTwoWay && (
+            <div className="inline-flex bg-gray-200 rounded-lg p-0.5">
+              <button
+                onClick={() => setStatMode('batting')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                  isPitcher === false ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Hitting
+              </button>
+              <button
+                onClick={() => setStatMode('pitching')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                  isPitcher === true ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Pitching
+              </button>
+            </div>
+          )}
         </div>
       )}
 

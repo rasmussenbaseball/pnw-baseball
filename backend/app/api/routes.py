@@ -3186,7 +3186,7 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
     """
     with get_connection() as conn:
         cur = conn.cursor()
-        search = f"%{q}%"
+        search = f"%{q.strip()}%"
 
         # Search teams
         cur.execute("""
@@ -3261,7 +3261,7 @@ def search_players(
               AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
                    OR (p.first_name || ' ' || p.last_name) ILIKE %s)
         """
-        search = f"%{q}%"
+        search = f"%{q.strip()}%"
         params: list = [search, search, search]
 
         if division_id:
@@ -7140,7 +7140,7 @@ def grid_player_search(q: str = Query(..., min_length=2), limit: int = Query(10)
     """
     with get_connection() as conn:
         cur = conn.cursor()
-        search = f"%{q}%"
+        search = f"%{q.strip()}%"
 
         cur.execute("""
             SELECT DISTINCT p.id, p.first_name, p.last_name, p.position,
