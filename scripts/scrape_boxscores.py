@@ -1916,7 +1916,15 @@ def upsert_game(cur, game_data):
             """, (gdate, gnum, home_id, away_id, away_id, home_id))
             matches = cur.fetchall()
             for m in matches:
-                # Verify scores match (in either orientation)
+                # If existing game has no scores (was scheduled), always match
+                if m["home_score"] is None and m["away_score"] is None:
+                    game_id = m["id"]
+                    break
+                # If incoming game has no scores, match any existing
+                if h_score is None and a_score is None:
+                    game_id = m["id"]
+                    break
+                # Both have scores — verify they match (in either orientation)
                 if h_score is not None and a_score is not None:
                     if (m["home_score"] == h_score and m["away_score"] == a_score):
                         game_id = m["id"]
@@ -1946,6 +1954,8 @@ def upsert_game(cur, game_data):
                 away_line_score = COALESCE(%s, away_line_score),
                 innings = COALESCE(%s, innings),
                 game_score = COALESCE(%s, game_score),
+                source_url = COALESCE(%s, source_url),
+                status = CASE WHEN %s = 'final' THEN 'final' ELSE COALESCE(status, %s) END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (
@@ -1958,6 +1968,8 @@ def upsert_game(cur, game_data):
             json.dumps(game_data["away_line_score"]) if game_data.get("away_line_score") else None,
             game_data.get("innings"),
             game_data.get("game_score"),
+            game_data.get("source_url") or game_data.get("box_score_url") or None,
+            game_data.get("status", "final"), game_data.get("status", "final"),
             game_id,
         ))
         return game_id

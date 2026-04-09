@@ -288,14 +288,13 @@ def parse_schedule_page(html, season_year):
         away_db_name = resolve_team_name(away_name)
         home_db_name = resolve_team_name(home_name)
 
-        # Detect doubleheaders
+        # Detect doubleheaders — check ALL previous games, not just the last one
         game_number = 1
-        if games:
-            prev = games[-1]
+        for prev in games:
             if (prev["game_date"] == game_date
                     and prev["away_team_name"] == away_db_name
                     and prev["home_team_name"] == home_db_name):
-                game_number = prev["game_number"] + 1
+                game_number = max(game_number, prev["game_number"] + 1)
 
         game = {
             "season": season_year,
