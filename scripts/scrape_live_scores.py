@@ -453,8 +453,28 @@ def format_game(game, team_name, team_info):
         "result_status": result.get("status") if isinstance(result, dict) else None,
         "line_scores": line_scores,
         "is_conference": game.get("conference", False),
-        "box_score_url": game.get("url", ""),  # Nuxt games may have a URL field
+        "box_score_url": "",  # Will be set below
     }
+
+    # Build box score / live stats URL
+    # Priority: explicit URL field > constructed from game ID > empty
+    game_url = game.get("url", "")
+    game_id = game.get("id")
+    base_url = team_info.get("url", "")
+
+    if game_url:
+        # Make it absolute if relative
+        if game_url.startswith("/"):
+            formatted["box_score_url"] = base_url + game_url
+        elif game_url.startswith("http"):
+            formatted["box_score_url"] = game_url
+        else:
+            formatted["box_score_url"] = game_url
+    elif game_id and base_url:
+        # Construct Sidearm box score URL from game ID
+        # This works for both in-progress (live stats) and final (box score) games
+        sport = team_info.get("sport", "baseball")
+        formatted["box_score_url"] = f"{base_url}/sports/{sport}/summary?id={game_id}"
 
     return formatted
 

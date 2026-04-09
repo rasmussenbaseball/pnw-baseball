@@ -440,6 +440,12 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
                 Box Score
               </a>
             )}
+            {!isFinal && !isScheduled && game.box_score_url && (
+              <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] font-semibold text-amber-600 hover:underline animate-pulse">
+                Live Stats
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -535,7 +541,14 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo }) {
           <span>{formatDateLabel(game.game_date)}</span>
           <div className="flex items-center gap-2">
             {!isScheduled && gameTime && <span>{gameTime}</span>}
-            {isFinal && game.id && (
+            {isFinal && game.source_url && (
+              <a href={game.source_url} target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] font-semibold text-nw-teal hover:underline">
+                Box Score
+              </a>
+            )}
+            {isFinal && !game.source_url && game.id && (
               <span className="text-[10px] font-semibold text-nw-teal">
                 Box Score
               </span>

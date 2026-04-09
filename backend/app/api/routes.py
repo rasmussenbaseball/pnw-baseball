@@ -5587,7 +5587,7 @@ def games_by_date(
             SELECT
                 g.id, g.season, g.game_date, g.game_time,
                 g.home_team_id, g.away_team_id,
-                g.home_team_name, g.away_team_name,
+                g.home_team_name, g.away_team_name, g.source_url,
                 g.home_score, g.away_score,
                 g.innings, g.is_conference_game,
                 g.home_hits, g.home_errors,
