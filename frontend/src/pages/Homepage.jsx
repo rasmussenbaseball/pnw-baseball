@@ -576,7 +576,7 @@ function PowerRankingsWidget({ ratings }) {
 // ════════════════════════════════════════════
 const DRAFT_PROSPECTS = [
   { rank: 1, name: 'Maddox Molony', pos: 'SS', school: 'Oregon', playerId: 3506 },
-  { rank: 2, name: 'Sean Duncan', pos: 'LHP', school: 'Terry Fox (BC)', playerId: null },
+  { rank: 2, name: 'Sean Duncan', pos: 'LHP', school: 'Terry Fox Secondary (BC)', playerId: null },
   { rank: 3, name: 'Eli Herst', pos: 'RHP', school: 'Seattle Academy (WA)', playerId: null },
   { rank: 4, name: 'Ethan Kleinschmit', pos: 'LHP', school: 'Oregon State', playerId: 3644 },
   { rank: 5, name: 'Cal Scolari', pos: 'RHP', school: 'Oregon', playerId: 3632 },
