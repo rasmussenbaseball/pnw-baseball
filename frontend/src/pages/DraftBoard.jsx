@@ -24,7 +24,14 @@ const DRAFT_DATA = {
       { rank: 17, name: 'Will Rohrbacher', pos: 'IF', school: 'Bainbridge (WA)', playerId: null },
       { rank: 18, name: 'Erik Hoffberg', pos: 'LHP', school: 'Gonzaga', playerId: 3568 },
       { rank: 19, name: 'Colton Bower', pos: 'C', school: 'Washington', playerId: 3484 },
-      { rank: 20, name: 'Mikey Bell', pos: 'INF', school: 'Gonzaga', playerId: 3550 },
+      { rank: 20, name: 'Jackson Jaha', pos: 'UTIL', school: 'LC State', playerId: 2714 },
+      { rank: 21, name: 'Mikey Bell', pos: 'INF', school: 'Gonzaga', playerId: 3550 },
+      { rank: 22, name: 'Donny Tober', pos: 'RHP', school: 'Warner Pacific', playerId: 2950 },
+      { rank: 23, name: 'Trenton Hertzog', pos: 'UTIL', school: 'Tualatin (OR)', playerId: null },
+      { rank: 24, name: 'Noah Kenney', pos: 'RHP', school: 'Washington', playerId: 3611 },
+      { rank: 25, name: 'Will Anderson', pos: 'LHP', school: 'British Columbia', playerId: 2994 },
+      { rank: 26, name: 'Austin Wolfe', pos: 'LHP', school: 'Bushnell', playerId: 2921 },
+      { rank: 27, name: 'Payton Knowles', pos: 'UTIL', school: 'Seattle U', playerId: 3687 },
     ],
   },
   '27': {
@@ -80,6 +87,7 @@ const POS_COLORS = {
   P: 'bg-rose-100 text-rose-800',
   TWP: 'bg-rose-100 text-rose-800',
   'OF/3B': 'bg-violet-100 text-violet-800',
+  UTIL: 'bg-teal-100 text-teal-800',
 }
 
 export default function DraftBoard({ year }) {
