@@ -119,6 +119,7 @@ export default function App() {
           <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
 
           {/* Draft */}
+          <Route path="/draft" element={<DraftBoard year="26" />} />
           <Route path="/draft/2026" element={<DraftBoard year="26" />} />
           <Route path="/draft/2027" element={<DraftBoard year="27" />} />
           <Route path="/draft/2028" element={<DraftBoard year="28" />} />

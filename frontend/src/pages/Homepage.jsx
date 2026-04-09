@@ -592,7 +592,7 @@ function DraftBoardWidget() {
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-base font-bold text-pnw-slate">2026 Draft Board</h2>
-        <Link to="/draft/2026" className="text-xs text-pnw-teal hover:underline">Full board →</Link>
+        <Link to="/draft" className="text-xs text-pnw-teal hover:underline">Full board →</Link>
       </div>
       <div className="space-y-0">
         {DRAFT_PROSPECTS.map((p) => (

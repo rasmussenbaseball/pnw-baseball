@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 const DRAFT_DATA = {
@@ -63,6 +64,8 @@ const DRAFT_DATA = {
   },
 }
 
+const YEARS = ['26', '27', '28']
+
 const POS_COLORS = {
   SS: 'bg-blue-100 text-blue-800',
   C: 'bg-amber-100 text-amber-800',
@@ -80,26 +83,39 @@ const POS_COLORS = {
 }
 
 export default function DraftBoard({ year }) {
-  const board = DRAFT_DATA[year]
-
-  if (!board || board.prospects.length === 0) {
-    return (
-      <div className="text-center py-20">
-        <h1 className="text-2xl font-bold text-pnw-slate mb-2">MLB Draft Board '${year}</h1>
-        <p className="text-gray-500">PNW prospects for the 20{year} MLB Draft. Coming soon!</p>
-      </div>
-    )
-  }
+  const [activeYear, setActiveYear] = useState(year || '26')
+  const board = DRAFT_DATA[activeYear]
 
   return (
     <div>
+      {/* Header + Year Tabs */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pnw-slate mb-1">
-          {board.year} MLB Draft Board
-        </h1>
-        <p className="text-sm text-gray-500">
-          Top PNW prospects for the {board.year} MLB Draft
+        <h1 className="text-2xl font-bold text-pnw-slate mb-1">PNW MLB Draft Board</h1>
+        <p className="text-sm text-gray-500 mb-4">
+          Top PNW prospects for the MLB Draft
         </p>
+        <div className="flex gap-2">
+          {YEARS.map((yr) => (
+            <button
+              key={yr}
+              onClick={() => setActiveYear(yr)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+                activeYear === yr
+                  ? 'bg-pnw-teal text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              '{yr}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Subtitle for active year */}
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-gray-700">
+          {board.year} Draft - {board.prospects.length} Prospects
+        </h2>
       </div>
 
       {/* Desktop table */}
