@@ -22,16 +22,31 @@ const DRAFT_DATA = {
       { rank: 15, name: 'Kealoha Kepo\'o-Sabate', pos: 'RHP', school: 'Meadowdale (WA)', playerId: null },
       { rank: 16, name: 'Ryan Cooney', pos: 'IF', school: 'Oregon', playerId: 3502 },
       { rank: 17, name: 'Will Rohrbacher', pos: 'IF', school: 'Bainbridge (WA)', playerId: null },
-      { rank: 18, name: 'Erik Hoffberg', pos: 'LHP', school: 'Gonzaga', playerId: 3568 },
-      { rank: 19, name: 'Colton Bower', pos: 'C', school: 'Washington', playerId: 3484 },
-      { rank: 20, name: 'Jackson Jaha', pos: 'UTIL', school: 'LC State', playerId: 2714 },
-      { rank: 21, name: 'Mikey Bell', pos: 'INF', school: 'Gonzaga', playerId: 3550 },
-      { rank: 22, name: 'Donny Tober', pos: 'RHP', school: 'Warner Pacific', playerId: 2950 },
-      { rank: 23, name: 'Trenton Hertzog', pos: 'UTIL', school: 'Tualatin (OR)', playerId: null },
-      { rank: 24, name: 'Noah Kenney', pos: 'RHP', school: 'Washington', playerId: 3611 },
-      { rank: 25, name: 'Will Anderson', pos: 'LHP', school: 'British Columbia', playerId: 2994 },
-      { rank: 26, name: 'Austin Wolfe', pos: 'LHP', school: 'Bushnell', playerId: 2921 },
+      { rank: 18, name: 'Miles Gosztola', pos: 'LHP', school: 'Oregon', playerId: 3637 },
+      { rank: 19, name: 'Erik Hoffberg', pos: 'LHP', school: 'Gonzaga', playerId: 3568 },
+      { rank: 20, name: 'Colton Bower', pos: 'C', school: 'Washington', playerId: 3484 },
+      { rank: 21, name: 'Jackson Jaha', pos: 'UTIL', school: 'LC State', playerId: 2714 },
+      { rank: 22, name: 'Mikey Bell', pos: 'INF', school: 'Gonzaga', playerId: 3550 },
+      { rank: 23, name: 'Donny Tober', pos: 'RHP', school: 'Warner Pacific', playerId: 2950 },
+      { rank: 24, name: 'Trenton Hertzog', pos: 'UTIL', school: 'Tualatin (OR)', playerId: null },
+      { rank: 25, name: 'Noah Kenney', pos: 'RHP', school: 'Washington', playerId: 3611 },
+      { rank: 26, name: 'Will Anderson', pos: 'LHP', school: 'British Columbia', playerId: 2994 },
       { rank: 27, name: 'Payton Knowles', pos: 'UTIL', school: 'Seattle U', playerId: 3687 },
+      { rank: 28, name: 'Zach Bowman', pos: 'LHP', school: 'Gonzaga', playerId: 3570 },
+      { rank: 29, name: 'Austin Wolfe', pos: 'LHP', school: 'Bushnell', playerId: 2921 },
+      { rank: 30, name: 'Trey Newmann', pos: 'RHP', school: 'Portland', playerId: 3601 },
+      { rank: 31, name: 'Dominic Hellman', pos: 'UTIL', school: 'Oregon', playerId: 3504 },
+      { rank: 32, name: 'August Ware', pos: 'LHP', school: 'Glencoe (OR)', playerId: null },
+      { rank: 33, name: 'Albert Roblez', pos: 'RHP', school: 'Oregon State', playerId: 3647 },
+      { rank: 34, name: 'Michael Revell', pos: 'RHP', school: 'Richland (WA)', playerId: null },
+      { rank: 35, name: 'Jace Nagler', pos: 'SS', school: 'Eastern Oregon', playerId: 2744 },
+      { rank: 36, name: 'James Brock', pos: 'RHP', school: 'UBC', playerId: 2993 },
+      { rank: 37, name: 'Jacob Courtney', pos: 'RHP', school: 'Bushnell', playerId: 2928 },
+      { rank: 38, name: 'Neal Burtis', pos: 'LHP', school: 'Tahoma (WA)', playerId: null },
+      { rank: 39, name: 'Albert Jennings', pos: 'OF', school: 'Bushnell', playerId: 2894 },
+      { rank: 40, name: 'Quinn Hubbs', pos: 'LHP', school: 'Lower Columbia', playerId: 160 },
+      { rank: 41, name: 'Will Shelor', pos: 'CF', school: 'Pacific', playerId: 3350 },
+      { rank: 42, name: 'Jace Taylor', pos: 'RHP', school: 'LC State', playerId: 2737 },
     ],
   },
   '27': {
@@ -88,6 +103,7 @@ const POS_COLORS = {
   TWP: 'bg-rose-100 text-rose-800',
   'OF/3B': 'bg-violet-100 text-violet-800',
   UTIL: 'bg-teal-100 text-teal-800',
+  CF: 'bg-purple-100 text-purple-800',
 }
 
 export default function DraftBoard({ year }) {
@@ -102,18 +118,18 @@ export default function DraftBoard({ year }) {
         <p className="text-sm text-gray-500 mb-4">
           Top PNW prospects for the MLB Draft
         </p>
-        <div className="flex gap-2">
+        <div className="inline-flex bg-gray-200 rounded-lg p-1 gap-1">
           {YEARS.map((yr) => (
             <button
               key={yr}
               onClick={() => setActiveYear(yr)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+              className={`px-5 py-2 rounded-md text-sm font-bold transition-all ${
                 activeYear === yr
-                  ? 'bg-pnw-teal text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-pnw-teal text-white shadow-md'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'
               }`}
             >
-              '{yr}
+              20{yr}
             </button>
           ))}
         </div>
