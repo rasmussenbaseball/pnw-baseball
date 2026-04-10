@@ -336,8 +336,65 @@ D1_TEAMS = {
     "Wash. St.": "https://wsucougars.com",
     "Gonzaga": "https://gozags.com",
     "Portland": "https://portlandpilots.com",
-    "Seattle U": "https://goseattleu.com",
+    # Seattle U handled separately via WMT API (Sidearm V3 = client-rendered)
 }
+
+# WMT team IDs for Seattle U by season
+SEATTLE_U_WMT_IDS = {
+    2025: 552115,
+    2026: 614833,
+}
+
+
+def scrape_seattle_u_record(season_year):
+    """Fetch Seattle U record from WMT Games API (Sidearm V3 is client-rendered)."""
+    wmt_team_id = SEATTLE_U_WMT_IDS.get(season_year)
+    if not wmt_team_id:
+        return None, None
+
+    # Use team endpoint for overall record
+    try:
+        resp = requests.get(
+            f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        team_data = resp.json().get("data", {})
+        wins = team_data.get("wins", 0)
+        losses = team_data.get("losses", 0)
+        overall = (wins, losses) if (wins or losses) else None
+    except Exception as e:
+        logger.error(f"Seattle U WMT team API failed: {e}")
+        return None, None
+
+    # Use games endpoint to compute conference record from completed games
+    conference = None
+    try:
+        resp = requests.get(
+            f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        games = resp.json().get("data", [])
+
+        conf_w, conf_l = 0, 0
+        for game in games:
+            if not game.get("conference_contest"):
+                continue
+            comps = game.get("competitors", [])
+            seu_comp = next((c for c in comps if c.get("teamId") == wmt_team_id), None)
+            if not seu_comp:
+                continue
+            if seu_comp.get("winner") is True:
+                conf_w += 1
+            elif seu_comp.get("winner") is False:
+                conf_l += 1
+        if conf_w or conf_l:
+            conference = (conf_w, conf_l)
+    except Exception as e:
+        logger.warning(f"Seattle U WMT games API failed (conf record): {e}")
+
+    return overall, conference
 
 # MWC teams — scraped individually via Sidearm schedule pages
 MWC_TEAMS = {
@@ -540,6 +597,18 @@ def main():
                 else:
                     not_found.append(short)
                     logger.warning(f"  No record found for {short}")
+
+            # Seattle U via WMT API (Sidearm V3 is client-rendered)
+            seu_team = next((t for t in db_teams if t["short_name"] == "Seattle U"), None)
+            if seu_team and seu_team["id"] not in found_ids:
+                logger.info(f"  Trying Seattle U (WMT API)...")
+                overall, conference = scrape_seattle_u_record(season)
+                if overall:
+                    cf = conference or (0, 0)
+                    save(seu_team["id"], "Seattle U", overall[0], overall[1], cf[0], cf[1])
+                else:
+                    not_found.append("Seattle U")
+                    logger.warning(f"  No record found for Seattle U")
 
         # ── Summary ──
 

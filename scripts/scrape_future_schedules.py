@@ -761,6 +761,109 @@ def extract_future_willamette_games(season_year, today, team_map):
 
 
 # ============================================================
+# Seattle U (WMT Games API) - Sidearm V3 renders client-side
+# ============================================================
+
+# WMT team IDs by season (matches scrape_nwac.py)
+SEATTLE_U_WMT_IDS = {
+    2025: 552115,
+    2026: 614833,
+}
+
+
+def extract_future_seattle_u_games(season_year, today, team_map):
+    """
+    Extract future games for Seattle U from the WMT Games API.
+    Seattle U's Sidearm V3 site renders data entirely client-side,
+    so we use the same WMT API that scrape_nwac.py uses for stats.
+    """
+    wmt_team_id = SEATTLE_U_WMT_IDS.get(season_year)
+    if not wmt_team_id:
+        logger.warning(f"Seattle U: no WMT team ID for season {season_year}")
+        return []
+
+    api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games"
+    logger.info(f"Fetching Seattle U schedule via WMT API: {api_url}")
+
+    try:
+        resp = requests.get(api_url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.error(f"Seattle U WMT API failed: {e}")
+        return []
+
+    games_data = data.get("data", [])
+    logger.info(f"  Seattle U: WMT API returned {len(games_data)} total games")
+
+    # Resolve Seattle U team info from our DB
+    seu_info = resolve_team(team_map, "Seattle U", "D1")
+    seu_id = seu_info.get("team_id")
+
+    future_games = []
+    for game in games_data:
+        if game.get("canceled") or game.get("postponed"):
+            continue
+
+        game_date_str = game.get("game_date", "")[:10]
+        if not game_date_str:
+            continue
+
+        try:
+            game_dt = date.fromisoformat(game_date_str)
+        except ValueError:
+            continue
+
+        if game_dt <= today:
+            continue
+
+        # Parse competitors
+        competitors = game.get("competitors", [])
+        if len(competitors) != 2:
+            continue
+
+        seu_comp = next((c for c in competitors if c.get("teamId") == wmt_team_id), None)
+        opp_comp = next((c for c in competitors if c.get("teamId") != wmt_team_id), None)
+        if not seu_comp or not opp_comp:
+            continue
+
+        # Opponent name from WMT
+        opp_name_raw = opp_comp.get("nameTabular", "Unknown")
+        # Clean up suffixes like "(CA)", "(OR)" that WMT adds
+        opp_clean = re.sub(r'\s*\([A-Z]{2}\)\s*$', '', opp_name_raw).strip()
+        opp_key = normalize_team_name(opp_clean)
+
+        # Home/away
+        is_home = seu_comp.get("homeContest", False)
+        is_conference = game.get("conference_contest", False)
+
+        # Resolve opponent team ID
+        opp_info = resolve_team(team_map, opp_key, "D1")
+
+        if is_home:
+            home_team, away_team = "Seattle U", opp_key
+            home_id, away_id = seu_id, opp_info.get("team_id")
+        else:
+            home_team, away_team = opp_key, "Seattle U"
+            home_id, away_id = opp_info.get("team_id"), seu_id
+
+        future_games.append({
+            "game_date": game_dt.isoformat(),
+            "home_team": home_team,
+            "away_team": away_team,
+            "home_team_id": home_id,
+            "away_team_id": away_id,
+            "is_conference": is_conference,
+            "division": "D1",
+            "source_team": "Seattle U",
+            "location": "home" if is_home else "away",
+        })
+
+    logger.info(f"  Seattle U: {len(future_games)} future games found (WMT API)")
+    return future_games
+
+
+# ============================================================
 # Deduplication
 # ============================================================
 
@@ -851,6 +954,10 @@ def main():
 
     # 1. Scrape Sidearm teams (all divisions including D1)
     for team_name, team_info in SIDEARM_TEAMS.items():
+        # Skip Seattle U - Sidearm V3 renders client-side; handled by WMT API below
+        if team_name == "Seattle U":
+            logger.info(f"Skipping {team_name} Sidearm (using WMT API instead)")
+            continue
         try:
             games = extract_future_sidearm_games(
                 team_name, team_info, args.season, today, team_map
@@ -859,6 +966,13 @@ def main():
         except Exception as e:
             logger.error(f"Error scraping {team_name}: {e}")
             continue
+
+    # 1b. Scrape Seattle U via WMT Games API (Sidearm V3 is client-rendered)
+    try:
+        seu_games = extract_future_seattle_u_games(args.season, today, team_map)
+        all_games.extend(seu_games)
+    except Exception as e:
+        logger.error(f"Error scraping Seattle U via WMT API: {e}")
 
     # 2. Scrape NWAC schedule
     try:

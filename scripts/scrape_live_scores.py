@@ -685,6 +685,99 @@ def scrape_team_scores(team_name, team_info, season, today):
     return parse_html_schedule(html, team_name, team_info, today)
 
 
+# ── Seattle U via WMT Games API (Sidearm V3 = client-rendered) ──
+
+SEATTLE_U_WMT_IDS = {
+    2025: 552115,
+    2026: 614833,
+}
+
+
+def scrape_seattle_u_live(season, today):
+    """Scrape Seattle U scores from WMT Games API."""
+    wmt_team_id = SEATTLE_U_WMT_IDS.get(season)
+    if not wmt_team_id:
+        return []
+
+    api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games"
+    logger.info(f"Fetching Seattle U (WMT API): {api_url}")
+
+    try:
+        resp = requests.get(api_url, timeout=15)
+        resp.raise_for_status()
+        all_games = resp.json().get("data", [])
+    except Exception as e:
+        logger.error(f"Seattle U WMT API failed: {e}")
+        return []
+
+    results = []
+    for game in all_games:
+        if game.get("canceled"):
+            continue
+
+        game_date_str = game.get("game_date", "")[:10]
+        if not game_date_str:
+            continue
+
+        try:
+            game_dt = datetime.fromisoformat(game_date_str).date()
+        except ValueError:
+            continue
+
+        # Only include today's games and recent (last 3 days)
+        days_diff = (today - game_dt).days
+        if days_diff < -3 or days_diff > 3:
+            continue
+
+        comps = game.get("competitors", [])
+        if len(comps) != 2:
+            continue
+
+        seu_comp = next((c for c in comps if c.get("teamId") == wmt_team_id), None)
+        opp_comp = next((c for c in comps if c.get("teamId") != wmt_team_id), None)
+        if not seu_comp or not opp_comp:
+            continue
+
+        opp_name_raw = opp_comp.get("nameTabular", "Unknown")
+        opp_clean = re.sub(r'\s*\([A-Z]{2}\)\s*$', '', opp_name_raw).strip()
+        opp_key = normalize_team_name(opp_clean)
+
+        is_home = seu_comp.get("homeContest", False)
+        has_scores = seu_comp.get("score") is not None and opp_comp.get("score") is not None
+
+        # Determine status
+        if has_scores:
+            status = "final"
+        elif game_dt == today:
+            status = "scheduled"
+        elif game_dt > today:
+            status = "scheduled"
+        else:
+            continue  # Past with no scores = likely canceled
+
+        home_team = "Seattle U" if is_home else opp_key
+        away_team = opp_key if is_home else "Seattle U"
+
+        results.append({
+            "home_team": home_team,
+            "away_team": away_team,
+            "home_score": (seu_comp if is_home else opp_comp).get("score"),
+            "away_score": (opp_comp if is_home else seu_comp).get("score"),
+            "status": status,
+            "date": game_date_str,
+            "time": "",
+            "location": game.get("venue", {}).get("name", ""),
+            "is_conference": game.get("conference_contest", False),
+            "home_logo": TEAM_LOGOS.get(home_team, ""),
+            "away_logo": TEAM_LOGOS.get(away_team, ""),
+            "innings": game.get("periods_played") or 9,
+            "source_team": "Seattle U",
+        })
+
+    logger.info(f"  Seattle U: {len(results)} games from WMT API")
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Scrape live scores for PNW baseball")
     parser.add_argument("--season", type=int, default=2026, help="Season year")
@@ -707,7 +800,30 @@ def main():
         "date": str(today),
     }
 
+    # Seattle U via WMT API (Sidearm V3 = client-rendered)
+    try:
+        seu_games = scrape_seattle_u_live(args.season, today)
+        for g in seu_games:
+            game_date = None
+            try:
+                game_date = datetime.fromisoformat(g["date"]).date()
+            except (ValueError, TypeError):
+                pass
+            is_today = game_date == today if game_date else False
+            is_future = game_date > today if game_date else False
+            if g["status"] == "live" or is_today:
+                all_games["today"].append(g)
+            elif is_future:
+                all_games["upcoming"].append(g)
+            else:
+                all_games["recent"].append(g)
+    except Exception as e:
+        logger.error(f"Error scraping Seattle U (WMT): {e}")
+
     for team_name, team_info in SIDEARM_TEAMS.items():
+        # Skip Seattle U — handled via WMT API above
+        if team_name == "Seattle U":
+            continue
         try:
             games = scrape_team_scores(team_name, team_info, args.season, today)
             for g in games:

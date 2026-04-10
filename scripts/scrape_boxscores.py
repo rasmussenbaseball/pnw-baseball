@@ -2385,6 +2385,295 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
 
 
 # ============================================================
+# Seattle U — WMT Games API Box Scores
+# ============================================================
+# Seattle U's Sidearm V3 site renders schedule/box score data
+# entirely client-side. We use the WMT Games API instead.
+
+SEATTLE_U_WMT_IDS = {
+    2025: 552115,
+    2026: 614833,
+}
+
+
+def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
+    """
+    Scrape Seattle U box scores via the WMT Games API.
+    Returns (games_found, games_scraped, errors).
+    """
+    wmt_team_id = SEATTLE_U_WMT_IDS.get(season_year)
+    if not wmt_team_id:
+        logger.warning(f"Seattle U: no WMT team ID for season {season_year}")
+        return 0, 0, 1
+
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Scraping: Seattle U (WMT Games API) — Season {season_year}")
+    logger.info(f"{'='*60}")
+
+    # Look up team_id
+    with get_connection() as conn:
+        cur = conn.cursor()
+        team_id = get_team_id_by_name(cur, "Seattle U")
+        if not team_id:
+            logger.warning("  Seattle U not found in database — skipping")
+            return 0, 0, 1
+
+    # Fetch all games
+    api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games"
+    logger.info(f"  Fetching game list: {api_url}")
+    try:
+        resp = requests.get(api_url, timeout=15)
+        resp.raise_for_status()
+        all_games = resp.json().get("data", [])
+    except Exception as e:
+        logger.error(f"  WMT Games API failed: {e}")
+        return 0, 0, 1
+
+    # Filter to completed games only (both teams have scores)
+    completed = []
+    for g in all_games:
+        if g.get("canceled") or g.get("postponed"):
+            continue
+        comps = g.get("competitors", [])
+        if len(comps) != 2:
+            continue
+        if all(c.get("score") is not None for c in comps):
+            completed.append(g)
+
+    # Apply --since filter
+    if since_date:
+        from datetime import date as dt_date
+        try:
+            cutoff = dt_date.fromisoformat(since_date)
+            completed = [g for g in completed if g["game_date"][:10] >= since_date]
+        except ValueError:
+            pass
+
+    games_found = len(completed)
+    games_scraped = 0
+    errors = 0
+
+    logger.info(f"  Found {games_found} completed games")
+
+    if dry_run:
+        for g in completed[:5]:
+            seu_comp = next((c for c in g["competitors"] if c["teamId"] == wmt_team_id), None)
+            opp_comp = next((c for c in g["competitors"] if c["teamId"] != wmt_team_id), None)
+            logger.info(f"    {g['game_date'][:10]} vs {opp_comp['nameTabular']}: "
+                       f"{seu_comp['score']}-{opp_comp['score']}")
+        return games_found, 0, 0
+
+    for i, game in enumerate(completed):
+        try:
+            seu_comp = next((c for c in game["competitors"] if c["teamId"] == wmt_team_id), None)
+            opp_comp = next((c for c in game["competitors"] if c["teamId"] != wmt_team_id), None)
+            if not seu_comp or not opp_comp:
+                continue
+
+            opp_name_raw = opp_comp.get("nameTabular", "Unknown")
+            # Clean "(CA)", "(OR)" suffixes WMT adds
+            opp_clean = re.sub(r'\s*\([A-Z]{2}\)\s*$', '', opp_name_raw).strip()
+
+            game_date = game["game_date"][:10]
+            is_home = seu_comp.get("homeContest", False)
+
+            logger.info(f"  Game {i+1}/{games_found}: {game_date} "
+                       f"{'vs' if is_home else '@'} {opp_clean} "
+                       f"({seu_comp['score']}-{opp_comp['score']})")
+
+            # Resolve opponent team_id
+            with get_connection() as conn:
+                cur = conn.cursor()
+                from scrape_live_scores import normalize_team_name
+                opp_key = normalize_team_name(opp_clean)
+                opp_team_id = get_team_id_by_name(cur, opp_key)
+
+            # Build line scores from teamStats (per-inning data)
+            def build_line_score(comp):
+                stats = comp.get("teamStats", [])
+                if not stats:
+                    return None
+                # Period 0 = totals, period 1-N = innings
+                innings = {}
+                for s in stats:
+                    p = s.get("period", 0)
+                    if p > 0:
+                        innings[p] = s.get("statistic", {}).get("sRuns", 0)
+                if not innings:
+                    return None
+                max_inn = max(innings.keys())
+                return [innings.get(inn, 0) for inn in range(1, max_inn + 1)]
+
+            home_comp = seu_comp if is_home else opp_comp
+            away_comp = opp_comp if is_home else seu_comp
+
+            innings_played = game.get("periods_played", 9) or 9
+
+            # Determine game number for doubleheaders
+            game_number = 1
+            dh = game.get("dbl_header_game_no", 0)
+            if dh and dh > 0:
+                game_number = dh
+
+            # Team total stats for hits/errors
+            def get_totals(comp):
+                for s in comp.get("teamStats", []):
+                    if s.get("period") == 0:
+                        st = s.get("statistic", {})
+                        return st.get("sHits", 0), st.get("sErrors", 0)
+                return 0, 0
+
+            home_hits, home_errors = get_totals(home_comp)
+            away_hits, away_errors = get_totals(away_comp)
+
+            game_data = {
+                "season": season_year,
+                "game_date": game_date,
+                "home_team_id": team_id if is_home else opp_team_id,
+                "away_team_id": opp_team_id if is_home else team_id,
+                "home_team_name": "Seattle U" if is_home else opp_key,
+                "away_team_name": opp_key if is_home else "Seattle U",
+                "home_score": home_comp.get("score"),
+                "away_score": away_comp.get("score"),
+                "home_hits": home_hits,
+                "away_hits": away_hits,
+                "home_errors": home_errors,
+                "away_errors": away_errors,
+                "home_line_score": build_line_score(home_comp),
+                "away_line_score": build_line_score(away_comp),
+                "innings": innings_played,
+                "is_conference_game": game.get("conference_contest", False),
+                "is_neutral_site": game.get("neutral_site", False),
+                "game_number": game_number,
+                "location": game.get("venue", {}).get("name"),
+                "source_url": f"https://api.wmt.games/api/statistics/games/{game['id']}",
+                "status": "final",
+            }
+
+            with get_connection() as conn:
+                cur = conn.cursor()
+                game_id = upsert_game(cur, game_data)
+                if not game_id:
+                    continue
+
+                # Fetch player-level stats for this game
+                try:
+                    players_resp = requests.get(
+                        f"https://api.wmt.games/api/statistics/games/{game['id']}/players",
+                        timeout=15,
+                    )
+                    players_resp.raise_for_status()
+                    game_players = players_resp.json().get("data", [])
+                except Exception as e:
+                    logger.warning(f"    Could not fetch player stats: {e}")
+                    conn.commit()
+                    games_scraped += 1
+                    continue
+
+                # Separate Seattle U players from opponent, then split batters/pitchers
+                for side_team_id, side_db_id in [(wmt_team_id, team_id), (opp_comp["teamId"], opp_team_id)]:
+                    side_players = [p for p in game_players if p.get("team_id") == side_team_id]
+
+                    batting_lines = []
+                    pitching_lines = []
+
+                    for p in side_players:
+                        name = p.get("xml_name", "Unknown")
+                        pos = (p.get("xml_position") or "").upper()
+                        stats_list = p.get("statistic", [])
+                        totals = {}
+                        for s in stats_list:
+                            if s.get("period") == 0:
+                                totals = s.get("statistic", {})
+                                break
+
+                        # Determine if this is a pitcher entry
+                        is_pitcher = totals.get("sPitchingAppearances", 0) > 0
+
+                        if is_pitcher:
+                            ip_raw = totals.get("sInningsPitched", 0)
+                            pitching_lines.append({
+                                "player_name": name,
+                                "pitch_order": totals.get("sOrderOfPitchingAppearance", 1),
+                                "is_starter": totals.get("sPitcherGamesStarted", 0) > 0,
+                                "decision": _wmt_decision(totals),
+                                "ip": ip_raw,
+                                "h": totals.get("sHitsAllowed", 0),
+                                "r": totals.get("sRunsAllowed", 0),
+                                "er": totals.get("sEarnedRuns", 0),
+                                "bb": totals.get("sBasesOnBallsAllowed", 0),
+                                "so": totals.get("sStrikeouts", 0),
+                                "hr": totals.get("sHomeRunsAllowed", 0),
+                                "hbp": totals.get("sHitBattersPitching", 0),
+                                "wp": totals.get("sWildPitches", 0),
+                                "bf": totals.get("sBattersFaced", 0),
+                            })
+
+                        # Also check batting stats (two-way players pitch AND bat)
+                        if totals.get("sAtBats") is not None and totals.get("sAtBats", 0) > 0:
+                            batting_lines.append({
+                                "player_name": name,
+                                "position": pos,
+                                "ab": totals.get("sAtBats", 0),
+                                "r": totals.get("sRuns", 0),
+                                "h": totals.get("sHits", 0),
+                                "2b": totals.get("sDoubles", 0),
+                                "3b": totals.get("sTriples", 0),
+                                "hr": totals.get("sHomeRuns", 0),
+                                "rbi": totals.get("sRunsBattedIn", 0),
+                                "bb": totals.get("sWalks", 0),
+                                "so": totals.get("sStrikeoutsHitting", 0),
+                                "hbp": totals.get("sHitByPitch", 0),
+                                "sb": totals.get("sStolenBases", 0),
+                                "cs": totals.get("sCaughtStealing", 0),
+                                "sf": totals.get("sSacrificeFlies", 0),
+                                "sh": totals.get("sSacrificeBunts", 0),
+                            })
+                        elif not is_pitcher:
+                            # Some players (pinch runners, defensive subs) have 0 AB
+                            # but still appear in the lineup — include if they played
+                            if totals.get("sRuns") or totals.get("sStolenBases"):
+                                batting_lines.append({
+                                    "player_name": name,
+                                    "position": pos,
+                                    "ab": 0, "r": totals.get("sRuns", 0),
+                                    "h": 0, "2b": 0, "3b": 0, "hr": 0, "rbi": 0,
+                                    "bb": totals.get("sWalks", 0), "so": 0, "hbp": 0,
+                                    "sb": totals.get("sStolenBases", 0), "cs": 0,
+                                    "sf": 0, "sh": 0,
+                                })
+
+                    if batting_lines:
+                        insert_game_batting(cur, game_id, side_db_id, batting_lines, season_year)
+                    if pitching_lines:
+                        insert_game_pitching(cur, game_id, side_db_id, pitching_lines, season_year)
+
+                conn.commit()
+            games_scraped += 1
+            time.sleep(0.3)  # Be nice to the API
+
+        except Exception as e:
+            logger.error(f"    Error processing game: {e}")
+            import traceback
+            traceback.print_exc()
+            errors += 1
+
+    logger.info(f"\n  Seattle U: {games_found} found, {games_scraped} scraped, {errors} errors")
+    return games_found, games_scraped, errors
+
+
+def _wmt_decision(totals):
+    """Extract W/L/S decision from WMT pitcher totals."""
+    if totals.get("sIndWon", 0) > 0:
+        return "W"
+    if totals.get("sIndLost", 0) > 0:
+        return "L"
+    if totals.get("sIndSaved", 0) > 0:
+        return "S"
+    return None
+
+
+# ============================================================
 # CLI Entry Point
 # ============================================================
 
@@ -2442,6 +2731,17 @@ def main():
     total_found = 0
     total_scraped = 0
     total_errors = 0
+
+    # Handle Seattle U separately via WMT API (Sidearm V3 = client-rendered)
+    seattle_u_requested = "Seattle U" in teams_to_scrape
+    if seattle_u_requested:
+        del teams_to_scrape["Seattle U"]
+        found, scraped, errs = scrape_seattle_u_boxscores(
+            args.season, dry_run=args.dry_run, since_date=args.since
+        )
+        total_found += found
+        total_scraped += scraped
+        total_errors += errs
 
     nwac_team_count = 0
     for short_name, config in teams_to_scrape.items():
