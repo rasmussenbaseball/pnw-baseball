@@ -663,13 +663,8 @@ def get_scraper_api_key():
 
 
 def fetch_presto_page(url, api_key=None):
-    """Fetch a PrestoSports page, using ScraperAPI if direct fetch fails."""
-    # Try direct fetch first
-    html = fetch_page(url)
-    if html and len(html) > 2000:
-        return html
-
-    # Fallback to ScraperAPI
+    """Fetch a PrestoSports page via ScraperAPI first, direct as fallback."""
+    # Try ScraperAPI first (NWAC blocks direct datacenter requests)
     if api_key:
         try:
             api_url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
@@ -679,6 +674,11 @@ def fetch_presto_page(url, api_key=None):
                 return resp.text
         except Exception as e:
             logger.error(f"ScraperAPI failed for {url}: {e}")
+
+    # Fallback to direct fetch
+    html = fetch_page(url)
+    if html and len(html) > 2000:
+        return html
 
     return None
 
@@ -849,10 +849,8 @@ def main():
 
     all_games = []
 
-    # 1. Scrape Sidearm teams (D2, D3, NAIA — skip D1, not needed for projections)
+    # 1. Scrape Sidearm teams (all divisions including D1)
     for team_name, team_info in SIDEARM_TEAMS.items():
-        if team_info.get("division") == "D1":
-            continue
         try:
             games = extract_future_sidearm_games(
                 team_name, team_info, args.season, today, team_map

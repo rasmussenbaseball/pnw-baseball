@@ -5619,7 +5619,165 @@ def games_by_date(
         """, params)
 
         games = _dedup_games([dict(g) for g in cur.fetchall()], limit=500)
+
+        # For future dates, merge in games from future_schedules.json
+        # that aren't already in the database
+        from pathlib import Path
+        import json as _json
+        from datetime import date as _date_type
+
+        try:
+            req_date = _date_type.fromisoformat(date)
+            today = _date_type.today()
+        except ValueError:
+            req_date = None
+            today = None
+
+        if req_date and req_date >= today:
+            fs_path = Path(__file__).parent.parent.parent / "data" / "future_schedules.json"
+            if fs_path.exists():
+                try:
+                    with open(fs_path) as _f:
+                        fs_data = _json.load(_f)
+                    fs_games = [g for g in fs_data.get("games", []) if g.get("game_date") == date]
+
+                    if division:
+                        fs_games = [g for g in fs_games if g.get("division", "").upper() == division.upper()]
+
+                    # Build set of existing game keys (home_id, away_id, date) to avoid dupes
+                    existing_keys = set()
+                    for g in games:
+                        h = g.get("home_team_id")
+                        a = g.get("away_team_id")
+                        if h and a:
+                            existing_keys.add((h, a))
+                            existing_keys.add((a, h))
+
+                    for fg in fs_games:
+                        h = fg.get("home_team_id")
+                        a = fg.get("away_team_id")
+                        if h and a and (h, a) not in existing_keys:
+                            existing_keys.add((h, a))
+                            existing_keys.add((a, h))
+                            # Build a DB-game-shaped dict from the future schedule entry
+                            games.append({
+                                "id": None,
+                                "season": 2026,
+                                "game_date": fg["game_date"],
+                                "game_time": None,
+                                "home_team_id": h,
+                                "away_team_id": a,
+                                "home_team_name": fg.get("home_team", ""),
+                                "away_team_name": fg.get("away_team", ""),
+                                "source_url": None,
+                                "home_score": None,
+                                "away_score": None,
+                                "innings": None,
+                                "is_conference_game": fg.get("is_conference", False),
+                                "home_hits": None, "home_errors": None,
+                                "away_hits": None, "away_errors": None,
+                                "home_line_score": None, "away_line_score": None,
+                                "game_score": None,
+                                "status": "scheduled",
+                                "home_short": fg.get("home_team", ""),
+                                "home_logo": None,
+                                "away_short": fg.get("away_team", ""),
+                                "away_logo": None,
+                                "home_division": fg.get("division"),
+                                "away_division": fg.get("division"),
+                            })
+                except Exception:
+                    pass
+
+            # Enrich any future-schedule games that are missing logos
+            if games:
+                try:
+                    team_logos = {}
+                    cur.execute("SELECT id, short_name, logo_url FROM teams WHERE is_active = 1")
+                    for row in cur.fetchall():
+                        team_logos[row["id"]] = (row["short_name"], row["logo_url"])
+                    for g in games:
+                        if not g.get("home_logo") and g.get("home_team_id"):
+                            info = team_logos.get(g["home_team_id"])
+                            if info:
+                                g["home_short"] = info[0]
+                                g["home_logo"] = info[1]
+                        if not g.get("away_logo") and g.get("away_team_id"):
+                            info = team_logos.get(g["away_team_id"])
+                            if info:
+                                g["away_short"] = info[0]
+                                g["away_logo"] = info[1]
+                except Exception:
+                    pass
+
         return {"games": games, "date": date, "count": len(games)}
+
+
+@router.get("/games/future")
+def games_future(
+    team_id: Optional[int] = None,
+    division: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = Query(100),
+):
+    """
+    Get future scheduled games from the pre-scraped future_schedules.json.
+    Supports filtering by team_id, division, and date range.
+    """
+    from pathlib import Path
+    import json
+
+    path = Path(__file__).parent.parent.parent / "data" / "future_schedules.json"
+    if not path.exists():
+        return {"games": [], "total": 0, "last_updated": None}
+
+    with open(path) as f:
+        data = json.load(f)
+
+    games = data.get("games", [])
+    last_updated = data.get("last_updated")
+
+    # Filter by team
+    if team_id:
+        games = [g for g in games if g.get("home_team_id") == team_id or g.get("away_team_id") == team_id]
+
+    # Filter by division
+    if division:
+        games = [g for g in games if g.get("division", "").upper() == division.upper()]
+
+    # Filter by date range
+    if start_date:
+        games = [g for g in games if g.get("game_date", "") >= start_date]
+    if end_date:
+        games = [g for g in games if g.get("game_date", "") <= end_date]
+
+    # Build a team info lookup for logos/names
+    team_info = {}
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, short_name, logo_url FROM teams WHERE is_active = 1")
+            for row in cur.fetchall():
+                team_info[row["id"]] = {"short_name": row["short_name"], "logo_url": row["logo_url"]}
+    except Exception:
+        pass
+
+    # Enrich games with team logos and names from DB
+    enriched = []
+    for g in games[:limit]:
+        home_id = g.get("home_team_id")
+        away_id = g.get("away_team_id")
+        enriched.append({
+            **g,
+            "home_logo": team_info.get(home_id, {}).get("logo_url") if home_id else None,
+            "away_logo": team_info.get(away_id, {}).get("logo_url") if away_id else None,
+            "home_short": team_info.get(home_id, {}).get("short_name", g.get("home_team", "")),
+            "away_short": team_info.get(away_id, {}).get("short_name", g.get("away_team", "")),
+            "status": "scheduled",
+        })
+
+    return {"games": enriched, "total": len(games), "last_updated": last_updated}
 
 
 def _dedup_live_games(games):

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useTeamStats, useTeamRankings, useTeamHistory } from '../hooks/useApi'
+import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames } from '../hooks/useApi'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
@@ -32,6 +32,7 @@ export default function TeamDetail() {
   const { data: result, loading } = useTeamStats(teamId, season)
   const { data: rankings } = useTeamRankings(teamId, season)
   const { data: history, loading: historyLoading } = useTeamHistory(teamId)
+  const { data: futureData } = useTeamFutureGames(teamId, 15)
 
   const [batPreset, setBatPreset] = useState('Standard')
   const [pitPreset, setPitPreset] = useState('Standard')
@@ -144,6 +145,38 @@ export default function TeamDetail() {
           {/* Rankings card */}
           {rankings && rankings.composite && (
             <RankingsCard rankings={rankings} />
+          )}
+
+          {/* Upcoming Games */}
+          {futureData?.games?.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
+              <h2 className="text-base sm:text-lg font-bold text-pnw-slate mb-3">Upcoming Games</h2>
+              <div className="space-y-2">
+                {futureData.games.map((g, i) => {
+                  const isHome = g.home_team_id === Number(teamId)
+                  const oppName = isHome ? (g.away_short || g.away_team) : (g.home_short || g.home_team)
+                  const oppLogo = isHome ? g.away_logo : g.home_logo
+                  const prefix = isHome ? 'vs' : '@'
+                  const dateStr = new Date(g.game_date + 'T12:00:00').toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric'
+                  })
+                  return (
+                    <div key={i} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                      <span className="text-xs text-gray-400 w-20 shrink-0">{dateStr}</span>
+                      <span className="text-xs font-medium text-gray-500 w-5 shrink-0">{prefix}</span>
+                      {oppLogo && (
+                        <img src={oppLogo} alt="" className="w-5 h-5 object-contain shrink-0"
+                          onError={(e) => { e.target.style.display = 'none' }} />
+                      )}
+                      <span className="text-sm font-semibold text-gray-800">{oppName}</span>
+                      {g.is_conference && (
+                        <span className="text-[9px] font-bold text-pnw-teal bg-teal-50 px-1.5 py-0.5 rounded">CONF</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           )}
 
           {/* Batting table */}

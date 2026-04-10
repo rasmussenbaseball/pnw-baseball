@@ -233,6 +233,18 @@ export function useTeamHistory(teamId) {
   return useApi(`/teams/${teamId}/history`, {}, [teamId])
 }
 
+// ─── Future Schedule ───
+
+/**
+ * Fetch future scheduled games for a team.
+ */
+export function useTeamFutureGames(teamId, limit = 10) {
+  return useApi('/games/future', {
+    team_id: teamId || undefined,
+    limit,
+  }, [teamId, limit])
+}
+
 // ─── Game Results & Box Scores ───
 
 /**
