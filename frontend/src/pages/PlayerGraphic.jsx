@@ -346,7 +346,7 @@ function StatCell({ label, value, format, borderRight = true }) {
       textAlign: 'center', padding: '3px 0',
       borderRight: borderRight ? '1px solid rgba(255,255,255,0.05)' : 'none',
     }}>
-      <div style={{ fontSize: '7px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'rgba(255,255,255,0.3)', lineHeight: 1, marginBottom: '2px' }}>{label}</div>
+      <div style={{ fontSize: '7px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'rgba(255,255,255,0.5)', lineHeight: 1, marginBottom: '2px' }}>{label}</div>
       <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', lineHeight: 1 }}>{formatStat(value, format)}</div>
     </div>
   )
@@ -613,7 +613,7 @@ export default function PlayerGraphic() {
                 ) : (
                   <div style={{ width: '48px', height: '48px' }} />
                 )}
-                <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '1px' }}>
+                <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '1px' }}>
                   {info.division_level}
                 </div>
               </div>
@@ -624,10 +624,10 @@ export default function PlayerGraphic() {
               {statsRow ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)' }}>
-                    <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {isPitcher ? 'Pitching' : 'Batting'}
                     </span>
-                    <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.15)', marginLeft: 'auto' }}>
+                    <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.3)', marginLeft: 'auto' }}>
                       {activeSeason === 'career' ? 'Career' : activeSeason}
                     </span>
                   </div>
@@ -637,7 +637,7 @@ export default function PlayerGraphic() {
                     ))}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                    <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Advanced</span>
+                    <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Advanced</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                     {advStats.map((s, i) => (
@@ -656,7 +656,7 @@ export default function PlayerGraphic() {
               {/* LEFT: Percentile Bars - fills full height */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
-                  <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Percentile Rankings</span>
+                  <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Percentile Rankings</span>
                 </div>
                 {availablePerc.length > 0 ? (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly' }}>
@@ -678,56 +678,86 @@ export default function PlayerGraphic() {
                 <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.2)', marginTop: '2px', marginBottom: '4px' }}>vs. {info.division_level || 'Division'}</div>
               </div>
 
-              {/* RIGHT: Everything else - fills full height with justify-between */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingLeft: '8px', justifyContent: rightContentCount <= 2 ? 'space-evenly' : 'flex-start', gap: rightContentCount <= 2 ? undefined : '6px' }}>
+              {/* RIGHT: Everything else - centered, fills full height */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingLeft: '8px', justifyContent: 'space-evenly', alignItems: 'center' }}>
 
-                {/* Pie Chart */}
+                {/* Pie Chart - scales up when sparse */}
                 {statsRow && (
-                  <div>
-                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                  <div style={{ width: '100%' }}>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', textAlign: 'center' }}>
                       {isPitcher ? 'Baserunners Allowed' : 'Reaching Base'}
                     </div>
-                    <OnBasePieChart statsRow={statsRow} isPitcher={isPitcher} size={rightContentCount <= 2 ? 90 : 72} />
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <OnBasePieChart statsRow={statsRow} isPitcher={isPitcher} size={rightContentCount <= 2 ? 100 : 76} />
+                    </div>
                   </div>
                 )}
 
-                {/* Team Info */}
+                {/* Team Info - scales up when sparse */}
                 {hasTeamInfo && (
-                  <div>
-                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Team</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.8)' }}>
+                  <div style={{ width: '100%', textAlign: 'center' }}>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Team</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'center', gap: '5px' }}>
+                      <span style={{ fontSize: rightContentCount <= 2 ? '18px' : '14px', fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>
                         {teamInfo.record.wins}-{teamInfo.record.losses}
                       </span>
                       {teamInfo.record.conf_wins != null && (
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>
+                        <span style={{ fontSize: rightContentCount <= 2 ? '11px' : '9px', color: 'rgba(255,255,255,0.4)' }}>
                           ({teamInfo.record.conf_wins}-{teamInfo.record.conf_losses} conf)
                         </span>
                       )}
-                      {teamInfo.ranking?.composite_rank && (
-                        <span style={{ fontSize: '9px', fontWeight: 600, color: '#7dd3fc' }}>
-                          #{teamInfo.ranking.composite_rank} {info.division_level}
-                        </span>
-                      )}
                     </div>
+                    {teamInfo.ranking?.composite_rank && (
+                      <div style={{ fontSize: rightContentCount <= 2 ? '11px' : '9px', fontWeight: 600, color: '#7dd3fc', marginTop: '2px' }}>
+                        #{teamInfo.ranking.composite_rank} {info.division_level}
+                      </div>
+                    )}
                     {teamInfo.record.conference_name && (
-                      <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.25)', marginTop: '1px' }}>{teamInfo.record.conference_name}</div>
+                      <div style={{ fontSize: rightContentCount <= 2 ? '9px' : '8px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>{teamInfo.record.conference_name}</div>
+                    )}
+                    {/* Extra team stats when sparse - show team WAR, wRC+, FIP */}
+                    {rightContentCount <= 2 && teamInfo.record && (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '6px' }}>
+                        {teamInfo.record.team_war != null && (
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>WAR</div>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Number(teamInfo.record.team_war).toFixed(1)}</div>
+                          </div>
+                        )}
+                        {teamInfo.record.team_wrc_plus != null && (
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>wRC+</div>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Math.round(teamInfo.record.team_wrc_plus)}</div>
+                          </div>
+                        )}
+                        {teamInfo.record.team_fip != null && (
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>FIP</div>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Number(teamInfo.record.team_fip).toFixed(2)}</div>
+                          </div>
+                        )}
+                        {teamInfo.record.ppi != null && (
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>PPI</div>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Math.round(teamInfo.record.ppi)}</div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
 
-                {/* Career History (previous teams + per-season stats) */}
+                {/* Career History */}
                 {hasCareer && (
-                  <div>
-                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Career</div>
-                    {/* Season-by-season rows with compact stats */}
+                  <div style={{ width: '100%' }}>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px', textAlign: 'center' }}>Career</div>
                     {otherSeasons.map((row, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px', justifyContent: 'center' }}>
                         {row.logo_url && (
                           <img src={row.logo_url} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
                         )}
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', flexShrink: 0, width: '24px' }}>{String(row.season).slice(-2)}'</span>
-                        <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{String(row.season).slice(-2)}'</span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
                           {careerRowStats.map(s => (
                             <span key={s.key} style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
                               <span style={{ color: 'rgba(255,255,255,0.3)' }}>{s.label} </span>
@@ -737,9 +767,8 @@ export default function PlayerGraphic() {
                         </div>
                       </div>
                     ))}
-                    {/* Schools if multi-school career (and no other seasons to show logos) */}
                     {otherSeasons.length === 0 && careerEntries.length > 1 && careerEntries.map((entry, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px', justifyContent: 'center' }}>
                         {entry.logo_url && (
                           <img src={entry.logo_url} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
                         )}
@@ -753,17 +782,16 @@ export default function PlayerGraphic() {
 
                 {/* Awards + Rankings */}
                 {(hasAwards || hasCareerRankings || hasPnwRankings) && (
-                  <div style={{ marginTop: hasCareer ? '0' : '0' }}>
-                    {/* Season Awards (team leaders) */}
+                  <div style={{ width: '100%' }}>
                     {hasAwards && (
                       <div style={{ marginBottom: '4px' }}>
-                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px', textAlign: 'center' }}>
                           Team Leaders
                         </div>
                         {awardsBySeason.map(([season, items]) => (
                           <div key={season} style={{ marginBottom: '2px' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', alignItems: 'center' }}>
-                              <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.3)', width: '20px', flexShrink: 0 }}>{String(season).slice(-2)}'</span>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.35)' }}>{String(season).slice(-2)}'</span>
                               {items.slice(0, 6).map((a, i) => (
                                 <AwardBadge key={i} rank={1} category={a.category} value={a.value} type={a.type} variant="award" />
                               ))}
@@ -773,13 +801,12 @@ export default function PlayerGraphic() {
                       </div>
                     )}
 
-                    {/* PNW Rankings */}
                     {hasPnwRankings && (
                       <div style={{ marginBottom: '4px' }}>
-                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px', textAlign: 'center' }}>
                           PNW Rankings
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'center' }}>
                           {pnwRankings.slice(0, 6).map((r, i) => (
                             <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} format={r.format} variant="pnw" />
                           ))}
@@ -787,28 +814,13 @@ export default function PlayerGraphic() {
                       </div>
                     )}
 
-                    {/* Career Rankings (fallback if no awards/PNW) */}
-                    {hasCareerRankings && !hasAwards && !hasPnwRankings && (
+                    {hasCareerRankings && (
                       <div>
-                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px', textAlign: 'center' }}>
                           Career Rankings
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'center' }}>
                           {careerRankings.slice(0, 6).map((r, i) => (
-                            <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} variant="career" />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Show career rankings below awards if both exist */}
-                    {hasCareerRankings && (hasAwards || hasPnwRankings) && (
-                      <div>
-                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
-                          Career Rankings
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                          {careerRankings.slice(0, 4).map((r, i) => (
                             <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} variant="career" />
                           ))}
                         </div>
