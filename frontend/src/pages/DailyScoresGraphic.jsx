@@ -245,7 +245,7 @@ function solveLayout(totalGames, availableH, contentW) {
 }
 
 // ── Main canvas renderer ──
-async function renderGraphic(canvas, games, dateShort) {
+async function renderGraphic(canvas, games, dateShort, divisionLabel = '') {
   const W = 1080
   const H = 1080
   canvas.width = W
@@ -274,12 +274,13 @@ async function renderGraphic(canvas, games, dateShort) {
   ctx.textBaseline = 'middle'
   ctx.fillText('NW', pad + 18, 37)
 
-  // PNW SCORES centered
+  // PNW SCORES centered (with optional division label)
+  const title = divisionLabel ? `PNW ${divisionLabel} SCORES` : 'PNW SCORES'
   ctx.fillStyle = '#ffffff'
   ctx.font = '800 30px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('PNW SCORES', W / 2, headerH / 2)
+  ctx.fillText(title, W / 2, headerH / 2)
 
   // Date & game count right
   ctx.textAlign = 'right'
@@ -351,10 +352,13 @@ async function renderGraphic(canvas, games, dateShort) {
 export default function DailyScoresGraphic() {
   const [date, setDate] = useState(todayStr())
   const [games, setGames] = useState(null)
+  const [divFilter, setDivFilter] = useState('ALL')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [rendered, setRendered] = useState(false)
   const canvasRef = useRef(null)
+
+  const DIV_OPTIONS = ['ALL', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 
   const fetchGames = useCallback(async (d) => {
     setLoading(true)
@@ -384,6 +388,7 @@ export default function DailyScoresGraphic() {
             status: g.status || 'final',
             innings: g.innings || null,
             is_conference_game: g.is_conference || false,
+            division: g.team_division || g.division || null,
           }))
       }
 
@@ -408,25 +413,35 @@ export default function DailyScoresGraphic() {
 
   useEffect(() => { fetchGames(date) }, [date, fetchGames])
 
+  // Filter games by division
+  const filteredGames = games?.filter(g => {
+    if (divFilter === 'ALL') return true
+    const d = (g.division || g.home_division || '').toUpperCase()
+    return d === divFilter
+  }) || []
+
   const generate = useCallback(async () => {
-    if (!games?.length || !canvasRef.current) return
-    await renderGraphic(canvasRef.current, games, shortDate(date))
+    if (!filteredGames?.length || !canvasRef.current) return
+    const divLabel = divFilter !== 'ALL' ? divFilter : ''
+    await renderGraphic(canvasRef.current, filteredGames, shortDate(date), divLabel)
     setRendered(true)
-  }, [games, date])
+  }, [filteredGames, date, divFilter])
 
   useEffect(() => {
-    if (games?.length > 0) generate()
-  }, [games, generate])
+    if (filteredGames?.length > 0) generate()
+    else setRendered(false)
+  }, [filteredGames, generate])
 
   const download = () => {
     if (!canvasRef.current) return
     const link = document.createElement('a')
-    link.download = `pnw-scores-${date}.png`
+    const suffix = divFilter !== 'ALL' ? `-${divFilter.toLowerCase()}` : ''
+    link.download = `pnw-scores${suffix}-${date}.png`
     link.href = canvasRef.current.toDataURL('image/png')
     link.click()
   }
 
-  const finalCount = games?.length ?? 0
+  const finalCount = filteredGames?.length ?? 0
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -435,7 +450,7 @@ export default function DailyScoresGraphic() {
         Generate a shareable scoreboard image for any game day.
       </p>
 
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
         <input
           type="date"
           value={date}
@@ -458,10 +473,26 @@ export default function DailyScoresGraphic() {
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 mb-5">
+        {DIV_OPTIONS.map(d => (
+          <button
+            key={d}
+            onClick={() => setDivFilter(d)}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              divFilter === d
+                ? 'bg-nw-teal text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {d === 'ALL' ? 'All' : d}
+          </button>
+        ))}
+      </div>
+
       {loading && <p className="text-sm text-gray-400 mb-4">Loading games...</p>}
       {error && <p className="text-sm text-red-500 mb-4">Error: {error}</p>}
       {!loading && games && finalCount === 0 && (
-        <p className="text-sm text-gray-400 mb-4">No final games found for {fmtDisplayDate(date)}.</p>
+        <p className="text-sm text-gray-400 mb-4">No {divFilter !== 'ALL' ? divFilter + ' ' : ''}final games found for {fmtDisplayDate(date)}.</p>
       )}
       {!loading && finalCount > 0 && (
         <p className="text-sm text-gray-500 mb-4">{finalCount} game{finalCount !== 1 ? 's' : ''} on {fmtDisplayDate(date)}</p>
