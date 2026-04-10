@@ -1522,22 +1522,23 @@ def _apply_batting_annotations(table, players):
     box score stat table on Sidearm pages.  These contain per-player
     extra-base-hit and stolen-base data not present in the table columns.
 
-    Typical HTML:
-      <section>
-        <b>BATTING</b><br/>
-        2B: Stevens, Nate (1); Carson, Dylan (1)<br/>
-        HR: Stevens, Nate (2)<br/>
-        <b>BASERUNNING</b><br/>
-        SB: Gerding, Carson (1)
-      </section>
+    Sidearm HTML structure:
+      <table>...</table>
+      <dl class="special-stats">
+        <dt>Batting</dt>
+        <dd>2B:Stevens, Nate(1);Carson, Dylan(1)HR:Stevens, Nate(2)</dd>
+        <dt>Baserunning</dt>
+        <dd>SB:Grawey, Davis(1)HBP:Jennings, Albert(1)</dd>
+      </dl>
 
-    Merges counts into the player dicts (keys "2b", "3b", "hr", "sb", "hbp").
+    Note: Inside <dd>, multiple stat types are concatenated WITHOUT newlines.
+    E.g. "2B:Stevens, Nate(1)SH:Richter, Caleb(1)" — the stat label acts
+    as the separator.
     """
     if not table or not players:
         return
 
     # Build a lookup: normalized name -> player dict index
-    # Names in annotations can be "Last, First" or "First Last"
     def _normalize(name):
         """Return lowercase 'last first' regardless of format."""
         name = name.strip()
@@ -1546,7 +1547,6 @@ def _apply_batting_annotations(table, players):
         if ',' in name:
             parts = name.split(',', 1)
             return f"{parts[0].strip()} {parts[1].strip()}".lower()
-        # "First Last" -> "Last First"
         parts = name.strip().split()
         if len(parts) >= 2:
             return f"{parts[-1]} {' '.join(parts[:-1])}".lower()
@@ -1562,7 +1562,7 @@ def _apply_batting_annotations(table, players):
         if last and last not in name_to_idx:
             name_to_idx[last] = idx
 
-    # Map annotation labels to player dict keys
+    # Stats we care about from annotations
     LABEL_MAP = {
         "2b": "2b", "doubles": "2b",
         "3b": "3b", "triples": "3b",
@@ -1572,98 +1572,116 @@ def _apply_batting_annotations(table, players):
         "hbp": "hbp", "hit by pitch": "hbp",
     }
 
-    # Walk siblings and parent containers after the table to find annotation text.
-    # Sidearm puts these in various ways: sibling divs, section elements, or
-    # just loose text nodes after the table.
-    annotation_text = ""
+    # Regex to split concatenated stat entries like "2B:Name(1)HR:Name(2)"
+    # Matches stat labels followed by a colon
+    STAT_SPLIT_RE = re.compile(
+        r'(?:^|(?<=\)))(?:2B|3B|HR|SB|CS|HBP|SH|SF|TB|RBI|GDP|LOB|SAC|GIDP|GO|FO)\s*:',
+        re.IGNORECASE
+    )
 
-    # Strategy 1: look for sibling elements after the table
-    for sib in table.find_all_next(limit=20):
-        tag = sib.name or ""
-        text = sib.get_text(strip=True) if hasattr(sib, 'get_text') else str(sib).strip()
+    def _find_player_and_apply(stat_key, text):
+        """Parse 'Name(count);Name(count)' and apply to player dicts.
 
-        # Stop if we hit another stat table or pitching section
-        if tag == "table":
-            break
-        if tag in ("h2", "h3", "h4") and "pitching" in text.lower():
-            break
-
-        # Look for the annotation content
-        if any(label in text.lower() for label in ["batting", "baserunning", "2b:", "3b:", "hr:", "sb:", "hbp:"]):
-            annotation_text += "\n" + text
-
-    if not annotation_text:
-        # Strategy 2: check the table's parent container for text after the table
-        parent = table.parent
-        if parent:
-            full = parent.get_text("\n")
-            # Find text after the last "Totals" line
-            lines = full.split("\n")
-            after_totals = False
-            for line in lines:
-                if "total" in line.lower():
-                    after_totals = True
-                    continue
-                if after_totals:
-                    annotation_text += "\n" + line
-
-    if not annotation_text:
-        return
-
-    # Parse lines like "2B: Stevens, Nate (1); Carson, Dylan (1)"
-    for line in annotation_text.split("\n"):
-        line = line.strip()
-        if not line or ':' not in line:
-            continue
-
-        # Split on first ":"
-        label_part, names_part = line.split(":", 1)
-        label = label_part.strip().lower()
-        stat_key = LABEL_MAP.get(label)
-        if not stat_key:
-            continue
-
-        # Parse individual player entries separated by ";"
-        entries = names_part.split(";")
+        The number in parens is typically the SEASON total on Sidearm pages,
+        not the game count. So we count each player APPEARANCE as +1.
+        If a player hit 2 doubles, they appear twice: "Stevens(3);Stevens(4)".
+        """
+        entries = text.split(";")
+        # Count appearances per player index
+        counts = {}
         for entry in entries:
             entry = entry.strip()
             if not entry:
                 continue
-
-            # Extract game count from parentheses like "(2)" — this is today's count
-            count = 1  # default
-            count_match = re.search(r'\((\d+)\)', entry)
-            if count_match:
-                count = int(count_match.group(1))
-
-            # Clean name for matching
+            # Clean name (remove paren contents)
             clean_name = re.sub(r'\s*\(.*?\)\s*', '', entry).strip()
+            if not clean_name:
+                continue
             norm = _normalize(clean_name)
-
-            # Find player
+            # Try exact match, then last name, then reversed
             idx = name_to_idx.get(norm)
             if idx is None:
-                # Try last name only
                 last = norm.split()[0] if norm else ""
                 idx = name_to_idx.get(last)
             if idx is None:
-                # Try first+last reversed match
                 parts = norm.split()
                 if len(parts) >= 2:
-                    reversed_name = f"{parts[1]} {parts[0]}"
-                    idx = name_to_idx.get(reversed_name)
-
+                    idx = name_to_idx.get(f"{parts[1]} {parts[0]}")
             if idx is not None:
-                # For annotation stats, the count in parens is typically the
-                # season total, not the game count.  On Sidearm pages that
-                # omit 2B/3B/HR/SB from the table, the number of TIMES the
-                # player appears in the annotation line equals their game count.
-                # But some sites show "(1)" meaning 1 in this game.
-                # The safest approach: if the table already has a nonzero value
-                # for this stat, don't override it.
-                current = players[idx].get(stat_key, 0)
-                if current == 0:
-                    players[idx][stat_key] = count
+                counts[idx] = counts.get(idx, 0) + 1
+
+        for idx, count in counts.items():
+            current = players[idx].get(stat_key, 0)
+            if current == 0:
+                players[idx][stat_key] = count
+
+    def _parse_dd_text(dd_text):
+        """Parse a <dd> text that may contain multiple concatenated stat entries."""
+        # Split by stat labels: "2B:Name(1)HR:Name(2)" -> ["2B:Name(1)", "HR:Name(2)"]
+        parts = STAT_SPLIT_RE.split(dd_text)
+        labels = STAT_SPLIT_RE.findall(dd_text)
+
+        for i, label_str in enumerate(labels):
+            label = label_str.strip().rstrip(":").strip().lower()
+            stat_key = LABEL_MAP.get(label)
+            if not stat_key:
+                continue
+            # The corresponding names are in parts[i+1] (text after the label)
+            if i + 1 < len(parts):
+                _find_player_and_apply(stat_key, parts[i + 1])
+
+    # ── Strategy 1: Find <dl class="special-stats"> sibling of table ──
+    found_dl = False
+    for sib in table.next_siblings:
+        if not hasattr(sib, 'name') or not sib.name:
+            continue
+        if sib.name == 'table':
+            break
+        if sib.name == 'dl' and 'special-stats' in (sib.get('class') or []):
+            found_dl = True
+            # Process each dt/dd pair
+            for child in sib.children:
+                if not hasattr(child, 'name'):
+                    continue
+                if child.name == 'dd':
+                    dd_text = child.get_text(strip=True)
+                    if dd_text:
+                        _parse_dd_text(dd_text)
+            break  # Only process the first matching dl
+
+    if found_dl:
+        return
+
+    # ── Strategy 2: Look for annotation text in parent's siblings ──
+    parent = table.parent
+    if parent:
+        for sib in parent.next_siblings:
+            if not hasattr(sib, 'name') or not sib.name:
+                continue
+            if sib.name == 'table':
+                break
+            if sib.name == 'dl':
+                for child in sib.children:
+                    if hasattr(child, 'name') and child.name == 'dd':
+                        dd_text = child.get_text(strip=True)
+                        if dd_text:
+                            _parse_dd_text(dd_text)
+                break
+
+    # ── Strategy 3: Plain text fallback for non-Sidearm formats ──
+    # Look for lines like "2B: Name (1); Name (1)" in siblings
+    for sib in table.find_all_next(limit=20):
+        tag = getattr(sib, 'name', '') or ''
+        if tag == 'table':
+            break
+        if tag in ('h2', 'h3', 'h4'):
+            text = sib.get_text(strip=True).lower()
+            if 'pitching' in text:
+                break
+        if tag in ('p', 'div', 'span', 'section'):
+            text = sib.get_text(strip=True)
+            if text and ':' in text:
+                _parse_dd_text(text)
 
 
 def _parse_pitching_table(table):
