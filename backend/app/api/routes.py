@@ -6135,23 +6135,16 @@ def daily_performers(
         """, game_ids)
         pitching_rows = [dict(r) for r in cur.fetchall()]
 
-        # ── 6. Season HR totals for bomb squad players ──
-        hr_player_ids = list(set(
-            r["player_id"] for r in batting_rows
-            if r.get("home_runs") and r["home_runs"] > 0 and r.get("player_id")
-        ))
-        season_hrs = {}
-        if hr_player_ids:
-            ph = ",".join(["%s"] * len(hr_player_ids))
-            cur.execute(f"""
-                SELECT player_id, COALESCE(SUM(home_runs), 0) AS season_hr
-                FROM batting_stats
-                WHERE player_id IN ({ph}) AND season = %s
-                GROUP BY player_id
-            """, hr_player_ids + [season])
-            season_hrs = {r["player_id"]: r["season_hr"] for r in cur.fetchall()}
+        # ── 6. Rank hitters by performance score ──
+        def _display_name(row):
+            name = row.get("player_name") or ""
+            if row.get("last_name") and row.get("first_name"):
+                return f"{row['first_name']} {row['last_name']}"
+            elif "," in name:
+                parts = name.split(",", 1)
+                return f"{parts[1].strip()} {parts[0].strip()}"
+            return name
 
-        # ── 7. Rank hitters by performance score ──
         def hitting_score(b):
             hr = b.get("home_runs") or 0
             trip = b.get("triples") or 0
@@ -6168,59 +6161,26 @@ def daily_performers(
         qualified_hitters = [b for b in batting_rows if (b.get("at_bats") or 0) >= 2]
         for b in qualified_hitters:
             b["perf_score"] = hitting_score(b)
-            name = b.get("player_name") or ""
-            if b.get("last_name") and b.get("first_name"):
-                b["display_name"] = f"{b['first_name']} {b['last_name']}"
-            elif "," in name:
-                parts = name.split(",", 1)
-                b["display_name"] = f"{parts[1].strip()} {parts[0].strip()}"
-            else:
-                b["display_name"] = name
+            b["display_name"] = _display_name(b)
 
-        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:5]
+        # Return up to 10, let frontend pick 3 or 5 based on game count
+        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:10]
 
-        # ── 8. Rank pitchers by game score (5+ IP) ──
-        qualified_pitchers = [p for p in pitching_rows if (p.get("innings_pitched") or 0) >= 5.0]
+        # ── 7. Rank pitchers (3+ IP, weighted by IP for longer outings) ──
+        qualified_pitchers = [p for p in pitching_rows if (p.get("innings_pitched") or 0) >= 3.0]
         for p in qualified_pitchers:
-            name = p.get("player_name") or ""
-            if p.get("last_name") and p.get("first_name"):
-                p["display_name"] = f"{p['first_name']} {p['last_name']}"
-            elif "," in name:
-                parts = name.split(",", 1)
-                p["display_name"] = f"{parts[1].strip()} {parts[0].strip()}"
-            else:
-                p["display_name"] = name
+            p["display_name"] = _display_name(p)
+            # Weight game score by IP (rewards longer outings)
+            gs = p.get("game_score") or 0
+            ip = p.get("innings_pitched") or 0
+            p["weighted_score"] = gs + (ip * 2)  # bonus for deeper outings
 
-        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("game_score") or 0, reverse=True)[:3]
-
-        # ── 9. Bomb squad: every player with HR >= 1 ──
-        bomb_squad = []
-        for b in batting_rows:
-            if (b.get("home_runs") or 0) >= 1:
-                name = b.get("player_name") or ""
-                if b.get("last_name") and b.get("first_name"):
-                    display = f"{b['first_name']} {b['last_name']}"
-                elif "," in name:
-                    parts = name.split(",", 1)
-                    display = f"{parts[1].strip()} {parts[0].strip()}"
-                else:
-                    display = name
-                bomb_squad.append({
-                    "display_name": display,
-                    "team_short": b.get("team_short"),
-                    "team_logo": b.get("team_logo"),
-                    "home_runs": b["home_runs"],
-                    "season_hr": season_hrs.get(b.get("player_id"), b["home_runs"]),
-                    "headshot_url": b.get("headshot_url"),
-                    "division": b.get("division"),
-                })
-        bomb_squad.sort(key=lambda x: (x["home_runs"], x["season_hr"]), reverse=True)
+        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True)[:10]
 
         return {
             "games": games,
             "top_hitters": top_hitters,
             "top_pitchers": top_pitchers,
-            "bomb_squad": bomb_squad,
             "date": date,
         }
 
