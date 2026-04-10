@@ -198,17 +198,7 @@ export default function Scoreboard() {
           {isToday && (
             <>
               {todayGames.length > 0 && (
-                showDivGroups ? (
-                  groupByDivision(todayGames).map(grp => (
-                    <DivisionSection key={grp.division} division={grp.division} label={grp.label} count={grp.games.length}>
-                      <GameGrid games={grp.games} winProbs={winProbs} />
-                    </DivisionSection>
-                  ))
-                ) : (
-                  <Section title="Today's Games" count={todayGames.length}>
-                    <GameGrid games={todayGames} winProbs={winProbs} />
-                  </Section>
-                )
+                <GameGrid games={todayGames} winProbs={winProbs} />
               )}
 
               {todayGames.length === 0 && !loading && (
@@ -225,17 +215,7 @@ export default function Scoreboard() {
           {!isToday && (
             <>
               {dateGames.length > 0 ? (
-                showDivGroups ? (
-                  groupByDivision(dateGames).map(grp => (
-                    <DivisionSection key={grp.division} division={grp.division} label={grp.label} count={grp.games.length}>
-                      <GameGrid games={grp.games} winProbs={winProbs} />
-                    </DivisionSection>
-                  ))
-                ) : (
-                  <Section title={formatDateLabel(selectedDate)} count={dateGames.length}>
-                    <GameGrid games={dateGames} winProbs={winProbs} />
-                  </Section>
-                )
+                <GameGrid games={dateGames} winProbs={winProbs} />
               ) : (
                 <div className="bg-white rounded-xl border border-gray-200 p-8 text-center mb-6">
                   <div className="text-3xl mb-2">&#9918;</div>
@@ -328,17 +308,25 @@ function DivisionSection({ division, label, count, children }) {
 
 
 function GameGrid({ games, winProbs = {} }) {
+  const count = games.length
+  // More games = tighter grid with more columns and smaller gaps
+  const compact = count >= 8
+  const gridCols = compact
+    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
+    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+  const gap = compact ? 'gap-1.5' : 'gap-2'
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+    <div className={`grid ${gridCols} ${gap}`}>
       {games.map((game, i) => (
-        <GameCard key={`${game.id}-${i}`} game={game} winProbs={winProbs} />
+        <GameCard key={`${game.id}-${i}`} game={game} winProbs={winProbs} compact={compact} />
       ))}
     </div>
   )
 }
 
 
-function GameCard({ game, winProbs = {} }) {
+function GameCard({ game, winProbs = {}, compact = false }) {
   const isLive = game._source === 'live'
   ? game.status === 'live'
   : false
@@ -351,14 +339,14 @@ function GameCard({ game, winProbs = {} }) {
 
   // Normalize data between live scores format and DB format
   if (game._source === 'live') {
-    return <LiveGameCard game={game} isLive={isLive} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} winProbs={winProbs} />
+    return <LiveGameCard game={game} isLive={isLive} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} winProbs={winProbs} compact={compact} />
   }
-  return <DBGameCard game={game} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} wp={wp} />
+  return <DBGameCard game={game} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} wp={wp} compact={compact} />
 }
 
 
 /** Card for live scores data (from scraper JSON) */
-function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs = {} }) {
+function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs = {}, compact = false }) {
   const teamScore = game.team_score != null ? parseInt(game.team_score) : null
   const oppScore = game.opponent_score != null ? parseInt(game.opponent_score) : null
   const teamWon = isFinal && teamScore != null && oppScore != null && teamScore > oppScore
@@ -380,12 +368,19 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
   const teamWpRaw = wp ? (isSourceHome ? wp.home_win_prob : wp.away_win_prob) : null
   const oppWpRaw = wp ? (isSourceHome ? wp.away_win_prob : wp.home_win_prob) : null
 
+  const logoSize = compact ? 'w-4 h-4' : 'w-5 h-5'
+  const teamText = compact ? 'text-xs' : 'text-sm'
+  const scoreText = compact ? 'text-base' : 'text-lg'
+  const cardPadX = compact ? 'px-2' : 'px-3'
+  const cardPadY = compact ? 'py-1' : 'py-2'
+  const rowPad = compact ? 'py-0.5' : 'py-1'
+
   return (
-    <div className={`bg-white rounded-xl border overflow-hidden transition-shadow hover:shadow-md ${
+    <div className={`bg-white ${compact ? 'rounded-lg' : 'rounded-xl'} border overflow-hidden transition-shadow hover:shadow-md ${
       isLive ? 'border-red-300 shadow-sm shadow-red-100' : 'border-gray-200'
     }`}>
       {/* Status bar */}
-      <div className={`flex items-center justify-between px-3 py-1 ${isLive ? 'bg-red-50' : 'bg-gray-50'}`}>
+      <div className={`flex items-center justify-between ${cardPadX} py-0.5 ${isLive ? 'bg-red-50' : 'bg-gray-50'}`}>
         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${statusInfo.class}`}>
           {game.game_state_display && game.game_state_display !== 'SCHEDULED'
             ? game.game_state_display
@@ -404,14 +399,14 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
       </div>
 
       {/* Teams & Scores */}
-      <div className="px-3 py-2">
-        <div className={`flex items-center justify-between py-1 ${oppWon ? 'opacity-50' : ''}`}>
+      <div className={`${cardPadX} ${cardPadY}`}>
+        <div className={`flex items-center justify-between ${rowPad} ${oppWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {game.team_logo && (
-              <img src={game.team_logo} alt="" className="w-5 h-5 object-contain shrink-0"
+              <img src={game.team_logo} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className="text-sm font-semibold text-gray-800 truncate">{game.team}</span>
+            <span className={`${teamText} font-semibold text-gray-800 truncate`}>{game.team}</span>
             {teamWp && (
               <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
                 teamWpRaw >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
@@ -419,7 +414,7 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
             )}
           </div>
           {teamScore != null ? (
-            <span className={`text-lg font-bold tabular-nums ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
+            <span className={`${scoreText} font-bold tabular-nums ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
               {teamScore}
             </span>
           ) : isScheduled && (
@@ -427,13 +422,13 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
           )}
         </div>
 
-        <div className={`flex items-center justify-between py-1 ${teamWon ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center justify-between ${rowPad} ${teamWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {(game.opponent_logo || game.opponent_image) && (
-              <img src={game.opponent_logo || game.opponent_image} alt="" className="w-5 h-5 object-contain shrink-0"
+              <img src={game.opponent_logo || game.opponent_image} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className="text-sm font-semibold text-gray-800 truncate">
+            <span className={`${teamText} font-semibold text-gray-800 truncate`}>
               {game.location === 'away' ? '@ ' : ''}{game.opponent_display || game.opponent}
             </span>
             {oppWp && (
@@ -443,7 +438,7 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
             )}
           </div>
           {oppScore != null ? (
-            <span className={`text-lg font-bold tabular-nums ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
+            <span className={`${scoreText} font-bold tabular-nums ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
               {oppScore}
             </span>
           ) : isScheduled && (
@@ -452,40 +447,42 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
         </div>
 
         {isScheduled && gameTime && (
-          <div className="text-center pt-1 border-t border-gray-100 mt-1">
+          <div className={`text-center pt-0.5 border-t border-gray-100 ${compact ? 'mt-0.5' : 'mt-1'}`}>
             <span className="text-xs font-medium text-gray-500">{gameTime}</span>
           </div>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
-        <div className="text-[10px] text-gray-400 flex items-center justify-between">
-          <span>{gameDate}</span>
-          <div className="flex items-center gap-2">
-            {!isScheduled && gameTime && <span>{gameTime}</span>}
-            {isFinal && game.box_score_url && (
-              <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] font-semibold text-nw-teal hover:underline">
-                Box Score
-              </a>
-            )}
-            {!isFinal && !isScheduled && game.box_score_url && (
-              <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] font-semibold text-amber-600 hover:underline animate-pulse">
-                Live Stats
-              </a>
-            )}
+      {/* Footer - hidden in compact mode */}
+      {!compact && (
+        <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
+          <div className="text-[10px] text-gray-400 flex items-center justify-between">
+            <span>{gameDate}</span>
+            <div className="flex items-center gap-2">
+              {!isScheduled && gameTime && <span>{gameTime}</span>}
+              {isFinal && game.box_score_url && (
+                <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] font-semibold text-nw-teal hover:underline">
+                  Box Score
+                </a>
+              )}
+              {!isFinal && !isScheduled && game.box_score_url && (
+                <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] font-semibold text-amber-600 hover:underline animate-pulse">
+                  Live Stats
+                </a>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
 
 /** Card for database games (home/away format) */
-function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
+function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = false }) {
   const homeWon = isFinal && game.home_score > game.away_score
   const awayWon = isFinal && game.away_score > game.home_score
   const division = game.home_division || game.away_division
@@ -501,10 +498,17 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
   const awayWp = fmtWp(awayWpRaw)
   const homeWp = fmtWp(homeWpRaw)
 
+  const logoSize = compact ? 'w-4 h-4' : 'w-5 h-5'
+  const teamText = compact ? 'text-xs' : 'text-sm'
+  const scoreText = compact ? 'text-base' : 'text-lg'
+  const cardPadX = compact ? 'px-2' : 'px-3'
+  const cardPadY = compact ? 'py-1' : 'py-2'
+  const rowPad = compact ? 'py-0.5' : 'py-1'
+
   const cardContent = (
-    <div className={`bg-white rounded-xl border overflow-hidden transition-shadow hover:shadow-md border-gray-200`}>
+    <div className={`bg-white ${compact ? 'rounded-lg' : 'rounded-xl'} border overflow-hidden transition-shadow hover:shadow-md border-gray-200`}>
       {/* Status bar */}
-      <div className="flex items-center justify-between px-3 py-1 bg-gray-50">
+      <div className={`flex items-center justify-between ${cardPadX} py-0.5 bg-gray-50`}>
         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${statusInfo.class}`}>
           {statusInfo.text}
         </span>
@@ -526,15 +530,15 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
       </div>
 
       {/* Teams & Scores */}
-      <div className="px-3 py-2">
+      <div className={`${cardPadX} ${cardPadY}`}>
         {/* Away team */}
-        <div className={`flex items-center justify-between py-1 ${homeWon ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center justify-between ${rowPad} ${homeWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {game.away_logo && (
-              <img src={game.away_logo} alt="" className="w-5 h-5 object-contain shrink-0"
+              <img src={game.away_logo} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className="text-sm font-semibold text-gray-800 truncate">
+            <span className={`${teamText} font-semibold text-gray-800 truncate`}>
               {game.away_short || game.away_team_name || 'Away'}
             </span>
             {awayWp && (
@@ -544,7 +548,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
             )}
           </div>
           {game.away_score != null ? (
-            <span className={`text-lg font-bold tabular-nums ${awayWon ? 'text-gray-900' : 'text-gray-500'}`}>
+            <span className={`${scoreText} font-bold tabular-nums ${awayWon ? 'text-gray-900' : 'text-gray-500'}`}>
               {game.away_score}
             </span>
           ) : (
@@ -553,13 +557,13 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
         </div>
 
         {/* Home team */}
-        <div className={`flex items-center justify-between py-1 ${awayWon ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center justify-between ${rowPad} ${awayWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {game.home_logo && (
-              <img src={game.home_logo} alt="" className="w-5 h-5 object-contain shrink-0"
+              <img src={game.home_logo} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className="text-sm font-semibold text-gray-800 truncate">
+            <span className={`${teamText} font-semibold text-gray-800 truncate`}>
               {game.home_short || game.home_team_name || 'Home'}
             </span>
             {homeWp && (
@@ -569,7 +573,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
             )}
           </div>
           {game.home_score != null ? (
-            <span className={`text-lg font-bold tabular-nums ${homeWon ? 'text-gray-900' : 'text-gray-500'}`}>
+            <span className={`${scoreText} font-bold tabular-nums ${homeWon ? 'text-gray-900' : 'text-gray-500'}`}>
               {game.home_score}
             </span>
           ) : (
@@ -578,33 +582,35 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
         </div>
 
         {isScheduled && gameTime && (
-          <div className="text-center pt-1 border-t border-gray-100 mt-1">
+          <div className={`text-center pt-0.5 border-t border-gray-100 ${compact ? 'mt-0.5' : 'mt-1'}`}>
             <span className="text-xs font-medium text-gray-500">{gameTime}</span>
           </div>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
-        <div className="text-[10px] text-gray-400 flex items-center justify-between">
-          <span>{formatDateLabel(game.game_date)}</span>
-          <div className="flex items-center gap-2">
-            {!isScheduled && gameTime && <span>{gameTime}</span>}
-            {isFinal && game.source_url && (
-              <a href={game.source_url} target="_blank" rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="text-[10px] font-semibold text-nw-teal hover:underline">
-                Box Score
-              </a>
-            )}
-            {isFinal && !game.source_url && game.id && (
-              <span className="text-[10px] font-semibold text-nw-teal">
-                Box Score
-              </span>
-            )}
+      {/* Footer - hidden in compact mode */}
+      {!compact && (
+        <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
+          <div className="text-[10px] text-gray-400 flex items-center justify-between">
+            <span>{formatDateLabel(game.game_date)}</span>
+            <div className="flex items-center gap-2">
+              {!isScheduled && gameTime && <span>{gameTime}</span>}
+              {isFinal && game.source_url && (
+                <a href={game.source_url} target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[10px] font-semibold text-nw-teal hover:underline">
+                  Box Score
+                </a>
+              )}
+              {isFinal && !game.source_url && game.id && (
+                <span className="text-[10px] font-semibold text-nw-teal">
+                  Box Score
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 
