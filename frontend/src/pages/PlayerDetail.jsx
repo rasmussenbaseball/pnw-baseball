@@ -10,6 +10,7 @@ const BATTING_PERCENTILE_METRICS = [
   { key: 'woba',         label: 'wOBA',   format: 'avg' },
   { key: 'wrc_plus',     label: 'wRC+',   format: 'int' },
   { key: 'iso',          label: 'ISO',    format: 'avg' },
+  { key: 'hr_pa_pct',    label: 'HR/PA%', format: 'pct' },
   { key: 'bb_pct',       label: 'BB%',    format: 'pct' },
   { key: 'k_pct',        label: 'K%',     format: 'pct' },
   { key: 'offensive_war', label: 'WAR',   format: 'war' },

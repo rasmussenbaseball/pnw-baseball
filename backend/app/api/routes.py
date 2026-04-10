@@ -3547,6 +3547,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             "k_pct":         {"col": "bs.k_pct",         "higher_better": False},
             "offensive_war":  {"col": "bs.offensive_war", "higher_better": True},
             "stolen_bases":  {"col": "bs.stolen_bases",  "higher_better": True},
+            "hr_pa_pct":     {"col": "CASE WHEN bs.plate_appearances > 0 THEN (bs.home_runs::float / bs.plate_appearances) * 100 ELSE NULL END", "higher_better": True},
         }
         base_query = """
             SELECT {col} as val
@@ -3596,6 +3597,11 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             bb = player_stats.get("bb_pct")
             if k is not None and bb is not None:
                 player_val = k - bb
+        if stat_key == "hr_pa_pct" and player_val is None:
+            hr = player_stats.get("home_runs") or 0
+            pa = player_stats.get("plate_appearances") or 0
+            if pa > 0:
+                player_val = (hr / pa) * 100
 
         if player_val is None:
             continue
@@ -3741,6 +3747,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
             "k_pct":         {"higher_better": False},
             "offensive_war": {"higher_better": True},
             "stolen_bases":  {"higher_better": True},
+            "hr_pa_pct":     {"higher_better": True},
         }
         # Get all players in this division with 2+ batting seasons and 100+ career PA
         cur.execute(
@@ -3782,6 +3789,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                 "k_pct": k / pa if pa > 0 else None,
                 "offensive_war": pd["offensive_war"],
                 "stolen_bases": sb,
+                "hr_pa_pct": (hr / pa) * 100 if pa > 0 else None,
             })
 
     else:

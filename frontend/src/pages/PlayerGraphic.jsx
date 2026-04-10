@@ -74,13 +74,14 @@ function computeCareerTotals(seasons, type) {
 
 // ─── Stat display configs ─────────────────────────────────────
 const BATTING_PERCENTILE_METRICS = [
-  { key: 'woba',          label: 'wOBA',  format: 'avg' },
-  { key: 'wrc_plus',      label: 'wRC+',  format: 'int' },
-  { key: 'iso',           label: 'ISO',   format: 'avg' },
-  { key: 'bb_pct',        label: 'BB%',   format: 'pct' },
-  { key: 'k_pct',         label: 'K%',    format: 'pct' },
-  { key: 'offensive_war', label: 'WAR',   format: 'war' },
-  { key: 'stolen_bases',  label: 'SB',    format: 'int' },
+  { key: 'woba',          label: 'wOBA',   format: 'avg' },
+  { key: 'wrc_plus',      label: 'wRC+',   format: 'int' },
+  { key: 'iso',           label: 'ISO',    format: 'avg' },
+  { key: 'hr_pa_pct',     label: 'HR/PA%', format: 'pct' },
+  { key: 'bb_pct',        label: 'BB%',    format: 'pct' },
+  { key: 'k_pct',         label: 'K%',     format: 'pct' },
+  { key: 'offensive_war', label: 'WAR',    format: 'war' },
+  { key: 'stolen_bases',  label: 'SB',     format: 'int' },
 ]
 
 const PITCHING_PERCENTILE_METRICS = [
@@ -354,7 +355,7 @@ function StatCell({ label, value, format, borderRight = true }) {
 
 
 // ─── Award / Ranking Badge ────────────────────────────────────
-function AwardBadge({ rank, category, value, type, format, variant = 'award' }) {
+function AwardBadge({ rank, category, value, type, format, variant = 'award', teamLogo = null }) {
   // variant: 'award' (team leader), 'career' (career ranking), 'pnw' (PNW ranking)
   const bgColors = {
     award: 'rgba(59,130,246,0.15)',
@@ -382,6 +383,9 @@ function AwardBadge({ rank, category, value, type, format, variant = 'award' }) 
       fontSize: '8px', color: textColors[variant], fontWeight: 600,
       lineHeight: 1.3,
     }}>
+      {variant === 'career' && teamLogo && (
+        <img src={teamLogo} alt="" style={{ width: '10px', height: '10px', objectFit: 'contain', flexShrink: 0 }} />
+      )}
       {variant === 'pnw' && <span style={{ fontSize: '7px', opacity: 0.6 }}>PNW</span>}
       {(variant === 'career' || variant === 'pnw') && (
         <span style={{ fontWeight: 800 }}>{ordinal(rank)}</span>
@@ -416,6 +420,8 @@ export default function PlayerGraphic() {
   const awards = rawData?.awards || []
   const pnwRankings = rawData?.pnw_rankings || []
   const careerRankings = rawData?.career_rankings || []
+  const summerBatting = rawData?.summer_batting || []
+  const summerPitching = rawData?.summer_pitching || []
 
   const battingSeasons = battingStats.map(s => s.season)
   const pitchingSeasons = pitchingStats.map(s => s.season)
@@ -445,7 +451,7 @@ export default function PlayerGraphic() {
   const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
   const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
   const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 9)
   const careerRowStats = isPitcher ? PITCHING_CAREER_ROW : BATTING_CAREER_ROW
 
   // Get all seasons for career display (not the active one)
@@ -510,11 +516,12 @@ export default function PlayerGraphic() {
 
   // Compute how much right-column content we have to determine sizing
   const hasCareer = otherSeasons.length > 0 || careerEntries.length > 1
+  const hasSummer = summerBatting.length > 0 || summerPitching.length > 0
   const hasAwards = awards.length > 0
   const hasCareerRankings = careerRankings.length > 0
   const hasPnwRankings = pnwRankings.length > 0
   const hasTeamInfo = !!teamInfo?.record
-  const rightContentCount = [hasCareer, hasAwards || hasCareerRankings || hasPnwRankings, hasTeamInfo, true /* pie chart */].filter(Boolean).length
+  const rightContentCount = [hasCareer || hasSummer, hasAwards || hasCareerRankings || hasPnwRankings, hasTeamInfo, true /* pie chart */].filter(Boolean).length
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -654,7 +661,7 @@ export default function PlayerGraphic() {
             <div style={{ flex: 1, display: 'flex', margin: '6px 10px 0', minHeight: 0 }}>
 
               {/* LEFT: Percentile Bars - fills full height */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
                   <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Percentile Rankings</span>
                 </div>
@@ -679,7 +686,7 @@ export default function PlayerGraphic() {
               </div>
 
               {/* RIGHT: Everything else - centered, fills full height */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingLeft: '8px', justifyContent: 'space-evenly', alignItems: 'center' }}>
+              <div style={{ flex: 0.8, display: 'flex', flexDirection: 'column', paddingLeft: '8px', justifyContent: 'space-evenly', alignItems: 'center' }}>
 
                 {/* Pie Chart - scales up when sparse */}
                 {statsRow && (
@@ -756,11 +763,11 @@ export default function PlayerGraphic() {
                         {row.logo_url && (
                           <img src={row.logo_url} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
                         )}
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{String(row.season).slice(-2)}'</span>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', flexShrink: 0 }}>{String(row.season).slice(-2)}'</span>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           {careerRowStats.map(s => (
-                            <span key={s.key} style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
-                              <span style={{ color: 'rgba(255,255,255,0.3)' }}>{s.label} </span>
+                            <span key={s.key} style={{ fontSize: '8px', color: 'rgba(255,255,255,0.75)' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.45)' }}>{s.label} </span>
                               {formatStat(row[s.key], s.format)}
                             </span>
                           ))}
@@ -772,11 +779,73 @@ export default function PlayerGraphic() {
                         {entry.logo_url && (
                           <img src={entry.logo_url} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
                         )}
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>{entry.seasonRange}</span>
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>{entry.team_short}</span>
-                        <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.25)' }}>({entry.division_level})</span>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>{entry.seasonRange}</span>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{entry.team_short}</span>
+                        <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)' }}>({entry.division_level})</span>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Summer Ball */}
+                {hasSummer && (
+                  <div style={{ width: '100%' }}>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px', textAlign: 'center' }}>Summer Ball</div>
+                    {(isPitcher ? summerPitching : summerBatting).length > 0 ? (
+                      (isPitcher ? summerPitching : summerBatting).slice(0, 3).map((row, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px', justifyContent: 'center' }}>
+                          {row.team_logo && (
+                            <img src={row.team_logo} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
+                          )}
+                          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', flexShrink: 0 }}>{String(row.season).slice(-2)}'</span>
+                          <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>{row.team_short || row.team_name}</span>
+                          {row.league_abbrev && (
+                            <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.3)' }}>({row.league_abbrev})</span>
+                          )}
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {isPitcher ? (
+                              <>
+                                <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                                  <span style={{ color: 'rgba(255,255,255,0.35)' }}>ERA </span>{row.era != null ? Number(row.era).toFixed(2) : '-'}
+                                </span>
+                                <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                                  <span style={{ color: 'rgba(255,255,255,0.35)' }}>IP </span>{row.innings_pitched != null ? Number(row.innings_pitched).toFixed(1) : '-'}
+                                </span>
+                                <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                                  <span style={{ color: 'rgba(255,255,255,0.35)' }}>K </span>{row.strikeouts ?? '-'}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                                  <span style={{ color: 'rgba(255,255,255,0.35)' }}>AVG </span>{row.batting_avg != null ? Number(row.batting_avg).toFixed(3) : '-'}
+                                </span>
+                                <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                                  <span style={{ color: 'rgba(255,255,255,0.35)' }}>HR </span>{row.home_runs ?? '-'}
+                                </span>
+                                <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                                  <span style={{ color: 'rgba(255,255,255,0.35)' }}>RBI </span>{row.rbi ?? '-'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      // Show whichever summer stats are available if the player's primary type has none
+                      (isPitcher ? summerBatting : summerPitching).slice(0, 3).map((row, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px', justifyContent: 'center' }}>
+                          {row.team_logo && (
+                            <img src={row.team_logo} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
+                          )}
+                          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', flexShrink: 0 }}>{String(row.season).slice(-2)}'</span>
+                          <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>{row.team_short || row.team_name}</span>
+                          {row.league_abbrev && (
+                            <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.3)' }}>({row.league_abbrev})</span>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -821,7 +890,7 @@ export default function PlayerGraphic() {
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'center' }}>
                           {careerRankings.slice(0, 6).map((r, i) => (
-                            <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} variant="career" />
+                            <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} variant="career" teamLogo={r.team_logo} />
                           ))}
                         </div>
                       </div>
