@@ -630,11 +630,11 @@ export default function PlayerGraphic() {
             <div style={{ margin: '0 10px', flexShrink: 0, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
               {statsRow ? (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)', position: 'relative' }}>
                     <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {isPitcher ? 'Pitching' : 'Batting'}
                     </span>
-                    <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.3)', marginLeft: 'auto' }}>
+                    <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.3)', position: 'absolute', right: '8px' }}>
                       {activeSeason === 'career' ? 'Career' : activeSeason}
                     </span>
                   </div>
@@ -643,7 +643,7 @@ export default function PlayerGraphic() {
                       <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} borderRight={i < coreStats.length - 1} />
                     ))}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                     <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Advanced</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
@@ -662,7 +662,7 @@ export default function PlayerGraphic() {
 
               {/* LEFT: Percentile Bars - fills full height */}
               <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '2px' }}>
                   <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Percentile Rankings</span>
                 </div>
                 {availablePerc.length > 0 ? (
