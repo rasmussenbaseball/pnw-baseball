@@ -238,7 +238,7 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
 
   // Column layout: logo + name takes ~48%, stats take rest
   const nameColW = w * 0.48
-  const statCols = type === 'hitter' ? ['AB', 'H', 'HR', 'RBI', 'BB'] : ['IP', 'H', 'K', 'ER', 'DEC']
+  const statCols = type === 'hitter' ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB'] : ['IP', 'H', 'K', 'BB', 'ER', 'DEC']
   const statColW = (w - nameColW - pad) / statCols.length
 
   ctx.textAlign = 'left'
@@ -304,19 +304,29 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
     ctx.font = '600 9px "Inter", system-ui, sans-serif'
     ctx.fillStyle = '#0f172a'
     if (type === 'hitter') {
-      const stats = [p.at_bats || 0, p.hits || 0, p.home_runs || 0, p.rbi || 0, p.walks || 0]
+      // AB, H, HR, RBI, XBH, SB
+      const stats = [
+        p.at_bats || 0, p.hits || 0, p.home_runs || 0,
+        p.rbi || 0, p.xbh || 0, p.stolen_bases || 0,
+      ]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
+        // Highlight HR (j=2) in red
         ctx.fillStyle = j === 2 && val > 0 ? '#dc2626' : '#0f172a'
         ctx.font = j === 2 && val > 0 ? '700 9px "Inter", system-ui, sans-serif' : '600 9px "Inter", system-ui, sans-serif'
         ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY - 1)
       })
     } else {
+      // IP, H, K, BB, ER, DEC
       const ip = fmtIP(p.innings_pitched)
-      const stats = [ip, p.hits_allowed != null ? p.hits_allowed : '-', p.strikeouts || 0, p.earned_runs || 0, p.decision || '-']
+      const stats = [
+        ip, p.hits_allowed != null ? p.hits_allowed : '-',
+        p.strikeouts || 0, p.walks || 0,
+        p.earned_runs || 0, p.decision || '-',
+      ]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        if (j === 4) {
+        if (j === 5) { // DEC column
           ctx.fillStyle = val === 'W' ? '#16a34a' : val === 'L' ? '#dc2626' : '#64748b'
           ctx.font = '700 9px "Inter", system-ui, sans-serif'
         } else {
