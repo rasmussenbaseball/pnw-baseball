@@ -321,6 +321,20 @@ export function useGamesByDate(date) {
 }
 
 /**
+ * Win probabilities for all PNW-vs-PNW games on a date.
+ */
+export function useWinProbabilities(date, season = 2026) {
+  return useApi(date ? '/games/win-probabilities' : null, { date, season }, [date, season])
+}
+
+/**
+ * Biggest upset from the most recent day with PNW-vs-PNW games.
+ */
+export function useUpsetOfTheDay(season = 2026) {
+  return useApi('/games/upset-of-the-day', { season }, [season])
+}
+
+/**
  * Quality starts leaderboard.
  */
 export function useQualityStarts(season = 2026, limit = 25) {

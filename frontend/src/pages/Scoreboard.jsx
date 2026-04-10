@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useLiveScores, useGamesByDate } from '../hooks/useApi'
+import { useLiveScores, useGamesByDate, useWinProbabilities } from '../hooks/useApi'
 
 const DIV_COLORS = {
   D1: 'bg-blue-600', D2: 'bg-emerald-600', D3: 'bg-amber-600',
@@ -56,6 +56,10 @@ export default function Scoreboard() {
 
   // DB games for past/future dates
   const { data: dbData, loading: dbLoading, error: dbError } = useGamesByDate(isToday ? null : selectedDate)
+
+  // Win probabilities for PNW-vs-PNW games on the selected date
+  const { data: wpData } = useWinProbabilities(selectedDate)
+  const winProbs = wpData?.probabilities || {}
 
   // Auto-refresh live scores every 2 minutes (only when viewing today)
   useEffect(() => {
@@ -197,12 +201,12 @@ export default function Scoreboard() {
                 showDivGroups ? (
                   groupByDivision(todayGames).map(grp => (
                     <DivisionSection key={grp.division} division={grp.division} label={grp.label} count={grp.games.length}>
-                      <GameGrid games={grp.games} />
+                      <GameGrid games={grp.games} winProbs={winProbs} />
                     </DivisionSection>
                   ))
                 ) : (
                   <Section title="Today's Games" count={todayGames.length}>
-                    <GameGrid games={todayGames} />
+                    <GameGrid games={todayGames} winProbs={winProbs} />
                   </Section>
                 )
               )}
@@ -224,12 +228,12 @@ export default function Scoreboard() {
                 showDivGroups ? (
                   groupByDivision(dateGames).map(grp => (
                     <DivisionSection key={grp.division} division={grp.division} label={grp.label} count={grp.games.length}>
-                      <GameGrid games={grp.games} />
+                      <GameGrid games={grp.games} winProbs={winProbs} />
                     </DivisionSection>
                   ))
                 ) : (
                   <Section title={formatDateLabel(selectedDate)} count={dateGames.length}>
-                    <GameGrid games={dateGames} />
+                    <GameGrid games={dateGames} winProbs={winProbs} />
                   </Section>
                 )
               ) : (
@@ -323,18 +327,18 @@ function DivisionSection({ division, label, count, children }) {
 }
 
 
-function GameGrid({ games }) {
+function GameGrid({ games, winProbs = {} }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       {games.map((game, i) => (
-        <GameCard key={`${game.id}-${i}`} game={game} />
+        <GameCard key={`${game.id}-${i}`} game={game} winProbs={winProbs} />
       ))}
     </div>
   )
 }
 
 
-function GameCard({ game }) {
+function GameCard({ game, winProbs = {} }) {
   const isLive = game._source === 'live'
   ? game.status === 'live'
   : false
@@ -342,16 +346,19 @@ function GameCard({ game }) {
   const isScheduled = game.status === 'scheduled'
   const statusInfo = STATUS_LABELS[game.status] || STATUS_LABELS.scheduled
 
+  // Look up win probability for this game
+  const wp = game._source === 'db' && game.id ? winProbs[String(game.id)] : null
+
   // Normalize data between live scores format and DB format
   if (game._source === 'live') {
-    return <LiveGameCard game={game} isLive={isLive} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} />
+    return <LiveGameCard game={game} isLive={isLive} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} winProbs={winProbs} />
   }
-  return <DBGameCard game={game} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} />
+  return <DBGameCard game={game} isFinal={isFinal} isScheduled={isScheduled} statusInfo={statusInfo} wp={wp} />
 }
 
 
 /** Card for live scores data (from scraper JSON) */
-function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
+function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs = {} }) {
   const teamScore = game.team_score != null ? parseInt(game.team_score) : null
   const oppScore = game.opponent_score != null ? parseInt(game.opponent_score) : null
   const teamWon = isFinal && teamScore != null && oppScore != null && teamScore > oppScore
@@ -359,6 +366,19 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
 
   const gameTime = game.time || ''
   const gameDate = game.date ? formatDateLabel(game.date) : ''
+
+  // For live games, try to find matching win prob by DB game ID if available
+  // Live scores from the scraper may have a db_game_id attached
+  const wp = game.db_game_id ? winProbs[String(game.db_game_id)] : null
+  const fmtWp = (val) => val != null ? `${Math.round(val * 100)}%` : null
+
+  // Determine which side is home/away for win prob display
+  // Live games: game.team is the "source" team, game.location tells us if source team is home/away
+  const isSourceHome = game.location !== 'away'
+  const teamWp = wp ? fmtWp(isSourceHome ? wp.home_win_prob : wp.away_win_prob) : null
+  const oppWp = wp ? fmtWp(isSourceHome ? wp.away_win_prob : wp.home_win_prob) : null
+  const teamWpRaw = wp ? (isSourceHome ? wp.home_win_prob : wp.away_win_prob) : null
+  const oppWpRaw = wp ? (isSourceHome ? wp.away_win_prob : wp.home_win_prob) : null
 
   return (
     <div className={`bg-white rounded-xl border overflow-hidden transition-shadow hover:shadow-md ${
@@ -392,6 +412,11 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
             <span className="text-sm font-semibold text-gray-800 truncate">{game.team}</span>
+            {teamWp && (
+              <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
+                teamWpRaw >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
+              }`}>{teamWp}</span>
+            )}
           </div>
           {teamScore != null ? (
             <span className={`text-lg font-bold tabular-nums ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
@@ -411,6 +436,11 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
             <span className="text-sm font-semibold text-gray-800 truncate">
               {game.location === 'away' ? '@ ' : ''}{game.opponent_display || game.opponent}
             </span>
+            {oppWp && (
+              <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
+                oppWpRaw >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
+              }`}>{oppWp}</span>
+            )}
           </div>
           {oppScore != null ? (
             <span className={`text-lg font-bold tabular-nums ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
@@ -455,12 +485,17 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo }) {
 
 
 /** Card for database games (home/away format) */
-function DBGameCard({ game, isFinal, isScheduled, statusInfo }) {
+function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
   const homeWon = isFinal && game.home_score > game.away_score
   const awayWon = isFinal && game.away_score > game.home_score
   const division = game.home_division || game.away_division
 
   const gameTime = game.game_time || ''
+
+  // Format win probability as percentage (e.g., 0.723 -> "72%")
+  const fmtWp = (val) => val != null ? `${Math.round(val * 100)}%` : null
+  const awayWp = wp ? fmtWp(wp.away_win_prob) : null
+  const homeWp = wp ? fmtWp(wp.home_win_prob) : null
 
   const cardContent = (
     <div className={`bg-white rounded-xl border overflow-hidden transition-shadow hover:shadow-md border-gray-200`}>
@@ -498,6 +533,11 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo }) {
             <span className="text-sm font-semibold text-gray-800 truncate">
               {game.away_short || game.away_team_name || 'Away'}
             </span>
+            {awayWp && (
+              <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
+                wp.away_win_prob >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
+              }`}>{awayWp}</span>
+            )}
           </div>
           {game.away_score != null ? (
             <span className={`text-lg font-bold tabular-nums ${awayWon ? 'text-gray-900' : 'text-gray-500'}`}>
@@ -518,6 +558,11 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo }) {
             <span className="text-sm font-semibold text-gray-800 truncate">
               {game.home_short || game.home_team_name || 'Home'}
             </span>
+            {homeWp && (
+              <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
+                wp.home_win_prob >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
+              }`}>{homeWp}</span>
+            )}
           </div>
           {game.home_score != null ? (
             <span className={`text-lg font-bold tabular-nums ${homeWon ? 'text-gray-900' : 'text-gray-500'}`}>

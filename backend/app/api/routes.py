@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+from datetime import datetime, date, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
@@ -1939,6 +1940,241 @@ def team_matchup(
             "teams": team_ratings,
             "matchups": matchups,
         }
+
+
+# ── Win Probabilities for Games ─────────────────────────────
+# Bulk-compute projected win% for all PNW-vs-PNW games on a date.
+# Uses the same power rating + Elo formula as the matchup predictor.
+
+def _bulk_power_ratings(cur, season):
+    """
+    Compute power ratings for ALL active PNW teams in one pass.
+    Returns dict: team_id -> power_rating (float 0-100).
+    Caches across a single request to avoid repeated DB hits.
+    """
+    # Fetch all active teams with division
+    cur.execute("""
+        SELECT t.id, t.short_name, d.level as division_level
+        FROM teams t
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE t.is_active = 1
+    """)
+    teams = cur.fetchall()
+
+    # Batch fetch all records
+    cur.execute("""
+        SELECT team_id, wins, losses
+        FROM team_season_stats WHERE season = %s
+    """, (season,))
+    records = {r["team_id"]: r for r in cur.fetchall()}
+
+    # Batch fetch batting stats
+    cur.execute("""
+        SELECT team_id, SUM(runs) as rs, AVG(wrc_plus) as avg_wrc_plus,
+               SUM(offensive_war) as total_owar
+        FROM batting_stats
+        WHERE season = %s AND plate_appearances >= 10
+        GROUP BY team_id
+    """, (season,))
+    batting = {r["team_id"]: r for r in cur.fetchall()}
+
+    # Batch fetch pitching stats
+    cur.execute("""
+        SELECT team_id, SUM(runs_allowed) as ra, SUM(earned_runs) as er,
+               AVG(fip) as avg_fip, SUM(pitching_war) as total_pwar
+        FROM pitching_stats
+        WHERE season = %s AND innings_pitched >= 3
+        GROUP BY team_id
+    """, (season,))
+    pitching = {r["team_id"]: r for r in cur.fetchall()}
+
+    # Batch fetch national rankings
+    cur.execute("""
+        SELECT team_id, national_percentile
+        FROM composite_rankings WHERE season = %s
+    """, (season,))
+    rankings = {r["team_id"]: r["national_percentile"] for r in cur.fetchall()}
+
+    ratings = {}
+    for team in teams:
+        tid = team["id"]
+        rec = records.get(tid)
+        bat = batting.get(tid)
+        pit = pitching.get(tid)
+
+        if not rec or (rec["wins"] or 0) + (rec["losses"] or 0) < 5:
+            continue
+        if not bat or not pit:
+            continue
+
+        wins = rec["wins"] or 0
+        losses = rec["losses"] or 0
+        rs = float(bat["rs"] or 0)
+        ra = float(pit["ra"] or pit["er"] or 0)
+        total_war = float(bat["total_owar"] or 0) + float(pit["total_pwar"] or 0)
+
+        rating = _compute_power_rating(
+            wins, losses, rs, ra,
+            bat["avg_wrc_plus"], pit["avg_fip"], total_war,
+            team["division_level"], rankings.get(tid),
+        )
+        if rating is not None:
+            ratings[tid] = rating
+
+    return ratings
+
+
+@router.get("/games/win-probabilities")
+def game_win_probabilities(
+    date: str = Query(..., description="Date (YYYY-MM-DD)"),
+    season: int = Query(2026, description="Season year"),
+):
+    """
+    Compute projected win probabilities for all PNW-vs-PNW games on a date.
+    Returns probabilities only when BOTH teams are in our database with ratings.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get all power ratings (one batch)
+        ratings = _bulk_power_ratings(cur, season)
+
+        # Fetch games for this date
+        cur.execute("""
+            SELECT id, home_team_id, away_team_id
+            FROM games
+            WHERE game_date = %s AND season = %s
+        """, (date, season))
+        games = cur.fetchall()
+
+        probabilities = {}
+        for game in games:
+            home_id = game["home_team_id"]
+            away_id = game["away_team_id"]
+
+            if not home_id or not away_id:
+                continue
+            if home_id not in ratings or away_id not in ratings:
+                continue
+
+            home_wp = _elo_win_prob(ratings[home_id], ratings[away_id])
+
+            probabilities[str(game["id"])] = {
+                "home_win_prob": round(home_wp, 3),
+                "away_win_prob": round(1.0 - home_wp, 3),
+                "home_rating": ratings[home_id],
+                "away_rating": ratings[away_id],
+            }
+
+        return {"date": date, "probabilities": probabilities}
+
+
+@router.get("/games/upset-of-the-day")
+def upset_of_the_day(
+    season: int = Query(2026, description="Season year"),
+):
+    """
+    Find the biggest upset from the most recent day with completed PNW-vs-PNW games.
+    An upset = the team with lower projected win% won the game.
+    Returns the single biggest upset (largest pre-game probability gap).
+    """
+    import pytz
+    pacific = pytz.timezone("US/Pacific")
+    today = datetime.now(pacific).date()
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Get power ratings
+        ratings = _bulk_power_ratings(cur, season)
+
+        # Search backwards up to 7 days for games
+        for days_back in range(1, 8):
+            check_date = today - timedelta(days=days_back)
+
+            cur.execute("""
+                SELECT g.id, g.game_date, g.home_team_id, g.away_team_id,
+                       g.home_score, g.away_score, g.innings,
+                       g.is_conference_game,
+                       ht.short_name as home_short, ht.logo_url as home_logo,
+                       at.short_name as away_short, at.logo_url as away_logo,
+                       hd.level as home_division, ad.level as away_division
+                FROM games g
+                JOIN teams ht ON g.home_team_id = ht.id
+                JOIN teams at ON g.away_team_id = at.id
+                JOIN conferences hc ON ht.conference_id = hc.id
+                JOIN divisions hd ON hc.division_id = hd.id
+                JOIN conferences ac ON at.conference_id = ac.id
+                JOIN divisions ad ON ac.division_id = ad.id
+                WHERE g.game_date = %s AND g.season = %s
+                  AND g.status = 'final'
+                  AND g.home_score IS NOT NULL
+                  AND g.away_score IS NOT NULL
+            """, (check_date.isoformat(), season))
+            games = cur.fetchall()
+
+            if not games:
+                continue
+
+            # Find upsets among PNW-vs-PNW games
+            biggest_upset = None
+            biggest_upset_margin = 0
+
+            for game in games:
+                home_id = game["home_team_id"]
+                away_id = game["away_team_id"]
+
+                if home_id not in ratings or away_id not in ratings:
+                    continue
+
+                home_wp = _elo_win_prob(ratings[home_id], ratings[away_id])
+                away_wp = 1.0 - home_wp
+
+                # Determine who was favored and who won
+                home_won = game["home_score"] > game["away_score"]
+
+                if home_won:
+                    winner_wp = home_wp
+                else:
+                    winner_wp = away_wp
+
+                # It's an upset if the winner had <50% projected win probability
+                if winner_wp < 0.50:
+                    upset_margin = 0.50 - winner_wp  # How unlikely the upset was
+
+                    if upset_margin > biggest_upset_margin:
+                        biggest_upset_margin = upset_margin
+                        biggest_upset = {
+                            "game_id": game["id"],
+                            "game_date": check_date.isoformat(),
+                            "home_team": game["home_short"],
+                            "away_team": game["away_short"],
+                            "home_logo": game["home_logo"],
+                            "away_logo": game["away_logo"],
+                            "home_score": game["home_score"],
+                            "away_score": game["away_score"],
+                            "home_division": game["home_division"],
+                            "away_division": game["away_division"],
+                            "innings": game["innings"],
+                            "is_conference": game["is_conference_game"],
+                            "home_win_prob": round(home_wp, 3),
+                            "away_win_prob": round(away_wp, 3),
+                            "winner": game["home_short"] if home_won else game["away_short"],
+                            "winner_logo": game["home_logo"] if home_won else game["away_logo"],
+                            "loser": game["away_short"] if home_won else game["home_short"],
+                            "loser_logo": game["away_logo"] if home_won else game["home_logo"],
+                            "winner_score": game["home_score"] if home_won else game["away_score"],
+                            "loser_score": game["away_score"] if home_won else game["home_score"],
+                            "winner_win_prob": round(winner_wp, 3),
+                            "loser_win_prob": round(1.0 - winner_wp, 3),
+                        }
+
+            if biggest_upset:
+                return {"upset": biggest_upset}
+
+        # No upsets found in last 7 days
+        return {"upset": None}
 
 
 # ── Playoff Projections ─────────────────────────────────────

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 
@@ -30,6 +30,7 @@ export default function Homepage() {
   const { data: recentGames } = useGamesTicker(SEASON, 15)
   const { data: liveData, refetch: refetchLive } = useLiveScores()
   const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
+  const { data: upsetData } = useUpsetOfTheDay(SEASON)
   const { user } = useAuth()
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try { return sessionStorage.getItem('beta-banner-dismissed') === '1' } catch { return false }
@@ -79,6 +80,7 @@ export default function Homepage() {
         {/* Right column - sidebar (1/3) */}
         <div className="flex flex-col gap-5">
           <PowerRankingsWidget ratings={ratings} />
+          <UpsetOfTheDayWidget upset={upsetData?.upset} />
           <DraftBoardWidget />
           <WclLeadersWidget leaders={wclLeaders} />
           <PnwGridWidget />
@@ -586,6 +588,71 @@ const POS_BADGE = {
   SS: 'bg-blue-100 text-blue-700', C: 'bg-amber-100 text-amber-700',
   RHP: 'bg-red-100 text-red-700', LHP: 'bg-emerald-100 text-emerald-700',
 }
+
+function UpsetOfTheDayWidget({ upset }) {
+  if (!upset) return null
+
+  const winnerProb = Math.round(upset.winner_win_prob * 100)
+  const loserProb = Math.round(upset.loser_win_prob * 100)
+
+  // Format date
+  const dateLabel = (() => {
+    try {
+      const d = new Date(upset.game_date + 'T12:00:00')
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    } catch { return upset.game_date }
+  })()
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2">
+        <h2 className="text-sm font-bold text-white tracking-wide">PNW UPSET OF THE DAY</h2>
+      </div>
+      <div className="p-4">
+        <div className="text-[10px] text-gray-400 font-medium mb-2">{dateLabel}</div>
+
+        {/* Winner */}
+        <div className="flex items-center gap-2 mb-1">
+          {upset.winner_logo && (
+            <img src={upset.winner_logo} alt="" className="w-7 h-7 object-contain"
+              onError={(e) => { e.target.style.display = 'none' }} />
+          )}
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-bold text-gray-900">{upset.winner}</span>
+            <span className="text-xs text-gray-400 ml-1">had a {winnerProb}% chance</span>
+          </div>
+          <span className="text-xl font-bold text-gray-900 tabular-nums">{upset.winner_score}</span>
+        </div>
+
+        {/* Loser */}
+        <div className="flex items-center gap-2 mb-3 opacity-60">
+          {upset.loser_logo && (
+            <img src={upset.loser_logo} alt="" className="w-7 h-7 object-contain"
+              onError={(e) => { e.target.style.display = 'none' }} />
+          )}
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-semibold text-gray-700">{upset.loser}</span>
+            <span className="text-xs text-gray-400 ml-1">{loserProb}% favorite</span>
+          </div>
+          <span className="text-xl font-bold text-gray-500 tabular-nums">{upset.loser_score}</span>
+        </div>
+
+        {/* Upset meter */}
+        <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className="absolute left-0 top-0 h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full"
+            style={{ width: `${loserProb}%` }}
+          />
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-[10px] text-amber-600 font-semibold">{upset.winner} {winnerProb}%</span>
+          <span className="text-[10px] text-gray-400">{upset.loser} {loserProb}%</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 function DraftBoardWidget() {
   return (
