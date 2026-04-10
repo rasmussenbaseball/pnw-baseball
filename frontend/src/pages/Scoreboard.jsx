@@ -606,6 +606,13 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
                   Box Score
                 </span>
               )}
+              {!isFinal && (game.home_stats_url || game.away_stats_url) && (
+                <a href={game.home_stats_url || game.away_stats_url} target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[10px] font-semibold text-nw-teal hover:underline">
+                  Live Stats
+                </a>
+              )}
             </div>
           </div>
         </div>

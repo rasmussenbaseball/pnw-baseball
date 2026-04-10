@@ -40,15 +40,20 @@ function ConferenceTable({ conference }) {
             <th className="text-left pl-2.5 pr-1 py-1 font-semibold">Team</th>
             <th className="text-center px-0.5 py-1 font-semibold w-[52px]">Conf</th>
             <th className="text-center px-0.5 py-1 font-semibold w-10">Pct</th>
+            <th className="text-center px-0.5 py-1 font-semibold w-8">GB</th>
             <th className="text-center px-0.5 py-1 font-semibold w-[52px]">All</th>
             <th className="text-center px-0.5 pr-2.5 py-1 font-semibold w-10">Pct</th>
           </tr>
         </thead>
         <tbody>
-          {conference.teams.map((team) => (
+          {conference.teams.map((team, idx) => {
+            // Playoff line: top 4 teams (or top half for small conferences) make postseason
+            const playoffSpots = Math.max(4, Math.ceil(conference.teams.length / 2))
+            const isPlayoffLine = idx === playoffSpots - 1 && idx < conference.teams.length - 1
+            return (
             <tr
               key={team.id}
-              className={`border-t border-gray-50 ${
+              className={`border-t ${isPlayoffLine ? 'border-b-2 border-b-amber-400' : 'border-gray-50'} ${
                 team.is_pnw ? 'hover:bg-teal-50/50' : 'opacity-50'
               }`}
             >
@@ -90,6 +95,12 @@ function ConferenceTable({ conference }) {
               <td className={`text-center px-0.5 py-1 font-mono text-[10px] ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
                 {team.conf_wins || team.conf_losses
                   ? formatPct(team.conf_win_pct)
+                  : <span className="text-gray-300">-</span>
+                }
+              </td>
+              <td className={`text-center px-0.5 py-1 font-mono text-[10px] ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
+                {team.conf_gb != null
+                  ? (team.conf_gb === 0 ? <span className="text-gray-300">-</span> : team.conf_gb % 1 === 0 ? team.conf_gb : team.conf_gb.toFixed(1))
                   : <span className="text-gray-300">-</span>
                 }
               </td>

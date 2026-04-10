@@ -544,6 +544,13 @@ def standings(
         # Sort each conference by conf win %, then overall win % as tiebreaker
         for conf in conferences.values():
             conf["teams"].sort(key=lambda t: (t["conf_win_pct"], t["win_pct"]), reverse=True)
+            # Compute Games Behind (GB) leader in conference standings
+            if conf["teams"]:
+                leader = conf["teams"][0]
+                leader_w, leader_l = leader["conf_wins"], leader["conf_losses"]
+                for team in conf["teams"]:
+                    gb = ((leader_w - team["conf_wins"]) + (team["conf_losses"] - leader_l)) / 2
+                    team["conf_gb"] = gb if gb > 0 else 0
 
         # Sort overall by win %
         all_teams.sort(key=lambda t: (t["win_pct"], t["wins"]), reverse=True)
@@ -5844,7 +5851,9 @@ def games_by_date(
                 at2.short_name AS away_short,
                 at2.logo_url AS away_logo,
                 hd.level AS home_division,
-                ad.level AS away_division
+                ad.level AS away_division,
+                ht.stats_url AS home_stats_url,
+                at2.stats_url AS away_stats_url
             FROM games g
             LEFT JOIN teams ht ON g.home_team_id = ht.id
             LEFT JOIN teams at2 ON g.away_team_id = at2.id
@@ -5930,6 +5939,8 @@ def games_by_date(
                                 "away_logo": None,
                                 "home_division": fg.get("division"),
                                 "away_division": fg.get("division"),
+                                "home_stats_url": None,
+                                "away_stats_url": None,
                             })
                 except Exception:
                     pass
@@ -5938,20 +5949,24 @@ def games_by_date(
             if games:
                 try:
                     team_logos = {}
-                    cur.execute("SELECT id, short_name, logo_url FROM teams WHERE is_active = 1")
+                    cur.execute("SELECT id, short_name, logo_url, stats_url FROM teams WHERE is_active = 1")
                     for row in cur.fetchall():
-                        team_logos[row["id"]] = (row["short_name"], row["logo_url"])
+                        team_logos[row["id"]] = (row["short_name"], row["logo_url"], row.get("stats_url"))
                     for g in games:
                         if not g.get("home_logo") and g.get("home_team_id"):
                             info = team_logos.get(g["home_team_id"])
                             if info:
                                 g["home_short"] = info[0]
                                 g["home_logo"] = info[1]
+                                if not g.get("home_stats_url"):
+                                    g["home_stats_url"] = info[2]
                         if not g.get("away_logo") and g.get("away_team_id"):
                             info = team_logos.get(g["away_team_id"])
                             if info:
                                 g["away_short"] = info[0]
                                 g["away_logo"] = info[1]
+                                if not g.get("away_stats_url"):
+                                    g["away_stats_url"] = info[2]
                 except Exception:
                     pass
 
