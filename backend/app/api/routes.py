@@ -6163,8 +6163,15 @@ def daily_performers(
             b["perf_score"] = hitting_score(b)
             b["display_name"] = _display_name(b)
 
-        # Return up to 10, let frontend pick 3 or 5 based on game count
-        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:10]
+        # Deduplicate: if a player appears in multiple games (doubleheader),
+        # keep only their best single-game performance
+        seen_hitters = {}
+        for b in sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True):
+            pid = b.get("player_id")
+            key = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
+            if key not in seen_hitters:
+                seen_hitters[key] = b
+        top_hitters = list(seen_hitters.values())[:10]
 
         # ── 7. Rank pitchers (3+ IP, weighted by IP for longer outings) ──
         qualified_pitchers = [p for p in pitching_rows if (p.get("innings_pitched") or 0) >= 3.0]
@@ -6175,7 +6182,14 @@ def daily_performers(
             ip = p.get("innings_pitched") or 0
             p["weighted_score"] = gs + (ip * 2)  # bonus for deeper outings
 
-        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True)[:10]
+        # Deduplicate pitchers same as hitters
+        seen_pitchers = {}
+        for p in sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True):
+            pid = p.get("player_id")
+            key = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
+            if key not in seen_pitchers:
+                seen_pitchers[key] = p
+        top_pitchers = list(seen_pitchers.values())[:10]
 
         return {
             "games": games,

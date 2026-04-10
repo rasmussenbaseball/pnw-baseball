@@ -205,21 +205,23 @@ async function drawScorebug(ctx, game, x, y, w, h) {
   }
 }
 
-// ── Draw a compact stat table ──
-function drawStatTable(ctx, title, players, x, y, w, h, type) {
+// ── Draw a compact stat table (with logos) ──
+async function drawStatTable(ctx, title, players, x, y, w, h, type) {
   const pad = 6
-  const headerH = 16
-  const rowH = Math.min(22, (h - headerH - 4) / Math.max(1, players.length))
+  const titleH = 16
+  const rowCount = players.length + 1 // +1 for header row
+  const rowH = Math.min(26, (h - titleH) / Math.max(1, rowCount))
+  const logoSize = Math.max(10, rowH - 6)
 
   // Section label
   ctx.fillStyle = '#00687a'
   ctx.font = '700 10px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(title, x + pad, y + 7)
+  ctx.fillText(title, x + pad, y + titleH / 2)
 
-  // Table header
-  const tableY = y + headerH
+  // Table header row
+  const tableY = y + titleH
   ctx.fillStyle = '#f1f5f9'
   roundRect(ctx, x, tableY, w, rowH, 3)
   ctx.fill()
@@ -229,27 +231,17 @@ function drawStatTable(ctx, title, players, x, y, w, h, type) {
   ctx.textBaseline = 'middle'
   const headerMidY = tableY + rowH / 2
 
-  // Column layout
-  const nameColW = w * 0.44
-  if (type === 'hitter') {
-    ctx.textAlign = 'left'
-    ctx.fillText('PLAYER', x + pad, headerMidY)
-    const statCols = ['AB', 'H', 'HR', 'RBI', 'BB']
-    const statColW = (w - nameColW - pad) / statCols.length
-    statCols.forEach((col, i) => {
-      ctx.textAlign = 'center'
-      ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, headerMidY)
-    })
-  } else {
-    ctx.textAlign = 'left'
-    ctx.fillText('PLAYER', x + pad, headerMidY)
-    const statCols = ['IP', 'H', 'K', 'ER', 'DEC']
-    const statColW = (w - nameColW - pad) / statCols.length
-    statCols.forEach((col, i) => {
-      ctx.textAlign = 'center'
-      ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, headerMidY)
-    })
-  }
+  // Column layout: logo + name takes ~48%, stats take rest
+  const nameColW = w * 0.48
+  const statCols = type === 'hitter' ? ['AB', 'H', 'HR', 'RBI', 'BB'] : ['IP', 'H', 'K', 'ER', 'DEC']
+  const statColW = (w - nameColW - pad) / statCols.length
+
+  ctx.textAlign = 'left'
+  ctx.fillText('PLAYER', x + pad, headerMidY)
+  statCols.forEach((col, i) => {
+    ctx.textAlign = 'center'
+    ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, headerMidY)
+  })
 
   // Data rows
   for (let i = 0; i < players.length; i++) {
@@ -267,7 +259,21 @@ function drawStatTable(ctx, title, players, x, y, w, h, type) {
     ctx.fillStyle = '#f1f5f9'
     ctx.fillRect(x + 2, ry, w - 4, 0.5)
 
-    // Player name with team
+    // Team logo
+    let curX = x + pad
+    const logoSrc = p.team_logo
+    if (logoSrc) {
+      try {
+        const img = await loadImage(logoSrc)
+        const a = img.naturalWidth / img.naturalHeight
+        let dw = logoSize, dh = logoSize
+        if (a >= 1) dh = logoSize / a; else dw = logoSize * a
+        ctx.drawImage(img, curX + (logoSize - dw) / 2, rMidY - dh / 2, dw, dh)
+      } catch { /* skip */ }
+    }
+    curX += logoSize + 3
+
+    // Player name
     const name = p.display_name || 'Unknown'
     const team = p.team_short || ''
     ctx.textAlign = 'left'
@@ -275,53 +281,36 @@ function drawStatTable(ctx, title, players, x, y, w, h, type) {
     ctx.fillStyle = '#0f172a'
     ctx.font = '600 9px "Inter", system-ui, sans-serif'
 
-    // Truncate name if needed
+    const maxW = x + nameColW - curX - 2
     let displayName = name
-    const maxW = nameColW - pad - 4
     while (ctx.measureText(`${displayName} ${team}`).width > maxW && displayName.length > 3) {
       displayName = displayName.slice(0, -1)
     }
     if (displayName !== name) displayName += '.'
-    ctx.fillText(displayName, x + pad, rMidY - 1)
+    ctx.fillText(displayName, curX, rMidY - 1)
 
-    // Team name in gray
+    // Team abbrev in gray
     const nameW = ctx.measureText(displayName + ' ').width
     ctx.fillStyle = '#94a3b8'
     ctx.font = '400 7px "Inter", system-ui, sans-serif'
-    ctx.fillText(team, x + pad + nameW, rMidY - 1)
+    ctx.fillText(team, curX + nameW, rMidY - 1)
 
     // Stats
     ctx.font = '600 9px "Inter", system-ui, sans-serif'
     ctx.fillStyle = '#0f172a'
     if (type === 'hitter') {
-      const stats = [
-        p.at_bats || 0,
-        p.hits || 0,
-        p.home_runs || 0,
-        p.rbi || 0,
-        p.walks || 0,
-      ]
-      const statColW = (w - nameColW - pad) / stats.length
+      const stats = [p.at_bats || 0, p.hits || 0, p.home_runs || 0, p.rbi || 0, p.walks || 0]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        // Highlight HRs in red
         ctx.fillStyle = j === 2 && val > 0 ? '#dc2626' : '#0f172a'
         ctx.font = j === 2 && val > 0 ? '700 9px "Inter", system-ui, sans-serif' : '600 9px "Inter", system-ui, sans-serif'
         ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY - 1)
       })
     } else {
       const ip = fmtIP(p.innings_pitched)
-      const stats = [
-        ip,
-        p.hits_allowed != null ? p.hits_allowed : '-',
-        p.strikeouts || 0,
-        p.earned_runs || 0,
-        p.decision || '-',
-      ]
-      const statColW = (w - nameColW - pad) / stats.length
+      const stats = [ip, p.hits_allowed != null ? p.hits_allowed : '-', p.strikeouts || 0, p.earned_runs || 0, p.decision || '-']
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        // Highlight W in green, L in red
         if (j === 4) {
           ctx.fillStyle = val === 'W' ? '#16a34a' : val === 'L' ? '#dc2626' : '#64748b'
           ctx.font = '700 9px "Inter", system-ui, sans-serif'
@@ -340,9 +329,11 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   const { games, top_hitters, top_pitchers } = data
   const numGames = games.length
 
-  const hitCount = numGames >= 3 ? Math.min(5, top_hitters?.length || 0) : Math.min(3, top_hitters?.length || 0)
-  const pitchCount = numGames >= 3 ? Math.min(5, top_pitchers?.length || 0) : Math.min(3, top_pitchers?.length || 0)
-  const hasPerformers = hitCount > 0 || pitchCount > 0
+  // Always 5 performers per section
+  const PERF_COUNT = 5
+  const hitters = (top_hitters || []).slice(0, PERF_COUNT)
+  const pitchers = (top_pitchers || []).slice(0, PERF_COUNT)
+  const hasPerformers = hitters.length > 0 || pitchers.length > 0
 
   const W = 1080
   const H = 1080
@@ -384,85 +375,85 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, headerH, W, 3)
 
-  // ── Layout budget ──
+  // ── Fixed layout zones (bottom-up) ──
   const footerH = 26
   const contentW = W - pad * 2
-  const perfSectionH = hasPerformers ? Math.min(320, 160 + Math.max(hitCount, pitchCount) * 22) : 0
-  const scoresAvailH = H - headerH - 3 - footerH - perfSectionH - 30
-  // 30 = margins between sections
+  // Performers section is FIXED height, anchored at bottom above footer
+  const perfSectionH = hasPerformers ? 180 : 0
+  const perfDividerH = hasPerformers ? 6 : 0
+  const scoresTopY = headerH + 3 + 8 // 8px margin below header line
+  const scoresBottomY = H - footerH - perfSectionH - perfDividerH - 4
+  const scoresAvailH = scoresBottomY - scoresTopY
 
-  // ── Scorebugs ──
+  // ── Scorebugs: fill ALL available space ──
   const bugGap = 4
   const colGap = 6
 
-  // Find best column layout to fill scoresAvailH
-  let bestCols = 2, bestBugH = 60
-  for (let cols = 2; cols <= 5; cols++) {
+  // Try column counts 1-6, pick the one that gives largest bugs that fit
+  let bestCols = 2, bestBugH = 0
+  for (let cols = 1; cols <= 6; cols++) {
     const colW = (contentW - (cols - 1) * colGap) / cols
-    if (colW < 140) continue
+    if (colW < 120 && cols > 1) continue
     const rows = Math.ceil(numGames / cols)
-    const bugH = Math.min(90, (scoresAvailH - (rows - 1) * bugGap) / rows)
-    if (bugH >= 48 && bugH >= bestBugH * 0.9) {
+    if (rows === 0) continue
+    const bugH = (scoresAvailH - (rows - 1) * bugGap) / rows
+    if (bugH > bestBugH) {
       bestCols = cols
-      bestBugH = Math.max(48, bugH)
+      bestBugH = bugH
     }
   }
 
-  // If bugs are still too small, allow more columns
-  if (bestBugH < 52 && numGames > 10) {
-    for (let cols = 3; cols <= 5; cols++) {
-      const colW = (contentW - (cols - 1) * colGap) / cols
-      if (colW < 130) continue
-      const rows = Math.ceil(numGames / cols)
-      const bugH = (scoresAvailH - (rows - 1) * bugGap) / rows
-      if (bugH > bestBugH) { bestCols = cols; bestBugH = Math.max(44, bugH) }
-    }
-  }
+  // Cap max bug height so single games don't look absurd (but still big)
+  bestBugH = Math.min(bestBugH, 200)
+  // Minimum readable size
+  bestBugH = Math.max(bestBugH, 36)
 
   const bugColW = (contentW - (bestCols - 1) * colGap) / bestCols
   const bugH = bestBugH
 
-  // Distribute games to columns
+  // Distribute games evenly across columns
   const gamesPerCol = Math.ceil(numGames / bestCols)
   const columns = []
   for (let c = 0; c < bestCols; c++) {
     columns.push(games.slice(c * gamesPerCol, Math.min((c + 1) * gamesPerCol, numGames)))
   }
 
+  // Center the grid horizontally
   const totalColsW = bestCols * bugColW + (bestCols - 1) * colGap
   const startX = pad + (contentW - totalColsW) / 2
-  let curY = headerH + 3 + 10
+
+  // Center scorebugs vertically in their zone
+  const actualRows = Math.ceil(numGames / bestCols)
+  const totalBugsH = actualRows * bugH + (actualRows - 1) * bugGap
+  const bugStartY = scoresTopY + (scoresAvailH - totalBugsH) / 2
 
   for (let c = 0; c < columns.length; c++) {
     const colX = startX + c * (bugColW + colGap)
-    let cy = curY
+    let cy = bugStartY
     for (let gi = 0; gi < columns[c].length; gi++) {
       await drawScorebug(ctx, columns[c][gi], colX, cy, bugColW, bugH)
       cy += bugH + bugGap
     }
   }
 
-  const scoresEndY = curY + Math.ceil(numGames / bestCols) * (bugH + bugGap)
-
-  // ── Top Performers (side by side) ──
+  // ── Top Performers (FIXED at bottom, always same size) ──
   if (hasPerformers) {
-    const perfY = scoresEndY + 8
+    const perfY = H - footerH - perfSectionH - 2
     ctx.fillStyle = '#00687a'
     ctx.fillRect(pad, perfY, contentW, 2)
 
     const perfTopY = perfY + 4
+    const perfH = perfSectionH - 6
     const halfW = (contentW - 10) / 2
 
     // Left: Hitters
-    if (hitCount > 0) {
-      const hitters = top_hitters.slice(0, hitCount)
-      drawStatTable(ctx, 'TOP HITTERS', hitters, pad, perfTopY, halfW, perfSectionH - 6, 'hitter')
+    if (hitters.length > 0) {
+      await drawStatTable(ctx, 'TOP HITTERS', hitters, pad, perfTopY, halfW, perfH, 'hitter')
     }
 
     // Right: Pitchers
-    if (pitchCount > 0) {
-      const pitchers = top_pitchers.slice(0, pitchCount)
-      drawStatTable(ctx, 'TOP PITCHERS', pitchers, pad + halfW + 10, perfTopY, halfW, perfSectionH - 6, 'pitcher')
+    if (pitchers.length > 0) {
+      await drawStatTable(ctx, 'TOP PITCHERS', pitchers, pad + halfW + 10, perfTopY, halfW, perfH, 'pitcher')
     }
   }
 
