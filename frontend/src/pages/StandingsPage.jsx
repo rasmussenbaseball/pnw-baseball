@@ -117,7 +117,7 @@ function ConferenceTable({ conference }) {
                 }
               </td>
             </tr>
-          ))}
+          )})}
         </tbody>
       </table>
     </div>
