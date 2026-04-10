@@ -6008,6 +6008,223 @@ def games_by_date(
         return {"games": games, "date": date, "count": len(games)}
 
 
+@router.get("/games/daily-performers")
+def daily_performers(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    season: int = Query(2026),
+):
+    """
+    Return enhanced game data + top performers for the daily scores graphic.
+    Includes: games with H/E/W-L-S pitcher/team records, top hitters, top pitchers, bomb squad.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── 1. Get all final games for this date with H/E ──
+        cur.execute("""
+            SELECT
+                g.id, g.game_date, g.game_time, g.status,
+                g.home_team_id, g.away_team_id,
+                g.home_score, g.away_score,
+                g.home_hits, g.home_errors, g.away_hits, g.away_errors,
+                g.innings, g.is_conference_game, g.source_url,
+                ht.short_name AS home_short, ht.logo_url AS home_logo,
+                at2.short_name AS away_short, at2.logo_url AS away_logo,
+                hd.level AS home_division, ad.level AS away_division
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            LEFT JOIN conferences hc ON ht.conference_id = hc.id
+            LEFT JOIN divisions hd ON hc.division_id = hd.id
+            LEFT JOIN conferences ac ON at2.conference_id = ac.id
+            LEFT JOIN divisions ad ON ac.division_id = ad.id
+            WHERE g.game_date = %s AND g.status = 'final'
+            ORDER BY g.id
+        """, (date,))
+        games = [dict(r) for r in cur.fetchall()]
+        game_ids = [g["id"] for g in games]
+
+        if not game_ids:
+            return {"games": [], "top_hitters": [], "top_pitchers": [], "bomb_squad": [], "date": date}
+
+        # ── 2. Team records as of this date ──
+        # Compute W-L from all final games up to (and including) this date
+        cur.execute("""
+            SELECT team_id, SUM(w) AS wins, SUM(l) AS losses FROM (
+                SELECT home_team_id AS team_id,
+                    CASE WHEN home_score > away_score THEN 1 ELSE 0 END AS w,
+                    CASE WHEN home_score < away_score THEN 1 ELSE 0 END AS l
+                FROM games WHERE status = 'final' AND season = %s AND game_date <= %s
+                UNION ALL
+                SELECT away_team_id AS team_id,
+                    CASE WHEN away_score > home_score THEN 1 ELSE 0 END AS w,
+                    CASE WHEN away_score < home_score THEN 1 ELSE 0 END AS l
+                FROM games WHERE status = 'final' AND season = %s AND game_date <= %s
+            ) sub GROUP BY team_id
+        """, (season, date, season, date))
+        records = {r["team_id"]: (r["wins"], r["losses"]) for r in cur.fetchall()}
+
+        # Attach records to games
+        for g in games:
+            hw, hl = records.get(g["home_team_id"], (0, 0))
+            aw, al = records.get(g["away_team_id"], (0, 0))
+            g["home_record"] = f"{hw}-{hl}"
+            g["away_record"] = f"{aw}-{al}"
+
+        # ── 3. W/L/S pitchers for each game ──
+        placeholders = ",".join(["%s"] * len(game_ids))
+        cur.execute(f"""
+            SELECT gp.game_id, gp.team_id, gp.player_name, gp.decision,
+                   p.first_name, p.last_name
+            FROM game_pitching gp
+            LEFT JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id IN ({placeholders}) AND gp.decision IN ('W', 'L', 'S')
+            ORDER BY gp.game_id
+        """, game_ids)
+        decisions = {}
+        for r in cur.fetchall():
+            gid = r["game_id"]
+            if gid not in decisions:
+                decisions[gid] = {}
+            # Use short last name for display
+            name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else "Unknown"
+            decisions[gid][r["decision"]] = {"name": name, "team_id": r["team_id"]}
+
+        for g in games:
+            d = decisions.get(g["id"], {})
+            g["win_pitcher"] = d.get("W", {}).get("name")
+            g["loss_pitcher"] = d.get("L", {}).get("name")
+            g["save_pitcher"] = d.get("S", {}).get("name")
+
+        # ── 4. All batting lines for this date (for performers + bomb squad) ──
+        cur.execute(f"""
+            SELECT gb.game_id, gb.team_id, gb.player_name, gb.player_id,
+                   gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
+                   gb.home_runs, gb.rbi, gb.walks, gb.strikeouts,
+                   gb.hit_by_pitch, gb.stolen_bases, gb.sacrifice_flies,
+                   t.short_name AS team_short, t.logo_url AS team_logo,
+                   p.first_name, p.last_name, p.headshot_url,
+                   d.level AS division
+            FROM game_batting gb
+            LEFT JOIN teams t ON gb.team_id = t.id
+            LEFT JOIN players p ON gb.player_id = p.id
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            WHERE gb.game_id IN ({placeholders})
+            ORDER BY gb.game_id
+        """, game_ids)
+        batting_rows = [dict(r) for r in cur.fetchall()]
+
+        # ── 5. All pitching lines (for top pitchers) ──
+        cur.execute(f"""
+            SELECT gp.game_id, gp.team_id, gp.player_name, gp.player_id,
+                   gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
+                   gp.earned_runs, gp.walks, gp.strikeouts,
+                   gp.home_runs_allowed, gp.game_score, gp.decision,
+                   gp.is_starter, gp.pitches_thrown,
+                   t.short_name AS team_short, t.logo_url AS team_logo,
+                   p.first_name, p.last_name, p.headshot_url,
+                   d.level AS division
+            FROM game_pitching gp
+            LEFT JOIN teams t ON gp.team_id = t.id
+            LEFT JOIN players p ON gp.player_id = p.id
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            WHERE gp.game_id IN ({placeholders})
+            ORDER BY gp.game_id
+        """, game_ids)
+        pitching_rows = [dict(r) for r in cur.fetchall()]
+
+        # ── 6. Season HR totals for bomb squad players ──
+        hr_player_ids = list(set(
+            r["player_id"] for r in batting_rows
+            if r.get("home_runs") and r["home_runs"] > 0 and r.get("player_id")
+        ))
+        season_hrs = {}
+        if hr_player_ids:
+            ph = ",".join(["%s"] * len(hr_player_ids))
+            cur.execute(f"""
+                SELECT player_id, COALESCE(SUM(home_runs), 0) AS season_hr
+                FROM batting_stats
+                WHERE player_id IN ({ph}) AND season = %s
+                GROUP BY player_id
+            """, hr_player_ids + [season])
+            season_hrs = {r["player_id"]: r["season_hr"] for r in cur.fetchall()}
+
+        # ── 7. Rank hitters by performance score ──
+        def hitting_score(b):
+            hr = b.get("home_runs") or 0
+            trip = b.get("triples") or 0
+            dbl = b.get("doubles") or 0
+            h = b.get("hits") or 0
+            rbi = b.get("rbi") or 0
+            r = b.get("runs") or 0
+            bb = b.get("walks") or 0
+            sb = b.get("stolen_bases") or 0
+            hbp = b.get("hit_by_pitch") or 0
+            singles = h - dbl - trip - hr
+            return (hr * 6) + (trip * 4) + (dbl * 3) + (singles * 1.5) + (rbi * 2) + (r * 1) + (bb * 0.5) + (sb * 1.5) + (hbp * 0.3)
+
+        qualified_hitters = [b for b in batting_rows if (b.get("at_bats") or 0) >= 2]
+        for b in qualified_hitters:
+            b["perf_score"] = hitting_score(b)
+            name = b.get("player_name") or ""
+            if b.get("last_name") and b.get("first_name"):
+                b["display_name"] = f"{b['first_name']} {b['last_name']}"
+            elif "," in name:
+                parts = name.split(",", 1)
+                b["display_name"] = f"{parts[1].strip()} {parts[0].strip()}"
+            else:
+                b["display_name"] = name
+
+        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:5]
+
+        # ── 8. Rank pitchers by game score (5+ IP) ──
+        qualified_pitchers = [p for p in pitching_rows if (p.get("innings_pitched") or 0) >= 5.0]
+        for p in qualified_pitchers:
+            name = p.get("player_name") or ""
+            if p.get("last_name") and p.get("first_name"):
+                p["display_name"] = f"{p['first_name']} {p['last_name']}"
+            elif "," in name:
+                parts = name.split(",", 1)
+                p["display_name"] = f"{parts[1].strip()} {parts[0].strip()}"
+            else:
+                p["display_name"] = name
+
+        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("game_score") or 0, reverse=True)[:3]
+
+        # ── 9. Bomb squad: every player with HR >= 1 ──
+        bomb_squad = []
+        for b in batting_rows:
+            if (b.get("home_runs") or 0) >= 1:
+                name = b.get("player_name") or ""
+                if b.get("last_name") and b.get("first_name"):
+                    display = f"{b['first_name']} {b['last_name']}"
+                elif "," in name:
+                    parts = name.split(",", 1)
+                    display = f"{parts[1].strip()} {parts[0].strip()}"
+                else:
+                    display = name
+                bomb_squad.append({
+                    "display_name": display,
+                    "team_short": b.get("team_short"),
+                    "team_logo": b.get("team_logo"),
+                    "home_runs": b["home_runs"],
+                    "season_hr": season_hrs.get(b.get("player_id"), b["home_runs"]),
+                    "headshot_url": b.get("headshot_url"),
+                    "division": b.get("division"),
+                })
+        bomb_squad.sort(key=lambda x: (x["home_runs"], x["season_hr"]), reverse=True)
+
+        return {
+            "games": games,
+            "top_hitters": top_hitters,
+            "top_pitchers": top_pitchers,
+            "bomb_squad": bomb_squad,
+            "date": date,
+        }
+
+
 @router.get("/games/future")
 def games_future(
     team_id: Optional[int] = None,
