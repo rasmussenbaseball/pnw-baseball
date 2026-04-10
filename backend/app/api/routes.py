@@ -541,15 +541,35 @@ def standings(
             conferences[cid]["teams"].append(team)
             all_teams.append(team)
 
+        # Playoff spots per conference (abbreviation → number of teams that qualify)
+        PLAYOFF_SPOTS = {
+            "GNAC": 3,       # D2: top 3
+            "NWC": 4,        # D3: top 4
+            "CCC": 5,        # NAIA: top 5
+            "B1G": 12,       # Big Ten: top 12
+            "MWC": 4,        # Mountain West: top 4
+            "MW": 4,         # Mountain West alt abbreviation
+            "WCC": 6,        # West Coast: top 6
+        }
+        # NWAC divisions: top 4 from each
+        for key in ("NWAC North", "NWAC East", "NWAC South", "NWAC West",
+                     "NWAC_NORTH", "NWAC_EAST", "NWAC_SOUTH", "NWAC_WEST"):
+            PLAYOFF_SPOTS[key] = 4
+
         # Sort each conference by conf win %, then overall win % as tiebreaker
         for conf in conferences.values():
             conf["teams"].sort(key=lambda t: (t["conf_win_pct"], t["win_pct"]), reverse=True)
-            # Compute Games Behind (GB) leader in conference standings
-            if conf["teams"]:
-                leader = conf["teams"][0]
-                leader_w, leader_l = leader["conf_wins"], leader["conf_losses"]
+            # Determine playoff spots for this conference
+            abbrev = conf.get("conference_abbrev", "")
+            spots = PLAYOFF_SPOTS.get(abbrev, PLAYOFF_SPOTS.get(conf.get("conference_name", ""), 4))
+            spots = min(spots, len(conf["teams"]))  # can't exceed team count
+            conf["playoff_spots"] = spots
+            # Compute Games Behind the last playoff spot (not 1st place)
+            if conf["teams"] and spots > 0:
+                cutoff_team = conf["teams"][spots - 1]  # last team in playoff position
+                cutoff_w, cutoff_l = cutoff_team["conf_wins"], cutoff_team["conf_losses"]
                 for team in conf["teams"]:
-                    gb = ((leader_w - team["conf_wins"]) + (team["conf_losses"] - leader_l)) / 2
+                    gb = ((cutoff_w - team["conf_wins"]) + (team["conf_losses"] - cutoff_l)) / 2
                     team["conf_gb"] = gb if gb > 0 else 0
 
         # Sort overall by win %

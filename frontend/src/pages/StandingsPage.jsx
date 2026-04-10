@@ -47,8 +47,8 @@ function ConferenceTable({ conference }) {
         </thead>
         <tbody>
           {conference.teams.map((team, idx) => {
-            // Playoff line: top 4 teams (or top half for small conferences) make postseason
-            const playoffSpots = Math.max(4, Math.ceil(conference.teams.length / 2))
+            // Playoff line from API (backend knows each conference's format)
+            const playoffSpots = conference.playoff_spots || 4
             const isPlayoffLine = idx === playoffSpots - 1 && idx < conference.teams.length - 1
             return (
             <tr
