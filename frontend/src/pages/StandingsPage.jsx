@@ -98,9 +98,15 @@ function ConferenceTable({ conference }) {
                   : <span className="text-gray-300">-</span>
                 }
               </td>
-              <td className={`text-center px-0.5 py-1 font-mono text-[10px] ${team.is_pnw ? 'text-gray-500' : 'text-gray-400'}`}>
+              <td className={`text-center px-0.5 py-1 font-mono text-[10px] ${
+                team.conf_gb > 0 ? 'text-emerald-600' : team.conf_gb < 0 ? 'text-red-500' : 'text-gray-400'
+              }`}>
                 {team.conf_gb != null
-                  ? (team.conf_gb === 0 ? <span className="text-gray-300">-</span> : team.conf_gb % 1 === 0 ? team.conf_gb : team.conf_gb.toFixed(1))
+                  ? (team.conf_gb === 0
+                    ? <span className="text-gray-300">-</span>
+                    : team.conf_gb > 0
+                      ? `+${team.conf_gb % 1 === 0 ? team.conf_gb : team.conf_gb.toFixed(1)}`
+                      : `${team.conf_gb % 1 === 0 ? team.conf_gb : team.conf_gb.toFixed(1)}`)
                   : <span className="text-gray-300">-</span>
                 }
               </td>

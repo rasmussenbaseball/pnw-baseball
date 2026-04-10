@@ -546,9 +546,8 @@ def standings(
             "GNAC": 3,       # D2: top 3
             "NWC": 4,        # D3: top 4
             "CCC": 5,        # NAIA: top 5
-            "B1G": 12,       # Big Ten: top 12
-            "MWC": 4,        # Mountain West: top 4
-            "MW": 4,         # Mountain West alt abbreviation
+            "Big Ten": 12,   # Big Ten: top 12
+            "MWC": 6,        # Mountain West: top 6
             "WCC": 6,        # West Coast: top 6
         }
         # NWAC divisions: top 4 from each
@@ -564,13 +563,15 @@ def standings(
             spots = PLAYOFF_SPOTS.get(abbrev, PLAYOFF_SPOTS.get(conf.get("conference_name", ""), 4))
             spots = min(spots, len(conf["teams"]))  # can't exceed team count
             conf["playoff_spots"] = spots
-            # Compute Games Behind the last playoff spot (not 1st place)
+            # Compute Games Behind/Ahead of the playoff cutoff line
+            # Positive = games ahead (in playoff position), Negative = games behind
             if conf["teams"] and spots > 0:
                 cutoff_team = conf["teams"][spots - 1]  # last team in playoff position
                 cutoff_w, cutoff_l = cutoff_team["conf_wins"], cutoff_team["conf_losses"]
                 for team in conf["teams"]:
-                    gb = ((cutoff_w - team["conf_wins"]) + (team["conf_losses"] - cutoff_l)) / 2
-                    team["conf_gb"] = gb if gb > 0 else 0
+                    # Positive means ahead of cutoff, negative means behind
+                    gb = ((team["conf_wins"] - cutoff_w) + (cutoff_l - team["conf_losses"])) / 2
+                    team["conf_gb"] = gb
 
         # Sort overall by win %
         all_teams.sort(key=lambda t: (t["win_pct"], t["wins"]), reverse=True)
