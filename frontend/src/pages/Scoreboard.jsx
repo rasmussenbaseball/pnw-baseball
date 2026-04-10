@@ -493,9 +493,13 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
   const gameTime = game.game_time || ''
 
   // Format win probability as percentage (e.g., 0.723 -> "72%")
+  // Prefer inline values from the API response (works for future games too),
+  // fall back to separate winProbs lookup for older data
   const fmtWp = (val) => val != null ? `${Math.round(val * 100)}%` : null
-  const awayWp = wp ? fmtWp(wp.away_win_prob) : null
-  const homeWp = wp ? fmtWp(wp.home_win_prob) : null
+  const homeWpRaw = game.home_win_prob ?? (wp ? wp.home_win_prob : null)
+  const awayWpRaw = game.away_win_prob ?? (wp ? wp.away_win_prob : null)
+  const awayWp = fmtWp(awayWpRaw)
+  const homeWp = fmtWp(homeWpRaw)
 
   const cardContent = (
     <div className={`bg-white rounded-xl border overflow-hidden transition-shadow hover:shadow-md border-gray-200`}>
@@ -535,7 +539,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
             </span>
             {awayWp && (
               <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
-                wp.away_win_prob >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
+                awayWpRaw >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
               }`}>{awayWp}</span>
             )}
           </div>
@@ -560,7 +564,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp }) {
             </span>
             {homeWp && (
               <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
-                wp.home_win_prob >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
+                homeWpRaw >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
               }`}>{homeWp}</span>
             )}
           </div>

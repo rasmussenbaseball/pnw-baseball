@@ -2076,7 +2076,8 @@ def upset_of_the_day(
 ):
     """
     Find the biggest upset from the most recent day with completed PNW-vs-PNW games.
-    An upset = the team with lower projected win% won the game.
+    Priority: today first, then yesterday, then search back up to 7 days.
+    An upset = a team with <40% projected win probability winning the game.
     Returns the single biggest upset (largest pre-game probability gap).
     """
     import pytz
@@ -2089,8 +2090,8 @@ def upset_of_the_day(
         # Get power ratings
         ratings = _bulk_power_ratings(cur, season)
 
-        # Search backwards up to 7 days for games
-        for days_back in range(1, 8):
+        # Search: today first, then yesterday, then back up to 7 days
+        for days_back in range(0, 8):
             check_date = today - timedelta(days=days_back)
 
             cur.execute("""
@@ -2139,9 +2140,9 @@ def upset_of_the_day(
                 else:
                     winner_wp = away_wp
 
-                # It's an upset if the winner had <50% projected win probability
-                if winner_wp < 0.50:
-                    upset_margin = 0.50 - winner_wp  # How unlikely the upset was
+                # It's an upset if the winner had <40% projected win probability
+                if winner_wp < 0.40:
+                    upset_margin = 0.40 - winner_wp  # How unlikely the upset was
 
                     if upset_margin > biggest_upset_margin:
                         biggest_upset_margin = upset_margin
@@ -5945,6 +5946,20 @@ def games_by_date(
                                 g["away_logo"] = info[1]
                 except Exception:
                     pass
+
+        # Attach win probabilities for PNW-vs-PNW games
+        try:
+            season_val = games[0]["season"] if games else 2026
+            ratings = _bulk_power_ratings(cur, season_val)
+            for g in games:
+                h = g.get("home_team_id")
+                a = g.get("away_team_id")
+                if h and a and h in ratings and a in ratings:
+                    hwp = _elo_win_prob(ratings[h], ratings[a])
+                    g["home_win_prob"] = round(hwp, 3)
+                    g["away_win_prob"] = round(1.0 - hwp, 3)
+        except Exception:
+            pass
 
         return {"games": games, "date": date, "count": len(games)}
 
