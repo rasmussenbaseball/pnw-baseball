@@ -70,7 +70,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-// ── Scorebug: compact, square-ish ──
+// ── Scorebug: scales fully with size ──
 async function drawScorebug(ctx, game, x, y, w, h) {
   const away = getTeamName(game, 'away')
   const home = getTeamName(game, 'home')
@@ -79,30 +79,35 @@ async function drawScorebug(ctx, game, x, y, w, h) {
   const aWon = Number(game.away_score) > Number(game.home_score)
   const hWon = Number(game.home_score) > Number(game.away_score)
 
-  // Scale fonts based on bug height
-  const scale = Math.min(1, h / 80)
-  const headerFS = Math.max(6, 8 * scale)
-  const nameFS = Math.max(7, 11 * scale)
-  const scoreFS = Math.max(8, 14 * scale)
-  const smallFS = Math.max(5, 7 * scale)
-  const rheFS = Math.max(6, 10 * scale)
-  const logoSize = Math.max(10, 18 * scale)
+  // Scale everything proportionally to bug dimensions
+  const sH = h / 90  // height scale (baseline 90px)
+  const sW = w / 250 // width scale (baseline 250px)
+  const s = Math.min(sH, sW) // use the smaller scale factor
+  const headerFS = Math.max(6, 9 * s)
+  const nameFS = Math.max(7, 13 * s)
+  const scoreFS = Math.max(8, 16 * s)
+  const smallFS = Math.max(5, 8 * s)
+  const rheFS = Math.max(6, 12 * s)
+  const wlsFS = Math.max(5, 7.5 * s)
+  const logoSize = Math.max(10, 22 * s)
+  const pad = Math.max(3, 6 * s)
+  const radius = Math.max(3, 5 * s)
 
-  // Card
+  // Card shadow + bg
   ctx.fillStyle = 'rgba(0,0,0,0.03)'
-  roundRect(ctx, x + 1, y + 1, w, h, 5)
+  roundRect(ctx, x + 1, y + 1, w, h, radius)
   ctx.fill()
-  roundRect(ctx, x, y, w, h, 5)
+  roundRect(ctx, x, y, w, h, radius)
   ctx.fillStyle = '#ffffff'
   ctx.fill()
   ctx.strokeStyle = '#e2e8f0'
-  ctx.lineWidth = 0.5
+  ctx.lineWidth = Math.max(0.5, s * 0.5)
   ctx.stroke()
 
-  // Header: FINAL + pitchers
-  const headerH = Math.max(12, 16 * scale)
+  // Header: FINAL + W/L/S pitchers
+  const headerH = Math.max(12, 18 * s)
   ctx.save()
-  roundRect(ctx, x, y, w, headerH, 5)
+  roundRect(ctx, x, y, w, headerH, radius)
   ctx.clip()
   ctx.fillStyle = '#f1f5f9'
   ctx.fillRect(x, y, w, headerH)
@@ -115,7 +120,7 @@ async function drawScorebug(ctx, game, x, y, w, h) {
   ctx.font = `800 ${headerFS}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`FINAL${innings}`, x + 5, y + headerH / 2)
+  ctx.fillText(`FINAL${innings}`, x + pad, y + headerH / 2)
 
   // W/L/S
   const parts = []
@@ -124,25 +129,25 @@ async function drawScorebug(ctx, game, x, y, w, h) {
   if (game.save_pitcher) parts.push(`S: ${game.save_pitcher}`)
   if (parts.length > 0) {
     ctx.fillStyle = '#94a3b8'
-    ctx.font = `500 ${Math.max(5, 6.5 * scale)}px "Inter", system-ui, sans-serif`
+    ctx.font = `500 ${wlsFS}px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'right'
-    ctx.fillText(parts.join('  '), x + w - 5, y + headerH / 2)
+    ctx.fillText(parts.join('  '), x + w - pad, y + headerH / 2)
   }
 
   // R/H/E header
-  const rheColW = Math.max(14, 18 * scale)
-  const rheX = x + w - 4 - rheColW * 3
-  const rheHeaderY = y + headerH + 2
+  const rheColW = Math.max(14, 22 * s)
+  const rheX = x + w - pad - rheColW * 3
+  const rheHeaderY = y + headerH + 2 * s
   ctx.fillStyle = '#94a3b8'
-  ctx.font = `600 ${Math.max(5, 6.5 * scale)}px "Inter", system-ui, sans-serif`
+  ctx.font = `600 ${Math.max(5, 7.5 * s)}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'center'
-  ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 4 * scale)
-  ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 4 * scale)
-  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 4 * scale)
+  ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 5 * s)
+  ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 5 * s)
+  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 5 * s)
 
   // Team rows
-  const teamTop = rheHeaderY + 9 * scale
-  const teamH = y + h - teamTop - 2
+  const teamTop = rheHeaderY + 11 * s
+  const teamH = y + h - teamTop - 2 * s
   const rowH = teamH / 2
 
   for (let i = 0; i < 2; i++) {
@@ -159,11 +164,11 @@ async function drawScorebug(ctx, game, x, y, w, h) {
 
     if (i === 1) {
       ctx.fillStyle = '#e2e8f0'
-      ctx.fillRect(x + 3, ry - 1, w - 6, 0.5)
+      ctx.fillRect(x + pad, ry - 1, w - pad * 2, 0.5)
     }
 
     // Logo
-    let curX = x + 5
+    let curX = x + pad
     if (logo) {
       try {
         const img = await loadImage(logo)
@@ -173,9 +178,9 @@ async function drawScorebug(ctx, game, x, y, w, h) {
         ctx.drawImage(img, curX + (logoSize - dw) / 2, midY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
-    curX += logoSize + 4
+    curX += logoSize + pad
 
-    // Team name (tight against logo, no wasted space)
+    // Team name
     const maxNameW = rheX - curX - 2
     ctx.fillStyle = won ? '#0f172a' : '#64748b'
     ctx.font = `${won ? '700' : '500'} ${nameFS}px "Inter", system-ui, sans-serif`
@@ -184,13 +189,13 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     let display = teamName
     while (ctx.measureText(display).width > maxNameW && display.length > 2) display = display.slice(0, -1)
     if (display !== teamName) display += '.'
-    ctx.fillText(display, curX, midY - (record ? 3 * scale : 0))
+    ctx.fillText(display, curX, midY - (record ? 4 * s : 0))
 
     // Record
     if (record) {
       ctx.fillStyle = '#94a3b8'
       ctx.font = `400 ${smallFS}px "Inter", system-ui, sans-serif`
-      ctx.fillText(`(${record})`, curX, midY + 6 * scale)
+      ctx.fillText(`(${record})`, curX, midY + 7 * s)
     }
 
     // R (score) / H / E
@@ -385,28 +390,35 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   const scoresBottomY = H - footerH - perfSectionH - perfDividerH - 4
   const scoresAvailH = scoresBottomY - scoresTopY
 
-  // ── Scorebugs: fill ALL available space ──
+  // ── Scorebugs: fill ALL available space with good proportions ──
   const bugGap = 4
   const colGap = 6
 
-  // Try column counts 1-6, pick the one that gives largest bugs that fit
-  let bestCols = 2, bestBugH = 0
+  // Try column counts 1-6, pick layout where bugs are closest to
+  // a good scorebug aspect ratio (w:h around 2.5:1 to 3.5:1)
+  let bestCols = 2, bestBugH = 50
+  let bestScore = -Infinity
   for (let cols = 1; cols <= 6; cols++) {
     const colW = (contentW - (cols - 1) * colGap) / cols
     if (colW < 120 && cols > 1) continue
     const rows = Math.ceil(numGames / cols)
     if (rows === 0) continue
-    const bugH = (scoresAvailH - (rows - 1) * bugGap) / rows
-    if (bugH > bestBugH) {
+    let bugH = (scoresAvailH - (rows - 1) * bugGap) / rows
+    // Cap height so bugs keep scorebug proportions (not taller than ~40% of width)
+    bugH = Math.min(bugH, colW * 0.45)
+    bugH = Math.max(bugH, 36)
+    const ratio = colW / bugH
+    // Ideal ratio around 3:1 - penalize deviations
+    const ratioPenalty = -Math.abs(ratio - 3.0) * 5
+    // Prefer bigger bugs (area)
+    const areaBonus = (colW * bugH) / 1000
+    const score = areaBonus + ratioPenalty
+    if (score > bestScore) {
+      bestScore = score
       bestCols = cols
       bestBugH = bugH
     }
   }
-
-  // Cap max bug height so single games don't look absurd (but still big)
-  bestBugH = Math.min(bestBugH, 200)
-  // Minimum readable size
-  bestBugH = Math.max(bestBugH, 36)
 
   const bugColW = (contentW - (bestCols - 1) * colGap) / bestCols
   const bugH = bestBugH

@@ -6028,8 +6028,9 @@ def daily_performers(
                 g.home_score, g.away_score,
                 g.home_hits, g.home_errors, g.away_hits, g.away_errors,
                 g.innings, g.is_conference_game, g.source_url,
-                ht.short_name AS home_short, ht.logo_url AS home_logo,
-                at2.short_name AS away_short, at2.logo_url AS away_logo,
+                COALESCE(ht.short_name, ht.name) AS home_short, ht.logo_url AS home_logo,
+                COALESCE(at2.short_name, at2.name) AS away_short, at2.logo_url AS away_logo,
+                ht.name AS home_team_name, at2.name AS away_team_name,
                 hd.level AS home_division, ad.level AS away_division
             FROM games g
             LEFT JOIN teams ht ON g.home_team_id = ht.id
@@ -6158,38 +6159,84 @@ def daily_performers(
             singles = h - dbl - trip - hr
             return (hr * 6) + (trip * 4) + (dbl * 3) + (singles * 1.5) + (rbi * 2) + (r * 1) + (bb * 0.5) + (sb * 1.5) + (hbp * 0.3)
 
-        qualified_hitters = [b for b in batting_rows if (b.get("at_bats") or 0) >= 2]
+        # Aggregate stats across all games per player (doubleheaders get combined)
+        hitter_agg = {}
+        bat_sum_keys = ["at_bats", "runs", "hits", "doubles", "triples",
+                        "home_runs", "rbi", "walks", "strikeouts",
+                        "hit_by_pitch", "stolen_bases", "sacrifice_flies"]
+        for b in batting_rows:
+            pid = b.get("player_id")
+            key = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
+            if key not in hitter_agg:
+                hitter_agg[key] = {
+                    "player_id": pid,
+                    "player_name": b.get("player_name"),
+                    "first_name": b.get("first_name"),
+                    "last_name": b.get("last_name"),
+                    "team_id": b.get("team_id"),
+                    "team_short": b.get("team_short"),
+                    "team_logo": b.get("team_logo"),
+                    "headshot_url": b.get("headshot_url"),
+                    "division": b.get("division"),
+                }
+                for sk in bat_sum_keys:
+                    hitter_agg[key][sk] = 0
+            for sk in bat_sum_keys:
+                hitter_agg[key][sk] += (b.get(sk) or 0)
+
+        qualified_hitters = [b for b in hitter_agg.values() if b.get("at_bats", 0) >= 1]
         for b in qualified_hitters:
             b["perf_score"] = hitting_score(b)
             b["display_name"] = _display_name(b)
 
-        # Deduplicate: if a player appears in multiple games (doubleheader),
-        # keep only their best single-game performance
-        seen_hitters = {}
-        for b in sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True):
-            pid = b.get("player_id")
-            key = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
-            if key not in seen_hitters:
-                seen_hitters[key] = b
-        top_hitters = list(seen_hitters.values())[:10]
+        # Return many candidates so division filters have enough (frontend picks top 5)
+        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:50]
 
-        # ── 7. Rank pitchers (3+ IP, weighted by IP for longer outings) ──
-        qualified_pitchers = [p for p in pitching_rows if (p.get("innings_pitched") or 0) >= 3.0]
-        for p in qualified_pitchers:
-            p["display_name"] = _display_name(p)
-            # Weight game score by IP (rewards longer outings)
-            gs = p.get("game_score") or 0
-            ip = p.get("innings_pitched") or 0
-            p["weighted_score"] = gs + (ip * 2)  # bonus for deeper outings
-
-        # Deduplicate pitchers same as hitters
-        seen_pitchers = {}
-        for p in sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True):
+        # ── 7. Rank pitchers (2+ IP, weighted by IP for longer outings) ──
+        # Aggregate pitching stats per player across games
+        pitcher_agg = {}
+        pitch_sum_keys = ["innings_pitched", "hits_allowed", "runs_allowed",
+                          "earned_runs", "walks", "strikeouts",
+                          "home_runs_allowed", "pitches_thrown"]
+        for p in pitching_rows:
             pid = p.get("player_id")
             key = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
-            if key not in seen_pitchers:
-                seen_pitchers[key] = p
-        top_pitchers = list(seen_pitchers.values())[:10]
+            if key not in pitcher_agg:
+                pitcher_agg[key] = {
+                    "player_id": pid,
+                    "player_name": p.get("player_name"),
+                    "first_name": p.get("first_name"),
+                    "last_name": p.get("last_name"),
+                    "team_id": p.get("team_id"),
+                    "team_short": p.get("team_short"),
+                    "team_logo": p.get("team_logo"),
+                    "headshot_url": p.get("headshot_url"),
+                    "division": p.get("division"),
+                    "decision": None,
+                    "game_score": 0,
+                    "is_starter": p.get("is_starter"),
+                }
+                for sk in pitch_sum_keys:
+                    pitcher_agg[key][sk] = 0
+            for sk in pitch_sum_keys:
+                pitcher_agg[key][sk] += (p.get(sk) or 0)
+            # Sum game scores across appearances
+            pitcher_agg[key]["game_score"] += (p.get("game_score") or 0)
+            # Keep the most notable decision (W > S > L)
+            dec = p.get("decision")
+            if dec and dec in ("W", "L", "S"):
+                existing = pitcher_agg[key]["decision"]
+                if not existing or dec == "W" or (dec == "S" and existing != "W"):
+                    pitcher_agg[key]["decision"] = dec
+
+        qualified_pitchers = [p for p in pitcher_agg.values() if (p.get("innings_pitched") or 0) >= 2.0]
+        for p in qualified_pitchers:
+            p["display_name"] = _display_name(p)
+            gs = p.get("game_score") or 0
+            ip = p.get("innings_pitched") or 0
+            p["weighted_score"] = gs + (ip * 2)
+
+        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True)[:50]
 
         return {
             "games": games,
