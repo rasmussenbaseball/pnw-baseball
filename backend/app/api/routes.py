@@ -6206,7 +6206,8 @@ def daily_performers(
             # Compute XBH for display
             b["xbh"] = (b.get("doubles") or 0) + (b.get("triples") or 0) + (b.get("home_runs") or 0)
 
-        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:50]
+        # Return ALL qualified hitters — frontend filters by division and picks top 5
+        top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)
 
         # ── 7. Rank pitchers — best SINGLE game performance (no aggregation) ──
         # Keep each pitcher's best individual game to avoid double-counting
@@ -6251,7 +6252,8 @@ def daily_performers(
         for p in qualified_pitchers:
             p["display_name"] = _display_name(p)
 
-        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True)[:50]
+        # Return ALL qualified pitchers — frontend filters by division and picks top 5
+        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True)
 
         return {
             "games": games,
