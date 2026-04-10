@@ -1347,7 +1347,10 @@ def parse_sidearm_boxscore(html, base_url=""):
     batting_tables = _find_stat_tables(soup, "batting")
     for i, table in enumerate(batting_tables[:2]):
         side = "away" if i == 0 else "home"
-        result["batting"][side] = _parse_batting_table(table)
+        players = _parse_batting_table(table)
+        # Enrich with annotation sections (HR, 2B, 3B, SB listed below the table)
+        _apply_batting_annotations(table, players)
+        result["batting"][side] = players
 
     # ─── Parse pitching tables ───
     pitching_tables = _find_stat_tables(soup, "pitching")
@@ -1511,6 +1514,156 @@ def _parse_batting_table(table):
             players.append(player)
 
     return players
+
+
+def _apply_batting_annotations(table, players):
+    """
+    Parse the BATTING and BASERUNNING annotation sections that follow a
+    box score stat table on Sidearm pages.  These contain per-player
+    extra-base-hit and stolen-base data not present in the table columns.
+
+    Typical HTML:
+      <section>
+        <b>BATTING</b><br/>
+        2B: Stevens, Nate (1); Carson, Dylan (1)<br/>
+        HR: Stevens, Nate (2)<br/>
+        <b>BASERUNNING</b><br/>
+        SB: Gerding, Carson (1)
+      </section>
+
+    Merges counts into the player dicts (keys "2b", "3b", "hr", "sb", "hbp").
+    """
+    if not table or not players:
+        return
+
+    # Build a lookup: normalized name -> player dict index
+    # Names in annotations can be "Last, First" or "First Last"
+    def _normalize(name):
+        """Return lowercase 'last first' regardless of format."""
+        name = name.strip()
+        name = re.sub(r'\s*\(.*?\)\s*', '', name)  # Remove (season count)
+        name = re.sub(r'^\d+\s*', '', name)  # Remove jersey numbers
+        if ',' in name:
+            parts = name.split(',', 1)
+            return f"{parts[0].strip()} {parts[1].strip()}".lower()
+        # "First Last" -> "Last First"
+        parts = name.strip().split()
+        if len(parts) >= 2:
+            return f"{parts[-1]} {' '.join(parts[:-1])}".lower()
+        return name.lower()
+
+    name_to_idx = {}
+    for idx, p in enumerate(players):
+        pname = p.get("player_name", "")
+        norm = _normalize(pname)
+        name_to_idx[norm] = idx
+        # Also index by last name only for fuzzy matching
+        last = norm.split()[0] if norm else ""
+        if last and last not in name_to_idx:
+            name_to_idx[last] = idx
+
+    # Map annotation labels to player dict keys
+    LABEL_MAP = {
+        "2b": "2b", "doubles": "2b",
+        "3b": "3b", "triples": "3b",
+        "hr": "hr", "home runs": "hr",
+        "sb": "sb", "stolen bases": "sb",
+        "cs": "cs", "caught stealing": "cs",
+        "hbp": "hbp", "hit by pitch": "hbp",
+    }
+
+    # Walk siblings and parent containers after the table to find annotation text.
+    # Sidearm puts these in various ways: sibling divs, section elements, or
+    # just loose text nodes after the table.
+    annotation_text = ""
+
+    # Strategy 1: look for sibling elements after the table
+    for sib in table.find_all_next(limit=20):
+        tag = sib.name or ""
+        text = sib.get_text(strip=True) if hasattr(sib, 'get_text') else str(sib).strip()
+
+        # Stop if we hit another stat table or pitching section
+        if tag == "table":
+            break
+        if tag in ("h2", "h3", "h4") and "pitching" in text.lower():
+            break
+
+        # Look for the annotation content
+        if any(label in text.lower() for label in ["batting", "baserunning", "2b:", "3b:", "hr:", "sb:", "hbp:"]):
+            annotation_text += "\n" + text
+
+    if not annotation_text:
+        # Strategy 2: check the table's parent container for text after the table
+        parent = table.parent
+        if parent:
+            full = parent.get_text("\n")
+            # Find text after the last "Totals" line
+            lines = full.split("\n")
+            after_totals = False
+            for line in lines:
+                if "total" in line.lower():
+                    after_totals = True
+                    continue
+                if after_totals:
+                    annotation_text += "\n" + line
+
+    if not annotation_text:
+        return
+
+    # Parse lines like "2B: Stevens, Nate (1); Carson, Dylan (1)"
+    for line in annotation_text.split("\n"):
+        line = line.strip()
+        if not line or ':' not in line:
+            continue
+
+        # Split on first ":"
+        label_part, names_part = line.split(":", 1)
+        label = label_part.strip().lower()
+        stat_key = LABEL_MAP.get(label)
+        if not stat_key:
+            continue
+
+        # Parse individual player entries separated by ";"
+        entries = names_part.split(";")
+        for entry in entries:
+            entry = entry.strip()
+            if not entry:
+                continue
+
+            # Extract game count from parentheses like "(2)" — this is today's count
+            count = 1  # default
+            count_match = re.search(r'\((\d+)\)', entry)
+            if count_match:
+                count = int(count_match.group(1))
+
+            # Clean name for matching
+            clean_name = re.sub(r'\s*\(.*?\)\s*', '', entry).strip()
+            norm = _normalize(clean_name)
+
+            # Find player
+            idx = name_to_idx.get(norm)
+            if idx is None:
+                # Try last name only
+                last = norm.split()[0] if norm else ""
+                idx = name_to_idx.get(last)
+            if idx is None:
+                # Try first+last reversed match
+                parts = norm.split()
+                if len(parts) >= 2:
+                    reversed_name = f"{parts[1]} {parts[0]}"
+                    idx = name_to_idx.get(reversed_name)
+
+            if idx is not None:
+                # For annotation stats, the count in parens is typically the
+                # season total, not the game count.  On Sidearm pages that
+                # omit 2B/3B/HR/SB from the table, the number of TIMES the
+                # player appears in the annotation line equals their game count.
+                # But some sites show "(1)" meaning 1 in this game.
+                # The safest approach: if the table already has a nonzero value
+                # for this stat, don't override it.
+                current = players[idx].get(stat_key, 0)
+                if current == 0:
+                    players[idx][stat_key] = count
 
 
 def _parse_pitching_table(table):
