@@ -309,11 +309,10 @@ function DivisionSection({ division, label, count, children }) {
 
 function GameGrid({ games, winProbs = {} }) {
   const count = games.length
-  // More games = tighter grid with more columns and smaller gaps
+  // More games = compact cards with tighter gaps
+  // Cap at 3 columns so the layout is more square (better for screenshots)
   const compact = count >= 8
-  const gridCols = compact
-    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
-    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+  const gridCols = 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
   const gap = compact ? 'gap-1.5' : 'gap-2'
 
   return (
