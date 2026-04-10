@@ -139,10 +139,49 @@ const PITCHING_ADVANCED = [
   { key: 'pitching_war', label: 'WAR', format: 'war' },
 ]
 
+// Compact career row stats for multi-season display
+const BATTING_CAREER_ROW = [
+  { key: 'games', label: 'G', format: 'int' },
+  { key: 'batting_avg', label: 'AVG', format: 'avg' },
+  { key: 'home_runs', label: 'HR', format: 'int' },
+  { key: 'rbi', label: 'RBI', format: 'int' },
+  { key: 'offensive_war', label: 'oWAR', format: 'war' },
+]
+
+const PITCHING_CAREER_ROW = [
+  { key: 'games', label: 'G', format: 'int' },
+  { key: 'era', label: 'ERA', format: 'era' },
+  { key: 'innings_pitched', label: 'IP', format: 'ip' },
+  { key: 'strikeouts', label: 'K', format: 'int' },
+  { key: 'pitching_war', label: 'pWAR', format: 'war' },
+]
+
 // Pie chart colors
 const PIE_COLORS = {
   '1B': '#10b981', '2B': '#f59e0b', '3B': '#f97316', 'HR': '#ef4444',
-  'BB': '#3b82f6', 'HBP': '#a855f7', 'H': '#f59e0b', 'K': '#10b981',
+  'BB': '#3b82f6', 'HBP': '#a855f7', 'H': '#f59e0b',
+}
+
+
+// ─── Helpers ──────────────────────────────────────────────────
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+function formatAwardVal(cat, val, fmt) {
+  if (fmt === 'avg') return Number(val).toFixed(3)
+  if (fmt === 'float1') return Number(val).toFixed(1)
+  if (fmt === 'float2') return Number(val).toFixed(2)
+  if (fmt === 'int') return Math.round(val)
+  if (fmt === 'pct') return Number(val).toFixed(1) + '%'
+  if (cat === 'AVG' || cat === 'ISO' || cat === 'OBP' || cat === 'SLG') return Number(val).toFixed(3)
+  if (cat === 'ERA' || cat === 'FIP' || cat === 'WHIP' || cat === 'SIERA' || cat === 'xFIP') return Number(val).toFixed(2)
+  if (cat === 'oWAR' || cat === 'pWAR' || cat === 'IP') return Number(val).toFixed(1)
+  if (cat === 'wRC+' || cat === 'FIP+' || cat === 'ERA+') return Math.round(val)
+  if (cat === 'K-BB%') return Number(val).toFixed(1) + '%'
+  return val
 }
 
 
@@ -210,8 +249,8 @@ function PlayerSearchBox({ onSelect }) {
 }
 
 
-// ─── SVG Pie Chart ────────────────────────────────────────────
-function OnBasePieChart({ statsRow, isPitcher, size = 82 }) {
+// ─── SVG Donut Pie Chart ──────────────────────────────────────
+function OnBasePieChart({ statsRow, isPitcher, size = 76 }) {
   if (!statsRow) return null
 
   let slices = []
@@ -247,36 +286,31 @@ function OnBasePieChart({ statsRow, isPitcher, size = 82 }) {
     const startAngle = angle
     const endAngle = angle + pct * 2 * Math.PI
     angle = endAngle
-
-    // Handle full circle (single slice)
     if (pct >= 0.999) {
       return { ...sl, pct, d: `M ${cx - r} ${cy} A ${r} ${r} 0 1 1 ${cx + r} ${cy} A ${r} ${r} 0 1 1 ${cx - r} ${cy} Z` }
     }
-
     const x1 = cx + r * Math.cos(startAngle)
     const y1 = cy + r * Math.sin(startAngle)
     const x2 = cx + r * Math.cos(endAngle)
     const y2 = cy + r * Math.sin(endAngle)
     const largeArc = pct > 0.5 ? 1 : 0
-
     return { ...sl, pct, d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z` }
   })
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2.5">
       <svg width={size} height={size} className="shrink-0">
         {paths.map((p, i) => (
           <path key={i} d={p.d} fill={p.color} stroke="rgba(10,22,40,0.9)" strokeWidth={1.5} />
         ))}
-        {/* Center hole for donut effect */}
-        <circle cx={cx} cy={cy} r={r * 0.45} fill="rgba(10,22,40,0.95)" />
+        <circle cx={cx} cy={cy} r={r * 0.42} fill="rgba(10,22,40,0.95)" />
       </svg>
       <div className="flex flex-col gap-0.5">
         {paths.map((p, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: p.color }} />
-            <span className="text-[9px] text-white/70 font-medium">{p.label}</span>
-            <span className="text-[9px] text-white/40">{Math.round(p.pct * 100)}%</span>
+          <div key={i} className="flex items-center gap-1">
+            <div className="rounded-sm shrink-0" style={{ width: '7px', height: '7px', backgroundColor: p.color }} />
+            <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>{p.label}</span>
+            <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.35)' }}>{Math.round(p.pct * 100)}%</span>
           </div>
         ))}
       </div>
@@ -285,34 +319,75 @@ function OnBasePieChart({ statsRow, isPitcher, size = 82 }) {
 }
 
 
-// ─── Percentile Bar (compact) ─────────────────────────────────
-function PercentileBar({ label, value, percentile, format }) {
+// ─── Percentile Bar (compact, fills available height) ─────────
+function PercentileBar({ label, value, percentile, format, height }) {
   const color = percentileColor(percentile)
   const barWidth = Math.max(4, percentile)
   return (
-    <div className="flex items-center" style={{ height: '22px' }}>
-      <div className="text-right pr-1.5 text-[9px] font-bold text-white/50 shrink-0" style={{ width: '38px' }}>{label}</div>
-      <div className="flex-1 relative mx-1" style={{ height: '5px' }}>
-        <div className="absolute inset-0 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.07)' }} />
-        <div className="absolute top-0 left-0 h-full rounded-full transition-all duration-500" style={{ width: `${barWidth}%`, backgroundColor: color }} />
+    <div className="flex items-center" style={{ height: height || '22px' }}>
+      <div style={{ width: '38px', textAlign: 'right', paddingRight: '5px', fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.5)', flexShrink: 0 }}>{label}</div>
+      <div style={{ flex: 1, position: 'relative', height: '5px', margin: '0 4px' }}>
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '9999px', backgroundColor: 'rgba(255,255,255,0.07)' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: '9999px', width: `${barWidth}%`, backgroundColor: color, transition: 'width 0.5s ease' }} />
       </div>
-      <div className="flex items-center justify-center shrink-0" style={{ width: '24px' }}>
-        <span className="inline-flex items-center justify-center rounded-full text-white font-bold" style={{ width: '18px', height: '18px', fontSize: '8px', backgroundColor: color }}>
-          {percentile}
-        </span>
+      <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', fontSize: '8px', fontWeight: 700, color: '#fff', backgroundColor: color }}>{percentile}</span>
       </div>
-      <div className="text-right text-[9px] text-white/40 shrink-0" style={{ width: '38px' }}>{formatStat(value, format)}</div>
+      <div style={{ width: '38px', textAlign: 'right', fontSize: '9px', color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{formatStat(value, format)}</div>
     </div>
   )
 }
 
 
-// ─── Stat Cell (with borders) ─────────────────────────────────
+// ─── Stat Cell (bordered) ─────────────────────────────────────
 function StatCell({ label, value, format, borderRight = true }) {
   return (
-    <div className={`text-center py-1 ${borderRight ? 'border-r border-white/[0.06]' : ''}`}>
-      <div className="text-[7px] uppercase tracking-wider text-white/30 leading-none mb-0.5">{label}</div>
-      <div className="text-[13px] font-bold text-white leading-none">{formatStat(value, format)}</div>
+    <div style={{
+      textAlign: 'center', padding: '3px 0',
+      borderRight: borderRight ? '1px solid rgba(255,255,255,0.05)' : 'none',
+    }}>
+      <div style={{ fontSize: '7px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'rgba(255,255,255,0.3)', lineHeight: 1, marginBottom: '2px' }}>{label}</div>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', lineHeight: 1 }}>{formatStat(value, format)}</div>
+    </div>
+  )
+}
+
+
+// ─── Award / Ranking Badge ────────────────────────────────────
+function AwardBadge({ rank, category, value, type, format, variant = 'award' }) {
+  // variant: 'award' (team leader), 'career' (career ranking), 'pnw' (PNW ranking)
+  const bgColors = {
+    award: 'rgba(59,130,246,0.15)',
+    career: rank === 1 ? 'rgba(245,158,11,0.2)' : rank <= 3 ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.06)',
+    pnw: rank === 1 ? 'rgba(20,184,166,0.2)' : 'rgba(20,184,166,0.12)',
+  }
+  const borderColors = {
+    award: 'rgba(59,130,246,0.3)',
+    career: rank === 1 ? 'rgba(245,158,11,0.4)' : 'rgba(245,158,11,0.2)',
+    pnw: rank === 1 ? 'rgba(20,184,166,0.4)' : 'rgba(20,184,166,0.25)',
+  }
+  const textColors = {
+    award: 'rgba(147,197,253,0.9)',
+    career: rank === 1 ? 'rgba(252,211,77,0.95)' : 'rgba(252,211,77,0.7)',
+    pnw: 'rgba(94,234,212,0.9)',
+  }
+
+  const formattedVal = formatAwardVal(category, value, format)
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      padding: '2px 6px', borderRadius: '4px',
+      background: bgColors[variant], border: `1px solid ${borderColors[variant]}`,
+      fontSize: '8px', color: textColors[variant], fontWeight: 600,
+      lineHeight: 1.3,
+    }}>
+      {variant === 'pnw' && <span style={{ fontSize: '7px', opacity: 0.6 }}>PNW</span>}
+      {(variant === 'career' || variant === 'pnw') && (
+        <span style={{ fontWeight: 800 }}>{ordinal(rank)}</span>
+      )}
+      <span>{category}</span>
+      <span style={{ opacity: 0.5 }}>{formattedVal}</span>
     </div>
   )
 }
@@ -371,6 +446,11 @@ export default function PlayerGraphic() {
   const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
   const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
   const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+  const careerRowStats = isPitcher ? PITCHING_CAREER_ROW : BATTING_CAREER_ROW
+
+  // Get all seasons for career display (not the active one)
+  const allStatSeasons = isPitcher ? pitchingStats : battingStats
+  const otherSeasons = allStatSeasons.filter(s => s.season !== activeSeason)
 
   // Fetch team record + national ranking
   useEffect(() => {
@@ -380,14 +460,12 @@ export default function PlayerGraphic() {
       fetch(`/api/v1/team-ratings?season=${season}`).then(r => r.json()).catch(() => []),
       fetch(`/api/v1/national-rankings?season=${season}`).then(r => r.json()).catch(() => []),
     ]).then(([ratingsData, rankingsData]) => {
-      // Find team in ratings (grouped by division)
       let record = null
       const divisions = Array.isArray(ratingsData) ? ratingsData : []
       for (const div of divisions) {
         const team = (div.teams || []).find(t => t.id === info.team_id)
         if (team) { record = team; break }
       }
-      // Find team in national rankings
       let ranking = null
       const rankDivisions = Array.isArray(rankingsData) ? rankingsData : []
       for (const div of rankDivisions) {
@@ -398,7 +476,7 @@ export default function PlayerGraphic() {
     })
   }, [info.team_id, activeSeason])
 
-  // Deduplicate career history (one entry per team, showing year range)
+  // Deduplicate career history
   const careerEntries = (() => {
     if (!teamHistory.length) return []
     const grouped = {}
@@ -418,34 +496,31 @@ export default function PlayerGraphic() {
     })).sort((a, b) => Math.min(...a.seasons) - Math.min(...b.seasons))
   })()
 
-  // Build awards/rankings display items (max 3 for space)
-  const displayItems = (() => {
-    const items = []
-    // Season awards first
-    for (const a of awards) {
-      items.push({ icon: '\u2B50', text: `${a.award_name || a.category}`, sub: String(a.season) })
-    }
-    // PNW rankings (top 5 only)
-    for (const r of pnwRankings.filter(r => r.rank <= 5).slice(0, 4)) {
-      const ordinal = r.rank === 1 ? '1st' : r.rank === 2 ? '2nd' : r.rank === 3 ? '3rd' : `${r.rank}th`
-      items.push({ icon: '\uD83C\uDFC6', text: `${ordinal} in ${r.stat_display || r.stat_name}`, sub: info.division_level || '' })
-    }
-    // Career rankings as fallback
-    if (items.length === 0) {
-      for (const r of careerRankings.slice(0, 4)) {
-        const ordinal = r.rank === 1 ? '1st' : r.rank === 2 ? '2nd' : r.rank === 3 ? '3rd' : `${r.rank}th`
-        items.push({ icon: '\uD83D\uDCCA', text: `${ordinal} on team in ${r.stat_display || r.stat_name}`, sub: '' })
-      }
-    }
-    return items.slice(0, 3)
+  // Group season awards by season
+  const awardsBySeason = (() => {
+    const grouped = {}
+    awards.forEach(a => {
+      const key = a.season
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(a)
+    })
+    return Object.entries(grouped)
+      .sort(([a], [b]) => Number(b) - Number(a))
   })()
+
+  // Compute how much right-column content we have to determine sizing
+  const hasCareer = otherSeasons.length > 0 || careerEntries.length > 1
+  const hasAwards = awards.length > 0
+  const hasCareerRankings = careerRankings.length > 0
+  const hasPnwRankings = pnwRankings.length > 0
+  const hasTeamInfo = !!teamInfo?.record
+  const rightContentCount = [hasCareer, hasAwards || hasCareerRankings || hasPnwRankings, hasTeamInfo, true /* pie chart */].filter(Boolean).length
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
   return (
     <div className="space-y-6">
-      {/* Page title + search */}
       <div>
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Player Pages</h1>
         <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic. Screenshot to save.</p>
@@ -459,7 +534,6 @@ export default function PlayerGraphic() {
         <div className="text-center py-12 text-red-500">Failed to load player. Try another search.</div>
       )}
 
-      {/* Season selector + two-way toggle */}
       {rawData && (
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -480,17 +554,13 @@ export default function PlayerGraphic() {
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
                   isPitcher === false ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
-              >
-                Hitting
-              </button>
+              >Hitting</button>
               <button
                 onClick={() => setStatMode('pitching')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
                   isPitcher === true ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
-              >
-                Pitching
-              </button>
+              >Pitching</button>
             </div>
           )}
         </div>
@@ -500,95 +570,96 @@ export default function PlayerGraphic() {
       {rawData && (
         <div className="flex justify-center">
           <div
-            className="overflow-hidden flex flex-col"
             style={{
               width: '540px',
               height: '640px',
               background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)',
               borderRadius: '12px',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
             {/* ── HEADER ── */}
-            <div className="flex items-center px-4 pt-3 pb-2 shrink-0" style={{ minHeight: '76px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px 6px', flexShrink: 0 }}>
               {/* Headshot */}
-              <div className="shrink-0">
+              <div style={{ flexShrink: 0 }}>
                 {info.headshot_url ? (
-                  <img src={info.headshot_url} alt="" className="rounded-full object-cover border-2 border-white/20" style={{ width: '56px', height: '56px' }} />
+                  <img src={info.headshot_url} alt="" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }} />
                 ) : (
-                  <div className="rounded-full bg-white/10 flex items-center justify-center text-lg font-bold text-white/40" style={{ width: '56px', height: '56px' }}>
+                  <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>
                     {info.first_name?.[0]}{info.last_name?.[0]}
                   </div>
                 )}
               </div>
 
               {/* Center: Name + Info */}
-              <div className="flex-1 text-center px-3 min-w-0">
-                <div className="text-[22px] font-extrabold text-white leading-tight truncate">
+              <div style={{ flex: 1, textAlign: 'center', padding: '0 8px', minWidth: 0 }}>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: '#fff', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {info.first_name} {info.last_name}
                 </div>
-                <div className="text-[10px] text-white/45 mt-0.5">
+                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>
                   {[info.position, info.jersey_number ? `#${info.jersey_number}` : null, info.bats && info.throws ? `${info.bats}/${info.throws}` : null, info.year_in_school].filter(Boolean).join('  \u00B7  ')}
                 </div>
-                <div className="text-[12px] font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, marginTop: '2px', color: '#7dd3fc' }}>
                   {info.team_name}
                 </div>
               </div>
 
-              {/* Team logo (mirrored on right) */}
-              <div className="shrink-0 flex flex-col items-center">
+              {/* Team logo */}
+              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 {info.logo_url ? (
-                  <img src={info.logo_url} alt="" className="object-contain" style={{ width: '52px', height: '52px', opacity: 0.7 }} />
+                  <img src={info.logo_url} alt="" style={{ width: '48px', height: '48px', objectFit: 'contain', opacity: 0.7 }} />
                 ) : (
-                  <div style={{ width: '52px', height: '52px' }} />
+                  <div style={{ width: '48px', height: '48px' }} />
                 )}
-                <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mt-0.5">
+                <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '1px' }}>
                   {info.division_level}
                 </div>
               </div>
             </div>
 
             {/* ── STAT TABLES ── */}
-            <div className="mx-3 shrink-0 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ margin: '0 10px', flexShrink: 0, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
               {statsRow ? (
                 <>
-                  {/* Core stats row */}
-                  <div className="flex items-center px-2 py-0.5" style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
-                    <span className="text-[7px] font-bold text-white/25 uppercase tracking-wider">
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)' }}>
+                    <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {isPitcher ? 'Pitching' : 'Batting'}
                     </span>
-                    <span className="text-[7px] text-white/15 ml-auto">
+                    <span style={{ fontSize: '7px', color: 'rgba(255,255,255,0.15)', marginLeft: 'auto' }}>
                       {activeSeason === 'career' ? 'Career' : activeSeason}
                     </span>
                   </div>
-                  <div className="grid grid-cols-8" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                     {coreStats.map((s, i) => (
                       <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} borderRight={i < coreStats.length - 1} />
                     ))}
                   </div>
-                  {/* Advanced stats row */}
-                  <div className="flex items-center px-2 py-0.5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                    <span className="text-[7px] font-bold text-white/25 uppercase tracking-wider">Advanced</span>
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 8px', background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    <span style={{ fontSize: '7px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Advanced</span>
                   </div>
-                  <div className="grid grid-cols-8" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                     {advStats.map((s, i) => (
                       <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} borderRight={i < advStats.length - 1} />
                     ))}
                   </div>
                 </>
               ) : (
-                <div className="py-4 text-center text-white/30 text-xs">No stats for this season.</div>
+                <div style={{ padding: '12px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>No stats for this season.</div>
               )}
             </div>
 
-            {/* ── BOTTOM SPLIT ── */}
-            <div className="flex-1 flex mx-3 mt-2 min-h-0">
-              {/* LEFT: Percentile Bars */}
-              <div className="flex-1 flex flex-col pr-2" style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[8px] font-bold text-white/25 uppercase tracking-wider">Percentile Rankings</span>
+            {/* ── BOTTOM SPLIT (flex-1 fills remaining space) ── */}
+            <div style={{ flex: 1, display: 'flex', margin: '6px 10px 0', minHeight: 0 }}>
+
+              {/* LEFT: Percentile Bars - fills full height */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Percentile Rankings</span>
                 </div>
                 {availablePerc.length > 0 ? (
-                  <div className="flex flex-col justify-evenly flex-1">
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly' }}>
                     {availablePerc.map(m => (
                       <PercentileBar
                         key={m.key}
@@ -600,102 +671,164 @@ export default function PlayerGraphic() {
                     ))}
                   </div>
                 ) : (
-                  <div className="flex-1 flex items-center justify-center text-white/20 text-[10px]">
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>
                     Not enough PA to qualify
                   </div>
                 )}
-                <div className="text-[7px] text-white/20 mt-1">vs. {info.division_level || 'Division'}</div>
+                <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.2)', marginTop: '2px', marginBottom: '4px' }}>vs. {info.division_level || 'Division'}</div>
               </div>
 
-              {/* RIGHT: Pie + Career + Awards + Team */}
-              <div className="flex-1 flex flex-col pl-2 min-w-0">
+              {/* RIGHT: Everything else - fills full height with justify-between */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', paddingLeft: '8px', justifyContent: rightContentCount <= 2 ? 'space-evenly' : 'flex-start', gap: rightContentCount <= 2 ? undefined : '6px' }}>
+
                 {/* Pie Chart */}
                 {statsRow && (
-                  <div className="mb-2">
-                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1.5">
+                  <div>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
                       {isPitcher ? 'Baserunners Allowed' : 'Reaching Base'}
                     </div>
-                    <OnBasePieChart statsRow={statsRow} isPitcher={isPitcher} size={76} />
-                  </div>
-                )}
-
-                {/* Career History */}
-                {careerEntries.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Career</div>
-                    <div className="space-y-0.5">
-                      {careerEntries.map((entry, i) => (
-                        <div key={i} className="flex items-center gap-1.5">
-                          {entry.logo_url && (
-                            <img src={entry.logo_url} alt="" className="w-3.5 h-3.5 object-contain shrink-0 opacity-70" />
-                          )}
-                          <span className="text-[9px] text-white/50 shrink-0">{entry.seasonRange}</span>
-                          <span className="text-[9px] text-white/70 font-medium truncate">{entry.team_short || entry.team_name}</span>
-                          <span className="text-[8px] text-white/25 shrink-0">({entry.division_level})</span>
-                        </div>
-                      ))}
-                    </div>
+                    <OnBasePieChart statsRow={statsRow} isPitcher={isPitcher} size={rightContentCount <= 2 ? 90 : 72} />
                   </div>
                 )}
 
                 {/* Team Info */}
-                {teamInfo?.record && (
-                  <div className="mb-2">
-                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Team</div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <span className="text-[10px] text-white/70 font-semibold">
+                {hasTeamInfo && (
+                  <div>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Team</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.8)' }}>
                         {teamInfo.record.wins}-{teamInfo.record.losses}
                       </span>
                       {teamInfo.record.conf_wins != null && (
-                        <span className="text-[9px] text-white/40">
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>
                           ({teamInfo.record.conf_wins}-{teamInfo.record.conf_losses} conf)
                         </span>
                       )}
                       {teamInfo.ranking?.composite_rank && (
-                        <span className="text-[9px] font-semibold" style={{ color: '#7dd3fc' }}>
+                        <span style={{ fontSize: '9px', fontWeight: 600, color: '#7dd3fc' }}>
                           #{teamInfo.ranking.composite_rank} {info.division_level}
                         </span>
                       )}
                     </div>
-                    {teamInfo.record.conference_abbrev && (
-                      <div className="text-[8px] text-white/30 mt-0.5">{teamInfo.record.conference_name || teamInfo.record.conference_abbrev}</div>
+                    {teamInfo.record.conference_name && (
+                      <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.25)', marginTop: '1px' }}>{teamInfo.record.conference_name}</div>
                     )}
                   </div>
                 )}
 
-                {/* Awards / Rankings */}
-                {displayItems.length > 0 && (
-                  <div className="mt-auto">
-                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">
-                      {awards.length > 0 ? 'Awards' : 'Rankings'}
-                    </div>
-                    <div className="space-y-0.5">
-                      {displayItems.map((item, i) => (
-                        <div key={i} className="flex items-start gap-1.5">
-                          <span className="text-[9px] shrink-0">{item.icon}</span>
-                          <div className="min-w-0">
-                            <span className="text-[9px] text-white/60 leading-tight">{item.text}</span>
-                            {item.sub && <span className="text-[8px] text-white/25 ml-1">{item.sub}</span>}
-                          </div>
+                {/* Career History (previous teams + per-season stats) */}
+                {hasCareer && (
+                  <div>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Career</div>
+                    {/* Season-by-season rows with compact stats */}
+                    {otherSeasons.map((row, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                        {row.logo_url && (
+                          <img src={row.logo_url} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
+                        )}
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', flexShrink: 0, width: '24px' }}>{String(row.season).slice(-2)}'</span>
+                        <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                          {careerRowStats.map(s => (
+                            <span key={s.key} style={{ fontSize: '8px', color: 'rgba(255,255,255,0.55)' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.3)' }}>{s.label} </span>
+                              {formatStat(row[s.key], s.format)}
+                            </span>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
+                    {/* Schools if multi-school career (and no other seasons to show logos) */}
+                    {otherSeasons.length === 0 && careerEntries.length > 1 && careerEntries.map((entry, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                        {entry.logo_url && (
+                          <img src={entry.logo_url} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6, flexShrink: 0 }} />
+                        )}
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>{entry.seasonRange}</span>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>{entry.team_short}</span>
+                        <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.25)' }}>({entry.division_level})</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Awards + Rankings */}
+                {(hasAwards || hasCareerRankings || hasPnwRankings) && (
+                  <div style={{ marginTop: hasCareer ? '0' : '0' }}>
+                    {/* Season Awards (team leaders) */}
+                    {hasAwards && (
+                      <div style={{ marginBottom: '4px' }}>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                          Team Leaders
+                        </div>
+                        {awardsBySeason.map(([season, items]) => (
+                          <div key={season} style={{ marginBottom: '2px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', alignItems: 'center' }}>
+                              <span style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.3)', width: '20px', flexShrink: 0 }}>{String(season).slice(-2)}'</span>
+                              {items.slice(0, 6).map((a, i) => (
+                                <AwardBadge key={i} rank={1} category={a.category} value={a.value} type={a.type} variant="award" />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* PNW Rankings */}
+                    {hasPnwRankings && (
+                      <div style={{ marginBottom: '4px' }}>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                          PNW Rankings
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                          {pnwRankings.slice(0, 6).map((r, i) => (
+                            <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} format={r.format} variant="pnw" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Career Rankings (fallback if no awards/PNW) */}
+                    {hasCareerRankings && !hasAwards && !hasPnwRankings && (
+                      <div>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                          Career Rankings
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                          {careerRankings.slice(0, 6).map((r, i) => (
+                            <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} variant="career" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show career rankings below awards if both exist */}
+                    {hasCareerRankings && (hasAwards || hasPnwRankings) && (
+                      <div>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+                          Career Rankings
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                          {careerRankings.slice(0, 4).map((r, i) => (
+                            <AwardBadge key={i} rank={r.rank} category={r.category} value={r.value} variant="career" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
             {/* ── FOOTER ── */}
-            <div className="mx-3 mt-1 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }} />
-            <div className="px-4 py-1 flex items-center justify-between shrink-0">
-              <span className="text-[8px] text-white/20 font-medium">pnwbaseballstats.com</span>
-              <span className="text-[8px] text-white/20 font-medium">{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
+            <div style={{ margin: '0 10px', borderTop: '1px solid rgba(255,255,255,0.04)', flexShrink: 0 }} />
+            <div style={{ padding: '3px 14px 5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>pnwbaseballstats.com</span>
+              <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Empty state */}
       {!playerId && (
         <div className="text-center py-16 text-gray-400">
           <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
