@@ -139,6 +139,13 @@ const PITCHING_ADVANCED = [
   { key: 'pitching_war', label: 'WAR', format: 'war' },
 ]
 
+// Pie chart colors
+const PIE_COLORS = {
+  '1B': '#10b981', '2B': '#f59e0b', '3B': '#f97316', 'HR': '#ef4444',
+  'BB': '#3b82f6', 'HBP': '#a855f7', 'H': '#f59e0b', 'K': '#10b981',
+}
+
+
 // ─── Player Search Component ──────────────────────────────────
 function PlayerSearchBox({ onSelect }) {
   const [query, setQuery] = useState('')
@@ -202,33 +209,110 @@ function PlayerSearchBox({ onSelect }) {
   )
 }
 
-// ─── Percentile Bar Row ──────────────────────────────────────
-function PercentileBar({ label, value, percentile, format }) {
-  const color = percentileColor(percentile)
-  const barWidth = Math.max(4, percentile)
+
+// ─── SVG Pie Chart ────────────────────────────────────────────
+function OnBasePieChart({ statsRow, isPitcher, size = 82 }) {
+  if (!statsRow) return null
+
+  let slices = []
+  if (isPitcher) {
+    const nonHrHits = Math.max(0, (statsRow.hits_allowed || 0) - (statsRow.home_runs_allowed || 0))
+    slices = [
+      { label: 'H', value: nonHrHits, color: PIE_COLORS['H'] },
+      { label: 'HR', value: statsRow.home_runs_allowed || 0, color: PIE_COLORS['HR'] },
+      { label: 'BB', value: statsRow.walks || 0, color: PIE_COLORS['BB'] },
+      { label: 'HBP', value: statsRow.hit_batters || 0, color: PIE_COLORS['HBP'] },
+    ]
+  } else {
+    const singles = Math.max(0, (statsRow.hits || 0) - (statsRow.doubles || 0) - (statsRow.triples || 0) - (statsRow.home_runs || 0))
+    slices = [
+      { label: '1B', value: singles, color: PIE_COLORS['1B'] },
+      { label: '2B', value: statsRow.doubles || 0, color: PIE_COLORS['2B'] },
+      { label: '3B', value: statsRow.triples || 0, color: PIE_COLORS['3B'] },
+      { label: 'HR', value: statsRow.home_runs || 0, color: PIE_COLORS['HR'] },
+      { label: 'BB', value: statsRow.walks || 0, color: PIE_COLORS['BB'] },
+      { label: 'HBP', value: statsRow.hit_by_pitch || 0, color: PIE_COLORS['HBP'] },
+    ]
+  }
+
+  slices = slices.filter(s => s.value > 0)
+  const total = slices.reduce((s, sl) => s + sl.value, 0)
+  if (total === 0) return null
+
+  const cx = size / 2, cy = size / 2, r = size / 2 - 1
+  let angle = -Math.PI / 2
+
+  const paths = slices.map(sl => {
+    const pct = sl.value / total
+    const startAngle = angle
+    const endAngle = angle + pct * 2 * Math.PI
+    angle = endAngle
+
+    // Handle full circle (single slice)
+    if (pct >= 0.999) {
+      return { ...sl, pct, d: `M ${cx - r} ${cy} A ${r} ${r} 0 1 1 ${cx + r} ${cy} A ${r} ${r} 0 1 1 ${cx - r} ${cy} Z` }
+    }
+
+    const x1 = cx + r * Math.cos(startAngle)
+    const y1 = cy + r * Math.sin(startAngle)
+    const x2 = cx + r * Math.cos(endAngle)
+    const y2 = cy + r * Math.sin(endAngle)
+    const largeArc = pct > 0.5 ? 1 : 0
+
+    return { ...sl, pct, d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z` }
+  })
+
   return (
-    <div className="flex items-center h-5">
-      <div className="w-11 text-right pr-1.5 text-[10px] font-semibold text-gray-200 shrink-0">{label}</div>
-      <div className="flex-1 relative h-4 mx-1">
-        <div className="absolute top-1/2 left-0 right-0 h-1 rounded-full" style={{ transform: 'translateY(-50%)', backgroundColor: 'rgba(255,255,255,0.1)' }} />
-        <div className="absolute top-1/2 left-0 h-1 rounded-full" style={{ transform: 'translateY(-50%)', width: `${barWidth}%`, backgroundColor: color, transition: 'width 0.5s ease' }} />
+    <div className="flex items-center gap-3">
+      <svg width={size} height={size} className="shrink-0">
+        {paths.map((p, i) => (
+          <path key={i} d={p.d} fill={p.color} stroke="rgba(10,22,40,0.9)" strokeWidth={1.5} />
+        ))}
+        {/* Center hole for donut effect */}
+        <circle cx={cx} cy={cy} r={r * 0.45} fill="rgba(10,22,40,0.95)" />
+      </svg>
+      <div className="flex flex-col gap-0.5">
+        {paths.map((p, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: p.color }} />
+            <span className="text-[9px] text-white/70 font-medium">{p.label}</span>
+            <span className="text-[9px] text-white/40">{Math.round(p.pct * 100)}%</span>
+          </div>
+        ))}
       </div>
-      <div className="w-7 flex items-center justify-center shrink-0">
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold text-white" style={{ backgroundColor: color }}>
-          {percentile}
-        </span>
-      </div>
-      <div className="w-11 text-right text-[10px] text-gray-300 shrink-0">{formatStat(value, format)}</div>
     </div>
   )
 }
 
-// ─── Stat Grid Cell ───────────────────────────────────────────
-function StatCell({ label, value, format }) {
+
+// ─── Percentile Bar (compact) ─────────────────────────────────
+function PercentileBar({ label, value, percentile, format }) {
+  const color = percentileColor(percentile)
+  const barWidth = Math.max(4, percentile)
   return (
-    <div className="text-center">
-      <div className="text-[9px] uppercase tracking-wider text-gray-400">{label}</div>
-      <div className="text-[15px] font-bold text-white leading-tight">{formatStat(value, format)}</div>
+    <div className="flex items-center" style={{ height: '22px' }}>
+      <div className="text-right pr-1.5 text-[9px] font-bold text-white/50 shrink-0" style={{ width: '38px' }}>{label}</div>
+      <div className="flex-1 relative mx-1" style={{ height: '5px' }}>
+        <div className="absolute inset-0 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.07)' }} />
+        <div className="absolute top-0 left-0 h-full rounded-full transition-all duration-500" style={{ width: `${barWidth}%`, backgroundColor: color }} />
+      </div>
+      <div className="flex items-center justify-center shrink-0" style={{ width: '24px' }}>
+        <span className="inline-flex items-center justify-center rounded-full text-white font-bold" style={{ width: '18px', height: '18px', fontSize: '8px', backgroundColor: color }}>
+          {percentile}
+        </span>
+      </div>
+      <div className="text-right text-[9px] text-white/40 shrink-0" style={{ width: '38px' }}>{formatStat(value, format)}</div>
+    </div>
+  )
+}
+
+
+// ─── Stat Cell (with borders) ─────────────────────────────────
+function StatCell({ label, value, format, borderRight = true }) {
+  return (
+    <div className={`text-center py-1 ${borderRight ? 'border-r border-white/[0.06]' : ''}`}>
+      <div className="text-[7px] uppercase tracking-wider text-white/30 leading-none mb-0.5">{label}</div>
+      <div className="text-[13px] font-bold text-white leading-none">{formatStat(value, format)}</div>
     </div>
   )
 }
@@ -244,30 +328,30 @@ export default function PlayerGraphic() {
     return id ? Number(id) : null
   })
   const [selectedSeason, setSelectedSeason] = useState('latest')
-  const [statMode, setStatMode] = useState(null) // null = auto-detect, 'batting', or 'pitching'
+  const [statMode, setStatMode] = useState(null)
+  const [teamInfo, setTeamInfo] = useState(null)
 
-  // Determine percentile_season param
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
   const { data: rawData, loading, error } = usePlayer(playerId, percentileSeason)
 
-  // API returns { player: {...}, batting_stats: [...], pitching_stats: [...], ... }
   const info = rawData?.player || {}
   const battingStats = rawData?.batting_stats || []
   const pitchingStats = rawData?.pitching_stats || []
+  const teamHistory = rawData?.team_history || []
+  const awards = rawData?.awards || []
+  const pnwRankings = rawData?.pnw_rankings || []
+  const careerRankings = rawData?.career_rankings || []
 
-  // Available seasons
   const battingSeasons = battingStats.map(s => s.season)
   const pitchingSeasons = pitchingStats.map(s => s.season)
   const allSeasons = [...new Set([...battingSeasons, ...pitchingSeasons])].sort((a, b) => b - a)
   const latestSeason = allSeasons[0] || 2026
 
-  // Active season data
   const activeSeason = selectedSeason === 'latest' ? latestSeason : selectedSeason === 'career' ? 'career' : Number(selectedSeason)
 
   const hasBatting = battingStats.length > 0
   const hasPitching = pitchingStats.length > 0
 
-  // Get the stats row for the selected season
   const battingRow = activeSeason === 'career'
     ? computeCareerTotals(battingStats, 'batting')
     : battingStats.find(s => s.season === activeSeason)
@@ -275,16 +359,10 @@ export default function PlayerGraphic() {
     ? computeCareerTotals(pitchingStats, 'pitching')
     : pitchingStats.find(s => s.season === activeSeason)
 
-  // Percentiles
   const battingPercentiles = rawData?.batting_percentiles || {}
   const pitchingPercentiles = rawData?.pitching_percentiles || {}
   const percentiles = { ...battingPercentiles, ...pitchingPercentiles }
 
-  // Rankings / awards
-  const pnwRankings = rawData?.pnw_rankings || []
-  const awards = rawData?.awards || []
-
-  // Determine stat type (respect user toggle if set)
   const isTwoWay = hasBatting && hasPitching
   const autoIsPitcher = hasPitching && (!hasBatting || (pitchingRow && !battingRow))
   const isPitcher = statMode ? statMode === 'pitching' : autoIsPitcher
@@ -292,7 +370,75 @@ export default function PlayerGraphic() {
   const coreStats = isPitcher ? PITCHING_CORE : BATTING_CORE
   const advStats = isPitcher ? PITCHING_ADVANCED : BATTING_ADVANCED
   const percMetrics = isPitcher ? PITCHING_PERCENTILE_METRICS : BATTING_PERCENTILE_METRICS
-  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 9)
+  const availablePerc = percMetrics.filter(m => percentiles[m.key]).slice(0, 7)
+
+  // Fetch team record + national ranking
+  useEffect(() => {
+    if (!info.team_id) return
+    const season = activeSeason === 'career' ? 2026 : activeSeason
+    Promise.all([
+      fetch(`/api/v1/team-ratings?season=${season}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/v1/national-rankings?season=${season}`).then(r => r.json()).catch(() => []),
+    ]).then(([ratingsData, rankingsData]) => {
+      // Find team in ratings (grouped by division)
+      let record = null
+      const divisions = Array.isArray(ratingsData) ? ratingsData : []
+      for (const div of divisions) {
+        const team = (div.teams || []).find(t => t.id === info.team_id)
+        if (team) { record = team; break }
+      }
+      // Find team in national rankings
+      let ranking = null
+      const rankDivisions = Array.isArray(rankingsData) ? rankingsData : []
+      for (const div of rankDivisions) {
+        const team = (div.teams || []).find(t => t.team_id === info.team_id)
+        if (team) { ranking = team; break }
+      }
+      setTeamInfo({ record, ranking })
+    })
+  }, [info.team_id, activeSeason])
+
+  // Deduplicate career history (one entry per team, showing year range)
+  const careerEntries = (() => {
+    if (!teamHistory.length) return []
+    const grouped = {}
+    for (const th of teamHistory) {
+      const key = th.team_id || th.team_short
+      if (!grouped[key]) {
+        grouped[key] = { ...th, seasons: [th.season] }
+      } else {
+        grouped[key].seasons.push(th.season)
+      }
+    }
+    return Object.values(grouped).map(g => ({
+      ...g,
+      seasonRange: g.seasons.length === 1
+        ? String(g.seasons[0])
+        : `${Math.min(...g.seasons)}-${String(Math.max(...g.seasons)).slice(-2)}`,
+    })).sort((a, b) => Math.min(...a.seasons) - Math.min(...b.seasons))
+  })()
+
+  // Build awards/rankings display items (max 3 for space)
+  const displayItems = (() => {
+    const items = []
+    // Season awards first
+    for (const a of awards) {
+      items.push({ icon: '\u2B50', text: `${a.award_name || a.category}`, sub: String(a.season) })
+    }
+    // PNW rankings (top 5 only)
+    for (const r of pnwRankings.filter(r => r.rank <= 5).slice(0, 4)) {
+      const ordinal = r.rank === 1 ? '1st' : r.rank === 2 ? '2nd' : r.rank === 3 ? '3rd' : `${r.rank}th`
+      items.push({ icon: '\uD83C\uDFC6', text: `${ordinal} in ${r.stat_display || r.stat_name}`, sub: info.division_level || '' })
+    }
+    // Career rankings as fallback
+    if (items.length === 0) {
+      for (const r of careerRankings.slice(0, 4)) {
+        const ordinal = r.rank === 1 ? '1st' : r.rank === 2 ? '2nd' : r.rank === 3 ? '3rd' : `${r.rank}th`
+        items.push({ icon: '\uD83D\uDCCA', text: `${ordinal} on team in ${r.stat_display || r.stat_name}`, sub: '' })
+      }
+    }
+    return items.slice(0, 3)
+  })()
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -306,7 +452,6 @@ export default function PlayerGraphic() {
         <PlayerSearchBox onSelect={setPlayerId} />
       </div>
 
-      {/* Loading / error */}
       {playerId && loading && (
         <div className="text-center py-12 text-gray-500">Loading player data...</div>
       )}
@@ -351,105 +496,199 @@ export default function PlayerGraphic() {
         </div>
       )}
 
-      {/* ═══ THE CARD (perfect square, screenshot-friendly) ═══ */}
+      {/* ═══ THE CARD ═══ */}
       {rawData && (
         <div className="flex justify-center">
           <div
-            className="rounded-xl overflow-hidden shadow-2xl flex flex-col"
+            className="overflow-hidden flex flex-col"
             style={{
               width: '540px',
-              height: '540px',
+              height: '640px',
               background: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)',
+              borderRadius: '12px',
             }}
           >
-            {/* ── Header ── */}
-            <div className="px-4 pt-4 pb-2 flex items-start gap-3 shrink-0">
+            {/* ── HEADER ── */}
+            <div className="flex items-center px-4 pt-3 pb-2 shrink-0" style={{ minHeight: '76px' }}>
+              {/* Headshot */}
               <div className="shrink-0">
                 {info.headshot_url ? (
-                  <img src={info.headshot_url} alt="" className="w-[60px] h-[60px] rounded-full object-cover border-2 border-white/20" />
+                  <img src={info.headshot_url} alt="" className="rounded-full object-cover border-2 border-white/20" style={{ width: '56px', height: '56px' }} />
                 ) : (
-                  <div className="w-[60px] h-[60px] rounded-full bg-white/10 flex items-center justify-center text-lg font-bold text-white/40">
+                  <div className="rounded-full bg-white/10 flex items-center justify-center text-lg font-bold text-white/40" style={{ width: '56px', height: '56px' }}>
                     {info.first_name?.[0]}{info.last_name?.[0]}
                   </div>
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xl font-extrabold text-white leading-tight">{info.first_name} {info.last_name}</div>
-                <div className="text-[10px] text-white/50 mt-0.5">
-                  {[info.position, info.jersey_number ? `#${info.jersey_number}` : null, info.bats && info.throws ? `${info.bats}/${info.throws}` : null, info.year_in_school].filter(Boolean).join('  ·  ')}
+
+              {/* Center: Name + Info */}
+              <div className="flex-1 text-center px-3 min-w-0">
+                <div className="text-[22px] font-extrabold text-white leading-tight truncate">
+                  {info.first_name} {info.last_name}
                 </div>
-                <div className="text-[12px] font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>{info.team_name}</div>
+                <div className="text-[10px] text-white/45 mt-0.5">
+                  {[info.position, info.jersey_number ? `#${info.jersey_number}` : null, info.bats && info.throws ? `${info.bats}/${info.throws}` : null, info.year_in_school].filter(Boolean).join('  \u00B7  ')}
+                </div>
+                <div className="text-[12px] font-semibold mt-0.5" style={{ color: '#7dd3fc' }}>
+                  {info.team_name}
+                </div>
               </div>
-              <div className="shrink-0 text-right">
-                {info.logo_url && (
-                  <img src={info.logo_url} alt="" className="w-9 h-9 object-contain opacity-40 mb-0.5" />
+
+              {/* Team logo (mirrored on right) */}
+              <div className="shrink-0 flex flex-col items-center">
+                {info.logo_url ? (
+                  <img src={info.logo_url} alt="" className="object-contain" style={{ width: '52px', height: '52px', opacity: 0.7 }} />
+                ) : (
+                  <div style={{ width: '52px', height: '52px' }} />
                 )}
-                <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider">
-                  {activeSeason === 'career' ? 'Career' : `${activeSeason}`}
+                <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mt-0.5">
+                  {info.division_level}
                 </div>
-                {info.division_level && (
-                  <div className="text-[8px] font-semibold mt-0.5" style={{ color: 'rgba(125,211,252,0.6)' }}>{info.division_level}</div>
-                )}
               </div>
             </div>
 
-            <div className="border-t border-white/10 mx-4" />
-
-            {/* ── Stats body - evenly distributed ── */}
-            <div className="flex-1 flex flex-col justify-evenly px-4">
+            {/* ── STAT TABLES ── */}
+            <div className="mx-3 shrink-0 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
               {statsRow ? (
                 <>
-                  {/* Core stats - single row of 8 */}
-                  <div>
-                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">
+                  {/* Core stats row */}
+                  <div className="flex items-center px-2 py-0.5" style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
+                    <span className="text-[7px] font-bold text-white/25 uppercase tracking-wider">
                       {isPitcher ? 'Pitching' : 'Batting'}
-                    </div>
-                    <div className="grid grid-cols-8 gap-x-0">
-                      {coreStats.map(s => <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} />)}
-                    </div>
+                    </span>
+                    <span className="text-[7px] text-white/15 ml-auto">
+                      {activeSeason === 'career' ? 'Career' : activeSeason}
+                    </span>
                   </div>
-
-                  {/* Advanced stats - single row of 8 */}
-                  <div>
-                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Advanced</div>
-                    <div className="grid grid-cols-8 gap-x-0">
-                      {advStats.map(s => <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} />)}
-                    </div>
+                  <div className="grid grid-cols-8" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    {coreStats.map((s, i) => (
+                      <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} borderRight={i < coreStats.length - 1} />
+                    ))}
                   </div>
-
-                  <div className="border-t border-white/[0.06]" />
-
-                  {/* Percentile bars (max 5) */}
-                  {availablePerc.length > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider">Percentile Rankings</div>
-                        <div className="text-[7px] text-white/20">vs. {info.division_level || 'Division'}</div>
-                      </div>
-                      <div>
-                        {availablePerc.map(m => (
-                          <PercentileBar
-                            key={m.key}
-                            label={m.label}
-                            value={percentiles[m.key].value}
-                            percentile={percentiles[m.key].percentile}
-                            format={m.format}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
+                  {/* Advanced stats row */}
+                  <div className="flex items-center px-2 py-0.5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    <span className="text-[7px] font-bold text-white/25 uppercase tracking-wider">Advanced</span>
+                  </div>
+                  <div className="grid grid-cols-8" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    {advStats.map((s, i) => (
+                      <StatCell key={s.key} label={s.label} value={statsRow[s.key]} format={s.format} borderRight={i < advStats.length - 1} />
+                    ))}
+                  </div>
                 </>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-white/40 text-sm">No stats for this season.</div>
+                <div className="py-4 text-center text-white/30 text-xs">No stats for this season.</div>
               )}
             </div>
 
-            {/* ── Footer ── */}
-            <div className="border-t border-white/[0.06] mx-4 shrink-0" />
-            <div className="px-4 py-1.5 flex items-center justify-between shrink-0">
-              <span className="text-[8px] text-white/20 font-medium">nwbaseballstats.com</span>
+            {/* ── BOTTOM SPLIT ── */}
+            <div className="flex-1 flex mx-3 mt-2 min-h-0">
+              {/* LEFT: Percentile Bars */}
+              <div className="flex-1 flex flex-col pr-2" style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[8px] font-bold text-white/25 uppercase tracking-wider">Percentile Rankings</span>
+                </div>
+                {availablePerc.length > 0 ? (
+                  <div className="flex flex-col justify-evenly flex-1">
+                    {availablePerc.map(m => (
+                      <PercentileBar
+                        key={m.key}
+                        label={m.label}
+                        value={percentiles[m.key].value}
+                        percentile={percentiles[m.key].percentile}
+                        format={m.format}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-white/20 text-[10px]">
+                    Not enough PA to qualify
+                  </div>
+                )}
+                <div className="text-[7px] text-white/20 mt-1">vs. {info.division_level || 'Division'}</div>
+              </div>
+
+              {/* RIGHT: Pie + Career + Awards + Team */}
+              <div className="flex-1 flex flex-col pl-2 min-w-0">
+                {/* Pie Chart */}
+                {statsRow && (
+                  <div className="mb-2">
+                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1.5">
+                      {isPitcher ? 'Baserunners Allowed' : 'Reaching Base'}
+                    </div>
+                    <OnBasePieChart statsRow={statsRow} isPitcher={isPitcher} size={76} />
+                  </div>
+                )}
+
+                {/* Career History */}
+                {careerEntries.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Career</div>
+                    <div className="space-y-0.5">
+                      {careerEntries.map((entry, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          {entry.logo_url && (
+                            <img src={entry.logo_url} alt="" className="w-3.5 h-3.5 object-contain shrink-0 opacity-70" />
+                          )}
+                          <span className="text-[9px] text-white/50 shrink-0">{entry.seasonRange}</span>
+                          <span className="text-[9px] text-white/70 font-medium truncate">{entry.team_short || entry.team_name}</span>
+                          <span className="text-[8px] text-white/25 shrink-0">({entry.division_level})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Team Info */}
+                {teamInfo?.record && (
+                  <div className="mb-2">
+                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">Team</div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-[10px] text-white/70 font-semibold">
+                        {teamInfo.record.wins}-{teamInfo.record.losses}
+                      </span>
+                      {teamInfo.record.conf_wins != null && (
+                        <span className="text-[9px] text-white/40">
+                          ({teamInfo.record.conf_wins}-{teamInfo.record.conf_losses} conf)
+                        </span>
+                      )}
+                      {teamInfo.ranking?.composite_rank && (
+                        <span className="text-[9px] font-semibold" style={{ color: '#7dd3fc' }}>
+                          #{teamInfo.ranking.composite_rank} {info.division_level}
+                        </span>
+                      )}
+                    </div>
+                    {teamInfo.record.conference_abbrev && (
+                      <div className="text-[8px] text-white/30 mt-0.5">{teamInfo.record.conference_name || teamInfo.record.conference_abbrev}</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Awards / Rankings */}
+                {displayItems.length > 0 && (
+                  <div className="mt-auto">
+                    <div className="text-[8px] font-bold text-white/25 uppercase tracking-wider mb-1">
+                      {awards.length > 0 ? 'Awards' : 'Rankings'}
+                    </div>
+                    <div className="space-y-0.5">
+                      {displayItems.map((item, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                          <span className="text-[9px] shrink-0">{item.icon}</span>
+                          <div className="min-w-0">
+                            <span className="text-[9px] text-white/60 leading-tight">{item.text}</span>
+                            {item.sub && <span className="text-[8px] text-white/25 ml-1">{item.sub}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── FOOTER ── */}
+            <div className="mx-3 mt-1 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }} />
+            <div className="px-4 py-1 flex items-center justify-between shrink-0">
+              <span className="text-[8px] text-white/20 font-medium">pnwbaseballstats.com</span>
               <span className="text-[8px] text-white/20 font-medium">{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
             </div>
           </div>
