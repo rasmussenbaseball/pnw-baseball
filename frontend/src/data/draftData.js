@@ -1,38 +1,51 @@
 // ─── School → Logo mapping ──────────────────────────────────
-// College teams use their actual logo; high school / unknown use NW logo
+// Exact school name → logo. Only college/CC teams get logos.
+// High school names (with state abbreviations like "(WA)", "(OR)") get the NW logo.
 const SCHOOL_LOGOS = {
+  // Pac-12 / D1
   'Oregon': '/logos/teams/oregon.svg',
   'Oregon State': '/logos/teams/oregon_st.svg',
+  'Oregon St': '/logos/teams/oregon_st.svg',
   'Washington': '/logos/teams/uw.svg',
-  'Washington St': '/logos/teams/washington_state.png',
+  'Washington St': '/logos/washington_state.png',
+  'Washington State': '/logos/washington_state.png',
   'Gonzaga': '/logos/teams/gonzaga.png',
   'Portland': '/logos/teams/portland.svg',
   'Seattle U': '/logos/teams/seattle_u.svg',
   'Pacific': '/logos/teams/pacific.png',
+  // NAIA / small schools
   'Bushnell': '/logos/bushnell.png',
   'LC State': '/logos/teams/lcsc.svg',
   'Eastern Oregon': '/logos/teams/eou.png',
   'Warner Pacific': '/logos/warner_pacific.png',
   'British Columbia': '/logos/teams/ubc.svg',
   'UBC': '/logos/teams/ubc.svg',
-  'Lower Columbia': '/logos/teams/landc.png',
   'George Fox': '/logos/george_fox.png',
   'Linfield': '/logos/teams/linfield.svg',
   'Corban': '/logos/teams/corban.svg',
   'Whitworth': '/logos/teams/whitworth.png',
   'Whitman': '/logos/teams/whitman.svg',
+  'Willamette': '/logos/willamette.svg',
+  // Community colleges
+  'Lower Columbia': '/logos/nwac/lower_columbia.png',
 }
 
 const NW_LOGO = '/favicon.png'
 
 export function getSchoolLogo(school) {
-  // Try exact match first
+  // Exact match first (handles "Oregon", "Oregon State", "Gonzaga", etc.)
   if (SCHOOL_LOGOS[school]) return SCHOOL_LOGOS[school]
-  // Try matching school name as a substring (e.g. "Oregon" in "Oregon State")
-  for (const [key, logo] of Object.entries(SCHOOL_LOGOS)) {
-    if (school.includes(key)) return logo
+
+  // If school has a parenthetical like "(WA)" or "(OR)" or "(BC)" it's a high school
+  if (/\([A-Z]{2}\)/.test(school)) return NW_LOGO
+
+  // Try exact-start match: check if school name starts with a known key
+  // Sort keys longest-first so "Oregon State" matches before "Oregon"
+  const sortedKeys = Object.keys(SCHOOL_LOGOS).sort((a, b) => b.length - a.length)
+  for (const key of sortedKeys) {
+    if (school === key || school.startsWith(key + ' ')) return SCHOOL_LOGOS[key]
   }
-  // Fallback to NW logo for high schoolers etc.
+
   return NW_LOGO
 }
 

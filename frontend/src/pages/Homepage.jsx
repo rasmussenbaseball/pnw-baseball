@@ -675,15 +675,15 @@ function DraftBoardWidget() {
                 className="w-5 h-5 object-contain shrink-0"
                 onError={(e) => { e.target.src = '/favicon.png' }}
               />
-              <div className="flex-1 min-w-0 leading-tight">
+              <div className="flex-1 min-w-0" style={{ lineHeight: 1.1 }}>
                 {p.playerId ? (
-                  <Link to={`/player/${p.playerId}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block leading-tight">
+                  <Link to={`/player/${p.playerId}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block" style={{ lineHeight: 1.1 }}>
                     {p.name}
                   </Link>
                 ) : (
-                  <span className="text-xs font-semibold text-gray-800 truncate block leading-tight">{p.name}</span>
+                  <span className="text-xs font-semibold text-gray-800 truncate block" style={{ lineHeight: 1.1 }}>{p.name}</span>
                 )}
-                <span className="text-[10px] text-gray-400 leading-tight">{p.school}</span>
+                <span className="text-[10px] text-gray-400 block" style={{ lineHeight: 1.1, marginTop: '1px' }}>{p.school}</span>
               </div>
               <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded shrink-0 ${POS_BADGE[p.pos] || 'bg-gray-100 text-gray-600'}`}>
                 {p.pos}
@@ -723,17 +723,17 @@ function WclLeadersWidget({ leaders }) {
                 <img src={top.logo_url} alt="" className="w-5 h-5 object-contain shrink-0"
                   onError={(e) => { e.target.style.display = 'none' }} />
               )}
-              <div className="flex-1 min-w-0 leading-tight">
+              <div className="flex-1 min-w-0" style={{ lineHeight: 1.1 }}>
                 {top.spring_player_id ? (
-                  <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block leading-tight">
+                  <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block" style={{ lineHeight: 1.1 }}>
                     {top.first_name} {top.last_name}
                   </Link>
                 ) : (
-                  <span className="text-xs font-semibold text-gray-800 truncate block leading-tight">
+                  <span className="text-xs font-semibold text-gray-800 truncate block" style={{ lineHeight: 1.1 }}>
                     {top.first_name} {top.last_name}
                   </span>
                 )}
-                <span className="text-[10px] text-gray-400 leading-tight">{top.team_short}</span>
+                <span className="text-[10px] text-gray-400 block" style={{ lineHeight: 1.1, marginTop: '1px' }}>{top.team_short}</span>
               </div>
               <span className="text-sm font-bold text-pnw-slate tabular-nums">
                 {cat.format === 'avg' ? top.value?.toFixed(3).replace(/^0/, '') :
