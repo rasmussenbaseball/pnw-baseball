@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 
 const API_BASE = '/api/v1'
 
-// ── helpers ──
 function todayStr() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -10,14 +9,12 @@ function todayStr() {
 
 function fmtDisplayDate(iso) {
   const [y, m, d] = iso.split('-').map(Number)
-  const dt = new Date(y, m - 1, d)
-  return dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 function shortDate(iso) {
   const [y, m, d] = iso.split('-').map(Number)
-  const dt = new Date(y, m - 1, d)
-  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 function cleanTeamName(name) {
@@ -33,20 +30,30 @@ function getTeamName(game, side) {
   return cleanTeamName(short)
 }
 
-// ── Image loader with cache ──
+// Convert decimal IP to baseball notation: 6.6667 -> 6.2, 5.3333 -> 5.1
+function fmtIP(ip) {
+  if (ip == null) return '0'
+  const whole = Math.floor(ip)
+  const frac = ip - whole
+  if (frac < 0.1) return String(whole)
+  if (frac < 0.5) return `${whole}.1`
+  if (frac < 0.8) return `${whole}.2`
+  return String(whole + 1)
+}
+
 const imgCache = {}
 function loadImage(src) {
   if (!src) return Promise.reject('no src')
   if (imgCache[src]) return imgCache[src]
-  const promise = new Promise((resolve, reject) => {
+  const p = new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = reject
     img.src = src
   })
-  imgCache[src] = promise
-  return promise
+  imgCache[src] = p
+  return p
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -63,7 +70,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-// ── Draw a scorebug (more square, taller) ──
+// ── Scorebug: compact, square-ish ──
 async function drawScorebug(ctx, game, x, y, w, h) {
   const away = getTeamName(game, 'away')
   const home = getTeamName(game, 'home')
@@ -72,21 +79,30 @@ async function drawScorebug(ctx, game, x, y, w, h) {
   const aWon = Number(game.away_score) > Number(game.home_score)
   const hWon = Number(game.home_score) > Number(game.away_score)
 
-  // Card background with subtle shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.04)'
-  roundRect(ctx, x + 1, y + 1, w, h, 6)
+  // Scale fonts based on bug height
+  const scale = Math.min(1, h / 80)
+  const headerFS = Math.max(6, 8 * scale)
+  const nameFS = Math.max(7, 11 * scale)
+  const scoreFS = Math.max(8, 14 * scale)
+  const smallFS = Math.max(5, 7 * scale)
+  const rheFS = Math.max(6, 10 * scale)
+  const logoSize = Math.max(10, 18 * scale)
+
+  // Card
+  ctx.fillStyle = 'rgba(0,0,0,0.03)'
+  roundRect(ctx, x + 1, y + 1, w, h, 5)
   ctx.fill()
-  roundRect(ctx, x, y, w, h, 6)
+  roundRect(ctx, x, y, w, h, 5)
   ctx.fillStyle = '#ffffff'
   ctx.fill()
   ctx.strokeStyle = '#e2e8f0'
   ctx.lineWidth = 0.5
   ctx.stroke()
 
-  // Header bar: FINAL + W/L/S
-  const headerH = 16
+  // Header: FINAL + pitchers
+  const headerH = Math.max(12, 16 * scale)
   ctx.save()
-  roundRect(ctx, x, y, w, headerH, 6)
+  roundRect(ctx, x, y, w, headerH, 5)
   ctx.clip()
   ctx.fillStyle = '#f1f5f9'
   ctx.fillRect(x, y, w, headerH)
@@ -96,42 +112,38 @@ async function drawScorebug(ctx, game, x, y, w, h) {
 
   const innings = game.innings && game.innings !== 9 ? ` (${game.innings})` : ''
   ctx.fillStyle = '#475569'
-  ctx.font = '800 8px "Inter", system-ui, sans-serif'
+  ctx.font = `800 ${headerFS}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`FINAL${innings}`, x + 6, y + headerH / 2)
+  ctx.fillText(`FINAL${innings}`, x + 5, y + headerH / 2)
 
-  // W/L/S pitcher
-  const pitcherParts = []
-  if (game.win_pitcher) pitcherParts.push(`W: ${game.win_pitcher}`)
-  if (game.loss_pitcher) pitcherParts.push(`L: ${game.loss_pitcher}`)
-  if (game.save_pitcher) pitcherParts.push(`S: ${game.save_pitcher}`)
-  if (pitcherParts.length > 0) {
+  // W/L/S
+  const parts = []
+  if (game.win_pitcher) parts.push(`W: ${game.win_pitcher}`)
+  if (game.loss_pitcher) parts.push(`L: ${game.loss_pitcher}`)
+  if (game.save_pitcher) parts.push(`S: ${game.save_pitcher}`)
+  if (parts.length > 0) {
     ctx.fillStyle = '#94a3b8'
-    ctx.font = '500 7px "Inter", system-ui, sans-serif'
+    ctx.font = `500 ${Math.max(5, 6.5 * scale)}px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'right'
-    ctx.fillText(pitcherParts.join('  '), x + w - 6, y + headerH / 2)
+    ctx.fillText(parts.join('  '), x + w - 5, y + headerH / 2)
   }
 
-  // R/H/E column headers on the right
-  const rheTop = y + headerH + 2
-  const colW_rhe = 18
-  const rheStartX = x + w - 6 - colW_rhe * 3
+  // R/H/E header
+  const rheColW = Math.max(14, 18 * scale)
+  const rheX = x + w - 4 - rheColW * 3
+  const rheHeaderY = y + headerH + 2
   ctx.fillStyle = '#94a3b8'
-  ctx.font = '600 7px "Inter", system-ui, sans-serif'
+  ctx.font = `600 ${Math.max(5, 6.5 * scale)}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('R', rheStartX + colW_rhe * 0.5, rheTop + 5)
-  ctx.fillText('H', rheStartX + colW_rhe * 1.5, rheTop + 5)
-  ctx.fillText('E', rheStartX + colW_rhe * 2.5, rheTop + 5)
+  ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 4 * scale)
+  ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 4 * scale)
+  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 4 * scale)
 
   // Team rows
-  const teamTop = rheTop + 12
-  const teamH = h - headerH - 14
+  const teamTop = rheHeaderY + 9 * scale
+  const teamH = y + h - teamTop - 2
   const rowH = teamH / 2
-  const logoSize = 18
-  const nameFS = 11
-  const scoreFS = 14
 
   for (let i = 0; i < 2; i++) {
     const isAway = i === 0
@@ -147,313 +159,324 @@ async function drawScorebug(ctx, game, x, y, w, h) {
 
     if (i === 1) {
       ctx.fillStyle = '#e2e8f0'
-      ctx.fillRect(x + 4, ry - 1, w - 8, 0.5)
+      ctx.fillRect(x + 3, ry - 1, w - 6, 0.5)
     }
 
     // Logo
-    const logoX = x + 6
-    let logoDrawn = false
+    let curX = x + 5
     if (logo) {
       try {
         const img = await loadImage(logo)
-        const aspect = img.naturalWidth / img.naturalHeight
-        let drawW = logoSize, drawH = logoSize
-        if (aspect >= 1) drawH = logoSize / aspect; else drawW = logoSize * aspect
-        ctx.drawImage(img, logoX + (logoSize - drawW) / 2, midY - drawH / 2, drawW, drawH)
-        logoDrawn = true
+        const a = img.naturalWidth / img.naturalHeight
+        let dw = logoSize, dh = logoSize
+        if (a >= 1) dh = logoSize / a; else dw = logoSize * a
+        ctx.drawImage(img, curX + (logoSize - dw) / 2, midY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
+    curX += logoSize + 4
 
-    const nameX = logoDrawn ? logoX + logoSize + 5 : x + 6
-    const maxNameW = rheStartX - nameX - 4
-
-    // Team name
+    // Team name (tight against logo, no wasted space)
+    const maxNameW = rheX - curX - 2
     ctx.fillStyle = won ? '#0f172a' : '#64748b'
     ctx.font = `${won ? '700' : '500'} ${nameFS}px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     let display = teamName
-    while (ctx.measureText(display).width > maxNameW && display.length > 2) {
-      display = display.slice(0, -1)
-    }
+    while (ctx.measureText(display).width > maxNameW && display.length > 2) display = display.slice(0, -1)
     if (display !== teamName) display += '.'
-    ctx.fillText(display, nameX, midY - (record ? 4 : 0))
+    ctx.fillText(display, curX, midY - (record ? 3 * scale : 0))
 
     // Record
     if (record) {
       ctx.fillStyle = '#94a3b8'
-      ctx.font = '400 7px "Inter", system-ui, sans-serif'
-      ctx.fillText(`(${record})`, nameX, midY + 7)
+      ctx.font = `400 ${smallFS}px "Inter", system-ui, sans-serif`
+      ctx.fillText(`(${record})`, curX, midY + 6 * scale)
     }
 
-    // R / H / E values
+    // R (score) / H / E
     ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    // Runs (score) — bold
     ctx.fillStyle = won ? '#0f172a' : '#94a3b8'
     ctx.font = `${won ? '800' : '600'} ${scoreFS}px "Inter", system-ui, sans-serif`
-    ctx.fillText(String(score), rheStartX + colW_rhe * 0.5, midY)
-    // Hits
+    ctx.fillText(String(score), rheX + rheColW * 0.5, midY)
     ctx.fillStyle = '#64748b'
-    ctx.font = '500 10px "Inter", system-ui, sans-serif'
-    ctx.fillText(hits != null ? String(hits) : '-', rheStartX + colW_rhe * 1.5, midY)
-    // Errors
-    ctx.fillText(errors != null ? String(errors) : '-', rheStartX + colW_rhe * 2.5, midY)
+    ctx.font = `500 ${rheFS}px "Inter", system-ui, sans-serif`
+    ctx.fillText(hits != null ? String(hits) : '-', rheX + rheColW * 1.5, midY)
+    ctx.fillText(errors != null ? String(errors) : '-', rheX + rheColW * 2.5, midY)
   }
 }
 
-// ── Draw a performer row ──
-async function drawPerformerRow(ctx, player, x, y, w, h, type) {
-  roundRect(ctx, x, y, w, h, 4)
-  ctx.fillStyle = '#f8fafc'
-  ctx.fill()
+// ── Draw a compact stat table ──
+function drawStatTable(ctx, title, players, x, y, w, h, type) {
+  const pad = 6
+  const headerH = 16
+  const rowH = Math.min(22, (h - headerH - 4) / Math.max(1, players.length))
 
-  const pad = 8
-  let curX = x + pad
-  const midY = y + h / 2
-
-  // Team logo
-  const logoSize = Math.min(28, h - 8)
-  if (player.team_logo) {
-    try {
-      const img = await loadImage(player.team_logo)
-      const aspect = img.naturalWidth / img.naturalHeight
-      let dw = logoSize, dh = logoSize
-      if (aspect >= 1) dh = logoSize / aspect; else dw = logoSize * aspect
-      ctx.drawImage(img, curX + (logoSize - dw) / 2, midY - dh / 2, dw, dh)
-    } catch { /* skip */ }
-  }
-  curX += logoSize + 8
-
-  // Name
-  ctx.fillStyle = '#0f172a'
-  ctx.font = '700 11px "Inter", system-ui, sans-serif'
+  // Section label
+  ctx.fillStyle = '#00687a'
+  ctx.font = '700 10px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  const name = player.display_name || 'Unknown'
-  ctx.fillText(name, curX, midY - 5)
+  ctx.fillText(title, x + pad, y + 7)
 
-  // Team short
+  // Table header
+  const tableY = y + headerH
+  ctx.fillStyle = '#f1f5f9'
+  roundRect(ctx, x, tableY, w, rowH, 3)
+  ctx.fill()
+
   ctx.fillStyle = '#64748b'
-  ctx.font = '500 8px "Inter", system-ui, sans-serif'
-  ctx.fillText(player.team_short || '', curX, midY + 7)
+  ctx.font = '600 7px "Inter", system-ui, sans-serif'
+  ctx.textBaseline = 'middle'
+  const headerMidY = tableY + rowH / 2
 
-  // Stat line on the right
-  ctx.textAlign = 'right'
-  const statX = x + w - pad
+  // Column layout
+  const nameColW = w * 0.44
   if (type === 'hitter') {
-    const ab = player.at_bats || 0
-    const h = player.hits || 0
-    const hr = player.home_runs || 0
-    const rbi = player.rbi || 0
-    const bb = player.walks || 0
-    const sb = player.stolen_bases || 0
-    let parts = [`${h}-${ab}`]
-    if (hr > 0) parts.push(`${hr} HR`)
-    if (rbi > 0) parts.push(`${rbi} RBI`)
-    if (bb > 0) parts.push(`${bb} BB`)
-    if (sb > 0) parts.push(`${sb} SB`)
-    ctx.fillStyle = '#0f172a'
-    ctx.font = '700 11px "Inter", system-ui, sans-serif'
-    ctx.fillText(parts.join(', '), statX, midY - 5)
-    const extras = []
-    if (player.doubles > 0) extras.push(`${player.doubles} 2B`)
-    if (player.triples > 0) extras.push(`${player.triples} 3B`)
-    if (player.runs > 0) extras.push(`${player.runs} R`)
-    if (extras.length > 0) {
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = '500 8px "Inter", system-ui, sans-serif'
-      ctx.fillText(extras.join(', '), statX, midY + 7)
-    }
+    ctx.textAlign = 'left'
+    ctx.fillText('PLAYER', x + pad, headerMidY)
+    const statCols = ['AB', 'H', 'HR', 'RBI', 'BB']
+    const statColW = (w - nameColW - pad) / statCols.length
+    statCols.forEach((col, i) => {
+      ctx.textAlign = 'center'
+      ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, headerMidY)
+    })
   } else {
-    const ip = player.innings_pitched || 0
-    const k = player.strikeouts || 0
-    const er = player.earned_runs || 0
-    const dec = player.decision ? ` (${player.decision})` : ''
+    ctx.textAlign = 'left'
+    ctx.fillText('PLAYER', x + pad, headerMidY)
+    const statCols = ['IP', 'H', 'K', 'ER', 'DEC']
+    const statColW = (w - nameColW - pad) / statCols.length
+    statCols.forEach((col, i) => {
+      ctx.textAlign = 'center'
+      ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, headerMidY)
+    })
+  }
+
+  // Data rows
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i]
+    const ry = tableY + rowH + i * rowH
+    const rMidY = ry + rowH / 2
+
+    // Alternating bg
+    if (i % 2 === 1) {
+      ctx.fillStyle = '#fafbfc'
+      ctx.fillRect(x, ry, w, rowH)
+    }
+
+    // Subtle row divider
+    ctx.fillStyle = '#f1f5f9'
+    ctx.fillRect(x + 2, ry, w - 4, 0.5)
+
+    // Player name with team
+    const name = p.display_name || 'Unknown'
+    const team = p.team_short || ''
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
     ctx.fillStyle = '#0f172a'
-    ctx.font = '700 11px "Inter", system-ui, sans-serif'
-    ctx.fillText(`${ip} IP, ${k} K, ${er} ER${dec}`, statX, midY - 5)
-    const extras = []
-    if (player.hits_allowed != null) extras.push(`${player.hits_allowed} H`)
-    if (player.walks > 0) extras.push(`${player.walks} BB`)
-    if (player.game_score) extras.push(`GS: ${player.game_score}`)
-    if (extras.length > 0) {
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = '500 8px "Inter", system-ui, sans-serif'
-      ctx.fillText(extras.join(', '), statX, midY + 7)
+    ctx.font = '600 9px "Inter", system-ui, sans-serif'
+
+    // Truncate name if needed
+    let displayName = name
+    const maxW = nameColW - pad - 4
+    while (ctx.measureText(`${displayName} ${team}`).width > maxW && displayName.length > 3) {
+      displayName = displayName.slice(0, -1)
+    }
+    if (displayName !== name) displayName += '.'
+    ctx.fillText(displayName, x + pad, rMidY - 1)
+
+    // Team name in gray
+    const nameW = ctx.measureText(displayName + ' ').width
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '400 7px "Inter", system-ui, sans-serif'
+    ctx.fillText(team, x + pad + nameW, rMidY - 1)
+
+    // Stats
+    ctx.font = '600 9px "Inter", system-ui, sans-serif'
+    ctx.fillStyle = '#0f172a'
+    if (type === 'hitter') {
+      const stats = [
+        p.at_bats || 0,
+        p.hits || 0,
+        p.home_runs || 0,
+        p.rbi || 0,
+        p.walks || 0,
+      ]
+      const statColW = (w - nameColW - pad) / stats.length
+      stats.forEach((val, j) => {
+        ctx.textAlign = 'center'
+        // Highlight HRs in red
+        ctx.fillStyle = j === 2 && val > 0 ? '#dc2626' : '#0f172a'
+        ctx.font = j === 2 && val > 0 ? '700 9px "Inter", system-ui, sans-serif' : '600 9px "Inter", system-ui, sans-serif'
+        ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY - 1)
+      })
+    } else {
+      const ip = fmtIP(p.innings_pitched)
+      const stats = [
+        ip,
+        p.hits_allowed != null ? p.hits_allowed : '-',
+        p.strikeouts || 0,
+        p.earned_runs || 0,
+        p.decision || '-',
+      ]
+      const statColW = (w - nameColW - pad) / stats.length
+      stats.forEach((val, j) => {
+        ctx.textAlign = 'center'
+        // Highlight W in green, L in red
+        if (j === 4) {
+          ctx.fillStyle = val === 'W' ? '#16a34a' : val === 'L' ? '#dc2626' : '#64748b'
+          ctx.font = '700 9px "Inter", system-ui, sans-serif'
+        } else {
+          ctx.fillStyle = '#0f172a'
+          ctx.font = '600 9px "Inter", system-ui, sans-serif'
+        }
+        ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY - 1)
+      })
     }
   }
 }
 
-// ── Solve scorebug grid layout ──
-function solveBugLayout(totalGames, contentW) {
-  const bugGap = 5
-  const colGap = 8
-
-  // Try different column counts, preferring square-ish bugs
-  for (let cols = 2; cols <= 5; cols++) {
-    const colW = (contentW - (cols - 1) * colGap) / cols
-    if (colW < 160) continue
-    const rows = Math.ceil(totalGames / cols)
-    // Target bug height: make them more square-ish (aspect ~1.6:1 w:h)
-    const bugH = Math.min(80, Math.max(60, colW / 1.8))
-    const totalH = rows * bugH + (rows - 1) * bugGap
-    if (cols >= 2) {
-      return { cols, colW, bugH, bugGap, colGap, totalH }
-    }
-  }
-  // Fallback
-  const cols = 3
-  const colW = (contentW - (cols - 1) * colGap) / cols
-  const rows = Math.ceil(totalGames / cols)
-  const bugH = 65
-  return { cols, colW, bugH, bugGap, colGap, totalH: rows * bugH + (rows - 1) * bugGap }
-}
-
-// ── Main canvas renderer ──
+// ── Main renderer (always 1080x1080) ──
 async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   const { games, top_hitters, top_pitchers } = data
   const numGames = games.length
 
-  // Determine how many performers to show (3 if <3 games, 5 if >=3 games)
   const hitCount = numGames >= 3 ? Math.min(5, top_hitters?.length || 0) : Math.min(3, top_hitters?.length || 0)
   const pitchCount = numGames >= 3 ? Math.min(5, top_pitchers?.length || 0) : Math.min(3, top_pitchers?.length || 0)
   const hasPerformers = hitCount > 0 || pitchCount > 0
 
   const W = 1080
-  const pad = 24
-  const contentW = W - pad * 2
-
-  // Pre-calculate section heights
-  const headerH = 64
-  const { totalH: scoresH } = solveBugLayout(numGames, contentW)
-  const perfRowH = 38
-  const perfGap = 4
-  const perfSectionH = hasPerformers
-    ? 40 + (hitCount > 0 ? 18 + hitCount * (perfRowH + perfGap) + 8 : 0) + (pitchCount > 0 ? 18 + pitchCount * (perfRowH + perfGap) + 8 : 0)
-    : 0
-  const footerH = 30
-
-  // Total canvas height — enough for everything
-  const H = headerH + 3 + 16 + scoresH + 24 + perfSectionH + footerH + 16
+  const H = 1080
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
+  const pad = 20
 
-  // White background
+  // White bg
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, W, H)
 
-  // ── Header bar ──
+  // ── Header ──
+  const headerH = 60
   ctx.fillStyle = '#00687a'
   ctx.fillRect(0, 0, W, headerH)
 
-  // NW logo mark
   ctx.fillStyle = 'rgba(255,255,255,0.2)'
-  roundRect(ctx, pad, 14, 36, 36, 6)
+  roundRect(ctx, pad, 12, 34, 34, 5)
   ctx.fill()
   ctx.fillStyle = '#ffffff'
-  ctx.font = '700 18px "Helvetica Neue", "Arial", sans-serif'
+  ctx.font = '700 16px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('NW', pad + 18, 33)
+  ctx.fillText('NW', pad + 17, 30)
 
-  // Title
   const title = divisionLabel ? `PNW ${divisionLabel} SCORES` : 'PNW SCORES'
   ctx.fillStyle = '#ffffff'
-  ctx.font = '800 28px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'center'
+  ctx.font = '800 26px "Helvetica Neue", "Arial", sans-serif'
   ctx.fillText(title, W / 2, headerH / 2)
 
-  // Date right
   ctx.textAlign = 'right'
-  ctx.fillStyle = '#ffffff'
-  ctx.font = '700 12px "Helvetica Neue", "Arial", sans-serif'
-  ctx.fillText(dateShort, W - pad, 26)
+  ctx.font = '700 11px "Helvetica Neue", "Arial", sans-serif'
+  ctx.fillText(dateShort, W - pad, 24)
   ctx.fillStyle = 'rgba(255,255,255,0.5)'
-  ctx.font = '400 10px "Helvetica Neue", "Arial", sans-serif'
-  ctx.fillText(`${numGames} Game${numGames !== 1 ? 's' : ''}`, W - pad, 42)
+  ctx.font = '400 9px "Helvetica Neue", "Arial", sans-serif'
+  ctx.fillText(`${numGames} Game${numGames !== 1 ? 's' : ''}`, W - pad, 38)
 
-  // Dark accent
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, headerH, W, 3)
 
-  // ── SCORES ──
-  let curY = headerH + 3 + 12
-  const { cols, colW, bugH, bugGap, colGap } = solveBugLayout(numGames, contentW)
+  // ── Layout budget ──
+  const footerH = 26
+  const contentW = W - pad * 2
+  const perfSectionH = hasPerformers ? Math.min(320, 160 + Math.max(hitCount, pitchCount) * 22) : 0
+  const scoresAvailH = H - headerH - 3 - footerH - perfSectionH - 30
+  // 30 = margins between sections
 
-  const gamesPerCol = Math.ceil(numGames / cols)
+  // ── Scorebugs ──
+  const bugGap = 4
+  const colGap = 6
+
+  // Find best column layout to fill scoresAvailH
+  let bestCols = 2, bestBugH = 60
+  for (let cols = 2; cols <= 5; cols++) {
+    const colW = (contentW - (cols - 1) * colGap) / cols
+    if (colW < 140) continue
+    const rows = Math.ceil(numGames / cols)
+    const bugH = Math.min(90, (scoresAvailH - (rows - 1) * bugGap) / rows)
+    if (bugH >= 48 && bugH >= bestBugH * 0.9) {
+      bestCols = cols
+      bestBugH = Math.max(48, bugH)
+    }
+  }
+
+  // If bugs are still too small, allow more columns
+  if (bestBugH < 52 && numGames > 10) {
+    for (let cols = 3; cols <= 5; cols++) {
+      const colW = (contentW - (cols - 1) * colGap) / cols
+      if (colW < 130) continue
+      const rows = Math.ceil(numGames / cols)
+      const bugH = (scoresAvailH - (rows - 1) * bugGap) / rows
+      if (bugH > bestBugH) { bestCols = cols; bestBugH = Math.max(44, bugH) }
+    }
+  }
+
+  const bugColW = (contentW - (bestCols - 1) * colGap) / bestCols
+  const bugH = bestBugH
+
+  // Distribute games to columns
+  const gamesPerCol = Math.ceil(numGames / bestCols)
   const columns = []
-  for (let c = 0; c < cols; c++) {
+  for (let c = 0; c < bestCols; c++) {
     columns.push(games.slice(c * gamesPerCol, Math.min((c + 1) * gamesPerCol, numGames)))
   }
 
-  const totalColsW = cols * colW + (cols - 1) * colGap
+  const totalColsW = bestCols * bugColW + (bestCols - 1) * colGap
   const startX = pad + (contentW - totalColsW) / 2
+  let curY = headerH + 3 + 10
 
   for (let c = 0; c < columns.length; c++) {
-    const colX = startX + c * (colW + colGap)
+    const colX = startX + c * (bugColW + colGap)
     let cy = curY
     for (let gi = 0; gi < columns[c].length; gi++) {
-      await drawScorebug(ctx, columns[c][gi], colX, cy, colW, bugH)
+      await drawScorebug(ctx, columns[c][gi], colX, cy, bugColW, bugH)
       cy += bugH + bugGap
     }
   }
-  curY += scoresH + 20
 
-  // ── TOP PERFORMERS ──
+  const scoresEndY = curY + Math.ceil(numGames / bestCols) * (bugH + bugGap)
+
+  // ── Top Performers (side by side) ──
   if (hasPerformers) {
+    const perfY = scoresEndY + 8
     ctx.fillStyle = '#00687a'
-    ctx.fillRect(pad, curY, contentW, 2)
-    curY += 12
+    ctx.fillRect(pad, perfY, contentW, 2)
 
-    ctx.fillStyle = '#0f172a'
-    ctx.font = '800 18px "Helvetica Neue", "Arial", sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('TOP PERFORMERS', W / 2, curY + 9)
-    curY += 28
+    const perfTopY = perfY + 4
+    const halfW = (contentW - 10) / 2
 
-    // Hitters
+    // Left: Hitters
     if (hitCount > 0) {
-      ctx.fillStyle = '#00687a'
-      ctx.font = '700 11px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'left'
-      ctx.fillText('HITTING', pad, curY + 5)
-      curY += 16
-      for (let i = 0; i < hitCount; i++) {
-        await drawPerformerRow(ctx, top_hitters[i], pad, curY, contentW, perfRowH, 'hitter')
-        curY += perfRowH + perfGap
-      }
-      curY += 8
+      const hitters = top_hitters.slice(0, hitCount)
+      drawStatTable(ctx, 'TOP HITTERS', hitters, pad, perfTopY, halfW, perfSectionH - 6, 'hitter')
     }
 
-    // Pitchers
+    // Right: Pitchers
     if (pitchCount > 0) {
-      ctx.fillStyle = '#00687a'
-      ctx.font = '700 11px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'left'
-      ctx.fillText('PITCHING', pad, curY + 5)
-      curY += 16
-      for (let i = 0; i < pitchCount; i++) {
-        await drawPerformerRow(ctx, top_pitchers[i], pad, curY, contentW, perfRowH, 'pitcher')
-        curY += perfRowH + perfGap
-      }
-      curY += 8
+      const pitchers = top_pitchers.slice(0, pitchCount)
+      drawStatTable(ctx, 'TOP PITCHERS', pitchers, pad + halfW + 10, perfTopY, halfW, perfSectionH - 6, 'pitcher')
     }
   }
 
   // ── Footer ──
   const footY = H - footerH / 2
   ctx.fillStyle = '#e2e8f0'
-  ctx.fillRect(pad, H - footerH - 2, W - pad * 2, 1)
+  ctx.fillRect(pad, H - footerH - 2, contentW, 1)
   ctx.fillStyle = '#00687a'
-  ctx.font = '700 11px "Helvetica Neue", "Arial", sans-serif'
+  ctx.font = '700 10px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   ctx.fillText('PNWBASEBALLSTATS.COM', pad, footY)
   ctx.fillStyle = '#94a3b8'
-  ctx.font = '500 9px "Helvetica Neue", "Arial", sans-serif'
+  ctx.font = '500 8px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'right'
   ctx.fillText('2026 Season', W - pad, footY)
 }
@@ -479,7 +502,6 @@ export default function DailyScoresGraphic() {
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
 
-      // Enrich with live endpoint for better logos on recent dates
       const liveRes = await fetch(`${API_BASE}/games/live`).catch(() => null)
       if (liveRes?.ok) {
         const liveData = await liveRes.json()
@@ -501,7 +523,6 @@ export default function DailyScoresGraphic() {
           }
         }
       }
-
       setData(json)
     } catch (err) {
       setError(err.message)
@@ -513,21 +534,11 @@ export default function DailyScoresGraphic() {
 
   useEffect(() => { fetchData(date) }, [date, fetchData])
 
-  // Filter by division
   const filteredData = data ? {
     ...data,
-    games: data.games.filter(g => {
-      if (divFilter === 'ALL') return true
-      return (g.home_division || g.division || '').toUpperCase() === divFilter
-    }),
-    top_hitters: data.top_hitters.filter(h => {
-      if (divFilter === 'ALL') return true
-      return (h.division || '').toUpperCase() === divFilter
-    }),
-    top_pitchers: data.top_pitchers.filter(p => {
-      if (divFilter === 'ALL') return true
-      return (p.division || '').toUpperCase() === divFilter
-    }),
+    games: data.games.filter(g => divFilter === 'ALL' || (g.home_division || g.division || '').toUpperCase() === divFilter),
+    top_hitters: data.top_hitters.filter(h => divFilter === 'ALL' || (h.division || '').toUpperCase() === divFilter),
+    top_pitchers: data.top_pitchers.filter(p => divFilter === 'ALL' || (p.division || '').toUpperCase() === divFilter),
   } : null
 
   const generate = useCallback(async () => {
@@ -556,46 +567,25 @@ export default function DailyScoresGraphic() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Scores Graphic</h1>
-      <p className="text-sm text-gray-500 mb-5">
-        Generate a shareable scoreboard image for any game day.
-      </p>
+      <p className="text-sm text-gray-500 mb-5">Generate a shareable scoreboard image for any game day.</p>
 
       <div className="flex flex-wrap items-center gap-3 mb-3">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-nw-teal"
-        />
-        <button
-          onClick={() => setDate(todayStr())}
-          className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
-        >
-          Today
-        </button>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-nw-teal" />
+        <button onClick={() => setDate(todayStr())}
+          className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors">Today</button>
         {rendered && (
-          <button
-            onClick={download}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-nw-teal hover:bg-nw-teal/90 transition-colors"
-          >
-            Download PNG
-          </button>
+          <button onClick={download}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-nw-teal hover:bg-nw-teal/90 transition-colors">Download PNG</button>
         )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 mb-5">
         {DIV_OPTIONS.map(d => (
-          <button
-            key={d}
-            onClick={() => setDivFilter(d)}
+          <button key={d} onClick={() => setDivFilter(d)}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-              divFilter === d
-                ? 'bg-nw-teal text-white'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            }`}
-          >
-            {d === 'ALL' ? 'All' : d}
-          </button>
+              divFilter === d ? 'bg-nw-teal text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}>{d === 'ALL' ? 'All' : d}</button>
         ))}
       </div>
 
@@ -605,16 +595,12 @@ export default function DailyScoresGraphic() {
         <p className="text-sm text-gray-400 mb-4">No {divFilter !== 'ALL' ? divFilter + ' ' : ''}final games found for {fmtDisplayDate(date)}.</p>
       )}
       {!loading && finalCount > 0 && (
-        <p className="text-sm text-gray-500 mb-4">
-          {finalCount} game{finalCount !== 1 ? 's' : ''} on {fmtDisplayDate(date)}
-        </p>
+        <p className="text-sm text-gray-500 mb-4">{finalCount} game{finalCount !== 1 ? 's' : ''} on {fmtDisplayDate(date)}</p>
       )}
 
       <div className="rounded-lg overflow-hidden shadow-lg border border-gray-200 inline-block">
-        <canvas
-          ref={canvasRef}
-          style={{ width: '100%', maxWidth: 540, height: 'auto', display: finalCount > 0 ? 'block' : 'none' }}
-        />
+        <canvas ref={canvasRef}
+          style={{ width: '100%', maxWidth: 540, height: 'auto', aspectRatio: '1/1', display: finalCount > 0 ? 'block' : 'none' }} />
       </div>
     </div>
   )
