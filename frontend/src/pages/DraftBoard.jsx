@@ -1,100 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-
-const DRAFT_DATA = {
-  '26': {
-    year: 2026,
-    prospects: [
-      { rank: 1, name: 'Sean Duncan', pos: 'LHP', school: 'Terry Fox Secondary (BC)', playerId: null },
-      { rank: 2, name: 'Maddox Molony', pos: 'SS', school: 'Oregon', playerId: 3506 },
-      { rank: 3, name: 'Ethan Kleinschmit', pos: 'LHP', school: 'Oregon State', playerId: 3644 },
-      { rank: 4, name: 'Teagan Scott', pos: 'C', school: 'South Salem (OR)', playerId: null },
-      { rank: 5, name: 'Eli Herst', pos: 'RHP', school: 'Seattle Academy (WA)', playerId: null },
-      { rank: 6, name: 'Cal Scolari', pos: 'RHP', school: 'Oregon', playerId: 3632 },
-      { rank: 7, name: 'Eric Segura', pos: 'RHP', school: 'Oregon State', playerId: 3643 },
-      { rank: 8, name: 'Sawyer Nelson', pos: 'SS', school: 'South Salem (OR)', playerId: null },
-      { rank: 9, name: 'Wyatt Queen', pos: 'RHP', school: 'Oregon State', playerId: 3649 },
-      { rank: 10, name: 'Bryce Collins', pos: 'RHP', school: 'Kelso (WA)', playerId: null },
-      { rank: 11, name: 'Finbar O\'Brien', pos: 'RHP', school: 'Gonzaga', playerId: 3575 },
-      { rank: 12, name: 'Grady Saunders', pos: 'RHP', school: 'Thurston (OR)', playerId: null },
-      { rank: 13, name: 'Collin Clarke', pos: 'P', school: 'Oregon', playerId: 3624 },
-      { rank: 14, name: 'Anthony Karis', pos: 'OF', school: 'Gonzaga Prep (WA)', playerId: null },
-      { rank: 15, name: 'Kealoha Kepo\'o-Sabate', pos: 'RHP', school: 'Meadowdale (WA)', playerId: null },
-      { rank: 16, name: 'Ryan Cooney', pos: 'IF', school: 'Oregon', playerId: 3502 },
-      { rank: 17, name: 'Miles Gosztola', pos: 'LHP', school: 'Oregon', playerId: 3637 },
-      { rank: 18, name: 'Will Rohrbacher', pos: 'IF', school: 'Bainbridge (WA)', playerId: null },
-      { rank: 19, name: 'Erik Hoffberg', pos: 'LHP', school: 'Gonzaga', playerId: 3568 },
-      { rank: 20, name: 'Drew Smith', pos: '3B', school: 'Oregon', playerId: null },
-      { rank: 21, name: 'Colton Bower', pos: 'C', school: 'Washington', playerId: 3484 },
-      { rank: 22, name: 'Noah Kenney', pos: 'RHP', school: 'Washington', playerId: 3611 },
-      { rank: 23, name: 'Jackson Jaha', pos: 'UTIL', school: 'LC State', playerId: 2714 },
-      { rank: 24, name: 'Trenton Hertzog', pos: 'UTIL', school: 'Tualatin (OR)', playerId: null },
-      { rank: 25, name: 'Zach Bowman', pos: 'LHP', school: 'Gonzaga', playerId: 3570 },
-      { rank: 26, name: 'Trey Newmann', pos: 'RHP', school: 'Portland', playerId: 3601 },
-      { rank: 27, name: 'Mikey Bell', pos: 'INF', school: 'Gonzaga', playerId: 3550 },
-      { rank: 28, name: 'Donny Tober', pos: 'RHP', school: 'Warner Pacific', playerId: 2950 },
-      { rank: 29, name: 'Dominic Hellman', pos: 'UTIL', school: 'Oregon', playerId: 3504 },
-      { rank: 30, name: 'Gavin Roy', pos: 'SS', school: 'Washington St', playerId: null },
-      { rank: 31, name: 'Albert Roblez', pos: 'RHP', school: 'Oregon State', playerId: 3647 },
-      { rank: 32, name: 'Payton Knowles', pos: 'UTIL', school: 'Seattle U', playerId: 3687 },
-      { rank: 33, name: 'Maddox Haley', pos: 'UTIL', school: 'Gonzaga', playerId: null },
-      { rank: 34, name: 'Will Anderson', pos: 'LHP', school: 'British Columbia', playerId: 2994 },
-      { rank: 35, name: 'Austin Wolfe', pos: 'LHP', school: 'Bushnell', playerId: 2921 },
-      { rank: 36, name: 'August Ware', pos: 'LHP', school: 'Glencoe (OR)', playerId: null },
-      { rank: 37, name: 'Michael Revell', pos: 'RHP', school: 'Richland (WA)', playerId: null },
-      { rank: 38, name: 'James Brock', pos: 'RHP', school: 'UBC', playerId: 2993 },
-      { rank: 39, name: 'Easton Talt', pos: 'CF', school: 'Oregon State', playerId: null },
-      { rank: 40, name: 'Jack Brooks', pos: 'CF', school: 'Oregon', playerId: null },
-      { rank: 41, name: 'Neal Burtis', pos: 'LHP', school: 'Tahoma (WA)', playerId: null },
-      { rank: 42, name: 'Jacob Courtney', pos: 'RHP', school: 'Bushnell', playerId: 2928 },
-      { rank: 43, name: 'Jace Nagler', pos: 'SS', school: 'Eastern Oregon', playerId: 2744 },
-      { rank: 44, name: 'Zach Edwards', pos: 'RHP', school: 'Oregon State', playerId: null },
-      { rank: 45, name: 'Jace Taylor', pos: 'RHP', school: 'LC State', playerId: 2737 },
-      { rank: 46, name: 'Albert Jennings', pos: 'OF', school: 'Bushnell', playerId: 2894 },
-      { rank: 47, name: 'Quinn Hubbs', pos: 'LHP', school: 'Lower Columbia', playerId: 160 },
-      { rank: 48, name: 'Jacob Rolling', pos: 'SS', school: 'Jesuit (OR)', playerId: null },
-      { rank: 49, name: 'Christopher Moore', pos: 'SS', school: 'Eastlake (WA)', playerId: null },
-      { rank: 50, name: 'Will Shelor', pos: 'CF', school: 'Pacific', playerId: 3350 },
-    ],
-  },
-  '27': {
-    year: 2027,
-    prospects: [
-      { rank: 1, name: 'Dax Whitney', pos: 'RHP', school: 'Oregon St', playerId: 3642 },
-      { rank: 2, name: 'Jackson Hotchkiss', pos: 'OF', school: 'Washington', playerId: 3492 },
-      { rank: 3, name: 'Will Sanford', pos: 'RHP', school: 'Oregon', playerId: 3623 },
-      { rank: 4, name: 'Rylan Howe', pos: 'RHP', school: 'Union (WA)', playerId: null },
-      { rank: 5, name: 'Tanner Bradley', pos: 'RHP', school: 'Oregon', playerId: 3629 },
-      { rank: 6, name: 'Joe Mendazona Jr.', pos: 'C', school: 'Central (OR)', playerId: null },
-      { rank: 7, name: 'Brayden Landry', pos: 'SS', school: 'Puyallup (WA)', playerId: null },
-      { rank: 8, name: 'Karsten Sweum', pos: 'LHP', school: 'Gonzaga', playerId: 3569 },
-      { rank: 9, name: 'Wyatt Plyler', pos: 'OF', school: 'Sumner (WA)', playerId: null },
-      { rank: 10, name: 'Luke Overbay', pos: 'OF', school: 'Tumwater (WA)', playerId: null },
-      { rank: 11, name: 'Jax Gimenez', pos: 'OF', school: 'Oregon', playerId: 3503 },
-      { rank: 12, name: 'Reece Johnson', pos: 'OF', school: 'King\'s Way (WA)', playerId: null },
-      { rank: 13, name: 'Adam Haight', pos: 'OF', school: 'Oregon St', playerId: 3518 },
-      { rank: 14, name: 'Tyler Ransom', pos: 'LHP', school: 'Sugar-Salem (ID)', playerId: null },
-      { rank: 15, name: 'Cole Katayma-Stall', pos: 'SS', school: 'Portland', playerId: 3586 },
-    ],
-  },
-  '28': {
-    year: 2028,
-    prospects: [
-      { rank: 1, name: 'Angel Laya', pos: 'OF', school: 'Oregon', playerId: 3501 },
-      { rank: 2, name: 'Lincoln Moore', pos: 'SS', school: 'Kentlake (WA)', playerId: null },
-      { rank: 3, name: 'Josh Proctor', pos: 'OF/3B', school: 'Oregon St', playerId: 3522 },
-      { rank: 4, name: 'Brayden Jaksa', pos: 'C', school: 'Oregon', playerId: 3510 },
-      { rank: 5, name: 'Madden Pike', pos: 'SS', school: 'Puyallup (WA)', playerId: null },
-      { rank: 6, name: 'Mason Pike', pos: 'TWP', school: 'Oregon St', playerId: 3656 },
-      { rank: 7, name: 'Collin McGowan', pos: 'C', school: 'Battle Ground (WA)', playerId: null },
-      { rank: 8, name: 'Daniel Porras', pos: 'OF', school: 'Washington', playerId: 3489 },
-      { rank: 9, name: 'Sam Smith', pos: 'OF', school: 'Central Catholic (OR)', playerId: null },
-      { rank: 10, name: 'Zeke Thomas', pos: 'RHP', school: 'Willamette (OR)', playerId: null },
-    ],
-  },
-}
-
-const YEARS = ['26', '27', '28']
+import { DRAFT_DATA, DRAFT_YEARS, getSchoolLogo } from '../data/draftData'
+import { formatStat } from '../utils/stats'
 
 const POS_COLORS = {
   SS: 'bg-blue-100 text-blue-800',
@@ -114,9 +21,139 @@ const POS_COLORS = {
   CF: 'bg-purple-100 text-purple-800',
 }
 
+function formatDate(dateStr) {
+  try {
+    const d = new Date(dateStr + 'T12:00:00')
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  } catch { return dateStr }
+}
+
+
+// ─── Expandable player stats row ──────────────────────────────
+function PlayerStatsDropdown({ playerId }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!playerId) { setLoading(false); return }
+    fetch(`/api/v1/players/${playerId}`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [playerId])
+
+  if (loading) {
+    return (
+      <div className="px-4 py-3 text-xs text-gray-400">Loading stats...</div>
+    )
+  }
+
+  if (!playerId) {
+    return (
+      <div className="px-4 py-3">
+        <p className="text-xs text-gray-400 italic">High school prospect -- no college stats available yet.</p>
+        <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return <div className="px-4 py-3 text-xs text-gray-400">Unable to load stats.</div>
+  }
+
+  const player = data.player || {}
+  const batting = data.batting_stats || []
+  const pitching = data.pitching_stats || []
+  const latestBat = batting.length > 0 ? batting[batting.length - 1] : null
+  const latestPitch = pitching.length > 0 ? pitching[pitching.length - 1] : null
+
+  return (
+    <div className="px-4 py-3 space-y-2">
+      {/* Player info row */}
+      <div className="flex items-center gap-2">
+        {player.headshot_url && (
+          <img src={player.headshot_url} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+        )}
+        <div>
+          <div className="text-xs text-gray-500">
+            {[player.position, player.year_in_school, player.bats && player.throws ? `${player.bats}/${player.throws}` : null].filter(Boolean).join(' · ')}
+          </div>
+          <Link to={`/player/${playerId}`} className="text-xs text-nw-teal hover:underline font-medium">
+            View full profile →
+          </Link>
+        </div>
+      </div>
+
+      {/* Batting stats */}
+      {latestBat && (
+        <div>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+            {latestBat.season} Batting
+          </div>
+          <div className="grid grid-cols-6 gap-1">
+            {[
+              { label: 'AVG', value: formatStat(latestBat.batting_avg, 'avg') },
+              { label: 'OBP', value: formatStat(latestBat.on_base_pct, 'avg') },
+              { label: 'SLG', value: formatStat(latestBat.slugging_pct, 'avg') },
+              { label: 'HR', value: latestBat.home_runs ?? '-' },
+              { label: 'RBI', value: latestBat.rbi ?? '-' },
+              { label: 'oWAR', value: formatStat(latestBat.offensive_war, 'war') },
+            ].map(s => (
+              <div key={s.label} className="text-center bg-gray-50 rounded px-1 py-1">
+                <div className="text-[9px] text-gray-400 font-medium">{s.label}</div>
+                <div className="text-xs font-bold text-gray-800">{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pitching stats */}
+      {latestPitch && (
+        <div>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+            {latestPitch.season} Pitching
+          </div>
+          <div className="grid grid-cols-6 gap-1">
+            {[
+              { label: 'ERA', value: formatStat(latestPitch.era, 'era') },
+              { label: 'IP', value: formatStat(latestPitch.innings_pitched, 'ip') },
+              { label: 'K', value: latestPitch.strikeouts ?? '-' },
+              { label: 'WHIP', value: formatStat(latestPitch.whip, 'era') },
+              { label: 'FIP', value: formatStat(latestPitch.fip, 'era') },
+              { label: 'pWAR', value: formatStat(latestPitch.pitching_war, 'war') },
+            ].map(s => (
+              <div key={s.label} className="text-center bg-gray-50 rounded px-1 py-1">
+                <div className="text-[9px] text-gray-400 font-medium">{s.label}</div>
+                <div className="text-xs font-bold text-gray-800">{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!latestBat && !latestPitch && (
+        <p className="text-xs text-gray-400 italic">No stats available yet this season.</p>
+      )}
+
+      <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
+    </div>
+  )
+}
+
+
+// ─── Main DraftBoard page ──────────────────────────────────────
 export default function DraftBoard({ year }) {
   const [activeYear, setActiveYear] = useState(year || '26')
+  const [expandedRank, setExpandedRank] = useState(null)
   const board = DRAFT_DATA[activeYear]
+
+  const toggleExpand = (rank) => {
+    setExpandedRank(expandedRank === rank ? null : rank)
+  }
+
+  // Reset expanded row when switching years
+  useEffect(() => { setExpandedRank(null) }, [activeYear])
 
   return (
     <div>
@@ -127,7 +164,7 @@ export default function DraftBoard({ year }) {
           Top PNW prospects for the MLB Draft
         </p>
         <div className="inline-flex bg-gray-200 rounded-lg p-1 gap-1">
-          {YEARS.map((yr) => (
+          {DRAFT_YEARS.map((yr) => (
             <button
               key={yr}
               onClick={() => setActiveYear(yr)}
@@ -143,11 +180,16 @@ export default function DraftBoard({ year }) {
         </div>
       </div>
 
-      {/* Subtitle for active year */}
-      <div className="mb-4">
+      {/* Subtitle + Last Updated */}
+      <div className="flex items-baseline justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-700">
           {board.year} Draft - {board.prospects.length} Prospects
         </h2>
+        {board.lastUpdated && (
+          <span className="text-xs text-gray-400">
+            Last updated {formatDate(board.lastUpdated)}
+          </span>
+        )}
       </div>
 
       {/* Desktop table */}
@@ -159,36 +201,68 @@ export default function DraftBoard({ year }) {
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Player</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-20">Pos</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">School</th>
+              <th className="w-8"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {board.prospects.map((p) => {
               const posClass = POS_COLORS[p.pos] || 'bg-gray-100 text-gray-800'
+              const isExpanded = expandedRank === p.rank
+              const logo = getSchoolLogo(p.school)
               return (
-                <tr key={p.rank} className="hover:bg-teal-50/40 transition-colors">
-                  <td className="px-4 py-3">
-                    <span className={`text-sm font-bold ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
-                      {p.rank}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {p.playerId ? (
-                      <Link
-                        to={`/player/${p.playerId}`}
-                        className="text-sm font-semibold text-gray-900 hover:text-nw-teal transition-colors"
-                      >
-                        {p.name}
-                      </Link>
-                    ) : (
-                      <span className="text-sm font-semibold text-gray-900">{p.name}</span>
+                <tr key={p.rank} className="group" style={{ cursor: 'default' }}>
+                  <td colSpan={5} className="p-0">
+                    <div
+                      onClick={() => toggleExpand(p.rank)}
+                      className={`flex items-center px-4 py-3 cursor-pointer transition-colors ${isExpanded ? 'bg-teal-50/60' : 'hover:bg-teal-50/40'}`}
+                    >
+                      <div className="w-12 shrink-0">
+                        <span className={`text-sm font-bold ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
+                          {p.rank}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <img
+                          src={logo}
+                          alt=""
+                          className="w-6 h-6 object-contain shrink-0"
+                          onError={(e) => { e.target.src = '/favicon.png' }}
+                        />
+                        <div>
+                          {p.playerId ? (
+                            <Link
+                              to={`/player/${p.playerId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-sm font-semibold text-gray-900 hover:text-nw-teal transition-colors"
+                            >
+                              {p.name}
+                            </Link>
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-900">{p.name}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-20 shrink-0">
+                        <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded ${posClass}`}>
+                          {p.pos}
+                        </span>
+                      </div>
+                      <div className="flex-1 text-sm text-gray-600">{p.school}</div>
+                      <div className="w-8 flex items-center justify-center shrink-0">
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="bg-gray-50/80 border-t border-gray-100">
+                        <PlayerStatsDropdown playerId={p.playerId} />
+                      </div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded ${posClass}`}>
-                      {p.pos}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{p.school}</td>
                 </tr>
               )
             })}
@@ -200,27 +274,52 @@ export default function DraftBoard({ year }) {
       <div className="sm:hidden space-y-2">
         {board.prospects.map((p) => {
           const posClass = POS_COLORS[p.pos] || 'bg-gray-100 text-gray-800'
+          const isExpanded = expandedRank === p.rank
+          const logo = getSchoolLogo(p.school)
           return (
-            <div key={p.rank} className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3 flex items-center gap-3">
-              <span className={`text-lg font-bold w-8 text-center shrink-0 ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
-                {p.rank}
-              </span>
-              <div className="flex-1 min-w-0">
-                {p.playerId ? (
-                  <Link
-                    to={`/player/${p.playerId}`}
-                    className="text-sm font-semibold text-gray-900 hover:text-nw-teal transition-colors block truncate"
-                  >
-                    {p.name}
-                  </Link>
-                ) : (
-                  <span className="text-sm font-semibold text-gray-900 block truncate">{p.name}</span>
-                )}
-                <span className="text-xs text-gray-500">{p.school}</span>
+            <div key={p.rank} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              <div
+                onClick={() => toggleExpand(p.rank)}
+                className={`px-4 py-3 flex items-center gap-3 cursor-pointer ${isExpanded ? 'bg-teal-50/60' : ''}`}
+              >
+                <span className={`text-lg font-bold w-8 text-center shrink-0 ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
+                  {p.rank}
+                </span>
+                <img
+                  src={logo}
+                  alt=""
+                  className="w-6 h-6 object-contain shrink-0"
+                  onError={(e) => { e.target.src = '/favicon.png' }}
+                />
+                <div className="flex-1 min-w-0">
+                  {p.playerId ? (
+                    <Link
+                      to={`/player/${p.playerId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-sm font-semibold text-gray-900 hover:text-nw-teal transition-colors block truncate"
+                    >
+                      {p.name}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-semibold text-gray-900 block truncate">{p.name}</span>
+                  )}
+                  <span className="text-xs text-gray-500">{p.school}</span>
+                </div>
+                <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded shrink-0 ${posClass}`}>
+                  {p.pos}
+                </span>
+                <svg
+                  className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </div>
-              <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded shrink-0 ${posClass}`}>
-                {p.pos}
-              </span>
+              {isExpanded && (
+                <div className="bg-gray-50/80 border-t border-gray-100">
+                  <PlayerStatsDropdown playerId={p.playerId} />
+                </div>
+              )}
             </div>
           )
         })}

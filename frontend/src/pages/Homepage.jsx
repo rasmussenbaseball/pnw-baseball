@@ -574,19 +574,19 @@ function PowerRankingsWidget({ ratings }) {
 
 
 // ════════════════════════════════════════════
-// DRAFT BOARD WIDGET (top 5 prospects)
+// DRAFT BOARD WIDGET (top 5 prospects from shared data)
 // ════════════════════════════════════════════
-const DRAFT_PROSPECTS = [
-  { rank: 1, name: 'Maddox Molony', pos: 'SS', school: 'Oregon', playerId: 3506 },
-  { rank: 2, name: 'Sean Duncan', pos: 'LHP', school: 'Terry Fox Secondary (BC)', playerId: null },
-  { rank: 3, name: 'Eli Herst', pos: 'RHP', school: 'Seattle Academy (WA)', playerId: null },
-  { rank: 4, name: 'Ethan Kleinschmit', pos: 'LHP', school: 'Oregon State', playerId: 3644 },
-  { rank: 5, name: 'Cal Scolari', pos: 'RHP', school: 'Oregon', playerId: 3632 },
-]
+import { DRAFT_DATA, getSchoolLogo } from '../data/draftData'
+
+const DRAFT_PROSPECTS = DRAFT_DATA['26'].prospects.slice(0, 5)
 
 const POS_BADGE = {
   SS: 'bg-blue-100 text-blue-700', C: 'bg-amber-100 text-amber-700',
   RHP: 'bg-red-100 text-red-700', LHP: 'bg-emerald-100 text-emerald-700',
+  OF: 'bg-purple-100 text-purple-700', IF: 'bg-blue-100 text-blue-700',
+  '3B': 'bg-pink-100 text-pink-700', INF: 'bg-blue-100 text-blue-700',
+  P: 'bg-rose-100 text-rose-700', UTIL: 'bg-teal-100 text-teal-700',
+  CF: 'bg-purple-100 text-purple-700',
 }
 
 function UpsetOfTheDayWidget({ upset }) {
@@ -662,26 +662,35 @@ function DraftBoardWidget() {
         <Link to="/draft" className="text-xs text-pnw-teal hover:underline">Full board →</Link>
       </div>
       <div className="space-y-0">
-        {DRAFT_PROSPECTS.map((p) => (
-          <div key={p.rank} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
-            <span className={`w-4 text-right font-mono text-[10px] font-bold ${p.rank <= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
-              {p.rank}
-            </span>
-            <div className="flex-1 min-w-0">
-              {p.playerId ? (
-                <Link to={`/player/${p.playerId}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block">
-                  {p.name}
-                </Link>
-              ) : (
-                <span className="text-xs font-semibold text-gray-800 truncate block">{p.name}</span>
-              )}
-              <span className="text-[10px] text-gray-400">{p.school}</span>
+        {DRAFT_PROSPECTS.map((p) => {
+          const logo = getSchoolLogo(p.school)
+          return (
+            <div key={p.rank} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+              <span className={`w-4 text-right font-mono text-[10px] font-bold shrink-0 ${p.rank <= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+                {p.rank}
+              </span>
+              <img
+                src={logo}
+                alt=""
+                className="w-5 h-5 object-contain shrink-0"
+                onError={(e) => { e.target.src = '/favicon.png' }}
+              />
+              <div className="flex-1 min-w-0 leading-tight">
+                {p.playerId ? (
+                  <Link to={`/player/${p.playerId}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block leading-tight">
+                    {p.name}
+                  </Link>
+                ) : (
+                  <span className="text-xs font-semibold text-gray-800 truncate block leading-tight">{p.name}</span>
+                )}
+                <span className="text-[10px] text-gray-400 leading-tight">{p.school}</span>
+              </div>
+              <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded shrink-0 ${POS_BADGE[p.pos] || 'bg-gray-100 text-gray-600'}`}>
+                {p.pos}
+              </span>
             </div>
-            <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${POS_BADGE[p.pos] || 'bg-gray-100 text-gray-600'}`}>
-              {p.pos}
-            </span>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -714,17 +723,17 @@ function WclLeadersWidget({ leaders }) {
                 <img src={top.logo_url} alt="" className="w-5 h-5 object-contain shrink-0"
                   onError={(e) => { e.target.style.display = 'none' }} />
               )}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 leading-tight">
                 {top.spring_player_id ? (
-                  <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block">
+                  <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block leading-tight">
                     {top.first_name} {top.last_name}
                   </Link>
                 ) : (
-                  <span className="text-xs font-semibold text-gray-800 truncate block">
+                  <span className="text-xs font-semibold text-gray-800 truncate block leading-tight">
                     {top.first_name} {top.last_name}
                   </span>
                 )}
-                <span className="text-[10px] text-gray-400">{top.team_short}</span>
+                <span className="text-[10px] text-gray-400 leading-tight">{top.team_short}</span>
               </div>
               <span className="text-sm font-bold text-pnw-slate tabular-nums">
                 {cat.format === 'avg' ? top.value?.toFixed(3).replace(/^0/, '') :
