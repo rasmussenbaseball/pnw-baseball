@@ -71,11 +71,8 @@ const NAV = [
     items: [
       { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
       { to: '/feature-request', label: 'Request a Feature', desc: 'Submit ideas and feedback' },
+      { to: '/about', label: 'About', desc: 'About PNW Baseball Stats' },
     ],
-  },
-  {
-    label: 'About',
-    to: '/about', // direct link, no dropdown
   },
 ]
 
