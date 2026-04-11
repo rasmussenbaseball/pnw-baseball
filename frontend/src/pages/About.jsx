@@ -4,6 +4,29 @@ import { Link } from 'react-router-dom'
 // ─── Site Updates / Changelog ───
 const UPDATES = [
   {
+    version: '1.6',
+    date: 'April 10, 2026',
+    title: 'Scoreboard Upgrades, Daily Scores Graphic & Navigation Refresh',
+    changes: [
+      'Scoreboard now shows R/H/E columns and W/L/S pitcher decisions for every final game',
+      'Scoreboard games are now grouped and ordered by division: D1, D2, D3, NAIA, NWAC',
+      'Box score links now appear on every final game, including in compact mode',
+      'Added Daily Scores graphic generator with top hitters and pitchers, scorebug layouts, and division filters',
+      'Player Pages graphic now features Savant-style percentile bars, summer ball stats, and team logos on career rankings',
+      'Added H/9, HR/9, and HR/PA% to player percentile bars',
+      'Compact scoreboard layout kicks in automatically when 8+ games are scheduled',
+      'Redesigned player stat graphic with centered stat sections and improved layout',
+      'Updated 2026 MLB Draft Board to 50 prospects with new rankings',
+      'Added GB from playoff cutoff line to standings with +/- display',
+      'Upcoming games on the scoreboard now show live stats links',
+      'Reorganized site navigation: new Graphics tab for Scatter Plot, Daily Scores, Player Pages, and Leaderboard graphics',
+      'Fixed line score parser to correctly detect R/H/E columns, preventing inflated error counts',
+      'Fixed duplicate game rows inflating team records on the daily scores graphic',
+      'Team records on daily scores graphic now match the standings page exactly',
+      'Non-PNW opponents no longer display a W-L record on the scoreboard or daily scores graphic',
+    ],
+  },
+  {
     version: '1.5',
     date: 'April 7, 2026',
     title: 'Game Logs, Coverage Fixes & Data Accuracy',
