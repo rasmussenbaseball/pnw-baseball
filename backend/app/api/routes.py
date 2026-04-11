@@ -6458,25 +6458,45 @@ def key_matchup(
                 continue
             team = dict(team)
 
-            # Record
+            # Record + conference record
             cur.execute("""
-                SELECT wins, losses, ties
+                SELECT wins, losses, ties,
+                       conference_wins, conference_losses
                 FROM team_season_stats
                 WHERE team_id = %s AND season = %s
             """, (tid, season))
             record = cur.fetchone()
-            team["record"] = dict(record) if record else {"wins": 0, "losses": 0, "ties": 0}
+            team["record"] = dict(record) if record else {
+                "wins": 0, "losses": 0, "ties": 0,
+                "conference_wins": 0, "conference_losses": 0
+            }
 
-            # Team batting aggregates
+            # National ranking
+            cur.execute("""
+                SELECT composite_rank, num_sources
+                FROM composite_rankings
+                WHERE team_id = %s AND season = %s
+            """, (tid, season))
+            ranking = cur.fetchone()
+            team["national_rank"] = dict(ranking) if ranking else None
+
+            # Team batting aggregates (expanded)
             cur.execute("""
                 SELECT
                     CASE WHEN SUM(at_bats) > 0
                          THEN ROUND((SUM(hits)::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_avg,
                     CASE WHEN SUM(plate_appearances) > 0
+                         THEN ROUND(((SUM(hits) + SUM(walks) + SUM(hit_by_pitch))::numeric / SUM(plate_appearances))::numeric, 3) ELSE 0 END as team_obp,
+                    CASE WHEN SUM(at_bats) > 0
+                         THEN ROUND(((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_slg,
+                    CASE WHEN SUM(plate_appearances) > 0
                          THEN ROUND((SUM(home_runs)::numeric / SUM(plate_appearances))::numeric, 4) ELSE 0 END as hr_per_pa,
                     ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
                     ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
+                    ROUND(AVG(wrc_plus)::numeric, 0) as avg_wrc_plus,
+                    SUM(home_runs) as total_hr,
                     SUM(stolen_bases) as total_sb,
+                    SUM(runs) as total_runs,
                     ROUND(SUM(offensive_war)::numeric, 1) as total_owar
                 FROM batting_stats
                 WHERE team_id = %s AND season = %s AND plate_appearances >= 10
@@ -6484,17 +6504,22 @@ def key_matchup(
             batting = cur.fetchone()
             team["batting"] = dict(batting) if batting else {}
 
-            # Team pitching aggregates
+            # Team pitching aggregates (expanded)
             cur.execute("""
                 SELECT
                     ROUND(SUM(pitching_war)::numeric, 1) as total_pwar,
                     ROUND(AVG(fip)::numeric, 2) as avg_fip,
                     ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
                     ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                    CASE WHEN SUM(innings_pitched) > 0
+                         THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_era,
+                    CASE WHEN SUM(innings_pitched) > 0
+                         THEN ROUND(((SUM(walks) + SUM(hits_allowed)) / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_whip,
                     CASE WHEN SUM(batters_faced) > 0
                          THEN ROUND((SUM(hits_allowed)::numeric / SUM(batters_faced))::numeric, 3) ELSE 0 END as opp_avg,
                     CASE WHEN SUM(batters_faced) > 0
-                         THEN ROUND((SUM(home_runs_allowed)::numeric / SUM(batters_faced))::numeric, 4) ELSE 0 END as opp_hr_per_pa
+                         THEN ROUND((SUM(home_runs_allowed)::numeric / SUM(batters_faced))::numeric, 4) ELSE 0 END as opp_hr_per_pa,
+                    SUM(runs_allowed) as total_runs_allowed
                 FROM pitching_stats
                 WHERE team_id = %s AND season = %s AND innings_pitched >= 3
             """, (tid, season))
@@ -6504,7 +6529,8 @@ def key_matchup(
             # Top 3 hitters by wRC+ (50+ PA)
             cur.execute("""
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
-                       bs.wrc_plus, bs.batting_avg, bs.home_runs, bs.rbi,
+                       bs.wrc_plus, bs.batting_avg, bs.on_base_pct, bs.slugging_pct,
+                       bs.home_runs, bs.rbi, bs.stolen_bases,
                        bs.plate_appearances, bs.offensive_war
                 FROM batting_stats bs
                 JOIN players p ON bs.player_id = p.id
@@ -6518,7 +6544,8 @@ def key_matchup(
             cur.execute("""
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                        ps.fip, ps.era, ps.innings_pitched, ps.strikeouts,
-                       ps.k_pct, ps.pitching_war
+                       ps.walks, ps.k_pct, ps.bb_pct, ps.whip,
+                       ps.pitching_war
                 FROM pitching_stats ps
                 JOIN players p ON ps.player_id = p.id
                 WHERE ps.team_id = %s AND ps.season = %s AND ps.innings_pitched >= 15
