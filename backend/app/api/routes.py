@@ -6526,33 +6526,52 @@ def key_matchup(
             pitching = cur.fetchone()
             team["pitching"] = dict(pitching) if pitching else {}
 
-            # Top 3 hitters by wRC+ (50+ PA)
+            # Top 5 hitters by wRC+ (50+ PA)
             cur.execute("""
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                        bs.wrc_plus, bs.batting_avg, bs.on_base_pct, bs.slugging_pct,
                        bs.home_runs, bs.rbi, bs.stolen_bases,
-                       bs.plate_appearances, bs.offensive_war
+                       bs.plate_appearances, bs.offensive_war, bs.k_pct, bs.bb_pct
                 FROM batting_stats bs
                 JOIN players p ON bs.player_id = p.id
                 WHERE bs.team_id = %s AND bs.season = %s AND bs.plate_appearances >= 50
                 ORDER BY bs.wrc_plus DESC NULLS LAST
-                LIMIT 3
+                LIMIT 5
             """, (tid, season))
             team["top_hitters"] = [dict(r) for r in cur.fetchall()]
 
-            # Top 3 pitchers by FIP (15+ IP)
+            # Top 3 starters by FIP (5+ GS)
             cur.execute("""
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                        ps.fip, ps.era, ps.innings_pitched, ps.strikeouts,
                        ps.walks, ps.k_pct, ps.bb_pct, ps.whip,
-                       ps.pitching_war
+                       ps.pitching_war, ps.games_started,
+                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct
                 FROM pitching_stats ps
                 JOIN players p ON ps.player_id = p.id
-                WHERE ps.team_id = %s AND ps.season = %s AND ps.innings_pitched >= 15
+                WHERE ps.team_id = %s AND ps.season = %s
+                  AND COALESCE(ps.games_started, 0) >= 5
                 ORDER BY ps.fip ASC NULLS LAST
                 LIMIT 3
             """, (tid, season))
-            team["top_pitchers"] = [dict(r) for r in cur.fetchall()]
+            team["top_starters"] = [dict(r) for r in cur.fetchall()]
+
+            # Top 2 relievers by K-BB% (10+ IP, fewer than 5 GS)
+            cur.execute("""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       ps.fip, ps.era, ps.innings_pitched, ps.strikeouts,
+                       ps.walks, ps.k_pct, ps.bb_pct, ps.whip,
+                       ps.pitching_war, ps.games_started,
+                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct
+                FROM pitching_stats ps
+                JOIN players p ON ps.player_id = p.id
+                WHERE ps.team_id = %s AND ps.season = %s
+                  AND ps.innings_pitched >= 10
+                  AND COALESCE(ps.games_started, 0) < 5
+                ORDER BY (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0)) DESC NULLS LAST
+                LIMIT 2
+            """, (tid, season))
+            team["top_relievers"] = [dict(r) for r in cur.fetchall()]
 
             team["side"] = side
             matchup_teams.append(team)
