@@ -5920,6 +5920,38 @@ def games_by_date(
                 g["loss_pitcher"] = d.get("L")
                 g["save_pitcher"] = d.get("S")
 
+            # ── Backfill hits/errors from batting data when games table is NULL ──
+            missing_he = [g["id"] for g in games
+                          if g.get("status") == "final" and g.get("home_hits") is None]
+            if missing_he:
+                ph2 = ",".join(["%s"] * len(missing_he))
+                cur.execute(f"""
+                    SELECT gb.game_id, gb.team_id,
+                           SUM(gb.hits) AS hits
+                    FROM game_batting gb
+                    WHERE gb.game_id IN ({ph2})
+                    GROUP BY gb.game_id, gb.team_id
+                """, missing_he)
+                he_map = {}
+                for r in cur.fetchall():
+                    he_map.setdefault(r["game_id"], {})[r["team_id"]] = r["hits"] or 0
+                for g in games:
+                    if g["id"] not in he_map:
+                        continue
+                    teams = he_map[g["id"]]
+                    home_id = g.get("home_team_id")
+                    away_id = g.get("away_team_id")
+                    # Assign hits by team_id; NULL team_id = non-PNW opponent
+                    for tid, hits in teams.items():
+                        if tid == home_id:
+                            g["home_hits"] = hits
+                        elif tid == away_id:
+                            g["away_hits"] = hits
+                        elif tid is None and not home_id:
+                            g["home_hits"] = hits
+                        elif tid is None and not away_id:
+                            g["away_hits"] = hits
+
         # For future dates, merge in games from future_schedules.json
         # that aren't already in the database
         from pathlib import Path

@@ -1248,6 +1248,83 @@ def _safe_int(val, default=0):
 # Box Score Page Parsers
 # ============================================================
 
+def _normalize_pitcher_name(raw):
+    """Normalize a pitcher name for matching: 'Last, First' -> 'first last', etc."""
+    raw = raw.strip()
+    # Remove record like (4-3)
+    raw = re.sub(r'\s*\(\d+-\d+\)\s*$', '', raw)
+    # Remove save count like (3)
+    raw = re.sub(r'\s*\(\d+\)\s*$', '', raw)
+    raw = raw.strip().rstrip(';').strip()
+    if ',' in raw:
+        parts = raw.split(',', 1)
+        return f"{parts[1].strip()} {parts[0].strip()}".lower()
+    return raw.lower()
+
+
+def _apply_pitching_decisions(soup, result):
+    """
+    Extract W/L/S pitcher decisions from Sidearm page elements and apply them
+    to matching pitchers in result["pitching"]. Sidearm pages put Win/Loss/Save
+    in <span class="text-theme-safe-light"> or similar elements outside the
+    pitching stats tables.
+    """
+    decision_map = {}  # {'W': 'name', 'L': 'name', 'S': 'name'}
+
+    # Strategy 1: <div class="flex"> containing <span> with Win:/Loss:/Save: labels
+    for span in soup.find_all('span', class_=re.compile(r'text-theme-safe|font-bold')):
+        label_text = span.get_text(strip=True).rstrip(':').strip()
+        if label_text not in ('Win', 'Loss', 'Save'):
+            continue
+        dec_code = label_text[0]  # W, L, S
+        parent = span.parent
+        if not parent:
+            continue
+        # The pitcher name is in the next sibling span or the remaining text
+        full_text = parent.get_text(strip=True)
+        # Remove the label prefix
+        name_part = re.sub(r'^(Win|Loss|Save)\s*:\s*', '', full_text).strip()
+        if name_part:
+            decision_map[dec_code] = _normalize_pitcher_name(name_part)
+
+    # Strategy 2: Plain text like "Win - Name (4-3), Loss - Name (2-5)"
+    if not decision_map:
+        text = soup.get_text()
+        for m in re.finditer(r'(Win|Loss|Save)\s*[-:]\s*([^,(]+(?:\([^)]*\))?)', text):
+            dec_code = m.group(1)[0]
+            if dec_code not in decision_map:
+                decision_map[dec_code] = _normalize_pitcher_name(m.group(2))
+
+    if not decision_map:
+        return
+
+    # Match decision names to pitchers in the result
+    all_pitchers = []
+    for side in ('home', 'away'):
+        for p in result.get("pitching", {}).get(side, []):
+            all_pitchers.append(p)
+
+    for dec_code, dec_name in decision_map.items():
+        matched = False
+        # Try exact normalized match
+        for p in all_pitchers:
+            pname = (p.get("player_name") or "").lower()
+            if dec_name == pname or dec_name in pname or pname in dec_name:
+                p["decision"] = dec_code
+                matched = True
+                break
+        if matched:
+            continue
+        # Try last-name-only match
+        dec_last = dec_name.split()[-1] if dec_name else ""
+        for p in all_pitchers:
+            pname = (p.get("player_name") or "").lower()
+            p_last = pname.split()[-1] if pname else ""
+            if dec_last and dec_last == p_last:
+                p["decision"] = dec_code
+                break
+
+
 def parse_sidearm_boxscore(html, base_url=""):
     """
     Parse a Sidearm box score page.
@@ -1357,6 +1434,9 @@ def parse_sidearm_boxscore(html, base_url=""):
     for i, table in enumerate(pitching_tables[:2]):
         side = "away" if i == 0 else "home"
         result["pitching"][side] = _parse_pitching_table(table)
+
+    # ─── Extract W/L/S decisions from page (Sidearm puts them outside tables) ───
+    _apply_pitching_decisions(soup, result)
 
     return result
 
