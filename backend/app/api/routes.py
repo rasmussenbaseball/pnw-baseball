@@ -6570,6 +6570,21 @@ def games_live():
             # so CWU-vs-MSUB appears twice (once from each team's schedule).
             for section in ("today", "recent", "upcoming"):
                 data[section] = _dedup_live_games(data.get(section, []))
+
+            # ── Move stale games out of "today" ──
+            # If the JSON was generated hours ago, some games in "today" may
+            # actually belong to yesterday.  Relocate them to "recent".
+            from datetime import datetime as _dt_cls
+            from zoneinfo import ZoneInfo as _ZI
+            _today_str = _dt_cls.now(_ZI("America/Los_Angeles")).strftime("%Y-%m-%d")
+            still_today = []
+            for g in data.get("today", []):
+                gd = str(g.get("date", ""))[:10]
+                if gd == _today_str or not gd:
+                    still_today.append(g)
+                else:
+                    data.setdefault("recent", []).append(g)
+            data["today"] = still_today
         except (ValueError, OSError):
             pass
 
@@ -6594,6 +6609,7 @@ def games_live():
                     g.home_score, g.away_score,
                     g.home_hits, g.home_errors,
                     g.away_hits, g.away_errors,
+                    g.home_team_id, g.away_team_id,
                     g.innings, g.is_conference_game, g.status,
                     g.source_url,
                     COALESCE(ht.short_name, g.home_team_name) AS home_name,
@@ -6651,10 +6667,35 @@ def games_live():
                     name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else None
                     decisions[gid][r["decision"]] = name
 
+            # Backfill hits from game_batting for games missing them
+            hits_backfill = {}
+            needs_hits = [r["id"] for r in db_rows if r["home_hits"] is None]
+            if needs_hits:
+                ph2 = ",".join(["%s"] * len(needs_hits))
+                cur.execute(f"""
+                    SELECT gb.game_id, gb.team_id, SUM(gb.hits) AS h
+                    FROM game_batting gb
+                    WHERE gb.game_id IN ({ph2})
+                    GROUP BY gb.game_id, gb.team_id
+                """, needs_hits)
+                for r in cur.fetchall():
+                    hits_backfill.setdefault(r["game_id"], {})[r["team_id"]] = r["h"]
+
             for row in db_rows:
                 game_date_str = str(row["game_date"])
                 division = row["home_div"] or row["away_div"] or ""
                 d = decisions.get(row["id"], {})
+
+                # Resolve hits: prefer games table, fall back to game_batting
+                hb = hits_backfill.get(row["id"], {})
+                home_hits = row["home_hits"]
+                away_hits = row["away_hits"]
+                if home_hits is None and hb:
+                    # home_team_id may be None for non-PNW opponents
+                    htid = row.get("home_team_id")
+                    atid = row.get("away_team_id")
+                    home_hits = hb.get(htid) if htid else None
+                    away_hits = hb.get(atid) if atid else None
 
                 # Format as live-scores-style object (home team perspective)
                 nwac_game = {
@@ -6672,9 +6713,9 @@ def games_live():
                     "location": "",
                     "team_score": str(row["home_score"]) if row["home_score"] is not None else None,
                     "opponent_score": str(row["away_score"]) if row["away_score"] is not None else None,
-                    "home_hits": row["home_hits"],
+                    "home_hits": home_hits,
                     "home_errors": row["home_errors"],
-                    "away_hits": row["away_hits"],
+                    "away_hits": away_hits,
                     "away_errors": row["away_errors"],
                     "win_pitcher": d.get("W"),
                     "loss_pitcher": d.get("L"),
