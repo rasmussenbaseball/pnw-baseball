@@ -5895,6 +5895,31 @@ def games_by_date(
 
         games = _dedup_games([dict(g) for g in cur.fetchall()], limit=500)
 
+        # ── W/L/S pitchers for each game ──
+        final_ids = [g["id"] for g in games if g.get("status") == "final"]
+        if final_ids:
+            ph = ",".join(["%s"] * len(final_ids))
+            cur.execute(f"""
+                SELECT gp.game_id, gp.player_name, gp.decision,
+                       p.first_name, p.last_name
+                FROM game_pitching gp
+                LEFT JOIN players p ON gp.player_id = p.id
+                WHERE gp.game_id IN ({ph}) AND gp.decision IN ('W', 'L', 'S')
+                ORDER BY gp.game_id
+            """, final_ids)
+            decisions = {}
+            for r in cur.fetchall():
+                gid = r["game_id"]
+                if gid not in decisions:
+                    decisions[gid] = {}
+                name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else "Unknown"
+                decisions[gid][r["decision"]] = name
+            for g in games:
+                d = decisions.get(g["id"], {})
+                g["win_pitcher"] = d.get("W")
+                g["loss_pitcher"] = d.get("L")
+                g["save_pitcher"] = d.get("S")
+
         # For future dates, merge in games from future_schedules.json
         # that aren't already in the database
         from pathlib import Path
@@ -6535,6 +6560,8 @@ def games_live():
                 SELECT DISTINCT ON (g.game_date, LEAST(COALESCE(ht.id,0), COALESCE(at2.id,0)), GREATEST(COALESCE(ht.id,0), COALESCE(at2.id,0)), g.game_number)
                     g.id, g.game_date, g.game_time,
                     g.home_score, g.away_score,
+                    g.home_hits, g.home_errors,
+                    g.away_hits, g.away_errors,
                     g.innings, g.is_conference_game, g.status,
                     g.source_url,
                     COALESCE(ht.short_name, g.home_team_name) AS home_name,
@@ -6557,12 +6584,10 @@ def games_live():
                 ORDER BY g.game_date, LEAST(COALESCE(ht.id,0), COALESCE(at2.id,0)), GREATEST(COALESCE(ht.id,0), COALESCE(at2.id,0)), g.game_number, g.id DESC
             """, (recent_start, upcoming_end))
 
-            seen_db = set()  # Track (date, home, away, h_score, a_score) to skip DB dupes
+            db_rows = []
+            seen_db = set()
             for row in cur.fetchall():
                 game_date_str = str(row["game_date"])
-                division = row["home_div"] or row["away_div"] or ""
-
-                # Skip duplicate DB records
                 dedup_key = (
                     game_date_str,
                     (row["home_name"] or "").lower(),
@@ -6573,6 +6598,31 @@ def games_live():
                 if dedup_key in seen_db:
                     continue
                 seen_db.add(dedup_key)
+                db_rows.append(row)
+
+            # Fetch W/L/S pitcher decisions for all merged games
+            decisions = {}
+            db_game_ids = [r["id"] for r in db_rows]
+            if db_game_ids:
+                ph = ",".join(["%s"] * len(db_game_ids))
+                cur.execute(f"""
+                    SELECT gp.game_id, gp.player_name, gp.decision,
+                           p.first_name, p.last_name
+                    FROM game_pitching gp
+                    LEFT JOIN players p ON gp.player_id = p.id
+                    WHERE gp.game_id IN ({ph}) AND gp.decision IN ('W', 'L', 'S')
+                """, db_game_ids)
+                for r in cur.fetchall():
+                    gid = r["game_id"]
+                    if gid not in decisions:
+                        decisions[gid] = {}
+                    name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else None
+                    decisions[gid][r["decision"]] = name
+
+            for row in db_rows:
+                game_date_str = str(row["game_date"])
+                division = row["home_div"] or row["away_div"] or ""
+                d = decisions.get(row["id"], {})
 
                 # Format as live-scores-style object (home team perspective)
                 nwac_game = {
@@ -6590,6 +6640,13 @@ def games_live():
                     "location": "",
                     "team_score": str(row["home_score"]) if row["home_score"] is not None else None,
                     "opponent_score": str(row["away_score"]) if row["away_score"] is not None else None,
+                    "home_hits": row["home_hits"],
+                    "home_errors": row["home_errors"],
+                    "away_hits": row["away_hits"],
+                    "away_errors": row["away_errors"],
+                    "win_pitcher": d.get("W"),
+                    "loss_pitcher": d.get("L"),
+                    "save_pitcher": d.get("S"),
                     "result_status": None,
                     "is_conference": row["is_conference_game"] or False,
                     "box_score_url": row["source_url"] or "",

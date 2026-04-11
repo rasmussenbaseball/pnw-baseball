@@ -450,7 +450,30 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
             <span className="text-xs font-medium text-gray-500">{gameTime}</span>
           </div>
         )}
+
+        {/* H/E row for final games */}
+        {isFinal && (game.home_hits != null || game.away_hits != null) && (
+          <div className="flex justify-end gap-3 mt-0.5 pr-0.5">
+            <span className="text-[10px] text-gray-400 tabular-nums">
+              H: {game.away_hits ?? '-'}-{game.home_hits ?? '-'}
+            </span>
+            <span className="text-[10px] text-gray-400 tabular-nums">
+              E: {game.away_errors ?? '-'}-{game.home_errors ?? '-'}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* W/L/S + Footer */}
+      {isFinal && (game.win_pitcher || game.loss_pitcher) && (
+        <div className={`${cardPadX} pb-1`}>
+          <div className="flex flex-wrap gap-x-3 gap-y-0">
+            {game.win_pitcher && <span className="text-[10px] text-gray-500"><span className="font-semibold text-emerald-600">W:</span> {game.win_pitcher}</span>}
+            {game.loss_pitcher && <span className="text-[10px] text-gray-500"><span className="font-semibold text-red-500">L:</span> {game.loss_pitcher}</span>}
+            {game.save_pitcher && <span className="text-[10px] text-gray-500"><span className="font-semibold text-blue-500">S:</span> {game.save_pitcher}</span>}
+          </div>
+        </div>
+      )}
 
       {/* Footer - hidden in compact mode */}
       {!compact && (
@@ -585,7 +608,30 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
             <span className="text-xs font-medium text-gray-500">{gameTime}</span>
           </div>
         )}
+
+        {/* H/E row for final games */}
+        {isFinal && (game.home_hits != null || game.away_hits != null) && (
+          <div className="flex justify-end gap-3 mt-0.5 pr-0.5">
+            <span className="text-[10px] text-gray-400 tabular-nums">
+              H: {game.away_hits ?? '-'}-{game.home_hits ?? '-'}
+            </span>
+            <span className="text-[10px] text-gray-400 tabular-nums">
+              E: {game.away_errors ?? '-'}-{game.home_errors ?? '-'}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* W/L/S pitchers */}
+      {isFinal && (game.win_pitcher || game.loss_pitcher) && (
+        <div className={`${cardPadX} pb-1`}>
+          <div className="flex flex-wrap gap-x-3 gap-y-0">
+            {game.win_pitcher && <span className="text-[10px] text-gray-500"><span className="font-semibold text-emerald-600">W:</span> {game.win_pitcher}</span>}
+            {game.loss_pitcher && <span className="text-[10px] text-gray-500"><span className="font-semibold text-red-500">L:</span> {game.loss_pitcher}</span>}
+            {game.save_pitcher && <span className="text-[10px] text-gray-500"><span className="font-semibold text-blue-500">S:</span> {game.save_pitcher}</span>}
+          </div>
+        </div>
+      )}
 
       {/* Footer - hidden in compact mode */}
       {!compact && (
