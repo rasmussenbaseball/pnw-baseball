@@ -215,12 +215,12 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
   const pad = 6
   const titleH = 16
   const rowCount = players.length + 1 // +1 for header row
-  const rowH = Math.min(26, (h - titleH) / Math.max(1, rowCount))
-  const logoSize = Math.max(10, rowH - 6)
+  const rowH = Math.min(28, (h - titleH) / Math.max(1, rowCount))
+  const logoSize = Math.max(12, rowH - 6)
 
   // Section label
   ctx.fillStyle = '#00687a'
-  ctx.font = '700 10px "Inter", system-ui, sans-serif'
+  ctx.font = '700 11px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   ctx.fillText(title, x + pad, y + titleH / 2)
@@ -232,7 +232,7 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
   ctx.fill()
 
   ctx.fillStyle = '#64748b'
-  ctx.font = '600 7px "Inter", system-ui, sans-serif'
+  ctx.font = '600 8px "Inter", system-ui, sans-serif'
   ctx.textBaseline = 'middle'
   const headerMidY = tableY + rowH / 2
 
@@ -284,7 +284,7 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#0f172a'
-    ctx.font = '600 9px "Inter", system-ui, sans-serif'
+    ctx.font = '600 11px "Inter", system-ui, sans-serif'
 
     const maxW = x + nameColW - curX - 2
     let displayName = name
@@ -292,16 +292,16 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
       displayName = displayName.slice(0, -1)
     }
     if (displayName !== name) displayName += '.'
-    ctx.fillText(displayName, curX, rMidY - 1)
+    ctx.fillText(displayName, curX, rMidY)
 
     // Team abbrev in gray
     const nameW = ctx.measureText(displayName + ' ').width
     ctx.fillStyle = '#94a3b8'
-    ctx.font = '400 7px "Inter", system-ui, sans-serif'
-    ctx.fillText(team, curX + nameW, rMidY - 1)
+    ctx.font = '400 8px "Inter", system-ui, sans-serif'
+    ctx.fillText(team, curX + nameW, rMidY)
 
     // Stats
-    ctx.font = '600 9px "Inter", system-ui, sans-serif'
+    ctx.font = '600 10px "Inter", system-ui, sans-serif'
     ctx.fillStyle = '#0f172a'
     if (type === 'hitter') {
       // AB, H, HR, RBI, XBH, SB
@@ -313,8 +313,8 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
         ctx.textAlign = 'center'
         // Highlight HR (j=2) in red
         ctx.fillStyle = j === 2 && val > 0 ? '#dc2626' : '#0f172a'
-        ctx.font = j === 2 && val > 0 ? '700 9px "Inter", system-ui, sans-serif' : '600 9px "Inter", system-ui, sans-serif'
-        ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY - 1)
+        ctx.font = j === 2 && val > 0 ? '700 10px "Inter", system-ui, sans-serif' : '600 10px "Inter", system-ui, sans-serif'
+        ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY)
       })
     } else {
       // IP, H, K, BB, ER, DEC
@@ -328,12 +328,12 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
         ctx.textAlign = 'center'
         if (j === 5) { // DEC column
           ctx.fillStyle = val === 'W' ? '#16a34a' : val === 'L' ? '#dc2626' : '#64748b'
-          ctx.font = '700 9px "Inter", system-ui, sans-serif'
+          ctx.font = '700 10px "Inter", system-ui, sans-serif'
         } else {
           ctx.fillStyle = '#0f172a'
-          ctx.font = '600 9px "Inter", system-ui, sans-serif'
+          ctx.font = '600 10px "Inter", system-ui, sans-serif'
         }
-        ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY - 1)
+        ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY)
       })
     }
   }
@@ -394,7 +394,7 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   const footerH = 26
   const contentW = W - pad * 2
   // Performers section is FIXED height, anchored at bottom above footer
-  const perfSectionH = hasPerformers ? 180 : 0
+  const perfSectionH = hasPerformers ? 210 : 0
   const perfDividerH = hasPerformers ? 6 : 0
   const scoresTopY = headerH + 3 + 8 // 8px margin below header line
   const scoresBottomY = H - footerH - perfSectionH - perfDividerH - 4

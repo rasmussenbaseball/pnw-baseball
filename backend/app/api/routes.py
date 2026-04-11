@@ -6143,6 +6143,24 @@ def daily_performers(
         """, game_ids)
         pitching_rows = [dict(r) for r in cur.fetchall()]
 
+        # ── 5b. Filter out non-PNW D1 teams ──
+        # D2/D3/NAIA/JUCO conferences are all PNW, but D1 conferences
+        # (Big Ten, MWC, WCC) include many non-PNW schools.
+        PNW_D1_TEAMS = {
+            'Oregon', 'Oregon St.', 'UW', 'Wash. St.',
+            'Gonzaga', 'Portland', 'Seattle U',
+        }
+        batting_rows = [
+            b for b in batting_rows
+            if b.get('division') != 'D1'
+            or b.get('team_short') in PNW_D1_TEAMS
+        ]
+        pitching_rows = [
+            p for p in pitching_rows
+            if p.get('division') != 'D1'
+            or p.get('team_short') in PNW_D1_TEAMS
+        ]
+
         # ── 6. Rank hitters by performance score ──
         def _display_name(row):
             name = row.get("player_name") or ""
