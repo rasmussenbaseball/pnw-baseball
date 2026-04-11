@@ -12,7 +12,6 @@ const NAV = [
       { to: '/hitting', label: 'Hitting', desc: 'Batting leaderboards & stats' },
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
-      { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
       { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
       { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
     ],
@@ -57,13 +56,20 @@ const NAV = [
     to: '/draft',
   },
   {
+    label: 'Graphics',
+    authRequired: true,
+    items: [
+      { to: '/graphics', label: 'Leaderboards', desc: 'Create social media images' },
+      { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
+      { to: '/daily-scores', label: 'Daily Scores', desc: 'Download daily scoreboard graphic' },
+      { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
+    ],
+  },
+  {
     label: 'Misc',
     authRequired: true,
     items: [
       { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
-      { to: '/graphics', label: 'Graphics', desc: 'Create social media images' },
-      { to: '/daily-scores', label: 'Daily Scores', desc: 'Download daily scoreboard graphic' },
-      { to: '/player-pages', label: 'Pages', desc: 'Shareable player stat graphics' },
       { to: '/feature-request', label: 'Request a Feature', desc: 'Submit ideas and feedback' },
     ],
   },
