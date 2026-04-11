@@ -6516,10 +6516,10 @@ def games_live():
         except (ValueError, OSError):
             pass
 
-    # ── Merge NAIA + JUCO games from database ──
-    # live_scores.json covers D1/D2/D3 games from Sidearm/PrestoSports reliably.
-    # NAIA and JUCO game scores come from separate scrapers that write to the DB,
-    # so we merge those here. Also replaces stale "scheduled" entries with finals.
+    # ── Merge ALL final games from database ──
+    # live_scores.json covers D1/D2/D3 games from Sidearm/PrestoSports but can
+    # miss games. NAIA and JUCO come from separate scrapers. Merge all divisions
+    # from the DB so the scoreboard always shows every final game.
     try:
         from datetime import datetime as _datetime
         from zoneinfo import ZoneInfo
@@ -6552,15 +6552,15 @@ def games_live():
                 LEFT JOIN divisions ad ON ac.division_id = ad.id
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
-                  AND (hd.level IN ('JUCO', 'NAIA') OR ad.level IN ('JUCO', 'NAIA'))
+                  AND g.status = 'final'
                   AND g.home_team_id != g.away_team_id
                 ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
             """, (recent_start, upcoming_end))
 
-            seen_nwac = set()  # Track (date, home, away, h_score, a_score) to skip DB dupes
+            seen_db = set()  # Track (date, home, away, h_score, a_score) to skip DB dupes
             for row in cur.fetchall():
                 game_date_str = str(row["game_date"])
-                division = row["home_div"] or row["away_div"] or "JUCO"
+                division = row["home_div"] or row["away_div"] or ""
 
                 # Skip duplicate DB records
                 dedup_key = (
@@ -6570,13 +6570,13 @@ def games_live():
                     row["home_score"],
                     row["away_score"],
                 )
-                if dedup_key in seen_nwac:
+                if dedup_key in seen_db:
                     continue
-                seen_nwac.add(dedup_key)
+                seen_db.add(dedup_key)
 
                 # Format as live-scores-style object (home team perspective)
                 nwac_game = {
-                    "id": f"nwac_{row['id']}",
+                    "id": f"db_{row['id']}",
                     "team": row["home_name"] or "TBD",
                     "team_division": division,
                     "team_logo": row["home_logo"] or "",
@@ -6604,10 +6604,10 @@ def games_live():
                     data["recent"].append(nwac_game)
 
     except Exception:
-        # Don't break the live endpoint if NWAC merge fails
+        # Don't break the live endpoint if DB merge fails
         pass
 
-    # Dedup again after NWAC games are merged in
+    # Dedup again after DB games are merged in
     for section in ("today", "recent", "upcoming"):
         data[section] = _dedup_live_games(data.get(section, []))
 
