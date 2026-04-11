@@ -1379,11 +1379,22 @@ def parse_sidearm_boxscore(html, base_url=""):
 
     # ─── Parse line score table ───
     linescore_table = None
+    has_rhe_columns = False
     for table in soup.find_all("table"):
         text = table.get_text()
-        if re.search(r'\b[RHE]\b', text) and re.search(r'\d+\s+\d+\s+\d+', text):
-            linescore_table = table
-            break
+        if re.search(r'\d+\s+\d+\s+\d+', text):
+            # Check header row for R, H, E columns
+            header_row = table.find("tr")
+            if header_row:
+                headers = [th.get_text(strip=True).upper() for th in header_row.find_all(["th", "td"])]
+                if "R" in headers and "H" in headers and "E" in headers:
+                    has_rhe_columns = True
+                    linescore_table = table
+                    break
+                # Also accept tables with just inning numbers + F (for line score only)
+                if any(h.isdigit() for h in headers):
+                    linescore_table = table
+                    # Don't break — keep looking for a table WITH R/H/E
 
     if linescore_table:
         rows = linescore_table.find_all("tr")
@@ -1392,7 +1403,7 @@ def parse_sidearm_boxscore(html, base_url=""):
             cells = row.find_all(["td", "th"])
             if len(cells) < 4:
                 continue
-            # Extract inning-by-inning scores (skip team name and R/H/E totals)
+            # Extract inning-by-inning scores (skip team name cell)
             nums = []
             for cell in cells[1:]:  # Skip team name cell
                 t = cell.get_text(strip=True)
@@ -1401,26 +1412,37 @@ def parse_sidearm_boxscore(html, base_url=""):
                 elif t == "X" or t == "x":
                     nums.append(None)  # Bottom of inning not played
 
-            if len(nums) >= 4:  # At least some innings + R, H, E
+            if len(nums) >= 4:  # At least some innings + totals
                 line_scores.append(nums)
 
         if len(line_scores) >= 2:
-            # Last 3 values are R, H, E
             away_line = line_scores[0]
             home_line = line_scores[1]
 
-            result["away_score"] = away_line[-3] if len(away_line) >= 3 else None
-            result["home_score"] = home_line[-3] if len(home_line) >= 3 else None
-            result["away_hits"] = away_line[-2] if len(away_line) >= 3 else None
-            result["home_hits"] = home_line[-2] if len(home_line) >= 3 else None
-            result["away_errors"] = away_line[-1] if len(away_line) >= 3 else None
-            result["home_errors"] = home_line[-1] if len(home_line) >= 3 else None
+            if has_rhe_columns:
+                # Last 3 values are R, H, E
+                result["away_score"] = away_line[-3] if len(away_line) >= 3 else None
+                result["home_score"] = home_line[-3] if len(home_line) >= 3 else None
+                result["away_hits"] = away_line[-2] if len(away_line) >= 3 else None
+                result["home_hits"] = home_line[-2] if len(home_line) >= 3 else None
+                result["away_errors"] = away_line[-1] if len(away_line) >= 3 else None
+                result["home_errors"] = home_line[-1] if len(home_line) >= 3 else None
+                # Inning-by-inning (exclude R, H, E)
+                result["line_score"] = {
+                    "away": [x for x in away_line[:-3] if x is not None],
+                    "home": [x for x in home_line[:-3] if x is not None],
+                }
+            else:
+                # Table only has innings + Final (no R/H/E columns)
+                # Last value is the final score
+                result["away_score"] = away_line[-1] if away_line else None
+                result["home_score"] = home_line[-1] if home_line else None
+                # Don't set hits/errors — they're not in this table
+                result["line_score"] = {
+                    "away": [x for x in away_line[:-1] if x is not None],
+                    "home": [x for x in home_line[:-1] if x is not None],
+                }
 
-            # Inning-by-inning (exclude R, H, E)
-            result["line_score"] = {
-                "away": [x for x in away_line[:-3] if x is not None],
-                "home": [x for x in home_line[:-3] if x is not None],
-            }
             result["innings"] = max(
                 len(result["line_score"]["away"]),
                 len(result["line_score"]["home"]),
