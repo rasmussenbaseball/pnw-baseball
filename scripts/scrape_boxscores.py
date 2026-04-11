@@ -2484,6 +2484,8 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             else:
                 is_away = opponent.lower().startswith(("at ", "@"))
             opponent_clean = re.sub(r'^(?:at |@ |vs\.?\s*)', '', opponent, flags=re.I).strip()
+            # Strip trailing digits that may be score concatenated with name
+            opponent_clean = re.sub(r'(?<=[a-zA-Z])\d+$', '', opponent_clean).strip()
 
             # Build a unique source_url even if no box score page exists
             source_url = sched_game.get("box_score_url")
