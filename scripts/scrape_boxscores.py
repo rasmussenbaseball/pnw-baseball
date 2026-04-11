@@ -1311,9 +1311,10 @@ def _apply_pitching_decisions(soup, result):
 
     for dec_code, dec_name in decision_map.items():
         matched = False
-        # Try exact normalized match
+        # Try normalized match (both names as "first last" lowercase)
         for p in all_pitchers:
-            pname = (p.get("player_name") or "").lower()
+            pname_raw = (p.get("player_name") or "").strip()
+            pname = _normalize_pitcher_name(pname_raw)
             if dec_name == pname or dec_name in pname or pname in dec_name:
                 p["decision"] = dec_code
                 matched = True
@@ -1323,7 +1324,8 @@ def _apply_pitching_decisions(soup, result):
         # Try last-name-only match
         dec_last = dec_name.split()[-1] if dec_name else ""
         for p in all_pitchers:
-            pname = (p.get("player_name") or "").lower()
+            pname_raw = (p.get("player_name") or "").strip()
+            pname = _normalize_pitcher_name(pname_raw)
             p_last = pname.split()[-1] if pname else ""
             if dec_last and dec_last == p_last:
                 p["decision"] = dec_code
