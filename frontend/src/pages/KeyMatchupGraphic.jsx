@@ -67,40 +67,67 @@ function fmtIP(ip) {
   return String(whole + 1)
 }
 
-// ── TEAM COLORS ──
+// ── TEAM COLORS: p=primary bar, t=bright text for dark bg ──
 const TC = {
-  'Oregon':       { p: '#154733', s: '#FEE123', t: '#7dca5c' },
-  'Oregon St':    { p: '#DC4405', s: '#000000', t: '#ff8c5a' },
-  'Washington':   { p: '#4B2E83', s: '#B7A57A', t: '#b89aff' },
-  'Wash St':      { p: '#981E32', s: '#5E6A71', t: '#ff6b7f' },
-  'Gonzaga':      { p: '#002967', s: '#C8102E', t: '#6b9aff' },
-  'Portland':     { p: '#3E1F6B', s: '#FFFFFF', t: '#b089ff' },
-  'Seattle U':    { p: '#AA0000', s: '#000000', t: '#ff6666' },
-  'CWU':          { p: '#B1040E', s: '#000000', t: '#ff6b6b' },
-  'WWU':          { p: '#003F87', s: '#FFFFFF', t: '#6ba3ff' },
-  'SPU':          { p: '#4E2683', s: '#FFFFFF', t: '#b089ff' },
-  'SFU':          { p: '#CC0633', s: '#003B6F', t: '#ff6680' },
-  'MSU Billings': { p: '#FFB81C', s: '#006341', t: '#ffd666' },
-  'MSUB':         { p: '#FFB81C', s: '#006341', t: '#ffd666' },
-  'SMU':          { p: '#004990', s: '#FFFFFF', t: '#5599ff' },
-  'NNU':          { p: '#F7941D', s: '#000000', t: '#ffb74d' },
-  'WOU':          { p: '#E41C38', s: '#3D3935', t: '#ff6b7f' },
-  'Concordia':    { p: '#002855', s: '#FFFFFF', t: '#5588cc' },
-  'Corban':       { p: '#003262', s: '#B8922F', t: '#5588cc' },
-  'EOU':          { p: '#003DA5', s: '#FFC72C', t: '#5599ff' },
-  'L&C':          { p: '#B5A36A', s: '#000000', t: '#d4c898' },
-  'Lewis-Clark':  { p: '#003DA5', s: '#CF102D', t: '#5599ff' },
-  'Linfield':     { p: '#6E2585', s: '#000000', t: '#b66bdd' },
-  'George Fox':   { p: '#00205B', s: '#CFB87C', t: '#5577bb' },
-  'Pacific':      { p: '#000000', s: '#C8102E', t: '#999999' },
-  'PLU':          { p: '#000000', s: '#C89A2C', t: '#d4b84d' },
-  'Puget Sound':  { p: '#8B2332', s: '#000000', t: '#dd6677' },
-  'Whitman':      { p: '#1C5BA2', s: '#D2492A', t: '#6ba3ff' },
-  'Whitworth':    { p: '#A6192E', s: '#002855', t: '#dd6677' },
-  'Willamette':   { p: '#862633', s: '#C99700', t: '#cc7788' },
-  'Bushnell':     { p: '#002D72', s: '#C8102E', t: '#5588cc' },
+  'Oregon':       { p: '#154733', t: '#7dca5c' },
+  'Oregon St':    { p: '#DC4405', t: '#ff8c5a' },
+  'Washington':   { p: '#4B2E83', t: '#b89aff' },
+  'Wash St':      { p: '#981E32', t: '#ff6b7f' },
+  'Gonzaga':      { p: '#002967', t: '#6b9aff' },
+  'Portland':     { p: '#3E1F6B', t: '#b089ff' },
+  'Seattle U':    { p: '#AA0000', t: '#ff6666' },
+  'CWU':          { p: '#B1040E', t: '#ff6b6b' },
+  'WWU':          { p: '#003F87', t: '#6ba3ff' },
+  'SPU':          { p: '#4E2683', t: '#b089ff' },
+  'SFU':          { p: '#CC0633', t: '#ff6680' },
+  'MSU Billings': { p: '#FFB81C', t: '#ffd666' },
+  'MSUB':         { p: '#FFB81C', t: '#ffd666' },
+  'SMU':          { p: '#004990', t: '#5599ff' },
+  'NNU':          { p: '#F7941D', t: '#ffb74d' },
+  'WOU':          { p: '#E41C38', t: '#ff6b7f' },
+  'Concordia':    { p: '#002855', t: '#5588cc' },
+  'Corban':       { p: '#003262', t: '#5588cc' },
+  'EOU':          { p: '#003DA5', t: '#5599ff' },
+  'L&C':          { p: '#B5A36A', t: '#d4c898' },
+  'Lewis-Clark':  { p: '#003DA5', t: '#5599ff' },
+  'Linfield':     { p: '#6E2585', t: '#b66bdd' },
+  'George Fox':   { p: '#00205B', t: '#5577bb' },
+  'Pacific':      { p: '#000000', t: '#aaaaaa' },
+  'PLU':          { p: '#000000', t: '#d4b84d' },
+  'Puget Sound':  { p: '#8B2332', t: '#dd6677' },
+  'Whitman':      { p: '#1C5BA2', t: '#6ba3ff' },
+  'Whitworth':    { p: '#A6192E', t: '#dd6677' },
+  'Willamette':   { p: '#862633', t: '#cc7788' },
+  'Bushnell':     { p: '#002D72', t: '#5588cc' },
+  'Edmonds':      { p: '#003DA5', t: '#5599ff' },
+  'Everett':      { p: '#00703C', t: '#4dd9a0' },
+  'Skagit Valley':{ p: '#003DA5', t: '#5599ff' },
+  'Shoreline':    { p: '#003DA5', t: '#5599ff' },
+  'Bellevue':     { p: '#003DA5', t: '#d4b84d' },
+  'Olympic':      { p: '#002855', t: '#5588cc' },
+  'Pierce':       { p: '#002D72', t: '#ffb74d' },
+  'Tacoma':       { p: '#00205B', t: '#ff6666' },
+  'Centralia':    { p: '#006747', t: '#4dd9a0' },
+  'Grays Harbor': { p: '#002855', t: '#ffb74d' },
+  'L Columbia':   { p: '#C8102E', t: '#ff6b6b' },
+  'Clark':        { p: '#003DA5', t: '#5599ff' },
+  'Chemeketa':    { p: '#003DA5', t: '#ff6666' },
+  'SW Oregon':    { p: '#003DA5', t: '#5599ff' },
+  'Clackamas':    { p: '#006747', t: '#4dd9a0' },
+  'Lane':         { p: '#003DA5', t: '#ff6666' },
+  'Mt Hood':      { p: '#003DA5', t: '#ffb74d' },
+  'Linn-Benton':  { p: '#003DA5', t: '#5599ff' },
+  'Treasure Val': { p: '#003DA5', t: '#ff6666' },
+  'Blue Mountain':{ p: '#003DA5', t: '#5599ff' },
+  'Columbia Basin':{ p: '#B5121B', t: '#ff6b6b' },
+  'Walla Walla':  { p: '#006747', t: '#4dd9a0' },
+  'Wenatchee Val':{ p: '#003DA5', t: '#ff6666' },
+  'Yakima Valley':{ p: '#003DA5', t: '#ff6666' },
+  'Big Bend':     { p: '#003DA5', t: '#5599ff' },
+  'Spokane':      { p: '#C8102E', t: '#ff6b6b' },
+  'Spokane Falls':{ p: '#000000', t: '#ff6666' },
 }
-const DEFAULT_C = { p: '#00687a', s: '#004d5a', t: '#4dd9c0' }
+const DEFAULT_C = { p: '#00687a', t: '#4dd9c0' }
 function getTC(name) { return TC[name] || DEFAULT_C }
 
 // ── DESIGN TOKENS ──
@@ -108,7 +135,7 @@ const BG = '#0f172a'
 const CARD = '#1e293b'
 const CARD2 = '#273548'
 const SUBTLE = '#334155'
-const WHITE = '#f8fafc'
+const WHITE = '#f1f5f9'
 const LIGHT = '#94a3b8'
 const DIM = '#64748b'
 const TEAL = '#00687a'
@@ -124,81 +151,80 @@ async function drawGraphic(canvas, data, pred) {
   const away = teams.find(t => t.side === 'away') || teams[0]
   const home = teams.find(t => t.side === 'home') || teams[1]
   const ac = getTC(away.short_name), hc = getTC(home.short_name)
-  const P = 20, W = S - P * 2, half = W / 2
+  const P = 16, W = S - P * 2, half = W / 2
 
   // BG
   ctx.fillStyle = BG; ctx.fillRect(0, 0, S, S)
   // Team color bars
-  ctx.fillStyle = ac.p; ctx.fillRect(0, 0, S / 2, 5)
-  ctx.fillStyle = hc.p; ctx.fillRect(S / 2, 0, S / 2, 5)
+  ctx.fillStyle = ac.p; ctx.fillRect(0, 0, S / 2, 6)
+  ctx.fillStyle = hc.p; ctx.fillRect(S / 2, 0, S / 2, 6)
 
-  let y = 10
+  let y = 12
 
   // ── HEADER ──
-  ctx.fillStyle = TEAL; roundRect(ctx, P, y, W, 36, 8); ctx.fill()
-  ctx.fillStyle = WHITE; ctx.font = 'bold 17px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText('KEY MATCHUP', S / 2, y + 19)
-  ctx.font = '10px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.7)'
-  ctx.fillText(fmtDisplayDate(data.date), S / 2, y + 32)
-  y += 42
+  const hdrH = 48
+  ctx.fillStyle = TEAL; roundRect(ctx, P, y, W, hdrH, 10); ctx.fill()
+  ctx.fillStyle = WHITE; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'
+  ctx.fillText('KEY MATCHUP', S / 2, y + 24)
+  ctx.font = '12px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.fillText(fmtDisplayDate(data.date), S / 2, y + 40)
+  y += hdrH + 8
 
   // ── TEAM BANNER ──
-  const bannerH = 100
+  const bannerH = 126
   ctx.fillStyle = CARD; roundRect(ctx, P, y, W, bannerH, 10); ctx.fill()
-  // Color accents
-  ctx.fillStyle = ac.p; ctx.fillRect(P, y, 5, bannerH)
-  ctx.fillStyle = hc.p; ctx.fillRect(S - P - 5, y, 5, bannerH)
+  ctx.fillStyle = ac.p; ctx.fillRect(P, y, 6, bannerH)
+  ctx.fillStyle = hc.p; ctx.fillRect(S - P - 6, y, 6, bannerH)
 
-  // VS circle
+  // VS
   ctx.fillStyle = SUBTLE
-  ctx.beginPath(); ctx.arc(S / 2, y + bannerH / 2, 18, 0, Math.PI * 2); ctx.fill()
-  ctx.fillStyle = WHITE; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText('VS', S / 2, y + bannerH / 2 + 5)
+  ctx.beginPath(); ctx.arc(S / 2, y + bannerH / 2, 22, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = WHITE; ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'
+  ctx.fillText('VS', S / 2, y + bannerH / 2 + 6)
   if (data.matchup.is_conference_game) {
-    ctx.fillStyle = TEAL; roundRect(ctx, S / 2 - 46, y + bannerH / 2 + 22, 92, 14, 7); ctx.fill()
-    ctx.fillStyle = WHITE; ctx.font = 'bold 8px system-ui'; ctx.fillText('CONFERENCE GAME', S / 2, y + bannerH / 2 + 32)
+    ctx.fillStyle = TEAL; roundRect(ctx, S / 2 - 56, y + bannerH / 2 + 28, 112, 18, 9); ctx.fill()
+    ctx.fillStyle = WHITE; ctx.font = 'bold 9px system-ui'; ctx.fillText('CONFERENCE GAME', S / 2, y + bannerH / 2 + 40)
   }
 
-  for (const [team, xC, c] of [[away, P + half / 2 + 4, ac], [home, S - P - half / 2 - 4, hc]]) {
+  for (const [team, xC, c] of [[away, P + half / 2 + 6, ac], [home, S - P - half / 2 - 6, hc]]) {
     const r = team.record || {}
     const rec = `${r.wins || 0}-${r.losses || 0}`
     const conf = r.conference_wins != null ? `(${r.conference_wins}-${r.conference_losses} conf)` : ''
-    try { const logo = await loadImage(team.logo_url); ctx.drawImage(logo, xC - 24, y + 6, 48, 48) } catch {}
-    ctx.fillStyle = WHITE; ctx.font = 'bold 20px system-ui'; ctx.textAlign = 'center'
-    ctx.fillText(team.short_name || team.name, xC, y + 70)
-    ctx.fillStyle = LIGHT; ctx.font = '11px system-ui'
-    ctx.fillText(`${rec}  ${conf}`, xC, y + 84)
-    ctx.font = '10px system-ui'; ctx.fillText(`${team.division_level || ''} • ${team.conference_abbrev || ''}`, xC, y + 96)
+    try { const logo = await loadImage(team.logo_url); ctx.drawImage(logo, xC - 30, y + 8, 60, 60) } catch {}
+    ctx.fillStyle = WHITE; ctx.font = 'bold 24px system-ui'; ctx.textAlign = 'center'
+    ctx.fillText(team.short_name || team.name, xC, y + 86)
+    ctx.fillStyle = LIGHT; ctx.font = '13px system-ui'
+    ctx.fillText(`${rec}  ${conf}`, xC, y + 102)
+    ctx.font = '11px system-ui'; ctx.fillText(`${team.division_level || ''} • ${team.conference_abbrev || ''}`, xC, y + 117)
     const rank = team.national_rank?.composite_rank
     if (rank) {
-      ctx.fillStyle = c.p; roundRect(ctx, xC - 16, y + 52, 32, 14, 7); ctx.fill()
-      ctx.fillStyle = WHITE; ctx.font = 'bold 9px system-ui'; ctx.fillText(`#${rank}`, xC, y + 62)
+      ctx.fillStyle = c.p; roundRect(ctx, xC - 20, y + 64, 40, 16, 8); ctx.fill()
+      ctx.fillStyle = WHITE; ctx.font = 'bold 10px system-ui'; ctx.fillText(`#${rank}`, xC, y + 76)
     }
   }
-  y += bannerH + 6
+  y += bannerH + 8
 
   // ── WIN PROBABILITY + PREDICTION ──
   const m = pred?.matchups?.[0]
   if (m) {
-    const predH = 62
-    ctx.fillStyle = CARD; roundRect(ctx, P, y, W, predH, 8); ctx.fill()
+    const predH = 78
+    ctx.fillStyle = CARD; roundRect(ctx, P, y, W, predH, 10); ctx.fill()
     let awP, hoP
     if (away.id === m.team_a) { awP = m.win_prob_a; hoP = m.win_prob_b }
     else { awP = m.win_prob_b; hoP = m.win_prob_a }
 
     // Bar
-    const bX = P + 60, bW = W - 120, bY = y + 8, bH = 22
-    ctx.fillStyle = ac.p; roundRect(ctx, bX, bY, bW * awP, bH, 4); ctx.fill()
-    ctx.fillStyle = hc.p; roundRect(ctx, bX + bW - bW * hoP, bY, bW * hoP, bH, 4); ctx.fill()
-    // Pcts
-    ctx.fillStyle = WHITE; ctx.font = 'bold 20px system-ui'
-    ctx.textAlign = 'left'; ctx.fillText(`${(awP * 100).toFixed(0)}%`, P + 10, bY + 18)
-    ctx.textAlign = 'right'; ctx.fillText(`${(hoP * 100).toFixed(0)}%`, S - P - 10, bY + 18)
-    ctx.fillStyle = DIM; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'
-    ctx.fillText('PROJECTED WIN %', S / 2, bY + 15)
+    const bX = P + 76, bW = W - 152, bY = y + 10, bH = 26
+    ctx.fillStyle = ac.p; roundRect(ctx, bX, bY, Math.max(bW * awP, 10), bH, 5); ctx.fill()
+    ctx.fillStyle = hc.p; roundRect(ctx, bX + bW - Math.max(bW * hoP, 10), bY, Math.max(bW * hoP, 10), bH, 5); ctx.fill()
+    ctx.fillStyle = WHITE; ctx.font = 'bold 24px system-ui'
+    ctx.textAlign = 'left'; ctx.fillText(`${(awP * 100).toFixed(0)}%`, P + 12, bY + 22)
+    ctx.textAlign = 'right'; ctx.fillText(`${(hoP * 100).toFixed(0)}%`, S - P - 12, bY + 22)
+    ctx.fillStyle = DIM; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'
+    ctx.fillText('PROJECTED WIN %', S / 2, bY + 18)
 
-    // Bottom row: Spread | O/U | Proj Runs | Power ratings
-    const iy = y + 40
+    // Bottom info row
+    const iy = y + 48
     const cols = [P + W * 0.1, P + W * 0.3, P + W * 0.5, P + W * 0.7, P + W * 0.9]
     const absSprd = Math.abs(m.spread).toFixed(1)
     const fav = m.favored === away.id ? away.short_name : home.short_name
@@ -207,60 +233,54 @@ async function drawGraphic(canvas, data, pred) {
     const awPwr = pred.teams?.find(t => t.team_id === away.id)
     const hoPwr = pred.teams?.find(t => t.team_id === home.id)
 
-    const infoItems = [
+    const items = [
       { label: 'PWR RATING', val: awPwr?.power_rating?.toFixed(1) || '-', color: ac.t },
       { label: 'SPREAD', val: `${fav} -${absSprd}` },
       { label: 'OVER/UNDER', val: `${m.proj_total.toFixed(1)} runs` },
       { label: 'PROJ RUNS', val: `${projA.toFixed(1)} - ${projB.toFixed(1)}` },
       { label: 'PWR RATING', val: hoPwr?.power_rating?.toFixed(1) || '-', color: hc.t },
     ]
-    infoItems.forEach((item, i) => {
-      ctx.fillStyle = DIM; ctx.font = 'bold 7px system-ui'; ctx.textAlign = 'center'
-      ctx.fillText(item.label, cols[i], iy)
-      ctx.fillStyle = item.color || WHITE; ctx.font = 'bold 11px system-ui'
-      ctx.fillText(item.val, cols[i], iy + 14)
+    items.forEach((it, i) => {
+      ctx.fillStyle = DIM; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'
+      ctx.fillText(it.label, cols[i], iy)
+      ctx.fillStyle = it.color || WHITE; ctx.font = 'bold 14px system-ui'
+      ctx.fillText(it.val, cols[i], iy + 18)
     })
-    y += predH + 5
+    y += predH + 7
   }
 
-  // ── TEAM STATS: Full-width grid layout ──
-  const statsH = 166
-  ctx.fillStyle = CARD; roundRect(ctx, P, y, W, statsH, 8); ctx.fill()
+  // ── TEAM STATS ──
+  const statsH = 210
+  ctx.fillStyle = CARD; roundRect(ctx, P, y, W, statsH, 10); ctx.fill()
 
-  // Offense (left half) and Pitching (right half) side by side
-  // Each has: column of away vals | labels | column of home vals
-  const offStats = buildOffStats(away, home)
-  const pitStats = buildPitStats(away, home)
-  const leftMid = P + half / 2, rightMid = S - P - half / 2
+  ctx.fillStyle = ac.t; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'
+  ctx.fillText('OFFENSE', P + half / 2, y + 18)
+  ctx.fillStyle = hc.t; ctx.fillText('PITCHING', S - P - half / 2, y + 18)
 
-  // Headers
-  ctx.fillStyle = ac.t; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText('OFFENSE', leftMid, y + 14)
-  ctx.fillStyle = hc.t; ctx.fillText('PITCHING', rightMid, y + 14)
-
-  // Divider
   ctx.strokeStyle = SUBTLE; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(S / 2, y + 4); ctx.lineTo(S / 2, y + statsH - 4); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(S / 2, y + 6); ctx.lineTo(S / 2, y + statsH - 6); ctx.stroke()
 
-  drawCompact(ctx, offStats, P + 6, S / 2 - 6, y + 20, away, home, ac, hc)
-  drawCompact(ctx, pitStats, S / 2 + 6, S - P - 6, y + 20, away, home, ac, hc)
-  y += statsH + 5
+  drawCompact(ctx, buildOffStats(away, home), P + 8, S / 2 - 8, y + 26, away, home)
+  drawCompact(ctx, buildPitStats(away, home), S / 2 + 8, S - P - 8, y + 26, away, home)
+  y += statsH + 6
 
-  // ── TOP HITTERS (5 per side) ──
+  // ── TOP HITTERS (5) ──
   y = drawPlayers(ctx, 'TOP HITTERS  (50+ PA)', away.top_hitters || [], home.top_hitters || [], 'hit', 5, P, y, W, S, ac, hc)
-  y += 4
+  y += 6
 
-  // ── STARTERS (3 per side) ──
-  y = drawPlayers(ctx, 'STARTING ROTATION  (5+ GS)', away.top_starters || [], home.top_starters || [], 'sp', 3, P, y, W, S, ac, hc)
-  y += 4
+  // ── STARTERS (3) ──
+  y = drawPlayers(ctx, 'STARTING ROTATION  (5+ GS)', away.top_starters || [], home.top_starters || [], 'pit', 3, P, y, W, S, ac, hc)
+  y += 6
 
-  // ── RELIEVERS (2 per side) ──
-  y = drawPlayers(ctx, 'TOP RELIEVERS  (10+ IP, by K-BB%)', away.top_relievers || [], home.top_relievers || [], 'rp', 2, P, y, W, S, ac, hc)
+  // ── RELIEVERS (2) ──
+  y = drawPlayers(ctx, 'TOP RELIEVERS  (10+ IP, by K-BB%)', away.top_relievers || [], home.top_relievers || [], 'pit', 2, P, y, W, S, ac, hc)
 
   // ── FOOTER ──
-  ctx.fillStyle = TEAL; roundRect(ctx, P, S - 24, W, 18, 6); ctx.fill()
-  ctx.fillStyle = WHITE; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText('PNWBASEBALLSTATS.COM', S / 2, S - 12)
+  const footerH = 24
+  const footerY = S - P - footerH
+  ctx.fillStyle = TEAL; roundRect(ctx, P, footerY, W, footerH, 8); ctx.fill()
+  ctx.fillStyle = WHITE; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'
+  ctx.fillText('PNWBASEBALLSTATS.COM', S / 2, footerY + 16)
 }
 
 function buildOffStats(a, h) {
@@ -294,64 +314,55 @@ function buildPitStats(a, h) {
   ]
 }
 
-function drawCompact(ctx, stats, xL, xR, startY, away, home, ac, hc) {
-  const bw = xR - xL, mid = xL + bw / 2, rh = 17
-  // Headers
-  ctx.font = 'bold 8px system-ui'; ctx.fillStyle = LIGHT
-  ctx.textAlign = 'right'; ctx.fillText(away.short_name, mid - 28, startY + 6)
-  ctx.textAlign = 'left'; ctx.fillText(home.short_name, mid + 28, startY + 6)
+function drawCompact(ctx, stats, xL, xR, startY, away, home) {
+  const bw = xR - xL, mid = xL + bw / 2, rh = 22
+  ctx.font = 'bold 10px system-ui'; ctx.fillStyle = LIGHT
+  ctx.textAlign = 'right'; ctx.fillText(away.short_name, mid - 36, startY + 6)
+  ctx.textAlign = 'left'; ctx.fillText(home.short_name, mid + 36, startY + 6)
   for (let i = 0; i < stats.length; i++) {
-    const r = stats[i], ry = startY + 10 + i * rh
+    const r = stats[i], ry = startY + 12 + i * rh
     const av = parseFloat(r.a) || 0, hv = parseFloat(r.h) || 0
     const aB = av !== hv && (r.hi ? av > hv : av < hv)
     const hB = av !== hv && (r.hi ? hv > av : hv < av)
     if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(xL, ry, bw, rh) }
-    // Away
-    ctx.font = aB ? 'bold 11px system-ui' : '11px system-ui'
+    ctx.font = aB ? 'bold 14px system-ui' : '14px system-ui'
     ctx.fillStyle = aB ? GREEN : WHITE
-    ctx.textAlign = 'right'; ctx.fillText(r.a, mid - 28, ry + 13)
-    // Label
-    ctx.font = 'bold 9px system-ui'; ctx.fillStyle = DIM; ctx.textAlign = 'center'
-    ctx.fillText(r.l, mid, ry + 13)
-    // Home
-    ctx.font = hB ? 'bold 11px system-ui' : '11px system-ui'
+    ctx.textAlign = 'right'; ctx.fillText(r.a, mid - 36, ry + 16)
+    ctx.font = 'bold 11px system-ui'; ctx.fillStyle = DIM; ctx.textAlign = 'center'
+    ctx.fillText(r.l, mid, ry + 16)
+    ctx.font = hB ? 'bold 14px system-ui' : '14px system-ui'
     ctx.fillStyle = hB ? GREEN : WHITE
-    ctx.textAlign = 'left'; ctx.fillText(r.h, mid + 28, ry + 13)
+    ctx.textAlign = 'left'; ctx.fillText(r.h, mid + 36, ry + 16)
   }
 }
 
 function drawPlayers(ctx, title, awayP, homeP, type, max, P, startY, W, S, ac, hc) {
-  const rh = type === 'hit' ? 26 : 28
-  const headH = 22, subH = 12
-  const blockH = headH + subH + max * rh + 4
+  const rh = 36
+  const headH = 28, subH = 16
+  const blockH = headH + subH + max * rh + 6
 
-  ctx.fillStyle = CARD; roundRect(ctx, P, startY, W, blockH, 8); ctx.fill()
-  // Title bar with team color accents
-  ctx.fillStyle = CARD2; roundRect(ctx, P, startY, W, headH, 8); ctx.fill()
-  ctx.fillStyle = ac.p; ctx.fillRect(P, startY, 4, headH)
-  ctx.fillStyle = hc.p; ctx.fillRect(S - P - 4, startY, 4, headH)
-  ctx.fillStyle = WHITE; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText(title, S / 2, startY + 15)
+  ctx.fillStyle = CARD; roundRect(ctx, P, startY, W, blockH, 10); ctx.fill()
+  ctx.fillStyle = CARD2; roundRect(ctx, P, startY, W, headH, 10); ctx.fill()
+  ctx.fillStyle = ac.p; ctx.fillRect(P, startY, 5, headH)
+  ctx.fillStyle = hc.p; ctx.fillRect(S - P - 5, startY, 5, headH)
+  ctx.fillStyle = WHITE; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'
+  ctx.fillText(title, S / 2, startY + 18)
 
-  // Divider
   ctx.strokeStyle = SUBTLE; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(S / 2, startY + headH); ctx.lineTo(S / 2, startY + blockH - 2); ctx.stroke()
 
-  const lx = P + 6, lw = W / 2 - 12, rx = S / 2 + 6
-
+  const lx = P + 8, lw = W / 2 - 16, rx = S / 2 + 8
   let y = startY + headH
-  // Sub headers
-  ctx.fillStyle = DIM; ctx.font = 'bold 7px system-ui'
-  const cols = type === 'hit'
-    ? [['PLAYER', 0.01, 'l'], ['AVG', 0.42, 'r'], ['OBP', 0.55, 'r'], ['SLG', 0.67, 'r'], ['HR', 0.77, 'r'], ['wRC+', 0.88, 'r'], ['oWAR', 0.99, 'r']]
-    : type === 'sp'
-    ? [['PLAYER', 0.01, 'l'], ['ERA', 0.42, 'r'], ['IP', 0.55, 'r'], ['K', 0.66, 'r'], ['FIP', 0.78, 'r'], ['K-BB%', 0.90, 'r'], ['pWAR', 0.99, 'r']]
-    : [['PLAYER', 0.01, 'l'], ['ERA', 0.42, 'r'], ['IP', 0.55, 'r'], ['K', 0.66, 'r'], ['FIP', 0.78, 'r'], ['K-BB%', 0.90, 'r'], ['pWAR', 0.99, 'r']]
 
-  for (const [base] of [[lx], [rx]]) {
+  ctx.fillStyle = DIM; ctx.font = 'bold 9px system-ui'
+  const cols = type === 'hit'
+    ? [['PLAYER', 0.01, 'l'], ['AVG', 0.40, 'r'], ['OBP', 0.53, 'r'], ['SLG', 0.66, 'r'], ['HR', 0.76, 'r'], ['wRC+', 0.88, 'r'], ['oWAR', 0.99, 'r']]
+    : [['PLAYER', 0.01, 'l'], ['ERA', 0.40, 'r'], ['IP', 0.52, 'r'], ['K', 0.62, 'r'], ['FIP', 0.74, 'r'], ['K-BB%', 0.88, 'r'], ['pWAR', 0.99, 'r']]
+
+  for (const base of [lx, rx]) {
     cols.forEach(([label, pct, align]) => {
       ctx.textAlign = align === 'l' ? 'left' : 'right'
-      ctx.fillText(label, base + lw * pct, y + 9)
+      ctx.fillText(label, base + lw * pct, y + 11)
     })
   }
   y += subH
@@ -371,34 +382,34 @@ function drawPlayers(ctx, title, awayP, homeP, type, max, P, startY, W, S, ac, h
 
 function drawPRow(ctx, p, type, xS, sw, ry, tc) {
   const nm = `${p.first_name?.[0] || ''}. ${p.last_name || ''}`
-  ctx.fillStyle = WHITE; ctx.font = '11px system-ui'; ctx.textAlign = 'left'
-  ctx.fillText(nm, xS + sw * 0.01, ry + 14)
+  ctx.fillStyle = WHITE; ctx.font = '13px system-ui'; ctx.textAlign = 'left'
+  ctx.fillText(nm, xS + sw * 0.01, ry + 16)
   if (p.position) {
-    ctx.fillStyle = DIM; ctx.font = '7px system-ui'
-    ctx.fillText(p.position, xS + sw * 0.01, ry + 22)
+    ctx.fillStyle = DIM; ctx.font = '8px system-ui'
+    ctx.fillText(p.position, xS + sw * 0.01, ry + 28)
   }
   ctx.textAlign = 'right'
   if (type === 'hit') {
-    ctx.fillStyle = WHITE; ctx.font = '10px system-ui'
-    ctx.fillText(fmtAvg(p.batting_avg), xS + sw * 0.42, ry + 14)
-    ctx.fillText(fmtAvg(p.on_base_pct), xS + sw * 0.55, ry + 14)
-    ctx.fillText(fmtAvg(p.slugging_pct), xS + sw * 0.67, ry + 14)
-    ctx.fillText(String(p.home_runs || 0), xS + sw * 0.77, ry + 14)
-    ctx.fillStyle = tc.t; ctx.font = 'bold 11px system-ui'
-    ctx.fillText(String(Math.round(p.wrc_plus || 0)), xS + sw * 0.88, ry + 14)
-    ctx.fillStyle = WHITE; ctx.font = '10px system-ui'
-    ctx.fillText(fmtDec(p.offensive_war, 1), xS + sw * 0.99, ry + 14)
+    ctx.fillStyle = WHITE; ctx.font = '12px system-ui'
+    ctx.fillText(fmtAvg(p.batting_avg), xS + sw * 0.40, ry + 22)
+    ctx.fillText(fmtAvg(p.on_base_pct), xS + sw * 0.53, ry + 22)
+    ctx.fillText(fmtAvg(p.slugging_pct), xS + sw * 0.66, ry + 22)
+    ctx.fillText(String(p.home_runs || 0), xS + sw * 0.76, ry + 22)
+    ctx.fillStyle = tc.t; ctx.font = 'bold 14px system-ui'
+    ctx.fillText(String(Math.round(p.wrc_plus || 0)), xS + sw * 0.88, ry + 22)
+    ctx.fillStyle = WHITE; ctx.font = '12px system-ui'
+    ctx.fillText(fmtDec(p.offensive_war, 1), xS + sw * 0.99, ry + 22)
   } else {
     const kbb = p.k_bb_pct != null ? fmtPct(p.k_bb_pct) : (p.k_pct != null && p.bb_pct != null ? fmtPct(parseFloat(p.k_pct) - parseFloat(p.bb_pct)) : '-')
-    ctx.fillStyle = WHITE; ctx.font = '10px system-ui'
-    ctx.fillText(fmtDec(p.era), xS + sw * 0.42, ry + 14)
-    ctx.fillText(fmtIP(p.innings_pitched), xS + sw * 0.55, ry + 14)
-    ctx.fillText(String(p.strikeouts || 0), xS + sw * 0.66, ry + 14)
-    ctx.fillStyle = tc.t; ctx.font = 'bold 11px system-ui'
-    ctx.fillText(fmtDec(p.fip), xS + sw * 0.78, ry + 14)
-    ctx.fillStyle = WHITE; ctx.font = '10px system-ui'
-    ctx.fillText(kbb, xS + sw * 0.90, ry + 14)
-    ctx.fillText(fmtDec(p.pitching_war, 1), xS + sw * 0.99, ry + 14)
+    ctx.fillStyle = WHITE; ctx.font = '12px system-ui'
+    ctx.fillText(fmtDec(p.era), xS + sw * 0.40, ry + 22)
+    ctx.fillText(fmtIP(p.innings_pitched), xS + sw * 0.52, ry + 22)
+    ctx.fillText(String(p.strikeouts || 0), xS + sw * 0.62, ry + 22)
+    ctx.fillStyle = tc.t; ctx.font = 'bold 14px system-ui'
+    ctx.fillText(fmtDec(p.fip), xS + sw * 0.74, ry + 22)
+    ctx.fillStyle = WHITE; ctx.font = '12px system-ui'
+    ctx.fillText(kbb, xS + sw * 0.88, ry + 22)
+    ctx.fillText(fmtDec(p.pitching_war, 1), xS + sw * 0.99, ry + 22)
   }
 }
 
