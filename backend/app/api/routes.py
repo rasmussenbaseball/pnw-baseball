@@ -6109,26 +6109,19 @@ def daily_performers(
         if not game_ids:
             return {"games": [], "top_hitters": [], "top_pitchers": [], "date": date}
 
-        # ── 2. Team records as of this date (PNW teams only) ──
-        # Only compute records for teams that are in a conference (PNW teams)
+        # ── 2. Team records (PNW teams only, from team_season_stats) ──
+        # Use the same source as the standings page so records always match.
+        # Only include teams in PNW states (WA, OR, ID, MT, BC).
         cur.execute("""
-            SELECT team_id, SUM(w) AS wins, SUM(l) AS losses FROM (
-                SELECT home_team_id AS team_id,
-                    CASE WHEN home_score > away_score THEN 1 ELSE 0 END AS w,
-                    CASE WHEN home_score < away_score THEN 1 ELSE 0 END AS l
-                FROM games WHERE status = 'final' AND season = %s AND game_date <= %s
-                  AND home_team_id IN (SELECT id FROM teams WHERE conference_id IS NOT NULL)
-                UNION ALL
-                SELECT away_team_id AS team_id,
-                    CASE WHEN away_score > home_score THEN 1 ELSE 0 END AS w,
-                    CASE WHEN away_score < home_score THEN 1 ELSE 0 END AS l
-                FROM games WHERE status = 'final' AND season = %s AND game_date <= %s
-                  AND away_team_id IN (SELECT id FROM teams WHERE conference_id IS NOT NULL)
-            ) sub GROUP BY team_id
-        """, (season, date, season, date))
+            SELECT s.team_id, s.wins, s.losses
+            FROM team_season_stats s
+            JOIN teams t ON t.id = s.team_id
+            WHERE s.season = %s
+              AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
+        """, (season,))
         records = {r["team_id"]: (r["wins"], r["losses"]) for r in cur.fetchall()}
 
-        # Attach records to games (only for PNW teams)
+        # Attach records to games (only for PNW teams — non-PNW get None)
         for g in games:
             hw, hl = records.get(g["home_team_id"], (0, 0))
             aw, al = records.get(g["away_team_id"], (0, 0))
