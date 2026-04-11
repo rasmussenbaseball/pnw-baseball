@@ -397,9 +397,16 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
         </div>
       </div>
 
-      {/* Teams & Scores */}
+      {/* R/H/E header + Teams & Scores */}
       <div className={`${cardPadX} ${cardPadY}`}>
-        <div className={`flex items-center justify-between ${rowPad} ${oppWon ? 'opacity-50' : ''}`}>
+        {isFinal && (game.home_hits != null || game.away_hits != null) && (
+          <div className="flex justify-end gap-0 mb-0.5">
+            <span className="text-[9px] font-semibold text-gray-400 w-8 text-center">R</span>
+            <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">H</span>
+            <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">E</span>
+          </div>
+        )}
+        <div className={`flex items-center ${rowPad} ${oppWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {game.team_logo && (
               <img src={game.team_logo} alt="" className={`${logoSize} object-contain shrink-0`}
@@ -412,16 +419,24 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
               }`}>{teamWp}</span>
             )}
           </div>
-          {teamScore != null ? (
-            <span className={`${scoreText} font-bold tabular-nums ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
-              {teamScore}
-            </span>
-          ) : isScheduled && (
-            <span className="text-xs text-gray-300">-</span>
-          )}
+          <div className="flex items-center gap-0 shrink-0">
+            {teamScore != null ? (
+              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
+                {teamScore}
+              </span>
+            ) : isScheduled ? (
+              <span className="text-xs text-gray-300 w-8 text-center">-</span>
+            ) : null}
+            {isFinal && game.home_hits != null && (
+              <>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_hits ?? '-'}</span>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_errors ?? '-'}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className={`flex items-center justify-between ${rowPad} ${teamWon ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center ${rowPad} ${teamWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {(game.opponent_logo || game.opponent_image) && (
               <img src={game.opponent_logo || game.opponent_image} alt="" className={`${logoSize} object-contain shrink-0`}
@@ -436,30 +451,26 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
               }`}>{oppWp}</span>
             )}
           </div>
-          {oppScore != null ? (
-            <span className={`${scoreText} font-bold tabular-nums ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
-              {oppScore}
-            </span>
-          ) : isScheduled && (
-            <span className="text-xs text-gray-300">-</span>
-          )}
+          <div className="flex items-center gap-0 shrink-0">
+            {oppScore != null ? (
+              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
+                {oppScore}
+              </span>
+            ) : isScheduled ? (
+              <span className="text-xs text-gray-300 w-8 text-center">-</span>
+            ) : null}
+            {isFinal && game.away_hits != null && (
+              <>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_hits ?? '-'}</span>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_errors ?? '-'}</span>
+              </>
+            )}
+          </div>
         </div>
 
         {isScheduled && gameTime && (
           <div className={`text-center pt-0.5 border-t border-gray-100 ${compact ? 'mt-0.5' : 'mt-1'}`}>
             <span className="text-xs font-medium text-gray-500">{gameTime}</span>
-          </div>
-        )}
-
-        {/* H/E row for final games */}
-        {isFinal && (game.home_hits != null || game.away_hits != null) && (
-          <div className="flex justify-end gap-3 mt-0.5 pr-0.5">
-            <span className="text-[10px] text-gray-400 tabular-nums">
-              H: {game.away_hits ?? '-'}-{game.home_hits ?? '-'}
-            </span>
-            <span className="text-[10px] text-gray-400 tabular-nums">
-              E: {game.away_errors ?? '-'}-{game.home_errors ?? '-'}
-            </span>
           </div>
         )}
       </div>
@@ -551,10 +562,17 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
         </div>
       </div>
 
-      {/* Teams & Scores */}
+      {/* R/H/E header + Teams & Scores */}
       <div className={`${cardPadX} ${cardPadY}`}>
+        {isFinal && (game.home_hits != null || game.away_hits != null) && (
+          <div className="flex justify-end gap-0 mb-0.5">
+            <span className="text-[9px] font-semibold text-gray-400 w-8 text-center">R</span>
+            <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">H</span>
+            <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">E</span>
+          </div>
+        )}
         {/* Away team */}
-        <div className={`flex items-center justify-between ${rowPad} ${homeWon ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center ${rowPad} ${homeWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {game.away_logo && (
               <img src={game.away_logo} alt="" className={`${logoSize} object-contain shrink-0`}
@@ -569,17 +587,25 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
               }`}>{awayWp}</span>
             )}
           </div>
-          {game.away_score != null ? (
-            <span className={`${scoreText} font-bold tabular-nums ${awayWon ? 'text-gray-900' : 'text-gray-500'}`}>
-              {game.away_score}
-            </span>
-          ) : (
-            <span className="text-xs text-gray-300">-</span>
-          )}
+          <div className="flex items-center gap-0 shrink-0">
+            {game.away_score != null ? (
+              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${awayWon ? 'text-gray-900' : 'text-gray-500'}`}>
+                {game.away_score}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-300 w-8 text-center">-</span>
+            )}
+            {isFinal && game.away_hits != null && (
+              <>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_hits ?? '-'}</span>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_errors ?? '-'}</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Home team */}
-        <div className={`flex items-center justify-between ${rowPad} ${awayWon ? 'opacity-50' : ''}`}>
+        <div className={`flex items-center ${rowPad} ${awayWon ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {game.home_logo && (
               <img src={game.home_logo} alt="" className={`${logoSize} object-contain shrink-0`}
@@ -594,30 +620,26 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
               }`}>{homeWp}</span>
             )}
           </div>
-          {game.home_score != null ? (
-            <span className={`${scoreText} font-bold tabular-nums ${homeWon ? 'text-gray-900' : 'text-gray-500'}`}>
-              {game.home_score}
-            </span>
-          ) : (
-            <span className="text-xs text-gray-300">-</span>
-          )}
+          <div className="flex items-center gap-0 shrink-0">
+            {game.home_score != null ? (
+              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${homeWon ? 'text-gray-900' : 'text-gray-500'}`}>
+                {game.home_score}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-300 w-8 text-center">-</span>
+            )}
+            {isFinal && game.home_hits != null && (
+              <>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_hits ?? '-'}</span>
+                <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_errors ?? '-'}</span>
+              </>
+            )}
+          </div>
         </div>
 
         {isScheduled && gameTime && (
           <div className={`text-center pt-0.5 border-t border-gray-100 ${compact ? 'mt-0.5' : 'mt-1'}`}>
             <span className="text-xs font-medium text-gray-500">{gameTime}</span>
-          </div>
-        )}
-
-        {/* H/E row for final games */}
-        {isFinal && (game.home_hits != null || game.away_hits != null) && (
-          <div className="flex justify-end gap-3 mt-0.5 pr-0.5">
-            <span className="text-[10px] text-gray-400 tabular-nums">
-              H: {game.away_hits ?? '-'}-{game.home_hits ?? '-'}
-            </span>
-            <span className="text-[10px] text-gray-400 tabular-nums">
-              E: {game.away_errors ?? '-'}-{game.home_errors ?? '-'}
-            </span>
           </div>
         )}
       </div>
