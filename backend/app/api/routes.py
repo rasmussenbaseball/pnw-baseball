@@ -6521,6 +6521,24 @@ def _dedup_live_games(games):
         except (TypeError, ValueError):
             return False
 
+    def _richness(entry):
+        """Score how much useful data an entry has — higher is better."""
+        score = 0
+        if entry.get("status") == "final":
+            score += 10
+        if entry.get("box_score_url"):
+            score += 5
+        if entry.get("win_pitcher"):
+            score += 3
+        if entry.get("home_hits") is not None:
+            score += 2
+        if entry.get("away_hits") is not None:
+            score += 2
+        # DB-merged entries (id starts with "db_") have enriched data
+        if str(entry.get("id", "")).startswith("db_"):
+            score += 1
+        return score
+
     deduped = []
     for g in games:
         dup_idx = None
@@ -6530,9 +6548,8 @@ def _dedup_live_games(games):
                 break
         if dup_idx is not None:
             prev = deduped[dup_idx]
-            # Prefer final over scheduled, or entry with box_score_url
-            if (g.get("status") == "final" and prev.get("status") != "final") or \
-               (g.get("box_score_url") and not prev.get("box_score_url")):
+            # Keep whichever entry has richer data
+            if _richness(g) > _richness(prev):
                 deduped[dup_idx] = g
         else:
             deduped.append(g)
@@ -6602,10 +6619,10 @@ def games_live():
 
         with get_connection() as conn:
             cur = conn.cursor()
-            # Use DISTINCT ON to avoid duplicate games (same date + teams)
+            # Fetch all final games in range; seen_db dedup below handles
+            # duplicate scrape entries (same date + teams + score).
             cur.execute("""
-                SELECT DISTINCT ON (g.game_date, LEAST(COALESCE(ht.id,0), COALESCE(at2.id,0)), GREATEST(COALESCE(ht.id,0), COALESCE(at2.id,0)), g.game_number)
-                    g.id, g.game_date, g.game_time,
+                SELECT g.id, g.game_date, g.game_time,
                     g.home_score, g.away_score,
                     g.home_hits, g.home_errors,
                     g.away_hits, g.away_errors,
@@ -6629,7 +6646,7 @@ def games_live():
                   AND g.game_date <= %s
                   AND g.status = 'final'
                   AND g.home_team_id IS DISTINCT FROM g.away_team_id
-                ORDER BY g.game_date, LEAST(COALESCE(ht.id,0), COALESCE(at2.id,0)), GREATEST(COALESCE(ht.id,0), COALESCE(at2.id,0)), g.game_number, g.id DESC
+                ORDER BY g.game_date, g.id DESC
             """, (recent_start, upcoming_end))
 
             db_rows = []

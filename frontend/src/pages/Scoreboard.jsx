@@ -427,7 +427,7 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
             ) : isScheduled ? (
               <span className="text-xs text-gray-300 w-8 text-center">-</span>
             ) : null}
-            {isFinal && game.home_hits != null && (
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_hits ?? '-'}</span>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_errors ?? '-'}</span>
@@ -459,7 +459,7 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
             ) : isScheduled ? (
               <span className="text-xs text-gray-300 w-8 text-center">-</span>
             ) : null}
-            {isFinal && game.away_hits != null && (
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_hits ?? '-'}</span>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_errors ?? '-'}</span>
@@ -595,7 +595,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
             ) : (
               <span className="text-xs text-gray-300 w-8 text-center">-</span>
             )}
-            {isFinal && game.away_hits != null && (
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_hits ?? '-'}</span>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_errors ?? '-'}</span>
@@ -628,7 +628,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
             ) : (
               <span className="text-xs text-gray-300 w-8 text-center">-</span>
             )}
-            {isFinal && game.home_hits != null && (
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_hits ?? '-'}</span>
                 <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_errors ?? '-'}</span>
