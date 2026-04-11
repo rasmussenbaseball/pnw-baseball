@@ -1288,12 +1288,17 @@ def _apply_pitching_decisions(soup, result):
             decision_map[dec_code] = _normalize_pitcher_name(name_part)
 
     # Strategy 2: Plain text like "Win - Name (4-3), Loss - Name (2-5)"
+    # or concatenated "Win: Sanford, Will (5-1)Loss: Timmerman, Tucker (2-1)"
     if not decision_map:
         text = soup.get_text()
-        for m in re.finditer(r'(Win|Loss|Save)\s*[-:]\s*([^,(]+(?:\([^)]*\))?)', text):
+        # Capture name + optional record; stop at next decision keyword or end
+        for m in re.finditer(
+            r'(Win|Loss|Save)\s*[-:]\s*(.+?)(?:\s*\(\d[^)]*\))?\s*,?\s*(?=(?:Win|Loss|Save)\s*[-:]|$)',
+            text
+        ):
             dec_code = m.group(1)[0]
             if dec_code not in decision_map:
-                decision_map[dec_code] = _normalize_pitcher_name(m.group(2))
+                decision_map[dec_code] = _normalize_pitcher_name(m.group(2).strip())
 
     if not decision_map:
         return

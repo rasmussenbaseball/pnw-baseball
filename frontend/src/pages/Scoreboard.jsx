@@ -198,7 +198,13 @@ export default function Scoreboard() {
           {isToday && (
             <>
               {todayGames.length > 0 && (
-                <GameGrid games={todayGames} winProbs={winProbs} />
+                <>
+                  {groupByDivision(todayGames).map(({ division, label, games: divGames }) => (
+                    <DivisionSection key={division} division={division} label={label} count={divGames.length}>
+                      <GameGrid games={divGames} winProbs={winProbs} />
+                    </DivisionSection>
+                  ))}
+                </>
               )}
 
               {todayGames.length === 0 && !loading && (
@@ -215,7 +221,13 @@ export default function Scoreboard() {
           {!isToday && (
             <>
               {dateGames.length > 0 ? (
-                <GameGrid games={dateGames} winProbs={winProbs} />
+                <>
+                  {groupByDivision(dateGames).map(({ division, label, games: divGames }) => (
+                    <DivisionSection key={division} division={division} label={label} count={divGames.length}>
+                      <GameGrid games={divGames} winProbs={winProbs} />
+                    </DivisionSection>
+                  ))}
+                </>
               ) : (
                 <div className="bg-white rounded-xl border border-gray-200 p-8 text-center mb-6">
                   <div className="text-3xl mb-2">&#9918;</div>
@@ -486,29 +498,27 @@ function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs
         </div>
       )}
 
-      {/* Footer - hidden in compact mode */}
-      {!compact && (
-        <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
-          <div className="text-[10px] text-gray-400 flex items-center justify-between">
-            <span>{gameDate}</span>
-            <div className="flex items-center gap-2">
-              {!isScheduled && gameTime && <span>{gameTime}</span>}
-              {isFinal && game.box_score_url && (
-                <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
-                  className="text-[10px] font-semibold text-nw-teal hover:underline">
-                  Box Score
-                </a>
-              )}
-              {!isFinal && !isScheduled && game.box_score_url && (
-                <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
-                  className="text-[10px] font-semibold text-amber-600 hover:underline animate-pulse">
-                  Live Stats
-                </a>
-              )}
+      {/* Footer */}
+      <div className={`px-3 ${compact ? 'py-1' : 'py-1.5'} bg-gray-50 border-t border-gray-100`}>
+        <div className="text-[10px] text-gray-400 flex items-center justify-between">
+          {!compact && <span>{gameDate}</span>}
+          <div className={`flex items-center gap-2 ${compact ? 'ml-auto' : ''}`}>
+            {!compact && !isScheduled && gameTime && <span>{gameTime}</span>}
+            {isFinal && game.box_score_url && (
+              <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] font-semibold text-nw-teal hover:underline">
+                Box Score
+              </a>
+            )}
+            {!isFinal && !isScheduled && game.box_score_url && (
+              <a href={game.box_score_url} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] font-semibold text-amber-600 hover:underline animate-pulse">
+                Live Stats
+              </a>
+            )}
             </div>
           </div>
         </div>
-      )}
     </div>
   )
 }
@@ -655,36 +665,34 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
         </div>
       )}
 
-      {/* Footer - hidden in compact mode */}
-      {!compact && (
-        <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
-          <div className="text-[10px] text-gray-400 flex items-center justify-between">
-            <span>{formatDateLabel(game.game_date)}</span>
-            <div className="flex items-center gap-2">
-              {!isScheduled && gameTime && <span>{gameTime}</span>}
-              {isFinal && game.source_url && (
-                <a href={game.source_url} target="_blank" rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-[10px] font-semibold text-nw-teal hover:underline">
-                  Box Score
-                </a>
-              )}
-              {isFinal && !game.source_url && game.id && (
-                <span className="text-[10px] font-semibold text-nw-teal">
-                  Box Score
-                </span>
-              )}
-              {!isFinal && (game.home_stats_url || game.away_stats_url) && (
-                <a href={game.home_stats_url || game.away_stats_url} target="_blank" rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-[10px] font-semibold text-nw-teal hover:underline">
-                  Live Stats
-                </a>
-              )}
-            </div>
+      {/* Footer */}
+      <div className={`px-3 ${compact ? 'py-1' : 'py-1.5'} bg-gray-50 border-t border-gray-100`}>
+        <div className="text-[10px] text-gray-400 flex items-center justify-between">
+          {!compact && <span>{formatDateLabel(game.game_date)}</span>}
+          <div className={`flex items-center gap-2 ${compact ? 'ml-auto' : ''}`}>
+            {!compact && !isScheduled && gameTime && <span>{gameTime}</span>}
+            {isFinal && game.source_url && (
+              <a href={game.source_url} target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] font-semibold text-nw-teal hover:underline">
+                Box Score
+              </a>
+            )}
+            {isFinal && !game.source_url && game.id && (
+              <span className="text-[10px] font-semibold text-nw-teal">
+                Box Score
+              </span>
+            )}
+            {!isFinal && (game.home_stats_url || game.away_stats_url) && (
+              <a href={game.home_stats_url || game.away_stats_url} target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] font-semibold text-nw-teal hover:underline">
+                Live Stats
+              </a>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 
