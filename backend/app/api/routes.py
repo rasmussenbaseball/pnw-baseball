@@ -6331,6 +6331,234 @@ def daily_performers(
         }
 
 
+@router.get("/games/key-matchup")
+def key_matchup(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    season: int = Query(2026),
+    game_id: Optional[int] = None,
+):
+    """
+    Return the key matchup of the day for social media graphic.
+    Auto-picks the most playoff-impactful game, or uses game_id override.
+    Returns both teams' stats, top 3 hitters (by wRC+, 50+ PA),
+    top 3 pitchers (by FIP, 15+ IP), and team aggregate comparison.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── 1. Get all games for this date involving PNW teams ──
+        cur.execute("""
+            SELECT g.id, g.game_date, g.status, g.is_conference_game,
+                   g.home_team_id, g.away_team_id,
+                   g.home_score, g.away_score, g.game_time,
+                   ht.short_name AS home_short, ht.logo_url AS home_logo,
+                   at2.short_name AS away_short, at2.logo_url AS away_logo,
+                   hd.level AS home_division, ad.level AS away_division,
+                   hc.abbreviation AS home_conf, ac.abbreviation AS away_conf
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            LEFT JOIN conferences hc ON ht.conference_id = hc.id
+            LEFT JOIN divisions hd ON hc.division_id = hd.id
+            LEFT JOIN conferences ac ON at2.conference_id = ac.id
+            LEFT JOIN divisions ad ON ac.division_id = ad.id
+            WHERE g.game_date = %s AND g.season = %s
+              AND ht.state IN ('WA','OR','ID','MT','BC')
+            ORDER BY g.id
+        """, (date, season))
+        games = [dict(r) for r in cur.fetchall()]
+
+        if not games:
+            return {"matchup": None, "games": [], "date": date}
+
+        # ── 2. Pick the best matchup ──
+        # If game_id specified, use that; otherwise score each game
+        chosen = None
+        if game_id:
+            chosen = next((g for g in games if g["id"] == game_id), None)
+
+        if not chosen:
+            # Score games by playoff impact:
+            #   conference game = +20, both teams have records = +5
+            #   closeness of records = +15 * (1 - diff/total)
+            #   higher combined win% = more important
+            # Fetch records for scoring
+            team_ids = set()
+            for g in games:
+                if g["home_team_id"]:
+                    team_ids.add(g["home_team_id"])
+                if g["away_team_id"]:
+                    team_ids.add(g["away_team_id"])
+
+            if team_ids:
+                ph = ",".join(["%s"] * len(team_ids))
+                cur.execute(f"""
+                    SELECT team_id, wins, losses
+                    FROM team_season_stats
+                    WHERE season = %s AND team_id IN ({ph})
+                """, [season] + list(team_ids))
+                recs = {r["team_id"]: (r["wins"], r["losses"]) for r in cur.fetchall()}
+            else:
+                recs = {}
+
+            best_score = -1
+            for g in games:
+                score = 0
+                hw, hl = recs.get(g["home_team_id"], (0, 0))
+                aw, al = recs.get(g["away_team_id"], (0, 0))
+                h_total = hw + hl
+                a_total = aw + al
+
+                # Conference game bonus
+                if g.get("is_conference_game"):
+                    score += 20
+
+                # Both teams have meaningful records
+                if h_total >= 10 and a_total >= 10:
+                    score += 5
+                    # Closeness bonus (similar win%)
+                    h_pct = hw / h_total if h_total else 0
+                    a_pct = aw / a_total if a_total else 0
+                    closeness = 1 - abs(h_pct - a_pct)
+                    score += 15 * closeness
+                    # Quality bonus (higher combined win%)
+                    avg_pct = (h_pct + a_pct) / 2
+                    score += 10 * avg_pct
+
+                # Same division bonus
+                if g["home_division"] and g["home_division"] == g["away_division"]:
+                    score += 5
+
+                if score > best_score:
+                    best_score = score
+                    chosen = g
+
+        if not chosen:
+            chosen = games[0]
+
+        # ── 3. Fetch team stats for both teams ──
+        matchup_teams = []
+        for side in ("home", "away"):
+            tid = chosen[f"{side}_team_id"]
+            if not tid:
+                continue
+
+            # Team info
+            cur.execute("""
+                SELECT t.id, t.name, t.short_name, t.logo_url, t.city, t.state,
+                       c.abbreviation as conference_abbrev,
+                       d.level as division_level
+                FROM teams t
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE t.id = %s
+            """, (tid,))
+            team = cur.fetchone()
+            if not team:
+                continue
+            team = dict(team)
+
+            # Record
+            cur.execute("""
+                SELECT wins, losses, ties
+                FROM team_season_stats
+                WHERE team_id = %s AND season = %s
+            """, (tid, season))
+            record = cur.fetchone()
+            team["record"] = dict(record) if record else {"wins": 0, "losses": 0, "ties": 0}
+
+            # Team batting aggregates
+            cur.execute("""
+                SELECT
+                    CASE WHEN SUM(at_bats) > 0
+                         THEN ROUND((SUM(hits)::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_avg,
+                    CASE WHEN SUM(plate_appearances) > 0
+                         THEN ROUND((SUM(home_runs)::numeric / SUM(plate_appearances))::numeric, 4) ELSE 0 END as hr_per_pa,
+                    ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                    ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
+                    SUM(stolen_bases) as total_sb,
+                    ROUND(SUM(offensive_war)::numeric, 1) as total_owar
+                FROM batting_stats
+                WHERE team_id = %s AND season = %s AND plate_appearances >= 10
+            """, (tid, season))
+            batting = cur.fetchone()
+            team["batting"] = dict(batting) if batting else {}
+
+            # Team pitching aggregates
+            cur.execute("""
+                SELECT
+                    ROUND(SUM(pitching_war)::numeric, 1) as total_pwar,
+                    ROUND(AVG(fip)::numeric, 2) as avg_fip,
+                    ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
+                    ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                    CASE WHEN SUM(batters_faced) > 0
+                         THEN ROUND((SUM(hits_allowed)::numeric / SUM(batters_faced))::numeric, 3) ELSE 0 END as opp_avg,
+                    CASE WHEN SUM(batters_faced) > 0
+                         THEN ROUND((SUM(home_runs_allowed)::numeric / SUM(batters_faced))::numeric, 4) ELSE 0 END as opp_hr_per_pa
+                FROM pitching_stats
+                WHERE team_id = %s AND season = %s AND innings_pitched >= 3
+            """, (tid, season))
+            pitching = cur.fetchone()
+            team["pitching"] = dict(pitching) if pitching else {}
+
+            # Top 3 hitters by wRC+ (50+ PA)
+            cur.execute("""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       bs.wrc_plus, bs.batting_avg, bs.home_runs, bs.rbi,
+                       bs.plate_appearances, bs.offensive_war
+                FROM batting_stats bs
+                JOIN players p ON bs.player_id = p.id
+                WHERE bs.team_id = %s AND bs.season = %s AND bs.plate_appearances >= 50
+                ORDER BY bs.wrc_plus DESC NULLS LAST
+                LIMIT 3
+            """, (tid, season))
+            team["top_hitters"] = [dict(r) for r in cur.fetchall()]
+
+            # Top 3 pitchers by FIP (15+ IP)
+            cur.execute("""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       ps.fip, ps.era, ps.innings_pitched, ps.strikeouts,
+                       ps.k_pct, ps.pitching_war
+                FROM pitching_stats ps
+                JOIN players p ON ps.player_id = p.id
+                WHERE ps.team_id = %s AND ps.season = %s AND ps.innings_pitched >= 15
+                ORDER BY ps.fip ASC NULLS LAST
+                LIMIT 3
+            """, (tid, season))
+            team["top_pitchers"] = [dict(r) for r in cur.fetchall()]
+
+            team["side"] = side
+            matchup_teams.append(team)
+
+        # Build game list for dropdown
+        game_list = []
+        for g in games:
+            game_list.append({
+                "id": g["id"],
+                "home_short": g["home_short"],
+                "away_short": g["away_short"],
+                "home_logo": g["home_logo"],
+                "away_logo": g["away_logo"],
+                "status": g["status"],
+                "game_time": g.get("game_time"),
+                "is_conference_game": g.get("is_conference_game"),
+                "home_division": g.get("home_division"),
+                "away_division": g.get("away_division"),
+            })
+
+        return {
+            "matchup": {
+                "game_id": chosen["id"],
+                "date": chosen["game_date"],
+                "status": chosen.get("status"),
+                "is_conference_game": chosen.get("is_conference_game"),
+                "teams": matchup_teams,
+            },
+            "games": game_list,
+            "date": date,
+        }
+
+
 @router.get("/games/future")
 def games_future(
     team_id: Optional[int] = None,

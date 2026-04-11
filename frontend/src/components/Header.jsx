@@ -62,6 +62,7 @@ const NAV = [
       { to: '/graphics', label: 'Leaderboards', desc: 'Create social media images' },
       { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
       { to: '/daily-scores', label: 'Daily Scores', desc: 'Download daily scoreboard graphic' },
+      { to: '/key-matchup', label: 'Key Matchup', desc: 'Matchup of the day graphic' },
       { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
     ],
   },
