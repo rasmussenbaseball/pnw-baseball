@@ -6532,7 +6532,7 @@ def games_live():
             cur = conn.cursor()
             # Use DISTINCT ON to avoid duplicate games (same date + teams)
             cur.execute("""
-                SELECT DISTINCT ON (g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number)
+                SELECT DISTINCT ON (g.game_date, LEAST(COALESCE(ht.id,0), COALESCE(at2.id,0)), GREATEST(COALESCE(ht.id,0), COALESCE(at2.id,0)), g.game_number)
                     g.id, g.game_date, g.game_time,
                     g.home_score, g.away_score,
                     g.innings, g.is_conference_game, g.status,
@@ -6553,8 +6553,8 @@ def games_live():
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
                   AND g.status = 'final'
-                  AND g.home_team_id != g.away_team_id
-                ORDER BY g.game_date, LEAST(ht.id, at2.id), GREATEST(ht.id, at2.id), g.game_number, g.id DESC
+                  AND g.home_team_id IS DISTINCT FROM g.away_team_id
+                ORDER BY g.game_date, LEAST(COALESCE(ht.id,0), COALESCE(at2.id,0)), GREATEST(COALESCE(ht.id,0), COALESCE(at2.id,0)), g.game_number, g.id DESC
             """, (recent_start, upcoming_end))
 
             seen_db = set()  # Track (date, home, away, h_score, a_score) to skip DB dupes
