@@ -507,7 +507,7 @@ def parse_nuxt_roster(html, base_url=""):
     return roster_by_name
 
 
-def parse_sidearm_roster(html):
+def parse_sidearm_roster(html, base_url=""):
     """Parse a Sidearm roster page HTML to extract player bio data."""
     soup = BeautifulSoup(html, "html.parser")
     roster = {}
@@ -594,8 +594,7 @@ def parse_sidearm_roster(html):
                         if headshot_url.startswith("//"):
                             headshot_url = "https:" + headshot_url
                         elif headshot_url.startswith("/"):
-                            from urllib.parse import urljoin
-                            headshot_url = urljoin("https://example.com", headshot_url)
+                            headshot_url = base_url.rstrip("/") + headshot_url
 
             if "," in full_name:
                 key = full_name.lower().strip()
@@ -864,7 +863,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     logger.info(f"  Parsed {len(roster_by_name)} players from Nuxt payload")
                 else:
                     # Fall back to BeautifulSoup HTML parsing
-                    roster_by_name = parse_sidearm_roster(roster_html)
+                    roster_by_name = parse_sidearm_roster(roster_html, base_url)
 
         logger.info(f"  Roster: {len(roster_by_name)} players parsed")
 

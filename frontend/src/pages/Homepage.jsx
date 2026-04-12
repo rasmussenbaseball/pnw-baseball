@@ -77,8 +77,8 @@ export default function Homepage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mt-3 sm:mt-5">
         {/* Left column - wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
-          <TopPerformersWidget data={perfData} date={yesterday} />
           <NationalRankingsWidget rankings={rankings} />
+          <TopPerformersWidget data={perfData} date={yesterday} />
           <StatLeadersWidget leaders={leaders} />
           <ByTheNumbersWidget />
         </div>
@@ -1071,9 +1071,12 @@ function TopPerformersWidget({ data, date }) {
         </div>
       </div>
 
-      <div className="border-t border-gray-100 px-4 py-1.5 text-right">
+      <div className="border-t border-gray-100 px-4 py-1.5 flex items-center justify-between">
+        <Link to={`/daily-scores?date=${date}`} className="text-[10px] text-pnw-teal hover:underline font-medium">
+          Daily scores graphic →
+        </Link>
         <Link to={`/scoreboard?date=${date}`} className="text-[10px] text-pnw-teal hover:underline font-medium">
-          View full scoreboard →
+          Full scoreboard →
         </Link>
       </div>
     </div>
