@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay, useDailyPerformers } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 
@@ -31,6 +31,11 @@ export default function Homepage() {
   const { data: liveData, refetch: refetchLive } = useLiveScores()
   const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
   const { data: upsetData } = useUpsetOfTheDay(SEASON)
+  const yesterday = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1)
+    return d.toISOString().slice(0, 10)
+  })()
+  const { data: perfData } = useDailyPerformers(yesterday, SEASON)
   const { user } = useAuth()
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try { return sessionStorage.getItem('beta-banner-dismissed') === '1' } catch { return false }
@@ -72,6 +77,7 @@ export default function Homepage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mt-3 sm:mt-5">
         {/* Left column - wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
+          <TopPerformersWidget data={perfData} date={yesterday} />
           <NationalRankingsWidget rankings={rankings} />
           <StatLeadersWidget leaders={leaders} />
           <ByTheNumbersWidget />
@@ -923,6 +929,156 @@ function SignUpWidget() {
 }
 
 
+
+
+// ════════════════════════════════════════════
+// TOP PERFORMERS WIDGET (yesterday's top hitters + pitchers)
+// ════════════════════════════════════════════
+function fmtIP(ip) {
+  if (ip == null) return '-'
+  const full = Math.floor(ip)
+  const frac = ip - full
+  if (frac < 0.1) return `${full}.0`
+  if (frac < 0.4) return `${full}.1`
+  if (frac < 0.7) return `${full}.2`
+  return `${full}.0`
+}
+
+function TopPerformersWidget({ data, date }) {
+  if (!data || (!data.top_hitters?.length && !data.top_pitchers?.length)) return null
+
+  const hitters = (data.top_hitters || []).slice(0, 3)
+  const pitchers = (data.top_pitchers || []).slice(0, 3)
+
+  const dateLabel = (() => {
+    try {
+      const d = new Date(date + 'T12:00:00')
+      return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+    } catch { return date }
+  })()
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-gradient-to-r from-pnw-slate to-pnw-slate/90 px-4 py-2.5 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-white tracking-wide">YESTERDAY'S TOP PERFORMERS</h2>
+        <span className="text-[10px] text-white/60 font-medium">{dateLabel}</span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+        {/* Top Hitters */}
+        <div className="p-3">
+          <div className="text-[10px] font-bold text-pnw-teal uppercase tracking-wider mb-2">Top Hitters</div>
+          <div className="space-y-0">
+            {hitters.map((h, i) => (
+              <Link
+                key={h.player_id || i}
+                to={h.player_id ? `/player/${h.player_id}` : '#'}
+                className="flex items-center gap-2 py-1.5 hover:bg-gray-50 rounded px-1 -mx-1 border-b border-gray-50 last:border-0"
+              >
+                {h.headshot_url ? (
+                  <img src={h.headshot_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
+                    onError={(e) => { e.target.style.display = 'none' }} />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-gray-400">
+                      {(h.display_name || '').split(' ').map(n => n[0]).join('')}
+                    </span>
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-gray-800 truncate">{h.display_name}</div>
+                  <div className="flex items-center gap-1">
+                    {h.team_logo && (
+                      <img src={h.team_logo} alt="" className="w-3 h-3 object-contain"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-[10px] text-gray-400">{h.team_short}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 leading-tight">
+                  <div className="text-xs font-bold text-gray-900 tabular-nums">
+                    {h.hits || 0}-for-{h.at_bats || 0}
+                  </div>
+                  <div className="flex gap-1.5 justify-end text-[10px] tabular-nums">
+                    {(h.home_runs || 0) > 0 && (
+                      <span className="font-bold text-red-600">{h.home_runs} HR</span>
+                    )}
+                    {(h.rbi || 0) > 0 && (
+                      <span className="text-gray-500">{h.rbi} RBI</span>
+                    )}
+                    {(h.stolen_bases || 0) > 0 && (
+                      <span className="text-gray-500">{h.stolen_bases} SB</span>
+                    )}
+                    {(h.xbh || 0) > 0 && !(h.home_runs > 0) && (
+                      <span className="text-gray-500">{h.xbh} XBH</span>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Top Pitchers */}
+        <div className="p-3">
+          <div className="text-[10px] font-bold text-pnw-teal uppercase tracking-wider mb-2">Top Pitchers</div>
+          <div className="space-y-0">
+            {pitchers.map((p, i) => (
+              <Link
+                key={p.player_id || i}
+                to={p.player_id ? `/player/${p.player_id}` : '#'}
+                className="flex items-center gap-2 py-1.5 hover:bg-gray-50 rounded px-1 -mx-1 border-b border-gray-50 last:border-0"
+              >
+                {p.headshot_url ? (
+                  <img src={p.headshot_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
+                    onError={(e) => { e.target.style.display = 'none' }} />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-gray-400">
+                      {(p.display_name || '').split(' ').map(n => n[0]).join('')}
+                    </span>
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-gray-800 truncate">{p.display_name}</div>
+                  <div className="flex items-center gap-1">
+                    {p.team_logo && (
+                      <img src={p.team_logo} alt="" className="w-3 h-3 object-contain"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-[10px] text-gray-400">{p.team_short}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 leading-tight">
+                  <div className="text-xs font-bold text-gray-900 tabular-nums">
+                    {fmtIP(p.innings_pitched)} IP, {p.strikeouts || 0} K
+                  </div>
+                  <div className="flex gap-1.5 justify-end text-[10px] tabular-nums">
+                    <span className="text-gray-500">{p.hits_allowed ?? '-'} H</span>
+                    <span className="text-gray-500">{p.earned_runs ?? '-'} ER</span>
+                    {p.decision && (
+                      <span className={`font-bold ${
+                        p.decision === 'W' ? 'text-green-600' : p.decision === 'L' ? 'text-red-600' : 'text-gray-400'
+                      }`}>
+                        {p.decision}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 px-4 py-1.5 text-right">
+        <Link to={`/scoreboard?date=${date}`} className="text-[10px] text-pnw-teal hover:underline font-medium">
+          View full scoreboard →
+        </Link>
+      </div>
+    </div>
+  )
+}
 
 
 // ════════════════════════════════════════════

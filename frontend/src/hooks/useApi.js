@@ -335,6 +335,13 @@ export function useUpsetOfTheDay(season = 2026) {
 }
 
 /**
+ * Top performers for a given date (hitters + pitchers).
+ */
+export function useDailyPerformers(date, season = 2026) {
+  return useApi('/games/daily-performers', { date, season }, [date, season])
+}
+
+/**
  * Quality starts leaderboard.
  */
 export function useQualityStarts(season = 2026, limit = 25) {
