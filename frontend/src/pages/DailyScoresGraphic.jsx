@@ -134,16 +134,15 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     ctx.fillText(parts.join('  '), x + w - pad, y + headerH / 2)
   }
 
-  // R/H/E header
+  // R/H header
   const rheColW = Math.max(14, 22 * s)
-  const rheX = x + w - pad - rheColW * 3
+  const rheX = x + w - pad - rheColW * 2
   const rheHeaderY = y + headerH + 2 * s
   ctx.fillStyle = '#94a3b8'
   ctx.font = `600 ${Math.max(5, 7.5 * s)}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 5 * s)
   ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 5 * s)
-  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 5 * s)
 
   // Team rows
   const teamTop = rheHeaderY + 11 * s
@@ -158,7 +157,6 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     const logo = isAway ? game.away_logo : game.home_logo
     const record = isAway ? game.away_record : game.home_record
     const hits = isAway ? game.away_hits : game.home_hits
-    const errors = isAway ? game.away_errors : game.home_errors
     const ry = teamTop + i * rowH
     const midY = ry + rowH / 2
 
@@ -198,7 +196,7 @@ async function drawScorebug(ctx, game, x, y, w, h) {
       ctx.fillText(`(${record})`, curX, midY + 7 * s)
     }
 
-    // R (score) / H / E
+    // R (score) / H
     ctx.textAlign = 'center'
     ctx.fillStyle = won ? '#0f172a' : '#94a3b8'
     ctx.font = `${won ? '800' : '600'} ${scoreFS}px "Inter", system-ui, sans-serif`
@@ -206,7 +204,6 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     ctx.fillStyle = '#64748b'
     ctx.font = `500 ${rheFS}px "Inter", system-ui, sans-serif`
     ctx.fillText(hits != null ? String(hits) : '-', rheX + rheColW * 1.5, midY)
-    ctx.fillText(errors != null ? String(errors) : '-', rheX + rheColW * 2.5, midY)
   }
 }
 
