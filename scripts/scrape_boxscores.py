@@ -1380,6 +1380,7 @@ def parse_sidearm_boxscore(html, base_url=""):
     # ─── Parse line score table ───
     linescore_table = None
     has_rhe_columns = False
+    rhe_header_indices = {}  # Maps 'R','H','E' to their column index (0-based, after team name col)
     for table in soup.find_all("table"):
         text = table.get_text()
         if re.search(r'\d+\s+\d+\s+\d+', text):
@@ -1389,6 +1390,9 @@ def parse_sidearm_boxscore(html, base_url=""):
                 headers = [th.get_text(strip=True).upper() for th in header_row.find_all(["th", "td"])]
                 if "R" in headers and "H" in headers and "E" in headers:
                     has_rhe_columns = True
+                    # Record the exact positions (offset by -1 to skip team name column)
+                    for col_name in ("R", "H", "E"):
+                        rhe_header_indices[col_name] = headers.index(col_name) - 1
                     linescore_table = table
                     break
                 # Also accept tables with just inning numbers + F (for line score only)
@@ -1403,7 +1407,7 @@ def parse_sidearm_boxscore(html, base_url=""):
             cells = row.find_all(["td", "th"])
             if len(cells) < 4:
                 continue
-            # Extract inning-by-inning scores (skip team name cell)
+            # Extract all cell values (skip team name cell)
             nums = []
             for cell in cells[1:]:  # Skip team name cell
                 t = cell.get_text(strip=True)
@@ -1419,18 +1423,23 @@ def parse_sidearm_boxscore(html, base_url=""):
             away_line = line_scores[0]
             home_line = line_scores[1]
 
-            if has_rhe_columns:
-                # Last 3 values are R, H, E
-                result["away_score"] = away_line[-3] if len(away_line) >= 3 else None
-                result["home_score"] = home_line[-3] if len(home_line) >= 3 else None
-                result["away_hits"] = away_line[-2] if len(away_line) >= 3 else None
-                result["home_hits"] = home_line[-2] if len(home_line) >= 3 else None
-                result["away_errors"] = away_line[-1] if len(away_line) >= 3 else None
-                result["home_errors"] = home_line[-1] if len(home_line) >= 3 else None
-                # Inning-by-inning (exclude R, H, E)
+            if has_rhe_columns and rhe_header_indices:
+                # Use exact column positions from headers to extract R, H, E
+                r_idx = rhe_header_indices["R"]
+                h_idx = rhe_header_indices["H"]
+                e_idx = rhe_header_indices["E"]
+
+                result["away_score"] = away_line[r_idx] if r_idx < len(away_line) else None
+                result["home_score"] = home_line[r_idx] if r_idx < len(home_line) else None
+                result["away_hits"] = away_line[h_idx] if h_idx < len(away_line) else None
+                result["home_hits"] = home_line[h_idx] if h_idx < len(home_line) else None
+                result["away_errors"] = away_line[e_idx] if e_idx < len(away_line) else None
+                result["home_errors"] = home_line[e_idx] if e_idx < len(home_line) else None
+
+                # Inning-by-inning: everything before the R column
                 result["line_score"] = {
-                    "away": [x for x in away_line[:-3] if x is not None],
-                    "home": [x for x in home_line[:-3] if x is not None],
+                    "away": [x for x in away_line[:r_idx] if x is not None],
+                    "home": [x for x in home_line[:r_idx] if x is not None],
                 }
             else:
                 # Table only has innings + Final (no R/H/E columns)
