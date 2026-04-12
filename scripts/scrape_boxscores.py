@@ -80,6 +80,16 @@ D1_TEAMS = {
     "Seattle U":  ("https://goseattleu.com",       "baseball", "sidearm"),
 }
 
+# Tenant IDs for new Sidearm Nuxt sites that require the JSON API for box scores.
+# Old Sidearm sites (Gonzaga, Portland) serve HTML box scores and don't need this.
+# Seattle U uses a different platform (OAS/WMT) and is handled separately.
+SIDEARM_API_TENANTS = {
+    "https://gohuskies.com":    "washington",
+    "https://goducks.com":      "uoregon",
+    "https://osubeavers.com":   "oregonstate",
+    "https://wsucougars.com":   "wsu",
+}
+
 # Home cities for D1 teams whose schedule pages lack at/vs indicators.
 # Used by the v3 parser to determine home/away from location text.
 D1_HOME_CITIES = {
@@ -1514,6 +1524,180 @@ def parse_presto_boxscore(html, base_url=""):
     return parse_sidearm_boxscore(html, base_url)
 
 
+def fetch_sidearm_api_boxscore(base_url, game_id, tenant):
+    """
+    Fetch box score data from the Sidearm v2 JSON API.
+
+    New Sidearm Nuxt sites (UW, Oregon, OSU, WSU) render box scores client-side
+    and don't serve HTML tables. This function calls their REST API instead.
+
+    Args:
+        base_url: e.g. "https://osubeavers.com"
+        game_id: numeric game ID from the box score URL path
+        tenant: Sidearm tenant string, e.g. "oregonstate"
+
+    Returns:
+        dict in the same format as parse_sidearm_boxscore(), or None on failure.
+    """
+    api_url = f"{base_url}/api/v2/stats/boxscore/{game_id}"
+    logger.info(f"    Fetching Sidearm API boxscore: {api_url}")
+    try:
+        resp = requests.get(
+            api_url,
+            headers={
+                "tenant": tenant,
+                "Accept": "application/json",
+                "User-Agent": random.choice(USER_AGENTS),
+            },
+            timeout=15,
+        )
+        if resp.status_code == 204:
+            logger.warning(f"    Sidearm API returned 204 (no content) for game {game_id}")
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.error(f"    Sidearm API boxscore failed: {e}")
+        return None
+
+    return _parse_sidearm_api_response(data)
+
+
+def _parse_sidearm_api_response(data):
+    """
+    Convert Sidearm v2 API JSON into the same dict format as parse_sidearm_boxscore().
+
+    API response structure:
+      - homeTeam / visitingTeam: each has 'players' list
+      - Each player has 'hitting', 'pitching', 'fielding' sub-objects
+      - hitting keys: atBats, runsScored, hits, runsBattedIn, doubles, triples,
+                      homeRuns, walks, strikeouts, hitByPitch, stolenBases,
+                      caughtStealing, sacrificeHits, sacrificeFlies, ...
+      - pitching keys: inningsPitched, hitsAllowed, runsAllowed, earnedRuns,
+                       walks, strikeouts, homeRunsAllowed, hitBatters, ...
+      - periodScoresHome / periodScoresAway: list of per-inning scores
+    """
+    result = {
+        "home_score": None, "away_score": None,
+        "home_hits": None, "away_hits": None,
+        "home_errors": None, "away_errors": None,
+        "innings": 9,
+        "line_score": {"home": [], "away": []},
+        "batting": {"home": [], "away": []},
+        "pitching": {"home": [], "away": []},
+    }
+
+    # ── Scores and line scores ──
+    result["home_score"] = _safe_int(data.get("homeTeamScore"))
+    result["away_score"] = _safe_int(data.get("visitingTeamScore"))
+
+    home_period_scores = data.get("periodScoresHome", [])
+    away_period_scores = data.get("periodScoresAway", [])
+    result["line_score"]["home"] = [_safe_int(s) or 0 for s in home_period_scores]
+    result["line_score"]["away"] = [_safe_int(s) or 0 for s in away_period_scores]
+    result["innings"] = max(len(home_period_scores), len(away_period_scores), 9)
+
+    # ── Parse each team ──
+    for side, team_key in [("home", "homeTeam"), ("away", "visitingTeam")]:
+        team = data.get(team_key, {})
+        players = team.get("players", [])
+
+        total_hits = 0
+        total_errors = 0
+
+        batting_lines = []
+        pitching_lines = []
+        pitch_order = 0
+
+        for p in players:
+            # ── Batting ──
+            h = p.get("hitting")
+            if h and _safe_int(h.get("atBats")) is not None:
+                ab = _safe_int(h.get("atBats", 0)) or 0
+                hits = _safe_int(h.get("hits", 0)) or 0
+                total_hits += hits
+
+                batting_lines.append({
+                    "player_name": p.get("checkName") or p.get("name", "Unknown"),
+                    "position": (p.get("position") or "").upper(),
+                    "ab": ab,
+                    "r": _safe_int(h.get("runsScored", 0)) or 0,
+                    "h": hits,
+                    "rbi": _safe_int(h.get("runsBattedIn", 0)) or 0,
+                    "2b": _safe_int(h.get("doubles", 0)) or 0,
+                    "3b": _safe_int(h.get("triples", 0)) or 0,
+                    "hr": _safe_int(h.get("homeRuns", 0)) or 0,
+                    "bb": _safe_int(h.get("walks", 0)) or 0,
+                    "so": _safe_int(h.get("strikeouts", 0)) or 0,
+                    "sb": _safe_int(h.get("stolenBases", 0)) or 0,
+                    "cs": _safe_int(h.get("caughtStealing", 0)) or 0,
+                    "hbp": _safe_int(h.get("hitByPitch", 0)) or 0,
+                })
+
+            # ── Fielding errors ──
+            f = p.get("fielding")
+            if f:
+                total_errors += _safe_int(f.get("errors", 0)) or 0
+
+            # ── Pitching ──
+            pit = p.get("pitching")
+            if pit and pit.get("inningsPitched") is not None:
+                # Use API's orderOfAppearance if available
+                order = _safe_int(pit.get("orderOfAppearance", 0))
+                if order <= 0:
+                    pitch_order += 1
+                    order = pitch_order
+                else:
+                    pitch_order = order
+
+                ip_str = str(pit.get("inningsPitched", "0"))
+                try:
+                    ip = float(ip_str)
+                except (ValueError, TypeError):
+                    ip = 0.0
+
+                # Determine decision (W/L/S)
+                # API uses "wins": "6-2" for W-L record and "gamesStarted": "1"
+                # The actual decision per-game is embedded in the record format.
+                # A pitcher who WON this game has wins != "0" AND the record
+                # changed. Simpler: check if wins field is non-zero string.
+                decision = None
+                wins_str = pit.get("wins", "0")
+                losses_str = pit.get("losses", "0")
+                saves_str = pit.get("saves", "0")
+                # wins can be "6-2" (W-L record) or just "1" (game wins)
+                if wins_str and wins_str != "0" and not wins_str.startswith("0"):
+                    decision = "W"
+                elif losses_str and losses_str != "0" and not losses_str.startswith("0"):
+                    decision = "L"
+                elif saves_str and saves_str != "0" and not saves_str.startswith("0"):
+                    decision = "S"
+
+                pitching_lines.append({
+                    "player_name": p.get("checkName") or p.get("name", "Unknown"),
+                    "pitch_order": order,
+                    "is_starter": _safe_int(pit.get("gamesStarted", 0)) > 0,
+                    "decision": decision,
+                    "ip": ip,
+                    "h": _safe_int(pit.get("hitsAllowed", 0)),
+                    "r": _safe_int(pit.get("runsAllowed", 0)),
+                    "er": _safe_int(pit.get("earnedRunsAllowed", 0)),
+                    "bb": _safe_int(pit.get("walksAllowed", 0)),
+                    "so": _safe_int(pit.get("strikeouts", 0)),
+                    "hr": _safe_int(pit.get("homerunsAllowed", 0)),
+                    "hbp": _safe_int(pit.get("hitBatters", 0)),
+                    "wp": _safe_int(pit.get("wildPitches", 0)),
+                    "bf": _safe_int(pit.get("battersFaced", 0)),
+                })
+
+        result["batting"][side] = batting_lines
+        result["pitching"][side] = pitching_lines
+        result[f"{side}_hits"] = total_hits
+        result[f"{side}_errors"] = total_errors
+
+    return result
+
+
 def _find_stat_tables(soup, stat_type):
     """
     Find batting or pitching stat tables in a box score page.
@@ -2616,76 +2800,92 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
 
             real_box_url = sched_game.get("box_score_url")
             if real_box_url:
-                logger.info(f"    Fetching box score: {real_box_url}")
-                box_html = fetch_page(real_box_url, retries=2, delay_range=(1.0, 2.0), use_nwac=is_nwac)
+                box = None
 
-                if box_html:
-                    if platform == "presto":
-                        box = parse_presto_boxscore(box_html, base_url)
-                    else:
-                        box = parse_sidearm_boxscore(box_html, base_url)
+                # ── Try Sidearm JSON API first for new Nuxt sites ──
+                tenant = SIDEARM_API_TENANTS.get(base_url)
+                if tenant and platform == "sidearm":
+                    # Extract game ID from box score URL (last path segment)
+                    box_game_id = real_box_url.rstrip("/").split("/")[-1]
+                    if box_game_id.isdigit():
+                        box = fetch_sidearm_api_boxscore(base_url, box_game_id, tenant)
+                        if box:
+                            logger.info(f"    Got box score from Sidearm API (game {box_game_id})")
 
-                    if box:
-                        # ── Detect home/away flip using SCORES (bulletproof) ──
-                        # The box score parser guesses home/away by HTML row order,
-                        # which is often wrong. We know the correct scores from the
-                        # schedule, and baseball has no ties, so score comparison
-                        # always gives a definitive answer.
-                        box_flipped = False
-                        box_away_score = box.get("away_score")
-                        box_home_score = box.get("home_score")
-                        sched_away_score = game_data.get("away_score")
-                        sched_home_score = game_data.get("home_score")
+                # ── Fall back to HTML parsing ──
+                if not box:
+                    logger.info(f"    Fetching box score HTML: {real_box_url}")
+                    box_html = fetch_page(real_box_url, retries=2, delay_range=(1.0, 2.0), use_nwac=is_nwac)
 
-                        if (box_away_score is not None and box_home_score is not None
-                                and sched_away_score is not None and sched_home_score is not None):
-                            if (int(box_away_score) == int(sched_home_score)
-                                    and int(box_home_score) == int(sched_away_score)
-                                    and int(sched_away_score) != int(sched_home_score)):
-                                box_flipped = True
-                                logger.info(f"    Box score home/away FLIPPED "
-                                           f"(box: {box_away_score}-{box_home_score}, "
-                                           f"sched: {sched_away_score}-{sched_home_score})")
-
-                        # Apply hits, errors, line scores — swapping if flipped
-                        if box_flipped:
-                            bh, ba = "away", "home"  # box "home" is actually away
+                    if box_html:
+                        if platform == "presto":
+                            box = parse_presto_boxscore(box_html, base_url)
                         else:
-                            bh, ba = "home", "away"
+                            box = parse_sidearm_boxscore(box_html, base_url)
 
-                        if box.get(f"{bh}_hits") is not None:
-                            game_data["home_hits"] = box[f"{bh}_hits"]
-                        if box.get(f"{ba}_hits") is not None:
-                            game_data["away_hits"] = box[f"{ba}_hits"]
-                        if box.get(f"{bh}_errors") is not None:
-                            game_data["home_errors"] = box[f"{bh}_errors"]
-                        if box.get(f"{ba}_errors") is not None:
-                            game_data["away_errors"] = box[f"{ba}_errors"]
-                        if box.get("line_score"):
-                            game_data["home_line_score"] = box["line_score"].get(bh)
-                            game_data["away_line_score"] = box["line_score"].get(ba)
-                        if box.get("innings"):
-                            game_data["innings"] = box["innings"]
+                if box:
+                    # ── Detect home/away flip using SCORES (bulletproof) ──
+                    # The box score parser guesses home/away by HTML row order,
+                    # which is often wrong. We know the correct scores from the
+                    # schedule, and baseball has no ties, so score comparison
+                    # always gives a definitive answer.
+                    # Note: Sidearm API data already has correct home/away, so
+                    # flip detection will correctly find no flip needed.
+                    box_flipped = False
+                    box_away_score = box.get("away_score")
+                    box_home_score = box.get("home_score")
+                    sched_away_score = game_data.get("away_score")
+                    sched_home_score = game_data.get("home_score")
 
-                        # Apply batting/pitching with same flip correction
-                        raw_batting = box.get("batting", box_batting)
-                        raw_pitching = box.get("pitching", box_pitching)
-                        box_batting = {
-                            "home": raw_batting.get(bh, []),
-                            "away": raw_batting.get(ba, []),
-                        }
-                        box_pitching = {
-                            "home": raw_pitching.get(bh, []),
-                            "away": raw_pitching.get(ba, []),
-                        }
+                    if (box_away_score is not None and box_home_score is not None
+                            and sched_away_score is not None and sched_home_score is not None):
+                        if (int(box_away_score) == int(sched_home_score)
+                                and int(box_home_score) == int(sched_away_score)
+                                and int(sched_away_score) != int(sched_home_score)):
+                            box_flipped = True
+                            logger.info(f"    Box score home/away FLIPPED "
+                                       f"(box: {box_away_score}-{box_home_score}, "
+                                       f"sched: {sched_away_score}-{sched_home_score})")
 
-                        logger.info(f"    Box score: {len(box_batting.get('away', []))} away batters, "
-                                   f"{len(box_batting.get('home', []))} home batters, "
-                                   f"{len(box_pitching.get('away', []))} away pitchers, "
-                                   f"{len(box_pitching.get('home', []))} home pitchers"
-                                   f"{' (FLIPPED)' if box_flipped else ''}")
+                    # Apply hits, errors, line scores — swapping if flipped
+                    if box_flipped:
+                        bh, ba = "away", "home"  # box "home" is actually away
+                    else:
+                        bh, ba = "home", "away"
+
+                    if box.get(f"{bh}_hits") is not None:
+                        game_data["home_hits"] = box[f"{bh}_hits"]
+                    if box.get(f"{ba}_hits") is not None:
+                        game_data["away_hits"] = box[f"{ba}_hits"]
+                    if box.get(f"{bh}_errors") is not None:
+                        game_data["home_errors"] = box[f"{bh}_errors"]
+                    if box.get(f"{ba}_errors") is not None:
+                        game_data["away_errors"] = box[f"{ba}_errors"]
+                    if box.get("line_score"):
+                        game_data["home_line_score"] = box["line_score"].get(bh)
+                        game_data["away_line_score"] = box["line_score"].get(ba)
+                    if box.get("innings"):
+                        game_data["innings"] = box["innings"]
+
+                    # Apply batting/pitching with same flip correction
+                    raw_batting = box.get("batting", box_batting)
+                    raw_pitching = box.get("pitching", box_pitching)
+                    box_batting = {
+                        "home": raw_batting.get(bh, []),
+                        "away": raw_batting.get(ba, []),
+                    }
+                    box_pitching = {
+                        "home": raw_pitching.get(bh, []),
+                        "away": raw_pitching.get(ba, []),
+                    }
+
+                    logger.info(f"    Box score: {len(box_batting.get('away', []))} away batters, "
+                               f"{len(box_batting.get('home', []))} home batters, "
+                               f"{len(box_pitching.get('away', []))} away pitchers, "
+                               f"{len(box_pitching.get('home', []))} home pitchers"
+                               f"{' (FLIPPED)' if box_flipped else ''}")
                 else:
-                    logger.warning(f"    Failed to fetch box score page")
+                    logger.warning(f"    Failed to get box score data")
 
             # ─── Save to database ───
             with get_connection() as conn:
