@@ -6278,6 +6278,18 @@ def daily_performers(
         top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)
 
         # ── 7. Rank pitchers — best SINGLE game performance (no aggregation) ──
+        # Custom performance score: rewards dominance (K's, clean innings)
+        # and penalises runs heavily so a 4-5 IP shutout outing can outrank
+        # a 7+ IP start that gave up 4 runs.
+        def pitching_perf_score(p):
+            ip  = p.get("innings_pitched") or 0
+            k   = p.get("strikeouts") or 0
+            h   = p.get("hits_allowed") or 0
+            er  = p.get("earned_runs") or 0
+            bb  = p.get("walks") or 0
+            hra = p.get("home_runs_allowed") or 0
+            return (k * 3.5) + (ip * 3.5) - (h * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
+
         # Keep each pitcher's best individual game to avoid double-counting
         seen_pitch_rows = set()
         pitcher_best = {}
@@ -6290,11 +6302,9 @@ def daily_performers(
                 continue
             seen_pitch_rows.add(row_key)
 
-            ip = p.get("innings_pitched") or 0
-            gs = p.get("game_score") or 0
-            weighted = gs + (ip * 2)
+            perf = pitching_perf_score(p)
 
-            if player_key not in pitcher_best or weighted > pitcher_best[player_key]["weighted_score"]:
+            if player_key not in pitcher_best or perf > pitcher_best[player_key]["perf_score"]:
                 pitcher_best[player_key] = {
                     "player_id": pid,
                     "player_name": p.get("player_name"),
@@ -6305,14 +6315,14 @@ def daily_performers(
                     "team_logo": p.get("team_logo"),
                     "headshot_url": p.get("headshot_url"),
                     "division": p.get("division"),
-                    "innings_pitched": ip,
+                    "innings_pitched": p.get("innings_pitched") or 0,
                     "hits_allowed": p.get("hits_allowed"),
                     "earned_runs": p.get("earned_runs"),
                     "walks": p.get("walks"),
                     "strikeouts": p.get("strikeouts"),
-                    "game_score": gs,
+                    "home_runs_allowed": p.get("home_runs_allowed"),
                     "decision": p.get("decision"),
-                    "weighted_score": weighted,
+                    "perf_score": perf,
                 }
 
         qualified_pitchers = [p for p in pitcher_best.values()
@@ -6321,7 +6331,7 @@ def daily_performers(
             p["display_name"] = _display_name(p)
 
         # Return ALL qualified pitchers — frontend filters by division and picks top 5
-        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("weighted_score") or 0, reverse=True)
+        top_pitchers = sorted(qualified_pitchers, key=lambda p: p.get("perf_score", 0), reverse=True)
 
         return {
             "games": games,
