@@ -24,10 +24,11 @@ const DIV_COLORS = {
 }
 
 export default function Homepage() {
-  const today = new Date().toISOString().slice(0, 10)
+  const fmtLocalDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const today = fmtLocalDate(new Date())
   const yesterday = (() => {
     const d = new Date(); d.setDate(d.getDate() - 1)
-    return d.toISOString().slice(0, 10)
+    return fmtLocalDate(d)
   })()
 
   const { data: leaders } = useStatLeaders(SEASON, 5, true)
