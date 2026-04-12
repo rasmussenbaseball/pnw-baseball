@@ -1407,7 +1407,20 @@ def parse_sidearm_boxscore(html, base_url=""):
             cells = row.find_all(["td", "th"])
             if len(cells) < 4:
                 continue
-            # Keep ALL cell values by position (skip team name cell)
+            # Get ALL cell texts including the first (team name) cell
+            all_texts = [cell.get_text(strip=True) for cell in cells]
+            # Skip header rows: the header has "R", "H", "E" as cell values
+            # or the first cell is empty/a number (team rows have a team name)
+            upper_texts = [t.upper() for t in all_texts]
+            if "R" in upper_texts and "H" in upper_texts and "E" in upper_texts:
+                continue  # This is the header row
+            if "R" in upper_texts and "H" in upper_texts:
+                continue  # Header without E column
+            # Also skip rows where the first cell looks like an inning number
+            first = all_texts[0].strip()
+            if first == "" or first.isdigit():
+                continue  # Header or spacer row, not a team row
+            # Keep cell values after the team name column
             cell_texts = [cell.get_text(strip=True) for cell in cells[1:]]
             # Only include rows that have some numeric content
             if any(t.isdigit() for t in cell_texts):
