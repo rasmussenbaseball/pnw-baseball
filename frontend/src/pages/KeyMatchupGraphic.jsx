@@ -171,19 +171,19 @@ async function drawGraphic(canvas, data, pred) {
   y += hdrH + 8
 
   // ── TEAM BANNER ──
-  const bannerH = 130
+  const bannerH = 148
   ctx.fillStyle = CARD; roundRect(ctx, P, y, W, bannerH, 10); ctx.fill()
   ctx.fillStyle = ac.p; ctx.fillRect(P, y, 6, bannerH)
   ctx.fillStyle = hc.p; ctx.fillRect(S - P - 6, y, 6, bannerH)
 
   // VS
   ctx.fillStyle = SUBTLE
-  ctx.beginPath(); ctx.arc(S / 2, y + bannerH / 2, 22, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(S / 2, y + 62, 22, 0, Math.PI * 2); ctx.fill()
   ctx.fillStyle = WHITE; ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText('VS', S / 2, y + bannerH / 2 + 6)
+  ctx.fillText('VS', S / 2, y + 68)
   if (data.matchup.is_conference_game) {
-    ctx.fillStyle = TEAL; roundRect(ctx, S / 2 - 56, y + bannerH / 2 + 28, 112, 18, 9); ctx.fill()
-    ctx.fillStyle = WHITE; ctx.font = 'bold 9px system-ui'; ctx.fillText('CONFERENCE GAME', S / 2, y + bannerH / 2 + 40)
+    ctx.fillStyle = TEAL; roundRect(ctx, S / 2 - 56, y + 90, 112, 18, 9); ctx.fill()
+    ctx.fillStyle = WHITE; ctx.font = 'bold 9px system-ui'; ctx.fillText('CONFERENCE GAME', S / 2, y + 102)
   }
 
   for (const [team, xC, c] of [[away, P + half / 2 + 6, ac], [home, S - P - half / 2 - 6, hc]]) {
@@ -201,8 +201,8 @@ async function drawGraphic(canvas, data, pred) {
       const rankStr = `#${Math.round(rank)}`
       ctx.font = 'bold 10px system-ui'
       const rw = ctx.measureText(rankStr).width + 14
-      ctx.fillStyle = c.p; roundRect(ctx, xC - rw / 2, y + 104, rw, 16, 8); ctx.fill()
-      ctx.fillStyle = WHITE; ctx.fillText(rankStr, xC, y + 116)
+      ctx.fillStyle = c.p; roundRect(ctx, xC - rw / 2, y + 124, rw, 16, 8); ctx.fill()
+      ctx.fillStyle = WHITE; ctx.fillText(rankStr, xC, y + 136)
     }
   }
   y += bannerH + 8
@@ -477,7 +477,7 @@ export default function KeyMatchupGraphic() {
               <button onClick={() => changeDate(1)} className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm font-medium">&rarr;</button>
             </div>
             {data?.games?.length > 0 && (
-              <select value={selGame || ''} onChange={e => { setSelGame(parseInt(e.target.value)); fetchData(date, parseInt(e.target.value)) }} className="px-3 py-1.5 rounded border border-gray-300 text-sm flex-1 min-w-[200px]">
+              <select value={selGame || ''} onChange={e => { const v = e.target.value; setSelGame(v); fetchData(date, v) }} className="px-3 py-1.5 rounded border border-gray-300 text-sm flex-1 min-w-[200px]">
                 {data.games.map(g => <option key={g.id} value={g.id}>{g.away_short} @ {g.home_short}{g.is_conference_game ? ' (Conf)' : ''}{g.home_division ? ` — ${g.home_division}` : ''}</option>)}
               </select>
             )}

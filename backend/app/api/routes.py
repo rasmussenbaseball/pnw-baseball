@@ -6345,7 +6345,7 @@ def daily_performers(
 def key_matchup(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     season: int = Query(2026),
-    game_id: Optional[int] = None,
+    game_id: Optional[str] = None,
 ):
     """
     Return the key matchup of the day for social media graphic.
@@ -6378,6 +6378,85 @@ def key_matchup(
         """, (date, season))
         games = [dict(r) for r in cur.fetchall()]
 
+        # ── 1b. Merge future scheduled games if date >= today ──
+        from pathlib import Path
+        import json as _json
+        from datetime import date as _date_type
+        try:
+            req_date = _date_type.fromisoformat(date)
+            today = _date_type.today()
+        except ValueError:
+            req_date = None
+            today = None
+
+        if req_date and req_date >= today:
+            fs_path = Path(__file__).parent.parent.parent / "data" / "future_schedules.json"
+            if fs_path.exists():
+                try:
+                    with open(fs_path) as _f:
+                        fs_data = _json.load(_f)
+                    fs_games = [g for g in fs_data.get("games", []) if g.get("game_date") == date]
+
+                    # Build set of existing game keys to avoid dupes
+                    existing_keys = set()
+                    for g in games:
+                        h = g.get("home_team_id")
+                        a = g.get("away_team_id")
+                        if h and a:
+                            existing_keys.add((h, a))
+                            existing_keys.add((a, h))
+
+                    # Look up team info for enrichment
+                    fs_team_ids = set()
+                    for fg in fs_games:
+                        if fg.get("home_team_id"): fs_team_ids.add(fg["home_team_id"])
+                        if fg.get("away_team_id"): fs_team_ids.add(fg["away_team_id"])
+
+                    fs_team_info = {}
+                    if fs_team_ids:
+                        ph2 = ",".join(["%s"] * len(fs_team_ids))
+                        cur.execute(f"""
+                            SELECT t.id, t.short_name, t.logo_url, t.state,
+                                   c.abbreviation AS conf_abbrev,
+                                   d.level AS div_level
+                            FROM teams t
+                            LEFT JOIN conferences c ON t.conference_id = c.id
+                            LEFT JOIN divisions d ON c.division_id = d.id
+                            WHERE t.id IN ({ph2})
+                        """, list(fs_team_ids))
+                        for r in cur.fetchall():
+                            fs_team_info[r["id"]] = dict(r)
+
+                    for fg in fs_games:
+                        h = fg.get("home_team_id")
+                        a = fg.get("away_team_id")
+                        if h and a and (h, a) not in existing_keys:
+                            existing_keys.add((h, a))
+                            existing_keys.add((a, h))
+                            hi = fs_team_info.get(h, {})
+                            ai = fs_team_info.get(a, {})
+                            games.append({
+                                "id": f"future_{h}_{a}",
+                                "game_date": fg["game_date"],
+                                "status": "scheduled",
+                                "is_conference_game": fg.get("is_conference", False),
+                                "home_team_id": h,
+                                "away_team_id": a,
+                                "home_score": None,
+                                "away_score": None,
+                                "game_time": None,
+                                "home_short": hi.get("short_name", fg.get("home_team", "")),
+                                "home_logo": hi.get("logo_url"),
+                                "away_short": ai.get("short_name", fg.get("away_team", "")),
+                                "away_logo": ai.get("logo_url"),
+                                "home_division": hi.get("div_level", fg.get("division")),
+                                "away_division": ai.get("div_level", fg.get("division")),
+                                "home_conf": hi.get("conf_abbrev", ""),
+                                "away_conf": ai.get("conf_abbrev", ""),
+                            })
+                except Exception:
+                    pass
+
         if not games:
             return {"matchup": None, "games": [], "date": date}
 
@@ -6385,7 +6464,7 @@ def key_matchup(
         # If game_id specified, use that; otherwise score each game
         chosen = None
         if game_id:
-            chosen = next((g for g in games if g["id"] == game_id), None)
+            chosen = next((g for g in games if str(g["id"]) == str(game_id)), None)
 
         if not chosen:
             # Score games by playoff impact:
