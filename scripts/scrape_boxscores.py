@@ -2626,76 +2626,58 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                         box = parse_sidearm_boxscore(box_html, base_url)
 
                     if box:
-                        # Update game data with box score details
-                        # NOTE: Do NOT override home_score/away_score from box score
-                        # parsing — the schedule scores are reliable and the box score
-                        # parser can mis-assign home/away when the scraping team's
-                        # perspective differs from the box score page layout.
-
-                        # Detect if box score home/away is flipped vs schedule.
-                        # The box score parser guesses home/away by HTML order, which
-                        # can be wrong. Compare box score team names against our known
-                        # schedule team names to detect a flip.
+                        # ── Detect home/away flip using SCORES (bulletproof) ──
+                        # The box score parser guesses home/away by HTML row order,
+                        # which is often wrong. We know the correct scores from the
+                        # schedule, and baseball has no ties, so score comparison
+                        # always gives a definitive answer.
                         box_flipped = False
-                        box_home = (box.get("home_team") or "").lower().strip()
-                        box_away = (box.get("away_team") or "").lower().strip()
-                        sched_home = (game_data.get("home_team_name") or "").lower().strip()
-                        sched_away = (game_data.get("away_team_name") or "").lower().strip()
+                        box_away_score = box.get("away_score")
+                        box_home_score = box.get("home_score")
+                        sched_away_score = game_data.get("away_score")
+                        sched_home_score = game_data.get("home_score")
 
-                        if box_home and sched_away and box_away and sched_home:
-                            # Check if box's "home" team matches schedule's AWAY team
-                            home_matches_away = (box_home in sched_away or sched_away in box_home)
-                            away_matches_home = (box_away in sched_home or sched_home in box_away)
-                            home_matches_home = (box_home in sched_home or sched_home in box_home)
-                            away_matches_away = (box_away in sched_away or sched_away in box_away)
-
-                            if (home_matches_away or away_matches_home) and not (home_matches_home or away_matches_away):
+                        if (box_away_score is not None and box_home_score is not None
+                                and sched_away_score is not None and sched_home_score is not None):
+                            if (int(box_away_score) == int(sched_home_score)
+                                    and int(box_home_score) == int(sched_away_score)
+                                    and int(sched_away_score) != int(sched_home_score)):
                                 box_flipped = True
-                                logger.info(f"    Box score home/away FLIPPED vs schedule "
-                                           f"(box: {box_home}/{box_away}, sched: {sched_home}/{sched_away})")
+                                logger.info(f"    Box score home/away FLIPPED "
+                                           f"(box: {box_away_score}-{box_home_score}, "
+                                           f"sched: {sched_away_score}-{sched_home_score})")
 
+                        # Apply hits, errors, line scores — swapping if flipped
                         if box_flipped:
-                            # Swap box score values to match schedule orientation
-                            if box.get("home_hits") is not None or box.get("away_hits") is not None:
-                                game_data["home_hits"] = box.get("away_hits")
-                                game_data["away_hits"] = box.get("home_hits")
-                            if box.get("home_errors") is not None or box.get("away_errors") is not None:
-                                game_data["home_errors"] = box.get("away_errors")
-                                game_data["away_errors"] = box.get("home_errors")
-                            if box.get("line_score"):
-                                game_data["home_line_score"] = box["line_score"].get("away")
-                                game_data["away_line_score"] = box["line_score"].get("home")
+                            bh, ba = "away", "home"  # box "home" is actually away
                         else:
-                            if box.get("home_hits") is not None:
-                                game_data["home_hits"] = box["home_hits"]
-                            if box.get("away_hits") is not None:
-                                game_data["away_hits"] = box["away_hits"]
-                            if box.get("home_errors") is not None:
-                                game_data["home_errors"] = box["home_errors"]
-                            if box.get("away_errors") is not None:
-                                game_data["away_errors"] = box["away_errors"]
-                            if box.get("line_score"):
-                                game_data["home_line_score"] = box["line_score"].get("home")
-                                game_data["away_line_score"] = box["line_score"].get("away")
+                            bh, ba = "home", "away"
 
+                        if box.get(f"{bh}_hits") is not None:
+                            game_data["home_hits"] = box[f"{bh}_hits"]
+                        if box.get(f"{ba}_hits") is not None:
+                            game_data["away_hits"] = box[f"{ba}_hits"]
+                        if box.get(f"{bh}_errors") is not None:
+                            game_data["home_errors"] = box[f"{bh}_errors"]
+                        if box.get(f"{ba}_errors") is not None:
+                            game_data["away_errors"] = box[f"{ba}_errors"]
+                        if box.get("line_score"):
+                            game_data["home_line_score"] = box["line_score"].get(bh)
+                            game_data["away_line_score"] = box["line_score"].get(ba)
                         if box.get("innings"):
                             game_data["innings"] = box["innings"]
 
+                        # Apply batting/pitching with same flip correction
                         raw_batting = box.get("batting", box_batting)
                         raw_pitching = box.get("pitching", box_pitching)
-                        if box_flipped:
-                            # Swap home/away batting and pitching to match schedule
-                            box_batting = {
-                                "home": raw_batting.get("away", []),
-                                "away": raw_batting.get("home", []),
-                            }
-                            box_pitching = {
-                                "home": raw_pitching.get("away", []),
-                                "away": raw_pitching.get("home", []),
-                            }
-                        else:
-                            box_batting = raw_batting
-                            box_pitching = raw_pitching
+                        box_batting = {
+                            "home": raw_batting.get(bh, []),
+                            "away": raw_batting.get(ba, []),
+                        }
+                        box_pitching = {
+                            "home": raw_pitching.get(bh, []),
+                            "away": raw_pitching.get(ba, []),
+                        }
 
                         logger.info(f"    Box score: {len(box_batting.get('away', []))} away batters, "
                                    f"{len(box_batting.get('home', []))} home batters, "
