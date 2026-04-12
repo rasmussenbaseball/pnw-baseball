@@ -6994,7 +6994,7 @@ def games_live():
                     "time": row["game_time"] or "",
                     "status": row["status"] or "final",
                     "game_state_display": "FINAL" if row["status"] == "final" else "",
-                    "location": "",
+                    "location": "home",
                     "team_score": str(row["home_score"]) if row["home_score"] is not None else None,
                     "opponent_score": str(row["away_score"]) if row["away_score"] is not None else None,
                     "home_hits": home_hits,
