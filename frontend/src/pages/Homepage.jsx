@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay, useDailyPerformers } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay, useDailyPerformers, useKeyMatchup, useWinProbabilities } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 
@@ -24,6 +24,12 @@ const DIV_COLORS = {
 }
 
 export default function Homepage() {
+  const today = new Date().toISOString().slice(0, 10)
+  const yesterday = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1)
+    return d.toISOString().slice(0, 10)
+  })()
+
   const { data: leaders } = useStatLeaders(SEASON, 5, true)
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
@@ -31,11 +37,14 @@ export default function Homepage() {
   const { data: liveData, refetch: refetchLive } = useLiveScores()
   const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
   const { data: upsetData } = useUpsetOfTheDay(SEASON)
-  const yesterday = (() => {
-    const d = new Date(); d.setDate(d.getDate() - 1)
-    return d.toISOString().slice(0, 10)
-  })()
-  const { data: perfData } = useDailyPerformers(yesterday, SEASON)
+  const { data: matchupData } = useKeyMatchup(today, SEASON)
+  const { data: winProbData } = useWinProbabilities(today, SEASON)
+  const { data: perfToday } = useDailyPerformers(today, SEASON)
+  const { data: perfYesterday } = useDailyPerformers(yesterday, SEASON)
+  // Show today's performers once games go final, otherwise fall back to yesterday
+  const hasTodayPerformers = perfToday?.top_hitters?.length > 0 || perfToday?.top_pitchers?.length > 0
+  const perfData = hasTodayPerformers ? perfToday : perfYesterday
+  const perfDate = hasTodayPerformers ? today : yesterday
   const { user } = useAuth()
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try { return sessionStorage.getItem('beta-banner-dismissed') === '1' } catch { return false }
@@ -78,7 +87,7 @@ export default function Homepage() {
         {/* Left column - wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
           <NationalRankingsWidget rankings={rankings} />
-          <TopPerformersWidget data={perfData} date={yesterday} />
+          <TopPerformersWidget data={perfData} date={perfDate} />
           <StatLeadersWidget leaders={leaders} />
           <ByTheNumbersWidget />
         </div>
@@ -86,6 +95,7 @@ export default function Homepage() {
         {/* Right column - sidebar (1/3) */}
         <div className="flex flex-col gap-5">
           <PowerRankingsWidget ratings={ratings} />
+          <MatchupOfTheDayWidget matchup={matchupData?.matchup} winProbs={winProbData?.probabilities} />
           <UpsetOfTheDayWidget upset={upsetData?.upset} />
           <DraftBoardWidget />
           <WclLeadersWidget leaders={wclLeaders} />
@@ -595,6 +605,119 @@ const POS_BADGE = {
   CF: 'bg-purple-100 text-purple-700',
 }
 
+// ════════════════════════════════════════════
+// MATCHUP OF THE DAY WIDGET
+// ════════════════════════════════════════════
+function MatchupOfTheDayWidget({ matchup, winProbs }) {
+  if (!matchup || !matchup.teams || matchup.teams.length < 2) return null
+
+  const away = matchup.teams.find(t => t.side === 'away') || matchup.teams[0]
+  const home = matchup.teams.find(t => t.side === 'home') || matchup.teams[1]
+
+  // Win probabilities from the win-probabilities endpoint
+  const gameProbs = winProbs?.[String(matchup.game_id)]
+  const homeWp = gameProbs ? Math.round(gameProbs.home_win_prob * 100) : null
+  const awayWp = gameProbs ? Math.round(gameProbs.away_win_prob * 100) : null
+
+  // Records
+  const awayRec = away.record ? `${away.record.wins}-${away.record.losses}` : ''
+  const homeRec = home.record ? `${home.record.wins}-${home.record.losses}` : ''
+
+  // Conference records
+  const awayConfRec = away.record?.conference_wins != null ? `${away.record.conference_wins}-${away.record.conference_losses}` : null
+  const homeConfRec = home.record?.conference_wins != null ? `${home.record.conference_wins}-${home.record.conference_losses}` : null
+
+  const fmtAvg = v => v != null ? Number(v).toFixed(3).replace(/^0/, '') : '-'
+  const fmtEra = v => v != null ? Number(v).toFixed(2) : '-'
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-gradient-to-r from-pnw-teal to-pnw-teal/90 px-4 py-2">
+        <h2 className="text-sm font-bold text-white tracking-wide">PNW MATCHUP OF THE DAY</h2>
+      </div>
+      <div className="p-4">
+        {/* Teams head-to-head */}
+        <div className="flex items-center justify-between mb-3">
+          {/* Away team */}
+          <div className="text-center flex-1">
+            {away.logo_url && (
+              <img src={away.logo_url} alt="" className="w-10 h-10 object-contain mx-auto mb-1"
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <div className="text-xs font-bold text-gray-800">{away.short_name}</div>
+            <div className="text-[10px] text-gray-400">{awayRec}{awayConfRec ? ` (${awayConfRec})` : ''}</div>
+            {away.national_rank && (
+              <div className="text-[10px] text-amber-600 font-semibold">#{away.national_rank.composite_rank}</div>
+            )}
+          </div>
+
+          {/* VS / Win prob */}
+          <div className="text-center px-3">
+            <div className="text-xs font-bold text-gray-300 mb-1">VS</div>
+            {matchup.is_conference_game && (
+              <span className="px-1.5 py-0.5 bg-pnw-teal/10 text-pnw-teal rounded text-[9px] font-bold">CONF</span>
+            )}
+          </div>
+
+          {/* Home team */}
+          <div className="text-center flex-1">
+            {home.logo_url && (
+              <img src={home.logo_url} alt="" className="w-10 h-10 object-contain mx-auto mb-1"
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <div className="text-xs font-bold text-gray-800">{home.short_name}</div>
+            <div className="text-[10px] text-gray-400">{homeRec}{homeConfRec ? ` (${homeConfRec})` : ''}</div>
+            {home.national_rank && (
+              <div className="text-[10px] text-amber-600 font-semibold">#{home.national_rank.composite_rank}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Win probability bar */}
+        {homeWp != null && (
+          <div className="mb-3">
+            <div className="relative h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-pnw-teal/70 to-pnw-teal rounded-full"
+                style={{ width: `${awayWp}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[10px] font-semibold text-pnw-teal">{awayWp}%</span>
+              <span className="text-[10px] text-gray-400 font-medium">Win Probability</span>
+              <span className="text-[10px] font-semibold text-gray-500">{homeWp}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Team comparison stats */}
+        <div className="space-y-1 border-t border-gray-100 pt-2">
+          {[
+            { label: 'Team AVG', a: fmtAvg(away.batting?.team_avg), b: fmtAvg(home.batting?.team_avg) },
+            { label: 'Team ERA', a: fmtEra(away.pitching?.team_era), b: fmtEra(home.pitching?.team_era) },
+            { label: 'HR', a: away.batting?.total_hr ?? '-', b: home.batting?.total_hr ?? '-' },
+            { label: 'Runs/Game', a: away.batting?.total_runs && away.record ? (away.batting.total_runs / (away.record.wins + away.record.losses)).toFixed(1) : '-',
+                      b: home.batting?.total_runs && home.record ? (home.batting.total_runs / (home.record.wins + home.record.losses)).toFixed(1) : '-' },
+          ].map((row, i) => {
+            const aVal = parseFloat(row.a)
+            const bVal = parseFloat(row.b)
+            const aWins = row.label === 'Team ERA' ? aVal < bVal : aVal > bVal
+            const bWins = row.label === 'Team ERA' ? bVal < aVal : bVal > aVal
+            return (
+              <div key={i} className="flex items-center text-[11px]">
+                <span className={`w-12 text-right tabular-nums font-medium ${aWins ? 'text-pnw-teal font-bold' : 'text-gray-500'}`}>{row.a}</span>
+                <span className="flex-1 text-center text-[10px] text-gray-400">{row.label}</span>
+                <span className={`w-12 text-left tabular-nums font-medium ${bWins ? 'text-pnw-teal font-bold' : 'text-gray-500'}`}>{row.b}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function UpsetOfTheDayWidget({ upset }) {
   if (!upset) return null
 
@@ -708,8 +831,41 @@ function DraftBoardWidget() {
 // ════════════════════════════════════════════
 function WclLeadersWidget({ leaders }) {
   if (!leaders) return null
-  const allCats = [...(leaders.batting || []), ...(leaders.pitching || [])]
-  if (allCats.length === 0) return null
+  const batCats = leaders.batting || []
+  const pitCats = leaders.pitching || []
+  if (batCats.length === 0 && pitCats.length === 0) return null
+
+  const renderCat = (cat) => {
+    const top = cat.leaders?.[0]
+    if (!top) return null
+    return (
+      <div key={cat.key} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
+        <span className="text-[10px] font-bold text-gray-400 uppercase w-8">{cat.label}</span>
+        {top.logo_url && (
+          <img src={top.logo_url} alt="" className="w-5 h-5 object-contain shrink-0"
+            onError={(e) => { e.target.style.display = 'none' }} />
+        )}
+        <div className="flex-1 min-w-0" style={{ lineHeight: 1.1 }}>
+          {top.spring_player_id ? (
+            <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block" style={{ lineHeight: 1.1 }}>
+              {top.first_name} {top.last_name}
+            </Link>
+          ) : (
+            <span className="text-xs font-semibold text-gray-800 truncate block" style={{ lineHeight: 1.1 }}>
+              {top.first_name} {top.last_name}
+            </span>
+          )}
+          <span className="text-[10px] text-gray-400 block" style={{ lineHeight: 1.1, marginTop: '1px' }}>{top.team_short}</span>
+        </div>
+        <span className="text-sm font-bold text-pnw-slate tabular-nums">
+          {cat.format === 'avg' ? top.value?.toFixed(3).replace(/^0/, '') :
+           cat.format === 'float2' ? top.value?.toFixed(2) :
+           cat.format === 'pct' ? (top.value * 100).toFixed(1) + '%' :
+           Math.round(top.value)}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -718,38 +874,20 @@ function WclLeadersWidget({ leaders }) {
         <Link to="/summerball" className="text-xs text-pnw-teal hover:underline">Full stats →</Link>
       </div>
       <div className="text-[10px] text-gray-400 mb-2">2025 West Coast League · Qualified</div>
-      <div className="space-y-2">
-        {allCats.map(cat => {
-          const top = cat.leaders?.[0]
-          if (!top) return null
-          return (
-            <div key={cat.key} className="flex items-center gap-2 py-1 border-b border-gray-50 last:border-0">
-              <span className="text-[10px] font-bold text-gray-400 uppercase w-8">{cat.label}</span>
-              {top.logo_url && (
-                <img src={top.logo_url} alt="" className="w-5 h-5 object-contain shrink-0"
-                  onError={(e) => { e.target.style.display = 'none' }} />
-              )}
-              <div className="flex-1 min-w-0" style={{ lineHeight: 1.1 }}>
-                {top.spring_player_id ? (
-                  <Link to={`/player/${top.spring_player_id}`} className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block" style={{ lineHeight: 1.1 }}>
-                    {top.first_name} {top.last_name}
-                  </Link>
-                ) : (
-                  <span className="text-xs font-semibold text-gray-800 truncate block" style={{ lineHeight: 1.1 }}>
-                    {top.first_name} {top.last_name}
-                  </span>
-                )}
-                <span className="text-[10px] text-gray-400 block" style={{ lineHeight: 1.1, marginTop: '1px' }}>{top.team_short}</span>
-              </div>
-              <span className="text-sm font-bold text-pnw-slate tabular-nums">
-                {cat.format === 'avg' ? top.value?.toFixed(3).replace(/^0/, '') :
-                 cat.format === 'float2' ? top.value?.toFixed(2) :
-                 Math.round(top.value)}
-              </span>
-            </div>
-          )
-        })}
-      </div>
+
+      {batCats.length > 0 && (
+        <>
+          <div className="text-[10px] font-bold text-pnw-teal uppercase tracking-wider mb-1">Hitting</div>
+          <div className="space-y-0 mb-3">{batCats.map(renderCat)}</div>
+        </>
+      )}
+
+      {pitCats.length > 0 && (
+        <>
+          <div className="text-[10px] font-bold text-pnw-teal uppercase tracking-wider mb-1">Pitching</div>
+          <div className="space-y-0">{pitCats.map(renderCat)}</div>
+        </>
+      )}
     </div>
   )
 }
@@ -960,7 +1098,9 @@ function TopPerformersWidget({ data, date }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="bg-gradient-to-r from-pnw-slate to-pnw-slate/90 px-4 py-2.5 flex items-center justify-between">
-        <h2 className="text-sm font-bold text-white tracking-wide">YESTERDAY'S TOP PERFORMERS</h2>
+        <h2 className="text-sm font-bold text-white tracking-wide">
+          {date === new Date().toISOString().slice(0, 10) ? "TODAY'S" : "YESTERDAY'S"} TOP PERFORMERS
+        </h2>
         <span className="text-[10px] text-white/60 font-medium">{dateLabel}</span>
       </div>
 

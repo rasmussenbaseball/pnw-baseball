@@ -9234,12 +9234,16 @@ def summer_stat_leaders(
         cur = conn.cursor()
 
         batting_cats = [
-            {"key": "home_runs", "label": "HR", "col": "sbs.home_runs", "order": "DESC", "format": "int", "min_pa": 30},
             {"key": "batting_avg", "label": "AVG", "col": "sbs.batting_avg", "order": "DESC", "format": "avg", "min_pa": 50},
+            {"key": "home_runs", "label": "HR", "col": "sbs.home_runs", "order": "DESC", "format": "int", "min_pa": 30},
+            {"key": "stolen_bases", "label": "SB", "col": "sbs.stolen_bases", "order": "DESC", "format": "int", "min_pa": 30},
+            {"key": "iso", "label": "ISO", "col": "sbs.iso", "order": "DESC", "format": "avg", "min_pa": 50},
         ]
         pitching_cats = [
             {"key": "era", "label": "ERA", "col": "sps.era", "order": "ASC", "format": "float2", "min_ip": 20},
             {"key": "strikeouts", "label": "K", "col": "sps.strikeouts", "order": "DESC", "format": "int", "min_ip": 10},
+            {"key": "fip", "label": "FIP", "col": "sps.fip", "order": "ASC", "format": "float2", "min_ip": 20},
+            {"key": "k_pct", "label": "K%", "col": "sps.k_pct", "order": "DESC", "format": "pct", "min_ip": 20},
         ]
 
         results = {"batting": [], "pitching": [], "season": season, "league": league}

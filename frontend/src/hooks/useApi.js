@@ -323,6 +323,10 @@ export function useGamesByDate(date) {
 /**
  * Win probabilities for all PNW-vs-PNW games on a date.
  */
+export function useKeyMatchup(date, season = 2026) {
+  return useApi('/games/key-matchup', { date, season }, [date, season])
+}
+
 export function useWinProbabilities(date, season = 2026) {
   return useApi(date ? '/games/win-probabilities' : null, { date, season }, [date, season])
 }
