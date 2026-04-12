@@ -648,13 +648,13 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
             <div className="text-xs font-bold text-gray-800">{away.short_name}</div>
             <div className="text-[10px] text-gray-400">{awayRec}{awayConfRec ? ` (${awayConfRec})` : ''}</div>
             {away.national_rank && (
-              <div className="text-[10px] text-amber-600 font-semibold">#{away.national_rank.composite_rank}</div>
+              <div className="text-[10px] text-amber-600 font-semibold">#{Math.round(away.national_rank.composite_rank)}</div>
             )}
           </div>
 
           {/* VS / Win prob */}
-          <div className="text-center px-3">
-            <div className="text-xs font-bold text-gray-300 mb-1">VS</div>
+          <div className="text-center px-3 shrink-0">
+            <div className="text-lg font-black text-gray-200 mb-0.5">VS</div>
             {matchup.is_conference_game && (
               <span className="px-1.5 py-0.5 bg-pnw-teal/10 text-pnw-teal rounded text-[9px] font-bold">CONF</span>
             )}
@@ -669,7 +669,7 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
             <div className="text-xs font-bold text-gray-800">{home.short_name}</div>
             <div className="text-[10px] text-gray-400">{homeRec}{homeConfRec ? ` (${homeConfRec})` : ''}</div>
             {home.national_rank && (
-              <div className="text-[10px] text-amber-600 font-semibold">#{home.national_rank.composite_rank}</div>
+              <div className="text-[10px] text-amber-600 font-semibold">#{Math.round(home.national_rank.composite_rank)}</div>
             )}
           </div>
         </div>
@@ -705,10 +705,10 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
             const aWins = row.label === 'Team ERA' ? aVal < bVal : aVal > bVal
             const bWins = row.label === 'Team ERA' ? bVal < aVal : bVal > aVal
             return (
-              <div key={i} className="flex items-center text-[11px]">
-                <span className={`w-12 text-right tabular-nums font-medium ${aWins ? 'text-pnw-teal font-bold' : 'text-gray-500'}`}>{row.a}</span>
-                <span className="flex-1 text-center text-[10px] text-gray-400">{row.label}</span>
-                <span className={`w-12 text-left tabular-nums font-medium ${bWins ? 'text-pnw-teal font-bold' : 'text-gray-500'}`}>{row.b}</span>
+              <div key={i} className="flex items-center text-[11px] py-0.5">
+                <span className={`w-14 text-right tabular-nums ${aWins ? 'text-pnw-teal font-bold' : 'text-gray-400 font-medium'}`}>{row.a}</span>
+                <span className="flex-1 text-center text-[10px] text-gray-400 font-medium">{row.label}</span>
+                <span className={`w-14 text-left tabular-nums ${bWins ? 'text-pnw-teal font-bold' : 'text-gray-400 font-medium'}`}>{row.b}</span>
               </div>
             )
           })}
