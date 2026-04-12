@@ -171,7 +171,7 @@ async function drawGraphic(canvas, data, pred) {
   y += hdrH + 8
 
   // ── TEAM BANNER ──
-  const bannerH = 126
+  const bannerH = 130
   ctx.fillStyle = CARD; roundRect(ctx, P, y, W, bannerH, 10); ctx.fill()
   ctx.fillStyle = ac.p; ctx.fillRect(P, y, 6, bannerH)
   ctx.fillStyle = hc.p; ctx.fillRect(S - P - 6, y, 6, bannerH)
@@ -198,8 +198,11 @@ async function drawGraphic(canvas, data, pred) {
     ctx.font = '11px system-ui'; ctx.fillText(`${team.division_level || ''} • ${team.conference_abbrev || ''}`, xC, y + 117)
     const rank = team.national_rank?.composite_rank
     if (rank) {
-      ctx.fillStyle = c.p; roundRect(ctx, xC - 20, y + 64, 40, 16, 8); ctx.fill()
-      ctx.fillStyle = WHITE; ctx.font = 'bold 10px system-ui'; ctx.fillText(`#${rank}`, xC, y + 76)
+      const rankStr = `#${Math.round(rank)}`
+      ctx.font = 'bold 10px system-ui'
+      const rw = ctx.measureText(rankStr).width + 14
+      ctx.fillStyle = c.p; roundRect(ctx, xC - rw / 2, y + 104, rw, 16, 8); ctx.fill()
+      ctx.fillStyle = WHITE; ctx.fillText(rankStr, xC, y + 116)
     }
   }
   y += bannerH + 8
@@ -220,8 +223,13 @@ async function drawGraphic(canvas, data, pred) {
     ctx.fillStyle = WHITE; ctx.font = 'bold 24px system-ui'
     ctx.textAlign = 'left'; ctx.fillText(`${(awP * 100).toFixed(0)}%`, P + 12, bY + 22)
     ctx.textAlign = 'right'; ctx.fillText(`${(hoP * 100).toFixed(0)}%`, S - P - 12, bY + 22)
-    ctx.fillStyle = DIM; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'
-    ctx.fillText('PROJECTED WIN %', S / 2, bY + 18)
+    // Label background pill for readability
+    ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'
+    const pwLabel = 'PROJECTED WIN %'
+    const pwW = ctx.measureText(pwLabel).width + 16
+    ctx.fillStyle = 'rgba(15,23,42,0.7)'; roundRect(ctx, S / 2 - pwW / 2, bY + 5, pwW, 16, 8); ctx.fill()
+    ctx.fillStyle = WHITE
+    ctx.fillText(pwLabel, S / 2, bY + 17)
 
     // Bottom info row
     const iy = y + 48
@@ -265,15 +273,15 @@ async function drawGraphic(canvas, data, pred) {
   y += statsH + 6
 
   // ── TOP HITTERS (5) ──
-  y = drawPlayers(ctx, 'TOP HITTERS  (50+ PA)', away.top_hitters || [], home.top_hitters || [], 'hit', 5, P, y, W, S, ac, hc)
+  y = drawPlayers(ctx, 'TOP HITTERS', away.top_hitters || [], home.top_hitters || [], 'hit', 5, P, y, W, S, ac, hc)
   y += 6
 
   // ── STARTERS (3) ──
-  y = drawPlayers(ctx, 'STARTING ROTATION  (5+ GS)', away.top_starters || [], home.top_starters || [], 'pit', 3, P, y, W, S, ac, hc)
+  y = drawPlayers(ctx, 'STARTING ROTATION', away.top_starters || [], home.top_starters || [], 'pit', 3, P, y, W, S, ac, hc)
   y += 6
 
   // ── RELIEVERS (2) ──
-  y = drawPlayers(ctx, 'TOP RELIEVERS  (10+ IP, by K-BB%)', away.top_relievers || [], home.top_relievers || [], 'pit', 2, P, y, W, S, ac, hc)
+  y = drawPlayers(ctx, 'TOP RELIEVERS', away.top_relievers || [], home.top_relievers || [], 'pit', 2, P, y, W, S, ac, hc)
 
   // ── FOOTER ──
   const footerH = 24

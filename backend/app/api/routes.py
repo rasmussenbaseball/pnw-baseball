@@ -6566,7 +6566,8 @@ def key_matchup(
             """, (tid, season))
             team["top_starters"] = [dict(r) for r in cur.fetchall()]
 
-            # Top 2 relievers by K-BB% (10+ IP, fewer than 5 GS)
+            # Top 2 relievers by blended FIP + K-BB% (10+ IP, fewer than 5 GS)
+            # Score: high K-BB% is good, low FIP is good
             cur.execute("""
                 SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                        ps.fip, ps.era, ps.innings_pitched, ps.strikeouts,
@@ -6578,7 +6579,10 @@ def key_matchup(
                 WHERE ps.team_id = %s AND ps.season = %s
                   AND ps.innings_pitched >= 10
                   AND COALESCE(ps.games_started, 0) < 5
-                ORDER BY (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0)) DESC NULLS LAST
+                ORDER BY (
+                    (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0)) * 100
+                    - COALESCE(ps.fip, 5) * 3
+                ) DESC NULLS LAST
                 LIMIT 2
             """, (tid, season))
             team["top_relievers"] = [dict(r) for r in cur.fetchall()]
