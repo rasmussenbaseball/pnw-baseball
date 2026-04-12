@@ -633,7 +633,7 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="bg-gradient-to-r from-pnw-teal to-pnw-teal/90 px-4 py-2">
+      <div className="bg-pnw-slate px-4 py-2">
         <h2 className="text-sm font-bold text-white tracking-wide">PNW MATCHUP OF THE DAY</h2>
       </div>
       <div className="p-4">
@@ -656,7 +656,7 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
           <div className="text-center px-3 shrink-0">
             <div className="text-lg font-black text-gray-200 mb-0.5">VS</div>
             {matchup.is_conference_game && (
-              <span className="px-1.5 py-0.5 bg-pnw-teal/10 text-pnw-teal rounded text-[9px] font-bold">CONF</span>
+              <span className="px-1.5 py-0.5 bg-gray-100 text-pnw-slate rounded text-[9px] font-bold">CONF</span>
             )}
           </div>
 
@@ -679,12 +679,12 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
           <div className="mb-3">
             <div className="relative h-2.5 bg-gray-100 rounded-full overflow-hidden">
               <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-pnw-teal/70 to-pnw-teal rounded-full"
+                className="absolute left-0 top-0 h-full bg-pnw-slate rounded-full"
                 style={{ width: `${awayWp}%` }}
               />
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] font-semibold text-pnw-teal">{awayWp}%</span>
+              <span className="text-[10px] font-semibold text-pnw-slate">{awayWp}%</span>
               <span className="text-[10px] text-gray-400 font-medium">Win Probability</span>
               <span className="text-[10px] font-semibold text-gray-500">{homeWp}%</span>
             </div>
@@ -706,9 +706,9 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
             const bWins = row.label === 'Team ERA' ? bVal < aVal : bVal > aVal
             return (
               <div key={i} className="flex items-center text-[11px] py-0.5">
-                <span className={`w-14 text-right tabular-nums ${aWins ? 'text-pnw-teal font-bold' : 'text-gray-400 font-medium'}`}>{row.a}</span>
+                <span className={`w-14 text-right tabular-nums ${aWins ? 'text-pnw-slate font-bold' : 'text-gray-400 font-medium'}`}>{row.a}</span>
                 <span className="flex-1 text-center text-[10px] text-gray-400 font-medium">{row.label}</span>
-                <span className={`w-14 text-left tabular-nums ${bWins ? 'text-pnw-teal font-bold' : 'text-gray-400 font-medium'}`}>{row.b}</span>
+                <span className={`w-14 text-left tabular-nums ${bWins ? 'text-pnw-slate font-bold' : 'text-gray-400 font-medium'}`}>{row.b}</span>
               </div>
             )
           })}
