@@ -1402,26 +1402,27 @@ def parse_sidearm_boxscore(html, base_url=""):
 
     if linescore_table:
         rows = linescore_table.find_all("tr")
-        line_scores = []
+        data_rows = []  # Each entry is a list of ALL cell texts (skip team name col)
         for row in rows:
             cells = row.find_all(["td", "th"])
             if len(cells) < 4:
                 continue
-            # Extract all cell values (skip team name cell)
-            nums = []
-            for cell in cells[1:]:  # Skip team name cell
-                t = cell.get_text(strip=True)
-                if t.isdigit():
-                    nums.append(int(t))
-                elif t == "X" or t == "x":
-                    nums.append(None)  # Bottom of inning not played
+            # Keep ALL cell values by position (skip team name cell)
+            cell_texts = [cell.get_text(strip=True) for cell in cells[1:]]
+            # Only include rows that have some numeric content
+            if any(t.isdigit() for t in cell_texts):
+                data_rows.append(cell_texts)
 
-            if len(nums) >= 4:  # At least some innings + totals
-                line_scores.append(nums)
+        if len(data_rows) >= 2:
+            away_cells = data_rows[0]
+            home_cells = data_rows[1]
 
-        if len(line_scores) >= 2:
-            away_line = line_scores[0]
-            home_line = line_scores[1]
+            def parse_int(s):
+                """Parse a string to int, return None if not numeric."""
+                try:
+                    return int(s)
+                except (ValueError, TypeError):
+                    return None
 
             if has_rhe_columns and rhe_header_indices:
                 # Use exact column positions from headers to extract R, H, E
@@ -1429,20 +1430,31 @@ def parse_sidearm_boxscore(html, base_url=""):
                 h_idx = rhe_header_indices["H"]
                 e_idx = rhe_header_indices["E"]
 
-                result["away_score"] = away_line[r_idx] if r_idx < len(away_line) else None
-                result["home_score"] = home_line[r_idx] if r_idx < len(home_line) else None
-                result["away_hits"] = away_line[h_idx] if h_idx < len(away_line) else None
-                result["home_hits"] = home_line[h_idx] if h_idx < len(home_line) else None
-                result["away_errors"] = away_line[e_idx] if e_idx < len(away_line) else None
-                result["home_errors"] = home_line[e_idx] if e_idx < len(home_line) else None
+                result["away_score"] = parse_int(away_cells[r_idx]) if r_idx < len(away_cells) else None
+                result["home_score"] = parse_int(home_cells[r_idx]) if r_idx < len(home_cells) else None
+                result["away_hits"] = parse_int(away_cells[h_idx]) if h_idx < len(away_cells) else None
+                result["home_hits"] = parse_int(home_cells[h_idx]) if h_idx < len(home_cells) else None
+                result["away_errors"] = parse_int(away_cells[e_idx]) if e_idx < len(away_cells) else None
+                result["home_errors"] = parse_int(home_cells[e_idx]) if e_idx < len(home_cells) else None
 
                 # Inning-by-inning: everything before the R column
                 result["line_score"] = {
-                    "away": [x for x in away_line[:r_idx] if x is not None],
-                    "home": [x for x in home_line[:r_idx] if x is not None],
+                    "away": [parse_int(x) for x in away_cells[:r_idx] if parse_int(x) is not None or x.upper() == 'X'],
+                    "home": [parse_int(x) for x in home_cells[:r_idx] if parse_int(x) is not None or x.upper() == 'X'],
                 }
             else:
                 # Table only has innings + Final (no R/H/E columns)
+                # Build nums array for fallback (filter to numeric/X only)
+                def to_nums(cells):
+                    nums = []
+                    for t in cells:
+                        if t.isdigit():
+                            nums.append(int(t))
+                        elif t.upper() == 'X':
+                            nums.append(None)
+                    return nums
+                away_line = to_nums(away_cells)
+                home_line = to_nums(home_cells)
                 # Last value is the final score
                 result["away_score"] = away_line[-1] if away_line else None
                 result["home_score"] = home_line[-1] if home_line else None
