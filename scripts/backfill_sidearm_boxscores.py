@@ -387,7 +387,24 @@ def insert_game(game_data, home_batting, away_batting, home_pitching, away_pitch
         # Check if game already exists by source_url
         cur.execute("SELECT id FROM games WHERE source_url = %s", (game_data["source_url"],))
         if cur.fetchone():
-            logger.info(f"    Game already exists: {game_data['source_url']}")
+            logger.info(f"    Game already exists (source_url match)")
+            return False
+
+        # Also check for duplicate by date + teams (different Sidearm IDs for same game)
+        cur.execute("""
+            SELECT id FROM games
+            WHERE game_date = %s AND season = %s
+              AND ((home_team_id = %s AND away_team_id = %s)
+                OR (home_team_id = %s AND away_team_id = %s))
+              AND game_number = %s
+        """, (
+            game_data["game_date"], game_data["season"],
+            game_data.get("home_team_id"), game_data.get("away_team_id"),
+            game_data.get("away_team_id"), game_data.get("home_team_id"),
+            game_data.get("game_number", 1),
+        ))
+        if cur.fetchone():
+            logger.info(f"    Game already exists (date+teams match): {game_data['game_date']}")
             return False
 
         # Insert game
@@ -497,8 +514,11 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
     logger.info(f"  Probing IDs {start_id} - {end_id} ({end_id - start_id + 1} total)")
 
     found_games = []
+    # Track date+opponent combos to detect doubleheaders vs duplicates
+    seen_date_matchups = {}  # (date, frozenset({home,away})) -> list of game_ids
     inserted = 0
     skipped = 0
+    skipped_dup = 0
 
     for gid in range(start_id, end_id + 1):
         source_url = f"{base_url}/boxscore.aspx?id={gid}"
@@ -527,6 +547,22 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
         home_score = (data.get("homeTeam", {}).get("scoreSummary") or {}).get("score", "?")
         away_score = (data.get("visitingTeam", {}).get("scoreSummary") or {}).get("score", "?")
 
+        # Check for duplicate: same date + same two teams + same score = likely same game
+        matchup_key = (game_date, frozenset([home_name.lower(), away_name.lower()]))
+        if matchup_key in seen_date_matchups:
+            prev = seen_date_matchups[matchup_key]
+            # If scores match a previous game, it's a duplicate ID for the same game
+            prev_scores = [(d.get("homeTeam", {}).get("scoreSummary") or {}).get("score"),
+                          (d.get("visitingTeam", {}).get("scoreSummary") or {}).get("score")]
+            if [home_score, away_score] == prev_scores or len(prev) >= 2:
+                logger.debug(f"  SKIP duplicate ID {gid}: {game_date} {away_name} @ {home_name}")
+                skipped_dup += 1
+                continue
+            # Different scores on same date vs same opponent = doubleheader
+            seen_date_matchups[matchup_key].append(data)
+        else:
+            seen_date_matchups[matchup_key] = [data]
+
         logger.info(f"  FOUND baseball game ID {gid}: {game_date} — {away_name} @ {home_name} ({away_score}-{home_score})")
         found_games.append((gid, data))
 
@@ -546,6 +582,7 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
     logger.info(f"BACKFILL COMPLETE: {db_short}")
     logger.info(f"  IDs probed: {end_id - start_id + 1}")
     logger.info(f"  Baseball games found: {len(found_games)}")
+    logger.info(f"  Duplicate IDs skipped: {skipped_dup}")
     if dry_run:
         logger.info(f"  DRY RUN — nothing inserted")
     else:
