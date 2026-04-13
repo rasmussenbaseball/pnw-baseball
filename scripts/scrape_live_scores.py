@@ -883,8 +883,15 @@ def deduplicate_games(games):
     seen = {}
     for g in games:
         # Normalize both team names so "WOU" and "Western Oregon" map to the same key
-        norm_team = normalize_team_name(g["team"])
-        norm_opp = normalize_team_name(g["opponent"])
+        # Handle both formats: standard (team/opponent) and WMT (home_team/away_team)
+        if "team" in g:
+            norm_team = normalize_team_name(g["team"])
+            norm_opp = normalize_team_name(g["opponent"])
+        elif "home_team" in g:
+            norm_team = normalize_team_name(g["home_team"])
+            norm_opp = normalize_team_name(g["away_team"])
+        else:
+            continue
         teams = sorted([norm_team, norm_opp])
         date_key = g.get("date", "")[:10]  # Just the date part
 
@@ -907,9 +914,11 @@ def deduplicate_games(games):
         else:
             # Prefer home team's perspective, or the one with more data
             existing = seen[key]
-            if g["location"] == "home" and existing["location"] != "home":
+            if g.get("location") == "home" and existing.get("location") != "home":
                 seen[key] = g
             elif g.get("team_score") is not None and existing.get("team_score") is None:
+                seen[key] = g
+            elif g.get("home_score") is not None and existing.get("home_score") is None:
                 seen[key] = g
 
     return list(seen.values())
