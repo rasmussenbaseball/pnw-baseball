@@ -273,14 +273,19 @@ def parse_schedule_page(html, season_year):
         # Fall back to current_date for games without box score links
         if not game_date:
             game_date = current_date
+            if not is_final and game_date:
+                logger.debug(f"Date fallback for scheduled: {away_name} @ {home_name} → {game_date} (from last known date)")
 
         if not game_date:
             logger.warning(f"No date for game: {away_name} @ {home_name} -- skipping")
             games_skipped += 1
             continue
 
-        # For scheduled games, only include today and upcoming (not past unscored games)
-        if not is_final and game_date < today:
+        # For scheduled games, only include recent and upcoming (not old unscored games)
+        # Use a 3-day buffer since date inference from date cells can be off by a day
+        import datetime as _dt_mod
+        if not is_final and game_date < today - _dt_mod.timedelta(days=3):
+            logger.debug(f"Skipping old scheduled: {away_name} @ {home_name} on {game_date}")
             games_skipped += 1
             continue
 
