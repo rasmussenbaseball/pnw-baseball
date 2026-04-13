@@ -30,7 +30,7 @@ function formatDate(dateStr) {
 
 
 // ─── Expandable player stats row ──────────────────────────────
-function PlayerStatsDropdown({ playerId }) {
+function PlayerStatsDropdown({ playerId, report, reportDate }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -52,7 +52,14 @@ function PlayerStatsDropdown({ playerId }) {
     return (
       <div className="px-4 py-3">
         <p className="text-xs text-gray-400 italic">High school prospect -- no college stats available yet.</p>
-        <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
+        {report ? (
+          <div className="mt-2">
+            <p className="text-xs text-gray-600 leading-relaxed">{report}</p>
+            {reportDate && <p className="text-[10px] text-gray-400 mt-1 italic">Updated {formatDate(reportDate)}</p>}
+          </div>
+        ) : (
+          <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
+        )}
       </div>
     )
   }
@@ -136,7 +143,14 @@ function PlayerStatsDropdown({ playerId }) {
         <p className="text-xs text-gray-400 italic">No stats available yet this season.</p>
       )}
 
-      <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
+      {report ? (
+        <div className="mt-2 border-t border-gray-100 pt-2">
+          <p className="text-xs text-gray-600 leading-relaxed">{report}</p>
+          {reportDate && <p className="text-[10px] text-gray-400 mt-1 italic">Updated {formatDate(reportDate)}</p>}
+        </div>
+      ) : (
+        <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
+      )}
     </div>
   )
 }
@@ -259,7 +273,7 @@ export default function DraftBoard({ year }) {
                     </div>
                     {isExpanded && (
                       <div className="bg-gray-50/80 border-t border-gray-100">
-                        <PlayerStatsDropdown playerId={p.playerId} />
+                        <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} />
                       </div>
                     )}
                   </td>
@@ -317,7 +331,7 @@ export default function DraftBoard({ year }) {
               </div>
               {isExpanded && (
                 <div className="bg-gray-50/80 border-t border-gray-100">
-                  <PlayerStatsDropdown playerId={p.playerId} />
+                  <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} />
                 </div>
               )}
             </div>
