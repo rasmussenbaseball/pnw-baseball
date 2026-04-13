@@ -140,6 +140,8 @@ def get_team_id(team_short):
 
 def resolve_opponent_id(opponent_name, prefer_team_id=None):
     """Try to match opponent name to a team in our database."""
+    if not opponent_name:
+        return None
     with get_connection() as conn:
         cur = conn.cursor()
         # Direct match on name or short_name
@@ -152,15 +154,15 @@ def resolve_opponent_id(opponent_name, prefer_team_id=None):
         if row:
             return row["id"]
 
-        # Try alias match
+        # Fuzzy: try partial match on name
         cur.execute("""
-            SELECT team_id FROM team_aliases
-            WHERE alias ILIKE %s
+            SELECT id, short_name FROM teams
+            WHERE name ILIKE %s
             LIMIT 1
-        """, (opponent_name,))
+        """, (f"%{opponent_name}%",))
         row = cur.fetchone()
         if row:
-            return row["team_id"]
+            return row["id"]
     return None
 
 
@@ -582,13 +584,17 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
         found_games.append((gid, data))
 
         if not dry_run:
-            parsed = parse_boxscore_data(data, base_url, gid, db_short, team_id)
-            if parsed:
-                game_data, hb, ab, hp, ap = parsed
-                if insert_game(game_data, hb, ab, hp, ap, season):
-                    inserted += 1
-                else:
-                    skipped += 1
+            try:
+                parsed = parse_boxscore_data(data, base_url, gid, db_short, team_id)
+                if parsed:
+                    game_data, hb, ab, hp, ap = parsed
+                    if insert_game(game_data, hb, ab, hp, ap, season):
+                        inserted += 1
+                    else:
+                        skipped += 1
+            except Exception as e:
+                logger.error(f"    ERROR inserting game ID {gid}: {e}")
+                skipped += 1
 
         # Rate limit
         time.sleep(0.3)
