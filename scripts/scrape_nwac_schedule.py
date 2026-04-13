@@ -225,6 +225,7 @@ def parse_schedule_page(html, season_year):
 
         # For final games, require valid scores
         if is_final and (away_score is None or home_score is None):
+            logger.info(f"SKIP(no-scores): {away_name} @ {home_name} status='{status_text}'")
             games_skipped += 1
             continue
 
@@ -277,7 +278,7 @@ def parse_schedule_page(html, season_year):
                 logger.debug(f"Date fallback for scheduled: {away_name} @ {home_name} → {game_date} (from last known date)")
 
         if not game_date:
-            logger.warning(f"No date for game: {away_name} @ {home_name} -- skipping")
+            logger.info(f"SKIP(no-date): {away_name} @ {home_name} final={is_final} status='{status_text}'")
             games_skipped += 1
             continue
 
@@ -285,7 +286,7 @@ def parse_schedule_page(html, season_year):
         # Use a 3-day buffer since date inference from date cells can be off by a day
         import datetime as _dt_mod
         if not is_final and game_date < today - _dt_mod.timedelta(days=3):
-            logger.debug(f"Skipping old scheduled: {away_name} @ {home_name} on {game_date}")
+            logger.info(f"SKIP(old-sched): {away_name} @ {home_name} on {game_date}")
             games_skipped += 1
             continue
 
