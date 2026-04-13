@@ -6790,6 +6790,23 @@ def _dedup_live_games(games):
     except Exception:
         pass
 
+    # Common abbreviation expansions for live-score name matching
+    _ABBREV_MAP = {
+        "wash.": "washington", "ore.": "oregon", "mont.": "montana",
+        "st.": "state", "so.": "southern", "no.": "northern",
+        "e.": "eastern", "w.": "western", "cen.": "central",
+        "s.": "southern", "n.": "northern",
+    }
+
+    def _expand_abbrevs(s):
+        """Expand common abbreviations: 'wash. st.' → 'washington state'."""
+        import re
+        words = s.split()
+        expanded = []
+        for w in words:
+            expanded.append(_ABBREV_MAP.get(w, w))
+        return " ".join(expanded)
+
     def _resolve(name):
         """Return team id for a name, or None."""
         if not name:
@@ -6818,6 +6835,16 @@ def _dedup_live_games(games):
             tid = _team_id_cache.get(no_score)
             if tid:
                 return tid
+        # Expand abbreviations: "wash. st." → "washington state"
+        expanded = _expand_abbrevs(no_score)
+        if expanded != no_score:
+            tid = _team_id_cache.get(expanded)
+            if tid:
+                return tid
+        # Reverse: expand cached names and compare
+        for cached_name, cached_id in _team_id_cache.items():
+            if _expand_abbrevs(cached_name) == expanded:
+                return cached_id
         return None
 
     def _is_live_dup(a, b):
@@ -6848,12 +6875,12 @@ def _dedup_live_games(games):
                     teams_swapped = True
                 elif not a_opp_id or not b_team_id:
                     teams_swapped = True  # one side unresolved, trust the other
-            # Fallback: exact string match (handles non-DB teams)
+            # Fallback: string match with abbreviation expansion (handles non-DB teams)
             if not teams_swapped:
-                a_team_s = str(a.get("team", "")).lower()
-                b_opp_s = str(b.get("opponent", "")).lower()
-                b_team_s = str(b.get("team", "")).lower()
-                a_opp_s = str(a.get("opponent", "")).lower()
+                a_team_s = _expand_abbrevs(str(a.get("team", "")).strip().lower())
+                b_opp_s = _expand_abbrevs(str(b.get("opponent", "")).strip().lower())
+                b_team_s = _expand_abbrevs(str(b.get("team", "")).strip().lower())
+                a_opp_s = _expand_abbrevs(str(a.get("opponent", "")).strip().lower())
                 teams_swapped = (a_team_s == b_opp_s and b_team_s == a_opp_s)
 
         if not teams_match and not teams_swapped:
@@ -6864,9 +6891,11 @@ def _dedup_live_games(games):
         a_os = a.get("opponent_score")
         b_ts = b.get("team_score")
         b_os = b.get("opponent_score")
-        # Both scheduled (no scores yet) counts as a match
+        # Both scheduled (no scores yet):
+        # - teams_swapped → same game from two perspectives → dedup
+        # - teams_match  → likely a doubleheader (same team/opp, both scheduled) → keep both
         if a_ts is None and b_ts is None:
-            return True
+            return teams_swapped
         # One scheduled, one final — same game, DB has the updated result
         if a_ts is None or b_ts is None:
             return True
