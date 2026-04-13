@@ -357,7 +357,19 @@ function GameCard({ game, winProbs = {}, compact = false }) {
 
 
 /** Card for live scores data (from scraper JSON) */
-function LiveGameCard({ game, isLive, isFinal, isScheduled, statusInfo, winProbs = {}, compact = false }) {
+function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo, winProbs = {}, compact = false }) {
+  // Normalize alternative formats (e.g. WMT home_team/away_team) to standard team/opponent
+  const game = rawGame.team ? rawGame : {
+    ...rawGame,
+    team: rawGame.home_team || 'TBD',
+    opponent: rawGame.away_team || 'TBD',
+    team_score: rawGame.home_score,
+    opponent_score: rawGame.away_score,
+    team_logo: rawGame.home_logo || rawGame.team_logo,
+    opponent_logo: rawGame.away_logo || rawGame.opponent_logo,
+    location: 'home',
+  }
+
   const teamScore = game.team_score != null ? parseInt(game.team_score) : null
   const oppScore = game.opponent_score != null ? parseInt(game.opponent_score) : null
   const teamWon = isFinal && teamScore != null && oppScore != null && teamScore > oppScore

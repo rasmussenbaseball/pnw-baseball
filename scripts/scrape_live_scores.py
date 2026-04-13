@@ -755,21 +755,22 @@ def scrape_seattle_u_live(season, today):
         else:
             continue  # Past with no scores = likely canceled
 
-        home_team = "Seattle U" if is_home else opp_key
-        away_team = opp_key if is_home else "Seattle U"
+        seu_score = seu_comp.get("score")
+        opp_score_val = opp_comp.get("score")
 
         results.append({
-            "home_team": home_team,
-            "away_team": away_team,
-            "home_score": (seu_comp if is_home else opp_comp).get("score"),
-            "away_score": (opp_comp if is_home else seu_comp).get("score"),
+            "team": "Seattle U",
+            "opponent": opp_clean,
+            "team_score": seu_score,
+            "opponent_score": opp_score_val,
+            "team_division": "D1",
             "status": status,
             "date": game_date_str,
             "time": "",
-            "location": game.get("venue", {}).get("name", ""),
+            "location": "home" if is_home else "away",
             "is_conference": game.get("conference_contest", False),
-            "home_logo": TEAM_LOGOS.get(home_team, ""),
-            "away_logo": TEAM_LOGOS.get(away_team, ""),
+            "team_logo": TEAM_LOGOS.get("Seattle U", ""),
+            "opponent_logo": TEAM_LOGOS.get(opp_key, ""),
             "innings": game.get("periods_played") or 9,
             "source_team": "Seattle U",
         })
