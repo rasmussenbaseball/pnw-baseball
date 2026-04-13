@@ -10470,7 +10470,7 @@ def recruiting_breakdown(season: int = 2026):
 # ============================================================
 
 @router.get("/team-stats")
-def team_stats(
+def team_stats_agg(
     season: int = Query(..., description="Season year"),
     stat_type: str = Query("hitting", description="'hitting' or 'pitching'"),
     level: str = Query("all", description="Division level filter: all, D1, D2, D3, NAIA, JUCO"),
@@ -10588,80 +10588,80 @@ def team_stats(
                     COALESCE(s.wins, 0) as wins,
                     COALESCE(s.losses, 0) as losses,
                     -- Counting stats
-                    SUM(p.games) as g,
-                    SUM(p.games_started) as gs,
-                    SUM(p.wins) as w,
-                    SUM(p.losses) as l,
-                    SUM(p.saves) as sv,
-                    SUM(p.complete_games) as cg,
-                    SUM(p.shutouts) as sho,
-                    ROUND(SUM(p.innings_pitched)::numeric, 1) as ip,
-                    SUM(p.hits_allowed) as h,
-                    SUM(p.runs_allowed) as r,
-                    SUM(p.earned_runs) as er,
-                    SUM(p.walks) as bb,
-                    SUM(p.strikeouts) as so,
-                    SUM(p.home_runs_allowed) as hr,
-                    SUM(p.hit_batters) as hbp,
-                    SUM(p.wild_pitches) as wp,
-                    SUM(p.batters_faced) as bf,
+                    SUM(COALESCE(p.games, 0)) as g,
+                    SUM(COALESCE(p.games_started, 0)) as gs,
+                    SUM(COALESCE(p.wins, 0)) as w,
+                    SUM(COALESCE(p.losses, 0)) as l,
+                    SUM(COALESCE(p.saves, 0)) as sv,
+                    SUM(COALESCE(p.complete_games, 0)) as cg,
+                    SUM(COALESCE(p.shutouts, 0)) as sho,
+                    ROUND(SUM(COALESCE(p.innings_pitched, 0))::numeric, 1) as ip,
+                    SUM(COALESCE(p.hits_allowed, 0)) as h,
+                    SUM(COALESCE(p.runs_allowed, 0)) as r,
+                    SUM(COALESCE(p.earned_runs, 0)) as er,
+                    SUM(COALESCE(p.walks, 0)) as bb,
+                    SUM(COALESCE(p.strikeouts, 0)) as so,
+                    SUM(COALESCE(p.home_runs_allowed, 0)) as hr,
+                    SUM(COALESCE(p.hit_batters, 0)) as hbp,
+                    SUM(COALESCE(p.wild_pitches, 0)) as wp,
+                    SUM(COALESCE(p.batters_faced, 0)) as bf,
                     -- Rate stats
-                    CASE WHEN SUM(p.innings_pitched) > 0
-                         THEN ROUND((SUM(p.earned_runs) * 9.0 / SUM(p.innings_pitched))::numeric, 2)
+                    CASE WHEN SUM(COALESCE(p.innings_pitched, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(p.earned_runs, 0)) * 9.0 / SUM(p.innings_pitched))::numeric, 2)
                          ELSE NULL END as era,
-                    CASE WHEN SUM(p.innings_pitched) > 0
-                         THEN ROUND(((SUM(p.walks) + SUM(p.hits_allowed)) / SUM(p.innings_pitched))::numeric, 2)
+                    CASE WHEN SUM(COALESCE(p.innings_pitched, 0)) > 0
+                         THEN ROUND(((SUM(COALESCE(p.walks, 0)) + SUM(COALESCE(p.hits_allowed, 0)))::numeric / SUM(p.innings_pitched))::numeric, 2)
                          ELSE NULL END as whip,
-                    CASE WHEN SUM(p.innings_pitched) > 0
-                         THEN ROUND((SUM(p.strikeouts) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
+                    CASE WHEN SUM(COALESCE(p.innings_pitched, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(p.strikeouts, 0)) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
                          ELSE NULL END as k_per_9,
-                    CASE WHEN SUM(p.innings_pitched) > 0
-                         THEN ROUND((SUM(p.walks) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
+                    CASE WHEN SUM(COALESCE(p.innings_pitched, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(p.walks, 0)) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
                          ELSE NULL END as bb_per_9,
-                    CASE WHEN SUM(p.innings_pitched) > 0
-                         THEN ROUND((SUM(p.hits_allowed) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
+                    CASE WHEN SUM(COALESCE(p.innings_pitched, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(p.hits_allowed, 0)) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
                          ELSE NULL END as h_per_9,
-                    CASE WHEN SUM(p.innings_pitched) > 0
-                         THEN ROUND((SUM(p.home_runs_allowed) * 9.0 / SUM(p.innings_pitched))::numeric, 2)
+                    CASE WHEN SUM(COALESCE(p.innings_pitched, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(p.home_runs_allowed, 0)) * 9.0 / SUM(p.innings_pitched))::numeric, 2)
                          ELSE NULL END as hr_per_9,
-                    CASE WHEN SUM(p.walks) > 0
-                         THEN ROUND((SUM(p.strikeouts)::numeric / SUM(p.walks))::numeric, 2)
+                    CASE WHEN SUM(COALESCE(p.walks, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(p.strikeouts, 0))::numeric / SUM(p.walks))::numeric, 2)
                          ELSE NULL END as k_bb,
-                    CASE WHEN SUM(p.batters_faced) > 0
-                         THEN ROUND(SUM(p.strikeouts)::numeric / SUM(p.batters_faced) * 100, 1)
+                    CASE WHEN SUM(COALESCE(p.batters_faced, 0)) > 0
+                         THEN ROUND(SUM(COALESCE(p.strikeouts, 0))::numeric / SUM(p.batters_faced) * 100, 1)
                          ELSE NULL END as k_pct,
-                    CASE WHEN SUM(p.batters_faced) > 0
-                         THEN ROUND(SUM(p.walks)::numeric / SUM(p.batters_faced) * 100, 1)
+                    CASE WHEN SUM(COALESCE(p.batters_faced, 0)) > 0
+                         THEN ROUND(SUM(COALESCE(p.walks, 0))::numeric / SUM(p.batters_faced) * 100, 1)
                          ELSE NULL END as bb_pct,
                     -- Opponent batting average (H / (BF - BB - HBP))
-                    CASE WHEN (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0))) > 0
-                         THEN ROUND(SUM(p.hits_allowed)::numeric
-                              / (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0))),
+                    CASE WHEN (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0))) > 0
+                         THEN ROUND(SUM(COALESCE(p.hits_allowed, 0))::numeric
+                              / (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0))),
                               3)
                          ELSE NULL END as opp_avg,
                     -- Weighted advanced stats (IP-weighted averages)
-                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END) > 0
+                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.innings_pitched ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN p.innings_pitched >= 3 THEN p.fip * p.innings_pitched ELSE 0 END)::numeric
-                              / SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END),
+                              SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.fip * p.innings_pitched ELSE 0 END)::numeric
+                              / SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.innings_pitched ELSE 0 END),
                               2)
                          ELSE NULL END as fip,
-                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END) > 0
+                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.innings_pitched ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN p.innings_pitched >= 3 THEN p.xfip * p.innings_pitched ELSE 0 END)::numeric
-                              / SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END),
+                              SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.xfip * p.innings_pitched ELSE 0 END)::numeric
+                              / SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.innings_pitched ELSE 0 END),
                               2)
                          ELSE NULL END as xfip,
-                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END) > 0
+                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN p.innings_pitched ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN p.innings_pitched >= 3 THEN COALESCE(p.siera, p.fip) * p.innings_pitched ELSE 0 END)::numeric
-                              / SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END),
+                              SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN COALESCE(p.siera, p.fip) * p.innings_pitched ELSE 0 END)::numeric
+                              / SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN p.innings_pitched ELSE 0 END),
                               2)
                          ELSE NULL END as siera,
-                    CASE WHEN (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0)) - SUM(p.strikeouts) - SUM(p.home_runs_allowed)) > 0
+                    CASE WHEN (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0)) - SUM(COALESCE(p.strikeouts, 0)) - SUM(COALESCE(p.home_runs_allowed, 0))) > 0
                          THEN ROUND(
-                              (SUM(p.hits_allowed) - SUM(p.home_runs_allowed))::numeric
-                              / (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0)) - SUM(p.strikeouts) - SUM(p.home_runs_allowed)),
+                              (SUM(COALESCE(p.hits_allowed, 0)) - SUM(COALESCE(p.home_runs_allowed, 0)))::numeric
+                              / (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0)) - SUM(COALESCE(p.strikeouts, 0)) - SUM(COALESCE(p.home_runs_allowed, 0))),
                               3)
                          ELSE NULL END as babip,
                     ROUND(SUM(COALESCE(p.pitching_war, 0))::numeric, 1) as pwar
@@ -10674,7 +10674,7 @@ def team_stats(
                   AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
                 GROUP BY t.id, t.short_name, t.logo_url, c.name, c.abbreviation,
                          d.level, s.wins, s.losses
-                HAVING SUM(p.innings_pitched) > 0
+                HAVING SUM(COALESCE(p.innings_pitched, 0)) > 0
                 ORDER BY t.short_name
             """, (season, season))
 
