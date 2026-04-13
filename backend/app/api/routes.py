@@ -10642,26 +10642,26 @@ def team_stats_agg(
                     -- Weighted advanced stats (IP-weighted averages)
                     CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.innings_pitched ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.fip * p.innings_pitched ELSE 0 END)::numeric
-                              / SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.innings_pitched ELSE 0 END),
+                              (SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.fip * p.innings_pitched ELSE 0 END)
+                              / SUM(CASE WHEN p.innings_pitched >= 3 AND p.fip IS NOT NULL THEN p.innings_pitched ELSE 0 END))::numeric,
                               2)
                          ELSE NULL END as fip,
                     CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.innings_pitched ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.xfip * p.innings_pitched ELSE 0 END)::numeric
-                              / SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.innings_pitched ELSE 0 END),
+                              (SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.xfip * p.innings_pitched ELSE 0 END)
+                              / SUM(CASE WHEN p.innings_pitched >= 3 AND p.xfip IS NOT NULL THEN p.innings_pitched ELSE 0 END))::numeric,
                               2)
                          ELSE NULL END as xfip,
                     CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN p.innings_pitched ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN COALESCE(p.siera, p.fip) * p.innings_pitched ELSE 0 END)::numeric
-                              / SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN p.innings_pitched ELSE 0 END),
+                              (SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN COALESCE(p.siera, p.fip) * p.innings_pitched ELSE 0 END)
+                              / SUM(CASE WHEN p.innings_pitched >= 3 AND (p.siera IS NOT NULL OR p.fip IS NOT NULL) THEN p.innings_pitched ELSE 0 END))::numeric,
                               2)
                          ELSE NULL END as siera,
                     CASE WHEN (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0)) - SUM(COALESCE(p.strikeouts, 0)) - SUM(COALESCE(p.home_runs_allowed, 0))) > 0
                          THEN ROUND(
-                              (SUM(COALESCE(p.hits_allowed, 0)) - SUM(COALESCE(p.home_runs_allowed, 0)))::numeric
-                              / (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0)) - SUM(COALESCE(p.strikeouts, 0)) - SUM(COALESCE(p.home_runs_allowed, 0))),
+                              ((SUM(COALESCE(p.hits_allowed, 0)) - SUM(COALESCE(p.home_runs_allowed, 0)))::numeric
+                              / (SUM(COALESCE(p.batters_faced, 0)) - SUM(COALESCE(p.walks, 0)) - SUM(COALESCE(p.hit_batters, 0)) - SUM(COALESCE(p.strikeouts, 0)) - SUM(COALESCE(p.home_runs_allowed, 0))))::numeric,
                               3)
                          ELSE NULL END as babip,
                     ROUND(SUM(COALESCE(p.pitching_war, 0))::numeric, 1) as pwar
