@@ -17,7 +17,7 @@ const SCHOOL_LOGOS = {
   'Bushnell': '/logos/bushnell.png',
   'LC State': '/logos/teams/lcsc.svg',
   'Eastern Oregon': '/logos/teams/eou.png',
-  'Warner Pacific': '/logos/warner_pacific.png',
+  'Warner Pacific': '/logos/teams/warner_pacific.png',
   'British Columbia': '/logos/teams/ubc.svg',
   'UBC': '/logos/teams/ubc.svg',
   'George Fox': '/logos/george_fox.png',
