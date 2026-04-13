@@ -61,10 +61,7 @@ jobs:
           echo "Running: python3 scripts/scrape_nwac_boxscores.py $ARGS"
           PYTHONPATH=backend python3 scripts/scrape_nwac_boxscores.py $ARGS
 
-      - name: Recalculate league-adjusted stats
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          cd $GITHUB_WORKSPACE
-          PYTHONPATH=backend python3 scripts/recalculate_league_adjusted.py --season 2026
+      # Note: recalculate_league_adjusted.py is NOT run here because it
+      # times out on GitHub Actions (heavy query on full batting_stats).
+      # It already runs nightly via the NWAC Stats workflow (nwac-stats.yml)
+      # which will pick up any new box score data automatically.
