@@ -199,11 +199,15 @@ export default function Scoreboard() {
             <>
               {todayGames.length > 0 && (
                 <>
-                  {groupByDivision(todayGames).map(({ division, label, games: divGames }) => (
-                    <DivisionSection key={division} division={division} label={label} count={divGames.length}>
-                      <GameGrid games={divGames} winProbs={winProbs} />
-                    </DivisionSection>
-                  ))}
+                  {showDivGroups ? (
+                    groupByDivision(todayGames).map(({ division, label, games: divGames }) => (
+                      <DivisionSection key={division} division={division} label={label} count={divGames.length}>
+                        <GameGrid games={divGames} winProbs={winProbs} />
+                      </DivisionSection>
+                    ))
+                  ) : (
+                    <GameGrid games={todayGames} winProbs={winProbs} />
+                  )}
                 </>
               )}
 
@@ -212,6 +216,38 @@ export default function Scoreboard() {
                   <div className="text-3xl mb-2">&#9918;</div>
                   <p className="text-gray-500 font-medium">No PNW games today</p>
                   <p className="text-gray-400 text-sm mt-1">Check back on game days for live scores</p>
+                </div>
+              )}
+
+              {/* Recent results */}
+              {recentGames.length > 0 && (
+                <div className="mt-8">
+                  <h2 className="text-lg font-bold text-gray-700 mb-3">Recent Results</h2>
+                  {showDivGroups ? (
+                    groupByDivision(recentGames).map(({ division, label, games: divGames }) => (
+                      <DivisionSection key={`recent-${division}`} division={division} label={label} count={divGames.length}>
+                        <GameGrid games={divGames} winProbs={winProbs} />
+                      </DivisionSection>
+                    ))
+                  ) : (
+                    <GameGrid games={recentGames} winProbs={winProbs} />
+                  )}
+                </div>
+              )}
+
+              {/* Upcoming games */}
+              {upcomingGames.length > 0 && (
+                <div className="mt-8">
+                  <h2 className="text-lg font-bold text-gray-700 mb-3">Upcoming</h2>
+                  {showDivGroups ? (
+                    groupByDivision(upcomingGames).map(({ division, label, games: divGames }) => (
+                      <DivisionSection key={`upcoming-${division}`} division={division} label={label} count={divGames.length}>
+                        <GameGrid games={divGames} winProbs={winProbs} />
+                      </DivisionSection>
+                    ))
+                  ) : (
+                    <GameGrid games={upcomingGames} winProbs={winProbs} />
+                  )}
                 </div>
               )}
             </>
