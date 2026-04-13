@@ -615,10 +615,14 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
   const away = matchup.teams.find(t => t.side === 'away') || matchup.teams[0]
   const home = matchup.teams.find(t => t.side === 'home') || matchup.teams[1]
 
-  // Win probabilities from the win-probabilities endpoint
+  // Win probabilities: prefer matchup-embedded probs, fallback to separate endpoint
   const gameProbs = winProbs?.[String(matchup.game_id)]
-  const homeWp = gameProbs ? Math.round(gameProbs.home_win_prob * 100) : null
-  const awayWp = gameProbs ? Math.round(gameProbs.away_win_prob * 100) : null
+  const homeWp = matchup.home_win_prob != null
+    ? Math.round(matchup.home_win_prob * 100)
+    : gameProbs ? Math.round(gameProbs.home_win_prob * 100) : null
+  const awayWp = matchup.away_win_prob != null
+    ? Math.round(matchup.away_win_prob * 100)
+    : gameProbs ? Math.round(gameProbs.away_win_prob * 100) : null
 
   // Records
   const awayRec = away.record ? `${away.record.wins}-${away.record.losses}` : ''

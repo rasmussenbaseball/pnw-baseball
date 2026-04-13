@@ -6684,6 +6684,17 @@ def key_matchup(
                 "away_division": g.get("away_division"),
             })
 
+        # ── Compute win probability for the chosen matchup ──
+        home_wp = None
+        away_wp = None
+        h_id = chosen.get("home_team_id")
+        a_id = chosen.get("away_team_id")
+        if h_id and a_id:
+            ratings = _bulk_power_ratings(cur, season)
+            if h_id in ratings and a_id in ratings:
+                home_wp = round(_elo_win_prob(ratings[h_id], ratings[a_id]), 3)
+                away_wp = round(1.0 - home_wp, 3)
+
         return {
             "matchup": {
                 "game_id": chosen["id"],
@@ -6691,6 +6702,8 @@ def key_matchup(
                 "status": chosen.get("status"),
                 "is_conference_game": chosen.get("is_conference_game"),
                 "teams": matchup_teams,
+                "home_win_prob": home_wp,
+                "away_win_prob": away_wp,
             },
             "games": game_list,
             "date": date,
