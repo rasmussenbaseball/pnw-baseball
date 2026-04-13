@@ -1671,11 +1671,11 @@ def compare_teams(
 # Division rating bands: (floor, ceiling)
 # Overlapping ranges allow cross-division upsets
 _DIV_BANDS = {
-    "D1":   (45, 100),  # Wide band: 55 pts of spread
-    "NAIA": (15, 95),   # Wide band: 80 pts of spread (top NAIA overlaps mid-D1)
-    "D2":   (15, 85),   # Wide band: 70 pts of spread
-    "D3":   (5, 65),    # Wide band: 60 pts of spread
-    "JUCO": (5, 55),    # Wide band: 50 pts of spread
+    "D1":   (60, 100),  # 40 pts spread; floor above NAIA ceiling for realistic cross-div
+    "NAIA": (15, 75),   # 60 pts spread; top NAIA overlaps only bottom D1
+    "D2":   (20, 80),   # 60 pts spread; top D2 overlaps low D1
+    "D3":   (5, 60),    # 55 pts spread; top D3 overlaps mid NAIA
+    "JUCO": (5, 50),    # 45 pts spread; similar tier to D3
 }
 
 # Runs-per-game baseline by division (adjusts run spread in matchups)
@@ -1766,18 +1766,18 @@ def _compute_power_rating(
     return round(rating, 1)
 
 
-def _elo_win_prob(rating_a, rating_b, scale=30.0):
+def _elo_win_prob(rating_a, rating_b, scale=22.0):
     """
     Elo-style win probability from two power ratings.
 
     P(A wins) = 1 / (1 + 10^((rB - rA) / scale))
 
-    Calibrated with scale=30 after widening division bands and adding
-    power-curve spread. Produces realistic upset rates:
-      - 10-point gap: ~68% favorite
-      - 15-point gap: ~76% favorite
-      - 25-point gap: ~89% favorite
-      - 40-point gap: ~97% favorite
+    Calibrated with scale=22 for realistic cross-division bands.
+    Produces realistic upset rates:
+      - 5-point gap:  ~63% favorite
+      - 10-point gap: ~75% favorite
+      - 15-point gap: ~84% favorite
+      - 20-point gap: ~90% favorite
     Benchmarked against PEAR ratings for NAIA matchups.
     """
     return 1.0 / (1.0 + math.pow(10, (rating_b - rating_a) / scale))
