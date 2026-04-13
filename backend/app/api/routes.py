@@ -1671,10 +1671,10 @@ def compare_teams(
 # Division rating bands: (floor, ceiling)
 # Overlapping ranges allow cross-division upsets
 _DIV_BANDS = {
-    "D1":   (60, 100),  # 40 pts spread; floor above NAIA ceiling for realistic cross-div
-    "NAIA": (15, 75),   # 60 pts spread; top NAIA overlaps only bottom D1
-    "D2":   (20, 80),   # 60 pts spread; top D2 overlaps low D1
-    "D3":   (5, 60),    # 55 pts spread; top D3 overlaps mid NAIA
+    "D1":   (60, 100),  # 40 pts spread; floor above NAIA/D2 ceiling
+    "NAIA": (15, 75),   # 60 pts spread; same as D2, stats differentiate teams
+    "D2":   (15, 75),   # 60 pts spread; same as NAIA, rankings do the work
+    "D3":   (5, 60),    # 55 pts spread; top D3 overlaps mid NAIA/D2
     "JUCO": (5, 50),    # 45 pts spread; similar tier to D3
 }
 
@@ -1766,18 +1766,18 @@ def _compute_power_rating(
     return round(rating, 1)
 
 
-def _elo_win_prob(rating_a, rating_b, scale=22.0):
+def _elo_win_prob(rating_a, rating_b, scale=30.0):
     """
     Elo-style win probability from two power ratings.
 
     P(A wins) = 1 / (1 + 10^((rB - rA) / scale))
 
-    Calibrated with scale=22 for realistic cross-division bands.
+    Calibrated with scale=30 for NAIA/D2 bands (15-75).
     Produces realistic upset rates:
-      - 5-point gap:  ~63% favorite
-      - 10-point gap: ~75% favorite
-      - 15-point gap: ~84% favorite
-      - 20-point gap: ~90% favorite
+      - 5-point gap:  ~59% favorite
+      - 10-point gap: ~68% favorite
+      - 15-point gap: ~76% favorite
+      - 23-point gap: ~86% favorite (LCSC vs Bushnell range)
     Benchmarked against PEAR ratings for NAIA matchups.
     """
     return 1.0 / (1.0 + math.pow(10, (rating_b - rating_a) / scale))
