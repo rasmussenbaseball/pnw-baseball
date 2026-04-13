@@ -134,15 +134,16 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     ctx.fillText(parts.join('  '), x + w - pad, y + headerH / 2)
   }
 
-  // R/H header
+  // R/H/E header
   const rheColW = Math.max(14, 22 * s)
-  const rheX = x + w - pad - rheColW * 2
+  const rheX = x + w - pad - rheColW * 3
   const rheHeaderY = y + headerH + 2 * s
   ctx.fillStyle = '#94a3b8'
   ctx.font = `600 ${Math.max(5, 7.5 * s)}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 5 * s)
   ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 5 * s)
+  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 5 * s)
 
   // Team rows
   const teamTop = rheHeaderY + 11 * s
@@ -157,6 +158,7 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     const logo = isAway ? game.away_logo : game.home_logo
     const record = isAway ? game.away_record : game.home_record
     const hits = isAway ? game.away_hits : game.home_hits
+    const errors = isAway ? game.away_errors : game.home_errors
     const ry = teamTop + i * rowH
     const midY = ry + rowH / 2
 
@@ -196,7 +198,7 @@ async function drawScorebug(ctx, game, x, y, w, h) {
       ctx.fillText(`(${record})`, curX, midY + 7 * s)
     }
 
-    // R (score) / H
+    // R (score) / H / E
     ctx.textAlign = 'center'
     ctx.fillStyle = won ? '#0f172a' : '#94a3b8'
     ctx.font = `${won ? '800' : '600'} ${scoreFS}px "Inter", system-ui, sans-serif`
@@ -204,6 +206,7 @@ async function drawScorebug(ctx, game, x, y, w, h) {
     ctx.fillStyle = '#64748b'
     ctx.font = `500 ${rheFS}px "Inter", system-ui, sans-serif`
     ctx.fillText(hits != null ? String(hits) : '-', rheX + rheColW * 1.5, midY)
+    ctx.fillText(errors != null ? String(errors) : '-', rheX + rheColW * 2.5, midY)
   }
 }
 
@@ -568,6 +571,8 @@ export default function DailyScoresGraphic() {
             away_score: isHome ? live.opponent_score : live.team_score,
             home_hits: isHome ? live.home_hits : live.away_hits,
             away_hits: isHome ? live.away_hits : live.home_hits,
+            home_errors: isHome ? live.home_errors : live.away_errors,
+            away_errors: isHome ? live.away_errors : live.home_errors,
             home_logo: isHome ? live.team_logo : (live.opponent_logo || live.opponent_image),
             away_logo: isHome ? (live.opponent_logo || live.opponent_image) : live.team_logo,
             innings: live.innings || 9,

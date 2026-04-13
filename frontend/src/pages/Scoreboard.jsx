@@ -427,6 +427,7 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
           <div className="flex justify-end gap-0 mb-0.5">
             <span className="text-[9px] font-semibold text-gray-400 w-8 text-center">R</span>
             <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">H</span>
+            <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">E</span>
           </div>
         )}
         <div className={`flex items-center ${rowPad} ${oppWon ? 'opacity-50' : ''}`}>
@@ -452,6 +453,9 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
             ) : null}
             {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{(game.location === 'home' ? game.home_hits : game.away_hits) ?? '-'}</span>
+            )}
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
+              <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{(game.location === 'home' ? game.home_errors : game.away_errors) ?? '-'}</span>
             )}
           </div>
         </div>
@@ -481,6 +485,9 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
             ) : null}
             {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{(game.location === 'home' ? game.away_hits : game.home_hits) ?? '-'}</span>
+            )}
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
+              <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{(game.location === 'home' ? game.away_errors : game.home_errors) ?? '-'}</span>
             )}
           </div>
         </div>
@@ -583,6 +590,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
           <div className="flex justify-end gap-0 mb-0.5">
             <span className="text-[9px] font-semibold text-gray-400 w-8 text-center">R</span>
             <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">H</span>
+            <span className="text-[9px] font-semibold text-gray-400 w-7 text-center">E</span>
           </div>
         )}
         {/* Away team */}
@@ -611,6 +619,9 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
             )}
             {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_hits ?? '-'}</span>
+            )}
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
+              <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.away_errors ?? '-'}</span>
             )}
           </div>
         </div>
@@ -641,6 +652,9 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
             )}
             {isFinal && (game.home_hits != null || game.away_hits != null) && (
               <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_hits ?? '-'}</span>
+            )}
+            {isFinal && (game.home_hits != null || game.away_hits != null) && (
+              <span className="text-xs text-gray-400 tabular-nums w-7 text-center">{game.home_errors ?? '-'}</span>
             )}
           </div>
         </div>
