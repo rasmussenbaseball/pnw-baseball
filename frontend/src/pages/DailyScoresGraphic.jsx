@@ -516,21 +516,75 @@ export default function DailyScoresGraphic() {
       if (liveRes?.ok) {
         const liveData = await liveRes.json()
         const allLive = [...(liveData.today || []), ...(liveData.recent || [])]
-        const liveByTeams = {}
+        const liveFinals = []
         for (const g of allLive) {
-          if (g.date?.startsWith(d) && g.status === 'final') {
-            const key = (g.team || '').toLowerCase()
-            if (key) liveByTeams[key] = g
+          if (g.date?.startsWith(d) && g.status === 'final' && g.team) {
+            liveFinals.push(g)
           }
         }
+
+        // Build a set of DB game team matchups to detect duplicates
+        const dbMatchups = new Set()
         for (const game of json.games) {
-          const homeKey = (game.home_short || '').toLowerCase()
-          const live = liveByTeams[homeKey]
-          if (live) {
-            if (live.team_logo && !game.home_logo) game.home_logo = live.team_logo
-            if (live.opponent_logo && !game.away_logo) game.away_logo = live.opponent_logo
-            game.division = live.team_division || game.home_division
+          const h = (game.home_short || game.home_team_name || '').toLowerCase()
+          const a = (game.away_short || game.away_team_name || '').toLowerCase()
+          if (h) dbMatchups.add(h)
+          if (a) dbMatchups.add(a)
+        }
+
+        // Supplement existing DB games with live logos/division
+        for (const live of liveFinals) {
+          const key = (live.team || '').toLowerCase()
+          const matched = json.games.find(g =>
+            (g.home_short || '').toLowerCase() === key ||
+            (g.away_short || '').toLowerCase() === key
+          )
+          if (matched) {
+            if (live.team_logo && !matched.home_logo) matched.home_logo = live.team_logo
+            if (live.opponent_logo && !matched.away_logo) matched.away_logo = live.opponent_logo
+            matched.division = live.team_division || matched.home_division
           }
+        }
+
+        // Add final live games that aren't already in the DB
+        for (const live of liveFinals) {
+          const teamKey = (live.team || '').toLowerCase()
+          const oppKey = (live.opponent || '').toLowerCase()
+          // Skip if either team already matched a DB game
+          if (dbMatchups.has(teamKey) || dbMatchups.has(oppKey)) continue
+
+          // Convert live format to DB-like format for the graphic renderer
+          const isHome = live.location !== 'away'
+          const converted = {
+            id: `live_${teamKey}_${live.date}`,
+            game_date: live.date,
+            game_time: live.time || '',
+            status: 'final',
+            home_short: isHome ? live.team : (live.opponent_display || live.opponent),
+            away_short: isHome ? (live.opponent_display || live.opponent) : live.team,
+            home_team_name: isHome ? live.team : (live.opponent_display || live.opponent),
+            away_team_name: isHome ? (live.opponent_display || live.opponent) : live.team,
+            home_score: isHome ? live.team_score : live.opponent_score,
+            away_score: isHome ? live.opponent_score : live.team_score,
+            home_hits: isHome ? live.home_hits : live.away_hits,
+            away_hits: isHome ? live.away_hits : live.home_hits,
+            home_logo: isHome ? live.team_logo : (live.opponent_logo || live.opponent_image),
+            away_logo: isHome ? (live.opponent_logo || live.opponent_image) : live.team_logo,
+            innings: live.innings || 9,
+            is_conference_game: live.is_conference || false,
+            home_division: live.team_division,
+            away_division: live.team_division,
+            division: live.team_division,
+            win_pitcher: live.win_pitcher,
+            loss_pitcher: live.loss_pitcher,
+            save_pitcher: live.save_pitcher,
+            source_url: live.box_score_url,
+            _from_live: true,
+          }
+          json.games.push(converted)
+          // Track these teams so we don't double-add from opponent's entry
+          dbMatchups.add(teamKey)
+          dbMatchups.add(oppKey)
         }
       }
       setData(json)
