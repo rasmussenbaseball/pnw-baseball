@@ -6965,10 +6965,10 @@ def games_live():
         except (ValueError, OSError):
             pass
 
-    # ── Merge ALL final games from database ──
+    # ── Merge games from database ──
     # live_scores.json covers D1/D2/D3 games from Sidearm/PrestoSports but can
     # miss games. NAIA and JUCO come from separate scrapers. Merge all divisions
-    # from the DB so the scoreboard always shows every final game.
+    # from the DB so the scoreboard shows every game (final + scheduled).
     try:
         from datetime import datetime as _datetime
         from zoneinfo import ZoneInfo
@@ -6979,8 +6979,10 @@ def games_live():
 
         with get_connection() as conn:
             cur = conn.cursor()
-            # Fetch all final games in range; seen_db dedup below handles
-            # duplicate scrape entries (same date + teams + score).
+            # Fetch all games in range (final + scheduled); seen_db dedup
+            # below handles duplicate scrape entries (same date + teams + score).
+            # We include scheduled games so NWAC (and any other DB-only division)
+            # shows upcoming games on the scoreboard.
             cur.execute("""
                 SELECT g.id, g.game_date, g.game_time,
                     g.home_score, g.away_score,
@@ -7004,10 +7006,10 @@ def games_live():
                 LEFT JOIN divisions ad ON ac.division_id = ad.id
                 WHERE g.game_date >= %s
                   AND g.game_date <= %s
-                  AND g.status = 'final'
+                  AND (g.status = 'final' OR g.game_date >= %s)
                   AND g.home_team_id IS DISTINCT FROM g.away_team_id
                 ORDER BY g.game_date, g.id DESC
-            """, (recent_start, upcoming_end))
+            """, (recent_start, upcoming_end, today))
 
             db_rows = []
             seen_db = set()
@@ -7086,7 +7088,7 @@ def games_live():
                     "date": game_date_str,
                     "time": row["game_time"] or "",
                     "status": row["status"] or "final",
-                    "game_state_display": "FINAL" if row["status"] == "final" else "",
+                    "game_state_display": "FINAL" if row["status"] == "final" else (row["game_time"] or "Scheduled"),
                     "location": "home",
                     "team_score": str(row["home_score"]) if row["home_score"] is not None else None,
                     "opponent_score": str(row["away_score"]) if row["away_score"] is not None else None,
