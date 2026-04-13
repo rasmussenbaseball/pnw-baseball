@@ -349,6 +349,144 @@ def resolve_team_ids(cur, games):
                 game[f"{role}_team_id"] = team_id
 
 
+def fetch_composite_today(api_key, season_year):
+    """
+    Fetch today's games from the NWAC composite schedule page.
+
+    The composite page (nwacsports.com/sports/bsb/composite) defaults to
+    showing today's games and updates much faster than the master schedule
+    page. This catches same-day results that the schedule page misses.
+    """
+    import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    except Exception:
+        today = datetime.date.today()
+
+    composite_url = "https://nwacsports.com/sports/bsb/composite"
+    logger.info(f"Fetching NWAC composite page for today ({today}): {composite_url}")
+
+    url = f"http://api.scraperapi.com?api_key={api_key}&url={composite_url}"
+
+    try:
+        resp = requests.get(url, timeout=120)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning(f"Composite page fetch failed: {e}")
+        return []
+
+    if len(resp.text) < 3000:
+        logger.warning(f"Composite page appears blocked (size={len(resp.text)})")
+        return []
+
+    logger.info(f"Got {len(resp.text):,} bytes from composite page")
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    games = []
+
+    # Each game is in an .event-box div containing two .team divs
+    event_boxes = soup.select(".event-box")
+    logger.info(f"Found {len(event_boxes)} event boxes on composite page")
+
+    for box in event_boxes:
+        teams = box.select(".team")
+        if len(teams) != 2:
+            continue
+
+        # Parse team names and scores
+        team_data = []
+        for team_div in teams:
+            name_el = team_div.select_one(".team-name a") or team_div.select_one(".team-name")
+            score_el = team_div.select_one(".result")
+            name = name_el.get_text(strip=True) if name_el else ""
+            # Strip "at " prefix from home team
+            name = re.sub(r"^at\s+", "", name).strip()
+            # Strip conference indicators
+            name = name.rstrip("*^# ").strip()
+            score = None
+            if score_el:
+                try:
+                    score = int(score_el.get_text(strip=True))
+                except (ValueError, TypeError):
+                    pass
+            team_data.append({"name": name, "score": score})
+
+        away, home = team_data[0], team_data[1]
+        if not away["name"] or not home["name"]:
+            continue
+
+        # Get box score URL and extract date
+        box_link = box.select_one("a[href*='boxscore']")
+        box_score_url = None
+        game_date = today  # Default to today since this is the composite/today page
+
+        if box_link:
+            href = box_link.get("href", "")
+            if href.startswith("/"):
+                box_score_url = f"https://nwacsports.com{href}"
+            elif href.startswith("http"):
+                box_score_url = href
+
+            # Extract date from URL: /boxscores/YYYYMMDD_xxxx.xml
+            date_match = re.search(r"boxscores/(\d{4})(\d{2})(\d{2})_", href)
+            if date_match:
+                try:
+                    game_date = datetime.date(
+                        int(date_match.group(1)),
+                        int(date_match.group(2)),
+                        int(date_match.group(3)),
+                    )
+                except ValueError:
+                    pass
+
+        # Get status (Final, Final - 7 innings, etc.)
+        status_el = box.select_one(".event-status") or box.select_one("[class*='status']")
+        status_text = status_el.get_text(strip=True) if status_el else ""
+        is_final = "Final" in status_text or (away["score"] is not None and home["score"] is not None)
+
+        if not is_final:
+            continue  # Only grab completed games
+
+        # Parse innings from status
+        innings = 9
+        innings_match = re.search(r"(\d+)\s*inning", status_text)
+        if innings_match:
+            innings = int(innings_match.group(1))
+
+        # Resolve team names
+        away_db_name = resolve_team_name(away["name"])
+        home_db_name = resolve_team_name(home["name"])
+
+        # Check for conference game (name had * suffix)
+        is_conference = away_db_name in NWAC_TEAMS and home_db_name in NWAC_TEAMS
+
+        # Detect doubleheaders
+        game_number = 1
+        for prev in games:
+            if (prev["game_date"] == game_date
+                    and prev["away_team_name"] == away_db_name
+                    and prev["home_team_name"] == home_db_name):
+                game_number = max(game_number, prev["game_number"] + 1)
+
+        games.append({
+            "season": season_year,
+            "game_date": game_date,
+            "away_team_name": away_db_name,
+            "home_team_name": home_db_name,
+            "away_score": away["score"],
+            "home_score": home["score"],
+            "innings": innings,
+            "is_conference_game": is_conference,
+            "game_number": game_number,
+            "status": "final",
+            "source_url": box_score_url,
+        })
+
+    logger.info(f"Parsed {len(games)} completed games from composite page")
+    return games
+
+
 def main():
     api_key = os.environ.get("SCRAPER_API_KEY")
     if not api_key:
@@ -358,17 +496,27 @@ def main():
     season_year = int(os.environ.get("SEASON_YEAR", "2026"))
     logger.info(f"NWAC Schedule Scraper — Season {season_year}")
 
-    # Fetch schedule page
+    # ── 1. Fetch composite page for today's games (fast-updating) ──
+    composite_games = fetch_composite_today(api_key, season_year)
+
+    # ── 2. Fetch master schedule page for full season ──
     html = fetch_schedule(api_key, season_year)
 
-    # Parse games
+    # Parse games from schedule page
     games = parse_schedule_page(html, season_year)
 
-    if not games:
-        logger.warning("No games found on schedule page")
+    if not games and not composite_games:
+        logger.warning("No games found on either page")
         return
 
-    logger.info(f"Processing {len(games)} games...")
+    # Merge composite games into the main list — composite games take priority
+    # for today since they update faster than the schedule page
+    composite_urls = {g["source_url"] for g in composite_games if g.get("source_url")}
+    # Remove schedule-page games that duplicate composite games (same box score URL)
+    games = [g for g in games if g.get("source_url") not in composite_urls]
+    all_games = composite_games + games
+
+    logger.info(f"Processing {len(all_games)} games ({len(composite_games)} from composite, {len(games)} from schedule)...")
 
     # Resolve team IDs and upsert into database
     inserted = 0
@@ -379,9 +527,9 @@ def main():
         cur = conn.cursor()
 
         # Resolve all team IDs
-        resolve_team_ids(cur, games)
+        resolve_team_ids(cur, all_games)
 
-        for game in games:
+        for game in all_games:
             try:
                 # Compute game score (only for final games with scores)
                 if game["status"] == "final" and game["home_score"] is not None and game["away_score"] is not None:
@@ -415,14 +563,14 @@ def main():
 
     logger.info("=" * 60)
     logger.info("SCRAPE COMPLETE")
-    logger.info(f"  Total games: {len(games)}")
+    logger.info(f"  Total games: {len(all_games)} ({len(composite_games)} composite + {len(games)} schedule)")
     logger.info(f"  Inserted: {inserted}")
     logger.info(f"  Updated: {updated}")
     logger.info(f"  Errors: {errors}")
 
     # Log unresolved teams
     unresolved = set()
-    for game in games:
+    for game in all_games:
         if not game.get("away_team_id"):
             unresolved.add(game["away_team_name"])
         if not game.get("home_team_id"):
