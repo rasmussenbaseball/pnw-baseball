@@ -1516,12 +1516,61 @@ def parse_sidearm_boxscore(html, base_url=""):
 
 def parse_presto_boxscore(html, base_url=""):
     """
-    Parse a PrestoSports box score page.
-    Very similar structure to Sidearm — table-based layout.
+    Parse a PrestoSports (NWAC) box score page.
+
+    Uses the dedicated NWAC XML parser which extracts:
+      - Full batting lines: AB, R, H, RBI, BB, SO, LOB, 2B, 3B, HR, SB, CS, SF, SH
+      - Full pitching lines: IP, H, R, ER, BB, SO, HR, BF, WP, HBP, pitches, strikes
+      - Line scores, R/H/E, W/L/S decisions
+      - Team hits and errors (for scoreboard display)
+
+    Returns data in the same format expected by scrape_team_boxscores():
+      {
+        "away_score", "home_score",
+        "away_hits", "home_hits",
+        "away_errors", "home_errors",
+        "line_score": {"home": [...], "away": [...]},
+        "innings",
+        "batting": {"home": [...], "away": [...]},
+        "pitching": {"home": [...], "away": [...]},
+      }
     """
-    # PrestoSports box scores use the same general table structure
-    # We can reuse the Sidearm parser with slight modifications
-    return parse_sidearm_boxscore(html, base_url)
+    # Import from same directory — works whether run as `python3 scripts/scrape_boxscores.py`
+    # or with PYTHONPATH including the scripts dir
+    _scripts_dir = str(Path(__file__).parent)
+    if _scripts_dir not in sys.path:
+        sys.path.insert(0, _scripts_dir)
+    from parse_nwac_boxscore import parse_presto_xml_boxscore
+
+    raw = parse_presto_xml_boxscore(html, base_url)
+    if not raw:
+        # Fall back to the Sidearm parser as a last resort
+        logger.warning("  NWAC XML parser failed — falling back to Sidearm parser")
+        return parse_sidearm_boxscore(html, base_url)
+
+    # Convert from our parser's flat format to the nested format expected
+    # by scrape_team_boxscores()
+    return {
+        "away_score": raw.get("away_score"),
+        "home_score": raw.get("home_score"),
+        "away_hits": raw.get("away_hits"),
+        "home_hits": raw.get("home_hits"),
+        "away_errors": raw.get("away_errors"),
+        "home_errors": raw.get("home_errors"),
+        "line_score": {
+            "away": raw.get("away_line_score"),
+            "home": raw.get("home_line_score"),
+        },
+        "innings": raw.get("innings"),
+        "batting": {
+            "away": raw.get("away_batting", []),
+            "home": raw.get("home_batting", []),
+        },
+        "pitching": {
+            "away": raw.get("away_pitching", []),
+            "home": raw.get("home_pitching", []),
+        },
+    }
 
 
 def fetch_sidearm_api_boxscore(base_url, game_id, tenant):

@@ -1,0 +1,70 @@
+name: NWAC Box Score Scraper
+
+on:
+  schedule:
+    # Run daily at 10 PM Pacific (5 AM UTC next day)
+    # After most games are final and schedule scraper has run
+    - cron: '0 5 * * *'
+  workflow_dispatch:  # Allow manual runs
+    inputs:
+      mode:
+        description: 'Run mode: daily (default) or backfill'
+        required: false
+        default: 'daily'
+      limit:
+        description: 'Max games to process (0 = unlimited)'
+        required: false
+        default: '0'
+      dry_run:
+        description: 'Dry run (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 psycopg2-binary python-dotenv
+
+      - name: Scrape NWAC box scores
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEASON_YEAR: '2026'
+        run: |
+          cd $GITHUB_WORKSPACE
+          MODE="${{ github.event.inputs.mode }}"
+          LIMIT="${{ github.event.inputs.limit }}"
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+
+          ARGS=""
+          if [ "$MODE" = "backfill" ]; then
+            ARGS="--backfill"
+          fi
+          if [ -n "$LIMIT" ] && [ "$LIMIT" != "0" ]; then
+            ARGS="$ARGS --limit $LIMIT"
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+
+          echo "Running: python3 scripts/scrape_nwac_boxscores.py $ARGS"
+          PYTHONPATH=backend python3 scripts/scrape_nwac_boxscores.py $ARGS
+
+      - name: Recalculate league-adjusted stats
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          PYTHONPATH=backend python3 scripts/recalculate_league_adjusted.py --season 2026
