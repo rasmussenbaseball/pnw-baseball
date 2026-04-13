@@ -6619,8 +6619,8 @@ def key_matchup(
                          THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_era,
                     CASE WHEN SUM(innings_pitched) > 0
                          THEN ROUND(((SUM(walks) + SUM(hits_allowed)) / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_whip,
-                    CASE WHEN SUM(batters_faced) > 0
-                         THEN ROUND((SUM(hits_allowed)::numeric / SUM(batters_faced))::numeric, 3) ELSE 0 END as opp_avg,
+                    CASE WHEN (SUM(batters_faced) - SUM(COALESCE(walks,0)) - SUM(COALESCE(hit_batters,0))) > 0
+                         THEN ROUND((SUM(hits_allowed)::numeric / (SUM(batters_faced) - SUM(COALESCE(walks,0)) - SUM(COALESCE(hit_batters,0))))::numeric, 3) ELSE 0 END as opp_avg,
                     CASE WHEN SUM(batters_faced) > 0
                          THEN ROUND((SUM(home_runs_allowed)::numeric / SUM(batters_faced))::numeric, 4) ELSE 0 END as opp_hr_per_pa,
                     SUM(runs_allowed) as total_runs_allowed
