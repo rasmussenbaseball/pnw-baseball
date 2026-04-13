@@ -550,15 +550,13 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
         # Check for duplicate: same date + same two teams + same score = likely same game
         matchup_key = (game_date, frozenset([home_name.lower(), away_name.lower()]))
         if matchup_key in seen_date_matchups:
-            prev = seen_date_matchups[matchup_key]
-            # If scores match a previous game, it's a duplicate ID for the same game
-            prev_scores = [(d.get("homeTeam", {}).get("scoreSummary") or {}).get("score"),
-                          (d.get("visitingTeam", {}).get("scoreSummary") or {}).get("score")]
-            if [home_score, away_score] == prev_scores or len(prev) >= 2:
+            prev_list = seen_date_matchups[matchup_key]
+            # Allow up to 2 games per date+opponent (doubleheader), skip beyond that
+            if len(prev_list) >= 2:
                 logger.debug(f"  SKIP duplicate ID {gid}: {game_date} {away_name} @ {home_name}")
                 skipped_dup += 1
                 continue
-            # Different scores on same date vs same opponent = doubleheader
+            # Same date + same opponent but only 1 so far = could be doubleheader
             seen_date_matchups[matchup_key].append(data)
         else:
             seen_date_matchups[matchup_key] = [data]
