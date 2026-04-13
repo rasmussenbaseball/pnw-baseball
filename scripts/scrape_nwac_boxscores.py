@@ -170,10 +170,12 @@ def get_games_needing_boxscores(cur, season):
                g.home_team_id, g.away_team_id
         FROM games g
         JOIN teams ht ON g.home_team_id = ht.id
+        JOIN conferences c ON ht.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
         WHERE g.season = %s
           AND g.status = 'final'
           AND g.source_url LIKE '%%nwacsports.com%%boxscores%%'
-          AND ht.division = 'JUCO'
+          AND d.level = 'JUCO'
           AND NOT EXISTS (
               SELECT 1 FROM game_batting gb WHERE gb.game_id = g.id
           )
