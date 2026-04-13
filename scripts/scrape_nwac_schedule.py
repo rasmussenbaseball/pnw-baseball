@@ -399,8 +399,8 @@ def fetch_composite_today(api_key, season_year):
         for team_div in teams:
             name_el = team_div.select_one(".team-name a") or team_div.select_one(".team-name")
             score_el = team_div.select_one(".result")
-            name = name_el.get_text(strip=True) if name_el else ""
-            # Strip "at " prefix from home team
+            name = name_el.get_text(" ", strip=True) if name_el else ""
+            # Strip "at " prefix from home team (handles "at\nTeam" and "at Team")
             name = re.sub(r"^at\s+", "", name).strip()
             # Strip conference indicators
             name = name.rstrip("*^# ").strip()
