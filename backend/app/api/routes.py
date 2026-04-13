@@ -1752,16 +1752,17 @@ def _compute_power_rating(
     return round(rating, 1)
 
 
-def _elo_win_prob(rating_a, rating_b, scale=30.0):
+def _elo_win_prob(rating_a, rating_b, scale=45.0):
     """
     Elo-style win probability from two power ratings.
 
     P(A wins) = 1 / (1 + 10^((rB - rA) / scale))
 
-    Calibrated with scale=30 so that:
-      - 27-point gap (avg D1 vs avg D2) produces ~89% win rate
-      - 15-point gap (#1 NAIA vs worst D1) produces ~75% win rate
-    These match Hardball Times research and PNW baseball observations.
+    Calibrated with scale=45 for college baseball's high single-game
+    variance. Produces realistic upset rates:
+      - 15-point gap: ~68% favorite (not 76%)
+      - 20-point gap: ~74% favorite (not 83%)
+      - 30-point gap: ~83% favorite (not 91%)
     """
     return 1.0 / (1.0 + math.pow(10, (rating_b - rating_a) / scale))
 
@@ -2308,7 +2309,7 @@ def playoff_projections(
 
         # Run Monte Carlo simulation for playoff odds
         mc_results = run_monte_carlo(
-            future_games, team_ratings, standings_rows, n_simulations=1000
+            future_games, team_ratings, standings_rows, n_simulations=5000
         )
 
         # Build projected standings

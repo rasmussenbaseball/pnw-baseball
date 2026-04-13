@@ -145,8 +145,9 @@ CONFERENCE_TO_FORMAT = {
 # Elo Win Probability (same as routes.py)
 # ============================================================
 
-def elo_win_prob(rating_a, rating_b, scale=30.0):
-    """P(A wins) using Elo formula. Scale=30 calibrated for PNW baseball."""
+def elo_win_prob(rating_a, rating_b, scale=45.0):
+    """P(A wins) using Elo formula. Scale=45 calibrated for college baseball's
+    inherent single-game variance (even the best teams lose ~35% of the time)."""
     if rating_a is None or rating_b is None:
         return 0.5
     return 1.0 / (1.0 + math.pow(10, (rating_b - rating_a) / scale))
@@ -473,11 +474,13 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
 
     # Rating uncertainty: jitter each team's rating per simulation.
     # This reflects that power ratings are estimates, not ground truth.
-    # A standard deviation of 5 points on a 0-100 scale means:
-    #   - Teams separated by 5 pts swap ~30% of the time
-    #   - Teams separated by 10 pts swap ~16% of the time
-    #   - Teams separated by 20 pts swap ~2% of the time
-    RATING_JITTER_SD = 5.0
+    # A standard deviation of 7 points on a 0-100 scale means:
+    #   - Teams separated by 7 pts swap ~30% of the time
+    #   - Teams separated by 14 pts swap ~16% of the time
+    #   - Teams separated by 28 pts swap ~2% of the time
+    # Higher SD creates more realistic variance for conferences with
+    # many games remaining, where late-season surges/collapses happen.
+    RATING_JITTER_SD = 7.0
     HOME_ADVANTAGE = 2.0
 
     # Build current records lookup: team_id -> {conf_wins, conf_losses, conference_name}
@@ -526,12 +529,18 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
                 sim_ratings[tid] = None
 
         # Simulate each game with jittered ratings
+        # Apply same regression factor as deterministic projection (0.85)
+        # to prevent over-confident win probabilities for top/bottom teams.
+        REGRESSION_FACTOR = 0.85
         for home_id, away_id, is_conf in processed_games:
             home_rating = sim_ratings.get(home_id) if home_id else None
             away_rating = sim_ratings.get(away_id) if away_id else None
 
             if home_rating is not None and away_rating is not None:
-                home_win_prob = elo_win_prob(home_rating + HOME_ADVANTAGE, away_rating)
+                mean_rating = (home_rating + away_rating) / 2.0
+                adj_home = mean_rating + (home_rating - mean_rating) * REGRESSION_FACTOR
+                adj_away = mean_rating + (away_rating - mean_rating) * REGRESSION_FACTOR
+                home_win_prob = elo_win_prob(adj_home + HOME_ADVANTAGE, adj_away)
             elif home_rating is not None:
                 home_win_prob = 0.6
             elif away_rating is not None:
