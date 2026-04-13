@@ -92,7 +92,7 @@ def is_baseball_game(data):
         team = data.get(team_key, {})
         players = team.get("players", [])
         for p in players:
-            hitting = p.get("hitting", {})
+            hitting = p.get("hitting") or {}
             if "atBats" in hitting:
                 return True
     return False
@@ -184,8 +184,8 @@ def parse_boxscore_data(data, base_url, game_id, team_short, team_id):
     our_team_is_home = home_team.get("isTenantTeam", False)
 
     # Parse scores from scoreSummary
-    home_score_str = home_team.get("scoreSummary", {}).get("score", "0")
-    away_score_str = away_team.get("scoreSummary", {}).get("score", "0")
+    home_score_str = (home_team.get("scoreSummary") or {}).get("score", "0")
+    away_score_str = (away_team.get("scoreSummary") or {}).get("score", "0")
     try:
         home_score = int(home_score_str)
     except (ValueError, TypeError):
@@ -196,7 +196,7 @@ def parse_boxscore_data(data, base_url, game_id, team_short, team_id):
         away_score = 0
 
     # Innings from score by period
-    score_by_inning = home_team.get("scoreSummary", {}).get("scoreByPeriod", "")
+    score_by_inning = (home_team.get("scoreSummary") or {}).get("scoreByPeriod", "")
     innings = len(score_by_inning.split(",")) if score_by_inning else 9
 
     # Conference game
@@ -524,8 +524,8 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
 
         home_name = data.get("homeTeam", {}).get("name", "?")
         away_name = data.get("visitingTeam", {}).get("name", "?")
-        home_score = data.get("homeTeam", {}).get("scoreSummary", {}).get("score", "?")
-        away_score = data.get("visitingTeam", {}).get("scoreSummary", {}).get("score", "?")
+        home_score = (data.get("homeTeam", {}).get("scoreSummary") or {}).get("score", "?")
+        away_score = (data.get("visitingTeam", {}).get("scoreSummary") or {}).get("score", "?")
 
         logger.info(f"  FOUND baseball game ID {gid}: {game_date} — {away_name} @ {home_name} ({away_score}-{home_score})")
         found_games.append((gid, data))
