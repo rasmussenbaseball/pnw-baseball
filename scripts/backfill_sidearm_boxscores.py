@@ -183,7 +183,7 @@ def parse_boxscore_data(data, base_url, game_id, team_short, team_id):
     # Determine if our team is home or away
     our_team_is_home = home_team.get("isTenantTeam", False)
 
-    # Parse scores from scoreSummary
+    # Parse scores from scoreSummary, fall back to summing runs from batting data
     home_score_str = (home_team.get("scoreSummary") or {}).get("score", "0")
     away_score_str = (away_team.get("scoreSummary") or {}).get("score", "0")
     try:
@@ -194,6 +194,15 @@ def parse_boxscore_data(data, base_url, game_id, team_short, team_id):
         away_score = int(away_score_str)
     except (ValueError, TypeError):
         away_score = 0
+
+    # Fallback: compute score from batting runs if scoreSummary was empty
+    if home_score == 0 and away_score == 0:
+        for p in home_team.get("players", []):
+            hitting = p.get("hitting") or {}
+            home_score += _int(hitting.get("runsScored", 0))
+        for p in away_team.get("players", []):
+            hitting = p.get("hitting") or {}
+            away_score += _int(hitting.get("runsScored", 0))
 
     # Innings from score by period
     score_by_inning = (home_team.get("scoreSummary") or {}).get("scoreByPeriod", "")
@@ -544,8 +553,16 @@ def backfill_team(team_key, start_id=None, end_id=None, dry_run=False, season=20
 
         home_name = data.get("homeTeam", {}).get("name", "?")
         away_name = data.get("visitingTeam", {}).get("name", "?")
-        home_score = (data.get("homeTeam", {}).get("scoreSummary") or {}).get("score", "?")
-        away_score = (data.get("visitingTeam", {}).get("scoreSummary") or {}).get("score", "?")
+        home_score = (data.get("homeTeam", {}).get("scoreSummary") or {}).get("score", "")
+        away_score = (data.get("visitingTeam", {}).get("scoreSummary") or {}).get("score", "")
+        # Compute scores from batting runs if scoreSummary is empty
+        if not home_score or not away_score:
+            h_runs = sum(_int((p.get("hitting") or {}).get("runsScored", 0))
+                        for p in data.get("homeTeam", {}).get("players", []))
+            a_runs = sum(_int((p.get("hitting") or {}).get("runsScored", 0))
+                        for p in data.get("visitingTeam", {}).get("players", []))
+            home_score = str(h_runs)
+            away_score = str(a_runs)
 
         # Check for duplicate: same date + same two teams + same score = likely same game
         matchup_key = (game_date, frozenset([home_name.lower(), away_name.lower()]))
