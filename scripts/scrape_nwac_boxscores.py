@@ -558,9 +558,9 @@ def main():
                 traceback.print_exc()
                 failed += 1
 
-            # Rate limit: 1 request per 2 seconds to be safe
+            # Rate limit: 1 second between requests
             if i < total - 1:
-                time.sleep(2)
+                time.sleep(1)
 
     else:
         # ── Daily mode ──
