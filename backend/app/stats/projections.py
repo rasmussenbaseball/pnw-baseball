@@ -145,9 +145,9 @@ CONFERENCE_TO_FORMAT = {
 # Elo Win Probability (same as routes.py)
 # ============================================================
 
-def elo_win_prob(rating_a, rating_b, scale=45.0):
-    """P(A wins) using Elo formula. Scale=45 calibrated for college baseball's
-    inherent single-game variance (even the best teams lose ~35% of the time)."""
+def elo_win_prob(rating_a, rating_b, scale=30.0):
+    """P(A wins) using Elo formula. Scale=30 calibrated after widening division
+    bands and adding power-curve spread. Benchmarked against PEAR ratings."""
     if rating_a is None or rating_b is None:
         return 0.5
     return 1.0 / (1.0 + math.pow(10, (rating_b - rating_a) / scale))

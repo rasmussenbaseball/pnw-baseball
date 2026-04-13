@@ -1671,11 +1671,11 @@ def compare_teams(
 # Division rating bands: (floor, ceiling)
 # Overlapping ranges allow cross-division upsets
 _DIV_BANDS = {
-    "D1":   (52, 100),  # Even bad D1 teams start at 52
-    "NAIA": (30, 78),   # Top NAIA overlaps mid-D1; strongest PNW level top-to-bottom
-    "D2":   (25, 72),   # Just below NAIA ceiling; top D2 overlaps bottom D1
-    "D3":   (16, 56),   # No athletic scholarships; top D3 overlaps bottom D2/NAIA
-    "JUCO": (10, 48),   # Wide variance; top JUCO overlaps bottom D2/D3/NAIA
+    "D1":   (45, 100),  # Wide band: 55 pts of spread
+    "NAIA": (15, 95),   # Wide band: 80 pts of spread (top NAIA overlaps mid-D1)
+    "D2":   (15, 85),   # Wide band: 70 pts of spread
+    "D3":   (5, 65),    # Wide band: 60 pts of spread
+    "JUCO": (5, 55),    # Wide band: 50 pts of spread
 }
 
 # Runs-per-game baseline by division (adjusts run spread in matchups)
@@ -1691,18 +1691,21 @@ def _compute_power_rating(
     Compute a 0-100 cross-division power rating for a team.
 
     Step 1: Compute on-field performance (0-1 scale)
-      40% Pythagorean win% (run environment, exponent=1.83)
-      20% wRC+ normalized (offensive quality)
-      20% FIP inverted (pitching quality)
+      50% Pythagorean win% (run environment, exponent=1.83)
+      15% wRC+ normalized (offensive quality)
+      15% FIP inverted (pitching quality)
       20% WAR per game (talent depth)
 
     Step 2: Blend with national ranking percentile
-      Teams WITH national rankings: 45% on-field + 55% national
+      Teams WITH national rankings: 50% on-field + 50% national
       Teams WITHOUT (JUCO):         on-field only, 15% penalty
 
-    Step 3: Map into division band (floor to ceiling)
-      This ensures cross-division comparability while allowing
-      top lower-division teams to overlap with bottom higher-division.
+    Step 3: Apply power curve to spread top/bottom teams apart
+      rank^1.5 curve means elite teams separate more from the pack,
+      and bad teams separate more from mediocre. Matches how team
+      quality actually distributes (not linearly).
+
+    Step 4: Map into wide division band (floor to ceiling)
     """
     total_games = wins + losses
     if total_games < 5:
@@ -1723,10 +1726,12 @@ def _compute_power_rating(
     war_factor = min(max(0.5 + war_pg * 2.0, 0.3), 1.5)
 
     # --- Composite on-field score (0-1 raw) ---
+    # Pythagorean gets 50% because run differential is the single best
+    # predictor of true team quality and already reflects SOS implicitly
     on_field = (
-        0.40 * pyth_win +
-        0.20 * off_factor +
-        0.20 * pit_factor +
+        0.50 * pyth_win +
+        0.15 * off_factor +
+        0.15 * pit_factor +
         0.20 * war_factor
     )
     # Normalize: empirical range ~0.35 (terrible) to ~0.85 (dominant)
@@ -1735,9 +1740,9 @@ def _compute_power_rating(
     # --- Blend with national percentile for within-division rank ---
     if national_percentile is not None:
         natl_norm = float(national_percentile) / 100.0
-        # National rankings get 55% weight because they already incorporate
-        # schedule strength, cross-division context, and expert assessment
-        rank = 0.45 * on_field_norm + 0.55 * natl_norm
+        # 50/50 blend: on-field tells us how good they actually are,
+        # national rankings add SOS context and cross-division calibration
+        rank = 0.50 * on_field_norm + 0.50 * natl_norm
     else:
         # JUCO teams: no national rankings available, use on-field only
         # with a 15% penalty reflecting lack of external validation
@@ -1745,24 +1750,35 @@ def _compute_power_rating(
 
     rank = min(max(rank, 0.0), 1.0)
 
+    # --- Apply power curve to spread elite/bad teams apart ---
+    # Without this, the gap between #1 and #50 is too small.
+    # rank^1.5 on a 0-1 scale stretches differences at both ends:
+    #   0.95 -> 0.93 (elite stays near top)
+    #   0.75 -> 0.65 (mediocre drops more)
+    #   0.50 -> 0.35 (bad teams drop significantly)
+    #   0.30 -> 0.16 (terrible teams crater)
+    rank = rank ** 1.5
+
     # --- Map into division band ---
-    floor, ceiling = _DIV_BANDS.get(division_level, (25, 70))
+    floor, ceiling = _DIV_BANDS.get(division_level, (15, 75))
     rating = floor + rank * (ceiling - floor)
 
     return round(rating, 1)
 
 
-def _elo_win_prob(rating_a, rating_b, scale=45.0):
+def _elo_win_prob(rating_a, rating_b, scale=30.0):
     """
     Elo-style win probability from two power ratings.
 
     P(A wins) = 1 / (1 + 10^((rB - rA) / scale))
 
-    Calibrated with scale=45 for college baseball's high single-game
-    variance. Produces realistic upset rates:
-      - 15-point gap: ~68% favorite (not 76%)
-      - 20-point gap: ~74% favorite (not 83%)
-      - 30-point gap: ~83% favorite (not 91%)
+    Calibrated with scale=30 after widening division bands and adding
+    power-curve spread. Produces realistic upset rates:
+      - 10-point gap: ~68% favorite
+      - 15-point gap: ~76% favorite
+      - 25-point gap: ~89% favorite
+      - 40-point gap: ~97% favorite
+    Benchmarked against PEAR ratings for NAIA matchups.
     """
     return 1.0 / (1.0 + math.pow(10, (rating_b - rating_a) / scale))
 
