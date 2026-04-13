@@ -462,13 +462,32 @@ def discover_all_boxscore_urls(season_str):
         return []
 
     # Extract unique box score URLs
-    pattern = rf'/sports/bsb/{re.escape(season_str)}/boxscores/\d{{8}}_\w+\.xml'
+    pattern = rf'/sports/bsb/{re.escape(season_str)}/boxscores/(\d{{8}})_(\w+)\.xml'
     matches = re.findall(pattern, html)
-    unique = list(dict.fromkeys(matches))
-    full_urls = [f"{NWAC_BASE}{path}" for path in unique]
 
-    logger.info(f"Found {len(full_urls)} unique box score URLs")
-    return full_urls
+    # Filter out fall ball games (Sept-Dec 2025) — they use a different
+    # live-action page format that our parser can't handle.
+    # Spring season starts in February of the second year.
+    season_start_year = season_str.split("-")[0]  # e.g. "2025" from "2025-26"
+    cutoff = f"{int(season_start_year) + 1}0101"  # "20260101"
+
+    unique = []
+    seen = set()
+    skipped_fall = 0
+    for date_str, hash_str in matches:
+        key = f"{date_str}_{hash_str}"
+        if key in seen:
+            continue
+        seen.add(key)
+        if date_str < cutoff:
+            skipped_fall += 1
+            continue
+        unique.append(f"{NWAC_BASE}/sports/bsb/{season_str}/boxscores/{key}.xml")
+
+    if skipped_fall:
+        logger.info(f"Skipped {skipped_fall} fall ball games (pre-{cutoff[:4]} season)")
+    logger.info(f"Found {len(unique)} spring season box score URLs")
+    return unique
 
 
 # ── Main ──
