@@ -237,8 +237,8 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
         except (ValueError, TypeError):
             continue
 
-        # Only future games
-        if game_dt <= today:
+        # Only today + future games (include today so key matchup graphic works)
+        if game_dt < today:
             continue
 
         # Parse opponent
@@ -373,7 +373,7 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
                 except ValueError:
                     continue
 
-            if not game_date or game_date <= today:
+            if not game_date or game_date < today:
                 continue
 
             # Get opponent
@@ -567,7 +567,7 @@ def parse_presto_future_games(html, team_db_name, season_year, today, team_map,
         if score_str and score_str != "-":
             continue
 
-        if not current_date or current_date <= today:
+        if not current_date or current_date < today:
             continue
 
         # Parse opponent
@@ -814,7 +814,7 @@ def extract_future_seattle_u_games(season_year, today, team_map):
         except ValueError:
             continue
 
-        if game_dt <= today:
+        if game_dt < today:
             continue
 
         # Parse competitors
