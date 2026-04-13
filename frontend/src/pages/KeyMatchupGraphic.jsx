@@ -67,68 +67,9 @@ function fmtIP(ip) {
   return String(whole + 1)
 }
 
-// ── TEAM COLORS: p=primary bar, t=bright text for dark bg ──
-const TC = {
-  'Oregon':       { p: '#154733', t: '#7dca5c' },
-  'Oregon St':    { p: '#DC4405', t: '#ff8c5a' },
-  'Washington':   { p: '#4B2E83', t: '#b89aff' },
-  'Wash St':      { p: '#981E32', t: '#ff6b7f' },
-  'Gonzaga':      { p: '#002967', t: '#6b9aff' },
-  'Portland':     { p: '#3E1F6B', t: '#b089ff' },
-  'Seattle U':    { p: '#AA0000', t: '#ff6666' },
-  'CWU':          { p: '#B1040E', t: '#ff6b6b' },
-  'WWU':          { p: '#003F87', t: '#6ba3ff' },
-  'SPU':          { p: '#4E2683', t: '#b089ff' },
-  'SFU':          { p: '#CC0633', t: '#ff6680' },
-  'MSU Billings': { p: '#FFB81C', t: '#ffd666' },
-  'MSUB':         { p: '#FFB81C', t: '#ffd666' },
-  'SMU':          { p: '#004990', t: '#5599ff' },
-  'NNU':          { p: '#F7941D', t: '#ffb74d' },
-  'WOU':          { p: '#E41C38', t: '#ff6b7f' },
-  'Concordia':    { p: '#002855', t: '#5588cc' },
-  'Corban':       { p: '#003262', t: '#5588cc' },
-  'EOU':          { p: '#003DA5', t: '#5599ff' },
-  'L&C':          { p: '#B5A36A', t: '#d4c898' },
-  'Lewis-Clark':  { p: '#003DA5', t: '#5599ff' },
-  'Linfield':     { p: '#6E2585', t: '#b66bdd' },
-  'George Fox':   { p: '#00205B', t: '#5577bb' },
-  'Pacific':      { p: '#000000', t: '#aaaaaa' },
-  'PLU':          { p: '#000000', t: '#d4b84d' },
-  'Puget Sound':  { p: '#8B2332', t: '#dd6677' },
-  'Whitman':      { p: '#1C5BA2', t: '#6ba3ff' },
-  'Whitworth':    { p: '#A6192E', t: '#dd6677' },
-  'Willamette':   { p: '#862633', t: '#cc7788' },
-  'Bushnell':     { p: '#002D72', t: '#5588cc' },
-  'Edmonds':      { p: '#003DA5', t: '#5599ff' },
-  'Everett':      { p: '#00703C', t: '#4dd9a0' },
-  'Skagit Valley':{ p: '#003DA5', t: '#5599ff' },
-  'Shoreline':    { p: '#003DA5', t: '#5599ff' },
-  'Bellevue':     { p: '#003DA5', t: '#d4b84d' },
-  'Olympic':      { p: '#002855', t: '#5588cc' },
-  'Pierce':       { p: '#002D72', t: '#ffb74d' },
-  'Tacoma':       { p: '#00205B', t: '#ff6666' },
-  'Centralia':    { p: '#006747', t: '#4dd9a0' },
-  'Grays Harbor': { p: '#002855', t: '#ffb74d' },
-  'L Columbia':   { p: '#C8102E', t: '#ff6b6b' },
-  'Clark':        { p: '#003DA5', t: '#5599ff' },
-  'Chemeketa':    { p: '#003DA5', t: '#ff6666' },
-  'SW Oregon':    { p: '#003DA5', t: '#5599ff' },
-  'Clackamas':    { p: '#006747', t: '#4dd9a0' },
-  'Lane':         { p: '#003DA5', t: '#ff6666' },
-  'Mt Hood':      { p: '#003DA5', t: '#ffb74d' },
-  'Linn-Benton':  { p: '#003DA5', t: '#5599ff' },
-  'Treasure Val': { p: '#003DA5', t: '#ff6666' },
-  'Blue Mountain':{ p: '#003DA5', t: '#5599ff' },
-  'Columbia Basin':{ p: '#B5121B', t: '#ff6b6b' },
-  'Walla Walla':  { p: '#006747', t: '#4dd9a0' },
-  'Wenatchee Val':{ p: '#003DA5', t: '#ff6666' },
-  'Yakima Valley':{ p: '#003DA5', t: '#ff6666' },
-  'Big Bend':     { p: '#003DA5', t: '#5599ff' },
-  'Spokane':      { p: '#C8102E', t: '#ff6b6b' },
-  'Spokane Falls':{ p: '#000000', t: '#ff6666' },
-}
-const DEFAULT_C = { p: '#00687a', t: '#4dd9c0' }
-function getTC(name) { return TC[name] || DEFAULT_C }
+// ── STANDARDIZED SIDE COLORS: left (away) = navy blue, right (home) = teal ──
+const LEFT_C  = { p: '#1e3a5f', t: '#6ba3ff' }   // navy blue / light blue accent
+const RIGHT_C = { p: '#00687a', t: '#4dd9c0' }    // teal / light teal accent
 
 // ── DESIGN TOKENS ──
 const BG = '#0f172a'
@@ -150,7 +91,7 @@ async function drawGraphic(canvas, data, pred) {
   if (teams.length < 2) return
   const away = teams.find(t => t.side === 'away') || teams[0]
   const home = teams.find(t => t.side === 'home') || teams[1]
-  const ac = getTC(away.short_name), hc = getTC(home.short_name)
+  const ac = LEFT_C, hc = RIGHT_C
   const P = 16, W = S - P * 2, half = W / 2
 
   // BG
