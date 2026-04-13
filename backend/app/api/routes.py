@@ -10463,3 +10463,225 @@ def recruiting_breakdown(season: int = 2026):
         # Sort by win_pct descending by default
         results.sort(key=lambda x: x["win_pct"], reverse=True)
         return results
+
+
+# ============================================================
+# Team Stats Aggregation
+# ============================================================
+
+@router.get("/team-stats")
+def team_stats(
+    season: int = Query(..., description="Season year"),
+    stat_type: str = Query("hitting", description="'hitting' or 'pitching'"),
+    level: str = Query("all", description="Division level filter: all, D1, D2, D3, NAIA, JUCO"),
+):
+    """
+    Aggregated team-level stats for all teams in a season.
+    Returns one row per team with all available stats.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        if stat_type == "hitting":
+            cur.execute("""
+                SELECT
+                    t.id as team_id,
+                    t.short_name as team_name,
+                    t.logo_url,
+                    c.name as conference_name,
+                    c.abbreviation as conference_abbrev,
+                    d.level as division_level,
+                    COALESCE(s.wins, 0) as wins,
+                    COALESCE(s.losses, 0) as losses,
+                    -- Counting stats
+                    SUM(b.games) as games,
+                    SUM(b.plate_appearances) as pa,
+                    SUM(b.at_bats) as ab,
+                    SUM(b.runs) as r,
+                    SUM(b.hits) as h,
+                    SUM(b.doubles) as "2b",
+                    SUM(b.triples) as "3b",
+                    SUM(b.home_runs) as hr,
+                    SUM(b.rbi) as rbi,
+                    SUM(b.walks) as bb,
+                    SUM(b.strikeouts) as so,
+                    SUM(b.hit_by_pitch) as hbp,
+                    SUM(b.sacrifice_flies) as sf,
+                    SUM(b.sacrifice_bunts) as sh,
+                    SUM(b.stolen_bases) as sb,
+                    SUM(b.caught_stealing) as cs,
+                    SUM(b.grounded_into_dp) as gdp,
+                    -- Rate stats (weighted by PA or AB)
+                    CASE WHEN SUM(b.at_bats) > 0
+                         THEN ROUND(SUM(b.hits)::numeric / SUM(b.at_bats), 3)
+                         ELSE NULL END as avg,
+                    CASE WHEN SUM(b.plate_appearances) > 0
+                         THEN ROUND((SUM(b.hits) + SUM(b.walks) + SUM(COALESCE(b.hit_by_pitch,0)))::numeric
+                              / SUM(b.plate_appearances), 3)
+                         ELSE NULL END as obp,
+                    CASE WHEN SUM(b.at_bats) > 0
+                         THEN ROUND((SUM(b.hits) + SUM(b.doubles) + 2*SUM(b.triples) + 3*SUM(b.home_runs))::numeric
+                              / SUM(b.at_bats), 3)
+                         ELSE NULL END as slg,
+                    CASE WHEN SUM(b.at_bats) > 0 AND SUM(b.plate_appearances) > 0
+                         THEN ROUND(
+                              (SUM(b.hits) + SUM(b.walks) + SUM(COALESCE(b.hit_by_pitch,0)))::numeric / SUM(b.plate_appearances)
+                              + (SUM(b.hits) + SUM(b.doubles) + 2*SUM(b.triples) + 3*SUM(b.home_runs))::numeric / SUM(b.at_bats),
+                              3)
+                         ELSE NULL END as ops,
+                    CASE WHEN SUM(b.at_bats) > 0
+                         THEN ROUND(
+                              ((SUM(b.hits) + SUM(b.doubles) + 2*SUM(b.triples) + 3*SUM(b.home_runs))::numeric / SUM(b.at_bats))
+                              - (SUM(b.hits)::numeric / SUM(b.at_bats)),
+                              3)
+                         ELSE NULL END as iso,
+                    CASE WHEN (SUM(b.at_bats) - SUM(b.strikeouts) - SUM(b.home_runs) + SUM(COALESCE(b.sacrifice_flies,0))) > 0
+                         THEN ROUND(
+                              (SUM(b.hits) - SUM(b.home_runs))::numeric
+                              / (SUM(b.at_bats) - SUM(b.strikeouts) - SUM(b.home_runs) + SUM(COALESCE(b.sacrifice_flies,0))),
+                              3)
+                         ELSE NULL END as babip,
+                    CASE WHEN SUM(b.plate_appearances) > 0
+                         THEN ROUND(SUM(b.walks)::numeric / SUM(b.plate_appearances) * 100, 1)
+                         ELSE NULL END as bb_pct,
+                    CASE WHEN SUM(b.plate_appearances) > 0
+                         THEN ROUND(SUM(b.strikeouts)::numeric / SUM(b.plate_appearances) * 100, 1)
+                         ELSE NULL END as k_pct,
+                    -- Weighted advanced stats (PA-weighted averages)
+                    CASE WHEN SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END) > 0
+                         THEN ROUND(
+                              SUM(CASE WHEN b.plate_appearances >= 10 THEN b.wrc_plus * b.plate_appearances ELSE 0 END)::numeric
+                              / SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END),
+                              1)
+                         ELSE NULL END as wrc_plus,
+                    CASE WHEN SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END) > 0
+                         THEN ROUND(
+                              SUM(CASE WHEN b.plate_appearances >= 10 THEN b.woba * b.plate_appearances ELSE 0 END)::numeric
+                              / SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END),
+                              3)
+                         ELSE NULL END as woba,
+                    ROUND(SUM(COALESCE(b.wraa, 0))::numeric, 1) as wraa,
+                    ROUND(SUM(COALESCE(b.wrc, 0))::numeric, 1) as wrc,
+                    ROUND(SUM(COALESCE(b.offensive_war, 0))::numeric, 1) as owar
+                FROM teams t
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+                LEFT JOIN batting_stats b ON b.team_id = t.id AND b.season = %s
+                WHERE t.is_active = 1
+                  AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
+                GROUP BY t.id, t.short_name, t.logo_url, c.name, c.abbreviation,
+                         d.level, s.wins, s.losses
+                HAVING SUM(b.plate_appearances) > 0
+                ORDER BY t.short_name
+            """, (season, season))
+        else:
+            # Pitching
+            cur.execute("""
+                SELECT
+                    t.id as team_id,
+                    t.short_name as team_name,
+                    t.logo_url,
+                    c.name as conference_name,
+                    c.abbreviation as conference_abbrev,
+                    d.level as division_level,
+                    COALESCE(s.wins, 0) as wins,
+                    COALESCE(s.losses, 0) as losses,
+                    -- Counting stats
+                    SUM(p.games) as g,
+                    SUM(p.games_started) as gs,
+                    SUM(p.wins) as w,
+                    SUM(p.losses) as l,
+                    SUM(p.saves) as sv,
+                    SUM(p.complete_games) as cg,
+                    SUM(p.shutouts) as sho,
+                    ROUND(SUM(p.innings_pitched)::numeric, 1) as ip,
+                    SUM(p.hits_allowed) as h,
+                    SUM(p.runs_allowed) as r,
+                    SUM(p.earned_runs) as er,
+                    SUM(p.walks) as bb,
+                    SUM(p.strikeouts) as so,
+                    SUM(p.home_runs_allowed) as hr,
+                    SUM(p.hit_batters) as hbp,
+                    SUM(p.wild_pitches) as wp,
+                    SUM(p.batters_faced) as bf,
+                    -- Rate stats
+                    CASE WHEN SUM(p.innings_pitched) > 0
+                         THEN ROUND((SUM(p.earned_runs) * 9.0 / SUM(p.innings_pitched))::numeric, 2)
+                         ELSE NULL END as era,
+                    CASE WHEN SUM(p.innings_pitched) > 0
+                         THEN ROUND(((SUM(p.walks) + SUM(p.hits_allowed)) / SUM(p.innings_pitched))::numeric, 2)
+                         ELSE NULL END as whip,
+                    CASE WHEN SUM(p.innings_pitched) > 0
+                         THEN ROUND((SUM(p.strikeouts) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
+                         ELSE NULL END as k_per_9,
+                    CASE WHEN SUM(p.innings_pitched) > 0
+                         THEN ROUND((SUM(p.walks) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
+                         ELSE NULL END as bb_per_9,
+                    CASE WHEN SUM(p.innings_pitched) > 0
+                         THEN ROUND((SUM(p.hits_allowed) * 9.0 / SUM(p.innings_pitched))::numeric, 1)
+                         ELSE NULL END as h_per_9,
+                    CASE WHEN SUM(p.innings_pitched) > 0
+                         THEN ROUND((SUM(p.home_runs_allowed) * 9.0 / SUM(p.innings_pitched))::numeric, 2)
+                         ELSE NULL END as hr_per_9,
+                    CASE WHEN SUM(p.walks) > 0
+                         THEN ROUND((SUM(p.strikeouts)::numeric / SUM(p.walks))::numeric, 2)
+                         ELSE NULL END as k_bb,
+                    CASE WHEN SUM(p.batters_faced) > 0
+                         THEN ROUND(SUM(p.strikeouts)::numeric / SUM(p.batters_faced) * 100, 1)
+                         ELSE NULL END as k_pct,
+                    CASE WHEN SUM(p.batters_faced) > 0
+                         THEN ROUND(SUM(p.walks)::numeric / SUM(p.batters_faced) * 100, 1)
+                         ELSE NULL END as bb_pct,
+                    -- Opponent batting average (H / (BF - BB - HBP))
+                    CASE WHEN (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0))) > 0
+                         THEN ROUND(SUM(p.hits_allowed)::numeric
+                              / (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0))),
+                              3)
+                         ELSE NULL END as opp_avg,
+                    -- Weighted advanced stats (IP-weighted averages)
+                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END) > 0
+                         THEN ROUND(
+                              SUM(CASE WHEN p.innings_pitched >= 3 THEN p.fip * p.innings_pitched ELSE 0 END)::numeric
+                              / SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END),
+                              2)
+                         ELSE NULL END as fip,
+                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END) > 0
+                         THEN ROUND(
+                              SUM(CASE WHEN p.innings_pitched >= 3 THEN p.xfip * p.innings_pitched ELSE 0 END)::numeric
+                              / SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END),
+                              2)
+                         ELSE NULL END as xfip,
+                    CASE WHEN SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END) > 0
+                         THEN ROUND(
+                              SUM(CASE WHEN p.innings_pitched >= 3 THEN COALESCE(p.siera, p.fip) * p.innings_pitched ELSE 0 END)::numeric
+                              / SUM(CASE WHEN p.innings_pitched >= 3 THEN p.innings_pitched ELSE 0 END),
+                              2)
+                         ELSE NULL END as siera,
+                    CASE WHEN (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0)) - SUM(p.strikeouts) - SUM(p.home_runs_allowed)) > 0
+                         THEN ROUND(
+                              (SUM(p.hits_allowed) - SUM(p.home_runs_allowed))::numeric
+                              / (SUM(p.batters_faced) - SUM(COALESCE(p.walks,0)) - SUM(COALESCE(p.hit_batters,0)) - SUM(p.strikeouts) - SUM(p.home_runs_allowed)),
+                              3)
+                         ELSE NULL END as babip,
+                    ROUND(SUM(COALESCE(p.pitching_war, 0))::numeric, 1) as pwar
+                FROM teams t
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+                LEFT JOIN pitching_stats p ON p.team_id = t.id AND p.season = %s
+                WHERE t.is_active = 1
+                  AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
+                GROUP BY t.id, t.short_name, t.logo_url, c.name, c.abbreviation,
+                         d.level, s.wins, s.losses
+                HAVING SUM(p.innings_pitched) > 0
+                ORDER BY t.short_name
+            """, (season, season))
+
+        rows = cur.fetchall()
+
+        # Apply level filter
+        if level and level != "all":
+            rows = [r for r in rows if r["division_level"] == level]
+
+        return rows

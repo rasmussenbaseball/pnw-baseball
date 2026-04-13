@@ -24,6 +24,7 @@ function RequireAdmin({ children }) {
 import BattingLeaderboard from './pages/BattingLeaderboard'
 import PitchingLeaderboard from './pages/PitchingLeaderboard'
 import WarLeaderboard from './pages/WarLeaderboard'
+import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
 import TeamDetail from './pages/TeamDetail'
 import TeamComparison from './pages/TeamComparison'
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="/hitting" element={<BattingLeaderboard />} />
           <Route path="/pitching" element={<PitchingLeaderboard />} />
           <Route path="/war" element={<WarLeaderboard />} />
+          <Route path="/team-stats" element={<TeamStatsPage />} />
           <Route path="/scatter" element={<ScatterPlot />} />
           <Route path="/summerball" element={<SummerballData />} />
           <Route path="/stat-leaders" element={<StatLeaders />} />

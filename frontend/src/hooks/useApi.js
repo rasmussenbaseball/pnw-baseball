@@ -102,6 +102,13 @@ export function useWarLeaderboard(params) {
 }
 
 /**
+ * Fetch team-level aggregated stats.
+ */
+export function useTeamStatsAgg(params) {
+  return useApi('/team-stats', params, [JSON.stringify(params)])
+}
+
+/**
  * Summer league batting leaderboard.
  */
 export function useSummerBattingLeaderboard(params) {

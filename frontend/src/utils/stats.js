@@ -125,6 +125,9 @@ export function formatStat(value, format) {
       return value.toFixed(2)
     case 'pct':
       return (value * 100).toFixed(1) + '%'
+    case 'pctRaw':
+      // Value already in percentage form (e.g. 12.5 means 12.5%)
+      return value.toFixed(1) + '%'
     case 'war':
       return value.toFixed(1)
     case 'ip':
@@ -172,6 +175,109 @@ export const PITCHING_PRESETS = {
 // Presets that apply special backend filters (e.g. Relievers → max_gs=0)
 export const PITCHING_PRESET_FILTERS = {
   'Relievers': { max_gs: 0, min_ip: 10 },
+}
+
+// ============================================================
+// Team Stats Columns & Presets
+// ============================================================
+
+export const TEAM_BATTING_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'team_name', label: 'Team', width: 140, sortable: false },
+  { key: 'division_level', label: 'Lvl', width: 50, sortable: false },
+  { key: 'record', label: 'W-L', width: 60, sortable: false },
+
+  // Counting
+  { key: 'pa', label: 'PA', width: 45, format: 'int' },
+  { key: 'ab', label: 'AB', width: 45, format: 'int' },
+  { key: 'r', label: 'R', width: 40, format: 'int' },
+  { key: 'h', label: 'H', width: 40, format: 'int' },
+  { key: '2b', label: '2B', width: 40, format: 'int' },
+  { key: '3b', label: '3B', width: 40, format: 'int' },
+  { key: 'hr', label: 'HR', width: 40, format: 'int' },
+  { key: 'rbi', label: 'RBI', width: 45, format: 'int' },
+  { key: 'bb', label: 'BB', width: 40, format: 'int' },
+  { key: 'so', label: 'K', width: 40, format: 'int' },
+  { key: 'hbp', label: 'HBP', width: 40, format: 'int' },
+  { key: 'sb', label: 'SB', width: 40, format: 'int' },
+  { key: 'cs', label: 'CS', width: 40, format: 'int' },
+  { key: 'gdp', label: 'GDP', width: 40, format: 'int' },
+  { key: 'sf', label: 'SF', width: 40, format: 'int' },
+  { key: 'sh', label: 'SH', width: 40, format: 'int' },
+
+  // Rate
+  { key: 'avg', label: 'AVG', width: 55, format: 'avg', tooltip: 'Team Batting Average' },
+  { key: 'obp', label: 'OBP', width: 55, format: 'avg', tooltip: 'Team On-Base Percentage' },
+  { key: 'slg', label: 'SLG', width: 55, format: 'avg', tooltip: 'Team Slugging Percentage' },
+  { key: 'ops', label: 'OPS', width: 55, format: 'avg', tooltip: 'Team OPS' },
+  { key: 'iso', label: 'ISO', width: 55, format: 'avg', tooltip: 'Team Isolated Power' },
+  { key: 'babip', label: 'BABIP', width: 55, format: 'avg', tooltip: 'Team BABIP' },
+  { key: 'bb_pct', label: 'BB%', width: 55, format: 'pctRaw', tooltip: 'Team Walk Rate' },
+  { key: 'k_pct', label: 'K%', width: 55, format: 'pctRaw', tooltip: 'Team Strikeout Rate' },
+
+  // Advanced
+  { key: 'wrc_plus', label: 'wRC+', width: 55, format: 'int', tooltip: 'PA-weighted team wRC+' },
+  { key: 'woba', label: 'wOBA', width: 55, format: 'avg', tooltip: 'PA-weighted team wOBA' },
+  { key: 'wraa', label: 'wRAA', width: 55, format: 'war', tooltip: 'Team Weighted Runs Above Average' },
+  { key: 'wrc', label: 'wRC', width: 55, format: 'war', tooltip: 'Team Weighted Runs Created' },
+  { key: 'owar', label: 'oWAR', width: 55, format: 'war', tooltip: 'Team Offensive WAR' },
+]
+
+export const TEAM_PITCHING_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'team_name', label: 'Team', width: 140, sortable: false },
+  { key: 'division_level', label: 'Lvl', width: 50, sortable: false },
+  { key: 'record', label: 'W-L', width: 60, sortable: false },
+
+  // Counting
+  { key: 'ip', label: 'IP', width: 50, format: 'ip' },
+  { key: 'w', label: 'W', width: 35, format: 'int' },
+  { key: 'l', label: 'L', width: 35, format: 'int' },
+  { key: 'sv', label: 'SV', width: 35, format: 'int' },
+  { key: 'g', label: 'G', width: 35, format: 'int' },
+  { key: 'gs', label: 'GS', width: 35, format: 'int' },
+  { key: 'cg', label: 'CG', width: 35, format: 'int' },
+  { key: 'sho', label: 'SHO', width: 40, format: 'int' },
+  { key: 'h', label: 'H', width: 40, format: 'int' },
+  { key: 'r', label: 'R', width: 40, format: 'int' },
+  { key: 'er', label: 'ER', width: 40, format: 'int' },
+  { key: 'bb', label: 'BB', width: 40, format: 'int' },
+  { key: 'so', label: 'K', width: 40, format: 'int' },
+  { key: 'hr', label: 'HR', width: 40, format: 'int' },
+  { key: 'hbp', label: 'HBP', width: 40, format: 'int' },
+  { key: 'wp', label: 'WP', width: 40, format: 'int' },
+  { key: 'bf', label: 'BF', width: 45, format: 'int' },
+
+  // Rate
+  { key: 'era', label: 'ERA', width: 55, format: 'era', tooltip: 'Team ERA' },
+  { key: 'whip', label: 'WHIP', width: 55, format: 'era', tooltip: 'Team WHIP' },
+  { key: 'k_per_9', label: 'K/9', width: 55, format: 'era', tooltip: 'Strikeouts per 9 innings' },
+  { key: 'bb_per_9', label: 'BB/9', width: 55, format: 'era', tooltip: 'Walks per 9 innings' },
+  { key: 'h_per_9', label: 'H/9', width: 55, format: 'era', tooltip: 'Hits per 9 innings' },
+  { key: 'hr_per_9', label: 'HR/9', width: 55, format: 'era', tooltip: 'Home Runs per 9 innings' },
+  { key: 'k_bb', label: 'K/BB', width: 55, format: 'era', tooltip: 'Strikeout to Walk ratio' },
+  { key: 'k_pct', label: 'K%', width: 55, format: 'pctRaw', tooltip: 'Strikeout Rate' },
+  { key: 'bb_pct', label: 'BB%', width: 55, format: 'pctRaw', tooltip: 'Walk Rate' },
+  { key: 'opp_avg', label: 'OPP AVG', width: 65, format: 'avg', tooltip: 'Opponent Batting Average' },
+
+  // Advanced
+  { key: 'fip', label: 'FIP', width: 55, format: 'era', tooltip: 'IP-weighted team FIP' },
+  { key: 'xfip', label: 'xFIP', width: 55, format: 'era', tooltip: 'IP-weighted team xFIP' },
+  { key: 'siera', label: 'SIERA', width: 55, format: 'era', tooltip: 'IP-weighted team SIERA' },
+  { key: 'babip', label: 'BABIP', width: 60, format: 'avg', tooltip: 'Team BABIP Against' },
+  { key: 'pwar', label: 'WAR', width: 55, format: 'war', tooltip: 'Team Pitching WAR' },
+]
+
+export const TEAM_BATTING_PRESETS = {
+  'Standard': ['pa', 'r', 'h', '2b', '3b', 'hr', 'rbi', 'bb', 'so', 'sb', 'avg', 'obp', 'slg', 'ops'],
+  'Advanced': ['pa', 'avg', 'obp', 'slg', 'ops', 'woba', 'wrc_plus', 'iso', 'babip', 'bb_pct', 'k_pct', 'owar'],
+  'Counting': ['pa', 'ab', 'r', 'h', '2b', '3b', 'hr', 'rbi', 'bb', 'so', 'hbp', 'sb', 'cs', 'gdp', 'sf', 'sh'],
+}
+
+export const TEAM_PITCHING_PRESETS = {
+  'Standard': ['ip', 'w', 'l', 'sv', 'so', 'bb', 'h', 'er', 'hr', 'era', 'whip', 'opp_avg'],
+  'Advanced': ['ip', 'era', 'fip', 'xfip', 'siera', 'whip', 'k_pct', 'bb_pct', 'k_bb', 'babip', 'opp_avg', 'pwar'],
+  'Counting': ['ip', 'g', 'gs', 'w', 'l', 'sv', 'cg', 'sho', 'h', 'r', 'er', 'bb', 'so', 'hr', 'hbp', 'wp', 'bf'],
 }
 
 // ============================================================

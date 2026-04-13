@@ -11,6 +11,7 @@ const NAV = [
       { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 10 in key categories' },
       { to: '/hitting', label: 'Hitting', desc: 'Batting leaderboards & stats' },
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
+      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
       { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
       { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
