@@ -6428,16 +6428,14 @@ def key_matchup(
                         for r in cur.fetchall():
                             fs_team_info[r["id"]] = dict(r)
 
-                    for fg in fs_games:
+                    for idx, fg in enumerate(fs_games):
                         h = fg.get("home_team_id")
                         a = fg.get("away_team_id")
                         if h and a and (h, a) not in existing_keys:
-                            existing_keys.add((h, a))
-                            existing_keys.add((a, h))
                             hi = fs_team_info.get(h, {})
                             ai = fs_team_info.get(a, {})
                             games.append({
-                                "id": f"future_{h}_{a}",
+                                "id": f"future_{h}_{a}_{idx}",
                                 "game_date": fg["game_date"],
                                 "status": "scheduled",
                                 "is_conference_game": fg.get("is_conference", False),
