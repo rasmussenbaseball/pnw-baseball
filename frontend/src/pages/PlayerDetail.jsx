@@ -642,10 +642,17 @@ const BATTING_GAMELOG_COLS = [
   { key: 'ab',         label: 'AB' },
   { key: 'r',          label: 'R' },
   { key: 'h',          label: 'H' },
+  { key: '2b',         label: '2B' },
+  { key: '3b',         label: '3B' },
+  { key: 'hr',         label: 'HR' },
   { key: 'rbi',        label: 'RBI' },
   { key: 'bb',         label: 'BB' },
   { key: 'k',          label: 'K' },
-  { key: 'lob',        label: 'LOB' },
+  { key: 'hbp',        label: 'HBP' },
+  { key: 'sb',         label: 'SB' },
+  { key: 'cs',         label: 'CS' },
+  { key: 'sf',         label: 'SF' },
+  { key: 'sh',         label: 'SH' },
 ]
 
 const PITCHING_GAMELOG_COLS = [
