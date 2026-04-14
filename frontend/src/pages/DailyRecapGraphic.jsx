@@ -71,8 +71,23 @@ const COLORS = {
   text_gray: '#64748b',
 }
 
-// ── Draw large scorebug for daily recap ──
-async function drawDailyScoreBug(ctx, game, x, y, w, h) {
+// Minimum performance thresholds - just filters out bad games
+const MIN_HITTING_SCORE = 2.0   // ~1-for-3 with an RBI or run scored
+const MIN_PITCHING_SCORE = 3.0  // ~3 IP with a couple Ks and few ER
+
+function filterTopPerformers(performers, maxCount = 6) {
+  if (!performers) return []
+  return performers
+    .filter(p => {
+      const threshold = p.type === 'pitcher' ? MIN_PITCHING_SCORE : MIN_HITTING_SCORE
+      return (p.perf_score || 0) >= threshold
+    })
+    .sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
+    .slice(0, maxCount)
+}
+
+// ── Draw combined scorebug with inning-by-inning built in ──
+async function drawScoreBugWithInnings(ctx, game, x, y, w, h) {
   const away = cleanTeamName(game.away_short)
   const home = cleanTeamName(game.home_short)
   const aScore = game.away_score ?? '-'
@@ -90,8 +105,8 @@ async function drawDailyScoreBug(ctx, game, x, y, w, h) {
   ctx.lineWidth = 1
   ctx.stroke()
 
-  // Header bar with date + FINAL
-  const headerH = 28
+  // Green header bar
+  const headerH = 26
   ctx.save()
   roundRect(ctx, x, y, w, headerH, radius)
   ctx.clip()
@@ -99,47 +114,58 @@ async function drawDailyScoreBug(ctx, game, x, y, w, h) {
   ctx.fillRect(x, y, w, headerH)
   ctx.restore()
 
-  const dateLabel = game.game_date ? shortDate(game.game_date) : ''
   ctx.fillStyle = COLORS.white
-  ctx.font = '700 13px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(dateLabel, x + pad, y + headerH / 2)
-
-  ctx.fillStyle = COLORS.white
-  ctx.font = '700 13px "Inter", system-ui, sans-serif'
+  ctx.font = '700 12px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
   ctx.fillText('FINAL', x + w - pad, y + headerH / 2)
 
-  // R/H/E column headers
-  const rheColW = 38
-  const rheX = x + w - pad - rheColW * 3
-  const rheHeaderY = y + headerH + 6
+  // Layout: [Logo+Name] [1 2 3 4 5 6 7 8 9] [R H E]
+  const logoSize = 32
+  const nameAreaW = 160
+  const rheAreaW = 120  // R, H, E columns
+  const innAreaW = w - nameAreaW - rheAreaW - pad * 2
+  const innX = x + nameAreaW
+  const rheX = x + w - rheAreaW - pad
+  const innColW = innAreaW / 9
+  const rheColW = rheAreaW / 3
+
+  // Inning column headers
+  const colHeaderY = y + headerH + 4
   ctx.fillStyle = COLORS.text_gray
   ctx.font = '600 10px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 8)
-  ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 8)
-  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 8)
+  ctx.textBaseline = 'middle'
+  for (let i = 0; i < 9; i++) {
+    ctx.fillText(String(i + 1), innX + i * innColW + innColW / 2, colHeaderY + 7)
+  }
+  ctx.fillText('R', rheX + rheColW * 0.5, colHeaderY + 7)
+  ctx.fillText('H', rheX + rheColW * 1.5, colHeaderY + 7)
+  ctx.fillText('E', rheX + rheColW * 2.5, colHeaderY + 7)
 
-  // Team rows
-  const teamTop = rheHeaderY + 18
-  const rowH = (y + h - teamTop - 28) / 2
-  const logoSize = 36
+  // Get inning scores
+  const awayLine = game.away_line_score || []
+  const homeLine = game.home_line_score || []
 
-  for (let i = 0; i < 2; i++) {
-    const isAway = i === 0
+  // Two team rows
+  const rowTop = colHeaderY + 18
+  const rowH = (y + h - rowTop - 30) / 2
+
+  for (let t = 0; t < 2; t++) {
+    const isAway = t === 0
     const teamName = isAway ? away : home
     const score = isAway ? aScore : hScore
     const won = isAway ? aWon : hWon
     const logo = isAway ? game.away_logo : game.home_logo
     const hits = isAway ? game.away_hits : game.home_hits
     const errors = isAway ? game.away_errors : game.home_errors
-    const ry = teamTop + i * rowH
+    const lineScore = isAway ? awayLine : homeLine
+    const ry = rowTop + t * rowH
     const midY = ry + rowH / 2
 
-    if (i === 1) {
-      ctx.fillStyle = '#f0f4e8'
+    // Separator
+    if (t === 1) {
+      ctx.fillStyle = '#e2e8f0'
       ctx.fillRect(x + pad, ry - 1, w - pad * 2, 0.5)
     }
 
@@ -154,172 +180,107 @@ async function drawDailyScoreBug(ctx, game, x, y, w, h) {
         ctx.drawImage(img, curX + (logoSize - dw) / 2, midY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
-    curX += logoSize + 12
+    curX += logoSize + 8
 
     // Team name
-    const maxNameW = rheX - curX - 4
     ctx.fillStyle = won ? COLORS.text_dark : COLORS.text_gray
-    ctx.font = `${won ? '700' : '500'} 18px "Inter", system-ui, sans-serif`
+    ctx.font = `${won ? '700' : '500'} 16px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     let display = teamName
+    const maxNameW = innX - curX - 6
     while (ctx.measureText(display).width > maxNameW && display.length > 2) display = display.slice(0, -1)
     if (display !== teamName) display += '.'
     ctx.fillText(display, curX, midY)
 
-    // R/H/E values
+    // Inning scores
+    ctx.font = '500 13px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'center'
+    ctx.fillStyle = COLORS.text_dark
+    for (let i = 0; i < 9; i++) {
+      const val = i < lineScore.length && lineScore[i] != null ? lineScore[i] : '-'
+      ctx.fillText(String(val), innX + i * innColW + innColW / 2, midY)
+    }
+
+    // R (bold), H, E
     ctx.fillStyle = won ? COLORS.text_dark : COLORS.text_gray
-    ctx.font = `${won ? '800' : '600'} 22px "Inter", system-ui, sans-serif`
+    ctx.font = `${won ? '800' : '600'} 20px "Inter", system-ui, sans-serif`
     ctx.fillText(String(score), rheX + rheColW * 0.5, midY)
-    ctx.fillStyle = COLORS.text_gray
     ctx.font = '500 14px "Inter", system-ui, sans-serif'
+    ctx.fillStyle = COLORS.text_gray
     ctx.fillText(hits != null ? String(hits) : '-', rheX + rheColW * 1.5, midY)
     ctx.fillText(errors != null ? String(errors) : '-', rheX + rheColW * 2.5, midY)
   }
 
   // W/L/S pitchers at bottom
-  const wlY = y + h - 12
+  const wlY = y + h - 14
   const wlParts = []
   if (game.win_pitcher) wlParts.push({ label: 'W', name: game.win_pitcher, color: '#16a34a' })
   if (game.loss_pitcher) wlParts.push({ label: 'L', name: game.loss_pitcher, color: '#dc2626' })
   if (game.save_pitcher) wlParts.push({ label: 'S', name: game.save_pitcher, color: '#2563eb' })
   if (wlParts.length > 0) {
     ctx.textBaseline = 'middle'
-    ctx.textAlign = 'center'
     const gap = 14
     let totalW = 0
     wlParts.forEach((p, i) => {
-      ctx.font = '700 12px "Inter", system-ui, sans-serif'
+      ctx.font = '700 11px "Inter", system-ui, sans-serif'
       totalW += ctx.measureText(`${p.label}: `).width
-      ctx.font = '600 12px "Inter", system-ui, sans-serif'
+      ctx.font = '500 11px "Inter", system-ui, sans-serif'
       totalW += ctx.measureText(p.name).width
       if (i < wlParts.length - 1) totalW += gap
     })
     let drawX = x + (w - totalW) / 2
-    wlParts.forEach((p, i) => {
+    wlParts.forEach((p) => {
       ctx.textAlign = 'left'
       ctx.fillStyle = p.color
-      ctx.font = '700 12px "Inter", system-ui, sans-serif'
+      ctx.font = '700 11px "Inter", system-ui, sans-serif'
       const labelStr = `${p.label}: `
       ctx.fillText(labelStr, drawX, wlY)
       drawX += ctx.measureText(labelStr).width
       ctx.fillStyle = '#334155'
-      ctx.font = '600 12px "Inter", system-ui, sans-serif'
+      ctx.font = '500 11px "Inter", system-ui, sans-serif'
       ctx.fillText(p.name, drawX, wlY)
       drawX += ctx.measureText(p.name).width + gap
     })
   }
 }
 
-// ── Draw inning-by-inning linescore table ──
-function drawLinescore(ctx, game, x, y, w, h) {
-  const pad = 6
-  const radius = 4
-
-  // Card background
-  roundRect(ctx, x, y, w, h, radius)
-  ctx.fillStyle = COLORS.white
-  ctx.fill()
-  ctx.strokeStyle = '#cbd5e1'
-  ctx.lineWidth = 1
-  ctx.stroke()
-
-  // Build columns: Team | 1-9 | R H E
-  const cols = ['TEAM', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'R', 'H', 'E']
-  const numCols = cols.length
-  const teamColW = 60
-  const innColW = (w - teamColW) / (numCols - 1)
-  const rowH = h / 3
-
-  // Get inning scores from line_score arrays
-  const awayLine = game.away_line_score || []
-  const homeLine = game.home_line_score || []
-  const aInn = Array(9).fill('-')
-  const hInn = Array(9).fill('-')
-  for (let i = 0; i < 9; i++) {
-    if (i < awayLine.length && awayLine[i] != null) aInn[i] = awayLine[i]
-    if (i < homeLine.length && homeLine[i] != null) hInn[i] = homeLine[i]
-  }
-
-  // Header row
-  ctx.fillStyle = COLORS.green_dark
-  ctx.fillRect(x, y, w, rowH)
-  ctx.fillStyle = COLORS.white
-  ctx.font = '700 11px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-
-  ctx.fillText(cols[0], x + teamColW / 2, y + rowH / 2)
-  for (let i = 1; i < numCols; i++) {
-    const cx = x + teamColW + (i - 1) * innColW + innColW / 2
-    ctx.fillText(cols[i], cx, y + rowH / 2)
-  }
-
-  // Away team row
-  ctx.fillStyle = '#f8fafc'
-  ctx.fillRect(x, y + rowH, w, rowH)
-  ctx.fillStyle = COLORS.text_dark
-  ctx.font = '600 11px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-
-  const awayShort = cleanTeamName(game.away_short).substring(0, 4).toUpperCase()
-  ctx.fillText(awayShort, x + teamColW / 2, y + rowH + rowH / 2)
-  for (let i = 0; i < 9; i++) {
-    ctx.fillText(String(aInn[i]), x + teamColW + i * innColW + innColW / 2, y + rowH + rowH / 2)
-  }
-  // R, H, E
-  ctx.font = '700 11px "Inter", system-ui, sans-serif'
-  ctx.fillText(String(game.away_score ?? '-'), x + teamColW + 9 * innColW + innColW / 2, y + rowH + rowH / 2)
-  ctx.fillText(String(game.away_hits ?? '-'), x + teamColW + 10 * innColW + innColW / 2, y + rowH + rowH / 2)
-  ctx.fillText(String(game.away_errors ?? '-'), x + teamColW + 11 * innColW + innColW / 2, y + rowH + rowH / 2)
-
-  // Home team row
-  ctx.fillStyle = COLORS.white
-  ctx.fillRect(x, y + rowH * 2, w, rowH)
-  ctx.fillStyle = COLORS.text_dark
-  ctx.font = '600 11px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-
-  const homeShort = cleanTeamName(game.home_short).substring(0, 4).toUpperCase()
-  ctx.fillText(homeShort, x + teamColW / 2, y + rowH * 2 + rowH / 2)
-  for (let i = 0; i < 9; i++) {
-    ctx.fillText(String(hInn[i]), x + teamColW + i * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
-  }
-  ctx.font = '700 11px "Inter", system-ui, sans-serif'
-  ctx.fillText(String(game.home_score ?? '-'), x + teamColW + 9 * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
-  ctx.fillText(String(game.home_hits ?? '-'), x + teamColW + 10 * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
-  ctx.fillText(String(game.home_errors ?? '-'), x + teamColW + 11 * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
-}
-
-// ── Draw top performers section ──
+// ── Draw top performers in 2-column grid ──
 async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
   if (!performers || performers.length === 0) return 0
 
-  const pad = 12
-  const perfH = 65
-  const maxPerfs = 6
-  const perfs = performers.slice(0, maxPerfs)
-  const totalH = Math.min(perfs.length * perfH, maxH)
+  const pad = 8
+  const gap = 8
+  const colW = (w - gap) / 2
+  const perfH = 60
+  const perfs = filterTopPerformers(performers, 6)
+  if (perfs.length === 0) return 0
+
+  const rows = Math.ceil(perfs.length / 2)
+  const totalH = Math.min(rows * perfH, maxH)
 
   for (let i = 0; i < perfs.length; i++) {
     const p = perfs[i]
-    const py = y + i * perfH
-    const pMidY = py + perfH / 2
+    const col = i % 2
+    const row = Math.floor(i / 2)
+    const px = x + col * (colW + gap)
+    const py = y + row * perfH
 
     if (py + perfH > y + maxH) break
 
-    // Card background with rounded corners
-    roundRect(ctx, x, py, w, perfH - 4, 6)
-    ctx.fillStyle = i % 2 === 0 ? '#f8fafc' : COLORS.white
+    // Card background
+    roundRect(ctx, px, py, colW, perfH - 4, 6)
+    ctx.fillStyle = '#f8fafc'
     ctx.fill()
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 0.5
+    ctx.stroke()
 
-    let curX = x + pad
+    const pMidY = py + (perfH - 4) / 2
+    let curX = px + pad
 
     // Team logo
-    const logoSize = 36
+    const logoSize = 30
     if (p.team_logo) {
       try {
         const img = await loadImage(p.team_logo)
@@ -329,23 +290,31 @@ async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
         ctx.drawImage(img, curX + (logoSize - dw) / 2, pMidY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
-    curX += logoSize + 12
+    curX += logoSize + 8
 
-    // Player name (larger)
+    // Player name
     const name = p.player_name || 'Unknown'
     ctx.fillStyle = COLORS.text_dark
-    ctx.font = '700 18px "Inter", system-ui, sans-serif'
+    ctx.font = '700 14px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText(name, curX, pMidY - 10)
+    // Truncate if too long
+    let displayName = name
+    const maxW = colW - logoSize - pad * 2 - 12
+    while (ctx.measureText(displayName).width > maxW && displayName.length > 3) displayName = displayName.slice(0, -1)
+    if (displayName !== name) displayName += '.'
+    ctx.fillText(displayName, curX, pMidY - 10)
 
-    // Stat line (larger)
+    // Stat line
     ctx.fillStyle = COLORS.text_gray
-    ctx.font = '500 14px "Inter", system-ui, sans-serif'
-    ctx.fillText(p.stat_line || '', curX, pMidY + 14)
+    ctx.font = '500 11px "Inter", system-ui, sans-serif'
+    let statLine = p.stat_line || ''
+    while (ctx.measureText(statLine).width > maxW && statLine.length > 3) statLine = statLine.slice(0, -1)
+    if (statLine !== (p.stat_line || '')) statLine += '...'
+    ctx.fillText(statLine, curX, pMidY + 10)
   }
 
-  return Math.min(perfs.length * perfH, maxH)
+  return totalH
 }
 
 // ── Header bar ──
@@ -451,62 +420,52 @@ async function renderDailyGraphic(canvas, data) {
     // ── Single game layout ──
     const game = allGames[0] || {}
 
-    // Scorebug
-    const scoreH = 180
-    await drawDailyScoreBug(ctx, game, 12, curY, W - 24, scoreH)
-    curY += scoreH + 10
+    // Combined scorebug with innings
+    const scoreH = 170
+    await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
+    curY += scoreH + 14
 
-    // Linescore
-    const lineH = 90
-    drawLinescore(ctx, game, 12, curY, W - 24, lineH)
-    curY += lineH + 12
-
-    // Top performers
+    // Top performers header
     ctx.fillStyle = COLORS.green_light
-    ctx.font = '700 16px "Inter", system-ui, sans-serif'
+    ctx.font = '700 18px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText('TOP PERFORMERS', 20, curY + 12)
+    ctx.fillText('TOP PERFORMERS', 20, curY + 10)
     curY += 30
 
-    const allPerfs = [...(game.top_performers || [])].sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
-    await drawTopPerformers(ctx, allPerfs, 12, curY, W - 24, H - curY - footerH - 10)
+    // Two-column performers
+    await drawTopPerformers(ctx, game.top_performers, 12, curY, W - 24, H - curY - footerH - 10)
   } else {
     // ── Doubleheader layout ──
-    const spacePerGame = (H - headerH - footerH - 30) / 2
+    const spacePerGame = (H - headerH - footerH - 20) / 2
 
     for (let gi = 0; gi < 2; gi++) {
       const game = allGames[gi] || {}
 
       // Game label
       ctx.fillStyle = COLORS.green_light
-      ctx.font = '700 14px "Inter", system-ui, sans-serif'
+      ctx.font = '700 15px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       ctx.fillText(`GAME ${gi + 1}`, 20, curY + 8)
-      curY += 20
+      curY += 22
 
-      // Smaller scorebug
+      // Combined scorebug with innings (smaller for DH)
       const scoreH = 140
-      await drawDailyScoreBug(ctx, game, 12, curY, W - 24, scoreH)
-      curY += scoreH + 6
+      await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
+      curY += scoreH + 8
 
-      // Smaller linescore
-      const lineH = 70
-      drawLinescore(ctx, game, 12, curY, W - 24, lineH)
-      curY += lineH + 6
-
-      // Top performers for this game
+      // Top performers header
       ctx.fillStyle = COLORS.green_light
-      ctx.font = '700 12px "Inter", system-ui, sans-serif'
+      ctx.font = '700 13px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText('TOP PERFORMERS', 20, curY + 8)
-      curY += 20
+      ctx.fillText('TOP PERFORMERS', 20, curY + 6)
+      curY += 18
 
-      const allPerfs = [...(game.top_performers || [])].sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
-      const maxPerfH = spacePerGame - scoreH - lineH - 60
-      const perfH = await drawTopPerformers(ctx, allPerfs.slice(0, 4), 12, curY, W - 24, maxPerfH)
-      curY += perfH + 10
+      // Two-column performers (max 4 for doubleheaders)
+      const maxPerfH = spacePerGame - scoreH - 60
+      const perfH = await drawTopPerformers(ctx, game.top_performers, 12, curY, W - 24, maxPerfH)
+      curY += perfH + 8
     }
   }
 
