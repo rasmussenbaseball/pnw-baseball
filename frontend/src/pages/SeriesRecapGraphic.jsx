@@ -282,9 +282,9 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   ctx.textBaseline = 'middle'
   const hMidY = tableY + rowH / 2
 
-  const nameColW = w * 0.30
+  const nameColW = w * 0.26
   const statCols = type === 'hitter'
-    ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB', 'BBH', 'AVG']
+    ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB', 'BB+HBP', 'AVG']
     : ['IP', 'K', 'H', 'ER', 'BB', 'FIP', 'DEC']
   const statColW = (w - nameColW - pad) / statCols.length
 

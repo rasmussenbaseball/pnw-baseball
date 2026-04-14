@@ -6795,9 +6795,24 @@ def series_recap(
             team_b["series_batting"] = _compute_team_batting(batting_rows, team_b_id)
             team_a["series_pitching"] = _compute_team_pitching(pitching_rows, team_a_id)
             team_b["series_pitching"] = _compute_team_pitching(pitching_rows, team_b_id)
-            # XBH allowed = opponent's batting XBH
-            team_a["series_pitching"]["xbh_allowed"] = team_b["series_batting"].get("xbh", 0)
-            team_b["series_pitching"]["xbh_allowed"] = team_a["series_batting"].get("xbh", 0)
+            # Derive pitching stats from opponent batting for accuracy
+            # (pitching rows often missing HR allowed, and K%/BB% denominators differ)
+            for pitcher_team, opp_batting in [
+                (team_a["series_pitching"], team_b["series_batting"]),
+                (team_b["series_pitching"], team_a["series_batting"]),
+            ]:
+                pitcher_team["xbh_allowed"] = opp_batting.get("xbh", 0)
+                pitcher_team["hr_allowed"] = opp_batting.get("hr", 0)
+                opp_ab = opp_batting.get("ab", 0)
+                # Use opponent AB for K% and BB% so they match batting card
+                pitcher_team["k_rate"] = round(pitcher_team.get("k", 0) / opp_ab * 100, 1) if opp_ab else 0
+                pitcher_team["bb_rate"] = round(pitcher_team.get("bb", 0) / opp_ab * 100, 1) if opp_ab else 0
+                # Recalculate HR/9 from opponent batting HR
+                ip = pitcher_team.get("ip", 0)
+                pitcher_team["hr_per_9"] = round(opp_batting.get("hr", 0) * 9 / ip, 1) if ip else 0
+                # Recalculate FIP with accurate HR
+                hr_for_fip = opp_batting.get("hr", 0)
+                pitcher_team["fip"] = round(((13 * hr_for_fip + 3 * pitcher_team.get("bb", 0) - 2 * pitcher_team.get("k", 0)) / ip) + 3.10, 2) if ip else 0
 
             # ── Top performers SPLIT BY TEAM ──
             def _agg_hitters(rows, tid):
