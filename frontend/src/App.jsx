@@ -1,12 +1,48 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
+import SignupPopup from './components/SignupPopup'
 
-// Auth guard - redirects to login if not signed in
+// Auth guard - shows blurred teaser with signup prompt if not signed in
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return (
+    <div className="relative">
+      {/* Blurred teaser of the page */}
+      <div className="filter blur-sm opacity-60 pointer-events-none select-none" aria-hidden="true">
+        {children}
+      </div>
+      {/* Overlay prompt */}
+      <div className="absolute inset-0 flex items-start justify-center pt-24 bg-white/40">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sm:p-8 max-w-sm w-full text-center mx-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-pnw-green/10 rounded-full mb-3">
+            <svg className="w-6 h-6 text-pnw-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-pnw-slate mb-1">Free Account Required</h2>
+          <p className="text-sm text-gray-500 mb-5">
+            Sign up for a free account to access this feature. It only takes a few seconds.
+          </p>
+          <div className="space-y-2">
+            <a
+              href="/login?tab=signup"
+              className="block w-full px-4 py-2.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors"
+            >
+              Sign Up Free
+            </a>
+            <a
+              href="/login"
+              className="block w-full px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Log In
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
   return children
 }
 
@@ -76,6 +112,7 @@ export default function App() {
     <AuthProvider>
     <div className="min-h-screen bg-nw-cream">
       <Header />
+      <SignupPopup />
       <main className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
         <Routes>
           {/* Homepage */}
@@ -103,8 +140,8 @@ export default function App() {
           <Route path="/national-rankings" element={<NationalRankings />} />
           <Route path="/team-history" element={<TeamHistory />} />
           <Route path="/recruiting-classes" element={<RecruitingClasses />} />
-          <Route path="/recruiting/breakdown" element={<RecruitingBreakdown />} />
-          <Route path="/recruiting/hometown" element={<HometownSearch />} />
+          <Route path="/recruiting/breakdown" element={<RequireAuth><RecruitingBreakdown /></RequireAuth>} />
+          <Route path="/recruiting/hometown" element={<RequireAuth><HometownSearch /></RequireAuth>} />
 
           {/* Recruiting (admin only) */}
           <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />
@@ -122,11 +159,11 @@ export default function App() {
           <Route path="/enhanced-scouting" element={<RequireAuth><EnhancedScouting /></RequireAuth>} />
           <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
 
-          {/* Draft */}
-          <Route path="/draft" element={<DraftBoard year="26" />} />
-          <Route path="/draft/2026" element={<DraftBoard year="26" />} />
-          <Route path="/draft/2027" element={<DraftBoard year="27" />} />
-          <Route path="/draft/2028" element={<DraftBoard year="28" />} />
+          {/* Draft (auth required) */}
+          <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
+          <Route path="/draft/2026" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
+          <Route path="/draft/2027" element={<RequireAuth><DraftBoard year="27" /></RequireAuth>} />
+          <Route path="/draft/2028" element={<RequireAuth><DraftBoard year="28" /></RequireAuth>} />
 
           {/* Misc (auth required) */}
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
