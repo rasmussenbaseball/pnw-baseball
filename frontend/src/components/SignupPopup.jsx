@@ -48,7 +48,7 @@ export default function SignupPopup() {
           </div>
           <h2 className="text-xl font-bold text-pnw-slate">Create Your Free Account</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Unlock everything NW Baseball Stats has to offer. Always free.
+            Unlock everything NW Baseball Stats has to offer, for free.
           </p>
         </div>
 
@@ -89,7 +89,7 @@ export default function SignupPopup() {
 
         {/* Footer note */}
         <p className="text-[10px] text-gray-400 text-center mt-4">
-          All public stats, leaderboards, and scores remain free without an account.
+          Stats, leaderboards, and scores are available without an account.
         </p>
       </div>
     </div>
