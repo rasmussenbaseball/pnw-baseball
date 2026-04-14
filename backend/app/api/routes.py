@@ -7103,6 +7103,19 @@ def daily_recap(
                 parts.append(f"{sb} SB" if sb > 1 else "SB")
             return ", ".join(parts)
 
+        def _fmt_ip(ip):
+            """Format innings pitched: 6.333->6.1, 6.667->6.2, 7.0->7.0"""
+            if ip is None:
+                return "0.0"
+            whole = int(ip)
+            frac = ip - whole
+            if frac < 0.1:
+                return f"{whole}.0"
+            elif frac < 0.5:
+                return f"{whole}.1"
+            else:
+                return f"{whole}.2"
+
         def _format_pitcher_line(p):
             """Generate human-readable stat line for a pitcher."""
             ip = p.get("innings_pitched") or 0
@@ -7113,11 +7126,7 @@ def daily_recap(
             hra = p.get("home_runs_allowed") or 0
             decision = p.get("decision")
 
-            parts = []
-            if ip == int(ip):
-                parts.append(f"{int(ip)}.0 IP")
-            else:
-                parts.append(f"{ip} IP")
+            parts = [f"{_fmt_ip(ip)} IP"]
             if k:
                 parts.append(f"{k} K")
             if er is not None:
@@ -7150,15 +7159,18 @@ def daily_recap(
             name = r["last_name"] or (r["player_name"].split(",")[0].strip() if r["player_name"] else "?")
             decisions[gid][r["decision"]] = name
 
-        # Get batting data
+        # Get batting data (with player info: year, position, commitment)
         cur.execute(f"""
             SELECT gb.game_id, gb.team_id, gb.player_name, gb.player_id,
+                   gb.position AS game_position,
                    gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
                    gb.home_runs, gb.rbi, gb.walks, gb.strikeouts,
                    gb.hit_by_pitch, gb.stolen_bases,
                    COALESCE(t.short_name, t.name) AS team_short,
                    t.logo_url AS team_logo,
-                   p.first_name, p.last_name
+                   p.first_name, p.last_name,
+                   p.year_in_school, p.position AS roster_position,
+                   p.is_committed, p.committed_to
             FROM game_batting gb
             JOIN teams t ON gb.team_id = t.id
             LEFT JOIN players p ON gb.player_id = p.id
@@ -7166,7 +7178,7 @@ def daily_recap(
         """, game_ids)
         batting_rows = [dict(r) for r in cur.fetchall()]
 
-        # Get pitching data
+        # Get pitching data (with player info)
         cur.execute(f"""
             SELECT gp.game_id, gp.team_id, gp.player_name, gp.player_id,
                    gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
@@ -7174,13 +7186,23 @@ def daily_recap(
                    gp.home_runs_allowed, gp.decision,
                    COALESCE(t.short_name, t.name) AS team_short,
                    t.logo_url AS team_logo,
-                   p.first_name, p.last_name
+                   p.first_name, p.last_name,
+                   p.year_in_school, p.position AS roster_position,
+                   p.is_committed, p.committed_to
             FROM game_pitching gp
             JOIN teams t ON gp.team_id = t.id
             LEFT JOIN players p ON gp.player_id = p.id
             WHERE gp.game_id IN ({placeholders})
         """, game_ids)
         pitching_rows = [dict(r) for r in cur.fetchall()]
+
+        # Determine if teams are JUCO (NWAC)
+        juco_team_ids = set()
+        for tid in [h_id, a_id]:
+            ti = teams_info.get(tid, {})
+            ci = conf_map.get(ti.get("conference_id"), {})
+            if ci.get("division") == "JUCO":
+                juco_team_ids.add(tid)
 
         # ── 5. Build game objects with top performers ──
         result_games = []
@@ -7209,6 +7231,10 @@ def daily_recap(
                         "team_short": b.get("team_short"),
                         "team_logo": b.get("team_logo"),
                         "type": "hitter",
+                        "game_position": b.get("game_position") or b.get("roster_position") or "",
+                        "year_in_school": b.get("year_in_school") or "",
+                        "is_committed": b.get("is_committed"),
+                        "committed_to": b.get("committed_to"),
                         "at_bats": 0, "runs": 0, "hits": 0, "doubles": 0,
                         "triples": 0, "home_runs": 0, "rbi": 0, "walks": 0,
                         "strikeouts": 0, "hit_by_pitch": 0, "stolen_bases": 0,
@@ -7221,12 +7247,23 @@ def daily_recap(
                 score = hitting_score(h)
                 if score > 0:
                     display_name = _display_name(h)
+                    is_juco = h["team_id"] in juco_team_ids
+                    commitment = None
+                    if is_juco:
+                        if h.get("is_committed") and h.get("committed_to"):
+                            commitment = f"Committed: {h['committed_to']}"
+                        else:
+                            commitment = "Uncommitted"
+
                     all_performers.append({
                         "player_name": display_name,
                         "team_id": h["team_id"],
                         "team_short": h["team_short"],
                         "team_logo": h["team_logo"],
                         "type": "hitter",
+                        "position": h["game_position"],
+                        "year": h["year_in_school"],
+                        "commitment": commitment,
                         "perf_score": score,
                         "stats": {
                             "at_bats": h["at_bats"],
@@ -7258,6 +7295,10 @@ def daily_recap(
                         "team_short": p.get("team_short"),
                         "team_logo": p.get("team_logo"),
                         "type": "pitcher",
+                        "year_in_school": p.get("year_in_school") or "",
+                        "roster_position": p.get("roster_position") or "P",
+                        "is_committed": p.get("is_committed"),
+                        "committed_to": p.get("committed_to"),
                         "innings_pitched": 0, "hits_allowed": 0, "earned_runs": 0,
                         "walks": 0, "strikeouts": 0, "home_runs_allowed": 0,
                         "decision": None,
@@ -7272,12 +7313,23 @@ def daily_recap(
                 score = pitching_perf_score(p)
                 if score > 0:
                     display_name = _display_name(p)
+                    is_juco = p["team_id"] in juco_team_ids
+                    commitment = None
+                    if is_juco:
+                        if p.get("is_committed") and p.get("committed_to"):
+                            commitment = f"Committed: {p['committed_to']}"
+                        else:
+                            commitment = "Uncommitted"
+
                     all_performers.append({
                         "player_name": display_name,
                         "team_id": p["team_id"],
                         "team_short": p["team_short"],
                         "team_logo": p["team_logo"],
                         "type": "pitcher",
+                        "position": p["roster_position"],
+                        "year": p["year_in_school"],
+                        "commitment": commitment,
                         "perf_score": score,
                         "stats": {
                             "innings_pitched": p["innings_pitched"],

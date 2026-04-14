@@ -298,27 +298,55 @@ async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
     }
     curX += logoSize + 12
 
-    // Player name (scaled with card size)
+    // Player name + year/position tag
     const nameFontSize = Math.min(Math.floor(perfH * 0.2), 18)
     const name = p.player_name || 'Unknown'
+    const maxW = colW - logoSize - pad * 2 - 20
+
+    // Build year/position tag (e.g. "Jr. | SS" or "So. | RHP")
+    const tagParts = []
+    if (p.year) tagParts.push(p.year.replace('Freshman', 'Fr.').replace('Sophomore', 'So.').replace('Junior', 'Jr.').replace('Senior', 'Sr.').replace('Redshirt', 'RS'))
+    if (p.position) tagParts.push(p.position)
+    const tag = tagParts.join(' | ')
+
+    // Draw name
     ctx.fillStyle = COLORS.text_dark
     ctx.font = `700 ${nameFontSize}px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    const maxW = colW - logoSize - pad * 2 - 20
     let displayName = name
-    while (ctx.measureText(displayName).width > maxW && displayName.length > 3) displayName = displayName.slice(0, -1)
+    while (ctx.measureText(displayName).width > maxW * 0.65 && displayName.length > 3) displayName = displayName.slice(0, -1)
     if (displayName !== name) displayName += '.'
-    ctx.fillText(displayName, curX, pMidY - nameFontSize * 0.6)
+
+    // Position name and tag on same line
+    const nameY = p.commitment ? pMidY - nameFontSize * 0.9 : pMidY - nameFontSize * 0.6
+    ctx.fillText(displayName, curX, nameY)
+
+    // Draw year/position tag after name
+    if (tag) {
+      const nameW = ctx.measureText(displayName + '  ').width
+      ctx.fillStyle = COLORS.text_gray
+      ctx.font = `500 ${Math.max(nameFontSize - 4, 10)}px "Inter", system-ui, sans-serif`
+      ctx.fillText(tag, curX + nameW, nameY)
+    }
 
     // Stat line
     const statFontSize = Math.min(Math.floor(perfH * 0.15), 14)
+    const statY = p.commitment ? pMidY + 2 : pMidY + nameFontSize * 0.5
     ctx.fillStyle = COLORS.text_gray
     ctx.font = `500 ${statFontSize}px "Inter", system-ui, sans-serif`
     let statLine = p.stat_line || ''
     while (ctx.measureText(statLine).width > maxW && statLine.length > 3) statLine = statLine.slice(0, -1)
     if (statLine !== (p.stat_line || '')) statLine += '...'
-    ctx.fillText(statLine, curX, pMidY + nameFontSize * 0.5)
+    ctx.fillText(statLine, curX, statY)
+
+    // Commitment line for JUCO players
+    if (p.commitment) {
+      const commitFontSize = Math.max(statFontSize - 1, 9)
+      ctx.fillStyle = p.commitment.startsWith('Committed') ? '#16a34a' : '#94a3b8'
+      ctx.font = `600 ${commitFontSize}px "Inter", system-ui, sans-serif`
+      ctx.fillText(p.commitment, curX, statY + statFontSize + 4)
+    }
   }
 
   return rows * (perfH + cardGap)
