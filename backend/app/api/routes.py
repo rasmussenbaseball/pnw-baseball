@@ -6415,25 +6415,27 @@ def series_recap(
     """
     Detect and return series recaps for a given week (Tuesday-Monday).
     A series is 3+ games between the same two teams within 4 days.
-    Returns: series list with scorebugs, top performers, team stats, win%.
+    Returns rich data: scorebugs, per-team top performers, team batting/pitching
+    stats, national rankings, venue/park info.
     """
+    import json as _json
     from collections import defaultdict
-    from itertools import groupby
+    from pathlib import Path as _Path
 
     week_start_date = datetime.strptime(week_start, "%Y-%m-%d").date()
-    week_end_date = week_start_date + timedelta(days=6)  # Monday
+    week_end_date = week_start_date + timedelta(days=6)
 
     with get_connection() as conn:
         cur = conn.cursor()
 
-        # ── 1. Get all final games in this week window ──
+        # ── 1. All final games in this week ──
         cur.execute("""
             SELECT
                 g.id, g.game_date, g.game_number, g.status,
                 g.home_team_id, g.away_team_id,
                 g.home_score, g.away_score,
                 g.home_hits, g.home_errors, g.away_hits, g.away_errors,
-                g.innings, g.is_conference_game, g.source_url,
+                g.innings, g.is_conference_game, g.location,
                 COALESCE(ht.short_name, ht.name, g.home_team_name) AS home_short,
                 ht.logo_url AS home_logo,
                 COALESCE(at2.short_name, at2.name, g.away_team_name) AS away_short,
@@ -6455,156 +6457,281 @@ def series_recap(
         if not all_games:
             return {"series": [], "week_start": week_start, "week_end": str(week_end_date)}
 
-        # ── 2. Group games into series ──
-        # A series = 3+ games between the same two teams (order-agnostic)
-        # within a 4-day window
+        # ── 2. Group into series (3+ games, same teams, <=4 day gap) ──
         matchup_games = defaultdict(list)
         for g in all_games:
-            hid = g["home_team_id"]
-            aid = g["away_team_id"]
+            hid, aid = g["home_team_id"], g["away_team_id"]
             if not hid or not aid:
                 continue
-            # Canonical key: sorted team IDs so home/away order doesn't matter
-            key = tuple(sorted([hid, aid]))
-            matchup_games[key].append(g)
+            matchup_games[tuple(sorted([hid, aid]))].append(g)
 
-        # Filter to 3+ game matchups, then split into sub-series if >4 day gap
         series_list = []
         for (t1, t2), games in matchup_games.items():
             games.sort(key=lambda g: (g["game_date"], g["id"]))
             if len(games) < 3:
                 continue
-
-            # Split into sub-series if there's a gap > 4 days between games
-            current_series = [games[0]]
+            current = [games[0]]
             for i in range(1, len(games)):
-                gap = (games[i]["game_date"] - current_series[-1]["game_date"]).days
-                if gap > 4:
-                    if len(current_series) >= 3:
-                        series_list.append(current_series)
-                    current_series = [games[i]]
+                if (games[i]["game_date"] - current[-1]["game_date"]).days > 4:
+                    if len(current) >= 3:
+                        series_list.append(current)
+                    current = [games[i]]
                 else:
-                    current_series.append(games[i])
-            if len(current_series) >= 3:
-                series_list.append(current_series)
+                    current.append(games[i])
+            if len(current) >= 3:
+                series_list.append(current)
 
         if not series_list:
             return {"series": [], "week_start": week_start, "week_end": str(week_end_date)}
 
-        # ── 3. Team records ──
-        cur.execute("""
-            SELECT s.team_id, s.wins, s.losses
-            FROM team_season_stats s
-            JOIN teams t ON t.id = s.team_id
-            WHERE s.season = %s
-        """, (season,))
+        # ── 3. Bulk data: records, rankings, ratings, conf records, park factors ──
+        cur.execute("SELECT team_id, wins, losses FROM team_season_stats WHERE season = %s", (season,))
         records = {r["team_id"]: (r["wins"], r["losses"]) for r in cur.fetchall()}
 
-        # ── 4. Power ratings for win% ──
+        cur.execute("""
+            SELECT s.team_id, s.conference_wins, s.conference_losses
+            FROM team_season_stats s WHERE s.season = %s
+        """, (season,))
+        conf_records = {r["team_id"]: (r["conference_wins"] or 0, r["conference_losses"] or 0)
+                        for r in cur.fetchall()}
+
+        cur.execute("""
+            SELECT team_id, composite_rank, national_percentile
+            FROM composite_rankings WHERE season = %s
+        """, (season,))
+        rankings = {r["team_id"]: {"rank": r["composite_rank"], "pctile": r["national_percentile"]}
+                    for r in cur.fetchall()}
+
         ratings = _bulk_power_ratings(cur, season)
 
-        # ── 5. Build each series object ──
-        PNW_D1_TEAMS = {
-            'Oregon', 'Oregon St.', 'UW', 'Wash. St.',
-            'Gonzaga', 'Portland', 'Seattle U',
-        }
+        # Load park factors
+        pf_path = _Path(__file__).resolve().parent.parent.parent.parent / "data" / "park_factors.json"
+        park_factors = {}
+        try:
+            with open(pf_path) as f:
+                pf_data = _json.load(f)
+            for t in pf_data.get("teams", []):
+                park_factors[t["team_id"]] = t
+        except Exception:
+            pass
 
+        # ── Helpers ──
+        def _display_name(row):
+            if row.get("last_name") and row.get("first_name"):
+                return f"{row['first_name']} {row['last_name']}"
+            name = row.get("player_name") or ""
+            if "," in name:
+                parts = name.split(",", 1)
+                return f"{parts[1].strip()} {parts[0].strip()}"
+            return name
+
+        def hitting_score(b):
+            hr = b.get("home_runs") or 0
+            trip = b.get("triples") or 0
+            dbl = b.get("doubles") or 0
+            h = b.get("hits") or 0
+            rbi = b.get("rbi") or 0
+            r = b.get("runs") or 0
+            bb = b.get("walks") or 0
+            sb = b.get("stolen_bases") or 0
+            hbp = b.get("hit_by_pitch") or 0
+            singles = h - dbl - trip - hr
+            return (hr*6)+(trip*4)+(dbl*3)+(singles*1.5)+(rbi*2)+(r*1)+(bb*0.5)+(sb*1.5)+(hbp*0.3)
+
+        def pitching_perf_score(p):
+            ip = p.get("innings_pitched") or 0
+            k = p.get("strikeouts") or 0
+            h = p.get("hits_allowed") or 0
+            er = p.get("earned_runs") or 0
+            bb = p.get("walks") or 0
+            hra = p.get("home_runs_allowed") or 0
+            return (k*3.5)+(ip*3.5)-(h*1.5)-(er*6)-(bb*1.5)-(hra*2.5)
+
+        def _team_info(tid, short, logo):
+            """Build rich team object."""
+            w, l = records.get(tid, (0, 0))
+            cw, cl = conf_records.get(tid, (0, 0))
+            rank_data = rankings.get(tid, {})
+            pf = park_factors.get(tid, {})
+            return {
+                "team_id": tid,
+                "short_name": short,
+                "logo_url": logo,
+                "record": f"{w}-{l}" if tid in records else None,
+                "conf_record": f"{cw}-{cl}" if (cw + cl) > 0 else None,
+                "national_rank": rank_data.get("rank"),
+                "national_pctile": rank_data.get("pctile"),
+                "power_rating": ratings.get(tid),
+                "venue": {
+                    "stadium": pf.get("stadium"),
+                    "city": pf.get("city"),
+                    "state": pf.get("state"),
+                    "elevation_ft": pf.get("elevation_ft"),
+                    "park_factor_pct": pf.get("park_factor_pct"),
+                    "dimensions": pf.get("dimensions"),
+                    "surface": pf.get("surface"),
+                } if pf else None,
+            }
+
+        def _compute_team_batting(rows, team_id):
+            """Compute aggregate batting stats for one team from game_batting rows."""
+            ab = h = doubles = triples = hr = rbi = bb = k = hbp = sb = sf = r = 0
+            seen = set()
+            for b in rows:
+                if b.get("team_id") != team_id:
+                    continue
+                pid = b.get("player_id")
+                pk = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
+                rk = (b.get("game_id"), pk)
+                if rk in seen:
+                    continue
+                seen.add(rk)
+                ab += (b.get("at_bats") or 0)
+                h += (b.get("hits") or 0)
+                doubles += (b.get("doubles") or 0)
+                triples += (b.get("triples") or 0)
+                hr += (b.get("home_runs") or 0)
+                rbi += (b.get("rbi") or 0)
+                bb += (b.get("walks") or 0)
+                k += (b.get("strikeouts") or 0)
+                hbp += (b.get("hit_by_pitch") or 0)
+                sb += (b.get("stolen_bases") or 0)
+                sf += (b.get("sacrifice_flies") or 0)
+                r += (b.get("runs") or 0)
+            avg = round(h / ab, 3) if ab else 0
+            obp_denom = ab + bb + hbp + sf
+            obp = round((h + bb + hbp) / obp_denom, 3) if obp_denom else 0
+            tb = h + doubles + triples * 2 + hr * 3
+            slg = round(tb / ab, 3) if ab else 0
+            k_rate = round(k / ab * 100, 1) if ab else 0
+            bb_rate = round(bb / ab * 100, 1) if ab else 0
+            return {
+                "ab": ab, "r": r, "h": h, "doubles": doubles, "triples": triples,
+                "hr": hr, "rbi": rbi, "bb": bb, "k": k, "hbp": hbp, "sb": sb,
+                "avg": avg, "obp": obp, "slg": slg, "ops": round(obp + slg, 3),
+                "k_rate": k_rate, "bb_rate": bb_rate,
+            }
+
+        def _compute_team_pitching(rows, team_id):
+            """Compute aggregate pitching stats for one team from game_pitching rows."""
+            ip = h = er = bb = k = hra = ra = 0
+            seen = set()
+            for p in rows:
+                if p.get("team_id") != team_id:
+                    continue
+                pid = p.get("player_id")
+                pk = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
+                rk = (p.get("game_id"), pk)
+                if rk in seen:
+                    continue
+                seen.add(rk)
+                ip += (p.get("innings_pitched") or 0)
+                h += (p.get("hits_allowed") or 0)
+                er += (p.get("earned_runs") or 0)
+                bb += (p.get("walks") or 0)
+                k += (p.get("strikeouts") or 0)
+                hra += (p.get("home_runs_allowed") or 0)
+                ra += (p.get("runs_allowed") or 0)
+            era = round(er * 9 / ip, 2) if ip else 0
+            whip = round((bb + h) / ip, 2) if ip else 0
+            k_per_9 = round(k * 9 / ip, 1) if ip else 0
+            bb_per_9 = round(bb * 9 / ip, 1) if ip else 0
+            h_per_9 = round(h * 9 / ip, 1) if ip else 0
+            return {
+                "ip": round(ip, 1), "h": h, "er": er, "ra": ra, "bb": bb, "k": k,
+                "hra": hra, "era": era, "whip": whip,
+                "k_per_9": k_per_9, "bb_per_9": bb_per_9, "h_per_9": h_per_9,
+            }
+
+        # ── 4. Build each series ──
         result_series = []
         for series_games in series_list:
             game_ids = [g["id"] for g in series_games]
             placeholders = ",".join(["%s"] * len(game_ids))
 
-            # Determine the two teams
-            team_ids_in_series = set()
-            for g in series_games:
-                team_ids_in_series.add(g["home_team_id"])
-                team_ids_in_series.add(g["away_team_id"])
-            team_ids_in_series = list(team_ids_in_series)
-
-            # Use first game to establish team A / team B (away = team A)
             first_game = series_games[0]
             team_a_id = first_game["away_team_id"]
             team_b_id = first_game["home_team_id"]
-            team_a_short = first_game["away_short"]
-            team_b_short = first_game["home_short"]
-            team_a_logo = first_game["away_logo"]
-            team_b_logo = first_game["home_logo"]
 
-            # Count series wins for each team
-            team_a_wins = 0
-            team_b_wins = 0
+            team_a = _team_info(team_a_id, first_game["away_short"], first_game["away_logo"])
+            team_b = _team_info(team_b_id, first_game["home_short"], first_game["home_logo"])
+
+            # Series wins
+            a_wins = b_wins = 0
+            a_runs = b_runs = a_hits = b_hits = a_errs = b_errs = 0
+            venue = None
             for g in series_games:
-                hs = g["home_score"] or 0
-                aws = g["away_score"] or 0
-                if hs > aws:
-                    winner = g["home_team_id"]
-                elif aws > hs:
-                    winner = g["away_team_id"]
-                else:
-                    continue
+                hs, aws = (g["home_score"] or 0), (g["away_score"] or 0)
+                winner = g["home_team_id"] if hs > aws else (g["away_team_id"] if aws > hs else None)
                 if winner == team_a_id:
-                    team_a_wins += 1
+                    a_wins += 1
                 elif winner == team_b_id:
-                    team_b_wins += 1
+                    b_wins += 1
+                if g["home_team_id"] == team_a_id:
+                    a_runs += hs; b_runs += aws
+                    a_hits += (g["home_hits"] or 0); b_hits += (g["away_hits"] or 0)
+                    a_errs += (g["home_errors"] or 0); b_errs += (g["away_errors"] or 0)
+                else:
+                    a_runs += aws; b_runs += hs
+                    a_hits += (g["away_hits"] or 0); b_hits += (g["home_hits"] or 0)
+                    a_errs += (g["away_errors"] or 0); b_errs += (g["home_errors"] or 0)
+                if not venue and g.get("location"):
+                    venue = g["location"]
 
-            # Series result text
+            team_a["series_wins"] = a_wins
+            team_a["series_runs"] = a_runs
+            team_a["series_hits"] = a_hits
+            team_a["series_errors"] = a_errs
+            team_b["series_wins"] = b_wins
+            team_b["series_runs"] = b_runs
+            team_b["series_hits"] = b_hits
+            team_b["series_errors"] = b_errs
+
             total_games = len(series_games)
-            if team_a_wins > team_b_wins:
-                result_text = f"{team_a_short} wins {team_a_wins}-{team_b_wins}"
-            elif team_b_wins > team_a_wins:
-                result_text = f"{team_b_short} wins {team_b_wins}-{team_a_wins}"
+            if a_wins > b_wins:
+                result_text = f"{team_a['short_name']} wins {a_wins}-{b_wins}"
+            elif b_wins > a_wins:
+                result_text = f"{team_b['short_name']} wins {b_wins}-{a_wins}"
             else:
-                result_text = f"Split {team_a_wins}-{team_b_wins}"
+                result_text = f"Split {a_wins}-{b_wins}"
 
-            # Division for this series (use the higher level if mixed)
             div_a = first_game.get("away_division")
             div_b = first_game.get("home_division")
-            series_division = div_a or div_b
 
-            # ── W/L/S pitchers per game ──
+            # W/L/S pitchers
             cur.execute(f"""
                 SELECT gp.game_id, gp.team_id, gp.player_name, gp.decision,
                        p.first_name, p.last_name
                 FROM game_pitching gp
                 LEFT JOIN players p ON gp.player_id = p.id
-                WHERE gp.game_id IN ({placeholders}) AND gp.decision IN ('W', 'L', 'S')
+                WHERE gp.game_id IN ({placeholders}) AND gp.decision IN ('W','L','S')
             """, game_ids)
             decisions = {}
             for r in cur.fetchall():
                 gid = r["game_id"]
                 if gid not in decisions:
                     decisions[gid] = {}
-                name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else "?"
+                name = r["last_name"] or (r["player_name"].split(",")[0].strip() if r["player_name"] else "?")
                 decisions[gid][r["decision"]] = {"name": name, "team_id": r["team_id"]}
 
-            # Build scorebug data per game
             scorebugs = []
             for g in series_games:
                 d = decisions.get(g["id"], {})
-                hw, hl = records.get(g["home_team_id"], (0, 0))
-                aw, al = records.get(g["away_team_id"], (0, 0))
                 scorebugs.append({
                     "game_id": g["id"],
                     "game_date": str(g["game_date"]),
-                    "home_short": g["home_short"],
-                    "away_short": g["away_short"],
-                    "home_logo": g["home_logo"],
-                    "away_logo": g["away_logo"],
-                    "home_score": g["home_score"],
-                    "away_score": g["away_score"],
-                    "home_hits": g["home_hits"],
-                    "away_hits": g["away_hits"],
-                    "home_errors": g["home_errors"],
-                    "away_errors": g["away_errors"],
+                    "home_short": g["home_short"], "away_short": g["away_short"],
+                    "home_logo": g["home_logo"], "away_logo": g["away_logo"],
+                    "home_score": g["home_score"], "away_score": g["away_score"],
+                    "home_hits": g["home_hits"], "away_hits": g["away_hits"],
+                    "home_errors": g["home_errors"], "away_errors": g["away_errors"],
                     "innings": g["innings"],
-                    "home_record": f"{hw}-{hl}" if g["home_team_id"] in records else None,
-                    "away_record": f"{aw}-{al}" if g["away_team_id"] in records else None,
                     "win_pitcher": d.get("W", {}).get("name"),
                     "loss_pitcher": d.get("L", {}).get("name"),
                     "save_pitcher": d.get("S", {}).get("name"),
                 })
 
-            # ── Top performers (batting) ──
+            # ── Batting data ──
             cur.execute(f"""
                 SELECT gb.game_id, gb.team_id, gb.player_name, gb.player_id,
                        gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
@@ -6624,81 +6751,12 @@ def series_recap(
             """, (*game_ids, team_a_id, team_b_id))
             batting_rows = [dict(r) for r in cur.fetchall()]
 
-            # Filter non-PNW D1 teams
-            batting_rows = [
-                b for b in batting_rows
-                if b.get('division') != 'D1'
-                or b.get('team_short') in PNW_D1_TEAMS
-            ]
-
-            # Aggregate batting stats per player across the series
-            def _display_name(row):
-                if row.get("last_name") and row.get("first_name"):
-                    return f"{row['first_name']} {row['last_name']}"
-                name = row.get("player_name") or ""
-                if "," in name:
-                    parts = name.split(",", 1)
-                    return f"{parts[1].strip()} {parts[0].strip()}"
-                return name
-
-            def hitting_score(b):
-                hr = b.get("home_runs") or 0
-                trip = b.get("triples") or 0
-                dbl = b.get("doubles") or 0
-                h = b.get("hits") or 0
-                rbi = b.get("rbi") or 0
-                r = b.get("runs") or 0
-                bb = b.get("walks") or 0
-                sb = b.get("stolen_bases") or 0
-                hbp = b.get("hit_by_pitch") or 0
-                singles = h - dbl - trip - hr
-                return (hr * 6) + (trip * 4) + (dbl * 3) + (singles * 1.5) + (rbi * 2) + (r * 1) + (bb * 0.5) + (sb * 1.5) + (hbp * 0.3)
-
-            hitter_agg = {}
-            seen_bat = set()
-            bat_keys = ["at_bats", "runs", "hits", "doubles", "triples",
-                        "home_runs", "rbi", "walks", "strikeouts",
-                        "hit_by_pitch", "stolen_bases", "sacrifice_flies"]
-            for b in batting_rows:
-                pid = b.get("player_id")
-                pk = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
-                rk = (b.get("game_id"), pk)
-                if rk in seen_bat:
-                    continue
-                seen_bat.add(rk)
-                if pk not in hitter_agg:
-                    hitter_agg[pk] = {
-                        "player_id": pid,
-                        "player_name": b.get("player_name"),
-                        "first_name": b.get("first_name"),
-                        "last_name": b.get("last_name"),
-                        "team_id": b.get("team_id"),
-                        "team_short": b.get("team_short"),
-                        "team_logo": b.get("team_logo"),
-                        "headshot_url": b.get("headshot_url"),
-                        "division": b.get("division"),
-                    }
-                    for k in bat_keys:
-                        hitter_agg[pk][k] = 0
-                for k in bat_keys:
-                    hitter_agg[pk][k] += (b.get(k) or 0)
-
-            qualified_hitters = [b for b in hitter_agg.values() if b.get("at_bats", 0) >= 3]
-            for b in qualified_hitters:
-                b["perf_score"] = hitting_score(b)
-                b["display_name"] = _display_name(b)
-                b["xbh"] = (b.get("doubles") or 0) + (b.get("triples") or 0) + (b.get("home_runs") or 0)
-                ab = b.get("at_bats") or 1
-                b["avg"] = round((b.get("hits") or 0) / ab, 3)
-            top_hitters = sorted(qualified_hitters, key=lambda b: b["perf_score"], reverse=True)[:4]
-
-            # ── Top performers (pitching) ──
+            # ── Pitching data ──
             cur.execute(f"""
                 SELECT gp.game_id, gp.team_id, gp.player_name, gp.player_id,
                        gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
                        gp.earned_runs, gp.walks, gp.strikeouts,
-                       gp.home_runs_allowed, gp.game_score, gp.decision,
-                       gp.is_starter,
+                       gp.home_runs_allowed, gp.decision, gp.is_starter,
                        COALESCE(t.short_name, t.name) AS team_short,
                        t.logo_url AS team_logo,
                        p.first_name, p.last_name, p.headshot_url,
@@ -6713,137 +6771,115 @@ def series_recap(
             """, (*game_ids, team_a_id, team_b_id))
             pitching_rows = [dict(r) for r in cur.fetchall()]
 
-            pitching_rows = [
-                p for p in pitching_rows
-                if p.get('division') != 'D1'
-                or p.get('team_short') in PNW_D1_TEAMS
-            ]
+            # ── Team batting/pitching aggregates for the series ──
+            team_a["series_batting"] = _compute_team_batting(batting_rows, team_a_id)
+            team_b["series_batting"] = _compute_team_batting(batting_rows, team_b_id)
+            team_a["series_pitching"] = _compute_team_pitching(pitching_rows, team_a_id)
+            team_b["series_pitching"] = _compute_team_pitching(pitching_rows, team_b_id)
 
-            def pitching_perf_score(p):
-                ip = p.get("innings_pitched") or 0
-                k = p.get("strikeouts") or 0
-                h = p.get("hits_allowed") or 0
-                er = p.get("earned_runs") or 0
-                bb = p.get("walks") or 0
-                hra = p.get("home_runs_allowed") or 0
-                return (k * 3.5) + (ip * 3.5) - (h * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
+            # ── Top performers SPLIT BY TEAM ──
+            def _agg_hitters(rows, tid):
+                agg = {}
+                seen = set()
+                bat_keys = ["at_bats","runs","hits","doubles","triples","home_runs",
+                            "rbi","walks","strikeouts","hit_by_pitch","stolen_bases","sacrifice_flies"]
+                for b in rows:
+                    if b.get("team_id") != tid:
+                        continue
+                    pid = b.get("player_id")
+                    pk = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
+                    rk = (b.get("game_id"), pk)
+                    if rk in seen:
+                        continue
+                    seen.add(rk)
+                    if pk not in agg:
+                        agg[pk] = {
+                            "player_id": pid, "player_name": b.get("player_name"),
+                            "first_name": b.get("first_name"), "last_name": b.get("last_name"),
+                            "team_id": tid, "team_short": b.get("team_short"),
+                            "team_logo": b.get("team_logo"), "headshot_url": b.get("headshot_url"),
+                            "division": b.get("division"),
+                        }
+                        for k in bat_keys:
+                            agg[pk][k] = 0
+                    for k in bat_keys:
+                        agg[pk][k] += (b.get(k) or 0)
+                result = [b for b in agg.values() if b.get("at_bats", 0) >= 3]
+                for b in result:
+                    b["perf_score"] = hitting_score(b)
+                    b["display_name"] = _display_name(b)
+                    b["xbh"] = (b.get("doubles") or 0) + (b.get("triples") or 0) + (b.get("home_runs") or 0)
+                    ab = b.get("at_bats") or 1
+                    b["avg"] = round((b.get("hits") or 0) / ab, 3)
+                return sorted(result, key=lambda x: x["perf_score"], reverse=True)[:3]
 
-            # For pitchers in a series: aggregate across games
-            pitcher_agg = {}
-            seen_pitch = set()
-            pitch_keys = ["innings_pitched", "hits_allowed", "earned_runs",
-                          "walks", "strikeouts", "home_runs_allowed", "runs_allowed"]
-            for p in pitching_rows:
-                pid = p.get("player_id")
-                pk = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
-                rk = (p.get("game_id"), pk)
-                if rk in seen_pitch:
-                    continue
-                seen_pitch.add(rk)
-                if pk not in pitcher_agg:
-                    pitcher_agg[pk] = {
-                        "player_id": pid,
-                        "player_name": p.get("player_name"),
-                        "first_name": p.get("first_name"),
-                        "last_name": p.get("last_name"),
-                        "team_id": p.get("team_id"),
-                        "team_short": p.get("team_short"),
-                        "team_logo": p.get("team_logo"),
-                        "headshot_url": p.get("headshot_url"),
-                        "division": p.get("division"),
-                        "decisions": [],
-                    }
+            def _agg_pitchers(rows, tid):
+                agg = {}
+                seen = set()
+                pitch_keys = ["innings_pitched","hits_allowed","earned_runs",
+                              "walks","strikeouts","home_runs_allowed","runs_allowed"]
+                for p in rows:
+                    if p.get("team_id") != tid:
+                        continue
+                    pid = p.get("player_id")
+                    pk = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
+                    rk = (p.get("game_id"), pk)
+                    if rk in seen:
+                        continue
+                    seen.add(rk)
+                    if pk not in agg:
+                        agg[pk] = {
+                            "player_id": pid, "player_name": p.get("player_name"),
+                            "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+                            "team_id": tid, "team_short": p.get("team_short"),
+                            "team_logo": p.get("team_logo"), "headshot_url": p.get("headshot_url"),
+                            "division": p.get("division"), "decisions": [],
+                        }
+                        for k in pitch_keys:
+                            agg[pk][k] = 0
                     for k in pitch_keys:
-                        pitcher_agg[pk][k] = 0
-                for k in pitch_keys:
-                    pitcher_agg[pk][k] += (p.get(k) or 0)
-                if p.get("decision"):
-                    pitcher_agg[pk]["decisions"].append(p["decision"])
+                        agg[pk][k] += (p.get(k) or 0)
+                    if p.get("decision"):
+                        agg[pk]["decisions"].append(p["decision"])
+                result = [p for p in agg.values() if (p.get("innings_pitched") or 0) >= 2.0]
+                for p in result:
+                    p["perf_score"] = pitching_perf_score(p)
+                    p["display_name"] = _display_name(p)
+                    decs = p.pop("decisions", [])
+                    p["decision_summary"] = ", ".join(decs) if decs else None
+                return sorted(result, key=lambda x: x["perf_score"], reverse=True)[:3]
 
-            qualified_pitchers = [p for p in pitcher_agg.values()
-                                  if (p.get("innings_pitched") or 0) >= 2.0]
-            for p in qualified_pitchers:
-                p["perf_score"] = pitching_perf_score(p)
-                p["display_name"] = _display_name(p)
-                # Summarize decisions: "2W", "W, L", "W, SV", etc.
-                decs = p.pop("decisions", [])
-                p["decision_summary"] = ", ".join(decs) if decs else None
-            top_pitchers = sorted(qualified_pitchers, key=lambda p: p["perf_score"], reverse=True)[:4]
+            team_a["top_hitters"] = _agg_hitters(batting_rows, team_a_id)
+            team_b["top_hitters"] = _agg_hitters(batting_rows, team_b_id)
+            team_a["top_pitchers"] = _agg_pitchers(pitching_rows, team_a_id)
+            team_b["top_pitchers"] = _agg_pitchers(pitching_rows, team_b_id)
 
-            # ── Team stats for the series ──
-            team_a_runs = 0
-            team_b_runs = 0
-            team_a_hits_total = 0
-            team_b_hits_total = 0
-            team_a_errors_total = 0
-            team_b_errors_total = 0
-            for g in series_games:
-                if g["home_team_id"] == team_a_id:
-                    team_a_runs += (g["home_score"] or 0)
-                    team_b_runs += (g["away_score"] or 0)
-                    team_a_hits_total += (g["home_hits"] or 0)
-                    team_b_hits_total += (g["away_hits"] or 0)
-                    team_a_errors_total += (g["home_errors"] or 0)
-                    team_b_errors_total += (g["away_errors"] or 0)
-                else:
-                    team_a_runs += (g["away_score"] or 0)
-                    team_b_runs += (g["home_score"] or 0)
-                    team_a_hits_total += (g["away_hits"] or 0)
-                    team_b_hits_total += (g["home_hits"] or 0)
-                    team_a_errors_total += (g["away_errors"] or 0)
-                    team_b_errors_total += (g["home_errors"] or 0)
-
-            # ── Current win probability (using today's power ratings) ──
-            win_prob = None
-            spread = None
-            if team_a_id in ratings and team_b_id in ratings:
-                # Neutral-site probability
-                prob_a = _elo_win_prob(ratings[team_a_id], ratings[team_b_id])
-                win_prob = {
-                    "team_a_prob": round(prob_a, 3),
-                    "team_b_prob": round(1.0 - prob_a, 3),
-                    "team_a_rating": ratings[team_a_id],
-                    "team_b_rating": ratings[team_b_id],
+            # ── Venue / park factors (use home team's park) ──
+            home_pf = park_factors.get(team_b_id, {})
+            venue_info = None
+            if home_pf or venue:
+                venue_info = {
+                    "name": venue or home_pf.get("stadium"),
+                    "stadium": home_pf.get("stadium"),
+                    "city": home_pf.get("city"),
+                    "state": home_pf.get("state"),
+                    "elevation_ft": home_pf.get("elevation_ft"),
+                    "park_factor_pct": home_pf.get("park_factor_pct"),
+                    "dimensions": home_pf.get("dimensions"),
+                    "surface": home_pf.get("surface"),
                 }
-                # Projected run spread (rough: rating diff * 0.1)
-                spread = round((ratings[team_a_id] - ratings[team_b_id]) * 0.1, 1)
-
-            aw, al = records.get(team_a_id, (0, 0))
-            bw, bl = records.get(team_b_id, (0, 0))
 
             result_series.append({
-                "team_a": {
-                    "team_id": team_a_id,
-                    "short_name": team_a_short,
-                    "logo_url": team_a_logo,
-                    "record": f"{aw}-{al}" if team_a_id in records else None,
-                    "series_wins": team_a_wins,
-                    "series_runs": team_a_runs,
-                    "series_hits": team_a_hits_total,
-                    "series_errors": team_a_errors_total,
-                },
-                "team_b": {
-                    "team_id": team_b_id,
-                    "short_name": team_b_short,
-                    "logo_url": team_b_logo,
-                    "record": f"{bw}-{bl}" if team_b_id in records else None,
-                    "series_wins": team_b_wins,
-                    "series_runs": team_b_runs,
-                    "series_hits": team_b_hits_total,
-                    "series_errors": team_b_errors_total,
-                },
+                "team_a": team_a,
+                "team_b": team_b,
                 "result_text": result_text,
                 "total_games": total_games,
-                "division": series_division,
+                "division": div_a or div_b,
                 "scorebugs": scorebugs,
-                "top_hitters": top_hitters,
-                "top_pitchers": top_pitchers,
-                "win_probability": win_prob,
-                "spread": spread,
+                "venue": venue_info,
                 "date_range": f"{series_games[0]['game_date']} to {series_games[-1]['game_date']}",
             })
 
-        # Sort series by division priority, then by team name
         div_order = {"D1": 0, "D2": 1, "D3": 2, "NAIA": 3, "JUCO": 4}
         result_series.sort(key=lambda s: (div_order.get(s["division"], 9), s["team_a"]["short_name"]))
 

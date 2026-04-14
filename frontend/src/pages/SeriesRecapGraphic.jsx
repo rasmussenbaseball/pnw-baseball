@@ -2,32 +2,18 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 
 const API_BASE = '/api/v1'
 
-function todayStr() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-// Find the Tuesday that starts the current week
-function currentWeekTuesday() {
-  const d = new Date()
-  const day = d.getDay() // 0=Sun, 1=Mon, 2=Tue
-  const diff = (day < 2) ? (day + 5) : (day - 2) // days since last Tuesday
-  d.setDate(d.getDate() - diff)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function shortDate(iso) {
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-}
-
 function cleanTeamName(name) {
   if (!name) return '???'
   let n = name.trim()
   n = n.replace(/^(?:No\.\s*\d+\s+|#\d+\s+|\(\d+\))\s+/i, '')
   n = n.replace(/(?<=[a-zA-Z])(\d+)$/, '')
   return n.trim() || '???'
+}
+
+function shortDate(iso) {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 function fmtIP(ip) {
@@ -38,6 +24,16 @@ function fmtIP(ip) {
   if (frac < 0.5) return `${whole}.1`
   if (frac < 0.8) return `${whole}.2`
   return String(whole + 1)
+}
+
+function fmtAvg(v) {
+  if (v == null) return '.000'
+  return v.toFixed(3).replace(/^0/, '')
+}
+
+function fmtPct(v) {
+  if (v == null) return '0.0%'
+  return v.toFixed(1) + '%'
 }
 
 const imgCache = {}
@@ -69,77 +65,65 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-// ── Draw a single scorebug for the series ──
-async function drawSeriesScorebug(ctx, game, x, y, w, h) {
+// ── Draw a scorebug (compact, for 2x2 grid) ──
+async function drawScorebug(ctx, game, x, y, w, h) {
   const away = cleanTeamName(game.away_short)
   const home = cleanTeamName(game.home_short)
   const aScore = game.away_score ?? '-'
   const hScore = game.home_score ?? '-'
   const aWon = Number(game.away_score) > Number(game.home_score)
   const hWon = Number(game.home_score) > Number(game.away_score)
-
-  const s = Math.min(h / 80, w / 240)
-  const nameFS = Math.max(7, 12 * s)
-  const scoreFS = Math.max(8, 15 * s)
-  const smallFS = Math.max(5, 8 * s)
-  const wlsFS = Math.max(5, 7 * s)
-  const logoSize = Math.max(10, 20 * s)
-  const pad = Math.max(3, 5 * s)
-  const radius = Math.max(3, 5 * s)
+  const pad = 8
+  const radius = 6
 
   // Card bg
   roundRect(ctx, x, y, w, h, radius)
   ctx.fillStyle = '#ffffff'
   ctx.fill()
-  ctx.strokeStyle = '#e2e8f0'
-  ctx.lineWidth = 0.5
+  ctx.strokeStyle = '#cbd5e1'
+  ctx.lineWidth = 1
   ctx.stroke()
 
-  // Header bar
-  const headerH = Math.max(12, 16 * s)
+  // Header bar with date + FINAL
+  const headerH = 22
   ctx.save()
   roundRect(ctx, x, y, w, headerH, radius)
   ctx.clip()
   ctx.fillStyle = '#f1f5f9'
   ctx.fillRect(x, y, w, headerH)
   ctx.restore()
+  // Bottom edge of header
+  ctx.fillStyle = '#e2e8f0'
+  ctx.fillRect(x, y + headerH - 1, w, 1)
 
-  // Date + FINAL
   const innings = game.innings && game.innings !== 9 ? ` (${game.innings})` : ''
   const dateLabel = game.game_date ? shortDate(game.game_date) : ''
   ctx.fillStyle = '#475569'
-  ctx.font = `700 ${Math.max(5, 8 * s)}px "Inter", system-ui, sans-serif`
+  ctx.font = '700 11px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`${dateLabel}  FINAL${innings}`, x + pad, y + headerH / 2)
+  ctx.fillText(`${dateLabel}`, x + pad, y + headerH / 2)
 
-  // W/L
-  const parts = []
-  if (game.win_pitcher) parts.push(`W: ${game.win_pitcher}`)
-  if (game.loss_pitcher) parts.push(`L: ${game.loss_pitcher}`)
-  if (game.save_pitcher) parts.push(`S: ${game.save_pitcher}`)
-  if (parts.length > 0) {
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = `500 ${wlsFS}px "Inter", system-ui, sans-serif`
-    ctx.textAlign = 'right'
-    ctx.fillText(parts.join('  '), x + w - pad, y + headerH / 2)
-  }
+  ctx.fillStyle = '#64748b'
+  ctx.font = '600 10px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'right'
+  ctx.fillText(`FINAL${innings}`, x + w - pad, y + headerH / 2)
 
-  // R/H/E header
-  const rheColW = Math.max(14, 20 * s)
+  // R/H/E column headers
+  const rheColW = 28
   const rheX = x + w - pad - rheColW * 3
-  const rheHeaderY = y + headerH + 1 * s
+  const rheHeaderY = y + headerH + 2
   ctx.fillStyle = '#94a3b8'
-  ctx.font = `600 ${Math.max(5, 7 * s)}px "Inter", system-ui, sans-serif`
+  ctx.font = '600 9px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 4 * s)
-  ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 4 * s)
-  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 4 * s)
+  ctx.fillText('R', rheX + rheColW * 0.5, rheHeaderY + 6)
+  ctx.fillText('H', rheX + rheColW * 1.5, rheHeaderY + 6)
+  ctx.fillText('E', rheX + rheColW * 2.5, rheHeaderY + 6)
 
   // Team rows
-  const teamTop = rheHeaderY + 9 * s
-  const teamH = y + h - teamTop - 2 * s
-  const rowH = teamH / 2
+  const teamTop = rheHeaderY + 14
+  const rowH = (y + h - teamTop - 24) / 2  // leave room for W/L line
+  const logoSize = 22
 
   for (let i = 0; i < 2; i++) {
     const isAway = i === 0
@@ -157,6 +141,7 @@ async function drawSeriesScorebug(ctx, game, x, y, w, h) {
       ctx.fillRect(x + pad, ry - 1, w - pad * 2, 0.5)
     }
 
+    // Logo
     let curX = x + pad
     if (logo) {
       try {
@@ -167,11 +152,12 @@ async function drawSeriesScorebug(ctx, game, x, y, w, h) {
         ctx.drawImage(img, curX + (logoSize - dw) / 2, midY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
-    curX += logoSize + pad
+    curX += logoSize + 6
 
-    const maxNameW = rheX - curX - 2
+    // Team name
+    const maxNameW = rheX - curX - 4
     ctx.fillStyle = won ? '#0f172a' : '#64748b'
-    ctx.font = `${won ? '700' : '500'} ${nameFS}px "Inter", system-ui, sans-serif`
+    ctx.font = `${won ? '700' : '500'} 14px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     let display = teamName
@@ -182,124 +168,142 @@ async function drawSeriesScorebug(ctx, game, x, y, w, h) {
     // R/H/E values
     ctx.textAlign = 'center'
     ctx.fillStyle = won ? '#0f172a' : '#94a3b8'
-    ctx.font = `${won ? '800' : '600'} ${scoreFS}px "Inter", system-ui, sans-serif`
+    ctx.font = `${won ? '800' : '600'} 16px "Inter", system-ui, sans-serif`
     ctx.fillText(String(score), rheX + rheColW * 0.5, midY)
     ctx.fillStyle = '#64748b'
-    ctx.font = `500 ${Math.max(6, 11 * s)}px "Inter", system-ui, sans-serif`
+    ctx.font = '500 13px "Inter", system-ui, sans-serif'
     ctx.fillText(hits != null ? String(hits) : '-', rheX + rheColW * 1.5, midY)
     ctx.fillText(errors != null ? String(errors) : '-', rheX + rheColW * 2.5, midY)
   }
+
+  // W/L pitchers at bottom
+  const wlY = y + h - 16
+  const parts = []
+  if (game.win_pitcher) parts.push(`W: ${game.win_pitcher}`)
+  if (game.loss_pitcher) parts.push(`L: ${game.loss_pitcher}`)
+  if (game.save_pitcher) parts.push(`S: ${game.save_pitcher}`)
+  if (parts.length > 0) {
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '500 9px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(parts.join('   '), x + w / 2, wlY)
+  }
 }
 
-// ── Draw top performers table ──
-async function drawPerformersTable(ctx, title, players, x, y, w, h, type) {
-  const pad = 6
-  const titleH = 18
-  const rowCount = players.length + 1
-  const rowH = Math.min(30, (h - titleH) / Math.max(1, rowCount))
-  const logoSize = Math.max(12, rowH - 6)
+// ── Draw a stat comparison row (Team A value | Label | Team B value) ──
+function drawStatCompareRow(ctx, label, valA, valB, centerX, y, colW, opts = {}) {
+  const { highlight = 'higher', format = 'number', fontSize = 14 } = opts
 
+  // Determine which side wins
+  let aWins = false, bWins = false
+  const numA = parseFloat(valA), numB = parseFloat(valB)
+  if (!isNaN(numA) && !isNaN(numB)) {
+    if (highlight === 'higher') { aWins = numA > numB; bWins = numB > numA }
+    else if (highlight === 'lower') { aWins = numA < numB; bWins = numB < numA }
+  }
+
+  // Label in center
+  ctx.fillStyle = '#64748b'
+  ctx.font = `600 10px "Inter", system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, centerX, y)
+
+  // Team A value (left)
+  ctx.fillStyle = aWins ? '#00687a' : '#334155'
+  ctx.font = `${aWins ? '800' : '600'} ${fontSize}px "Inter", system-ui, sans-serif`
+  ctx.textAlign = 'right'
+  ctx.fillText(String(valA), centerX - colW, y)
+
+  // Team B value (right)
+  ctx.fillStyle = bWins ? '#00687a' : '#334155'
+  ctx.font = `${bWins ? '800' : '600'} ${fontSize}px "Inter", system-ui, sans-serif`
+  ctx.textAlign = 'left'
+  ctx.fillText(String(valB), centerX + colW, y)
+}
+
+// ── Draw mini performer table for one team ──
+async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
+  const pad = 6
+  const titleH = 20
+  const rowH = 26
+  const logoSize = 18
+
+  // Section title
   ctx.fillStyle = '#00687a'
-  ctx.font = '700 11px "Inter", system-ui, sans-serif'
+  ctx.font = '700 10px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   ctx.fillText(title, x + pad, y + titleH / 2)
 
-  // Table header
-  const tableY = y + titleH
+  // Column headers
+  const headerY = y + titleH
   ctx.fillStyle = '#f1f5f9'
-  roundRect(ctx, x, tableY, w, rowH, 3)
+  roundRect(ctx, x, headerY, w, rowH - 2, 3)
   ctx.fill()
 
   ctx.fillStyle = '#64748b'
-  ctx.font = '600 9px "Inter", system-ui, sans-serif'
+  ctx.font = '600 8px "Inter", system-ui, sans-serif'
   ctx.textBaseline = 'middle'
-  const headerMidY = tableY + rowH / 2
+  const hMidY = headerY + (rowH - 2) / 2
 
-  const nameColW = w * 0.44
+  const nameColW = w * 0.42
   const statCols = type === 'hitter'
-    ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB', 'AVG']
-    : ['IP', 'H', 'K', 'BB', 'ER', 'DEC']
+    ? ['AB', 'H', 'HR', 'RBI', 'AVG']
+    : ['IP', 'K', 'ER', 'BB', 'DEC']
   const statColW = (w - nameColW - pad) / statCols.length
 
   ctx.textAlign = 'left'
-  ctx.fillText('PLAYER', x + pad, headerMidY)
+  ctx.fillText('PLAYER', x + pad, hMidY)
   statCols.forEach((col, i) => {
     ctx.textAlign = 'center'
-    ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, headerMidY)
+    ctx.fillText(col, x + nameColW + statColW * i + statColW / 2, hMidY)
   })
 
+  // Player rows
   for (let i = 0; i < players.length; i++) {
     const p = players[i]
-    const ry = tableY + rowH + i * rowH
+    const ry = headerY + rowH + i * rowH
     const rMidY = ry + rowH / 2
 
     if (i % 2 === 1) {
       ctx.fillStyle = '#fafbfc'
       ctx.fillRect(x, ry, w, rowH)
     }
-    ctx.fillStyle = '#f1f5f9'
-    ctx.fillRect(x + 2, ry, w - 4, 0.5)
 
-    // Team logo
     let curX = x + pad
-    if (p.team_logo) {
-      try {
-        const img = await loadImage(p.team_logo)
-        const a = img.naturalWidth / img.naturalHeight
-        let dw = logoSize, dh = logoSize
-        if (a >= 1) dh = logoSize / a; else dw = logoSize * a
-        ctx.drawImage(img, curX + (logoSize - dw) / 2, rMidY - dh / 2, dw, dh)
-      } catch { /* skip */ }
-    }
-    curX += logoSize + 3
 
     // Headshot
     if (p.headshot_url) {
       try {
         const img = await loadImage(p.headshot_url)
-        const hsSize = logoSize
         ctx.save()
         ctx.beginPath()
-        ctx.arc(curX + hsSize / 2, rMidY, hsSize / 2, 0, Math.PI * 2)
+        ctx.arc(curX + logoSize / 2, rMidY, logoSize / 2, 0, Math.PI * 2)
         ctx.clip()
-        ctx.drawImage(img, curX, rMidY - hsSize / 2, hsSize, hsSize)
+        ctx.drawImage(img, curX, rMidY - logoSize / 2, logoSize, logoSize)
         ctx.restore()
-        curX += hsSize + 3
-      } catch {
-        /* skip */
-      }
+        curX += logoSize + 4
+      } catch { curX += 2 }
     }
 
     const name = p.display_name || 'Unknown'
-    const team = p.team_short || ''
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#0f172a'
-    ctx.font = '600 12px "Inter", system-ui, sans-serif'
-
+    ctx.font = '600 11px "Inter", system-ui, sans-serif'
     const maxW = x + nameColW - curX - 2
     let displayName = name
-    while (ctx.measureText(`${displayName} ${team}`).width > maxW && displayName.length > 3) {
-      displayName = displayName.slice(0, -1)
-    }
+    while (ctx.measureText(displayName).width > maxW && displayName.length > 3) displayName = displayName.slice(0, -1)
     if (displayName !== name) displayName += '.'
     ctx.fillText(displayName, curX, rMidY)
-
-    const nameW = ctx.measureText(displayName + ' ').width
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '400 9px "Inter", system-ui, sans-serif'
-    ctx.fillText(team, curX + nameW, rMidY)
 
     // Stats
     ctx.font = '600 11px "Inter", system-ui, sans-serif'
     ctx.fillStyle = '#0f172a'
     if (type === 'hitter') {
-      const avg = p.avg != null ? p.avg.toFixed(3).replace(/^0/, '') : '-'
-      const stats = [
-        p.at_bats || 0, p.hits || 0, p.home_runs || 0,
-        p.rbi || 0, p.xbh || 0, p.stolen_bases || 0, avg,
-      ]
+      const avg = fmtAvg(p.avg)
+      const stats = [p.at_bats || 0, p.hits || 0, p.home_runs || 0, p.rbi || 0, avg]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
         ctx.fillStyle = j === 2 && val > 0 ? '#dc2626' : '#0f172a'
@@ -308,15 +312,11 @@ async function drawPerformersTable(ctx, title, players, x, y, w, h, type) {
       })
     } else {
       const ip = fmtIP(p.innings_pitched)
-      const dec = p.decision_summary || p.decision || '-'
-      const stats = [
-        ip, p.hits_allowed != null ? p.hits_allowed : '-',
-        p.strikeouts || 0, p.walks || 0,
-        p.earned_runs || 0, dec,
-      ]
+      const dec = p.decision_summary || '-'
+      const stats = [ip, p.strikeouts || 0, p.earned_runs || 0, p.walks || 0, dec]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        if (j === 5) {
+        if (j === 4) {
           const hasW = String(val).includes('W')
           const hasL = String(val).includes('L')
           ctx.fillStyle = hasW ? '#16a34a' : hasL ? '#dc2626' : '#64748b'
@@ -329,249 +329,330 @@ async function drawPerformersTable(ctx, title, players, x, y, w, h, type) {
       })
     }
   }
+
+  return titleH + rowH + players.length * rowH
 }
 
-// ── Main renderer for a single series (1080x1080) ──
+// ────────────────────────────────────────────
+// ── MAIN RENDERER (1080x1080) ──
+// ────────────────────────────────────────────
 async function renderSeriesGraphic(canvas, series) {
-  const W = 1080
-  const H = 1080
+  const W = 1080, H = 1080
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
   const pad = 24
+  const centerX = W / 2
 
-  // White bg
-  ctx.fillStyle = '#ffffff'
+  // ── Background ──
+  ctx.fillStyle = '#f8fafc'
   ctx.fillRect(0, 0, W, H)
 
-  // ── Header bar ──
-  const headerH = 60
-  ctx.fillStyle = '#00687a'
+  // ── Top header bar ──
+  const headerH = 52
+  ctx.fillStyle = '#0f2b3d'
   ctx.fillRect(0, 0, W, headerH)
 
   // NW badge
-  ctx.fillStyle = 'rgba(255,255,255,0.2)'
-  roundRect(ctx, pad, 12, 34, 34, 5)
+  ctx.fillStyle = 'rgba(255,255,255,0.15)'
+  roundRect(ctx, 14, 10, 32, 32, 5)
   ctx.fill()
   ctx.fillStyle = '#ffffff'
-  ctx.font = '700 16px "Helvetica Neue", "Arial", sans-serif'
+  ctx.font = '700 15px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('NW', pad + 17, 30)
+  ctx.fillText('NW', 30, 26)
 
   ctx.fillStyle = '#ffffff'
-  ctx.font = '800 24px "Helvetica Neue", "Arial", sans-serif'
+  ctx.font = '800 22px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('SERIES RECAP', W / 2, headerH / 2)
+  ctx.fillText('SERIES RECAP', centerX, headerH / 2)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  // Date range
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
   ctx.font = '500 10px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'right'
   ctx.fillText(series.date_range || '', W - pad, headerH / 2)
 
-  ctx.fillStyle = '#0f172a'
+  // Teal accent line
+  ctx.fillStyle = '#00687a'
   ctx.fillRect(0, headerH, W, 3)
 
-  let curY = headerH + 3 + 14
+  let curY = headerH + 3
 
-  // ── Series matchup header: logos + names + result ──
+  // ── Team matchup section ──
   const teamA = series.team_a
   const teamB = series.team_b
-  const matchupH = 90
-  const logoSz = 60
+  const matchupH = 130
+  const matchBg = curY
 
-  // Team A logo
-  const logoAX = W * 0.22
-  const logoBX = W * 0.78
-  const logoMidY = curY + matchupH / 2
+  // Light background for matchup
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, matchBg, W, matchupH)
+  ctx.fillStyle = '#e2e8f0'
+  ctx.fillRect(0, matchBg + matchupH - 1, W, 1)
 
-  try {
-    const imgA = await loadImage(teamA.logo_url)
-    const aA = imgA.naturalWidth / imgA.naturalHeight
-    let dwA = logoSz, dhA = logoSz
-    if (aA >= 1) dhA = logoSz / aA; else dwA = logoSz * aA
-    ctx.drawImage(imgA, logoAX - dwA / 2, logoMidY - dhA / 2, dwA, dhA)
-  } catch { /* skip */ }
+  const logoSz = 64
+  const logoY = matchBg + 20
+  const logoAX = W * 0.20
+  const logoBX = W * 0.80
 
-  try {
-    const imgB = await loadImage(teamB.logo_url)
-    const aB = imgB.naturalWidth / imgB.naturalHeight
-    let dwB = logoSz, dhB = logoSz
-    if (aB >= 1) dhB = logoSz / aB; else dwB = logoSz * aB
-    ctx.drawImage(imgB, logoBX - dwB / 2, logoMidY - dhB / 2, dwB, dhB)
-  } catch { /* skip */ }
-
-  // Team names
-  ctx.fillStyle = '#0f172a'
-  ctx.font = '800 22px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(cleanTeamName(teamA.short_name), logoAX, logoMidY + logoSz / 2 + 14)
-  ctx.fillText(cleanTeamName(teamB.short_name), logoBX, logoMidY + logoSz / 2 + 14)
-
-  // Records
-  if (teamA.record) {
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '500 12px "Inter", system-ui, sans-serif'
-    ctx.fillText(`(${teamA.record})`, logoAX, logoMidY + logoSz / 2 + 30)
-  }
-  if (teamB.record) {
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '500 12px "Inter", system-ui, sans-serif'
-    ctx.fillText(`(${teamB.record})`, logoBX, logoMidY + logoSz / 2 + 30)
+  // Draw team logos
+  for (const [team, lx] of [[teamA, logoAX], [teamB, logoBX]]) {
+    try {
+      const img = await loadImage(team.logo_url)
+      const a = img.naturalWidth / img.naturalHeight
+      let dw = logoSz, dh = logoSz
+      if (a >= 1) dh = logoSz / a; else dw = logoSz * a
+      ctx.drawImage(img, lx - dw / 2, logoY + (logoSz - dh) / 2, dw, dh)
+    } catch { /* skip */ }
   }
 
-  // "VS" in the middle
-  ctx.fillStyle = '#94a3b8'
-  ctx.font = '700 16px "Inter", system-ui, sans-serif'
-  ctx.fillText('VS', W / 2, logoMidY)
-
-  // Series result
-  ctx.fillStyle = '#00687a'
-  ctx.font = '800 20px "Inter", system-ui, sans-serif'
-  ctx.fillText(series.result_text || '', W / 2, logoMidY + 30)
-
-  curY += matchupH + 50
-
-  // ── Win probability bar ──
-  if (series.win_probability) {
-    const wp = series.win_probability
-    const barW = W - pad * 2 - 160
-    const barH = 22
-    const barX = pad + 80
-    const barY = curY
-
-    ctx.fillStyle = '#64748b'
-    ctx.font = '600 10px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText("TODAY'S PROJECTED MATCHUP", W / 2, barY - 8)
-
-    // Bar background
-    roundRect(ctx, barX, barY, barW, barH, 4)
-    ctx.fillStyle = '#e2e8f0'
-    ctx.fill()
-
-    // Team A side (teal)
-    const aPct = wp.team_a_prob
-    const aBarW = barW * aPct
-    ctx.save()
-    roundRect(ctx, barX, barY, barW, barH, 4)
-    ctx.clip()
-    ctx.fillStyle = '#00687a'
-    ctx.fillRect(barX, barY, aBarW, barH)
-    ctx.restore()
-
-    // Percentages
+  // Team names + records
+  const nameY = logoY + logoSz + 14
+  for (const [team, tx] of [[teamA, logoAX], [teamB, logoBX]]) {
     ctx.fillStyle = '#0f172a'
-    ctx.font = '700 13px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'right'
-    ctx.fillText(`${Math.round(aPct * 100)}%`, barX - 8, barY + barH / 2)
-    ctx.textAlign = 'left'
-    ctx.fillText(`${Math.round((1 - aPct) * 100)}%`, barX + barW + 8, barY + barH / 2)
+    ctx.font = '800 20px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(cleanTeamName(team.short_name), tx, nameY)
 
-    // Spread
-    if (series.spread != null && series.spread !== 0) {
-      const favTeam = series.spread > 0 ? teamA.short_name : teamB.short_name
-      const spreadVal = Math.abs(series.spread)
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = '500 10px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(`${cleanTeamName(favTeam)} -${spreadVal.toFixed(1)}`, W / 2, barY + barH + 14)
+    // Record + conf record
+    let recordStr = ''
+    if (team.record) recordStr = team.record
+    if (team.conf_record) recordStr += ` (${team.conf_record})`
+    if (recordStr) {
+      ctx.fillStyle = '#64748b'
+      ctx.font = '500 11px "Inter", system-ui, sans-serif'
+      ctx.fillText(recordStr, tx, nameY + 16)
     }
 
-    curY += barH + 32
+    // National rank badge
+    if (team.national_rank) {
+      const badgeX = tx + 60
+      const badgeY = logoY + 4
+      ctx.fillStyle = '#00687a'
+      roundRect(ctx, badgeX, badgeY, 36, 18, 4)
+      ctx.fill()
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '700 10px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(`#${team.national_rank}`, badgeX + 18, badgeY + 9)
+    }
   }
 
-  // ── Team series stats ──
-  const statsY = curY
-  const statsH = 36
-  ctx.fillStyle = '#f8fafc'
-  roundRect(ctx, pad, statsY, W - pad * 2, statsH, 5)
-  ctx.fill()
-  ctx.strokeStyle = '#e2e8f0'
-  ctx.lineWidth = 0.5
-  ctx.stroke()
+  // Series result in center
+  ctx.fillStyle = '#0f2b3d'
+  ctx.font = '800 18px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(series.result_text || '', centerX, logoY + logoSz / 2 - 6)
 
-  const statsLabels = ['RUNS', 'HITS', 'ERRORS']
-  const teamAStats = [teamA.series_runs, teamA.series_hits, teamA.series_errors]
-  const teamBStats = [teamB.series_runs, teamB.series_hits, teamB.series_errors]
-  const statSpacing = (W - pad * 2) / (statsLabels.length + 2)
-  const statsMidY = statsY + statsH / 2
-
-  // Team names on sides
+  // Series score (e.g. "3 - 1")
   ctx.fillStyle = '#00687a'
-  ctx.font = '700 11px "Inter", system-ui, sans-serif'
+  ctx.font = '800 32px "Inter", system-ui, sans-serif'
+  ctx.fillText(`${teamA.series_wins}  -  ${teamB.series_wins}`, centerX, logoY + logoSz / 2 + 22)
+
+  curY = matchBg + matchupH
+
+  // ── Scorebugs (2x2 grid) ──
+  const bugSectionY = curY + 6
+  ctx.fillStyle = '#64748b'
+  ctx.font = '700 10px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText(cleanTeamName(teamA.short_name), pad + 10, statsMidY)
-  ctx.textAlign = 'right'
-  ctx.fillText(cleanTeamName(teamB.short_name), W - pad - 10, statsMidY)
+  ctx.textBaseline = 'middle'
+  ctx.fillText('GAME RESULTS', pad, bugSectionY + 6)
 
-  statsLabels.forEach((label, i) => {
-    const centerX = pad + statSpacing * (i + 1.5)
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '600 8px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText(label, centerX, statsMidY - 8)
-
-    // Team A value
-    const aVal = teamAStats[i] || 0
-    const bVal = teamBStats[i] || 0
-    const aWins = (label === 'ERRORS') ? aVal < bVal : aVal > bVal
-
-    ctx.font = '700 13px "Inter", system-ui, sans-serif'
-    ctx.fillStyle = aWins ? '#00687a' : '#64748b'
-    ctx.textAlign = 'right'
-    ctx.fillText(String(aVal), centerX - 14, statsMidY + 6)
-
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '400 10px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('-', centerX, statsMidY + 6)
-
-    ctx.font = '700 13px "Inter", system-ui, sans-serif'
-    ctx.fillStyle = !aWins ? '#00687a' : '#64748b'
-    ctx.textAlign = 'left'
-    ctx.fillText(String(bVal), centerX + 14, statsMidY + 6)
-  })
-
-  curY = statsY + statsH + 16
-
-  // ── Scorebugs ──
+  const bugGridY = bugSectionY + 16
   const numGames = series.scorebugs.length
-  const bugW = (W - pad * 2 - (numGames - 1) * 8) / numGames
-  const bugH = Math.min(86, bugW * 0.38)
+  const cols = numGames <= 3 ? numGames : 2
+  const rows = Math.ceil(numGames / cols)
+  const gap = 10
+  const bugW = (W - pad * 2 - gap * (cols - 1)) / cols
+  const bugH = 100
 
   for (let i = 0; i < numGames; i++) {
-    const bx = pad + i * (bugW + 8)
-    await drawSeriesScorebug(ctx, series.scorebugs[i], bx, curY, bugW, bugH)
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const bx = pad + col * (bugW + gap)
+    const by = bugGridY + row * (bugH + gap)
+    await drawScorebug(ctx, series.scorebugs[i], bx, by, bugW, bugH)
   }
 
-  curY += bugH + 20
+  curY = bugGridY + rows * (bugH + gap) + 4
 
-  // ── Top performers ──
-  const perfH = H - curY - 30  // leave room for footer
+  // ── Stat comparison section ──
+  const statSectionY = curY
+  ctx.fillStyle = '#ffffff'
+  roundRect(ctx, pad, statSectionY, W - pad * 2, 0, 8) // will fill after measuring
+
+  // Section header
+  ctx.fillStyle = '#64748b'
+  ctx.font = '700 10px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('SERIES BATTING COMPARISON', pad, statSectionY + 10)
+
+  const bA = teamA.series_batting || {}
+  const bB = teamB.series_batting || {}
+  const pA = teamA.series_pitching || {}
+  const pB = teamB.series_pitching || {}
+
+  // Team name labels for comparison
+  const compY = statSectionY + 24
+  ctx.fillStyle = '#0f172a'
+  ctx.font = '700 12px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'right'
+  ctx.fillText(cleanTeamName(teamA.short_name), centerX - 50, compY)
+  ctx.textAlign = 'left'
+  ctx.fillText(cleanTeamName(teamB.short_name), centerX + 50, compY)
+
+  // Batting stat rows
+  const battingStats = [
+    { label: 'AVG', a: fmtAvg(bA.avg), b: fmtAvg(bB.avg), hl: 'higher' },
+    { label: 'OBP', a: fmtAvg(bA.obp), b: fmtAvg(bB.obp), hl: 'higher' },
+    { label: 'SLG', a: fmtAvg(bA.slg), b: fmtAvg(bB.slg), hl: 'higher' },
+    { label: 'OPS', a: fmtAvg(bA.ops), b: fmtAvg(bB.ops), hl: 'higher' },
+    { label: 'RUNS', a: String(bA.r || 0), b: String(bB.r || 0), hl: 'higher' },
+    { label: 'HITS', a: String(bA.h || 0), b: String(bB.h || 0), hl: 'higher' },
+    { label: 'HR', a: String(bA.hr || 0), b: String(bB.hr || 0), hl: 'higher' },
+    { label: 'K%', a: fmtPct(bA.k_rate), b: fmtPct(bB.k_rate), hl: 'lower' },
+    { label: 'BB%', a: fmtPct(bA.bb_rate), b: fmtPct(bB.bb_rate), hl: 'higher' },
+  ]
+
+  let rowY = compY + 20
+  const rowSpacing = 20
+
+  // Draw batting stats in a nice card
+  roundRect(ctx, pad, statSectionY - 2, W - pad * 2, 24 + 20 + battingStats.length * rowSpacing + 8, 8)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  // Re-draw the header text and team names over the card
+  ctx.fillStyle = '#00687a'
+  ctx.font = '700 10px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('SERIES BATTING', pad + 12, statSectionY + 12)
+
+  ctx.fillStyle = '#0f172a'
+  ctx.font = '700 12px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'right'
+  ctx.fillText(cleanTeamName(teamA.short_name), centerX - 50, compY)
+  ctx.textAlign = 'left'
+  ctx.fillText(cleanTeamName(teamB.short_name), centerX + 50, compY)
+
+  battingStats.forEach((stat) => {
+    drawStatCompareRow(ctx, stat.label, stat.a, stat.b, centerX, rowY, 50, { highlight: stat.hl })
+    rowY += rowSpacing
+  })
+
+  const battingCardBottom = rowY + 4
+  curY = battingCardBottom + 8
+
+  // ── Pitching comparison card ──
+  const pitchCardY = curY
+  const pitchingStats = [
+    { label: 'ERA', a: (pA.era || 0).toFixed(2), b: (pB.era || 0).toFixed(2), hl: 'lower' },
+    { label: 'WHIP', a: (pA.whip || 0).toFixed(2), b: (pB.whip || 0).toFixed(2), hl: 'lower' },
+    { label: 'K/9', a: (pA.k_per_9 || 0).toFixed(1), b: (pB.k_per_9 || 0).toFixed(1), hl: 'higher' },
+    { label: 'BB/9', a: (pA.bb_per_9 || 0).toFixed(1), b: (pB.bb_per_9 || 0).toFixed(1), hl: 'lower' },
+    { label: 'H/9', a: (pA.h_per_9 || 0).toFixed(1), b: (pB.h_per_9 || 0).toFixed(1), hl: 'lower' },
+    { label: 'K', a: String(pA.k || 0), b: String(pB.k || 0), hl: 'higher' },
+    { label: 'ER', a: String(pA.er || 0), b: String(pB.er || 0), hl: 'lower' },
+  ]
+
+  const pitchCardH = 24 + 20 + pitchingStats.length * rowSpacing + 8
+  roundRect(ctx, pad, pitchCardY, W - pad * 2, pitchCardH, 8)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.fillStyle = '#00687a'
+  ctx.font = '700 10px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('SERIES PITCHING', pad + 12, pitchCardY + 12)
+
+  // Team name labels
+  const pitchCompY = pitchCardY + 28
+  ctx.fillStyle = '#0f172a'
+  ctx.font = '700 12px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'right'
+  ctx.fillText(cleanTeamName(teamA.short_name), centerX - 50, pitchCompY)
+  ctx.textAlign = 'left'
+  ctx.fillText(cleanTeamName(teamB.short_name), centerX + 50, pitchCompY)
+
+  let pitchRowY = pitchCompY + 20
+  pitchingStats.forEach((stat) => {
+    drawStatCompareRow(ctx, stat.label, stat.a, stat.b, centerX, pitchRowY, 50, { highlight: stat.hl })
+    pitchRowY += rowSpacing
+  })
+
+  curY = pitchCardY + pitchCardH + 8
+
+  // ── Top Performers (split left/right by team) ──
+  const perfSectionY = curY
   const halfW = (W - pad * 2 - 12) / 2
 
-  if (series.top_hitters?.length > 0) {
-    await drawPerformersTable(ctx, 'TOP HITTERS', series.top_hitters, pad, curY, halfW, perfH, 'hitter')
+  // Team A performers on left
+  let leftH = 0
+  if (teamA.top_hitters?.length > 0) {
+    leftH += await drawTeamPerformers(ctx, `${cleanTeamName(teamA.short_name)} TOP HITTERS`, teamA.top_hitters, pad, perfSectionY, halfW, 'hitter')
   }
-  if (series.top_pitchers?.length > 0) {
-    await drawPerformersTable(ctx, 'TOP PITCHERS', series.top_pitchers, pad + halfW + 12, curY, halfW, perfH, 'pitcher')
+  if (teamA.top_pitchers?.length > 0) {
+    leftH += await drawTeamPerformers(ctx, `${cleanTeamName(teamA.short_name)} TOP PITCHERS`, teamA.top_pitchers, pad, perfSectionY + leftH + 4, halfW, 'pitcher')
+  }
+
+  // Team B performers on right
+  let rightH = 0
+  if (teamB.top_hitters?.length > 0) {
+    rightH += await drawTeamPerformers(ctx, `${cleanTeamName(teamB.short_name)} TOP HITTERS`, teamB.top_hitters, pad + halfW + 12, perfSectionY, halfW, 'hitter')
+  }
+  if (teamB.top_pitchers?.length > 0) {
+    rightH += await drawTeamPerformers(ctx, `${cleanTeamName(teamB.short_name)} TOP PITCHERS`, teamB.top_pitchers, pad + halfW + 12, perfSectionY + rightH + 4, halfW, 'pitcher')
+  }
+
+  curY = perfSectionY + Math.max(leftH, rightH) + 12
+
+  // ── Venue / Park Factors bar ──
+  if (series.venue) {
+    const v = series.venue
+    const venueY = Math.max(curY, H - 52)
+    ctx.fillStyle = '#f1f5f9'
+    ctx.fillRect(0, venueY, W, 24)
+    ctx.fillStyle = '#64748b'
+    ctx.font = '500 9px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    const parts = []
+    if (v.stadium || v.name) parts.push(v.stadium || v.name)
+    if (v.city && v.state) parts.push(`${v.city}, ${v.state}`)
+    if (v.elevation_ft) parts.push(`${v.elevation_ft}ft elev.`)
+    if (v.park_factor_pct != null) parts.push(`Park Factor: ${v.park_factor_pct > 0 ? '+' : ''}${v.park_factor_pct}%`)
+    if (v.surface) parts.push(v.surface)
+    if (v.dimensions) {
+      const d = v.dimensions
+      if (d.lf && d.cf && d.rf) parts.push(`${d.lf}-${d.cf}-${d.rf}`)
+    }
+    ctx.fillText(parts.join('  |  '), centerX, venueY + 12)
   }
 
   // ── Footer ──
-  const footerY = H - 18
-  ctx.fillStyle = '#e2e8f0'
-  ctx.fillRect(pad, footerY - 8, W - pad * 2, 1)
+  const footerY = H - 22
+  ctx.fillStyle = '#0f2b3d'
+  ctx.fillRect(0, footerY - 4, W, 26)
   ctx.fillStyle = '#00687a'
   ctx.font = '700 10px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText('PNWBASEBALLSTATS.COM', pad, footerY)
-  ctx.fillStyle = '#94a3b8'
-  ctx.font = '500 8px "Helvetica Neue", "Arial", sans-serif'
+  ctx.fillText('PNWBASEBALLSTATS.COM', pad, footerY + 8)
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'
+  ctx.font = '500 9px "Helvetica Neue", "Arial", sans-serif'
   ctx.textAlign = 'right'
-  ctx.fillText('2026 Season', W - pad, footerY)
+  ctx.fillText('2026 Season', W - pad, footerY + 8)
 }
 
 // ── Component ──
@@ -588,7 +669,6 @@ export default function SeriesRecapGraphic() {
 
   const DIV_OPTIONS = ['ALL', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 
-  // Fetch available weeks on mount
   useEffect(() => {
     async function fetchWeeks() {
       try {
@@ -596,7 +676,6 @@ export default function SeriesRecapGraphic() {
         if (!res.ok) throw new Error(`API error: ${res.status}`)
         const json = await res.json()
         setWeeks(json.weeks || [])
-        // Default to current week
         const current = (json.weeks || []).find(w => w.is_current)
         if (current) setSelectedWeek(current.week_start)
         else if (json.weeks?.length) setSelectedWeek(json.weeks[json.weeks.length - 1].week_start)
@@ -607,7 +686,6 @@ export default function SeriesRecapGraphic() {
     fetchWeeks()
   }, [])
 
-  // Fetch series data when week changes
   const fetchSeries = useCallback(async (weekStart) => {
     if (!weekStart) return
     setLoading(true)
@@ -629,14 +707,12 @@ export default function SeriesRecapGraphic() {
 
   useEffect(() => { fetchSeries(selectedWeek) }, [selectedWeek, fetchSeries])
 
-  // Filter series by division
   const filteredSeries = seriesData?.series?.filter(s =>
     divFilter === 'ALL' || (s.division || '').toUpperCase() === divFilter
   ) || []
 
   const currentSeries = filteredSeries[selectedSeriesIdx] || null
 
-  // Render canvas when series selection changes
   const generate = useCallback(async () => {
     if (!currentSeries || !canvasRef.current) return
     await renderSeriesGraphic(canvasRef.current, currentSeries)
@@ -648,7 +724,6 @@ export default function SeriesRecapGraphic() {
     else setRendered(false)
   }, [currentSeries, generate])
 
-  // Reset series index when division filter changes
   useEffect(() => { setSelectedSeriesIdx(0) }, [divFilter])
 
   const download = () => {
@@ -698,7 +773,7 @@ export default function SeriesRecapGraphic() {
         ))}
       </div>
 
-      {/* Series selector (if multiple in one week) */}
+      {/* Series selector */}
       {filteredSeries.length > 1 && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
           {filteredSeries.map((s, i) => (
