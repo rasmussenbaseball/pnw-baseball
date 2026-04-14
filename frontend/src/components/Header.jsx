@@ -65,6 +65,7 @@ const NAV = [
       { to: '/daily-scores', label: 'Daily Scores', desc: 'Download daily scoreboard graphic' },
       { to: '/key-matchup', label: 'Key Matchup', desc: 'Matchup of the day graphic' },
       { to: '/series-recap', label: 'Series Recap', desc: 'Weekly series recap graphics' },
+      { to: '/daily-recap', label: 'Daily Recap', desc: 'Daily game recap graphics' },
       { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
     ],
   },

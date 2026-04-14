@@ -6942,6 +6942,488 @@ def series_recap(
         }
 
 
+@router.get("/games/daily-recap")
+def daily_recap(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    home_team_id: int = Query(...),
+    away_team_id: int = Query(...),
+    season: int = Query(2026),
+):
+    """
+    Return all games between two teams on a given date (could be doubleheader).
+    Includes full box score data, top performers, and team records.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from datetime import date as _date_type
+
+    recap_date = datetime.strptime(date, "%Y-%m-%d").date()
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── 1. Get all games between these two teams on this date ──
+        cur.execute("""
+            SELECT
+                g.id, g.game_date, g.game_number, g.status,
+                g.home_team_id, g.away_team_id,
+                g.home_score, g.away_score,
+                g.home_hits, g.home_errors, g.away_hits, g.away_errors,
+                g.innings, g.home_line_score, g.away_line_score,
+                COALESCE(ht.short_name, ht.name) AS home_short,
+                COALESCE(at2.short_name, at2.name) AS away_short,
+                ht.logo_url AS home_logo,
+                at2.logo_url AS away_logo
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.game_date = %s
+              AND g.season = %s
+              AND g.status = 'final'
+              AND (
+                (g.home_team_id = %s AND g.away_team_id = %s) OR
+                (g.home_team_id = %s AND g.away_team_id = %s)
+              )
+            ORDER BY g.game_number ASC
+        """, (recap_date, season, home_team_id, away_team_id, away_team_id, home_team_id))
+        games = [dict(r) for r in cur.fetchall()]
+
+        if not games:
+            return {
+                "date": date,
+                "team_a": None,
+                "team_b": None,
+                "games": [],
+                "is_doubleheader": False,
+                "total_games": 0,
+                "available_matchups": [],
+            }
+
+        # ── 2. Determine which team is home/away (using first game) ──
+        first_game = games[0]
+        h_id = first_game["home_team_id"]
+        a_id = first_game["away_team_id"]
+
+        # Fetch team records
+        cur.execute("SELECT team_id, wins, losses FROM team_season_stats WHERE season = %s", (season,))
+        records = {r["team_id"]: {"wins": r["wins"], "losses": r["losses"]} for r in cur.fetchall()}
+
+        # Fetch team info
+        cur.execute("""
+            SELECT id, name, short_name, logo_url, conference_id
+            FROM teams
+            WHERE id IN (%s, %s)
+        """, (h_id, a_id))
+        teams_info = {r["id"]: dict(r) for r in cur.fetchall()}
+
+        # Get conference info
+        cur.execute("""
+            SELECT c.id, c.name as conference_name, d.level
+            FROM conferences c
+            LEFT JOIN divisions d ON c.division_id = d.id
+        """)
+        conf_map = {r["id"]: {"name": r["conference_name"], "division": r["level"]}
+                    for r in cur.fetchall()}
+
+        def _team_obj(tid):
+            t = teams_info.get(tid, {})
+            c = conf_map.get(t.get("conference_id"), {})
+            rec = records.get(tid, {"wins": 0, "losses": 0})
+            return {
+                "team_id": tid,
+                "short_name": t.get("short_name") or t.get("name"),
+                "school_name": t.get("name"),
+                "logo_url": t.get("logo_url"),
+                "record": rec,
+                "division": c.get("division"),
+                "conference": c.get("name"),
+            }
+
+        team_a = _team_obj(h_id)
+        team_b = _team_obj(a_id)
+
+        # ── 3. Helper functions for scoring ──
+        def hitting_score(b):
+            hr = b.get("home_runs") or 0
+            trip = b.get("triples") or 0
+            dbl = b.get("doubles") or 0
+            h = b.get("hits") or 0
+            rbi = b.get("rbi") or 0
+            r = b.get("runs") or 0
+            bb = b.get("walks") or 0
+            sb = b.get("stolen_bases") or 0
+            hbp = b.get("hit_by_pitch") or 0
+            singles = h - dbl - trip - hr
+            return (hr*6)+(trip*4)+(dbl*3)+(singles*1.5)+(rbi*2)+(r*1)+(bb*0.5)+(sb*1.5)+(hbp*0.3)
+
+        def pitching_perf_score(p):
+            ip = p.get("innings_pitched") or 0
+            k = p.get("strikeouts") or 0
+            h = p.get("hits_allowed") or 0
+            er = p.get("earned_runs") or 0
+            bb = p.get("walks") or 0
+            hra = p.get("home_runs_allowed") or 0
+            return (k*3.5)+(ip*3.5)-(h*1.5)-(er*6)-(bb*1.5)-(hra*2.5)
+
+        def _display_name(row):
+            if row.get("last_name") and row.get("first_name"):
+                return f"{row['first_name']} {row['last_name']}"
+            name = row.get("player_name") or ""
+            if "," in name:
+                parts = name.split(",", 1)
+                return f"{parts[1].strip()} {parts[0].strip()}"
+            return name
+
+        def _format_hitter_line(b):
+            """Generate human-readable stat line for a hitter."""
+            ab = b.get("at_bats") or 0
+            h = b.get("hits") or 0
+            dbl = b.get("doubles") or 0
+            trip = b.get("triples") or 0
+            hr = b.get("home_runs") or 0
+            rbi = b.get("rbi") or 0
+            r = b.get("runs") or 0
+            bb = b.get("walks") or 0
+            sb = b.get("stolen_bases") or 0
+
+            parts = [f"{h}-for-{ab}"]
+            if hr:
+                parts.append(f"{hr} HR" if hr > 1 else "HR")
+            if trip:
+                parts.append(f"{trip} 3B" if trip > 1 else "3B")
+            if dbl:
+                parts.append(f"{dbl} 2B" if dbl > 1 else "2B")
+            if rbi:
+                parts.append(f"{rbi} RBI")
+            if r:
+                parts.append(f"{r} R")
+            if bb:
+                parts.append(f"{bb} BB" if bb > 1 else "BB")
+            if sb:
+                parts.append(f"{sb} SB" if sb > 1 else "SB")
+            return ", ".join(parts)
+
+        def _format_pitcher_line(p):
+            """Generate human-readable stat line for a pitcher."""
+            ip = p.get("innings_pitched") or 0
+            h = p.get("hits_allowed") or 0
+            er = p.get("earned_runs") or 0
+            bb = p.get("walks") or 0
+            k = p.get("strikeouts") or 0
+            hra = p.get("home_runs_allowed") or 0
+            decision = p.get("decision")
+
+            parts = []
+            if ip == int(ip):
+                parts.append(f"{int(ip)}.0 IP")
+            else:
+                parts.append(f"{ip} IP")
+            if k:
+                parts.append(f"{k} K")
+            if er is not None:
+                parts.append(f"{er} ER")
+            if bb:
+                parts.append(f"{bb} BB")
+            if hra:
+                parts.append(f"{hra} HR" if hra > 1 else "HR")
+            if decision:
+                parts.append(decision)
+            return ", ".join(parts)
+
+        # ── 4. Process each game ──
+        game_ids = [g["id"] for g in games]
+        placeholders = ",".join(["%s"] * len(game_ids))
+
+        # Get W/L/S decisions
+        cur.execute(f"""
+            SELECT gp.game_id, gp.team_id, gp.player_name, gp.decision,
+                   p.first_name, p.last_name
+            FROM game_pitching gp
+            LEFT JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id IN ({placeholders}) AND gp.decision IN ('W','L','S')
+        """, game_ids)
+        decisions = {}
+        for r in cur.fetchall():
+            gid = r["game_id"]
+            if gid not in decisions:
+                decisions[gid] = {}
+            name = r["last_name"] or (r["player_name"].split(",")[0].strip() if r["player_name"] else "?")
+            decisions[gid][r["decision"]] = name
+
+        # Get batting data
+        cur.execute(f"""
+            SELECT gb.game_id, gb.team_id, gb.player_name, gb.player_id,
+                   gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
+                   gb.home_runs, gb.rbi, gb.walks, gb.strikeouts,
+                   gb.hit_by_pitch, gb.stolen_bases,
+                   COALESCE(t.short_name, t.name) AS team_short,
+                   t.logo_url AS team_logo,
+                   p.first_name, p.last_name
+            FROM game_batting gb
+            JOIN teams t ON gb.team_id = t.id
+            LEFT JOIN players p ON gb.player_id = p.id
+            WHERE gb.game_id IN ({placeholders})
+        """, game_ids)
+        batting_rows = [dict(r) for r in cur.fetchall()]
+
+        # Get pitching data
+        cur.execute(f"""
+            SELECT gp.game_id, gp.team_id, gp.player_name, gp.player_id,
+                   gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
+                   gp.earned_runs, gp.walks, gp.strikeouts,
+                   gp.home_runs_allowed, gp.decision,
+                   COALESCE(t.short_name, t.name) AS team_short,
+                   t.logo_url AS team_logo,
+                   p.first_name, p.last_name
+            FROM game_pitching gp
+            JOIN teams t ON gp.team_id = t.id
+            LEFT JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id IN ({placeholders})
+        """, game_ids)
+        pitching_rows = [dict(r) for r in cur.fetchall()]
+
+        # ── 5. Build game objects with top performers ──
+        result_games = []
+        for g in games:
+            gid = g["id"]
+            d = decisions.get(gid, {})
+
+            # Get batting and pitching rows for this game
+            g_batting = [b for b in batting_rows if b["game_id"] == gid]
+            g_pitching = [p for p in pitching_rows if p["game_id"] == gid]
+
+            # Calculate top performers for this game
+            all_performers = []
+
+            # Hitters
+            hitter_agg = {}
+            for b in g_batting:
+                pid = b.get("player_id")
+                pk = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
+                if pk not in hitter_agg:
+                    hitter_agg[pk] = {
+                        "player_name": b.get("player_name"),
+                        "first_name": b.get("first_name"),
+                        "last_name": b.get("last_name"),
+                        "team_id": b.get("team_id"),
+                        "team_short": b.get("team_short"),
+                        "team_logo": b.get("team_logo"),
+                        "type": "hitter",
+                        "at_bats": 0, "runs": 0, "hits": 0, "doubles": 0,
+                        "triples": 0, "home_runs": 0, "rbi": 0, "walks": 0,
+                        "strikeouts": 0, "hit_by_pitch": 0, "stolen_bases": 0,
+                    }
+                for k in ["at_bats", "runs", "hits", "doubles", "triples", "home_runs",
+                          "rbi", "walks", "strikeouts", "hit_by_pitch", "stolen_bases"]:
+                    hitter_agg[pk][k] += (b.get(k) or 0)
+
+            for pk, h in hitter_agg.items():
+                score = hitting_score(h)
+                if score > 0:
+                    display_name = _display_name(h)
+                    all_performers.append({
+                        "player_name": display_name,
+                        "team_id": h["team_id"],
+                        "team_short": h["team_short"],
+                        "team_logo": h["team_logo"],
+                        "type": "hitter",
+                        "perf_score": score,
+                        "stats": {
+                            "at_bats": h["at_bats"],
+                            "hits": h["hits"],
+                            "doubles": h["doubles"],
+                            "triples": h["triples"],
+                            "home_runs": h["home_runs"],
+                            "rbi": h["rbi"],
+                            "runs": h["runs"],
+                            "walks": h["walks"],
+                            "strikeouts": h["strikeouts"],
+                            "hit_by_pitch": h["hit_by_pitch"],
+                            "stolen_bases": h["stolen_bases"],
+                        },
+                        "stat_line": _format_hitter_line(h),
+                    })
+
+            # Pitchers
+            pitcher_agg = {}
+            for p in g_pitching:
+                pid = p.get("player_id")
+                pk = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
+                if pk not in pitcher_agg:
+                    pitcher_agg[pk] = {
+                        "player_name": p.get("player_name"),
+                        "first_name": p.get("first_name"),
+                        "last_name": p.get("last_name"),
+                        "team_id": p.get("team_id"),
+                        "team_short": p.get("team_short"),
+                        "team_logo": p.get("team_logo"),
+                        "type": "pitcher",
+                        "innings_pitched": 0, "hits_allowed": 0, "earned_runs": 0,
+                        "walks": 0, "strikeouts": 0, "home_runs_allowed": 0,
+                        "decision": None,
+                    }
+                for k in ["innings_pitched", "hits_allowed", "earned_runs", "walks",
+                          "strikeouts", "home_runs_allowed"]:
+                    pitcher_agg[pk][k] += (p.get(k) or 0)
+                if p.get("decision") and not pitcher_agg[pk]["decision"]:
+                    pitcher_agg[pk]["decision"] = p["decision"]
+
+            for pk, p in pitcher_agg.items():
+                score = pitching_perf_score(p)
+                if score > 0:
+                    display_name = _display_name(p)
+                    all_performers.append({
+                        "player_name": display_name,
+                        "team_id": p["team_id"],
+                        "team_short": p["team_short"],
+                        "team_logo": p["team_logo"],
+                        "type": "pitcher",
+                        "perf_score": score,
+                        "stats": {
+                            "innings_pitched": p["innings_pitched"],
+                            "hits_allowed": p["hits_allowed"],
+                            "earned_runs": p["earned_runs"],
+                            "walks": p["walks"],
+                            "strikeouts": p["strikeouts"],
+                            "home_runs_allowed": p["home_runs_allowed"],
+                            "decision": p.get("decision"),
+                        },
+                        "stat_line": _format_pitcher_line(p),
+                    })
+
+            # Sort by score, limit to top 6
+            all_performers.sort(key=lambda x: x["perf_score"], reverse=True)
+            top_performers = all_performers[:6]
+
+            # Parse line scores
+            home_line_str = g.get("home_line_score") or "[]"
+            away_line_str = g.get("away_line_score") or "[]"
+            try:
+                home_line = json.loads(home_line_str) if isinstance(home_line_str, str) else home_line_str
+                away_line = json.loads(away_line_str) if isinstance(away_line_str, str) else away_line_str
+            except:
+                home_line = []
+                away_line = []
+
+            result_games.append({
+                "game_id": gid,
+                "game_number": g.get("game_number") or 1,
+                "home_team_id": h_id,
+                "away_team_id": a_id,
+                "home_score": g["home_score"],
+                "away_score": g["away_score"],
+                "home_hits": g["home_hits"],
+                "away_hits": g["away_hits"],
+                "home_errors": g["home_errors"],
+                "away_errors": g["away_errors"],
+                "home_line_score": home_line,
+                "away_line_score": away_line,
+                "innings": g.get("innings") or 9,
+                "status": g["status"],
+                "win_pitcher": d.get("W"),
+                "loss_pitcher": d.get("L"),
+                "save_pitcher": d.get("S"),
+                "top_performers": top_performers,
+            })
+
+        # ── 6. Available matchups for date picker ──
+        cur.execute("""
+            SELECT DISTINCT
+                g.home_team_id, g.away_team_id,
+                COALESCE(ht.short_name, ht.name) AS home_short,
+                COALESCE(at2.short_name, at2.name) AS away_short,
+                COUNT(*) AS game_count
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.game_date = %s AND g.season = %s AND g.status = 'final'
+            GROUP BY g.home_team_id, g.away_team_id, home_short, away_short
+            ORDER BY home_short, away_short
+        """, (recap_date, season))
+        available_matchups = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "date": date,
+            "team_a": team_a,
+            "team_b": team_b,
+            "games": result_games,
+            "is_doubleheader": len(result_games) > 1,
+            "total_games": len(result_games),
+            "available_matchups": available_matchups,
+        }
+
+
+@router.get("/games/daily-recap-dates")
+def daily_recap_dates(
+    season: int = Query(2026),
+):
+    """
+    Return a list of dates that have completed games, for a date picker.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT DISTINCT DATE(game_date) as game_date
+            FROM games
+            WHERE season = %s AND status = 'final'
+            ORDER BY game_date DESC
+        """, (season,))
+
+        dates = [str(r["game_date"]) for r in cur.fetchall()]
+
+        return {
+            "season": season,
+            "dates": dates,
+            "total_dates": len(dates),
+        }
+
+
+@router.get("/games/daily-recap-matchups")
+def daily_recap_matchups(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    season: int = Query(2026),
+):
+    """Return all distinct matchups on a given date for the matchup picker."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT DISTINCT
+                g.home_team_id, g.away_team_id,
+                COALESCE(ht.short_name, g.home_team_name) AS home_short,
+                COALESCE(at2.short_name, g.away_team_name) AS away_short,
+                ht.logo_url AS home_logo,
+                at2.logo_url AS away_logo,
+                COUNT(*) AS game_count
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.game_date = %s AND g.season = %s AND g.status = 'final'
+              AND g.home_team_id IS NOT NULL AND g.away_team_id IS NOT NULL
+            GROUP BY g.home_team_id, g.away_team_id,
+                     ht.short_name, g.home_team_name,
+                     at2.short_name, g.away_team_name,
+                     ht.logo_url, at2.logo_url
+            ORDER BY home_short
+        """, (date, season))
+
+        matchups = []
+        for r in cur.fetchall():
+            row = dict(r)
+            matchups.append({
+                "home_team_id": row["home_team_id"],
+                "away_team_id": row["away_team_id"],
+                "home_short": row["home_short"],
+                "away_short": row["away_short"],
+                "home_logo": row["home_logo"],
+                "away_logo": row["away_logo"],
+                "game_count": row["game_count"],
+            })
+
+        return {"date": date, "matchups": matchups}
+
+
 @router.get("/games/key-matchup")
 def key_matchup(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
