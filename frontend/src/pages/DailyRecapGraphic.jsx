@@ -393,29 +393,17 @@ async function drawTopPerformers(ctx, performers, x, y, w, h) {
 }
 
 // ── Header bar ──
-function drawHeader(ctx, date, x, y, w, h) {
+async function drawHeader(ctx, date, x, y, w, h) {
+  // Full dark green header
   ctx.fillStyle = COLORS.green_dark
   ctx.fillRect(x, y, w, h)
 
-  ctx.fillStyle = COLORS.white
-  ctx.font = '700 20px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('DAILY RECAP', x + w / 2, y + h / 2 - 6)
+  // Accent line at bottom
+  ctx.fillStyle = COLORS.green_light
+  ctx.fillRect(x, y + h - 3, w, 3)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.8)'
-  ctx.font = '500 14px "Inter", system-ui, sans-serif'
-  ctx.fillText(date, x + w / 2, y + h / 2 + 8)
-}
-
-// ── Footer bar with logos ──
-async function drawFooter(ctx, x, y, w, h) {
-  ctx.fillStyle = COLORS.green_dark
-  ctx.fillRect(x, y, w, h)
-
-  const logoSize = 22
-  const logoY = y + (h - logoSize) / 2
-  const pad = 12
+  const logoSize = 60
+  const pad = 30
 
   // NW logo on left
   try {
@@ -423,7 +411,7 @@ async function drawFooter(ctx, x, y, w, h) {
     const a = img.naturalWidth / img.naturalHeight
     let dw = logoSize, dh = logoSize
     if (a >= 1) dh = logoSize / a; else dw = logoSize * a
-    ctx.drawImage(img, pad + (logoSize - dw) / 2, logoY + (logoSize - dh) / 2, dw, dh)
+    ctx.drawImage(img, pad, y + (h - dh) / 2, dw, dh)
   } catch { /* skip */ }
 
   // PNWCBR logo on right
@@ -432,62 +420,142 @@ async function drawFooter(ctx, x, y, w, h) {
     const a = img.naturalWidth / img.naturalHeight
     let dw = logoSize, dh = logoSize
     if (a >= 1) dh = logoSize / a; else dw = logoSize * a
-    ctx.drawImage(img, w - pad - logoSize + (logoSize - dw) / 2, logoY + (logoSize - dh) / 2, dw, dh)
+    ctx.drawImage(img, w - pad - dw, y + (h - dh) / 2, dw, dh)
   } catch { /* skip */ }
 
-  // Center text
+  // "DAILY RECAP" centered, large
   ctx.fillStyle = COLORS.white
-  ctx.font = '600 11px "Inter", system-ui, sans-serif'
+  ctx.font = '800 32px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('DAILY RECAP', x + w / 2, y + h / 2 - 10)
+
+  // Date below title
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.font = '500 16px "Inter", system-ui, sans-serif'
+  ctx.fillText(date, x + w / 2, y + h / 2 + 18)
+}
+
+// ── Footer bar ──
+function drawFooter(ctx, x, y, w, h) {
+  ctx.fillStyle = COLORS.green_dark
+  ctx.fillRect(x, y, w, h)
+
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.font = '600 12px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText('NWBASEBALLSTATS.COM x PNWCBR', x + w / 2, y + h / 2)
 }
 
+// ── Enrich a game object with team info from the API response ──
+function enrichGame(gameObj, data) {
+  const teamA = data.team_a || {}
+  const teamB = data.team_b || {}
+  // Figure out which team is home/away for this game
+  const homeIsA = gameObj.home_team_id === teamA.team_id
+  const home = homeIsA ? teamA : teamB
+  const away = homeIsA ? teamB : teamA
+  return {
+    ...gameObj,
+    home_short: home.short_name || 'TBD',
+    away_short: away.short_name || 'TBD',
+    home_logo: home.logo_url || '',
+    away_logo: away.logo_url || '',
+    home_record: home.record || {},
+    away_record: away.record || {},
+    game_date: data.date,
+  }
+}
+
 // ── Main renderer (1080x1080) ──
-async function renderDailyGraphic(canvas, game) {
+async function renderDailyGraphic(canvas, data) {
   const W = 1080
   const H = 1080
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
 
+  const allGames = (data.games || []).map(g => enrichGame(g, data))
+  const isDoubleheader = allGames.length >= 2
+
   // Background
   ctx.fillStyle = COLORS.bg_dark
   ctx.fillRect(0, 0, W, H)
 
-  // Header
-  const headerH = 60
-  const dateLabel = game.game_date ? shortDate(game.game_date) : ''
-  drawHeader(ctx, dateLabel, 0, 0, W, headerH)
+  // Header (large, with both logos)
+  const headerH = 100
+  const dateLabel = data.date ? shortDate(data.date) : ''
+  await drawHeader(ctx, dateLabel, 0, 0, W, headerH)
 
+  const footerH = 45
   let curY = headerH + 10
 
-  // Scorebug
-  const scoreH = 180
-  await drawDailyScoreBug(ctx, game, 12, curY, W - 24, scoreH)
-  curY += scoreH + 10
+  if (!isDoubleheader) {
+    // ── Single game layout ──
+    const game = allGames[0] || {}
 
-  // Linescore
-  const lineH = 90
-  drawLinescore(ctx, game, 12, curY, W - 24, lineH)
-  curY += lineH + 12
+    // Scorebug
+    const scoreH = 180
+    await drawDailyScoreBug(ctx, game, 12, curY, W - 24, scoreH)
+    curY += scoreH + 10
 
-  // Top performers header
-  ctx.fillStyle = COLORS.green_dark
-  ctx.font = '700 13px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('TOP PERFORMERS', 20, curY + 12)
-  curY += 24
+    // Linescore
+    const lineH = 90
+    drawLinescore(ctx, game, 12, curY, W - 24, lineH)
+    curY += lineH + 12
 
-  // Combine and sort performers
-  const allPerfs = [...(game.top_performers || [])].sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
-  const perfH = await drawTopPerformers(ctx, allPerfs, 12, curY, W - 24, H - curY - 90)
-  curY += perfH + 4
+    // Top performers
+    ctx.fillStyle = COLORS.green_light
+    ctx.font = '700 16px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('TOP PERFORMERS', 20, curY + 12)
+    curY += 30
+
+    const allPerfs = [...(game.top_performers || [])].sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
+    await drawTopPerformers(ctx, allPerfs, 12, curY, W - 24, H - curY - footerH - 10)
+  } else {
+    // ── Doubleheader layout ──
+    const spacePerGame = (H - headerH - footerH - 30) / 2
+
+    for (let gi = 0; gi < 2; gi++) {
+      const game = allGames[gi] || {}
+
+      // Game label
+      ctx.fillStyle = COLORS.green_light
+      ctx.font = '700 14px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(`GAME ${gi + 1}`, 20, curY + 8)
+      curY += 20
+
+      // Smaller scorebug
+      const scoreH = 140
+      await drawDailyScoreBug(ctx, game, 12, curY, W - 24, scoreH)
+      curY += scoreH + 6
+
+      // Smaller linescore
+      const lineH = 70
+      drawLinescore(ctx, game, 12, curY, W - 24, lineH)
+      curY += lineH + 6
+
+      // Top performers for this game
+      ctx.fillStyle = COLORS.green_light
+      ctx.font = '700 12px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText('TOP PERFORMERS', 20, curY + 8)
+      curY += 20
+
+      const allPerfs = [...(game.top_performers || [])].sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
+      const maxPerfH = spacePerGame - scoreH - lineH - 60
+      const perfH = await drawTopPerformers(ctx, allPerfs.slice(0, 4), 12, curY, W - 24, maxPerfH)
+      curY += perfH + 10
+    }
+  }
 
   // Footer
-  const footerH = 45
-  await drawFooter(ctx, 0, H - footerH, W, footerH)
+  drawFooter(ctx, 0, H - footerH, W, footerH)
 }
 
 // ── Component ──
@@ -511,8 +579,7 @@ export default function DailyRecapGraphic() {
         const json = await res.json()
         setDates(json.dates || [])
         if (json.dates?.length > 0) {
-          const mostRecent = json.dates[json.dates.length - 1]
-          setSelectedDate(mostRecent)
+          setSelectedDate(json.dates[0])
         }
       } catch (err) {
         setError(err.message)
