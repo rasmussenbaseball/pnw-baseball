@@ -1,154 +1,148 @@
 #!/usr/bin/env python3
 """
-Deduplicate games table.
+Deduplicate games in the database.
 
-Many games were scraped from both teams' websites, creating duplicate
-game records. This script finds duplicates by matching on:
-  - game_date
-  - the two team_ids involved (home/away can be swapped)
-  - score (accounting for home/away swap)
-  - game_number (for doubleheaders)
+Games can be duplicated when:
+- The same game is scraped from both teams' sites
+- NULL team_ids cause dedup checks to fail (NULL != NULL in SQL)
+- Multiple scrape runs re-insert the same games
 
-For each set of duplicates, it keeps the record with the most box score
-data and merges game_pitching / game_batting entries onto the surviving
-game, then deletes the duplicate.
+For each group of duplicates (same date + same teams), keeps the game
+with the most game_batting rows and deletes the rest.
 
-Usage:
-    cd pnw-baseball
-    PYTHONPATH=backend python3 scripts/dedup_games.py
+Usage (on server):
+    cd /opt/pnw-baseball
+    python3 scripts/dedup_games.py --season 2026 --dry-run
+    python3 scripts/dedup_games.py --season 2026
 """
 
+import argparse
+import logging
+import os
 import sys
+
+import psycopg2
+import psycopg2.extras
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from dotenv import load_dotenv
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-from app.models.database import get_connection
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 
-def find_duplicates(cur):
-    """Find duplicate game pairs."""
-    # A duplicate is two games on the same date with the same two teams
-    # and the same score (possibly with home/away flipped).
+def get_conn():
+    url = DATABASE_URL
+    if url and "sslmode" not in url:
+        sep = "&" if "?" in url else "?"
+        url = url + sep + "sslmode=require"
+    conn = psycopg2.connect(url)
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
+    return conn
+
+
+def dedup_games(season, dry_run=False):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # Find all duplicate groups using IS NOT DISTINCT FROM for NULL-safe comparison
     cur.execute("""
-        SELECT g1.id AS id1, g2.id AS id2,
-               g1.game_date, g1.home_team_id AS g1_home, g1.away_team_id AS g1_away,
-               g1.home_score AS g1_hscore, g1.away_score AS g1_ascore,
-               g2.home_team_id AS g2_home, g2.away_team_id AS g2_away,
-               g2.home_score AS g2_hscore, g2.away_score AS g2_ascore,
-               g1.game_number, g2.game_number AS g2_game_number
-        FROM games g1
-        JOIN games g2 ON g1.id < g2.id
-            AND g1.game_date = g2.game_date
-            AND g1.season = g2.season
-            AND COALESCE(g1.game_number, 1) = COALESCE(g2.game_number, 1)
-        WHERE (
-            -- Same orientation: same home/away teams, same score
-            (g1.home_team_id = g2.home_team_id AND g1.away_team_id = g2.away_team_id
-             AND g1.home_score = g2.home_score AND g1.away_score = g2.away_score)
-            OR
-            -- Flipped orientation: teams swapped, scores swapped
-            (g1.home_team_id = g2.away_team_id AND g1.away_team_id = g2.home_team_id
-             AND g1.home_score = g2.away_score AND g1.away_score = g2.home_score)
-            OR
-            -- One side has NULL team_id: match by name + score
-            (g1.home_team_id IS NOT NULL AND g2.home_team_id IS NOT NULL
-             AND g1.home_score IS NOT NULL AND g2.home_score IS NOT NULL
-             AND (
-                 (g1.home_team_id = g2.home_team_id AND g1.home_score = g2.home_score AND g1.away_score = g2.away_score)
-                 OR (g1.home_team_id = g2.away_team_id AND g1.home_score = g2.away_score AND g1.away_score = g2.home_score)
-                 OR (g1.away_team_id = g2.home_team_id AND g1.away_score = g2.home_score AND g1.home_score = g2.away_score)
-                 OR (g1.away_team_id = g2.away_team_id AND g1.away_score = g2.away_score AND g1.home_score = g2.home_score)
-             ))
+        SELECT
+            game_date,
+            home_team_id,
+            away_team_id,
+            game_number,
+            COUNT(*) as cnt,
+            array_agg(id ORDER BY id) as game_ids
+        FROM games
+        WHERE season = %s AND status = 'final'
+        GROUP BY game_date, home_team_id, away_team_id, game_number
+        HAVING COUNT(*) > 1
+        ORDER BY COUNT(*) DESC
+    """, (season,))
+
+    dup_groups = cur.fetchall()
+    logger.info(f"Found {len(dup_groups)} duplicate game groups")
+
+    total_deleted = 0
+    total_batting_deleted = 0
+    total_pitching_deleted = 0
+
+    for group in dup_groups:
+        game_ids = group["game_ids"]
+        date = group["game_date"]
+        home = group["home_team_id"]
+        away = group["away_team_id"]
+        gnum = group["game_number"]
+
+        # For each game in the group, count batting rows
+        best_id = None
+        best_count = -1
+        game_counts = {}
+
+        for gid in game_ids:
+            cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE game_id = %s", (gid,))
+            cnt = cur.fetchone()["cnt"]
+            game_counts[gid] = cnt
+            if cnt > best_count:
+                best_count = cnt
+                best_id = gid
+
+        ids_to_delete = [gid for gid in game_ids if gid != best_id]
+
+        if not ids_to_delete:
+            continue
+
+        logger.info(
+            f"  {date} home={home} away={away} gn={gnum}: "
+            f"keeping game {best_id} ({best_count} batting rows), "
+            f"deleting {len(ids_to_delete)} dupes {ids_to_delete}"
         )
-        ORDER BY g1.game_date, g1.id
-    """)
-    return cur.fetchall()
 
+        if dry_run:
+            total_deleted += len(ids_to_delete)
+            for did in ids_to_delete:
+                total_batting_deleted += game_counts[did]
+            continue
 
-def merge_and_delete(cur, keep_id, delete_id):
-    """Move box score data from delete_id game to keep_id, then delete."""
-    # Re-assign game_pitching rows (avoid conflicts)
-    cur.execute("""
-        UPDATE game_pitching
-        SET game_id = %s
-        WHERE game_id = %s
-          AND player_name NOT IN (
-              SELECT player_name FROM game_pitching WHERE game_id = %s
-          )
-    """, (keep_id, delete_id, keep_id))
-    moved_pitching = cur.rowcount
+        # Delete batting and pitching rows for duplicate games
+        for did in ids_to_delete:
+            cur.execute("DELETE FROM game_batting WHERE game_id = %s", (did,))
+            b_del = cur.rowcount
+            total_batting_deleted += b_del
 
-    # Re-assign game_batting rows (avoid conflicts)
-    cur.execute("""
-        UPDATE game_batting
-        SET game_id = %s
-        WHERE game_id = %s
-          AND player_name NOT IN (
-              SELECT player_name FROM game_batting WHERE game_id = %s
-          )
-    """, (keep_id, delete_id, keep_id))
-    moved_batting = cur.rowcount
+            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (did,))
+            p_del = cur.rowcount
+            total_pitching_deleted += p_del
 
-    # Delete remaining (conflicting) box score rows for the duplicate
-    cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (delete_id,))
-    cur.execute("DELETE FROM game_batting WHERE game_id = %s", (delete_id,))
-
-    # Delete the duplicate game
-    cur.execute("DELETE FROM games WHERE id = %s", (delete_id,))
-
-    return moved_pitching, moved_batting
-
-
-def main():
-    with get_connection() as conn:
-        cur = conn.cursor()
-
-        print("Finding duplicate games...")
-        dupes = find_duplicates(cur)
-        print(f"Found {len(dupes)} duplicate pairs\n")
-
-        if not dupes:
-            print("No duplicates found!")
-            return
-
-        # Show some examples
-        print("Examples:")
-        for d in dupes[:5]:
-            print(f"  Game {d['id1']} vs {d['id2']} on {d['game_date']}: "
-                  f"teams {d['g1_home']}v{d['g1_away']} ({d['g1_hscore']}-{d['g1_ascore']}) "
-                  f"/ {d['g2_home']}v{d['g2_away']} ({d['g2_hscore']}-{d['g2_ascore']})")
-
-        # For each pair, keep the one with more box score data
-        merged = 0
-        for d in dupes:
-            id1, id2 = d['id1'], d['id2']
-
-            # Count box score rows for each
-            cur.execute("SELECT COUNT(*) as cnt FROM game_pitching WHERE game_id = %s", (id1,))
-            count1 = cur.fetchone()["cnt"]
-            cur.execute("SELECT COUNT(*) as cnt FROM game_pitching WHERE game_id = %s", (id2,))
-            count2 = cur.fetchone()["cnt"]
-
-            # Keep the one with more data
-            if count1 >= count2:
-                keep_id, delete_id = id1, id2
-            else:
-                keep_id, delete_id = id2, id1
-
-            mp, mb = merge_and_delete(cur, keep_id, delete_id)
-            merged += 1
-
-        print(f"\nMerged {merged} duplicate game pairs")
-
-        # Now recount total games
-        cur.execute("SELECT COUNT(*) as cnt FROM games")
-        total = cur.fetchone()["cnt"]
-        print(f"Total games remaining: {total}")
+            cur.execute("DELETE FROM games WHERE id = %s", (did,))
+            total_deleted += 1
 
         conn.commit()
-        print("Done! Changes committed.")
+
+    logger.info(f"\n{'='*60}")
+    logger.info(f"{'DRY RUN - ' if dry_run else ''}Dedup complete for season {season}")
+    logger.info(f"  Duplicate groups found: {len(dup_groups)}")
+    logger.info(f"  Games deleted: {total_deleted}")
+    logger.info(f"  Batting rows deleted: {total_batting_deleted}")
+    logger.info(f"  Pitching rows deleted: {total_pitching_deleted}")
+
+    # Show final game count
+    cur.execute("SELECT COUNT(*) as cnt FROM games WHERE season = %s AND status = 'final'", (season,))
+    remaining = cur.fetchone()["cnt"]
+    logger.info(f"  Games remaining: {remaining}")
+
+    conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Deduplicate games")
+    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    dedup_games(args.season, args.dry_run)
