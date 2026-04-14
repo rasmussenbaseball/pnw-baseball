@@ -273,9 +273,9 @@ export default function JucoTracker() {
                       <span className="text-gray-600 truncate">{row.team_short || row.team_name}</span>
                     </div>
                   </td>
-                  <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.position || '-'}</td>
-                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
-                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+                  <td style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.position || '-'}</td>
+                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
                   <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 overflow-hidden">
                     {row.committed_to ? (
                       <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
