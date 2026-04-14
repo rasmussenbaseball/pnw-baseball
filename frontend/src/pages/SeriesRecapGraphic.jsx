@@ -480,78 +480,28 @@ async function renderSeriesGraphic(canvas, series) {
 
   curY = bugGridY + rows * (bugH + gap) + 4
 
-  // ── Stat comparison section ──
+  // ── Stat comparison section (SIDE BY SIDE: batting left, pitching right) ──
   const statSectionY = curY
-  ctx.fillStyle = '#ffffff'
-  roundRect(ctx, pad, statSectionY, W - pad * 2, 0, 8) // will fill after measuring
-
-  // Section header
-  ctx.fillStyle = '#64748b'
-  ctx.font = '700 10px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.fillText('SERIES BATTING COMPARISON', pad, statSectionY + 10)
+  const halfCardW = (W - pad * 2 - 10) / 2
+  const rowSpacing = 19
 
   const bA = teamA.series_batting || {}
   const bB = teamB.series_batting || {}
   const pA = teamA.series_pitching || {}
   const pB = teamB.series_pitching || {}
 
-  // Team name labels for comparison
-  const compY = statSectionY + 24
-  ctx.fillStyle = '#0f172a'
-  ctx.font = '700 12px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'right'
-  ctx.fillText(cleanTeamName(teamA.short_name), centerX - 50, compY)
-  ctx.textAlign = 'left'
-  ctx.fillText(cleanTeamName(teamB.short_name), centerX + 50, compY)
-
-  // Batting stat rows
   const battingStats = [
     { label: 'AVG', a: fmtAvg(bA.avg), b: fmtAvg(bB.avg), hl: 'higher' },
     { label: 'OBP', a: fmtAvg(bA.obp), b: fmtAvg(bB.obp), hl: 'higher' },
     { label: 'SLG', a: fmtAvg(bA.slg), b: fmtAvg(bB.slg), hl: 'higher' },
     { label: 'OPS', a: fmtAvg(bA.ops), b: fmtAvg(bB.ops), hl: 'higher' },
-    { label: 'RUNS', a: String(bA.r || 0), b: String(bB.r || 0), hl: 'higher' },
-    { label: 'HITS', a: String(bA.h || 0), b: String(bB.h || 0), hl: 'higher' },
+    { label: 'R', a: String(bA.r || 0), b: String(bB.r || 0), hl: 'higher' },
+    { label: 'H', a: String(bA.h || 0), b: String(bB.h || 0), hl: 'higher' },
     { label: 'HR', a: String(bA.hr || 0), b: String(bB.hr || 0), hl: 'higher' },
     { label: 'K%', a: fmtPct(bA.k_rate), b: fmtPct(bB.k_rate), hl: 'lower' },
     { label: 'BB%', a: fmtPct(bA.bb_rate), b: fmtPct(bB.bb_rate), hl: 'higher' },
   ]
 
-  let rowY = compY + 20
-  const rowSpacing = 20
-
-  // Draw batting stats in a nice card
-  roundRect(ctx, pad, statSectionY - 2, W - pad * 2, 24 + 20 + battingStats.length * rowSpacing + 8, 8)
-  ctx.fillStyle = '#ffffff'
-  ctx.fill()
-  ctx.strokeStyle = '#e2e8f0'
-  ctx.lineWidth = 1
-  ctx.stroke()
-
-  // Re-draw the header text and team names over the card
-  ctx.fillStyle = '#00687a'
-  ctx.font = '700 10px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.fillText('SERIES BATTING', pad + 12, statSectionY + 12)
-
-  ctx.fillStyle = '#0f172a'
-  ctx.font = '700 12px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'right'
-  ctx.fillText(cleanTeamName(teamA.short_name), centerX - 50, compY)
-  ctx.textAlign = 'left'
-  ctx.fillText(cleanTeamName(teamB.short_name), centerX + 50, compY)
-
-  battingStats.forEach((stat) => {
-    drawStatCompareRow(ctx, stat.label, stat.a, stat.b, centerX, rowY, 50, { highlight: stat.hl })
-    rowY += rowSpacing
-  })
-
-  const battingCardBottom = rowY + 4
-  curY = battingCardBottom + 8
-
-  // ── Pitching comparison card ──
-  const pitchCardY = curY
   const pitchingStats = [
     { label: 'ERA', a: (pA.era || 0).toFixed(2), b: (pB.era || 0).toFixed(2), hl: 'lower' },
     { label: 'WHIP', a: (pA.whip || 0).toFixed(2), b: (pB.whip || 0).toFixed(2), hl: 'lower' },
@@ -562,35 +512,48 @@ async function renderSeriesGraphic(canvas, series) {
     { label: 'ER', a: String(pA.er || 0), b: String(pB.er || 0), hl: 'lower' },
   ]
 
-  const pitchCardH = 24 + 20 + pitchingStats.length * rowSpacing + 8
-  roundRect(ctx, pad, pitchCardY, W - pad * 2, pitchCardH, 8)
-  ctx.fillStyle = '#ffffff'
-  ctx.fill()
-  ctx.strokeStyle = '#e2e8f0'
-  ctx.lineWidth = 1
-  ctx.stroke()
+  const maxStatRows = Math.max(battingStats.length, pitchingStats.length)
+  const cardH = 38 + maxStatRows * rowSpacing + 6
 
-  ctx.fillStyle = '#00687a'
-  ctx.font = '700 10px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.fillText('SERIES PITCHING', pad + 12, pitchCardY + 12)
+  // Helper to draw one stat card
+  function drawStatCard(cardX, cardW, title, stats, teamAName, teamBName) {
+    const cardCenterX = cardX + cardW / 2
+    roundRect(ctx, cardX, statSectionY, cardW, cardH, 8)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 1
+    ctx.stroke()
 
-  // Team name labels
-  const pitchCompY = pitchCardY + 28
-  ctx.fillStyle = '#0f172a'
-  ctx.font = '700 12px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'right'
-  ctx.fillText(cleanTeamName(teamA.short_name), centerX - 50, pitchCompY)
-  ctx.textAlign = 'left'
-  ctx.fillText(cleanTeamName(teamB.short_name), centerX + 50, pitchCompY)
+    ctx.fillStyle = '#00687a'
+    ctx.font = '700 10px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(title, cardX + 10, statSectionY + 12)
 
-  let pitchRowY = pitchCompY + 20
-  pitchingStats.forEach((stat) => {
-    drawStatCompareRow(ctx, stat.label, stat.a, stat.b, centerX, pitchRowY, 50, { highlight: stat.hl })
-    pitchRowY += rowSpacing
-  })
+    // Team name labels
+    const labelsY = statSectionY + 28
+    ctx.fillStyle = '#0f172a'
+    ctx.font = '700 11px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'right'
+    ctx.fillText(teamAName, cardCenterX - 34, labelsY)
+    ctx.textAlign = 'left'
+    ctx.fillText(teamBName, cardCenterX + 34, labelsY)
 
-  curY = pitchCardY + pitchCardH + 8
+    let ry = labelsY + 18
+    stats.forEach((stat) => {
+      drawStatCompareRow(ctx, stat.label, stat.a, stat.b, cardCenterX, ry, 34, { highlight: stat.hl, fontSize: 13 })
+      ry += rowSpacing
+    })
+  }
+
+  const teamAClean = cleanTeamName(teamA.short_name)
+  const teamBClean = cleanTeamName(teamB.short_name)
+
+  drawStatCard(pad, halfCardW, 'SERIES BATTING', battingStats, teamAClean, teamBClean)
+  drawStatCard(pad + halfCardW + 10, halfCardW, 'SERIES PITCHING', pitchingStats, teamAClean, teamBClean)
+
+  curY = statSectionY + cardH + 8
 
   // ── Top Performers (split left/right by team) ──
   const perfSectionY = curY
@@ -599,29 +562,29 @@ async function renderSeriesGraphic(canvas, series) {
   // Team A performers on left
   let leftH = 0
   if (teamA.top_hitters?.length > 0) {
-    leftH += await drawTeamPerformers(ctx, `${cleanTeamName(teamA.short_name)} TOP HITTERS`, teamA.top_hitters, pad, perfSectionY, halfW, 'hitter')
+    leftH += await drawTeamPerformers(ctx, `${teamAClean} TOP HITTERS`, teamA.top_hitters, pad, perfSectionY, halfW, 'hitter')
   }
   if (teamA.top_pitchers?.length > 0) {
-    leftH += await drawTeamPerformers(ctx, `${cleanTeamName(teamA.short_name)} TOP PITCHERS`, teamA.top_pitchers, pad, perfSectionY + leftH + 4, halfW, 'pitcher')
+    leftH += await drawTeamPerformers(ctx, `${teamAClean} TOP PITCHERS`, teamA.top_pitchers, pad, perfSectionY + leftH + 4, halfW, 'pitcher')
   }
 
   // Team B performers on right
   let rightH = 0
   if (teamB.top_hitters?.length > 0) {
-    rightH += await drawTeamPerformers(ctx, `${cleanTeamName(teamB.short_name)} TOP HITTERS`, teamB.top_hitters, pad + halfW + 12, perfSectionY, halfW, 'hitter')
+    rightH += await drawTeamPerformers(ctx, `${teamBClean} TOP HITTERS`, teamB.top_hitters, pad + halfW + 12, perfSectionY, halfW, 'hitter')
   }
   if (teamB.top_pitchers?.length > 0) {
-    rightH += await drawTeamPerformers(ctx, `${cleanTeamName(teamB.short_name)} TOP PITCHERS`, teamB.top_pitchers, pad + halfW + 12, perfSectionY + rightH + 4, halfW, 'pitcher')
+    rightH += await drawTeamPerformers(ctx, `${teamBClean} TOP PITCHERS`, teamB.top_pitchers, pad + halfW + 12, perfSectionY + rightH + 4, halfW, 'pitcher')
   }
 
-  curY = perfSectionY + Math.max(leftH, rightH) + 12
+  curY = perfSectionY + Math.max(leftH, rightH) + 8
 
   // ── Venue / Park Factors bar ──
   if (series.venue) {
     const v = series.venue
-    const venueY = Math.max(curY, H - 52)
+    const venueY = Math.max(curY, H - 48)
     ctx.fillStyle = '#f1f5f9'
-    ctx.fillRect(0, venueY, W, 24)
+    ctx.fillRect(0, venueY, W, 22)
     ctx.fillStyle = '#64748b'
     ctx.font = '500 9px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'center'
@@ -637,7 +600,7 @@ async function renderSeriesGraphic(canvas, series) {
       const d = v.dimensions
       if (d.lf && d.cf && d.rf) parts.push(`${d.lf}-${d.cf}-${d.rf}`)
     }
-    ctx.fillText(parts.join('  |  '), centerX, venueY + 12)
+    ctx.fillText(parts.join('  |  '), centerX, venueY + 11)
   }
 
   // ── Footer ──
