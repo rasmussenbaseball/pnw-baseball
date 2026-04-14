@@ -116,7 +116,9 @@ function GameResultsTicker({ games }) {
         </div>
         <div className="flex overflow-x-auto scrollbar-hide gap-0 divide-x divide-gray-100 flex-1">
           {games.map((g) => {
-            const homeWon = g.home_score > g.away_score
+            const isFinal = g.status === 'final' || (g.home_score != null && g.away_score != null)
+            const homeWon = isFinal && g.home_score > g.away_score
+            const awayWon = isFinal && g.away_score > g.home_score
             return (
               <Link
                 key={g.id}
@@ -132,10 +134,12 @@ function GameResultsTicker({ games }) {
                     )}
                     <span className="text-[11px] truncate">{g.away_name}</span>
                   </div>
-                  <span className="text-[11px] font-mono tabular-nums">{g.away_score}</span>
+                  {g.away_score != null && (
+                    <span className="text-[11px] font-mono tabular-nums">{g.away_score}</span>
+                  )}
                 </div>
                 {/* Home */}
-                <div className={`flex items-center justify-between gap-2 ${homeWon ? 'font-semibold text-gray-800' : 'text-gray-400'}`}>
+                <div className={`flex items-center justify-between gap-2 ${awayWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
                   <div className="flex items-center gap-1 min-w-0">
                     {g.home_logo && (
                       <img src={g.home_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
@@ -143,7 +147,9 @@ function GameResultsTicker({ games }) {
                     )}
                     <span className="text-[11px] truncate">{g.home_name}</span>
                   </div>
-                  <span className="text-[11px] font-mono tabular-nums">{g.home_score}</span>
+                  {g.home_score != null && (
+                    <span className="text-[11px] font-mono tabular-nums">{g.home_score}</span>
+                  )}
                 </div>
                 {/* Date */}
                 <div className="text-[9px] text-gray-300 text-center mt-0.5">
