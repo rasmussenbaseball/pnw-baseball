@@ -190,8 +190,8 @@ function LiveGamesTicker({ games, hasLive }) {
           {games.map((g, i) => {
             const isLive = g.status === 'live'
             const isFinal = g.status === 'final'
-            const teamScore = g.team_score != null ? parseInt(g.team_score) : null
-            const oppScore = g.opponent_score != null ? parseInt(g.opponent_score) : null
+            const teamScore = g.team_score != null && g.team_score !== '' ? parseInt(g.team_score) : null
+            const oppScore = g.opponent_score != null && g.opponent_score !== '' ? parseInt(g.opponent_score) : null
             const teamWon = isFinal && teamScore > oppScore
             const oppWon = isFinal && oppScore > teamScore
 
