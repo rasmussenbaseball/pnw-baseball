@@ -13,6 +13,9 @@ import json
 import math
 import os
 import re
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, date, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
@@ -10083,6 +10086,40 @@ def summer_available_seasons():
 # FEATURE REQUESTS
 # ════════════════════════════════════════════════════════════════
 
+def _send_feature_request_email(req_id, email, category, message):
+    """Send email notification for a new feature request."""
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASS")
+    notify_email = os.getenv("NOTIFY_EMAIL")
+
+    if not all([smtp_user, smtp_pass, notify_email]):
+        return  # Skip if email not configured
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = smtp_user
+        msg["To"] = notify_email
+        msg["Subject"] = f"[NWBB Stats] New {category}: #{req_id}"
+
+        body = f"""New {category} submitted on NWBB Stats:
+
+From: {email or 'Anonymous'}
+Category: {category}
+Request ID: #{req_id}
+
+Message:
+{message}
+"""
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+    except Exception:
+        pass  # Don't fail the request if email fails
+
+
 @router.post("/feature-requests")
 def submit_feature_request(data: dict = Body(...)):
     """Submit a feature request or feedback."""
@@ -10113,7 +10150,11 @@ def submit_feature_request(data: dict = Body(...)):
             (email or None, category, message),
         )
         req_id = list(cur.fetchone().values())[0]
-        return {"id": req_id, "status": "received"}
+
+    # Send notification email (after DB commit, outside the connection block)
+    _send_feature_request_email(req_id, email, category, message)
+
+    return {"id": req_id, "status": "received"}
 
 
 @router.get("/feature-requests")
