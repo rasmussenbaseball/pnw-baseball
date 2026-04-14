@@ -305,8 +305,8 @@ async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
 
     // Build year/position tag (e.g. "Jr. | SS" or "So. | RHP")
     const tagParts = []
-    if (p.year) tagParts.push(p.year.replace('Freshman', 'Fr.').replace('Sophomore', 'So.').replace('Junior', 'Jr.').replace('Senior', 'Sr.').replace('Redshirt', 'RS'))
-    if (p.position) tagParts.push(p.position)
+    if (p.year) tagParts.push(p.year.replace('Freshman', 'FR').replace('Sophomore', 'SO').replace('Junior', 'JR').replace('Senior', 'SR').replace('Redshirt', 'RS').replace('Fr.', 'FR').replace('So.', 'SO').replace('Jr.', 'JR').replace('Sr.', 'SR').toUpperCase())
+    if (p.position) tagParts.push(p.position.toUpperCase())
     const tag = tagParts.join(' | ')
 
     // Draw name
