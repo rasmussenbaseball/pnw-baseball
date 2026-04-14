@@ -83,7 +83,8 @@ def run_audit(season, team_id=None, show_detail=False):
             sg.total_player_games - COALESCE(gc.total_gamelogs, 0) AS gamelog_gap
         FROM season_games sg
         JOIN teams t ON t.id = sg.team_id
-        LEFT JOIN divisions d ON d.id = t.division_id
+        LEFT JOIN conferences c ON c.id = t.conference_id
+        LEFT JOIN divisions d ON d.id = c.division_id
         LEFT JOIN gamelog_counts gc ON gc.team_id = sg.team_id
         WHERE 1=1 {team_filter}
         ORDER BY (sg.total_player_games - COALESCE(gc.total_gamelogs, 0)) DESC
