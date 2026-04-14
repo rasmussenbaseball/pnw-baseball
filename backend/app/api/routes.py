@@ -4592,9 +4592,16 @@ def uncommitted_juco_players(
         if year_in_school:
             query = _apply_year_filter(query, params, year_in_school)
         if position:
-            # Exact word match: "C" should NOT match "CF", but SHOULD match "C", "C/1B", "1B/C"
-            query += " AND (p.position = %s OR p.position ILIKE %s OR p.position ILIKE %s OR p.position ILIKE %s)"
-            params.extend([position, f"{position}/%", f"%/{position}", f"%/{position}/%"])
+            # Position group filters
+            if position == 'P':
+                query += " AND (p.position = 'P' OR p.position ILIKE 'P/%' OR p.position ILIKE '%/P' OR p.position ILIKE '%/P/%' OR p.position ILIKE '%RHP%' OR p.position ILIKE '%LHP%')"
+            elif position == 'OF':
+                query += " AND (p.position ILIKE '%OF%' OR p.position ILIKE '%LF%' OR p.position ILIKE '%CF%' OR p.position ILIKE '%RF%')"
+            elif position == 'IF':
+                query += " AND (p.position ILIKE '%IF%' OR p.position ILIKE '%1B%' OR p.position ILIKE '%2B%' OR p.position ILIKE '%3B%' OR p.position ILIKE '%SS%')"
+            else:
+                query += " AND (p.position = %s OR p.position ILIKE %s OR p.position ILIKE %s OR p.position ILIKE %s)"
+                params.extend([position, f"{position}/%", f"%/{position}", f"%/{position}/%"])
         if min_ab > 0:
             query += " AND COALESCE(bs.at_bats, 0) >= %s"
             params.append(min_ab)
