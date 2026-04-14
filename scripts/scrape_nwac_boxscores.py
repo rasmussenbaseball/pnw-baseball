@@ -273,11 +273,15 @@ def process_boxscore(box_url, season_year, dry_run=False):
             logger.info(f"    Found existing game ID: {game_id}")
         else:
             # Try matching by date + team names
+            # For doubleheaders: prefer games without batting data yet
             cur.execute("""
-                SELECT id, home_team_id, away_team_id FROM games
-                WHERE game_date = %s
-                  AND (home_team_name ILIKE %s OR away_team_name ILIKE %s)
-                  AND (home_team_name ILIKE %s OR away_team_name ILIKE %s)
+                SELECT g.id, g.home_team_id, g.away_team_id,
+                       EXISTS(SELECT 1 FROM game_batting gb WHERE gb.game_id = g.id) AS has_batting
+                FROM games g
+                WHERE g.game_date = %s
+                  AND (g.home_team_name ILIKE %s OR g.away_team_name ILIKE %s)
+                  AND (g.home_team_name ILIKE %s OR g.away_team_name ILIKE %s)
+                ORDER BY has_batting ASC, g.id ASC
                 LIMIT 1
             """, (game_date,
                   f"%{home_name}%", f"%{home_name}%",
