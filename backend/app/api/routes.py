@@ -7066,11 +7066,9 @@ def key_matchup(
             chosen = next((g for g in games if str(g["id"]) == str(game_id)), None)
 
         if not chosen:
-            # Score games by playoff impact:
-            #   conference game = +20, both teams have records = +5
-            #   closeness of records = +15 * (1 - diff/total)
-            #   higher combined win% = more important
-            # Fetch records for scoring
+            # Score games: prioritize quality of teams first, then closeness.
+            # A 60/40 game between two good teams beats a 50/50 game
+            # between two bad teams. Division level matters (D1 > NWAC).
             team_ids = set()
             for g in games:
                 if g["home_team_id"]:
@@ -7089,6 +7087,9 @@ def key_matchup(
             else:
                 recs = {}
 
+            # Division tier bonus (4-year schools prioritized over NWAC)
+            div_bonus = {"D1": 15, "D2": 15, "D3": 15, "NAIA": 15, "JUCO": 5}
+
             best_score = -1
             for g in games:
                 score = 0
@@ -7097,25 +7098,24 @@ def key_matchup(
                 h_total = hw + hl
                 a_total = aw + al
 
-                # Conference game bonus
-                if g.get("is_conference_game"):
-                    score += 20
+                # Division tier bonus (use higher of the two teams)
+                h_div = g.get("home_division") or ""
+                a_div = g.get("away_division") or ""
+                score += max(div_bonus.get(h_div, 0), div_bonus.get(a_div, 0))
 
-                # Both teams have meaningful records
                 if h_total >= 10 and a_total >= 10:
-                    score += 5
-                    # Closeness bonus (similar win%)
-                    h_pct = hw / h_total if h_total else 0
-                    a_pct = aw / a_total if a_total else 0
-                    closeness = 1 - abs(h_pct - a_pct)
-                    score += 15 * closeness
-                    # Quality bonus (higher combined win%)
-                    avg_pct = (h_pct + a_pct) / 2
-                    score += 10 * avg_pct
+                    h_pct = hw / h_total
+                    a_pct = aw / a_total
 
-                # Same division bonus
-                if g["home_division"] and g["home_division"] == g["away_division"]:
-                    score += 5
+                    # Quality bonus (heavily weighted - best teams matter most)
+                    # Combined win% scaled to 0-30 points
+                    avg_pct = (h_pct + a_pct) / 2
+                    score += 30 * avg_pct
+
+                    # Closeness bonus (moderate weight)
+                    # 0 difference = +10, 0.5 difference = +0
+                    closeness = 1 - abs(h_pct - a_pct)
+                    score += 10 * closeness
 
                 if score > best_score:
                     best_score = score
