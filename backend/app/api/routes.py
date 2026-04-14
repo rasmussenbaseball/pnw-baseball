@@ -4592,16 +4592,16 @@ def uncommitted_juco_players(
         if year_in_school:
             query = _apply_year_filter(query, params, year_in_school)
         if position:
-            # Position group filters
+            # Position group filters using standardized positions
             if position == 'P':
-                query += " AND (p.position = 'P' OR p.position ILIKE 'P/%' OR p.position ILIKE '%/P' OR p.position ILIKE '%/P/%' OR p.position ILIKE '%RHP%' OR p.position ILIKE '%LHP%')"
+                query += " AND (p.position IN ('RHP','LHP','P','Pitcher') OR p.position LIKE 'RHP/%' OR p.position LIKE 'LHP/%')"
             elif position == 'OF':
-                query += " AND (p.position ILIKE '%OF%' OR p.position ILIKE '%LF%' OR p.position ILIKE '%CF%' OR p.position ILIKE '%RF%')"
+                query += " AND (p.position IN ('OF','LF','CF','RF') OR p.position LIKE '%/OF' OR p.position LIKE '%/LF' OR p.position LIKE '%/CF' OR p.position LIKE '%/RF')"
             elif position == 'IF':
-                query += " AND (p.position ILIKE '%IF%' OR p.position ILIKE '%1B%' OR p.position ILIKE '%2B%' OR p.position ILIKE '%3B%' OR p.position ILIKE '%SS%')"
+                query += " AND (p.position IN ('IF','1B','2B','3B','SS') OR p.position LIKE '%/IF' OR p.position LIKE '%/1B' OR p.position LIKE '%/2B' OR p.position LIKE '%/3B' OR p.position LIKE '%/SS')"
             else:
-                query += " AND (p.position = %s OR p.position ILIKE %s OR p.position ILIKE %s OR p.position ILIKE %s)"
-                params.extend([position, f"{position}/%", f"%/{position}", f"%/{position}/%"])
+                query += " AND (p.position = %s OR p.position LIKE %s OR p.position LIKE %s)"
+                params.extend([position, f"{position}/%", f"%/{position}"])
         if min_ab > 0:
             query += " AND COALESCE(bs.at_bats, 0) >= %s"
             params.append(min_ab)
