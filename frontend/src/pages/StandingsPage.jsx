@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStandings } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 // Division level → badge color classes
 const BADGE_COLORS = {
@@ -212,7 +213,7 @@ function OverallTable({ teams }) {
 
 // ─── Main Standings Page ───
 export default function StandingsPage() {
-  const [view, setView] = useState('conference') // 'conference' | 'overall'
+  const [view, setView] = usePersistedState('standings_view', 'conference') // 'conference' | 'overall'
   const { data, loading, error } = useStandings(2026)
 
   if (loading) {

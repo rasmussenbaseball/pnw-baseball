@@ -4,6 +4,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import { useWarLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { Link } from 'react-router-dom'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const COLUMNS = [
   // WAR cluster
@@ -31,10 +32,10 @@ const COLUMNS = [
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'fip'])
 
 export default function WarLeaderboard() {
-  const [filters, setFilters] = useState({ season: 2026 })
+  const [filters, setFilters] = usePersistedState('war_lb_filters', { season: 2026 })
   const [page, setPage] = useState(0)
-  const [sortBy, setSortBy] = useState('total_war')
-  const [sortDir, setSortDir] = useState('desc')
+  const [sortBy, setSortBy] = usePersistedState('war_lb_sortBy', 'total_war')
+  const [sortDir, setSortDir] = usePersistedState('war_lb_sortDir', 'desc')
   const limit = 50
 
   const { data: divisions } = useDivisions()

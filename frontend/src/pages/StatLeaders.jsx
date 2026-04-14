@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStatLeaders } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const BADGE_COLORS = {
   D1: 'bg-red-600 text-white',
@@ -100,9 +101,9 @@ const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 const SPLITS = ['All', 'Home', 'Road']
 
 export default function StatLeaders() {
-  const [qualified, setQualified] = useState(true)
-  const [level, setLevel] = useState('All')
-  const [split, setSplit] = useState('All')
+  const [qualified, setQualified] = usePersistedState('statl_qualified', true)
+  const [level, setLevel] = usePersistedState('statl_level', 'All')
+  const [split, setSplit] = usePersistedState('statl_split', 'All')
   const { data, loading, error } = useStatLeaders(2026, 10, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
 
   if (loading) {

@@ -26,6 +26,9 @@ COMMITMENTS = [
     ("Scott", "Griffin", "Lane", "Oregon"),
     ("Price", "Kenneth", "Lane", "Old Dominion"),
     ("Hooper", "Wyatt", "Chemeketa", "Western Oregon"),
+    ("Pashales", "Jase", "Clark", "Lewis-Clark State"),
+    ("Arnold", "Levi", "Edmonds", "Vanguard University"),
+    ("Gooler", "Garren", "Yakima Valley", "Portland"),
 ]
 
 def main():

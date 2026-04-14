@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const API_BASE = '/api/v1'
 const LEVELS = ['PNW', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
@@ -126,9 +127,9 @@ function StatSection({ title, data, scope, isTeam = false }) {
 export default function RecordsPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [level, setLevel] = useState('PNW')
-  const [scope, setScope] = useState('single_season')
-  const [category, setCategory] = useState('batting')
+  const [level, setLevel] = usePersistedState('records_level', 'PNW')
+  const [scope, setScope] = usePersistedState('records_scope', 'single_season')
+  const [category, setCategory] = usePersistedState('records_category', 'batting')
 
   useEffect(() => {
     setLoading(true)

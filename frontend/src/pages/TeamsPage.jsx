@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTeamsSummary, useDivisions } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 export default function TeamsPage() {
-  const [divisionFilter, setDivisionFilter] = useState(null)
-  const [stateFilter, setStateFilter] = useState(null)
+  const [divisionFilter, setDivisionFilter] = usePersistedState('teams_divFilter', null)
+  const [stateFilter, setStateFilter] = usePersistedState('teams_stateFilter', null)
 
   const { data: divisions } = useDivisions()
   const { data: teams, loading } = useTeamsSummary({

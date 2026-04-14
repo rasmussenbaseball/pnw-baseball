@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { formatStat } from '../utils/stats'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 
@@ -52,15 +53,15 @@ const SORTABLE = new Set([
 const ASC_DEFAULT = new Set(['era', 'fip'])
 
 export default function JucoTracker() {
-  const [season, setSeason] = useState(2026)
-  const [position, setPosition] = useState('')
-  const [classYear, setClassYear] = useState('So')
-  const [sortBy, setSortBy] = useState('total_war')
-  const [sortDir, setSortDir] = useState('desc')
-  const [minAb, setMinAb] = useState(0)
-  const [minIp, setMinIp] = useState(0)
-  const [bats, setBats] = useState('')
-  const [throws_, setThrows] = useState('')
+  const [season, setSeason] = usePersistedState('juco_season', 2026)
+  const [position, setPosition] = usePersistedState('juco_position', '')
+  const [classYear, setClassYear] = usePersistedState('juco_classYear', 'So')
+  const [sortBy, setSortBy] = usePersistedState('juco_sortBy', 'total_war')
+  const [sortDir, setSortDir] = usePersistedState('juco_sortDir', 'desc')
+  const [minAb, setMinAb] = usePersistedState('juco_minAb', 0)
+  const [minIp, setMinIp] = usePersistedState('juco_minIp', 0)
+  const [bats, setBats] = usePersistedState('juco_bats', '')
+  const [throws_, setThrows] = usePersistedState('juco_throws', '')
 
   const { data, loading } = useApi('/players/juco/uncommitted', {
     season,

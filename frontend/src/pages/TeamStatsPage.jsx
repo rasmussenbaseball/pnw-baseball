@@ -8,15 +8,16 @@ import {
 } from '../utils/stats'
 import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'NWAC']
 
 export default function TeamStatsPage() {
-  const [statType, setStatType] = useState('hitting')
-  const [level, setLevel] = useState('All')
-  const [preset, setPreset] = useState('Standard')
-  const [sortBy, setSortBy] = useState(null)
-  const [sortDir, setSortDir] = useState('desc')
+  const [statType, setStatType] = usePersistedState('teamstats_type', 'hitting')
+  const [level, setLevel] = usePersistedState('teamstats_level', 'All')
+  const [preset, setPreset] = usePersistedState('teamstats_preset', 'Standard')
+  const [sortBy, setSortBy] = usePersistedState('teamstats_sortBy', null)
+  const [sortDir, setSortDir] = usePersistedState('teamstats_sortDir', 'desc')
   const season = 2026
 
   const params = {

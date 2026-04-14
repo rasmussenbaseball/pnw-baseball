@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const API_BASE = '/api/v1'
 
@@ -46,7 +47,7 @@ export default function HometownSearch() {
   const players = data?.players || []
 
   // Division filter
-  const [divFilter, setDivFilter] = useState('All')
+  const [divFilter, setDivFilter] = usePersistedState('hometown_divFilter', 'All')
   const divisions = ['All', 'NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'NWAC']
 
   const filteredPlayers = useMemo(() => {

@@ -5,16 +5,17 @@ import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import { usePitchingLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { PITCHING_COLUMNS, PITCHING_PRESETS, PITCHING_PRESET_FILTERS } from '../utils/stats'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 export default function PitchingLeaderboard() {
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = usePersistedState('pit_lb_filters', {
     season: 2026,
     min_ip: 20,
     _type: 'pitching',
   })
-  const [sortBy, setSortBy] = useState('era')
-  const [sortDir, setSortDir] = useState('asc')
-  const [preset, setPreset] = useState('Standard')
+  const [sortBy, setSortBy] = usePersistedState('pit_lb_sortBy', 'era')
+  const [sortDir, setSortDir] = usePersistedState('pit_lb_sortDir', 'asc')
+  const [preset, setPreset] = usePersistedState('pit_lb_preset', 'Standard')
   const [page, setPage] = useState(0)
   const limit = 50
 

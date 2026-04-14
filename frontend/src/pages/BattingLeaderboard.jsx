@@ -5,16 +5,17 @@ import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import { useBattingLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { BATTING_COLUMNS, BATTING_PRESETS } from '../utils/stats'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 export default function BattingLeaderboard() {
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = usePersistedState('bat_lb_filters', {
     season: 2026,
     min_pa: 50,
     _type: 'batting',
   })
-  const [sortBy, setSortBy] = useState('batting_avg')
-  const [sortDir, setSortDir] = useState('desc')
-  const [preset, setPreset] = useState('Standard')
+  const [sortBy, setSortBy] = usePersistedState('bat_lb_sortBy', 'batting_avg')
+  const [sortDir, setSortDir] = usePersistedState('bat_lb_sortDir', 'desc')
+  const [preset, setPreset] = usePersistedState('bat_lb_preset', 'Standard')
   const [page, setPage] = useState(0)
   const limit = 50
 

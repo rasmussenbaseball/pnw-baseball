@@ -13,6 +13,7 @@ import {
   SUMMER_PITCHING_COLUMNS,
   SUMMER_PITCHING_PRESETS,
 } from '../utils/stats'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 const SEASONS = [2025, 2024, 2023, 2022, 2021, 2019]
 
@@ -78,22 +79,22 @@ function SummerFilterBar({ filters, onChange, leagues, teams, isBatting }) {
 }
 
 export default function SummerballData() {
-  const [tab, setTab] = useState('batting')
-  const [battingFilters, setBattingFilters] = useState({
+  const [tab, setTab] = usePersistedState('summer_tab', 'batting')
+  const [battingFilters, setBattingFilters] = usePersistedState('summer_batFilters', {
     season: 2025,
     min_pa: 50,
     league: null,
     team_id: null,
   })
-  const [pitchingFilters, setPitchingFilters] = useState({
+  const [pitchingFilters, setPitchingFilters] = usePersistedState('summer_pitFilters', {
     season: 2025,
     min_ip: 10,
     league: null,
     team_id: null,
   })
-  const [sortBy, setSortBy] = useState('batting_avg')
-  const [sortDir, setSortDir] = useState('desc')
-  const [preset, setPreset] = useState('Standard')
+  const [sortBy, setSortBy] = usePersistedState('summer_sortBy', 'batting_avg')
+  const [sortDir, setSortDir] = usePersistedState('summer_sortDir', 'desc')
+  const [preset, setPreset] = usePersistedState('summer_preset', 'Standard')
   const [page, setPage] = useState(0)
   const limit = 50
 
