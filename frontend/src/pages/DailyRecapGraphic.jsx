@@ -245,42 +245,48 @@ async function drawScoreBugWithInnings(ctx, game, x, y, w, h) {
   }
 }
 
-// ── Draw top performers in 2-column grid ──
+// ── Draw top performers in 2-column grid that fills available space ──
 async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
   if (!performers || performers.length === 0) return 0
 
-  const pad = 8
-  const gap = 8
+  const gap = 10
   const colW = (w - gap) / 2
-  const perfH = 60
   const perfs = filterTopPerformers(performers, 6)
   if (perfs.length === 0) return 0
 
   const rows = Math.ceil(perfs.length / 2)
-  const totalH = Math.min(rows * perfH, maxH)
+  // Calculate card height to fill available space evenly
+  const cardGap = 8
+  const perfH = Math.min((maxH - (rows - 1) * cardGap) / rows, 120)
+  const pad = 12
 
   for (let i = 0; i < perfs.length; i++) {
     const p = perfs[i]
     const col = i % 2
     const row = Math.floor(i / 2)
     const px = x + col * (colW + gap)
-    const py = y + row * perfH
+    const py = y + row * (perfH + cardGap)
 
     if (py + perfH > y + maxH) break
 
     // Card background
-    roundRect(ctx, px, py, colW, perfH - 4, 6)
+    roundRect(ctx, px, py, colW, perfH, 8)
     ctx.fillStyle = '#f8fafc'
     ctx.fill()
     ctx.strokeStyle = '#e2e8f0'
     ctx.lineWidth = 0.5
     ctx.stroke()
 
-    const pMidY = py + (perfH - 4) / 2
-    let curX = px + pad
+    // Left accent bar (green for team color)
+    roundRect(ctx, px, py, 4, perfH, 8)
+    ctx.fillStyle = COLORS.green_light
+    ctx.fill()
 
-    // Team logo
-    const logoSize = 30
+    const pMidY = py + perfH / 2
+    let curX = px + pad + 6
+
+    // Team logo (larger)
+    const logoSize = Math.min(perfH * 0.5, 44)
     if (p.team_logo) {
       try {
         const img = await loadImage(p.team_logo)
@@ -290,31 +296,32 @@ async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
         ctx.drawImage(img, curX + (logoSize - dw) / 2, pMidY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
-    curX += logoSize + 8
+    curX += logoSize + 12
 
-    // Player name
+    // Player name (scaled with card size)
+    const nameFontSize = Math.min(Math.floor(perfH * 0.2), 18)
     const name = p.player_name || 'Unknown'
     ctx.fillStyle = COLORS.text_dark
-    ctx.font = '700 14px "Inter", system-ui, sans-serif'
+    ctx.font = `700 ${nameFontSize}px "Inter", system-ui, sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    // Truncate if too long
+    const maxW = colW - logoSize - pad * 2 - 20
     let displayName = name
-    const maxW = colW - logoSize - pad * 2 - 12
     while (ctx.measureText(displayName).width > maxW && displayName.length > 3) displayName = displayName.slice(0, -1)
     if (displayName !== name) displayName += '.'
-    ctx.fillText(displayName, curX, pMidY - 10)
+    ctx.fillText(displayName, curX, pMidY - nameFontSize * 0.6)
 
     // Stat line
+    const statFontSize = Math.min(Math.floor(perfH * 0.15), 14)
     ctx.fillStyle = COLORS.text_gray
-    ctx.font = '500 11px "Inter", system-ui, sans-serif'
+    ctx.font = `500 ${statFontSize}px "Inter", system-ui, sans-serif`
     let statLine = p.stat_line || ''
     while (ctx.measureText(statLine).width > maxW && statLine.length > 3) statLine = statLine.slice(0, -1)
     if (statLine !== (p.stat_line || '')) statLine += '...'
-    ctx.fillText(statLine, curX, pMidY + 10)
+    ctx.fillText(statLine, curX, pMidY + nameFontSize * 0.5)
   }
 
-  return totalH
+  return rows * (perfH + cardGap)
 }
 
 // ── Header bar ──
@@ -399,8 +406,7 @@ async function renderDailyGraphic(canvas, data) {
   const allGames = (data.games || []).map(g => enrichGame(g, data))
   const isDoubleheader = allGames.length >= 2
 
-  // Single game is shorter rectangle, doubleheader is square
-  const H = isDoubleheader ? 1080 : 720
+  const H = 1080
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
