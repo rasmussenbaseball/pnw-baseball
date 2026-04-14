@@ -7757,7 +7757,91 @@ def games_live():
         # Don't break the live endpoint if DB merge fails
         pass
 
-    # Dedup again after DB games are merged in
+    # ── Merge future_schedules.json for today/upcoming ──
+    # These are scraped schedule entries that haven't been played yet
+    # (e.g. NWAC games that aren't in the games table until box scores exist).
+    try:
+        fs_path = _Path(__file__).parent.parent.parent / "data" / "future_schedules.json"
+        if fs_path.exists():
+            with open(fs_path) as _fs:
+                fs_data = _json.load(_fs)
+
+            # Build dedup keys from existing today/upcoming games
+            existing_keys = set()
+            for section in ("today", "upcoming"):
+                for g in data.get(section, []):
+                    t = (g.get("team", "")).lower()
+                    o = (g.get("opponent", "")).lower()
+                    if t and o:
+                        existing_keys.add((t, o))
+                        existing_keys.add((o, t))
+
+            today_str = today.isoformat() if today else ""
+            upcoming_str = (today + _timedelta(days=1)).isoformat() if today else ""
+
+            for fg in fs_data.get("games", []):
+                gd = fg.get("game_date", "")
+                if gd not in (today_str, upcoming_str):
+                    continue
+
+                ht = (fg.get("home_team", "")).lower()
+                at_ = (fg.get("away_team", "")).lower()
+                if not ht or not at_:
+                    continue
+                if (ht, at_) in existing_keys or (at_, ht) in existing_keys:
+                    continue
+
+                htid = fg.get("home_team_id")
+                atid = fg.get("away_team_id")
+
+                # Look up team info
+                with get_connection() as conn2:
+                    cur2 = conn2.cursor()
+                    team_info = {}
+                    for tid in [htid, atid]:
+                        if tid:
+                            cur2.execute("""
+                                SELECT t.short_name, t.logo_url, d.level
+                                FROM teams t
+                                LEFT JOIN conferences c ON t.conference_id = c.id
+                                LEFT JOIN divisions d ON c.division_id = d.id
+                                WHERE t.id = %s
+                            """, (tid,))
+                            r = cur2.fetchone()
+                            if r:
+                                team_info[tid] = dict(r)
+
+                hi = team_info.get(htid, {})
+                ai = team_info.get(atid, {})
+                div = hi.get("level") or ai.get("level") or fg.get("division", "")
+
+                fs_game = {
+                    "id": f"fs_{htid}_{atid}",
+                    "team": hi.get("short_name") or fg.get("home_team", "TBD"),
+                    "team_division": div,
+                    "team_logo": hi.get("logo_url", ""),
+                    "opponent": ai.get("short_name") or fg.get("away_team", "TBD"),
+                    "opponent_display": ai.get("short_name") or fg.get("away_team", "TBD"),
+                    "opponent_logo": ai.get("logo_url", ""),
+                    "date": gd,
+                    "time": fg.get("time", ""),
+                    "status": "scheduled",
+                    "game_state_display": "Scheduled",
+                    "location": "home",
+                    "team_score": None,
+                    "opponent_score": None,
+                    "is_conference": fg.get("is_conference", False),
+                }
+
+                if gd == today_str:
+                    data["today"].append(fs_game)
+                else:
+                    data["upcoming"].append(fs_game)
+
+    except Exception:
+        pass
+
+    # Dedup again after DB games and future schedules are merged in
     for section in ("today", "recent", "upcoming"):
         data[section] = _dedup_live_games(data.get(section, []))
 
