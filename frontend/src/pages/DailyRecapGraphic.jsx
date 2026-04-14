@@ -396,19 +396,20 @@ function enrichGame(gameObj, data) {
 // ── Main renderer (1080x1080) ──
 async function renderDailyGraphic(canvas, data) {
   const W = 1080
-  const H = 1080
+  const allGames = (data.games || []).map(g => enrichGame(g, data))
+  const isDoubleheader = allGames.length >= 2
+
+  // Single game is shorter rectangle, doubleheader is square
+  const H = isDoubleheader ? 1080 : 720
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
-
-  const allGames = (data.games || []).map(g => enrichGame(g, data))
-  const isDoubleheader = allGames.length >= 2
 
   // Background
   ctx.fillStyle = COLORS.bg_dark
   ctx.fillRect(0, 0, W, H)
 
-  // Header (large, with both logos)
+  // Header
   const headerH = 100
   const dateLabel = data.date ? shortDate(data.date) : ''
   await drawHeader(ctx, dateLabel, 0, 0, W, headerH)
@@ -417,26 +418,26 @@ async function renderDailyGraphic(canvas, data) {
   let curY = headerH + 10
 
   if (!isDoubleheader) {
-    // ── Single game layout ──
+    // ── Single game layout (1080x720) ──
     const game = allGames[0] || {}
 
     // Combined scorebug with innings
-    const scoreH = 170
+    const scoreH = 180
     await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
     curY += scoreH + 14
 
     // Top performers header
     ctx.fillStyle = COLORS.green_light
-    ctx.font = '700 18px "Inter", system-ui, sans-serif'
+    ctx.font = '700 20px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillText('TOP PERFORMERS', 20, curY + 10)
-    curY += 30
+    curY += 34
 
-    // Two-column performers
+    // Two-column performers - fill remaining space
     await drawTopPerformers(ctx, game.top_performers, 12, curY, W - 24, H - curY - footerH - 10)
   } else {
-    // ── Doubleheader layout ──
+    // ── Doubleheader layout (1080x1080) ──
     const spacePerGame = (H - headerH - footerH - 20) / 2
 
     for (let gi = 0; gi < 2; gi++) {
@@ -444,28 +445,28 @@ async function renderDailyGraphic(canvas, data) {
 
       // Game label
       ctx.fillStyle = COLORS.green_light
-      ctx.font = '700 15px "Inter", system-ui, sans-serif'
+      ctx.font = '700 14px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      ctx.fillText(`GAME ${gi + 1}`, 20, curY + 8)
-      curY += 22
+      ctx.fillText(`GAME ${gi + 1}`, 20, curY + 6)
+      curY += 18
 
-      // Combined scorebug with innings (smaller for DH)
-      const scoreH = 140
+      // Combined scorebug with innings (compact)
+      const scoreH = 150
       await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
-      curY += scoreH + 8
+      curY += scoreH + 6
 
       // Top performers header
       ctx.fillStyle = COLORS.green_light
       ctx.font = '700 13px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText('TOP PERFORMERS', 20, curY + 6)
-      curY += 18
+      ctx.fillText('TOP PERFORMERS', 20, curY + 5)
+      curY += 16
 
-      // Two-column performers (max 4 for doubleheaders)
-      const maxPerfH = spacePerGame - scoreH - 60
+      // Two-column performers (max 6, compact)
+      const maxPerfH = spacePerGame - scoreH - 50
       const perfH = await drawTopPerformers(ctx, game.top_performers, 12, curY, W - 24, maxPerfH)
-      curY += perfH + 8
+      curY += perfH + 6
     }
   }
 
