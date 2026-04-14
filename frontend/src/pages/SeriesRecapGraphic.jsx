@@ -204,7 +204,7 @@ function drawStatCompareRow(ctx, label, valA, valB, centerX, y, colW, opts = {})
 
   // Label in center
   ctx.fillStyle = '#64748b'
-  ctx.font = `600 10px "Inter", system-ui, sans-serif`
+  ctx.font = `600 11px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(label, centerX, y)
@@ -222,16 +222,16 @@ function drawStatCompareRow(ctx, label, valA, valB, centerX, y, colW, opts = {})
   ctx.fillText(String(valB), centerX + colW, y)
 }
 
-// ── Draw mini performer table for one team ──
+// ── Draw performer table for one team ──
 async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   const pad = 6
-  const titleH = 20
-  const rowH = 26
-  const logoSize = 18
+  const titleH = 22
+  const rowH = 28
+  const logoSize = 20
 
   // Section title
   ctx.fillStyle = '#00687a'
-  ctx.font = '700 10px "Inter", system-ui, sans-serif'
+  ctx.font = '700 11px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   ctx.fillText(title, x + pad, y + titleH / 2)
@@ -247,10 +247,10 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   ctx.textBaseline = 'middle'
   const hMidY = headerY + (rowH - 2) / 2
 
-  const nameColW = w * 0.42
+  const nameColW = w * 0.32
   const statCols = type === 'hitter'
-    ? ['AB', 'H', 'HR', 'RBI', 'AVG']
-    : ['IP', 'K', 'ER', 'BB', 'DEC']
+    ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB', 'BB+', 'AVG']
+    : ['IP', 'K', 'H', 'ER', 'BB', 'FIP', 'DEC']
   const statColW = (w - nameColW - pad) / statCols.length
 
   ctx.textAlign = 'left'
@@ -291,7 +291,7 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#0f172a'
-    ctx.font = '600 11px "Inter", system-ui, sans-serif'
+    ctx.font = '600 12px "Inter", system-ui, sans-serif'
     const maxW = x + nameColW - curX - 2
     let displayName = name
     while (ctx.measureText(displayName).width > maxW && displayName.length > 3) displayName = displayName.slice(0, -1)
@@ -299,31 +299,45 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
     ctx.fillText(displayName, curX, rMidY)
 
     // Stats
-    ctx.font = '600 11px "Inter", system-ui, sans-serif'
+    const statFS = 11
+    ctx.font = `600 ${statFS}px "Inter", system-ui, sans-serif`
     ctx.fillStyle = '#0f172a'
     if (type === 'hitter') {
       const avg = fmtAvg(p.avg)
-      const stats = [p.at_bats || 0, p.hits || 0, p.home_runs || 0, p.rbi || 0, avg]
+      const stats = [
+        p.at_bats || 0, p.hits || 0, p.home_runs || 0, p.rbi || 0,
+        p.xbh || 0, p.stolen_bases || 0, p.bb_hbp || 0, avg,
+      ]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        ctx.fillStyle = j === 2 && val > 0 ? '#dc2626' : '#0f172a'
-        ctx.font = j === 2 && val > 0 ? '700 11px "Inter", system-ui, sans-serif' : '600 11px "Inter", system-ui, sans-serif'
+        // Highlight HR in red if > 0
+        if (j === 2 && val > 0) {
+          ctx.fillStyle = '#dc2626'
+          ctx.font = `700 ${statFS}px "Inter", system-ui, sans-serif`
+        } else {
+          ctx.fillStyle = '#0f172a'
+          ctx.font = `600 ${statFS}px "Inter", system-ui, sans-serif`
+        }
         ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY)
       })
     } else {
       const ip = fmtIP(p.innings_pitched)
       const dec = p.decision_summary || '-'
-      const stats = [ip, p.strikeouts || 0, p.earned_runs || 0, p.walks || 0, dec]
+      const fip = p.fip != null ? p.fip.toFixed(2) : '-'
+      const stats = [
+        ip, p.strikeouts || 0, p.hits_allowed != null ? p.hits_allowed : '-',
+        p.earned_runs || 0, p.bb_hbp || 0, fip, dec,
+      ]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        if (j === 4) {
+        if (j === 6) {
           const hasW = String(val).includes('W')
           const hasL = String(val).includes('L')
           ctx.fillStyle = hasW ? '#16a34a' : hasL ? '#dc2626' : '#64748b'
-          ctx.font = '700 11px "Inter", system-ui, sans-serif'
+          ctx.font = `700 ${statFS}px "Inter", system-ui, sans-serif`
         } else {
           ctx.fillStyle = '#0f172a'
-          ctx.font = '600 11px "Inter", system-ui, sans-serif'
+          ctx.font = `600 ${statFS}px "Inter", system-ui, sans-serif`
         }
         ctx.fillText(String(val), x + nameColW + statColW * j + statColW / 2, rMidY)
       })
@@ -383,7 +397,7 @@ async function renderSeriesGraphic(canvas, series) {
   // ── Team matchup section ──
   const teamA = series.team_a
   const teamB = series.team_b
-  const matchupH = 130
+  const matchupH = 125
   const matchBg = curY
 
   // Light background for matchup
@@ -478,12 +492,12 @@ async function renderSeriesGraphic(canvas, series) {
     await drawScorebug(ctx, series.scorebugs[i], bx, by, bugW, bugH)
   }
 
-  curY = bugGridY + rows * (bugH + gap) + 4
+  curY = bugGridY + rows * (bugH + gap) + 2
 
   // ── Stat comparison section (SIDE BY SIDE: batting left, pitching right) ──
   const statSectionY = curY
   const halfCardW = (W - pad * 2 - 10) / 2
-  const rowSpacing = 19
+  const rowSpacing = 20
 
   const bA = teamA.series_batting || {}
   const bB = teamB.series_batting || {}
@@ -513,7 +527,7 @@ async function renderSeriesGraphic(canvas, series) {
   ]
 
   const maxStatRows = Math.max(battingStats.length, pitchingStats.length)
-  const cardH = 38 + maxStatRows * rowSpacing + 6
+  const cardH = 44 + maxStatRows * rowSpacing + 6
 
   // Helper to draw one stat card
   function drawStatCard(cardX, cardW, title, stats, teamAName, teamBName) {
@@ -526,23 +540,23 @@ async function renderSeriesGraphic(canvas, series) {
     ctx.stroke()
 
     ctx.fillStyle = '#00687a'
-    ctx.font = '700 10px "Inter", system-ui, sans-serif'
+    ctx.font = '700 11px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText(title, cardX + 10, statSectionY + 12)
+    ctx.fillText(title, cardX + 10, statSectionY + 13)
 
     // Team name labels
-    const labelsY = statSectionY + 28
+    const labelsY = statSectionY + 30
     ctx.fillStyle = '#0f172a'
-    ctx.font = '700 11px "Inter", system-ui, sans-serif'
+    ctx.font = '700 12px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'right'
-    ctx.fillText(teamAName, cardCenterX - 34, labelsY)
+    ctx.fillText(teamAName, cardCenterX - 36, labelsY)
     ctx.textAlign = 'left'
-    ctx.fillText(teamBName, cardCenterX + 34, labelsY)
+    ctx.fillText(teamBName, cardCenterX + 36, labelsY)
 
-    let ry = labelsY + 18
+    let ry = labelsY + 20
     stats.forEach((stat) => {
-      drawStatCompareRow(ctx, stat.label, stat.a, stat.b, cardCenterX, ry, 34, { highlight: stat.hl, fontSize: 13 })
+      drawStatCompareRow(ctx, stat.label, stat.a, stat.b, cardCenterX, ry, 36, { highlight: stat.hl, fontSize: 14 })
       ry += rowSpacing
     })
   }

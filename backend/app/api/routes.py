@@ -6809,9 +6809,10 @@ def series_recap(
                     b["perf_score"] = hitting_score(b)
                     b["display_name"] = _display_name(b)
                     b["xbh"] = (b.get("doubles") or 0) + (b.get("triples") or 0) + (b.get("home_runs") or 0)
+                    b["bb_hbp"] = (b.get("walks") or 0) + (b.get("hit_by_pitch") or 0)
                     ab = b.get("at_bats") or 1
                     b["avg"] = round((b.get("hits") or 0) / ab, 3)
-                return sorted(result, key=lambda x: x["perf_score"], reverse=True)[:3]
+                return sorted(result, key=lambda x: x["perf_score"], reverse=True)[:4]
 
             def _agg_pitchers(rows, tid):
                 agg = {}
@@ -6847,7 +6848,17 @@ def series_recap(
                     p["display_name"] = _display_name(p)
                     decs = p.pop("decisions", [])
                     p["decision_summary"] = ", ".join(decs) if decs else None
-                return sorted(result, key=lambda x: x["perf_score"], reverse=True)[:3]
+                    p["bb_hbp"] = (p.get("walks") or 0)  # HBP not tracked in pitching lines
+                    # FIP: ((13*HR + 3*BB - 2*K) / IP) + 3.10
+                    ip = p.get("innings_pitched") or 0
+                    if ip > 0:
+                        hra = p.get("home_runs_allowed") or 0
+                        bb = p.get("walks") or 0
+                        k = p.get("strikeouts") or 0
+                        p["fip"] = round(((13 * hra + 3 * bb - 2 * k) / ip) + 3.10, 2)
+                    else:
+                        p["fip"] = None
+                return sorted(result, key=lambda x: x["perf_score"], reverse=True)[:4]
 
             team_a["top_hitters"] = _agg_hitters(batting_rows, team_a_id)
             team_b["top_hitters"] = _agg_hitters(batting_rows, team_b_id)
