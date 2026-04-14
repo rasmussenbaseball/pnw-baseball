@@ -25,7 +25,7 @@ function shortDate(iso) {
 function cleanTeamName(name) {
   if (!name) return '???'
   let n = name.trim()
-  n = n.replace(/^(?:No\.\s*\d+\s+|#\d+\s+|\(\d+)\s+)/i, '')
+  n = n.replace(/^(?:No\.\s*\d+\s+|#\d+\s+|\(\d+\))\s+/i, '')
   n = n.replace(/(?<=[a-zA-Z])(\d+)$/, '')
   return n.trim() || '???'
 }
