@@ -225,46 +225,38 @@ function drawLinescore(ctx, game, x, y, w, h) {
   ctx.lineWidth = 1
   ctx.stroke()
 
-  // Build columns: Team | 1 2 3 4 5 6 7 8 9 | R H E
+  // Build columns: Team | 1-9 | R H E
   const cols = ['TEAM', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'R', 'H', 'E']
-  const teamColW = 50
-  const innColW = (w - teamColW - 1) / 12
+  const numCols = cols.length
+  const teamColW = 60
+  const innColW = (w - teamColW) / (numCols - 1)
+  const rowH = h / 3
+
+  // Get inning scores from line_score arrays
+  const awayLine = game.away_line_score || []
+  const homeLine = game.home_line_score || []
+  const aInn = Array(9).fill('-')
+  const hInn = Array(9).fill('-')
+  for (let i = 0; i < 9; i++) {
+    if (i < awayLine.length && awayLine[i] != null) aInn[i] = awayLine[i]
+    if (i < homeLine.length && homeLine[i] != null) hInn[i] = homeLine[i]
+  }
 
   // Header row
   ctx.fillStyle = COLORS.green_dark
-  ctx.fillRect(x, y, w, h / 3)
+  ctx.fillRect(x, y, w, rowH)
   ctx.fillStyle = COLORS.white
   ctx.font = '700 11px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
-  let colX = x + teamColW / 2
-  cols.forEach((col, i) => {
-    if (i === 0) {
-      ctx.textAlign = 'center'
-      ctx.fillText(col, x + teamColW / 2, y + (h / 3) / 2)
-    } else {
-      ctx.fillText(col, colX, y + (h / 3) / 2)
-      colX += innColW
-    }
-  })
-
-  // Get inning scores
-  const innings = game.innings || []
-  const aInn = Array(9).fill('-')
-  const hInn = Array(9).fill('-')
-
-  if (Array.isArray(innings)) {
-    innings.forEach((inn, idx) => {
-      if (idx < 9) {
-        if (inn.away != null) aInn[idx] = inn.away
-        if (inn.home != null) hInn[idx] = inn.home
-      }
-    })
+  ctx.fillText(cols[0], x + teamColW / 2, y + rowH / 2)
+  for (let i = 1; i < numCols; i++) {
+    const cx = x + teamColW + (i - 1) * innColW + innColW / 2
+    ctx.fillText(cols[i], cx, y + rowH / 2)
   }
 
   // Away team row
-  const rowH = h / 3
   ctx.fillStyle = '#f8fafc'
   ctx.fillRect(x, y + rowH, w, rowH)
   ctx.fillStyle = COLORS.text_dark
@@ -272,19 +264,16 @@ function drawLinescore(ctx, game, x, y, w, h) {
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
-  const awayShort = cleanTeamName(game.away_short).substring(0, 3).toUpperCase()
+  const awayShort = cleanTeamName(game.away_short).substring(0, 4).toUpperCase()
   ctx.fillText(awayShort, x + teamColW / 2, y + rowH + rowH / 2)
-
-  colX = x + teamColW + innColW / 2
   for (let i = 0; i < 9; i++) {
-    ctx.fillText(String(aInn[i]), colX, y + rowH + rowH / 2)
-    colX += innColW
+    ctx.fillText(String(aInn[i]), x + teamColW + i * innColW + innColW / 2, y + rowH + rowH / 2)
   }
-  ctx.fillText(String(game.away_score ?? '-'), colX, y + rowH + rowH / 2)
-  colX += innColW
-  ctx.fillText(String(game.away_hits ?? '-'), colX, y + rowH + rowH / 2)
-  colX += innColW
-  ctx.fillText(String(game.away_errors ?? '-'), colX, y + rowH + rowH / 2)
+  // R, H, E
+  ctx.font = '700 11px "Inter", system-ui, sans-serif'
+  ctx.fillText(String(game.away_score ?? '-'), x + teamColW + 9 * innColW + innColW / 2, y + rowH + rowH / 2)
+  ctx.fillText(String(game.away_hits ?? '-'), x + teamColW + 10 * innColW + innColW / 2, y + rowH + rowH / 2)
+  ctx.fillText(String(game.away_errors ?? '-'), x + teamColW + 11 * innColW + innColW / 2, y + rowH + rowH / 2)
 
   // Home team row
   ctx.fillStyle = COLORS.white
@@ -294,54 +283,43 @@ function drawLinescore(ctx, game, x, y, w, h) {
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
-  const homeShort = cleanTeamName(game.home_short).substring(0, 3).toUpperCase()
+  const homeShort = cleanTeamName(game.home_short).substring(0, 4).toUpperCase()
   ctx.fillText(homeShort, x + teamColW / 2, y + rowH * 2 + rowH / 2)
-
-  colX = x + teamColW + innColW / 2
   for (let i = 0; i < 9; i++) {
-    ctx.fillText(String(hInn[i]), colX, y + rowH * 2 + rowH / 2)
-    colX += innColW
+    ctx.fillText(String(hInn[i]), x + teamColW + i * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
   }
-  ctx.fillText(String(game.home_score ?? '-'), colX, y + rowH * 2 + rowH / 2)
-  colX += innColW
-  ctx.fillText(String(game.home_hits ?? '-'), colX, y + rowH * 2 + rowH / 2)
-  colX += innColW
-  ctx.fillText(String(game.home_errors ?? '-'), colX, y + rowH * 2 + rowH / 2)
+  ctx.font = '700 11px "Inter", system-ui, sans-serif'
+  ctx.fillText(String(game.home_score ?? '-'), x + teamColW + 9 * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
+  ctx.fillText(String(game.home_hits ?? '-'), x + teamColW + 10 * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
+  ctx.fillText(String(game.home_errors ?? '-'), x + teamColW + 11 * innColW + innColW / 2, y + rowH * 2 + rowH / 2)
 }
 
 // ── Draw top performers section ──
-async function drawTopPerformers(ctx, performers, x, y, w, h) {
+async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
   if (!performers || performers.length === 0) return 0
 
-  const pad = 8
-  const perfH = 40
+  const pad = 12
+  const perfH = 65
   const maxPerfs = 6
   const perfs = performers.slice(0, maxPerfs)
-  const totalH = perfs.length * perfH
+  const totalH = Math.min(perfs.length * perfH, maxH)
 
-  // Draw each performer card
   for (let i = 0; i < perfs.length; i++) {
     const p = perfs[i]
     const py = y + i * perfH
     const pMidY = py + perfH / 2
 
-    // Alternating background
-    if (i % 2 === 0) {
-      ctx.fillStyle = '#f8fafc'
-      ctx.fillRect(x, py, w, perfH)
-    } else {
-      ctx.fillStyle = COLORS.white
-      ctx.fillRect(x, py, w, perfH)
-    }
+    if (py + perfH > y + maxH) break
 
-    // Separator line
-    ctx.fillStyle = '#e2e8f0'
-    ctx.fillRect(x, py, w, 0.5)
+    // Card background with rounded corners
+    roundRect(ctx, x, py, w, perfH - 4, 6)
+    ctx.fillStyle = i % 2 === 0 ? '#f8fafc' : COLORS.white
+    ctx.fill()
 
     let curX = x + pad
 
     // Team logo
-    const logoSize = 24
+    const logoSize = 36
     if (p.team_logo) {
       try {
         const img = await loadImage(p.team_logo)
@@ -351,54 +329,32 @@ async function drawTopPerformers(ctx, performers, x, y, w, h) {
         ctx.drawImage(img, curX + (logoSize - dw) / 2, pMidY - dh / 2, dw, dh)
       } catch { /* skip */ }
     }
-    curX += logoSize + 8
+    curX += logoSize + 12
 
-    // Player name
-    const name = p.display_name || 'Unknown'
+    // Player name (larger)
+    const name = p.player_name || 'Unknown'
     ctx.fillStyle = COLORS.text_dark
-    ctx.font = '600 12px "Inter", system-ui, sans-serif'
+    ctx.font = '700 18px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText(name, curX, pMidY - 8)
+    ctx.fillText(name, curX, pMidY - 10)
 
-    // Stat line
+    // Stat line (larger)
     ctx.fillStyle = COLORS.text_gray
-    ctx.font = '500 10px "Inter", system-ui, sans-serif'
-    ctx.fillText(p.stat_line || '', curX, pMidY + 8)
-
-    // Badge (BAT/PITCH or decision)
-    const badgeX = x + w - pad - 40
-    const badgeY = pMidY - 10
-    let badgeColor = COLORS.green_accent
-    let badgeText = p.type === 'pitcher' ? 'PITCH' : 'BAT'
-
-    if (p.type === 'pitcher') {
-      if (p.decision === 'W') badgeColor = '#16a34a'
-      else if (p.decision === 'L') badgeColor = '#dc2626'
-      else if (p.decision === 'S') badgeColor = '#2563eb'
-      badgeText = p.decision || 'PITCH'
-    }
-
-    roundRect(ctx, badgeX, badgeY, 38, 20, 3)
-    ctx.fillStyle = badgeColor
-    ctx.fill()
-    ctx.fillStyle = COLORS.white
-    ctx.font = '700 9px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(badgeText, badgeX + 19, badgeY + 10)
+    ctx.font = '500 14px "Inter", system-ui, sans-serif'
+    ctx.fillText(p.stat_line || '', curX, pMidY + 14)
   }
 
-  return totalH
+  return Math.min(perfs.length * perfH, maxH)
 }
 
 // ── Header bar ──
 async function drawHeader(ctx, date, x, y, w, h) {
-  // Full dark green header
-  ctx.fillStyle = COLORS.green_dark
+  // Black header
+  ctx.fillStyle = '#000000'
   ctx.fillRect(x, y, w, h)
 
-  // Accent line at bottom
+  // Green accent line at bottom
   ctx.fillStyle = COLORS.green_light
   ctx.fillRect(x, y + h - 3, w, 3)
 
