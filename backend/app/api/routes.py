@@ -6605,16 +6605,23 @@ def series_recap(
             slg = round(tb / ab, 3) if ab else 0
             k_rate = round(k / ab * 100, 1) if ab else 0
             bb_rate = round(bb / ab * 100, 1) if ab else 0
+            xbh = doubles + triples + hr
+            singles = h - xbh
+            # wOBA = (0.69*BB + 0.72*HBP + 0.89*1B + 1.27*2B + 1.62*3B + 2.10*HR) / (AB+BB+SF+HBP)
+            woba_denom = ab + bb + sf + hbp
+            woba = round((0.69*bb + 0.72*hbp + 0.89*singles + 1.27*doubles + 1.62*triples + 2.10*hr) / woba_denom, 3) if woba_denom else 0
             return {
                 "ab": ab, "r": r, "h": h, "doubles": doubles, "triples": triples,
                 "hr": hr, "rbi": rbi, "bb": bb, "k": k, "hbp": hbp, "sb": sb,
+                "xbh": xbh,
                 "avg": avg, "obp": obp, "slg": slg, "ops": round(obp + slg, 3),
-                "k_rate": k_rate, "bb_rate": bb_rate,
+                "k_rate": k_rate, "bb_rate": bb_rate, "woba": woba,
             }
 
         def _compute_team_pitching(rows, team_id):
             """Compute aggregate pitching stats for one team from game_pitching rows."""
             ip = h = er = bb = k = hra = ra = 0
+            total_bf = 0  # approximate batters faced
             seen = set()
             for p in rows:
                 if p.get("team_id") != team_id:
@@ -6625,22 +6632,34 @@ def series_recap(
                 if rk in seen:
                     continue
                 seen.add(rk)
-                ip += (p.get("innings_pitched") or 0)
-                h += (p.get("hits_allowed") or 0)
+                p_ip = p.get("innings_pitched") or 0
+                p_h = p.get("hits_allowed") or 0
+                p_bb = p.get("walks") or 0
+                p_k = p.get("strikeouts") or 0
+                ip += p_ip
+                h += p_h
                 er += (p.get("earned_runs") or 0)
-                bb += (p.get("walks") or 0)
-                k += (p.get("strikeouts") or 0)
+                bb += p_bb
+                k += p_k
                 hra += (p.get("home_runs_allowed") or 0)
                 ra += (p.get("runs_allowed") or 0)
+                # Approximate BF: IP*3 + H + BB (rough estimate)
+                total_bf += int(p_ip) * 3 + p_h + p_bb
             era = round(er * 9 / ip, 2) if ip else 0
             whip = round((bb + h) / ip, 2) if ip else 0
             k_per_9 = round(k * 9 / ip, 1) if ip else 0
             bb_per_9 = round(bb * 9 / ip, 1) if ip else 0
             h_per_9 = round(h * 9 / ip, 1) if ip else 0
+            hr_per_9 = round(hra * 9 / ip, 1) if ip else 0
+            k_rate = round(k / total_bf * 100, 1) if total_bf else 0
+            bb_rate = round(bb / total_bf * 100, 1) if total_bf else 0
+            # FIP = ((13*HR + 3*BB - 2*K) / IP) + 3.10
+            fip = round(((13 * hra + 3 * bb - 2 * k) / ip) + 3.10, 2) if ip else 0
             return {
                 "ip": round(ip, 1), "h": h, "er": er, "ra": ra, "bb": bb, "k": k,
-                "hra": hra, "era": era, "whip": whip,
+                "hra": hra, "era": era, "whip": whip, "fip": fip,
                 "k_per_9": k_per_9, "bb_per_9": bb_per_9, "h_per_9": h_per_9,
+                "hr_per_9": hr_per_9, "k_rate": k_rate, "bb_rate": bb_rate,
             }
 
         # ── 4. Build each series ──
@@ -6776,6 +6795,9 @@ def series_recap(
             team_b["series_batting"] = _compute_team_batting(batting_rows, team_b_id)
             team_a["series_pitching"] = _compute_team_pitching(pitching_rows, team_a_id)
             team_b["series_pitching"] = _compute_team_pitching(pitching_rows, team_b_id)
+            # XBH allowed = opponent's batting XBH
+            team_a["series_pitching"]["xbh_allowed"] = team_b["series_batting"].get("xbh", 0)
+            team_b["series_pitching"]["xbh_allowed"] = team_a["series_batting"].get("xbh", 0)
 
             # ── Top performers SPLIT BY TEAM ──
             def _agg_hitters(rows, tid):

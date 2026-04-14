@@ -177,16 +177,37 @@ async function drawScorebug(ctx, game, x, y, w, h) {
   }
 
   // W/L pitchers at bottom
-  const wlY = y + h - 16
-  const parts = []
-  if (game.win_pitcher) parts.push(`W: ${game.win_pitcher}`)
-  if (game.loss_pitcher) parts.push(`L: ${game.loss_pitcher}`)
-  if (game.save_pitcher) parts.push(`S: ${game.save_pitcher}`)
-  if (parts.length > 0) {
-    ctx.fillStyle = '#94a3b8'
-    ctx.font = '500 9px "Inter", system-ui, sans-serif'
+  const wlY = y + h - 14
+  const wlParts = []
+  if (game.win_pitcher) wlParts.push({ label: 'W', name: game.win_pitcher, color: '#16a34a' })
+  if (game.loss_pitcher) wlParts.push({ label: 'L', name: game.loss_pitcher, color: '#dc2626' })
+  if (game.save_pitcher) wlParts.push({ label: 'S', name: game.save_pitcher, color: '#2563eb' })
+  if (wlParts.length > 0) {
+    ctx.textBaseline = 'middle'
     ctx.textAlign = 'center'
-    ctx.fillText(parts.join('   '), x + w / 2, wlY)
+    // Measure total width to center everything
+    const gap = 12
+    let totalW = 0
+    wlParts.forEach((p, i) => {
+      ctx.font = '700 11px "Inter", system-ui, sans-serif'
+      totalW += ctx.measureText(`${p.label}: `).width
+      ctx.font = '600 11px "Inter", system-ui, sans-serif'
+      totalW += ctx.measureText(p.name).width
+      if (i < wlParts.length - 1) totalW += gap
+    })
+    let drawX = x + (w - totalW) / 2
+    wlParts.forEach((p, i) => {
+      ctx.textAlign = 'left'
+      ctx.fillStyle = p.color
+      ctx.font = '700 11px "Inter", system-ui, sans-serif'
+      const labelStr = `${p.label}: `
+      ctx.fillText(labelStr, drawX, wlY)
+      drawX += ctx.measureText(labelStr).width
+      ctx.fillStyle = '#334155'
+      ctx.font = '600 11px "Inter", system-ui, sans-serif'
+      ctx.fillText(p.name, drawX, wlY)
+      drawX += ctx.measureText(p.name).width + gap
+    })
   }
 }
 
@@ -222,12 +243,15 @@ function drawStatCompareRow(ctx, label, valA, valB, centerX, y, colW, opts = {})
   ctx.fillText(String(valB), centerX + colW, y)
 }
 
-// ── Draw performer table for one team ──
+// ── Draw performer table for one team (with table borders) ──
 async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   const pad = 6
   const titleH = 22
   const rowH = 28
   const logoSize = 20
+  const totalRows = players.length + 1 // +1 for header
+  const tableH = totalRows * rowH
+  const totalH = titleH + tableH
 
   // Section title
   ctx.fillStyle = '#00687a'
@@ -236,20 +260,31 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   ctx.textBaseline = 'middle'
   ctx.fillText(title, x + pad, y + titleH / 2)
 
-  // Column headers
-  const headerY = y + titleH
-  ctx.fillStyle = '#f1f5f9'
-  roundRect(ctx, x, headerY, w, rowH - 2, 3)
+  // Table outline
+  const tableY = y + titleH
+  roundRect(ctx, x, tableY, w, tableH, 4)
+  ctx.fillStyle = '#ffffff'
   ctx.fill()
+  ctx.strokeStyle = '#cbd5e1'
+  ctx.lineWidth = 1
+  ctx.stroke()
 
-  ctx.fillStyle = '#64748b'
-  ctx.font = '600 8px "Inter", system-ui, sans-serif'
+  // Header row bg
+  ctx.save()
+  roundRect(ctx, x, tableY, w, rowH, 4)
+  ctx.clip()
+  ctx.fillStyle = '#0f2b3d'
+  ctx.fillRect(x, tableY, w, rowH)
+  ctx.restore()
+
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '700 8px "Inter", system-ui, sans-serif'
   ctx.textBaseline = 'middle'
-  const hMidY = headerY + (rowH - 2) / 2
+  const hMidY = tableY + rowH / 2
 
-  const nameColW = w * 0.32
+  const nameColW = w * 0.30
   const statCols = type === 'hitter'
-    ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB', 'BB+', 'AVG']
+    ? ['AB', 'H', 'HR', 'RBI', 'XBH', 'SB', 'BBH', 'AVG']
     : ['IP', 'K', 'H', 'ER', 'BB', 'FIP', 'DEC']
   const statColW = (w - nameColW - pad) / statCols.length
 
@@ -263,13 +298,18 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   // Player rows
   for (let i = 0; i < players.length; i++) {
     const p = players[i]
-    const ry = headerY + rowH + i * rowH
+    const ry = tableY + rowH + i * rowH
     const rMidY = ry + rowH / 2
 
+    // Alternating row bg
     if (i % 2 === 1) {
-      ctx.fillStyle = '#fafbfc'
-      ctx.fillRect(x, ry, w, rowH)
+      ctx.fillStyle = '#f8fafc'
+      ctx.fillRect(x + 1, ry, w - 2, rowH)
     }
+
+    // Row separator line
+    ctx.fillStyle = '#e2e8f0'
+    ctx.fillRect(x + 1, ry, w - 2, 0.5)
 
     let curX = x + pad
 
@@ -310,7 +350,6 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
       ]
       stats.forEach((val, j) => {
         ctx.textAlign = 'center'
-        // Highlight HR in red if > 0
         if (j === 2 && val > 0) {
           ctx.fillStyle = '#dc2626'
           ctx.font = `700 ${statFS}px "Inter", system-ui, sans-serif`
@@ -344,7 +383,7 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
     }
   }
 
-  return titleH + rowH + players.length * rowH
+  return totalH
 }
 
 // ────────────────────────────────────────────
@@ -456,15 +495,22 @@ async function renderSeriesGraphic(canvas, series) {
   }
 
   // Series result in center
-  ctx.fillStyle = '#0f2b3d'
-  ctx.font = '800 18px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.fillText(series.result_text || '', centerX, logoY + logoSz / 2 - 6)
+  const aWins = teamA.series_wins || 0
+  const bWins = teamB.series_wins || 0
+  let resultLabel = ''
+  if (aWins > bWins) resultLabel = `${cleanTeamName(teamA.short_name)} wins the series`
+  else if (bWins > aWins) resultLabel = `${cleanTeamName(teamB.short_name)} wins the series`
+  else resultLabel = 'Series Split'
 
-  // Series score (e.g. "3 - 1")
+  ctx.fillStyle = '#0f2b3d'
+  ctx.font = '700 14px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(resultLabel, centerX, logoY + logoSz / 2 - 10)
+
+  // Big series score
   ctx.fillStyle = '#00687a'
-  ctx.font = '800 32px "Inter", system-ui, sans-serif'
-  ctx.fillText(`${teamA.series_wins}  -  ${teamB.series_wins}`, centerX, logoY + logoSz / 2 + 22)
+  ctx.font = '800 36px "Inter", system-ui, sans-serif'
+  ctx.fillText(`${aWins}  -  ${bWins}`, centerX, logoY + logoSz / 2 + 20)
 
   curY = matchBg + matchupH
 
@@ -482,7 +528,7 @@ async function renderSeriesGraphic(canvas, series) {
   const rows = Math.ceil(numGames / cols)
   const gap = 10
   const bugW = (W - pad * 2 - gap * (cols - 1)) / cols
-  const bugH = 100
+  const bugH = 105
 
   for (let i = 0; i < numGames; i++) {
     const col = i % cols
@@ -509,6 +555,7 @@ async function renderSeriesGraphic(canvas, series) {
     { label: 'OBP', a: fmtAvg(bA.obp), b: fmtAvg(bB.obp), hl: 'higher' },
     { label: 'SLG', a: fmtAvg(bA.slg), b: fmtAvg(bB.slg), hl: 'higher' },
     { label: 'OPS', a: fmtAvg(bA.ops), b: fmtAvg(bB.ops), hl: 'higher' },
+    { label: 'wOBA', a: fmtAvg(bA.woba), b: fmtAvg(bB.woba), hl: 'higher' },
     { label: 'R', a: String(bA.r || 0), b: String(bB.r || 0), hl: 'higher' },
     { label: 'H', a: String(bA.h || 0), b: String(bB.h || 0), hl: 'higher' },
     { label: 'HR', a: String(bA.hr || 0), b: String(bB.hr || 0), hl: 'higher' },
@@ -518,10 +565,13 @@ async function renderSeriesGraphic(canvas, series) {
 
   const pitchingStats = [
     { label: 'ERA', a: (pA.era || 0).toFixed(2), b: (pB.era || 0).toFixed(2), hl: 'lower' },
+    { label: 'FIP', a: (pA.fip || 0).toFixed(2), b: (pB.fip || 0).toFixed(2), hl: 'lower' },
     { label: 'WHIP', a: (pA.whip || 0).toFixed(2), b: (pB.whip || 0).toFixed(2), hl: 'lower' },
-    { label: 'K/9', a: (pA.k_per_9 || 0).toFixed(1), b: (pB.k_per_9 || 0).toFixed(1), hl: 'higher' },
-    { label: 'BB/9', a: (pA.bb_per_9 || 0).toFixed(1), b: (pB.bb_per_9 || 0).toFixed(1), hl: 'lower' },
+    { label: 'K%', a: fmtPct(pA.k_rate), b: fmtPct(pB.k_rate), hl: 'higher' },
+    { label: 'BB%', a: fmtPct(pA.bb_rate), b: fmtPct(pB.bb_rate), hl: 'lower' },
     { label: 'H/9', a: (pA.h_per_9 || 0).toFixed(1), b: (pB.h_per_9 || 0).toFixed(1), hl: 'lower' },
+    { label: 'HR/9', a: (pA.hr_per_9 || 0).toFixed(1), b: (pB.hr_per_9 || 0).toFixed(1), hl: 'lower' },
+    { label: 'XBH', a: String(pA.xbh_allowed || 0), b: String(pB.xbh_allowed || 0), hl: 'lower' },
     { label: 'K', a: String(pA.k || 0), b: String(pB.k || 0), hl: 'higher' },
     { label: 'ER', a: String(pA.er || 0), b: String(pB.er || 0), hl: 'lower' },
   ]
