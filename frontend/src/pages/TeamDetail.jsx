@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames } from '../hooks/useApi'
 import StatsTable from '../components/StatsTable'
@@ -223,7 +223,7 @@ export default function TeamDetail() {
 
       {/* History Tab */}
       {activeTab === 'history' && (
-        <TeamHistoryTab history={history} loading={historyLoading} />
+        <TeamHistoryTab history={history} loading={historyLoading} teamId={teamId} />
       )}
     </div>
   )
@@ -234,7 +234,43 @@ export default function TeamDetail() {
 // HISTORY TAB
 // ============================================================
 
-function TeamHistoryTab({ history, loading }) {
+function ChampionshipBanner({ teamId }) {
+  const [titles, setTitles] = useState([])
+
+  useEffect(() => {
+    if (!teamId) return
+    fetch(`/api/v1/teams/${teamId}/championships`)
+      .then(r => r.json())
+      .then(d => setTitles(d.championships || []))
+      .catch(() => {})
+  }, [teamId])
+
+  if (!titles.length) return null
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+      <h2 className="text-lg font-bold text-pnw-slate mb-3">Conference Championships</h2>
+      <div className="flex flex-wrap gap-2">
+        {titles.map((t, i) => (
+          <div
+            key={i}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+              t.championship_type === 'Regular Season'
+                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            }`}
+          >
+            <span className="font-bold">{t.season}</span>
+            {' '}
+            <span className="opacity-70">{t.championship_type === 'Regular Season' ? 'Reg. Season' : 'Tournament'}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TeamHistoryTab({ history, loading, teamId }) {
   const [leaderCategory, setLeaderCategory] = useState('batting')
 
   if (loading) {
@@ -288,6 +324,9 @@ function TeamHistoryTab({ history, loading }) {
           />
         </div>
       </div>
+
+      {/* Conference Championships */}
+      <ChampionshipBanner teamId={teamId} />
 
       {/* Year-by-Year Records */}
       <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
