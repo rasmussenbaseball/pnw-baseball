@@ -412,6 +412,15 @@ export default function PlayerGraphic() {
   const [teamInfo, setTeamInfo] = useState(null)
   const cardRef = useRef(null)
 
+  const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
+  const { data: rawData, loading, error } = usePlayer(playerId, percentileSeason)
+
+  const info = rawData?.player || {}
+  const battingStats = rawData?.batting_stats || []
+  const pitchingStats = rawData?.pitching_stats || []
+  const teamHistory = rawData?.team_history || []
+  const awards = rawData?.awards || []
+
   const downloadImage = useCallback(async () => {
     if (!cardRef.current) return
     try {
@@ -427,16 +436,7 @@ export default function PlayerGraphic() {
     } catch (err) {
       console.error('Failed to save image:', err)
     }
-  }, [info, selectedSeason])
-
-  const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
-  const { data: rawData, loading, error } = usePlayer(playerId, percentileSeason)
-
-  const info = rawData?.player || {}
-  const battingStats = rawData?.batting_stats || []
-  const pitchingStats = rawData?.pitching_stats || []
-  const teamHistory = rawData?.team_history || []
-  const awards = rawData?.awards || []
+  }, [info.first_name, info.last_name, selectedSeason])
   const pnwRankings = rawData?.pnw_rankings || []
   const careerRankings = rawData?.career_rankings || []
   const summerBatting = rawData?.summer_batting || []
