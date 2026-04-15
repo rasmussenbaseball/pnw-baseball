@@ -5406,6 +5406,25 @@ def get_park_factors(
 
 
 # ============================================================
+# CONFERENCE CHAMPIONS
+# ============================================================
+
+@router.get("/teams/{team_id}/championships")
+def team_championships(team_id: int):
+    """Get all conference championships won by a team."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.season, cc.conference, cc.championship_type, cc.team_name
+            FROM conference_champions cc
+            WHERE cc.team_id = %s
+            ORDER BY cc.season DESC, cc.championship_type
+        """, (team_id,))
+        titles = [dict(r) for r in cur.fetchall()]
+        return {"team_id": team_id, "championships": titles, "total": len(titles)}
+
+
+# ============================================================
 # TEAM HISTORY
 # ============================================================
 
