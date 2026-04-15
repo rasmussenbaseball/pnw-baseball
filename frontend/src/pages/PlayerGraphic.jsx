@@ -424,29 +424,45 @@ export default function PlayerGraphic() {
   const downloadImage = useCallback(async () => {
     if (!cardRef.current) return
     try {
-      // Pre-convert all images to inline data URLs to avoid CORS issues
-      const images = cardRef.current.querySelectorAll('img')
-      const origSrcs = []
+      // Clone the card so we can modify it without affecting the display
+      const clone = cardRef.current.cloneNode(true)
+      clone.style.borderRadius = '0px'
+      clone.style.position = 'fixed'
+      clone.style.left = '-9999px'
+      clone.style.top = '0'
+      document.body.appendChild(clone)
+
+      // Convert all images in the clone to data URLs to avoid CORS
+      const images = clone.querySelectorAll('img')
       for (const img of images) {
-        origSrcs.push(img.src)
         try {
-          const canvas = document.createElement('canvas')
-          canvas.width = img.naturalWidth || img.width || 100
-          canvas.height = img.naturalHeight || img.height || 100
-          const ctx = canvas.getContext('2d')
-          ctx.drawImage(img, 0, 0)
-          img.src = canvas.toDataURL('image/png')
-        } catch { /* skip images that can't be converted */ }
+          // Create a new image and load it
+          const resp = await fetch(img.src)
+          const imgBlob = await resp.blob()
+          const reader = new FileReader()
+          const dataUrl = await new Promise((resolve) => {
+            reader.onload = () => resolve(reader.result)
+            reader.readAsDataURL(imgBlob)
+          })
+          img.src = dataUrl
+        } catch {
+          // If fetch fails, just hide the image
+          img.style.display = 'none'
+        }
       }
 
-      const blob = await toBlob(cardRef.current, {
+      // Wait for images to settle
+      await new Promise(r => setTimeout(r, 100))
+
+      const blob = await toBlob(clone, {
         pixelRatio: 2,
-        style: { borderRadius: '0px' },
-        skipFonts: true,
+        width: 540,
+        height: 640,
+        canvasWidth: 1080,
+        canvasHeight: 1280,
       })
 
-      // Restore original image sources
-      images.forEach((img, i) => { img.src = origSrcs[i] })
+      document.body.removeChild(clone)
 
       if (!blob) throw new Error('No blob generated')
 
@@ -461,28 +477,7 @@ export default function PlayerGraphic() {
       URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Failed to save image:', err)
-      // Fallback: try without images
-      try {
-        const blob = await toBlob(cardRef.current, {
-          pixelRatio: 2,
-          style: { borderRadius: '0px' },
-          skipFonts: true,
-          filter: (node) => node.tagName !== 'IMG',
-        })
-        if (blob) {
-          const url = URL.createObjectURL(blob)
-          const link = document.createElement('a')
-          const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
-          link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
-          link.href = url
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
-          URL.revokeObjectURL(url)
-        }
-      } catch {
-        alert('Failed to save image. Try right-clicking the graphic and selecting "Save image as..."')
-      }
+      alert('Failed to save image. Try right-clicking the graphic and selecting "Save image as..."')
     }
   }, [info.first_name, info.last_name, selectedSeason])
   const pnwRankings = rawData?.pnw_rankings || []
