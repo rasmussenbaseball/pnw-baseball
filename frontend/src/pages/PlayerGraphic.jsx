@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
-import { toBlob } from 'html-to-image'
+import html2canvas from 'html2canvas'
 
 // ─── Percentile color (Savant-style blue→gray→red) ────────────
 function percentileColor(pct) {
@@ -424,60 +424,27 @@ export default function PlayerGraphic() {
   const downloadImage = useCallback(async () => {
     if (!cardRef.current) return
     try {
-      // Clone the card so we can modify it without affecting the display
-      const clone = cardRef.current.cloneNode(true)
-      clone.style.borderRadius = '0px'
-      clone.style.position = 'fixed'
-      clone.style.left = '-9999px'
-      clone.style.top = '0'
-      document.body.appendChild(clone)
-
-      // Convert all images in the clone to data URLs to avoid CORS
-      const images = clone.querySelectorAll('img')
-      for (const img of images) {
-        try {
-          // Create a new image and load it
-          const resp = await fetch(img.src)
-          const imgBlob = await resp.blob()
-          const reader = new FileReader()
-          const dataUrl = await new Promise((resolve) => {
-            reader.onload = () => resolve(reader.result)
-            reader.readAsDataURL(imgBlob)
-          })
-          img.src = dataUrl
-        } catch {
-          // If fetch fails, just hide the image
-          img.style.display = 'none'
-        }
-      }
-
-      // Wait for images to settle
-      await new Promise(r => setTimeout(r, 100))
-
-      const blob = await toBlob(clone, {
-        pixelRatio: 2,
-        width: 540,
-        height: 640,
-        canvasWidth: 1080,
-        canvasHeight: 1280,
+      const canvas = await html2canvas(cardRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null,
+        borderRadius: 0,
+        onclone: (doc) => {
+          const clonedCard = doc.querySelector('[data-player-card]')
+          if (clonedCard) clonedCard.style.borderRadius = '0px'
+        },
       })
-
-      document.body.removeChild(clone)
-
-      if (!blob) throw new Error('No blob generated')
-
-      const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
       link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
-      link.href = url
+      link.href = canvas.toDataURL('image/png')
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      URL.revokeObjectURL(url)
     } catch (err) {
-      console.error('Failed to save image:', err)
-      alert('Failed to save image. Try right-clicking the graphic and selecting "Save image as..."')
+      console.error('Save failed:', err)
+      alert('Failed to save. Try using a screenshot tool instead.')
     }
   }, [info.first_name, info.last_name, selectedSeason])
   const pnwRankings = rawData?.pnw_rankings || []
@@ -646,6 +613,7 @@ export default function PlayerGraphic() {
         <div className="flex justify-center">
           <div
             ref={cardRef}
+            data-player-card
             style={{
               width: '540px',
               height: '640px',
