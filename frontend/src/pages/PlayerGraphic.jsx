@@ -421,6 +421,26 @@ export default function PlayerGraphic() {
   const teamHistory = rawData?.team_history || []
   const awards = rawData?.awards || []
 
+  // Pre-load images as data URLs for saving
+  const [imageDataUrls, setImageDataUrls] = useState({})
+  useEffect(() => {
+    if (!rawData) return
+    const urls = [info.headshot_url, info.logo_url].filter(Boolean)
+    const loaded = {}
+    Promise.all(urls.map(async (url) => {
+      try {
+        const resp = await fetch(url)
+        const blob = await resp.blob()
+        const dataUrl = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.readAsDataURL(blob)
+        })
+        loaded[url] = dataUrl
+      } catch { /* skip */ }
+    })).then(() => setImageDataUrls(loaded))
+  }, [rawData, info.headshot_url, info.logo_url])
+
   const downloadImage = useCallback(async () => {
     if (!cardRef.current) return
     try {
@@ -429,12 +449,21 @@ export default function PlayerGraphic() {
         useCORS: true,
         allowTaint: true,
         backgroundColor: null,
-        borderRadius: 0,
+        logging: false,
         onclone: (doc) => {
           const clonedCard = doc.querySelector('[data-player-card]')
-          if (clonedCard) clonedCard.style.borderRadius = '0px'
+          if (clonedCard) {
+            clonedCard.style.borderRadius = '0px'
+            // Replace images in the clone with pre-loaded data URLs
+            const imgs = clonedCard.querySelectorAll('img')
+            for (const img of imgs) {
+              const dataUrl = imageDataUrls[img.getAttribute('src')] || imageDataUrls[img.src]
+              if (dataUrl) img.src = dataUrl
+            }
+          }
         },
       })
+
       const link = document.createElement('a')
       const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
       link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
@@ -446,7 +475,7 @@ export default function PlayerGraphic() {
       console.error('Save failed:', err)
       alert('Failed to save. Try using a screenshot tool instead.')
     }
-  }, [info.first_name, info.last_name, selectedSeason])
+  }, [info.first_name, info.last_name, selectedSeason, imageDataUrls])
   const pnwRankings = rawData?.pnw_rankings || []
   const careerRankings = rawData?.career_rankings || []
   const summerBatting = rawData?.summer_batting || []
@@ -629,7 +658,7 @@ export default function PlayerGraphic() {
               {/* Headshot */}
               <div style={{ flexShrink: 0 }}>
                 {info.headshot_url ? (
-                  <img src={info.headshot_url} alt="" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }} />
+                  <img src={info.headshot_url} alt="" crossOrigin="anonymous" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }} />
                 ) : (
                   <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>
                     {info.first_name?.[0]}{info.last_name?.[0]}
@@ -653,7 +682,7 @@ export default function PlayerGraphic() {
               {/* Team logo */}
               <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 {info.logo_url ? (
-                  <img src={info.logo_url} alt="" style={{ width: '48px', height: '48px', objectFit: 'contain', opacity: 0.7 }} />
+                  <img src={info.logo_url} alt="" crossOrigin="anonymous" style={{ width: '48px', height: '48px', objectFit: 'contain', opacity: 0.7 }} />
                 ) : (
                   <div style={{ width: '48px', height: '48px' }} />
                 )}
