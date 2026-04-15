@@ -4,6 +4,27 @@ import { Link } from 'react-router-dom'
 // ─── Site Updates / Changelog ───
 const UPDATES = [
   {
+    version: '1.7',
+    date: 'April 15, 2026',
+    title: 'Free Accounts, Daily Recap Graphics, Conference Championships & JUCO Tracker Improvements',
+    changes: [
+      'New signup popup prompts visitors to create a free account, with a full list of features they unlock',
+      'Recruiting, Draft Board, Graphics, and PNW Grid now require a free account with a blurred preview for non-logged-in users',
+      'New Daily Recap graphic generator with inning-by-inning scoring, top performers, and year/position tags for every player',
+      'Daily Recap supports both single games and doubleheaders, built in collaboration with PNWCBR',
+      'JUCO players on the Daily Recap graphic now display commitment status (Uncommitted or Committed: School)',
+      'Conference championships now displayed on team history pages with regular season and tournament title badges from 2018 to present',
+      'PNW Matchup of the Day now prioritizes quality matchups between good teams over close matchups between weaker teams',
+      'Scheduled games from future schedules now appear on the scoreboard alongside live and final games',
+      'NWAC player positions standardized from actual game data: pitchers tagged as RHP/LHP, two-way players properly labeled',
+      'JUCO Tracker position filters (P, OF, IF) now correctly include sub-positions (RHP/LHP, LF/CF/RF, 1B/2B/3B/SS)',
+      'Feature request submissions now send email notifications',
+      'SSL certificate enabled for secure HTTPS connections',
+      'Supabase Row Level Security enabled on all database tables',
+      'Fixed NaN scores appearing on the homepage and scoreboard for scheduled games',
+    ],
+  },
+  {
     version: '1.6',
     date: 'April 10, 2026',
     title: 'Scoreboard Upgrades, Daily Scores Graphic & Navigation Refresh',
