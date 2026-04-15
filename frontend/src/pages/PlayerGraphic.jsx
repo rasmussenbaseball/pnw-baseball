@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
+import { toPng } from 'html-to-image'
 
 // ─── Percentile color (Savant-style blue→gray→red) ────────────
 function percentileColor(pct) {
@@ -409,6 +410,24 @@ export default function PlayerGraphic() {
   const [selectedSeason, setSelectedSeason] = useState('latest')
   const [statMode, setStatMode] = useState(null)
   const [teamInfo, setTeamInfo] = useState(null)
+  const cardRef = useRef(null)
+
+  const downloadImage = useCallback(async () => {
+    if (!cardRef.current) return
+    try {
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2,
+        style: { borderRadius: '0px' },
+      })
+      const link = document.createElement('a')
+      const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
+      link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.error('Failed to save image:', err)
+    }
+  }, [info, selectedSeason])
 
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
   const { data: rawData, loading, error } = usePlayer(playerId, percentileSeason)
@@ -530,7 +549,7 @@ export default function PlayerGraphic() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Player Pages</h1>
-        <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic. Screenshot to save.</p>
+        <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic.</p>
         <PlayerSearchBox onSelect={setPlayerId} />
       </div>
 
@@ -570,6 +589,12 @@ export default function PlayerGraphic() {
               >Pitching</button>
             </div>
           )}
+          <button
+            onClick={downloadImage}
+            className="px-4 py-1.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors"
+          >
+            Save Image
+          </button>
         </div>
       )}
 
@@ -577,6 +602,7 @@ export default function PlayerGraphic() {
       {rawData && (
         <div className="flex justify-center">
           <div
+            ref={cardRef}
             style={{
               width: '540px',
               height: '640px',
