@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
-// Canvas-based save (same approach as series recap and daily recap)
 
 // ─── Percentile color (Savant-style blue→gray→red) ────────────
 function percentileColor(pct) {
@@ -421,23 +420,6 @@ export default function PlayerGraphic() {
   const teamHistory = rawData?.team_history || []
   const awards = rawData?.awards || []
 
-  const saveCanvasRef = useRef(null)
-  const imgCache = useRef({})
-  const loadImg = useCallback((src) => {
-    if (!src) return Promise.resolve(null)
-    if (imgCache.current[src]) return imgCache.current[src]
-    const p = new Promise((resolve) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => resolve(img)
-      img.onerror = () => resolve(null)
-      img.src = src
-    })
-    imgCache.current[src] = p
-    return p
-  }, [])
-
-  // downloadImage defined after all derived state (see below)
   const pnwRankings = rawData?.pnw_rankings || []
   const careerRankings = rawData?.career_rankings || []
   const summerBatting = rawData?.summer_batting || []
@@ -477,203 +459,6 @@ export default function PlayerGraphic() {
   // Get all seasons for career display (not the active one)
   const allStatSeasons = isPitcher ? pitchingStats : battingStats
   const otherSeasons = allStatSeasons.filter(s => s.season !== activeSeason)
-
-  // ── Canvas-based Save Image ──
-  const downloadImage = async () => {
-    if (!saveCanvasRef.current || !rawData) return
-
-    const W = 1080, H = 1280
-    const canvas = saveCanvasRef.current
-    canvas.width = W
-    canvas.height = H
-    const ctx = canvas.getContext('2d')
-
-    // Background gradient (matches the card)
-    const grad = ctx.createLinearGradient(0, 0, W * 0.6, H)
-    grad.addColorStop(0, '#0a1628')
-    grad.addColorStop(0.35, '#0f2744')
-    grad.addColorStop(1, '#00687a')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, W, H)
-    ctx.textBaseline = 'middle'
-    const pad = 28
-    let y = 20
-
-    // Headshot (circular)
-    const headshot = await loadImg(info.headshot_url)
-    if (headshot) {
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(pad + 52, y + 52, 52, 0, Math.PI * 2)
-      ctx.clip()
-      ctx.drawImage(headshot, pad, y, 104, 104)
-      ctx.restore()
-      ctx.beginPath()
-      ctx.arc(pad + 52, y + 52, 52, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)'
-      ctx.lineWidth = 4
-      ctx.stroke()
-    }
-
-    // Team logo (top right)
-    const logo = await loadImg(info.logo_url)
-    if (logo) {
-      const a = logo.naturalWidth / logo.naturalHeight
-      let dw = 96, dh = 96
-      if (a >= 1) dh = 96 / a; else dw = 96 * a
-      ctx.globalAlpha = 0.7
-      ctx.drawImage(logo, W - pad - dw, y + 4, dw, dh)
-      ctx.globalAlpha = 1
-    }
-
-    // Player name
-    ctx.fillStyle = '#ffffff'
-    ctx.font = '800 42px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText(`${info.first_name || ''} ${info.last_name || ''}`, W / 2, y + 36)
-
-    // Info line
-    ctx.fillStyle = 'rgba(255,255,255,0.6)'
-    ctx.font = '500 20px "Inter", system-ui, sans-serif'
-    ctx.fillText([info.position, info.jersey_number ? `#${info.jersey_number}` : null, `${info.bats || '?'}/${info.throws || '?'}`, info.year_in_school].filter(Boolean).join(' · '), W / 2, y + 72)
-
-    // Team name
-    ctx.fillStyle = '#4dd0e1'
-    ctx.font = '700 22px "Inter", system-ui, sans-serif'
-    ctx.fillText(teamInfo?.name || '', W / 2, y + 100)
-
-    // Division
-    const div = teamInfo?.division_level || ''
-    if (div) {
-      ctx.fillStyle = 'rgba(255,255,255,0.5)'
-      ctx.font = '600 16px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'right'
-      ctx.fillText(div === 'JUCO' ? 'NWAC' : div, W - pad, y + 100)
-    }
-    y += 125
-
-    // Stat format helper
-    const fmtS = (val, fmt) => {
-      if (val == null) return '-'
-      if (fmt === 'avg') return Number(val).toFixed(3).replace(/^0/, '')
-      if (fmt === 'era') return Number(val).toFixed(2)
-      if (fmt === 'war') return Number(val).toFixed(1)
-      if (fmt === 'ip') { const w = Math.floor(val); const f = val - w; return f < 0.1 ? `${w}.0` : f < 0.5 ? `${w}.1` : `${w}.2` }
-      return String(Math.round(val))
-    }
-
-    const sLabel = selectedSeason === 'career' ? 'Career' : selectedSeason === 'latest' ? latestSeason : selectedSeason
-
-    // Section header
-    ctx.fillStyle = 'rgba(255,255,255,0.4)'
-    ctx.font = '700 14px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText(isPitcher ? 'PITCHING' : 'BATTING', W / 2, y)
-    ctx.textAlign = 'right'
-    ctx.fillText(String(sLabel), W - pad, y)
-    y += 18
-
-    // Core stats row
-    const cW = (W - pad * 2) / coreStats.length
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'
-    ctx.lineWidth = 1
-    ctx.strokeRect(pad, y, W - pad * 2, 50)
-    for (let i = 0; i < coreStats.length; i++) {
-      const s = coreStats[i]
-      const cx = pad + cW * i + cW / 2
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'
-      ctx.font = '600 11px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(s.label, cx, y + 14)
-      ctx.fillStyle = '#ffffff'
-      ctx.font = '800 22px "Inter", system-ui, sans-serif'
-      ctx.fillText(fmtS(statsRow?.[s.key], s.format), cx, y + 38)
-      if (i > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(pad + cW * i, y + 6); ctx.lineTo(pad + cW * i, y + 46); ctx.stroke() }
-    }
-    y += 60
-
-    // Advanced stats row
-    ctx.fillStyle = 'rgba(255,255,255,0.4)'
-    ctx.font = '700 12px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('ADVANCED', W / 2, y)
-    y += 14
-    const aW = (W - pad * 2) / advStats.length
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'
-    ctx.strokeRect(pad, y, W - pad * 2, 50)
-    for (let i = 0; i < advStats.length; i++) {
-      const s = advStats[i]
-      const cx = pad + aW * i + aW / 2
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'
-      ctx.font = '600 11px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(s.label, cx, y + 14)
-      ctx.fillStyle = '#ffffff'
-      ctx.font = '800 22px "Inter", system-ui, sans-serif'
-      ctx.fillText(fmtS(statsRow?.[s.key], s.format), cx, y + 38)
-      if (i > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(pad + aW * i, y + 6); ctx.lineTo(pad + aW * i, y + 46); ctx.stroke() }
-    }
-    y += 60
-
-    // Percentile bars
-    if (availablePerc.length > 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'
-      ctx.font = '700 12px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('PERCENTILE RANKINGS', pad + (W - pad * 2) * 0.37, y)
-      y += 16
-      const barW = (W - pad * 2) * 0.55
-      const barH = 14
-      const barGap = 38
-      for (const m of availablePerc) {
-        const pct = percentiles[m.key] || 0
-        const val = statsRow?.[m.key]
-        // Label
-        ctx.fillStyle = 'rgba(255,255,255,0.6)'
-        ctx.font = '600 13px "Inter", system-ui, sans-serif'
-        ctx.textAlign = 'right'
-        ctx.fillText(m.label, pad + 60, y + barH / 2)
-        // Bar bg
-        ctx.fillStyle = 'rgba(255,255,255,0.08)'
-        ctx.fillRect(pad + 70, y, barW, barH)
-        // Bar fill
-        const barColor = pct >= 90 ? '#dc2626' : pct >= 70 ? '#f59e0b' : pct >= 30 ? '#9ca3af' : '#3b82f6'
-        ctx.fillStyle = barColor
-        ctx.fillRect(pad + 70, y, barW * (pct / 100), barH)
-        // Percentile badge
-        ctx.beginPath()
-        ctx.arc(pad + 70 + barW + 16, y + barH / 2, 12, 0, Math.PI * 2)
-        ctx.fillStyle = barColor
-        ctx.fill()
-        ctx.fillStyle = '#fff'
-        ctx.font = '700 10px "Inter", system-ui, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.fillText(String(Math.round(pct)), pad + 70 + barW + 16, y + barH / 2)
-        // Value
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'
-        ctx.font = '500 12px "Inter", system-ui, sans-serif'
-        ctx.textAlign = 'left'
-        ctx.fillText(fmtS(val, m.format || 'avg'), pad + 70 + barW + 34, y + barH / 2)
-        y += barGap
-      }
-    }
-
-    // Footer
-    ctx.fillStyle = 'rgba(255,255,255,0.3)'
-    ctx.font = '500 14px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'left'
-    ctx.fillText('pnwbaseballstats.com', pad, H - 20)
-    ctx.textAlign = 'right'
-    ctx.fillText(`${sLabel} Season`, W - pad, H - 20)
-
-    // Download
-    const link = document.createElement('a')
-    link.download = `${(info.first_name || '')}-${(info.last_name || '')}`.toLowerCase().replace(/\s+/g, '-') + `-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
-    link.href = canvas.toDataURL('image/png')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
 
   // Fetch team record + national ranking
   useEffect(() => {
@@ -747,7 +532,7 @@ export default function PlayerGraphic() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Player Pages</h1>
-        <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic.</p>
+        <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic. Screenshot to save.</p>
         <PlayerSearchBox onSelect={setPlayerId} />
       </div>
 
@@ -787,12 +572,6 @@ export default function PlayerGraphic() {
               >Pitching</button>
             </div>
           )}
-          <button
-            onClick={downloadImage}
-            className="px-4 py-1.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors"
-          >
-            Save Image
-          </button>
         </div>
       )}
 
@@ -801,7 +580,6 @@ export default function PlayerGraphic() {
         <div className="flex justify-center">
           <div
             ref={cardRef}
-            data-player-card
             style={{
               width: '540px',
               height: '640px',
@@ -817,7 +595,7 @@ export default function PlayerGraphic() {
               {/* Headshot */}
               <div style={{ flexShrink: 0 }}>
                 {info.headshot_url ? (
-                  <img src={info.headshot_url} alt="" crossOrigin="anonymous" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }} />
+                  <img src={info.headshot_url} alt="" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.2)' }} />
                 ) : (
                   <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>
                     {info.first_name?.[0]}{info.last_name?.[0]}
@@ -841,7 +619,7 @@ export default function PlayerGraphic() {
               {/* Team logo */}
               <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 {info.logo_url ? (
-                  <img src={info.logo_url} alt="" crossOrigin="anonymous" style={{ width: '48px', height: '48px', objectFit: 'contain', opacity: 0.7 }} />
+                  <img src={info.logo_url} alt="" style={{ width: '48px', height: '48px', objectFit: 'contain', opacity: 0.7 }} />
                 ) : (
                   <div style={{ width: '48px', height: '48px' }} />
                 )}
@@ -1144,7 +922,6 @@ export default function PlayerGraphic() {
           <p className="text-sm">Generate a shareable graphic with their stats, percentiles, and rankings.</p>
         </div>
       )}
-      <canvas ref={saveCanvasRef} style={{ display: 'none' }} />
     </div>
   )
 }
