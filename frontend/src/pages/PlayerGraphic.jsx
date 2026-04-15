@@ -426,15 +426,25 @@ export default function PlayerGraphic() {
     try {
       const dataUrl = await toPng(cardRef.current, {
         pixelRatio: 2,
+        cacheBust: true,
+        skipFonts: true,
         style: { borderRadius: '0px' },
+        filter: (node) => {
+          // Skip any problematic nodes
+          if (node.tagName === 'LINK') return false
+          return true
+        },
       })
       const link = document.createElement('a')
       const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
       link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
       link.href = dataUrl
+      document.body.appendChild(link)
       link.click()
+      document.body.removeChild(link)
     } catch (err) {
       console.error('Failed to save image:', err)
+      alert('Failed to save image. Try again.')
     }
   }, [info.first_name, info.last_name, selectedSeason])
   const pnwRankings = rawData?.pnw_rankings || []
