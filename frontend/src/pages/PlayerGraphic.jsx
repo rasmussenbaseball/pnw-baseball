@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
-import { toPng } from 'html-to-image'
+import { toBlob } from 'html-to-image'
 
 // ─── Percentile color (Savant-style blue→gray→red) ────────────
 function percentileColor(pct) {
@@ -424,27 +424,65 @@ export default function PlayerGraphic() {
   const downloadImage = useCallback(async () => {
     if (!cardRef.current) return
     try {
-      const dataUrl = await toPng(cardRef.current, {
+      // Pre-convert all images to inline data URLs to avoid CORS issues
+      const images = cardRef.current.querySelectorAll('img')
+      const origSrcs = []
+      for (const img of images) {
+        origSrcs.push(img.src)
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth || img.width || 100
+          canvas.height = img.naturalHeight || img.height || 100
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0)
+          img.src = canvas.toDataURL('image/png')
+        } catch { /* skip images that can't be converted */ }
+      }
+
+      const blob = await toBlob(cardRef.current, {
         pixelRatio: 2,
-        cacheBust: true,
-        skipFonts: true,
         style: { borderRadius: '0px' },
-        filter: (node) => {
-          // Skip any problematic nodes
-          if (node.tagName === 'LINK') return false
-          return true
-        },
+        skipFonts: true,
       })
+
+      // Restore original image sources
+      images.forEach((img, i) => { img.src = origSrcs[i] })
+
+      if (!blob) throw new Error('No blob generated')
+
+      const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
       link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
-      link.href = dataUrl
+      link.href = url
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Failed to save image:', err)
-      alert('Failed to save image. Try again.')
+      // Fallback: try without images
+      try {
+        const blob = await toBlob(cardRef.current, {
+          pixelRatio: 2,
+          style: { borderRadius: '0px' },
+          skipFonts: true,
+          filter: (node) => node.tagName !== 'IMG',
+        })
+        if (blob) {
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          const playerName = `${info.first_name || ''}-${info.last_name || ''}`.toLowerCase().replace(/\s+/g, '-')
+          link.download = `${playerName}-${selectedSeason === 'latest' ? 'stats' : selectedSeason}.png`
+          link.href = url
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          URL.revokeObjectURL(url)
+        }
+      } catch {
+        alert('Failed to save image. Try right-clicking the graphic and selecting "Save image as..."')
+      }
     }
   }, [info.first_name, info.last_name, selectedSeason])
   const pnwRankings = rawData?.pnw_rankings || []
