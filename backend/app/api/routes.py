@@ -7884,9 +7884,9 @@ def daily_recap(
                         "stat_line": _format_pitcher_line(p),
                     })
 
-            # Sort by score, limit to top 6
+            # Sort by score, send all performers (frontend handles filtering/limits)
             all_performers.sort(key=lambda x: x["perf_score"], reverse=True)
-            top_performers = all_performers[:6]
+            top_performers = all_performers
 
             # Parse line scores
             home_line_str = g.get("home_line_score") or "[]"

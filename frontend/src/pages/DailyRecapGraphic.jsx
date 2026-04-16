@@ -343,14 +343,14 @@ async function drawTopPerformers(ctx, performers, game, x, y, w, maxH) {
   const colW = (w - gap) / 2
   const cardGap = 8
 
-  // Split performers by team and filter by threshold (max 5 per team)
+  // Split performers by team and filter by threshold (max 3 per team)
   const homeId = game.home_team_id
   const awayId = game.away_team_id
   const awayPerfs = filterTopPerformers(
-    performers.filter(p => p.team_id === awayId), 5
+    performers.filter(p => p.team_id === awayId), 3
   )
   const homePerfs = filterTopPerformers(
-    performers.filter(p => p.team_id === homeId), 5
+    performers.filter(p => p.team_id === homeId), 3
   )
 
   const maxRows = Math.max(awayPerfs.length, homePerfs.length)
@@ -383,9 +383,9 @@ async function drawSingleTeamPerformers(ctx, performers, teamId, x, y, w, maxH) 
   const colW = (w - gap) / 2
   const cardGap = 8
 
-  // Filter to just this team's performers with very low threshold, up to 8
+  // Filter to just this team's performers with very low threshold, up to 6
   const teamPerfs = filterTopPerformers(
-    performers.filter(p => p.team_id === teamId), 8, true
+    performers.filter(p => p.team_id === teamId), 6, true
   )
   if (teamPerfs.length === 0) return 0
 
