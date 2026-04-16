@@ -101,9 +101,14 @@ function LineupsTab({ d }) {
       </div>
 
       {view === 'hand' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <LineupTable title={`Projected Lineup vs RHP`} sub={`${d.vs_rhp?.games_count || 0} games`} data={d.vs_rhp} />
-          <LineupTable title={`Projected Lineup vs LHP`} sub={`${d.vs_lhp?.games_count || 0} games`} data={d.vs_lhp} accent />
+        <div className="space-y-2">
+          <div className="text-[10px] text-gray-400">
+            {d.count_vs_rhp || 0} vs RHP · {d.count_vs_lhp || 0} vs LHP · {d.count_vs_unknown || 0} unknown hand
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <LineupTable title={`Projected Lineup vs RHP`} sub={`${d.vs_rhp?.games_count || 0} games (RHP + unknown)`} data={d.vs_rhp} />
+            <LineupTable title={`Projected Lineup vs LHP`} sub={`${d.vs_lhp?.games_count || 0} games`} data={d.vs_lhp} accent />
+          </div>
         </div>
       )}
 
@@ -118,7 +123,7 @@ function LineupsTab({ d }) {
       )}
 
       {/* Bench section - compact row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <MiniTable title="Pinch Hitters" cols={['Name', 'App', 'AB', 'H', 'AVG', 'RBI', 'BB']}
           rows={(d.pinch_hitters || []).slice(0, 8).map(p => [
             p.name, p.apps, p.ab, p.h,
@@ -128,10 +133,6 @@ function LineupsTab({ d }) {
         <MiniTable title="Pinch Runners" cols={['Name', 'App', 'SB', 'CS', 'R']}
           rows={(d.pinch_runners || []).slice(0, 8).map(p => [
             p.name, p.apps, p.sb, p.cs, p.r
-          ])} />
-        <MiniTable title="Defensive Subs" cols={['Name', 'App', 'Pos']}
-          rows={(d.defensive_subs || []).slice(0, 8).map(p => [
-            p.name, p.apps, (p.positions || []).join('/')
           ])} />
       </div>
     </div>
@@ -175,7 +176,7 @@ function LineupTable({ title, sub, data, accent }) {
         <div className="border-t border-gray-100 px-3 py-1.5">
           <span className="text-[10px] text-gray-400 font-medium">Bench: </span>
           <span className="text-[10px] text-gray-600">
-            {data.bench.map(b => `${b.player_name} (${b.positions?.join('/') || '?'}, ${b.games_started}G)`).join(' · ')}
+            {data.bench.map(b => `${b.player_name} (${b.position || '?'}, ${b.games_started}G)`).join(' · ')}
           </span>
         </div>
       )}
@@ -265,9 +266,8 @@ function RotationView({ d }) {
                   <Hand t={p.throws} />
                 </div>
                 <div className="text-[10px] text-gray-500">
-                  {p.avg_ip != null && <span>{p.avg_ip} IP</span>}
-                  {p.era != null && <span className="ml-1">· {p.era} ERA</span>}
-                  <span className="ml-1">· {Math.round(p.conf * 100)}% conf</span>
+                  <span>{p.game_conf}% this game</span>
+                  <span className="ml-1">· {p.week_pct}% starts week</span>
                 </div>
               </div>
             ))}
@@ -378,6 +378,7 @@ function BullpenView({ relievers }) {
   const closers = relievers.filter(r => r.role === 'closer')
   const multi = relievers.filter(r => r.role === 'multi_inning')
   const one = relievers.filter(r => r.role === 'one_inning')
+  const mopUp = relievers.filter(r => r.role === 'mop_up')
 
   const renderGroup = (title, list, startIdx) => {
     if (!list.length) return null
@@ -393,6 +394,7 @@ function BullpenView({ relievers }) {
               <th className="py-1 pl-3 text-left">Pitcher</th>
               <th className="py-1 text-center">T</th>
               <th className="py-1 text-center">App</th>
+              <th className="py-1 text-center">IP</th>
               <th className="py-1 text-center">IP/A</th>
               <th className="py-1 text-center">ERA</th>
               <th className="py-1 text-center">K</th>
@@ -420,6 +422,7 @@ function BullpenView({ relievers }) {
       {renderGroup('Closers', closers, 0)}
       {renderGroup('Multi-Inning Relievers', multi, 100)}
       {renderGroup('One-Inning Relievers', one, 200)}
+      {renderGroup('Mop-Up / Low Usage', mopUp, 300)}
       {relievers.length === 0 && <div className="text-center py-6 text-gray-400 text-xs">No relievers with 2+ appearances</div>}
     </div>
   )
@@ -432,6 +435,7 @@ function RelieverRows({ r, expanded, toggle }) {
         <td className="py-1 pl-3 font-medium text-gray-900">{r.name}</td>
         <td className="text-center"><Hand t={r.throws} /></td>
         <td className="text-center">{r.apps}</td>
+        <td className="text-center">{r.total_ip ?? '—'}</td>
         <td className="text-center">{r.avg_ip}</td>
         <td className="text-center font-medium">{r.era ?? '—'}</td>
         <td className="text-center">{r.k}</td>
@@ -441,7 +445,7 @@ function RelieverRows({ r, expanded, toggle }) {
       </tr>
       {expanded && r.recent?.length > 0 && (
         <tr>
-          <td colSpan={9} className="bg-gray-50 px-3 py-1">
+          <td colSpan={10} className="bg-gray-50 px-3 py-1">
             <div className="flex flex-wrap gap-1.5">
               {[...r.recent].reverse().map((a, i) => (
                 <span key={i} className="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5">
