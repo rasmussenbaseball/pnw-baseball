@@ -146,15 +146,15 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
     { label: 'OVERALL', x: 520, w: 80 },
     { label: 'CONF', x: 610, w: 75 },
     { label: 'REM', x: 695, w: 45 },
-    { label: 'SOS', x: 750, w: 45 },
-    { label: 'GB', x: 808, w: 50 },
+    { label: 'REM SOS', x: 755, w: 55 },
+    { label: 'GB', x: 820, w: 50 },
     { label: teams[0]?.rank_label || 'RANK', x: 880, w: 60 },
   ]
 
   // Column headers
   const colY = bodyTop
-  ctx.font = `700 ${Math.floor(fontSize * 0.55)}px ${font}`
-  ctx.fillStyle = THEME.textMuted
+  ctx.font = `700 ${Math.floor(fontSize * 0.7)}px ${font}`
+  ctx.fillStyle = THEME.textSecondary
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
   ctx.fillText('TEAM', nameColX, colY + colHeaderH / 2)
@@ -207,7 +207,7 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
     if (logoImgs[i]) drawImageContain(ctx, logoImgs[i], logoColX, cellCY - logoSize / 2, logoSize, logoSize)
 
     // Name
-    ctx.font = `600 ${fontSize}px ${font}`
+    ctx.font = `600 ${Math.floor(fontSize * 1.15)}px ${font}`
     ctx.fillStyle = THEME.textPrimary
     ctx.textAlign = 'left'
     ctx.fillText(truncText(ctx, t.short_name || '', cols[0].x - nameColX - 20), nameColX, cellCY)
@@ -257,7 +257,7 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
     if (t.rank != null) {
       ctx.font = `700 ${fontSize}px ${font}`
       ctx.fillStyle = THEME.accent
-      ctx.fillText(`#${t.rank}`, cols[5].x, cellCY)
+      ctx.fillText(`#${Math.round(t.rank)}`, cols[5].x, cellCY)
     } else {
       ctx.fillStyle = THEME.textMuted
       ctx.font = `500 ${fontSize}px ${font}`
