@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect, useCallback, forwardRef } from 'react'
-import { useApi, useDivisions } from '../hooks/useApi'
+import { useApi, useDivisions, useConferences } from '../hooks/useApi'
 
-// ─── Size presets ───
-const SIZE_PRESETS = [
-  { label: 'Instagram Post', w: 1080, h: 1080 },
-  { label: 'IG Story / Reels', w: 1080, h: 1920 },
-  { label: 'Twitter / X', w: 1200, h: 675 },
-]
+// ─── Fixed 1080x1080 ───
+const SIZE = { w: 1080, h: 1080 }
 
 // ─── Card theme ───
 const THEME = {
@@ -38,9 +34,21 @@ const ALL_BATTING_STATS = [
   { key: 'hits',         label: 'H',      format: 'int',  dir: 'desc' },
   { key: 'runs',         label: 'R',      format: 'int',  dir: 'desc' },
   { key: 'rbi',          label: 'RBI',    format: 'int',  dir: 'desc' },
+  { key: 'doubles',      label: '2B',     format: 'int',  dir: 'desc' },
+  { key: 'triples',      label: '3B',     format: 'int',  dir: 'desc' },
+  { key: 'walks',        label: 'BB',     format: 'int',  dir: 'desc' },
+  { key: 'hit_by_pitch', label: 'HBP',    format: 'int',  dir: 'desc' },
+  { key: 'strikeouts',   label: 'SO',     format: 'int',  dir: 'asc'  },
+  { key: 'at_bats',      label: 'AB',     format: 'int',  dir: 'desc' },
+  { key: 'caught_stealing', label: 'CS',  format: 'int',  dir: 'asc'  },
+  { key: 'sacrifice_flies', label: 'SF',  format: 'int',  dir: 'desc' },
+  { key: 'babip',        label: 'BABIP',  format: 'avg',  dir: 'desc' },
   { key: 'bb_pct',       label: 'BB%',    format: 'pct',  dir: 'desc' },
   { key: 'k_pct',        label: 'K%',     format: 'pct',  dir: 'asc'  },
+  { key: 'wraa',         label: 'wRAA',   format: 'war',  dir: 'desc' },
+  { key: 'wrc',          label: 'wRC',    format: 'war',  dir: 'desc' },
   { key: 'plate_appearances', label: 'PA', format: 'int', dir: 'desc' },
+  { key: 'games',        label: 'G',      format: 'int',  dir: 'desc' },
 ]
 
 const ALL_PITCHING_STATS = [
@@ -56,6 +64,24 @@ const ALL_PITCHING_STATS = [
   { key: 'xfip',         label: 'xFIP',   format: 'era',  dir: 'asc'  },
   { key: 'siera',        label: 'SIERA',  format: 'era',  dir: 'asc'  },
   { key: 'innings_pitched', label: 'IP',  format: 'ip',   dir: 'desc' },
+  { key: 'wins',         label: 'W',      format: 'int',  dir: 'desc' },
+  { key: 'losses',       label: 'L',      format: 'int',  dir: 'asc'  },
+  { key: 'saves',        label: 'SV',     format: 'int',  dir: 'desc' },
+  { key: 'k_per_9',      label: 'K/9',    format: 'era',  dir: 'desc' },
+  { key: 'bb_per_9',     label: 'BB/9',   format: 'era',  dir: 'asc'  },
+  { key: 'h_per_9',      label: 'H/9',    format: 'era',  dir: 'asc'  },
+  { key: 'hr_per_9',     label: 'HR/9',   format: 'era',  dir: 'asc'  },
+  { key: 'k_bb_ratio',   label: 'K/BB',   format: 'era',  dir: 'desc' },
+  { key: 'babip_against',label: 'BABIP',  format: 'avg',  dir: 'asc'  },
+  { key: 'lob_pct',      label: 'LOB%',   format: 'pct',  dir: 'desc' },
+  { key: 'quality_starts',label: 'QS',    format: 'int',  dir: 'desc' },
+  { key: 'complete_games',label: 'CG',    format: 'int',  dir: 'desc' },
+  { key: 'shutouts',     label: 'SHO',    format: 'int',  dir: 'desc' },
+  { key: 'games',        label: 'G',      format: 'int',  dir: 'desc' },
+  { key: 'games_started',label: 'GS',     format: 'int',  dir: 'desc' },
+  { key: 'era_minus',    label: 'ERA-',   format: 'int',  dir: 'asc'  },
+  { key: 'kwera',        label: 'kwERA',  format: 'era',  dir: 'asc'  },
+  { key: 'k_bb_pct',     label: 'K-BB%',  format: 'pct',  dir: 'desc' },
 ]
 
 const ALL_TEAM_BATTING_STATS = [
@@ -193,6 +219,22 @@ const STAT_PRESETS = {
         { key: 'siera', label: 'SIERA', format: 'era' },
         { key: 'innings_pitched', label: 'IP', format: 'ip' },
       ] },
+    { key: 'saves',         label: 'SV',     sort: 'saves',        dir: 'desc', format: 'int',  title: 'Saves Leaders', endpoint: '/leaderboards/pitching',
+      extra: [
+        { key: 'era', label: 'ERA', format: 'era' },
+        { key: 'whip', label: 'WHIP', format: 'era' },
+        { key: 'k_pct', label: 'K%', format: 'pct' },
+        { key: 'fip', label: 'FIP', format: 'era' },
+        { key: 'innings_pitched', label: 'IP', format: 'ip' },
+      ] },
+    { key: 'wins',          label: 'W',      sort: 'wins',         dir: 'desc', format: 'int',  title: 'Wins Leaders', endpoint: '/leaderboards/pitching',
+      extra: [
+        { key: 'era', label: 'ERA', format: 'era' },
+        { key: 'innings_pitched', label: 'IP', format: 'ip' },
+        { key: 'strikeouts', label: 'K', format: 'int' },
+        { key: 'fip_plus', label: 'FIP+', format: 'int' },
+        { key: 'whip', label: 'WHIP', format: 'era' },
+      ] },
   ],
   war: [
     { key: 'total_war',    label: 'WAR',    sort: 'total_war',    dir: 'desc', format: 'war',  title: 'WAR Leaders', endpoint: '/leaderboards/war',
@@ -249,6 +291,25 @@ const STAT_PRESETS = {
   ],
 }
 
+// ─── Position filter options ───
+const POSITION_GROUPS = [
+  { value: 'IF', label: 'Infield' },
+  { value: 'OF', label: 'Outfield' },
+  { value: 'C',  label: 'Catcher' },
+  { value: 'P',  label: 'Pitcher' },
+  { value: 'UT', label: 'UT/DH' },
+]
+const INDIVIDUAL_POSITIONS = [
+  { value: 'SS', label: 'SS' },
+  { value: '2B', label: '2B' },
+  { value: '3B', label: '3B' },
+  { value: '1B', label: '1B' },
+  { value: 'CF', label: 'CF' },
+  { value: 'LF', label: 'LF' },
+  { value: 'RF', label: 'RF' },
+  { value: 'DH', label: 'DH' },
+]
+
 // ─── Format helpers ───
 function fmt(val, format) {
   if (val == null || val === '') return '-'
@@ -266,7 +327,6 @@ function fmt(val, format) {
 // ─── Canvas Export Helpers ───
 async function loadExportImage(src) {
   if (!src) return null
-  // For external URLs, route through our proxy to avoid CORS issues
   const isExternal = src.startsWith('http') && !src.includes(window.location.hostname)
   const url = isExternal
     ? `/api/v1/proxy-image?url=${encodeURIComponent(src)}`
@@ -324,6 +384,14 @@ function getAvailableStats(category) {
   return [] // war uses fixed preset
 }
 
+// ─── Determine if we should use 2-column layout ───
+function useTwoColumns(count) {
+  return count >= 15
+}
+
+// Count options
+const COUNT_OPTIONS = [5, 10, 15, 20, 25, 30, 40, 50]
+
 // ─── The main component ───
 export default function SocialGraphics() {
   const cardRef = useRef(null)
@@ -331,10 +399,12 @@ export default function SocialGraphics() {
   // ─── State ───
   const [category, setCategory] = useState('batting')
   const [presetIdx, setPresetIdx] = useState(0)
-  const [sizeIdx, setSizeIdx] = useState(0)
   const [count, setCount] = useState(10)
   const [season, setSeason] = useState(2026)
   const [divisionId, setDivisionId] = useState(null)
+  const [conferenceId, setConferenceId] = useState(null)
+  const [conferenceOnly, setConferenceOnly] = useState(false)
+  const [positionFilter, setPositionFilter] = useState('')
   const [yearFilter, setYearFilter] = useState('')
   const [minQual, setMinQual] = useState('')
   const [customTitle, setCustomTitle] = useState('')
@@ -347,9 +417,10 @@ export default function SocialGraphics() {
   const [customExtraCols, setCustomExtraCols] = useState([])
 
   const { data: divisions } = useDivisions()
+  const { data: conferences } = useConferences(divisionId)
   const preset = STAT_PRESETS[category]?.[presetIdx] || STAT_PRESETS[category]?.[0]
-  const size = SIZE_PRESETS[sizeIdx]
   const theme = THEME
+  const isTwoCol = useTwoColumns(count)
 
   // Reset preset index when switching categories
   useEffect(() => {
@@ -357,7 +428,14 @@ export default function SocialGraphics() {
     setCustomMainStat('')
     setCustomExtraCols([])
     setMode('preset')
+    setPositionFilter('')
   }, [category])
+
+  // Reset conference when division changes
+  useEffect(() => {
+    setConferenceId(null)
+    setConferenceOnly(false)
+  }, [divisionId])
 
   // ─── Build the active stat config (preset or custom) ───
   const activeConfig = (() => {
@@ -386,6 +464,11 @@ export default function SocialGraphics() {
     return preset
   })()
 
+  // For 2-column layouts, strip extra cols (main stat only)
+  const effectiveConfig = isTwoCol
+    ? { ...activeConfig, extra: [] }
+    : activeConfig
+
   // Build API params
   const apiParams = {
     season,
@@ -393,7 +476,10 @@ export default function SocialGraphics() {
     sort_dir: activeConfig.dir,
     limit: count,
     ...(divisionId && { division_id: divisionId }),
+    ...(conferenceId && { conference_id: conferenceId }),
+    ...(conferenceOnly && { conference_only: true }),
     ...(yearFilter && category !== 'teams' && { year_in_school: yearFilter }),
+    ...(positionFilter && (category === 'batting' || category === 'war') && { position_group: positionFilter }),
   }
 
   if (category === 'teams') {
@@ -421,7 +507,7 @@ export default function SocialGraphics() {
   }
 
   const { data: rawData, loading } = useApi(activeConfig.endpoint, apiParams, [
-    season, activeConfig.sort, activeConfig.dir, count, divisionId, yearFilter, minQual, activeConfig.endpoint, qualified
+    season, activeConfig.sort, activeConfig.dir, count, divisionId, conferenceId, conferenceOnly, yearFilter, minQual, activeConfig.endpoint, qualified, positionFilter
   ])
 
   const items = Array.isArray(rawData) ? rawData : rawData?.data || []
@@ -430,8 +516,13 @@ export default function SocialGraphics() {
   const divLabel = divisionId
     ? (divisions || []).find(d => d.id === Number(divisionId))?.name || ''
     : 'PNW'
-  const titleText = customTitle || `Top ${count} ${divLabel} ${activeConfig.title}`
-  const subtitle = `${season} Season${yearFilter && !isTeamMode ? ` • ${yearFilter} Only` : ''}${!qualified && !isTeamMode ? ' • Unqualified' : ''}`
+  const confLabel = conferenceId
+    ? (conferences || []).find(c => c.id === Number(conferenceId))?.abbreviation || ''
+    : ''
+  const posLabel = positionFilter ? ` ${positionFilter}` : ''
+  const scopeLabel = confLabel || divLabel
+  const titleText = customTitle || `Top ${count} ${scopeLabel}${posLabel} ${activeConfig.title}`
+  const subtitle = `${season} Season${yearFilter && !isTeamMode ? ` · ${yearFilter} Only` : ''}${conferenceOnly ? ' · Conf. Games' : ''}${!qualified && !isTeamMode ? ' · Unqualified' : ''}`
 
   // ─── Export handler ───
   const handleExport = useCallback(async () => {
@@ -439,34 +530,37 @@ export default function SocialGraphics() {
     setExporting(true)
     try {
       const dpr = 2
-      const w = size.w, h = size.h
-      const isLandscapeLocal = w > h
-      const isTallLocal = h / w > 1.5
-      const config = activeConfig
+      const w = SIZE.w, h = SIZE.h
+      const config = effectiveConfig
       const extraCols = config.extra || []
+      const twoCol = isTwoCol
 
-      // Layout calculations (matching LeaderCard exactly)
-      const headerH = isTallLocal ? h * 0.10 : isLandscapeLocal ? h * 0.15 : h * 0.16
-      const footerH = isLandscapeLocal ? 30 : isTallLocal ? 36 : 40
-      const bodyPadY = Math.floor(isLandscapeLocal ? 4 : isTallLocal ? w * 0.015 : w * 0.015)
+      const headerH = h * 0.13
+      const footerH = 36
+      const bodyPadY = Math.floor(w * 0.012)
       const bodyH = h - headerH - footerH - bodyPadY * 2
-      const colHeaderH = isLandscapeLocal ? 18 : 24
-      const actualCount = Math.max(count, 1)
-      const rowH = Math.floor((bodyH - colHeaderH) / actualCount)
-      const fontSize = Math.min(Math.max(Math.floor(w / 55), 13), 22)
-      const titleSize = isLandscapeLocal
-        ? Math.min(Math.max(Math.floor(w / 30), 18), 34)
-        : Math.min(Math.max(Math.floor(w / 24), 20), 42)
-      const subtitleSz = Math.max(Math.floor(titleSize * 0.42), 10)
-      const rankSize = Math.max(fontSize + 2, 16)
-      const logoSize = Math.min(Math.floor(rowH * 0.55), 32)
-      const mainStatW = Math.floor(w * 0.10)
+      const colHeaderH = 20
+
+      const columns = twoCol ? 2 : 1
+      const colGap = twoCol ? 12 : 0
+      const colWidth = twoCol ? (w - colGap - Math.floor(w * 0.035) * 2) / 2 : w - Math.floor(w * 0.035) * 2
+      const itemsPerCol = Math.ceil(count / columns)
+      const rowH = Math.floor((bodyH - colHeaderH) / itemsPerCol)
+
+      const fontSize = twoCol
+        ? Math.min(Math.max(Math.floor(colWidth / 28), 10), 16)
+        : Math.min(Math.max(Math.floor(w / 55), 13), 22)
+      const titleSize = Math.min(Math.max(Math.floor(w / 26), 20), 38)
+      const subtitleSz = Math.max(Math.floor(titleSize * 0.38), 10)
+      const rankSize = twoCol ? fontSize : Math.max(fontSize + 2, 16)
+      const logoSize = Math.min(Math.floor(rowH * 0.6), twoCol ? 22 : 32)
+      const mainStatW = twoCol ? Math.floor(colWidth * 0.18) : Math.floor(w * 0.10)
       const extraW = Math.floor(w * 0.09)
-      const rankW = Math.floor(w * 0.045)
-      const logoW = logoSize + 8
-      const recordW = isTeamMode ? Math.floor(w * 0.08) : 0
+      const rankW = twoCol ? Math.floor(colWidth * 0.07) : Math.floor(w * 0.045)
+      const logoW = logoSize + (twoCol ? 4 : 8)
+      const recordW = isTeamMode ? (twoCol ? Math.floor(colWidth * 0.14) : Math.floor(w * 0.08)) : 0
       const bodyPadX = Math.floor(w * 0.035)
-      const rowPadX = Math.floor(w * 0.01)
+      const rowPadX = Math.floor(w * 0.008)
       const headerPadX = Math.floor(w * 0.04)
       const font = 'Inter, Helvetica Neue, sans-serif'
 
@@ -484,7 +578,6 @@ export default function SocialGraphics() {
       ctx.scale(dpr, dpr)
 
       // ─── Background gradient ───
-      // CSS: linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)
       const ang = 160 * Math.PI / 180
       const sinA = Math.sin(ang), cosA = Math.cos(ang)
       const halfDiag = (Math.abs(w * sinA) + Math.abs(h * cosA)) / 2
@@ -515,22 +608,20 @@ export default function SocialGraphics() {
       ctx.fillRect(0, 0, w, h)
 
       // ─── Header ───
-      const headerPadTop = Math.floor(headerH * 0.12)
+      const headerPadTop = Math.floor(headerH * 0.10)
       let curY = headerPadTop
 
-      // NW logo + "NWBB STATS"
-      const nwLogoSz = Math.floor(titleSize * 0.8)
+      const nwLogoSz = Math.floor(titleSize * 0.7)
       if (faviconImg) {
         drawImageContain(ctx, faviconImg, headerPadX, curY, nwLogoSz, nwLogoSz)
       }
-      // Draw "NWBB STATS" with manual letter spacing
       const nwbbText = 'NWBB STATS'
-      const nwbbFontSize = Math.floor(titleSize * 0.35)
+      const nwbbFontSize = Math.floor(titleSize * 0.32)
       ctx.font = `800 ${nwbbFontSize}px ${font}`
       ctx.fillStyle = theme.textSecondary
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      const nwbbX = headerPadX + nwLogoSz + (isLandscapeLocal ? 5 : 8)
+      const nwbbX = headerPadX + nwLogoSz + 8
       const nwbbSpacing = nwbbFontSize * 0.15
       let charX = nwbbX
       for (const ch of nwbbText) {
@@ -538,7 +629,7 @@ export default function SocialGraphics() {
         charX += ctx.measureText(ch).width + nwbbSpacing
       }
 
-      curY += nwLogoSz + (isLandscapeLocal ? 2 : 6)
+      curY += nwLogoSz + 4
 
       // Title
       ctx.font = `900 ${titleSize}px ${font}`
@@ -550,7 +641,7 @@ export default function SocialGraphics() {
       ctx.shadowBlur = 0
       ctx.shadowColor = 'transparent'
 
-      curY += titleSize * 1.4 + 2
+      curY += titleSize * 1.2 + 2
 
       // Subtitle
       ctx.font = `500 ${subtitleSz}px ${font}`
@@ -566,31 +657,33 @@ export default function SocialGraphics() {
       ctx.lineTo(w, headerH)
       ctx.stroke()
 
-      // ─── Column header row ───
+      // ─── Column headers + Data rows ───
       const bodyStartY = headerH + bodyPadY
-      const colLeftPad = bodyPadX + rowPadX + 3 + rankW + logoW + 4
 
-      ctx.font = `700 ${Math.floor(fontSize * 0.6)}px ${font}`
-      ctx.fillStyle = theme.textMuted
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'left'
-      ctx.fillText(isTeamMode ? 'TEAM' : 'PLAYER', colLeftPad, bodyStartY + colHeaderH / 2)
+      // Draw column headers for each column
+      for (let col = 0; col < columns; col++) {
+        const colX = bodyPadX + col * (colWidth + colGap)
+        const colLeftPad = colX + rowPadX + 3 + rankW + logoW + 4
 
-      // Stat headers from right
-      let hdrX = w - bodyPadX - rowPadX
-      for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+        ctx.font = `700 ${Math.floor(fontSize * 0.6)}px ${font}`
+        ctx.fillStyle = theme.textMuted
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = 'left'
+        ctx.fillText(isTeamMode ? 'TEAM' : 'PLAYER', colLeftPad, bodyStartY + colHeaderH / 2)
+
+        // Stat headers from right
+        let hdrX = colX + colWidth - rowPadX
+        if (!twoCol) {
+          for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+            ctx.textAlign = 'right'
+            ctx.fillText(extraCols[ei].label, hdrX, bodyStartY + colHeaderH / 2)
+            hdrX -= extraW
+          }
+        }
         ctx.textAlign = 'right'
-        ctx.fillText(extraCols[ei].label, hdrX, bodyStartY + colHeaderH / 2)
-        hdrX -= extraW
-      }
-      ctx.textAlign = 'right'
-      ctx.fillText(config.label, hdrX, bodyStartY + colHeaderH / 2)
-      hdrX -= mainStatW
-      if (isTeamMode) {
-        ctx.fillText('RECORD', hdrX, bodyStartY + colHeaderH / 2)
+        ctx.fillText(config.label, hdrX, bodyStartY + colHeaderH / 2)
       }
 
-      // ─── Data rows ───
       const rowStartY = bodyStartY + colHeaderH
 
       for (let i = 0; i < Math.min(count, items.length); i++) {
@@ -605,22 +698,24 @@ export default function SocialGraphics() {
         const mainVal = p[config.key] ?? p[config.sort]
         const isTop3 = i < 3
 
-        const rowY = rowStartY + i * rowH
-        const rowLeft = bodyPadX
-        const rowWidth = w - bodyPadX * 2
+        const col = twoCol ? Math.floor(i / itemsPerCol) : 0
+        const rowInCol = twoCol ? i % itemsPerCol : i
+        const colX = bodyPadX + col * (colWidth + colGap)
+        const rowY = rowStartY + rowInCol * rowH
+        const rowLeft = colX
+        const rowWidth = colWidth
 
         // Row background
-        if (isTop3) {
+        if (isTop3 && !twoCol) {
           const opacity = (0.22 - i * 0.05)
           ctx.fillStyle = `rgba(0,138,158,${opacity})`
           canvasRoundRect(ctx, rowLeft, rowY, rowWidth, rowH, 6)
           ctx.fill()
-          // Left accent bar
           ctx.fillStyle = '#7dd3fc'
           ctx.fillRect(rowLeft, rowY + 2, 3, rowH - 4)
-        } else if (i % 2 === 0) {
+        } else if (rowInCol % 2 === 0) {
           ctx.fillStyle = 'rgba(255,255,255,0.025)'
-          canvasRoundRect(ctx, rowLeft, rowY, rowWidth, rowH, 6)
+          canvasRoundRect(ctx, rowLeft, rowY, rowWidth, rowH, twoCol ? 4 : 6)
           ctx.fill()
         }
 
@@ -629,7 +724,7 @@ export default function SocialGraphics() {
 
         // Rank
         ctx.font = `900 ${rankSize}px ${font}`
-        ctx.fillStyle = isTop3 ? '#7dd3fc' : theme.textMuted
+        ctx.fillStyle = (isTop3 && !twoCol) ? '#7dd3fc' : theme.textMuted
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(String(i + 1), cellX + rankW / 2, cellCY)
@@ -638,62 +733,78 @@ export default function SocialGraphics() {
         // Logo
         const logoImg = logoImgs[i]
         if (logoImg) {
-          drawImageContain(ctx, logoImg, cellX + 4, cellCY - logoSize / 2, logoSize, logoSize)
+          drawImageContain(ctx, logoImg, cellX + 2, cellCY - logoSize / 2, logoSize, logoSize)
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.08)'
-          canvasRoundRect(ctx, cellX + 4, cellCY - logoSize / 2, logoSize, logoSize, 4)
+          canvasRoundRect(ctx, cellX + 2, cellCY - logoSize / 2, logoSize, logoSize, 3)
           ctx.fill()
           ctx.font = `700 ${Math.floor(logoSize * 0.35)}px ${font}`
           ctx.fillStyle = theme.textMuted
           ctx.textAlign = 'center'
-          ctx.fillText((isTeamMode ? (p.short_name || p.name) : teamName).slice(0, 3), cellX + 4 + logoSize / 2, cellCY)
+          ctx.fillText((isTeamMode ? (p.short_name || p.name) : teamName).slice(0, 3), cellX + 2 + logoSize / 2, cellCY)
         }
         cellX += logoW
 
         // Name + team/level
-        const nameX = cellX + 4
-        const statsEndX = w - bodyPadX - rowPadX
-        const nameMaxW = statsEndX - extraCols.length * extraW - mainStatW - recordW - nameX - 12
+        const nameX = cellX + 3
+        const statsEndX = colX + colWidth - rowPadX
+        const nameMaxW = statsEndX - (twoCol ? mainStatW : extraCols.length * extraW + mainStatW) - recordW - nameX - 8
 
-        // Player name - position both lines relative to center
-        const subFontSize = Math.floor(fontSize * 0.68)
-        const lineGap = Math.floor(fontSize * 0.15)
-        const totalTextH = fontSize + subFontSize + lineGap
-        const nameY = cellCY - totalTextH / 2 + fontSize / 2
-        const teamY = nameY + fontSize / 2 + lineGap + subFontSize / 2
+        if (twoCol) {
+          // Single line: name + team on same line
+          ctx.font = `700 ${fontSize}px ${font}`
+          ctx.fillStyle = '#ffffff'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'middle'
+          const displayName = truncText(ctx, name, nameMaxW * 0.6)
+          ctx.fillText(displayName, nameX, cellCY)
+          const nameW = ctx.measureText(displayName + ' ').width
+          ctx.font = `500 ${Math.floor(fontSize * 0.75)}px ${font}`
+          ctx.fillStyle = theme.textSecondary
+          ctx.fillText(truncText(ctx, teamName, nameMaxW * 0.35), nameX + nameW, cellCY)
+        } else {
+          // Two lines: name on top, team below
+          const subFontSize = Math.floor(fontSize * 0.68)
+          const lineGap = Math.floor(fontSize * 0.15)
+          const totalTextH = fontSize + subFontSize + lineGap
+          const nameY = cellCY - totalTextH / 2 + fontSize / 2
+          const teamY = nameY + fontSize / 2 + lineGap + subFontSize / 2
 
-        ctx.font = `700 ${fontSize}px ${font}`
-        ctx.fillStyle = '#ffffff'
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(truncText(ctx, name, nameMaxW), nameX, nameY)
+          ctx.font = `700 ${fontSize}px ${font}`
+          ctx.fillStyle = '#ffffff'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(truncText(ctx, name, nameMaxW), nameX, nameY)
 
-        // Team + division level
-        ctx.font = `500 ${subFontSize}px ${font}`
-        ctx.fillStyle = theme.textSecondary
-        ctx.fillText(teamName, nameX, teamY)
-        if (level) {
-          const tw = ctx.measureText(teamName).width
-          ctx.font = `600 ${Math.floor(fontSize * 0.55)}px ${font}`
-          ctx.fillStyle = theme.textMuted
-          ctx.fillText(level, nameX + tw + 5, teamY)
+          ctx.font = `500 ${subFontSize}px ${font}`
+          ctx.fillStyle = theme.textSecondary
+          ctx.fillText(teamName, nameX, teamY)
+          if (level) {
+            const tw = ctx.measureText(teamName).width
+            ctx.font = `600 ${Math.floor(fontSize * 0.55)}px ${font}`
+            ctx.fillStyle = theme.textMuted
+            ctx.fillText(level, nameX + tw + 5, teamY)
+          }
         }
 
         // Stats from right edge
         let sX = statsEndX
-        for (let ei = extraCols.length - 1; ei >= 0; ei--) {
-          ctx.font = `500 ${Math.floor(fontSize * 0.75)}px ${font}`
-          ctx.fillStyle = theme.textSecondary
-          ctx.textAlign = 'right'
-          ctx.fillText(fmt(p[extraCols[ei].key], extraCols[ei].format), sX, cellCY)
-          sX -= extraW
+        if (!twoCol) {
+          for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+            ctx.font = `500 ${Math.floor(fontSize * 0.75)}px ${font}`
+            ctx.fillStyle = theme.textSecondary
+            ctx.textAlign = 'right'
+            ctx.fillText(fmt(p[extraCols[ei].key], extraCols[ei].format), sX, cellCY)
+            sX -= extraW
+          }
         }
 
         // Main stat
-        ctx.font = `900 ${Math.floor(fontSize * 1.25)}px ${font}`
-        ctx.fillStyle = isTop3 ? '#7dd3fc' : '#e0f2fe'
+        const mainFontSize = twoCol ? Math.floor(fontSize * 1.1) : Math.floor(fontSize * 1.25)
+        ctx.font = `900 ${mainFontSize}px ${font}`
+        ctx.fillStyle = (isTop3 && !twoCol) ? '#7dd3fc' : '#e0f2fe'
         ctx.textAlign = 'right'
-        if (isTop3) { ctx.shadowColor = 'rgba(125,211,252,0.3)'; ctx.shadowBlur = 20 }
+        if (isTop3 && !twoCol) { ctx.shadowColor = 'rgba(125,211,252,0.3)'; ctx.shadowBlur = 20 }
         ctx.fillText(fmt(mainVal, config.format), sX, cellCY)
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
         sX -= mainStatW
@@ -738,11 +849,9 @@ export default function SocialGraphics() {
     } finally {
       setExporting(false)
     }
-  }, [items, size, activeConfig, count, season, theme, isTeamMode, qualified, titleText, subtitle])
+  }, [items, effectiveConfig, activeConfig, count, season, theme, isTeamMode, qualified, titleText, subtitle, isTwoCol])
 
-  const isVertical = size.h > size.w
-  const isTall = size.h / size.w > 1.5
-  const scale = Math.min(600 / size.w, 800 / size.h)
+  const scale = Math.min(600 / SIZE.w, 800 / SIZE.h)
 
   // Toggle a custom extra col on/off (max 5)
   const toggleExtraCol = (key) => {
@@ -757,7 +866,7 @@ export default function SocialGraphics() {
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Social Graphics</h1>
       <p className="text-sm text-gray-500 mb-5">
-        Create shareable leaderboard images optimized for social media.
+        Create shareable leaderboard images (1080×1080).
       </p>
 
       <div className="flex flex-col lg:flex-row gap-6">
@@ -819,20 +928,27 @@ export default function SocialGraphics() {
                   ))}
                 </select>
 
-                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">
-                  Extra Columns ({customExtraCols.length}/5)
-                </label>
-                <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-                  {getAvailableStats(category).filter(s => s.key !== customMainStat).map(s => (
-                    <button key={s.key} onClick={() => toggleExtraCol(s.key)}
-                      className={`px-2 py-0.5 text-xs rounded transition-all
-                        ${customExtraCols.includes(s.key)
-                          ? 'bg-nw-teal text-white shadow'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
-                        ${!customExtraCols.includes(s.key) && customExtraCols.length >= 5 ? 'opacity-40 cursor-not-allowed' : ''}`}
-                    >{s.label}</button>
-                  ))}
-                </div>
+                {!isTwoCol && (
+                  <>
+                    <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">
+                      Extra Columns ({customExtraCols.length}/5)
+                    </label>
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                      {getAvailableStats(category).filter(s => s.key !== customMainStat).map(s => (
+                        <button key={s.key} onClick={() => toggleExtraCol(s.key)}
+                          className={`px-2 py-0.5 text-xs rounded transition-all
+                            ${customExtraCols.includes(s.key)
+                              ? 'bg-nw-teal text-white shadow'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+                            ${!customExtraCols.includes(s.key) && customExtraCols.length >= 5 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >{s.label}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {isTwoCol && (
+                  <p className="text-xs text-amber-600 mt-2">Extra columns hidden in 2-column layout (15+ players).</p>
+                )}
               </>
             )}
           </div>
@@ -857,6 +973,46 @@ export default function SocialGraphics() {
                 {(divisions || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
+
+            {/* Conference filter */}
+            <div>
+              <label className="text-xs text-gray-500">Conference</label>
+              <select value={conferenceId || ''} onChange={e => setConferenceId(e.target.value || null)}
+                className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                <option value="">All Conferences</option>
+                {(conferences || []).map(c => <option key={c.id} value={c.id}>{c.abbreviation || c.name}</option>)}
+              </select>
+            </div>
+
+            {/* Conference games only toggle */}
+            {conferenceId && !isTeamMode && (
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-gray-500">Conference Games Only</label>
+                <button
+                  onClick={() => setConferenceOnly(!conferenceOnly)}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${conferenceOnly ? 'bg-nw-teal' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${conferenceOnly ? 'left-5' : 'left-0.5'}`} />
+                </button>
+              </div>
+            )}
+
+            {/* Position filter (batting/war only) */}
+            {(category === 'batting' || category === 'war') && !isTeamMode && (
+              <div>
+                <label className="text-xs text-gray-500">Position</label>
+                <select value={positionFilter} onChange={e => setPositionFilter(e.target.value)}
+                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                  <option value="">All Positions</option>
+                  <optgroup label="Position Groups">
+                    {POSITION_GROUPS.map(pg => <option key={pg.value} value={pg.value}>{pg.label}</option>)}
+                  </optgroup>
+                  <optgroup label="Individual Positions">
+                    {INDIVIDUAL_POSITIONS.map(pos => <option key={pos.value} value={pos.value}>{pos.label}</option>)}
+                  </optgroup>
+                </select>
+              </div>
+            )}
 
             {!isTeamMode && (
               <div>
@@ -899,27 +1055,19 @@ export default function SocialGraphics() {
                 <label className="text-xs text-gray-500"># {isTeamMode ? 'Teams' : 'Players'}</label>
                 <select value={count} onChange={e => setCount(+e.target.value)}
                   className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                  {[5, 10, 15, 20].map(n => <option key={n} value={n}>Top {n}</option>)}
+                  {COUNT_OPTIONS.map(n => <option key={n} value={n}>Top {n}</option>)}
                 </select>
               </div>
             </div>
+
+            {isTwoCol && (
+              <p className="text-xs text-gray-400">Two-column layout active (15+ players). Main stat only.</p>
+            )}
           </div>
 
-          {/* Size + Export */}
+          {/* Export */}
           <div className="bg-white rounded-lg shadow-sm border p-4 space-y-3">
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Export</label>
-
-            <div>
-              <label className="text-xs text-gray-500">Size</label>
-              <div className="flex flex-col gap-1 mt-1">
-                {SIZE_PRESETS.map((s, i) => (
-                  <button key={s.label} onClick={() => setSizeIdx(i)}
-                    className={`px-3 py-1.5 text-xs rounded text-left transition-all
-                      ${sizeIdx === i ? 'bg-nw-teal text-white shadow font-semibold' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >{s.label} <span className="opacity-60">({s.w}×{s.h})</span></button>
-                ))}
-              </div>
-            </div>
 
             <div>
               <label className="text-xs text-gray-500">Custom Title (optional)</label>
@@ -946,11 +1094,11 @@ export default function SocialGraphics() {
 
         {/* ═══ RIGHT: Card Preview ═══ */}
         <div className="flex-1 flex flex-col items-center">
-          <div className="text-xs text-gray-400 mb-2">Preview ({size.w}×{size.h})</div>
+          <div className="text-xs text-gray-400 mb-2">Preview (1080×1080)</div>
 
           <div style={{
-            width: size.w * scale,
-            height: size.h * scale,
+            width: SIZE.w * scale,
+            height: SIZE.h * scale,
             overflow: 'hidden',
             borderRadius: 8,
             boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
@@ -958,23 +1106,22 @@ export default function SocialGraphics() {
             <div style={{
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
-              width: size.w,
-              height: size.h,
+              width: SIZE.w,
+              height: SIZE.h,
             }}>
               <LeaderCard
                 ref={cardRef}
                 items={items}
-                config={activeConfig}
+                config={effectiveConfig}
                 title={titleText}
                 subtitle={subtitle}
-                size={size}
+                size={SIZE}
                 loading={loading}
-                isVertical={isVertical}
-                isTall={isTall}
                 count={count}
                 theme={theme}
                 isTeamMode={isTeamMode}
                 qualified={qualified}
+                twoCol={isTwoCol}
               />
             </div>
           </div>
@@ -985,45 +1132,44 @@ export default function SocialGraphics() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// The exportable card component
+// The preview card component
 // ═══════════════════════════════════════════════════════════
 
 const LeaderCard = forwardRef(function LeaderCard(
-  { items, config, title, subtitle, size, loading, isVertical, isTall, count, theme, isTeamMode, qualified },
+  { items, config, title, subtitle, size, loading, count, theme, isTeamMode, qualified, twoCol },
   ref
 ) {
   const w = size.w
   const h = size.h
-  const isLandscape = w > h
   const extraCols = config.extra || []
 
-  // ─── Dynamic sizing: rows FILL the available space ───
-  const headerH = isTall ? h * 0.10 : isLandscape ? h * 0.15 : h * 0.16
-  const footerH = isLandscape ? 30 : isTall ? 36 : 40
-  const bodyPadY = Math.floor(isLandscape ? 4 : isTall ? w * 0.015 : w * 0.015)
+  // ─── Dynamic sizing ───
+  const headerH = h * 0.13
+  const footerH = 36
+  const bodyPadY = Math.floor(w * 0.012)
   const bodyH = h - headerH - footerH - bodyPadY * 2
-  const colHeaderH = isLandscape ? 18 : 24
-  const actualCount = Math.max(count, 1)
-  const rowH = Math.floor((bodyH - colHeaderH) / actualCount)
+  const colHeaderH = 20
 
-  const fontSize = Math.min(Math.max(Math.floor(w / 55), 13), 22)
-  const titleSize = isLandscape
-    ? Math.min(Math.max(Math.floor(w / 30), 18), 34)
-    : Math.min(Math.max(Math.floor(w / 24), 20), 42)
-  const subtitleSize = Math.max(Math.floor(titleSize * 0.42), 10)
-  const rankSize = Math.max(fontSize + 2, 16)
+  const columns = twoCol ? 2 : 1
+  const colGap = twoCol ? 12 : 0
+  const bodyPadX = Math.floor(w * 0.035)
+  const colWidth = twoCol ? (w - colGap - bodyPadX * 2) / 2 : w - bodyPadX * 2
+  const itemsPerCol = Math.ceil(count / columns)
+  const rowH = Math.floor((bodyH - colHeaderH) / itemsPerCol)
 
-  // Logo size based on row height
-  const logoSize = Math.min(Math.floor(rowH * 0.55), 32)
+  const fontSize = twoCol
+    ? Math.min(Math.max(Math.floor(colWidth / 28), 10), 16)
+    : Math.min(Math.max(Math.floor(w / 55), 13), 22)
+  const titleSize = Math.min(Math.max(Math.floor(w / 26), 20), 38)
+  const subtitleSize = Math.max(Math.floor(titleSize * 0.38), 10)
+  const rankSize = twoCol ? fontSize : Math.max(fontSize + 2, 16)
 
-  // Column widths
-  const mainStatW = Math.floor(w * 0.10)
+  const logoSize = Math.min(Math.floor(rowH * 0.6), twoCol ? 22 : 32)
+  const mainStatW = twoCol ? Math.floor(colWidth * 0.18) : Math.floor(w * 0.10)
   const extraW = Math.floor(w * 0.09)
-  const rankW = Math.floor(w * 0.045)
-  const logoW = logoSize + 8
-
-  // For team mode, show record column
-  const recordW = isTeamMode ? Math.floor(w * 0.08) : 0
+  const rankW = twoCol ? Math.floor(colWidth * 0.07) : Math.floor(w * 0.045)
+  const logoW = logoSize + (twoCol ? 4 : 8)
+  const recordW = isTeamMode ? (twoCol ? Math.floor(colWidth * 0.14) : Math.floor(w * 0.08)) : 0
 
   return (
     <div
@@ -1059,7 +1205,7 @@ const LeaderCard = forwardRef(function LeaderCard(
       {/* ─── Header ─── */}
       <div style={{
         height: headerH,
-        padding: `${Math.floor(headerH * 0.12)}px ${Math.floor(w * 0.04)}px`,
+        padding: `${Math.floor(headerH * 0.10)}px ${Math.floor(w * 0.04)}px`,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -1067,15 +1213,15 @@ const LeaderCard = forwardRef(function LeaderCard(
         position: 'relative',
         zIndex: 1,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: isLandscape ? 5 : 8, marginBottom: isLandscape ? 1 : 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
           <img
             src="/favicon.png"
             alt=""
-            style={{ width: Math.floor(titleSize * 0.8), height: Math.floor(titleSize * 0.8), borderRadius: 3 }}
+            style={{ width: Math.floor(titleSize * 0.7), height: Math.floor(titleSize * 0.7), borderRadius: 3 }}
             crossOrigin="anonymous"
           />
           <span style={{
-            fontSize: Math.floor(titleSize * 0.35),
+            fontSize: Math.floor(titleSize * 0.32),
             fontWeight: 800,
             letterSpacing: '0.15em',
             textTransform: 'uppercase',
@@ -1106,204 +1252,216 @@ const LeaderCard = forwardRef(function LeaderCard(
       {/* ─── Body / Rows ─── */}
       <div style={{
         flex: 1,
-        padding: `${bodyPadY}px ${Math.floor(w * 0.035)}px`,
+        padding: `${bodyPadY}px ${bodyPadX}px`,
         display: 'flex',
-        flexDirection: 'column',
+        gap: colGap,
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Column header row */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: colHeaderH,
-          padding: `0 ${Math.floor(w * 0.01)}px`,
-          paddingLeft: Math.floor(w * 0.01) + 3 + rankW + logoW + 4,
-          fontSize: Math.floor(fontSize * 0.6),
-          fontWeight: 700,
-          color: theme.textMuted,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-        }}>
-          <span style={{ flex: 1 }}>{isTeamMode ? 'Team' : 'Player'}</span>
-          {isTeamMode && <span style={{ width: recordW, textAlign: 'right' }}>Record</span>}
-          <span style={{ width: mainStatW, textAlign: 'right' }}>{config.label}</span>
-          {extraCols.map(col => (
-            <span key={col.key} style={{ width: extraW, textAlign: 'right' }}>{col.label}</span>
-          ))}
-        </div>
+        {Array.from({ length: columns }).map((_, colIdx) => {
+          const startIdx = colIdx * itemsPerCol
+          const colItems = items.slice(startIdx, startIdx + itemsPerCol)
 
-        {loading ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.4 }}>
-            Loading...
-          </div>
-        ) : (
-          items.slice(0, count).map((p, i) => {
-            const name = isTeamMode
-              ? (p.short_name || p.name || '-')
-              : (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.name || '-')
-            const team = isTeamMode
-              ? (p.conference_abbrev || '')
-              : (p.team_short || p.short_name || p.team_name || '')
-            const level = p.division_level || ''
-            const logoUrl = p.logo_url || ''
-            const mainVal = p[config.key] ?? p[config.sort]
-            const isTop3 = i < 3
-
-            return (
-              <div
-                key={p.id || p.player_id || p.team_id || i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  height: rowH,
-                  padding: `0 ${Math.floor(w * 0.01)}px`,
-                  borderRadius: 6,
-                  background: isTop3
-                    ? `linear-gradient(90deg, ${theme.highlight}${(0.22 - i * 0.05).toFixed(2)}) 0%, ${theme.highlight}0.04) 100%)`
-                    : i % 2 === 0
-                      ? theme.rowAlt
-                      : 'transparent',
-                  borderLeft: isTop3 ? `3px solid ${theme.accent}` : '3px solid transparent',
-                  borderLeftColor: isTop3 ? theme.accent : 'transparent',
-                  opacity: isTop3 ? 1 : undefined,
-                }}
-              >
-                {/* Rank */}
-                <span style={{
-                  width: rankW,
-                  fontSize: rankSize,
-                  fontWeight: 900,
-                  color: isTop3 ? theme.accent : theme.textMuted,
-                  fontFeatureSettings: '"tnum"',
-                  textAlign: 'center',
-                }}>
-                  {i + 1}
-                </span>
-
-                {/* Team logo */}
-                <div style={{
-                  width: logoW,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  {logoUrl ? (
-                    <img
-                      src={logoUrl}
-                      alt=""
-                      style={{
-                        width: logoSize,
-                        height: logoSize,
-                        objectFit: 'contain',
-                        borderRadius: 2,
-                        opacity: 0.9,
-                      }}
-                      crossOrigin="anonymous"
-                    />
-                  ) : (
-                    <div style={{
-                      width: logoSize,
-                      height: logoSize,
-                      borderRadius: 4,
-                      background: 'rgba(255,255,255,0.08)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: Math.floor(logoSize * 0.35),
-                      fontWeight: 700,
-                      color: theme.textMuted,
-                    }}>
-                      {(isTeamMode ? p.short_name || p.name : team).slice(0, 3)}
-                    </div>
-                  )}
-                </div>
-
-                {/* Name info */}
-                <div style={{ flex: 1, minWidth: 0, paddingLeft: 4, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div style={{
-                    fontSize: fontSize,
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    lineHeight: 1.5,
-                    padding: '3px 0',
-                  }}>
-                    {name}
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    marginTop: 0,
-                    lineHeight: 1.2,
-                  }}>
-                    <span style={{
-                      fontSize: Math.floor(fontSize * 0.68),
-                      color: theme.textSecondary,
-                      fontWeight: 500,
-                    }}>
-                      {team}
-                    </span>
-                    {level && (
-                      <span style={{
-                        fontSize: Math.floor(fontSize * 0.55),
-                        fontWeight: 600,
-                        color: theme.textMuted,
-                        letterSpacing: '0.04em',
-                      }}>
-                        {level}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Record (teams only) */}
-                {isTeamMode && (
-                  <div style={{
-                    width: recordW,
-                    textAlign: 'right',
-                    fontSize: Math.floor(fontSize * 0.75),
-                    fontWeight: 600,
-                    color: theme.textSecondary,
-                    fontFeatureSettings: '"tnum"',
-                  }}>
-                    {p.wins ?? 0}-{p.losses ?? 0}
-                  </div>
-                )}
-
-                {/* Main stat (big) */}
-                <div style={{
-                  width: mainStatW,
-                  textAlign: 'right',
-                  fontSize: Math.floor(fontSize * 1.25),
-                  fontWeight: 900,
-                  fontFeatureSettings: '"tnum"',
-                  color: isTop3 ? theme.accent : '#e0f2fe',
-                  textShadow: isTop3 ? `0 0 20px ${theme.accentGlow}` : 'none',
-                }}>
-                  {fmt(mainVal, config.format)}
-                </div>
-
-                {/* Extra stat columns */}
-                {extraCols.map(col => (
-                  <div key={col.key} style={{
-                    width: extraW,
-                    textAlign: 'right',
-                    fontSize: Math.floor(fontSize * 0.75),
-                    fontWeight: 500,
-                    color: theme.textSecondary,
-                    fontFeatureSettings: '"tnum"',
-                  }}>
-                    {fmt(p[col.key], col.format)}
-                  </div>
+          return (
+            <div key={colIdx} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Column header */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                height: colHeaderH,
+                padding: `0 ${Math.floor(w * 0.008)}px`,
+                paddingLeft: Math.floor(w * 0.008) + 3 + rankW + logoW + 4,
+                fontSize: Math.floor(fontSize * 0.6),
+                fontWeight: 700,
+                color: theme.textMuted,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}>
+                <span style={{ flex: 1 }}>{isTeamMode ? 'Team' : 'Player'}</span>
+                {isTeamMode && <span style={{ width: recordW, textAlign: 'right' }}>Rec</span>}
+                <span style={{ width: mainStatW, textAlign: 'right' }}>{config.label}</span>
+                {!twoCol && extraCols.map(col => (
+                  <span key={col.key} style={{ width: extraW, textAlign: 'right' }}>{col.label}</span>
                 ))}
               </div>
-            )
-          })
-        )}
+
+              {loading ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.4 }}>
+                  Loading...
+                </div>
+              ) : (
+                colItems.map((p, rowIdx) => {
+                  const globalIdx = startIdx + rowIdx
+                  const name = isTeamMode
+                    ? (p.short_name || p.name || '-')
+                    : (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.name || '-')
+                  const team = isTeamMode
+                    ? (p.conference_abbrev || '')
+                    : (p.team_short || p.short_name || p.team_name || '')
+                  const level = p.division_level || ''
+                  const logoUrl = p.logo_url || ''
+                  const mainVal = p[config.key] ?? p[config.sort]
+                  const isTop3 = globalIdx < 3 && !twoCol
+
+                  return (
+                    <div
+                      key={p.id || p.player_id || p.team_id || globalIdx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: rowH,
+                        padding: `0 ${Math.floor(w * 0.008)}px`,
+                        borderRadius: twoCol ? 4 : 6,
+                        background: isTop3
+                          ? `linear-gradient(90deg, ${theme.highlight}${(0.22 - globalIdx * 0.05).toFixed(2)}) 0%, ${theme.highlight}0.04) 100%)`
+                          : rowIdx % 2 === 0
+                            ? theme.rowAlt
+                            : 'transparent',
+                        borderLeft: isTop3 ? `3px solid ${theme.accent}` : '3px solid transparent',
+                      }}
+                    >
+                      {/* Rank */}
+                      <span style={{
+                        width: rankW,
+                        fontSize: rankSize,
+                        fontWeight: 900,
+                        color: isTop3 ? theme.accent : theme.textMuted,
+                        fontFeatureSettings: '"tnum"',
+                        textAlign: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {globalIdx + 1}
+                      </span>
+
+                      {/* Team logo */}
+                      <div style={{
+                        width: logoW,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {logoUrl ? (
+                          <img
+                            src={logoUrl}
+                            alt=""
+                            style={{
+                              width: logoSize,
+                              height: logoSize,
+                              objectFit: 'contain',
+                              borderRadius: 2,
+                              opacity: 0.9,
+                            }}
+                            crossOrigin="anonymous"
+                          />
+                        ) : (
+                          <div style={{
+                            width: logoSize,
+                            height: logoSize,
+                            borderRadius: 3,
+                            background: 'rgba(255,255,255,0.08)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: Math.floor(logoSize * 0.35),
+                            fontWeight: 700,
+                            color: theme.textMuted,
+                          }}>
+                            {(isTeamMode ? p.short_name || p.name : team).slice(0, 3)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Name info */}
+                      <div style={{ flex: 1, minWidth: 0, paddingLeft: 3, display: 'flex', flexDirection: twoCol ? 'row' : 'column', justifyContent: twoCol ? 'flex-start' : 'center', alignItems: twoCol ? 'center' : 'flex-start', gap: twoCol ? 4 : 0 }}>
+                        <div style={{
+                          fontSize: fontSize,
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: twoCol ? 1.2 : 1.5,
+                          ...(twoCol ? { maxWidth: '60%' } : { padding: '3px 0' }),
+                        }}>
+                          {name}
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          lineHeight: 1.2,
+                        }}>
+                          <span style={{
+                            fontSize: Math.floor(fontSize * (twoCol ? 0.8 : 0.68)),
+                            color: theme.textSecondary,
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {team}
+                          </span>
+                          {!twoCol && level && (
+                            <span style={{
+                              fontSize: Math.floor(fontSize * 0.55),
+                              fontWeight: 600,
+                              color: theme.textMuted,
+                              letterSpacing: '0.04em',
+                            }}>
+                              {level}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Record (teams only) */}
+                      {isTeamMode && (
+                        <div style={{
+                          width: recordW,
+                          textAlign: 'right',
+                          fontSize: Math.floor(fontSize * 0.75),
+                          fontWeight: 600,
+                          color: theme.textSecondary,
+                          fontFeatureSettings: '"tnum"',
+                          flexShrink: 0,
+                        }}>
+                          {p.wins ?? 0}-{p.losses ?? 0}
+                        </div>
+                      )}
+
+                      {/* Main stat (big) */}
+                      <div style={{
+                        width: mainStatW,
+                        textAlign: 'right',
+                        fontSize: Math.floor(fontSize * (twoCol ? 1.1 : 1.25)),
+                        fontWeight: 900,
+                        fontFeatureSettings: '"tnum"',
+                        color: isTop3 ? theme.accent : '#e0f2fe',
+                        textShadow: isTop3 ? `0 0 20px ${theme.accentGlow}` : 'none',
+                        flexShrink: 0,
+                      }}>
+                        {fmt(mainVal, config.format)}
+                      </div>
+
+                      {/* Extra stat columns (single column layout only) */}
+                      {!twoCol && extraCols.map(col => (
+                        <div key={col.key} style={{
+                          width: extraW,
+                          textAlign: 'right',
+                          fontSize: Math.floor(fontSize * 0.75),
+                          fontWeight: 500,
+                          color: theme.textSecondary,
+                          fontFeatureSettings: '"tnum"',
+                          flexShrink: 0,
+                        }}>
+                          {fmt(p[col.key], col.format)}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* ─── Footer ─── */}
@@ -1329,7 +1487,7 @@ const LeaderCard = forwardRef(function LeaderCard(
           color: theme.textMuted,
           fontWeight: 400,
         }}>
-          {isTeamMode ? 'Team Stats' : qualified ? 'Qualified' : `Min ${config.endpoint.includes('batting') ? `${1} PA` : `${1} IP`}`}
+          {isTeamMode ? 'Team Stats' : qualified ? 'Qualified' : `Min ${config.endpoint.includes('batting') ? '1 PA' : '1 IP'}`}
         </span>
       </div>
     </div>
