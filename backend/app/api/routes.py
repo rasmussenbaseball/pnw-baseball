@@ -180,17 +180,17 @@ CONF_PITCHING_CTE = """
             SUM(CASE WHEN gp.is_quality_start THEN 1 ELSE 0 END) as quality_starts,
             -- Rate stats
             CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.earned_runs,0))::numeric / SUM(gp.innings_pitched), 2) END as era,
+                THEN ROUND(9.0 * SUM(COALESCE(gp.earned_runs,0))::numeric / SUM(gp.innings_pitched)::numeric, 2) END as era,
             CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND((SUM(COALESCE(gp.walks,0)) + SUM(COALESCE(gp.hits_allowed,0)))::numeric / SUM(gp.innings_pitched), 2) END as whip,
+                THEN ROUND((SUM(COALESCE(gp.walks,0)) + SUM(COALESCE(gp.hits_allowed,0)))::numeric / SUM(gp.innings_pitched)::numeric, 2) END as whip,
             CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.innings_pitched), 1) END as k_per_9,
+                THEN ROUND(9.0 * SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as k_per_9,
             CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.walks,0))::numeric / SUM(gp.innings_pitched), 1) END as bb_per_9,
+                THEN ROUND(9.0 * SUM(COALESCE(gp.walks,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as bb_per_9,
             CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.hits_allowed,0))::numeric / SUM(gp.innings_pitched), 1) END as h_per_9,
+                THEN ROUND(9.0 * SUM(COALESCE(gp.hits_allowed,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as h_per_9,
             CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.home_runs_allowed,0))::numeric / SUM(gp.innings_pitched), 1) END as hr_per_9,
+                THEN ROUND(9.0 * SUM(COALESCE(gp.home_runs_allowed,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as hr_per_9,
             CASE WHEN SUM(COALESCE(gp.walks,0)) > 0
                 THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.walks), 2) END as k_bb_ratio,
             -- K pct and BB pct

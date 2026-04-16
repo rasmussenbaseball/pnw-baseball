@@ -2503,6 +2503,7 @@ def upsert_game(cur, game_data):
                 game_score = COALESCE(%s, game_score),
                 source_url = COALESCE(%s, source_url),
                 status = CASE WHEN %s = 'final' THEN 'final' ELSE COALESCE(status, %s) END,
+                is_conference_game = COALESCE(%s, is_conference_game),
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (
@@ -2517,6 +2518,7 @@ def upsert_game(cur, game_data):
             game_data.get("game_score"),
             game_data.get("source_url") or game_data.get("box_score_url") or None,
             game_data.get("status", "final"), game_data.get("status", "final"),
+            game_data.get("is_conference_game"),
             game_id,
         ))
         return game_id
