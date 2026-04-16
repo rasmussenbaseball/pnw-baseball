@@ -72,12 +72,12 @@ const COLORS = {
 }
 
 // Minimum performance thresholds for "both" view
-const MIN_HITTING_SCORE = 1.0   // ~1-for-4 with a walk or run scored
-const MIN_PITCHING_SCORE = 1.5  // ~2 IP with a K or two and few ER
+const MIN_HITTING_SCORE = 0.3    // any hit or walk
+const MIN_PITCHING_SCORE = -1.0  // any pitcher who didn't totally get shelled
 
-// Very low thresholds for single-team view (any hit or decent outing)
-const MIN_HITTING_SCORE_TEAM = 0.3   // basically any hit or walk
-const MIN_PITCHING_SCORE_TEAM = -1.0 // any pitcher who didn't get shelled
+// Very low thresholds for single-team view (basically everyone who played)
+const MIN_HITTING_SCORE_TEAM = 0.0    // anyone with any contribution
+const MIN_PITCHING_SCORE_TEAM = -5.0  // any pitcher who appeared
 
 function filterTopPerformers(performers, maxCount = 6, useTeamThresholds = false) {
   if (!performers) return []
@@ -343,14 +343,14 @@ async function drawTopPerformers(ctx, performers, game, x, y, w, maxH) {
   const colW = (w - gap) / 2
   const cardGap = 8
 
-  // Split performers by team and filter by threshold (max 3 per team)
+  // Split performers by team and filter by threshold (max 5 per team)
   const homeId = game.home_team_id
   const awayId = game.away_team_id
   const awayPerfs = filterTopPerformers(
-    performers.filter(p => p.team_id === awayId), 3
+    performers.filter(p => p.team_id === awayId), 5
   )
   const homePerfs = filterTopPerformers(
-    performers.filter(p => p.team_id === homeId), 3
+    performers.filter(p => p.team_id === homeId), 5
   )
 
   const maxRows = Math.max(awayPerfs.length, homePerfs.length)
@@ -383,9 +383,9 @@ async function drawSingleTeamPerformers(ctx, performers, teamId, x, y, w, maxH) 
   const colW = (w - gap) / 2
   const cardGap = 8
 
-  // Filter to just this team's performers with very low threshold, up to 6
+  // Filter to just this team's performers with very low threshold, up to 8
   const teamPerfs = filterTopPerformers(
-    performers.filter(p => p.team_id === teamId), 6, true
+    performers.filter(p => p.team_id === teamId), 8, true
   )
   if (teamPerfs.length === 0) return 0
 
@@ -437,50 +437,35 @@ async function drawHeader(ctx, date, x, y, w, h, focusTeam = null) {
   } catch { /* skip */ }
 
   if (focusTeam) {
-    // ── Single-team header: team logo + team name ──
-    const teamLogoSize = 48
+    // ── Single-team header: logo above name, stacked vertically ──
+    const teamLogoSize = 40
     const centerX = x + w / 2
+    const midY = y + (h - 3) / 2
 
-    // Team logo next to title
-    let teamLogoW = 0
+    // Draw team logo centered above name
+    let logoDrawn = false
     if (focusTeam.logo) {
       try {
         const img = await loadImage(focusTeam.logo)
         const a = img.naturalWidth / img.naturalHeight
         let dw = teamLogoSize, dh = teamLogoSize
         if (a >= 1) dh = teamLogoSize / a; else dw = teamLogoSize * a
-        teamLogoW = dw + 14
-        // Measure text to center logo+name together
-        ctx.font = '800 28px "Inter", system-ui, sans-serif'
-        const titleW = ctx.measureText(focusTeam.name).width
-        const totalW = teamLogoW + titleW
-        ctx.drawImage(img, centerX - totalW / 2, y + (h - 3) / 2 - dh / 2 - 4, dw, dh)
-      } catch { teamLogoW = 0 }
+        ctx.drawImage(img, centerX - dw / 2, midY - 38, dw, dh)
+        logoDrawn = true
+      } catch { /* skip */ }
     }
 
-    // Team name
+    // Team name below logo
     ctx.fillStyle = COLORS.white
-    ctx.font = '800 28px "Inter", system-ui, sans-serif'
-    ctx.textAlign = teamLogoW > 0 ? 'left' : 'center'
-    ctx.textBaseline = 'middle'
-    if (teamLogoW > 0) {
-      const titleW = ctx.measureText(focusTeam.name).width
-      const totalW = teamLogoW + titleW
-      ctx.fillText(focusTeam.name, centerX - totalW / 2 + teamLogoW, y + (h - 3) / 2 - 8)
-    } else {
-      ctx.fillText(focusTeam.name, centerX, y + (h - 3) / 2 - 8)
-    }
-
-    // "DAILY GAME RECAP" smaller below
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'
-    ctx.font = '600 14px "Inter", system-ui, sans-serif'
+    ctx.font = '800 26px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('DAILY GAME RECAP', centerX, y + (h - 3) / 2 + 12)
+    ctx.textBaseline = 'middle'
+    ctx.fillText(focusTeam.name, centerX, logoDrawn ? midY + 10 : midY - 6)
 
-    // Date
-    ctx.fillStyle = 'rgba(255,255,255,0.5)'
-    ctx.font = '500 12px "Inter", system-ui, sans-serif'
-    ctx.fillText(date, centerX, y + (h - 3) / 2 + 28)
+    // "DAILY GAME RECAP" + date below
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'
+    ctx.font = '600 12px "Inter", system-ui, sans-serif'
+    ctx.fillText(`DAILY GAME RECAP  ·  ${date}`, centerX, logoDrawn ? midY + 30 : midY + 16)
   } else {
     // ── Both teams header ──
     ctx.fillStyle = COLORS.white
@@ -591,7 +576,7 @@ async function renderDailyGraphic(canvas, data, viewMode = 'both') {
       curY += 28
 
       ctx.font = '700 14px "Inter", system-ui, sans-serif'
-      ctx.fillStyle = COLORS.text_dark
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'
       ctx.textAlign = 'center'
       ctx.fillText(cleanTeamName(game.away_short), 12 + colW_s / 2, curY + 8)
       ctx.fillText(cleanTeamName(game.home_short), 12 + colW_s + 10 + colW_s / 2, curY + 8)
@@ -639,7 +624,7 @@ async function renderDailyGraphic(canvas, data, viewMode = 'both') {
         curY += 16
 
         ctx.font = '600 11px "Inter", system-ui, sans-serif'
-        ctx.fillStyle = COLORS.text_dark
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
         ctx.textAlign = 'center'
         ctx.fillText(cleanTeamName(game.away_short), 12 + dh_colW / 2, curY + 5)
         ctx.fillText(cleanTeamName(game.home_short), 12 + dh_colW + 10 + dh_colW / 2, curY + 5)
