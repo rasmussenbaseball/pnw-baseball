@@ -172,6 +172,19 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
           </label>
         </div>
 
+        {/* Conference Only checkbox */}
+        <div className="flex flex-col justify-end">
+          <label className="flex items-center gap-1.5 cursor-pointer py-1.5">
+            <input
+              type="checkbox"
+              checked={!!filters.conference_only}
+              onChange={(e) => handleChange('conference_only', e.target.checked)}
+              className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
+            />
+            <span className="text-sm font-medium text-gray-700">Conf. Only</span>
+          </label>
+        </div>
+
         {/* Reset */}
         <button
           onClick={() => onChange({ season: filters.season, _type: filters._type })}

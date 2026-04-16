@@ -29,6 +29,7 @@ export default function BattingLeaderboard() {
     state: filters.state,
     min_pa: filters.min_pa || 0,
     qualified: filters.qualified || false,
+    conference_only: filters.conference_only || false,
     year_in_school: filters.year_in_school,
     position_group: filters.position_group,
     sort_by: sortBy,

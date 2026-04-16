@@ -72,6 +72,158 @@ QUALIFIED_PITCHING_WHERE = (
 )
 
 
+# ── Conference-only CTE: aggregate game-level stats for conference games ──
+
+CONF_BATTING_CTE = """
+    conf_bat AS (
+        SELECT
+            gb.player_id,
+            gb.team_id,
+            g.season,
+            COUNT(DISTINCT gb.game_id) as games,
+            0 as games_started,
+            SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0))
+                + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0)) as plate_appearances,
+            SUM(COALESCE(gb.at_bats,0)) as at_bats,
+            SUM(COALESCE(gb.runs,0)) as runs,
+            SUM(COALESCE(gb.hits,0)) as hits,
+            SUM(COALESCE(gb.doubles,0)) as doubles,
+            SUM(COALESCE(gb.triples,0)) as triples,
+            SUM(COALESCE(gb.home_runs,0)) as home_runs,
+            SUM(COALESCE(gb.rbi,0)) as rbi,
+            SUM(COALESCE(gb.walks,0)) as walks,
+            SUM(COALESCE(gb.strikeouts,0)) as strikeouts,
+            SUM(COALESCE(gb.hit_by_pitch,0)) as hit_by_pitch,
+            SUM(COALESCE(gb.sacrifice_flies,0)) as sacrifice_flies,
+            SUM(COALESCE(gb.sacrifice_bunts,0)) as sacrifice_bunts,
+            SUM(COALESCE(gb.stolen_bases,0)) as stolen_bases,
+            SUM(COALESCE(gb.caught_stealing,0)) as caught_stealing,
+            0 as grounded_into_dp,
+            0 as intentional_walks,
+            -- Rate stats
+            CASE WHEN SUM(gb.at_bats) > 0
+                THEN ROUND(SUM(gb.hits)::numeric / SUM(gb.at_bats), 3) END as batting_avg,
+            CASE WHEN (SUM(gb.at_bats) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0))) > 0
+                THEN ROUND((SUM(gb.hits) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)))::numeric
+                     / (SUM(gb.at_bats) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0))), 3) END as on_base_pct,
+            CASE WHEN SUM(gb.at_bats) > 0
+                THEN ROUND(((SUM(gb.hits) - SUM(COALESCE(gb.doubles,0)) - SUM(COALESCE(gb.triples,0)) - SUM(COALESCE(gb.home_runs,0)))
+                     + 2*SUM(COALESCE(gb.doubles,0)) + 3*SUM(COALESCE(gb.triples,0)) + 4*SUM(COALESCE(gb.home_runs,0)))::numeric
+                     / SUM(gb.at_bats), 3) END as slugging_pct,
+            -- OPS (computed inline since we need OBP + SLG from same row)
+            CASE WHEN SUM(gb.at_bats) > 0 AND (SUM(gb.at_bats) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0))) > 0
+                THEN ROUND(
+                    (SUM(gb.hits) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)))::numeric
+                    / (SUM(gb.at_bats) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)))
+                    + ((SUM(gb.hits) - SUM(COALESCE(gb.doubles,0)) - SUM(COALESCE(gb.triples,0)) - SUM(COALESCE(gb.home_runs,0))
+                       + 2*SUM(COALESCE(gb.doubles,0)) + 3*SUM(COALESCE(gb.triples,0)) + 4*SUM(COALESCE(gb.home_runs,0)))::numeric
+                       / SUM(gb.at_bats)), 3) END as ops,
+            -- ISO = SLG - AVG
+            CASE WHEN SUM(gb.at_bats) > 0
+                THEN ROUND(
+                    ((SUM(gb.hits) - SUM(COALESCE(gb.doubles,0)) - SUM(COALESCE(gb.triples,0)) - SUM(COALESCE(gb.home_runs,0))
+                      + 2*SUM(COALESCE(gb.doubles,0)) + 3*SUM(COALESCE(gb.triples,0)) + 4*SUM(COALESCE(gb.home_runs,0)))::numeric
+                     / SUM(gb.at_bats))
+                    - (SUM(gb.hits)::numeric / SUM(gb.at_bats)), 3) END as iso,
+            -- BABIP = (H - HR) / (AB - K - HR + SF)
+            CASE WHEN (SUM(gb.at_bats) - SUM(COALESCE(gb.strikeouts,0)) - SUM(COALESCE(gb.home_runs,0)) + SUM(COALESCE(gb.sacrifice_flies,0))) > 0
+                THEN ROUND((SUM(gb.hits) - SUM(COALESCE(gb.home_runs,0)))::numeric
+                     / (SUM(gb.at_bats) - SUM(COALESCE(gb.strikeouts,0)) - SUM(COALESCE(gb.home_runs,0)) + SUM(COALESCE(gb.sacrifice_flies,0))), 3) END as babip,
+            -- BB% and K%
+            CASE WHEN (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))) > 0
+                THEN ROUND(SUM(COALESCE(gb.walks,0))::numeric * 100
+                     / (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))), 1) END as bb_pct,
+            CASE WHEN (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))) > 0
+                THEN ROUND(SUM(COALESCE(gb.strikeouts,0))::numeric * 100
+                     / (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))), 1) END as k_pct,
+            -- Advanced stats not available for conference-only splits
+            NULL::numeric as woba,
+            NULL::numeric as wraa,
+            NULL::numeric as wrc,
+            NULL::numeric as wrc_plus,
+            NULL::numeric as offensive_war
+        FROM game_batting gb
+        JOIN games g ON gb.game_id = g.id
+        WHERE g.season = %s
+          AND g.is_conference_game = true
+          AND g.status = 'final'
+          AND gb.player_id IS NOT NULL
+        GROUP BY gb.player_id, gb.team_id, g.season
+    )
+"""
+
+CONF_PITCHING_CTE = """
+    conf_pit AS (
+        SELECT
+            gp.player_id,
+            gp.team_id,
+            g.season,
+            COUNT(DISTINCT gp.game_id) as games,
+            SUM(CASE WHEN gp.is_starter THEN 1 ELSE 0 END) as games_started,
+            SUM(COALESCE(gp.innings_pitched,0)) as innings_pitched,
+            SUM(COALESCE(gp.hits_allowed,0)) as hits_allowed,
+            SUM(COALESCE(gp.runs_allowed,0)) as runs_allowed,
+            SUM(COALESCE(gp.earned_runs,0)) as earned_runs,
+            SUM(COALESCE(gp.walks,0)) as walks,
+            SUM(COALESCE(gp.strikeouts,0)) as strikeouts,
+            SUM(COALESCE(gp.home_runs_allowed,0)) as home_runs_allowed,
+            SUM(COALESCE(gp.hit_batters,0)) as hit_batters,
+            SUM(COALESCE(gp.wild_pitches,0)) as wild_pitches,
+            SUM(COALESCE(gp.batters_faced,0)) as batters_faced,
+            0 as intentional_walks,
+            -- W/L/S from decisions
+            SUM(CASE WHEN gp.decision = 'W' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN gp.decision = 'L' THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN gp.decision = 'S' THEN 1 ELSE 0 END) as saves,
+            0 as complete_games,
+            0 as shutouts,
+            SUM(CASE WHEN gp.is_quality_start THEN 1 ELSE 0 END) as quality_starts,
+            -- Rate stats
+            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.earned_runs,0))::numeric / SUM(gp.innings_pitched), 2) END as era,
+            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
+                THEN ROUND((SUM(COALESCE(gp.walks,0)) + SUM(COALESCE(gp.hits_allowed,0)))::numeric / SUM(gp.innings_pitched), 2) END as whip,
+            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.innings_pitched), 1) END as k_per_9,
+            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.walks,0))::numeric / SUM(gp.innings_pitched), 1) END as bb_per_9,
+            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.hits_allowed,0))::numeric / SUM(gp.innings_pitched), 1) END as h_per_9,
+            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.home_runs_allowed,0))::numeric / SUM(gp.innings_pitched), 1) END as hr_per_9,
+            CASE WHEN SUM(COALESCE(gp.walks,0)) > 0
+                THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.walks), 2) END as k_bb_ratio,
+            -- K% and BB%
+            CASE WHEN SUM(COALESCE(gp.batters_faced,0)) > 0
+                THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric * 100 / SUM(gp.batters_faced), 1) END as k_pct,
+            CASE WHEN SUM(COALESCE(gp.batters_faced,0)) > 0
+                THEN ROUND(SUM(COALESCE(gp.walks,0))::numeric * 100 / SUM(gp.batters_faced), 1) END as bb_pct,
+            -- BABIP against
+            CASE WHEN (SUM(COALESCE(gp.batters_faced,0)) - SUM(COALESCE(gp.strikeouts,0)) - SUM(COALESCE(gp.walks,0))
+                       - SUM(COALESCE(gp.hit_batters,0)) - SUM(COALESCE(gp.home_runs_allowed,0))) > 0
+                THEN ROUND((SUM(COALESCE(gp.hits_allowed,0)) - SUM(COALESCE(gp.home_runs_allowed,0)))::numeric
+                     / (SUM(COALESCE(gp.batters_faced,0)) - SUM(COALESCE(gp.strikeouts,0)) - SUM(COALESCE(gp.walks,0))
+                        - SUM(COALESCE(gp.hit_batters,0)) - SUM(COALESCE(gp.home_runs_allowed,0))), 3) END as babip_against,
+            -- Advanced stats not available for conference-only splits
+            NULL::numeric as fip,
+            NULL::numeric as xfip,
+            NULL::numeric as siera,
+            NULL::numeric as kwera,
+            NULL::numeric as lob_pct,
+            NULL::numeric as pitching_war,
+            NULL::numeric as fip_plus,
+            NULL::numeric as era_minus
+        FROM game_pitching gp
+        JOIN games g ON gp.game_id = g.id
+        WHERE g.season = %s
+          AND g.is_conference_game = true
+          AND g.status = 'final'
+          AND gp.player_id IS NOT NULL
+        GROUP BY gp.player_id, gp.team_id, g.season
+    )
+"""
+
+
 def _add_era_plus(row: dict) -> dict:
     """Convert era_minus to era_plus (higher=better). ERA+ = 10000/ERA-."""
     em = row.get("era_minus")
@@ -2877,10 +3029,12 @@ def batting_leaderboard(
     offset: int = Query(0, description="Pagination offset"),
     year_in_school: Optional[str] = Query(None, description="Filter by class year (Fr., So., Jr., Sr.)"),
     position_group: Optional[str] = Query(None, description="Filter by position group (IF, OF, C, P, UT)"),
+    conference_only: bool = Query(False, description="Only count stats from conference games"),
 ):
     """
     Batting stat leaders with comprehensive filtering.
     Includes both traditional and advanced stats.
+    When conference_only=true, aggregates from individual game box scores for conference games only.
     """
     allowed_sort = {
         "batting_avg", "on_base_pct", "slugging_pct", "ops", "woba", "wrc_plus",
@@ -2890,34 +3044,62 @@ def batting_leaderboard(
     }
     if sort_by not in allowed_sort:
         sort_by = "batting_avg"
+    # If conference_only, advanced stats aren't available — fall back to batting_avg
+    if conference_only and sort_by in ("woba", "wrc_plus", "offensive_war"):
+        sort_by = "batting_avg"
     sort_direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
     with get_connection() as conn:
         cur = conn.cursor()
-        q_where = QUALIFIED_BATTING_WHERE if qualified else ""
-        query = f"""
-            SELECT bs.*,
-                   p.first_name, p.last_name, p.position, p.year_in_school,
-                   p.bats, p.throws, p.hometown, p.previous_school,
-                   p.is_committed, p.committed_to,
-                   t.name as team_name, t.short_name as team_short, t.logo_url,
-                   t.state as team_state,
-                   c.name as conference_name, c.abbreviation as conference_abbrev,
-                   d.name as division_name, d.level as division_level,
-                   CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
-                        THEN true ELSE false END as is_qualified
-            FROM batting_stats bs
-            JOIN players p ON bs.player_id = p.id
-            JOIN teams t ON bs.team_id = t.id
-            JOIN conferences c ON t.conference_id = c.id
-            JOIN divisions d ON c.division_id = d.id
-            {QUALIFIED_BATTING_JOIN}
-            WHERE bs.season = %s
-              AND bs.plate_appearances >= %s
-              AND bs.at_bats >= %s
-              {q_where}
-        """
-        params: list = [season, min_pa, min_ab]
+
+        if conference_only:
+            # Use CTE that aggregates game-level box scores for conference games
+            cte_prefix = f"WITH {CONF_BATTING_CTE}"
+            cte_params: list = [season]  # season param for the CTE WHERE clause
+            query = cte_prefix + f"""
+                SELECT bs.*,
+                       p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.hometown, p.previous_school,
+                       p.is_committed, p.committed_to,
+                       t.name as team_name, t.short_name as team_short, t.logo_url,
+                       t.state as team_state,
+                       c.name as conference_name, c.abbreviation as conference_abbrev,
+                       d.name as division_name, d.level as division_level,
+                       false as is_qualified
+                FROM conf_bat bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE bs.plate_appearances >= %s
+                  AND bs.at_bats >= %s
+            """
+            params: list = cte_params + [min_pa, min_ab]
+        else:
+            q_where = QUALIFIED_BATTING_WHERE if qualified else ""
+            query = f"""
+                SELECT bs.*,
+                       p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.hometown, p.previous_school,
+                       p.is_committed, p.committed_to,
+                       t.name as team_name, t.short_name as team_short, t.logo_url,
+                       t.state as team_state,
+                       c.name as conference_name, c.abbreviation as conference_abbrev,
+                       d.name as division_name, d.level as division_level,
+                       CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                            THEN true ELSE false END as is_qualified
+                FROM batting_stats bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                {QUALIFIED_BATTING_JOIN}
+                WHERE bs.season = %s
+                  AND bs.plate_appearances >= %s
+                  AND bs.at_bats >= %s
+                  {q_where}
+            """
+            params: list = [season, min_pa, min_ab]
 
         if division_id:
             query += " AND c.division_id = %s"
@@ -2955,20 +3137,34 @@ def batting_leaderboard(
         rows = cur.fetchall()
 
         # Count total matching rows for pagination
-        count_q = f"""
-            SELECT COUNT(*) as total
-            FROM batting_stats bs
-            JOIN players p ON bs.player_id = p.id
-            JOIN teams t ON bs.team_id = t.id
-            JOIN conferences c ON t.conference_id = c.id
-            JOIN divisions d ON c.division_id = d.id
-            {QUALIFIED_BATTING_JOIN}
-            WHERE bs.season = %s
-              AND bs.plate_appearances >= %s
-              AND bs.at_bats >= %s
-              {q_where}
-        """
-        count_params: list = [season, min_pa, min_ab]
+        if conference_only:
+            count_q = f"WITH {CONF_BATTING_CTE}" + f"""
+                SELECT COUNT(*) as total
+                FROM conf_bat bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE bs.plate_appearances >= %s
+                  AND bs.at_bats >= %s
+            """
+            count_params: list = [season, min_pa, min_ab]
+        else:
+            q_where = QUALIFIED_BATTING_WHERE if qualified else ""
+            count_q = f"""
+                SELECT COUNT(*) as total
+                FROM batting_stats bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                {QUALIFIED_BATTING_JOIN}
+                WHERE bs.season = %s
+                  AND bs.plate_appearances >= %s
+                  AND bs.at_bats >= %s
+                  {q_where}
+            """
+            count_params: list = [season, min_pa, min_ab]
         if division_id:
             count_q += " AND c.division_id = %s"
             count_params.append(division_id)
@@ -3015,6 +3211,7 @@ def batting_leaderboard(
                 "min_pa": min_pa,
                 "min_ab": min_ab,
                 "year_in_school": year_in_school,
+                "conference_only": conference_only,
             },
         }
 
@@ -3038,10 +3235,12 @@ def pitching_leaderboard(
     limit: int = Query(50, description="Results per page"),
     offset: int = Query(0, description="Pagination offset"),
     year_in_school: Optional[str] = Query(None, description="Filter by class year"),
+    conference_only: bool = Query(False, description="Only count stats from conference games"),
 ):
     """
     Pitching stat leaders with comprehensive filtering.
     Includes traditional and advanced metrics (FIP, xFIP, SIERA, WAR).
+    When conference_only=true, aggregates from individual game box scores for conference games only.
     """
     allowed_sort = {
         "era", "whip", "fip", "xfip", "siera", "kwera",
@@ -3060,6 +3259,9 @@ def pitching_leaderboard(
     }
     if sort_by not in allowed_sort:
         sort_by = "era"
+    # If conference_only, advanced stats aren't available — fall back to era
+    if conference_only and sort_by in ("fip", "xfip", "siera", "kwera", "lob_pct", "pitching_war", "fip_plus", "era_minus", "era_plus"):
+        sort_by = "era"
     # For ERA/FIP/xFIP, ascending is better; for K/9, WAR, descending is better
     ascending_stats = {"era", "whip", "fip", "xfip", "siera", "kwera", "bb_per_9", "bb_pct", "hr_per_9", "losses"}
     default_dir = "ASC" if sort_by in ascending_stats else "DESC"
@@ -3067,29 +3269,52 @@ def pitching_leaderboard(
 
     with get_connection() as conn:
         cur = conn.cursor()
-        q_join = QUALIFIED_PITCHING_JOIN if qualified else ""
-        q_where = QUALIFIED_PITCHING_WHERE if qualified else ""
-        query = f"""
-            SELECT ps.*,
-                   COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
-                   p.first_name, p.last_name, p.position, p.year_in_school,
-                   p.bats, p.throws, p.hometown, p.previous_school,
-                   p.is_committed, p.committed_to,
-                   t.name as team_name, t.short_name as team_short, t.logo_url,
-                   t.state as team_state,
-                   c.name as conference_name, c.abbreviation as conference_abbrev,
-                   d.name as division_name, d.level as division_level
-            FROM pitching_stats ps
-            JOIN players p ON ps.player_id = p.id
-            JOIN teams t ON ps.team_id = t.id
-            JOIN conferences c ON t.conference_id = c.id
-            JOIN divisions d ON c.division_id = d.id
-            {q_join}
-            WHERE ps.season = %s
-              AND ps.innings_pitched >= %s
-              {q_where}
-        """
-        params: list = [season, min_ip]
+
+        if conference_only:
+            cte_prefix = f"WITH {CONF_PITCHING_CTE}"
+            cte_params: list = [season]
+            query = cte_prefix + f"""
+                SELECT ps.*,
+                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
+                       p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.hometown, p.previous_school,
+                       p.is_committed, p.committed_to,
+                       t.name as team_name, t.short_name as team_short, t.logo_url,
+                       t.state as team_state,
+                       c.name as conference_name, c.abbreviation as conference_abbrev,
+                       d.name as division_name, d.level as division_level
+                FROM conf_pit ps
+                JOIN players p ON ps.player_id = p.id
+                JOIN teams t ON ps.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE ps.innings_pitched >= %s
+            """
+            params: list = cte_params + [min_ip]
+        else:
+            q_join = QUALIFIED_PITCHING_JOIN if qualified else ""
+            q_where = QUALIFIED_PITCHING_WHERE if qualified else ""
+            query = f"""
+                SELECT ps.*,
+                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
+                       p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.hometown, p.previous_school,
+                       p.is_committed, p.committed_to,
+                       t.name as team_name, t.short_name as team_short, t.logo_url,
+                       t.state as team_state,
+                       c.name as conference_name, c.abbreviation as conference_abbrev,
+                       d.name as division_name, d.level as division_level
+                FROM pitching_stats ps
+                JOIN players p ON ps.player_id = p.id
+                JOIN teams t ON ps.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                {q_join}
+                WHERE ps.season = %s
+                  AND ps.innings_pitched >= %s
+                  {q_where}
+            """
+            params: list = [season, min_ip]
 
         if division_id:
             query += " AND c.division_id = %s"
@@ -3143,10 +3368,12 @@ def war_leaderboard(
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
     limit: int = Query(50),
     offset: int = Query(0),
+    conference_only: bool = Query(False, description="Only count stats from conference games"),
 ):
     """
     Combined WAR leaderboard for all players (hitters + pitchers).
     Two-way players have both components summed.
+    When conference_only=true, WAR/wOBA/wRC+ are unavailable; sort by batting_avg or era instead.
     """
     allowed_sort = {
         "total_war", "offensive_war", "pitching_war", "war_per_pa", "war_per_ip",
@@ -3155,36 +3382,109 @@ def war_leaderboard(
     }
     if sort_by not in allowed_sort:
         sort_by = "total_war"
+    # If conference_only, WAR and advanced stats aren't available
+    if conference_only and sort_by in ("total_war", "offensive_war", "pitching_war", "war_per_pa", "war_per_ip", "woba", "wrc_plus", "fip", "fip_plus", "era_minus", "era_plus"):
+        sort_by = "batting_avg"
     # For ERA/WHIP/FIP lower is better, so flip the default direction
     sort_direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
     with get_connection() as conn:
         cur = conn.cursor()
-        qb_where = QUALIFIED_BATTING_WHERE if qualified else ""
-        qp_where = QUALIFIED_PITCHING_WHERE if qualified else ""
-        # Get offensive WAR for batters
-        batting_query = f"""
-            SELECT p.id as player_id, p.first_name, p.last_name, p.position,
-                   p.year_in_school, t.id as team_id, t.name as team_name, t.short_name as team_short, t.logo_url,
-                   d.name as division_name, d.level as division_level,
-                   c.abbreviation as conference_abbrev,
-                   bs.offensive_war, bs.plate_appearances,
-                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.woba, bs.wrc_plus,
-                   0.0 as pitching_war, 0.0 as innings_pitched,
-                   NULL as era, NULL as whip, NULL as fip, NULL as fip_plus, NULL as era_minus, NULL as k_per_9,
-                   NULL as wins, NULL as losses, 0 as strikeouts_p, 0 as walks_p,
-                   CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
-                        THEN 1 ELSE 0 END as is_qualified_batting
-            FROM batting_stats bs
-            JOIN players p ON bs.player_id = p.id
-            JOIN teams t ON bs.team_id = t.id
-            JOIN conferences c ON t.conference_id = c.id
-            JOIN divisions d ON c.division_id = d.id
-            {QUALIFIED_BATTING_JOIN}
-            WHERE bs.season = %s AND bs.plate_appearances >= %s
-            {qb_where}
-        """
-        params_b: list = [season, min_pa]
+
+        if conference_only:
+            # Use CTEs for conference-only game data
+            cte_prefix = f"WITH {CONF_BATTING_CTE}, {CONF_PITCHING_CTE}"
+            # CONF_BATTING_CTE needs season param, CONF_PITCHING_CTE needs season param
+            batting_query = f"""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       p.year_in_school, t.id as team_id, t.name as team_name, t.short_name as team_short, t.logo_url,
+                       d.name as division_name, d.level as division_level,
+                       c.abbreviation as conference_abbrev,
+                       0.0 as offensive_war, bs.plate_appearances,
+                       bs.batting_avg, bs.on_base_pct, bs.slugging_pct, NULL::numeric as woba, NULL::numeric as wrc_plus,
+                       0.0 as pitching_war, 0.0 as innings_pitched,
+                       NULL as era, NULL as whip, NULL as fip, NULL as fip_plus, NULL as era_minus, NULL as k_per_9,
+                       NULL as wins, NULL as losses, 0 as strikeouts_p, 0 as walks_p,
+                       0 as is_qualified_batting
+                FROM conf_bat bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE bs.plate_appearances >= %s
+            """
+            params_b: list = [season, season, min_pa]  # two season params for two CTEs, then min_pa
+
+            pitching_query = f"""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       p.year_in_school, t.id as team_id, t.name as team_name, t.short_name as team_short, t.logo_url,
+                       d.name as division_name, d.level as division_level,
+                       c.abbreviation as conference_abbrev,
+                       0.0 as offensive_war, 0 as plate_appearances,
+                       NULL as batting_avg, NULL as on_base_pct, NULL as slugging_pct,
+                       NULL::numeric as woba, NULL::numeric as wrc_plus,
+                       0.0 as pitching_war, ps.innings_pitched,
+                       ps.era, ps.whip, NULL as fip, NULL as fip_plus, NULL as era_minus, ps.k_per_9,
+                       ps.wins, ps.losses, ps.strikeouts as strikeouts_p, ps.walks as walks_p,
+                       0 as is_qualified_batting
+                FROM conf_pit ps
+                JOIN players p ON ps.player_id = p.id
+                JOIN teams t ON ps.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE ps.innings_pitched >= %s
+            """
+            params_p: list = [min_ip]
+        else:
+            cte_prefix = ""
+            qb_where = QUALIFIED_BATTING_WHERE if qualified else ""
+            qp_where = QUALIFIED_PITCHING_WHERE if qualified else ""
+            batting_query = f"""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       p.year_in_school, t.id as team_id, t.name as team_name, t.short_name as team_short, t.logo_url,
+                       d.name as division_name, d.level as division_level,
+                       c.abbreviation as conference_abbrev,
+                       bs.offensive_war, bs.plate_appearances,
+                       bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.woba, bs.wrc_plus,
+                       0.0 as pitching_war, 0.0 as innings_pitched,
+                       NULL as era, NULL as whip, NULL as fip, NULL as fip_plus, NULL as era_minus, NULL as k_per_9,
+                       NULL as wins, NULL as losses, 0 as strikeouts_p, 0 as walks_p,
+                       CASE WHEN bs.plate_appearances >= {QUALIFIED_PA_PER_GAME} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                            THEN 1 ELSE 0 END as is_qualified_batting
+                FROM batting_stats bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                {QUALIFIED_BATTING_JOIN}
+                WHERE bs.season = %s AND bs.plate_appearances >= %s
+                {qb_where}
+            """
+            params_b: list = [season, min_pa]
+
+            pitching_query = f"""
+                SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                       p.year_in_school, t.id as team_id, t.name as team_name, t.short_name as team_short, t.logo_url,
+                       d.name as division_name, d.level as division_level,
+                       c.abbreviation as conference_abbrev,
+                       0.0 as offensive_war, 0 as plate_appearances,
+                       NULL as batting_avg, NULL as on_base_pct, NULL as slugging_pct,
+                       NULL as woba, NULL as wrc_plus,
+                       ps.pitching_war, ps.innings_pitched,
+                       ps.era, ps.whip, ps.fip, ps.fip_plus, ps.era_minus, ps.k_per_9,
+                       ps.wins, ps.losses, ps.strikeouts as strikeouts_p, ps.walks as walks_p,
+                       0 as is_qualified_batting
+                FROM pitching_stats ps
+                JOIN players p ON ps.player_id = p.id
+                JOIN teams t ON ps.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                {QUALIFIED_PITCHING_JOIN}
+                WHERE ps.season = %s AND ps.innings_pitched >= %s
+                {qp_where}
+            """
+            params_p: list = [season, min_ip]
+
         if division_id:
             batting_query += " AND c.division_id = %s"
             params_b.append(division_id)
@@ -3205,29 +3505,6 @@ def war_leaderboard(
             batting_query += f" AND p.position IN ({placeholders_pg})"
             params_b.extend(positions)
 
-        # Get pitching WAR
-        pitching_query = f"""
-            SELECT p.id as player_id, p.first_name, p.last_name, p.position,
-                   p.year_in_school, t.id as team_id, t.name as team_name, t.short_name as team_short, t.logo_url,
-                   d.name as division_name, d.level as division_level,
-                   c.abbreviation as conference_abbrev,
-                   0.0 as offensive_war, 0 as plate_appearances,
-                   NULL as batting_avg, NULL as on_base_pct, NULL as slugging_pct,
-                   NULL as woba, NULL as wrc_plus,
-                   ps.pitching_war, ps.innings_pitched,
-                   ps.era, ps.whip, ps.fip, ps.fip_plus, ps.era_minus, ps.k_per_9,
-                   ps.wins, ps.losses, ps.strikeouts as strikeouts_p, ps.walks as walks_p,
-                   0 as is_qualified_batting
-            FROM pitching_stats ps
-            JOIN players p ON ps.player_id = p.id
-            JOIN teams t ON ps.team_id = t.id
-            JOIN conferences c ON t.conference_id = c.id
-            JOIN divisions d ON c.division_id = d.id
-            {QUALIFIED_PITCHING_JOIN}
-            WHERE ps.season = %s AND ps.innings_pitched >= %s
-            {qp_where}
-        """
-        params_p: list = [season, min_ip]
         if division_id:
             pitching_query += " AND c.division_id = %s"
             params_p.append(division_id)
@@ -3242,7 +3519,7 @@ def war_leaderboard(
             params_p.extend(positions)
 
         # Combine using UNION and group by player to sum two-way WAR
-        combined_query = f"""
+        combined_query = f"""{cte_prefix}
             SELECT player_id, first_name, last_name, position, year_in_school,
                    team_id, team_name, team_short, logo_url, division_name, division_level, conference_abbrev,
                    SUM(offensive_war) as offensive_war,

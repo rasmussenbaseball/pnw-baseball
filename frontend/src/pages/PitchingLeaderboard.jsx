@@ -32,6 +32,7 @@ export default function PitchingLeaderboard() {
     state: filters.state,
     min_ip: filters.min_ip || 0,
     qualified: filters.qualified || false,
+    conference_only: filters.conference_only || false,
     year_in_school: filters.year_in_school,
     sort_by: sortBy,
     sort_dir: sortDir,

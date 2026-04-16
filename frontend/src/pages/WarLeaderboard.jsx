@@ -49,6 +49,7 @@ export default function WarLeaderboard() {
     min_pa: filters.min_pa ?? 30,
     min_ip: filters.min_ip ?? 10,
     qualified: filters.qualified || false,
+    conference_only: filters.conference_only || false,
     sort_by: sortBy,
     sort_dir: sortDir,
     limit,
