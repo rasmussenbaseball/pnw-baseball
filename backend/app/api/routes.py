@@ -12471,3 +12471,524 @@ def team_stats_agg(
             rows = [r for r in rows if r["division_level"] == level]
 
         return rows
+
+
+# ── Opponent Trends (Coaching Tool) ─────────────────────────────────────
+
+@router.get("/opponent-trends/{team_id}")
+def opponent_trends(
+    team_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """
+    Comprehensive opponent scouting report for coaching staff.
+    Returns lineup trends (vs LHP/RHP), pinch hitters, defensive subs,
+    starting rotation patterns, bullpen usage, and predicted rotation.
+    More recent games are weighted more heavily.
+    """
+    from collections import defaultdict, Counter
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── Team info ──
+        cur.execute("""
+            SELECT t.id, t.name, t.short_name, t.logo_url,
+                   c.name as conference_name, c.abbreviation as conf_abbrev,
+                   d.level as division_level
+            FROM teams t
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            WHERE t.id = %s
+        """, (team_id,))
+        team = cur.fetchone()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        team = dict(team)
+
+        # ── All final games for this team this season, ordered by date ──
+        cur.execute("""
+            SELECT g.id, g.game_date, g.game_number, g.home_team_id, g.away_team_id,
+                   g.home_score, g.away_score, g.is_conference_game,
+                   COALESCE(ht.short_name, ht.name) AS home_short,
+                   COALESCE(at2.short_name, at2.name) AS away_short,
+                   ht.logo_url AS home_logo, at2.logo_url AS away_logo
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE (g.home_team_id = %s OR g.away_team_id = %s)
+              AND g.season = %s AND g.status = 'final'
+              AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+            ORDER BY g.game_date ASC, g.game_number ASC, g.id ASC
+        """, (team_id, team_id, season))
+        all_games = [dict(r) for r in cur.fetchall()]
+
+        if not all_games:
+            return {"team": team, "games_analyzed": 0,
+                    "lineup_trends": None, "pitching_trends": None}
+
+        game_ids = [g["id"] for g in all_games]
+
+        # ── Detect series from games ──
+        # Group games by opponent, then cluster by date proximity (<=4 days)
+        opp_games = defaultdict(list)
+        for g in all_games:
+            opp_id = g["away_team_id"] if g["home_team_id"] == team_id else g["home_team_id"]
+            g["opponent_id"] = opp_id
+            g["opponent_name"] = g["away_short"] if g["home_team_id"] == team_id else g["home_short"]
+            g["is_home"] = g["home_team_id"] == team_id
+            opp_games[opp_id].append(g)
+
+        # Assign series_game_number to each game
+        for opp_id, games in opp_games.items():
+            games.sort(key=lambda g: (g["game_date"], g.get("game_number") or 1, g["id"]))
+            current_series = [games[0]]
+            for i in range(1, len(games)):
+                gap = (games[i]["game_date"] - current_series[-1]["game_date"]).days
+                if gap > 4:
+                    # Close out current series
+                    for idx, sg in enumerate(current_series):
+                        sg["series_game_num"] = idx + 1
+                        sg["series_length"] = len(current_series)
+                    current_series = [games[i]]
+                else:
+                    current_series.append(games[i])
+            for idx, sg in enumerate(current_series):
+                sg["series_game_num"] = idx + 1
+                sg["series_length"] = len(current_series)
+
+        # Flatten back
+        all_games_enriched = []
+        for games in opp_games.values():
+            all_games_enriched.extend(games)
+        all_games_enriched.sort(key=lambda g: (g["game_date"], g.get("game_number") or 1))
+
+        # ── Recency weights: exponential decay, half-life = 10 games ──
+        n_games = len(all_games_enriched)
+        half_life = 10
+        game_weights = {}
+        for i, g in enumerate(all_games_enriched):
+            age = n_games - 1 - i  # 0 = most recent
+            game_weights[g["id"]] = 2 ** (-age / half_life)
+
+        # ── Bulk fetch: batting lines for this team across all games ──
+        placeholders = ",".join(["%s"] * len(game_ids))
+        cur.execute(f"""
+            SELECT gb.game_id, gb.player_id, gb.player_name, gb.team_id,
+                   gb.batting_order, gb.position,
+                   gb.at_bats, gb.hits, gb.runs, gb.rbi,
+                   gb.doubles, gb.triples, gb.home_runs,
+                   gb.walks, gb.strikeouts, gb.hit_by_pitch,
+                   gb.stolen_bases, gb.caught_stealing,
+                   gb.sacrifice_flies, gb.sacrifice_bunts
+            FROM game_batting gb
+            WHERE gb.game_id IN ({placeholders})
+              AND gb.team_id = %s
+            ORDER BY gb.game_id, gb.batting_order
+        """, game_ids + [team_id])
+        all_batting = [dict(r) for r in cur.fetchall()]
+
+        # ── Bulk fetch: pitching lines for this team across all games ──
+        cur.execute(f"""
+            SELECT gp.game_id, gp.player_id, gp.player_name, gp.team_id,
+                   gp.pitch_order, gp.is_starter, gp.innings_pitched,
+                   gp.hits_allowed, gp.runs_allowed, gp.earned_runs,
+                   gp.walks, gp.strikeouts, gp.home_runs_allowed,
+                   gp.batters_faced, gp.pitches_thrown, gp.decision,
+                   gp.is_quality_start, gp.game_score
+            FROM game_pitching gp
+            WHERE gp.game_id IN ({placeholders})
+              AND gp.team_id = %s
+            ORDER BY gp.game_id, gp.pitch_order
+        """, game_ids + [team_id])
+        all_pitching = [dict(r) for r in cur.fetchall()]
+
+        # ── Fetch opposing starting pitcher info (for LHP/RHP splits) ──
+        cur.execute(f"""
+            SELECT gp.game_id, gp.player_id, gp.player_name,
+                   p.throws, gp.team_id
+            FROM game_pitching gp
+            LEFT JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id IN ({placeholders})
+              AND gp.team_id != %s
+              AND gp.is_starter = true
+        """, game_ids + [team_id])
+        opp_starters = {}
+        for r in cur.fetchall():
+            opp_starters[r["game_id"]] = {
+                "name": r["player_name"],
+                "throws": r["throws"],
+                "player_id": r["player_id"],
+            }
+
+        # ── Fetch player handedness for this team's players ──
+        cur.execute("""
+            SELECT id, throws, bats FROM players WHERE team_id = %s
+        """, (team_id,))
+        player_info = {r["id"]: {"throws": r["throws"], "bats": r["bats"]}
+                       for r in cur.fetchall()}
+
+        # ══════════════════════════════════════════════════════════════
+        # LINEUP TRENDS
+        # ══════════════════════════════════════════════════════════════
+
+        # Group batting by game
+        batting_by_game = defaultdict(list)
+        for b in all_batting:
+            batting_by_game[b["game_id"]].append(b)
+
+        # Separate games by opposing pitcher handedness
+        games_vs_lhp = []
+        games_vs_rhp = []
+        games_vs_unknown = []
+        for g in all_games_enriched:
+            opp_sp = opp_starters.get(g["id"])
+            hand = (opp_sp["throws"] or "").upper() if opp_sp else ""
+            if hand == "L":
+                games_vs_lhp.append(g)
+            elif hand == "R":
+                games_vs_rhp.append(g)
+            else:
+                games_vs_unknown.append(g)
+
+        def build_lineup_summary(game_list):
+            """Build weighted lineup spot frequencies from a list of games."""
+            if not game_list:
+                return {"games_count": 0, "lineup_spots": []}
+
+            spot_players = defaultdict(lambda: defaultdict(float))
+            spot_positions = defaultdict(lambda: defaultdict(float))
+
+            for g in game_list:
+                w = game_weights.get(g["id"], 1.0)
+                batters = batting_by_game.get(g["id"], [])
+                starters = [b for b in batters if b["batting_order"] <= 9]
+                for b in starters:
+                    spot = b["batting_order"]
+                    name = b["player_name"] or "Unknown"
+                    pos = (b["position"] or "").upper()
+                    spot_players[spot][name] += w
+                    spot_positions[spot][pos] += w
+
+            lineup_spots = []
+            for spot in range(1, 10):
+                players_weighted = spot_players.get(spot, {})
+                positions_weighted = spot_positions.get(spot, {})
+                total_weight = sum(players_weighted.values()) or 1
+
+                top_players = sorted(players_weighted.items(),
+                                     key=lambda x: x[1], reverse=True)[:3]
+                top_positions = sorted(positions_weighted.items(),
+                                       key=lambda x: x[1], reverse=True)[:2]
+
+                lineup_spots.append({
+                    "spot": spot,
+                    "most_common": [
+                        {"player_name": name, "weighted_pct": round(wt / total_weight * 100, 1)}
+                        for name, wt in top_players
+                    ],
+                    "primary_position": top_positions[0][0] if top_positions else "",
+                })
+
+            return {
+                "games_count": len(game_list),
+                "lineup_spots": lineup_spots,
+            }
+
+        vs_rhp_lineups = build_lineup_summary(games_vs_rhp)
+        vs_lhp_lineups = build_lineup_summary(games_vs_lhp)
+        vs_all_lineups = build_lineup_summary(all_games_enriched)
+
+        # ── Pinch hitters, pinch runners, defensive replacements ──
+        ph_stats = defaultdict(lambda: {"appearances": 0, "ab": 0, "h": 0,
+                                         "rbi": 0, "bb": 0, "weighted_apps": 0.0})
+        pr_stats = defaultdict(lambda: {"appearances": 0, "sb": 0, "r": 0,
+                                         "weighted_apps": 0.0})
+        dr_stats = defaultdict(lambda: {"appearances": 0, "position": Counter(),
+                                         "weighted_apps": 0.0})
+
+        for g in all_games_enriched:
+            w = game_weights.get(g["id"], 1.0)
+            batters = batting_by_game.get(g["id"], [])
+            for b in batters:
+                pos = (b["position"] or "").upper().strip()
+                name = b["player_name"] or "Unknown"
+
+                if pos == "PH":
+                    s = ph_stats[name]
+                    s["appearances"] += 1
+                    s["weighted_apps"] += w
+                    s["ab"] += b["at_bats"] or 0
+                    s["h"] += b["hits"] or 0
+                    s["rbi"] += b["rbi"] or 0
+                    s["bb"] += b["walks"] or 0
+                    s["player_id"] = b["player_id"]
+                elif pos in ("PR", "CR"):
+                    s = pr_stats[name]
+                    s["appearances"] += 1
+                    s["weighted_apps"] += w
+                    s["sb"] += b["stolen_bases"] or 0
+                    s["r"] += b["runs"] or 0
+                    s["player_id"] = b["player_id"]
+                elif b["batting_order"] > 9 and pos not in ("PH", "PR", "CR"):
+                    s = dr_stats[name]
+                    s["appearances"] += 1
+                    s["weighted_apps"] += w
+                    s["position"][pos] += 1
+                    s["player_id"] = b["player_id"]
+
+        pinch_hitters = sorted([
+            {"player_name": name, "player_id": s.get("player_id"),
+             "appearances": s["appearances"], "at_bats": s["ab"],
+             "hits": s["h"], "rbi": s["rbi"], "walks": s["bb"],
+             "avg": round(s["h"] / s["ab"], 3) if s["ab"] > 0 else None}
+            for name, s in ph_stats.items()
+        ], key=lambda x: x["appearances"], reverse=True)
+
+        pinch_runners = sorted([
+            {"player_name": name, "player_id": s.get("player_id"),
+             "appearances": s["appearances"],
+             "stolen_bases": s["sb"], "runs": s["r"]}
+            for name, s in pr_stats.items()
+        ], key=lambda x: x["appearances"], reverse=True)
+
+        defensive_replacements = sorted([
+            {"player_name": name, "player_id": s.get("player_id"),
+             "appearances": s["appearances"],
+             "positions": [p for p, _ in s["position"].most_common(3)]}
+            for name, s in dr_stats.items()
+        ], key=lambda x: x["appearances"], reverse=True)
+
+        lineup_trends = {
+            "vs_rhp": vs_rhp_lineups,
+            "vs_lhp": vs_lhp_lineups,
+            "vs_all": vs_all_lineups,
+            "pinch_hitters": pinch_hitters,
+            "pinch_runners": pinch_runners,
+            "defensive_replacements": defensive_replacements,
+        }
+
+        # ══════════════════════════════════════════════════════════════
+        # PITCHING TRENDS
+        # ══════════════════════════════════════════════════════════════
+
+        # Group pitching by game
+        pitching_by_game = defaultdict(list)
+        for p in all_pitching:
+            pitching_by_game[p["game_id"]].append(p)
+
+        # ── Starting pitchers ──
+        starter_data = defaultdict(lambda: {
+            "starts": 0, "total_ip": 0.0, "game_slots": Counter(),
+            "recent_starts": [], "player_id": None, "throws": None,
+            "wins": 0, "losses": 0, "qs": 0,
+            "total_k": 0, "total_er": 0, "total_h": 0, "total_bb": 0,
+        })
+
+        for g in all_games_enriched:
+            pitchers = pitching_by_game.get(g["id"], [])
+            for p in pitchers:
+                if not p["is_starter"]:
+                    continue
+                name = p["player_name"] or "Unknown"
+                s = starter_data[name]
+                s["starts"] += 1
+                ip = float(p["innings_pitched"] or 0)
+                s["total_ip"] += ip
+                s["player_id"] = p["player_id"]
+                s["throws"] = player_info.get(p["player_id"], {}).get("throws")
+                s["total_k"] += p["strikeouts"] or 0
+                s["total_er"] += p["earned_runs"] or 0
+                s["total_h"] += p["hits_allowed"] or 0
+                s["total_bb"] += p["walks"] or 0
+                if p["decision"] == "W":
+                    s["wins"] += 1
+                elif p["decision"] == "L":
+                    s["losses"] += 1
+                if p["is_quality_start"]:
+                    s["qs"] += 1
+
+                slot = g.get("series_game_num", 1)
+                s["game_slots"][slot] += 1
+                s["recent_starts"].append({
+                    "date": g["game_date"].isoformat() if hasattr(g["game_date"], "isoformat") else str(g["game_date"]),
+                    "opponent": g["opponent_name"],
+                    "series_game": slot,
+                    "ip": ip,
+                    "k": p["strikeouts"] or 0,
+                    "er": p["earned_runs"] or 0,
+                    "decision": p["decision"],
+                    "game_score": p["game_score"],
+                    "pitches": p["pitches_thrown"],
+                })
+
+        starters_list = []
+        for name, s in starter_data.items():
+            if s["starts"] < 2:
+                continue  # Skip one-off spot starters
+            avg_ip = round(s["total_ip"] / s["starts"], 1) if s["starts"] else 0
+            era = round(s["total_er"] * 9 / s["total_ip"], 2) if s["total_ip"] > 0 else None
+            slot_dist = {str(k): v for k, v in s["game_slots"].most_common()}
+            primary_slot = s["game_slots"].most_common(1)[0][0] if s["game_slots"] else None
+
+            starters_list.append({
+                "player_name": name,
+                "player_id": s["player_id"],
+                "throws": s["throws"],
+                "starts": s["starts"],
+                "avg_ip": avg_ip,
+                "era": era,
+                "record": f"{s['wins']}-{s['losses']}",
+                "quality_starts": s["qs"],
+                "total_k": s["total_k"],
+                "game_slot_distribution": slot_dist,
+                "primary_slot": primary_slot,
+                "recent_starts": s["recent_starts"][-6:],  # Last 6 starts
+            })
+        starters_list.sort(key=lambda x: x["starts"], reverse=True)
+
+        # ── Predicted rotation (based on last 3 series) ──
+        # Find the last 3 series for this team
+        recent_series = []
+        seen_series = set()
+        for g in reversed(all_games_enriched):
+            series_key = (g["opponent_id"], g["game_date"].isoformat()[:7],
+                          g.get("series_game_num") == 1)
+            # Use the first game's date as series ID
+            if g.get("series_game_num") == 1 and g.get("series_length", 0) >= 2:
+                s_id = (g["opponent_id"], str(g["game_date"]))
+                if s_id not in seen_series:
+                    seen_series.add(s_id)
+                    # Collect all games in this series
+                    series_games = [
+                        gg for gg in all_games_enriched
+                        if gg["opponent_id"] == g["opponent_id"]
+                        and 0 <= (gg["game_date"] - g["game_date"]).days <= 4
+                    ]
+                    series_games.sort(key=lambda x: (x["game_date"], x.get("game_number") or 1))
+                    recent_series.append(series_games)
+                    if len(recent_series) >= 3:
+                        break
+
+        predicted_rotation = []
+        for slot in range(1, 5):
+            slot_starters = Counter()
+            slot_weights_total = 0
+            for s_idx, series in enumerate(recent_series):
+                w = 2 ** (-s_idx)  # Most recent series = 1.0, then 0.5, 0.25
+                for sg in series:
+                    if sg.get("series_game_num") == slot:
+                        pitchers = pitching_by_game.get(sg["id"], [])
+                        sp = next((p for p in pitchers if p["is_starter"]), None)
+                        if sp:
+                            slot_starters[sp["player_name"]] += w
+                            slot_weights_total += w
+
+            if slot_starters:
+                top_name, top_weight = slot_starters.most_common(1)[0]
+                confidence = round(top_weight / slot_weights_total, 2) if slot_weights_total > 0 else 0
+                sp_info = starter_data.get(top_name, {})
+                predicted_rotation.append({
+                    "game_number": slot,
+                    "likely_starter": top_name,
+                    "player_id": sp_info.get("player_id"),
+                    "throws": sp_info.get("throws"),
+                    "confidence": confidence,
+                    "avg_ip": round(sp_info["total_ip"] / sp_info["starts"], 1)
+                        if sp_info.get("starts") else None,
+                })
+
+        # ── Relievers ──
+        reliever_data = defaultdict(lambda: {
+            "appearances": 0, "total_ip": 0.0, "saves": 0,
+            "total_k": 0, "total_er": 0, "total_h": 0, "total_bb": 0,
+            "total_batters_faced": 0, "player_id": None, "throws": None,
+            "close_game_apps": 0,  # Game within 3 runs at final
+            "multi_inning_apps": 0,
+            "recent_appearances": [],
+        })
+
+        for g in all_games_enriched:
+            pitchers = pitching_by_game.get(g["id"], [])
+            # Determine if game was close (within 3 runs)
+            our_score = g["home_score"] if g["is_home"] else g["away_score"]
+            their_score = g["away_score"] if g["is_home"] else g["home_score"]
+            close_game = abs((our_score or 0) - (their_score or 0)) <= 3
+
+            for p in pitchers:
+                if p["is_starter"]:
+                    continue
+                name = p["player_name"] or "Unknown"
+                r = reliever_data[name]
+                ip = float(p["innings_pitched"] or 0)
+                r["appearances"] += 1
+                r["total_ip"] += ip
+                r["player_id"] = p["player_id"]
+                r["throws"] = player_info.get(p["player_id"], {}).get("throws")
+                r["total_k"] += p["strikeouts"] or 0
+                r["total_er"] += p["earned_runs"] or 0
+                r["total_h"] += p["hits_allowed"] or 0
+                r["total_bb"] += p["walks"] or 0
+                r["total_batters_faced"] += p["batters_faced"] or 0
+                if p["decision"] == "S":
+                    r["saves"] += 1
+                if close_game:
+                    r["close_game_apps"] += 1
+                if ip >= 1.5:
+                    r["multi_inning_apps"] += 1
+
+                r["recent_appearances"].append({
+                    "date": g["game_date"].isoformat() if hasattr(g["game_date"], "isoformat") else str(g["game_date"]),
+                    "opponent": g["opponent_name"],
+                    "ip": ip,
+                    "k": p["strikeouts"] or 0,
+                    "er": p["earned_runs"] or 0,
+                    "decision": p["decision"],
+                })
+
+        relievers_list = []
+        for name, r in reliever_data.items():
+            if r["appearances"] < 2:
+                continue
+            avg_ip = round(r["total_ip"] / r["appearances"], 1) if r["appearances"] else 0
+            era = round(r["total_er"] * 9 / r["total_ip"], 2) if r["total_ip"] > 0 else None
+
+            # Classify reliever role
+            if r["saves"] >= 2:
+                role = "closer"
+            elif avg_ip >= 1.5 or r["multi_inning_apps"] >= r["appearances"] * 0.4:
+                role = "multi_inning"
+            else:
+                role = "one_inning"
+
+            leverage_pct = round(r["close_game_apps"] / r["appearances"] * 100, 1) if r["appearances"] else 0
+
+            relievers_list.append({
+                "player_name": name,
+                "player_id": r["player_id"],
+                "throws": r["throws"],
+                "appearances": r["appearances"],
+                "avg_ip": avg_ip,
+                "era": era,
+                "saves": r["saves"],
+                "total_k": r["total_k"],
+                "total_bb": r["total_bb"],
+                "role": role,
+                "close_game_pct": leverage_pct,
+                "multi_inning_apps": r["multi_inning_apps"],
+                "recent_appearances": r["recent_appearances"][-5:],
+            })
+        relievers_list.sort(key=lambda x: (-x["appearances"],))
+
+        pitching_trends = {
+            "starters": starters_list,
+            "predicted_rotation": predicted_rotation,
+            "relievers": relievers_list,
+        }
+
+        return {
+            "team": team,
+            "games_analyzed": len(all_games_enriched),
+            "lineup_trends": lineup_trends,
+            "pitching_trends": pitching_trends,
+        }

@@ -459,3 +459,10 @@ export async function gridValidateCustom(rows, columns) {
 export function useRecruitingBreakdown(season = 2026) {
   return useApi('/recruiting/breakdown', { season }, [season])
 }
+
+/**
+ * Opponent Trends - comprehensive scouting report for a team.
+ */
+export function useOpponentTrends(teamId, season = 2026) {
+  return useApi(teamId ? `/opponent-trends/${teamId}` : null, { season }, [teamId, season])
+}
