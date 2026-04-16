@@ -231,13 +231,13 @@ function drawStatCompareRow(ctx, label, valA, valB, centerX, y, colW, opts = {})
   ctx.fillText(label, centerX, y)
 
   // Team A value (left)
-  ctx.fillStyle = aWins ? '#00687a' : '#334155'
+  ctx.fillStyle = aWins ? '#2E7D32' : '#334155'
   ctx.font = `${aWins ? '800' : '600'} ${fontSize}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'right'
   ctx.fillText(String(valA), centerX - colW, y)
 
   // Team B value (right)
-  ctx.fillStyle = bWins ? '#00687a' : '#334155'
+  ctx.fillStyle = bWins ? '#2E7D32' : '#334155'
   ctx.font = `${bWins ? '800' : '600'} ${fontSize}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'left'
   ctx.fillText(String(valB), centerX + colW, y)
@@ -254,7 +254,7 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   const totalH = titleH + tableH
 
   // Section title
-  ctx.fillStyle = '#00687a'
+  ctx.fillStyle = '#2E7D32'
   ctx.font = '700 11px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
@@ -273,7 +273,7 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
   ctx.save()
   roundRect(ctx, x, tableY, w, rowH, 4)
   ctx.clip()
-  ctx.fillStyle = '#0f2b3d'
+  ctx.fillStyle = '#1B5E20'
   ctx.fillRect(x, tableY, w, rowH)
   ctx.restore()
 
@@ -397,39 +397,50 @@ async function renderSeriesGraphic(canvas, series) {
   const pad = 24
   const centerX = W / 2
 
-  // ── Background ──
-  ctx.fillStyle = '#f8fafc'
+  // ── Background (dark green-tinted) ──
+  ctx.fillStyle = '#0D1B0F'
   ctx.fillRect(0, 0, W, H)
 
-  // ── Top header bar ──
-  const headerH = 52
-  ctx.fillStyle = '#0f2b3d'
+  // ── Top header bar (black with green accent, matching Daily Recap) ──
+  const headerH = 72
+  ctx.fillStyle = '#000000'
   ctx.fillRect(0, 0, W, headerH)
 
-  // NW badge
-  ctx.fillStyle = 'rgba(255,255,255,0.15)'
-  roundRect(ctx, 14, 10, 32, 32, 5)
-  ctx.fill()
+  // Green accent line at bottom of header
+  ctx.fillStyle = '#2E7D32'
+  ctx.fillRect(0, headerH - 3, W, 3)
+
+  // NW logo on left
+  const hLogoPad = 16
+  const hLogoSize = 44
+  try {
+    const nwImg = await loadImage('/images/nw-logo-white.png')
+    const a = nwImg.naturalWidth / nwImg.naturalHeight
+    let dw = hLogoSize, dh = hLogoSize
+    if (a >= 1) dh = hLogoSize / a; else dw = hLogoSize * a
+    ctx.drawImage(nwImg, hLogoPad, (headerH - 3 - dh) / 2, dw, dh)
+  } catch { /* skip */ }
+
+  // PNWCBR logo on right
+  try {
+    const cbrImg = await loadImage('/images/cbr-logo.jpg')
+    const a = cbrImg.naturalWidth / cbrImg.naturalHeight
+    let dw = hLogoSize, dh = hLogoSize
+    if (a >= 1) dh = hLogoSize / a; else dw = hLogoSize * a
+    ctx.drawImage(cbrImg, W - hLogoPad - dw, (headerH - 3 - dh) / 2, dw, dh)
+  } catch { /* skip */ }
+
+  // Title centered
   ctx.fillStyle = '#ffffff'
-  ctx.font = '700 15px "Helvetica Neue", "Arial", sans-serif'
+  ctx.font = '800 24px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('NW', 30, 26)
+  ctx.fillText('SERIES RECAP', centerX, headerH / 2 - 10)
 
-  ctx.fillStyle = '#ffffff'
-  ctx.font = '800 22px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'center'
-  ctx.fillText('SERIES RECAP', centerX, headerH / 2)
-
-  // Date range
-  ctx.fillStyle = 'rgba(255,255,255,0.6)'
-  ctx.font = '500 10px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'right'
-  ctx.fillText(series.date_range || '', W - pad, headerH / 2)
-
-  // Teal accent line
-  ctx.fillStyle = '#00687a'
-  ctx.fillRect(0, headerH, W, 3)
+  // Date range below title
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.font = '500 12px "Inter", system-ui, sans-serif'
+  ctx.fillText(series.date_range || '', centerX, headerH / 2 + 10)
 
   let curY = headerH + 3
 
@@ -484,7 +495,7 @@ async function renderSeriesGraphic(canvas, series) {
     if (team.national_rank) {
       const badgeX = tx + 60
       const badgeY = logoY + 4
-      ctx.fillStyle = '#00687a'
+      ctx.fillStyle = '#2E7D32'
       roundRect(ctx, badgeX, badgeY, 36, 18, 4)
       ctx.fill()
       ctx.fillStyle = '#ffffff'
@@ -502,13 +513,13 @@ async function renderSeriesGraphic(canvas, series) {
   else if (bWins > aWins) resultLabel = `${cleanTeamName(teamB.short_name)} wins the series`
   else resultLabel = 'Series Split'
 
-  ctx.fillStyle = '#0f2b3d'
+  ctx.fillStyle = '#1B5E20'
   ctx.font = '700 14px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.fillText(resultLabel, centerX, logoY + logoSz / 2 - 10)
 
   // Big series score
-  ctx.fillStyle = '#00687a'
+  ctx.fillStyle = '#4CAF50'
   ctx.font = '800 36px "Inter", system-ui, sans-serif'
   ctx.fillText(`${aWins}  -  ${bWins}`, centerX, logoY + logoSz / 2 + 20)
 
@@ -589,7 +600,7 @@ async function renderSeriesGraphic(canvas, series) {
     ctx.lineWidth = 1
     ctx.stroke()
 
-    ctx.fillStyle = '#00687a'
+    ctx.fillStyle = '#2E7D32'
     ctx.font = '700 11px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
@@ -667,19 +678,15 @@ async function renderSeriesGraphic(canvas, series) {
     ctx.fillText(parts.join('  |  '), centerX, venueY + 11)
   }
 
-  // ── Footer ──
-  const footerY = H - 22
-  ctx.fillStyle = '#0f2b3d'
-  ctx.fillRect(0, footerY - 4, W, 26)
-  ctx.fillStyle = '#00687a'
-  ctx.font = '700 10px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'left'
+  // ── Footer (green bar matching Daily Recap) ──
+  const footerH = 40
+  ctx.fillStyle = '#1B5E20'
+  ctx.fillRect(0, H - footerH, W, footerH)
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.font = '600 12px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('PNWBASEBALLSTATS.COM', pad, footerY + 8)
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'
-  ctx.font = '500 9px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'right'
-  ctx.fillText('2026 Season', W - pad, footerY + 8)
+  ctx.fillText('NWBASEBALLSTATS.COM x PNWCBR', centerX, H - footerH / 2)
 }
 
 // ── Component ──

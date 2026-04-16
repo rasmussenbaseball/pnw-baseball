@@ -219,7 +219,7 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
   const logoSize = Math.max(14, rowH - 8)
 
   // Section label
-  ctx.fillStyle = '#00687a'
+  ctx.fillStyle = '#2E7D32'
   ctx.font = '700 13px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
@@ -341,7 +341,14 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
 
 // ── Main renderer (always 1080x1080) ──
 async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
-  const { games, top_hitters, top_pitchers } = data
+  const { top_hitters, top_pitchers } = data
+  // Sort games by division: D1 → D2 → D3 → NAIA → NWAC/JUCO
+  const DIV_ORDER = { 'D1': 0, 'D2': 1, 'D3': 2, 'NAIA': 3, 'JUCO': 4, 'NWAC': 4 }
+  const games = [...data.games].sort((a, b) => {
+    const divA = (a.home_division || a.division || '').toUpperCase()
+    const divB = (b.home_division || b.division || '').toUpperCase()
+    return (DIV_ORDER[divA] ?? 99) - (DIV_ORDER[divB] ?? 99)
+  })
   const numGames = games.length
 
   // Always 5 performers per section
@@ -357,46 +364,59 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   const ctx = canvas.getContext('2d')
   const pad = 20
 
-  // White bg
-  ctx.fillStyle = '#ffffff'
+  // Dark green-tinted bg
+  ctx.fillStyle = '#0D1B0F'
   ctx.fillRect(0, 0, W, H)
 
-  // ── Header ──
-  const headerH = 60
-  ctx.fillStyle = '#00687a'
+  // ── Header (black with green accent, matching Daily Recap) ──
+  const headerH = 80
+  ctx.fillStyle = '#000000'
   ctx.fillRect(0, 0, W, headerH)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.2)'
-  roundRect(ctx, pad, 12, 34, 34, 5)
-  ctx.fill()
-  ctx.fillStyle = '#ffffff'
-  ctx.font = '700 16px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('NW', pad + 17, 30)
+  // Green accent line at bottom of header
+  ctx.fillStyle = '#2E7D32'
+  ctx.fillRect(0, headerH - 3, W, 3)
 
+  // NW logo on left
+  const hLogoPad = 20
+  const hLogoSize = 50
+  try {
+    const nwImg = await loadImage('/images/nw-logo-white.png')
+    const a = nwImg.naturalWidth / nwImg.naturalHeight
+    let dw = hLogoSize, dh = hLogoSize
+    if (a >= 1) dh = hLogoSize / a; else dw = hLogoSize * a
+    ctx.drawImage(nwImg, hLogoPad, (headerH - 3 - dh) / 2, dw, dh)
+  } catch { /* skip */ }
+
+  // PNWCBR logo on right
+  try {
+    const cbrImg = await loadImage('/images/cbr-logo.jpg')
+    const a = cbrImg.naturalWidth / cbrImg.naturalHeight
+    let dw = hLogoSize, dh = hLogoSize
+    if (a >= 1) dh = hLogoSize / a; else dw = hLogoSize * a
+    ctx.drawImage(cbrImg, W - hLogoPad - dw, (headerH - 3 - dh) / 2, dw, dh)
+  } catch { /* skip */ }
+
+  // Title centered
   const title = divisionLabel ? `PNW ${divisionLabel} SCORES` : 'PNW SCORES'
   ctx.fillStyle = '#ffffff'
-  ctx.font = '800 26px "Helvetica Neue", "Arial", sans-serif'
-  ctx.fillText(title, W / 2, headerH / 2)
+  ctx.font = '800 28px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(title, W / 2, headerH / 2 - 12)
 
-  ctx.textAlign = 'right'
-  ctx.font = '700 11px "Helvetica Neue", "Arial", sans-serif'
-  ctx.fillText(dateShort, W - pad, 24)
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'
-  ctx.font = '400 9px "Helvetica Neue", "Arial", sans-serif'
-  ctx.fillText(`${numGames} Game${numGames !== 1 ? 's' : ''}`, W - pad, 38)
-
-  ctx.fillStyle = '#0f172a'
-  ctx.fillRect(0, headerH, W, 3)
+  // Date + game count below title
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.font = '500 14px "Inter", system-ui, sans-serif'
+  ctx.fillText(`${dateShort}  ·  ${numGames} Game${numGames !== 1 ? 's' : ''}`, W / 2, headerH / 2 + 12)
 
   // ── Fixed layout zones (bottom-up) ──
-  const footerH = 26
+  const footerH = 40
   const contentW = W - pad * 2
   // Performers section is FIXED height, anchored at bottom above footer
   const perfSectionH = hasPerformers ? 240 : 0
   const perfDividerH = hasPerformers ? 6 : 0
-  const scoresTopY = headerH + 3 + 8 // 8px margin below header line
+  const scoresTopY = headerH + 8 // 8px margin below header
   const scoresBottomY = H - footerH - perfSectionH - perfDividerH - 4
   const scoresAvailH = scoresBottomY - scoresTopY
 
@@ -461,7 +481,7 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
   // ── Top Performers (FIXED at bottom, always same size) ──
   if (hasPerformers) {
     const perfY = H - footerH - perfSectionH - 2
-    ctx.fillStyle = '#00687a'
+    ctx.fillStyle = '#2E7D32'
     ctx.fillRect(pad, perfY, contentW, 2)
 
     const perfTopY = perfY + 4
@@ -479,19 +499,14 @@ async function renderGraphic(canvas, data, dateShort, divisionLabel = '') {
     }
   }
 
-  // ── Footer ──
-  const footY = H - footerH / 2
-  ctx.fillStyle = '#e2e8f0'
-  ctx.fillRect(pad, H - footerH - 2, contentW, 1)
-  ctx.fillStyle = '#00687a'
-  ctx.font = '700 10px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'left'
+  // ── Footer (green bar matching Daily Recap) ──
+  ctx.fillStyle = '#1B5E20'
+  ctx.fillRect(0, H - footerH, W, footerH)
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.font = '600 12px "Inter", system-ui, sans-serif'
+  ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('PNWBASEBALLSTATS.COM', pad, footY)
-  ctx.fillStyle = '#94a3b8'
-  ctx.font = '500 8px "Helvetica Neue", "Arial", sans-serif'
-  ctx.textAlign = 'right'
-  ctx.fillText('2026 Season', W - pad, footY)
+  ctx.fillText('NWBASEBALLSTATS.COM x PNWCBR', W / 2, H - footerH / 2)
 }
 
 // ── Component ──

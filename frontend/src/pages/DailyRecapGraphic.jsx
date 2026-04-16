@@ -245,111 +245,128 @@ async function drawScoreBugWithInnings(ctx, game, x, y, w, h) {
   }
 }
 
-// ── Draw top performers in 2-column grid that fills available space ──
-async function drawTopPerformers(ctx, performers, x, y, w, maxH) {
+// ── Draw a single performer card ──
+async function drawPerformerCard(ctx, p, px, py, cardW, cardH) {
+  const pad = 12
+
+  // Card background
+  roundRect(ctx, px, py, cardW, cardH, 8)
+  ctx.fillStyle = '#f8fafc'
+  ctx.fill()
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 0.5
+  ctx.stroke()
+
+  // Left accent bar (green for team color)
+  roundRect(ctx, px, py, 4, cardH, 8)
+  ctx.fillStyle = COLORS.green_light
+  ctx.fill()
+
+  const pMidY = py + cardH / 2
+  let curX = px + pad + 6
+
+  // Team logo (larger)
+  const logoSize = Math.min(cardH * 0.5, 44)
+  if (p.team_logo) {
+    try {
+      const img = await loadImage(p.team_logo)
+      const a = img.naturalWidth / img.naturalHeight
+      let dw = logoSize, dh = logoSize
+      if (a >= 1) dh = logoSize / a; else dw = logoSize * a
+      ctx.drawImage(img, curX + (logoSize - dw) / 2, pMidY - dh / 2, dw, dh)
+    } catch { /* skip */ }
+  }
+  curX += logoSize + 12
+
+  // Player name + year/position tag
+  const nameFontSize = Math.min(Math.floor(cardH * 0.2), 18)
+  const name = p.player_name || 'Unknown'
+  const maxW = cardW - logoSize - pad * 2 - 20
+
+  // Build year/position tag (e.g. "Jr. | SS" or "So. | RHP")
+  const tagParts = []
+  if (p.year) tagParts.push(p.year.replace('Freshman', 'FR').replace('Sophomore', 'SO').replace('Junior', 'JR').replace('Senior', 'SR').replace('Redshirt', 'RS').replace('Fr.', 'FR').replace('So.', 'SO').replace('Jr.', 'JR').replace('Sr.', 'SR').toUpperCase())
+  if (p.position) tagParts.push(p.position.toUpperCase())
+  const tag = tagParts.join(' | ')
+
+  // Draw name
+  ctx.fillStyle = COLORS.text_dark
+  ctx.font = `700 ${nameFontSize}px "Inter", system-ui, sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  let displayName = name
+  while (ctx.measureText(displayName).width > maxW * 0.65 && displayName.length > 3) displayName = displayName.slice(0, -1)
+  if (displayName !== name) displayName += '.'
+
+  // Position name and tag on same line
+  const nameY = p.commitment ? pMidY - nameFontSize * 0.9 : pMidY - nameFontSize * 0.6
+  ctx.fillText(displayName, curX, nameY)
+
+  // Draw year/position tag after name
+  if (tag) {
+    const nameW = ctx.measureText(displayName + '  ').width
+    ctx.fillStyle = COLORS.text_gray
+    ctx.font = `500 ${Math.max(nameFontSize - 4, 10)}px "Inter", system-ui, sans-serif`
+    ctx.fillText(tag, curX + nameW, nameY)
+  }
+
+  // Stat line
+  const statFontSize = Math.min(Math.floor(cardH * 0.15), 14)
+  const statY = p.commitment ? pMidY + 2 : pMidY + nameFontSize * 0.5
+  ctx.fillStyle = COLORS.text_gray
+  ctx.font = `500 ${statFontSize}px "Inter", system-ui, sans-serif`
+  let statLine = p.stat_line || ''
+  while (ctx.measureText(statLine).width > maxW && statLine.length > 3) statLine = statLine.slice(0, -1)
+  if (statLine !== (p.stat_line || '')) statLine += '...'
+  ctx.fillText(statLine, curX, statY)
+
+  // Commitment line for JUCO players
+  if (p.commitment) {
+    const commitFontSize = Math.max(statFontSize - 1, 9)
+    ctx.fillStyle = p.commitment.startsWith('Committed') ? '#16a34a' : '#94a3b8'
+    ctx.font = `600 ${commitFontSize}px "Inter", system-ui, sans-serif`
+    ctx.fillText(p.commitment, curX, statY + statFontSize + 4)
+  }
+}
+
+// ── Draw top performers split by team: left column = away, right column = home ──
+async function drawTopPerformers(ctx, performers, game, x, y, w, maxH) {
   if (!performers || performers.length === 0) return 0
 
   const gap = 10
   const colW = (w - gap) / 2
-  const perfs = filterTopPerformers(performers, 6)
-  if (perfs.length === 0) return 0
-
-  const rows = Math.ceil(perfs.length / 2)
-  // Calculate card height to fill available space evenly
   const cardGap = 8
-  const perfH = Math.min((maxH - (rows - 1) * cardGap) / rows, 120)
-  const pad = 12
 
-  for (let i = 0; i < perfs.length; i++) {
-    const p = perfs[i]
-    const col = i % 2
-    const row = Math.floor(i / 2)
-    const px = x + col * (colW + gap)
-    const py = y + row * (perfH + cardGap)
+  // Split performers by team and filter by threshold (max 3 per team)
+  const homeId = game.home_team_id
+  const awayId = game.away_team_id
+  const awayPerfs = filterTopPerformers(
+    performers.filter(p => p.team_id === awayId), 3
+  )
+  const homePerfs = filterTopPerformers(
+    performers.filter(p => p.team_id === homeId), 3
+  )
 
+  const maxRows = Math.max(awayPerfs.length, homePerfs.length)
+  if (maxRows === 0) return 0
+
+  const perfH = Math.min((maxH - (maxRows - 1) * cardGap) / maxRows, 120)
+
+  // Draw away team performers on left
+  for (let i = 0; i < awayPerfs.length; i++) {
+    const py = y + i * (perfH + cardGap)
     if (py + perfH > y + maxH) break
-
-    // Card background
-    roundRect(ctx, px, py, colW, perfH, 8)
-    ctx.fillStyle = '#f8fafc'
-    ctx.fill()
-    ctx.strokeStyle = '#e2e8f0'
-    ctx.lineWidth = 0.5
-    ctx.stroke()
-
-    // Left accent bar (green for team color)
-    roundRect(ctx, px, py, 4, perfH, 8)
-    ctx.fillStyle = COLORS.green_light
-    ctx.fill()
-
-    const pMidY = py + perfH / 2
-    let curX = px + pad + 6
-
-    // Team logo (larger)
-    const logoSize = Math.min(perfH * 0.5, 44)
-    if (p.team_logo) {
-      try {
-        const img = await loadImage(p.team_logo)
-        const a = img.naturalWidth / img.naturalHeight
-        let dw = logoSize, dh = logoSize
-        if (a >= 1) dh = logoSize / a; else dw = logoSize * a
-        ctx.drawImage(img, curX + (logoSize - dw) / 2, pMidY - dh / 2, dw, dh)
-      } catch { /* skip */ }
-    }
-    curX += logoSize + 12
-
-    // Player name + year/position tag
-    const nameFontSize = Math.min(Math.floor(perfH * 0.2), 18)
-    const name = p.player_name || 'Unknown'
-    const maxW = colW - logoSize - pad * 2 - 20
-
-    // Build year/position tag (e.g. "Jr. | SS" or "So. | RHP")
-    const tagParts = []
-    if (p.year) tagParts.push(p.year.replace('Freshman', 'FR').replace('Sophomore', 'SO').replace('Junior', 'JR').replace('Senior', 'SR').replace('Redshirt', 'RS').replace('Fr.', 'FR').replace('So.', 'SO').replace('Jr.', 'JR').replace('Sr.', 'SR').toUpperCase())
-    if (p.position) tagParts.push(p.position.toUpperCase())
-    const tag = tagParts.join(' | ')
-
-    // Draw name
-    ctx.fillStyle = COLORS.text_dark
-    ctx.font = `700 ${nameFontSize}px "Inter", system-ui, sans-serif`
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    let displayName = name
-    while (ctx.measureText(displayName).width > maxW * 0.65 && displayName.length > 3) displayName = displayName.slice(0, -1)
-    if (displayName !== name) displayName += '.'
-
-    // Position name and tag on same line
-    const nameY = p.commitment ? pMidY - nameFontSize * 0.9 : pMidY - nameFontSize * 0.6
-    ctx.fillText(displayName, curX, nameY)
-
-    // Draw year/position tag after name
-    if (tag) {
-      const nameW = ctx.measureText(displayName + '  ').width
-      ctx.fillStyle = COLORS.text_gray
-      ctx.font = `500 ${Math.max(nameFontSize - 4, 10)}px "Inter", system-ui, sans-serif`
-      ctx.fillText(tag, curX + nameW, nameY)
-    }
-
-    // Stat line
-    const statFontSize = Math.min(Math.floor(perfH * 0.15), 14)
-    const statY = p.commitment ? pMidY + 2 : pMidY + nameFontSize * 0.5
-    ctx.fillStyle = COLORS.text_gray
-    ctx.font = `500 ${statFontSize}px "Inter", system-ui, sans-serif`
-    let statLine = p.stat_line || ''
-    while (ctx.measureText(statLine).width > maxW && statLine.length > 3) statLine = statLine.slice(0, -1)
-    if (statLine !== (p.stat_line || '')) statLine += '...'
-    ctx.fillText(statLine, curX, statY)
-
-    // Commitment line for JUCO players
-    if (p.commitment) {
-      const commitFontSize = Math.max(statFontSize - 1, 9)
-      ctx.fillStyle = p.commitment.startsWith('Committed') ? '#16a34a' : '#94a3b8'
-      ctx.font = `600 ${commitFontSize}px "Inter", system-ui, sans-serif`
-      ctx.fillText(p.commitment, curX, statY + statFontSize + 4)
-    }
+    await drawPerformerCard(ctx, awayPerfs[i], x, py, colW, perfH)
   }
 
-  return rows * (perfH + cardGap)
+  // Draw home team performers on right
+  for (let i = 0; i < homePerfs.length; i++) {
+    const py = y + i * (perfH + cardGap)
+    if (py + perfH > y + maxH) break
+    await drawPerformerCard(ctx, homePerfs[i], x + colW + gap, py, colW, perfH)
+  }
+
+  return maxRows * (perfH + cardGap)
 }
 
 // ── Header bar ──
@@ -460,16 +477,25 @@ async function renderDailyGraphic(canvas, data) {
     await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
     curY += scoreH + 14
 
-    // Top performers header
+    // Top performers header with team labels
+    const colW_s = (W - 24 - 10) / 2
     ctx.fillStyle = COLORS.green_light
     ctx.font = '700 20px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'left'
+    ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText('TOP PERFORMERS', 20, curY + 10)
-    curY += 34
+    ctx.fillText('TOP PERFORMERS', W / 2, curY + 10)
+    curY += 28
 
-    // Two-column performers - fill remaining space
-    await drawTopPerformers(ctx, game.top_performers, 12, curY, W - 24, H - curY - footerH - 10)
+    // Team name labels above each column
+    ctx.font = '700 14px "Inter", system-ui, sans-serif'
+    ctx.fillStyle = COLORS.text_dark
+    ctx.textAlign = 'center'
+    ctx.fillText(cleanTeamName(game.away_short), 12 + colW_s / 2, curY + 8)
+    ctx.fillText(cleanTeamName(game.home_short), 12 + colW_s + 10 + colW_s / 2, curY + 8)
+    curY += 22
+
+    // Per-team performers - fill remaining space
+    await drawTopPerformers(ctx, game.top_performers, game, 12, curY, W - 24, H - curY - footerH - 10)
   } else {
     // ── Doubleheader layout (1080x1080) ──
     const spacePerGame = (H - headerH - footerH - 20) / 2
@@ -490,16 +516,25 @@ async function renderDailyGraphic(canvas, data) {
       await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
       curY += scoreH + 6
 
-      // Top performers header
+      // Top performers header with team labels
+      const dh_colW = (W - 24 - 10) / 2
       ctx.fillStyle = COLORS.green_light
       ctx.font = '700 13px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'left'
-      ctx.fillText('TOP PERFORMERS', 20, curY + 5)
+      ctx.textAlign = 'center'
+      ctx.fillText('TOP PERFORMERS', W / 2, curY + 5)
       curY += 16
 
-      // Two-column performers (max 6, compact)
-      const maxPerfH = spacePerGame - scoreH - 50
-      const perfH = await drawTopPerformers(ctx, game.top_performers, 12, curY, W - 24, maxPerfH)
+      // Team name labels above each column
+      ctx.font = '600 11px "Inter", system-ui, sans-serif'
+      ctx.fillStyle = COLORS.text_dark
+      ctx.textAlign = 'center'
+      ctx.fillText(cleanTeamName(game.away_short), 12 + dh_colW / 2, curY + 5)
+      ctx.fillText(cleanTeamName(game.home_short), 12 + dh_colW + 10 + dh_colW / 2, curY + 5)
+      curY += 14
+
+      // Per-team performers (max 3 per team, compact)
+      const maxPerfH = spacePerGame - scoreH - 64
+      const perfH = await drawTopPerformers(ctx, game.top_performers, game, 12, curY, W - 24, maxPerfH)
       curY += perfH + 6
     }
   }
