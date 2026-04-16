@@ -738,6 +738,188 @@ def standings(
         }
 
 
+@router.get("/conference-standings-graphic")
+def conference_standings_graphic(
+    season: int = Query(..., description="Season year"),
+):
+    """
+    Return conference standings data enriched with games remaining,
+    SOS remaining (ranked within conference), games back, and national rank.
+    Used by the Conference Standings graphic page.
+    Excludes D1 conferences; includes D2, D3, NAIA, and NWAC divisions.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # 1. Get team records + national rank
+        cur.execute("""
+            SELECT t.id, t.short_name, t.logo_url,
+                   c.id as conference_id, c.name as conference_name,
+                   c.abbreviation as conference_abbrev,
+                   d.id as division_id, d.name as division_name, d.level as division_level,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(s.conference_wins, 0) as conf_wins,
+                   COALESCE(s.conference_losses, 0) as conf_losses,
+                   cr.composite_rank as national_rank,
+                   cr.composite_sos_rank as sos_rank
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
+            WHERE t.is_active = 1
+              AND d.level != 'D1'
+            ORDER BY d.id, c.name, t.short_name
+        """, (season, season))
+        team_rows = cur.fetchall()
+
+        # 2. Count remaining games per team (games with status != 'final')
+        cur.execute("""
+            SELECT team_id, COUNT(*) as games_remaining
+            FROM (
+                SELECT home_team_id as team_id FROM games
+                WHERE season = %s AND status != 'final'
+                UNION ALL
+                SELECT away_team_id as team_id FROM games
+                WHERE season = %s AND status != 'final'
+            ) sub
+            GROUP BY team_id
+        """, (season, season))
+        remaining_lookup = {r["team_id"]: r["games_remaining"] for r in cur.fetchall()}
+
+        # 3. Compute SOS remaining: average composite_rank of remaining opponents
+        cur.execute("""
+            SELECT sub.team_id,
+                   ROUND(AVG(cr.composite_rank)::numeric, 1) as avg_opp_rank,
+                   COUNT(*) as future_games
+            FROM (
+                SELECT home_team_id as team_id, away_team_id as opp_id
+                FROM games WHERE season = %s AND status != 'final'
+                UNION ALL
+                SELECT away_team_id as team_id, home_team_id as opp_id
+                FROM games WHERE season = %s AND status != 'final'
+            ) sub
+            LEFT JOIN composite_rankings cr ON cr.team_id = sub.opp_id AND cr.season = %s
+            WHERE cr.composite_rank IS NOT NULL
+            GROUP BY sub.team_id
+        """, (season, season, season))
+        sos_remaining_lookup = {r["team_id"]: float(r["avg_opp_rank"]) for r in cur.fetchall()}
+
+        # 4. For JUCO teams, compute PPI ranks (same logic as standings endpoint)
+        cur.execute("""
+            SELECT t.id,
+                   COALESCE(bat.total_owar, 0) as team_owar,
+                   COALESCE(pit.total_pwar, 0) as team_pwar,
+                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
+                   COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
+                   COALESCE(pit.team_fip, 4.5) as team_fip,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(s.conference_wins, 0) as conf_wins,
+                   COALESCE(s.conference_losses, 0) as conf_losses
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(offensive_war) as total_owar,
+                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as team_wrc_plus
+                FROM batting_stats WHERE season = %s GROUP BY team_id
+            ) bat ON bat.team_id = t.id
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(pitching_war) as total_pwar,
+                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as team_fip
+                FROM pitching_stats WHERE season = %s GROUP BY team_id
+            ) pit ON pit.team_id = t.id
+            WHERE t.is_active = 1 AND d.level = 'JUCO'
+        """, (season, season, season))
+        juco_rows = cur.fetchall()
+        juco_teams_for_ppi = []
+        for r in juco_rows:
+            t = dict(r)
+            total = t["wins"] + t["losses"]
+            t["win_pct"] = round(t["wins"] / total, 3) if total > 0 else 0.0
+            conf_total = t["conf_wins"] + t["conf_losses"]
+            t["conf_win_pct"] = round(t["conf_wins"] / conf_total, 3) if conf_total > 0 else 0.0
+            juco_teams_for_ppi.append(t)
+        juco_ranked = compute_ppi_for_division(juco_teams_for_ppi)
+        ppi_lookup = {t["id"]: t.get("ppi_rank") for t in juco_ranked}
+
+        # 5. Build conference groups
+        conferences = {}
+        for r in team_rows:
+            team = dict(r)
+            total_games = team["wins"] + team["losses"]
+            team["win_pct"] = round(team["wins"] / total_games, 3) if total_games > 0 else 0
+            conf_games = team["conf_wins"] + team["conf_losses"]
+            team["conf_win_pct"] = round(team["conf_wins"] / conf_games, 3) if conf_games > 0 else 0
+            team["games_remaining"] = remaining_lookup.get(team["id"], 0)
+
+            # Ranking: national for 4-year, PPI for JUCO
+            if team["division_level"] == "JUCO":
+                team["rank"] = ppi_lookup.get(team["id"])
+                team["rank_label"] = "PPI"
+            else:
+                team["rank"] = team.get("national_rank")
+                team["rank_label"] = "Natl"
+
+            # SOS remaining (raw value for ranking later)
+            team["sos_remaining_raw"] = sos_remaining_lookup.get(team["id"])
+
+            cid = team["conference_id"]
+            if cid not in conferences:
+                conferences[cid] = {
+                    "conference_id": cid,
+                    "conference_name": team["conference_name"],
+                    "conference_abbrev": team["conference_abbrev"],
+                    "division_id": team["division_id"],
+                    "division_name": team["division_name"],
+                    "division_level": team["division_level"],
+                    "teams": [],
+                }
+            conferences[cid]["teams"].append(team)
+
+        # 6. For each conference: sort, compute GB, rank SOS remaining
+        PLAYOFF_SPOTS = {
+            "GNAC": 3, "NWC": 4, "CCC": 5,
+        }
+        for key in ("NWAC North", "NWAC East", "NWAC South", "NWAC West",
+                     "NWAC_NORTH", "NWAC_EAST", "NWAC_SOUTH", "NWAC_WEST"):
+            PLAYOFF_SPOTS[key] = 4
+
+        for conf in conferences.values():
+            conf["teams"].sort(key=lambda t: (t["conf_win_pct"], t["win_pct"]), reverse=True)
+
+            # Playoff spots + games back
+            abbrev = conf.get("conference_abbrev", "")
+            spots = PLAYOFF_SPOTS.get(abbrev, PLAYOFF_SPOTS.get(conf.get("conference_name", ""), 4))
+            spots = min(spots, len(conf["teams"]))
+            conf["playoff_spots"] = spots
+
+            if conf["teams"] and spots > 0:
+                leader = conf["teams"][0]
+                for team in conf["teams"]:
+                    gb = ((leader["conf_wins"] - team["conf_wins"])
+                          + (team["conf_losses"] - leader["conf_losses"])) / 2
+                    team["games_back"] = gb
+
+            # Rank SOS remaining within conference (lower avg opponent rank = harder schedule = rank 1)
+            teams_with_sos = [t for t in conf["teams"] if t.get("sos_remaining_raw") is not None]
+            teams_with_sos.sort(key=lambda t: t["sos_remaining_raw"])
+            for i, t in enumerate(teams_with_sos):
+                t["sos_remaining_rank"] = i + 1
+            # Teams without SOS data get None
+            for t in conf["teams"]:
+                if "sos_remaining_rank" not in t:
+                    t["sos_remaining_rank"] = None
+
+        return {
+            "conferences": sorted(conferences.values(),
+                                  key=lambda c: (c["division_level"], c["conference_name"])),
+        }
+
+
 @router.get("/stat-leaders")
 def stat_leaders(
     season: int = Query(..., description="Season year"),

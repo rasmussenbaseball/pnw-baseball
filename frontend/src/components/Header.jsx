@@ -67,6 +67,7 @@ const NAV = [
       { to: '/series-recap', label: 'Series Recap', desc: 'Weekly series recap graphics' },
       { to: '/daily-recap', label: 'Daily Recap', desc: 'Daily game recap graphics' },
       { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
+      { to: '/conference-standings', label: 'Standings', desc: 'Conference standings graphics' },
     ],
   },
   {
