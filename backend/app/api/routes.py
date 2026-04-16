@@ -14,6 +14,7 @@ import math
 import os
 import re
 import smtplib
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, date, timedelta
@@ -11034,7 +11035,7 @@ Message:
 """
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
@@ -11073,8 +11074,12 @@ def submit_feature_request(data: dict = Body(...)):
         )
         req_id = list(cur.fetchone().values())[0]
 
-    # Send notification email (after DB commit, outside the connection block)
-    _send_feature_request_email(req_id, email, category, message)
+    # Send notification email in background thread so it doesn't block the response
+    threading.Thread(
+        target=_send_feature_request_email,
+        args=(req_id, email, category, message),
+        daemon=True,
+    ).start()
 
     return {"id": req_id, "status": "received"}
 
