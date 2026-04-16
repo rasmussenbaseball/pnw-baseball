@@ -12487,6 +12487,38 @@ def opponent_trends(
     Recent games weighted via exponential decay (half-life 10 games).
     """
     from collections import defaultdict, Counter
+    import re
+
+    def normalize_name(name):
+        """Normalize player names to 'First Last' format.
+        Handles: 'Last, First' → 'First Last'
+        Strips extra whitespace.
+        """
+        if not name:
+            return name
+        name = name.strip()
+        if ',' in name:
+            parts = name.split(',', 1)
+            name = parts[1].strip() + ' ' + parts[0].strip()
+        return name
+
+    def build_name_alias_map(names):
+        """Build a mapping from abbreviated names (like 'A. Takuma')
+        to their full version ('Aiden Takuma') when possible.
+        Only maps when there's exactly one matching full name.
+        """
+        alias = {}
+        full_names = [n for n in names if not re.match(r'^[A-Z]\.\s', n)]
+        abbrev_names = [n for n in names if re.match(r'^[A-Z]\.\s', n)]
+        for abbr in abbrev_names:
+            initial = abbr[0]
+            last = abbr.split(' ', 1)[1] if ' ' in abbr else ''
+            matches = [fn for fn in full_names
+                       if fn.startswith(initial) and fn.endswith(last)
+                       and ' ' in fn and fn.split(' ', 1)[1] == last]
+            if len(matches) == 1:
+                alias[abbr] = matches[0]
+        return alias
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -12579,25 +12611,13 @@ def opponent_trends(
         """, game_ids + [team_id])
         raw_batting = [dict(r) for r in cur.fetchall()]
 
-        # Deduplicate: per game, keep only the FIRST (lowest batting_order)
-        # entry for each player.  This prevents a player who bats 3rd AND
-        # later re-enters at a different spot from being double-counted.
-        batting_by_game = defaultdict(list)
+        # Normalize all player names in batting data
         for b in raw_batting:
-            batting_by_game[b["game_id"]].append(b)
+            b["player_name"] = normalize_name(b["player_name"])
 
-        # Build deduplicated version: one entry per player per game
-        deduped_batting_by_game = defaultdict(list)
-        for gid, batters in batting_by_game.items():
-            seen_players = set()
-            for b in batters:  # already sorted by batting_order
-                key = b["player_id"] or b["player_name"]
-                if key in seen_players:
-                    continue
-                seen_players.add(key)
-                deduped_batting_by_game[gid].append(b)
+        # (Deduplication happens after alias resolution below)
 
-        # ── Bulk fetch pitching — DEDUPLICATE per game ──
+        # ── Bulk fetch pitching ──
         cur.execute(f"""
             SELECT gp.game_id, gp.player_id, gp.player_name, gp.team_id,
                    gp.pitch_order, gp.is_starter, gp.innings_pitched,
@@ -12611,20 +12631,11 @@ def opponent_trends(
         """, game_ids + [team_id])
         raw_pitching = [dict(r) for r in cur.fetchall()]
 
-        pitching_by_game = defaultdict(list)
+        # Normalize all player names in pitching data
         for p in raw_pitching:
-            pitching_by_game[p["game_id"]].append(p)
+            p["player_name"] = normalize_name(p["player_name"])
 
-        # Deduplicate pitching per game
-        deduped_pitching_by_game = defaultdict(list)
-        for gid, pitchers in pitching_by_game.items():
-            seen = set()
-            for p in pitchers:
-                key = p["player_id"] or p["player_name"]
-                if key in seen:
-                    continue
-                seen.add(key)
-                deduped_pitching_by_game[gid].append(p)
+        # (Deduplication happens after alias resolution below)
 
         # ── Opposing starters (for LHP/RHP) ──
         cur.execute(f"""
@@ -12644,7 +12655,7 @@ def opponent_trends(
         # ── Pitcher names set (exclude from def subs) ──
         pitcher_names = set()
         for p in raw_pitching:
-            pitcher_names.add(p["player_name"])
+            pitcher_names.add(p["player_name"])  # already normalized
 
         # ── Player info ──
         cur.execute("SELECT id, throws, bats FROM players WHERE team_id = %s", (team_id,))
@@ -12665,9 +12676,66 @@ def opponent_trends(
         # Only store the SINGLE most common position per player
         player_primary_pos = {}
         for r in cur.fetchall():
-            name = r["player_name"]
+            name = normalize_name(r["player_name"])
             if name not in player_primary_pos:
-                player_primary_pos[name] = r["position"].upper().strip()
+                pos = r["position"].upper().strip()
+                # If position contains slash (e.g. "CF/RF"), take the first one
+                if '/' in pos:
+                    pos = pos.split('/')[0].strip()
+                player_primary_pos[name] = pos
+
+        # ── Resolve abbreviated names ──
+        # Collect all unique player names from batting + pitching
+        all_player_names = set()
+        for b in raw_batting:
+            all_player_names.add(b["player_name"])
+        for p in raw_pitching:
+            all_player_names.add(p["player_name"])
+        name_aliases = build_name_alias_map(all_player_names)
+
+        # Apply aliases: update raw data so abbreviated names map to full names
+        for b in raw_batting:
+            if b["player_name"] in name_aliases:
+                b["player_name"] = name_aliases[b["player_name"]]
+        for p in raw_pitching:
+            if p["player_name"] in name_aliases:
+                p["player_name"] = name_aliases[p["player_name"]]
+        # Update pitcher_names set with aliases
+        pitcher_names = set()
+        for p in raw_pitching:
+            pitcher_names.add(p["player_name"])
+        # Update primary positions with aliases
+        updated_pos = {}
+        for name, pos in player_primary_pos.items():
+            updated_pos[name_aliases.get(name, name)] = pos
+        player_primary_pos = updated_pos
+
+        # Re-build deduplicated data after alias resolution
+        batting_by_game = defaultdict(list)
+        for b in raw_batting:
+            batting_by_game[b["game_id"]].append(b)
+        deduped_batting_by_game = defaultdict(list)
+        for gid, batters in batting_by_game.items():
+            seen_players = set()
+            for b in sorted(batters, key=lambda x: x["batting_order"]):
+                key = b["player_name"]
+                if key in seen_players:
+                    continue
+                seen_players.add(key)
+                deduped_batting_by_game[gid].append(b)
+
+        pitching_by_game = defaultdict(list)
+        for p in raw_pitching:
+            pitching_by_game[p["game_id"]].append(p)
+        deduped_pitching_by_game = defaultdict(list)
+        for gid, pitchers in pitching_by_game.items():
+            seen = set()
+            for p in sorted(pitchers, key=lambda x: x["pitch_order"]):
+                key = p["player_name"]
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped_pitching_by_game[gid].append(p)
 
         # ══════════════════════════════════════════════════════════════
         # CLASSIFY GAMES BY OPPOSING PITCHER HAND
@@ -12982,15 +13050,18 @@ def opponent_trends(
                     if len(recent_series) >= 4:
                         break
 
-        # Count total starts per pitcher for "% chance they start this week"
-        total_recent_starts = Counter()
+        # Count how many of the recent series each pitcher started in
+        # (not total games — we want "% of series where this pitcher got a start")
+        pitcher_series_count = Counter()
         for series in recent_series:
+            seen_in_series = set()
             for sg in series:
                 pitchers = deduped_pitching_by_game.get(sg["id"], [])
                 sp = next((p for p in pitchers if p["is_starter"]), None)
-                if sp:
-                    total_recent_starts[sp["player_name"]] += 1
-        total_recent_games = sum(total_recent_starts.values()) or 1
+                if sp and sp["player_name"] not in seen_in_series:
+                    seen_in_series.add(sp["player_name"])
+                    pitcher_series_count[sp["player_name"]] += 1
+        num_recent_series = len(recent_series) or 1
 
         predicted_rotation = []
         for slot in range(1, 5):
@@ -13008,13 +13079,13 @@ def opponent_trends(
             if slot_starters:
                 top_name, top_w = slot_starters.most_common(1)[0]
                 sp_info = starter_data.get(top_name, {})
-                starts_in_recent = total_recent_starts.get(top_name, 0)
+                series_with_start = pitcher_series_count.get(top_name, 0)
                 predicted_rotation.append({
                     "game": slot,
                     "name": top_name,
                     "throws": sp_info.get("throws"),
                     "game_conf": round(top_w / slot_wt * 100) if slot_wt else 0,
-                    "week_pct": round(starts_in_recent / total_recent_games * 100) if total_recent_games else 0,
+                    "week_pct": round(series_with_start / num_recent_series * 100),
                 })
 
         # ── Relievers (deduplicated) ──
@@ -13066,10 +13137,12 @@ def opponent_trends(
             # Classify: closer / multi-inning / one-inning / mop-up
             if r["saves"] >= 2:
                 role = "closer"
-            elif r["total_ip"] < 6 or (era is not None and era > 12):
-                role = "mop_up"
             elif avg_ip >= 1.5 or r["multi_ip_apps"] >= r["apps"] * 0.4:
                 role = "multi_inning"
+            elif r["apps"] >= 3 and r["total_ip"] < 6 and (era is None or era > 12):
+                role = "mop_up"
+            elif r["total_ip"] < 3 and r["apps"] <= 2:
+                role = "mop_up"
             else:
                 role = "one_inning"
 
