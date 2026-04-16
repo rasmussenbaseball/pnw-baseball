@@ -71,15 +71,21 @@ const COLORS = {
   text_gray: '#64748b',
 }
 
-// Minimum performance thresholds - just filters out bad games
+// Minimum performance thresholds for "both" view
 const MIN_HITTING_SCORE = 1.0   // ~1-for-4 with a walk or run scored
 const MIN_PITCHING_SCORE = 1.5  // ~2 IP with a K or two and few ER
 
-function filterTopPerformers(performers, maxCount = 6) {
+// Very low thresholds for single-team view (any hit or decent outing)
+const MIN_HITTING_SCORE_TEAM = 0.3   // basically any hit or walk
+const MIN_PITCHING_SCORE_TEAM = -1.0 // any pitcher who didn't get shelled
+
+function filterTopPerformers(performers, maxCount = 6, useTeamThresholds = false) {
   if (!performers) return []
+  const hitMin = useTeamThresholds ? MIN_HITTING_SCORE_TEAM : MIN_HITTING_SCORE
+  const pitchMin = useTeamThresholds ? MIN_PITCHING_SCORE_TEAM : MIN_PITCHING_SCORE
   return performers
     .filter(p => {
-      const threshold = p.type === 'pitcher' ? MIN_PITCHING_SCORE : MIN_HITTING_SCORE
+      const threshold = p.type === 'pitcher' ? pitchMin : hitMin
       return (p.perf_score || 0) >= threshold
     })
     .sort((a, b) => (b.perf_score || 0) - (a.perf_score || 0))
@@ -369,8 +375,38 @@ async function drawTopPerformers(ctx, performers, game, x, y, w, maxH) {
   return maxRows * (perfH + cardGap)
 }
 
+// ── Draw single-team performers (full width, 2 columns, up to 6) ──
+async function drawSingleTeamPerformers(ctx, performers, teamId, x, y, w, maxH) {
+  if (!performers || performers.length === 0) return 0
+
+  const gap = 10
+  const colW = (w - gap) / 2
+  const cardGap = 8
+
+  // Filter to just this team's performers with very low threshold, up to 6
+  const teamPerfs = filterTopPerformers(
+    performers.filter(p => p.team_id === teamId), 6, true
+  )
+  if (teamPerfs.length === 0) return 0
+
+  const rows = Math.ceil(teamPerfs.length / 2)
+  const perfH = Math.min((maxH - (rows - 1) * cardGap) / rows, 120)
+
+  for (let i = 0; i < teamPerfs.length; i++) {
+    const col = i % 2
+    const row = Math.floor(i / 2)
+    const px = x + col * (colW + gap)
+    const py = y + row * (perfH + cardGap)
+    if (py + perfH > y + maxH) break
+    await drawPerformerCard(ctx, teamPerfs[i], px, py, colW, perfH)
+  }
+
+  return rows * (perfH + cardGap)
+}
+
 // ── Header bar ──
-async function drawHeader(ctx, date, x, y, w, h) {
+// focusTeam: { name, logo } or null for 'both' mode
+async function drawHeader(ctx, date, x, y, w, h, focusTeam = null) {
   // Black header
   ctx.fillStyle = '#000000'
   ctx.fillRect(x, y, w, h)
@@ -400,17 +436,63 @@ async function drawHeader(ctx, date, x, y, w, h) {
     ctx.drawImage(img, w - pad - dw, y + (h - dh) / 2, dw, dh)
   } catch { /* skip */ }
 
-  // "DAILY RECAP" centered, large
-  ctx.fillStyle = COLORS.white
-  ctx.font = '800 32px "Inter", system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('DAILY GAME RECAP', x + w / 2, y + h / 2 - 10)
+  if (focusTeam) {
+    // ── Single-team header: team logo + team name ──
+    const teamLogoSize = 48
+    const centerX = x + w / 2
 
-  // Date below title
-  ctx.fillStyle = 'rgba(255,255,255,0.7)'
-  ctx.font = '500 16px "Inter", system-ui, sans-serif'
-  ctx.fillText(date, x + w / 2, y + h / 2 + 18)
+    // Team logo next to title
+    let teamLogoW = 0
+    if (focusTeam.logo) {
+      try {
+        const img = await loadImage(focusTeam.logo)
+        const a = img.naturalWidth / img.naturalHeight
+        let dw = teamLogoSize, dh = teamLogoSize
+        if (a >= 1) dh = teamLogoSize / a; else dw = teamLogoSize * a
+        teamLogoW = dw + 14
+        // Measure text to center logo+name together
+        ctx.font = '800 28px "Inter", system-ui, sans-serif'
+        const titleW = ctx.measureText(focusTeam.name).width
+        const totalW = teamLogoW + titleW
+        ctx.drawImage(img, centerX - totalW / 2, y + (h - 3) / 2 - dh / 2 - 4, dw, dh)
+      } catch { teamLogoW = 0 }
+    }
+
+    // Team name
+    ctx.fillStyle = COLORS.white
+    ctx.font = '800 28px "Inter", system-ui, sans-serif'
+    ctx.textAlign = teamLogoW > 0 ? 'left' : 'center'
+    ctx.textBaseline = 'middle'
+    if (teamLogoW > 0) {
+      const titleW = ctx.measureText(focusTeam.name).width
+      const totalW = teamLogoW + titleW
+      ctx.fillText(focusTeam.name, centerX - totalW / 2 + teamLogoW, y + (h - 3) / 2 - 8)
+    } else {
+      ctx.fillText(focusTeam.name, centerX, y + (h - 3) / 2 - 8)
+    }
+
+    // "DAILY GAME RECAP" smaller below
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'
+    ctx.font = '600 14px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('DAILY GAME RECAP', centerX, y + (h - 3) / 2 + 12)
+
+    // Date
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.font = '500 12px "Inter", system-ui, sans-serif'
+    ctx.fillText(date, centerX, y + (h - 3) / 2 + 28)
+  } else {
+    // ── Both teams header ──
+    ctx.fillStyle = COLORS.white
+    ctx.font = '800 32px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('DAILY GAME RECAP', x + w / 2, y + h / 2 - 10)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'
+    ctx.font = '500 16px "Inter", system-ui, sans-serif'
+    ctx.fillText(date, x + w / 2, y + h / 2 + 18)
+  }
 }
 
 // ── Footer bar ──
@@ -446,10 +528,23 @@ function enrichGame(gameObj, data) {
 }
 
 // ── Main renderer (1080x1080) ──
-async function renderDailyGraphic(canvas, data) {
+// viewMode: 'both' | 'home' | 'away'
+async function renderDailyGraphic(canvas, data, viewMode = 'both') {
   const W = 1080
   const allGames = (data.games || []).map(g => enrichGame(g, data))
   const isDoubleheader = allGames.length >= 2
+
+  // Determine the focused team for single-team views
+  const focusTeamId = viewMode === 'home'
+    ? (allGames[0]?.home_team_id)
+    : viewMode === 'away'
+      ? (allGames[0]?.away_team_id)
+      : null
+  const focusTeamName = viewMode === 'home'
+    ? cleanTeamName(allGames[0]?.home_short)
+    : viewMode === 'away'
+      ? cleanTeamName(allGames[0]?.away_short)
+      : null
 
   const H = 1080
   canvas.width = W
@@ -460,16 +555,24 @@ async function renderDailyGraphic(canvas, data) {
   ctx.fillStyle = COLORS.bg_dark
   ctx.fillRect(0, 0, W, H)
 
+  // Build focusTeam info for header (single-team modes)
+  const focusTeamInfo = focusTeamId ? {
+    name: focusTeamName,
+    logo: viewMode === 'home'
+      ? (allGames[0]?.home_logo)
+      : (allGames[0]?.away_logo),
+  } : null
+
   // Header
   const headerH = 100
   const dateLabel = data.date ? shortDate(data.date) : ''
-  await drawHeader(ctx, dateLabel, 0, 0, W, headerH)
+  await drawHeader(ctx, dateLabel, 0, 0, W, headerH, focusTeamInfo)
 
   const footerH = 45
   let curY = headerH + 10
 
   if (!isDoubleheader) {
-    // ── Single game layout (1080x720) ──
+    // ── Single game layout ──
     const game = allGames[0] || {}
 
     // Combined scorebug with innings
@@ -477,27 +580,37 @@ async function renderDailyGraphic(canvas, data) {
     await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
     curY += scoreH + 14
 
-    // Top performers header with team labels
-    const colW_s = (W - 24 - 10) / 2
-    ctx.fillStyle = COLORS.green_light
-    ctx.font = '700 20px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('TOP PERFORMERS', W / 2, curY + 10)
-    curY += 28
+    if (viewMode === 'both') {
+      // ── BOTH: split performers by team (3 per side) ──
+      const colW_s = (W - 24 - 10) / 2
+      ctx.fillStyle = COLORS.green_light
+      ctx.font = '700 20px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('TOP PERFORMERS', W / 2, curY + 10)
+      curY += 28
 
-    // Team name labels above each column
-    ctx.font = '700 14px "Inter", system-ui, sans-serif'
-    ctx.fillStyle = COLORS.text_dark
-    ctx.textAlign = 'center'
-    ctx.fillText(cleanTeamName(game.away_short), 12 + colW_s / 2, curY + 8)
-    ctx.fillText(cleanTeamName(game.home_short), 12 + colW_s + 10 + colW_s / 2, curY + 8)
-    curY += 22
+      ctx.font = '700 14px "Inter", system-ui, sans-serif'
+      ctx.fillStyle = COLORS.text_dark
+      ctx.textAlign = 'center'
+      ctx.fillText(cleanTeamName(game.away_short), 12 + colW_s / 2, curY + 8)
+      ctx.fillText(cleanTeamName(game.home_short), 12 + colW_s + 10 + colW_s / 2, curY + 8)
+      curY += 22
 
-    // Per-team performers - fill remaining space
-    await drawTopPerformers(ctx, game.top_performers, game, 12, curY, W - 24, H - curY - footerH - 10)
+      await drawTopPerformers(ctx, game.top_performers, game, 12, curY, W - 24, H - curY - footerH - 10)
+    } else {
+      // ── SINGLE TEAM: full-width performers (up to 6) ──
+      ctx.fillStyle = COLORS.green_light
+      ctx.font = '700 20px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(`${focusTeamName} TOP PERFORMERS`, W / 2, curY + 10)
+      curY += 34
+
+      await drawSingleTeamPerformers(ctx, game.top_performers, focusTeamId, 12, curY, W - 24, H - curY - footerH - 10)
+    }
   } else {
-    // ── Doubleheader layout (1080x1080) ──
+    // ── Doubleheader layout ──
     const spacePerGame = (H - headerH - footerH - 20) / 2
 
     for (let gi = 0; gi < 2; gi++) {
@@ -516,26 +629,39 @@ async function renderDailyGraphic(canvas, data) {
       await drawScoreBugWithInnings(ctx, game, 12, curY, W - 24, scoreH)
       curY += scoreH + 6
 
-      // Top performers header with team labels
-      const dh_colW = (W - 24 - 10) / 2
-      ctx.fillStyle = COLORS.green_light
-      ctx.font = '700 13px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('TOP PERFORMERS', W / 2, curY + 5)
-      curY += 16
+      if (viewMode === 'both') {
+        // ── BOTH: split by team ──
+        const dh_colW = (W - 24 - 10) / 2
+        ctx.fillStyle = COLORS.green_light
+        ctx.font = '700 13px "Inter", system-ui, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('TOP PERFORMERS', W / 2, curY + 5)
+        curY += 16
 
-      // Team name labels above each column
-      ctx.font = '600 11px "Inter", system-ui, sans-serif'
-      ctx.fillStyle = COLORS.text_dark
-      ctx.textAlign = 'center'
-      ctx.fillText(cleanTeamName(game.away_short), 12 + dh_colW / 2, curY + 5)
-      ctx.fillText(cleanTeamName(game.home_short), 12 + dh_colW + 10 + dh_colW / 2, curY + 5)
-      curY += 14
+        ctx.font = '600 11px "Inter", system-ui, sans-serif'
+        ctx.fillStyle = COLORS.text_dark
+        ctx.textAlign = 'center'
+        ctx.fillText(cleanTeamName(game.away_short), 12 + dh_colW / 2, curY + 5)
+        ctx.fillText(cleanTeamName(game.home_short), 12 + dh_colW + 10 + dh_colW / 2, curY + 5)
+        curY += 14
 
-      // Per-team performers (max 3 per team, compact)
-      const maxPerfH = spacePerGame - scoreH - 64
-      const perfH = await drawTopPerformers(ctx, game.top_performers, game, 12, curY, W - 24, maxPerfH)
-      curY += perfH + 6
+        const maxPerfH = spacePerGame - scoreH - 64
+        const perfH = await drawTopPerformers(ctx, game.top_performers, game, 12, curY, W - 24, maxPerfH)
+        curY += perfH + 6
+      } else {
+        // ── SINGLE TEAM: full-width for doubleheader ──
+        // Use the focused team's ID from THIS game (home/away might flip between games)
+        const thisTeamId = focusTeamId
+        ctx.fillStyle = COLORS.green_light
+        ctx.font = '700 13px "Inter", system-ui, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText(`${focusTeamName} TOP PERFORMERS`, W / 2, curY + 5)
+        curY += 18
+
+        const maxPerfH = spacePerGame - scoreH - 50
+        const perfH = await drawSingleTeamPerformers(ctx, game.top_performers, thisTeamId, 12, curY, W - 24, maxPerfH)
+        curY += perfH + 6
+      }
     }
   }
 
@@ -550,6 +676,7 @@ export default function DailyRecapGraphic() {
   const [matchups, setMatchups] = useState([])
   const [selectedMatchup, setSelectedMatchup] = useState(null)
   const [gameData, setGameData] = useState(null)
+  const [viewMode, setViewMode] = useState('both') // 'both' | 'away' | 'home'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [rendered, setRendered] = useState(false)
@@ -628,24 +755,32 @@ export default function DailyRecapGraphic() {
 
   const generate = useCallback(async () => {
     if (!gameData || !canvasRef.current) return
-    await renderDailyGraphic(canvasRef.current, gameData)
+    await renderDailyGraphic(canvasRef.current, gameData, viewMode)
     setRendered(true)
-  }, [gameData])
+  }, [gameData, viewMode])
 
   useEffect(() => {
     if (gameData) generate()
     else setRendered(false)
   }, [gameData, generate])
 
+  // Reset viewMode when matchup changes
+  useEffect(() => { setViewMode('both') }, [selectedMatchup])
+
   const download = () => {
     if (!canvasRef.current || !gameData) return
     const link = document.createElement('a')
-    const away = cleanTeamName(gameData.away_short).replace(/\s+/g, '-').toLowerCase()
-    const home = cleanTeamName(gameData.home_short).replace(/\s+/g, '-').toLowerCase()
-    link.download = `daily-recap-${away}-vs-${home}-${selectedDate}.png`
+    const away = (awayName || 'away').replace(/\s+/g, '-').toLowerCase()
+    const home = (homeName || 'home').replace(/\s+/g, '-').toLowerCase()
+    const suffix = viewMode === 'both' ? '' : `-${viewMode === 'away' ? away : home}`
+    link.download = `daily-recap-${away}-vs-${home}${suffix}-${selectedDate}.png`
     link.href = canvasRef.current.toDataURL('image/png')
     link.click()
   }
+
+  // Team names for view mode buttons (API: team_a = home, team_b = away)
+  const awayName = gameData ? cleanTeamName(gameData.team_b?.short_name || '') : 'Away'
+  const homeName = gameData ? cleanTeamName(gameData.team_a?.short_name || '') : 'Home'
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -687,6 +822,25 @@ export default function DailyRecapGraphic() {
               {cleanTeamName(m.away_short)} vs {cleanTeamName(m.home_short)}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* View mode: Both / Away Team / Home Team */}
+      {gameData && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-xs text-gray-500 font-medium mr-1">View:</span>
+          <button onClick={() => setViewMode('both')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              viewMode === 'both' ? 'bg-nw-teal text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>Both</button>
+          <button onClick={() => setViewMode('away')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              viewMode === 'away' ? 'bg-nw-teal text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>{awayName}</button>
+          <button onClick={() => setViewMode('home')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              viewMode === 'home' ? 'bg-nw-teal text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>{homeName}</button>
         </div>
       )}
 
