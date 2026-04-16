@@ -616,6 +616,18 @@ def run_monte_carlo(future_games, team_ratings, current_standings, n_simulations
     return output
 
 
+def _avg_opp_power_remaining(team_id, proj, team_ratings):
+    """Compute avg opponent power rating for remaining conference games."""
+    opp_powers = []
+    for g in proj.get("games", []):
+        if not g.get("is_conference"):
+            continue
+        opp_id = g.get("away_team_id") if g.get("home_team_id") == team_id else g.get("home_team_id")
+        if opp_id and opp_id in team_ratings:
+            opp_powers.append(team_ratings[opp_id]["power_rating"])
+    return round(sum(opp_powers) / len(opp_powers), 2) if opp_powers else None
+
+
 def build_projected_standings(current_standings, projections, team_ratings):
     """
     Combine current records with projected remaining games to produce
@@ -685,6 +697,8 @@ def build_projected_standings(current_standings, projections, team_ratings):
             "conf_games_remaining": sum(1 for g in proj.get("games", []) if g.get("is_conference")),
             # Power rating
             "power_rating": rating_info.get("power_rating"),
+            # Remaining SOS: avg opponent power rating for remaining conf games
+            "sos_remaining_raw": _avg_opp_power_remaining(tid, proj, team_ratings),
         }
 
         # Group by conference
@@ -794,6 +808,15 @@ def build_projected_standings(current_standings, projections, team_ratings):
             key=lambda t: (t["projected_conf_win_pct"], t["projected_win_pct"]),
             reverse=True,
         )
+
+        # Rank remaining SOS within conference (higher avg opp power = harder = rank 1)
+        teams_with_sos = [t for t in conf["teams"] if t.get("sos_remaining_raw") is not None]
+        teams_with_sos.sort(key=lambda t: t["sos_remaining_raw"], reverse=True)
+        for i, t in enumerate(teams_with_sos):
+            t["sos_remaining_rank"] = i + 1
+        for t in conf["teams"]:
+            if "sos_remaining_rank" not in t:
+                t["sos_remaining_rank"] = None
 
     return list(conferences.values())
 

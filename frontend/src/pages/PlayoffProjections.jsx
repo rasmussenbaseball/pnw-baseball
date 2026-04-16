@@ -104,6 +104,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
               <th className="text-center px-1 py-1.5 font-semibold" title="Projected final overall record">Proj All</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Remaining conference games">Rem. Conf</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Power rating">PWR</th>
+              <th className="text-center px-1 py-1.5 font-semibold" title="Remaining strength of schedule rank">SOS</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[70px]" title="Playoff probability">Playoff %</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[52px]" title="Probability of winning conference tournament">Win Trny</th>
               <th className="text-center px-1 py-1.5 font-semibold min-w-[52px]" title="Miss playoffs probability">Miss %</th>
@@ -173,6 +174,13 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
                   <td className="text-center px-1 py-1.5">
                     {team.power_rating ? (
                       <span className="text-[10px] font-bold text-teal-700">{team.power_rating.toFixed(1)}</span>
+                    ) : (
+                      <span className="text-gray-300">-</span>
+                    )}
+                  </td>
+                  <td className="text-center px-1 py-1.5">
+                    {team.sos_remaining_rank ? (
+                      <span className="text-[10px] font-bold text-gray-600">#{team.sos_remaining_rank}</span>
                     ) : (
                       <span className="text-gray-300">-</span>
                     )}

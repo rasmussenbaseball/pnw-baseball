@@ -743,11 +743,16 @@ def conference_standings_graphic(
     season: int = Query(..., description="Season year"),
 ):
     """
-    Return conference standings data enriched with games remaining,
-    SOS remaining (ranked within conference), games back, and national rank.
-    Used by the Conference Standings graphic page.
+    Return conference standings data enriched with conf games remaining,
+    remaining SOS (ranked by opponent power ratings), games back from
+    playoff cutoff, and national rank.
     Excludes D1 conferences; includes D2, D3, NAIA, and NWAC divisions.
     """
+    from ..stats.projections import load_future_schedules
+
+    future_data = load_future_schedules()
+    future_games = future_data.get("games", [])
+
     with get_connection() as conn:
         cur = conn.cursor()
 
@@ -760,8 +765,7 @@ def conference_standings_graphic(
                    COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
                    COALESCE(s.conference_wins, 0) as conf_wins,
                    COALESCE(s.conference_losses, 0) as conf_losses,
-                   cr.composite_rank as national_rank,
-                   cr.composite_sos_rank as sos_rank
+                   cr.composite_rank as national_rank
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
@@ -773,39 +777,86 @@ def conference_standings_graphic(
         """, (season, season))
         team_rows = cur.fetchall()
 
-        # 2. Count remaining games per team (games with status != 'final')
+        # 2. Get power ratings (same query as playoff-projections)
         cur.execute("""
-            SELECT team_id, COUNT(*) as games_remaining
-            FROM (
-                SELECT home_team_id as team_id FROM games
-                WHERE season = %s AND status != 'final'
-                UNION ALL
-                SELECT away_team_id as team_id FROM games
-                WHERE season = %s AND status != 'final'
-            ) sub
-            GROUP BY team_id
-        """, (season, season))
-        remaining_lookup = {r["team_id"]: r["games_remaining"] for r in cur.fetchall()}
+            SELECT t.id, t.short_name, d.level as division_level,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(bat.rs, 0) as runs_scored,
+                   COALESCE(pit.ra, 0) as runs_allowed,
+                   COALESCE(bat.avg_wrc_plus, 100) as avg_wrc_plus,
+                   COALESCE(pit.avg_fip, 4.5) as avg_fip,
+                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as total_war,
+                   cr.national_percentile
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(runs) as rs,
+                    SUM(offensive_war) as total_owar,
+                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                FROM batting_stats WHERE season = %s GROUP BY team_id
+            ) bat ON bat.team_id = t.id
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(runs_allowed) as ra,
+                    SUM(pitching_war) as total_pwar,
+                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                FROM pitching_stats WHERE season = %s GROUP BY team_id
+            ) pit ON pit.team_id = t.id
+            LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
+            WHERE t.is_active = 1
+        """, (season, season, season, season))
+        rating_rows = cur.fetchall()
 
-        # 3. Compute SOS remaining: average composite_rank of remaining opponents
-        cur.execute("""
-            SELECT sub.team_id,
-                   ROUND(AVG(cr.composite_rank)::numeric, 1) as avg_opp_rank,
-                   COUNT(*) as future_games
-            FROM (
-                SELECT home_team_id as team_id, away_team_id as opp_id
-                FROM games WHERE season = %s AND status != 'final'
-                UNION ALL
-                SELECT away_team_id as team_id, home_team_id as opp_id
-                FROM games WHERE season = %s AND status != 'final'
-            ) sub
-            LEFT JOIN composite_rankings cr ON cr.team_id = sub.opp_id AND cr.season = %s
-            WHERE cr.composite_rank IS NOT NULL
-            GROUP BY sub.team_id
-        """, (season, season, season))
-        sos_remaining_lookup = {r["team_id"]: float(r["avg_opp_rank"]) for r in cur.fetchall()}
+        team_ratings = {}
+        for r in rating_rows:
+            r = dict(r)
+            w = r["wins"] or 0
+            l = r["losses"] or 0
+            if w + l < 5:
+                continue
+            rating = _compute_power_rating(
+                w, l, r["runs_scored"], r["runs_allowed"],
+                r["avg_wrc_plus"], r["avg_fip"], r["total_war"],
+                r["division_level"], r["national_percentile"],
+            )
+            if rating is not None:
+                team_ratings[r["id"]] = {
+                    "power_rating": rating,
+                    "short_name": r["short_name"],
+                    "division_level": r["division_level"],
+                }
 
-        # 4. For JUCO teams, compute PPI ranks (same logic as standings endpoint)
+        # Build short_name -> team_id lookup for future schedule matching
+        name_to_id = {info["short_name"]: tid for tid, info in team_ratings.items()}
+
+        # 3. Process future games: count conf games remaining + collect opponent ratings
+        #    for remaining SOS calculation
+        conf_remaining = {}      # team_id -> count of remaining conference games
+        opp_ratings_remaining = {}  # team_id -> [list of opponent power ratings for remaining conf games]
+
+        for game in future_games:
+            if not game.get("is_conference", False):
+                continue
+
+            home_id = game.get("home_team_id") or name_to_id.get(game.get("home_team"))
+            away_id = game.get("away_team_id") or name_to_id.get(game.get("away_team"))
+
+            if home_id:
+                conf_remaining[home_id] = conf_remaining.get(home_id, 0) + 1
+                if away_id and away_id in team_ratings:
+                    opp_ratings_remaining.setdefault(home_id, []).append(
+                        team_ratings[away_id]["power_rating"])
+
+            if away_id:
+                conf_remaining[away_id] = conf_remaining.get(away_id, 0) + 1
+                if home_id and home_id in team_ratings:
+                    opp_ratings_remaining.setdefault(away_id, []).append(
+                        team_ratings[home_id]["power_rating"])
+
+        # 4. For JUCO teams, compute PPI ranks
         cur.execute("""
             SELECT t.id,
                    COALESCE(bat.total_owar, 0) as team_owar,
@@ -854,7 +905,7 @@ def conference_standings_graphic(
             team["win_pct"] = round(team["wins"] / total_games, 3) if total_games > 0 else 0
             conf_games = team["conf_wins"] + team["conf_losses"]
             team["conf_win_pct"] = round(team["conf_wins"] / conf_games, 3) if conf_games > 0 else 0
-            team["games_remaining"] = remaining_lookup.get(team["id"], 0)
+            team["conf_games_remaining"] = conf_remaining.get(team["id"], 0)
 
             # Ranking: national for 4-year, PPI for JUCO
             if team["division_level"] == "JUCO":
@@ -864,8 +915,9 @@ def conference_standings_graphic(
                 team["rank"] = team.get("national_rank")
                 team["rank_label"] = "Natl"
 
-            # SOS remaining (raw value for ranking later)
-            team["sos_remaining_raw"] = sos_remaining_lookup.get(team["id"])
+            # Avg opponent power rating of remaining conf games (for SOS ranking later)
+            opp_list = opp_ratings_remaining.get(team["id"], [])
+            team["avg_opp_power"] = (sum(opp_list) / len(opp_list)) if opp_list else None
 
             cid = team["conference_id"]
             if cid not in conferences:
@@ -880,7 +932,7 @@ def conference_standings_graphic(
                 }
             conferences[cid]["teams"].append(team)
 
-        # 6. For each conference: sort, compute GB, rank SOS remaining
+        # 6. For each conference: sort, compute GB from playoff cutoff, rank SOS remaining
         PLAYOFF_SPOTS = {
             "GNAC": 3, "NWC": 4, "CCC": 5,
         }
@@ -891,25 +943,27 @@ def conference_standings_graphic(
         for conf in conferences.values():
             conf["teams"].sort(key=lambda t: (t["conf_win_pct"], t["win_pct"]), reverse=True)
 
-            # Playoff spots + games back
+            # Playoff spots + games back from playoff CUTOFF (not from 1st place)
             abbrev = conf.get("conference_abbrev", "")
             spots = PLAYOFF_SPOTS.get(abbrev, PLAYOFF_SPOTS.get(conf.get("conference_name", ""), 4))
             spots = min(spots, len(conf["teams"]))
             conf["playoff_spots"] = spots
 
             if conf["teams"] and spots > 0:
-                leader = conf["teams"][0]
+                cutoff_team = conf["teams"][spots - 1]
+                cutoff_w = cutoff_team["conf_wins"]
+                cutoff_l = cutoff_team["conf_losses"]
                 for team in conf["teams"]:
-                    gb = ((leader["conf_wins"] - team["conf_wins"])
-                          + (team["conf_losses"] - leader["conf_losses"])) / 2
-                    team["games_back"] = gb
+                    gb = ((cutoff_w - team["conf_wins"])
+                          + (team["conf_losses"] - cutoff_l)) / 2
+                    team["games_back"] = gb  # positive = behind, negative = ahead
 
-            # Rank SOS remaining within conference (lower avg opponent rank = harder schedule = rank 1)
-            teams_with_sos = [t for t in conf["teams"] if t.get("sos_remaining_raw") is not None]
-            teams_with_sos.sort(key=lambda t: t["sos_remaining_raw"])
+            # Rank SOS remaining within conference by avg opponent power rating
+            # Higher avg power = harder schedule = rank 1
+            teams_with_sos = [t for t in conf["teams"] if t.get("avg_opp_power") is not None]
+            teams_with_sos.sort(key=lambda t: t["avg_opp_power"], reverse=True)
             for i, t in enumerate(teams_with_sos):
                 t["sos_remaining_rank"] = i + 1
-            # Teams without SOS data get None
             for t in conf["teams"]:
                 if "sos_remaining_rank" not in t:
                     t["sos_remaining_rank"] = None
