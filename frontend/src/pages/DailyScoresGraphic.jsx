@@ -225,8 +225,14 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
   ctx.textBaseline = 'middle'
   ctx.fillText(title, x + pad, y + titleH / 2)
 
-  // Table header row
+  // Full table background (prevents dark canvas bleed-through)
   const tableY = y + titleH
+  const totalTableH = rowH * rowCount
+  roundRect(ctx, x, tableY, w, totalTableH, 3)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+
+  // Table header row
   ctx.fillStyle = '#f1f5f9'
   roundRect(ctx, x, tableY, w, rowH, 3)
   ctx.fill()
@@ -650,7 +656,7 @@ export default function DailyScoresGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Scores Graphic</h1>
+      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Scoreboard</h1>
       <p className="text-sm text-gray-500 mb-5">Generate a shareable scoreboard image for any game day.</p>
 
       <div className="flex flex-wrap items-center gap-3 mb-3">

@@ -72,8 +72,8 @@ const COLORS = {
 }
 
 // Minimum performance thresholds - just filters out bad games
-const MIN_HITTING_SCORE = 2.0   // ~1-for-3 with an RBI or run scored
-const MIN_PITCHING_SCORE = 3.0  // ~3 IP with a couple Ks and few ER
+const MIN_HITTING_SCORE = 1.0   // ~1-for-4 with a walk or run scored
+const MIN_PITCHING_SCORE = 1.5  // ~2 IP with a K or two and few ER
 
 function filterTopPerformers(performers, maxCount = 6) {
   if (!performers) return []
@@ -405,7 +405,7 @@ async function drawHeader(ctx, date, x, y, w, h) {
   ctx.font = '800 32px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('DAILY RECAP', x + w / 2, y + h / 2 - 10)
+  ctx.fillText('DAILY GAME RECAP', x + w / 2, y + h / 2 - 10)
 
   // Date below title
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
@@ -649,8 +649,8 @@ export default function DailyRecapGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Recap</h1>
-      <p className="text-sm text-gray-500 mb-5">Generate a shareable daily recap graphic for any game.</p>
+      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Game Recap</h1>
+      <p className="text-sm text-gray-500 mb-5">Generate a shareable game recap graphic for any matchup.</p>
 
       {/* Date selector */}
       <div className="flex flex-wrap items-center gap-3 mb-3">

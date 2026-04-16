@@ -435,7 +435,7 @@ async function renderSeriesGraphic(canvas, series) {
   ctx.font = '800 24px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('SERIES RECAP', centerX, headerH / 2 - 10)
+  ctx.fillText('WEEKLY SERIES RECAP', centerX, headerH / 2 - 10)
 
   // Date range below title
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
@@ -772,7 +772,7 @@ export default function SeriesRecapGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Series Recap</h1>
+      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Weekly Series Recap</h1>
       <p className="text-sm text-gray-500 mb-5">Generate a shareable series recap graphic for any week.</p>
 
       {/* Week selector */}
