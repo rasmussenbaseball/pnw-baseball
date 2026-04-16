@@ -129,7 +129,7 @@ CONF_BATTING_CTE = """
             CASE WHEN (SUM(gb.at_bats) - SUM(COALESCE(gb.strikeouts,0)) - SUM(COALESCE(gb.home_runs,0)) + SUM(COALESCE(gb.sacrifice_flies,0))) > 0
                 THEN ROUND((SUM(gb.hits) - SUM(COALESCE(gb.home_runs,0)))::numeric
                      / (SUM(gb.at_bats) - SUM(COALESCE(gb.strikeouts,0)) - SUM(COALESCE(gb.home_runs,0)) + SUM(COALESCE(gb.sacrifice_flies,0))), 3) END as babip,
-            -- BB% and K%
+            -- BB pct and K pct
             CASE WHEN (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))) > 0
                 THEN ROUND(SUM(COALESCE(gb.walks,0))::numeric * 100
                      / (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))), 1) END as bb_pct,
@@ -193,7 +193,7 @@ CONF_PITCHING_CTE = """
                 THEN ROUND(9.0 * SUM(COALESCE(gp.home_runs_allowed,0))::numeric / SUM(gp.innings_pitched), 1) END as hr_per_9,
             CASE WHEN SUM(COALESCE(gp.walks,0)) > 0
                 THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.walks), 2) END as k_bb_ratio,
-            -- K% and BB%
+            -- K pct and BB pct
             CASE WHEN SUM(COALESCE(gp.batters_faced,0)) > 0
                 THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric * 100 / SUM(gp.batters_faced), 1) END as k_pct,
             CASE WHEN SUM(COALESCE(gp.batters_faced,0)) > 0
