@@ -985,7 +985,7 @@ export default function SocialGraphics() {
             </div>
 
             {/* Conference games only toggle */}
-            {conferenceId && !isTeamMode && (
+            {!isTeamMode && (
               <div className="flex items-center justify-between">
                 <label className="text-xs text-gray-500">Conference Games Only</label>
                 <button

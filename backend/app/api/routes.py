@@ -2549,6 +2549,7 @@ def upset_of_the_day(
                   AND g.status = 'final'
                   AND g.home_score IS NOT NULL
                   AND g.away_score IS NOT NULL
+                  AND (g.home_score + g.away_score) > 0
             """, (check_date.isoformat(), season))
             games = cur.fetchall()
 
