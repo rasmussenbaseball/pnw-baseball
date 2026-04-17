@@ -13463,3 +13463,599 @@ def opponent_trends(
                 "relievers": relievers_list,
             },
         }
+
+
+# ============================================================
+# ALL-CONFERENCE GENERATOR
+# Builds first team, second team, and top-3 honorable mentions
+# for each conference (and aggregate groupings).
+# ============================================================
+
+# Maps the user-facing `conf` query param to the set of conference
+# names/abbreviations stored in the `conferences` table.
+ALL_CONF_GROUPS = {
+    "gnac": {
+        "label": "GNAC (D2)",
+        "conf_names": ["Great Northwest Athletic Conference", "GNAC"],
+        "conf_abbrevs": ["GNAC"],
+        "rate_mode": False,
+    },
+    "nwc": {
+        "label": "NWC (D3)",
+        "conf_names": ["Northwest Conference", "NWC"],
+        "conf_abbrevs": ["NWC"],
+        "rate_mode": False,
+    },
+    "ccc": {
+        "label": "CCC (NAIA)",
+        "conf_names": ["Cascade Collegiate Conference", "CCC"],
+        "conf_abbrevs": ["CCC"],
+        "rate_mode": False,
+    },
+    "nwac-north": {
+        "label": "NWAC North",
+        "conf_names": ["NWAC North Division", "NWAC North"],
+        "conf_abbrevs": ["NWAC-N"],
+        "rate_mode": False,
+    },
+    "nwac-east": {
+        "label": "NWAC East",
+        "conf_names": ["NWAC East Division", "NWAC East"],
+        "conf_abbrevs": ["NWAC-E"],
+        "rate_mode": False,
+    },
+    "nwac-south": {
+        "label": "NWAC South",
+        "conf_names": ["NWAC South Division", "NWAC South"],
+        "conf_abbrevs": ["NWAC-S"],
+        "rate_mode": False,
+    },
+    "nwac-west": {
+        "label": "NWAC West",
+        "conf_names": ["NWAC West Division", "NWAC West"],
+        "conf_abbrevs": ["NWAC-W"],
+        "rate_mode": False,
+    },
+    "all-nwac": {
+        "label": "All-NWAC",
+        "conf_names": [
+            "NWAC North Division", "NWAC East Division",
+            "NWAC South Division", "NWAC West Division",
+        ],
+        "conf_abbrevs": ["NWAC-N", "NWAC-E", "NWAC-S", "NWAC-W"],
+        "rate_mode": False,
+    },
+    "all-pnw": {
+        "label": "All-PNW",
+        "conf_names": None,  # every conference
+        "conf_abbrevs": None,
+        "rate_mode": True,   # use WAR/PA and WAR/IP, qualified only
+    },
+}
+
+# 10 position slots in display order
+AC_POSITION_SLOTS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "UTIL"]
+# Positions that qualify a player as an infielder (for UTIL)
+AC_INFIELD = {"C", "1B", "2B", "3B", "SS"}
+AC_OUTFIELD = {"LF", "CF", "RF", "OF"}
+# Minimum games at a position to be eligible there
+AC_POS_GAMES_MIN = 15
+# Two-way UTIL thresholds
+AC_UTIL_TWO_WAY_MIN_IP = 10.0
+AC_UTIL_TWO_WAY_MIN_PA = 40
+# Flex UTIL threshold: infield AND outfield both >=
+AC_UTIL_FLEX_POS_GAMES = 7
+# Reliever thresholds
+AC_REL_MIN_IP = 15.0
+AC_REL_MAX_GS = 3  # < 4 starts
+
+
+@router.get("/all-conference")
+def all_conference(
+    conf: str = Query(..., description="Conference group key (e.g. gnac, nwc, ccc, nwac-east, all-nwac, all-pnw)"),
+    season: int = Query(2026, description="Season year"),
+):
+    """
+    Build mock first team, second team, and top-3 honorable mentions for
+    a conference (or aggregate grouping).  10 position spots (C/1B/2B/3B/
+    SS/LF/CF/RF/DH/UTIL) plus 4 SP + 1 RP per team.
+
+    Selection rules:
+      - Position eligibility: 15+ games at that position in game_batting
+      - UTIL: two-way player (10+ IP AND 40+ PA) OR 7+ games at both
+        infield and outfield (catcher counts as infield)
+      - Primary sort: WAR (rate-adjusted WAR/PA + WAR/IP for 'all-pnw')
+      - Hitter tiebreak: wRC+
+      - Pitcher tiebreak: FIP (lower is better)
+      - Multi-position handling: maximize combined WAR across both slots
+      - Starters: qualified (0.75 IP per team game)
+      - Reliever: 15+ IP, fewer than 4 starts
+      - all-pnw uses rate stats and is qualified-only
+    """
+    group = ALL_CONF_GROUPS.get(conf)
+    if not group:
+        return {"error": f"Unknown conference key: {conf}"}
+
+    rate_mode = group["rate_mode"]
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── Resolve the set of team_ids in scope ─────────────────
+        if group["conf_names"] is None:
+            # all-pnw: every active team with stats this season
+            cur.execute("""
+                SELECT t.id, t.name, t.short_name, t.logo_url,
+                       c.name as conference_name, c.abbreviation as conference_abbrev,
+                       d.level as division_level,
+                       COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0) as team_games
+                FROM teams t
+                JOIN conferences c ON c.id = t.conference_id
+                JOIN divisions d ON d.id = c.division_id
+                LEFT JOIN team_season_stats tss
+                  ON tss.team_id = t.id AND tss.season = %s
+                WHERE t.is_active = 1
+            """, (season,))
+        else:
+            cur.execute("""
+                SELECT t.id, t.name, t.short_name, t.logo_url,
+                       c.name as conference_name, c.abbreviation as conference_abbrev,
+                       d.level as division_level,
+                       COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0) as team_games
+                FROM teams t
+                JOIN conferences c ON c.id = t.conference_id
+                JOIN divisions d ON d.id = c.division_id
+                LEFT JOIN team_season_stats tss
+                  ON tss.team_id = t.id AND tss.season = %s
+                WHERE t.is_active = 1
+                  AND (c.name = ANY(%s) OR c.abbreviation = ANY(%s))
+            """, (season, group["conf_names"], group["conf_abbrevs"]))
+
+        team_rows = cur.fetchall()
+        teams_by_id = {t["id"]: dict(t) for t in team_rows}
+        team_ids = list(teams_by_id.keys())
+        if not team_ids:
+            return {"conf": conf, "label": group["label"], "season": season,
+                    "first_team": {}, "second_team": {}, "honorable_mentions": {}, "teams": []}
+
+        # ── Pull batting stats for players on these teams ─────────
+        cur.execute("""
+            SELECT bs.player_id, bs.team_id,
+                   p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
+                   p.year_in_school, p.bats, p.throws,
+                   bs.plate_appearances, bs.at_bats, bs.hits, bs.home_runs,
+                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
+                   bs.wrc_plus, bs.offensive_war
+            FROM batting_stats bs
+            JOIN players p ON p.id = bs.player_id
+            WHERE bs.season = %s AND bs.team_id = ANY(%s)
+        """, (season, team_ids))
+        batting_rows = [dict(r) for r in cur.fetchall()]
+        batting_by_pid = {b["player_id"]: b for b in batting_rows}
+
+        # ── Pull pitching stats for players on these teams ────────
+        cur.execute("""
+            SELECT ps.player_id, ps.team_id,
+                   p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
+                   p.year_in_school, p.bats, p.throws,
+                   ps.innings_pitched, ps.games, ps.games_started,
+                   ps.era, ps.fip, ps.fip_plus, ps.whip,
+                   ps.strikeouts, ps.walks, ps.wins, ps.saves,
+                   ps.pitching_war
+            FROM pitching_stats ps
+            JOIN players p ON p.id = ps.player_id
+            WHERE ps.season = %s AND ps.team_id = ANY(%s)
+        """, (season, team_ids))
+        pitching_rows = [dict(r) for r in cur.fetchall()]
+        pitching_by_pid = {p["player_id"]: p for p in pitching_rows}
+
+        # ── Pull position-games per player from game_batting ──────
+        # We use normalized position buckets: C, 1B, 2B, 3B, SS, LF, CF, RF,
+        # DH, P.  Anything else is ignored.
+        cur.execute("""
+            SELECT gb.player_id, gb.position,
+                   COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games
+            FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
+            WHERE gb.player_id IS NOT NULL
+              AND g.season = %s
+              AND gb.team_id = ANY(%s)
+              AND gb.position IS NOT NULL
+              AND gb.position != ''
+              AND gb.position != '-'
+            GROUP BY gb.player_id, gb.position
+        """, (season, team_ids))
+        pos_rows = cur.fetchall()
+
+    # Normalize positions locally (same logic as update_positions.py uses,
+    # but simple enough to inline)
+    def norm_pos(raw):
+        if not raw:
+            return None
+        s = raw.strip().upper()
+        # Strip trailing slash parts ("2B/SS" -> first token)
+        s = s.split("/")[0]
+        aliases = {
+            "C": "C", "1B": "1B", "2B": "2B", "3B": "3B", "SS": "SS",
+            "LF": "LF", "CF": "CF", "RF": "RF", "DH": "DH", "PH": None,
+            "PR": None, "P": "P", "RHP": "P", "LHP": "P", "OF": "OF",
+            "IF": None,
+        }
+        return aliases.get(s, None)
+
+    pos_games = {}  # player_id -> {pos: games}
+    for row in pos_rows:
+        pid = row["player_id"]
+        np = norm_pos(row["position"])
+        if not np:
+            continue
+        if pid not in pos_games:
+            pos_games[pid] = {}
+        pos_games[pid][np] = pos_games[pid].get(np, 0) + (row["games"] or 0)
+
+    # OF bucket: some players have raw "OF" rows; also any LF/CF/RF counts
+    for pid, pg in pos_games.items():
+        of_total = pg.get("LF", 0) + pg.get("CF", 0) + pg.get("RF", 0) + pg.get("OF", 0)
+        pg["_OF_TOTAL"] = of_total
+        if_total = sum(pg.get(p, 0) for p in AC_INFIELD)
+        pg["_IF_TOTAL"] = if_total
+
+    # ── Build per-player candidate objects ───────────────────────
+    # One entry per player, whether they hit, pitch, or both.
+    def base_player(pid, team_id, first_name, last_name, headshot, listed):
+        team = teams_by_id.get(team_id, {}) or {}
+        return {
+            "player_id": pid,
+            "team_id": team_id,
+            "team_name": team.get("name"),
+            "team_short": team.get("short_name"),
+            "team_logo": team.get("logo_url"),
+            "conference_abbrev": team.get("conference_abbrev"),
+            "division_level": team.get("division_level"),
+            "team_games": team.get("team_games") or 0,
+            "name": f"{first_name or ''} {last_name or ''}".strip(),
+            "first_name": first_name,
+            "last_name": last_name,
+            "headshot_url": headshot,
+            "listed_position": listed,
+        }
+
+    players = {}  # pid -> merged record
+    for b in batting_rows:
+        pid = b["player_id"]
+        rec = players.get(pid) or base_player(
+            pid, b["team_id"], b["first_name"], b["last_name"],
+            b["headshot_url"], b["listed_position"]
+        )
+        pa = float(b.get("plate_appearances") or 0)
+        war = float(b.get("offensive_war") or 0)
+        rec.update({
+            "pa": pa,
+            "war_bat": war,
+            "war_bat_rate": (war / pa) if pa > 0 else 0.0,
+            "wrc_plus": b.get("wrc_plus"),
+            "avg": b.get("batting_avg"),
+            "obp": b.get("on_base_pct"),
+            "slg": b.get("slugging_pct"),
+            "ops": b.get("ops"),
+            "hr": b.get("home_runs"),
+            "hits": b.get("hits"),
+        })
+        players[pid] = rec
+
+    for p in pitching_rows:
+        pid = p["player_id"]
+        rec = players.get(pid) or base_player(
+            pid, p["team_id"], p["first_name"], p["last_name"],
+            p["headshot_url"], p["listed_position"]
+        )
+        ip = float(p.get("innings_pitched") or 0)
+        pwar = float(p.get("pitching_war") or 0)
+        rec.update({
+            "ip": ip,
+            "war_pit": pwar,
+            "war_pit_rate": (pwar / ip) if ip > 0 else 0.0,
+            "fip": p.get("fip"),
+            "fip_plus": p.get("fip_plus"),
+            "era": p.get("era"),
+            "whip": p.get("whip"),
+            "k": p.get("strikeouts"),
+            "bb": p.get("walks"),
+            "gs": p.get("games_started") or 0,
+            "g_pitch": p.get("games") or 0,
+        })
+        players[pid] = rec
+
+    # Attach position games to each player
+    for pid, rec in players.items():
+        pg = pos_games.get(pid, {})
+        rec["pos_games"] = {k: v for k, v in pg.items() if not k.startswith("_")}
+        rec["if_games"] = pg.get("_IF_TOTAL", 0)
+        rec["of_games"] = pg.get("_OF_TOTAL", 0)
+        rec.setdefault("pa", 0.0)
+        rec.setdefault("war_bat", 0.0)
+        rec.setdefault("war_bat_rate", 0.0)
+        rec.setdefault("ip", 0.0)
+        rec.setdefault("war_pit", 0.0)
+        rec.setdefault("war_pit_rate", 0.0)
+        rec.setdefault("gs", 0)
+
+    # ── Helpers for sort keys ────────────────────────────────────
+    def bat_war(rec):
+        return rec["war_bat_rate"] if rate_mode else rec["war_bat"]
+
+    def pit_war(rec):
+        return rec["war_pit_rate"] if rate_mode else rec["war_pit"]
+
+    def bat_tiebreak(rec):
+        # Higher wRC+ is better
+        return rec.get("wrc_plus") or -999
+
+    def pit_tiebreak(rec):
+        # Lower FIP is better (so negate for descending sort)
+        fip = rec.get("fip")
+        return -fip if fip is not None else -999
+
+    # ── Qualification helpers ────────────────────────────────────
+    def is_qualified_bat(rec):
+        tg = rec["team_games"] or 0
+        return rec["pa"] >= QUALIFIED_PA_PER_GAME * tg and tg > 0
+
+    def is_qualified_pit(rec):
+        tg = rec["team_games"] or 0
+        return rec["ip"] >= QUALIFIED_IP_PER_GAME * tg and tg > 0
+
+    # ── Position eligibility ─────────────────────────────────────
+    def eligible_positions(rec):
+        """Set of slot names the player is eligible at (not including UTIL)."""
+        pg = rec.get("pos_games", {})
+        eligible = set()
+        for slot in ("C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"):
+            if pg.get(slot, 0) >= AC_POS_GAMES_MIN:
+                eligible.add(slot)
+        # DH: hit in 15+ games as DH, OR qualified hitter period
+        # (DH is a lineup slot any full-time hitter should be eligible for)
+        if pg.get("DH", 0) >= AC_POS_GAMES_MIN:
+            eligible.add("DH")
+        elif rec["pa"] >= AC_POS_GAMES_MIN * 2.5:  # ~rough PA equivalent of 15 games
+            eligible.add("DH")
+        return eligible
+
+    def is_util_eligible(rec):
+        """Two-way player (10+ IP AND 40+ PA) OR
+        7+ games at BOTH infield (C counts) and outfield."""
+        if rec["ip"] >= AC_UTIL_TWO_WAY_MIN_IP and rec["pa"] >= AC_UTIL_TWO_WAY_MIN_PA:
+            return True
+        if rec["if_games"] >= AC_UTIL_FLEX_POS_GAMES and rec["of_games"] >= AC_UTIL_FLEX_POS_GAMES:
+            return True
+        return False
+
+    # ── Build per-position candidate pools ────────────────────────
+    # Each candidate is a (war_value, tiebreak_value, player_id) tuple.
+    pos_candidates = {slot: [] for slot in AC_POSITION_SLOTS}
+
+    for pid, rec in players.items():
+        # Rate mode: must be a qualified hitter to be in a hitter slot
+        if rate_mode and not is_qualified_bat(rec):
+            continue
+        elig = eligible_positions(rec)
+        for slot in elig:
+            pos_candidates[slot].append((bat_war(rec), bat_tiebreak(rec), pid))
+        if is_util_eligible(rec):
+            # Player's "best bat/pit" WAR for UTIL slot ranking:
+            # use best of hitter or pitcher WAR since two-way players have both.
+            util_war = max(bat_war(rec), pit_war(rec))
+            util_tb = bat_tiebreak(rec)  # wRC+ as tiebreak is fine
+            pos_candidates["UTIL"].append((util_war, util_tb, pid))
+
+    # Sort each pool descending by war, then tiebreak
+    for slot in pos_candidates:
+        pos_candidates[slot].sort(key=lambda x: (x[0], x[1]), reverse=True)
+
+    # ── Selection: greedy with combined-WAR swap ─────────────────
+    # Build first team, then remove those players and repeat for second team,
+    # then honorable mentions from the remainder.
+
+    def select_team(candidates_by_slot, taken):
+        """
+        Assign one player per position slot, skipping anyone already taken.
+        When the top pick at slot A is also eligible at another slot B and
+        would also be the top pick there, assign in the way that maximizes
+        combined WAR across the two slots.
+        """
+        # First pass: naive top pick per slot (excluding taken)
+        picks = {}
+        for slot in AC_POSITION_SLOTS:
+            for war_val, tb, pid in candidates_by_slot[slot]:
+                if pid in taken:
+                    continue
+                # Also skip if already assigned to another slot on this team
+                if pid in picks.values():
+                    continue
+                picks[slot] = pid
+                break
+
+        # Swap pass: detect conflicts where a player was skipped at their
+        # best slot because a higher-WAR player took it. Consider swaps
+        # that would increase total combined WAR.
+        # For simplicity we do one optimization pass over all slot pairs.
+        def war_for(pid, slot):
+            if slot == "UTIL":
+                rec = players[pid]
+                return max(bat_war(rec), pit_war(rec))
+            for war_val, tb, _pid in candidates_by_slot[slot]:
+                if _pid == pid:
+                    return war_val
+            return None  # not eligible
+
+        changed = True
+        safety = 0
+        while changed and safety < 3:
+            changed = False
+            safety += 1
+            for i, slot_a in enumerate(AC_POSITION_SLOTS):
+                for slot_b in AC_POSITION_SLOTS[i + 1:]:
+                    pid_a = picks.get(slot_a)
+                    pid_b = picks.get(slot_b)
+                    if not pid_a or not pid_b:
+                        continue
+                    # Can the two players swap?
+                    a_at_b = war_for(pid_a, slot_b)
+                    b_at_a = war_for(pid_b, slot_a)
+                    if a_at_b is None or b_at_a is None:
+                        continue
+                    current = (war_for(pid_a, slot_a) or 0) + (war_for(pid_b, slot_b) or 0)
+                    swapped = a_at_b + b_at_a
+                    if swapped > current + 1e-6:
+                        picks[slot_a], picks[slot_b] = pid_b, pid_a
+                        changed = True
+
+        return picks
+
+    first_picks = select_team(pos_candidates, taken=set())
+    second_picks = select_team(pos_candidates, taken=set(first_picks.values()))
+
+    # Honorable mentions: top 3 per slot not already on 1st/2nd
+    already = set(first_picks.values()) | set(second_picks.values())
+    honorable = {}
+    for slot in AC_POSITION_SLOTS:
+        hm_list = []
+        for war_val, tb, pid in pos_candidates[slot]:
+            if pid in already:
+                continue
+            if pid in hm_list:
+                continue
+            hm_list.append(pid)
+            if len(hm_list) >= 3:
+                break
+        honorable[slot] = hm_list
+
+    # ── Pitcher selection ────────────────────────────────────────
+    # Starters: qualified pitchers, sorted by WAR (FIP tiebreak)
+    # Reliever: IP >= 15 AND GS < 4, sorted by WAR (FIP tiebreak)
+    starter_candidates = []
+    reliever_candidates = []
+    for pid, rec in players.items():
+        if rec["ip"] <= 0:
+            continue
+        # Starters must be qualified (always, even in non-rate mode)
+        if is_qualified_pit(rec):
+            starter_candidates.append((pit_war(rec), pit_tiebreak(rec), pid))
+        if rec["ip"] >= AC_REL_MIN_IP and rec["gs"] < 4:
+            reliever_candidates.append((pit_war(rec), pit_tiebreak(rec), pid))
+
+    starter_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    reliever_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+
+    def pick_n(pool, already_ids, n):
+        picks = []
+        for war_val, tb, pid in pool:
+            if pid in already_ids:
+                continue
+            if pid in picks:
+                continue
+            picks.append(pid)
+            if len(picks) >= n:
+                break
+        return picks
+
+    first_sp = pick_n(starter_candidates, set(), 4)
+    first_rp = pick_n(reliever_candidates, set(first_sp), 1)
+    taken_pit = set(first_sp) | set(first_rp)
+
+    second_sp = pick_n(starter_candidates, taken_pit, 4)
+    taken_pit |= set(second_sp)
+    second_rp = pick_n(reliever_candidates, taken_pit, 1)
+    taken_pit |= set(second_rp)
+
+    hm_sp = pick_n(starter_candidates, taken_pit, 3)
+    taken_pit |= set(hm_sp)
+    hm_rp = pick_n(reliever_candidates, taken_pit, 3)
+
+    # ── Serialize output ─────────────────────────────────────────
+    def serialize_hitter(pid, slot):
+        rec = players[pid]
+        pg = rec.get("pos_games", {})
+        return {
+            "player_id": pid,
+            "name": rec["name"],
+            "team_id": rec["team_id"],
+            "team_short": rec["team_short"],
+            "team_logo": rec["team_logo"],
+            "conference": rec["conference_abbrev"],
+            "division_level": rec["division_level"],
+            "headshot_url": rec["headshot_url"],
+            "slot": slot,
+            "listed_position": rec["listed_position"],
+            "pos_games": pg,
+            "war": round(rec["war_bat"], 2),
+            "war_rate": round(rec["war_bat_rate"], 4) if rec["pa"] > 0 else None,
+            "wrc_plus": rec.get("wrc_plus"),
+            "pa": int(rec["pa"]),
+            "avg": rec.get("avg"),
+            "obp": rec.get("obp"),
+            "slg": rec.get("slg"),
+            "ops": rec.get("ops"),
+            "hr": rec.get("hr"),
+            "is_two_way": rec["ip"] >= AC_UTIL_TWO_WAY_MIN_IP and rec["pa"] >= AC_UTIL_TWO_WAY_MIN_PA,
+        }
+
+    def serialize_pitcher(pid, role):
+        rec = players[pid]
+        return {
+            "player_id": pid,
+            "name": rec["name"],
+            "team_id": rec["team_id"],
+            "team_short": rec["team_short"],
+            "team_logo": rec["team_logo"],
+            "conference": rec["conference_abbrev"],
+            "division_level": rec["division_level"],
+            "headshot_url": rec["headshot_url"],
+            "slot": role,
+            "war": round(rec["war_pit"], 2),
+            "war_rate": round(rec["war_pit_rate"], 4) if rec["ip"] > 0 else None,
+            "fip": rec.get("fip"),
+            "fip_plus": rec.get("fip_plus"),
+            "era": rec.get("era"),
+            "whip": rec.get("whip"),
+            "ip": rec.get("ip"),
+            "k": rec.get("k"),
+            "gs": rec.get("gs"),
+        }
+
+    def build_team_obj(hitter_picks, sp_list, rp_list):
+        out = {}
+        for slot, pid in hitter_picks.items():
+            out[slot] = serialize_hitter(pid, slot) if pid else None
+        for i, pid in enumerate(sp_list, start=1):
+            out[f"SP{i}"] = serialize_pitcher(pid, f"SP{i}")
+        # pad to 4 SPs
+        for i in range(len(sp_list) + 1, 5):
+            out[f"SP{i}"] = None
+        out["RP"] = serialize_pitcher(rp_list[0], "RP") if rp_list else None
+        return out
+
+    first_team = build_team_obj(first_picks, first_sp, first_rp)
+    second_team = build_team_obj(second_picks, second_sp, second_rp)
+
+    hm_out = {}
+    for slot in AC_POSITION_SLOTS:
+        hm_out[slot] = [serialize_hitter(pid, slot) for pid in honorable[slot]]
+    hm_out["SP"] = [serialize_pitcher(pid, "SP") for pid in hm_sp]
+    hm_out["RP"] = [serialize_pitcher(pid, "RP") for pid in hm_rp]
+
+    return {
+        "conf": conf,
+        "label": group["label"],
+        "season": season,
+        "rate_mode": rate_mode,
+        "team_count": len(team_ids),
+        "teams": [
+            {"id": t["id"], "name": t["name"], "short_name": t["short_name"],
+             "logo_url": t["logo_url"], "conference_abbrev": t["conference_abbrev"]}
+            for t in teams_by_id.values()
+        ],
+        "first_team": first_team,
+        "second_team": second_team,
+        "honorable_mentions": hm_out,
+    }
