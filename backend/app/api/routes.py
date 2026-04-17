@@ -13251,6 +13251,11 @@ def opponent_trends(
         num_recent_series = len(recent_series) or 1
 
         predicted_rotation = []
+        # Track pitchers already slotted into an earlier game so the same arm
+        # can't be predicted twice in one series (e.g. the G2 starter also
+        # winning G3 because he's the most common starter both slots). We
+        # greedy-pick the highest-weight AVAILABLE pitcher for each slot.
+        assigned_pitchers = set()
         for slot in range(1, 5):
             slot_starters = Counter()
             slot_wt = 0
@@ -13264,16 +13269,29 @@ def opponent_trends(
                             slot_starters[sp["player_name"]] += w
                             slot_wt += w
             if slot_starters:
-                top_name, top_w = slot_starters.most_common(1)[0]
-                sp_info = starter_data.get(top_name, {})
-                series_with_start = pitcher_series_count.get(top_name, 0)
-                predicted_rotation.append({
-                    "game": slot,
-                    "name": top_name,
-                    "throws": sp_info.get("throws"),
-                    "game_conf": round(top_w / slot_wt * 100) if slot_wt else 0,
-                    "week_pct": round(series_with_start / num_recent_series * 100),
-                })
+                # Walk candidates from most- to least-likely and take the
+                # first one that hasn't already been assigned to an earlier
+                # slot. If every candidate is taken (e.g. team only uses a
+                # 3-man rotation and we're on G4), skip the slot rather than
+                # duplicate a starter.
+                top_pick = None
+                top_w = 0
+                for name, w in slot_starters.most_common():
+                    if name not in assigned_pitchers:
+                        top_pick = name
+                        top_w = w
+                        break
+                if top_pick:
+                    assigned_pitchers.add(top_pick)
+                    sp_info = starter_data.get(top_pick, {})
+                    series_with_start = pitcher_series_count.get(top_pick, 0)
+                    predicted_rotation.append({
+                        "game": slot,
+                        "name": top_pick,
+                        "throws": sp_info.get("throws"),
+                        "game_conf": round(top_w / slot_wt * 100) if slot_wt else 0,
+                        "week_pct": round(series_with_start / num_recent_series * 100),
+                    })
 
         # ── Relievers (deduplicated) ──
         reliever_data = defaultdict(lambda: {

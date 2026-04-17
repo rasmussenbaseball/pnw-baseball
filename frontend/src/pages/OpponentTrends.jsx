@@ -106,7 +106,7 @@ function LineupsTab({ d }) {
             {d.count_vs_rhp || 0} vs RHP · {d.count_vs_lhp || 0} vs LHP · {d.count_vs_unknown || 0} unknown hand
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <LineupTable title={`Projected Lineup vs RHP`} sub={`${d.vs_rhp?.games_count || 0} games (RHP + unknown)`} data={d.vs_rhp} />
+            <LineupTable title={`Projected Lineup vs RHP`} sub={`${d.vs_rhp?.games_count || 0} games vs RHP`} data={d.vs_rhp} />
             <LineupTable title={`Projected Lineup vs LHP`} sub={`${d.vs_lhp?.games_count || 0} games`} data={d.vs_lhp} accent />
           </div>
         </div>
