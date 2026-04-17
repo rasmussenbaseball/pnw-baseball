@@ -13268,30 +13268,55 @@ def opponent_trends(
                         if sp:
                             slot_starters[sp["player_name"]] += w
                             slot_wt += w
+            # Primary pick: most-likely unassigned pitcher who has actually
+            # started THIS slot in recent series.
+            top_pick = None
+            top_w = 0
+            pick_source = None
             if slot_starters:
-                # Walk candidates from most- to least-likely and take the
-                # first one that hasn't already been assigned to an earlier
-                # slot. If every candidate is taken (e.g. team only uses a
-                # 3-man rotation and we're on G4), skip the slot rather than
-                # duplicate a starter.
-                top_pick = None
-                top_w = 0
                 for name, w in slot_starters.most_common():
                     if name not in assigned_pitchers:
                         top_pick = name
                         top_w = w
+                        pick_source = "slot"
                         break
-                if top_pick:
-                    assigned_pitchers.add(top_pick)
-                    sp_info = starter_data.get(top_pick, {})
-                    series_with_start = pitcher_series_count.get(top_pick, 0)
-                    predicted_rotation.append({
-                        "game": slot,
-                        "name": top_pick,
-                        "throws": sp_info.get("throws"),
-                        "game_conf": round(top_w / slot_wt * 100) if slot_wt else 0,
-                        "week_pct": round(series_with_start / num_recent_series * 100),
-                    })
+
+            # Fallback: if every slot-specific candidate is already assigned
+            # (e.g. team runs a 3-man rotation and both of its G3 starters
+            # also own G1 and G2), grab the next most-used starter overall
+            # who hasn't been placed yet. Better to surface a best-guess
+            # 4th starter than to leave the slot blank on the site.
+            if not top_pick:
+                overall_ranked = sorted(
+                    starter_data.items(),
+                    key=lambda kv: kv[1].get("starts", 0),
+                    reverse=True,
+                )
+                for name, _info in overall_ranked:
+                    if name not in assigned_pitchers:
+                        top_pick = name
+                        top_w = 0  # signals 'fallback — no slot-specific weight'
+                        pick_source = "fallback"
+                        break
+
+            if top_pick:
+                assigned_pitchers.add(top_pick)
+                sp_info = starter_data.get(top_pick, {})
+                series_with_start = pitcher_series_count.get(top_pick, 0)
+                # game_conf is slot-specific confidence. Only meaningful for
+                # primary picks; fallback picks report 0 so the UI can show
+                # uncertainty.
+                if pick_source == "slot" and slot_wt:
+                    game_conf = round(top_w / slot_wt * 100)
+                else:
+                    game_conf = 0
+                predicted_rotation.append({
+                    "game": slot,
+                    "name": top_pick,
+                    "throws": sp_info.get("throws"),
+                    "game_conf": game_conf,
+                    "week_pct": round(series_with_start / num_recent_series * 100),
+                })
 
         # ── Relievers (deduplicated) ──
         reliever_data = defaultdict(lambda: {
