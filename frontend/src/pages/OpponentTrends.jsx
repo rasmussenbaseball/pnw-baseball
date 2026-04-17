@@ -397,6 +397,8 @@ function BullpenView({ relievers }) {
               <th className="py-1 text-center">IP</th>
               <th className="py-1 text-center">IP/A</th>
               <th className="py-1 text-center">ERA</th>
+              <th className="py-1 text-center" title="Fielding Independent Pitching (lower is better)">FIP</th>
+              <th className="py-1 text-center" title="(K - BB) / Batters Faced">K-BB%</th>
               <th className="py-1 text-center">K</th>
               <th className="py-1 text-center">BB</th>
               <th className="py-1 text-center">SV</th>
@@ -432,12 +434,18 @@ function RelieverRows({ r, expanded, toggle }) {
   return (
     <>
       <tr className="border-b border-gray-50 cursor-pointer hover:bg-gray-50" onClick={toggle}>
-        <td className="py-1 pl-3 font-medium text-gray-900">{r.name}</td>
+        <td className="py-1 pl-3 font-medium text-gray-900">
+          {r.is_top && <span className="mr-1 text-yellow-500" title="Top reliever on team (rating)">★</span>}
+          {r.name}
+          <TierPill tier={r.tier} />
+        </td>
         <td className="text-center"><Hand t={r.throws} /></td>
         <td className="text-center">{r.apps}</td>
         <td className="text-center">{r.total_ip ?? '—'}</td>
         <td className="text-center">{r.avg_ip}</td>
         <td className="text-center font-medium">{r.era ?? '—'}</td>
+        <td className="text-center">{r.fip ?? '—'}</td>
+        <td className="text-center">{r.k_bb_pct != null ? r.k_bb_pct + '%' : '—'}</td>
         <td className="text-center">{r.k}</td>
         <td className="text-center">{r.bb}</td>
         <td className="text-center font-bold">{r.saves || '—'}</td>
@@ -445,7 +453,7 @@ function RelieverRows({ r, expanded, toggle }) {
       </tr>
       {expanded && r.recent?.length > 0 && (
         <tr>
-          <td colSpan={10} className="bg-gray-50 px-3 py-1">
+          <td colSpan={12} className="bg-gray-50 px-3 py-1">
             <div className="flex flex-wrap gap-1.5">
               {[...r.recent].reverse().map((a, i) => (
                 <span key={i} className="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5">
@@ -472,6 +480,27 @@ function Hand({ t }) {
     <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
       t === 'L' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
     }`}>{t}</span>
+  )
+}
+
+function TierPill({ tier }) {
+  if (!tier || tier === 'small_sample') return null
+  const styles = {
+    elite: 'bg-green-100 text-green-800',
+    solid: 'bg-emerald-50 text-emerald-700',
+    average: 'bg-gray-100 text-gray-600',
+    struggling: 'bg-red-50 text-red-700',
+  }
+  const labels = {
+    elite: 'Elite',
+    solid: 'Solid',
+    average: 'Avg',
+    struggling: 'Struggling',
+  }
+  return (
+    <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[tier] || 'bg-gray-100 text-gray-500'}`}>
+      {labels[tier] || tier}
+    </span>
   )
 }
 

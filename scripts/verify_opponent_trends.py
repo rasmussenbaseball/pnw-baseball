@@ -82,7 +82,21 @@ def main():
 
     print("\n── Relievers ──")
     for r in pt.get("relievers", []):
-        print(f"  [{r['role']:<12}] {r['name']:<28} App={r['apps']:<3} IP/A={r['avg_ip']:<4} ERA={str(r.get('era') or '—'):<5} SV={r['saves']:<2} Leverage%={r['leverage_pct']}")
+        star = "★ " if r.get("is_top") else "  "
+        tier = r.get("tier") or "—"
+        fip = r.get("fip")
+        kbb = r.get("k_bb_pct")
+        rating = r.get("rating")
+        fip_s = f"{fip:4.2f}" if fip is not None else " --  "
+        kbb_s = f"{kbb:5.1f}%" if kbb is not None else "  --  "
+        rating_s = f"{rating:5.1f}" if rating is not None else "  --  "
+        print(
+            f"  {star}[{r['role']:<12}] {r['name']:<26} "
+            f"App={r['apps']:<3} IP={str(r.get('total_ip') or '—'):<5} "
+            f"ERA={str(r.get('era') or '—'):<5} "
+            f"FIP={fip_s} K-BB%={kbb_s} Rating={rating_s} "
+            f"Tier={tier:<11} Lev%={r['leverage_pct']}"
+        )
 
     # Check for duplicates (the whole point of this verification)
     all_lineup_names = []
@@ -92,15 +106,9 @@ def main():
             if row.get("player_name") and row["player_name"] != "—":
                 all_lineup_names.append((section_key, row["player_name"]))
 
-    pitcher_names = [r["name"] for r in pt.get("relievers", [])] + [s["name"] for s in pt.get("starters", [])]
-    from collections import Counter
-    pc = Counter(pitcher_names)
-    dupes = [n for n, c in pc.items() if c > 1]
-    if dupes:
-        print(f"\n!! PITCHERS STILL DUPLICATED: {dupes}")
-    else:
-        print("\nOK — no duplicate pitchers in starters/relievers output")
-
+    # A pitcher can legitimately appear in BOTH starters and relievers if
+    # they've made at least one start and at least one relief appearance.
+    # That's expected, not a bug — no warning needed.
     print()
 
 

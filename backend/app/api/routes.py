@@ -73,6 +73,47 @@ QUALIFIED_PITCHING_WHERE = (
 )
 
 
+# ── Baseball IP helpers ────────────────────────────────────────────────
+# Innings pitched are stored in baseball notation: 3.1 means 3⅓ innings
+# (10 outs), 3.2 means 3⅔ (11 outs). Summing these as plain decimals
+# (3.1 + 3.1 = 6.2) gives nonsense — 10+10 outs is 20 outs = 6⅔ = 6.2,
+# but 3.1 + 0.2 = 3.3 mathematically collides with the next whole inning.
+# These helpers convert between baseball IP and raw outs so sums and
+# ERA math are correct.
+
+def ip_to_outs(ip_val):
+    """Convert a baseball-notation IP (e.g. 3.1 = 3⅓) to total outs."""
+    if ip_val is None:
+        return 0
+    try:
+        ip = float(ip_val)
+    except (TypeError, ValueError):
+        return 0
+    whole = int(ip)
+    frac = round((ip - whole) * 10)
+    # Clamp malformed fractions (.3+ rolls over to the next inning).
+    if frac >= 3:
+        whole += frac // 3
+        frac = frac % 3
+    return whole * 3 + frac
+
+
+def outs_to_ip(outs):
+    """Convert total outs back to baseball-notation IP (float: 10 -> 3.1)."""
+    if outs is None or outs <= 0:
+        return 0.0
+    whole = outs // 3
+    frac = outs % 3
+    return float(f"{whole}.{frac}")
+
+
+def era_from_outs(er, outs):
+    """ERA = earned runs × 9 ÷ innings, where innings = outs / 3."""
+    if outs <= 0:
+        return None
+    return round(er * 27 / outs, 2)
+
+
 # ── Conference-only CTE: aggregate game-level stats for conference games ──
 
 CONF_BATTING_CTE = """
@@ -12589,11 +12630,14 @@ def opponent_trends(
             all_ge.extend(games)
         all_ge.sort(key=lambda gg: (gg["game_date"], gg.get("game_number") or 1))
 
-        # ── Recency weights (half-life 10 games) ──
+        # ── Recency weights (half-life 7 games) ──
+        # Tighter than before (was 10) so a player returning from injury
+        # and playing the last 5-7 games outweighs a guy who started
+        # earlier in the season.
         n_games = len(all_ge)
         gw = {}
         for i, g in enumerate(all_ge):
-            gw[g["id"]] = 2 ** (-(n_games - 1 - i) / 10)
+            gw[g["id"]] = 2 ** (-(n_games - 1 - i) / 7)
 
         # ── Bulk fetch batting — DEDUPLICATE per game ──
         ph = ",".join(["%s"] * len(game_ids))
@@ -12623,8 +12667,8 @@ def opponent_trends(
                    gp.pitch_order, gp.is_starter, gp.innings_pitched,
                    gp.hits_allowed, gp.runs_allowed, gp.earned_runs,
                    gp.walks, gp.strikeouts, gp.home_runs_allowed,
-                   gp.batters_faced, gp.pitches_thrown, gp.decision,
-                   gp.is_quality_start, gp.game_score
+                   gp.hit_batters, gp.batters_faced, gp.pitches_thrown,
+                   gp.decision, gp.is_quality_start, gp.game_score
             FROM game_pitching gp
             WHERE gp.game_id IN ({ph}) AND gp.team_id = %s
             ORDER BY gp.game_id, gp.pitch_order
@@ -12767,7 +12811,13 @@ def opponent_trends(
         # ── Player PRIMARY position (single best position this season) ──
         # Built in-memory from the now-canonicalized batting rows so every
         # name variant for the same player contributes to one bucket.
-        _pos_counts = defaultdict(Counter)
+        #
+        # Each game contributes its recency weight (gw), not a flat +1, so
+        # a player's RECENT position wins over his older one. Example: a
+        # player who started at SS for 20 early games and then moved to 3B
+        # for the last 7 games is classified as 3B because the recent
+        # games outweigh the older ones.
+        _pos_counts = defaultdict(lambda: defaultdict(float))
         for b in raw_batting:
             if (b.get("batting_order") or 0) > 9:
                 continue
@@ -12776,11 +12826,12 @@ def opponent_trends(
                 continue
             # Split slashed positions (e.g. "CF/RF") and take the primary
             primary_pos = raw_pos.split('/')[0].strip() if '/' in raw_pos else raw_pos
-            _pos_counts[b["player_name"]][primary_pos] += 1
-        player_primary_pos = {
-            name: counter.most_common(1)[0][0]
-            for name, counter in _pos_counts.items() if counter
-        }
+            w = gw.get(b["game_id"], 1.0)
+            _pos_counts[b["player_name"]][primary_pos] += w
+        player_primary_pos = {}
+        for name, buckets in _pos_counts.items():
+            if buckets:
+                player_primary_pos[name] = max(buckets.items(), key=lambda kv: kv[1])[0]
 
         # Re-build deduplicated data after alias resolution
         batting_by_game = defaultdict(list)
@@ -12892,11 +12943,14 @@ def opponent_trends(
                     "games": player_game_count[name],
                 }
 
-            # Sort players by: dominance * total_weight (high dominance +
-            # lots of games = lock in first)
+            # Sort players by TOTAL WEIGHTED GAMES first — the guy who
+            # started 39 of 42 games should be in the lineup, period,
+            # even if he moves around the order. Tie-break by dominance
+            # so a consistent player edges out a journeyman when they
+            # have the same weighted game count.
             sorted_players = sorted(
                 player_best.items(),
-                key=lambda x: x[1]["dominance"] * x[1]["total_wt"],
+                key=lambda x: (x[1]["total_wt"], x[1]["dominance"]),
                 reverse=True,
             )
 
@@ -12907,61 +12961,103 @@ def opponent_trends(
             # the lineup, one shortstop, one DH, etc.
             used_positions = set()
 
-            # Phase 1: Lock in dominant players to their best spot
-            for name, info in sorted_players:
-                spot = info["best_spot"]
-                if spot in assigned or name in used_players:
-                    continue
-                pos = player_primary_pos.get(name, "")
-                if pos and pos in used_positions:
-                    continue
-                # Calculate pct: this player's weight at this spot vs
-                # total weight of all players at this spot
+            def spot_pct(name, spot, wt):
                 spot_total = sum(
                     player_spot_wt[n][spot]
                     for n in player_spot_wt if spot in player_spot_wt[n]
                 )
-                pct = round(info["best_wt"] / spot_total * 100, 1) if spot_total else 0
+                return round(wt / spot_total * 100, 1) if spot_total else 0
+
+            # Main pass: walk players best-to-worst by weighted starts,
+            # and give each their best-remaining slot where the position
+            # isn't already used. One pass, no phases.
+            for name, info in sorted_players:
+                if name in used_players:
+                    continue
+                pos = player_primary_pos.get(name, "")
+                if pos and pos in used_positions:
+                    continue
+
+                # Candidate slots ranked by this player's weight at each
+                slots_desc = sorted(
+                    player_spot_wt[name].items(),
+                    key=lambda kv: kv[1],
+                    reverse=True,
+                )
+                for spot, wt in slots_desc:
+                    if spot < 1 or spot > 9 or spot in assigned or wt <= 0:
+                        continue
+                    assigned[spot] = {
+                        "player_name": name,
+                        "position": pos,
+                        "pct": spot_pct(name, spot, wt),
+                    }
+                    used_players.add(name)
+                    if pos:
+                        used_positions.add(pos)
+                    break
+
+            # Rescue pass: a high-start player may have been squeezed
+            # out because every slot they've ever batted in got taken
+            # (e.g. Stevens always DHs at slot 3, someone else took 3
+            # in the few LHP games). Drop them into the best open slot
+            # with an unused position so they still appear in the
+            # lineup, at pct=0 to signal low confidence.
+            if used_players:
+                top_wt = sorted_players[0][1]["total_wt"]
+            else:
+                top_wt = 0
+            for name, info in sorted_players:
+                if name in used_players:
+                    continue
+                # Only rescue players who started a meaningful share of
+                # games. 20% of the top guy's weighted starts catches
+                # regulars who only played in, say, 4 of 20 games but
+                # still clearly own their position.
+                if info["total_wt"] < 0.2 * top_wt:
+                    break
+                pos = player_primary_pos.get(name, "")
+                if pos and pos in used_positions:
+                    continue
+                open_slots = [s for s in range(1, 10) if s not in assigned]
+                if not open_slots:
+                    break
+                spot = info["best_spot"] if info["best_spot"] in open_slots else open_slots[0]
                 assigned[spot] = {
                     "player_name": name,
                     "position": pos,
-                    "pct": pct,
+                    "pct": 0,
                 }
                 used_players.add(name)
                 if pos:
                     used_positions.add(pos)
 
-            # Phase 2: Fill remaining spots greedily
-            for spot in range(1, 10):
-                if spot in assigned:
-                    continue
-                best_name = None
-                best_wt = -1
-                for name, spots in player_spot_wt.items():
+            # Final fill pass: any still-empty slots get filled by the
+            # remaining sub with the most weighted games whose primary
+            # position is still open. Showing a low-sample backup at
+            # pct=0 is more useful than leaving slot 8 blank — fans /
+            # coaches can infer "we're not sure, but this is the most
+            # likely body in that spot."
+            open_slots = [s for s in range(1, 10) if s not in assigned]
+            if open_slots:
+                for name, info in sorted_players:
+                    if not open_slots:
+                        break
                     if name in used_players:
                         continue
                     pos = player_primary_pos.get(name, "")
                     if pos and pos in used_positions:
                         continue
-                    wt = spots.get(spot, 0)
-                    if wt > best_wt:
-                        best_wt = wt
-                        best_name = name
-                if best_name and best_wt > 0:
-                    spot_total = sum(
-                        player_spot_wt[n][spot]
-                        for n in player_spot_wt if spot in player_spot_wt[n]
-                    )
-                    pct = round(best_wt / spot_total * 100, 1) if spot_total else 0
-                    pos = player_primary_pos.get(best_name, "")
+                    spot = info["best_spot"] if info["best_spot"] in open_slots else open_slots[0]
                     assigned[spot] = {
-                        "player_name": best_name,
+                        "player_name": name,
                         "position": pos,
-                        "pct": pct,
+                        "pct": 0,
                     }
-                    used_players.add(best_name)
+                    used_players.add(name)
                     if pos:
                         used_positions.add(pos)
+                    open_slots = [s for s in range(1, 10) if s not in assigned]
 
             lineup = []
             for spot in range(1, 10):
@@ -12990,10 +13086,12 @@ def opponent_trends(
                 "bench": bench,
             }
 
-        # Build lineups — use ALL games for vs_rhp/vs_lhp when unknown is
-        # large; combine known+unknown for the splits that need more data
-        lineup_vs_rhp = build_best_lineup(games_vs_rhp + games_vs_unknown)
-        lineup_vs_lhp = build_best_lineup(games_vs_lhp) if len(games_vs_lhp) >= 3 else build_best_lineup(all_ge)
+        # Build lineups — strict split: only games where we KNOW the opposing
+        # starter's hand count toward vs_rhp/vs_lhp. Unknown games are excluded
+        # so they don't pollute the split (they'd bias toward whatever the
+        # team's "neutral" lineup is, which is not what a vs-hand split means).
+        lineup_vs_rhp = build_best_lineup(games_vs_rhp)
+        lineup_vs_lhp = build_best_lineup(games_vs_lhp)
 
         game_slot_lineups = {}
         for slot in range(1, 5):
@@ -13058,7 +13156,7 @@ def opponent_trends(
         # ══════════════════════════════════════════════════════════════
 
         starter_data = defaultdict(lambda: {
-            "starts": 0, "total_ip": 0.0, "game_slots": Counter(),
+            "starts": 0, "total_outs": 0, "game_slots": Counter(),
             "recent_starts": [], "player_id": None, "throws": None,
             "wins": 0, "losses": 0, "qs": 0,
             "total_k": 0, "total_er": 0, "total_bb": 0,
@@ -13072,8 +13170,8 @@ def opponent_trends(
                 name = p["player_name"] or "Unknown"
                 s = starter_data[name]
                 s["starts"] += 1
-                ip = float(p["innings_pitched"] or 0)
-                s["total_ip"] += ip
+                raw_ip = p["innings_pitched"]
+                s["total_outs"] += ip_to_outs(raw_ip)
                 s["player_id"] = p["player_id"]
                 s["throws"] = player_info.get(p["player_id"], {}).get("throws")
                 s["total_k"] += p["strikeouts"] or 0
@@ -13091,7 +13189,7 @@ def opponent_trends(
                     "date": g["game_date"].isoformat() if hasattr(g["game_date"], "isoformat") else str(g["game_date"]),
                     "opp": g["opponent_name"],
                     "g": slot,
-                    "ip": ip,
+                    "ip": float(raw_ip or 0),
                     "k": p["strikeouts"] or 0,
                     "er": p["earned_runs"] or 0,
                     "dec": p["decision"],
@@ -13103,13 +13201,15 @@ def opponent_trends(
         for name, s in starter_data.items():
             if s["starts"] < 2:
                 continue
+            # avg IP uses real innings (outs/3) so it's mathematically sensible
+            avg_ip = round(s["total_outs"] / s["starts"] / 3, 1) if s["starts"] else 0
             starters_list.append({
                 "name": name,
                 "player_id": s["player_id"],
                 "throws": s["throws"],
                 "starts": s["starts"],
-                "avg_ip": round(s["total_ip"] / s["starts"], 1) if s["starts"] else 0,
-                "era": round(s["total_er"] * 9 / s["total_ip"], 2) if s["total_ip"] > 0 else None,
+                "avg_ip": avg_ip,
+                "era": era_from_outs(s["total_er"], s["total_outs"]),
                 "record": f"{s['wins']}-{s['losses']}",
                 "qs": s["qs"],
                 "k": s["total_k"],
@@ -13177,8 +13277,8 @@ def opponent_trends(
 
         # ── Relievers (deduplicated) ──
         reliever_data = defaultdict(lambda: {
-            "apps": 0, "total_ip": 0.0, "saves": 0,
-            "k": 0, "er": 0, "bb": 0,
+            "apps": 0, "total_outs": 0, "saves": 0,
+            "k": 0, "er": 0, "bb": 0, "hr": 0, "hbp": 0, "bf": 0,
             "player_id": None, "throws": None,
             "close_apps": 0, "multi_ip_apps": 0,
             "recent": [],
@@ -13195,40 +13295,94 @@ def opponent_trends(
                     continue
                 name = p["player_name"] or "Unknown"
                 r = reliever_data[name]
-                ip = float(p["innings_pitched"] or 0)
+                raw_ip = p["innings_pitched"]
+                outs = ip_to_outs(raw_ip)
                 r["apps"] += 1
-                r["total_ip"] += ip
+                r["total_outs"] += outs
                 r["player_id"] = p["player_id"]
                 r["throws"] = player_info.get(p["player_id"], {}).get("throws")
                 r["k"] += p["strikeouts"] or 0
                 r["er"] += p["earned_runs"] or 0
                 r["bb"] += p["walks"] or 0
+                r["hr"] += p["home_runs_allowed"] or 0
+                r["hbp"] += p["hit_batters"] or 0
+                r["bf"] += p["batters_faced"] or 0
                 if p["decision"] == "S":
                     r["saves"] += 1
                 if close:
                     r["close_apps"] += 1
-                if ip >= 1.5:
+                # multi-inning appearance = 4+ outs (1⅓ IP or more)
+                if outs >= 4:
                     r["multi_ip_apps"] += 1
                 r["recent"].append({
                     "date": g["game_date"].isoformat() if hasattr(g["game_date"], "isoformat") else str(g["game_date"]),
                     "opp": g["opponent_name"],
-                    "ip": ip, "k": p["strikeouts"] or 0,
+                    "ip": float(raw_ip or 0),
+                    "k": p["strikeouts"] or 0,
                     "er": p["earned_runs"] or 0, "dec": p["decision"],
                 })
 
+        # ── Reliever rating helpers ──
+        # FIP constant picked so league-average FIP ≈ league-average ERA at
+        # the college level. 3.10 is the standard MLB constant; college ERAs
+        # run higher, so we use 3.50 as a rough neutral baseline.
+        FIP_CONSTANT = 3.50
+
+        def compute_fip(hr, bb, hbp, k, outs):
+            if outs <= 0:
+                return None
+            ip = outs / 3.0
+            return round((13 * hr + 3 * (bb + hbp) - 2 * k) / ip + FIP_CONSTANT, 2)
+
+        def compute_k_bb_pct(k, bb, bf):
+            if bf <= 0:
+                return None
+            return round((k - bb) * 100 / bf, 1)
+
+        def reliever_tier(rating, apps):
+            # "small_sample" relievers don't get a tier badge
+            if apps < 3:
+                return "small_sample"
+            if rating is None:
+                return "small_sample"
+            if rating >= 15:
+                return "elite"
+            if rating >= 5:
+                return "solid"
+            if rating >= -5:
+                return "average"
+            return "struggling"
+
         relievers_list = []
         for name, r in reliever_data.items():
-            avg_ip = round(r["total_ip"] / r["apps"], 1) if r["apps"] else 0
-            era = round(r["er"] * 9 / r["total_ip"], 2) if r["total_ip"] > 0 else None
+            # avg IP uses real innings (outs/3) so averaging is sensible
+            avg_ip = round(r["total_outs"] / r["apps"] / 3, 1) if r["apps"] else 0
+            era = era_from_outs(r["er"], r["total_outs"])
+            total_ip_display = outs_to_ip(r["total_outs"])
+
+            # Advanced stats
+            fip = compute_fip(r["hr"], r["bb"], r["hbp"], r["k"], r["total_outs"])
+            k_bb_pct = compute_k_bb_pct(r["k"], r["bb"], r["bf"])
+
+            # Composite rating: combines command (K-BB%) and run prevention
+            # (FIP). Higher is better. K-BB% is already a percentage; FIP is
+            # subtracted from the baseline so low-FIP pitchers get a bonus.
+            if k_bb_pct is not None and fip is not None:
+                rating = round(k_bb_pct - (fip - FIP_CONSTANT) * 5, 1)
+            else:
+                rating = None
+
+            tier = reliever_tier(rating, r["apps"])
 
             # Classify: closer / multi-inning / one-inning / mop-up
+            # Thresholds use real innings via outs (3 outs = 1 IP)
             if r["saves"] >= 2:
                 role = "closer"
             elif avg_ip >= 1.5 or r["multi_ip_apps"] >= r["apps"] * 0.4:
                 role = "multi_inning"
-            elif r["apps"] >= 3 and r["total_ip"] < 6 and (era is None or era > 12):
+            elif r["apps"] >= 3 and r["total_outs"] < 18 and (era is None or era > 12):
                 role = "mop_up"
-            elif r["total_ip"] < 3 and r["apps"] <= 2:
+            elif r["total_outs"] < 9 and r["apps"] <= 2:
                 role = "mop_up"
             else:
                 role = "one_inning"
@@ -13236,12 +13390,24 @@ def opponent_trends(
             relievers_list.append({
                 "name": name, "throws": r["throws"],
                 "apps": r["apps"], "avg_ip": avg_ip, "era": era,
-                "total_ip": round(r["total_ip"], 1),
+                "total_ip": total_ip_display,
                 "saves": r["saves"], "k": r["k"], "bb": r["bb"],
+                "hr": r["hr"], "bf": r["bf"],
+                "fip": fip, "k_bb_pct": k_bb_pct,
+                "rating": rating, "tier": tier,
                 "role": role,
                 "leverage_pct": round(r["close_apps"] / r["apps"] * 100) if r["apps"] else 0,
                 "recent": r["recent"][-5:],
             })
+
+        # Mark the best 2 (highest rating, min 3 apps) as "top_reliever"
+        qualified = [r for r in relievers_list if r["apps"] >= 3 and r["rating"] is not None]
+        qualified.sort(key=lambda x: x["rating"], reverse=True)
+        top_names = {r["name"] for r in qualified[:2]}
+        for r in relievers_list:
+            r["is_top"] = r["name"] in top_names
+
+        # Sort by appearances for the main list display
         relievers_list.sort(key=lambda x: -x["apps"])
 
         return {
