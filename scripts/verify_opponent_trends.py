@@ -82,7 +82,7 @@ def main():
 
     print("\n── Relievers ──")
     for r in pt.get("relievers", []):
-        print(f"  [{r['role']:<12}] {r['name']:<28} App={r['apps']:<3} IP/A={r['avg_ip']:<4} ERA={str(r.get('era') or '—'):<5} SV={r['saves']:<2} Close%={r['close_pct']}")
+        print(f"  [{r['role']:<12}] {r['name']:<28} App={r['apps']:<3} IP/A={r['avg_ip']:<4} ERA={str(r.get('era') or '—'):<5} SV={r['saves']:<2} Leverage%={r['leverage_pct']}")
 
     # Check for duplicates (the whole point of this verification)
     all_lineup_names = []

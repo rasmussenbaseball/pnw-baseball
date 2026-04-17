@@ -400,7 +400,7 @@ function BullpenView({ relievers }) {
               <th className="py-1 text-center">K</th>
               <th className="py-1 text-center">BB</th>
               <th className="py-1 text-center">SV</th>
-              <th className="py-1 text-center pr-3">Close%</th>
+              <th className="py-1 text-center pr-3">Leverage%</th>
             </tr>
           </thead>
           <tbody>
@@ -441,7 +441,7 @@ function RelieverRows({ r, expanded, toggle }) {
         <td className="text-center">{r.k}</td>
         <td className="text-center">{r.bb}</td>
         <td className="text-center font-bold">{r.saves || '—'}</td>
-        <td className="text-center pr-3">{r.close_pct}%</td>
+        <td className="text-center pr-3">{r.leverage_pct}%</td>
       </tr>
       {expanded && r.recent?.length > 0 && (
         <tr>

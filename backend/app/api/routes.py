@@ -12902,11 +12902,18 @@ def opponent_trends(
 
             assigned = {}     # spot -> {name, pos, pct}
             used_players = set()
+            # Enforce one player per defensive position (C, 1B, 2B, 3B,
+            # SS, LF, CF, RF, DH). A team can only have one catcher in
+            # the lineup, one shortstop, one DH, etc.
+            used_positions = set()
 
             # Phase 1: Lock in dominant players to their best spot
             for name, info in sorted_players:
                 spot = info["best_spot"]
                 if spot in assigned or name in used_players:
+                    continue
+                pos = player_primary_pos.get(name, "")
+                if pos and pos in used_positions:
                     continue
                 # Calculate pct: this player's weight at this spot vs
                 # total weight of all players at this spot
@@ -12917,10 +12924,12 @@ def opponent_trends(
                 pct = round(info["best_wt"] / spot_total * 100, 1) if spot_total else 0
                 assigned[spot] = {
                     "player_name": name,
-                    "position": player_primary_pos.get(name, ""),
+                    "position": pos,
                     "pct": pct,
                 }
                 used_players.add(name)
+                if pos:
+                    used_positions.add(pos)
 
             # Phase 2: Fill remaining spots greedily
             for spot in range(1, 10):
@@ -12930,6 +12939,9 @@ def opponent_trends(
                 best_wt = -1
                 for name, spots in player_spot_wt.items():
                     if name in used_players:
+                        continue
+                    pos = player_primary_pos.get(name, "")
+                    if pos and pos in used_positions:
                         continue
                     wt = spots.get(spot, 0)
                     if wt > best_wt:
@@ -12941,12 +12953,15 @@ def opponent_trends(
                         for n in player_spot_wt if spot in player_spot_wt[n]
                     )
                     pct = round(best_wt / spot_total * 100, 1) if spot_total else 0
+                    pos = player_primary_pos.get(best_name, "")
                     assigned[spot] = {
                         "player_name": best_name,
-                        "position": player_primary_pos.get(best_name, ""),
+                        "position": pos,
                         "pct": pct,
                     }
                     used_players.add(best_name)
+                    if pos:
+                        used_positions.add(pos)
 
             lineup = []
             for spot in range(1, 10):
@@ -13224,7 +13239,7 @@ def opponent_trends(
                 "total_ip": round(r["total_ip"], 1),
                 "saves": r["saves"], "k": r["k"], "bb": r["bb"],
                 "role": role,
-                "close_pct": round(r["close_apps"] / r["apps"] * 100) if r["apps"] else 0,
+                "leverage_pct": round(r["close_apps"] / r["apps"] * 100) if r["apps"] else 0,
                 "recent": r["recent"][-5:],
             })
         relievers_list.sort(key=lambda x: -x["apps"])
