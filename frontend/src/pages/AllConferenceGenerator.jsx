@@ -15,7 +15,10 @@ const CONF_OPTIONS = [
   { value: 'all-pnw', label: 'All-PNW', group: 'Combined' },
 ]
 
-const POSITION_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'UTIL']
+// Position slots used to render 1st/2nd team grids
+const POSITION_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'OF1', 'OF2', 'OF3', 'DH', 'UTIL']
+// HM is grouped by category, so the three OF spots collapse into one OF list
+const HM_CATEGORIES = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH', 'UTIL']
 
 // Helpers
 function fmtAvg(v) {
@@ -179,14 +182,14 @@ function HonorableMentions({ hm, rateMode }) {
         Honorable Mentions
       </h2>
       <div className="space-y-4">
-        {POSITION_SLOTS.map(slot => (
-          <div key={slot}>
-            <div className="text-xs uppercase font-semibold text-nw-teal mb-1">{slot}</div>
+        {HM_CATEGORIES.map(cat => (
+          <div key={cat}>
+            <div className="text-xs uppercase font-semibold text-nw-teal mb-1">{cat}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {(hm[slot] || []).length === 0 ? (
+              {(hm[cat] || []).length === 0 ? (
                 <div className="text-xs text-gray-400 italic">No additional qualifiers</div>
               ) : (
-                hm[slot].map(p => (
+                hm[cat].map(p => (
                   <PlayerCard key={p.player_id} player={p} kind="hitter" rateMode={rateMode} compact />
                 ))
               )}
@@ -234,7 +237,7 @@ function CriteriaPanel({ rateMode }) {
       <div className="px-4 py-3 text-xs text-gray-700 space-y-2 leading-relaxed">
         <p>
           <span className="font-semibold">Primary criteria:</span> WAR (offensive WAR for hitters,
-          pitching WAR for pitchers).
+          pitching WAR for starters, WAR per IP for relievers).
           {rateMode && (
             <> For All-PNW we use <span className="font-mono">WAR per PA</span> for hitters and{' '}
             <span className="font-mono">WAR per IP</span> for pitchers, since teams across divisions play
@@ -245,16 +248,23 @@ function CriteriaPanel({ rateMode }) {
           <span className="font-semibold">Tiebreakers:</span> wRC+ for hitters, FIP (lower is better) for pitchers.
         </p>
         <p>
-          <span className="font-semibold">Position eligibility:</span> a player must have appeared at least
-          15 games at a position to be eligible there.
+          <span className="font-semibold">Position eligibility:</span> a player must have appeared at
+          least 15 games at a position to be eligible there. The three outfield spots all draw from
+          the same pool, so any qualified outfielder can fill OF1, OF2, or OF3.
         </p>
         <p>
-          <span className="font-semibold">DH:</span> any qualified hitter is DH-eligible.
+          <span className="font-semibold">DH:</span> 15+ games at DH AND those games make up at least
+          50 percent of the player's defensive games. Pure hitters who never DH are not eligible.
         </p>
         <p>
           <span className="font-semibold">UTIL eligibility:</span> a player must either be a true two-way
           contributor (10+ IP and 40+ PA) OR have appeared at least 7 games at both an infield position
           (catcher counts) and an outfield position.
+        </p>
+        <p>
+          <span className="font-semibold">One appearance per page:</span> each player can appear
+          exactly once on this page. Two-way players are slotted in whichever role (hitter or pitcher)
+          earned them more WAR and removed from the other pool entirely.
         </p>
         <p>
           <span className="font-semibold">Multi-position handling:</span> when a player would be top-rated
@@ -263,14 +273,19 @@ function CriteriaPanel({ rateMode }) {
         </p>
         <p>
           <span className="font-semibold">Pitching staff:</span> 4 starting pitchers (must be qualified at
-          0.75 IP per team game played), 1 reliever (must have 15+ IP and fewer than 4 starts).
+          0.75 IP per team game played), 1 reliever (must have 15+ IP and fewer than 4 starts; ranked by
+          WAR per IP).
+        </p>
+        <p>
+          <span className="font-semibold">Negative WAR:</span> any player whose WAR was below zero is
+          excluded entirely, even if it leaves a position with fewer than 3 honorable mentions.
         </p>
         <p>
           <span className="font-semibold">Hitter qualification (All-PNW only):</span> 2.0 PA per team game.
         </p>
         <p>
           <span className="font-semibold">Honorable mentions:</span> top 3 remaining qualifiers at each
-          position, plus 3 each for SP and RP.
+          position (with no player appearing as HM at more than one spot), plus 3 each for SP and RP.
         </p>
       </div>
     </details>

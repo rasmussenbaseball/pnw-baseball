@@ -13533,13 +13533,23 @@ ALL_CONF_GROUPS = {
     },
 }
 
-# 10 position slots in display order
-AC_POSITION_SLOTS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "UTIL"]
+# 10 position slots in display order: 5 IF + 3 OF + DH + UTIL
+AC_POSITION_SLOTS = ["C", "1B", "2B", "3B", "SS", "OF1", "OF2", "OF3", "DH", "UTIL"]
+# Each slot maps to an underlying eligibility "category"
+AC_SLOT_TO_CATEGORY = {
+    "C": "C", "1B": "1B", "2B": "2B", "3B": "3B", "SS": "SS",
+    "OF1": "OF", "OF2": "OF", "OF3": "OF",
+    "DH": "DH", "UTIL": "UTIL",
+}
+# Distinct eligibility categories used for HM lists / candidate pools
+AC_CATEGORIES = ["C", "1B", "2B", "3B", "SS", "OF", "DH", "UTIL"]
 # Positions that qualify a player as an infielder (for UTIL)
 AC_INFIELD = {"C", "1B", "2B", "3B", "SS"}
 AC_OUTFIELD = {"LF", "CF", "RF", "OF"}
 # Minimum games at a position to be eligible there
 AC_POS_GAMES_MIN = 15
+# DH must account for at least this share of a player's defensive games
+AC_DH_MIN_SHARE = 0.5
 # Two-way UTIL thresholds
 AC_UTIL_TWO_WAY_MIN_IP = 10.0
 AC_UTIL_TWO_WAY_MIN_PA = 40
@@ -13558,18 +13568,25 @@ def all_conference(
     """
     Build mock first team, second team, and top-3 honorable mentions for
     a conference (or aggregate grouping).  10 position spots (C/1B/2B/3B/
-    SS/LF/CF/RF/DH/UTIL) plus 4 SP + 1 RP per team.
+    SS/OF1/OF2/OF3/DH/UTIL) plus 4 SP + 1 RP per team.
 
     Selection rules:
       - Position eligibility: 15+ games at that position in game_batting
+      - OF1/OF2/OF3 share one combined outfield pool (any LF/CF/RF/OF
+        appearance counts toward outfield games)
+      - DH: 15+ games at DH AND DH games >= 50% of defensive games
       - UTIL: two-way player (10+ IP AND 40+ PA) OR 7+ games at both
         infield and outfield (catcher counts as infield)
+      - Negative WAR players are excluded from every pool
+      - Each player can only appear once on a conference page (across 1st
+        team, 2nd team, and HM, and across hitter/pitcher pools)
+      - Primary role for two-way players is whichever WAR is higher
       - Primary sort: WAR (rate-adjusted WAR/PA + WAR/IP for 'all-pnw')
       - Hitter tiebreak: wRC+
       - Pitcher tiebreak: FIP (lower is better)
       - Multi-position handling: maximize combined WAR across both slots
-      - Starters: qualified (0.75 IP per team game)
-      - Reliever: 15+ IP, fewer than 4 starts
+      - Starters: qualified (0.75 IP per team game), ranked by WAR
+      - Reliever: 15+ IP, fewer than 4 starts, ranked by WAR/IP
       - all-pnw uses rate stats and is qualified-only
     """
     group = ALL_CONF_GROUPS.get(conf)
@@ -13806,18 +13823,24 @@ def all_conference(
         return rec["ip"] >= QUALIFIED_IP_PER_GAME * tg and tg > 0
 
     # ── Position eligibility ─────────────────────────────────────
-    def eligible_positions(rec):
-        """Set of slot names the player is eligible at (not including UTIL)."""
+    def eligible_categories(rec):
+        """Set of eligibility categories the player qualifies for
+        (C, 1B, 2B, 3B, SS, OF, DH).  Does NOT include UTIL."""
         pg = rec.get("pos_games", {})
         eligible = set()
-        for slot in ("C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"):
-            if pg.get(slot, 0) >= AC_POS_GAMES_MIN:
-                eligible.add(slot)
-        # DH: hit in 15+ games as DH, OR qualified hitter period
-        # (DH is a lineup slot any full-time hitter should be eligible for)
-        if pg.get("DH", 0) >= AC_POS_GAMES_MIN:
-            eligible.add("DH")
-        elif rec["pa"] >= AC_POS_GAMES_MIN * 2.5:  # ~rough PA equivalent of 15 games
+        for cat in ("C", "1B", "2B", "3B", "SS"):
+            if pg.get(cat, 0) >= AC_POS_GAMES_MIN:
+                eligible.add(cat)
+        # Outfield: combined LF+CF+RF+OF >= 15 games
+        if rec.get("of_games", 0) >= AC_POS_GAMES_MIN:
+            eligible.add("OF")
+        # DH: 15+ games at DH AND at least 50% of defensive games
+        dh_games = pg.get("DH", 0)
+        total_def_games = sum(v for k, v in pg.items()
+                              if k in {"C", "1B", "2B", "3B", "SS",
+                                       "LF", "CF", "RF", "OF", "DH"})
+        if dh_games >= AC_POS_GAMES_MIN and total_def_games > 0 \
+                and (dh_games / total_def_games) >= AC_DH_MIN_SHARE:
             eligible.add("DH")
         return eligible
 
@@ -13830,63 +13853,81 @@ def all_conference(
             return True
         return False
 
-    # ── Build per-position candidate pools ────────────────────────
+    # ── Primary role classification (one-role-per-player rule) ────
+    # A player can only appear once on a conference page.  For two-way
+    # guys (Donny Tober etc.) we pick whichever role's WAR is higher
+    # and remove them from the other pool entirely.
+    primary_role = {}  # pid -> "BAT" | "PIT" | None
+    for pid, rec in players.items():
+        b = bat_war(rec) if rec["pa"] > 0 else None
+        p = pit_war(rec) if rec["ip"] > 0 else None
+        if b is not None and p is not None:
+            primary_role[pid] = "BAT" if b >= p else "PIT"
+        elif b is not None:
+            primary_role[pid] = "BAT"
+        elif p is not None:
+            primary_role[pid] = "PIT"
+        else:
+            primary_role[pid] = None
+
+    # ── Build per-category candidate pools ────────────────────────
     # Each candidate is a (war_value, tiebreak_value, player_id) tuple.
-    pos_candidates = {slot: [] for slot in AC_POSITION_SLOTS}
+    # Pools are keyed by CATEGORY (C/1B/2B/3B/SS/OF/DH/UTIL); slot-based
+    # picks (OF1/OF2/OF3) all draw from the same OF pool.
+    cat_candidates = {cat: [] for cat in AC_CATEGORIES}
 
     for pid, rec in players.items():
+        if primary_role.get(pid) != "BAT":
+            continue
+        # Negative WAR: exclude entirely
+        if bat_war(rec) < 0:
+            continue
         # Rate mode: must be a qualified hitter to be in a hitter slot
         if rate_mode and not is_qualified_bat(rec):
             continue
-        elig = eligible_positions(rec)
-        for slot in elig:
-            pos_candidates[slot].append((bat_war(rec), bat_tiebreak(rec), pid))
+        elig = eligible_categories(rec)
+        for cat in elig:
+            cat_candidates[cat].append((bat_war(rec), bat_tiebreak(rec), pid))
         if is_util_eligible(rec):
-            # Player's "best bat/pit" WAR for UTIL slot ranking:
-            # use best of hitter or pitcher WAR since two-way players have both.
-            util_war = max(bat_war(rec), pit_war(rec))
-            util_tb = bat_tiebreak(rec)  # wRC+ as tiebreak is fine
-            pos_candidates["UTIL"].append((util_war, util_tb, pid))
+            # For UTIL slot ranking, use the player's primary-role WAR
+            # (which is bat_war here since primary_role == "BAT").
+            cat_candidates["UTIL"].append((bat_war(rec), bat_tiebreak(rec), pid))
 
     # Sort each pool descending by war, then tiebreak
-    for slot in pos_candidates:
-        pos_candidates[slot].sort(key=lambda x: (x[0], x[1]), reverse=True)
+    for cat in cat_candidates:
+        cat_candidates[cat].sort(key=lambda x: (x[0], x[1]), reverse=True)
 
     # ── Selection: greedy with combined-WAR swap ─────────────────
     # Build first team, then remove those players and repeat for second team,
     # then honorable mentions from the remainder.
 
-    def select_team(candidates_by_slot, taken):
+    def select_team(candidates_by_cat, taken):
         """
         Assign one player per position slot, skipping anyone already taken.
-        When the top pick at slot A is also eligible at another slot B and
-        would also be the top pick there, assign in the way that maximizes
-        combined WAR across the two slots.
+        Slots map to categories (OF1/OF2/OF3 all draw from 'OF'), so the
+        three outfield spots pick the top three eligible OF players.
         """
-        # First pass: naive top pick per slot (excluding taken)
+        # First pass: naive top pick per slot (excluding taken and players
+        # already assigned to an earlier slot on this team)
         picks = {}
         for slot in AC_POSITION_SLOTS:
-            for war_val, tb, pid in candidates_by_slot[slot]:
+            cat = AC_SLOT_TO_CATEGORY[slot]
+            for war_val, tb, pid in candidates_by_cat[cat]:
                 if pid in taken:
                     continue
-                # Also skip if already assigned to another slot on this team
                 if pid in picks.values():
                     continue
                 picks[slot] = pid
                 break
 
-        # Swap pass: detect conflicts where a player was skipped at their
-        # best slot because a higher-WAR player took it. Consider swaps
-        # that would increase total combined WAR.
-        # For simplicity we do one optimization pass over all slot pairs.
+        # Swap pass: consider swaps between slots that would increase the
+        # sum of WAR across both slots.
         def war_for(pid, slot):
-            if slot == "UTIL":
-                rec = players[pid]
-                return max(bat_war(rec), pit_war(rec))
-            for war_val, tb, _pid in candidates_by_slot[slot]:
+            cat = AC_SLOT_TO_CATEGORY[slot]
+            for war_val, tb, _pid in candidates_by_cat[cat]:
                 if _pid == pid:
                     return war_val
-            return None  # not eligible
+            return None  # not eligible at this slot's category
 
         changed = True
         safety = 0
@@ -13899,7 +13940,6 @@ def all_conference(
                     pid_b = picks.get(slot_b)
                     if not pid_a or not pid_b:
                         continue
-                    # Can the two players swap?
                     a_at_b = war_for(pid_a, slot_b)
                     b_at_a = war_for(pid_b, slot_a)
                     if a_at_b is None or b_at_a is None:
@@ -13912,37 +13952,54 @@ def all_conference(
 
         return picks
 
-    first_picks = select_team(pos_candidates, taken=set())
-    second_picks = select_team(pos_candidates, taken=set(first_picks.values()))
+    first_picks = select_team(cat_candidates, taken=set())
+    second_picks = select_team(cat_candidates, taken=set(first_picks.values()))
 
-    # Honorable mentions: top 3 per slot not already on 1st/2nd
+    # Honorable mentions: top 3 per category, with cross-category dedup
+    # (a player can only appear once across all HM categories).
     already = set(first_picks.values()) | set(second_picks.values())
+    hm_taken = set()  # players already used as HM somewhere
     honorable = {}
-    for slot in AC_POSITION_SLOTS:
+    for cat in AC_CATEGORIES:
         hm_list = []
-        for war_val, tb, pid in pos_candidates[slot]:
+        for war_val, tb, pid in cat_candidates[cat]:
             if pid in already:
+                continue
+            if pid in hm_taken:
                 continue
             if pid in hm_list:
                 continue
             hm_list.append(pid)
+            hm_taken.add(pid)
             if len(hm_list) >= 3:
                 break
-        honorable[slot] = hm_list
+        honorable[cat] = hm_list
 
     # ── Pitcher selection ────────────────────────────────────────
     # Starters: qualified pitchers, sorted by WAR (FIP tiebreak)
-    # Reliever: IP >= 15 AND GS < 4, sorted by WAR (FIP tiebreak)
+    # Reliever: IP >= 15 AND GS < 4, sorted by WAR/IP (rate) with FIP tiebreak
+    # Both pools obey: primary_role == "PIT" and WAR > 0.
     starter_candidates = []
     reliever_candidates = []
     for pid, rec in players.items():
         if rec["ip"] <= 0:
             continue
+        if primary_role.get(pid) != "PIT":
+            continue
+        # Negative pitching WAR: exclude entirely
+        if pit_war(rec) < 0:
+            continue
         # Starters must be qualified (always, even in non-rate mode)
         if is_qualified_pit(rec):
             starter_candidates.append((pit_war(rec), pit_tiebreak(rec), pid))
-        if rec["ip"] >= AC_REL_MIN_IP and rec["gs"] < 4:
-            reliever_candidates.append((pit_war(rec), pit_tiebreak(rec), pid))
+        # Reliever uses WAR/IP regardless of rate_mode
+        if rec["ip"] >= AC_REL_MIN_IP and rec["gs"] < AC_REL_MAX_GS + 1:
+            # Skip relievers with negative rate WAR too
+            if rec["war_pit_rate"] < 0:
+                continue
+            reliever_candidates.append(
+                (rec["war_pit_rate"], pit_tiebreak(rec), pid)
+            )
 
     starter_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
     reliever_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
@@ -14051,9 +14108,11 @@ def all_conference(
     first_team = build_team_obj(first_picks, first_sp, first_rp)
     second_team = build_team_obj(second_picks, second_sp, second_rp)
 
+    # HM is keyed by CATEGORY (C/1B/2B/3B/SS/OF/DH/UTIL) so OF is one
+    # combined list rather than three slot-specific lists.
     hm_out = {}
-    for slot in AC_POSITION_SLOTS:
-        hm_out[slot] = [serialize_hitter(pid, slot) for pid in honorable[slot]]
+    for cat in AC_CATEGORIES:
+        hm_out[cat] = [serialize_hitter(pid, cat) for pid in honorable[cat]]
     hm_out["SP"] = [serialize_pitcher(pid, "SP") for pid in hm_sp]
     hm_out["RP"] = [serialize_pitcher(pid, "RP") for pid in hm_rp]
 
