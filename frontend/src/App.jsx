@@ -101,6 +101,7 @@ import Scoreboard from './pages/Scoreboard'
 import About from './pages/About'
 import RecruitingBreakdown from './pages/RecruitingBreakdown'
 import PnwGrid from './pages/PnwGrid'
+import AllConferenceGenerator from './pages/AllConferenceGenerator'
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
 import FeatureRequest from './pages/FeatureRequest'
@@ -171,6 +172,7 @@ export default function App() {
 
           {/* Misc (auth required) */}
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
+          <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
           <Route path="/key-matchup" element={<RequireAuth><KeyMatchupGraphic /></RequireAuth>} />
