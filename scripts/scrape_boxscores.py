@@ -1846,6 +1846,17 @@ def _parse_batting_table(table):
                 val = cell.get_text(strip=True)
 
                 if key == "player":
+                    # Sidearm marks defensive replacements / late-inning subs
+                    # by visually indenting the name cell. In raw HTML the <td>
+                    # opens with literal whitespace BEFORE the <span> position
+                    # label — starters render as <td><span...>pos</span>Name
+                    # with zero leading whitespace. This is the only reliable
+                    # way to tell a backup catcher (listed as "C") apart from
+                    # the real starting catcher.
+                    _raw_name_txt = cell.get_text(strip=False) or ""
+                    player["is_substitute"] = bool(
+                        _raw_name_txt and _raw_name_txt[0] in (" ", "\t", "\xa0", "\r", "\n")
+                    )
                     # Clean up player name (remove jersey number, position)
                     name = re.sub(r'^\d+\s*', '', val)  # Remove leading jersey #
                     name = re.sub(r'\s*(ph|pr|cr|dh|eh)\s*$', '', name, flags=re.I)  # Remove role suffixes
@@ -2578,16 +2589,24 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
     """Insert batting lines for one team in a game.
 
     The box-score table is printed in the order players appeared, which
-    interleaves starters with substitute rows (PR/PH/CR) and with
+    interleaves starters with substitute rows (PR/PH/CR, defensive
+    replacements listed by their new position, etc.) and with
     non-batting pitchers (DH games). We want `batting_order` to
     represent the TRUE lineup slot (1-9) for starters, so downstream
     code can filter `WHERE batting_order BETWEEN 1 AND 9` and get the
     actual starting nine.
 
-    Rule:
+    Rule (first match wins):
+      - parser set is_substitute=True (Sidearm indented the row) -> sub
       - Position in {PR, PH, CR}  -> sub, no lineup slot
       - Position == 'P' with AB=0 -> non-batting pitcher (DH game), no slot
       - Everything else           -> starter, gets next slot 1..9
+
+    The `is_substitute` flag is the critical one: Sidearm lists defensive
+    replacements under their new position (e.g. a backup catcher shows up
+    as "C", not "PH"), so we can't tell them from the real starter based
+    on position alone. The parser detects the leading whitespace Sidearm
+    uses to visually indent sub rows.
 
     Subs / non-batting pitchers still get a row, but with
     batting_order >= 100 so they don't collide with real lineup slots
@@ -2604,10 +2623,11 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
         primary_pos = pos_raw.split("/")[0].strip()
         ab = p.get("ab", 0) or 0
 
-        is_sub = primary_pos in SUB_POSITIONS
+        is_indent_sub = bool(p.get("is_substitute"))
+        is_pos_sub = primary_pos in SUB_POSITIONS
         is_nonbatting_pitcher = (primary_pos == "P" and ab == 0)
 
-        if is_sub or is_nonbatting_pitcher:
+        if is_indent_sub or is_pos_sub or is_nonbatting_pitcher:
             batting_order_val = extra_slot
             extra_slot += 1
         else:

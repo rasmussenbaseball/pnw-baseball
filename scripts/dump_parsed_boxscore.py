@@ -120,18 +120,20 @@ def main():
     extra_slot = 100
 
     print(f"  #  | parsed_pos  | AB | player_name                      |"
-          f" is_sub? | is_nonbat_P? | assigned_bo")
+          f" indent? | pos_sub? | nonbat_P? | assigned_bo")
     print("  ---+-------------+----+----------------------------------+"
-          "---------+--------------+------------")
+          "---------+----------+-----------+------------")
 
     for i, p in enumerate(rows):
         pos = (p.get("position") or "").upper().strip()
         primary = pos.split("/")[0].strip()
         ab = p.get("ab", 0) or 0
-        is_sub = primary in SUB_POSITIONS
+        is_indent_sub = bool(p.get("is_substitute"))
+        is_pos_sub = primary in SUB_POSITIONS
         is_nbp = primary == "P" and ab == 0
 
-        if is_sub or is_nbp:
+        # New routing: indent flag wins; falls back to PH/PR/CR or 0-AB pitcher
+        if is_indent_sub or is_pos_sub or is_nbp:
             bo = extra_slot
             extra_slot += 1
         else:
@@ -142,12 +144,13 @@ def main():
                 bo = extra_slot
                 extra_slot += 1
 
-        flag_sub = "YES" if is_sub else "   "
+        flag_ind = "YES" if is_indent_sub else "   "
+        flag_pos = "YES" if is_pos_sub else "   "
         flag_nbp = "YES" if is_nbp else "   "
         print(
             f"  {i+1:<2} | {pos:<11} | {ab:>2} | "
             f"{(p.get('player_name') or '?'):<32} | "
-            f"  {flag_sub}   |      {flag_nbp}     |  {bo}"
+            f"  {flag_ind}   |    {flag_pos}   |    {flag_nbp}    |  {bo}"
         )
 
 
