@@ -2575,9 +2575,50 @@ def upsert_game(cur, game_data):
 
 
 def insert_game_batting(cur, game_id, team_id, player_lines, season):
-    """Insert batting lines for one team in a game."""
+    """Insert batting lines for one team in a game.
+
+    The box-score table is printed in the order players appeared, which
+    interleaves starters with substitute rows (PR/PH/CR) and with
+    non-batting pitchers (DH games). We want `batting_order` to
+    represent the TRUE lineup slot (1-9) for starters, so downstream
+    code can filter `WHERE batting_order BETWEEN 1 AND 9` and get the
+    actual starting nine.
+
+    Rule:
+      - Position in {PR, PH, CR}  -> sub, no lineup slot
+      - Position == 'P' with AB=0 -> non-batting pitcher (DH game), no slot
+      - Everything else           -> starter, gets next slot 1..9
+
+    Subs / non-batting pitchers still get a row, but with
+    batting_order >= 100 so they don't collide with real lineup slots
+    and the ON CONFLICT uniqueness check still works.
+    """
+    SUB_POSITIONS = {"PR", "PH", "CR"}
+    lineup_slot = 0
+    extra_slot = 100  # For subs and non-batting pitchers
+
     for i, p in enumerate(player_lines):
         player_id = find_player_id(cur, team_id, p.get("player_name"), season) if team_id else None
+
+        pos_raw = (p.get("position") or "").upper().strip()
+        primary_pos = pos_raw.split("/")[0].strip()
+        ab = p.get("ab", 0) or 0
+
+        is_sub = primary_pos in SUB_POSITIONS
+        is_nonbatting_pitcher = (primary_pos == "P" and ab == 0)
+
+        if is_sub or is_nonbatting_pitcher:
+            batting_order_val = extra_slot
+            extra_slot += 1
+        else:
+            lineup_slot += 1
+            if lineup_slot <= 9:
+                batting_order_val = lineup_slot
+            else:
+                # Defensive fallback: more than 9 "starters" in one
+                # table shouldn't happen, but don't crash if it does.
+                batting_order_val = extra_slot
+                extra_slot += 1
 
         cur.execute("""
             INSERT INTO game_batting (
@@ -2597,6 +2638,7 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
             )
             ON CONFLICT (game_id, team_id, player_name, batting_order) DO UPDATE SET
                 player_id = COALESCE(EXCLUDED.player_id, game_batting.player_id),
+                position = EXCLUDED.position,
                 at_bats = EXCLUDED.at_bats,
                 runs = EXCLUDED.runs,
                 hits = EXCLUDED.hits,
@@ -2613,7 +2655,7 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
                 caught_stealing = EXCLUDED.caught_stealing
         """, (
             game_id, team_id, player_id, p.get("player_name"),
-            i + 1, p.get("position"),
+            batting_order_val, p.get("position"),
             p.get("ab", 0), p.get("r", 0), p.get("h", 0),
             p.get("2b", 0), p.get("3b", 0), p.get("hr", 0), p.get("rbi", 0),
             p.get("bb", 0), p.get("so", 0), p.get("hbp", 0),
