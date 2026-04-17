@@ -12662,53 +12662,125 @@ def opponent_trends(
         player_info = {r["id"]: {"throws": r["throws"], "bats": r["bats"]}
                        for r in cur.fetchall()}
 
+        # ── Canonicalize every row using player_id as the source of truth ──
+        # The box-score scraper tags most rows with the correct player_id even
+        # when the displayed name is abbreviated or reversed. Before any dedup
+        # or aggregation, overwrite player_name with the canonical "First Last"
+        # from the players table. Rows missing a player_id are fuzzy-matched
+        # against the same canonical map so truncated/garbled names still
+        # collapse into the real player. This kills the root cause of the
+        # Mana Heffernan / M. Heffernan style duplicates.
+        player_ids_seen = {b["player_id"] for b in raw_batting if b.get("player_id")}
+        player_ids_seen.update(p["player_id"] for p in raw_pitching if p.get("player_id"))
+
+        canonical_name_by_id = {}
+        if player_ids_seen:
+            ph_pid = ",".join(["%s"] * len(player_ids_seen))
+            cur.execute(f"""
+                SELECT id, first_name, last_name
+                FROM players
+                WHERE id IN ({ph_pid})
+            """, list(player_ids_seen))
+            for r in cur.fetchall():
+                first = (r["first_name"] or "").strip()
+                last = (r["last_name"] or "").strip()
+                full = (first + " " + last).strip()
+                if full:
+                    canonical_name_by_id[r["id"]] = full
+
+        def _strip_prefix_junk(s):
+            """Strip leading non-letter characters (stray HTML, bullets, etc.)."""
+            return re.sub(r'^[^A-Za-z]+', '', s or '').strip()
+
+        def resolve_raw_name(raw_name):
+            """Best-effort match of a raw name against canonical_name_by_id.
+            Handles truncation ('Siniscalc' vs 'Siniscalchi'), initials
+            ('L. Siniscalchi'), 'Last, First', and leading junk characters.
+            Returns (player_id, full_name) or (None, None) if ambiguous."""
+            if not raw_name or not canonical_name_by_id:
+                return (None, None)
+            name = _strip_prefix_junk(normalize_name(raw_name))
+            if not name:
+                return (None, None)
+            nl = name.lower()
+            # Exact match
+            for pid, full in canonical_name_by_id.items():
+                if full.lower() == nl:
+                    return (pid, full)
+            # "F. Last" / "F Last" form — allow last-name truncation on either side
+            m = re.match(r'^([A-Za-z])\.?\s*(.+)$', name)
+            if m:
+                initial = m.group(1).lower()
+                last_raw = m.group(2).strip().lower()
+                matches = []
+                for pid, full in canonical_name_by_id.items():
+                    parts = full.split(None, 1)
+                    if len(parts) < 2:
+                        continue
+                    f_first, f_last = parts[0].lower(), parts[1].lower()
+                    if not f_first.startswith(initial):
+                        continue
+                    if f_last.startswith(last_raw) or last_raw.startswith(f_last):
+                        matches.append((pid, full))
+                if len(matches) == 1:
+                    return matches[0]
+            # Last-name-only prefix match (rare, but covers edge truncation)
+            matches = []
+            for pid, full in canonical_name_by_id.items():
+                parts = full.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                f_last = parts[1].lower()
+                if f_last.startswith(nl) or nl.startswith(f_last):
+                    matches.append((pid, full))
+            if len(matches) == 1:
+                return matches[0]
+            return (None, None)
+
+        # Apply canonical names to every batting/pitching row in place
+        for row in raw_batting:
+            pid = row.get("player_id")
+            if pid and pid in canonical_name_by_id:
+                row["player_name"] = canonical_name_by_id[pid]
+                continue
+            rpid, rname = resolve_raw_name(row.get("player_name"))
+            if rpid:
+                row["player_id"] = rpid
+                row["player_name"] = rname
+            else:
+                row["player_name"] = _strip_prefix_junk(normalize_name(row.get("player_name") or ""))
+        for row in raw_pitching:
+            pid = row.get("player_id")
+            if pid and pid in canonical_name_by_id:
+                row["player_name"] = canonical_name_by_id[pid]
+                continue
+            rpid, rname = resolve_raw_name(row.get("player_name"))
+            if rpid:
+                row["player_id"] = rpid
+                row["player_name"] = rname
+            else:
+                row["player_name"] = _strip_prefix_junk(normalize_name(row.get("player_name") or ""))
+
+        # Rebuild the pitcher_names set with canonical names
+        pitcher_names = {p["player_name"] for p in raw_pitching if p.get("player_name")}
+
         # ── Player PRIMARY position (single best position this season) ──
-        cur.execute(f"""
-            SELECT gb.player_name, gb.position, COUNT(*) as cnt
-            FROM game_batting gb
-            WHERE gb.game_id IN ({ph}) AND gb.team_id = %s
-              AND gb.batting_order <= 9
-              AND gb.position IS NOT NULL
-              AND UPPER(TRIM(gb.position)) NOT IN ('PH','PR','CR','P','')
-            GROUP BY gb.player_name, gb.position
-            ORDER BY gb.player_name, cnt DESC
-        """, game_ids + [team_id])
-        # Only store the SINGLE most common position per player
-        player_primary_pos = {}
-        for r in cur.fetchall():
-            name = normalize_name(r["player_name"])
-            if name not in player_primary_pos:
-                pos = r["position"].upper().strip()
-                # If position contains slash (e.g. "CF/RF"), take the first one
-                if '/' in pos:
-                    pos = pos.split('/')[0].strip()
-                player_primary_pos[name] = pos
-
-        # ── Resolve abbreviated names ──
-        # Collect all unique player names from batting + pitching
-        all_player_names = set()
+        # Built in-memory from the now-canonicalized batting rows so every
+        # name variant for the same player contributes to one bucket.
+        _pos_counts = defaultdict(Counter)
         for b in raw_batting:
-            all_player_names.add(b["player_name"])
-        for p in raw_pitching:
-            all_player_names.add(p["player_name"])
-        name_aliases = build_name_alias_map(all_player_names)
-
-        # Apply aliases: update raw data so abbreviated names map to full names
-        for b in raw_batting:
-            if b["player_name"] in name_aliases:
-                b["player_name"] = name_aliases[b["player_name"]]
-        for p in raw_pitching:
-            if p["player_name"] in name_aliases:
-                p["player_name"] = name_aliases[p["player_name"]]
-        # Update pitcher_names set with aliases
-        pitcher_names = set()
-        for p in raw_pitching:
-            pitcher_names.add(p["player_name"])
-        # Update primary positions with aliases
-        updated_pos = {}
-        for name, pos in player_primary_pos.items():
-            updated_pos[name_aliases.get(name, name)] = pos
-        player_primary_pos = updated_pos
+            if (b.get("batting_order") or 0) > 9:
+                continue
+            raw_pos = (b.get("position") or "").upper().strip()
+            if raw_pos in ("PH", "PR", "CR", "P", ""):
+                continue
+            # Split slashed positions (e.g. "CF/RF") and take the primary
+            primary_pos = raw_pos.split('/')[0].strip() if '/' in raw_pos else raw_pos
+            _pos_counts[b["player_name"]][primary_pos] += 1
+        player_primary_pos = {
+            name: counter.most_common(1)[0][0]
+            for name, counter in _pos_counts.items() if counter
+        }
 
         # Re-build deduplicated data after alias resolution
         batting_by_game = defaultdict(list)
