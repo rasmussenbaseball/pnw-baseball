@@ -13976,7 +13976,8 @@ def all_conference(
     def serialize_hitter(pid, slot):
         rec = players[pid]
         pg = rec.get("pos_games", {})
-        return {
+        is_two_way = rec["ip"] >= AC_UTIL_TWO_WAY_MIN_IP and rec["pa"] >= AC_UTIL_TWO_WAY_MIN_PA
+        out = {
             "player_id": pid,
             "name": rec["name"],
             "team_id": rec["team_id"],
@@ -13997,8 +13998,20 @@ def all_conference(
             "slg": rec.get("slg"),
             "ops": rec.get("ops"),
             "hr": rec.get("hr"),
-            "is_two_way": rec["ip"] >= AC_UTIL_TWO_WAY_MIN_IP and rec["pa"] >= AC_UTIL_TWO_WAY_MIN_PA,
+            "is_two_way": is_two_way,
         }
+        # Include pitching info for two-way players (so UTIL/HM cards can show it)
+        if is_two_way:
+            out["pitching"] = {
+                "ip": rec.get("ip"),
+                "gs": rec.get("gs"),
+                "era": rec.get("era"),
+                "fip": rec.get("fip"),
+                "fip_plus": rec.get("fip_plus"),
+                "war": round(rec["war_pit"], 2),
+                "k": rec.get("k"),
+            }
+        return out
 
     def serialize_pitcher(pid, role):
         rec = players[pid]
