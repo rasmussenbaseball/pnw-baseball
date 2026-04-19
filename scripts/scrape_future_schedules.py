@@ -882,12 +882,19 @@ def deduplicate_future_games(games):
     """
     from collections import defaultdict
 
-    # First pass: remove EXACT duplicates within a single source.
+    # First pass: cap within-source duplicates at 2 per matchup.
     # Some schedule pages list the same game twice (e.g. mobile + desktop
-    # HTML, or separate "full schedule" and "conference only" sections).
-    # Without this step, those inflated counts leak through the source_counts
-    # heuristic below and produce scoreboard doubles.
-    seen_exact = set()
+    # HTML, or separate "full schedule" and "conference only" sections),
+    # which inflates counts and produces scoreboard doubles.
+    #
+    # IMPORTANT: A legitimate doubleheader shows up in one source's schedule
+    # as 2 entries with identical (date, home, away, source, location) and
+    # often matching time (both None when times aren't posted). So we cannot
+    # collapse all exact-key duplicates -- that would strip real doubleheader
+    # games. Instead we allow up to 2 per matchup per source (doubleheader
+    # max) and drop only the 3rd+ identical entry, which must be accidental
+    # render duplication.
+    seen_counts = defaultdict(int)
     unique_games = []
     for g in games:
         exact_key = (
@@ -898,9 +905,9 @@ def deduplicate_future_games(games):
             g.get("location", ""),
             g.get("time", ""),
         )
-        if exact_key in seen_exact:
+        if seen_counts[exact_key] >= 2:
             continue
-        seen_exact.add(exact_key)
+        seen_counts[exact_key] += 1
         unique_games.append(g)
     games = unique_games
 
