@@ -29,6 +29,7 @@ backend/data/cache/
 *.db-wal
 backend/data/live_scores.json
 backend/data/future_schedules.json
+backend/data/key_matchup_cache.json
 
 # Vite temp files
 frontend/vite.config.js.timestamp*

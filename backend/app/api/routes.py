@@ -8131,6 +8131,8 @@ def key_matchup(
         cur = conn.cursor()
 
         # ── 1. Get all games for this date involving PNW teams ──
+        # Both teams must be PNW-state (WA/OR/ID/MT/BC) so that the
+        # homepage "matchup of the day" never features a non-PNW opponent.
         cur.execute("""
             SELECT g.id, g.game_date, g.status, g.is_conference_game,
                    g.home_team_id, g.away_team_id,
@@ -8148,6 +8150,7 @@ def key_matchup(
             LEFT JOIN divisions ad ON ac.division_id = ad.id
             WHERE g.game_date = %s AND g.season = %s
               AND ht.state IN ('WA','OR','ID','MT','BC')
+              AND at2.state IN ('WA','OR','ID','MT','BC')
             ORDER BY g.id
         """, (date, season))
         games = [dict(r) for r in cur.fetchall()]
@@ -8201,12 +8204,17 @@ def key_matchup(
                         for r in cur.fetchall():
                             fs_team_info[r["id"]] = dict(r)
 
+                    PNW_STATES = {"WA", "OR", "ID", "MT", "BC"}
                     for idx, fg in enumerate(fs_games):
                         h = fg.get("home_team_id")
                         a = fg.get("away_team_id")
                         if h and a and (h, a) not in existing_keys:
                             hi = fs_team_info.get(h, {})
                             ai = fs_team_info.get(a, {})
+                            # Same PNW-both-teams filter as the SQL above:
+                            # skip any game where either side isn't PNW-state.
+                            if hi.get("state") not in PNW_STATES or ai.get("state") not in PNW_STATES:
+                                continue
                             games.append({
                                 "id": f"future_{h}_{a}_{idx}",
                                 "game_date": fg["game_date"],
@@ -8233,10 +8241,40 @@ def key_matchup(
             return {"matchup": None, "games": [], "date": date}
 
         # ── 2. Pick the best matchup ──
-        # If game_id specified, use that; otherwise score each game
+        # Resolution order:
+        #   1. Explicit game_id override (never cached).
+        #   2. Cached pick for this date (stable once chosen so the homepage
+        #      widget doesn't flip to a different game when records update
+        #      midway through the day).
+        #   3. Score each game and pick the best.
+        cache_path = Path(__file__).parent.parent.parent / "data" / "key_matchup_cache.json"
+        cache = {}
+        if cache_path.exists():
+            try:
+                with open(cache_path) as _cf:
+                    cache = _json.load(_cf) or {}
+            except Exception:
+                cache = {}
+
         chosen = None
         if game_id:
             chosen = next((g for g in games if str(g["id"]) == str(game_id)), None)
+        elif date in cache:
+            entry = cache[date] or {}
+            cached_id = entry.get("game_id")
+            cached_h = entry.get("home_team_id")
+            cached_a = entry.get("away_team_id")
+            # Prefer id match. Fall back to (home, away) pair so the cache
+            # survives a future_H_A_IDX placeholder being replaced by a real
+            # DB id once the game is scraped.
+            chosen = next((g for g in games if str(g["id"]) == str(cached_id)), None)
+            if chosen is None and cached_h and cached_a:
+                chosen = next(
+                    (g for g in games
+                     if g.get("home_team_id") == cached_h
+                     and g.get("away_team_id") == cached_a),
+                    None,
+                )
 
         if not chosen:
             # Score games: prioritize quality of teams first, then closeness.
@@ -8296,6 +8334,22 @@ def key_matchup(
 
         if not chosen:
             chosen = games[0]
+
+        # Persist the pick so subsequent calls on the same date stay stable.
+        # Only cache real (non-override) selections so manual overrides via
+        # ?game_id=... don't get baked in.
+        if not game_id and chosen:
+            cache[date] = {
+                "game_id": chosen.get("id"),
+                "home_team_id": chosen.get("home_team_id"),
+                "away_team_id": chosen.get("away_team_id"),
+            }
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_path, "w") as _cf:
+                    _json.dump(cache, _cf, indent=2)
+            except Exception:
+                pass
 
         # ── 3. Fetch team stats for both teams ──
         matchup_teams = []
