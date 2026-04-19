@@ -370,8 +370,11 @@ def scrape_seattle_u_record(season_year):
     # Use games endpoint to compute conference record from completed games
     conference = None
     try:
+        # per_page=200 ensures we get the whole season (default pagination
+        # drops games from later in the schedule).
         resp = requests.get(
             f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games",
+            params={"per_page": "200"},
             timeout=15,
         )
         resp.raise_for_status()
