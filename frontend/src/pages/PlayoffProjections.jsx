@@ -23,6 +23,9 @@ function formatRecord(wins, losses) {
 
 function formatOdds(pct) {
   if (!pct && pct !== 0) return '-'
+  // Exact 1.0 means all 5000 Monte Carlo sims qualify → team is clinched.
+  // Show 100% instead of the generic >99% bucket.
+  if (pct >= 1) return '100%'
   if (pct >= 0.995) return '>99%'
   if (pct <= 0.005 && pct > 0) return '<1%'
   if (pct === 0) return '-'

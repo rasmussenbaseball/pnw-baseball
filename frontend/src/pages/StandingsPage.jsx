@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useStandings } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import { usePersistedState } from '../hooks/usePersistedState'
+
+const API_BASE = '/api/v1'
 
 // Division level → badge color classes
 const BADGE_COLORS = {
@@ -19,8 +21,9 @@ function formatPct(pct) {
 }
 
 // ─── Compact conference standings table ───
-function ConferenceTable({ conference }) {
+function ConferenceTable({ conference, clinchedTeams }) {
   const badgeClass = BADGE_COLORS[conference.division_level] || 'bg-gray-500 text-white'
+  const clinched = clinchedTeams || new Set()
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -75,6 +78,14 @@ function ConferenceTable({ conference }) {
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
                       <span className="font-semibold text-nw-teal truncate">{team.short_name}</span>
+                      {clinched.has(team.id) && (
+                        <span
+                          title="Clinched playoff spot"
+                          className="text-[8px] font-bold px-1 py-px rounded bg-amber-500 text-white shrink-0"
+                        >
+                          x
+                        </span>
+                      )}
                     </Link>
                   ) : (
                     <div className="flex items-center gap-1 min-w-0">
@@ -83,6 +94,14 @@ function ConferenceTable({ conference }) {
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
                       <span className="font-medium text-gray-400 truncate">{team.short_name}</span>
+                      {clinched.has(team.id) && (
+                        <span
+                          title="Clinched playoff spot"
+                          className="text-[8px] font-bold px-1 py-px rounded bg-amber-500 text-white shrink-0"
+                        >
+                          x
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -132,7 +151,8 @@ function ConferenceTable({ conference }) {
 }
 
 // ─── Overall PNW Standings table ───
-function OverallTable({ teams }) {
+function OverallTable({ teams, clinchedTeams }) {
+  const clinched = clinchedTeams || new Set()
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-3 py-2 border-b border-gray-100">
@@ -173,6 +193,14 @@ function OverallTable({ teams }) {
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
                       <span className="font-medium text-gray-800">{team.short_name}</span>
+                      {clinched.has(team.id) && (
+                        <span
+                          title="Clinched playoff spot"
+                          className="text-[8px] font-bold px-1 py-px rounded bg-amber-500 text-white shrink-0"
+                        >
+                          x
+                        </span>
+                      )}
                     </Link>
                   </td>
                   <td className="text-center px-1 py-1">
@@ -215,6 +243,25 @@ function OverallTable({ teams }) {
 export default function StandingsPage() {
   const [view, setView] = usePersistedState('standings_view', 'conference') // 'conference' | 'overall'
   const { data, loading, error } = useStandings(2026)
+
+  // Fetch playoff projections so we can mark clinched teams (playoff_pct === 1).
+  // Failure is non-fatal — standings still render without the badge.
+  const [clinchedTeams, setClinchedTeams] = useState(new Set())
+  useEffect(() => {
+    fetch(`${API_BASE}/playoff-projections?season=2026`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || !Array.isArray(d.conferences)) return
+        const set = new Set()
+        for (const conf of d.conferences) {
+          for (const t of (conf.teams || [])) {
+            if (t.playoff_pct >= 1) set.add(t.team_id)
+          }
+        }
+        setClinchedTeams(set)
+      })
+      .catch(() => {}) // silent fail — badge is optional enrichment
+  }, [])
 
   if (loading) {
     return (
@@ -299,19 +346,19 @@ export default function StandingsPage() {
                 }`}>
                   {/* Large conferences render normally */}
                   {largeConfs.map(conf => (
-                    <ConferenceTable key={conf.conference_id} conference={conf} />
+                    <ConferenceTable key={conf.conference_id} conference={conf} clinchedTeams={clinchedTeams} />
                   ))}
                   {/* Stack small conferences in one column */}
                   {smallConfs.length > 0 && (
                     <div className="flex flex-col gap-3">
                       {smallConfs.map(conf => (
-                        <ConferenceTable key={conf.conference_id} conference={conf} />
+                        <ConferenceTable key={conf.conference_id} conference={conf} clinchedTeams={clinchedTeams} />
                       ))}
                     </div>
                   )}
                   {/* If no small/large split needed, render single conference */}
                   {smallConfs.length === 0 && largeConfs.length === 0 && confs.map(conf => (
-                    <ConferenceTable key={conf.conference_id} conference={conf} />
+                    <ConferenceTable key={conf.conference_id} conference={conf} clinchedTeams={clinchedTeams} />
                   ))}
                 </div>
               </div>
@@ -319,7 +366,14 @@ export default function StandingsPage() {
           })}
         </div>
       ) : (
-        <OverallTable teams={overall} />
+        <OverallTable teams={overall} clinchedTeams={clinchedTeams} />
+      )}
+
+      {clinchedTeams.size > 0 && (
+        <div className="mt-3 flex items-center gap-1.5 text-[10px] text-gray-500">
+          <span className="text-[8px] font-bold px-1 py-px rounded bg-amber-500 text-white">x</span>
+          <span>Clinched playoff spot</span>
+        </div>
       )}
 
       <StatsLastUpdated className="mt-4" />
