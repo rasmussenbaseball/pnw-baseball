@@ -2028,6 +2028,38 @@ def _apply_batting_annotations(table, players):
             if i + 1 < len(parts):
                 _find_player_and_apply(stat_key, parts[i + 1])
 
+    def _process_dl(dl):
+        """Iterate over dt/dd pairs in a <dl>.
+
+        Two Sidearm formats exist:
+          A) <dt>Batting</dt><dd>2B:Name(1)HR:Name(2)</dd>  -- stat labels
+             concatenated inside the dd text.
+          B) <dt>HR:</dt><dd>D. Carson (4)</dd>              -- one dt per
+             stat, label lives in the dt.
+
+        We track the preceding <dt>. If the dt text itself is a stat label,
+        we synthesize the combined "LABEL:names" string so _parse_dd_text
+        can pick up the label. Otherwise we pass the dd through untouched
+        (format A).
+        """
+        current_dt = None
+        for child in dl.children:
+            if not hasattr(child, 'name') or not child.name:
+                continue
+            if child.name == 'dt':
+                current_dt = child.get_text(strip=True)
+            elif child.name == 'dd':
+                dd_text = child.get_text(strip=True)
+                if not dd_text:
+                    continue
+                dt_label = (current_dt or "").strip().rstrip(":").strip().lower()
+                if dt_label and dt_label in LABEL_MAP:
+                    # Format B — synthesize "HR:Name(4)" so the splitter sees it.
+                    _parse_dd_text(f"{dt_label.upper()}:{dd_text}")
+                else:
+                    # Format A — labels are concatenated inside the dd.
+                    _parse_dd_text(dd_text)
+
     # ── Strategy 1: Find <dl class="special-stats"> sibling of table ──
     found_dl = False
     for sib in table.next_siblings:
@@ -2037,14 +2069,7 @@ def _apply_batting_annotations(table, players):
             break
         if sib.name == 'dl' and 'special-stats' in (sib.get('class') or []):
             found_dl = True
-            # Process each dt/dd pair
-            for child in sib.children:
-                if not hasattr(child, 'name'):
-                    continue
-                if child.name == 'dd':
-                    dd_text = child.get_text(strip=True)
-                    if dd_text:
-                        _parse_dd_text(dd_text)
+            _process_dl(sib)
             break  # Only process the first matching dl
 
     if found_dl:
@@ -2059,11 +2084,7 @@ def _apply_batting_annotations(table, players):
             if sib.name == 'table':
                 break
             if sib.name == 'dl':
-                for child in sib.children:
-                    if hasattr(child, 'name') and child.name == 'dd':
-                        dd_text = child.get_text(strip=True)
-                        if dd_text:
-                            _parse_dd_text(dd_text)
+                _process_dl(sib)
                 break
 
     # ── Strategy 3: Plain text fallback for non-Sidearm formats ──
