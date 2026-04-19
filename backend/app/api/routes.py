@@ -7052,6 +7052,44 @@ def series_recap(
                 continue
             matchup_games[tuple(sorted([hid, aid]))].append(g)
 
+        # Dedupe same-game duplicates within each matchup. When MSUB and WOU
+        # each scrape the same game from their own site, we get two rows:
+        # one with home=MSUB/away=WOU and one with home=WOU/away=MSUB. Both
+        # should collapse to a single scorebug. Real doubleheader games are
+        # preserved because they have either a distinct game_number (1 vs 2)
+        # or different scores.
+        def _dedupe_matchup_games(glist):
+            seen = {}
+            for g in glist:
+                # Canonicalize: sort the two (team_id, score) pairs so that
+                # swapped home/away rows produce the same key.
+                try:
+                    score_pair = tuple(sorted([
+                        (g.get("home_team_id") or 0, g.get("home_score") or 0),
+                        (g.get("away_team_id") or 0, g.get("away_score") or 0),
+                    ]))
+                except TypeError:
+                    score_pair = (g.get("home_team_id"), g.get("away_team_id"))
+                key = (g["game_date"], g.get("game_number") or 0, score_pair)
+                if key not in seen:
+                    seen[key] = g
+                else:
+                    # Prefer the row with more filled-in stat fields.
+                    existing = seen[key]
+                    def _fill(row):
+                        return sum(
+                            1
+                            for f in ("home_hits", "away_hits",
+                                      "home_errors", "away_errors", "innings")
+                            if row.get(f) is not None
+                        )
+                    if _fill(g) > _fill(existing):
+                        seen[key] = g
+            return list(seen.values())
+
+        for key in list(matchup_games.keys()):
+            matchup_games[key] = _dedupe_matchup_games(matchup_games[key])
+
         series_list = []
         for (t1, t2), games in matchup_games.items():
             games.sort(key=lambda g: (g["game_date"], g["id"]))
