@@ -3083,7 +3083,9 @@ def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
     api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games"
     logger.info(f"  Fetching game list: {api_url}")
     try:
-        resp = requests.get(api_url, timeout=15)
+        # per_page=200 ensures we get the whole season in one response
+        # (default is small and drops games from later in the schedule).
+        resp = requests.get(api_url, params={"per_page": "200"}, timeout=15)
         resp.raise_for_status()
         all_games = resp.json().get("data", [])
     except Exception as e:
