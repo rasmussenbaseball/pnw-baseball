@@ -786,7 +786,9 @@ def extract_future_seattle_u_games(season_year, today, team_map):
     logger.info(f"Fetching Seattle U schedule via WMT API: {api_url}")
 
     try:
-        resp = requests.get(api_url, timeout=15)
+        # per_page=200 ensures we get the whole season in one response
+        # (default is small and drops games from later in the schedule).
+        resp = requests.get(api_url, params={"per_page": "200"}, timeout=15)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
