@@ -882,6 +882,28 @@ def deduplicate_future_games(games):
     """
     from collections import defaultdict
 
+    # First pass: remove EXACT duplicates within a single source.
+    # Some schedule pages list the same game twice (e.g. mobile + desktop
+    # HTML, or separate "full schedule" and "conference only" sections).
+    # Without this step, those inflated counts leak through the source_counts
+    # heuristic below and produce scoreboard doubles.
+    seen_exact = set()
+    unique_games = []
+    for g in games:
+        exact_key = (
+            g.get("game_date"),
+            g.get("home_team"),
+            g.get("away_team"),
+            g.get("source_team", ""),
+            g.get("location", ""),
+            g.get("time", ""),
+        )
+        if exact_key in seen_exact:
+            continue
+        seen_exact.add(exact_key)
+        unique_games.append(g)
+    games = unique_games
+
     # Group games by (date, team_pair)
     # Use raw team names — normalize_team_name's partial matching can
     # corrupt NWAC names (e.g. "SW Oregon" -> "Oregon"), merging games
