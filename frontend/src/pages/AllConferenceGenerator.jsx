@@ -247,7 +247,8 @@ function CriteriaPanel({ rateMode }) {
       <div className="px-4 py-3 text-xs text-gray-700 space-y-2 leading-relaxed">
         <p>
           <span className="font-semibold">Primary criteria:</span> WAR (offensive WAR for hitters,
-          pitching WAR for starters, WAR per IP for relievers).
+          pitching WAR for starters, WAR per IP for relievers, combined bat + pitch WAR for the UTIL
+          slot so two-way players get credit for both sides of the ball).
           {rateMode && (
             <> For All-PNW we use <span className="font-mono">WAR per PA</span> for hitters and{' '}
             <span className="font-mono">WAR per IP</span> for pitchers, since teams across divisions play
@@ -263,13 +264,16 @@ function CriteriaPanel({ rateMode }) {
           the same pool, so any qualified outfielder can fill OF1, OF2, or OF3.
         </p>
         <p>
-          <span className="font-semibold">DH:</span> 15+ games at DH AND those games make up at least
-          50 percent of the player's defensive games. Pure hitters who never DH are not eligible.
+          <span className="font-semibold">DH:</span> DH appearances must make up at least 20 percent of
+          the player's total games in the field or at DH. There is no minimum game count, so a role
+          DH with a small sample can still qualify.
         </p>
         <p>
-          <span className="font-semibold">UTIL eligibility:</span> a player must either be a true two-way
-          contributor (10+ IP and 40+ PA) OR have appeared at least 7 games at both an infield position
-          (catcher counts) and an outfield position.
+          <span className="font-semibold">UTIL eligibility:</span> a player qualifies three ways (any one
+          is enough): (1) true two-way contributor with 10+ IP and 40+ PA, (2) 5+ games at an infield
+          position other than catcher (1B/2B/3B/SS) AND 5+ games in the outfield, or (3) 5+ games at
+          catcher AND 5+ games at another non-DH position. UTIL candidates are ranked by combined bat
+          plus pitch WAR.
         </p>
         <p>
           <span className="font-semibold">One appearance per page:</span> each player can appear
