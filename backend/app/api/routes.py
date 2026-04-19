@@ -6865,11 +6865,29 @@ def daily_performers(
                     "team_logo": b.get("team_logo"),
                     "headshot_url": b.get("headshot_url"),
                     "division": b.get("division"),
+                    "max_hr_in_game": 0,
+                    "max_2b_in_game": 0,
+                    "max_3b_in_game": 0,
+                    "max_sb_in_game": 0,
+                    "max_xbh_in_game": 0,
                 }
                 for sk in bat_sum_keys:
                     hitter_agg[player_key][sk] = 0
             for sk in bat_sum_keys:
                 hitter_agg[player_key][sk] += (b.get(sk) or 0)
+            # Track the highest single-game totals so the frontend can flag
+            # multi-event games with a "(n)" notation next to the aggregate.
+            g_hr = b.get("home_runs") or 0
+            g_2b = b.get("doubles") or 0
+            g_3b = b.get("triples") or 0
+            g_sb = b.get("stolen_bases") or 0
+            g_xbh = g_hr + g_2b + g_3b
+            agg = hitter_agg[player_key]
+            if g_hr  > agg["max_hr_in_game"]:  agg["max_hr_in_game"]  = g_hr
+            if g_2b  > agg["max_2b_in_game"]:  agg["max_2b_in_game"]  = g_2b
+            if g_3b  > agg["max_3b_in_game"]:  agg["max_3b_in_game"]  = g_3b
+            if g_sb  > agg["max_sb_in_game"]:  agg["max_sb_in_game"]  = g_sb
+            if g_xbh > agg["max_xbh_in_game"]: agg["max_xbh_in_game"] = g_xbh
 
         qualified_hitters = [b for b in hitter_agg.values() if b.get("at_bats", 0) >= 1]
         for b in qualified_hitters:

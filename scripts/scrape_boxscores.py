@@ -1969,17 +1969,23 @@ def _apply_batting_annotations(table, players):
     def _find_player_and_apply(stat_key, text):
         """Parse 'Name(count);Name(count)' and apply to player dicts.
 
-        The number in parens is typically the SEASON total on Sidearm pages,
-        not the game count. So we count each player APPEARANCE as +1.
-        If a player hit 2 doubles, they appear twice: "Stevens(3);Stevens(4)".
+        On Sidearm annotations the number in parens is the PER-GAME count
+        for that stat (e.g. 'Thoma-Britt, Mitchell (2)' = 2 HRs in this game).
+        Some sites format multi-event games as duplicate entries instead:
+        'Britt(1); Britt(2)' — two entries means 2 HRs. We handle both by
+        taking the MAX of the parsed paren value and the appearance count
+        per player, so either format produces the correct game count.
         """
         entries = text.split(";")
-        # Count appearances per player index
-        counts = {}
+        paren_counts = {}       # idx -> max parsed (n)
+        appearance_counts = {}  # idx -> times the player is listed
         for entry in entries:
             entry = entry.strip()
             if not entry:
                 continue
+            # Extract the number inside parens, if any
+            count_match = re.search(r'\((\d+)\)', entry)
+            parsed = int(count_match.group(1)) if count_match else 1
             # Clean name (remove paren contents)
             clean_name = re.sub(r'\s*\(.*?\)\s*', '', entry).strip()
             if not clean_name:
@@ -1995,12 +2001,17 @@ def _apply_batting_annotations(table, players):
                 if len(parts) >= 2:
                     idx = name_to_idx.get(f"{parts[1]} {parts[0]}")
             if idx is not None:
-                counts[idx] = counts.get(idx, 0) + 1
+                paren_counts[idx] = max(paren_counts.get(idx, 0), parsed)
+                appearance_counts[idx] = appearance_counts.get(idx, 0) + 1
 
-        for idx, count in counts.items():
-            current = players[idx].get(stat_key, 0)
-            if current == 0:
-                players[idx][stat_key] = count
+        for idx, paren in paren_counts.items():
+            # Use max(paren, appearances) so both annotation formats resolve
+            # to the correct per-game count.
+            final = max(paren, appearance_counts.get(idx, 1))
+            current = players[idx].get(stat_key, 0) or 0
+            # Take max of existing table value and the parsed count so we
+            # never undercount when the table already has a value set.
+            players[idx][stat_key] = max(current, final)
 
     def _parse_dd_text(dd_text):
         """Parse a <dd> text that may contain multiple concatenated stat entries."""

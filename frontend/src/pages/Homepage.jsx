@@ -1067,16 +1067,31 @@ function TopPerformersWidget({ data, date }) {
                   </div>
                   <div className="flex gap-1.5 justify-end text-[10px] tabular-nums">
                     {(h.home_runs || 0) > 0 && (
-                      <span className="font-bold text-red-600">{h.home_runs} HR</span>
+                      <span className="font-bold text-red-600">
+                        {h.home_runs} HR
+                        {(h.max_hr_in_game || 0) > 1 && (
+                          <span className="ml-0.5 text-red-500">({h.max_hr_in_game})</span>
+                        )}
+                      </span>
                     )}
                     {(h.rbi || 0) > 0 && (
                       <span className="text-gray-500">{h.rbi} RBI</span>
                     )}
                     {(h.stolen_bases || 0) > 0 && (
-                      <span className="text-gray-500">{h.stolen_bases} SB</span>
+                      <span className="text-gray-500">
+                        {h.stolen_bases} SB
+                        {(h.max_sb_in_game || 0) > 1 && (
+                          <span className="ml-0.5">({h.max_sb_in_game})</span>
+                        )}
+                      </span>
                     )}
                     {(h.xbh || 0) > 0 && !(h.home_runs > 0) && (
-                      <span className="text-gray-500">{h.xbh} XBH</span>
+                      <span className="text-gray-500">
+                        {h.xbh} XBH
+                        {(h.max_xbh_in_game || 0) > 1 && (
+                          <span className="ml-0.5">({h.max_xbh_in_game})</span>
+                        )}
+                      </span>
                     )}
                   </div>
                 </div>
