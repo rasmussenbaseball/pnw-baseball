@@ -8505,76 +8505,133 @@ def _dedup_live_games(games):
       • scores match (possibly swapped)
     When keeping one, prefer the row that has a box_score_url.
     """
-    # Build a lookup: team short_name / name / school_name → id
-    # so "CWU" and "Central Washington University" both resolve to the same id.
+    # ── Team-name normalization & lookup ──────────────────────────
+    # Different sources spell the same team many ways:
+    #   "MSUB" / "MSU-Billings Yellowjackets" / "Montana State University-Billings"
+    #   / "Montana State University Billings" / "MSU Billings"
+    # We build a cache that maps every reasonable spelling to the team id.
+    import re as _re
+
+    _ABBREV_MAP = {
+        "wash.": "washington", "ore.": "oregon", "mont.": "montana",
+        "so.": "southern", "no.": "northern",
+        "e.": "eastern", "w.": "western", "cen.": "central",
+        "s.": "southern", "n.": "northern",
+        "u.": "university", "univ.": "university", "univ": "university",
+        "coll.": "college", "coll": "college",
+    }
+    _TRAILING_SUFFIX = ("university", "college", "institute", "academy")
+    _LEADING_PREFIX = ("university of ", "college of ", "the ")
+
+    # Hardcoded aliases for PNW teams whose short/long spellings don't
+    # share enough tokens for the generic normalizer to bridge.
+    _HARD_ALIASES = {
+        # Montana State Billings ↔ MSU-Billings
+        "montana state billings": "msu billings",
+        "montana state university billings": "msu billings",
+    }
+
+    def _team_name_normalize(s):
+        """Lowercase + strip punctuation/rank/parens and expand abbreviations."""
+        if not s:
+            return ""
+        s = s.strip().lower()
+        # Hyphens / en-dash / em-dash → space
+        s = _re.sub(r"[-\u2013\u2014]", " ", s)
+        # Smart/straight apostrophes gone
+        s = s.replace("\u2019", "").replace("\u2018", "").replace("'", "")
+        # Strip trailing parenthetical: "pacific (ore.)" → "pacific"
+        s = _re.sub(r"\s*\([^)]*\)\s*$", "", s).strip()
+        # Strip leading rank: "#7 oregon" / "no. 7 oregon"
+        s = _re.sub(r"^(?:no\.\s*\d+|#\d+)\s+", "", s).strip()
+        # Strip trailing score digits: "gonzaga 8" → "gonzaga"
+        s = _re.sub(r"\s*\d+$", "", s).strip()
+        # "St." handling: leading = Saint, elsewhere = State
+        # ("St. Martin's" → "saint martins", "Oregon St." → "oregon state")
+        if s.startswith("st. "):
+            s = "saint " + s[4:]
+        elif s.startswith("st "):
+            s = "saint " + s[3:]
+        # Any remaining "st." / "st" tokens → "state"
+        s = _re.sub(r"\bst\.", "state", s)
+        # Expand token-level abbreviations
+        s = " ".join(_ABBREV_MAP.get(w, w) for w in s.split())
+        # Collapse whitespace
+        s = _re.sub(r"\s+", " ", s).strip()
+        # Apply hardcoded aliases last
+        return _HARD_ALIASES.get(s, s)
+
+    def _strip_trailing_suffix(s):
+        for w in _TRAILING_SUFFIX:
+            if s.endswith(" " + w):
+                return s[: -len(w) - 1].strip()
+        return s
+
+    def _strip_leading_prefix(s):
+        for p in _LEADING_PREFIX:
+            if s.startswith(p):
+                return s[len(p):].strip()
+        return s
+
     _team_id_cache = {}
+
+    def _register(key, tid):
+        if key and key not in _team_id_cache:
+            _team_id_cache[key] = tid
+
     try:
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT id, short_name, name, school_name FROM teams")
             for row in cur.fetchall():
+                tid = row["id"]
                 for field in ("short_name", "name", "school_name"):
                     val = row[field]
-                    if val:
-                        _team_id_cache[val.strip().lower()] = row["id"]
+                    if not val:
+                        continue
+                    n = _team_name_normalize(val)
+                    _register(n, tid)
+                    # Mascot variant: strip the last word of the full name
+                    # ("Seattle U Redhawks" → "seattle u",
+                    #  "MSU-Billings Yellowjackets" → "msu billings")
+                    if field == "name":
+                        parts = n.split()
+                        if len(parts) >= 2:
+                            _register(" ".join(parts[:-1]), tid)
+                    # Trailing "University"/"College" stripped
+                    _register(_strip_trailing_suffix(n), tid)
+                    # Leading "University of " / "The " stripped
+                    _register(_strip_leading_prefix(n), tid)
+                    # Both: leading and trailing
+                    _register(
+                        _strip_trailing_suffix(_strip_leading_prefix(n)), tid
+                    )
     except Exception:
         pass
 
-    # Common abbreviation expansions for live-score name matching
-    _ABBREV_MAP = {
-        "wash.": "washington", "ore.": "oregon", "mont.": "montana",
-        "st.": "state", "so.": "southern", "no.": "northern",
-        "e.": "eastern", "w.": "western", "cen.": "central",
-        "s.": "southern", "n.": "northern",
-    }
-
+    # Back-compat helper used further down for string-only comparisons
     def _expand_abbrevs(s):
-        """Expand common abbreviations: 'wash. st.' → 'washington state'."""
-        import re
-        words = s.split()
-        expanded = []
-        for w in words:
-            expanded.append(_ABBREV_MAP.get(w, w))
-        return " ".join(expanded)
+        """Normalize a raw name for string-equality fallback."""
+        return _team_name_normalize(s)
 
     def _resolve(name):
-        """Return team id for a name, or None."""
+        """Return team id for any reasonable spelling, or None."""
         if not name:
             return None
-        raw = name.strip().lower()
-        # Try exact match first
-        tid = _team_id_cache.get(raw)
+        n = _team_name_normalize(name)
+        tid = _team_id_cache.get(n)
         if tid:
             return tid
-        # Strip parenthetical state tags: "Pacific (Ore.)" → "pacific"
-        import re
-        normalized = re.sub(r'\s*\(.*?\)\s*$', '', raw).strip()
-        if normalized != raw:
-            tid = _team_id_cache.get(normalized)
-            if tid:
-                return tid
-        # Strip ranking prefixes: "no. 7 oregon state" → "oregon state"
-        no_rank = re.sub(r'^(?:no\.\s*\d+|#\d+)\s+', '', normalized, flags=re.IGNORECASE).strip()
-        if no_rank != normalized:
-            tid = _team_id_cache.get(no_rank)
-            if tid:
-                return tid
-        # Strip trailing score digits that get concatenated: "gonzaga8" → "gonzaga"
-        no_score = re.sub(r'\d+$', '', no_rank).strip()
-        if no_score != no_rank:
-            tid = _team_id_cache.get(no_score)
-            if tid:
-                return tid
-        # Expand abbreviations: "wash. st." → "washington state"
-        expanded = _expand_abbrevs(no_score)
-        if expanded != no_score:
-            tid = _team_id_cache.get(expanded)
-            if tid:
-                return tid
-        # Reverse: expand cached names and compare
-        for cached_name, cached_id in _team_id_cache.items():
-            if _expand_abbrevs(cached_name) == expanded:
-                return cached_id
+        # Fallback: try stripping trailing suffix or leading prefix
+        for variant in (
+            _strip_trailing_suffix(n),
+            _strip_leading_prefix(n),
+            _strip_trailing_suffix(_strip_leading_prefix(n)),
+        ):
+            if variant != n:
+                tid = _team_id_cache.get(variant)
+                if tid:
+                    return tid
         return None
 
     def _is_live_dup(a, b):
