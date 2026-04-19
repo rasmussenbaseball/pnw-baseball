@@ -818,6 +818,40 @@ def build_projected_standings(current_standings, projections, team_ratings):
             if "sos_remaining_rank" not in t:
                 t["sos_remaining_rank"] = None
 
+        # Mathematical clinch check (independent of Monte Carlo).
+        # A team is clinched when they hold a playoff spot in the worst case:
+        # they lose every remaining conference game AND every other team wins
+        # every remaining conference game.  Uses strict > so that ties (which
+        # go to tiebreakers and could still drop the team) do not count as
+        # clinched.
+        conf_abbrev = conf.get("conference_abbrev", "")
+        conf_name = conf.get("conference_name", "")
+        fmt_key = CONFERENCE_TO_FORMAT.get(conf_name) or CONFERENCE_TO_FORMAT.get(conf_abbrev)
+        fmt = PLAYOFF_FORMATS.get(fmt_key) if fmt_key else None
+        playoff_spots = fmt.get("num_teams", 0) if fmt else 0
+
+        teams_list = conf["teams"]
+        for i, team in enumerate(teams_list):
+            team["clinched"] = False
+            if playoff_spots <= 0 or playoff_spots >= len(teams_list):
+                continue
+            # Team's floor: current conference wins if they lose every
+            # remaining conference game.
+            floor = team["current_conf_wins"]
+            # Count other teams whose ceiling could strictly exceed our floor.
+            competitors_above = 0
+            for j, other in enumerate(teams_list):
+                if i == j:
+                    continue
+                other_ceiling = (
+                    other["current_conf_wins"] + other["conf_games_remaining"]
+                )
+                if other_ceiling > floor:
+                    competitors_above += 1
+            # If fewer than `playoff_spots` teams can finish above our floor,
+            # we are guaranteed at least the playoff_spots-th spot.
+            team["clinched"] = competitors_above < playoff_spots
+
     return list(conferences.values())
 
 

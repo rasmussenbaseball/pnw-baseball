@@ -21,11 +21,10 @@ function formatRecord(wins, losses) {
   return `${Math.round(wins)}-${Math.round(losses)}`
 }
 
-function formatOdds(pct) {
+function formatOdds(pct, clinched = false) {
+  // Mathematically clinched teams always show 100% regardless of Monte Carlo.
+  if (clinched) return '100%'
   if (!pct && pct !== 0) return '-'
-  // Exact 1.0 means all 5000 Monte Carlo sims qualify → team is clinched.
-  // Show 100% instead of the generic >99% bucket.
-  if (pct >= 1) return '100%'
   if (pct >= 0.995) return '>99%'
   if (pct <= 0.005 && pct > 0) return '<1%'
   if (pct === 0) return '-'
@@ -49,19 +48,20 @@ function oddsTextColor(pct) {
 
 
 // ─── Odds Bar ───
-function OddsBar({ pct, label, small }) {
-  const width = Math.max(pct * 100, 1)
+function OddsBar({ pct, label, small, clinched }) {
+  const effectivePct = clinched ? 1 : pct
+  const width = Math.max(effectivePct * 100, 1)
   return (
     <div className={`flex items-center gap-1.5 ${small ? '' : 'min-w-[80px]'}`}>
       <div className={`flex-1 bg-gray-100 rounded-full overflow-hidden ${small ? 'h-1.5' : 'h-2'}`}>
         <div
-          className={`h-full rounded-full transition-all ${oddsColor(pct)}`}
+          className={`h-full rounded-full transition-all ${oddsColor(effectivePct)}`}
           style={{ width: `${width}%` }}
         />
       </div>
       {label !== false && (
-        <span className={`${small ? 'text-[9px]' : 'text-[10px]'} font-bold ${oddsTextColor(pct)} whitespace-nowrap`}>
-          {formatOdds(pct)}
+        <span className={`${small ? 'text-[9px]' : 'text-[10px]'} font-bold ${oddsTextColor(effectivePct)} whitespace-nowrap`}>
+          {formatOdds(pct, clinched)}
         </span>
       )}
     </div>
@@ -189,7 +189,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
                     )}
                   </td>
                   <td className="px-1 py-1.5">
-                    <OddsBar pct={playoffPct} />
+                    <OddsBar pct={playoffPct} clinched={!!team.clinched} />
                   </td>
                   <td className="text-center px-1 py-1.5">
                     {(() => {

@@ -244,7 +244,9 @@ export default function StandingsPage() {
   const [view, setView] = usePersistedState('standings_view', 'conference') // 'conference' | 'overall'
   const { data, loading, error } = useStandings(2026)
 
-  // Fetch playoff projections so we can mark clinched teams (playoff_pct === 1).
+  // Fetch playoff projections so we can mark mathematically clinched teams.
+  // The backend computes `clinched` via a worst-case check (team loses
+  // every remaining conf game AND every chaser wins every remaining).
   // Failure is non-fatal — standings still render without the badge.
   const [clinchedTeams, setClinchedTeams] = useState(new Set())
   useEffect(() => {
@@ -255,7 +257,7 @@ export default function StandingsPage() {
         const set = new Set()
         for (const conf of d.conferences) {
           for (const t of (conf.teams || [])) {
-            if (t.playoff_pct >= 1) set.add(t.team_id)
+            if (t.clinched) set.add(t.team_id)
           }
         }
         setClinchedTeams(set)
