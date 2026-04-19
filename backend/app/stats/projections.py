@@ -821,9 +821,15 @@ def build_projected_standings(current_standings, projections, team_ratings):
         # Mathematical clinch check (independent of Monte Carlo).
         # A team is clinched when they hold a playoff spot in the worst case:
         # they lose every remaining conference game AND every other team wins
-        # every remaining conference game.  Uses strict > so that ties (which
-        # go to tiebreakers and could still drop the team) do not count as
-        # clinched.
+        # every remaining conference game.
+        #
+        # IMPORTANT: scraped schedules frequently undercount remaining games
+        # (e.g. mid-season the scraper may show 1 game left when a team
+        # actually has 4 scheduled).  To avoid false-clinch, the ceiling for
+        # each chaser is computed against a SCHEDULE_FLOOR that assumes every
+        # team will reach at least the conference's max observed total games
+        # plus a safety buffer.  We also use >= (not >) so tied-ceiling
+        # chasers count as threats (tiebreakers could swing against us).
         conf_abbrev = conf.get("conference_abbrev", "")
         conf_name = conf.get("conference_name", "")
         fmt_key = CONFERENCE_TO_FORMAT.get(conf_name) or CONFERENCE_TO_FORMAT.get(conf_abbrev)
@@ -831,24 +837,44 @@ def build_projected_standings(current_standings, projections, team_ratings):
         playoff_spots = fmt.get("num_teams", 0) if fmt else 0
 
         teams_list = conf["teams"]
+
+        # Conservative conference schedule-length floor: take the highest
+        # observed total (played + remaining) across the conference and add
+        # a safety buffer to cover scraper misses.  4 games matches the
+        # largest observed scraper gap (e.g. Bushnell showed 1 left but had
+        # 4 scheduled in 2026).
+        SAFETY_BUFFER = 4
+        if teams_list:
+            max_observed_total = max(
+                t["current_conf_wins"] + t["current_conf_losses"] + t["conf_games_remaining"]
+                for t in teams_list
+            )
+            schedule_floor = max_observed_total + SAFETY_BUFFER
+        else:
+            schedule_floor = 0
+
         for i, team in enumerate(teams_list):
             team["clinched"] = False
             if playoff_spots <= 0 or playoff_spots >= len(teams_list):
                 continue
-            # Team's floor: current conference wins if they lose every
-            # remaining conference game.
-            floor = team["current_conf_wins"]
-            # Count other teams whose ceiling could strictly exceed our floor.
+            # Team's own floor: lose every remaining conference game.
+            floor_wins = team["current_conf_wins"]
+            # Count other teams whose *best-possible* ceiling could match or
+            # exceed our floor.  Each chaser's remaining games are assumed
+            # to be at least enough to reach schedule_floor total games.
             competitors_above = 0
             for j, other in enumerate(teams_list):
                 if i == j:
                     continue
-                other_ceiling = (
-                    other["current_conf_wins"] + other["conf_games_remaining"]
+                other_played = other["current_conf_wins"] + other["current_conf_losses"]
+                other_possible_remaining = max(
+                    other["conf_games_remaining"],
+                    schedule_floor - other_played,
                 )
-                if other_ceiling > floor:
+                other_ceiling = other["current_conf_wins"] + other_possible_remaining
+                if other_ceiling >= floor_wins:
                     competitors_above += 1
-            # If fewer than `playoff_spots` teams can finish above our floor,
+            # If fewer than `playoff_spots` teams can match/exceed our floor,
             # we are guaranteed at least the playoff_spots-th spot.
             team["clinched"] = competitors_above < playoff_spots
 
