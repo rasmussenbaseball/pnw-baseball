@@ -8680,9 +8680,28 @@ def _dedup_live_games(games):
         b_os = b.get("opponent_score")
         # Both scheduled (no scores yet):
         # - teams_swapped → same game from two perspectives → dedup
-        # - teams_match  → likely a doubleheader (same team/opp, both scheduled) → keep both
+        # - teams_match → might be a doubleheader OR a cross-source duplicate.
+        #   Differentiate by game time: two same-perspective scheduled entries
+        #   with different game times are a real doubleheader (keep both);
+        #   otherwise they're the same game seen via multiple sources (dedup).
         if a_ts is None and b_ts is None:
-            return teams_swapped
+            if teams_swapped:
+                return True
+            # Same perspective: use time to tell DH from duplicate.
+            def _norm_time(t):
+                if not t:
+                    return None
+                s = str(t).strip().lower()
+                # "12 p.m." and "12:00 PM" → "12pm"
+                s = s.replace(" ", "").replace(".", "").replace(":00", "")
+                return s or None
+            a_time = _norm_time(a.get("time"))
+            b_time = _norm_time(b.get("time"))
+            # Both times present and different → real doubleheader, keep both
+            if a_time and b_time and a_time != b_time:
+                return False
+            # Missing time on either side, or matching times → duplicate
+            return True
         # One scheduled, one final — same game, DB has the updated result
         if a_ts is None or b_ts is None:
             return True
@@ -8709,6 +8728,14 @@ def _dedup_live_games(games):
             score += 2
         if entry.get("away_hits") is not None:
             score += 2
+        # Scheduled entries with a game time are more useful than ones without
+        if str(entry.get("time", "")).strip():
+            score += 2
+        # Entries with a team logo beat ones with a missing logo
+        if entry.get("team_logo"):
+            score += 1
+        if entry.get("opponent_logo"):
+            score += 1
         # DB-merged entries (id starts with "db_") have enriched data
         if str(entry.get("id", "")).startswith("db_"):
             score += 1
