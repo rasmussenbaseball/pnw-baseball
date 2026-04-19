@@ -100,14 +100,24 @@ function PlayerCard({ player, kind, rateMode, compact }) {
           <Stat label="PA" value={fmtInt(player.pa)} />
         </div>
       ) : (
-        <div className={`mt-2 grid ${compact ? 'grid-cols-3' : 'grid-cols-4'} gap-1 text-xs`}>
-          <Stat label={rateMode ? 'WAR/IP' : 'WAR'} value={rateMode ? player.war_rate?.toFixed(3) : player.war?.toFixed(2)} />
-          <Stat label="ERA" value={player.era != null ? Number(player.era).toFixed(2) : '-'} />
-          <Stat label="FIP" value={player.fip != null ? Number(player.fip).toFixed(2) : '-'} />
-          <Stat label="WHIP" value={player.whip != null ? Number(player.whip).toFixed(2) : '-'} hideCompact={compact} />
-          <Stat label="IP" value={fmtIp(player.ip)} />
-          <Stat label="K" value={fmtInt(player.k)} />
-        </div>
+        (() => {
+          // Relievers: always show WAR/IP (better signal for small samples).
+          // Starters: show WAR normally, or WAR/IP when the page is in rate_mode (all-pnw).
+          const isReliever = typeof player.slot === 'string' && player.slot.startsWith('RP')
+          const useRate = rateMode || isReliever
+          const warLabel = useRate ? 'WAR/IP' : 'WAR'
+          const warValue = useRate ? player.war_rate?.toFixed(3) : player.war?.toFixed(2)
+          return (
+            <div className={`mt-2 grid ${compact ? 'grid-cols-3' : 'grid-cols-4'} gap-1 text-xs`}>
+              <Stat label={warLabel} value={warValue} />
+              <Stat label="ERA" value={player.era != null ? Number(player.era).toFixed(2) : '-'} />
+              <Stat label="FIP" value={player.fip != null ? Number(player.fip).toFixed(2) : '-'} />
+              <Stat label="WHIP" value={player.whip != null ? Number(player.whip).toFixed(2) : '-'} hideCompact={compact} />
+              <Stat label="IP" value={fmtIp(player.ip)} />
+              <Stat label="K" value={fmtInt(player.k)} />
+            </div>
+          )
+        })()
       )}
 
       {/* Two-way pitching info (only for hitter cards in UTIL slot or HM) */}

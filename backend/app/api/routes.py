@@ -13688,13 +13688,14 @@ AC_INFIELD = {"C", "1B", "2B", "3B", "SS"}
 AC_OUTFIELD = {"LF", "CF", "RF", "OF"}
 # Minimum games at a position to be eligible there
 AC_POS_GAMES_MIN = 15
-# DH must account for at least this share of a player's defensive games
-AC_DH_MIN_SHARE = 0.5
+# DH share: DH games must be this fraction of games appeared (fielding+DH).
+# No minimum game count — a player who appears in 20 games with 4+ at DH qualifies.
+AC_DH_MIN_SHARE = 0.20
 # Two-way UTIL thresholds
 AC_UTIL_TWO_WAY_MIN_IP = 10.0
 AC_UTIL_TWO_WAY_MIN_PA = 40
-# Flex UTIL threshold: infield AND outfield both >=
-AC_UTIL_FLEX_POS_GAMES = 7
+# Flex UTIL threshold (applies to each of the two position-based paths)
+AC_UTIL_FLEX_POS_GAMES = 5
 # Reliever thresholds
 AC_REL_MIN_IP = 15.0
 AC_REL_MAX_GS = 3  # < 4 starts
@@ -13974,23 +13975,41 @@ def all_conference(
         # Outfield: combined LF+CF+RF+OF >= 15 games
         if rec.get("of_games", 0) >= AC_POS_GAMES_MIN:
             eligible.add("OF")
-        # DH: 15+ games at DH AND at least 50% of defensive games
+        # DH: DH games must be at least AC_DH_MIN_SHARE (20%) of the games
+        # in which the player appeared (fielding + DH). No minimum game count.
         dh_games = pg.get("DH", 0)
         total_def_games = sum(v for k, v in pg.items()
                               if k in {"C", "1B", "2B", "3B", "SS",
                                        "LF", "CF", "RF", "OF", "DH"})
-        if dh_games >= AC_POS_GAMES_MIN and total_def_games > 0 \
+        if dh_games > 0 and total_def_games > 0 \
                 and (dh_games / total_def_games) >= AC_DH_MIN_SHARE:
             eligible.add("DH")
         return eligible
 
     def is_util_eligible(rec):
-        """Two-way player (10+ IP AND 40+ PA) OR
-        7+ games at BOTH infield (C counts) and outfield."""
+        """UTIL-eligible if any path applies:
+          (a) Two-way player: 10+ IP AND 40+ PA.
+          (b) 5+ games in the infield (excluding C) AND 5+ games in the
+              outfield.
+          (c) 5+ games at catcher AND 5+ games at another non-DH position
+              (1B/2B/3B/SS/LF/CF/RF/OF).
+        """
+        pg = rec.get("pos_games", {})
+        # (a) Two-way
         if rec["ip"] >= AC_UTIL_TWO_WAY_MIN_IP and rec["pa"] >= AC_UTIL_TWO_WAY_MIN_PA:
             return True
-        if rec["if_games"] >= AC_UTIL_FLEX_POS_GAMES and rec["of_games"] >= AC_UTIL_FLEX_POS_GAMES:
+        # (b) IF (excluding C) and OF both >= threshold
+        if_excl_c = rec["if_games"] - pg.get("C", 0)
+        if if_excl_c >= AC_UTIL_FLEX_POS_GAMES and rec["of_games"] >= AC_UTIL_FLEX_POS_GAMES:
             return True
+        # (c) Catcher plus another non-DH position
+        c_games = pg.get("C", 0)
+        if c_games >= AC_UTIL_FLEX_POS_GAMES:
+            other_games = sum(v for k, v in pg.items()
+                              if k in {"1B", "2B", "3B", "SS",
+                                       "LF", "CF", "RF", "OF"})
+            if other_games >= AC_UTIL_FLEX_POS_GAMES:
+                return True
         return False
 
     # ── Primary role classification (one-role-per-player rule) ────
@@ -14029,9 +14048,14 @@ def all_conference(
         for cat in elig:
             cat_candidates[cat].append((bat_war(rec), bat_tiebreak(rec), pid))
         if is_util_eligible(rec):
-            # For UTIL slot ranking, use the player's primary-role WAR
-            # (which is bat_war here since primary_role == "BAT").
-            cat_candidates["UTIL"].append((bat_war(rec), bat_tiebreak(rec), pid))
+            # UTIL pool is ranked by TOTAL WAR (bat + pit) so two-way
+            # players get credit for both sides of the ball. Non-two-way
+            # UTIL candidates just get their bat_war (pit_war is 0).
+            total_war = bat_war(rec)
+            p_war = pit_war(rec) if rec.get("ip", 0) > 0 else 0
+            if p_war:
+                total_war = total_war + p_war
+            cat_candidates["UTIL"].append((total_war, bat_tiebreak(rec), pid))
 
     # Sort each pool descending by war, then tiebreak
     for cat in cat_candidates:
