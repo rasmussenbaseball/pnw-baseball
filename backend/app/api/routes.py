@@ -7091,7 +7091,11 @@ def series_recap(
                     ]))
                 except TypeError:
                     score_pair = (g.get("home_team_id"), g.get("away_team_id"))
-                key = (g["game_date"], g.get("game_number") or 0, score_pair)
+                # Drop game_number from the key: when two scrapers disagree on
+                # which game of a doubleheader this is (one says game 1, the
+                # other game 2) we still want to collapse them. Real DHs
+                # practically never produce identical scores.
+                key = (g["game_date"], score_pair)
                 if key not in seen:
                     seen[key] = g
                 else:
