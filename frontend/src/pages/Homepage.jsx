@@ -1009,6 +1009,54 @@ function fmtIP(ip) {
   return `${full}.0`
 }
 
+// Avatar with graceful fallback: headshot → team logo → initials (or blank for NWAC).
+// Tries the real headshot first. If it fails to load (404, broken URL, etc.) we swap
+// to the team logo. If there is no team logo either, we show initials for regular
+// players and an invisible spacer for NWAC players (per brand preference).
+function HeadshotAvatar({ player }) {
+  const [headshotFailed, setHeadshotFailed] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
+
+  const hasHeadshot = player.headshot_url && !headshotFailed
+  const hasLogoFallback = player.team_logo && !logoFailed
+
+  if (hasHeadshot) {
+    return (
+      <img
+        src={player.headshot_url}
+        alt=""
+        className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
+        onError={() => setHeadshotFailed(true)}
+      />
+    )
+  }
+
+  if (hasLogoFallback) {
+    return (
+      <img
+        src={player.team_logo}
+        alt=""
+        className="w-8 h-8 object-contain shrink-0"
+        onError={() => setLogoFailed(true)}
+      />
+    )
+  }
+
+  // NWAC players: blank spacer (keeps row alignment but no placeholder)
+  if (player.division === 'JUCO') {
+    return <div className="w-8 h-8 shrink-0" />
+  }
+
+  // Last resort for non-NWAC players: initials circle
+  return (
+    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+      <span className="text-xs font-bold text-gray-400">
+        {(player.display_name || '').split(' ').map(n => n[0]).join('')}
+      </span>
+    </div>
+  )
+}
+
 function TopPerformersWidget({ data, date }) {
   if (!data || (!data.top_hitters?.length && !data.top_pitchers?.length)) return null
 
@@ -1042,22 +1090,7 @@ function TopPerformersWidget({ data, date }) {
                 to={h.player_id ? `/player/${h.player_id}` : '#'}
                 className="flex items-center gap-2 py-1.5 hover:bg-gray-50 rounded px-1 -mx-1 border-b border-gray-50 last:border-0"
               >
-                {h.headshot_url ? (
-                  <img src={h.headshot_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
-                    onError={(e) => { e.target.style.display = 'none' }} />
-                ) : h.division === 'JUCO' && h.team_logo ? (
-                  // NWAC players: no headshots available, show the team logo instead
-                  <img src={h.team_logo} alt="" className="w-8 h-8 object-contain shrink-0"
-                    onError={(e) => { e.target.style.display = 'none' }} />
-                ) : h.division === 'JUCO' ? (
-                  <div className="w-8 h-8 shrink-0" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-gray-400">
-                      {(h.display_name || '').split(' ').map(n => n[0]).join('')}
-                    </span>
-                  </div>
-                )}
+                <HeadshotAvatar player={h} />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-gray-800 truncate">{h.display_name}</div>
                   <div className="flex items-center gap-1">
@@ -1108,22 +1141,7 @@ function TopPerformersWidget({ data, date }) {
                 to={p.player_id ? `/player/${p.player_id}` : '#'}
                 className="flex items-center gap-2 py-1.5 hover:bg-gray-50 rounded px-1 -mx-1 border-b border-gray-50 last:border-0"
               >
-                {p.headshot_url ? (
-                  <img src={p.headshot_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
-                    onError={(e) => { e.target.style.display = 'none' }} />
-                ) : p.division === 'JUCO' && p.team_logo ? (
-                  // NWAC players: no headshots available, show the team logo instead
-                  <img src={p.team_logo} alt="" className="w-8 h-8 object-contain shrink-0"
-                    onError={(e) => { e.target.style.display = 'none' }} />
-                ) : p.division === 'JUCO' ? (
-                  <div className="w-8 h-8 shrink-0" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-gray-400">
-                      {(p.display_name || '').split(' ').map(n => n[0]).join('')}
-                    </span>
-                  </div>
-                )}
+                <HeadshotAvatar player={p} />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-gray-800 truncate">{p.display_name}</div>
                   <div className="flex items-center gap-1">
