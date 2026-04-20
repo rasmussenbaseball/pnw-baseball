@@ -2349,6 +2349,57 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     return rows[0]["id"]
 
 
+def get_or_create_ooc_team(cur, opponent_name):
+    """Resolve an opponent name to a team_id, auto-creating an Out-of-Conference
+    placeholder team (is_active=0) if no match is found.
+
+    Prevents NULL team_id rows in game_batting / game_pitching when we scrape
+    games against non-PNW opponents that aren't in our teams table yet.
+
+    The placeholder team is:
+      - is_active = 0 (hidden from all site listings that filter active teams)
+      - state = 'N/A' (teams.state is NOT NULL)
+      - conference_id = <OOC conference> (auto-created with abbreviation 'OOC')
+
+    Returns the team_id (existing or newly created). Never returns None.
+    """
+    if not opponent_name:
+        return None
+    cleaned = _normalize_opponent(opponent_name).strip()
+    if not cleaned:
+        return None
+
+    # Try existing lookup first (fuzzy + alias logic)
+    existing = get_team_id_by_school(cur, cleaned)
+    if existing:
+        return existing
+
+    # Resolve / create the OOC conference
+    cur.execute("SELECT id FROM conferences WHERE abbreviation = 'OOC' LIMIT 1")
+    row = cur.fetchone()
+    if row:
+        ooc_conf_id = row["id"]
+    else:
+        cur.execute("""
+            INSERT INTO conferences (name, abbreviation, division_id)
+            VALUES ('Out of Conference', 'OOC', 1)
+            RETURNING id
+        """)
+        ooc_conf_id = cur.fetchone()["id"]
+        logger.info(f"    Created OOC conference id={ooc_conf_id}")
+
+    # Create the placeholder team
+    cur.execute("""
+        INSERT INTO teams (name, school_name, short_name,
+                           state, conference_id, is_active)
+        VALUES (%s, %s, %s, 'N/A', %s, 0)
+        RETURNING id
+    """, (cleaned, cleaned, cleaned, ooc_conf_id))
+    new_id = cur.fetchone()["id"]
+    logger.info(f"    Auto-created OOC team '{cleaned}' (id={new_id}, is_active=0)")
+    return new_id
+
+
 def find_player_id(cur, team_id, player_name, season):
     """Try to match a player by name on a given team.
 
@@ -2930,10 +2981,15 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                 game_data["home_score"] = ts
                 game_data["away_score"] = os_score
 
-            # Try to resolve opponent team_id
+            # Try to resolve opponent team_id — fall back to auto-created
+            # is_active=0 OOC placeholder if no match (prevents NULL team_id
+            # orphans in game_batting/game_pitching for out-of-conference games)
             with get_connection() as conn:
                 cur = conn.cursor()
                 opp_id = get_team_id_by_school(cur, opponent_clean, prefer_division_of_team_id=team_id)
+                if not opp_id:
+                    opp_id = get_or_create_ooc_team(cur, opponent_clean)
+                    conn.commit()
                 if opp_id:
                     if is_away:
                         game_data["home_team_id"] = opp_id
@@ -3191,12 +3247,16 @@ def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
                        f"{'vs' if is_home else '@'} {opp_clean} "
                        f"({seu_comp['score']}-{opp_comp['score']})")
 
-            # Resolve opponent team_id
+            # Resolve opponent team_id — fall back to auto-created is_active=0
+            # OOC placeholder if no match (prevents NULL team_id orphans)
             with get_connection() as conn:
                 cur = conn.cursor()
                 from scrape_live_scores import normalize_team_name
                 opp_key = normalize_team_name(opp_clean)
                 opp_team_id = get_team_id_by_name(cur, opp_key)
+                if not opp_team_id:
+                    opp_team_id = get_or_create_ooc_team(cur, opp_clean)
+                    conn.commit()
 
             # Build line scores from teamStats (per-inning data)
             def build_line_score(comp):
