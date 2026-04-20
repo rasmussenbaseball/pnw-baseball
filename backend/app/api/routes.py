@@ -1209,6 +1209,7 @@ def stat_leaders(
             {"key": "stolen_bases", "label": "SB", "col": "bs.stolen_bases", "order": "DESC", "format": "int"},
             {"key": "batting_avg", "label": "AVG", "col": "bs.batting_avg", "order": "DESC", "format": "avg"},
             {"key": "iso", "label": "ISO", "col": "bs.iso", "order": "DESC", "format": "avg"},
+            {"key": "wobacon", "label": "wOBACON", "col": "bs.wobacon", "order": "DESC", "format": "avg"},
             {"key": "bb_pct", "label": "BB%", "col": "bs.bb_pct", "order": "DESC", "format": "pct"},
             {"key": "k_pct_low", "label": "Low K%", "col": "bs.k_pct", "order": "ASC", "format": "pct"},
         ]
@@ -1316,6 +1317,7 @@ _BATTING_RECORD_STATS = [
     {"key": "slg", "label": "Slugging Pct", "col": "slugging_pct", "order": "DESC", "rate": True, "format": "avg"},
     {"key": "ops", "label": "OPS", "col": "ops", "order": "DESC", "rate": True, "format": "avg"},
     {"key": "woba", "label": "wOBA", "col": "woba", "order": "DESC", "rate": True, "format": "avg"},
+    {"key": "wobacon", "label": "wOBACON", "col": "wobacon", "order": "DESC", "rate": True, "format": "avg"},
     {"key": "wrc_plus", "label": "wRC+", "col": "wrc_plus", "order": "DESC", "rate": True, "format": "int"},
     {"key": "iso", "label": "ISO", "col": "iso", "order": "DESC", "rate": True, "format": "avg"},
     {"key": "hr", "label": "Home Runs", "col": "home_runs", "order": "DESC", "rate": False, "format": "int"},
@@ -1419,7 +1421,7 @@ def stat_records(
                    t.short_name as team_short, t.logo_url,
                    d.level as division_level, bs.season,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
-                   bs.woba, bs.wrc_plus, bs.iso,
+                   bs.woba, bs.wobacon, bs.wrc_plus, bs.iso,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.runs,
                    bs.hits, bs.doubles, bs.triples, bs.offensive_war,
                    bs.plate_appearances
@@ -1677,7 +1679,7 @@ def stat_records(
             # Career batting
             cr_bat = {}
             for s in _BATTING_RECORD_STATS:
-                if s["col"] in ("woba", "wrc_plus"):
+                if s["col"] in ("woba", "wobacon", "wrc_plus"):
                     continue  # can't reliably aggregate league-adjusted career rates
                 cr_bat[s["key"]] = {
                     "label": s["label"],

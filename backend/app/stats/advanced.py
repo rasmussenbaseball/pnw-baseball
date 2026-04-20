@@ -123,6 +123,7 @@ class BattingAdvanced:
     bb_pct: float = 0.0    # Walk rate (BB/PA)
     k_pct: float = 0.0     # Strikeout rate (K/PA)
     woba: float = 0.0      # Weighted On-Base Average
+    wobacon: float = 0.0   # wOBA on Contact (excludes K and BB/HBP)
     wraa: float = 0.0      # Weighted Runs Above Average
     wrc: float = 0.0       # Weighted Runs Created
     wrc_plus: float = 0.0  # wRC+ (league/park adjusted)
@@ -182,6 +183,18 @@ def compute_batting_advanced(
     )
     woba_denom = line.ab + line.ubb + line.sf + line.hbp
     result.woba = _safe_div(woba_num, woba_denom)
+
+    # wOBACON = wOBA on contact (balls in play only)
+    # Numerator uses only hit-value weights (no BB, no HBP)
+    # Denominator is AB - K + SF (all contact events, including outs in play)
+    wobacon_num = (
+        weights.w_1b * line.singles
+        + weights.w_2b * line.doubles
+        + weights.w_3b * line.triples
+        + weights.w_hr * line.hr
+    )
+    wobacon_denom = line.ab - line.k + line.sf
+    result.wobacon = _safe_div(wobacon_num, wobacon_denom)
 
     # wRAA = ((wOBA - lgwOBA) / wOBAScale) * PA
     result.wraa = ((result.woba - league_woba) / weights.woba_scale) * line.pa

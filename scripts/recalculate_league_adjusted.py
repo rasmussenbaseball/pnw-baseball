@@ -397,14 +397,14 @@ def recalculate_all(season, verbose=False, multi_year=True):
 
             cur.execute("""
                 UPDATE batting_stats SET
-                    woba = %s, wraa = %s, wrc = %s, wrc_plus = %s,
+                    woba = %s, wobacon = %s, wraa = %s, wrc = %s, wrc_plus = %s,
                     iso = %s, babip = %s, bb_pct = %s, k_pct = %s,
                     batting_avg = %s, on_base_pct = %s, slugging_pct = %s, ops = %s,
                     offensive_war = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, (
-                adv.woba, adv.wraa, adv.wrc, wrc_plus,
+                adv.woba, adv.wobacon, adv.wraa, adv.wrc, wrc_plus,
                 adv.iso, adv.babip, adv.bb_pct, adv.k_pct,
                 adv.batting_avg, adv.obp, adv.slg, adv.ops,
                 war.offensive_war,

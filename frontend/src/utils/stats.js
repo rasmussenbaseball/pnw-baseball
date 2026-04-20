@@ -39,6 +39,8 @@ export const BATTING_COLUMNS = [
   // Advanced
   { key: 'woba', label: 'wOBA', width: 55, format: 'avg',
     tooltip: 'Weighted On-Base Average: weights each way of reaching base by its run value' },
+  { key: 'wobacon', label: 'wOBACON', width: 65, format: 'avg',
+    tooltip: 'wOBA on Contact: hitting quality on balls in play, excludes strikeouts and walks' },
   { key: 'wrc_plus', label: 'wRC+', width: 55, format: 'int',
     tooltip: 'Weighted Runs Created Plus: 100 = league average, adjusts for park and league' },
   { key: 'iso', label: 'ISO', width: 55, format: 'avg',
@@ -159,8 +161,8 @@ export function divisionBadgeClass(level) {
  */
 export const BATTING_PRESETS = {
   'Standard': ['games', 'plate_appearances', 'at_bats', 'hits', 'doubles', 'triples', 'home_runs', 'runs', 'rbi', 'walks', 'strikeouts', 'stolen_bases', 'batting_avg', 'on_base_pct', 'slugging_pct', 'ops'],
-  'Advanced': ['plate_appearances', 'batting_avg', 'on_base_pct', 'slugging_pct', 'woba', 'wrc_plus', 'iso', 'babip', 'bb_pct', 'k_pct', 'offensive_war'],
-  'Power': ['plate_appearances', 'home_runs', 'doubles', 'triples', 'slugging_pct', 'iso', 'rbi'],
+  'Advanced': ['plate_appearances', 'batting_avg', 'on_base_pct', 'slugging_pct', 'woba', 'wobacon', 'wrc_plus', 'iso', 'babip', 'bb_pct', 'k_pct', 'offensive_war'],
+  'Power': ['plate_appearances', 'home_runs', 'doubles', 'triples', 'slugging_pct', 'iso', 'wobacon', 'rbi'],
   'Discipline': ['plate_appearances', 'walks', 'strikeouts', 'bb_pct', 'k_pct', 'on_base_pct', 'woba'],
   'Speed': ['games', 'stolen_bases', 'caught_stealing', 'triples', 'batting_avg'],
 }
