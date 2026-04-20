@@ -154,6 +154,7 @@ def dedup_games(season, dry_run=False):
          AND g1.id <> g2.id
          AND g2.home_team_id IS NOT NULL
          AND g2.away_team_id IS NOT NULL
+         AND g2.home_team_id <> g2.away_team_id
          AND (
               g1.home_team_id IN (g2.home_team_id, g2.away_team_id)
            OR g1.away_team_id IN (g2.home_team_id, g2.away_team_id)
