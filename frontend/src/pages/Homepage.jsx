@@ -366,7 +366,8 @@ function NationalRankingsWidget({ rankings }) {
 function StatLeadersWidget({ leaders }) {
   if (!leaders) return <WidgetSkeleton title="Stat Leaders" />
 
-  const battingCats = leaders.batting || []
+  // Hide wOBACON on the homepage widget (still visible on full Stat Leaders page)
+  const battingCats = (leaders.batting || []).filter(c => c.key !== 'wobacon')
   const pitchingCats = leaders.pitching || []
 
   return (

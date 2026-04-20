@@ -180,6 +180,7 @@ CONF_BATTING_CTE = """
                      / (SUM(COALESCE(gb.at_bats,0)) + SUM(COALESCE(gb.walks,0)) + SUM(COALESCE(gb.hit_by_pitch,0)) + SUM(COALESCE(gb.sacrifice_flies,0)) + SUM(COALESCE(gb.sacrifice_bunts,0))), 1) END as k_pct,
             -- Advanced stats not available for conference-only splits
             NULL::numeric as woba,
+            NULL::numeric as wobacon,
             NULL::numeric as wraa,
             NULL::numeric as wrc,
             NULL::numeric as wrc_plus,
@@ -3318,7 +3319,7 @@ def batting_leaderboard(
     When conference_only=true, aggregates from individual game box scores for conference games only.
     """
     allowed_sort = {
-        "batting_avg", "on_base_pct", "slugging_pct", "ops", "woba", "wrc_plus",
+        "batting_avg", "on_base_pct", "slugging_pct", "ops", "woba", "wobacon", "wrc_plus",
         "home_runs", "rbi", "hits", "runs", "stolen_bases", "walks",
         "strikeouts", "doubles", "triples", "plate_appearances", "iso",
         "babip", "bb_pct", "k_pct", "offensive_war",
@@ -3326,7 +3327,7 @@ def batting_leaderboard(
     if sort_by not in allowed_sort:
         sort_by = "batting_avg"
     # If conference_only, advanced stats aren't available — fall back to batting_avg
-    if conference_only and sort_by in ("woba", "wrc_plus", "offensive_war"):
+    if conference_only and sort_by in ("woba", "wobacon", "wrc_plus", "offensive_war"):
         sort_by = "batting_avg"
     sort_direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
@@ -3658,13 +3659,13 @@ def war_leaderboard(
     """
     allowed_sort = {
         "total_war", "offensive_war", "pitching_war", "war_per_pa", "war_per_ip",
-        "plate_appearances", "batting_avg", "woba", "wrc_plus",
+        "plate_appearances", "batting_avg", "woba", "wobacon", "wrc_plus",
         "innings_pitched", "era", "whip", "fip", "fip_plus", "era_minus", "era_plus", "k_per_9", "wins",
     }
     if sort_by not in allowed_sort:
         sort_by = "total_war"
     # If conference_only, WAR and advanced stats aren't available
-    if conference_only and sort_by in ("total_war", "offensive_war", "pitching_war", "war_per_pa", "war_per_ip", "woba", "wrc_plus", "fip", "fip_plus", "era_minus", "era_plus"):
+    if conference_only and sort_by in ("total_war", "offensive_war", "pitching_war", "war_per_pa", "war_per_ip", "woba", "wobacon", "wrc_plus", "fip", "fip_plus", "era_minus", "era_plus"):
         sort_by = "batting_avg"
     # For ERA/WHIP/FIP lower is better, so flip the default direction
     sort_direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
