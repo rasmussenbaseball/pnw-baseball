@@ -266,9 +266,9 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   const imgCY = y + h / 2
 
   // ── Fixed-pixel zones (guarantees no overlap at any card width) ──
-  const rankCX = x + 22
+  const rankCX = x + 20
   const imgR = Math.min(26, Math.floor(h * 0.36))
-  const imgCX = x + 64
+  const imgCX = x + 74
   const nameX = imgCX + imgR + 12
   const nameZoneEnd = x + 212
   const nameMaxW = nameZoneEnd - nameX
