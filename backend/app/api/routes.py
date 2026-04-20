@@ -13356,11 +13356,24 @@ def opponent_trends(
         # PITCHING TRENDS
         # ══════════════════════════════════════════════════════════════
 
+        # FIP constant used for per-slot splits below. We repeat the value the
+        # reliever section uses (3.50) so college ERAs and FIPs line up at the
+        # league-average level.
+        _SP_FIP_CONSTANT = 3.50
+
+        def _slot_totals():
+            return {
+                "starts": 0, "outs": 0, "er": 0,
+                "k": 0, "bb": 0, "hr": 0, "hbp": 0,
+                "wins": 0, "losses": 0,
+            }
+
         starter_data = defaultdict(lambda: {
             "starts": 0, "total_outs": 0, "game_slots": Counter(),
             "recent_starts": [], "player_id": None, "throws": None,
             "wins": 0, "losses": 0, "qs": 0,
             "total_k": 0, "total_er": 0, "total_bb": 0,
+            "slot_totals": defaultdict(_slot_totals),
         })
 
         for g in all_ge:
@@ -13372,7 +13385,8 @@ def opponent_trends(
                 s = starter_data[name]
                 s["starts"] += 1
                 raw_ip = p["innings_pitched"]
-                s["total_outs"] += ip_to_outs(raw_ip)
+                outs_this = ip_to_outs(raw_ip)
+                s["total_outs"] += outs_this
                 s["player_id"] = p["player_id"]
                 s["throws"] = player_info.get(p["player_id"], {}).get("throws")
                 s["total_k"] += p["strikeouts"] or 0
@@ -13386,6 +13400,19 @@ def opponent_trends(
                     s["qs"] += 1
                 slot = g.get("series_game_num", 1)
                 s["game_slots"][slot] += 1
+                # Per-slot accumulators (for "By Series Game" splits in UI)
+                st = s["slot_totals"][slot]
+                st["starts"] += 1
+                st["outs"] += outs_this
+                st["er"] += p["earned_runs"] or 0
+                st["k"] += p["strikeouts"] or 0
+                st["bb"] += p["walks"] or 0
+                st["hr"] += p["home_runs_allowed"] or 0
+                st["hbp"] += p["hit_batters"] or 0
+                if p["decision"] == "W":
+                    st["wins"] += 1
+                elif p["decision"] == "L":
+                    st["losses"] += 1
                 s["recent_starts"].append({
                     "date": g["game_date"].isoformat() if hasattr(g["game_date"], "isoformat") else str(g["game_date"]),
                     "opp": g["opponent_name"],
@@ -13404,6 +13431,37 @@ def opponent_trends(
                 continue
             # avg IP uses real innings (outs/3) so it's mathematically sensible
             avg_ip = round(s["total_outs"] / s["starts"] / 3, 1) if s["starts"] else 0
+
+            # Per-slot splits: GS, IP, IP/GS, ERA, FIP, K, BB, HR, Record
+            slot_splits = {}
+            for slot_num, st in s["slot_totals"].items():
+                if st["starts"] == 0:
+                    continue
+                outs = st["outs"]
+                ip_real = round(outs / 3.0, 2)
+                slot_avg_ip = round(outs / st["starts"] / 3.0, 1) if st["starts"] else 0
+                # FIP — None if no outs (divide-by-zero guard)
+                if outs > 0:
+                    ip_for_fip = outs / 3.0
+                    fip_val = round(
+                        (13 * st["hr"] + 3 * (st["bb"] + st["hbp"]) - 2 * st["k"]) / ip_for_fip
+                        + _SP_FIP_CONSTANT,
+                        2,
+                    )
+                else:
+                    fip_val = None
+                slot_splits[str(slot_num)] = {
+                    "gs": st["starts"],
+                    "ip": ip_real,
+                    "avg_ip": slot_avg_ip,
+                    "era": era_from_outs(st["er"], outs),
+                    "fip": fip_val,
+                    "k": st["k"],
+                    "bb": st["bb"],
+                    "hr": st["hr"],
+                    "record": f"{st['wins']}-{st['losses']}",
+                }
+
             starters_list.append({
                 "name": name,
                 "player_id": s["player_id"],
@@ -13416,6 +13474,7 @@ def opponent_trends(
                 "k": s["total_k"],
                 "bb": s["total_bb"],
                 "slots": {str(k): v for k, v in s["game_slots"].most_common()},
+                "slot_splits": slot_splits,
                 "recent": s["recent_starts"][-6:],
             })
         starters_list.sort(key=lambda x: x["starts"], reverse=True)

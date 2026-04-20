@@ -329,42 +329,89 @@ function StarterRows({ sp, expanded, toggle }) {
         <td className="text-center">{sp.slots?.['3'] || '—'}</td>
         <td className="text-center pr-3">{sp.slots?.['4'] || '—'}</td>
       </tr>
-      {expanded && sp.recent?.length > 0 && (
+      {expanded && (sp.recent?.length > 0 || (sp.slot_splits && Object.keys(sp.slot_splits).length > 0)) && (
         <tr>
-          <td colSpan={13} className="bg-gray-50 px-3 py-1.5">
-            <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Recent Starts</div>
-            <table className="w-full text-[11px]">
-              <thead>
-                <tr className="text-[10px] text-gray-400">
-                  <th className="text-left py-0.5">Date</th>
-                  <th className="text-left py-0.5">Opp</th>
-                  <th className="text-center py-0.5">G#</th>
-                  <th className="text-center py-0.5">IP</th>
-                  <th className="text-center py-0.5">K</th>
-                  <th className="text-center py-0.5">ER</th>
-                  <th className="text-center py-0.5">Dec</th>
-                  <th className="text-center py-0.5">GmSc</th>
-                  <th className="text-center py-0.5">PC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...sp.recent].reverse().map((s, i) => (
-                  <tr key={i} className="border-t border-gray-100">
-                    <td className="py-0.5 text-gray-500">{fmtDate(s.date)}</td>
-                    <td className="py-0.5 font-medium">{s.opp}</td>
-                    <td className="text-center text-gray-500">G{s.g}</td>
-                    <td className="text-center">{s.ip}</td>
-                    <td className="text-center">{s.k}</td>
-                    <td className="text-center">{s.er}</td>
-                    <td className="text-center">
-                      {s.dec && <span className={s.dec === 'W' ? 'text-green-600 font-bold' : s.dec === 'L' ? 'text-red-500 font-bold' : ''}>{s.dec}</span>}
-                    </td>
-                    <td className="text-center text-gray-500">{s.gs || '—'}</td>
-                    <td className="text-center text-gray-500">{s.pc || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <td colSpan={13} className="bg-gray-50 px-3 py-2">
+            <div className="space-y-3">
+              {sp.slot_splits && Object.keys(sp.slot_splits).length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">By Series Game</div>
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="text-[10px] text-gray-400">
+                        <th className="text-left py-0.5">Slot</th>
+                        <th className="text-center py-0.5">GS</th>
+                        <th className="text-center py-0.5">IP</th>
+                        <th className="text-center py-0.5">IP/GS</th>
+                        <th className="text-center py-0.5">ERA</th>
+                        <th className="text-center py-0.5" title="Fielding Independent Pitching">FIP</th>
+                        <th className="text-center py-0.5">K</th>
+                        <th className="text-center py-0.5">BB</th>
+                        <th className="text-center py-0.5">HR</th>
+                        <th className="text-center py-0.5">Rec</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {['1', '2', '3', '4'].filter(k => sp.slot_splits[k]).map(k => {
+                        const sl = sp.slot_splits[k]
+                        return (
+                          <tr key={k} className="border-t border-gray-100">
+                            <td className="py-0.5 font-medium">G{k}</td>
+                            <td className="text-center">{sl.gs}</td>
+                            <td className="text-center">{sl.ip}</td>
+                            <td className="text-center">{sl.avg_ip}</td>
+                            <td className="text-center font-medium">{sl.era ?? '—'}</td>
+                            <td className="text-center">{sl.fip ?? '—'}</td>
+                            <td className="text-center">{sl.k}</td>
+                            <td className="text-center">{sl.bb}</td>
+                            <td className="text-center">{sl.hr}</td>
+                            <td className="text-center">{sl.record}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {sp.recent?.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Recent Starts</div>
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="text-[10px] text-gray-400">
+                        <th className="text-left py-0.5">Date</th>
+                        <th className="text-left py-0.5">Opp</th>
+                        <th className="text-center py-0.5">G#</th>
+                        <th className="text-center py-0.5">IP</th>
+                        <th className="text-center py-0.5">K</th>
+                        <th className="text-center py-0.5">ER</th>
+                        <th className="text-center py-0.5">Dec</th>
+                        <th className="text-center py-0.5">GmSc</th>
+                        <th className="text-center py-0.5">PC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...sp.recent].reverse().map((s, i) => (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="py-0.5 text-gray-500">{fmtDate(s.date)}</td>
+                          <td className="py-0.5 font-medium">{s.opp}</td>
+                          <td className="text-center text-gray-500">G{s.g}</td>
+                          <td className="text-center">{s.ip}</td>
+                          <td className="text-center">{s.k}</td>
+                          <td className="text-center">{s.er}</td>
+                          <td className="text-center">
+                            {s.dec && <span className={s.dec === 'W' ? 'text-green-600 font-bold' : s.dec === 'L' ? 'text-red-500 font-bold' : ''}>{s.dec}</span>}
+                          </td>
+                          <td className="text-center text-gray-500">{s.gs || '—'}</td>
+                          <td className="text-center text-gray-500">{s.pc || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </td>
         </tr>
       )}
