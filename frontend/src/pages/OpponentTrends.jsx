@@ -243,6 +243,8 @@ function PitchingTab({ d }) {
 
       {view === 'rotation' && <RotationView d={d} />}
       {view === 'bullpen' && <BullpenView relievers={d.relievers} />}
+
+      <PitchingLegend />
     </div>
   )
 }
@@ -315,7 +317,13 @@ function StarterRows({ sp, expanded, toggle }) {
   return (
     <>
       <tr className="border-b border-gray-50 cursor-pointer hover:bg-gray-50" onClick={toggle}>
-        <td className="py-1.5 pl-3 font-medium text-gray-900">{sp.name}</td>
+        <td className="py-1.5 pl-3 font-medium text-gray-900">
+          <span className="inline-flex items-center gap-1">
+            <span className={`text-gray-400 text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
+            <span>{sp.name}</span>
+            <PitcherIcons p={sp} />
+          </span>
+        </td>
         <td className="text-center"><Hand t={sp.throws} /></td>
         <td className="text-center">{sp.starts}</td>
         <td className="text-center">{sp.record}</td>
@@ -347,7 +355,6 @@ function StarterRows({ sp, expanded, toggle }) {
                         <th className="text-center py-0.5" title="Fielding Independent Pitching">FIP</th>
                         <th className="text-center py-0.5">K</th>
                         <th className="text-center py-0.5">BB</th>
-                        <th className="text-center py-0.5">HR</th>
                         <th className="text-center py-0.5">Rec</th>
                       </tr>
                     </thead>
@@ -364,7 +371,6 @@ function StarterRows({ sp, expanded, toggle }) {
                             <td className="text-center">{sl.fip ?? '—'}</td>
                             <td className="text-center">{sl.k}</td>
                             <td className="text-center">{sl.bb}</td>
-                            <td className="text-center">{sl.hr}</td>
                             <td className="text-center">{sl.record}</td>
                           </tr>
                         )
@@ -422,56 +428,70 @@ function StarterRows({ sp, expanded, toggle }) {
 
 function BullpenView({ relievers }) {
   const [expandedIdx, setExpandedIdx] = useState(null)
-  const closers = relievers.filter(r => r.role === 'closer')
-  const multi = relievers.filter(r => r.role === 'multi_inning')
-  const one = relievers.filter(r => r.role === 'one_inning')
-  const mopUp = relievers.filter(r => r.role === 'mop_up')
+  const elite = relievers.filter(r => r.tier === 'elite')
+  const great = relievers.filter(r => r.tier === 'solid')
+  const avg = relievers.filter(r => r.tier === 'average')
+  const lowLev = relievers.filter(r => r.tier === 'struggling')
+  const smallSample = relievers.filter(r => r.tier === 'small_sample')
 
-  const renderGroup = (title, list, startIdx) => {
-    if (!list.length) return null
+  const tierStyles = {
+    elite: 'bg-green-50 border-green-200 text-green-900',
+    great: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+    average: 'bg-gray-50 border-gray-200 text-gray-800',
+    low: 'bg-amber-50 border-amber-200 text-amber-900',
+    sample: 'bg-white border-gray-200 text-gray-700',
+  }
+
+  const renderGroup = (title, list, startIdx, styleKey) => {
     return (
-      <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
-        <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-          <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">{title}</span>
-          <span className="text-[10px] text-gray-400 ml-2">{list.length}</span>
+      <div className={`rounded-lg border overflow-hidden ${tierStyles[styleKey]}`}>
+        <div className="px-3 py-1.5 border-b border-current/10 flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider">{title}</span>
+          <span className="text-[10px] opacity-60">{list.length}</span>
         </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-[10px] text-gray-400 border-b border-gray-50">
-              <th className="py-1 pl-3 text-left">Pitcher</th>
-              <th className="py-1 text-center">T</th>
-              <th className="py-1 text-center">App</th>
-              <th className="py-1 text-center">IP</th>
-              <th className="py-1 text-center">IP/A</th>
-              <th className="py-1 text-center">ERA</th>
-              <th className="py-1 text-center" title="Fielding Independent Pitching (lower is better)">FIP</th>
-              <th className="py-1 text-center" title="(K - BB) / Batters Faced">K-BB%</th>
-              <th className="py-1 text-center">K</th>
-              <th className="py-1 text-center">BB</th>
-              <th className="py-1 text-center">SV</th>
-              <th className="py-1 text-center pr-3">Leverage%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((r, i) => {
-              const idx = startIdx + i
-              return (
-                <RelieverRows key={i} r={r} expanded={expandedIdx === idx}
-                  toggle={() => setExpandedIdx(expandedIdx === idx ? null : idx)} />
-              )
-            })}
-          </tbody>
-        </table>
+        {list.length === 0 ? (
+          <div className="text-center py-3 text-[11px] text-gray-400 bg-white">No pitchers in this tier</div>
+        ) : (
+          <table className="w-full text-xs bg-white">
+            <thead>
+              <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+                <th className="py-1 pl-3 text-left">Pitcher</th>
+                <th className="py-1 text-center">T</th>
+                <th className="py-1 text-center">App</th>
+                <th className="py-1 text-center">IP</th>
+                <th className="py-1 text-center">IP/A</th>
+                <th className="py-1 text-center" title="Longest single appearance">Long</th>
+                <th className="py-1 text-center">ERA</th>
+                <th className="py-1 text-center" title="Fielding Independent Pitching (lower is better)">FIP</th>
+                <th className="py-1 text-center" title="(K - BB) / Batters Faced">K-BB%</th>
+                <th className="py-1 text-center">K</th>
+                <th className="py-1 text-center">BB</th>
+                <th className="py-1 text-center">SV</th>
+                <th className="py-1 text-center pr-3">Leverage%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r, i) => {
+                const idx = startIdx + i
+                return (
+                  <RelieverRows key={i} r={r} expanded={expandedIdx === idx}
+                    toggle={() => setExpandedIdx(expandedIdx === idx ? null : idx)} />
+                )
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     )
   }
 
   return (
     <div className="space-y-3">
-      {renderGroup('Closers', closers, 0)}
-      {renderGroup('Multi-Inning Relievers', multi, 100)}
-      {renderGroup('One-Inning Relievers', one, 200)}
-      {renderGroup('Mop-Up / Low Usage', mopUp, 300)}
+      {renderGroup('Elite', elite, 0, 'elite')}
+      {renderGroup('Great', great, 100, 'great')}
+      {renderGroup('Average', avg, 200, 'average')}
+      {renderGroup('Low-Leverage', lowLev, 300, 'low')}
+      {smallSample.length > 0 && renderGroup('Small Sample (< 3 appearances)', smallSample, 400, 'sample')}
       {relievers.length === 0 && <div className="text-center py-6 text-gray-400 text-xs">No relievers with 2+ appearances</div>}
     </div>
   )
@@ -482,14 +502,18 @@ function RelieverRows({ r, expanded, toggle }) {
     <>
       <tr className="border-b border-gray-50 cursor-pointer hover:bg-gray-50" onClick={toggle}>
         <td className="py-1 pl-3 font-medium text-gray-900">
-          {r.is_top && <span className="mr-1 text-yellow-500" title="Top reliever on team (rating)">★</span>}
-          {r.name}
-          <TierPill tier={r.tier} />
+          <span className="inline-flex items-center gap-1">
+            <span className={`text-gray-400 text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
+            {r.is_top && <span className="text-yellow-500" title="Top reliever on team (rating)">★</span>}
+            <span>{r.name}</span>
+            <PitcherIcons p={r} />
+          </span>
         </td>
         <td className="text-center"><Hand t={r.throws} /></td>
         <td className="text-center">{r.apps}</td>
         <td className="text-center">{r.total_ip ?? '—'}</td>
         <td className="text-center">{r.avg_ip}</td>
+        <td className="text-center">{r.longest_ip ?? '—'}</td>
         <td className="text-center font-medium">{r.era ?? '—'}</td>
         <td className="text-center">{r.fip ?? '—'}</td>
         <td className="text-center">{r.k_bb_pct != null ? r.k_bb_pct + '%' : '—'}</td>
@@ -500,7 +524,7 @@ function RelieverRows({ r, expanded, toggle }) {
       </tr>
       {expanded && r.recent?.length > 0 && (
         <tr>
-          <td colSpan={12} className="bg-gray-50 px-3 py-1">
+          <td colSpan={13} className="bg-gray-50 px-3 py-1">
             <div className="flex flex-wrap gap-1.5">
               {[...r.recent].reverse().map((a, i) => (
                 <span key={i} className="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5">
@@ -536,18 +560,70 @@ function TierPill({ tier }) {
     elite: 'bg-green-100 text-green-800',
     solid: 'bg-emerald-50 text-emerald-700',
     average: 'bg-gray-100 text-gray-600',
-    struggling: 'bg-red-50 text-red-700',
+    struggling: 'bg-amber-50 text-amber-800',
   }
   const labels = {
     elite: 'Elite',
-    solid: 'Solid',
+    solid: 'Great',
     average: 'Avg',
-    struggling: 'Struggling',
+    struggling: 'Low-Lev',
   }
   return (
     <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[tier] || 'bg-gray-100 text-gray-500'}`}>
       {labels[tier] || tier}
     </span>
+  )
+}
+
+function PitcherIcons({ p }) {
+  if (!p) return null
+  const icons = []
+  if (p.flag_hot) icons.push({ key: 'hot', char: '🔥', title: 'Hot — great in last 2 appearances' })
+  if (p.flag_cold) icons.push({ key: 'cold', char: '🧊', title: 'Cold — rough in last 2 appearances' })
+  if (p.flag_high_k) icons.push({ key: 'k', char: '🗡️', title: 'High strikeout rate (K/9 >= 10)' })
+  if (p.flag_inactive) icons.push({ key: 'inactive', char: '❌', title: 'Has not pitched in 2+ weeks' })
+  if (!icons.length) return null
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1">
+      {icons.map(ic => (
+        <span key={ic.key} className="text-[11px] leading-none" title={ic.title}>{ic.char}</span>
+      ))}
+    </span>
+  )
+}
+
+function PitchingLegend() {
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-[11px] text-gray-700 space-y-2">
+      <div className="font-bold text-gray-900 text-xs">Key</div>
+
+      <div>
+        <div className="font-semibold text-gray-800 mb-1">Icons</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+          <div><span className="mr-1">🔥</span> Hot: combined ERA of 2.00 or better in last 2 appearances</div>
+          <div><span className="mr-1">🧊</span> Cold: combined ERA of 7.00 or worse in last 2 appearances</div>
+          <div><span className="mr-1">🗡️</span> High strikeout rate: season K/9 of 10 or better</div>
+          <div><span className="mr-1">❌</span> Inactive: has not pitched in 14 or more days</div>
+        </div>
+      </div>
+
+      <div>
+        <div className="font-semibold text-gray-800 mb-1">Leverage%</div>
+        <div>Share of a reliever's appearances that came in a close game (score within 3 runs). A high number means the coach trusts them in tight spots.</div>
+      </div>
+
+      <div>
+        <div className="font-semibold text-gray-800 mb-1">Reliever Tiers</div>
+        <div className="text-[10.5px] text-gray-500 mb-1">Rating = K-BB% minus an FIP adjustment. Higher is better. Minimum 3 appearances to earn a tier.</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+          <div><span className="font-semibold text-green-800">Elite</span>: rating of 15 or higher</div>
+          <div><span className="font-semibold text-emerald-700">Great</span>: rating of 5 to 15</div>
+          <div><span className="font-semibold text-gray-700">Average</span>: rating of -5 to 5</div>
+          <div><span className="font-semibold text-amber-800">Low-Leverage</span>: rating below -5</div>
+          <div><span className="font-semibold text-gray-600">Small Sample</span>: fewer than 3 appearances (no tier assigned yet)</div>
+        </div>
+      </div>
+    </div>
   )
 }
 

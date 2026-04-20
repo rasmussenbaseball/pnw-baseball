@@ -13361,6 +13361,11 @@ def opponent_trends(
         # league-average level.
         _SP_FIP_CONSTANT = 3.50
 
+        # Reference point for the "inactive" icon — the team's most recent game.
+        # Compare each pitcher's last outing against this to flag arms that
+        # haven't been used in 2+ weeks.
+        latest_team_date = all_ge[-1]["game_date"] if all_ge else None
+
         def _slot_totals():
             return {
                 "starts": 0, "outs": 0, "er": 0,
@@ -13462,6 +13467,27 @@ def opponent_trends(
                     "record": f"{st['wins']}-{st['losses']}",
                 }
 
+            # Icon flags for starters
+            last2 = s["recent_starts"][-2:]
+            er_2 = sum(a.get("er", 0) or 0 for a in last2)
+            outs_2 = sum(ip_to_outs(a.get("ip", 0)) for a in last2)
+            flag_hot = len(last2) >= 2 and outs_2 > 0 and (er_2 * 27 / outs_2) <= 2.00
+            flag_cold = len(last2) >= 2 and (
+                (outs_2 > 0 and (er_2 * 27 / outs_2) >= 7.00) or
+                (outs_2 == 0 and er_2 > 0)
+            )
+            # Starters need a bigger sample for the K/9 flag (20 IP = 60 outs)
+            flag_high_k = s["total_outs"] >= 60 and (s["total_k"] * 27 / s["total_outs"]) >= 10.0
+            flag_inactive = False
+            if latest_team_date and s["starts"] >= 3 and s["recent_starts"]:
+                last_str = s["recent_starts"][-1]["date"]
+                try:
+                    last_dt = date.fromisoformat(last_str) if isinstance(last_str, str) else last_str
+                    if (latest_team_date - last_dt).days >= 14:
+                        flag_inactive = True
+                except (ValueError, TypeError):
+                    pass
+
             starters_list.append({
                 "name": name,
                 "player_id": s["player_id"],
@@ -13476,6 +13502,10 @@ def opponent_trends(
                 "slots": {str(k): v for k, v in s["game_slots"].most_common()},
                 "slot_splits": slot_splits,
                 "recent": s["recent_starts"][-6:],
+                "flag_hot": flag_hot,
+                "flag_cold": flag_cold,
+                "flag_high_k": flag_high_k,
+                "flag_inactive": flag_inactive,
             })
         starters_list.sort(key=lambda x: x["starts"], reverse=True)
 
@@ -13584,6 +13614,7 @@ def opponent_trends(
             "k": 0, "er": 0, "bb": 0, "hr": 0, "hbp": 0, "bf": 0,
             "player_id": None, "throws": None,
             "close_apps": 0, "multi_ip_apps": 0,
+            "longest_outs": 0,
             "recent": [],
         })
 
@@ -13617,6 +13648,8 @@ def opponent_trends(
                 # multi-inning appearance = 4+ outs (1⅓ IP or more)
                 if outs >= 4:
                     r["multi_ip_apps"] += 1
+                if outs > r["longest_outs"]:
+                    r["longest_outs"] = outs
                 r["recent"].append({
                     "date": g["game_date"].isoformat() if hasattr(g["game_date"], "isoformat") else str(g["game_date"]),
                     "opp": g["opponent_name"],
@@ -13690,10 +13723,34 @@ def opponent_trends(
             else:
                 role = "one_inning"
 
+            # Icon flags: hot, cold, high_k, inactive
+            # Hot/cold from last 2 appearances
+            last2 = r["recent"][-2:]
+            er_2 = sum(a.get("er", 0) or 0 for a in last2)
+            outs_2 = sum(ip_to_outs(a.get("ip", 0)) for a in last2)
+            flag_hot = len(last2) >= 2 and outs_2 > 0 and (er_2 * 27 / outs_2) <= 2.00
+            flag_cold = len(last2) >= 2 and (
+                (outs_2 > 0 and (er_2 * 27 / outs_2) >= 7.00) or
+                (outs_2 == 0 and er_2 > 0)
+            )
+            # High-K: season K/9 >= 10, with at least 10 IP (30 outs)
+            flag_high_k = r["total_outs"] >= 30 and (r["k"] * 27 / r["total_outs"]) >= 10.0
+            # Inactive: hasn't pitched in 14+ days (only flag if 3+ apps — avoid flagging guys who just came back from injury)
+            flag_inactive = False
+            if latest_team_date and r["apps"] >= 3 and r["recent"]:
+                last_str = r["recent"][-1]["date"]
+                try:
+                    last_dt = date.fromisoformat(last_str) if isinstance(last_str, str) else last_str
+                    if (latest_team_date - last_dt).days >= 14:
+                        flag_inactive = True
+                except (ValueError, TypeError):
+                    pass
+
             relievers_list.append({
                 "name": name, "throws": r["throws"],
                 "apps": r["apps"], "avg_ip": avg_ip, "era": era,
                 "total_ip": total_ip_display,
+                "longest_ip": outs_to_ip(r["longest_outs"]),
                 "saves": r["saves"], "k": r["k"], "bb": r["bb"],
                 "hr": r["hr"], "bf": r["bf"],
                 "fip": fip, "k_bb_pct": k_bb_pct,
@@ -13701,6 +13758,10 @@ def opponent_trends(
                 "role": role,
                 "leverage_pct": round(r["close_apps"] / r["apps"] * 100) if r["apps"] else 0,
                 "recent": r["recent"][-5:],
+                "flag_hot": flag_hot,
+                "flag_cold": flag_cold,
+                "flag_high_k": flag_high_k,
+                "flag_inactive": flag_inactive,
             })
 
         # Mark the best 2 (highest rating, min 3 apps) as "top_reliever"
