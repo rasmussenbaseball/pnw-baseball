@@ -20,9 +20,12 @@ from app.models.database import get_connection
 
 
 def main():
-    conn = get_connection()
-    cur = conn.cursor()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _run(cur)
 
+
+def _run(cur):
     print("=" * 70)
     print("1) HR gap overview by team (season 2026)")
     print("=" * 70)
@@ -122,8 +125,6 @@ def main():
     urls = cur.fetchall()
     for r in urls:
         print(f"  {r['short_name']:<15} {r['game_date']}  {r['source_url']}")
-
-    conn.close()
 
 
 if __name__ == "__main__":
