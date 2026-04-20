@@ -2566,6 +2566,21 @@ def upsert_game(cur, game_data):
         ))
         return game_id
 
+    # Safety: refuse to INSERT a new game row when either team_id is unresolved.
+    # NULL-opponent orphan rows are a known source of duplicate game bugs
+    # (seen with WOU scraping MSUB games where MSUB's team_id did not resolve).
+    # Existing games can still be matched/updated via source_url above (that path
+    # uses COALESCE and preserves valid team_ids on the existing row).
+    if not game_data.get("home_team_id") or not game_data.get("away_team_id"):
+        home_name = game_data.get("home_team_name") or "?"
+        away_name = game_data.get("away_team_name") or "?"
+        date = game_data.get("game_date")
+        print(f"  ⚠️  SKIPPING new game insert: unresolved team_id for "
+              f"{away_name} @ {home_name} on {date} "
+              f"(home_id={game_data.get('home_team_id')}, "
+              f"away_id={game_data.get('away_team_id')})")
+        return None
+
     # Insert new game
     cur.execute("""
         INSERT INTO games (
