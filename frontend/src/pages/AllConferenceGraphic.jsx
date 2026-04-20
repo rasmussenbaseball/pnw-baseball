@@ -379,9 +379,18 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
 
 function buildStats(player, kind, rateMode) {
   if (kind === 'hitter') {
-    const kMinusBb = (player.k_pct != null && player.bb_pct != null)
-      ? (player.k_pct - player.bb_pct)
-      : null
+    // Two-way UTIL players get a blended stat block that shows both sides.
+    if (player.slot === 'UTIL' && player.is_two_way && player.pitching) {
+      const totalWar = (player.war || 0) + (player.pitching.war || 0)
+      return [
+        { label: 'Total WAR', value: fmtWar(totalWar) },
+        { label: 'wOBA', value: fmtAvg(player.woba) },
+        { label: 'HR', value: fmtInt(player.hr) },
+        { label: 'FIP', value: fmtFloat(player.pitching.fip) },
+        { label: 'K%', value: fmtPct(player.pitching.k_pct) },
+        { label: 'BB%', value: fmtPct(player.pitching.bb_pct) },
+      ]
+    }
     const warLabel = rateMode ? 'WAR/PA' : 'WAR'
     const warVal = rateMode ? fmtWarRate(player.war_rate) : fmtWar(player.war)
     return [
@@ -390,7 +399,7 @@ function buildStats(player, kind, rateMode) {
       { label: 'wRC+', value: fmtInt(player.wrc_plus) },
       { label: 'ISO', value: fmtAvg(player.iso) },
       { label: 'HR', value: fmtInt(player.hr) },
-      { label: 'K-BB%', value: fmtPct(kMinusBb) },
+      { label: 'SB', value: fmtInt(player.sb) },
     ]
   } else {
     // pitchers — relievers use WAR/IP

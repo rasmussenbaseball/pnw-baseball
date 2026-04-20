@@ -13963,9 +13963,10 @@ def all_conference(
                    p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
                    p.year_in_school, p.bats, p.throws,
                    bs.plate_appearances, bs.at_bats, bs.hits, bs.home_runs,
+                   bs.stolen_bases,
                    bs.strikeouts, bs.walks,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
-                   bs.iso, bs.k_pct, bs.bb_pct,
+                   bs.iso, bs.woba, bs.k_pct, bs.bb_pct,
                    bs.wrc_plus, bs.offensive_war
             FROM batting_stats bs
             JOIN players p ON p.id = bs.player_id
@@ -14081,7 +14082,9 @@ def all_conference(
             "slg": b.get("slugging_pct"),
             "ops": b.get("ops"),
             "iso": b.get("iso"),
+            "woba": b.get("woba"),
             "hr": b.get("home_runs"),
+            "sb": b.get("stolen_bases"),
             "hits": b.get("hits"),
             "bat_k": b.get("strikeouts"),
             "bat_bb": b.get("walks"),
@@ -14411,7 +14414,9 @@ def all_conference(
             "slg": rec.get("slg"),
             "ops": rec.get("ops"),
             "iso": rec.get("iso"),
+            "woba": rec.get("woba"),
             "hr": rec.get("hr"),
+            "sb": rec.get("sb"),
             "k_pct": rec.get("bat_k_pct"),
             "bb_pct": rec.get("bat_bb_pct"),
             "is_two_way": is_two_way,
@@ -14424,8 +14429,12 @@ def all_conference(
                 "era": rec.get("era"),
                 "fip": rec.get("fip"),
                 "fip_plus": rec.get("fip_plus"),
+                "siera": rec.get("siera"),
                 "war": round(rec["war_pit"], 2),
                 "k": rec.get("k"),
+                "bb": rec.get("bb"),
+                "k_pct": rec.get("pit_k_pct"),
+                "bb_pct": rec.get("pit_bb_pct"),
             }
         return out
 
