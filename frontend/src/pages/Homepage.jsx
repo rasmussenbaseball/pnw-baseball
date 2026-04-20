@@ -1045,6 +1045,9 @@ function TopPerformersWidget({ data, date }) {
                 {h.headshot_url ? (
                   <img src={h.headshot_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
                     onError={(e) => { e.target.style.display = 'none' }} />
+                ) : h.division === 'JUCO' ? (
+                  // NWAC players: no placeholder, just an invisible spacer so rows stay aligned
+                  <div className="w-8 h-8 shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
                     <span className="text-xs font-bold text-gray-400">
@@ -1105,6 +1108,9 @@ function TopPerformersWidget({ data, date }) {
                 {p.headshot_url ? (
                   <img src={p.headshot_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 shrink-0"
                     onError={(e) => { e.target.style.display = 'none' }} />
+                ) : p.division === 'JUCO' ? (
+                  // NWAC players: no placeholder, just an invisible spacer so rows stay aligned
+                  <div className="w-8 h-8 shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
                     <span className="text-xs font-bold text-gray-400">
