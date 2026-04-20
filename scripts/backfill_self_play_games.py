@@ -85,6 +85,7 @@ def normalize_slug(slug):
     # State abbreviations + special cases
     name = re.sub(r"\bAriz\b", "(AZ)", name)
     name = re.sub(r"\bCalif\b", "(CA)", name)
+    name = re.sub(r"\bAz\b", "(AZ)", name)
     name = re.sub(r"\bUsc\b", "USC", name)
     name = re.sub(r"\bUcla\b", "UCLA", name)
     name = re.sub(r"\bUnlv\b", "UNLV", name)
@@ -93,6 +94,20 @@ def normalize_slug(slug):
     # Remove stray leading or trailing punctuation
     name = re.sub(r"\s+\(\s*\)", "", name)
     name = name.strip()
+
+    # Alias post-processing: collapse same-school duplicates where slug variants
+    # produce different but equivalent names. Key = output from the steps above.
+    aliases = {
+        "Occidental College":                "Occidental",
+        "Whittier College":                  "Whittier",
+        "University Of La Verne":            "La Verne",
+        "Benedictine Mesa":                  "Benedictine Mesa (AZ)",
+        "Benedictine University Mesa (AZ)":  "Benedictine Mesa (AZ)",
+        "Ouaz":                              "Ottawa University Arizona",
+        "Nelson Aic":                        "Nelson University (AZ)",
+    }
+    if name in aliases:
+        name = aliases[name]
 
     return name if name else None
 
@@ -185,8 +200,10 @@ def process_game(cur, game, dry_run, opponent_cache):
         result["status"] = "ERR: could not parse opponent from URL"
         return result
 
-    # Cache key: use slug to dedupe OOC opponents appearing on multiple games
-    cache_key = slug
+    # Cache key: use the NORMALIZED NAME so different slug variants that refer
+    # to the same school share one team row (e.g. `chapman` vs `chapman-university`,
+    # `cal-state-east-bay` vs `cal-state-east-bay-7-inn-`).
+    cache_key = name
     if cache_key in opponent_cache:
         result["opp_id"] = opponent_cache[cache_key]["id"]
         result["status"] = "reuse: " + opponent_cache[cache_key]["label"]
