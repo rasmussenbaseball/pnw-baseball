@@ -278,7 +278,7 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
   ctx.fillStyle = THEME.textMuted
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText('pnwbaseballstats.com', padX, footerY + footerH / 2)
+  ctx.fillText('nwbaseballstats.com', padX, footerY + footerH / 2)
 
   ctx.textAlign = 'right'
   ctx.font = `400 11px ${font}`

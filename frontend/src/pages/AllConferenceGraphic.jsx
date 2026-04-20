@@ -137,6 +137,11 @@ function fmtWarRate(v) {
   if (v === null || v === undefined) return '-'
   return Number(v).toFixed(3)
 }
+function fmtPct(v) {
+  // backend stores k_pct/bb_pct as a fraction (0.24 = 24%)
+  if (v === null || v === undefined) return '-'
+  return `${(Number(v) * 100).toFixed(1)}%`
+}
 
 function isNwac(player) {
   return player?.division_level === 'JUCO'
@@ -229,7 +234,7 @@ function drawFooter(ctx, W, H) {
   ctx.fillStyle = THEME.textMuted
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText('pnwbaseballstats.com', 40, footerY + footerH / 2)
+  ctx.fillText('nwbaseballstats.com', 40, footerY + footerH / 2)
 
   ctx.textAlign = 'right'
   ctx.font = `400 11px ${font}`
@@ -249,14 +254,23 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.lineWidth = 1
   ctx.stroke()
 
-  // Position badge at top
+  // Position badge at top — single-color fill with rounded top, flat bottom.
   const badgeH = 26
+  const badgeR = 12
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(x + badgeR, y)
+  ctx.lineTo(x + w - badgeR, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + badgeR)
+  ctx.lineTo(x + w, y + badgeH)
+  ctx.lineTo(x, y + badgeH)
+  ctx.lineTo(x, y + badgeR)
+  ctx.quadraticCurveTo(x, y, x + badgeR, y)
+  ctx.closePath()
   ctx.fillStyle = THEME.accentSoft
-  roundRect(ctx, x, y, w, badgeH, 12)
   ctx.fill()
-  // Flatten bottom of badge
-  ctx.fillStyle = THEME.accentSoft
-  ctx.fillRect(x, y + badgeH / 2, w, badgeH / 2)
+  ctx.restore()
+  // Divider line at badge bottom
   ctx.strokeStyle = THEME.accentBorder
   ctx.lineWidth = 1
   ctx.beginPath()
@@ -264,7 +278,7 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.lineTo(x + w, y + badgeH)
   ctx.stroke()
 
-  // Position label (strip "1" off OF/SP numbers for cleaner display? keep SP1/SP2 etc. to show rotation spot)
+  // Position label
   ctx.font = `800 13px ${font}`
   ctx.fillStyle = THEME.accent
   ctx.textAlign = 'center'
@@ -283,9 +297,9 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
 
   // Decide whether to show headshot or team logo (NWAC = team logo)
   const showLogo = isNwac(player)
+  const imgR = 38
   const imgCX = x + w / 2
-  const imgCY = y + badgeH + 12 + 46
-  const imgR = 46
+  const imgCY = y + badgeH + 8 + imgR
 
   // Circle background
   ctx.fillStyle = THEME.circleBg
@@ -294,17 +308,14 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.fill()
 
   if (showLogo) {
-    // Team logo filling the circle
     if (logoImg) {
-      // Draw logo "contain" inside circle with a bit of inset
-      drawImageContain(ctx, logoImg, imgCX - imgR + 4, imgCY - imgR + 4, imgR * 2 - 8, imgR * 2 - 8)
+      drawImageContain(ctx, logoImg, imgCX - imgR + 3, imgCY - imgR + 3, imgR * 2 - 6, imgR * 2 - 6)
     }
   } else {
-    // Headshot: cover-cropped inside circle; fallback to logo if headshot missing
     if (headshotImg) {
       drawImageCover(ctx, headshotImg, imgCX, imgCY, imgR)
     } else if (logoImg) {
-      drawImageContain(ctx, logoImg, imgCX - imgR + 4, imgCY - imgR + 4, imgR * 2 - 8, imgR * 2 - 8)
+      drawImageContain(ctx, logoImg, imgCX - imgR + 3, imgCY - imgR + 3, imgR * 2 - 6, imgR * 2 - 6)
     }
   }
   // Ring
@@ -315,20 +326,20 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.stroke()
 
   // Player name
-  const nameY = imgCY + imgR + 18
-  ctx.font = `700 16px ${font}`
+  const nameY = imgCY + imgR + 14
+  ctx.font = `700 14px ${font}`
   ctx.fillStyle = THEME.textPrimary
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(truncText(ctx, player.name || '', w - 16), x + w / 2, nameY)
+  ctx.fillText(truncText(ctx, player.name || '', w - 12), x + w / 2, nameY)
 
   // Team line (small logo + short name)
-  const teamY = nameY + 20
-  ctx.font = `500 12px ${font}`
+  const teamY = nameY + 16
+  ctx.font = `500 11px ${font}`
   const tName = player.team_short || ''
   const nameWidth = ctx.measureText(tName).width
-  const miniLogoSz = 14
-  const gapBetween = 5
+  const miniLogoSz = 12
+  const gapBetween = 4
   const totalTeamW = miniLogoSz + gapBetween + nameWidth
   const teamStartX = x + (w - totalTeamW) / 2
   if (logoImg) {
@@ -338,13 +349,13 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.textAlign = 'left'
   ctx.fillText(tName, teamStartX + miniLogoSz + gapBetween, teamY)
 
-  // Stats panel (2x2 grid)
-  const statsTop = teamY + 16
-  const statsBottom = y + h - 10
+  // Stats panel (3 rows × 2 cols = 6 stats)
+  const statsTop = teamY + 12
+  const statsBottom = y + h - 8
   const statsH = statsBottom - statsTop
-  const cellW = (w - 16) / 2
-  const cellH = statsH / 2
-  const sx = x + 8
+  const cellW = (w - 12) / 2
+  const cellH = statsH / 3
+  const sx = x + 6
 
   const stats = buildStats(player, kind, rateMode)
 
@@ -356,34 +367,44 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
     const cx = sx + col * cellW + cellW / 2
     const cy = statsTop + row * cellH + cellH / 2
 
-    ctx.font = `600 9px ${font}`
+    ctx.font = `600 8px ${font}`
     ctx.fillStyle = THEME.textMuted
-    ctx.fillText(stats[i].label, cx, cy - 11)
+    ctx.fillText(stats[i].label, cx, cy - 9)
 
-    ctx.font = `800 17px ${font}`
+    ctx.font = `800 14px ${font}`
     ctx.fillStyle = THEME.textPrimary
-    ctx.fillText(stats[i].value, cx, cy + 8)
+    ctx.fillText(stats[i].value, cx, cy + 6)
   }
 }
 
 function buildStats(player, kind, rateMode) {
   if (kind === 'hitter') {
-    const isUtilRate = rateMode
+    const kMinusBb = (player.k_pct != null && player.bb_pct != null)
+      ? (player.k_pct - player.bb_pct)
+      : null
+    const warLabel = rateMode ? 'WAR/PA' : 'WAR'
+    const warVal = rateMode ? fmtWarRate(player.war_rate) : fmtWar(player.war)
     return [
-      { label: isUtilRate ? 'WAR/PA' : 'WAR', value: isUtilRate ? fmtWarRate(player.war_rate) : fmtWar(player.war) },
-      { label: 'AVG', value: fmtAvg(player.avg) },
-      { label: 'OPS', value: fmtAvg(player.ops) },
+      { label: 'PA', value: fmtInt(player.pa) },
+      { label: warLabel, value: warVal },
+      { label: 'wRC+', value: fmtInt(player.wrc_plus) },
+      { label: 'ISO', value: fmtAvg(player.iso) },
       { label: 'HR', value: fmtInt(player.hr) },
+      { label: 'K-BB%', value: fmtPct(kMinusBb) },
     ]
   } else {
-    // pitchers — relievers use rate WAR
+    // pitchers — relievers use WAR/IP
     const isReliever = (player.slot || '').startsWith('RP')
     const useRate = rateMode || isReliever
+    const warLabel = useRate ? 'WAR/IP' : 'WAR'
+    const warVal = useRate ? fmtWarRate(player.war_rate) : fmtWar(player.war)
     return [
-      { label: useRate ? 'WAR/IP' : 'WAR', value: useRate ? fmtWarRate(player.war_rate) : fmtWar(player.war) },
-      { label: 'ERA', value: fmtFloat(player.era) },
+      { label: warLabel, value: warVal },
+      { label: 'FIP', value: fmtFloat(player.fip) },
+      { label: 'SIERA', value: fmtFloat(player.siera) },
+      { label: 'K%', value: fmtPct(player.k_pct) },
+      { label: 'BB%', value: fmtPct(player.bb_pct) },
       { label: 'IP', value: fmtIp(player.ip) },
-      { label: 'K', value: fmtInt(player.k) },
     ]
   }
 }

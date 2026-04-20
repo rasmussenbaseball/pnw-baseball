@@ -13963,7 +13963,9 @@ def all_conference(
                    p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
                    p.year_in_school, p.bats, p.throws,
                    bs.plate_appearances, bs.at_bats, bs.hits, bs.home_runs,
+                   bs.strikeouts, bs.walks,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
+                   bs.iso, bs.k_pct, bs.bb_pct,
                    bs.wrc_plus, bs.offensive_war
             FROM batting_stats bs
             JOIN players p ON p.id = bs.player_id
@@ -13978,8 +13980,9 @@ def all_conference(
                    p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
                    p.year_in_school, p.bats, p.throws,
                    ps.innings_pitched, ps.games, ps.games_started,
-                   ps.era, ps.fip, ps.fip_plus, ps.whip,
-                   ps.strikeouts, ps.walks, ps.wins, ps.saves,
+                   ps.era, ps.fip, ps.fip_plus, ps.whip, ps.siera,
+                   ps.strikeouts, ps.walks, ps.k_pct, ps.bb_pct,
+                   ps.wins, ps.saves,
                    ps.pitching_war
             FROM pitching_stats ps
             JOIN players p ON p.id = ps.player_id
@@ -14077,8 +14080,13 @@ def all_conference(
             "obp": b.get("on_base_pct"),
             "slg": b.get("slugging_pct"),
             "ops": b.get("ops"),
+            "iso": b.get("iso"),
             "hr": b.get("home_runs"),
             "hits": b.get("hits"),
+            "bat_k": b.get("strikeouts"),
+            "bat_bb": b.get("walks"),
+            "bat_k_pct": b.get("k_pct"),
+            "bat_bb_pct": b.get("bb_pct"),
         })
         players[pid] = rec
 
@@ -14098,8 +14106,11 @@ def all_conference(
             "fip_plus": p.get("fip_plus"),
             "era": p.get("era"),
             "whip": p.get("whip"),
+            "siera": p.get("siera"),
             "k": p.get("strikeouts"),
             "bb": p.get("walks"),
+            "pit_k_pct": p.get("k_pct"),
+            "pit_bb_pct": p.get("bb_pct"),
             "gs": p.get("games_started") or 0,
             "g_pitch": p.get("games") or 0,
         })
@@ -14399,7 +14410,10 @@ def all_conference(
             "obp": rec.get("obp"),
             "slg": rec.get("slg"),
             "ops": rec.get("ops"),
+            "iso": rec.get("iso"),
             "hr": rec.get("hr"),
+            "k_pct": rec.get("bat_k_pct"),
+            "bb_pct": rec.get("bat_bb_pct"),
             "is_two_way": is_two_way,
         }
         # Include pitching info for two-way players (so UTIL/HM cards can show it)
@@ -14433,8 +14447,12 @@ def all_conference(
             "fip_plus": rec.get("fip_plus"),
             "era": rec.get("era"),
             "whip": rec.get("whip"),
+            "siera": rec.get("siera"),
             "ip": rec.get("ip"),
             "k": rec.get("k"),
+            "bb": rec.get("bb"),
+            "k_pct": rec.get("pit_k_pct"),
+            "bb_pct": rec.get("pit_bb_pct"),
             "gs": rec.get("gs"),
         }
 

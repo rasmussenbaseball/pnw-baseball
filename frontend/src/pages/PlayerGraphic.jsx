@@ -906,7 +906,7 @@ export default function PlayerGraphic() {
             {/* ── FOOTER ── */}
             <div style={{ margin: '0 10px', borderTop: '1px solid rgba(255,255,255,0.04)', flexShrink: 0 }} />
             <div style={{ padding: '3px 14px 5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>pnwbaseballstats.com</span>
+              <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>nwbaseballstats.com</span>
               <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.2)', fontWeight: 500 }}>{activeSeason === 'career' ? 'Career' : `${activeSeason} Season`}</span>
             </div>
           </div>

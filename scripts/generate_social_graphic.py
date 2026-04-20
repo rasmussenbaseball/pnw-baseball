@@ -336,7 +336,7 @@ def build_full_html(batting_rows_html, pitching_rows_html, season, week_range):
       <div class="logo-mark">NW</div>
       <div>
         <div class="brand-name">NW Baseball Stats</div>
-        <div class="brand-url">pnwbaseballstats.com</div>
+        <div class="brand-url">nwbaseballstats.com</div>
       </div>
     </div>
     <div class="header-right">
@@ -400,7 +400,7 @@ def build_full_html(batting_rows_html, pitching_rows_html, season, week_range):
   </div>
 
   <div class="footer">
-    <div class="footer-brand">pnwbaseballstats.com</div>
+    <div class="footer-brand">nwbaseballstats.com</div>
     <div class="footer-info">All Divisions &middot; Min {MIN_PA} PA / {int(MIN_IP)} IP &middot; {season} Season</div>
   </div>
 </div>
@@ -545,7 +545,7 @@ def main():
         tweet_text = args.tweet_text or (
             f"This week's Top Performers across PNW college baseball\n\n"
             f"wRC+ and FIP leaders — all divisions, {args.season} season\n\n"
-            f"Full leaderboards at pnwbaseballstats.com\n\n"
+            f"Full leaderboards at nwbaseballstats.com\n\n"
             f"#CollegeBaseball #PNWBaseball #D1Baseball"
         )
 
