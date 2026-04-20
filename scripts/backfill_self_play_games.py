@@ -157,24 +157,48 @@ def find_existing_team(cur, name):
     return None
 
 
-def create_opponent(cur, name, dry_run):
+def get_or_create_ooc_conference(cur, dry_run):
+    """Look up or create the 'Out of Conference' bucket. All backfilled OOC
+    opponents point at this one conference so they're easy to find, inspect,
+    or clean up later. division_id=1 matches the existing 'Independent'
+    conference's umbrella bucket."""
+    cur.execute(
+        "SELECT id FROM conferences WHERE abbreviation = 'OOC' LIMIT 1"
+    )
+    r = cur.fetchone()
+    if r:
+        return r["id"]
+    if dry_run:
+        return -1
+    cur.execute(
+        """
+        INSERT INTO conferences (name, abbreviation, division_id)
+        VALUES ('Out of Conference', 'OOC', 1)
+        RETURNING id
+        """
+    )
+    return cur.fetchone()["id"]
+
+
+def create_opponent(cur, name, dry_run, ooc_conference_id):
     """Create a new is_active=0 team row. Returns new id, or -1 in dry-run."""
     if dry_run:
         return -1
     cur.execute(
         """
-        INSERT INTO teams (name, school_name, short_name, is_active)
-        VALUES (%s, %s, %s, 0)
+        INSERT INTO teams (name, school_name, short_name,
+                           state, conference_id, is_active)
+        VALUES (%s, %s, %s, 'N/A', %s, 0)
         RETURNING id
         """,
-        (name, name, name),
+        (name, name, name, ooc_conference_id),
     )
     return cur.fetchone()["id"]
 
 
 # ---- Per-game processing --------------------------------------------------
 
-def process_game(cur, game, dry_run, opponent_cache):
+def process_game(cur, game, dry_run, opponent_cache, ooc_conference_id):
     """Resolve opponent, update game, re-attribute orphan rows. Returns dict."""
     gid = game["id"]
     url = game["source_url"]
@@ -214,7 +238,7 @@ def process_game(cur, game, dry_run, opponent_cache):
             result["opp_id"] = opp_id
             result["status"] = f"existing id={opp_id} ({label})"
         else:
-            opp_id = create_opponent(cur, name, dry_run)
+            opp_id = create_opponent(cur, name, dry_run, ooc_conference_id)
             result["opp_id"] = opp_id
             result["status"] = (
                 f"create new team {name!r} is_active=0"
@@ -271,13 +295,16 @@ def main():
         logger.info(f"{'DRY RUN — ' if args.dry_run else ''}"
                     f"Found {len(games)} self-play games")
 
+        ooc_conference_id = get_or_create_ooc_conference(cur, args.dry_run)
+        logger.info(f"OOC conference id: {ooc_conference_id}")
+
         opponent_cache = {}
         totals = {"created": 0, "matched": 0, "errors": 0,
                   "orphan_bat": 0, "orphan_pit": 0}
         new_teams = []
 
         for g in games:
-            r = process_game(cur, g, args.dry_run, opponent_cache)
+            r = process_game(cur, g, args.dry_run, opponent_cache, ooc_conference_id)
             totals["orphan_bat"] += r["orphan_bat"]
             totals["orphan_pit"] += r["orphan_pit"]
             if r["status"].startswith("ERR"):
