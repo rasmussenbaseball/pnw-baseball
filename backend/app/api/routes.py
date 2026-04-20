@@ -7351,13 +7351,6 @@ def weekly_top_performers(
             )
             h["wrc_plus"] = round(adv.wrc_plus) if adv.wrc_plus else None
 
-        # Re-sort hitters by weekly wRC+ (hitters with None wRC+ sink to bottom)
-        top_hitters = sorted(
-            top_hitters,
-            key=lambda b: (b.get("wrc_plus") if b.get("wrc_plus") is not None else float("-inf")),
-            reverse=True,
-        )
-
         # ── 8. Weekly FIP+ per pitcher (by division) ──
         # FIP constant is chosen so that each division's weekly league FIP equals
         # that division's weekly league ERA. FIP+ = lgFIP / playerFIP × 100.
@@ -7407,13 +7400,6 @@ def weekly_top_performers(
                 p["fip_plus"] = None
             else:
                 p["fip_plus"] = round((lg_fip / fip) * 100)
-
-        # Re-sort pitchers by weekly FIP+ (higher is better; None sinks to bottom)
-        top_pitchers = sorted(
-            top_pitchers,
-            key=lambda q: (q.get("fip_plus") if q.get("fip_plus") is not None else float("-inf")),
-            reverse=True,
-        )
 
         return {
             "week_start": str(ws),
