@@ -107,6 +107,7 @@ import FavoritesPage from './pages/FavoritesPage'
 import FeatureRequest from './pages/FeatureRequest'
 import PlayerGraphic from './pages/PlayerGraphic'
 import ConferenceStandingsGraphic from './pages/ConferenceStandingsGraphic'
+import AllConferenceGraphic from './pages/AllConferenceGraphic'
 import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
 import PlayoffProjections from './pages/PlayoffProjections'
@@ -181,6 +182,7 @@ export default function App() {
           <Route path="/feature-request" element={<RequireAuth><FeatureRequest /></RequireAuth>} />
           <Route path="/player-pages" element={<RequireAuth><PlayerGraphic /></RequireAuth>} />
           <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
+          <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
 
           {/* About */}
