@@ -263,18 +263,29 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
     return
   }
 
-  // Rank number (#1-#10) — uses the section accent color
-  ctx.font = `900 20px ${font}`
+  const imgCY = y + h / 2
+
+  // ── Fixed-pixel zones (guarantees no overlap at any card width) ──
+  const rankCX = x + 22
+  const imgR = Math.min(26, Math.floor(h * 0.36))
+  const imgCX = x + 64
+  const nameX = imgCX + imgR + 12
+  const nameZoneEnd = x + 212
+  const nameMaxW = nameZoneEnd - nameX
+
+  const headlineCX = x + 250
+  const gridLeftX = x + 296
+  const gridRightX = x + w - 12
+  const gridW = gridRightX - gridLeftX
+
+  // Rank number (#1-#10)
+  ctx.font = `900 18px ${font}`
   ctx.fillStyle = accent
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  const rankCX = x + 26
-  ctx.fillText(`#${rank}`, rankCX, y + h / 2)
+  ctx.fillText(`#${rank}`, rankCX, imgCY)
 
   // Headshot / logo (NWAC = team logo)
-  const imgR = Math.floor(h * 0.38)
-  const imgCX = x + 72
-  const imgCY = y + h / 2
   ctx.fillStyle = THEME.circleBg
   ctx.beginPath()
   ctx.arc(imgCX, imgCY, imgR + 2, 0, Math.PI * 2)
@@ -293,14 +304,12 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   ctx.arc(imgCX, imgCY, imgR, 0, Math.PI * 2)
   ctx.stroke()
 
-  // Name + team block
-  const nameX = imgCX + imgR + 10
-  const nameMaxW = (w * 0.36) - 8
+  // Name + team block (with truncation)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  ctx.font = `700 14px ${font}`
+  ctx.font = `700 13px ${font}`
   ctx.fillStyle = THEME.textPrimary
-  ctx.fillText(truncText(ctx, player.display_name || '', nameMaxW), nameX, imgCY - 4)
+  ctx.fillText(truncText(ctx, player.display_name || '', nameMaxW), nameX, imgCY - 3)
 
   // Team (small logo + short)
   ctx.textBaseline = 'middle'
@@ -314,30 +323,22 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   ctx.fillStyle = THEME.textSecondary
   ctx.fillText(truncText(ctx, tName, nameMaxW - miniSz - gap), nameX + miniSz + gap, imgCY + 12)
 
-  // ── Stats: headline + mini-grid ──
-  const statsLeftX = x + Math.floor(w * 0.50)
-  const statsRightX = x + w - 10
-  const statsW = statsRightX - statsLeftX
-
-  // Headline stat (big number, left of stats row)
+  // Headline stat — wRC+ (hitters) or FIP+ (pitchers)
   const headline = kind === 'hitter'
-    ? { label: 'OPS', value: fmtOps(player.ops) }
-    : { label: 'ERA', value: fmtFloat(player.era, 2) }
+    ? { label: 'wRC+', value: fmtInt(player.wrc_plus) }
+    : { label: 'FIP+', value: fmtInt(player.fip_plus) }
 
-  const headlineCX = statsLeftX + 36
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.font = `800 10px ${font}`
   ctx.fillStyle = THEME.textMuted
-  ctx.fillText(headline.label, headlineCX, imgCY - 18)
+  ctx.fillText(headline.label, headlineCX, imgCY - 16)
 
-  ctx.font = `900 22px ${font}`
+  ctx.font = `900 20px ${font}`
   ctx.fillStyle = accent
-  ctx.fillText(headline.value, headlineCX, imgCY + 6)
+  ctx.fillText(headline.value, headlineCX, imgCY + 7)
 
-  // Small stat cells
-  const gridLeftX = statsLeftX + 76
-  const gridW = statsRightX - gridLeftX
+  // Mini stat cells
   const stats = kind === 'hitter'
     ? [
         { label: 'PA', value: fmtInt(player.pa) },
@@ -364,9 +365,9 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
     ctx.font = `700 9px ${font}`
     ctx.fillStyle = THEME.textMuted
     ctx.fillText(stats[i].label, cx, imgCY - 16)
-    ctx.font = `800 15px ${font}`
+    ctx.font = `800 13px ${font}`
     ctx.fillStyle = THEME.textPrimary
-    ctx.fillText(stats[i].value, cx, imgCY + 6)
+    ctx.fillText(stats[i].value, cx, imgCY + 7)
   }
 }
 
