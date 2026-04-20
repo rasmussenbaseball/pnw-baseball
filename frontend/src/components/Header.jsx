@@ -70,6 +70,7 @@ const NAV = [
       { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
       { to: '/conference-standings', label: 'Standings', desc: 'Conference standings graphics' },
       { to: '/all-conference-graphic', label: 'All-Conference Teams', desc: 'All-conference team graphics' },
+      { to: '/top-performers-graphic', label: 'Top Performers', desc: 'Weekly top 10 hitters and pitchers' },
     ],
   },
   {

@@ -6966,6 +6966,330 @@ def daily_performers(
         }
 
 
+@router.get("/games/top-performer-weeks")
+def top_performer_weeks(
+    season: int = Query(2026),
+):
+    """
+    Return list of Monday-to-Sunday week ranges that have at least one final game.
+    Used to populate the dropdown in the weekly top performers graphic.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT MIN(game_date) as first_date, MAX(game_date) as last_date
+            FROM games
+            WHERE season = %s AND status = 'final'
+        """, (season,))
+        row = cur.fetchone()
+        if not row or not row["first_date"]:
+            return {"weeks": []}
+
+        first = row["first_date"]
+        last = row["last_date"]
+
+        # Find the first Monday on or before the first game date
+        # weekday(): Monday=0
+        days_since_monday = first.weekday()
+        week_start = first - timedelta(days=days_since_monday)
+
+        import pytz
+        pacific = pytz.timezone("US/Pacific")
+        today = datetime.now(pacific).date()
+
+        weeks = []
+        while week_start <= last:
+            week_end = week_start + timedelta(days=6)
+            label = f"{week_start.strftime('%b %d')} - {week_end.strftime('%b %d')}"
+            is_current = week_start <= today <= week_end
+            weeks.append({
+                "week_start": str(week_start),
+                "week_end": str(week_end),
+                "label": label,
+                "is_current": is_current,
+            })
+            week_start += timedelta(days=7)
+
+        # Return most recent weeks first for dropdown UX
+        weeks.reverse()
+        return {"weeks": weeks}
+
+
+@router.get("/games/weekly-top-performers")
+def weekly_top_performers(
+    week_start: str = Query(..., description="Monday start date (YYYY-MM-DD)"),
+    season: int = Query(2026),
+):
+    """
+    Aggregate all PNW batting/pitching lines across a Monday-to-Sunday week,
+    rank by perf_score, return top 10 hitters and top 10 pitchers (all divisions).
+    Frontend filters by division and slices.
+    """
+    ws = datetime.strptime(week_start, "%Y-%m-%d").date()
+    we = ws + timedelta(days=6)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── 1. Get all final game IDs in this week ──
+        cur.execute("""
+            SELECT g.id
+            FROM games g
+            WHERE g.game_date BETWEEN %s AND %s
+              AND g.season = %s
+              AND g.status = 'final'
+        """, (ws, we, season))
+        game_ids = [r["id"] for r in cur.fetchall()]
+
+        if not game_ids:
+            return {
+                "week_start": str(ws),
+                "week_end": str(we),
+                "top_hitters": [],
+                "top_pitchers": [],
+                "game_count": 0,
+            }
+
+        placeholders = ",".join(["%s"] * len(game_ids))
+
+        # ── 2. Batting lines (PNW teams only, D1 filtered to PNW schools) ──
+        cur.execute(f"""
+            SELECT gb.game_id, gb.team_id, gb.player_name, gb.player_id,
+                   gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
+                   gb.home_runs, gb.rbi, gb.walks, gb.strikeouts,
+                   gb.hit_by_pitch, gb.stolen_bases, gb.sacrifice_flies,
+                   COALESCE(t.short_name, t.name) AS team_short,
+                   t.logo_url AS team_logo,
+                   p.first_name, p.last_name, p.headshot_url,
+                   d.level AS division
+            FROM game_batting gb
+            JOIN teams t ON gb.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN players p ON gb.player_id = p.id
+            WHERE gb.game_id IN ({placeholders})
+        """, game_ids)
+        batting_rows = [dict(r) for r in cur.fetchall()]
+
+        # ── 3. Pitching lines ──
+        cur.execute(f"""
+            SELECT gp.game_id, gp.team_id, gp.player_name, gp.player_id,
+                   gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
+                   gp.earned_runs, gp.walks, gp.strikeouts,
+                   gp.home_runs_allowed, gp.game_score, gp.decision,
+                   gp.is_starter, gp.pitches_thrown,
+                   COALESCE(t.short_name, t.name) AS team_short,
+                   t.logo_url AS team_logo,
+                   p.first_name, p.last_name, p.headshot_url,
+                   d.level AS division
+            FROM game_pitching gp
+            JOIN teams t ON gp.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN players p ON gp.player_id = p.id
+            WHERE gp.game_id IN ({placeholders})
+        """, game_ids)
+        pitching_rows = [dict(r) for r in cur.fetchall()]
+
+        # ── 4. D1 filter: only PNW-based D1 schools ──
+        PNW_D1_TEAMS = {
+            'Oregon', 'Oregon St.', 'UW', 'Wash. St.',
+            'Gonzaga', 'Portland', 'Seattle U',
+        }
+        batting_rows = [
+            b for b in batting_rows
+            if b.get('division') != 'D1'
+            or b.get('team_short') in PNW_D1_TEAMS
+        ]
+        pitching_rows = [
+            p for p in pitching_rows
+            if p.get('division') != 'D1'
+            or p.get('team_short') in PNW_D1_TEAMS
+        ]
+
+        def _display_name(row):
+            name = row.get("player_name") or ""
+            if row.get("last_name") and row.get("first_name"):
+                return f"{row['first_name']} {row['last_name']}"
+            elif "," in name:
+                parts = name.split(",", 1)
+                return f"{parts[1].strip()} {parts[0].strip()}"
+            return name
+
+        # ── 5. Aggregate hitter stats across the week ──
+        bat_sum_keys = ["at_bats", "runs", "hits", "doubles", "triples",
+                        "home_runs", "rbi", "walks", "strikeouts",
+                        "hit_by_pitch", "stolen_bases", "sacrifice_flies"]
+        hitter_agg = {}
+        seen_bat_rows = set()
+        for b in batting_rows:
+            pid = b.get("player_id")
+            player_key = pid if pid else f"{b.get('player_name','')}-{b.get('team_id','')}"
+            row_key = (b.get("game_id"), player_key)
+            if row_key in seen_bat_rows:
+                continue
+            seen_bat_rows.add(row_key)
+            if player_key not in hitter_agg:
+                hitter_agg[player_key] = {
+                    "player_id": pid,
+                    "player_name": b.get("player_name"),
+                    "first_name": b.get("first_name"),
+                    "last_name": b.get("last_name"),
+                    "team_id": b.get("team_id"),
+                    "team_short": b.get("team_short"),
+                    "team_logo": b.get("team_logo"),
+                    "headshot_url": b.get("headshot_url"),
+                    "division": b.get("division"),
+                    "games": 0,
+                }
+                for sk in bat_sum_keys:
+                    hitter_agg[player_key][sk] = 0
+            for sk in bat_sum_keys:
+                hitter_agg[player_key][sk] += (b.get(sk) or 0)
+            hitter_agg[player_key]["games"] += 1
+
+        def hitting_score(b):
+            hr = b.get("home_runs") or 0
+            trip = b.get("triples") or 0
+            dbl = b.get("doubles") or 0
+            h = b.get("hits") or 0
+            rbi = b.get("rbi") or 0
+            r = b.get("runs") or 0
+            bb = b.get("walks") or 0
+            sb = b.get("stolen_bases") or 0
+            hbp = b.get("hit_by_pitch") or 0
+            singles = h - dbl - trip - hr
+            return (hr * 6) + (trip * 4) + (dbl * 3) + (singles * 1.5) + (rbi * 2) + (r * 1) + (bb * 0.5) + (sb * 1.5) + (hbp * 0.3)
+
+        hitters = []
+        for h in hitter_agg.values():
+            ab = h.get("at_bats") or 0
+            bb = h.get("walks") or 0
+            hbp = h.get("hit_by_pitch") or 0
+            sf = h.get("sacrifice_flies") or 0
+            hits = h.get("hits") or 0
+            dbl = h.get("doubles") or 0
+            trip = h.get("triples") or 0
+            hr = h.get("home_runs") or 0
+            pa = ab + bb + hbp + sf
+            if pa < 5:
+                continue
+            singles = hits - dbl - trip - hr
+            total_bases = singles + (dbl * 2) + (trip * 3) + (hr * 4)
+            avg = (hits / ab) if ab > 0 else 0.0
+            obp = ((hits + bb + hbp) / pa) if pa > 0 else 0.0
+            slg = (total_bases / ab) if ab > 0 else 0.0
+            ops = obp + slg
+            xbh = dbl + trip + hr
+            h["pa"] = pa
+            h["xbh"] = xbh
+            h["avg"] = round(avg, 3)
+            h["obp"] = round(obp, 3)
+            h["slg"] = round(slg, 3)
+            h["ops"] = round(ops, 3)
+            h["perf_score"] = hitting_score(h)
+            h["display_name"] = _display_name(h)
+            hitters.append(h)
+
+        top_hitters = sorted(hitters, key=lambda b: b["perf_score"], reverse=True)
+
+        # ── 6. Aggregate pitcher stats across the week ──
+        def ip_to_outs(ip):
+            if ip is None:
+                return 0
+            whole = int(ip)
+            frac = round((float(ip) - whole) * 10)
+            # IP is stored as e.g. 6.1 = 6 and 1/3 innings, 6.2 = 6 and 2/3
+            if frac not in (0, 1, 2):
+                frac = 0
+            return whole * 3 + frac
+
+        def outs_to_ip(outs):
+            whole = outs // 3
+            frac = outs % 3
+            return float(f"{whole}.{frac}")
+
+        pit_sum_keys = ["hits_allowed", "runs_allowed", "earned_runs", "walks",
+                        "strikeouts", "home_runs_allowed", "pitches_thrown"]
+        pitcher_agg = {}
+        seen_pitch_rows = set()
+        for p in pitching_rows:
+            pid = p.get("player_id")
+            player_key = pid if pid else f"{p.get('player_name','')}-{p.get('team_id','')}"
+            row_key = (p.get("game_id"), player_key)
+            if row_key in seen_pitch_rows:
+                continue
+            seen_pitch_rows.add(row_key)
+            if player_key not in pitcher_agg:
+                pitcher_agg[player_key] = {
+                    "player_id": pid,
+                    "player_name": p.get("player_name"),
+                    "first_name": p.get("first_name"),
+                    "last_name": p.get("last_name"),
+                    "team_id": p.get("team_id"),
+                    "team_short": p.get("team_short"),
+                    "team_logo": p.get("team_logo"),
+                    "headshot_url": p.get("headshot_url"),
+                    "division": p.get("division"),
+                    "outs": 0,
+                    "appearances": 0,
+                    "starts": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "saves": 0,
+                }
+                for sk in pit_sum_keys:
+                    pitcher_agg[player_key][sk] = 0
+            agg = pitcher_agg[player_key]
+            agg["outs"] += ip_to_outs(p.get("innings_pitched"))
+            agg["appearances"] += 1
+            if p.get("is_starter"):
+                agg["starts"] += 1
+            dec = p.get("decision")
+            if dec == "W":
+                agg["wins"] += 1
+            elif dec == "L":
+                agg["losses"] += 1
+            elif dec == "S":
+                agg["saves"] += 1
+            for sk in pit_sum_keys:
+                agg[sk] += (p.get(sk) or 0)
+
+        def pitching_perf_score(p):
+            ip_val = p.get("innings_pitched") or 0
+            k = p.get("strikeouts") or 0
+            h_a = p.get("hits_allowed") or 0
+            er = p.get("earned_runs") or 0
+            bb = p.get("walks") or 0
+            hra = p.get("home_runs_allowed") or 0
+            return (k * 3.5) + (ip_val * 3.5) - (h_a * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
+
+        pitchers = []
+        for p in pitcher_agg.values():
+            outs = p.get("outs") or 0
+            if outs < 6:  # need at least 2 IP across the week
+                continue
+            ip_val = outs_to_ip(outs)
+            ip_float = outs / 3.0
+            er = p.get("earned_runs") or 0
+            era = (er * 9 / ip_float) if ip_float > 0 else 0.0
+            p["innings_pitched"] = ip_val
+            p["era"] = round(era, 2)
+            p["perf_score"] = pitching_perf_score(p)
+            p["display_name"] = _display_name(p)
+            pitchers.append(p)
+
+        top_pitchers = sorted(pitchers, key=lambda p: p["perf_score"], reverse=True)
+
+        return {
+            "week_start": str(ws),
+            "week_end": str(we),
+            "top_hitters": top_hitters,
+            "top_pitchers": top_pitchers,
+            "game_count": len(game_ids),
+        }
+
+
 @router.get("/games/series-weeks")
 def series_weeks(
     season: int = Query(2026),
