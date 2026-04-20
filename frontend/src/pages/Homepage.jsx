@@ -1088,9 +1088,6 @@ function TopPerformersWidget({ data, date }) {
                     {(h.xbh || 0) > 0 && !(h.home_runs > 0) && (
                       <span className="text-gray-500">
                         {h.xbh} XBH
-                        {(h.max_xbh_in_game || 0) > 1 && (
-                          <span className="ml-0.5">({h.max_xbh_in_game})</span>
-                        )}
                       </span>
                     )}
                   </div>
