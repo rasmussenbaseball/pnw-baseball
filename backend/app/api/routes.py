@@ -7281,6 +7281,126 @@ def weekly_top_performers(
 
         top_pitchers = sorted(pitchers, key=lambda p: p["perf_score"], reverse=True)
 
+        # ── 7. Weekly wRC+ per hitter (by division) ──
+        # Compute each division's weekly league wOBA from ALL PNW hitters this week,
+        # then calculate each qualified hitter's wRC+ relative to their division's
+        # weekly average. This intentionally uses weekly, not season, context.
+        from collections import defaultdict
+
+        div_bat_totals = defaultdict(lambda: {
+            "ab": 0, "bb": 0, "hbp": 0, "sf": 0, "hits": 0,
+            "doubles": 0, "triples": 0, "hr": 0, "pa": 0,
+        })
+        for h in hitter_agg.values():
+            div = h.get("division") or "D1"
+            ab = h.get("at_bats") or 0
+            bb = h.get("walks") or 0
+            hbp = h.get("hit_by_pitch") or 0
+            sf = h.get("sacrifice_flies") or 0
+            hits = h.get("hits") or 0
+            dbl = h.get("doubles") or 0
+            trip = h.get("triples") or 0
+            hr = h.get("home_runs") or 0
+            pa = ab + bb + hbp + sf
+            t = div_bat_totals[div]
+            t["ab"] += ab
+            t["bb"] += bb
+            t["hbp"] += hbp
+            t["sf"] += sf
+            t["hits"] += hits
+            t["doubles"] += dbl
+            t["triples"] += trip
+            t["hr"] += hr
+            t["pa"] += pa
+
+        div_league_woba = {}
+        for div, t in div_bat_totals.items():
+            w = DEFAULT_WEIGHTS.get(div, DEFAULT_WEIGHTS["D1"])
+            singles = t["hits"] - t["doubles"] - t["triples"] - t["hr"]
+            num = (
+                w.w_bb * t["bb"]
+                + w.w_hbp * t["hbp"]
+                + w.w_1b * singles
+                + w.w_2b * t["doubles"]
+                + w.w_3b * t["triples"]
+                + w.w_hr * t["hr"]
+            )
+            denom = t["ab"] + t["bb"] + t["sf"] + t["hbp"]
+            div_league_woba[div] = (num / denom) if denom > 0 else 0.320
+
+        for h in top_hitters:
+            div = h.get("division") or "D1"
+            lg_woba = div_league_woba.get(div, 0.320)
+            line = BattingLine(
+                pa=h.get("pa") or 0,
+                ab=h.get("at_bats") or 0,
+                hits=h.get("hits") or 0,
+                doubles=h.get("doubles") or 0,
+                triples=h.get("triples") or 0,
+                hr=h.get("home_runs") or 0,
+                bb=h.get("walks") or 0,
+                hbp=h.get("hit_by_pitch") or 0,
+                sf=h.get("sacrifice_flies") or 0,
+                k=h.get("strikeouts") or 0,
+                sb=h.get("stolen_bases") or 0,
+            )
+            adv = compute_batting_advanced(
+                line,
+                league_woba=lg_woba,
+                division_level=div,
+            )
+            h["wrc_plus"] = round(adv.wrc_plus) if adv.wrc_plus else None
+
+        # ── 8. Weekly FIP+ per pitcher (by division) ──
+        # FIP constant is chosen so that each division's weekly league FIP equals
+        # that division's weekly league ERA. FIP+ = lgFIP / playerFIP × 100.
+        div_pit_totals = defaultdict(lambda: {
+            "outs": 0, "er": 0, "bb": 0, "k": 0, "hr": 0,
+        })
+        for p in pitcher_agg.values():
+            div = p.get("division") or "D1"
+            t = div_pit_totals[div]
+            t["outs"] += p.get("outs") or 0
+            t["er"] += p.get("earned_runs") or 0
+            t["bb"] += p.get("walks") or 0
+            t["k"] += p.get("strikeouts") or 0
+            t["hr"] += p.get("home_runs_allowed") or 0
+
+        div_league_fip = {}
+        div_fip_const = {}
+        for div, t in div_pit_totals.items():
+            ip_dec = t["outs"] / 3.0 if t["outs"] else 0
+            if ip_dec <= 0:
+                div_league_fip[div] = 4.20
+                div_fip_const[div] = 3.10
+                continue
+            lg_era = (t["er"] * 9) / ip_dec
+            lg_fip_core = (13 * t["hr"] + 3 * t["bb"] - 2 * t["k"]) / ip_dec
+            div_fip_const[div] = lg_era - lg_fip_core
+            div_league_fip[div] = lg_era  # league FIP equals league ERA by construction
+
+        for p in top_pitchers:
+            div = p.get("division") or "D1"
+            outs = p.get("outs") or 0
+            ip_dec = outs / 3.0 if outs else 0
+            if ip_dec <= 0:
+                p["fip_plus"] = None
+                continue
+            fip_core = (
+                13 * (p.get("home_runs_allowed") or 0)
+                + 3 * (p.get("walks") or 0)
+                - 2 * (p.get("strikeouts") or 0)
+            ) / ip_dec
+            fip = fip_core + div_fip_const.get(div, 3.10)
+            lg_fip = div_league_fip.get(div, 4.20)
+            p["fip"] = round(fip, 2)
+            # No cap/floor — weekly samples can produce negative or extreme FIP+
+            # Only guard against exact division by zero
+            if fip == 0:
+                p["fip_plus"] = None
+            else:
+                p["fip_plus"] = round((lg_fip / fip) * 100)
+
         return {
             "week_start": str(ws),
             "week_end": str(we),
