@@ -243,21 +243,21 @@ function drawRecordStrip(ctx, data, y, h) {
     }
 
     ctx.fillStyle = '#94a3b8'
-    ctx.font = '700 12px "Inter", system-ui, sans-serif'
+    ctx.font = '700 11px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.textBaseline = 'top'
+    ctx.textBaseline = 'middle'
     ctx.fillText(col.label, cx + colW / 2, cy + 14)
 
     // big value, color run diff
     let bigColor = '#0f172a'
     if (col.label === 'RUN DIFF') bigColor = diff >= 0 ? '#047857' : '#b91c1c'
     ctx.fillStyle = bigColor
-    ctx.font = '800 34px "Inter", system-ui, sans-serif'
-    ctx.fillText(col.big, cx + colW / 2, cy + 36)
+    ctx.font = '800 32px "Inter", system-ui, sans-serif'
+    ctx.fillText(col.big, cx + colW / 2, cy + card.h / 2 + 2)
 
     ctx.fillStyle = '#64748b'
-    ctx.font = '500 13px "Inter", system-ui, sans-serif'
-    ctx.fillText(col.small, cx + colW / 2, cy + card.h - 28)
+    ctx.font = '500 12px "Inter", system-ui, sans-serif'
+    ctx.fillText(col.small, cx + colW / 2, cy + card.h - 14)
   })
 }
 
@@ -271,10 +271,10 @@ function drawRankings(ctx, data, y, h) {
 
   const r = data.rankings || {}
   const cards = [
-    { label: 'NATIONAL RANK', big: r.national_rank != null ? `#${r.national_rank}` : '-', small: r.national_percentile != null ? `${Math.round(r.national_percentile)} pctile` : '', tint: '#0ea5e9' },
+    { label: 'NATIONAL RANK', big: r.national_rank != null ? `#${r.national_rank}` : '-', small: r.national_percentile != null ? `${Math.round(r.national_percentile)} percentile` : '', tint: '#0ea5e9' },
     { label: 'CONFERENCE RANK', big: r.conference_rank != null ? `#${r.conference_rank}` : '-', small: r.conference_total ? `of ${r.conference_total}` : '', tint: '#14b8a6' },
     { label: 'POWER RATING', big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: 'cross-division quality', tint: '#8b5cf6' },
-    { label: 'STRENGTH OF SCHED', big: r.sos != null ? r.sos.toFixed(3) : '-', small: r.sos_rank != null ? `${ordinal(r.sos_rank)} hardest` : '', tint: '#f59e0b' },
+    { label: 'STRENGTH OF SCHED', big: r.sos_rank != null ? `#${r.sos_rank}` : '-', small: r.sos != null ? `SOS ${r.sos.toFixed(3)}` : '', tint: '#f59e0b' },
   ]
 
   cards.forEach((c, i) => {
@@ -295,18 +295,18 @@ function drawRankings(ctx, data, y, h) {
     ctx.restore()
 
     ctx.fillStyle = '#64748b'
-    ctx.font = '700 12px "Inter", system-ui, sans-serif'
+    ctx.font = '700 11px "Inter", system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.textBaseline = 'top'
-    ctx.fillText(c.label, cx + cardW / 2, cy + 20)
+    ctx.textBaseline = 'middle'
+    ctx.fillText(c.label, cx + cardW / 2, cy + 22)
 
     ctx.fillStyle = '#0f172a'
-    ctx.font = '800 40px "Inter", system-ui, sans-serif'
-    ctx.fillText(c.big, cx + cardW / 2, cy + 44)
+    ctx.font = '800 36px "Inter", system-ui, sans-serif'
+    ctx.fillText(c.big, cx + cardW / 2, cy + cardH / 2 + 4)
 
     ctx.fillStyle = '#94a3b8'
-    ctx.font = '500 12px "Inter", system-ui, sans-serif'
-    ctx.fillText(c.small, cx + cardW / 2, cy + cardH - 24)
+    ctx.font = '500 11px "Inter", system-ui, sans-serif'
+    ctx.fillText(c.small, cx + cardW / 2, cy + cardH - 14)
   })
 }
 
@@ -317,26 +317,26 @@ function drawPercentiles(ctx, data, y, h) {
   ctx.font = '800 20px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText('TEAM PERCENTILES vs DIVISION', pad, y + 22)
+  ctx.fillText('DIVISION RANK', pad, y + 22)
 
   ctx.fillStyle = '#64748b'
   ctx.font = '500 13px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'right'
-  ctx.fillText('0 = worst  ·  100 = best', SIZE - pad, y + 22)
+  ctx.fillText('lower rank = better', SIZE - pad, y + 22)
 
   const battingMetrics = [
-    { key: 'batting_avg', label: 'AVG', fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
-    { key: 'woba',        label: 'wOBA', fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
+    { key: 'batting_avg', label: 'AVG',   fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
+    { key: 'woba',        label: 'wOBA',  fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
     { key: 'hr_per_pa',   label: 'HR/PA', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-' },
-    { key: 'sb_per_pa',   label: 'SB/PA', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-' },
-    { key: 'wrc_plus',    label: 'wRC+', fmt: v => v != null ? v.toFixed(0) : '-' },
+    { key: 'owar',        label: 'oWAR',  fmt: v => v != null ? v.toFixed(1) : '-' },
+    { key: 'wrc_plus',    label: 'wRC+',  fmt: v => v != null ? v.toFixed(0) : '-' },
   ]
   const pitchingMetrics = [
-    { key: 'era',    label: 'ERA',  fmt: v => v != null ? v.toFixed(2) : '-' },
-    { key: 'fip',    label: 'FIP',  fmt: v => v != null ? v.toFixed(2) : '-' },
-    { key: 'k_pct',  label: 'K%',   fmt: v => v != null ? v.toFixed(1) + '%' : '-' },
-    { key: 'bb_pct', label: 'BB%',  fmt: v => v != null ? v.toFixed(1) + '%' : '-' },
-    { key: 'baa',    label: 'BAA',  fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
+    { key: 'era',   label: 'ERA',   fmt: v => v != null ? v.toFixed(2) : '-' },
+    { key: 'siera', label: 'SIERA', fmt: v => v != null ? v.toFixed(2) : '-' },
+    { key: 'k_pct', label: 'K%',    fmt: v => v != null ? v.toFixed(1) + '%' : '-' },
+    { key: 'baa',   label: 'BAA',   fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
+    { key: 'pwar',  label: 'pWAR',  fmt: v => v != null ? v.toFixed(1) : '-' },
   ]
 
   const batP = data.batting_percentiles || {}
@@ -355,6 +355,8 @@ function drawPercentiles(ctx, data, y, h) {
       const obj = data[m.key] || {}
       const pct = obj.percentile
       const val = obj.value
+      const rank = obj.rank
+      const total = obj.total
 
       const bg = percentileColor(pct)
       const txt = textColorFor(bg)
@@ -369,18 +371,15 @@ function drawPercentiles(ctx, data, y, h) {
       ctx.fillStyle = txt
       ctx.font = '700 13px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'center'
-      ctx.textBaseline = 'top'
-      ctx.fillText(m.label, cx + cellW / 2, rowY + 8)
+      ctx.textBaseline = 'middle'
+      ctx.fillText(m.label, cx + cellW / 2, rowY + 16)
 
-      ctx.font = '800 24px "Inter", system-ui, sans-serif'
-      ctx.fillText(m.fmt(val), cx + cellW / 2, rowY + 26)
+      ctx.font = '800 26px "Inter", system-ui, sans-serif'
+      ctx.fillText(m.fmt(val), cx + cellW / 2, rowY + cellH / 2 + 2)
 
-      ctx.font = '700 12px "Inter", system-ui, sans-serif'
-      ctx.fillText(
-        pct != null ? `${Math.round(pct)} percentile` : 'n/a',
-        cx + cellW / 2,
-        rowY + cellH - 22
-      )
+      ctx.font = '700 13px "Inter", system-ui, sans-serif'
+      const rankTxt = (rank != null && total != null) ? `${ordinal(rank)} of ${total}` : '—'
+      ctx.fillText(rankTxt, cx + cellW / 2, rowY + cellH - 14)
     })
   }
 
@@ -404,15 +403,17 @@ async function drawPerformers(ctx, data, y, h) {
   ctx.fillText(hittersTitle, pad, y + 48)
   ctx.fillText(pitchersTitle, SIZE / 2 + 8, y + 48)
 
+  const ROWS = 5
+  const ROW_GAP = 6
   const listStartY = y + 60
   const availH = h - 70
   const colW = (SIZE - pad * 2 - 16) / 2
+  const rowH = Math.floor((availH - ROW_GAP * (ROWS - 1)) / ROWS)
 
   const renderList = async (list, baseX) => {
-    const rowH = Math.min(52, availH / 3)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < ROWS; i++) {
       const p = list[i]
-      const ry = listStartY + i * (rowH + 6)
+      const ry = listStartY + i * (rowH + ROW_GAP)
       roundRect(ctx, baseX, ry, colW, rowH, 10)
       ctx.fillStyle = i === 0 ? '#f0fdfa' : '#f8fafc'
       ctx.fill()
@@ -642,9 +643,8 @@ async function renderTeamInfoGraphic(canvas, data) {
     header: { y: 0, h: 180 },
     record: { y: 180, h: 120 },
     rankings: { y: 300, h: 130 },
-    percentiles: { y: 430, h: 250 },
-    performers: { y: 680, h: 230 },
-    last5: { y: 910, h: 130 },
+    percentiles: { y: 430, h: 260 },
+    performers: { y: 690, h: 350 },
     footer: { y: 1040, h: 40 },
   }
 
@@ -653,7 +653,6 @@ async function renderTeamInfoGraphic(canvas, data) {
   drawRankings(ctx, data, zones.rankings.y, zones.rankings.h)
   drawPercentiles(ctx, data, zones.percentiles.y, zones.percentiles.h)
   await drawPerformers(ctx, data, zones.performers.y, zones.performers.h)
-  await drawLast5(ctx, data, zones.last5.y, zones.last5.h)
   drawFooter(ctx, data, zones.footer.y, zones.footer.h)
 }
 

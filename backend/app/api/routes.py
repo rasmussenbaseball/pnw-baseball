@@ -3467,7 +3467,7 @@ def team_info_graphic(
                 conf_rank = i + 1
                 break
 
-        # ── 9. Top 3 hitters by WAR (qualified) ──
+        # ── 9. Top 5 hitters by WAR (qualified) ──
         cur.execute(f"""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                    p.headshot_url,
@@ -3482,11 +3482,11 @@ def team_info_graphic(
                   * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
               AND bs.offensive_war IS NOT NULL
             ORDER BY bs.offensive_war DESC NULLS LAST
-            LIMIT 3
+            LIMIT 5
         """, (team_id, season))
         top_hitters = [dict(r) for r in cur.fetchall()]
 
-        # ── 10. Top 3 pitchers by WAR (qualified) ──
+        # ── 10. Top 5 pitchers by WAR (qualified) ──
         cur.execute(f"""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                    p.headshot_url,
@@ -3502,7 +3502,7 @@ def team_info_graphic(
                   * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
               AND ps.pitching_war IS NOT NULL
             ORDER BY ps.pitching_war DESC NULLS LAST
-            LIMIT 3
+            LIMIT 5
         """, (team_id, season))
         top_pitchers = [dict(r) for r in cur.fetchall()]
 
@@ -3547,15 +3547,15 @@ def team_info_graphic(
             })
         last_5.reverse()  # oldest of the 5 on the left
 
-        # ── 12. Team-level percentiles vs division peers ──
+        # ── 12. Team-level division ranks ──
         # Aggregate every team in the same division, then rank ours.
-        # Hitter stats: AVG, wOBA, HR/PA, SB/PA, wRC+
+        # Hitter stats: AVG, wOBA, HR/PA, oWAR, wRC+
         cur.execute("""
             SELECT t.id as team_id,
                    SUM(bs.hits)::float / NULLIF(SUM(bs.at_bats), 0) as batting_avg,
                    AVG(bs.woba) as woba,
                    SUM(bs.home_runs)::float / NULLIF(SUM(bs.plate_appearances), 0) as hr_per_pa,
-                   SUM(bs.stolen_bases)::float / NULLIF(SUM(bs.plate_appearances), 0) as sb_per_pa,
+                   SUM(bs.offensive_war)::float as owar,
                    AVG(bs.wrc_plus) as wrc_plus
             FROM teams t
             JOIN batting_stats bs ON bs.team_id = t.id AND bs.season = %s
@@ -3567,16 +3567,16 @@ def team_info_graphic(
         """, (season, team["division_id"]))
         bat_div = [dict(r) for r in cur.fetchall()]
 
-        # Pitcher stats: ERA, FIP, K%, BB%, BAA
+        # Pitcher stats: ERA, SIERA, K%, BAA, pWAR
         # BAA = hits_allowed / (batters_faced - walks - hit_batters)
         cur.execute("""
             SELECT t.id as team_id,
                    (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ps.innings_pitched), 0))::float as era,
-                   AVG(ps.fip) as fip,
+                   AVG(ps.siera) as siera,
                    (AVG(ps.k_pct) * 100)::float as k_pct,
-                   (AVG(ps.bb_pct) * 100)::float as bb_pct,
                    (SUM(ps.hits_allowed)::float
-                     / NULLIF(SUM(ps.batters_faced) - SUM(COALESCE(ps.walks,0)) - SUM(COALESCE(ps.hit_batters,0)), 0))::float as baa
+                     / NULLIF(SUM(ps.batters_faced) - SUM(COALESCE(ps.walks,0)) - SUM(COALESCE(ps.hit_batters,0)), 0))::float as baa,
+                   SUM(ps.pitching_war)::float as pwar
             FROM teams t
             JOIN pitching_stats ps ON ps.team_id = t.id AND ps.season = %s
                   AND ps.innings_pitched >= 3
@@ -3587,18 +3587,30 @@ def team_info_graphic(
         """, (season, team["division_id"]))
         pit_div = [dict(r) for r in cur.fetchall()]
 
-        def _pctile(values, my_val, higher_is_better=True):
+        def _rank_block(values, my_val, higher_is_better=True):
+            """Return {percentile, rank, total} for my_val against division peers."""
             if my_val is None:
-                return None
+                return {"percentile": None, "rank": None, "total": None}
             vals = [v for v in values if v is not None]
-            if len(vals) < 3:
-                return None
-            below = sum(1 for v in vals if v < my_val)
-            equal = sum(1 for v in vals if v == my_val)
-            pct = round(((below + equal * 0.5) / len(vals)) * 100)
-            if not higher_is_better:
-                pct = 100 - pct
-            return max(1, min(99, pct))
+            total = len(vals)
+            if total < 1:
+                return {"percentile": None, "rank": None, "total": None}
+            # rank: how many peers are strictly better than me, + 1
+            if higher_is_better:
+                rank = sum(1 for v in vals if v > my_val) + 1
+            else:
+                rank = sum(1 for v in vals if v < my_val) + 1
+            # percentile for color
+            if total < 3:
+                pct = None
+            else:
+                below = sum(1 for v in vals if v < my_val)
+                equal = sum(1 for v in vals if v == my_val)
+                pct = round(((below + equal * 0.5) / total) * 100)
+                if not higher_is_better:
+                    pct = 100 - pct
+                pct = max(1, min(99, pct))
+            return {"percentile": pct, "rank": rank, "total": total}
 
         my_bat = next((b for b in bat_div if b["team_id"] == team_id), {}) or {}
         my_pit = next((p for p in pit_div if p["team_id"] == team_id), {}) or {}
@@ -3606,29 +3618,32 @@ def team_info_graphic(
         def _to_f(v):
             return float(v) if v is not None else None
 
+        def _pack(value, rb):
+            return {"value": _to_f(value), **rb}
+
         batting_percentiles = {
-            "batting_avg": {"value": _to_f(my_bat.get("batting_avg")),
-                            "percentile": _pctile([b.get("batting_avg") for b in bat_div], my_bat.get("batting_avg"), True)},
-            "woba":        {"value": _to_f(my_bat.get("woba")),
-                            "percentile": _pctile([b.get("woba") for b in bat_div], my_bat.get("woba"), True)},
-            "hr_per_pa":   {"value": _to_f(my_bat.get("hr_per_pa")),
-                            "percentile": _pctile([b.get("hr_per_pa") for b in bat_div], my_bat.get("hr_per_pa"), True)},
-            "sb_per_pa":   {"value": _to_f(my_bat.get("sb_per_pa")),
-                            "percentile": _pctile([b.get("sb_per_pa") for b in bat_div], my_bat.get("sb_per_pa"), True)},
-            "wrc_plus":    {"value": _to_f(my_bat.get("wrc_plus")),
-                            "percentile": _pctile([b.get("wrc_plus") for b in bat_div], my_bat.get("wrc_plus"), True)},
+            "batting_avg": _pack(my_bat.get("batting_avg"),
+                                 _rank_block([b.get("batting_avg") for b in bat_div], my_bat.get("batting_avg"), True)),
+            "woba":        _pack(my_bat.get("woba"),
+                                 _rank_block([b.get("woba") for b in bat_div], my_bat.get("woba"), True)),
+            "hr_per_pa":   _pack(my_bat.get("hr_per_pa"),
+                                 _rank_block([b.get("hr_per_pa") for b in bat_div], my_bat.get("hr_per_pa"), True)),
+            "owar":        _pack(my_bat.get("owar"),
+                                 _rank_block([b.get("owar") for b in bat_div], my_bat.get("owar"), True)),
+            "wrc_plus":    _pack(my_bat.get("wrc_plus"),
+                                 _rank_block([b.get("wrc_plus") for b in bat_div], my_bat.get("wrc_plus"), True)),
         }
         pitching_percentiles = {
-            "era":  {"value": _to_f(my_pit.get("era")),
-                     "percentile": _pctile([p.get("era") for p in pit_div], my_pit.get("era"), False)},
-            "fip":  {"value": _to_f(my_pit.get("fip")),
-                     "percentile": _pctile([p.get("fip") for p in pit_div], my_pit.get("fip"), False)},
-            "k_pct": {"value": _to_f(my_pit.get("k_pct")),
-                      "percentile": _pctile([p.get("k_pct") for p in pit_div], my_pit.get("k_pct"), True)},
-            "bb_pct": {"value": _to_f(my_pit.get("bb_pct")),
-                       "percentile": _pctile([p.get("bb_pct") for p in pit_div], my_pit.get("bb_pct"), False)},
-            "baa":  {"value": _to_f(my_pit.get("baa")),
-                     "percentile": _pctile([p.get("baa") for p in pit_div], my_pit.get("baa"), False)},
+            "era":   _pack(my_pit.get("era"),
+                           _rank_block([p.get("era") for p in pit_div], my_pit.get("era"), False)),
+            "siera": _pack(my_pit.get("siera"),
+                           _rank_block([p.get("siera") for p in pit_div], my_pit.get("siera"), False)),
+            "k_pct": _pack(my_pit.get("k_pct"),
+                           _rank_block([p.get("k_pct") for p in pit_div], my_pit.get("k_pct"), True)),
+            "baa":   _pack(my_pit.get("baa"),
+                           _rank_block([p.get("baa") for p in pit_div], my_pit.get("baa"), False)),
+            "pwar":  _pack(my_pit.get("pwar"),
+                           _rank_block([p.get("pwar") for p in pit_div], my_pit.get("pwar"), True)),
         }
 
         # Inject convenience "name" into top performers
