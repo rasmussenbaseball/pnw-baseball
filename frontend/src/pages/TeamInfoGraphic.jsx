@@ -284,10 +284,29 @@ function drawRankings(ctx, data, y, h) {
   const cy = y + 10
 
   const r = data.rankings || {}
+  const confAbbr = r.conference_abbrev || data.team?.conference_abbrev || 'conf'
+  const divName = r.division_name || data.team?.division_name || 'div'
+
+  // Power rating subtitle: show conference rank; if division is broader (more teams
+  // than just this conference), show the division rank too.
+  let prSub = 'cross-division quality'
+  const prConf = r.power_rating_conf_rank
+  const prConfTotal = r.power_rating_conf_total
+  const prDiv = r.power_rating_div_rank
+  const prDivTotal = r.power_rating_div_total
+  const divIsBroader = prDivTotal != null && prConfTotal != null && prDivTotal > prConfTotal
+  if (prConf != null && prDiv != null && divIsBroader) {
+    prSub = `${ordinal(prConf)} in ${confAbbr}  •  ${ordinal(prDiv)} in ${divName}`
+  } else if (prConf != null) {
+    prSub = `${ordinal(prConf)} of ${prConfTotal} in ${confAbbr}`
+  } else if (prDiv != null) {
+    prSub = `${ordinal(prDiv)} of ${prDivTotal} in ${divName}`
+  }
+
   const cards = [
     { label: 'NATIONAL RANK', big: r.national_rank != null ? `#${r.national_rank}` : '-', small: r.national_percentile != null ? `${Math.round(r.national_percentile)} percentile` : '', tint: '#0ea5e9' },
     { label: 'CONFERENCE RANK', big: r.conference_rank != null ? `#${r.conference_rank}` : '-', small: r.conference_total ? `of ${r.conference_total}` : '', tint: '#14b8a6' },
-    { label: 'POWER RATING', big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: r.power_rating_conf_rank != null ? `${ordinal(r.power_rating_conf_rank)} in conference` : 'cross-division quality', tint: '#8b5cf6' },
+    { label: 'POWER RATING', big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: prSub, tint: '#8b5cf6' },
     { label: 'STRENGTH OF SCHED', big: r.sos_rank != null ? `#${r.sos_rank}` : '-', small: r.sos != null ? `SOS ${r.sos.toFixed(3)}` : '', tint: '#f59e0b' },
   ]
 
@@ -382,25 +401,28 @@ function drawPercentiles(ctx, data, y, h) {
       ctx.lineWidth = 2
       ctx.stroke()
 
-      ctx.fillStyle = txt
-      ctx.font = '700 12px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillText(m.label, cx + cellW / 2, rowY + 14)
 
-      // Metric value (mid-sized)
-      ctx.font = '700 20px "Inter", system-ui, sans-serif'
-      ctx.fillText(m.fmt(val), cx + cellW / 2, rowY + 38)
+      // Label (medium)
+      ctx.fillStyle = txt
+      ctx.font = '700 13px "Inter", system-ui, sans-serif'
+      ctx.fillText(m.label, cx + cellW / 2, rowY + 16)
 
-      // Division rank — the headline number
+      // Metric value — the hero number, auto-fit to cell width
+      const valTxt = m.fmt(val)
+      let vSize = 32
+      ctx.font = `900 ${vSize}px "Inter", system-ui, sans-serif`
+      while (ctx.measureText(valTxt).width > cellW - 18 && vSize > 20) {
+        vSize -= 2
+        ctx.font = `900 ${vSize}px "Inter", system-ui, sans-serif`
+      }
+      ctx.fillText(valTxt, cx + cellW / 2, rowY + cellH / 2 + 4)
+
+      // Rank chip at bottom — small
       if (rank != null && total != null) {
-        ctx.font = '900 26px "Inter", system-ui, sans-serif'
-        ctx.fillText(ordinal(rank), cx + cellW / 2, rowY + cellH / 2 + 18)
-        ctx.font = '600 10px "Inter", system-ui, sans-serif'
-        ctx.fillText(`of ${total}`, cx + cellW / 2, rowY + cellH - 12)
-      } else {
-        ctx.font = '800 22px "Inter", system-ui, sans-serif'
-        ctx.fillText('—', cx + cellW / 2, rowY + cellH / 2 + 14)
+        ctx.font = '700 11px "Inter", system-ui, sans-serif'
+        ctx.fillText(`${ordinal(rank)} of ${total}`, cx + cellW / 2, rowY + cellH - 14)
       }
     })
   }

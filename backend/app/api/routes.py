@@ -3450,18 +3450,22 @@ def team_info_graphic(
             total_war, team["division_level"], natl_pct,
         )
 
-        # Power-rating rank within conference (rebuild ratings for all conference teams)
+        # Power-rating ranks within conference AND within division
+        # (rebuild ratings for all division teams, then filter for conf)
         power_rating_conf_rank = None
         power_rating_conf_total = None
+        power_rating_div_rank = None
+        power_rating_div_total = None
         try:
             cur.execute("""
-                SELECT t.id, t.division_level,
+                SELECT t.id, t.conference_id, t.division_level,
                        COALESCE(s.wins, 0) as wins,
                        COALESCE(s.losses, 0) as losses,
                        bat.rs, bat.total_owar, bat.avg_wrc_plus,
                        pit.ra, pit.total_pwar, pit.avg_fip,
                        nr.national_percentile
                 FROM teams t
+                JOIN conferences c ON t.conference_id = c.id
                 LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
                 LEFT JOIN (
                     SELECT team_id,
@@ -3478,11 +3482,11 @@ def team_info_graphic(
                     FROM pitching_stats WHERE season = %s GROUP BY team_id
                 ) pit ON pit.team_id = t.id
                 LEFT JOIN national_ratings nr ON nr.team_id = t.id AND nr.season = %s
-                WHERE t.conference_id = %s AND t.is_active = 1
-            """, (season, season, season, season, team["conference_id"]))
-            conf_rows = [dict(r) for r in cur.fetchall()]
-            conf_ratings = []
-            for r in conf_rows:
+                WHERE c.division_id = %s AND t.is_active = 1
+            """, (season, season, season, season, team["division_id"]))
+            div_rows = [dict(r) for r in cur.fetchall()]
+            div_ratings = []  # (team_id, conference_id, rating)
+            for r in div_rows:
                 twar = float(r.get("total_owar") or 0) + float(r.get("total_pwar") or 0)
                 rating = _compute_power_rating(
                     r["wins"], r["losses"],
@@ -3491,10 +3495,20 @@ def team_info_graphic(
                     twar, r.get("division_level"), r.get("national_percentile"),
                 )
                 if rating is not None:
-                    conf_ratings.append((r["id"], rating))
-            conf_ratings.sort(key=lambda x: x[1], reverse=True)
-            power_rating_conf_total = len(conf_ratings)
-            for idx, (tid, _) in enumerate(conf_ratings):
+                    div_ratings.append((r["id"], r["conference_id"], rating))
+            div_ratings.sort(key=lambda x: x[2], reverse=True)
+
+            # Division rank = rank among all teams in this division
+            power_rating_div_total = len(div_ratings)
+            for idx, (tid, _, _) in enumerate(div_ratings):
+                if tid == team_id:
+                    power_rating_div_rank = idx + 1
+                    break
+
+            # Conference rank = rank among teams sharing this team's conference
+            conf_subset = [row for row in div_ratings if row[1] == team["conference_id"]]
+            power_rating_conf_total = len(conf_subset)
+            for idx, (tid, _, _) in enumerate(conf_subset):
                 if tid == team_id:
                     power_rating_conf_rank = idx + 1
                     break
@@ -3737,6 +3751,10 @@ def team_info_graphic(
                 "power_rating": power_rating,
                 "power_rating_conf_rank": power_rating_conf_rank,
                 "power_rating_conf_total": power_rating_conf_total,
+                "power_rating_div_rank": power_rating_div_rank,
+                "power_rating_div_total": power_rating_div_total,
+                "division_name": team.get("division_name"),
+                "conference_abbrev": team.get("conference_abbrev"),
                 "sos": avg_sos,
                 "sos_rank": avg_sos_rank,
             },
