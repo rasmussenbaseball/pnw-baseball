@@ -2536,6 +2536,28 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
     batting_order >= 100 so they don't collide with real lineup slots
     and the ON CONFLICT uniqueness check still works.
     """
+    # ── Ghost-row guard ──
+    # Refuse to insert any row whose team_id is not one of the game's two
+    # teams. The API has a filter for this, but stopping creation at the
+    # source is the durable defense — it prevents every downstream query
+    # from having to defend against the same class of bug.
+    if game_id and team_id:
+        cur.execute(
+            "SELECT home_team_id, away_team_id FROM games WHERE id = %s",
+            (game_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            valid_ids = {row["home_team_id"], row["away_team_id"]}
+            if team_id not in valid_ids:
+                logger.warning(
+                    f"  GHOST-ROW GUARD: refusing to insert {len(player_lines)} "
+                    f"batting rows for game_id={game_id} with team_id={team_id} "
+                    f"(game teams are home={row['home_team_id']}, "
+                    f"away={row['away_team_id']})"
+                )
+                return
+
     SUB_POSITIONS = {"PR", "PH", "CR"}
     lineup_slot = 0
     extra_slot = 100  # For subs and non-batting pitchers
@@ -2610,6 +2632,26 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
 
 def insert_game_pitching(cur, game_id, team_id, pitcher_lines, season):
     """Insert pitching lines for one team in a game."""
+    # ── Ghost-row guard ──
+    # Refuse to insert any row whose team_id is not one of the game's two
+    # teams. See insert_game_batting for the full rationale.
+    if game_id and team_id:
+        cur.execute(
+            "SELECT home_team_id, away_team_id FROM games WHERE id = %s",
+            (game_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            valid_ids = {row["home_team_id"], row["away_team_id"]}
+            if team_id not in valid_ids:
+                logger.warning(
+                    f"  GHOST-ROW GUARD: refusing to insert {len(pitcher_lines)} "
+                    f"pitching rows for game_id={game_id} with team_id={team_id} "
+                    f"(game teams are home={row['home_team_id']}, "
+                    f"away={row['away_team_id']})"
+                )
+                return
+
     for p in pitcher_lines:
         player_id = find_player_id(cur, team_id, p.get("player_name"), season) if team_id else None
         ip = p.get("ip", 0) or 0
