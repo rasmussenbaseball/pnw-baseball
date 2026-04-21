@@ -37,6 +37,8 @@ from scrape_boxscores import (  # noqa: E402
     fetch_page,
     parse_sidearm_boxscore,
     parse_presto_boxscore,
+    fetch_sidearm_api_boxscore,
+    SIDEARM_API_TENANTS,
     insert_game_batting,
     insert_game_pitching,
 )
@@ -114,18 +116,35 @@ def main():
         conn.commit()
         print(f"  Deleted {del_b} batting, {del_p} pitching rows for {team['name']}.")
 
-    # Fetch page fresh
-    print(f"\nFetching {g['source_url']} ...")
-    html = fetch_page(g["source_url"], retries=2, delay_range=(1.0, 2.0))
-    if not html:
-        print("  FAILED to fetch HTML.")
-        return
+    # Fetch fresh. Nuxt Sidearm sites (UW, Oregon, OSU, WSU) don't serve
+    # box-score data in HTML — we have to hit /api/v2/stats/boxscore/<id>.
+    # Older Sidearm sites (Gonzaga, George Fox, SMU, etc.) and Presto sites
+    # still serve HTML and use the regular parser.
+    source_url = g["source_url"]
+    base_url = "/".join(source_url.split("/")[:3])
+    platform = detect_platform(source_url)
+    tenant = SIDEARM_API_TENANTS.get(base_url)
 
-    if detect_platform(g["source_url"]) == "presto":
-        box = parse_presto_boxscore(html, "")
+    if tenant and platform == "sidearm":
+        # Extract numeric game id from the URL's last path segment
+        import re as _re
+        m = _re.search(r"/boxscore/(\d+)", source_url)
+        if not m:
+            print(f"  Could not extract numeric box-score id from {source_url}")
+            return
+        api_game_id = m.group(1)
+        print(f"\nFetching Nuxt Sidearm API boxscore id={api_game_id} tenant={tenant} ...")
+        box = fetch_sidearm_api_boxscore(base_url, api_game_id, tenant)
     else:
-        base_url = "/".join(g["source_url"].split("/")[:3])
-        box = parse_sidearm_boxscore(html, base_url)
+        print(f"\nFetching {source_url} ...")
+        html = fetch_page(source_url, retries=2, delay_range=(1.0, 2.0))
+        if not html:
+            print("  FAILED to fetch HTML.")
+            return
+        if platform == "presto":
+            box = parse_presto_boxscore(html, "")
+        else:
+            box = parse_sidearm_boxscore(html, base_url)
 
     if not box:
         print("  Parser returned nothing.")
