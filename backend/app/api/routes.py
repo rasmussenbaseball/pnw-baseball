@@ -3631,15 +3631,27 @@ def team_info_graphic(
         # a 60 wRC+ doesn't drag the team down as much as a 180-PA
         # regular with a 130. This matches the PA-weighted formula
         # used by power-rating, team-ratings, and playoff-projections.
+        # NULL guards: wOBA and wRC+ filter their own denominator to
+        # rows where that stat is populated. Without this, a player
+        # with PA >= 10 but a NULL advanced stat (e.g. two-way guys,
+        # roster rows the advanced-stats job skipped) adds PA to
+        # SUM(plate_appearances) while contributing 0 to the numerator
+        # (NULL * PA = NULL, ignored by SUM). Net effect: the weighted
+        # average gets silently deflated. Observed live: Bushnell team
+        # wRC+ came back as 88 when the real value is 108.
         cur.execute("""
             SELECT t.id as team_id,
                    SUM(bs.hits)::float / NULLIF(SUM(bs.at_bats), 0) as batting_avg,
-                   SUM(bs.woba * bs.plate_appearances)::float
-                     / NULLIF(SUM(bs.plate_appearances), 0) as woba,
+                   (SUM(bs.woba * bs.plate_appearances)
+                      FILTER (WHERE bs.woba IS NOT NULL))::float
+                     / NULLIF(SUM(bs.plate_appearances)
+                              FILTER (WHERE bs.woba IS NOT NULL), 0) as woba,
                    SUM(bs.home_runs)::float / NULLIF(SUM(bs.plate_appearances), 0) as hr_per_pa,
                    SUM(bs.offensive_war)::float as owar,
-                   SUM(bs.wrc_plus * bs.plate_appearances)::float
-                     / NULLIF(SUM(bs.plate_appearances), 0) as wrc_plus
+                   (SUM(bs.wrc_plus * bs.plate_appearances)
+                      FILTER (WHERE bs.wrc_plus IS NOT NULL))::float
+                     / NULLIF(SUM(bs.plate_appearances)
+                              FILTER (WHERE bs.wrc_plus IS NOT NULL), 0) as wrc_plus
             FROM teams t
             JOIN batting_stats bs ON bs.team_id = t.id AND bs.season = %s
                   AND bs.plate_appearances >= 10
@@ -3658,11 +3670,15 @@ def team_info_graphic(
         # the team's actual strikeout rate, not an unweighted average
         # of per-pitcher rates.
         # BAA = hits_allowed / (batters_faced - walks - hit_batters)
+        # SIERA uses a FILTER guard for the same reason wRC+/wOBA do
+        # above: a NULL SIERA must not pull its IP into the denominator.
         cur.execute("""
             SELECT t.id as team_id,
                    (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ps.innings_pitched), 0))::float as era,
-                   SUM(ps.siera * ps.innings_pitched)::float
-                     / NULLIF(SUM(ps.innings_pitched), 0) as siera,
+                   (SUM(ps.siera * ps.innings_pitched)
+                      FILTER (WHERE ps.siera IS NOT NULL))::float
+                     / NULLIF(SUM(ps.innings_pitched)
+                              FILTER (WHERE ps.siera IS NOT NULL), 0) as siera,
                    (SUM(ps.strikeouts)::float * 100
                      / NULLIF(SUM(ps.batters_faced), 0))::float as k_pct,
                    (SUM(ps.hits_allowed)::float
