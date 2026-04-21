@@ -21,6 +21,8 @@ import time
 import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Add scripts directory so shared helpers can be imported as top-level modules
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -28,6 +30,12 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import psycopg2
 import psycopg2.extras
+
+# Shared team-name matching (see scripts/team_matching.py)
+from team_matching import (
+    get_team_id_by_short_name,
+    get_or_create_ooc_team,
+)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -61,41 +69,27 @@ def get_conn():
 
 
 def get_team_id(short_name):
+    """Exact short_name lookup. Opens a connection, delegates to shared helper."""
     conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM teams WHERE short_name = %s", (short_name,))
-    row = cur.fetchone()
-    conn.close()
-    return row["id"] if row else None
+    try:
+        cur = conn.cursor()
+        return get_team_id_by_short_name(cur, short_name)
+    finally:
+        conn.close()
 
 
-def resolve_opponent_id(cur, opponent_name):
-    """Try to match an opponent name to a team in our DB."""
+def resolve_opponent_id(cur, opponent_name, prefer_team_id=None):
+    """Resolve opponent name to a team_id using the shared resolver.
+
+    Auto-creates an inactive OOC team if no match exists, preventing
+    NULL team_ids in game rows. Uses prefer_division_of_team_id to bias
+    ambiguous names toward the tenant's division.
+    """
     if not opponent_name:
         return None
-
-    # Direct short_name match
-    cur.execute("SELECT id FROM teams WHERE short_name ILIKE %s LIMIT 1", (opponent_name,))
-    row = cur.fetchone()
-    if row:
-        return row["id"]
-
-    # Fuzzy match on name
-    cur.execute("SELECT id FROM teams WHERE name ILIKE %s LIMIT 1", (f"%{opponent_name}%",))
-    row = cur.fetchone()
-    if row:
-        return row["id"]
-
-    # Try partial match on short_name
-    # Strip common suffixes like "(CA)", "(CAN)", etc.
-    clean = opponent_name.split("(")[0].strip()
-    if clean != opponent_name:
-        cur.execute("SELECT id FROM teams WHERE short_name ILIKE %s LIMIT 1", (f"%{clean}%",))
-        row = cur.fetchone()
-        if row:
-            return row["id"]
-
-    return None
+    return get_or_create_ooc_team(
+        cur, opponent_name, prefer_division_of_team_id=prefer_team_id
+    )
 
 
 def match_player_id(cur, player_name, team_id, season):
@@ -329,13 +323,14 @@ def backfill_team(team_key, season=2026, dry_run=False):
         opp_comp = away_comp if is_home else home_comp
         opp_name = opp_comp.get("nameTabular", "Unknown")
 
-        # Resolve team IDs in our DB
+        # Resolve team IDs in our DB. Pass the tenant's team_id so same-division
+        # teams are preferred when an opponent name is ambiguous.
         if is_home:
             home_team_id = db_team_id
-            away_team_id = resolve_opponent_id(cur, opp_name)
+            away_team_id = resolve_opponent_id(cur, opp_name, prefer_team_id=db_team_id)
         else:
             away_team_id = db_team_id
-            home_team_id = resolve_opponent_id(cur, opp_name)
+            home_team_id = resolve_opponent_id(cur, opp_name, prefer_team_id=db_team_id)
 
         is_conference = game.get("conference_contest", False)
         source_url = f"wmt://games/{game_id}"

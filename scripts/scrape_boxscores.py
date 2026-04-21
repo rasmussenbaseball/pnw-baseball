@@ -41,9 +41,18 @@ from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+# Add scripts directory so shared helpers can be imported as top-level modules
+sys.path.insert(0, str(Path(__file__).parent))
 
 import requests
 from bs4 import BeautifulSoup
+
+# Shared team-name matching (see scripts/team_matching.py)
+from team_matching import (
+    get_team_id_by_school,
+    get_or_create_ooc_team,
+    get_team_id_by_short_name as get_team_id_by_name,
+)
 
 try:
     from curl_cffi import requests as cffi_requests
@@ -2212,192 +2221,9 @@ def _parse_pitching_table(table):
 # Database Operations
 # ============================================================
 
-def get_team_id_by_name(cur, short_name):
-    """Look up team_id from short_name."""
-    cur.execute("SELECT id FROM teams WHERE short_name = %s", (short_name,))
-    row = cur.fetchone()
-    return row["id"] if row else None
-
-
-# Known aliases for teams that don't match via fuzzy lookup
-_TEAM_ALIASES = {
-    "montana state billings": "MSUB",
-    "montana state-billings": "MSUB",
-    "msu billings": "MSUB",
-    "msu-billings": "MSUB",
-    "mt hood": "Mt. Hood",
-    "mt hood cc": "Mt. Hood",
-    "mount hood": "Mt. Hood",
-    "st. martin's": "SMU",
-    "saint martin's": "SMU",
-    "st martins": "SMU",
-    "saint martins": "SMU",
-    "college of idaho": "C of I",
-    "the college of idaho": "C of I",
-    "lewis-clark state": "LCSC",
-    "lewis-clark st": "LCSC",
-    "lewis-clark st.": "LCSC",
-    "lc state": "LCSC",
-    "northwest nazarene": "NNU",
-}
-
-
-def _normalize_opponent(name):
-    """Strip rankings, parenthetical state tags, and periods from opponent names."""
-    import re
-    name = re.sub(r'^#\d+\s+', '', name)        # "#5 Lewis-Clark State" -> "Lewis-Clark State"
-    name = re.sub(r'\s*\(.*?\)\s*$', '', name)  # "Pacific (Ore.)" -> "Pacific"
-    return name.strip()
-
-
-def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
-    """Fuzzy lookup team by school_name or short_name.
-
-    Checks both directions: whether the DB value contains the fragment,
-    AND whether the fragment contains the DB value. Also checks a known
-    alias table and normalizes rankings/parenthetical tags.
-
-    If prefer_division_of_team_id is given, prefer teams in the same division
-    to avoid e.g. 'Clark' matching L&C (D3) instead of Clark College (NWAC).
-    """
-    # Check aliases first (on both raw and normalized name)
-    raw_lower = name_fragment.strip().lower()
-    norm_lower = _normalize_opponent(name_fragment).lower()
-    for alias_key, alias_short in _TEAM_ALIASES.items():
-        if raw_lower == alias_key or norm_lower == alias_key:
-            cur.execute("SELECT t.id FROM teams t WHERE LOWER(t.short_name) = LOWER(%s)", (alias_short,))
-            row = cur.fetchone()
-            if row:
-                return row["id"]
-
-    # Also try normalized name for the DB lookup
-    names_to_try = [name_fragment]
-    normalized = _normalize_opponent(name_fragment)
-    if normalized.lower() != name_fragment.strip().lower():
-        names_to_try.append(normalized)
-
-    # Try exact matches first (short_name, school_name, name), then fuzzy
-    for frag in names_to_try:
-        # 1) Exact short_name match — highest confidence
-        cur.execute("""
-            SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
-            JOIN conferences c ON c.id = t.conference_id
-            WHERE LOWER(t.short_name) = LOWER(%s)
-        """, (frag,))
-        rows = cur.fetchall()
-        if len(rows) == 1:
-            return rows[0]["id"]
-        if rows:
-            break  # multiple exact matches, handle below
-
-        # 2) Exact school_name or name match
-        cur.execute("""
-            SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
-            JOIN conferences c ON c.id = t.conference_id
-            WHERE LOWER(t.school_name) = LOWER(%s)
-               OR LOWER(t.name) = LOWER(%s)
-        """, (frag, frag))
-        rows = cur.fetchall()
-        if len(rows) == 1:
-            return rows[0]["id"]
-        if rows:
-            break  # multiple exact matches, handle below
-
-    # 3) Fuzzy matching only if no exact match found
-    if not rows:
-        for frag in names_to_try:
-            cur.execute("""
-                SELECT t.id, t.short_name, t.school_name, c.division_id FROM teams t
-                JOIN conferences c ON c.id = t.conference_id
-                WHERE LOWER(t.school_name) LIKE LOWER(%s)
-                   OR LOWER(t.name) LIKE LOWER(%s)
-                   OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
-                   OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
-            """, (f"%{frag}%", f"%{frag}%", frag, frag))
-            rows = cur.fetchall()
-            if rows:
-                # If fuzzy returned multiple, prefer the shortest name match
-                # (e.g., "Pacific" over "Warner Pacific" when searching "Pacific")
-                if len(rows) > 1:
-                    frag_low = frag.strip().lower()
-                    exact_sub = [r for r in rows if r["school_name"] and r["school_name"].lower() == frag_low]
-                    if exact_sub:
-                        rows = exact_sub
-                    else:
-                        # Prefer team whose short_name or school_name is closest in length
-                        rows.sort(key=lambda r: abs(len(r.get("short_name", "") or "") - len(frag)))
-                break
-
-    if not rows:
-        return None
-    if len(rows) == 1:
-        return rows[0]["id"]
-
-    # Multiple matches — prefer same division if we know which division to prefer
-    if prefer_division_of_team_id:
-        cur.execute("""
-            SELECT c.division_id FROM teams t
-            JOIN conferences c ON c.id = t.conference_id
-            WHERE t.id = %s
-        """, (prefer_division_of_team_id,))
-        div_row = cur.fetchone()
-        if div_row:
-            same_div = [r for r in rows if r["division_id"] == div_row["division_id"]]
-            if same_div:
-                return same_div[0]["id"]
-
-    return rows[0]["id"]
-
-
-def get_or_create_ooc_team(cur, opponent_name):
-    """Resolve an opponent name to a team_id, auto-creating an Out-of-Conference
-    placeholder team (is_active=0) if no match is found.
-
-    Prevents NULL team_id rows in game_batting / game_pitching when we scrape
-    games against non-PNW opponents that aren't in our teams table yet.
-
-    The placeholder team is:
-      - is_active = 0 (hidden from all site listings that filter active teams)
-      - state = 'N/A' (teams.state is NOT NULL)
-      - conference_id = <OOC conference> (auto-created with abbreviation 'OOC')
-
-    Returns the team_id (existing or newly created). Never returns None.
-    """
-    if not opponent_name:
-        return None
-    cleaned = _normalize_opponent(opponent_name).strip()
-    if not cleaned:
-        return None
-
-    # Try existing lookup first (fuzzy + alias logic)
-    existing = get_team_id_by_school(cur, cleaned)
-    if existing:
-        return existing
-
-    # Resolve / create the OOC conference
-    cur.execute("SELECT id FROM conferences WHERE abbreviation = 'OOC' LIMIT 1")
-    row = cur.fetchone()
-    if row:
-        ooc_conf_id = row["id"]
-    else:
-        cur.execute("""
-            INSERT INTO conferences (name, abbreviation, division_id)
-            VALUES ('Out of Conference', 'OOC', 1)
-            RETURNING id
-        """)
-        ooc_conf_id = cur.fetchone()["id"]
-        logger.info(f"    Created OOC conference id={ooc_conf_id}")
-
-    # Create the placeholder team
-    cur.execute("""
-        INSERT INTO teams (name, school_name, short_name,
-                           state, conference_id, is_active)
-        VALUES (%s, %s, %s, 'N/A', %s, 0)
-        RETURNING id
-    """, (cleaned, cleaned, cleaned, ooc_conf_id))
-    new_id = cur.fetchone()["id"]
-    logger.info(f"    Auto-created OOC team '{cleaned}' (id={new_id}, is_active=0)")
-    return new_id
+# Team-name resolution helpers (get_team_id_by_name, get_team_id_by_school,
+# get_or_create_ooc_team) are imported at the top of this file from
+# scripts/team_matching.py. All scrapers share that module.
 
 
 def find_player_id(cur, team_id, player_name, season):

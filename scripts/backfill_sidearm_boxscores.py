@@ -30,9 +30,17 @@ from datetime import datetime, date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+# Add scripts directory so shared helpers can be imported as top-level modules
+sys.path.insert(0, str(Path(__file__).parent))
 
 import requests
 from app.models.database import get_connection
+
+# Shared team-name matching (see scripts/team_matching.py)
+from team_matching import (
+    get_team_id_by_short_name,
+    get_or_create_ooc_team,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -130,40 +138,29 @@ def get_existing_source_urls(team_short, season):
 
 
 def get_team_id(team_short):
-    """Look up team ID from short_name."""
+    """Look up team ID from short_name (thin wrapper that opens a connection
+    and delegates to the shared helper)."""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id FROM teams WHERE short_name = %s", (team_short,))
-        row = cur.fetchone()
-        return row["id"] if row else None
+        return get_team_id_by_short_name(cur, team_short)
 
 
 def resolve_opponent_id(opponent_name, prefer_team_id=None):
-    """Try to match opponent name to a team in our database."""
+    """Resolve opponent name to a team_id, auto-creating an inactive OOC team
+    if no match exists. Opens its own connection.
+
+    prefer_team_id is forwarded as prefer_division_of_team_id so a WSU (D1)
+    scrape biases ambiguous opponent names toward D1 teams.
+    """
     if not opponent_name:
         return None
     with get_connection() as conn:
         cur = conn.cursor()
-        # Direct match on name or short_name
-        cur.execute("""
-            SELECT id, short_name FROM teams
-            WHERE short_name ILIKE %s OR name ILIKE %s
-            LIMIT 1
-        """, (opponent_name, opponent_name))
-        row = cur.fetchone()
-        if row:
-            return row["id"]
-
-        # Fuzzy: try partial match on name
-        cur.execute("""
-            SELECT id, short_name FROM teams
-            WHERE name ILIKE %s
-            LIMIT 1
-        """, (f"%{opponent_name}%",))
-        row = cur.fetchone()
-        if row:
-            return row["id"]
-    return None
+        team_id = get_or_create_ooc_team(
+            cur, opponent_name, prefer_division_of_team_id=prefer_team_id
+        )
+        conn.commit()  # persist any auto-created OOC team
+        return team_id
 
 
 def parse_boxscore_data(data, base_url, game_id, team_short, team_id):
@@ -219,15 +216,17 @@ def parse_boxscore_data(data, base_url, game_id, team_short, team_id):
 
     source_url = f"{base_url}/boxscore.aspx?id={game_id}"
 
-    # Resolve team IDs
+    # Resolve team IDs. Pass the tenant team_id so same-division teams are
+    # preferred when an opponent name is ambiguous (e.g. "Washington" ->
+    # UW vs WSU: prefer whichever one matches our tenant's division).
     if our_team_is_home:
         home_team_id = team_id
-        away_team_id = resolve_opponent_id(away_name)
+        away_team_id = resolve_opponent_id(away_name, prefer_team_id=team_id)
         home_team_display = team_short
         away_team_display = away_name
     else:
         away_team_id = team_id
-        home_team_id = resolve_opponent_id(home_name)
+        home_team_id = resolve_opponent_id(home_name, prefer_team_id=team_id)
         home_team_display = home_name
         away_team_display = team_short
 
