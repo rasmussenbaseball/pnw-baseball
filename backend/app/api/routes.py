@@ -14248,6 +14248,10 @@ def opponent_trends(
             2) Sort by dominance — players who ALWAYS hit in one spot
                get locked in first (e.g. Fahland always 9th).
             3) Fill remaining spots with remaining players by weight.
+            4) For each assigned row, compute alternates at the same
+               defensive position. If the starter has < 65% share of
+               that position's weighted starts, list up to 2 alts with
+               >= 20% share ("Miyazawa/Richards" style).
 
             Excludes PH, PR, CR from lineup consideration.
             """
@@ -14258,6 +14262,10 @@ def opponent_trends(
             player_spot_wt = defaultdict(lambda: defaultdict(float))
             player_total_wt = defaultdict(float)
             player_game_count = defaultdict(int)
+            # position_wt[pos][name] = weighted starts at that defensive
+            # position (across this game_list). Used AFTER the main
+            # assignment to surface close position alternates.
+            position_wt = defaultdict(lambda: defaultdict(float))
 
             for g in game_list:
                 w = gw.get(g["id"], 1.0)
@@ -14275,6 +14283,12 @@ def opponent_trends(
                     player_spot_wt[name][spot] += w
                     player_total_wt[name] += w
                     player_game_count[name] += 1
+                    # Track defensive-position starts (primary slot when
+                    # the scraper recorded "CF/RF" we take CF).
+                    if pos and pos != "P":
+                        primary_pos = pos.split("/")[0].strip()
+                        if primary_pos:
+                            position_wt[primary_pos][name] += w
 
             if not player_spot_wt:
                 return {"games_count": len(game_list), "lineup": [], "bench": []}
@@ -14410,13 +14424,60 @@ def opponent_trends(
                         used_positions.add(pos)
                     open_slots = [s for s in range(1, 10) if s not in assigned]
 
+            # ── Alternates at each defensive position ──
+            # For each assigned slot, if the starter does NOT dominate
+            # their defensive position (< 65% of weighted starts), show
+            # up to 2 other players who have also put real innings there
+            # (>= 20% share). Rendered as "Miyazawa/Richards" on the
+            # lineup row so fans/coaches see the real committee.
+            ALT_TOP_THRESHOLD = 0.65   # starter must clear this to hide alts
+            ALT_MIN_SHARE = 0.20       # alt must clear this to show up
+            MAX_ALTS = 2
+
+            for spot, info in assigned.items():
+                pos = info.get("position") or ""
+                if not pos:
+                    info["alts"] = []
+                    continue
+                starter_name = info["player_name"]
+                pos_totals = position_wt.get(pos, {})
+                total_at_pos = sum(pos_totals.values())
+                if total_at_pos <= 0:
+                    info["alts"] = []
+                    continue
+                starter_share = pos_totals.get(starter_name, 0) / total_at_pos
+                if starter_share >= ALT_TOP_THRESHOLD:
+                    info["alts"] = []
+                    continue
+                # Collect candidates who aren't the starter, aren't
+                # already locked into another lineup slot, and clear
+                # the minimum share bar.
+                candidates = []
+                for cand_name, cand_wt in pos_totals.items():
+                    if cand_name == starter_name:
+                        continue
+                    if cand_name in used_players:
+                        # Already occupying another lineup slot. Don't
+                        # list them as a backup at a position they
+                        # aren't actually playing tonight.
+                        continue
+                    share = cand_wt / total_at_pos
+                    if share < ALT_MIN_SHARE:
+                        continue
+                    candidates.append({
+                        "player_name": cand_name,
+                        "pct": round(share * 100, 1),
+                    })
+                candidates.sort(key=lambda c: c["pct"], reverse=True)
+                info["alts"] = candidates[:MAX_ALTS]
+
             lineup = []
             for spot in range(1, 10):
                 if spot in assigned:
                     lineup.append({"spot": spot, **assigned[spot]})
                 else:
                     lineup.append({"spot": spot, "player_name": "—",
-                                   "position": "", "pct": 0})
+                                   "position": "", "pct": 0, "alts": []})
 
             # Bench: starters not in the constructed lineup
             bench = []
@@ -14436,6 +14497,141 @@ def opponent_trends(
                 "lineup": lineup,
                 "bench": bench,
             }
+
+        # ──────────────────────────────────────────────────────────────
+        # Hitter splits: per-player breakdown by LINEUP SPOT and by
+        # DEFENSIVE POSITION. Fans/coaches want to see "how does this
+        # guy hit in the 5 hole vs the 1 hole" and "how does he hit
+        # when he's in CF vs 1B". Built from the same game-log rows
+        # used for the lineup construction so the universe of games
+        # matches exactly.
+        #
+        # Thresholds:
+        #   - Include a player if they have >= 10 total AB in the window
+        #   - Include a bucket (spot or position) if it has >= 3 AB
+        # ──────────────────────────────────────────────────────────────
+        def _blank_bucket():
+            return {
+                "ab": 0, "h": 0, "bb": 0, "hbp": 0, "sf": 0,
+                "doubles": 0, "triples": 0, "hr": 0, "rbi": 0,
+                "k": 0, "r": 0, "g": 0,
+            }
+
+        def _finalize_bucket(b):
+            """AVG/OBP/SLG/OPS out of the raw totals."""
+            ab = b["ab"]
+            bb = b["bb"]
+            hbp = b["hbp"]
+            sf = b["sf"]
+            h = b["h"]
+            singles = h - b["doubles"] - b["triples"] - b["hr"]
+            tb = singles + 2 * b["doubles"] + 3 * b["triples"] + 4 * b["hr"]
+            avg = round(h / ab, 3) if ab > 0 else None
+            obp_den = ab + bb + hbp + sf
+            obp = round((h + bb + hbp) / obp_den, 3) if obp_den > 0 else None
+            slg = round(tb / ab, 3) if ab > 0 else None
+            ops = round(obp + slg, 3) if (obp is not None and slg is not None) else None
+            return {
+                "ab": ab, "h": h, "hr": b["hr"], "rbi": b["rbi"],
+                "bb": bb, "k": b["k"], "r": b["r"], "g": b["g"],
+                "avg": avg, "obp": obp, "slg": slg, "ops": ops,
+            }
+
+        def build_hitter_splits():
+            # player_name -> "spot" -> spot (1..9) -> bucket
+            # player_name -> "pos"  -> position     -> bucket
+            by_spot = defaultdict(lambda: defaultdict(_blank_bucket))
+            by_pos = defaultdict(lambda: defaultdict(_blank_bucket))
+            totals = defaultdict(_blank_bucket)
+
+            for g in all_ge:
+                batters = deduped_batting_by_game.get(g["id"], [])
+                for b in batters:
+                    name = b["player_name"] or "Unknown"
+                    if name == "Unknown":
+                        continue
+                    raw_pos = (b["position"] or "").upper().strip()
+                    # Ignore pure pinch-hit / pinch-run appearances
+                    # in the position split — they aren't a defensive
+                    # position. They still count in the spot split if
+                    # the scraper gave them a batting order (rare).
+                    spot = b["batting_order"] or 0
+                    ab = b["at_bats"] or 0
+                    bb = b["walks"] or 0
+                    hbp = b["hit_by_pitch"] or 0
+                    sf = b["sacrifice_flies"] or 0
+                    h = b["hits"] or 0
+                    d = b["doubles"] or 0
+                    t = b["triples"] or 0
+                    hr = b["home_runs"] or 0
+                    rbi = b["rbi"] or 0
+                    k = b["strikeouts"] or 0
+                    r = b["runs"] or 0
+
+                    def _add(bucket):
+                        bucket["ab"] += ab
+                        bucket["h"] += h
+                        bucket["bb"] += bb
+                        bucket["hbp"] += hbp
+                        bucket["sf"] += sf
+                        bucket["doubles"] += d
+                        bucket["triples"] += t
+                        bucket["hr"] += hr
+                        bucket["rbi"] += rbi
+                        bucket["k"] += k
+                        bucket["r"] += r
+                        bucket["g"] += 1
+
+                    _add(totals[name])
+
+                    if 1 <= spot <= 9 and raw_pos not in ("PH", "PR", "CR"):
+                        _add(by_spot[name][spot])
+
+                    if raw_pos and raw_pos not in ("PH", "PR", "CR", "P"):
+                        # "CF/RF" -> bucket under CF (primary slot)
+                        primary = raw_pos.split("/")[0].strip()
+                        if primary:
+                            _add(by_pos[name][primary])
+
+            PLAYER_MIN_AB = 10
+            BUCKET_MIN_AB = 3
+
+            result = []
+            for name, t in totals.items():
+                if t["ab"] < PLAYER_MIN_AB:
+                    continue
+                spot_rows = []
+                for spot in sorted(by_spot.get(name, {}).keys()):
+                    bk = by_spot[name][spot]
+                    if bk["ab"] < BUCKET_MIN_AB:
+                        continue
+                    spot_rows.append({"spot": spot, **_finalize_bucket(bk)})
+                pos_rows = []
+                raw_pos_map = by_pos.get(name, {})
+                for pos, bk in sorted(
+                    raw_pos_map.items(),
+                    key=lambda kv: kv[1]["ab"],
+                    reverse=True,
+                ):
+                    if bk["ab"] < BUCKET_MIN_AB:
+                        continue
+                    pos_rows.append({"position": pos, **_finalize_bucket(bk)})
+                # Only return players who have at least one meaningful
+                # bucket in EITHER view. A guy with 12 AB all in one
+                # spot / one position has nothing to split, so skip.
+                if not spot_rows and not pos_rows:
+                    continue
+                result.append({
+                    "player_name": name,
+                    "primary_position": player_primary_pos.get(name, ""),
+                    "overall": _finalize_bucket(t),
+                    "by_spot": spot_rows,
+                    "by_position": pos_rows,
+                })
+
+            # Sort by overall AB desc so the regulars show up first.
+            result.sort(key=lambda p: p["overall"]["ab"], reverse=True)
+            return result
 
         # Build lineups — strict split: only games where we KNOW the opposing
         # starter's hand count toward vs_rhp/vs_lhp. Unknown games are excluded
@@ -14491,12 +14687,15 @@ def opponent_trends(
             for n, s in pr_stats.items()
         ], key=lambda x: x["apps"], reverse=True)
 
+        hitter_splits = build_hitter_splits()
+
         lineup_trends = {
             "vs_rhp": lineup_vs_rhp,
             "vs_lhp": lineup_vs_lhp,
             "by_game_number": game_slot_lineups,
             "pinch_hitters": pinch_hitters,
             "pinch_runners": pinch_runners,
+            "hitter_splits": hitter_splits,
             "count_vs_rhp": len(games_vs_rhp),
             "count_vs_lhp": len(games_vs_lhp),
             "count_vs_unknown": len(games_vs_unknown),

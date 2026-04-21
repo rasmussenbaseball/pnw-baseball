@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useTeams, useDivisions, useOpponentTrends } from '../hooks/useApi'
 
 const SEASON = 2026
@@ -135,6 +135,8 @@ function LineupsTab({ d }) {
             p.name, p.apps, p.sb, p.cs, p.r
           ])} />
       </div>
+
+      <HitterSplits rows={d.hitter_splits || []} />
     </div>
   )
 }
@@ -163,10 +165,22 @@ function LineupTable({ title, sub, data, accent }) {
         </thead>
         <tbody>
           {data.lineup.map((row, i) => (
-            <tr key={i} className="border-b border-gray-50 last:border-0">
+            <tr key={i} className="border-b border-gray-50 last:border-0 align-top">
               <td className="text-center py-1 font-bold text-gray-400">{row.spot}</td>
               <td className="text-center py-1 text-gray-500 font-medium">{row.position}</td>
-              <td className="py-1 pl-2 font-medium text-gray-900">{row.player_name}</td>
+              <td className="py-1 pl-2">
+                <span className="font-medium text-gray-900">{row.player_name}</span>
+                {row.alts && row.alts.length > 0 && (
+                  <span className="text-gray-500">
+                    {row.alts.map((alt, ai) => (
+                      <span key={ai}>
+                        <span className="text-gray-300"> / </span>
+                        <span>{alt.player_name}</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </td>
               <td className="py-1 text-right pr-3 text-gray-500">{row.pct > 0 ? `${row.pct}%` : ''}</td>
             </tr>
           ))}
@@ -209,6 +223,141 @@ function MiniTable({ title, cols, rows }) {
                     {cell}
                   </td>
                 ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// ── Hitter Splits: collapsible per-player breakdown ──
+// Each player row expands to show by-lineup-spot and by-defensive-
+// position slashes. Buckets require >= 3 AB and players require
+// >= 10 total AB — both handled on the backend.
+function fmt3(n) {
+  if (n == null || Number.isNaN(n)) return '—'
+  return n.toFixed(3).replace(/^0\./, '.')
+}
+
+function HitterSplits({ rows }) {
+  const [openName, setOpenName] = useState(null)
+  if (!rows || rows.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
+      <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+        <span className="text-xs font-bold text-gray-900">Hitter Splits</span>
+        <span className="text-[10px] text-gray-400 ml-2">
+          Click a player to see splits by lineup spot and defensive position
+        </span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+            <th className="py-1 pl-3 text-left">Player</th>
+            <th className="w-10 py-1 text-center">Pos</th>
+            <th className="w-10 py-1 text-center">G</th>
+            <th className="w-10 py-1 text-center">AB</th>
+            <th className="w-10 py-1 text-center">HR</th>
+            <th className="w-10 py-1 text-center">RBI</th>
+            <th className="w-12 py-1 text-center">AVG</th>
+            <th className="w-12 py-1 text-center">OBP</th>
+            <th className="w-12 py-1 text-center">SLG</th>
+            <th className="w-12 py-1 text-center pr-3">OPS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(p => {
+            const isOpen = openName === p.player_name
+            const o = p.overall
+            return (
+              <Fragment key={p.player_name}>
+                <tr
+                  onClick={() => setOpenName(isOpen ? null : p.player_name)}
+                  className="border-b border-gray-50 cursor-pointer hover:bg-gray-50"
+                >
+                  <td className="py-1 pl-3 font-medium text-gray-900">
+                    <span className="text-gray-400 mr-1">{isOpen ? '▾' : '▸'}</span>
+                    {p.player_name}
+                  </td>
+                  <td className="text-center py-1 text-gray-500">{p.primary_position || '—'}</td>
+                  <td className="text-center py-1 text-gray-600">{o.g}</td>
+                  <td className="text-center py-1 text-gray-600">{o.ab}</td>
+                  <td className="text-center py-1 text-gray-600">{o.hr}</td>
+                  <td className="text-center py-1 text-gray-600">{o.rbi}</td>
+                  <td className="text-center py-1 text-gray-800">{fmt3(o.avg)}</td>
+                  <td className="text-center py-1 text-gray-800">{fmt3(o.obp)}</td>
+                  <td className="text-center py-1 text-gray-800">{fmt3(o.slg)}</td>
+                  <td className="text-center py-1 pr-3 font-medium text-gray-900">{fmt3(o.ops)}</td>
+                </tr>
+                {isOpen && (
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <td colSpan={10} className="px-3 py-3">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <SplitSubTable
+                          title="By Lineup Spot"
+                          rows={p.by_spot}
+                          keyCol="spot"
+                          keyLabel="Spot"
+                        />
+                        <SplitSubTable
+                          title="By Defensive Position"
+                          rows={p.by_position}
+                          keyCol="position"
+                          keyLabel="Pos"
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function SplitSubTable({ title, rows, keyCol, keyLabel }) {
+  return (
+    <div className="bg-white rounded border border-gray-100 overflow-hidden">
+      <div className="px-3 py-1.5 bg-white border-b border-gray-100">
+        <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">{title}</span>
+      </div>
+      {!rows || rows.length === 0 ? (
+        <div className="px-3 py-2 text-[10px] text-gray-400">Not enough at-bats to split</div>
+      ) : (
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+              <th className="py-1 pl-3 text-left w-14">{keyLabel}</th>
+              <th className="w-10 py-1 text-center">G</th>
+              <th className="w-10 py-1 text-center">AB</th>
+              <th className="w-10 py-1 text-center">H</th>
+              <th className="w-10 py-1 text-center">HR</th>
+              <th className="w-10 py-1 text-center">RBI</th>
+              <th className="w-12 py-1 text-center">AVG</th>
+              <th className="w-12 py-1 text-center">OBP</th>
+              <th className="w-12 py-1 text-center">SLG</th>
+              <th className="w-12 py-1 text-center pr-3">OPS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-b border-gray-50 last:border-0">
+                <td className="py-0.5 pl-3 font-medium text-gray-900">{r[keyCol]}</td>
+                <td className="text-center py-0.5 text-gray-600">{r.g}</td>
+                <td className="text-center py-0.5 text-gray-600">{r.ab}</td>
+                <td className="text-center py-0.5 text-gray-600">{r.h}</td>
+                <td className="text-center py-0.5 text-gray-600">{r.hr}</td>
+                <td className="text-center py-0.5 text-gray-600">{r.rbi}</td>
+                <td className="text-center py-0.5 text-gray-800">{fmt3(r.avg)}</td>
+                <td className="text-center py-0.5 text-gray-800">{fmt3(r.obp)}</td>
+                <td className="text-center py-0.5 text-gray-800">{fmt3(r.slg)}</td>
+                <td className="text-center py-0.5 pr-3 font-medium text-gray-900">{fmt3(r.ops)}</td>
               </tr>
             ))}
           </tbody>
