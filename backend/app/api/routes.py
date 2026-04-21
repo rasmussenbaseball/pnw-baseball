@@ -3491,7 +3491,8 @@ def team_info_graphic(
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                    p.headshot_url,
                    ps.era::float as era,
-                   (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0))::float as k_bb_pct,
+                   (COALESCE(ps.k_pct, 0) * 100)::float as k_pct,
+                   (COALESCE(ps.bb_pct, 0) * 100)::float as bb_pct,
                    ps.pitching_war::float as pitching_war
             FROM pitching_stats ps
             JOIN players p ON ps.player_id = p.id
@@ -3548,12 +3549,14 @@ def team_info_graphic(
 
         # ── 12. Team-level percentiles vs division peers ──
         # Aggregate every team in the same division, then rank ours.
+        # Hitter stats: AVG, wOBA, HR/PA, SB/PA, wRC+
         cur.execute("""
             SELECT t.id as team_id,
-                   AVG(bs.wrc_plus) as wrc_plus,
+                   SUM(bs.hits)::float / NULLIF(SUM(bs.at_bats), 0) as batting_avg,
                    AVG(bs.woba) as woba,
-                   AVG(bs.iso) as iso,
-                   AVG(COALESCE(bs.bb_pct,0) - COALESCE(bs.k_pct,0)) as bb_minus_k_pct
+                   SUM(bs.home_runs)::float / NULLIF(SUM(bs.plate_appearances), 0) as hr_per_pa,
+                   SUM(bs.stolen_bases)::float / NULLIF(SUM(bs.plate_appearances), 0) as sb_per_pa,
+                   AVG(bs.wrc_plus) as wrc_plus
             FROM teams t
             JOIN batting_stats bs ON bs.team_id = t.id AND bs.season = %s
                   AND bs.plate_appearances >= 10
@@ -3564,11 +3567,16 @@ def team_info_graphic(
         """, (season, team["division_id"]))
         bat_div = [dict(r) for r in cur.fetchall()]
 
+        # Pitcher stats: ERA, FIP, K%, BB%, BAA
+        # BAA = hits_allowed / (batters_faced - walks - hit_batters)
         cur.execute("""
             SELECT t.id as team_id,
+                   (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ps.innings_pitched), 0))::float as era,
                    AVG(ps.fip) as fip,
-                   AVG(ps.era_minus) as era_minus,
-                   AVG(COALESCE(ps.k_pct,0) - COALESCE(ps.bb_pct,0)) as k_bb_pct
+                   (AVG(ps.k_pct) * 100)::float as k_pct,
+                   (AVG(ps.bb_pct) * 100)::float as bb_pct,
+                   (SUM(ps.hits_allowed)::float
+                     / NULLIF(SUM(ps.batters_faced) - SUM(COALESCE(ps.walks,0)) - SUM(COALESCE(ps.hit_batters,0)), 0))::float as baa
             FROM teams t
             JOIN pitching_stats ps ON ps.team_id = t.id AND ps.season = %s
                   AND ps.innings_pitched >= 3
@@ -3578,24 +3586,6 @@ def team_info_graphic(
             GROUP BY t.id
         """, (season, team["division_id"]))
         pit_div = [dict(r) for r in cur.fetchall()]
-
-        # Per-team run differential per game across the whole division
-        cur.execute("""
-            SELECT t.id as team_id,
-                   (COALESCE(SUM(CASE WHEN g.home_team_id = t.id THEN g.home_score ELSE 0 END), 0) +
-                    COALESCE(SUM(CASE WHEN g.away_team_id = t.id THEN g.away_score ELSE 0 END), 0)) -
-                   (COALESCE(SUM(CASE WHEN g.home_team_id = t.id THEN g.away_score ELSE 0 END), 0) +
-                    COALESCE(SUM(CASE WHEN g.away_team_id = t.id THEN g.home_score ELSE 0 END), 0)) as run_diff,
-                   COUNT(g.id) as gp
-            FROM teams t
-            LEFT JOIN games g ON (g.home_team_id = t.id OR g.away_team_id = t.id)
-                AND g.season = %s AND g.status = 'final'
-            WHERE t.conference_id IN (SELECT id FROM conferences WHERE division_id = %s)
-              AND t.is_active = 1
-            GROUP BY t.id
-            HAVING COUNT(g.id) > 0
-        """, (season, team["division_id"]))
-        rd_div = [dict(r) for r in cur.fetchall()]
 
         def _pctile(values, my_val, higher_is_better=True):
             if my_val is None:
@@ -3612,31 +3602,33 @@ def team_info_graphic(
 
         my_bat = next((b for b in bat_div if b["team_id"] == team_id), {}) or {}
         my_pit = next((p for p in pit_div if p["team_id"] == team_id), {}) or {}
-        my_rd = next((r for r in rd_div if r["team_id"] == team_id), {}) or {}
-
-        my_rd_pg = (float(my_rd["run_diff"] or 0) / my_rd["gp"]) if my_rd.get("gp") else None
-        rd_pg_div = [(float(r["run_diff"] or 0) / r["gp"]) if r.get("gp") else None for r in rd_div]
 
         def _to_f(v):
             return float(v) if v is not None else None
 
-        team_percentiles = {
-            "wrc_plus":          {"value": _to_f(my_bat.get("wrc_plus")),
-                                  "percentile": _pctile([b.get("wrc_plus") for b in bat_div], my_bat.get("wrc_plus"), True)},
-            "woba":              {"value": _to_f(my_bat.get("woba")),
-                                  "percentile": _pctile([b.get("woba") for b in bat_div], my_bat.get("woba"), True)},
-            "iso":               {"value": _to_f(my_bat.get("iso")),
-                                  "percentile": _pctile([b.get("iso") for b in bat_div], my_bat.get("iso"), True)},
-            "bb_minus_k_pct":    {"value": _to_f(my_bat.get("bb_minus_k_pct")),
-                                  "percentile": _pctile([b.get("bb_minus_k_pct") for b in bat_div], my_bat.get("bb_minus_k_pct"), True)},
-            "era_minus":         {"value": _to_f(my_pit.get("era_minus")),
-                                  "percentile": _pctile([p.get("era_minus") for p in pit_div], my_pit.get("era_minus"), False)},
-            "fip":               {"value": _to_f(my_pit.get("fip")),
-                                  "percentile": _pctile([p.get("fip") for p in pit_div], my_pit.get("fip"), False)},
-            "k_bb_pct":          {"value": _to_f(my_pit.get("k_bb_pct")),
-                                  "percentile": _pctile([p.get("k_bb_pct") for p in pit_div], my_pit.get("k_bb_pct"), True)},
-            "run_diff_per_game": {"value": my_rd_pg,
-                                  "percentile": _pctile(rd_pg_div, my_rd_pg, True)},
+        batting_percentiles = {
+            "batting_avg": {"value": _to_f(my_bat.get("batting_avg")),
+                            "percentile": _pctile([b.get("batting_avg") for b in bat_div], my_bat.get("batting_avg"), True)},
+            "woba":        {"value": _to_f(my_bat.get("woba")),
+                            "percentile": _pctile([b.get("woba") for b in bat_div], my_bat.get("woba"), True)},
+            "hr_per_pa":   {"value": _to_f(my_bat.get("hr_per_pa")),
+                            "percentile": _pctile([b.get("hr_per_pa") for b in bat_div], my_bat.get("hr_per_pa"), True)},
+            "sb_per_pa":   {"value": _to_f(my_bat.get("sb_per_pa")),
+                            "percentile": _pctile([b.get("sb_per_pa") for b in bat_div], my_bat.get("sb_per_pa"), True)},
+            "wrc_plus":    {"value": _to_f(my_bat.get("wrc_plus")),
+                            "percentile": _pctile([b.get("wrc_plus") for b in bat_div], my_bat.get("wrc_plus"), True)},
+        }
+        pitching_percentiles = {
+            "era":  {"value": _to_f(my_pit.get("era")),
+                     "percentile": _pctile([p.get("era") for p in pit_div], my_pit.get("era"), False)},
+            "fip":  {"value": _to_f(my_pit.get("fip")),
+                     "percentile": _pctile([p.get("fip") for p in pit_div], my_pit.get("fip"), False)},
+            "k_pct": {"value": _to_f(my_pit.get("k_pct")),
+                      "percentile": _pctile([p.get("k_pct") for p in pit_div], my_pit.get("k_pct"), True)},
+            "bb_pct": {"value": _to_f(my_pit.get("bb_pct")),
+                       "percentile": _pctile([p.get("bb_pct") for p in pit_div], my_pit.get("bb_pct"), False)},
+            "baa":  {"value": _to_f(my_pit.get("baa")),
+                     "percentile": _pctile([p.get("baa") for p in pit_div], my_pit.get("baa"), False)},
         }
 
         # Inject convenience "name" into top performers
@@ -3676,7 +3668,8 @@ def team_info_graphic(
             },
             "top_hitters": top_hitters,
             "top_pitchers": top_pitchers,
-            "team_percentiles": team_percentiles,
+            "batting_percentiles": batting_percentiles,
+            "pitching_percentiles": pitching_percentiles,
             "last_5_games": last_5,
         }
 
