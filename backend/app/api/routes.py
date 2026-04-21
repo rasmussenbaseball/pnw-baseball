@@ -30,6 +30,7 @@ from ..stats.advanced import (
     POSITION_ADJUSTMENTS_FULL,
 )
 from ..stats.ppi import compute_ppi_for_division
+from ..stats.tiebreakers import apply_head_to_head
 from ..stats.projections import (
     load_future_schedules,
     project_remaining_games,
@@ -753,9 +754,14 @@ def standings(
                      "NWAC_NORTH", "NWAC_EAST", "NWAC_SOUTH", "NWAC_WEST"):
             PLAYOFF_SPOTS[key] = 4
 
-        # Sort each conference by conf win %, then overall win % as tiebreaker
+        # Sort each conference by conf win % primary, then apply head-to-head
+        # then overall record as tiebreakers.
         for conf in conferences.values():
-            conf["teams"].sort(key=lambda t: (t["conf_win_pct"], t["win_pct"]), reverse=True)
+            conf["teams"].sort(key=lambda t: t["conf_win_pct"], reverse=True)
+            conf["teams"] = apply_head_to_head(
+                conf["teams"], get_connection, season,
+                primary_key="conf_win_pct",
+            )
             # Determine playoff spots for this conference
             abbrev = conf.get("conference_abbrev", "")
             spots = PLAYOFF_SPOTS.get(abbrev, PLAYOFF_SPOTS.get(conf.get("conference_name", ""), 4))
@@ -771,8 +777,15 @@ def standings(
                     gb = ((team["conf_wins"] - cutoff_w) + (cutoff_l - team["conf_losses"])) / 2
                     team["conf_gb"] = gb
 
-        # Sort overall by win %
-        all_teams.sort(key=lambda t: (t["win_pct"], t["wins"]), reverse=True)
+        # Sort overall standings by win % primary, then head-to-head among
+        # teams tied on overall win % (wins count is last resort).
+        all_teams.sort(key=lambda t: t["win_pct"], reverse=True)
+        all_teams = apply_head_to_head(
+            all_teams, get_connection, season,
+            primary_key="win_pct",
+            overall_key="win_pct",
+            overall_wins_key="wins",
+        )
 
         return {
             "conferences": list(conferences.values()),
