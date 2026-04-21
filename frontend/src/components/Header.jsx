@@ -13,6 +13,7 @@ const NAV = [
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
       { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
+      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings' },
       { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
       { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
     ],

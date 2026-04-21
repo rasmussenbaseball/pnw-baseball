@@ -15,6 +15,7 @@ import os
 import re
 import smtplib
 import threading
+from bisect import bisect_left, bisect_right
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, date, timedelta
@@ -3856,6 +3857,217 @@ def war_leaderboard(
             "limit": limit,
             "offset": offset,
         }
+
+
+# ============================================================
+# PERCENTILES (Baseball Savant-style)
+# ============================================================
+
+def _compute_percentile(value, sorted_values, higher_is_better):
+    """
+    Return a 0-100 percentile for ``value`` within ``sorted_values``
+    (ascending). 0 = worst qualified player at this stat, 100 = best.
+
+    Ties use the midpoint of the tied rank range.
+    """
+    if value is None or not sorted_values:
+        return None
+    n = len(sorted_values)
+    if n <= 1:
+        return 100
+    lo = bisect_left(sorted_values, value)
+    hi = bisect_right(sorted_values, value)
+    mid_rank = (lo + hi - 1) / 2.0          # 0-indexed rank within sorted list
+    low_to_high = mid_rank / (n - 1)        # 0 = lowest value, 1 = highest value
+    pct_best = low_to_high if higher_is_better else (1 - low_to_high)
+    return int(round(pct_best * 100))
+
+
+# Stat definitions: (response_key, display_label, raw_field, higher_is_better)
+HITTER_PERCENTILE_STATS = [
+    ("war",      "WAR",     "war",        True),
+    ("woba",     "wOBA",    "woba",       True),
+    ("wobacon",  "wOBACON", "wobacon",    True),
+    ("wrc_plus", "wRC+",    "wrc_plus",   True),
+    ("iso",      "ISO",     "iso",        True),
+    ("bb_pct",   "BB%",     "bb_pct",     True),
+    ("k_pct",    "K%",      "k_pct",      False),   # lower = better
+    ("hr_per_pa","HR/PA",   "hr_per_pa",  True),
+    ("sb_per_pa","SB/PA",   "sb_per_pa",  True),
+]
+
+PITCHER_PERCENTILE_STATS = [
+    ("war",       "WAR",    "war",        True),
+    ("fip",       "FIP",    "fip",        False),   # lower = better
+    ("xfip",      "xFIP",   "xfip",       False),
+    ("siera",     "SIERA",  "siera",      False),
+    ("k_bb_pct",  "K-BB%",  "k_bb_pct",   True),
+    ("hr_per_pa", "HR/PA",  "hr_per_pa",  False),
+]
+
+
+@router.get("/leaderboards/percentiles")
+def percentile_leaderboard(
+    season: int = Query(..., description="Season year"),
+    level: str = Query("D1", description="Division level: D1, D2, D3, NAIA, JUCO"),
+    type: str = Query("hitter", description="Either 'hitter' or 'pitcher'"),
+):
+    """
+    Baseball Savant-style percentile rankings.
+
+    For every qualified player at the given division ``level``, return a
+    0-100 percentile rank for each scoreboard stat, plus an ``avg_pct``
+    field that averages all of that player's non-null percentiles
+    (a rough "well-roundedness" score).
+
+    Qualification thresholds match the leaderboards:
+      - hitters: 2.0 PA per team game
+      - pitchers: 0.75 IP per team game
+
+    Benchmarks (the sorted list each player is ranked against) are built
+    **only from qualified players at that level**, so a reliever with 2
+    IP and a 0.00 ERA never distorts the percentile scale.
+    """
+    level = (level or "D1").upper().strip()
+    ptype = (type or "hitter").lower().strip()
+    if ptype not in ("hitter", "pitcher"):
+        ptype = "hitter"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        if ptype == "hitter":
+            cur.execute(
+                f"""
+                SELECT bs.player_id,
+                       bs.team_id,
+                       p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.is_committed, p.committed_to,
+                       t.name as team_name, t.short_name as team_short, t.logo_url,
+                       c.abbreviation as conference_abbrev,
+                       d.level as division_level,
+                       bs.plate_appearances,
+                       COALESCE(bs.offensive_war, 0)::float as war,
+                       bs.woba::float as woba,
+                       bs.wobacon::float as wobacon,
+                       bs.wrc_plus::float as wrc_plus,
+                       bs.iso::float as iso,
+                       bs.bb_pct::float as bb_pct,
+                       bs.k_pct::float as k_pct,
+                       CASE WHEN bs.plate_appearances > 0
+                            THEN (bs.home_runs::numeric / bs.plate_appearances)::float
+                            END as hr_per_pa,
+                       CASE WHEN bs.plate_appearances > 0
+                            THEN (bs.stolen_bases::numeric / bs.plate_appearances)::float
+                            END as sb_per_pa
+                FROM batting_stats bs
+                JOIN players p ON bs.player_id = p.id
+                JOIN teams t ON bs.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                LEFT JOIN team_season_stats tss
+                    ON tss.team_id = bs.team_id AND tss.season = bs.season
+                WHERE bs.season = %s
+                  AND d.level = %s
+                  AND bs.plate_appearances >= {QUALIFIED_PA_PER_GAME}
+                        * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                """,
+                (season, level),
+            )
+            stat_defs = HITTER_PERCENTILE_STATS
+        else:
+            cur.execute(
+                f"""
+                SELECT ps.player_id,
+                       ps.team_id,
+                       p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.is_committed, p.committed_to,
+                       t.name as team_name, t.short_name as team_short, t.logo_url,
+                       c.abbreviation as conference_abbrev,
+                       d.level as division_level,
+                       ps.innings_pitched,
+                       COALESCE(ps.pitching_war, 0)::float as war,
+                       ps.fip::float as fip,
+                       ps.xfip::float as xfip,
+                       ps.siera::float as siera,
+                       (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0))::float as k_bb_pct,
+                       CASE WHEN ps.batters_faced > 0
+                            THEN (ps.home_runs_allowed::numeric / ps.batters_faced)::float
+                            END as hr_per_pa
+                FROM pitching_stats ps
+                JOIN players p ON ps.player_id = p.id
+                JOIN teams t ON ps.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                LEFT JOIN team_season_stats tss
+                    ON tss.team_id = ps.team_id AND tss.season = ps.season
+                WHERE ps.season = %s
+                  AND d.level = %s
+                  AND ps.innings_pitched >= {QUALIFIED_IP_PER_GAME}
+                        * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                """,
+                (season, level),
+            )
+            stat_defs = PITCHER_PERCENTILE_STATS
+
+        players = [dict(r) for r in cur.fetchall()]
+
+    # Build sorted benchmark arrays from qualified players only (nulls dropped)
+    benchmarks = {}
+    for key, _label, field, _hib in stat_defs:
+        vals = [p[field] for p in players if p.get(field) is not None]
+        vals.sort()
+        benchmarks[key] = vals
+
+    # Compute percentiles per player and the average
+    results = []
+    for p in players:
+        pcts = {}
+        pct_values = []
+        for key, _label, field, hib in stat_defs:
+            pct = _compute_percentile(p.get(field), benchmarks[key], hib)
+            pcts[key] = pct
+            if pct is not None:
+                pct_values.append(pct)
+        avg_pct = int(round(sum(pct_values) / len(pct_values))) if pct_values else None
+
+        results.append({
+            "player_id": p["player_id"],
+            "team_id": p["team_id"],
+            "first_name": p["first_name"],
+            "last_name": p["last_name"],
+            "position": p["position"],
+            "year_in_school": p["year_in_school"],
+            "bats": p.get("bats"),
+            "throws": p.get("throws"),
+            "is_committed": p.get("is_committed"),
+            "committed_to": p.get("committed_to"),
+            "team_name": p["team_name"],
+            "team_short": p["team_short"],
+            "logo_url": p["logo_url"],
+            "conference_abbrev": p["conference_abbrev"],
+            "division_level": p["division_level"],
+            "plate_appearances": p.get("plate_appearances"),
+            "innings_pitched": p.get("innings_pitched"),
+            "avg_pct": avg_pct,
+            "stats": {key: p.get(field) for key, _l, field, _h in stat_defs},
+            "percentiles": pcts,
+        })
+
+    # Sort by average percentile descending (well-roundedness), nulls last
+    results.sort(key=lambda r: (r["avg_pct"] is None, -(r["avg_pct"] or 0)))
+
+    return {
+        "season": season,
+        "level": level,
+        "type": ptype,
+        "qualified_count": len(results),
+        "stat_order": [
+            {"key": key, "label": label, "higher_is_better": hib}
+            for key, label, _f, hib in stat_defs
+        ],
+        "data": results,
+    }
 
 
 # ============================================================

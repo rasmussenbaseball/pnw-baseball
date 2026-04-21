@@ -112,6 +112,7 @@ import TopPerformersGraphic from './pages/TopPerformersGraphic'
 import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
 import PlayoffProjections from './pages/PlayoffProjections'
+import Percentiles from './pages/Percentiles'
 
 export default function App() {
   return (
@@ -132,6 +133,7 @@ export default function App() {
           <Route path="/scatter" element={<ScatterPlot />} />
           <Route path="/summerball" element={<SummerballData />} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
+          <Route path="/percentiles" element={<Percentiles />} />
           <Route path="/records" element={<RecordsPage />} />
           <Route path="/playoff-projections" element={<PlayoffProjections />} />
 
