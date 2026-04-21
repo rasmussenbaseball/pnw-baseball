@@ -683,13 +683,15 @@ def standings(
             LEFT JOIN (
                 SELECT team_id,
                     SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as team_wrc_plus
+                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
                 FROM batting_stats WHERE season = %s GROUP BY team_id
             ) bat ON bat.team_id = t.id
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as team_fip
+                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
@@ -851,14 +853,16 @@ def conference_standings_graphic(
                 SELECT team_id,
                     SUM(runs) as rs,
                     SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus
                 FROM batting_stats WHERE season = %s GROUP BY team_id
             ) bat ON bat.team_id = t.id
             LEFT JOIN (
                 SELECT team_id,
                     SUM(runs_allowed) as ra,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
@@ -930,13 +934,15 @@ def conference_standings_graphic(
             LEFT JOIN (
                 SELECT team_id,
                     SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as team_wrc_plus
+                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
                 FROM batting_stats WHERE season = %s GROUP BY team_id
             ) bat ON bat.team_id = t.id
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as team_fip
+                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
@@ -1604,10 +1610,10 @@ def stat_records(
                    SUM(bs.doubles) as total_doubles,
                    SUM(bs.hit_by_pitch) as total_hbp,
                    SUM(bs.offensive_war) as total_owar,
-                   CASE WHEN SUM(bs.plate_appearances) > 0
+                   CASE WHEN SUM(bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL) > 0
                         THEN ROUND(
-                          SUM(bs.wrc_plus * bs.plate_appearances)::numeric
-                          / SUM(bs.plate_appearances)::numeric, 1)
+                          SUM(bs.wrc_plus * bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL)::numeric
+                          / SUM(bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL)::numeric, 1)
                         END as avg_wrc_plus
             FROM batting_stats bs
             JOIN teams t ON bs.team_id = t.id
@@ -1627,10 +1633,10 @@ def stat_records(
                         THEN ROUND((SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched)::numeric) * 9, 2) END as team_era,
                    CASE WHEN SUM(ps.innings_pitched) > 0
                         THEN ROUND(SUM(ps.walks + ps.hits_allowed)::numeric / SUM(ps.innings_pitched)::numeric, 2) END as team_whip,
-                   CASE WHEN SUM(ps.innings_pitched) > 0
+                   CASE WHEN SUM(ps.innings_pitched) FILTER (WHERE ps.fip IS NOT NULL) > 0
                         THEN ROUND(
-                          SUM(ps.fip * ps.innings_pitched)::numeric
-                          / SUM(ps.innings_pitched)::numeric, 2)
+                          SUM(ps.fip * ps.innings_pitched) FILTER (WHERE ps.fip IS NOT NULL)::numeric
+                          / SUM(ps.innings_pitched) FILTER (WHERE ps.fip IS NOT NULL)::numeric, 2)
                         END as avg_fip,
                    SUM(ps.strikeouts) as total_k,
                    SUM(ps.saves) as total_saves,
@@ -1769,14 +1775,16 @@ def team_ratings(
             LEFT JOIN (
                 SELECT team_id,
                     SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as team_wrc_plus
+                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
                 FROM batting_stats WHERE season = %s
                 GROUP BY team_id
             ) bat ON bat.team_id = t.id
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as team_fip
+                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s
                 GROUP BY team_id
             ) pit ON pit.team_id = t.id
@@ -2003,11 +2011,16 @@ def compare_teams(
                             THEN ROUND(((SUM(hits) + SUM(walks) + SUM(hit_by_pitch))::numeric / SUM(plate_appearances))::numeric, 3) ELSE 0 END as team_obp,
                        CASE WHEN SUM(at_bats) > 0
                             THEN ROUND(((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_slg,
-                       ROUND(AVG(woba)::numeric, 3) as avg_woba,
-                       ROUND(AVG(wrc_plus)::numeric, 0) as avg_wrc_plus,
-                       ROUND(AVG(iso)::numeric, 3) as avg_iso,
-                       ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
-                       ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
+                       -- Rate stats: PA-weighted with NULL guards. ISO is PA-weighted.
+                       -- bb_pct/k_pct rebuilt from raw totals (truer than avg of rates).
+                       ROUND((SUM(woba * plate_appearances) FILTER (WHERE woba IS NOT NULL)
+                              / NULLIF(SUM(plate_appearances) FILTER (WHERE woba IS NOT NULL), 0))::numeric, 3) as avg_woba,
+                       ROUND((SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                              / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0))::numeric, 0) as avg_wrc_plus,
+                       ROUND((SUM(iso * plate_appearances) FILTER (WHERE iso IS NOT NULL)
+                              / NULLIF(SUM(plate_appearances) FILTER (WHERE iso IS NOT NULL), 0))::numeric, 3) as avg_iso,
+                       ROUND((SUM(walks)::numeric / NULLIF(SUM(plate_appearances), 0))::numeric, 3) as avg_bb_pct,
+                       ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(plate_appearances), 0))::numeric, 3) as avg_k_pct,
                        ROUND(SUM(offensive_war)::numeric, 1) as total_owar
                    FROM batting_stats
                    WHERE team_id = %s AND season = %s AND plate_appearances >= 10""",
@@ -2029,12 +2042,18 @@ def compare_teams(
                             THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_era,
                        CASE WHEN SUM(innings_pitched) > 0
                             THEN ROUND(((SUM(walks) + SUM(hits_allowed)) / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_whip,
-                       ROUND(AVG(fip)::numeric, 2) as avg_fip,
-                       ROUND(AVG(fip_plus)::numeric, 0) as avg_fip_plus,
-                       ROUND(AVG(era_minus)::numeric, 0) as avg_era_minus,
-                       ROUND(AVG(xfip)::numeric, 2) as avg_xfip,
-                       ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
-                       ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                       -- Rate stats: IP-weighted with NULL guards.
+                       -- k_pct/bb_pct rebuilt from raw totals over batters_faced.
+                       ROUND((SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                              / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0))::numeric, 2) as avg_fip,
+                       ROUND((SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
+                              / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0))::numeric, 0) as avg_fip_plus,
+                       ROUND((SUM(era_minus * innings_pitched) FILTER (WHERE era_minus IS NOT NULL)
+                              / NULLIF(SUM(innings_pitched) FILTER (WHERE era_minus IS NOT NULL), 0))::numeric, 0) as avg_era_minus,
+                       ROUND((SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
+                              / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0))::numeric, 2) as avg_xfip,
+                       ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_k_pct,
+                       ROUND((SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_bb_pct,
                        ROUND(SUM(pitching_war)::numeric, 1) as total_pwar
                    FROM pitching_stats
                    WHERE team_id = %s AND season = %s AND innings_pitched >= 3""",
@@ -2283,19 +2302,24 @@ def team_matchup(
             if not rec or (rec["wins"] or 0) + (rec["losses"] or 0) < 5:
                 continue
 
-            # Total runs scored (from batting_stats)
+            # Total runs scored (from batting_stats) - PA-weighted wRC+ w/ NULL guard
             cur.execute("""
-                SELECT SUM(runs) as rs, AVG(wrc_plus) as avg_wrc_plus,
+                SELECT SUM(runs) as rs,
+                       SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus,
                        SUM(offensive_war) as total_owar
                 FROM batting_stats
                 WHERE team_id = %s AND season = %s AND plate_appearances >= 10
             """, (tid, season))
             bat = cur.fetchone()
 
-            # Total runs allowed + pitching stats
+            # Total runs allowed + pitching stats - IP-weighted FIP/FIP+ w/ NULL guard
             cur.execute("""
                 SELECT SUM(earned_runs) as er, SUM(runs_allowed) as ra,
-                       AVG(fip) as avg_fip, AVG(fip_plus) as avg_fip_plus,
+                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
                        SUM(pitching_war) as total_pwar,
                        SUM(innings_pitched) as total_ip,
                        CASE WHEN SUM(innings_pitched) > 0
@@ -2464,9 +2488,11 @@ def _bulk_power_ratings(cur, season):
     """, (season,))
     records = {r["team_id"]: r for r in cur.fetchall()}
 
-    # Batch fetch batting stats
+    # Batch fetch batting stats - PA-weighted wRC+ w/ NULL guard
     cur.execute("""
-        SELECT team_id, SUM(runs) as rs, AVG(wrc_plus) as avg_wrc_plus,
+        SELECT team_id, SUM(runs) as rs,
+               SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                 / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus,
                SUM(offensive_war) as total_owar
         FROM batting_stats
         WHERE season = %s AND plate_appearances >= 10
@@ -2474,10 +2500,12 @@ def _bulk_power_ratings(cur, season):
     """, (season,))
     batting = {r["team_id"]: r for r in cur.fetchall()}
 
-    # Batch fetch pitching stats
+    # Batch fetch pitching stats - IP-weighted FIP w/ NULL guard
     cur.execute("""
         SELECT team_id, SUM(runs_allowed) as ra, SUM(earned_runs) as er,
-               AVG(fip) as avg_fip, SUM(pitching_war) as total_pwar
+               SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                 / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+               SUM(pitching_war) as total_pwar
         FROM pitching_stats
         WHERE season = %s AND innings_pitched >= 3
         GROUP BY team_id
@@ -2732,7 +2760,8 @@ def playoff_projections(
                 SELECT team_id,
                     SUM(runs) as rs,
                     SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus
                 FROM batting_stats WHERE season = %s
                 GROUP BY team_id
             ) bat ON bat.team_id = t.id
@@ -2740,7 +2769,8 @@ def playoff_projections(
                 SELECT team_id,
                     SUM(runs_allowed) as ra,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
                 FROM pitching_stats WHERE season = %s
                 GROUP BY team_id
             ) pit ON pit.team_id = t.id
@@ -2878,9 +2908,17 @@ def team_scatter(
                        SUM(home_runs) as hr, SUM(runs) as r, SUM(rbi) as rbi,
                        SUM(walks) as bb, SUM(strikeouts) as k, SUM(stolen_bases) as sb,
                        SUM(hit_by_pitch) as hbp,
-                       AVG(woba) as avg_woba, AVG(wrc_plus) as avg_wrc_plus,
-                       AVG(iso) as avg_iso, AVG(bb_pct) as avg_bb_pct,
-                       AVG(k_pct) as avg_k_pct, SUM(offensive_war) as total_owar
+                       -- Rate stats: PA-weighted with NULL guards.
+                       -- bb_pct/k_pct rebuilt from raw totals.
+                       SUM(woba * plate_appearances) FILTER (WHERE woba IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE woba IS NOT NULL), 0) as avg_woba,
+                       SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus,
+                       SUM(iso * plate_appearances) FILTER (WHERE iso IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE iso IS NOT NULL), 0) as avg_iso,
+                       SUM(walks)::numeric / NULLIF(SUM(plate_appearances), 0) as avg_bb_pct,
+                       SUM(strikeouts)::numeric / NULLIF(SUM(plate_appearances), 0) as avg_k_pct,
+                       SUM(offensive_war) as total_owar
                    FROM batting_stats bs
                    WHERE bs.team_id = %s AND bs.season = %s AND bs.plate_appearances >= 10""",
                 (tid, season),
@@ -2893,9 +2931,18 @@ def team_scatter(
                        SUM(runs_allowed) as ra,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
-                       AVG(fip) as avg_fip, AVG(fip_plus) as avg_fip_plus,
-                       AVG(era_minus) as avg_era_minus, AVG(xfip) as avg_xfip,
-                       AVG(k_pct) as avg_k_pct, AVG(bb_pct) as avg_bb_pct,
+                       -- Rate stats: IP-weighted with NULL guards.
+                       -- k_pct/bb_pct rebuilt from raw totals over batters_faced.
+                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
+                       SUM(era_minus * innings_pitched) FILTER (WHERE era_minus IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE era_minus IS NOT NULL), 0) as avg_era_minus,
+                       SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
+                       SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0) as avg_k_pct,
+                       SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0) as avg_bb_pct,
                        SUM(pitching_war) as total_pwar
                    FROM pitching_stats ps
                    WHERE ps.team_id = %s AND ps.season = %s AND ps.innings_pitched >= 3""",
@@ -3091,9 +3138,17 @@ def team_correlations(
                        SUM(home_runs) as hr, SUM(runs) as r, SUM(walks) as bb,
                        SUM(hit_by_pitch) as hbp, SUM(strikeouts) as k,
                        SUM(stolen_bases) as sb,
-                       AVG(woba) as avg_woba, AVG(wrc_plus) as avg_wrc_plus,
-                       AVG(iso) as avg_iso, AVG(bb_pct) as avg_bb_pct,
-                       AVG(k_pct) as avg_k_pct, SUM(offensive_war) as total_owar
+                       -- Rate stats: PA-weighted with NULL guards.
+                       -- bb_pct/k_pct rebuilt from raw totals.
+                       SUM(woba * plate_appearances) FILTER (WHERE woba IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE woba IS NOT NULL), 0) as avg_woba,
+                       SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus,
+                       SUM(iso * plate_appearances) FILTER (WHERE iso IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE iso IS NOT NULL), 0) as avg_iso,
+                       SUM(walks)::numeric / NULLIF(SUM(plate_appearances), 0) as avg_bb_pct,
+                       SUM(strikeouts)::numeric / NULLIF(SUM(plate_appearances), 0) as avg_k_pct,
+                       SUM(offensive_war) as total_owar
                    FROM batting_stats
                    WHERE team_id = %s AND season = %s AND plate_appearances >= 10""",
                 (tid, season),
@@ -3107,8 +3162,14 @@ def team_correlations(
                        SUM(runs_allowed) as ra,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
-                       AVG(fip) as avg_fip, AVG(xfip) as avg_xfip,
-                       AVG(k_pct) as avg_k_pct, AVG(bb_pct) as avg_bb_pct,
+                       -- Rate stats: IP-weighted with NULL guards.
+                       -- k_pct/bb_pct rebuilt from raw totals over batters_faced.
+                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
+                       SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0) as avg_k_pct,
+                       SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0) as avg_bb_pct,
                        SUM(pitching_war) as total_pwar
                    FROM pitching_stats
                    WHERE team_id = %s AND season = %s AND innings_pitched >= 3""",
@@ -3428,7 +3489,8 @@ def team_info_graphic(
         cur.execute("""
             SELECT SUM(runs) as rs,
                    SUM(offensive_war) as total_owar,
-                   SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                   SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                     / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus
             FROM batting_stats
             WHERE team_id = %s AND season = %s
         """, (team_id, season))
@@ -3436,7 +3498,8 @@ def team_info_graphic(
         cur.execute("""
             SELECT SUM(runs_allowed) as ra,
                    SUM(pitching_war) as total_pwar,
-                   SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                   SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                     / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
             FROM pitching_stats
             WHERE team_id = %s AND season = %s
         """, (team_id, season))
@@ -3471,14 +3534,16 @@ def team_info_graphic(
                     SELECT team_id,
                            SUM(runs) as rs,
                            SUM(offensive_war) as total_owar,
-                           SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                           SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                             / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus
                     FROM batting_stats WHERE season = %s GROUP BY team_id
                 ) bat ON bat.team_id = t.id
                 LEFT JOIN (
                     SELECT team_id,
                            SUM(runs_allowed) as ra,
                            SUM(pitching_war) as total_pwar,
-                           SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                           SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                             / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
                     FROM pitching_stats WHERE season = %s GROUP BY team_id
                 ) pit ON pit.team_id = t.id
                 LEFT JOIN composite_rankings nr ON nr.team_id = t.id AND nr.season = %s
@@ -4637,9 +4702,16 @@ def team_leaderboard(
                        SUM(home_runs) as hr, SUM(runs) as r, SUM(rbi) as rbi,
                        SUM(walks) as bb, SUM(strikeouts) as k,
                        SUM(stolen_bases) as sb, SUM(hit_by_pitch) as hbp,
-                       AVG(woba) as avg_woba, AVG(wrc_plus) as avg_wrc_plus,
-                       AVG(iso) as avg_iso, AVG(bb_pct) as avg_bb_pct,
-                       AVG(k_pct) as avg_k_pct, SUM(offensive_war) as total_owar
+                       -- Rate stats: PA-weighted w/ NULL guards; bb%/k% raw totals.
+                       SUM(woba * plate_appearances) FILTER (WHERE woba IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE woba IS NOT NULL), 0) as avg_woba,
+                       SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus,
+                       SUM(iso * plate_appearances) FILTER (WHERE iso IS NOT NULL)
+                         / NULLIF(SUM(plate_appearances) FILTER (WHERE iso IS NOT NULL), 0) as avg_iso,
+                       SUM(walks)::numeric / NULLIF(SUM(plate_appearances), 0) as avg_bb_pct,
+                       SUM(strikeouts)::numeric / NULLIF(SUM(plate_appearances), 0) as avg_k_pct,
+                       SUM(offensive_war) as total_owar
                 FROM batting_stats
                 WHERE team_id = %s AND season = %s AND plate_appearances >= 10
             """, (tid, season))
@@ -4651,9 +4723,18 @@ def team_leaderboard(
                        SUM(innings_pitched) as ip, SUM(earned_runs) as er,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
-                       AVG(fip) as avg_fip, AVG(fip_plus) as avg_fip_plus,
-                       AVG(era_minus) as avg_era_minus, AVG(xfip) as avg_xfip,
-                       AVG(k_pct) as avg_k_pct, AVG(bb_pct) as avg_bb_pct,
+                       SUM(batters_faced) as bf,
+                       -- Rate stats: IP-weighted w/ NULL guards; k%/bb% raw totals.
+                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
+                       SUM(era_minus * innings_pitched) FILTER (WHERE era_minus IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE era_minus IS NOT NULL), 0) as avg_era_minus,
+                       SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
+                         / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
+                       SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0) as avg_k_pct,
+                       SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0) as avg_bb_pct,
                        SUM(pitching_war) as total_pwar
                 FROM pitching_stats
                 WHERE team_id = %s AND season = %s AND innings_pitched >= 3
@@ -6765,8 +6846,13 @@ def team_history(team_id: int):
                           SUM(rbi) as total_rbi,
                           SUM(stolen_bases) as total_sb,
                           SUM(offensive_war) as total_owar,
-                          SUM(CASE WHEN plate_appearances >= 50 THEN wrc_plus * plate_appearances ELSE 0 END) as weighted_wrc,
-                          SUM(CASE WHEN plate_appearances >= 50 THEN plate_appearances ELSE 0 END) as qualified_pa
+                          -- Both numerator and denominator must require wrc_plus IS NOT NULL,
+                          -- otherwise NULL-wRC+ rows add PA to the denominator only and silently
+                          -- deflate the weighted average.
+                          SUM(CASE WHEN plate_appearances >= 50 AND wrc_plus IS NOT NULL
+                                   THEN wrc_plus * plate_appearances ELSE 0 END) as weighted_wrc,
+                          SUM(CASE WHEN plate_appearances >= 50 AND wrc_plus IS NOT NULL
+                                   THEN plate_appearances ELSE 0 END) as qualified_pa
                    FROM batting_stats WHERE team_id = %s AND season = %s""",
                 (team_id, yr),
             )
@@ -6779,8 +6865,10 @@ def team_history(team_id: int):
                           SUM(losses) as total_l,
                           SUM(saves) as total_sv,
                           SUM(pitching_war) as total_pwar,
-                          SUM(CASE WHEN innings_pitched >= 10 THEN fip * innings_pitched ELSE 0 END) as weighted_fip,
-                          SUM(CASE WHEN innings_pitched >= 10 THEN innings_pitched ELSE 0 END) as qualified_ip
+                          SUM(CASE WHEN innings_pitched >= 10 AND fip IS NOT NULL
+                                   THEN fip * innings_pitched ELSE 0 END) as weighted_fip,
+                          SUM(CASE WHEN innings_pitched >= 10 AND fip IS NOT NULL
+                                   THEN innings_pitched ELSE 0 END) as qualified_ip
                    FROM pitching_stats WHERE team_id = %s AND season = %s""",
                 (team_id, yr),
             )
@@ -9595,9 +9683,11 @@ def key_matchup(
                          THEN ROUND(((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_slg,
                     CASE WHEN SUM(plate_appearances) > 0
                          THEN ROUND((SUM(home_runs)::numeric / SUM(plate_appearances))::numeric, 4) ELSE 0 END as hr_per_pa,
-                    ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
-                    ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
-                    ROUND(AVG(wrc_plus)::numeric, 0) as avg_wrc_plus,
+                    -- bb%/k% raw totals; wRC+ PA-weighted w/ NULL guard.
+                    ROUND((SUM(walks)::numeric / NULLIF(SUM(plate_appearances), 0))::numeric, 3) as avg_bb_pct,
+                    ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(plate_appearances), 0))::numeric, 3) as avg_k_pct,
+                    ROUND((SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                           / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0))::numeric, 0) as avg_wrc_plus,
                     SUM(home_runs) as total_hr,
                     SUM(stolen_bases) as total_sb,
                     SUM(runs) as total_runs,
@@ -9612,9 +9702,11 @@ def key_matchup(
             cur.execute("""
                 SELECT
                     ROUND(SUM(pitching_war)::numeric, 1) as total_pwar,
-                    ROUND(AVG(fip)::numeric, 2) as avg_fip,
-                    ROUND(AVG(k_pct)::numeric, 3) as avg_k_pct,
-                    ROUND(AVG(bb_pct)::numeric, 3) as avg_bb_pct,
+                    -- FIP IP-weighted w/ NULL guard; k%/bb% raw totals over BF.
+                    ROUND((SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                           / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0))::numeric, 2) as avg_fip,
+                    ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_k_pct,
+                    ROUND((SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_bb_pct,
                     CASE WHEN SUM(innings_pitched) > 0
                          THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_era,
                     CASE WHEN SUM(innings_pitched) > 0
@@ -13757,17 +13849,19 @@ def team_stats_agg(
                     CASE WHEN SUM(b.plate_appearances) > 0
                          THEN ROUND(SUM(b.strikeouts)::numeric / SUM(b.plate_appearances) * 100, 1)
                          ELSE NULL END as k_pct,
-                    -- Weighted advanced stats (PA-weighted averages)
-                    CASE WHEN SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END) > 0
+                    -- Weighted advanced stats (PA-weighted averages with NULL guards).
+                    -- Denominator CASE must ALSO require the stat IS NOT NULL, otherwise
+                    -- NULL-stat rows add PA to the denominator only and deflate the mean.
+                    CASE WHEN SUM(CASE WHEN b.plate_appearances >= 10 AND b.wrc_plus IS NOT NULL THEN b.plate_appearances ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN b.plate_appearances >= 10 THEN b.wrc_plus * b.plate_appearances ELSE 0 END)::numeric
-                              / SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END),
+                              SUM(CASE WHEN b.plate_appearances >= 10 AND b.wrc_plus IS NOT NULL THEN b.wrc_plus * b.plate_appearances ELSE 0 END)::numeric
+                              / SUM(CASE WHEN b.plate_appearances >= 10 AND b.wrc_plus IS NOT NULL THEN b.plate_appearances ELSE 0 END),
                               1)
                          ELSE NULL END as wrc_plus,
-                    CASE WHEN SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END) > 0
+                    CASE WHEN SUM(CASE WHEN b.plate_appearances >= 10 AND b.woba IS NOT NULL THEN b.plate_appearances ELSE 0 END) > 0
                          THEN ROUND(
-                              SUM(CASE WHEN b.plate_appearances >= 10 THEN b.woba * b.plate_appearances ELSE 0 END)::numeric
-                              / SUM(CASE WHEN b.plate_appearances >= 10 THEN b.plate_appearances ELSE 0 END),
+                              SUM(CASE WHEN b.plate_appearances >= 10 AND b.woba IS NOT NULL THEN b.woba * b.plate_appearances ELSE 0 END)::numeric
+                              / SUM(CASE WHEN b.plate_appearances >= 10 AND b.woba IS NOT NULL THEN b.plate_appearances ELSE 0 END),
                               3)
                          ELSE NULL END as woba,
                     ROUND(SUM(COALESCE(b.wraa, 0))::numeric, 1) as wraa,
