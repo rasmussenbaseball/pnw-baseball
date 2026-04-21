@@ -3306,6 +3306,383 @@ def get_team_rankings(
 
 
 # ============================================================
+# TEAM INFO GRAPHIC (single-payload data for the social card)
+# ============================================================
+
+@router.get("/teams/{team_id}/info-graphic")
+def team_info_graphic(
+    team_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """
+    Single-payload data for the Team Info social graphic.
+
+    Bundles team profile, head coach, record splits (overall / conf /
+    home / away), run differential, Pythagorean expected wins,
+    national + conference + power ratings, top 3 hitters and pitchers
+    by WAR, last 5 games, and a Baseball Savant-style 8-stat
+    percentile ranking vs other teams in the same division.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── 1. Team profile ──
+        cur.execute("""
+            SELECT t.id, t.name, t.short_name, t.logo_url, t.mascot,
+                   t.city, t.state, t.conference_id,
+                   c.name as conference_name,
+                   c.abbreviation as conference_abbrev,
+                   d.id as division_id,
+                   d.level as division_level,
+                   d.name as division_name
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE t.id = %s
+        """, (team_id,))
+        team = cur.fetchone()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        team = dict(team)
+
+        # ── 2. Head coach ──
+        cur.execute("""
+            SELECT name FROM coaches
+            WHERE team_id = %s AND role = 'head_coach'
+            ORDER BY id LIMIT 1
+        """, (team_id,))
+        coach_row = cur.fetchone()
+        head_coach = coach_row["name"] if coach_row else None
+
+        # ── 3. Overall + conference record ──
+        cur.execute("""
+            SELECT wins, losses, ties,
+                   conference_wins, conference_losses, conference_ties
+            FROM team_season_stats
+            WHERE team_id = %s AND season = %s
+        """, (team_id, season))
+        rec_row = cur.fetchone()
+        rec = dict(rec_row) if rec_row else {}
+
+        # ── 4. Home/away splits + runs for/against ──
+        cur.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN home_team_id = %s
+                                  AND home_score > away_score THEN 1 ELSE 0 END), 0) AS home_wins,
+                COALESCE(SUM(CASE WHEN home_team_id = %s
+                                  AND home_score < away_score THEN 1 ELSE 0 END), 0) AS home_losses,
+                COALESCE(SUM(CASE WHEN away_team_id = %s
+                                  AND away_score > home_score THEN 1 ELSE 0 END), 0) AS away_wins,
+                COALESCE(SUM(CASE WHEN away_team_id = %s
+                                  AND away_score < home_score THEN 1 ELSE 0 END), 0) AS away_losses,
+                COALESCE(SUM(CASE WHEN home_team_id = %s THEN home_score ELSE 0 END), 0) +
+                COALESCE(SUM(CASE WHEN away_team_id = %s THEN away_score ELSE 0 END), 0) AS runs_for,
+                COALESCE(SUM(CASE WHEN home_team_id = %s THEN away_score ELSE 0 END), 0) +
+                COALESCE(SUM(CASE WHEN away_team_id = %s THEN home_score ELSE 0 END), 0) AS runs_against
+            FROM games
+            WHERE season = %s
+              AND status = 'final'
+              AND (home_team_id = %s OR away_team_id = %s)
+        """, (team_id, team_id, team_id, team_id, team_id, team_id,
+              team_id, team_id, season, team_id, team_id))
+        splits = dict(cur.fetchone() or {})
+        runs_for = int(splits.get("runs_for") or 0)
+        runs_against = int(splits.get("runs_against") or 0)
+        run_diff = runs_for - runs_against
+
+        # Pythagorean expected wins (exponent 1.83, same as power-rating engine)
+        wins = int(rec.get("wins") or 0)
+        losses = int(rec.get("losses") or 0)
+        total_games = wins + losses
+        if total_games > 0 and (runs_for + runs_against) > 0:
+            rs_c = max(float(runs_for), 1)
+            ra_c = max(float(runs_against), 1)
+            pyth_pct = rs_c ** 1.83 / (rs_c ** 1.83 + ra_c ** 1.83)
+            pyth_wins = round(pyth_pct * total_games)
+            pyth_losses = total_games - pyth_wins
+        else:
+            pyth_wins = None
+            pyth_losses = None
+
+        # ── 5. National rank (composite) + percentile ──
+        cur.execute("""
+            SELECT composite_rank, national_percentile, num_sources
+            FROM composite_rankings
+            WHERE team_id = %s AND season = %s
+        """, (team_id, season))
+        comp = cur.fetchone()
+        national_rank = comp["composite_rank"] if comp else None
+        natl_pct = float(comp["national_percentile"]) if comp and comp["national_percentile"] is not None else None
+
+        # ── 6. SOS (averaged across rating sources) ──
+        cur.execute("""
+            SELECT AVG(sos) as avg_sos, AVG(sos_rank) as avg_sos_rank
+            FROM national_ratings
+            WHERE team_id = %s AND season = %s AND sos IS NOT NULL
+        """, (team_id, season))
+        sos_row = dict(cur.fetchone() or {})
+        avg_sos = float(sos_row["avg_sos"]) if sos_row.get("avg_sos") is not None else None
+        avg_sos_rank = int(sos_row["avg_sos_rank"]) if sos_row.get("avg_sos_rank") is not None else None
+
+        # ── 7. Power rating ──
+        cur.execute("""
+            SELECT AVG(wrc_plus) as avg_wrc_plus, SUM(offensive_war) as total_owar
+            FROM batting_stats
+            WHERE team_id = %s AND season = %s AND plate_appearances >= 10
+        """, (team_id, season))
+        bat_agg = dict(cur.fetchone() or {})
+        cur.execute("""
+            SELECT AVG(fip) as avg_fip, SUM(pitching_war) as total_pwar
+            FROM pitching_stats
+            WHERE team_id = %s AND season = %s AND innings_pitched >= 3
+        """, (team_id, season))
+        pit_agg = dict(cur.fetchone() or {})
+        total_war = float(bat_agg.get("total_owar") or 0) + float(pit_agg.get("total_pwar") or 0)
+        power_rating = _compute_power_rating(
+            wins, losses, runs_for, runs_against,
+            bat_agg.get("avg_wrc_plus"), pit_agg.get("avg_fip"),
+            total_war, team["division_level"], natl_pct,
+        )
+
+        # ── 8. Conference rank (same logic as /teams/{id}/rankings) ──
+        cur.execute("""
+            SELECT t.id
+            FROM teams t
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            WHERE t.conference_id = %s AND t.is_active = 1
+            ORDER BY
+                CASE WHEN (COALESCE(s.conference_wins, 0) + COALESCE(s.conference_losses, 0)) > 0
+                     THEN CAST(COALESCE(s.conference_wins, 0) AS numeric) /
+                          (COALESCE(s.conference_wins, 0) + COALESCE(s.conference_losses, 0))
+                     ELSE CAST(COALESCE(s.wins, 0) AS numeric) /
+                          NULLIF(COALESCE(s.wins, 0) + COALESCE(s.losses, 0), 0)
+                END DESC,
+                COALESCE(s.wins, 0) DESC
+        """, (season, team["conference_id"]))
+        conf_teams = cur.fetchall()
+        conf_total = len(conf_teams)
+        conf_rank = None
+        for i, ct in enumerate(conf_teams):
+            if ct["id"] == team_id:
+                conf_rank = i + 1
+                break
+
+        # ── 9. Top 3 hitters by WAR (qualified) ──
+        cur.execute(f"""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                   p.headshot_url,
+                   bs.batting_avg::float as batting_avg,
+                   bs.wrc_plus::float as wrc_plus,
+                   bs.offensive_war::float as offensive_war
+            FROM batting_stats bs
+            JOIN players p ON bs.player_id = p.id
+            LEFT JOIN team_season_stats tss ON tss.team_id = bs.team_id AND tss.season = bs.season
+            WHERE bs.team_id = %s AND bs.season = %s
+              AND bs.plate_appearances >= {QUALIFIED_PA_PER_GAME}
+                  * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+              AND bs.offensive_war IS NOT NULL
+            ORDER BY bs.offensive_war DESC NULLS LAST
+            LIMIT 3
+        """, (team_id, season))
+        top_hitters = [dict(r) for r in cur.fetchall()]
+
+        # ── 10. Top 3 pitchers by WAR (qualified) ──
+        cur.execute(f"""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                   p.headshot_url,
+                   ps.era::float as era,
+                   (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0))::float as k_bb_pct,
+                   ps.pitching_war::float as pitching_war
+            FROM pitching_stats ps
+            JOIN players p ON ps.player_id = p.id
+            LEFT JOIN team_season_stats tss ON tss.team_id = ps.team_id AND tss.season = ps.season
+            WHERE ps.team_id = %s AND ps.season = %s
+              AND ps.innings_pitched >= {QUALIFIED_IP_PER_GAME}
+                  * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+              AND ps.pitching_war IS NOT NULL
+            ORDER BY ps.pitching_war DESC NULLS LAST
+            LIMIT 3
+        """, (team_id, season))
+        top_pitchers = [dict(r) for r in cur.fetchall()]
+
+        # ── 11. Last 5 games (most recent first; we'll reverse for left-to-right display) ──
+        cur.execute("""
+            SELECT g.id, g.game_date, g.home_team_id, g.away_team_id,
+                   g.home_score, g.away_score,
+                   ht.short_name AS home_short, ht.logo_url AS home_logo,
+                   at2.short_name AS away_short, at2.logo_url AS away_logo
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.season = %s AND g.status = 'final'
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+            ORDER BY g.game_date DESC, g.id DESC
+            LIMIT 5
+        """, (season, team_id, team_id))
+        last_5 = []
+        for g in cur.fetchall():
+            g = dict(g)
+            is_home = g["home_team_id"] == team_id
+            team_score = g["home_score"] if is_home else g["away_score"]
+            opp_score = g["away_score"] if is_home else g["home_score"]
+            opp_short = g["away_short"] if is_home else g["home_short"]
+            opp_logo = g["away_logo"] if is_home else g["home_logo"]
+            if team_score is None or opp_score is None:
+                result = None
+            elif team_score > opp_score:
+                result = "W"
+            elif team_score < opp_score:
+                result = "L"
+            else:
+                result = "T"
+            last_5.append({
+                "date": g["game_date"].isoformat() if g["game_date"] else None,
+                "home_away": "vs" if is_home else "@",
+                "opponent_short": opp_short,
+                "opponent_logo": opp_logo,
+                "team_score": team_score,
+                "opp_score": opp_score,
+                "result": result,
+            })
+        last_5.reverse()  # oldest of the 5 on the left
+
+        # ── 12. Team-level percentiles vs division peers ──
+        # Aggregate every team in the same division, then rank ours.
+        cur.execute("""
+            SELECT t.id as team_id,
+                   AVG(bs.wrc_plus) as wrc_plus,
+                   AVG(bs.woba) as woba,
+                   AVG(bs.iso) as iso,
+                   AVG(COALESCE(bs.bb_pct,0) - COALESCE(bs.k_pct,0)) as bb_minus_k_pct
+            FROM teams t
+            JOIN batting_stats bs ON bs.team_id = t.id AND bs.season = %s
+                  AND bs.plate_appearances >= 10
+            WHERE t.conference_id IN (
+                SELECT id FROM conferences WHERE division_id = %s
+            )
+            GROUP BY t.id
+        """, (season, team["division_id"]))
+        bat_div = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT t.id as team_id,
+                   AVG(ps.fip) as fip,
+                   AVG(ps.era_plus) as era_plus,
+                   AVG(COALESCE(ps.k_pct,0) - COALESCE(ps.bb_pct,0)) as k_bb_pct
+            FROM teams t
+            JOIN pitching_stats ps ON ps.team_id = t.id AND ps.season = %s
+                  AND ps.innings_pitched >= 3
+            WHERE t.conference_id IN (
+                SELECT id FROM conferences WHERE division_id = %s
+            )
+            GROUP BY t.id
+        """, (season, team["division_id"]))
+        pit_div = [dict(r) for r in cur.fetchall()]
+
+        # Per-team run differential per game across the whole division
+        cur.execute("""
+            SELECT t.id as team_id,
+                   (COALESCE(SUM(CASE WHEN g.home_team_id = t.id THEN g.home_score ELSE 0 END), 0) +
+                    COALESCE(SUM(CASE WHEN g.away_team_id = t.id THEN g.away_score ELSE 0 END), 0)) -
+                   (COALESCE(SUM(CASE WHEN g.home_team_id = t.id THEN g.away_score ELSE 0 END), 0) +
+                    COALESCE(SUM(CASE WHEN g.away_team_id = t.id THEN g.home_score ELSE 0 END), 0)) as run_diff,
+                   COUNT(g.id) as gp
+            FROM teams t
+            LEFT JOIN games g ON (g.home_team_id = t.id OR g.away_team_id = t.id)
+                AND g.season = %s AND g.status = 'final'
+            WHERE t.conference_id IN (SELECT id FROM conferences WHERE division_id = %s)
+              AND t.is_active = 1
+            GROUP BY t.id
+            HAVING COUNT(g.id) > 0
+        """, (season, team["division_id"]))
+        rd_div = [dict(r) for r in cur.fetchall()]
+
+        def _pctile(values, my_val, higher_is_better=True):
+            if my_val is None:
+                return None
+            vals = [v for v in values if v is not None]
+            if len(vals) < 3:
+                return None
+            below = sum(1 for v in vals if v < my_val)
+            equal = sum(1 for v in vals if v == my_val)
+            pct = round(((below + equal * 0.5) / len(vals)) * 100)
+            if not higher_is_better:
+                pct = 100 - pct
+            return max(1, min(99, pct))
+
+        my_bat = next((b for b in bat_div if b["team_id"] == team_id), {}) or {}
+        my_pit = next((p for p in pit_div if p["team_id"] == team_id), {}) or {}
+        my_rd = next((r for r in rd_div if r["team_id"] == team_id), {}) or {}
+
+        my_rd_pg = (float(my_rd["run_diff"] or 0) / my_rd["gp"]) if my_rd.get("gp") else None
+        rd_pg_div = [(float(r["run_diff"] or 0) / r["gp"]) if r.get("gp") else None for r in rd_div]
+
+        def _to_f(v):
+            return float(v) if v is not None else None
+
+        team_percentiles = {
+            "wrc_plus":          {"value": _to_f(my_bat.get("wrc_plus")),
+                                  "percentile": _pctile([b.get("wrc_plus") for b in bat_div], my_bat.get("wrc_plus"), True)},
+            "woba":              {"value": _to_f(my_bat.get("woba")),
+                                  "percentile": _pctile([b.get("woba") for b in bat_div], my_bat.get("woba"), True)},
+            "iso":               {"value": _to_f(my_bat.get("iso")),
+                                  "percentile": _pctile([b.get("iso") for b in bat_div], my_bat.get("iso"), True)},
+            "bb_minus_k_pct":    {"value": _to_f(my_bat.get("bb_minus_k_pct")),
+                                  "percentile": _pctile([b.get("bb_minus_k_pct") for b in bat_div], my_bat.get("bb_minus_k_pct"), True)},
+            "era_plus":          {"value": _to_f(my_pit.get("era_plus")),
+                                  "percentile": _pctile([p.get("era_plus") for p in pit_div], my_pit.get("era_plus"), True)},
+            "fip":               {"value": _to_f(my_pit.get("fip")),
+                                  "percentile": _pctile([p.get("fip") for p in pit_div], my_pit.get("fip"), False)},
+            "k_bb_pct":          {"value": _to_f(my_pit.get("k_bb_pct")),
+                                  "percentile": _pctile([p.get("k_bb_pct") for p in pit_div], my_pit.get("k_bb_pct"), True)},
+            "run_diff_per_game": {"value": my_rd_pg,
+                                  "percentile": _pctile(rd_pg_div, my_rd_pg, True)},
+        }
+
+        # Inject convenience "name" into top performers
+        for h in top_hitters:
+            h["name"] = f'{h.get("first_name","")} {h.get("last_name","")}'.strip()
+        for p in top_pitchers:
+            p["name"] = f'{p.get("first_name","")} {p.get("last_name","")}'.strip()
+
+        return {
+            "season": season,
+            "team": team,
+            "head_coach": {"name": head_coach} if head_coach else None,
+            "record": {
+                "wins": wins,
+                "losses": losses,
+                "ties": int(rec.get("ties") or 0),
+                "conf_wins": int(rec.get("conference_wins") or 0),
+                "conf_losses": int(rec.get("conference_losses") or 0),
+                "conf_ties": int(rec.get("conference_ties") or 0),
+                "home_wins": int(splits.get("home_wins") or 0),
+                "home_losses": int(splits.get("home_losses") or 0),
+                "away_wins": int(splits.get("away_wins") or 0),
+                "away_losses": int(splits.get("away_losses") or 0),
+                "runs_for": runs_for,
+                "runs_against": runs_against,
+                "run_diff": run_diff,
+                "pythagorean_wins": pyth_wins,
+                "pythagorean_losses": pyth_losses,
+            },
+            "rankings": {
+                "national_rank": national_rank,
+                "national_percentile": natl_pct,
+                "conference_rank": conf_rank,
+                "conference_total": conf_total,
+                "power_rating": power_rating,
+                "sos": avg_sos,
+                "sos_rank": avg_sos_rank,
+            },
+            "top_hitters": top_hitters,
+            "top_pitchers": top_pitchers,
+            "team_percentiles": team_percentiles,
+            "last_5_games": last_5,
+        }
+
+
+# ============================================================
 # LEADERBOARDS: Batting
 # ============================================================
 

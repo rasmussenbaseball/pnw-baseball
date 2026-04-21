@@ -72,6 +72,7 @@ const NAV = [
       { to: '/conference-standings', label: 'Standings', desc: 'Conference standings graphics' },
       { to: '/all-conference-graphic', label: 'All-Conference Teams', desc: 'All-conference team graphics' },
       { to: '/top-performers-graphic', label: 'Top Performers', desc: 'Weekly top 10 hitters and pitchers' },
+      { to: '/team-info-graphic', label: 'Team Info', desc: 'Full team overview graphic' },
     ],
   },
   {
@@ -441,17 +442,17 @@ function SearchBar({ mobile = false }) {
 // ─── Dropdown panel component ───
 function DropdownPanel({ items, onClose }) {
   return (
-    <div className="grid gap-1 p-3" style={{ minWidth: 260 }}>
+    <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
       {items.map(item => (
         <Link
           key={item.to}
           to={item.to}
           onClick={onClose}
-          className={`flex flex-col px-3 py-2.5 rounded-lg transition-colors group ${
+          className={`flex flex-col px-2.5 py-1.5 rounded-md transition-colors group ${
             item.locked ? 'opacity-50 hover:bg-white/5' : 'hover:bg-white/10'
           }`}
         >
-          <span className="text-sm font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5 leading-tight">
             {item.label}
             {item.locked && (
               <svg className="w-3 h-3 text-teal-300/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -460,7 +461,7 @@ function DropdownPanel({ items, onClose }) {
               </svg>
             )}
           </span>
-          <span className="text-xs text-teal-300/60 mt-0.5">
+          <span className="text-[11px] text-teal-300/60 mt-0 leading-tight">
             {item.locked ? 'Coming soon' : item.desc}
           </span>
         </Link>

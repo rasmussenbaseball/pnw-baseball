@@ -109,6 +109,7 @@ import PlayerGraphic from './pages/PlayerGraphic'
 import ConferenceStandingsGraphic from './pages/ConferenceStandingsGraphic'
 import AllConferenceGraphic from './pages/AllConferenceGraphic'
 import TopPerformersGraphic from './pages/TopPerformersGraphic'
+import TeamInfoGraphic from './pages/TeamInfoGraphic'
 import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
 import PlayoffProjections from './pages/PlayoffProjections'
@@ -187,6 +188,7 @@ export default function App() {
           <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
           <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
           <Route path="/top-performers-graphic" element={<RequireAuth><TopPerformersGraphic /></RequireAuth>} />
+          <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
 
           {/* About */}
