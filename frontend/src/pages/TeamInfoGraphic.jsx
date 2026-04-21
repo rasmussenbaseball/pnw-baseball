@@ -728,12 +728,18 @@ export default function TeamInfoGraphic() {
           className="px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-nw-teal min-w-[260px]"
         >
           <option value="">Select a team...</option>
-          {teams.map(t => (
-            <option key={t.id} value={t.id}>
-              {cleanTeamName(t.name || t.short_name)}
-              {t.division_level ? ` (D${t.division_level})` : ''}
-            </option>
-          ))}
+          {teams.map(t => {
+            const lvl = t.division_level
+            const label = lvl
+              ? (/^\d+$/.test(String(lvl)) ? `D${lvl}` : String(lvl))
+              : ''
+            return (
+              <option key={t.id} value={t.id}>
+                {cleanTeamName(t.name || t.short_name)}
+                {label ? ` (${label})` : ''}
+              </option>
+            )
+          })}
         </select>
 
         {rendered && (

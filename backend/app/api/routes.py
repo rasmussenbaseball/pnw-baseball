@@ -3357,7 +3357,7 @@ def team_info_graphic(
         # ── 3. Overall + conference record ──
         cur.execute("""
             SELECT wins, losses, ties,
-                   conference_wins, conference_losses, conference_ties
+                   conference_wins, conference_losses
             FROM team_season_stats
             WHERE team_id = %s AND season = %s
         """, (team_id, season))
@@ -3655,7 +3655,6 @@ def team_info_graphic(
                 "ties": int(rec.get("ties") or 0),
                 "conf_wins": int(rec.get("conference_wins") or 0),
                 "conf_losses": int(rec.get("conference_losses") or 0),
-                "conf_ties": int(rec.get("conference_ties") or 0),
                 "home_wins": int(splits.get("home_wins") or 0),
                 "home_losses": int(splits.get("home_losses") or 0),
                 "away_wins": int(splits.get("away_wins") or 0),
