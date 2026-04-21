@@ -3481,7 +3481,7 @@ def team_info_graphic(
                            SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
                     FROM pitching_stats WHERE season = %s GROUP BY team_id
                 ) pit ON pit.team_id = t.id
-                LEFT JOIN national_ratings nr ON nr.team_id = t.id AND nr.season = %s
+                LEFT JOIN composite_rankings nr ON nr.team_id = t.id AND nr.season = %s
                 WHERE c.division_id = %s AND t.is_active = 1
             """, (season, season, season, season, team["division_id"]))
             div_rows = [dict(r) for r in cur.fetchall()]
@@ -3513,7 +3513,11 @@ def team_info_graphic(
                     power_rating_conf_rank = idx + 1
                     break
         except Exception:
-            pass
+            # Rollback so the aborted transaction doesn't poison later queries
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
         # ── 8. Conference rank (same logic as /teams/{id}/rankings) ──
         cur.execute("""
