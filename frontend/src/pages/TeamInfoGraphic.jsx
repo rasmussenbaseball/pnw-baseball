@@ -330,7 +330,7 @@ function drawPercentiles(ctx, data, y, h) {
     { key: 'woba', label: 'wOBA', fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
     { key: 'iso', label: 'ISO', fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
     { key: 'bb_minus_k_pct', label: 'BB%-K%', fmt: v => v != null ? (v > 0 ? '+' : '') + v.toFixed(1) + '%' : '-' },
-    { key: 'era_plus', label: 'ERA+', fmt: v => v != null ? v.toFixed(0) : '-' },
+    { key: 'era_minus', label: 'ERA-', fmt: v => v != null ? v.toFixed(0) : '-' },
     { key: 'fip', label: 'FIP', fmt: v => v != null ? v.toFixed(2) : '-' },
     { key: 'k_bb_pct', label: 'K%-BB%', fmt: v => v != null ? v.toFixed(1) + '%' : '-' },
     { key: 'run_diff_per_game', label: 'RD/G', fmt: v => v != null ? (v > 0 ? '+' : '') + v.toFixed(2) : '-' },

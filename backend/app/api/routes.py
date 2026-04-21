@@ -3567,7 +3567,7 @@ def team_info_graphic(
         cur.execute("""
             SELECT t.id as team_id,
                    AVG(ps.fip) as fip,
-                   AVG(ps.era_plus) as era_plus,
+                   AVG(ps.era_minus) as era_minus,
                    AVG(COALESCE(ps.k_pct,0) - COALESCE(ps.bb_pct,0)) as k_bb_pct
             FROM teams t
             JOIN pitching_stats ps ON ps.team_id = t.id AND ps.season = %s
@@ -3629,8 +3629,8 @@ def team_info_graphic(
                                   "percentile": _pctile([b.get("iso") for b in bat_div], my_bat.get("iso"), True)},
             "bb_minus_k_pct":    {"value": _to_f(my_bat.get("bb_minus_k_pct")),
                                   "percentile": _pctile([b.get("bb_minus_k_pct") for b in bat_div], my_bat.get("bb_minus_k_pct"), True)},
-            "era_plus":          {"value": _to_f(my_pit.get("era_plus")),
-                                  "percentile": _pctile([p.get("era_plus") for p in pit_div], my_pit.get("era_plus"), True)},
+            "era_minus":         {"value": _to_f(my_pit.get("era_minus")),
+                                  "percentile": _pctile([p.get("era_minus") for p in pit_div], my_pit.get("era_minus"), False)},
             "fip":               {"value": _to_f(my_pit.get("fip")),
                                   "percentile": _pctile([p.get("fip") for p in pit_div], my_pit.get("fip"), False)},
             "k_bb_pct":          {"value": _to_f(my_pit.get("k_bb_pct")),
