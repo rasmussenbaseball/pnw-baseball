@@ -4378,7 +4378,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             "bb_pct":        {"col": "bs.bb_pct",        "higher_better": True},
             "k_pct":         {"col": "bs.k_pct",         "higher_better": False},
             "offensive_war":  {"col": "bs.offensive_war", "higher_better": True},
-            "stolen_bases":  {"col": "bs.stolen_bases",  "higher_better": True},
+            "sb_per_pa":     {"col": "CASE WHEN bs.plate_appearances > 0 THEN bs.stolen_bases::float / bs.plate_appearances ELSE NULL END", "higher_better": True},
             "hr_pa_pct":     {"col": "CASE WHEN bs.plate_appearances > 0 THEN bs.home_runs::float / bs.plate_appearances ELSE NULL END", "higher_better": True},
         }
         base_query = """
@@ -4434,6 +4434,11 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             pa = player_stats.get("plate_appearances") or 0
             if pa > 0:
                 player_val = hr / pa
+        if stat_key == "sb_per_pa" and player_val is None:
+            sb = player_stats.get("stolen_bases") or 0
+            pa = player_stats.get("plate_appearances") or 0
+            if pa > 0:
+                player_val = sb / pa
 
         if player_val is None:
             continue
@@ -4493,6 +4498,8 @@ def _aggregate_career_batting(seasons):
     totals["iso"] = (totals["slugging_pct"] or 0) - (totals["batting_avg"] or 0) if ab > 0 else None
     totals["bb_pct"] = bb / pa if pa > 0 else None
     totals["k_pct"] = totals["strikeouts"] / pa if pa > 0 else None
+    totals["sb_per_pa"] = totals["stolen_bases"] / pa if pa > 0 else None
+    totals["hr_pa_pct"] = hr / pa if pa > 0 else None
     totals["offensive_war"] = sum(s.get("offensive_war", 0) or 0 for s in seasons)
 
     # wOBA / wRC+ are complex league-adjusted - use PA-weighted average as approximation
@@ -4578,7 +4585,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
             "bb_pct":        {"higher_better": True},
             "k_pct":         {"higher_better": False},
             "offensive_war": {"higher_better": True},
-            "stolen_bases":  {"higher_better": True},
+            "sb_per_pa":     {"higher_better": True},
             "hr_pa_pct":     {"higher_better": True},
         }
         # Get all players in this division with 2+ batting seasons and 100+ career PA
@@ -4620,7 +4627,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                 "bb_pct": bb / pa if pa > 0 else None,
                 "k_pct": k / pa if pa > 0 else None,
                 "offensive_war": pd["offensive_war"],
-                "stolen_bases": sb,
+                "sb_per_pa": sb / pa if pa > 0 else None,
                 "hr_pa_pct": hr / pa if pa > 0 else None,
             })
 

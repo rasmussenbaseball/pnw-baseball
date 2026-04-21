@@ -58,6 +58,7 @@ function computeCareerTotals(seasons, type) {
     totals.wrc_plus = null
     totals.bb_pct = pa > 0 ? bb / pa : null
     totals.k_pct = pa > 0 ? totals.strikeouts / pa : null
+    totals.sb_per_pa = pa > 0 ? totals.stolen_bases / pa : null
     totals.offensive_war = seasons.reduce((s, r) => s + (r.offensive_war || 0), 0)
   } else {
     const { earned_runs: er, innings_pitched: ip, walks: bb, hits_allowed: h,
@@ -81,7 +82,7 @@ const BATTING_PERCENTILE_METRICS = [
   { key: 'bb_pct',        label: 'BB%',    format: 'pct' },
   { key: 'k_pct',         label: 'K%',     format: 'pct' },
   { key: 'offensive_war', label: 'WAR',    format: 'war' },
-  { key: 'stolen_bases',  label: 'SB',     format: 'int' },
+  { key: 'sb_per_pa',     label: 'SB/PA',  format: 'pct' },
 ]
 
 const PITCHING_PERCENTILE_METRICS = [
@@ -102,7 +103,7 @@ const BATTING_CORE = [
   { key: 'hits', label: 'H', format: 'int' },
   { key: 'home_runs', label: 'HR', format: 'int' },
   { key: 'rbi', label: 'RBI', format: 'int' },
-  { key: 'stolen_bases', label: 'SB', format: 'int' },
+  { key: 'sb_per_pa', label: 'SB/PA', format: 'pct' },
   { key: 'runs', label: 'R', format: 'int' },
   { key: 'walks', label: 'BB', format: 'int' },
 ]
@@ -435,9 +436,14 @@ export default function PlayerGraphic() {
   const hasBatting = battingStats.length > 0
   const hasPitching = pitchingStats.length > 0
 
-  const battingRow = activeSeason === 'career'
+  let battingRow = activeSeason === 'career'
     ? computeCareerTotals(battingStats, 'batting')
     : battingStats.find(s => s.season === activeSeason)
+  if (battingRow && battingRow.sb_per_pa == null) {
+    const pa = battingRow.plate_appearances || 0
+    const sb = battingRow.stolen_bases || 0
+    battingRow = { ...battingRow, sb_per_pa: pa > 0 ? sb / pa : null }
+  }
   const pitchingRow = activeSeason === 'career'
     ? computeCareerTotals(pitchingStats, 'pitching')
     : pitchingStats.find(s => s.season === activeSeason)

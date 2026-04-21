@@ -14,7 +14,7 @@ const BATTING_PERCENTILE_METRICS = [
   { key: 'bb_pct',       label: 'BB%',    format: 'pct' },
   { key: 'k_pct',        label: 'K%',     format: 'pct' },
   { key: 'offensive_war', label: 'WAR',   format: 'war' },
-  { key: 'stolen_bases', label: 'SB',     format: 'int' },
+  { key: 'sb_per_pa',    label: 'SB/PA',  format: 'pct' },
 ]
 
 const PITCHING_PERCENTILE_METRICS = [
