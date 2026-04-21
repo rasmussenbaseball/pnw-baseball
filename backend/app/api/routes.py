@@ -3424,25 +3424,82 @@ def team_info_graphic(
         avg_sos = float(sos_row["avg_sos"]) if sos_row.get("avg_sos") is not None else None
         avg_sos_rank = int(sos_row["avg_sos_rank"]) if sos_row.get("avg_sos_rank") is not None else None
 
-        # ── 7. Power rating ──
+        # ── 7. Power rating (uses PA-weighted wRC+ and IP-weighted FIP to match playoff-projections) ──
         cur.execute("""
-            SELECT AVG(wrc_plus) as avg_wrc_plus, SUM(offensive_war) as total_owar
+            SELECT SUM(runs) as rs,
+                   SUM(offensive_war) as total_owar,
+                   SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
             FROM batting_stats
-            WHERE team_id = %s AND season = %s AND plate_appearances >= 10
+            WHERE team_id = %s AND season = %s
         """, (team_id, season))
         bat_agg = dict(cur.fetchone() or {})
         cur.execute("""
-            SELECT AVG(fip) as avg_fip, SUM(pitching_war) as total_pwar
+            SELECT SUM(runs_allowed) as ra,
+                   SUM(pitching_war) as total_pwar,
+                   SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
             FROM pitching_stats
-            WHERE team_id = %s AND season = %s AND innings_pitched >= 3
+            WHERE team_id = %s AND season = %s
         """, (team_id, season))
         pit_agg = dict(cur.fetchone() or {})
         total_war = float(bat_agg.get("total_owar") or 0) + float(pit_agg.get("total_pwar") or 0)
+        pr_runs_for = int(bat_agg.get("rs") or runs_for)
+        pr_runs_against = int(pit_agg.get("ra") or runs_against)
         power_rating = _compute_power_rating(
-            wins, losses, runs_for, runs_against,
+            wins, losses, pr_runs_for, pr_runs_against,
             bat_agg.get("avg_wrc_plus"), pit_agg.get("avg_fip"),
             total_war, team["division_level"], natl_pct,
         )
+
+        # Power-rating rank within conference (rebuild ratings for all conference teams)
+        power_rating_conf_rank = None
+        power_rating_conf_total = None
+        try:
+            cur.execute("""
+                SELECT t.id, t.division_level,
+                       COALESCE(s.wins, 0) as wins,
+                       COALESCE(s.losses, 0) as losses,
+                       bat.rs, bat.total_owar, bat.avg_wrc_plus,
+                       pit.ra, pit.total_pwar, pit.avg_fip,
+                       nr.national_percentile
+                FROM teams t
+                LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+                LEFT JOIN (
+                    SELECT team_id,
+                           SUM(runs) as rs,
+                           SUM(offensive_war) as total_owar,
+                           SUM(wrc_plus * plate_appearances) / NULLIF(SUM(plate_appearances), 0) as avg_wrc_plus
+                    FROM batting_stats WHERE season = %s GROUP BY team_id
+                ) bat ON bat.team_id = t.id
+                LEFT JOIN (
+                    SELECT team_id,
+                           SUM(runs_allowed) as ra,
+                           SUM(pitching_war) as total_pwar,
+                           SUM(fip * innings_pitched) / NULLIF(SUM(innings_pitched), 0) as avg_fip
+                    FROM pitching_stats WHERE season = %s GROUP BY team_id
+                ) pit ON pit.team_id = t.id
+                LEFT JOIN national_ratings nr ON nr.team_id = t.id AND nr.season = %s
+                WHERE t.conference_id = %s AND t.is_active = 1
+            """, (season, season, season, season, team["conference_id"]))
+            conf_rows = [dict(r) for r in cur.fetchall()]
+            conf_ratings = []
+            for r in conf_rows:
+                twar = float(r.get("total_owar") or 0) + float(r.get("total_pwar") or 0)
+                rating = _compute_power_rating(
+                    r["wins"], r["losses"],
+                    int(r["rs"] or 0), int(r["ra"] or 0),
+                    r.get("avg_wrc_plus"), r.get("avg_fip"),
+                    twar, r.get("division_level"), r.get("national_percentile"),
+                )
+                if rating is not None:
+                    conf_ratings.append((r["id"], rating))
+            conf_ratings.sort(key=lambda x: x[1], reverse=True)
+            power_rating_conf_total = len(conf_ratings)
+            for idx, (tid, _) in enumerate(conf_ratings):
+                if tid == team_id:
+                    power_rating_conf_rank = idx + 1
+                    break
+        except Exception:
+            pass
 
         # ── 8. Conference rank (same logic as /teams/{id}/rankings) ──
         cur.execute("""
@@ -3472,6 +3529,7 @@ def team_info_graphic(
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                    p.headshot_url,
                    bs.batting_avg::float as batting_avg,
+                   bs.woba::float as woba,
                    bs.wrc_plus::float as wrc_plus,
                    bs.offensive_war::float as offensive_war
             FROM batting_stats bs
@@ -3486,20 +3544,19 @@ def team_info_graphic(
         """, (team_id, season))
         top_hitters = [dict(r) for r in cur.fetchall()]
 
-        # ── 10. Top 5 pitchers by WAR (qualified) ──
-        cur.execute(f"""
+        # ── 10. Top 5 pitchers by WAR (min 5 IP, includes non-qualified arms) ──
+        cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                    p.headshot_url,
                    ps.era::float as era,
+                   ps.siera::float as siera,
                    (COALESCE(ps.k_pct, 0) * 100)::float as k_pct,
                    (COALESCE(ps.bb_pct, 0) * 100)::float as bb_pct,
                    ps.pitching_war::float as pitching_war
             FROM pitching_stats ps
             JOIN players p ON ps.player_id = p.id
-            LEFT JOIN team_season_stats tss ON tss.team_id = ps.team_id AND tss.season = ps.season
             WHERE ps.team_id = %s AND ps.season = %s
-              AND ps.innings_pitched >= {QUALIFIED_IP_PER_GAME}
-                  * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+              AND COALESCE(ps.innings_pitched, 0) >= 5
               AND ps.pitching_war IS NOT NULL
             ORDER BY ps.pitching_war DESC NULLS LAST
             LIMIT 5
@@ -3678,6 +3735,8 @@ def team_info_graphic(
                 "conference_rank": conf_rank,
                 "conference_total": conf_total,
                 "power_rating": power_rating,
+                "power_rating_conf_rank": power_rating_conf_rank,
+                "power_rating_conf_total": power_rating_conf_total,
                 "sos": avg_sos,
                 "sos_rank": avg_sos_rank,
             },

@@ -46,6 +46,17 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
+// Route external headshot URLs through our image proxy so canvas can use them
+// without CORS issues. Local paths (/headshots/*, /logos/*) and data URIs pass through.
+function resolveImageUrl(url) {
+  if (!url) return url
+  if (url.startsWith('data:') || url.startsWith('/') || url.startsWith('blob:')) return url
+  if (/^https?:\/\//i.test(url)) {
+    return `${API_BASE}/proxy-image?url=${encodeURIComponent(url)}`
+  }
+  return url
+}
+
 const imgCache = {}
 function loadImage(src) {
   if (!src) return Promise.reject('no src')
@@ -54,7 +65,10 @@ function loadImage(src) {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
-    img.onerror = reject
+    img.onerror = (e) => {
+      console.warn('[TeamInfoGraphic] image failed to load:', src)
+      reject(e)
+    }
     img.src = src
   })
   imgCache[src] = p
@@ -108,7 +122,7 @@ async function tryLoadLogo(team) {
   const src = team?.logo_url || team?.logo
   if (!src) return null
   try {
-    return await loadImage(src)
+    return await loadImage(resolveImageUrl(src))
   } catch {
     return null
   }
@@ -273,7 +287,7 @@ function drawRankings(ctx, data, y, h) {
   const cards = [
     { label: 'NATIONAL RANK', big: r.national_rank != null ? `#${r.national_rank}` : '-', small: r.national_percentile != null ? `${Math.round(r.national_percentile)} percentile` : '', tint: '#0ea5e9' },
     { label: 'CONFERENCE RANK', big: r.conference_rank != null ? `#${r.conference_rank}` : '-', small: r.conference_total ? `of ${r.conference_total}` : '', tint: '#14b8a6' },
-    { label: 'POWER RATING', big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: 'cross-division quality', tint: '#8b5cf6' },
+    { label: 'POWER RATING', big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: r.power_rating_conf_rank != null ? `${ordinal(r.power_rating_conf_rank)} in conference` : 'cross-division quality', tint: '#8b5cf6' },
     { label: 'STRENGTH OF SCHED', big: r.sos_rank != null ? `#${r.sos_rank}` : '-', small: r.sos != null ? `SOS ${r.sos.toFixed(3)}` : '', tint: '#f59e0b' },
   ]
 
@@ -369,17 +383,25 @@ function drawPercentiles(ctx, data, y, h) {
       ctx.stroke()
 
       ctx.fillStyle = txt
-      ctx.font = '700 13px "Inter", system-ui, sans-serif'
+      ctx.font = '700 12px "Inter", system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillText(m.label, cx + cellW / 2, rowY + 16)
+      ctx.fillText(m.label, cx + cellW / 2, rowY + 14)
 
-      ctx.font = '800 26px "Inter", system-ui, sans-serif'
-      ctx.fillText(m.fmt(val), cx + cellW / 2, rowY + cellH / 2 + 2)
+      // Metric value (mid-sized)
+      ctx.font = '700 20px "Inter", system-ui, sans-serif'
+      ctx.fillText(m.fmt(val), cx + cellW / 2, rowY + 38)
 
-      ctx.font = '700 13px "Inter", system-ui, sans-serif'
-      const rankTxt = (rank != null && total != null) ? `${ordinal(rank)} of ${total}` : '—'
-      ctx.fillText(rankTxt, cx + cellW / 2, rowY + cellH - 14)
+      // Division rank — the headline number
+      if (rank != null && total != null) {
+        ctx.font = '900 26px "Inter", system-ui, sans-serif'
+        ctx.fillText(ordinal(rank), cx + cellW / 2, rowY + cellH / 2 + 18)
+        ctx.font = '600 10px "Inter", system-ui, sans-serif'
+        ctx.fillText(`of ${total}`, cx + cellW / 2, rowY + cellH - 12)
+      } else {
+        ctx.font = '800 22px "Inter", system-ui, sans-serif'
+        ctx.fillText('—', cx + cellW / 2, rowY + cellH / 2 + 14)
+      }
     })
   }
 
@@ -446,7 +468,7 @@ async function drawPerformers(ctx, data, y, h) {
       const headSize = 36
       let headImg = null
       if (p.headshot_url) {
-        try { headImg = await loadImage(p.headshot_url) } catch { headImg = null }
+        try { headImg = await loadImage(resolveImageUrl(p.headshot_url)) } catch { headImg = null }
       }
       ctx.save()
       ctx.beginPath()
@@ -498,13 +520,13 @@ async function drawPerformers(ctx, data, y, h) {
 
   const hitters = (data.top_hitters || []).map(h => ({
     name: h.name,
-    sub: `${fmtAvg(h.batting_avg)} AVG  •  wRC+ ${h.wrc_plus != null ? Math.round(h.wrc_plus) : '-'}`,
+    sub: `${fmtAvg(h.woba)} wOBA  •  wRC+ ${h.wrc_plus != null ? Math.round(h.wrc_plus) : '-'}`,
     war: h.offensive_war,
     headshot_url: h.headshot_url,
   }))
   const pitchers = (data.top_pitchers || []).map(h => ({
     name: h.name,
-    sub: `${fmtEra(h.era)} ERA  •  K% ${h.k_pct != null ? h.k_pct.toFixed(1) + '%' : '-'}`,
+    sub: `${fmtEra(h.siera)} SIERA  •  K% ${h.k_pct != null ? h.k_pct.toFixed(1) + '%' : '-'}`,
     war: h.pitching_war,
     headshot_url: h.headshot_url,
   }))
