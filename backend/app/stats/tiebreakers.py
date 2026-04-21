@@ -6,14 +6,18 @@ are tied on a primary sort key (typically conference win percentage).
 
 Tiebreaker order:
   1. Primary sort key (e.g., conf_win_pct) -- applied BEFORE calling this
-  2. Head-to-head winning percentage among tied teams (mini round-robin
-     if 3+ are tied)
-  3. Overall win percentage
-  4. Overall wins count
+  2. Head-to-head wins against tied teams (more wins = higher)
+  3. Head-to-head losses against tied teams (fewer losses = higher)
+  4. Overall win percentage
+  5. Overall wins count
 
-If two tied teams haven't played each other in-season, head-to-head is
-treated as neutral (.500) for those teams so the overall record breaks the
-tie. This matches how most PNW conferences handle partial-schedule ties.
+Rationale for using raw wins/losses rather than H2H percentage:
+In a 3+ team tie where one team didn't play any of the others, a
+percentage-based tiebreaker would give that team a .500 "neutral"
+value and unfairly rank them above a team that actually lost a H2H
+series. Ranking by raw H2H wins means teams with real H2H wins beat
+teams with no H2H data, and teams with H2H losses fall below teams
+with no data, with overall record settling the rest.
 """
 
 from collections import defaultdict
@@ -102,15 +106,16 @@ def apply_head_to_head(
                     h2h_records[tid] = (w, l)
 
     # Secondary sort key for tied teams
+    # Sort DESC by (H2H wins, -H2H losses, overall pct, overall wins)
+    # Using raw wins/losses lets "no-H2H-games" teams fall through to overall
+    # record without falsely outranking teams that lost H2H games.
     def tiebreak_key(team):
         w, l = h2h_records.get(team[team_id_key], (0, 0))
-        games = w + l
-        # Neutral .500 when no H2H games -> overall record breaks the tie
-        h2h_pct = (w / games) if games > 0 else 0.5
         return (
-            h2h_pct,
-            team.get(overall_key, 0),
-            team.get(overall_wins_key, 0),
+            w,                                     # more H2H wins = higher
+            -l,                                    # fewer H2H losses = higher
+            team.get(overall_key, 0),              # overall win pct
+            team.get(overall_wins_key, 0),         # overall wins
         )
 
     # Reassemble: non-tied groups untouched, tied groups sorted by tiebreak_key
