@@ -7457,6 +7457,9 @@ def daily_performers(
             g["save_pitcher"] = d.get("S", {}).get("name")
 
         # ── 4. Batting lines — PNW teams only (division IS NOT NULL) ──
+        # Ghost-row guard: only return rows where gb.team_id is actually one of
+        # the game's two teams. Prevents stray batting rows with mismatched
+        # team_ids (a known scraper artifact) from polluting the widget.
         cur.execute(f"""
             SELECT gb.game_id, gb.team_id, gb.player_name, gb.player_id,
                    gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
@@ -7467,16 +7470,20 @@ def daily_performers(
                    p.first_name, p.last_name, p.headshot_url,
                    d.level AS division
             FROM game_batting gb
+            JOIN games g ON g.id = gb.game_id
             JOIN teams t ON gb.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN players p ON gb.player_id = p.id
             WHERE gb.game_id IN ({placeholders})
+              AND gb.team_id IN (g.home_team_id, g.away_team_id)
             ORDER BY gb.game_id
         """, game_ids)
         batting_rows = [dict(r) for r in cur.fetchall()]
 
         # ── 5. Pitching lines — PNW teams only ──
+        # Same ghost-row guard as above: only rows whose team_id matches the
+        # game's home or away team.
         cur.execute(f"""
             SELECT gp.game_id, gp.team_id, gp.player_name, gp.player_id,
                    gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
@@ -7488,11 +7495,13 @@ def daily_performers(
                    p.first_name, p.last_name, p.headshot_url,
                    d.level AS division
             FROM game_pitching gp
+            JOIN games g ON g.id = gp.game_id
             JOIN teams t ON gp.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN players p ON gp.player_id = p.id
             WHERE gp.game_id IN ({placeholders})
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
             ORDER BY gp.game_id
         """, game_ids)
         pitching_rows = [dict(r) for r in cur.fetchall()]
