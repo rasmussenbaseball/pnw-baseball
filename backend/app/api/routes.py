@@ -3625,13 +3625,21 @@ def team_info_graphic(
         # ── 12. Team-level division ranks ──
         # Aggregate every team in the same division, then rank ours.
         # Hitter stats: AVG, wOBA, HR/PA, oWAR, wRC+
+        #
+        # wOBA and wRC+ are RATE stats — a player's value must be
+        # weighted by his plate appearances so a 10-PA bench guy with
+        # a 60 wRC+ doesn't drag the team down as much as a 180-PA
+        # regular with a 130. This matches the PA-weighted formula
+        # used by power-rating, team-ratings, and playoff-projections.
         cur.execute("""
             SELECT t.id as team_id,
                    SUM(bs.hits)::float / NULLIF(SUM(bs.at_bats), 0) as batting_avg,
-                   AVG(bs.woba) as woba,
+                   SUM(bs.woba * bs.plate_appearances)::float
+                     / NULLIF(SUM(bs.plate_appearances), 0) as woba,
                    SUM(bs.home_runs)::float / NULLIF(SUM(bs.plate_appearances), 0) as hr_per_pa,
                    SUM(bs.offensive_war)::float as owar,
-                   AVG(bs.wrc_plus) as wrc_plus
+                   SUM(bs.wrc_plus * bs.plate_appearances)::float
+                     / NULLIF(SUM(bs.plate_appearances), 0) as wrc_plus
             FROM teams t
             JOIN batting_stats bs ON bs.team_id = t.id AND bs.season = %s
                   AND bs.plate_appearances >= 10
@@ -3643,12 +3651,20 @@ def team_info_graphic(
         bat_div = [dict(r) for r in cur.fetchall()]
 
         # Pitcher stats: ERA, SIERA, K%, BAA, pWAR
+        #
+        # SIERA is IP-weighted for the same reason wRC+ is PA-weighted:
+        # a 1-IP mop-up arm shouldn't count as much as the ace. K% is
+        # rebuilt from raw totals (SUM(K) / SUM(BF)) so it reflects
+        # the team's actual strikeout rate, not an unweighted average
+        # of per-pitcher rates.
         # BAA = hits_allowed / (batters_faced - walks - hit_batters)
         cur.execute("""
             SELECT t.id as team_id,
                    (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ps.innings_pitched), 0))::float as era,
-                   AVG(ps.siera) as siera,
-                   (AVG(ps.k_pct) * 100)::float as k_pct,
+                   SUM(ps.siera * ps.innings_pitched)::float
+                     / NULLIF(SUM(ps.innings_pitched), 0) as siera,
+                   (SUM(ps.strikeouts)::float * 100
+                     / NULLIF(SUM(ps.batters_faced), 0))::float as k_pct,
                    (SUM(ps.hits_allowed)::float
                      / NULLIF(SUM(ps.batters_faced) - SUM(COALESCE(ps.walks,0)) - SUM(COALESCE(ps.hit_batters,0)), 0))::float as baa,
                    SUM(ps.pitching_war)::float as pwar
