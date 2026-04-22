@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
 """
+============================================================================
+DEPRECATED — DO NOT RUN. Archived 2026-04-21.
+============================================================================
+
+This script uses HARDCODED league averages and replacement levels. Running
+it AFTER recalculate_league_adjusted.py clobbers the correct WAR values
+with stale defaults, causing WAR to visibly oscillate between daily runs.
+
+Use scripts/recalculate_league_adjusted.py instead — it computes WAR from
+live league averages and is the only recalc step wired into the daily
+pipeline (GitHub Actions workflow .github/workflows/nwac-stats.yml).
+
+If the WAR *formula itself* ever needs to change, edit
+backend/app/stats/advanced.py rather than reviving this script.
+============================================================================
+
+Original docstring follows for historical context:
+
 Recalculate WAR for all players in the database using the current formula.
 
 This script recomputes offensive WAR (with positional adjustments and
 replacement level) and pitching WAR from the stored counting stats.
 Run this after changing the WAR formula, positional adjustments, or
 replacement level constants.
-
-Usage:
-    cd pnw-baseball/backend
-    python -m scripts.recalculate_war --season 2026
-
-Or from the project root:
-    cd pnw-baseball
-    PYTHONPATH=backend python scripts/recalculate_war.py --season 2026
 """
 
 import sys

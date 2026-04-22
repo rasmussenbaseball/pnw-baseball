@@ -2,9 +2,14 @@ name: NWAC + Willamette + Seattle U Stats Scraper
 
 on:
   schedule:
-    # Run daily at 7 PM Pacific (2 AM UTC next day)
+    # Run daily at 8 PM Pacific (3 AM UTC next day, during PDT/daylight saving).
+    # Scheduled 1 hour AFTER the server's 7 PM Pacific daily_update.sh so that
+    # recalculate_league_adjusted.py (this workflow's final step) sees fresh
+    # D1/D2/D3/NAIA stats from the server AND fresh NWAC stats from this run.
+    # Note: during PST (November to mid-March) this effectively runs at 7 PM
+    # Pacific, which is still after the server's 7 PM run finishes, so fine.
     # ~120 ScraperAPI credits per run x 30 days = ~3,600/month (within 5,000 free tier)
-    - cron: '0 2 * * *'
+    - cron: '0 3 * * *'
   workflow_dispatch:  # Allow manual runs
     inputs:
       team:

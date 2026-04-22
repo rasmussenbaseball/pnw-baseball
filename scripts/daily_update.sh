@@ -18,6 +18,17 @@
 
 set -e  # Exit on first error
 
+# ── Concurrency guard ─────────────────────────────────────
+# Prevent a second daily_update from starting on top of a run that is still
+# in progress (e.g., if a scraper hangs past the next cron tick). Without
+# this, two processes race on the same INSERTs and produce duplicate rows.
+LOCKFILE="/tmp/nwbb_daily_update.lock"
+exec 200>"$LOCKFILE"
+if ! flock -n 200; then
+    echo "[$(date '+%H:%M:%S')] Another daily_update.sh is already running. Exiting."
+    exit 0
+fi
+
 SEASON="${1:-2026}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
@@ -113,17 +124,19 @@ run_step "Backfill player IDs in game logs" \
     python3 scripts/backfill_player_ids.py
 
 # ── Step 5: Recalculate advanced metrics ───────────────────
-# Must run AFTER all stats are loaded so league averages are current.
-
-run_step "Recalculate league-adjusted stats (wRC+, FIP+, ERA-)" \
-    python3 scripts/recalculate_league_adjusted.py --season "$SEASON"
-
-# NOTE: recalculate_war.py is NOT run here.
-# recalculate_league_adjusted.py (above) already computes WAR using
-# real league averages.  Running recalculate_war.py after it would
-# overwrite correct values with hardcoded defaults, causing WAR to
-# oscillate between runs.  Only use recalculate_war.py manually if
-# the WAR *formula* itself changes (and fix its division_level first).
+# Recalc is now OWNED by the GitHub Actions workflow .github/workflows/nwac-stats.yml
+# which fires at 8 PM Pacific (after this server's 7 PM scrape completes AND after
+# GH Actions scrapes NWAC + Willamette + Seattle U). Running recalc here too would:
+#   1. Race with the GH Actions run if timing overlaps.
+#   2. Compute league averages from incomplete data (NWAC not yet scraped).
+# See feedback_war_oscillation_fix.md in memory for the full rationale.
+#
+# If you need to force a manual recalc after an out-of-cycle scrape, run:
+#   PYTHONPATH=backend python3 scripts/recalculate_league_adjusted.py --season "$SEASON"
+#
+# DO NOT run scripts/recalculate_war.py — it uses hardcoded league averages and
+# will clobber the correct WAR values produced by recalculate_league_adjusted.py.
+# That script has been archived to scripts/archive/ for exactly this reason.
 
 # ── Headshots ─────────────────────────────────────────────
 # Headshots are stored in /opt/headshots/ (outside git repo) and persist
