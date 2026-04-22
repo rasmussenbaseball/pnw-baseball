@@ -9731,84 +9731,49 @@ def key_matchup(
             team["batting"] = dict(batting) if batting else {}
 
             # Team pitching aggregates (expanded).
-            # Counting stats (H, BB, HBP, BF, K, ER, R, HR) are taken as
-            # GREATEST(pitching_stats sum, game_pitching sum) so orphan box-score
-            # rows (pitchers whose names couldn't be resolved -> player_id IS
-            # NULL) still contribute to team totals. IP and IP-weighted FIP
-            # stay on pitching_stats -- composite IP is trustworthy and FIP is
-            # computed per-pitcher there. The previous version applied
-            # innings_pitched >= 3 to every pitching_stats row, which silently
-            # dropped position-player blowout innings from team ERA/WHIP/BAA;
-            # we now apply that filter only to the FIP weighting.
+            # Team totals are a straight SUM(pitching_stats) for this team and
+            # season. No box-score reconciliation: the box-score sum can
+            # double-count (orphan rows where player_id is NULL get added on
+            # top of the resolved rows) which was inflating team ERA/WHIP/BAA.
+            # pitching_stats is the canonical per-pitcher season table and is
+            # the same source the team's own official site uses, so summing it
+            # matches their published team ERA exactly.
             cur.execute("""
-                WITH box_totals AS (
-                    SELECT
-                        COALESCE(SUM(gp.hits_allowed), 0)      AS h_box,
-                        COALESCE(SUM(gp.walks), 0)             AS bb_box,
-                        COALESCE(SUM(gp.hit_batters), 0)       AS hbp_box,
-                        COALESCE(SUM(gp.strikeouts), 0)        AS k_box,
-                        COALESCE(SUM(gp.batters_faced), 0)     AS bf_box,
-                        COALESCE(SUM(gp.earned_runs), 0)       AS er_box,
-                        COALESCE(SUM(gp.runs_allowed), 0)      AS r_box,
-                        COALESCE(SUM(gp.home_runs_allowed), 0) AS hr_box
-                    FROM game_pitching gp
-                    JOIN games g ON gp.game_id = g.id
-                    WHERE g.season = %s
-                      AND g.status = 'final'
-                      AND gp.team_id = %s
-                      AND gp.team_id IN (g.home_team_id, g.away_team_id)
-                ),
-                ps_totals AS (
-                    SELECT
-                        COALESCE(SUM(hits_allowed), 0)       AS h_ps,
-                        COALESCE(SUM(walks), 0)              AS bb_ps,
-                        COALESCE(SUM(hit_batters), 0)        AS hbp_ps,
-                        COALESCE(SUM(strikeouts), 0)         AS k_ps,
-                        COALESCE(SUM(batters_faced), 0)      AS bf_ps,
-                        COALESCE(SUM(earned_runs), 0)        AS er_ps,
-                        COALESCE(SUM(runs_allowed), 0)       AS r_ps,
-                        COALESCE(SUM(home_runs_allowed), 0)  AS hr_ps,
-                        COALESCE(SUM(innings_pitched), 0)    AS ip_ps,
-                        COALESCE(SUM(pitching_war), 0)       AS pwar_ps,
-                        SUM(fip * innings_pitched)
-                            FILTER (WHERE fip IS NOT NULL AND innings_pitched >= 3) AS fip_num,
-                        SUM(innings_pitched)
-                            FILTER (WHERE fip IS NOT NULL AND innings_pitched >= 3) AS fip_den
-                    FROM pitching_stats
-                    WHERE team_id = %s AND season = %s
-                )
                 SELECT
-                    ROUND(ps.pwar_ps::numeric, 1) AS total_pwar,
-                    ROUND((ps.fip_num / NULLIF(ps.fip_den, 0))::numeric, 2) AS avg_fip,
-                    -- k and bb rates over reconciled BF
-                    ROUND(GREATEST(ps.k_ps, box.k_box)::numeric
-                          / NULLIF(GREATEST(ps.bf_ps, box.bf_box), 0), 3) AS avg_k_pct,
-                    ROUND(GREATEST(ps.bb_ps, box.bb_box)::numeric
-                          / NULLIF(GREATEST(ps.bf_ps, box.bf_box), 0), 3) AS avg_bb_pct,
-                    CASE WHEN ps.ip_ps > 0
-                         THEN ROUND((GREATEST(ps.er_ps, box.er_box) * 9.0 / ps.ip_ps)::numeric, 2)
+                    ROUND(SUM(COALESCE(pitching_war, 0))::numeric, 1) AS total_pwar,
+                    ROUND((SUM(fip * innings_pitched)
+                             FILTER (WHERE fip IS NOT NULL AND innings_pitched >= 3)
+                           / NULLIF(SUM(innings_pitched)
+                             FILTER (WHERE fip IS NOT NULL AND innings_pitched >= 3), 0))::numeric, 2) AS avg_fip,
+                    ROUND(SUM(COALESCE(strikeouts, 0))::numeric
+                          / NULLIF(SUM(COALESCE(batters_faced, 0)), 0), 3) AS avg_k_pct,
+                    ROUND(SUM(COALESCE(walks, 0))::numeric
+                          / NULLIF(SUM(COALESCE(batters_faced, 0)), 0), 3) AS avg_bb_pct,
+                    CASE WHEN SUM(COALESCE(innings_pitched, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(earned_runs, 0)) * 9.0
+                                     / SUM(COALESCE(innings_pitched, 0)))::numeric, 2)
                          ELSE 0 END AS team_era,
-                    CASE WHEN ps.ip_ps > 0
-                         THEN ROUND(((GREATEST(ps.bb_ps, box.bb_box)
-                                      + GREATEST(ps.h_ps, box.h_box))::numeric
-                                     / ps.ip_ps)::numeric, 2)
+                    CASE WHEN SUM(COALESCE(innings_pitched, 0)) > 0
+                         THEN ROUND(((SUM(COALESCE(walks, 0))
+                                      + SUM(COALESCE(hits_allowed, 0)))::numeric
+                                     / SUM(COALESCE(innings_pitched, 0)))::numeric, 2)
                          ELSE 0 END AS team_whip,
-                    CASE WHEN (GREATEST(ps.bf_ps, box.bf_box)
-                               - GREATEST(ps.bb_ps, box.bb_box)
-                               - GREATEST(ps.hbp_ps, box.hbp_box)) > 0
-                         THEN ROUND((GREATEST(ps.h_ps, box.h_box)::numeric
-                              / (GREATEST(ps.bf_ps, box.bf_box)
-                                 - GREATEST(ps.bb_ps, box.bb_box)
-                                 - GREATEST(ps.hbp_ps, box.hbp_box)))::numeric, 3)
+                    CASE WHEN (SUM(COALESCE(batters_faced, 0))
+                               - SUM(COALESCE(walks, 0))
+                               - SUM(COALESCE(hit_batters, 0))) > 0
+                         THEN ROUND((SUM(COALESCE(hits_allowed, 0))::numeric
+                              / (SUM(COALESCE(batters_faced, 0))
+                                 - SUM(COALESCE(walks, 0))
+                                 - SUM(COALESCE(hit_batters, 0))))::numeric, 3)
                          ELSE 0 END AS opp_avg,
-                    CASE WHEN GREATEST(ps.bf_ps, box.bf_box) > 0
-                         THEN ROUND((GREATEST(ps.hr_ps, box.hr_box)::numeric
-                                     / GREATEST(ps.bf_ps, box.bf_box))::numeric, 4)
+                    CASE WHEN SUM(COALESCE(batters_faced, 0)) > 0
+                         THEN ROUND((SUM(COALESCE(home_runs_allowed, 0))::numeric
+                                     / SUM(COALESCE(batters_faced, 0)))::numeric, 4)
                          ELSE 0 END AS opp_hr_per_pa,
-                    GREATEST(ps.r_ps, box.r_box) AS total_runs_allowed
-                FROM ps_totals ps
-                CROSS JOIN box_totals box
-            """, (season, tid, tid, season))
+                    SUM(COALESCE(runs_allowed, 0)) AS total_runs_allowed
+                FROM pitching_stats
+                WHERE team_id = %s AND season = %s
+            """, (tid, season))
             pitching = cur.fetchone()
             team["pitching"] = dict(pitching) if pitching else {}
 
@@ -13970,59 +13935,33 @@ def team_stats_agg(
                 ORDER BY t.short_name
             """, (season, season))
         else:
-            # Pitching
-            # Team-level counting stats (H, BB, HBP, BF, K, ER, R, HR) are taken
-            # as GREATEST(pitching_stats sum, game_pitching sum). This captures
-            # orphan game_pitching rows (player_id IS NULL when the scraper can't
-            # resolve a pitcher's name) and ingestion-path undercounts that are
-            # only visible in the per-game box scores. The GREATEST pattern never
-            # regresses a stat downward -- if pitching_stats already has the
-            # higher value (e.g. from a composite feed with no box-score
-            # coverage), we keep it.
-            #
-            # Pitcher-record columns (W, L, SV, CG, SHO, GS, G) and IP/WP/HR
-            # stay on pitching_stats -- game_pitching lacks season-level
-            # decisions, and the composite IP/HR parse is more reliable than
-            # the box-score IP/HR parse. Advanced stats (FIP, xFIP, SIERA, pWAR)
-            # are computed per-pitcher in pitching_stats and IP-weighted here.
+            # Pitching: straight SUM of pitching_stats, same as what each team's
+            # own stats page reports. No box-score reconciliation — historically
+            # that caused inflated totals when game_pitching had orphan rows for
+            # unmatched pitchers OR duplicate rows from two scrapers writing the
+            # same pitcher under different name formats. pitching_stats IS the
+            # source of truth for team aggregation.
             cur.execute("""
-                WITH box_totals AS (
-                    SELECT gp.team_id,
-                           SUM(COALESCE(gp.hits_allowed, 0))      AS h_box,
-                           SUM(COALESCE(gp.walks, 0))             AS bb_box,
-                           SUM(COALESCE(gp.hit_batters, 0))       AS hbp_box,
-                           SUM(COALESCE(gp.strikeouts, 0))        AS k_box,
-                           SUM(COALESCE(gp.batters_faced, 0))     AS bf_box,
-                           SUM(COALESCE(gp.earned_runs, 0))       AS er_box,
-                           SUM(COALESCE(gp.runs_allowed, 0))      AS r_box,
-                           SUM(COALESCE(gp.home_runs_allowed, 0)) AS hr_box
-                    FROM game_pitching gp
-                    JOIN games g ON gp.game_id = g.id
-                    WHERE g.season = %s
-                      AND g.status = 'final'
-                      AND gp.team_id IN (g.home_team_id, g.away_team_id)
-                    GROUP BY gp.team_id
-                ),
-                ps_totals AS (
+                WITH team_ps AS (
                     SELECT ps.team_id,
-                           SUM(COALESCE(ps.games, 0))              AS g_ps,
-                           SUM(COALESCE(ps.games_started, 0))      AS gs_ps,
-                           SUM(COALESCE(ps.wins, 0))               AS w_ps,
-                           SUM(COALESCE(ps.losses, 0))             AS l_ps,
-                           SUM(COALESCE(ps.saves, 0))              AS sv_ps,
-                           SUM(COALESCE(ps.complete_games, 0))     AS cg_ps,
-                           SUM(COALESCE(ps.shutouts, 0))           AS sho_ps,
-                           SUM(COALESCE(ps.innings_pitched, 0))    AS ip_ps,
-                           SUM(COALESCE(ps.hits_allowed, 0))       AS h_ps,
-                           SUM(COALESCE(ps.runs_allowed, 0))       AS r_ps,
-                           SUM(COALESCE(ps.earned_runs, 0))        AS er_ps,
-                           SUM(COALESCE(ps.walks, 0))              AS bb_ps,
-                           SUM(COALESCE(ps.strikeouts, 0))         AS k_ps,
-                           SUM(COALESCE(ps.home_runs_allowed, 0))  AS hr_ps,
-                           SUM(COALESCE(ps.hit_batters, 0))        AS hbp_ps,
-                           SUM(COALESCE(ps.wild_pitches, 0))       AS wp_ps,
-                           SUM(COALESCE(ps.batters_faced, 0))      AS bf_ps,
-                           ROUND(SUM(COALESCE(ps.pitching_war, 0))::numeric, 1) AS pwar_ps,
+                           SUM(COALESCE(ps.games, 0))              AS g,
+                           SUM(COALESCE(ps.games_started, 0))      AS gs,
+                           SUM(COALESCE(ps.wins, 0))               AS w,
+                           SUM(COALESCE(ps.losses, 0))             AS l,
+                           SUM(COALESCE(ps.saves, 0))              AS sv,
+                           SUM(COALESCE(ps.complete_games, 0))     AS cg,
+                           SUM(COALESCE(ps.shutouts, 0))           AS sho,
+                           SUM(COALESCE(ps.innings_pitched, 0))    AS ip,
+                           SUM(COALESCE(ps.hits_allowed, 0))       AS h,
+                           SUM(COALESCE(ps.runs_allowed, 0))       AS r,
+                           SUM(COALESCE(ps.earned_runs, 0))        AS er,
+                           SUM(COALESCE(ps.walks, 0))              AS bb,
+                           SUM(COALESCE(ps.strikeouts, 0))         AS k,
+                           SUM(COALESCE(ps.home_runs_allowed, 0))  AS hr,
+                           SUM(COALESCE(ps.hit_batters, 0))        AS hbp,
+                           SUM(COALESCE(ps.wild_pitches, 0))       AS wp,
+                           SUM(COALESCE(ps.batters_faced, 0))      AS bf,
+                           ROUND(SUM(COALESCE(ps.pitching_war, 0))::numeric, 1) AS pwar,
                            -- IP-weighted advanced stat numerators and denominators
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.fip IS NOT NULL
                                     THEN ps.fip * ps.innings_pitched ELSE 0 END) AS fip_num,
@@ -14039,42 +13978,6 @@ def team_stats_agg(
                     FROM pitching_stats ps
                     WHERE ps.season = %s
                     GROUP BY ps.team_id
-                ),
-                reconciled AS (
-                    -- GREATEST of ps vs box for counting stats we reconcile.
-                    -- Uses FULL OUTER JOIN so a team with ONLY game_pitching
-                    -- coverage (no pitching_stats row at all) still appears.
-                    SELECT COALESCE(ps.team_id, box.team_id) AS team_id,
-                           -- Record columns (ps only; game_pitching has no
-                           -- season-level decisions/CG/SHO aggregated).
-                           COALESCE(ps.g_ps,   0) AS g,
-                           COALESCE(ps.gs_ps,  0) AS gs,
-                           COALESCE(ps.w_ps,   0) AS w,
-                           COALESCE(ps.l_ps,   0) AS l,
-                           COALESCE(ps.sv_ps,  0) AS sv,
-                           COALESCE(ps.cg_ps,  0) AS cg,
-                           COALESCE(ps.sho_ps, 0) AS sho,
-                           COALESCE(ps.ip_ps,  0) AS ip,
-                           COALESCE(ps.wp_ps,  0) AS wp,
-                           -- Reconciled counting stats (GREATEST ps vs box).
-                           GREATEST(COALESCE(ps.h_ps,   0), COALESCE(box.h_box,   0)) AS h,
-                           GREATEST(COALESCE(ps.bb_ps,  0), COALESCE(box.bb_box,  0)) AS bb,
-                           GREATEST(COALESCE(ps.hbp_ps, 0), COALESCE(box.hbp_box, 0)) AS hbp,
-                           GREATEST(COALESCE(ps.k_ps,   0), COALESCE(box.k_box,   0)) AS k,
-                           GREATEST(COALESCE(ps.bf_ps,  0), COALESCE(box.bf_box,  0)) AS bf,
-                           GREATEST(COALESCE(ps.er_ps,  0), COALESCE(box.er_box,  0)) AS er,
-                           GREATEST(COALESCE(ps.r_ps,   0), COALESCE(box.r_box,   0)) AS r,
-                           GREATEST(COALESCE(ps.hr_ps,  0), COALESCE(box.hr_box,  0)) AS hr,
-                           -- Advanced stat numerators/denominators (ps only).
-                           COALESCE(ps.pwar_ps, 0) AS pwar,
-                           COALESCE(ps.fip_num,   0) AS fip_num,
-                           COALESCE(ps.fip_den,   0) AS fip_den,
-                           COALESCE(ps.xfip_num,  0) AS xfip_num,
-                           COALESCE(ps.xfip_den,  0) AS xfip_den,
-                           COALESCE(ps.siera_num, 0) AS siera_num,
-                           COALESCE(ps.siera_den, 0) AS siera_den
-                    FROM ps_totals ps
-                    FULL OUTER JOIN box_totals box ON box.team_id = ps.team_id
                 )
                 SELECT
                     t.id as team_id,
@@ -14086,70 +13989,69 @@ def team_stats_agg(
                     COALESCE(s.wins, 0) as wins,
                     COALESCE(s.losses, 0) as losses,
                     -- Counting stats
-                    r.g, r.gs, r.w, r.l, r.sv, r.cg, r.sho,
-                    ROUND(r.ip::numeric, 1) as ip,
-                    r.h, r.r AS r, r.er, r.bb, r.k as so,
-                    r.hr, r.hbp, r.wp, r.bf,
+                    tp.g, tp.gs, tp.w, tp.l, tp.sv, tp.cg, tp.sho,
+                    ROUND(tp.ip::numeric, 1) as ip,
+                    tp.h, tp.r AS r, tp.er, tp.bb, tp.k as so,
+                    tp.hr, tp.hbp, tp.wp, tp.bf,
                     -- Rate stats
-                    CASE WHEN r.ip > 0
-                         THEN ROUND((r.er * 9.0 / r.ip)::numeric, 2)
+                    CASE WHEN tp.ip > 0
+                         THEN ROUND((tp.er * 9.0 / tp.ip)::numeric, 2)
                          ELSE NULL END as era,
-                    CASE WHEN r.ip > 0
-                         THEN ROUND(((r.bb + r.h)::numeric / r.ip)::numeric, 2)
+                    CASE WHEN tp.ip > 0
+                         THEN ROUND(((tp.bb + tp.h)::numeric / tp.ip)::numeric, 2)
                          ELSE NULL END as whip,
-                    CASE WHEN r.ip > 0
-                         THEN ROUND((r.k * 9.0 / r.ip)::numeric, 1)
+                    CASE WHEN tp.ip > 0
+                         THEN ROUND((tp.k * 9.0 / tp.ip)::numeric, 1)
                          ELSE NULL END as k_per_9,
-                    CASE WHEN r.ip > 0
-                         THEN ROUND((r.bb * 9.0 / r.ip)::numeric, 1)
+                    CASE WHEN tp.ip > 0
+                         THEN ROUND((tp.bb * 9.0 / tp.ip)::numeric, 1)
                          ELSE NULL END as bb_per_9,
-                    CASE WHEN r.ip > 0
-                         THEN ROUND((r.h * 9.0 / r.ip)::numeric, 1)
+                    CASE WHEN tp.ip > 0
+                         THEN ROUND((tp.h * 9.0 / tp.ip)::numeric, 1)
                          ELSE NULL END as h_per_9,
-                    CASE WHEN r.ip > 0
-                         THEN ROUND((r.hr * 9.0 / r.ip)::numeric, 2)
+                    CASE WHEN tp.ip > 0
+                         THEN ROUND((tp.hr * 9.0 / tp.ip)::numeric, 2)
                          ELSE NULL END as hr_per_9,
-                    CASE WHEN r.bb > 0
-                         THEN ROUND((r.k::numeric / r.bb)::numeric, 2)
+                    CASE WHEN tp.bb > 0
+                         THEN ROUND((tp.k::numeric / tp.bb)::numeric, 2)
                          ELSE NULL END as k_bb,
-                    CASE WHEN r.bf > 0
-                         THEN ROUND(r.k::numeric / r.bf * 100, 1)
+                    CASE WHEN tp.bf > 0
+                         THEN ROUND(tp.k::numeric / tp.bf * 100, 1)
                          ELSE NULL END as k_pct,
-                    CASE WHEN r.bf > 0
-                         THEN ROUND(r.bb::numeric / r.bf * 100, 1)
+                    CASE WHEN tp.bf > 0
+                         THEN ROUND(tp.bb::numeric / tp.bf * 100, 1)
                          ELSE NULL END as bb_pct,
                     -- Opponent batting average (H / (BF - BB - HBP))
-                    CASE WHEN (r.bf - r.bb - r.hbp) > 0
-                         THEN ROUND(r.h::numeric / (r.bf - r.bb - r.hbp), 3)
+                    CASE WHEN (tp.bf - tp.bb - tp.hbp) > 0
+                         THEN ROUND(tp.h::numeric / (tp.bf - tp.bb - tp.hbp), 3)
                          ELSE NULL END as opp_avg,
                     -- Weighted advanced stats (IP-weighted averages from pitching_stats)
-                    CASE WHEN r.fip_den > 0
-                         THEN ROUND((r.fip_num / r.fip_den)::numeric, 2)
+                    CASE WHEN tp.fip_den > 0
+                         THEN ROUND((tp.fip_num / tp.fip_den)::numeric, 2)
                          ELSE NULL END as fip,
-                    CASE WHEN r.xfip_den > 0
-                         THEN ROUND((r.xfip_num / r.xfip_den)::numeric, 2)
+                    CASE WHEN tp.xfip_den > 0
+                         THEN ROUND((tp.xfip_num / tp.xfip_den)::numeric, 2)
                          ELSE NULL END as xfip,
-                    CASE WHEN r.siera_den > 0
-                         THEN ROUND((r.siera_num / r.siera_den)::numeric, 2)
+                    CASE WHEN tp.siera_den > 0
+                         THEN ROUND((tp.siera_num / tp.siera_den)::numeric, 2)
                          ELSE NULL END as siera,
-                    -- Team BABIP-against (same H/BF/K/BB/HBP/HR used above,
-                    -- so orphan-row coverage flows through).
-                    CASE WHEN (r.bf - r.bb - r.hbp - r.k - r.hr) > 0
-                           AND (r.h - r.hr) >= 0
-                         THEN ROUND(((r.h - r.hr)::numeric
-                              / (r.bf - r.bb - r.hbp - r.k - r.hr))::numeric, 3)
+                    -- Team BABIP-against from pitching_stats totals.
+                    CASE WHEN (tp.bf - tp.bb - tp.hbp - tp.k - tp.hr) > 0
+                           AND (tp.h - tp.hr) >= 0
+                         THEN ROUND(((tp.h - tp.hr)::numeric
+                              / (tp.bf - tp.bb - tp.hbp - tp.k - tp.hr))::numeric, 3)
                          ELSE NULL END as babip,
-                    r.pwar as pwar
+                    tp.pwar as pwar
                 FROM teams t
                 JOIN conferences c ON t.conference_id = c.id
                 JOIN divisions d ON c.division_id = d.id
                 LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
-                JOIN reconciled r ON r.team_id = t.id
+                JOIN team_ps tp ON tp.team_id = t.id
                 WHERE t.is_active = 1
                   AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
-                  AND r.ip > 0
+                  AND tp.ip > 0
                 ORDER BY t.short_name
-            """, (season, season, season))
+            """, (season, season))
 
         rows = cur.fetchall()
 
