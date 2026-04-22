@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import requests
 from bs4 import BeautifulSoup
+import psycopg2.errors
 
 # Shared team-name matching (see scripts/team_matching.py)
 from team_matching import (
@@ -2669,44 +2670,62 @@ def insert_game_pitching(cur, game_id, team_id, pitcher_lines, season):
 
         qs = is_quality_start(ip, er) if p.get("is_starter") else False
 
-        cur.execute("""
-            INSERT INTO game_pitching (
-                game_id, team_id, player_id, player_name,
-                pitch_order, is_starter, decision,
-                innings_pitched, hits_allowed, runs_allowed, earned_runs,
-                walks, strikeouts, home_runs_allowed,
-                hit_batters, wild_pitches, batters_faced,
-                pitches_thrown, strikes,
-                game_score, is_quality_start
-            ) VALUES (
-                %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, %s,
-                %s, %s
+        # Wrap in a SAVEPOINT so a UniqueViolation on the partial
+        # `uniq_game_pitching_game_player` index (game_id, player_id) doesn't
+        # abort the entire game transaction. That index fires when two
+        # scrapers insert the same pitcher for the same game under different
+        # (team_id, player_name) tuples, which the primary ON CONFLICT
+        # target (game_id, team_id, player_name) cannot catch.
+        cur.execute("SAVEPOINT sp_insert_pitching")
+        try:
+            cur.execute("""
+                INSERT INTO game_pitching (
+                    game_id, team_id, player_id, player_name,
+                    pitch_order, is_starter, decision,
+                    innings_pitched, hits_allowed, runs_allowed, earned_runs,
+                    walks, strikeouts, home_runs_allowed,
+                    hit_batters, wild_pitches, batters_faced,
+                    pitches_thrown, strikes,
+                    game_score, is_quality_start
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s
+                )
+                ON CONFLICT (game_id, team_id, player_name) DO UPDATE SET
+                    player_id = COALESCE(EXCLUDED.player_id, game_pitching.player_id),
+                    innings_pitched = EXCLUDED.innings_pitched,
+                    hits_allowed = EXCLUDED.hits_allowed,
+                    runs_allowed = EXCLUDED.runs_allowed,
+                    earned_runs = EXCLUDED.earned_runs,
+                    walks = EXCLUDED.walks,
+                    strikeouts = EXCLUDED.strikeouts,
+                    home_runs_allowed = EXCLUDED.home_runs_allowed,
+                    game_score = EXCLUDED.game_score,
+                    is_quality_start = EXCLUDED.is_quality_start
+            """, (
+                game_id, team_id, player_id, p.get("player_name"),
+                p.get("pitch_order", 1), p.get("is_starter", False), p.get("decision"),
+                ip, h, p.get("r", 0), er,
+                bb, k, hr,
+                p.get("hbp", 0), p.get("wp", 0), p.get("bf", 0),
+                p.get("pitches", 0), p.get("strikes", 0),
+                game_score_val, qs,
+            ))
+        except psycopg2.errors.UniqueViolation as e:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_insert_pitching")
+            logger.warning(
+                "  Skipping duplicate game_pitching row: game_id=%s player_id=%s "
+                "team_id=%s player_name=%s constraint=%s",
+                game_id, player_id, team_id, p.get("player_name"),
+                e.diag.constraint_name,
             )
-            ON CONFLICT (game_id, team_id, player_name) DO UPDATE SET
-                player_id = COALESCE(EXCLUDED.player_id, game_pitching.player_id),
-                innings_pitched = EXCLUDED.innings_pitched,
-                hits_allowed = EXCLUDED.hits_allowed,
-                runs_allowed = EXCLUDED.runs_allowed,
-                earned_runs = EXCLUDED.earned_runs,
-                walks = EXCLUDED.walks,
-                strikeouts = EXCLUDED.strikeouts,
-                home_runs_allowed = EXCLUDED.home_runs_allowed,
-                game_score = EXCLUDED.game_score,
-                is_quality_start = EXCLUDED.is_quality_start
-        """, (
-            game_id, team_id, player_id, p.get("player_name"),
-            p.get("pitch_order", 1), p.get("is_starter", False), p.get("decision"),
-            ip, h, p.get("r", 0), er,
-            bb, k, hr,
-            p.get("hbp", 0), p.get("wp", 0), p.get("bf", 0),
-            p.get("pitches", 0), p.get("strikes", 0),
-            game_score_val, qs,
-        ))
+        else:
+            cur.execute("RELEASE SAVEPOINT sp_insert_pitching")
 
 
 # ============================================================
