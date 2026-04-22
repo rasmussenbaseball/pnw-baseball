@@ -27,6 +27,8 @@ logger = logging.getLogger("team_matching")
 _TEAM_ALIASES = {
     "montana state billings": "MSUB",
     "montana state-billings": "MSUB",
+    "montana state university billings": "MSUB",
+    "montana st university billings": "MSUB",
     "msu billings": "MSUB",
     "msu-billings": "MSUB",
     "mt hood": "Mt. Hood",
@@ -43,6 +45,12 @@ _TEAM_ALIASES = {
     "lewis-clark st.": "LCSC",
     "lc state": "LCSC",
     "northwest nazarene": "NNU",
+    # UBC (British Columbia) is written a few ways by opponent sites.
+    "british columbia": "UBC",
+    "british colum.": "UBC",
+    "british colum": "UBC",
+    "univ. of british columbia": "UBC",
+    "university of british columbia": "UBC",
     # Disambiguate schools whose names fuzzy-match multiple teams. The Portland
     # site refers to UW as "Washington" in URLs/opponent strings; without this
     # alias it would fall through to fuzzy match and collide with Wash. St.
@@ -55,12 +63,17 @@ def normalize_opponent(name):
     """Strip rankings, parenthetical state tags, and extra whitespace.
 
     Examples:
-        "#5 Lewis-Clark State"  -> "Lewis-Clark State"
-        "Pacific (Ore.)"        -> "Pacific"
+        "#5 Lewis-Clark State"     -> "Lewis-Clark State"
+        "No. 7 Oregon State"       -> "Oregon State"
+        "Pacific (Ore.)"           -> "Pacific"
     """
     if not name:
         return ""
+    # Strip "#5 " style rankings
     name = re.sub(r'^#\d+\s+', '', name)
+    # Strip "No. 7 " or "No 7 " style rankings (Sidearm sites use this)
+    name = re.sub(r'^No\.?\s*\d+\s+', '', name, flags=re.IGNORECASE)
+    # Strip trailing parenthetical like "(Ore.)"
     name = re.sub(r'\s*\(.*?\)\s*$', '', name)
     return name.strip()
 
@@ -102,54 +115,68 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
             if row:
                 return row["id"]
 
-    names_to_try = [name_fragment]
+    # Try NORMALIZED name first so ranking prefixes ("No. 7 ...", "#5 ...")
+    # and trailing state tags ("(Ore.)") don't accidentally exact-match an
+    # OOC placeholder that a past scraper auto-created with the raw string.
+    names_to_try = []
     normalized = normalize_opponent(name_fragment)
-    if normalized.lower() != name_fragment.strip().lower():
+    if normalized:
         names_to_try.append(normalized)
+    if name_fragment.strip().lower() != normalized.lower():
+        names_to_try.append(name_fragment)
 
     rows = []
 
-    # 2) + 3) Exact matches
+    # 2) + 3) Exact matches. Each query orders is_active=1 rows first so
+    # that if a real team and an OOC placeholder share the same name, the
+    # real team wins. This is the guard that keeps us from ever resolving
+    # to an OOC shadow again.
     for frag in names_to_try:
         # Exact short_name match — highest confidence
         cur.execute(
             """
-            SELECT t.id, t.short_name, t.school_name, c.division_id
+            SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
             FROM teams t
             JOIN conferences c ON c.id = t.conference_id
             WHERE LOWER(t.short_name) = LOWER(%s)
+            ORDER BY t.is_active DESC, LENGTH(t.short_name) ASC
             """,
             (frag,),
         )
         rows = cur.fetchall()
-        if len(rows) == 1:
-            return rows[0]["id"]
         if rows:
-            break
+            # If any active team matched, use it; ignore inactive placeholders.
+            active = [r for r in rows if r.get("is_active")]
+            if active:
+                return active[0]["id"]
+            # No active match — fall through to try school/name before accepting OOC
+            pass
 
         # Exact school_name or name match
         cur.execute(
             """
-            SELECT t.id, t.short_name, t.school_name, c.division_id
+            SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
             FROM teams t
             JOIN conferences c ON c.id = t.conference_id
             WHERE LOWER(t.school_name) = LOWER(%s)
                OR LOWER(t.name) = LOWER(%s)
+            ORDER BY t.is_active DESC, LENGTH(t.short_name) ASC
             """,
             (frag, frag),
         )
         rows = cur.fetchall()
-        if len(rows) == 1:
-            return rows[0]["id"]
         if rows:
+            active = [r for r in rows if r.get("is_active")]
+            if active:
+                return active[0]["id"]
             break
 
-    # 4) Fuzzy matching only when exact matches found nothing
-    if not rows:
+    # 4) Fuzzy matching only when exact matches found nothing active
+    if not rows or not any(r.get("is_active") for r in rows):
         for frag in names_to_try:
             cur.execute(
                 """
-                SELECT t.id, t.short_name, t.school_name, c.division_id
+                SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
                 FROM teams t
                 JOIN conferences c ON c.id = t.conference_id
                 WHERE LOWER(t.school_name) LIKE LOWER(%s)
@@ -161,6 +188,10 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
             )
             rows = cur.fetchall()
             if rows:
+                # Prefer active teams first; only fall back to OOC if no active match
+                active_rows = [r for r in rows if r.get("is_active")]
+                if active_rows:
+                    rows = active_rows
                 if len(rows) > 1:
                     frag_low = frag.strip().lower()
                     exact_sub = [
@@ -170,13 +201,10 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
                     if exact_sub:
                         rows = exact_sub
                     else:
-                        # Prefer the SHORTEST short_name. This handles both
-                        # "Pacific" beating "Warner Pacific" AND "Washington"
-                        # picking UW (short "UW", len 2) over Wash. St. (short
-                        # "Wash. St.", len 9). The previous heuristic used
-                        # abs(len(short) - len(frag)) which broke for long
-                        # inputs like "Washington" because it picked whichever
-                        # candidate was closest in length to the input.
+                        # Prefer the SHORTEST short_name. Handles "Pacific" beating
+                        # "Warner Pacific" AND "Washington" picking UW (short len 2)
+                        # over Wash. St. (short len 9). The previous heuristic used
+                        # abs(len(short) - len(frag)) which broke for long inputs.
                         rows.sort(
                             key=lambda r: len(r.get("short_name", "") or "")
                         )
