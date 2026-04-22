@@ -6,9 +6,15 @@ Games can be duplicated when:
 - The same game is scraped from both teams' sites
 - NULL team_ids cause dedup checks to fail (NULL != NULL in SQL)
 - Multiple scrape runs re-insert the same games
+- A scraper creates an OOC placeholder (team_id > 30000) for an opponent that
+  team_matching.py could not resolve, shadowing a real-team game on the same date
 
-For each group of duplicates (same date + same teams), keeps the game
-with the most game_batting rows and deletes the rest.
+Three passes:
+  Pass 1: same team pair, home/away flipped.
+  Pass 2: one side has NULL team_id, matched to a valid same-date counterpart.
+  Pass 3: phantom pair — one side has an OOC placeholder; the other side is all
+          real teams; their batting rows share >= 50% of players (same real game
+          scraped twice).
 
 Usage (on server):
     cd /opt/pnw-baseball
@@ -43,6 +49,57 @@ def get_conn():
     conn = psycopg2.connect(url)
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     return conn
+
+
+# Threshold above which two games' batting-row overlap is taken to mean
+# "same real game, scraped twice" rather than "two separate games".
+PHANTOM_OVERLAP_THRESHOLD = 0.5
+
+
+def _last_name(s):
+    """Extract a lowercase last name from a player_name string.
+
+    Handles both 'First Last' and 'Last, First' formats.
+    """
+    if not s:
+        return ""
+    s = s.strip()
+    if "," in s:
+        return s.split(",", 1)[0].strip().lower()
+    parts = s.split()
+    return parts[-1].lower() if parts else ""
+
+
+def _bat_key(row):
+    """Build a comparison key for a game_batting row.
+
+    Prefers player_id when non-null (the canonical identifier). Falls back to
+    (team_id, normalized last name) so rows with missing player_id but identical
+    player still match across the two scrapes of the same real game.
+    """
+    if row.get("player_id"):
+        return ("pid", row["player_id"])
+    return ("name", row.get("team_id"), _last_name(row.get("player_name") or ""))
+
+
+def _batting_overlap_ratio(cur, shadow_id, canon_id):
+    """2 * shared_keys / (|shadow| + |canon|); >= 0.5 means likely the same game."""
+    cur.execute(
+        "SELECT player_id, player_name, team_id FROM game_batting WHERE game_id = %s",
+        (shadow_id,),
+    )
+    sh = cur.fetchall()
+    cur.execute(
+        "SELECT player_id, player_name, team_id FROM game_batting WHERE game_id = %s",
+        (canon_id,),
+    )
+    ca = cur.fetchall()
+    denom = len(sh) + len(ca)
+    if not denom:
+        return 0.0
+    sh_keys = {_bat_key(r) for r in sh}
+    ca_keys = {_bat_key(r) for r in ca}
+    return (2 * len(sh_keys & ca_keys)) / denom
 
 
 def dedup_games(season, dry_run=False):
@@ -198,11 +255,118 @@ def dedup_games(season, dry_run=False):
     if not dry_run:
         conn.commit()
 
+    # ========== Pass 3: phantom pairs (OOC placeholder shadowing real team) ==========
+    # team_matching.py auto-creates an OOC placeholder team (id > 30000, is_active=0)
+    # when it cannot resolve an opponent string. If the SAME real game is later
+    # scraped from the other team's site and their matcher resolves both teams
+    # correctly, we end up with two rows: a "canon" (both team_ids real) and a
+    # "shadow" (one real team_id + the OOC placeholder). Pass 1 misses these
+    # because the normalized team pair differs.
+    #
+    # Classify a pair as a phantom only when >= 50% of the two games' batting
+    # rows describe the same player (player_id match, or team_id + last name).
+    # This keeps real separate games against different OOC opponents safe.
+    cur.execute("""
+        SELECT g1.id AS id1, g2.id AS id2, g1.game_date,
+               g1.home_team_id AS h1, g1.away_team_id AS a1,
+               g2.home_team_id AS h2, g2.away_team_id AS a2
+        FROM games g1
+        JOIN games g2
+          ON g1.season = g2.season
+         AND g1.game_date = g2.game_date
+         AND g1.id < g2.id
+        WHERE g1.season = %s
+          AND g1.status = 'final' AND g2.status = 'final'
+          AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
+          AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
+          AND (
+              (g1.home_team_id IN (g2.home_team_id, g2.away_team_id))::int +
+              (g1.away_team_id IN (g2.home_team_id, g2.away_team_id))::int = 1
+          )
+          AND (g1.home_team_id > 30000 OR g1.away_team_id > 30000
+               OR g2.home_team_id > 30000 OR g2.away_team_id > 30000)
+        ORDER BY g1.game_date
+    """, (season,))
+
+    phantom_candidates = cur.fetchall()
+
+    confirmed_phantoms = []
+    for p in phantom_candidates:
+        g1_ooc = p["h1"] > 30000 or p["a1"] > 30000
+        g2_ooc = p["h2"] > 30000 or p["a2"] > 30000
+
+        # Clear canon/shadow required: exactly one side must have the OOC id.
+        if g1_ooc and not g2_ooc:
+            shadow_id, canon_id = p["id1"], p["id2"]
+        elif g2_ooc and not g1_ooc:
+            shadow_id, canon_id = p["id2"], p["id1"]
+        else:
+            # Both-OOC or neither-OOC — skip, needs manual review.
+            continue
+
+        ratio = _batting_overlap_ratio(cur, shadow_id, canon_id)
+        if ratio < PHANTOM_OVERLAP_THRESHOLD:
+            continue
+
+        confirmed_phantoms.append({
+            "game_date": p["game_date"],
+            "shadow": shadow_id,
+            "canon": canon_id,
+            "ratio": ratio,
+        })
+
+    # Deduplicate per-shadow: in doubleheader cases a single shadow can
+    # candidate-match both real games. Keep the canon with the highest overlap.
+    best_by_shadow = {}
+    for p in confirmed_phantoms:
+        key = p["shadow"]
+        if key not in best_by_shadow or p["ratio"] > best_by_shadow[key]["ratio"]:
+            best_by_shadow[key] = p
+    phantoms = list(best_by_shadow.values())
+
+    logger.info(f"Pass 3 (phantom pairs, OOC shadowing real team): "
+                f"found {len(phantoms)}")
+
+    phantom_games_deleted = 0
+    phantom_bat_deleted = 0
+    phantom_pit_deleted = 0
+
+    for p in phantoms:
+        logger.info(
+            f"  {p['game_date']} canon=g{p['canon']} shadow=g{p['shadow']} "
+            f"overlap_ratio={p['ratio']:.2f}"
+        )
+
+        if dry_run:
+            cur.execute("SELECT COUNT(*) AS cnt FROM game_batting WHERE game_id = %s",
+                        (p["shadow"],))
+            phantom_bat_deleted += cur.fetchone()["cnt"]
+            cur.execute("SELECT COUNT(*) AS cnt FROM game_pitching WHERE game_id = %s",
+                        (p["shadow"],))
+            phantom_pit_deleted += cur.fetchone()["cnt"]
+            phantom_games_deleted += 1
+            continue
+
+        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (p["shadow"],))
+        phantom_bat_deleted += cur.rowcount
+        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (p["shadow"],))
+        phantom_pit_deleted += cur.rowcount
+        cur.execute("DELETE FROM games         WHERE id      = %s", (p["shadow"],))
+        phantom_games_deleted += 1
+
+    if not dry_run:
+        conn.commit()
+
+    total_deleted += phantom_games_deleted
+    total_batting_deleted += phantom_bat_deleted
+    total_pitching_deleted += phantom_pit_deleted
+
     # ========== Summary ==========
     logger.info(f"\n{'='*60}")
     logger.info(f"{'DRY RUN - ' if dry_run else ''}Dedup complete for season {season}")
     logger.info(f"  Pass 1 duplicate groups: {len(dup_groups)}")
     logger.info(f"  Pass 2 orphan games:     {len(orphans)}")
+    logger.info(f"  Pass 3 phantom pairs:    {len(phantoms)}")
     logger.info(f"  Games deleted:           {total_deleted}")
     logger.info(f"  Batting rows deleted:    {total_batting_deleted}")
     logger.info(f"  Pitching rows deleted:   {total_pitching_deleted}")
