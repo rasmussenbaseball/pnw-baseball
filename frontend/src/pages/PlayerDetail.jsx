@@ -27,7 +27,6 @@ const PITCHING_PERCENTILE_METRICS = [
   { key: 'siera',        label: 'SIERA',  format: 'era' },
   { key: 'baa',          label: 'BAA',    format: 'avg' },
   { key: 'lob_pct',      label: 'LOB%',   format: 'pct' },
-  { key: 'h_per_9',      label: 'H/9',    format: 'era' },
   { key: 'hr_per_9',     label: 'HR/9',   format: 'era' },
   { key: 'pitching_war', label: 'WAR',    format: 'war' },
   { key: 'k_bb_pct',     label: 'K-BB%',  format: 'pct' },
