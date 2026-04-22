@@ -35,38 +35,64 @@ from app.models.database import get_connection  # noqa: E402
 
 
 def repair(season: int, dry_run: bool = False) -> None:
-    """Patch HBP / BF for pitching_stats rows that disagree with box scores.
+    """Reconcile pitching_stats counting stats against box-score truth.
 
-    Two classes of fixes are applied:
-      1. HBP recovery: when the season-row hit_batters is less than the sum of
-         hit_batters across the player's box-score rows (because the composite
-         pitching template didn't publish HBP and the scraper hardcoded 0).
-      2. BF reconciliation: when the season-row batters_faced is less than the
-         sum of batters_faced across the player's box-score rows (because the
-         composite BF was estimated from outs+H+BB and undercounts).
+    For every pitching_stats row that has box-score coverage, take the MAX of
+    the season-row value and the box-score sum for each stat below. We use
+    max() (not overwrite) because some ingestion paths cover games that box
+    scores don't, and vice versa -- never regress a stat downward.
+
+    Stats reconciled (always max(season_row, box_sum), never regress):
+      - hit_batters         (composite templates often omit HBP entirely)
+      - batters_faced       (composite BF estimates undercount because they
+                             don't include HBP and sometimes other events)
+      - hits_allowed        (Seattle U WMT API undercounts)
+      - walks               (Seattle U WMT API undercounts)
+      - strikeouts          (Seattle U WMT API undercounts)
+      - earned_runs         (Seattle U WMT API undercounts)
+
+    Stats NOT reconciled here:
+      - home_runs_allowed   (composite is generally more reliable than the
+                             box-score HR parse, which often misses HRs)
+      - innings_pitched     (composite IP is trustworthy)
+
+    Downstream, recalculate_league_adjusted.py will recompute BABIP against,
+    FIP, BAA, WHIP, ERA, etc. off the corrected counting stats.
     """
     with get_connection() as conn:
         cur = conn.cursor()
 
-        # Pull every pitching_stats row that has box-score coverage. We'll
+        # Pull every pitching_stats row alongside the box-score sums so we can
         # decide row-by-row whether anything actually needs to change.
         cur.execute(
             """
-            SELECT ps.id            AS ps_id,
+            SELECT ps.id             AS ps_id,
                    ps.player_id,
                    ps.team_id,
                    ps.season,
-                   ps.batters_faced AS old_bf,
-                   ps.hit_batters   AS old_hbp,
+                   ps.batters_faced  AS old_bf,
+                   ps.hit_batters    AS old_hbp,
+                   ps.hits_allowed   AS old_h,
+                   ps.walks          AS old_bb,
+                   ps.strikeouts     AS old_k,
+                   ps.earned_runs    AS old_er,
                    box.hbp_box,
                    box.bf_box,
+                   box.h_box,
+                   box.bb_box,
+                   box.k_box,
+                   box.er_box,
                    t.short_name
             FROM pitching_stats ps
             JOIN teams t ON ps.team_id = t.id
             JOIN (
                 SELECT gp.player_id, gp.team_id, g.season,
                        SUM(COALESCE(gp.hit_batters, 0))    AS hbp_box,
-                       SUM(COALESCE(gp.batters_faced, 0))  AS bf_box
+                       SUM(COALESCE(gp.batters_faced, 0))  AS bf_box,
+                       SUM(COALESCE(gp.hits_allowed, 0))   AS h_box,
+                       SUM(COALESCE(gp.walks, 0))          AS bb_box,
+                       SUM(COALESCE(gp.strikeouts, 0))     AS k_box,
+                       SUM(COALESCE(gp.earned_runs, 0))    AS er_box
                 FROM game_pitching gp
                 JOIN games g ON gp.game_id = g.id
                 WHERE g.status = 'final'
@@ -86,33 +112,53 @@ def repair(season: int, dry_run: bool = False) -> None:
             return
 
         teams_touched: dict[str, int] = {}
-        total_hbp_added = 0
-        total_bf_added = 0
+        totals = {"hbp": 0, "bf": 0, "h": 0, "bb": 0, "k": 0, "er": 0}
         updated = 0
 
         for row in rows:
             old_hbp = int(row["old_hbp"] or 0)
-            old_bf = int(row["old_bf"] or 0)
+            old_bf  = int(row["old_bf"]  or 0)
+            old_h   = int(row["old_h"]   or 0)
+            old_bb  = int(row["old_bb"]  or 0)
+            old_k   = int(row["old_k"]   or 0)
+            old_er  = int(row["old_er"]  or 0)
             hbp_box = int(row["hbp_box"] or 0)
-            bf_box = int(row["bf_box"] or 0)
+            bf_box  = int(row["bf_box"]  or 0)
+            h_box   = int(row["h_box"]   or 0)
+            bb_box  = int(row["bb_box"]  or 0)
+            k_box   = int(row["k_box"]   or 0)
+            er_box  = int(row["er_box"]  or 0)
 
-            # New HBP: trust box scores when they exceed the season-row value.
             new_hbp = max(old_hbp, hbp_box)
+            new_h   = max(old_h,   h_box)
+            new_bb  = max(old_bb,  bb_box)
+            new_k   = max(old_k,   k_box)
+            new_er  = max(old_er,  er_box)
+
+            # For BF we also add any recovered HBP/H/BB/K on top of the old
+            # estimate (the composite BF = outs + H + BB and omitted HBP; we
+            # also back-fill K since those are outs not always reflected in IP
+            # when the composite is partial). Then take the max against the
+            # box-score BF sum.
             hbp_added = new_hbp - old_hbp
-
-            # New BF: trust box scores when they exceed the season-row value.
-            # Also ensure we don't drop BF below "old_bf + any recovered HBP"
-            # when the composite covers more games than box scores.
-            new_bf = max(old_bf + hbp_added, bf_box)
+            h_added   = new_h   - old_h
+            bb_added  = new_bb  - old_bb
+            new_bf = max(old_bf + hbp_added + h_added + bb_added, bf_box)
             bf_added = new_bf - old_bf
+            k_added   = new_k   - old_k
+            er_added  = new_er  - old_er
 
-            # Skip rows that are already consistent.
-            if hbp_added == 0 and bf_added == 0:
+            if (hbp_added == 0 and bf_added == 0 and h_added == 0
+                    and bb_added == 0 and k_added == 0 and er_added == 0):
                 continue
 
             teams_touched[row["short_name"]] = teams_touched.get(row["short_name"], 0) + 1
-            total_hbp_added += hbp_added
-            total_bf_added += bf_added
+            totals["hbp"] += hbp_added
+            totals["bf"]  += bf_added
+            totals["h"]   += h_added
+            totals["bb"]  += bb_added
+            totals["k"]   += k_added
+            totals["er"]  += er_added
             updated += 1
 
             if dry_run:
@@ -123,10 +169,14 @@ def repair(season: int, dry_run: bool = False) -> None:
                 UPDATE pitching_stats
                 SET hit_batters   = %s,
                     batters_faced = %s,
+                    hits_allowed  = %s,
+                    walks         = %s,
+                    strikeouts    = %s,
+                    earned_runs   = %s,
                     updated_at    = NOW()
                 WHERE id = %s
                 """,
-                (new_hbp, new_bf, row["ps_id"]),
+                (new_hbp, new_bf, new_h, new_bb, new_k, new_er, row["ps_id"]),
             )
 
         if updated == 0:
@@ -140,8 +190,8 @@ def repair(season: int, dry_run: bool = False) -> None:
             print("Repaired. Breakdown by team:")
         for team, n in sorted(teams_touched.items(), key=lambda kv: (-kv[1], kv[0])):
             print(f"  {team:<24} {n} pitcher rows")
-        print(f"Total HBPs restored: {total_hbp_added}")
-        print(f"Total BF restored:   {total_bf_added}")
+        print(f"Totals restored -- HBP: {totals['hbp']}   BF: {totals['bf']}   "
+              f"H: {totals['h']}   BB: {totals['bb']}   K: {totals['k']}   ER: {totals['er']}")
 
         if dry_run:
             conn.rollback()
