@@ -1475,7 +1475,10 @@ def process_all(season_year, team_filter=None, skip_rosters=False):
         if team_filter and db_short != team_filter:
             continue
         if db_short in SKIP_TEAMS and not team_filter:
-            logger.info(f"Skipping {db_short} (handled by scrape_browser_stats.py)")
+            # Willamette is scraped by the GH Actions workflow (.github/workflows/
+            # nwac-stats.yml) via scrape_nwac.py --team willamette, not by the
+            # D3 scraper here. The old browser-based path was archived 2026-04-21.
+            logger.info(f"Skipping {db_short} (handled by GH Actions scrape_nwac.py)")
             continue
 
         team_id = team_id_map.get(db_short)
