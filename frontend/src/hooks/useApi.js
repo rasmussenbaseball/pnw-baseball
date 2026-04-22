@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { CURRENT_SEASON } from '../utils/constants'
 
 const API_BASE = '/api/v1'
 
@@ -162,14 +163,14 @@ export function usePlayer(playerId, percentileSeason = null) {
 /**
  * Fetch player game logs (batting + pitching) for a season.
  */
-export function usePlayerGameLogs(playerId, season = 2026) {
+export function usePlayerGameLogs(playerId, season = CURRENT_SEASON) {
   return useApi(`/players/${playerId}/gamelogs`, { season }, [playerId, season])
 }
 
 /**
  * Fetch player home/road splits for a season (or career if season is null).
  */
-export function usePlayerSplits(playerId, season = 2026) {
+export function usePlayerSplits(playerId, season = CURRENT_SEASON) {
   const params = season ? { season } : {}
   return useApi(`/players/${playerId}/splits`, params, [playerId, season])
 }
@@ -257,7 +258,7 @@ export function useTeamFutureGames(teamId, limit = 10) {
 /**
  * Fetch recent game results (for results page).
  */
-export function useRecentGames(season = 2026, limit = 50, teamId = null, division = null) {
+export function useRecentGames(season = CURRENT_SEASON, limit = 50, teamId = null, division = null) {
   return useApi('/games/recent', {
     season, limit,
     team_id: teamId || undefined,
@@ -275,14 +276,14 @@ export function useGameDetail(gameId) {
 /**
  * Fetch all games for a team in a season.
  */
-export function useTeamGames(teamId, season = 2026) {
+export function useTeamGames(teamId, season = CURRENT_SEASON) {
   return useApi(`/teams/${teamId}/games`, { season }, [teamId, season])
 }
 
 /**
  * Fetch compact ticker data (most recent results).
  */
-export function useGamesTicker(season = 2026, limit = 12) {
+export function useGamesTicker(season = CURRENT_SEASON, limit = 12) {
   return useApi('/games/ticker', { season, limit }, [season, limit])
 }
 
@@ -330,39 +331,39 @@ export function useGamesByDate(date) {
 /**
  * Win probabilities for all PNW-vs-PNW games on a date.
  */
-export function useKeyMatchup(date, season = 2026) {
+export function useKeyMatchup(date, season = CURRENT_SEASON) {
   return useApi('/games/key-matchup', { date, season }, [date, season])
 }
 
-export function useWinProbabilities(date, season = 2026) {
+export function useWinProbabilities(date, season = CURRENT_SEASON) {
   return useApi(date ? '/games/win-probabilities' : null, { date, season }, [date, season])
 }
 
 /**
  * Biggest upset from the most recent day with PNW-vs-PNW games.
  */
-export function useUpsetOfTheDay(season = 2026) {
+export function useUpsetOfTheDay(season = CURRENT_SEASON) {
   return useApi('/games/upset-of-the-day', { season }, [season])
 }
 
 /**
  * Top performers for a given date (hitters + pitchers).
  */
-export function useDailyPerformers(date, season = 2026) {
+export function useDailyPerformers(date, season = CURRENT_SEASON) {
   return useApi('/games/daily-performers', { date, season }, [date, season])
 }
 
 /**
  * Quality starts leaderboard.
  */
-export function useQualityStarts(season = 2026, limit = 25) {
+export function useQualityStarts(season = CURRENT_SEASON, limit = 25) {
   return useApi('/games/quality-starts', { season, limit }, [season, limit])
 }
 
 /**
  * Top game scores leaderboard.
  */
-export function useGameScores(season = 2026, limit = 25) {
+export function useGameScores(season = CURRENT_SEASON, limit = 25) {
   return useApi('/games/game-scores', { season, limit }, [season, limit])
 }
 
@@ -456,13 +457,13 @@ export async function gridValidateCustom(rows, columns) {
 /**
  * Recruiting Breakdown - team-level recruiting metrics.
  */
-export function useRecruitingBreakdown(season = 2026) {
+export function useRecruitingBreakdown(season = CURRENT_SEASON) {
   return useApi('/recruiting/breakdown', { season }, [season])
 }
 
 /**
  * Opponent Trends - comprehensive scouting report for a team.
  */
-export function useOpponentTrends(teamId, season = 2026) {
+export function useOpponentTrends(teamId, season = CURRENT_SEASON) {
   return useApi(teamId ? `/opponent-trends/${teamId}` : null, { season }, [teamId, season])
 }

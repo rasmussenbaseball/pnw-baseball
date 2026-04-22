@@ -20,10 +20,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, date, timedelta
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Optional
 from ..models.database import get_connection
+from .auth import require_admin
 from ..stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -6273,7 +6274,10 @@ def available_seasons():
 # ============================================================
 
 @router.post("/admin/recalculate-war")
-def recalculate_war(season: int = Query(..., description="Season to recalculate")):
+def recalculate_war(
+    season: int = Query(..., description="Season to recalculate"),
+    _admin: str = Depends(require_admin),
+):
     """
     Recalculate offensive WAR for all batters in a given season using
     the current formula (with positional adjustments and replacement level).
@@ -6431,7 +6435,10 @@ def recalculate_war(season: int = Query(..., description="Season to recalculate"
 
 
 @router.get("/admin/unmatched-game-batting")
-def unmatched_game_batting(limit: int = Query(50)):
+def unmatched_game_batting(
+    limit: int = Query(50),
+    _admin: str = Depends(require_admin),
+):
     """Show unmatched game_batting rows to debug name matching."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -6465,7 +6472,10 @@ def unmatched_game_batting(limit: int = Query(50)):
 
 
 @router.get("/admin/debug-player-games/{player_id}")
-def debug_player_games(player_id: int):
+def debug_player_games(
+    player_id: int,
+    _admin: str = Depends(require_admin),
+):
     """Debug: show all game_batting rows for a player + unmatched rows for their team."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -6583,7 +6593,10 @@ def debug_player_games(player_id: int):
 
 
 @router.get("/admin/team-game-coverage/{team_id}")
-def team_game_coverage(team_id: int):
+def team_game_coverage(
+    team_id: int,
+    _admin: str = Depends(require_admin),
+):
     """Show which games have box score data and which don't."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -6618,6 +6631,7 @@ def team_game_coverage(team_id: int):
 def derive_positions(
     season: int = Query(..., description="Season to analyse"),
     threshold: float = Query(0.6, description="Min fraction to assign a single position (default 0.6 = 60%)"),
+    _admin: str = Depends(require_admin),
 ):
     """
     Look at game_batting to see what position each player actually played
@@ -9301,7 +9315,9 @@ def daily_recap(
             try:
                 home_line = json.loads(home_line_str) if isinstance(home_line_str, str) else home_line_str
                 away_line = json.loads(away_line_str) if isinstance(away_line_str, str) else away_line_str
-            except:
+            except Exception:
+                # Narrowed from bare `except:` so KeyboardInterrupt/SystemExit
+                # can propagate. Covers JSONDecodeError, TypeError, etc.
                 home_line = []
                 away_line = []
 
@@ -13355,12 +13371,16 @@ def get_recruiting_guide(team_id: int):
                                 try:
                                     feet, inches = int(match.group(1)), int(match.group(2))
                                     heights_inches.append(feet * 12 + inches)
-                                except:
+                                except Exception:
+                                    # Narrowed from bare `except:`; skips a
+                                    # malformed row without swallowing signals.
                                     pass
                         if w:
                             try:
                                 weights.append(int(str(w).replace('lbs', '').strip()))
-                            except:
+                            except Exception:
+                                # Narrowed from bare `except:`; skips a
+                                # malformed weight string.
                                 pass
 
                     avg_height = sum(heights_inches) / len(heights_inches) if heights_inches else None

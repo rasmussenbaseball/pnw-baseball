@@ -86,7 +86,7 @@ import TeamHistory from './pages/TeamHistory'
 import RecruitingClasses from './pages/RecruitingClasses'
 import RecruitingRankings from './pages/RecruitingRankings'
 import RecruitingMap from './pages/RecruitingMap'
-import RecruitingBreakdowns from './pages/RecruitingBreakdowns'
+import AdminRecruitingPlaceholder from './pages/AdminRecruitingPlaceholder'
 import RecruitingHistory from './pages/RecruitingHistory'
 import RecruitingField from './pages/RecruitingField'
 import RecruitingGuide from './pages/RecruitingGuide'
@@ -156,7 +156,7 @@ export default function App() {
           <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />
           <Route path="/recruiting/rankings" element={<RequireAdmin><RecruitingRankings /></RequireAdmin>} />
           <Route path="/recruiting/map" element={<RequireAdmin><RecruitingMap /></RequireAdmin>} />
-          <Route path="/recruiting/breakdowns" element={<RequireAdmin><RecruitingBreakdowns /></RequireAdmin>} />
+          <Route path="/recruiting/breakdowns" element={<RequireAdmin><AdminRecruitingPlaceholder /></RequireAdmin>} />
           <Route path="/recruiting/history" element={<RequireAdmin><RecruitingHistory /></RequireAdmin>} />
           <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
 
