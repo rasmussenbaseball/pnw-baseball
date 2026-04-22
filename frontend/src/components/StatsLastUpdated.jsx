@@ -63,7 +63,7 @@ export default function StatsLastUpdated({ levels, className = '' }) {
     fetch('/api/v1/stats/last-updated')
       .then((r) => r.json())
       .then(setData)
-      .catch(() => {})
+      .catch((err) => console.error('[StatsLastUpdated] /stats/last-updated failed:', err))
   }, [])
 
   if (!data || Object.keys(data).length === 0) return null

@@ -137,7 +137,7 @@ export default function ScatterPlot() {
     fetch(`${API_BASE}/divisions`)
       .then(r => r.json())
       .then(d => setDivisions(d))
-      .catch(() => {})
+      .catch((err) => console.error('[ScatterPlot] /divisions failed:', err))
   }, [])
 
   // Fetch scatter data

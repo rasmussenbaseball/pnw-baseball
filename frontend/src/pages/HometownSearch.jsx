@@ -17,7 +17,7 @@ export default function HometownSearch() {
     fetch(`${API_BASE}/hometown-search?q=`)
       .then(r => r.json())
       .then(d => setTopCities(d.cities || []))
-      .catch(() => {})
+      .catch((err) => console.error('[HometownSearch] /hometown-search (top cities) failed:', err))
   }, [])
 
   // Fetch results when query changes

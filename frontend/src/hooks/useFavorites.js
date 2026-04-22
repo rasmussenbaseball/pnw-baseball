@@ -29,7 +29,7 @@ export function useFavorite(favoriteType, targetId) {
       .then(data => {
         setIsFavorited(!!data.favorited?.[targetId])
       })
-      .catch(() => {})
+      .catch((err) => console.error('[useFavorites] /favorites/check failed:', err))
   }, [user, session, favoriteType, targetId])
 
   const toggle = useCallback(async () => {
@@ -86,7 +86,7 @@ export function useAllFavorites() {
         setTeams(data.teams || [])
         setPlayers(data.players || [])
       })
-      .catch(() => {})
+      .catch((err) => console.error('[useAllFavorites] /favorites failed:', err))
       .finally(() => setLoading(false))
   }, [user, session])
 
@@ -116,7 +116,7 @@ export function useFavoritesDashboard(season = 2026) {
     })
       .then(r => r.json())
       .then(d => setData(d))
-      .catch(() => {})
+      .catch((err) => console.error('[useFavoritesDashboard] /favorites/dashboard failed:', err))
       .finally(() => setLoading(false))
   }, [user, session, season])
 

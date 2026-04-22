@@ -290,7 +290,7 @@ export default function TeamComparison() {
     fetch(`${API_BASE}/teams`)
       .then(r => r.json())
       .then(teams => setAllTeams(teams.sort((a, b) => a.name.localeCompare(b.name))))
-      .catch(() => {})
+      .catch((err) => console.error('[TeamComparison] /teams failed:', err))
   }, [])
 
   useEffect(() => {

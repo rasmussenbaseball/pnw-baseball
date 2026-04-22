@@ -648,7 +648,7 @@ export default function About() {
     fetch('/api/v1/site-stats')
       .then(r => r.json())
       .then(d => setSiteStats(d))
-      .catch(() => {})
+      .catch((err) => console.error('[About] /site-stats failed:', err))
   }, [])
 
   const scrollTo = (id) => {

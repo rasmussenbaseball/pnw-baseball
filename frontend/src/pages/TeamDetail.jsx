@@ -242,7 +242,7 @@ function ChampionshipBanner({ teamId }) {
     fetch(`/api/v1/teams/${teamId}/championships`)
       .then(r => r.json())
       .then(d => setTitles(d.championships || []))
-      .catch(() => {})
+      .catch((err) => console.error('[TeamDetail] /teams/championships failed:', err))
   }, [teamId])
 
   if (!titles.length) return null
