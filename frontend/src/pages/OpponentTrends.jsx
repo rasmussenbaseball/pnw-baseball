@@ -19,7 +19,7 @@ export default function OpponentTrends() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Opponent Trends</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">Trends</h1>
       <p className="text-xs text-gray-500 mb-4">Lineup tendencies, rotation patterns & bullpen usage — weighted toward recent games</p>
 
       {/* Selectors */}

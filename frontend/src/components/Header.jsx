@@ -47,7 +47,7 @@ const NAV = [
     items: [
       { to: '/juco-tracker', label: 'JUCO Tracker', desc: 'Track JUCO transfer talent' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
-      { to: '/opponent-trends', label: 'Opponent Trends', desc: 'Lineups, rotation & bullpen scouting' },
+      { to: '/opponent-trends', label: 'Trends', desc: 'Lineups, rotation & bullpen scouting' },
       { to: '/player-scouting', label: 'Player Scouting', desc: 'Individual scouting reports', locked: true },
       { to: '/team-scouting', label: 'Team Scouting', desc: 'Team tendencies & reports', locked: true },
       { to: '/enhanced-scouting', label: 'Enhanced Scouting', desc: 'Advanced scouting tools', locked: true },
