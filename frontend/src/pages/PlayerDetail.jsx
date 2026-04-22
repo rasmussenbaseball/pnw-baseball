@@ -25,6 +25,7 @@ const PITCHING_PERCENTILE_METRICS = [
   { key: 'era_plus',    label: 'ERA+',   format: 'int' },
   { key: 'xfip',         label: 'xFIP',   format: 'era' },
   { key: 'siera',        label: 'SIERA',  format: 'era' },
+  { key: 'baa',          label: 'BAA',    format: 'avg' },
   { key: 'lob_pct',      label: 'LOB%',   format: 'pct' },
   { key: 'h_per_9',      label: 'H/9',    format: 'era' },
   { key: 'hr_per_9',     label: 'HR/9',   format: 'era' },
@@ -77,6 +78,7 @@ const PITCHING_TABLE_COLS = [
   { key: 'earned_runs',  label: 'ER',    format: 'int' },
   { key: 'era',          label: 'ERA',   format: 'era' },
   { key: 'whip',         label: 'WHIP',  format: 'era' },
+  { key: 'baa',          label: 'BAA',   format: 'avg' },
   { key: 'fip',          label: 'FIP',   format: 'era' },
   { key: 'fip_plus',     label: 'FIP+',  format: 'int' },
   { key: 'era_plus',    label: 'ERA+',  format: 'int' },
@@ -206,11 +208,14 @@ function computeCareerTotals(seasons, type) {
     totals.offensive_war = seasons.reduce((s, r) => s + (r.offensive_war || 0), 0)
   } else {
     const { earned_runs: er, innings_pitched: ip, walks: bb, hits_allowed: h,
-            strikeouts: k, batters_faced: bf } = totals
+            strikeouts: k, batters_faced: bf, hit_batters: hbp } = totals
     totals.era = ip > 0 ? (er / ip) * 9 : null
     totals.whip = ip > 0 ? (bb + h) / ip : null
     totals.k_pct = bf > 0 ? k / bf : null
     totals.bb_pct = bf > 0 ? bb / bf : null
+    // BAA = H / (BF - BB - HBP)
+    const baaDenom = (bf || 0) - (bb || 0) - (hbp || 0)
+    totals.baa = baaDenom > 0 ? h / baaDenom : null
     totals.pitching_war = seasons.reduce((s, r) => s + (r.pitching_war || 0), 0)
   }
 

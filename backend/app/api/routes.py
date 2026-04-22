@@ -249,6 +249,10 @@ CONF_PITCHING_CTE = """
                 THEN ROUND((SUM(COALESCE(gp.hits_allowed,0)) - SUM(COALESCE(gp.home_runs_allowed,0)))::numeric
                      / (SUM(COALESCE(gp.batters_faced,0)) - SUM(COALESCE(gp.strikeouts,0)) - SUM(COALESCE(gp.walks,0))
                         - SUM(COALESCE(gp.hit_batters,0)) - SUM(COALESCE(gp.home_runs_allowed,0))), 3) END as babip_against,
+            -- BAA (batting avg against) = H / (BF - BB - HBP)
+            CASE WHEN (SUM(COALESCE(gp.batters_faced,0)) - SUM(COALESCE(gp.walks,0)) - SUM(COALESCE(gp.hit_batters,0))) > 0
+                THEN ROUND(SUM(COALESCE(gp.hits_allowed,0))::numeric
+                     / (SUM(COALESCE(gp.batters_faced,0)) - SUM(COALESCE(gp.walks,0)) - SUM(COALESCE(gp.hit_batters,0)))::numeric, 3) END as baa,
             -- Advanced stats not available for conference-only splits
             NULL::numeric as fip,
             NULL::numeric as xfip,
@@ -4105,7 +4109,7 @@ def pitching_leaderboard(
         "wins", "losses", "saves", "strikeouts", "innings_pitched",
         "k_per_9", "bb_per_9", "hr_per_9", "k_bb_ratio",
         "k_pct", "bb_pct", "k_bb_pct",
-        "babip_against", "lob_pct", "pitching_war",
+        "babip_against", "baa", "lob_pct", "pitching_war",
         "fip_plus", "era_minus", "era_plus",
         "quality_starts",
     }
@@ -4114,6 +4118,9 @@ def pitching_leaderboard(
         "k_bb_pct": "(COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0))",
         "era_plus": "CASE WHEN ps.era_minus > 0 THEN 10000.0 / ps.era_minus END",
         "quality_starts": "COALESCE(ps.quality_starts, 0)",
+        "baa": ("CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0 "
+                "THEN COALESCE(ps.hits_allowed,0)::numeric "
+                "/ (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))::numeric END"),
     }
     if sort_by not in allowed_sort:
         sort_by = "era"
@@ -4121,7 +4128,7 @@ def pitching_leaderboard(
     if conference_only and sort_by in ("fip", "xfip", "siera", "kwera", "lob_pct", "pitching_war", "fip_plus", "era_minus", "era_plus"):
         sort_by = "era"
     # For ERA/FIP/xFIP, ascending is better; for K/9, WAR, descending is better
-    ascending_stats = {"era", "whip", "fip", "xfip", "siera", "kwera", "bb_per_9", "bb_pct", "hr_per_9", "losses"}
+    ascending_stats = {"era", "whip", "fip", "xfip", "siera", "kwera", "bb_per_9", "bb_pct", "hr_per_9", "losses", "baa"}
     default_dir = "ASC" if sort_by in ascending_stats else "DESC"
     sort_direction = sort_dir.upper() if sort_dir.upper() in ("ASC", "DESC") else default_dir
 
@@ -4155,6 +4162,10 @@ def pitching_leaderboard(
             query = f"""
                 SELECT ps.*,
                        COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
+                       CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
+                            THEN ROUND(COALESCE(ps.hits_allowed,0)::numeric
+                                 / (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))::numeric, 3)
+                       END as baa,
                        p.first_name, p.last_name, p.position, p.year_in_school,
                        p.bats, p.throws, p.hometown, p.previous_school,
                        p.is_committed, p.committed_to,
@@ -4465,6 +4476,7 @@ PITCHER_PERCENTILE_STATS = [
     ("siera",     "SIERA",  "siera",      False),
     ("k_bb_pct",  "K-BB%",  "k_bb_pct",   True),
     ("hr_per_pa", "HR/PA",  "hr_per_pa",  False),
+    ("baa",       "BAA",    "baa",        False),   # lower = better
 ]
 
 
@@ -4555,7 +4567,11 @@ def percentile_leaderboard(
                        (COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0))::float as k_bb_pct,
                        CASE WHEN ps.batters_faced > 0
                             THEN (ps.home_runs_allowed::numeric / ps.batters_faced)::float
-                            END as hr_per_pa
+                            END as hr_per_pa,
+                       CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
+                            THEN (COALESCE(ps.hits_allowed,0)::numeric
+                                  / (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)))::float
+                            END as baa
                 FROM pitching_stats ps
                 JOIN players p ON ps.player_id = p.id
                 JOIN teams t ON ps.team_id = t.id
@@ -4983,6 +4999,10 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
             "hr_per_9":      {"col": "ps.hr_per_9",      "higher_better": False},
             "pitching_war":  {"col": "ps.pitching_war",  "higher_better": True},
             "k_bb_pct":      {"col": "COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0)", "higher_better": True},
+            "baa":           {"col": "CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0 "
+                                      "THEN COALESCE(ps.hits_allowed,0)::numeric "
+                                      "/ (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))::numeric END",
+                              "higher_better": False},
         }
         base_query = """
             SELECT {col} as val
@@ -5116,6 +5136,10 @@ def _aggregate_career_pitching(seasons):
     totals["k_pct"] = k / bf if bf > 0 else None
     totals["bb_pct"] = bb / bf if bf > 0 else None
     totals["k_bb_pct"] = (totals["k_pct"] or 0) - (totals["bb_pct"] or 0)
+    # BAA = H / (BF - BB - HBP)
+    hbp = totals["hit_batters"]
+    baa_denom = bf - bb - hbp
+    totals["baa"] = h / baa_denom if baa_denom > 0 else None
     totals["pitching_war"] = sum(s.get("pitching_war", 0) or 0 for s in seasons)
 
     # IP-weighted averages for complex metrics
@@ -5221,12 +5245,14 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
             "hr_per_9":      {"higher_better": False},
             "pitching_war":  {"higher_better": True},
             "k_bb_pct":      {"higher_better": True},
+            "baa":           {"higher_better": False},
         }
         cur.execute(
             """SELECT ps.player_id,
                       SUM(ps.innings_pitched) as ip, SUM(ps.earned_runs) as er,
                       SUM(ps.walks) as bb, SUM(ps.hits_allowed) as h,
                       SUM(ps.home_runs_allowed) as hra,
+                      SUM(ps.hit_batters) as hbp,
                       SUM(ps.strikeouts) as k, SUM(ps.batters_faced) as bf,
                       SUM(ps.pitching_war) as pitching_war,
                       COUNT(DISTINCT ps.season) as num_seasons
@@ -5245,9 +5271,10 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
         for p in all_players:
             pd = dict(p)
             ip, bb, k, bf = pd["ip"], pd["bb"], pd["k"], pd["bf"]
-            h_a, hra = pd["h"], pd["hra"]
+            h_a, hra, hbp = pd["h"], pd["hra"], pd["hbp"] or 0
             k_pct = k / bf if bf > 0 else None
             bb_pct = bb / bf if bf > 0 else None
+            baa_denom = (bf or 0) - (bb or 0) - hbp
             league_stats.append({
                 "k_pct": k_pct,
                 "bb_pct": bb_pct,
@@ -5259,6 +5286,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                 "hr_per_9": (hra / ip) * 9 if ip > 0 else None,
                 "pitching_war": pd["pitching_war"],
                 "k_bb_pct": (k_pct or 0) - (bb_pct or 0),
+                "baa": (h_a / baa_denom) if baa_denom > 0 else None,
             })
 
     result = {}
@@ -5608,6 +5636,10 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         cur.execute(
             f"""SELECT ps.*,
                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
+                      CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
+                           THEN ROUND(COALESCE(ps.hits_allowed,0)::numeric
+                                / (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))::numeric, 3)
+                      END as baa,
                       t.short_name as team_short, t.logo_url,
                       d.level as division_level, c.abbreviation as conference_abbrev
                FROM pitching_stats ps

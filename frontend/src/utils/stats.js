@@ -83,6 +83,8 @@ export const PITCHING_COLUMNS = [
     tooltip: 'Earned Run Average = (ER/IP) * 9' },
   { key: 'whip', label: 'WHIP', width: 55, format: 'era',
     tooltip: 'Walks + Hits per Innings Pitched' },
+  { key: 'baa', label: 'BAA', width: 55, format: 'avg',
+    tooltip: 'Batting Average Against = H / (BF - BB - HBP). Lower is better.' },
   { key: 'k_pct', label: 'K%', width: 55, format: 'pct',
     tooltip: 'Strikeout Rate = K/BF' },
   { key: 'bb_pct', label: 'BB%', width: 55, format: 'pct',
@@ -168,10 +170,10 @@ export const BATTING_PRESETS = {
 }
 
 export const PITCHING_PRESETS = {
-  'Standard': ['wins', 'losses', 'saves', 'games', 'games_started', 'quality_starts', 'innings_pitched', 'strikeouts', 'walks', 'hits_allowed', 'earned_runs', 'era', 'whip'],
-  'Advanced': ['innings_pitched', 'quality_starts', 'era', 'era_plus', 'fip', 'fip_plus', 'xfip', 'siera', 'k_pct', 'bb_pct', 'k_bb_pct', 'babip_against', 'lob_pct', 'pitching_war'],
+  'Standard': ['wins', 'losses', 'saves', 'games', 'games_started', 'quality_starts', 'innings_pitched', 'strikeouts', 'walks', 'hits_allowed', 'earned_runs', 'era', 'whip', 'baa'],
+  'Advanced': ['innings_pitched', 'quality_starts', 'era', 'era_plus', 'fip', 'fip_plus', 'xfip', 'siera', 'k_pct', 'bb_pct', 'k_bb_pct', 'babip_against', 'baa', 'lob_pct', 'pitching_war'],
   'Strikeouts': ['innings_pitched', 'strikeouts', 'k_pct', 'bb_pct', 'k_bb_pct', 'k_bb_ratio', 'walks'],
-  'Relievers': ['games', 'saves', 'innings_pitched', 'era', 'era_plus', 'fip', 'fip_plus', 'whip', 'k_pct', 'bb_pct', 'k_bb_pct', 'pitching_war'],
+  'Relievers': ['games', 'saves', 'innings_pitched', 'era', 'era_plus', 'fip', 'fip_plus', 'whip', 'baa', 'k_pct', 'bb_pct', 'k_bb_pct', 'pitching_war'],
 }
 
 // Presets that apply special backend filters (e.g. Relievers → max_gs=0)
