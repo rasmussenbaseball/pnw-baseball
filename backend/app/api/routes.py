@@ -15542,6 +15542,10 @@ def all_conference(
         batting_by_pid = {b["player_id"]: b for b in batting_rows}
 
         # ── Pull pitching stats for players on these teams ────────
+        # (Season-total pitching_stats — kept for two-way / UTIL candidates
+        #  whose "pitching" sub-card shows full-season production. Starter /
+        #  reliever roles are computed below from game_pitching, so relief
+        #  innings never contaminate an SP card and vice-versa.)
         cur.execute("""
             SELECT ps.player_id, ps.team_id,
                    p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
@@ -15557,6 +15561,34 @@ def all_conference(
         """, (season, team_ids))
         pitching_rows = [dict(r) for r in cur.fetchall()]
         pitching_by_pid = {p["player_id"]: p for p in pitching_rows}
+
+        # ── Pull per-role game_pitching aggregates (starter vs reliever) ─
+        # This is what makes SP1-SP4 and RP cards purely role-specific: we
+        # sum the raw components from only the games that match the role.
+        # Baseball-notation IP is converted to outs in Python via ip_to_outs
+        # so mixed fractions are safe.
+        # game_pitching does not carry separate W/L/SV columns (those
+        # come from 'decision' as a string). W/L/SV don't feed into
+        # compute_pitching_advanced math, so we derive them from the
+        # decision code purely for completeness on each card.
+        cur.execute("""
+            SELECT gp.player_id, gp.team_id, gp.is_starter,
+                   gp.innings_pitched, gp.earned_runs, gp.runs_allowed,
+                   gp.strikeouts, gp.walks, gp.hit_batters,
+                   gp.home_runs_allowed, gp.hits_allowed, gp.batters_faced,
+                   gp.decision,
+                   d.level as division_level
+            FROM game_pitching gp
+            JOIN games g ON g.id = gp.game_id
+            JOIN teams t ON t.id = gp.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE g.season = %s
+              AND gp.team_id = ANY(%s)
+              AND gp.innings_pitched IS NOT NULL
+              AND gp.player_id IS NOT NULL
+        """, (season, team_ids))
+        role_rows = [dict(r) for r in cur.fetchall()]
 
         # ── Pull position-games per player from game_batting ──────
         # We use normalized position buckets: C, 1B, 2B, 3B, SS, LF, CF, RF,
@@ -15575,6 +15607,131 @@ def all_conference(
             GROUP BY gb.player_id, gb.position
         """, (season, team_ids))
         pos_rows = cur.fetchall()
+
+    # ── Aggregate per-role pitching from game_pitching ───────────
+    # Build role splits keyed by (pid, team_id, is_starter) plus league
+    # totals keyed by (division_level, is_starter) so WAR/FIP are
+    # calibrated against a role-specific league baseline.
+    def _empty_agg():
+        return {"outs": 0, "g": 0, "er": 0, "r": 0, "k": 0, "bb": 0,
+                "hbp": 0, "hr": 0, "h": 0, "bf": 0, "w": 0, "l": 0, "sv": 0}
+
+    role_agg = {}            # (pid, team_id, is_starter) -> agg dict
+    div_role_totals = {}     # (division_level, is_starter) -> agg dict
+
+    for rr in role_rows:
+        pid = rr["player_id"]
+        tid = rr["team_id"]
+        is_starter = bool(rr["is_starter"])
+        div = rr.get("division_level") or "D3"
+        outs = ip_to_outs(rr["innings_pitched"])
+
+        key = (pid, tid, is_starter)
+        agg = role_agg.get(key)
+        if agg is None:
+            agg = _empty_agg()
+            role_agg[key] = agg
+        agg["outs"] += outs
+        agg["g"]    += 1
+        agg["er"]   += rr["earned_runs"] or 0
+        agg["r"]    += rr["runs_allowed"] or 0
+        agg["k"]    += rr["strikeouts"] or 0
+        agg["bb"]   += rr["walks"] or 0
+        agg["hbp"]  += rr["hit_batters"] or 0
+        agg["hr"]   += rr["home_runs_allowed"] or 0
+        agg["h"]    += rr["hits_allowed"] or 0
+        agg["bf"]   += rr["batters_faced"] or 0
+        dec = (rr.get("decision") or "").upper()
+        if dec == "W":
+            agg["w"] += 1
+        elif dec == "L":
+            agg["l"] += 1
+        elif dec in ("S", "SV"):
+            agg["sv"] += 1
+
+        dkey = (div, is_starter)
+        dagg = div_role_totals.get(dkey)
+        if dagg is None:
+            dagg = _empty_agg()
+            div_role_totals[dkey] = dagg
+        dagg["outs"] += outs
+        dagg["g"]    += 1
+        dagg["er"]   += rr["earned_runs"] or 0
+        dagg["r"]    += rr["runs_allowed"] or 0
+        dagg["k"]    += rr["strikeouts"] or 0
+        dagg["bb"]   += rr["walks"] or 0
+        dagg["hbp"]  += rr["hit_batters"] or 0
+        dagg["hr"]   += rr["home_runs_allowed"] or 0
+        dagg["h"]    += rr["hits_allowed"] or 0
+        dagg["bf"]   += rr["batters_faced"] or 0
+
+    # Per-division, per-role league constants. lgFIP == lgERA by the
+    # construction of the FIP constant (standard FanGraphs convention),
+    # so relievers are measured against the relief league baseline and
+    # starters against the starter baseline.
+    div_role_const = {}
+    for dkey, tot in div_role_totals.items():
+        ip_dec = tot["outs"] / 3.0
+        if ip_dec > 0:
+            lg_era = tot["er"] * 9.0 / ip_dec
+            fip_num = 13 * tot["hr"] + 3 * (tot["bb"] + tot["hbp"]) - 2 * tot["k"]
+            fip_const = lg_era - (fip_num / ip_dec)
+        else:
+            lg_era = 4.50
+            fip_const = 3.10
+        div_role_const[dkey] = {
+            "league_era": lg_era,
+            "league_fip": lg_era,
+            "fip_const": fip_const,
+            "runs_per_win": 9.5,
+        }
+
+    def _default_const():
+        return {"league_era": 4.50, "league_fip": 4.20,
+                "fip_const": 3.10, "runs_per_win": 9.5}
+
+    def _build_role_stats(agg, division_level, is_starter):
+        """Feed a role-filtered aggregate into compute_pitching_advanced
+        with role-specific league constants. Returns a flat dict of
+        display + selection stats, or None if the pitcher had 0 outs
+        in that role."""
+        if not agg or agg["outs"] <= 0:
+            return None
+        ip_baseball = outs_to_ip(agg["outs"])
+        line = PitchingLine(
+            ip=ip_baseball,
+            hits=agg["h"], er=agg["er"], runs=agg["r"],
+            bb=agg["bb"], ibb=0, k=agg["k"], hr=agg["hr"],
+            hbp=agg["hbp"], bf=agg["bf"],
+            wins=agg["w"], losses=agg["l"], saves=agg["sv"],
+            games=agg["g"], gs=(agg["g"] if is_starter else 0),
+        )
+        const = div_role_const.get((division_level, is_starter)) or _default_const()
+        adv = compute_pitching_advanced(
+            line,
+            fip_constant=const["fip_const"],
+            league_era=const["league_era"],
+            league_fip=const["league_fip"],
+            runs_per_win=const["runs_per_win"],
+            division_level=division_level or "D3",
+        )
+        ip_dec = agg["outs"] / 3.0
+        return {
+            "ip": ip_baseball,
+            "outs": agg["outs"],
+            "g": agg["g"],
+            "war": adv.pitching_war,
+            "war_rate": (adv.pitching_war / ip_dec) if ip_dec > 0 else 0.0,
+            "fip": adv.fip,
+            "era": adv.era,
+            "whip": adv.whip,
+            "siera": adv.siera,
+            "k": agg["k"],
+            "bb": agg["bb"],
+            "k_pct": adv.k_pct,
+            "bb_pct": adv.bb_pct,
+            "w": agg["w"], "l": agg["l"], "sv": agg["sv"],
+        }
 
     # Normalize positions locally (same logic as update_positions.py uses,
     # but simple enough to inline)
@@ -15667,6 +15824,9 @@ def all_conference(
         )
         ip = float(p.get("innings_pitched") or 0)
         pwar = float(p.get("pitching_war") or 0)
+        # Season-total pitching (kept around only for two-way / UTIL
+        # "pitching" sub-cards). Role-specific values are attached
+        # further below.
         rec.update({
             "ip": ip,
             "war_pit": pwar,
@@ -15699,30 +15859,90 @@ def all_conference(
         rec.setdefault("war_pit_rate", 0.0)
         rec.setdefault("gs", 0)
 
+    # ── Attach role-specific splits (starter / reliever) ─────────
+    # Each pitcher gets two sub-records computed from game_pitching
+    # filtered by is_starter. Pitchers who only ever started have a
+    # starter split and no reliever split (and vice-versa). These are
+    # used for both display (SP1-SP4 / RP cards) and selection.
+    for (pid, tid, is_starter), agg in role_agg.items():
+        rec = players.get(pid)
+        if rec is None:
+            # Pitcher appeared in game_pitching but not pitching_stats
+            # (rare edge case — build a minimal record so we can still
+            # evaluate them).
+            team = teams_by_id.get(tid, {}) or {}
+            rec = {
+                "player_id": pid, "team_id": tid,
+                "team_name": team.get("name"),
+                "team_short": team.get("short_name"),
+                "team_logo": team.get("logo_url"),
+                "conference_abbrev": team.get("conference_abbrev"),
+                "division_level": team.get("division_level"),
+                "team_games": team.get("team_games") or 0,
+                "name": "", "first_name": "", "last_name": "",
+                "headshot_url": None, "listed_position": None,
+                "pos_games": {}, "if_games": 0, "of_games": 0,
+                "pa": 0.0, "war_bat": 0.0, "war_bat_rate": 0.0,
+                "ip": 0.0, "war_pit": 0.0, "war_pit_rate": 0.0, "gs": 0,
+            }
+            players[pid] = rec
+        div_level = rec.get("division_level") or "D3"
+        split = _build_role_stats(agg, div_level, is_starter)
+        if split is None:
+            continue
+        slot = "starter" if is_starter else "reliever"
+        rec[slot] = split
+
     # ── Helpers for sort keys ────────────────────────────────────
     def bat_war(rec):
         return rec["war_bat_rate"] if rate_mode else rec["war_bat"]
 
-    def pit_war(rec):
-        return rec["war_pit_rate"] if rate_mode else rec["war_pit"]
+    def role_split(rec, role):
+        """role is 'starter' or 'reliever'. Returns the split dict
+        or None if the pitcher has no innings in that role."""
+        return rec.get(role)
+
+    def role_war(rec, role):
+        """Role-specific WAR for selection. Rate-mode uses WAR/IP."""
+        split = rec.get(role)
+        if not split:
+            return None
+        return split["war_rate"] if rate_mode else split["war"]
+
+    def role_tiebreak(rec, role):
+        """Lower FIP is better, so negate for descending sort."""
+        split = rec.get(role)
+        if not split or split.get("fip") is None:
+            return -999
+        return -split["fip"]
+
+    def best_pit_war(rec):
+        """Max of starter-WAR and reliever-WAR, used only for the
+        BAT-vs-PIT primary_role decision (which side of the ball the
+        player contributes more from). Returns 0 if no pitching."""
+        swar = role_war(rec, "starter")
+        rwar = role_war(rec, "reliever")
+        vals = [v for v in (swar, rwar) if v is not None]
+        return max(vals) if vals else None
 
     def bat_tiebreak(rec):
         # Higher wRC+ is better
         return rec.get("wrc_plus") or -999
-
-    def pit_tiebreak(rec):
-        # Lower FIP is better (so negate for descending sort)
-        fip = rec.get("fip")
-        return -fip if fip is not None else -999
 
     # ── Qualification helpers ────────────────────────────────────
     def is_qualified_bat(rec):
         tg = rec["team_games"] or 0
         return rec["pa"] >= QUALIFIED_PA_PER_GAME * tg and tg > 0
 
-    def is_qualified_pit(rec):
+    def is_qualified_starter(rec):
+        """Starter qualification uses STARTER-only IP, so a guy with
+        lots of relief innings but few starts won't sneak into the
+        SP pool on season-total IP."""
+        split = rec.get("starter")
+        if not split:
+            return False
         tg = rec["team_games"] or 0
-        return rec["ip"] >= QUALIFIED_IP_PER_GAME * tg and tg > 0
+        return split["ip"] >= QUALIFIED_IP_PER_GAME * tg and tg > 0
 
     # ── Position eligibility ─────────────────────────────────────
     def eligible_categories(rec):
@@ -15774,13 +15994,14 @@ def all_conference(
         return False
 
     # ── Primary role classification (one-role-per-player rule) ────
-    # A player can only appear once on a conference page.  For two-way
-    # guys (Donny Tober etc.) we pick whichever role's WAR is higher
-    # and remove them from the other pool entirely.
+    # A player can only appear once on a conference page. For two-way
+    # guys (Donny Tober etc.) we compare bat WAR vs the pitcher's
+    # BEST role-specific WAR so their pitching contribution is judged
+    # by whichever role they actually excel in.
     primary_role = {}  # pid -> "BAT" | "PIT" | None
     for pid, rec in players.items():
         b = bat_war(rec) if rec["pa"] > 0 else None
-        p = pit_war(rec) if rec["ip"] > 0 else None
+        p = best_pit_war(rec)
         if b is not None and p is not None:
             primary_role[pid] = "BAT" if b >= p else "PIT"
         elif b is not None:
@@ -15810,12 +16031,14 @@ def all_conference(
             cat_candidates[cat].append((bat_war(rec), bat_tiebreak(rec), pid))
         if is_util_eligible(rec):
             # UTIL pool is ranked by TOTAL WAR (bat + pit) so two-way
-            # players get credit for both sides of the ball. Non-two-way
-            # UTIL candidates just get their bat_war (pit_war is 0).
+            # players get credit for both sides of the ball. We use
+            # season-total pitching WAR (from pitching_stats) here
+            # because the UTIL card shows the full pitching line for
+            # two-way players, not a role split.
             total_war = bat_war(rec)
-            p_war = pit_war(rec) if rec.get("ip", 0) > 0 else 0
-            if p_war:
-                total_war = total_war + p_war
+            p_war_season = (rec.get("war_pit_rate") if rate_mode else rec.get("war_pit")) or 0
+            if rec.get("ip", 0) > 0 and p_war_season:
+                total_war = total_war + p_war_season
             cat_candidates["UTIL"].append((total_war, bat_tiebreak(rec), pid))
 
     # Sort each pool descending by war, then tiebreak
@@ -15901,30 +16124,35 @@ def all_conference(
         honorable[cat] = hm_list
 
     # ── Pitcher selection ────────────────────────────────────────
-    # Starters: qualified pitchers, sorted by WAR (FIP tiebreak)
-    # Reliever: IP >= 15 AND GS < 4, sorted by WAR/IP (rate) with FIP tiebreak
-    # Both pools obey: primary_role == "PIT" and WAR > 0.
+    # Both pools obey: primary_role == "PIT" and role-specific WAR > 0.
+    #   Starters: STARTER-IP qualified, sorted by starter WAR (FIP
+    #     tiebreak, both computed only from games started).
+    #   Relievers: RELIEVER-IP >= 15, sorted by reliever WAR/IP (FIP
+    #     tiebreak, both computed only from relief appearances). We
+    #     drop the old "gs < 4" rule because role-filtering already
+    #     guarantees zero starter contribution to the reliever line.
     starter_candidates = []
     reliever_candidates = []
     for pid, rec in players.items():
-        if rec["ip"] <= 0:
-            continue
         if primary_role.get(pid) != "PIT":
             continue
-        # Negative pitching WAR: exclude entirely
-        if pit_war(rec) < 0:
-            continue
-        # Starters must be qualified (always, even in non-rate mode)
-        if is_qualified_pit(rec):
-            starter_candidates.append((pit_war(rec), pit_tiebreak(rec), pid))
-        # Reliever uses WAR/IP regardless of rate_mode
-        if rec["ip"] >= AC_REL_MIN_IP and rec["gs"] < AC_REL_MAX_GS + 1:
-            # Skip relievers with negative rate WAR too
-            if rec["war_pit_rate"] < 0:
-                continue
-            reliever_candidates.append(
-                (rec["war_pit_rate"], pit_tiebreak(rec), pid)
-            )
+
+        sp = rec.get("starter")
+        if sp and is_qualified_starter(rec):
+            sp_sort = role_war(rec, "starter")
+            if sp_sort is not None and sp_sort >= 0:
+                starter_candidates.append(
+                    (sp_sort, role_tiebreak(rec, "starter"), pid)
+                )
+
+        rp = rec.get("reliever")
+        if rp and rp["ip"] >= AC_REL_MIN_IP:
+            # Relievers always sort by WAR/IP regardless of rate_mode.
+            rp_rate = rp["war_rate"]
+            if rp_rate >= 0:
+                reliever_candidates.append(
+                    (rp_rate, role_tiebreak(rec, "reliever"), pid)
+                )
 
     starter_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
     reliever_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
@@ -16005,7 +16233,41 @@ def all_conference(
         return out
 
     def serialize_pitcher(pid, role):
+        """Serialize a pitcher card using the role-specific split.
+        SP rows (SP1..SP4) pull from rec["starter"]; RP rows pull from
+        rec["reliever"]. If the split is missing (shouldn't happen
+        after selection but guard anyway) we fall back to the season
+        total so the card still renders something sensible."""
         rec = players[pid]
+        is_reliever = role.upper().startswith("RP") or role.upper() == "RP"
+        split_key = "reliever" if is_reliever else "starter"
+        split = rec.get(split_key)
+        if split:
+            war_val = split["war"]
+            war_rate = split["war_rate"]
+            fip = split.get("fip")
+            era = split.get("era")
+            whip = split.get("whip")
+            siera = split.get("siera")
+            ip_val = split.get("ip")
+            k_val = split.get("k")
+            bb_val = split.get("bb")
+            k_pct = split.get("k_pct")
+            bb_pct = split.get("bb_pct")
+            g_val = split.get("g", 0)
+        else:
+            war_val = rec.get("war_pit", 0) or 0
+            war_rate = rec.get("war_pit_rate", 0) or 0
+            fip = rec.get("fip")
+            era = rec.get("era")
+            whip = rec.get("whip")
+            siera = rec.get("siera")
+            ip_val = rec.get("ip")
+            k_val = rec.get("k")
+            bb_val = rec.get("bb")
+            k_pct = rec.get("pit_k_pct")
+            bb_pct = rec.get("pit_bb_pct")
+            g_val = rec.get("g_pitch", 0) or 0
         return {
             "player_id": pid,
             "name": rec["name"],
@@ -16016,19 +16278,21 @@ def all_conference(
             "division_level": rec["division_level"],
             "headshot_url": rec["headshot_url"],
             "slot": role,
-            "war": round(rec["war_pit"], 2),
-            "war_rate": round(rec["war_pit_rate"], 4) if rec["ip"] > 0 else None,
-            "fip": rec.get("fip"),
-            "fip_plus": rec.get("fip_plus"),
-            "era": rec.get("era"),
-            "whip": rec.get("whip"),
-            "siera": rec.get("siera"),
-            "ip": rec.get("ip"),
-            "k": rec.get("k"),
-            "bb": rec.get("bb"),
-            "k_pct": rec.get("pit_k_pct"),
-            "bb_pct": rec.get("pit_bb_pct"),
-            "gs": rec.get("gs"),
+            "war": round(war_val, 2),
+            "war_rate": round(war_rate, 4) if ip_val else None,
+            "fip": fip,
+            "fip_plus": rec.get("fip_plus"),  # season-total; FIP+ not role-split yet
+            "era": era,
+            "whip": whip,
+            "siera": siera,
+            "ip": ip_val,
+            "k": k_val,
+            "bb": bb_val,
+            "k_pct": k_pct,
+            "bb_pct": bb_pct,
+            "gs": g_val if not is_reliever else 0,
+            "g": g_val,
+            "role_source": split_key,  # diagnostic: which split this came from
         }
 
     def build_team_obj(hitter_picks, sp_list, rp_list):
