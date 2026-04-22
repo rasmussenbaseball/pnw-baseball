@@ -161,9 +161,13 @@ async function drawGraphic(canvas, data, pred) {
     const bX = P + 76, bW = W - 152, bY = y + 10, bH = 26
     ctx.fillStyle = ac.p; roundRect(ctx, bX, bY, Math.max(bW * awP, 10), bH, 5); ctx.fill()
     ctx.fillStyle = hc.p; roundRect(ctx, bX + bW - Math.max(bW * hoP, 10), bY, Math.max(bW * hoP, 10), bH, 5); ctx.fill()
+    // Round away side and derive home = 100 - away so the two always sum to 100
+    // (independent rounding of each side can produce 99/101 near .5 crossovers).
+    const awPct = Math.round(awP * 100)
+    const hoPct = 100 - awPct
     ctx.fillStyle = WHITE; ctx.font = 'bold 24px system-ui'
-    ctx.textAlign = 'left'; ctx.fillText(`${(awP * 100).toFixed(0)}%`, P + 12, bY + 22)
-    ctx.textAlign = 'right'; ctx.fillText(`${(hoP * 100).toFixed(0)}%`, S - P - 12, bY + 22)
+    ctx.textAlign = 'left'; ctx.fillText(`${awPct}%`, P + 12, bY + 22)
+    ctx.textAlign = 'right'; ctx.fillText(`${hoPct}%`, S - P - 12, bY + 22)
     // Label background pill for readability
     ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'
     const pwLabel = 'PROJECTED WIN %'

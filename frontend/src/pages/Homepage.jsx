@@ -537,14 +537,15 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
   const away = matchup.teams.find(t => t.side === 'away') || matchup.teams[0]
   const home = matchup.teams.find(t => t.side === 'home') || matchup.teams[1]
 
-  // Win probabilities: prefer matchup-embedded probs, fallback to separate endpoint
+  // Win probabilities: prefer matchup-embedded probs, fallback to separate endpoint.
+  // Round only the home side and derive away = 100 - home so the two always sum
+  // to 100 (independent Math.round can produce totals of 99 or 101 near .5).
   const gameProbs = winProbs?.[String(matchup.game_id)]
-  const homeWp = matchup.home_win_prob != null
-    ? Math.round(matchup.home_win_prob * 100)
-    : gameProbs ? Math.round(gameProbs.home_win_prob * 100) : null
-  const awayWp = matchup.away_win_prob != null
-    ? Math.round(matchup.away_win_prob * 100)
-    : gameProbs ? Math.round(gameProbs.away_win_prob * 100) : null
+  const rawHomeProb = matchup.home_win_prob != null
+    ? matchup.home_win_prob
+    : gameProbs?.home_win_prob
+  const homeWp = rawHomeProb != null ? Math.round(rawHomeProb * 100) : null
+  const awayWp = homeWp != null ? 100 - homeWp : null
 
   // Records
   const awayRec = away.record ? `${away.record.wins}-${away.record.losses}` : ''
@@ -648,8 +649,10 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
 function UpsetOfTheDayWidget({ upset }) {
   if (!upset) return null
 
+  // Round winner side and derive loser = 100 - winner so the pair always sums
+  // to exactly 100 (independent rounding produces 99/101 near .5 crossovers).
   const winnerProb = Math.round(upset.winner_win_prob * 100)
-  const loserProb = Math.round(upset.loser_win_prob * 100)
+  const loserProb = 100 - winnerProb
 
   // Format date
   const dateLabel = (() => {

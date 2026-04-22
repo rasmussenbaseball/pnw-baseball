@@ -147,8 +147,10 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
 
   const colorA = colorMap[matchup.team_a] || TEAM_COLORS[0]
   const colorB = colorMap[matchup.team_b] || TEAM_COLORS[1]
+  // Round team A and derive team B = 100 - A so the pair always sums to 100
+  // (independent Math.round can yield 99/101 when the raw decimal lands near .5).
   const pctA = Math.round(matchup.win_prob_a * 100)
-  const pctB = Math.round(matchup.win_prob_b * 100)
+  const pctB = 100 - pctA
   const spread = matchup.spread
   const favored = matchup.favored === matchup.team_a ? a : b
   const spreadAbs = Math.abs(spread)
