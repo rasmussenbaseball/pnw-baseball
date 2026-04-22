@@ -1523,6 +1523,23 @@ def main():
     if not team_filter or team_filter in ("seattle-u", "seattleu", "seattle_u"):
         process_seattle_u(season_year)
 
+    # -------------------------------------------------------------
+    # Post-scrape reconciliation
+    # -------------------------------------------------------------
+    # The NWAC composite pitching template (pos=p) does NOT publish Hit Batters,
+    # and its BF estimate (outs + H + BB) undercounts BF whenever a pitcher has
+    # hit a batter. Above, we write hbp=0 and an estimated BF as a placeholder.
+    # Now we pull the truth from game_pitching (populated by scrape_boxscores.py)
+    # and reconcile hit_batters + batters_faced in pitching_stats so downstream
+    # advanced stats (BABIP against, FIP, etc.) recompute correctly.
+    try:
+        from fix_pitching_hbp_from_boxscores import repair as _reconcile_hbp_bf
+        logger.info("Reconciling hit_batters and batters_faced from box scores...")
+        _reconcile_hbp_bf(season_year, dry_run=False)
+    except Exception as exc:
+        logger.warning(f"Post-scrape HBP/BF reconciliation failed: {exc}")
+        logger.warning("Run 'python3 scripts/fix_pitching_hbp_from_boxscores.py --season %s' manually.", season_year)
+
     logger.info("All done!")
 
 

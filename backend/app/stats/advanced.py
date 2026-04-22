@@ -387,10 +387,17 @@ def compute_pitching_advanced(
     else:
         result.kwera = 0
 
-    # BABIP against = (H - HR) / (BF - K - HR - BB + SF_estimated)
-    # We don't have SF for pitchers easily, so approximate
+    # BABIP against = (H - HR) / (BF - K - HR - BB - HBP)
+    # Guard: if the denominator is implausibly small relative to hits in play,
+    # the source data is likely missing BF or HBP (common when a scraper fails
+    # to capture HBP). Publishing a >1.0 BABIP is never physically meaningful,
+    # so store 0.0 in that case rather than poisoning leaderboards & averages.
     bip = line.bf - line.k - line.bb - line.hbp - line.hr
-    result.babip_against = _safe_div(line.hits - line.hr, max(bip, 1))
+    hits_in_play = line.hits - line.hr
+    if bip <= 0 or hits_in_play < 0 or hits_in_play > bip:
+        result.babip_against = 0.0
+    else:
+        result.babip_against = _safe_div(hits_in_play, bip)
 
     # LOB% = (H + BB + HBP - R) / (H + BB + HBP - 1.4*HR)
     lob_num = line.hits + line.bb + line.hbp - line.runs
