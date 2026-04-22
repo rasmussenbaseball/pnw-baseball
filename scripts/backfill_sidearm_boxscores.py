@@ -334,12 +334,21 @@ def _int(val):
 
 
 def _parse_ip(ip_str):
-    """Parse innings pitched string (e.g. '6.1' -> 6.333)."""
+    """Parse innings pitched and preserve baseball notation.
+
+    Baseball notation: '6.2' means 6 and 2/3 innings. We keep the value as-is
+    so the API's ip_to_outs/outs_to_ip helpers correctly decode it.
+    Snap any non-baseball fractions (.5, .333 from legacy rows) back to the
+    nearest legal fraction using outs math.
+    """
     try:
-        if "." in str(ip_str):
-            whole, frac = str(ip_str).split(".")
-            return int(whole) + int(frac) / 3.0
-        return float(ip_str)
+        raw = float(ip_str)
+        whole = int(raw)
+        frac = round((raw - whole) * 10)
+        if frac in (0, 1, 2):
+            return float(f"{whole}.{frac}")
+        outs = round(raw * 3)
+        return float(f"{outs // 3}.{outs % 3}")
     except (ValueError, TypeError):
         return 0.0
 

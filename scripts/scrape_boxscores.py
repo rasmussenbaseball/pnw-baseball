@@ -541,17 +541,26 @@ def parse_score(score_str):
 
 
 def parse_innings_pitched(ip_str):
-    """Parse innings pitched like '6.2' into 6.666... (6 and 2/3)."""
+    """Parse innings pitched and preserve baseball notation.
+
+    Baseball notation: '6.2' means 6 and 2/3 innings (.1 = 1 out, .2 = 2 outs).
+    We keep this format so downstream ip_to_outs/outs_to_ip helpers work.
+    If an unexpected fractional part appears (e.g. .5, .333), we snap it back
+    to the nearest baseball-legal fraction by converting via outs.
+    """
     if not ip_str:
         return None
     try:
         ip_str = str(ip_str).strip()
-        if '.' in ip_str:
-            parts = ip_str.split('.')
-            whole = int(parts[0])
-            frac = int(parts[1]) if len(parts) > 1 else 0
-            return whole + frac / 3.0
-        return float(ip_str)
+        raw = float(ip_str)
+        whole = int(raw)
+        frac = round((raw - whole) * 10)
+        # Already baseball-legal: .0, .1, .2
+        if frac in (0, 1, 2):
+            return float(f"{whole}.{frac}")
+        # Otherwise convert via outs (handles .333, .667, .5, etc.)
+        outs = round(raw * 3)
+        return float(f"{outs // 3}.{outs % 3}")
     except (ValueError, TypeError):
         return None
 

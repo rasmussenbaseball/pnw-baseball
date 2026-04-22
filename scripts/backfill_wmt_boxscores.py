@@ -200,7 +200,20 @@ def parse_player_stats(player_data, team_id):
 
     # Batting stats
     ab = totals.get("sAtBats", 0)
-    ip = totals.get("sInningsPitched", 0)
+    ip_raw = totals.get("sInningsPitched", 0)
+    # Normalize IP to baseball notation (.0, .1, .2).
+    # WMT usually returns baseball notation, but some rows come through as decimals.
+    try:
+        ip_val = float(ip_raw) if ip_raw is not None else 0.0
+        whole = int(ip_val)
+        frac = round((ip_val - whole) * 10)
+        if frac in (0, 1, 2):
+            ip = float(f"{whole}.{frac}")
+        else:
+            outs_total = round(ip_val * 3)
+            ip = float(f"{outs_total // 3}.{outs_total % 3}")
+    except (ValueError, TypeError):
+        ip = 0.0
 
     if ab is not None and ab > 0 or totals.get("sWalks", 0) or totals.get("sHitByPitch", 0) or totals.get("sRuns", 0) or totals.get("sSacrificeFlies", 0) or totals.get("sSacrificeBunts", 0):
         result["batting"] = {
