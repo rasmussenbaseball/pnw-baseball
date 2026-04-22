@@ -4718,7 +4718,7 @@ def team_leaderboard(
                        SUM(home_runs) as hr, SUM(runs) as r, SUM(rbi) as rbi,
                        SUM(walks) as bb, SUM(strikeouts) as k,
                        SUM(stolen_bases) as sb, SUM(hit_by_pitch) as hbp,
-                       -- Rate stats: PA-weighted w/ NULL guards; bb%/k% raw totals.
+                       -- Rate stats: PA-weighted w/ NULL guards; bb and k rates raw totals.
                        SUM(woba * plate_appearances) FILTER (WHERE woba IS NOT NULL)
                          / NULLIF(SUM(plate_appearances) FILTER (WHERE woba IS NOT NULL), 0) as avg_woba,
                        SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
@@ -4740,7 +4740,7 @@ def team_leaderboard(
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
                        SUM(batters_faced) as bf,
-                       -- Rate stats: IP-weighted w/ NULL guards; k%/bb% raw totals.
+                       -- Rate stats: IP-weighted w/ NULL guards; k and bb rates raw totals.
                        SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
                          / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
                        SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
@@ -9715,7 +9715,7 @@ def key_matchup(
                          THEN ROUND(((SUM(hits) - SUM(doubles) - SUM(triples) - SUM(home_runs) + 2*SUM(doubles) + 3*SUM(triples) + 4*SUM(home_runs))::numeric / SUM(at_bats))::numeric, 3) ELSE 0 END as team_slg,
                     CASE WHEN SUM(plate_appearances) > 0
                          THEN ROUND((SUM(home_runs)::numeric / SUM(plate_appearances))::numeric, 4) ELSE 0 END as hr_per_pa,
-                    -- bb%/k% raw totals; wRC+ PA-weighted w/ NULL guard.
+                    -- bb and k rates raw totals; wRC+ PA-weighted w/ NULL guard.
                     ROUND((SUM(walks)::numeric / NULLIF(SUM(plate_appearances), 0))::numeric, 3) as avg_bb_pct,
                     ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(plate_appearances), 0))::numeric, 3) as avg_k_pct,
                     ROUND((SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
@@ -9734,7 +9734,7 @@ def key_matchup(
             cur.execute("""
                 SELECT
                     ROUND(SUM(pitching_war)::numeric, 1) as total_pwar,
-                    -- FIP IP-weighted w/ NULL guard; k%/bb% raw totals over BF.
+                    -- FIP IP-weighted w/ NULL guard; k and bb rates raw totals over BF.
                     ROUND((SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
                            / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0))::numeric, 2) as avg_fip,
                     ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_k_pct,
