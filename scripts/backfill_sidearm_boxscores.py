@@ -446,6 +446,7 @@ def insert_game(game_data, home_batting, away_batting, home_pitching, away_pitch
                         home_runs, rbi, walks, strikeouts, hit_by_pitch, stolen_bases,
                         caught_stealing, sacrifice_flies, sacrifice_bunts, left_on_base)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT DO NOTHING
                 """, (
                     game_id, b["team_id"], player_id, b["player_name"],
                     b["batting_order"], b["position"],

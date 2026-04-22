@@ -425,6 +425,7 @@ def backfill_team(team_key, season=2026, dry_run=False):
                             home_runs, rbi, walks, strikeouts, hit_by_pitch, stolen_bases,
                             caught_stealing, sacrifice_flies, sacrifice_bunts, left_on_base)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
                     """, (
                         db_game_id, b["team_id"], player_id, b["player_name"],
                         b["batting_order"], b["position"],

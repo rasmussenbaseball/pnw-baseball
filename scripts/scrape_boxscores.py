@@ -2587,48 +2587,59 @@ def insert_game_batting(cur, game_id, team_id, player_lines, season):
                 batting_order_val = extra_slot
                 extra_slot += 1
 
-        cur.execute("""
-            INSERT INTO game_batting (
-                game_id, team_id, player_id, player_name,
-                batting_order, position,
-                at_bats, runs, hits, doubles, triples, home_runs, rbi,
-                walks, strikeouts, hit_by_pitch,
-                sacrifice_flies, sacrifice_bunts,
-                stolen_bases, caught_stealing, left_on_base
-            ) VALUES (
-                %s, %s, %s, %s,
-                %s, %s,
-                %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s,
-                %s, %s, %s
+        cur.execute("SAVEPOINT sp_insert_batting")
+        try:
+            cur.execute("""
+                INSERT INTO game_batting (
+                    game_id, team_id, player_id, player_name,
+                    batting_order, position,
+                    at_bats, runs, hits, doubles, triples, home_runs, rbi,
+                    walks, strikeouts, hit_by_pitch,
+                    sacrifice_flies, sacrifice_bunts,
+                    stolen_bases, caught_stealing, left_on_base
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s
+                )
+                ON CONFLICT (game_id, team_id, player_name, batting_order) DO UPDATE SET
+                    player_id = COALESCE(EXCLUDED.player_id, game_batting.player_id),
+                    position = EXCLUDED.position,
+                    at_bats = EXCLUDED.at_bats,
+                    runs = EXCLUDED.runs,
+                    hits = EXCLUDED.hits,
+                    doubles = EXCLUDED.doubles,
+                    triples = EXCLUDED.triples,
+                    home_runs = EXCLUDED.home_runs,
+                    rbi = EXCLUDED.rbi,
+                    walks = EXCLUDED.walks,
+                    strikeouts = EXCLUDED.strikeouts,
+                    hit_by_pitch = EXCLUDED.hit_by_pitch,
+                    sacrifice_flies = EXCLUDED.sacrifice_flies,
+                    sacrifice_bunts = EXCLUDED.sacrifice_bunts,
+                    stolen_bases = EXCLUDED.stolen_bases,
+                    caught_stealing = EXCLUDED.caught_stealing
+            """, (
+                game_id, team_id, player_id, p.get("player_name"),
+                batting_order_val, p.get("position"),
+                p.get("ab", 0), p.get("r", 0), p.get("h", 0),
+                p.get("2b", 0), p.get("3b", 0), p.get("hr", 0), p.get("rbi", 0),
+                p.get("bb", 0), p.get("so", 0), p.get("hbp", 0),
+                p.get("sf", 0), p.get("sh", 0),
+                p.get("sb", 0), p.get("cs", 0), p.get("lob", 0),
+            ))
+        except psycopg2.errors.UniqueViolation as e:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_insert_batting")
+            logger.warning(
+                "  Skipping duplicate game_batting row: game_id=%s player_id=%s team_id=%s player_name=%s constraint=%s",
+                game_id, player_id, team_id, p.get("player_name"),
+                e.diag.constraint_name,
             )
-            ON CONFLICT (game_id, team_id, player_name, batting_order) DO UPDATE SET
-                player_id = COALESCE(EXCLUDED.player_id, game_batting.player_id),
-                position = EXCLUDED.position,
-                at_bats = EXCLUDED.at_bats,
-                runs = EXCLUDED.runs,
-                hits = EXCLUDED.hits,
-                doubles = EXCLUDED.doubles,
-                triples = EXCLUDED.triples,
-                home_runs = EXCLUDED.home_runs,
-                rbi = EXCLUDED.rbi,
-                walks = EXCLUDED.walks,
-                strikeouts = EXCLUDED.strikeouts,
-                hit_by_pitch = EXCLUDED.hit_by_pitch,
-                sacrifice_flies = EXCLUDED.sacrifice_flies,
-                sacrifice_bunts = EXCLUDED.sacrifice_bunts,
-                stolen_bases = EXCLUDED.stolen_bases,
-                caught_stealing = EXCLUDED.caught_stealing
-        """, (
-            game_id, team_id, player_id, p.get("player_name"),
-            batting_order_val, p.get("position"),
-            p.get("ab", 0), p.get("r", 0), p.get("h", 0),
-            p.get("2b", 0), p.get("3b", 0), p.get("hr", 0), p.get("rbi", 0),
-            p.get("bb", 0), p.get("so", 0), p.get("hbp", 0),
-            p.get("sf", 0), p.get("sh", 0),
-            p.get("sb", 0), p.get("cs", 0), p.get("lob", 0),
-        ))
+        else:
+            cur.execute("RELEASE SAVEPOINT sp_insert_batting")
 
 
 def insert_game_pitching(cur, game_id, team_id, pitcher_lines, season):
