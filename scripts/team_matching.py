@@ -43,6 +43,11 @@ _TEAM_ALIASES = {
     "lewis-clark st.": "LCSC",
     "lc state": "LCSC",
     "northwest nazarene": "NNU",
+    # Disambiguate schools whose names fuzzy-match multiple teams. The Portland
+    # site refers to UW as "Washington" in URLs/opponent strings; without this
+    # alias it would fall through to fuzzy match and collide with Wash. St.
+    "washington": "UW",
+    "washington state": "Wash. St.",
 }
 
 
@@ -165,12 +170,15 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
                     if exact_sub:
                         rows = exact_sub
                     else:
-                        # Prefer team whose short_name length is closest to the
-                        # fragment ("Pacific" beats "Warner Pacific" for "Pacific").
+                        # Prefer the SHORTEST short_name. This handles both
+                        # "Pacific" beating "Warner Pacific" AND "Washington"
+                        # picking UW (short "UW", len 2) over Wash. St. (short
+                        # "Wash. St.", len 9). The previous heuristic used
+                        # abs(len(short) - len(frag)) which broke for long
+                        # inputs like "Washington" because it picked whichever
+                        # candidate was closest in length to the input.
                         rows.sort(
-                            key=lambda r: abs(
-                                len(r.get("short_name", "") or "") - len(frag)
-                            )
+                            key=lambda r: len(r.get("short_name", "") or "")
                         )
                 break
 
