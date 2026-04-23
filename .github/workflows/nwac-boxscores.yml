@@ -2,15 +2,25 @@ name: NWAC Box Score Scraper
 
 on:
   schedule:
-    # Run daily at 10 PM Pacific (5 AM UTC next day)
-    # After most games are final and schedule scraper has run
+    # First pass: 10 PM Pacific (5 AM UTC next day).
+    # Captures games for the first time, right after they're final.
     - cron: '0 5 * * *'
+    # Second pass: 6 AM Pacific (13 UTC). Re-scrapes games from the
+    # last 2 days to catch scorer corrections that land between the
+    # 10 PM initial scrape and morning recap-graphic generation.
+    # NWAC scorers frequently update earned-runs, hits, and pitcher
+    # splits for several hours after a game ends.
+    - cron: '0 13 * * *'
   workflow_dispatch:  # Allow manual runs
     inputs:
       mode:
-        description: 'Run mode: daily (default) or backfill'
+        description: 'Run mode: daily (default), backfill, or recent'
         required: false
         default: 'daily'
+      recent_days:
+        description: 'For recent mode: how many days back to re-scrape'
+        required: false
+        default: '2'
       limit:
         description: 'Max games to process (0 = unlimited)'
         required: false
@@ -41,15 +51,27 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEASON_YEAR: '2026'
+          # Cron expression that triggered this run (empty for manual runs)
+          TRIGGER_CRON: ${{ github.event.schedule }}
         run: |
           cd $GITHUB_WORKSPACE
           MODE="${{ github.event.inputs.mode }}"
+          RECENT_DAYS="${{ github.event.inputs.recent_days }}"
           LIMIT="${{ github.event.inputs.limit }}"
           DRY_RUN="${{ github.event.inputs.dry_run }}"
+
+          # If the morning cron (13 UTC) triggered this run, force recent mode.
+          # The 10 PM cron (5 UTC) stays in daily mode.
+          if [ "$TRIGGER_CRON" = "0 13 * * *" ]; then
+            MODE="recent"
+            RECENT_DAYS="${RECENT_DAYS:-2}"
+          fi
 
           ARGS=""
           if [ "$MODE" = "backfill" ]; then
             ARGS="--backfill"
+          elif [ "$MODE" = "recent" ]; then
+            ARGS="--recent-days ${RECENT_DAYS:-2}"
           fi
           if [ -n "$LIMIT" ] && [ "$LIMIT" != "0" ]; then
             ARGS="$ARGS --limit $LIMIT"
@@ -58,6 +80,7 @@ jobs:
             ARGS="$ARGS --dry-run"
           fi
 
+          echo "Trigger cron: $TRIGGER_CRON"
           echo "Running: python3 scripts/scrape_nwac_boxscores.py $ARGS"
           PYTHONPATH=backend python3 scripts/scrape_nwac_boxscores.py $ARGS
 

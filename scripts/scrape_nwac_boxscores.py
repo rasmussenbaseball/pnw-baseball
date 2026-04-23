@@ -198,6 +198,33 @@ def get_all_nwac_game_ids_with_batting(cur, season):
     return {row["source_url"] for row in cur.fetchall()}
 
 
+def get_recent_nwac_games(cur, season, days):
+    """
+    Find NWAC games from the last `days` days that have a box score URL,
+    regardless of whether they already have batting data.
+
+    Used by --recent-days to re-scrape games after NWAC scorers correct
+    their box scores (which often happens several hours to a day after
+    our initial 10 PM scrape).
+    """
+    cur.execute("""
+        SELECT g.id, g.source_url, g.game_date,
+               g.home_team_name, g.away_team_name,
+               g.home_team_id, g.away_team_id
+        FROM games g
+        JOIN teams ht ON g.home_team_id = ht.id
+        JOIN conferences c ON ht.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE g.season = %s
+          AND g.status = 'final'
+          AND g.source_url LIKE '%%nwacsports.com%%boxscores%%'
+          AND d.level = 'JUCO'
+          AND g.game_date >= CURRENT_DATE - (%s || ' days')::interval
+        ORDER BY g.game_date DESC
+    """, (season, days))
+    return cur.fetchall()
+
+
 # ── Box score processing ──
 
 def compute_bill_james_game_score(ip, h, er, bb, k, hr=0, unearn_runs=0):
@@ -530,6 +557,10 @@ def main():
     parser = argparse.ArgumentParser(description="Scrape NWAC box scores")
     parser.add_argument("--backfill", action="store_true",
                         help="Backfill mode: discover and process ALL box scores")
+    parser.add_argument("--recent-days", type=int, default=0,
+                        help="Re-scrape games from the last N days regardless of "
+                             "whether they already have batting data. Use this to "
+                             "catch scorer corrections made after the initial scrape.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show what would be done without fetching or saving")
     parser.add_argument("--limit", type=int, default=0,
@@ -595,6 +626,58 @@ def main():
             # Rate limit: 1 second between requests
             if i < total - 1:
                 time.sleep(1)
+
+    elif args.recent_days > 0:
+        # ── Recent-days re-scrape mode ──
+        # Re-processes games from the last N days regardless of existing
+        # batting data. Catches scorer corrections that land after the
+        # initial 10 PM scrape. process_boxscore() does a DELETE + INSERT
+        # so stale rows get replaced cleanly.
+        logger.info(
+            f"=== NWAC Box Score Re-scrape — last {args.recent_days} day(s), "
+            f"season {season_year} ==="
+        )
+
+        with get_connection() as conn:
+            cur = conn.cursor()
+            games = get_recent_nwac_games(cur, season_year, args.recent_days)
+
+        if not games:
+            logger.info("No recent NWAC games found")
+            return
+
+        logger.info(f"Found {len(games)} games in window")
+        if args.limit > 0:
+            games = games[:args.limit]
+            logger.info(f"Limited to {args.limit} games")
+
+        if args.dry_run:
+            for g in games[:20]:
+                logger.info(f"  {g['game_date']} — {g['away_team_name']} @ "
+                           f"{g['home_team_name']} — {g['source_url']}")
+            if len(games) > 20:
+                logger.info(f"  ... and {len(games) - 20} more")
+            return
+
+        total = len(games)
+        for i, game in enumerate(games):
+            box_url = game["source_url"]
+            logger.info(f"\n[{i + 1}/{total}] {game['game_date']} — "
+                       f"{game['away_team_name']} @ {game['home_team_name']}")
+
+            try:
+                if process_boxscore(box_url, season_year):
+                    success += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                logger.error(f"  Error: {e}")
+                import traceback
+                traceback.print_exc()
+                failed += 1
+
+            if i < total - 1:
+                time.sleep(2)
 
     else:
         # ── Daily mode ──
