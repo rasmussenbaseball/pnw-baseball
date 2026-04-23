@@ -114,6 +114,7 @@ import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
 import PlayoffProjections from './pages/PlayoffProjections'
 import Percentiles from './pages/Percentiles'
+import TeamQuiz from './pages/TeamQuiz'
 
 export default function App() {
   return (
@@ -177,6 +178,7 @@ export default function App() {
 
           {/* Misc (auth required) */}
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
+          <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />

@@ -80,6 +80,7 @@ const NAV = [
     authRequired: true,
     items: [
       { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
+      { to: '/team-quiz', label: 'Team Quiz', desc: 'Test your knowledge of a PNW team across one or more seasons' },
       { to: '/all-conference', label: 'All-Conference Generator', desc: 'Build mock first, second, and HM teams from season stats' },
       { to: '/feature-request', label: 'Request a Feature', desc: 'Submit ideas and feedback' },
       { to: '/about', label: 'About', desc: 'About PNW Baseball Stats' },

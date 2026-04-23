@@ -305,6 +305,9 @@ router = APIRouter()
 from .favorites import favorites_router
 router.include_router(favorites_router)
 
+from .quiz import quiz_router
+router.include_router(quiz_router)
+
 
 # ============================================================
 # SITE-WIDE STATS (player/game counts for About page)
