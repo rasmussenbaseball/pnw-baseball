@@ -613,6 +613,108 @@ def t_match_wins(cur, team_id, season):
                     value_suffix=" W")
 
 
+# ── Format 3b: Match players to full statlines ───────────────
+# Same match-4 shape as Format 3, but the "values" are complete
+# statlines (slash + HR/RBI for hitters, W-L + ERA/IP/K for
+# pitchers) instead of a single stat.
+
+def _build_statline_match(
+    players: List[dict],
+    *,
+    statline_fn: Callable[[dict], str],
+    template_id: str,
+    prompt: str,
+    subtitle: Optional[str],
+    team_id: int,
+    season: int,
+) -> Optional[dict]:
+    """Build a match-4 question where each 'value' is a full statline."""
+    seen_lines = set()
+    unique: List[dict] = []
+    for r in players:
+        line = statline_fn(r)
+        if line in seen_lines:
+            continue
+        seen_lines.add(line)
+        unique.append(r)
+        if len(unique) == 4:
+            break
+    if len(unique) < 4:
+        return None
+
+    players_ordered = [
+        {"id": f"p{i+1}", "label": _player_label(r), "player_id": r["player_id"]}
+        for i, r in enumerate(unique)
+    ]
+    values_ordered = [
+        {"id": f"v{i+1}", "label": statline_fn(r)}
+        for i, r in enumerate(unique)
+    ]
+    answer = {p["id"]: v["id"] for p, v in zip(players_ordered, values_ordered)}
+
+    players_shuffled = list(players_ordered)
+    values_shuffled = list(values_ordered)
+    random.shuffle(players_shuffled)
+    random.shuffle(values_shuffled)
+    players_shuffled = [
+        {"id": p["id"], "label": p["label"]} for p in players_shuffled
+    ]
+
+    return {
+        "id": f"{template_id}_{team_id}_{season}_{random.randint(1000, 9999)}",
+        "template_id": template_id,
+        "type": "match",
+        "prompt": prompt,
+        "subtitle": subtitle,
+        "players": players_shuffled,
+        "values": values_shuffled,
+        "answer": answer,
+        "_player_ids": [r["player_id"] for r in unique],
+    }
+
+
+def _hitter_match_line(r: dict) -> str:
+    return (f"{_fmt_avg(r['batting_avg'])}/{_fmt_avg(r['on_base_pct'])}"
+            f"/{_fmt_avg(r['slugging_pct'])}, "
+            f"{_fmt_int(r['home_runs'])} HR, {_fmt_int(r['rbi'])} RBI")
+
+
+def _pitcher_match_line(r: dict) -> str:
+    return (f"{_fmt_int(r['wins'])}-{_fmt_int(r['losses'])}, "
+            f"{_fmt_2dec(r['era'])} ERA, {_fmt_ip(r['innings_pitched'])} IP, "
+            f"{_fmt_int(r['strikeouts'])} K")
+
+
+def t_match_statline_hitters(cur, team_id, season):
+    pool = _qualified_hitter_pool(cur, team_id, season, min_pool=4)
+    if not pool or len(pool) < 4:
+        return None
+    sample = random.sample(pool, 4)
+    team = _team_name(cur, team_id)
+    return _build_statline_match(
+        sample, statline_fn=_hitter_match_line,
+        template_id="match_statline_hitters",
+        prompt=f"Match each {team} hitter to their {season} statline.",
+        subtitle=BATTER_RATE_SUBTITLE,
+        team_id=team_id, season=season,
+    )
+
+
+def t_match_statline_pitchers(cur, team_id, season):
+    pool = _qualified_pitcher_pool(cur, team_id, season, min_pool=4)
+    if not pool or len(pool) < 4:
+        return None
+    sample = random.sample(pool, 4)
+    team = _team_name(cur, team_id)
+    return _build_statline_match(
+        sample, statline_fn=_pitcher_match_line,
+        template_id="match_statline_pitchers",
+        prompt=f"Match each {team} pitcher to their {season} statline.",
+        subtitle=PITCHER_MIN_SUBTITLE,
+        team_id=team_id, season=season,
+    )
+
+
 # ── Format 4: Guess the player from a statline ───────────────
 # Present a player's statline; the user picks the name from 4
 # qualified options. Answer is randomly selected so it isn't
@@ -1227,6 +1329,8 @@ TEMPLATES: List[Callable] = [
     # Format 3: Match 4 players to 4 values (qualified only)
     t_match_hr, t_match_rbi, t_match_ba, t_match_owar,
     t_match_era, t_match_ip, t_match_k, t_match_wins,
+    # Format 3b: Match 4 players to 4 full statlines
+    t_match_statline_hitters, t_match_statline_pitchers,
     # Format 4: Guess the player from a statline (qualified only)
     t_statline_hitter_full, t_statline_hitter_slash,
     t_statline_pitcher_full, t_statline_pitcher_rate,
@@ -1242,17 +1346,67 @@ TEMPLATES: List[Callable] = [
 
 # ── Question generation ──────────────────────────────────────
 
+# Map templates to "families" so the bulk endpoint can enforce
+# variety. Leader and Second share a family because they're the
+# same shape to the quiz-taker. Count and team-fact share the
+# "team" family for the same reason.
+def _family_for_fn(fn: Callable) -> str:
+    n = fn.__name__
+    if n.startswith("t_leader_") or n.startswith("t_second_"):
+        return "leader"
+    if n.startswith("t_match_"):
+        return "match"
+    if n.startswith("t_statline_"):
+        return "statline"
+    if n.startswith("t_count_") or n.startswith("t_team_"):
+        return "team"
+    if n.startswith("t_h2h_"):
+        return "h2h"
+    return "other"
+
+
+def _family_for_template_id(tid: str) -> str:
+    if tid.startswith("leader_") or tid.startswith("second_"):
+        return "leader"
+    if tid.startswith("match_"):
+        return "match"
+    if tid.startswith("statline_"):
+        return "statline"
+    if tid.startswith("count_") or tid.startswith("team_"):
+        return "team"
+    if tid.startswith("h2h_"):
+        return "h2h"
+    return "other"
+
+
+# Per-family caps for a standard 10-question quiz. Sum exceeds 10
+# so any single family can't take over, but match is generous since
+# users love the format. If a team can't produce enough in-cap
+# variety we relax these toward the end of the generation loop.
+FAMILY_CAPS = {
+    "leader": 3,
+    "match": 3,
+    "statline": 2,
+    "team": 2,
+    "h2h": 2,
+}
+
+
 def _generate_one(cur, team_id: int, season: int,
                   exclude_template_ids: set,
-                  exclude_player_ids: Optional[set] = None) -> Optional[dict]:
+                  exclude_player_ids: Optional[set] = None,
+                  exclude_families: Optional[set] = None) -> Optional[dict]:
     """Try templates in random order until one succeeds. Skip any
-    template already served in this quiz session. When a candidate
-    question would reveal a player already used as an answer, skip it
-    on the first pass and only fall back to reusing a player if the
-    pool is exhausted."""
+    template already served in this quiz session, any family whose
+    cap is exhausted, and any candidate that would reveal a player
+    already shown. Falls back to player-reuse if the pool is empty."""
     if exclude_player_ids is None:
         exclude_player_ids = set()
+    if exclude_families is None:
+        exclude_families = set()
     pool = list(TEMPLATES)
+    if exclude_families:
+        pool = [t for t in pool if _family_for_fn(t) not in exclude_families]
     random.shuffle(pool)
     fallback: Optional[dict] = None
     for t in pool:
@@ -1325,16 +1479,28 @@ def get_quiz(
     questions: List[dict] = []
     used_template_ids: set = set()
     used_player_ids: set = set()
-    attempts_remaining = count * 4  # cushion for templates that fail
+    family_counts: dict = {}
+    initial_attempts = count * 4  # cushion for templates that fail
+    attempts_remaining = initial_attempts
 
     with get_connection() as conn:
         cur = conn.cursor()
         while len(questions) < count and attempts_remaining > 0:
             attempts_remaining -= 1
             season = random.choice(season_list)
+            # Relax family caps if we've burned through a chunk of
+            # our attempt budget (e.g., the team has no qualified
+            # pitchers so we literally can't produce the "match"
+            # family's cap). Lets us still fill the quiz.
+            relax_caps = attempts_remaining < (initial_attempts // 2)
+            exclude_families = set() if relax_caps else {
+                f for f, cap in FAMILY_CAPS.items()
+                if family_counts.get(f, 0) >= cap
+            }
             q = _generate_one(cur, team_id, season,
                               exclude_template_ids=used_template_ids,
-                              exclude_player_ids=used_player_ids)
+                              exclude_player_ids=used_player_ids,
+                              exclude_families=exclude_families)
             if q is None:
                 # Allow template reuse if we've exhausted the pool
                 if len(used_template_ids) >= len(TEMPLATES):
@@ -1343,6 +1509,8 @@ def get_quiz(
             used_template_ids.add(q["template_id"])
             for pid in (q.get("_player_ids") or []):
                 used_player_ids.add(pid)
+            fam = _family_for_template_id(q["template_id"])
+            family_counts[fam] = family_counts.get(fam, 0) + 1
             questions.append(_strip_internal(q))
 
     if not questions:

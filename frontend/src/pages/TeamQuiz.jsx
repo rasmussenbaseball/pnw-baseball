@@ -14,7 +14,7 @@ export default function TeamQuiz() {
   const { data: teams, loading: teamsLoading } = useTeams()
   const [selectedTeamId, setSelectedTeamId] = useState(null)
   const [teamSearch, setTeamSearch] = useState('')
-  const [selectedYears, setSelectedYears] = useState([CURRENT_SEASON])
+  const [selectedYears, setSelectedYears] = useState([])
 
   // ── Quiz state ──
   const [quiz, setQuiz] = useState(null)       // { questions: [...], team_id, seasons }
@@ -237,7 +237,7 @@ function SetupScreen({
           placeholder="Search teams..."
           value={teamSearch}
           onChange={(e) => setTeamSearch(e.target.value)}
-          className="w-full max-w-md px-3 py-2 border rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-pnw-teal/30"
+          className="w-full max-w-md px-3 py-2 border rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
         />
         {teamsLoading && <div className="text-gray-400 animate-pulse">Loading teams...</div>}
 
@@ -260,8 +260,8 @@ function SetupScreen({
                       onClick={() => setSelectedTeamId(t.id)}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-left text-sm transition-colors ${
                         selectedTeamId === t.id
-                          ? 'bg-pnw-teal/10 border-pnw-teal'
-                          : 'bg-white border-gray-200 hover:border-pnw-teal/50 hover:bg-gray-50'
+                          ? 'bg-nw-teal/10 border-nw-teal'
+                          : 'bg-white border-gray-200 hover:border-nw-teal/50 hover:bg-gray-50'
                       }`}
                     >
                       {t.logo_url && (
@@ -291,10 +291,10 @@ function SetupScreen({
                 type="button"
                 key={y}
                 onClick={() => toggleYear(y)}
-                className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
                   on
-                    ? 'bg-pnw-teal text-white border-pnw-teal'
-                    : 'bg-white border-gray-200 text-gray-700 hover:border-pnw-teal/50'
+                    ? 'bg-pnw-forest text-white border-pnw-forest shadow-md ring-2 ring-pnw-forest/30'
+                    : 'bg-white border-gray-300 text-gray-700 hover:border-nw-teal hover:bg-gray-50'
                 }`}
               >
                 {y}
@@ -380,7 +380,7 @@ function QuestionScreen({
       {/* Progress bar */}
       <div className="w-full bg-gray-200 rounded-full h-1.5 mb-6">
         <div
-          className="bg-pnw-teal h-1.5 rounded-full transition-all"
+          className="bg-nw-teal h-1.5 rounded-full transition-all"
           style={{ width: `${((index + (revealed ? 1 : 0)) / total) * 100}%` }}
         />
       </div>
@@ -458,7 +458,7 @@ function QuestionScreen({
           <button
             type="button"
             onClick={nextQuestion}
-            className="px-6 py-2.5 bg-pnw-teal text-white font-semibold rounded-lg hover:bg-pnw-teal/80 transition-colors"
+            className="px-6 py-2.5 bg-amber-500 text-white font-semibold rounded-lg shadow-md hover:bg-amber-600 transition-colors"
           >
             {index + 1 >= total ? 'See Results' : 'Next Question'}
           </button>
@@ -476,13 +476,13 @@ function McOptions({ question, userAnswer, setUserAnswer, revealed }) {
       {question.options.map(opt => {
         const picked = userAnswer === opt.id
         const isAnswer = opt.id === question.answer
-        let tone = 'bg-white border-gray-200 hover:border-pnw-teal/50 hover:bg-gray-50'
+        let tone = 'bg-white border-gray-200 hover:border-nw-teal/50 hover:bg-gray-50'
         if (revealed) {
           if (isAnswer) tone = 'bg-green-50 border-green-400'
           else if (picked && !isAnswer) tone = 'bg-red-50 border-red-400'
           else tone = 'bg-white border-gray-200 opacity-70'
         } else if (picked) {
-          tone = 'bg-pnw-teal/10 border-pnw-teal'
+          tone = 'bg-nw-teal/10 border-nw-teal'
         }
         return (
           <button
@@ -527,7 +527,7 @@ function MatchBoard({ question, userAnswer, setMatchValue, revealed }) {
                   value={chosen || ''}
                   onChange={(e) => setMatchValue(p.id, e.target.value)}
                   disabled={revealed}
-                  className="text-sm border rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-pnw-teal/30"
+                  className="text-sm border rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
                 >
                   <option value="">Select...</option>
                   {question.values.map(v => (
