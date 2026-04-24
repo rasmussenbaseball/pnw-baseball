@@ -46,6 +46,46 @@ function oddsTextColor(pct) {
   return 'text-gray-400'
 }
 
+// Map a conference object from the API to the conf_key used by the backend
+// freeze system. Returns null for conferences that cannot be frozen.
+function getConfKey(conf) {
+  const abbrev = (conf.conference_abbrev || '').toUpperCase()
+  if (abbrev === 'GNAC') return 'gnac'
+  if (abbrev === 'NWC') return 'nwc'
+  if (abbrev === 'CCC') return 'ccc'
+  const name = (conf.conference_name || '').toLowerCase()
+  if (name.includes('nwac')) {
+    if (name.includes('north')) return 'nwac-north'
+    if (name.includes('east')) return 'nwac-east'
+    if (name.includes('south')) return 'nwac-south'
+    if (name.includes('west')) return 'nwac-west'
+  }
+  return null
+}
+
+// Format an ISO date (YYYY-MM-DD) as a short human label (e.g. "Apr 26").
+function formatShortDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Small pill component: "Frozen · Apr 26" on a sky-blue chip.
+// Displayed in the header of each conference card when that conference
+// has been frozen. The tooltip explains what this means.
+function FrozenBadge({ frozenInfo }) {
+  if (!frozenInfo) return null
+  return (
+    <span
+      title={`Regular season ended ${formatShortDate(frozenInfo.regular_season_end_date)}. Projections shown are the final snapshot from that date.`}
+      className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200 whitespace-nowrap"
+    >
+      Frozen · {formatShortDate(frozenInfo.regular_season_end_date)}
+    </span>
+  )
+}
+
 
 // ─── Odds Bar ───
 function OddsBar({ pct, label, small, clinched }) {
@@ -70,7 +110,7 @@ function OddsBar({ pct, label, small, clinched }) {
 
 
 // ─── Projected Conference Standings Table with Odds ───
-function ProjectedStandingsTable({ conference, playoffTeamCount }) {
+function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
   const badgeClass = BADGE_COLORS[conference.division_level] || 'bg-gray-500 text-white'
   const teams = conference.teams || []
 
@@ -80,13 +120,14 @@ function ProjectedStandingsTable({ conference, playoffTeamCount }) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap">
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
           {conference.division_level === 'JUCO' ? 'NWAC' : conference.division_level}
         </span>
         <h3 className="text-sm font-bold text-gray-800 truncate">
           {conference.conference_name}
         </h3>
+        <FrozenBadge frozenInfo={frozenInfo} />
         {maxSeed > 0 && (
           <span className="text-[9px] text-gray-400 ml-auto">
             Top {maxSeed} make playoffs
@@ -595,21 +636,23 @@ function BracketTeamCompact({ team }) {
 
 
 // ─── Playoff Odds Overview Table ───
-function PlayoffOddsTable({ conferences, playoffCountByConf }) {
+function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
   return (
     <div className="space-y-4">
       {conferences.map(conf => {
         const maxSeed = playoffCountByConf[conf.conference_name] || 0
         if (maxSeed === 0) return null
         const teams = conf.teams || []
+        const frozenInfo = frozenByKey ? frozenByKey[getConfKey(conf)] : null
 
         return (
           <div key={conf.conference_name} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+            <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap">
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${BADGE_COLORS[conf.division_level] || 'bg-gray-500 text-white'}`}>
                 {conf.division_level === 'JUCO' ? 'NWAC' : conf.division_level}
               </span>
               <h3 className="text-sm font-bold text-gray-800">{conf.conference_name}</h3>
+              <FrozenBadge frozenInfo={frozenInfo} />
             </div>
 
             <div className="p-3">
@@ -704,6 +747,13 @@ export default function PlayoffProjections() {
 
   const conferences = data?.conferences || []
   const playoffs = data?.playoffs || []
+
+  // Build a conf_key -> freeze-info map so each conference card can show the
+  // "Frozen · <date>" banner when its regular season has ended.
+  const frozenByKey = {}
+  for (const f of (data?.frozen_conferences || [])) {
+    if (f && f.conf_key) frozenByKey[f.conf_key] = f
+  }
 
   // Build a lookup: conference_name -> playoff team count
   const playoffCountByConf = {}
@@ -835,6 +885,7 @@ export default function PlayoffProjections() {
               key={conf.conference_name}
               conference={conf}
               playoffTeamCount={playoffCountByConf[conf.conference_name] || 0}
+              frozenInfo={frozenByKey[getConfKey(conf)]}
             />
           ))}
           {filteredConferences.length === 0 && (
@@ -873,6 +924,7 @@ export default function PlayoffProjections() {
           <PlayoffOddsTable
             conferences={filteredConferences}
             playoffCountByConf={playoffCountByConf}
+            frozenByKey={frozenByKey}
           />
           {filteredConferences.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">
