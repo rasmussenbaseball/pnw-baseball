@@ -15361,6 +15361,21 @@ def opponent_trends(
 # for each conference (and aggregate groupings).
 # ============================================================
 
+def _get_conf_freeze(cur, conf_key):
+    """Return the conference_freezes row for conf_key, or None if live.
+
+    Presence of a row means the conference's regular season is over and the
+    All-Conference page (and other frozen features) should serve the
+    snapshot from the *_frozen tables instead of the live aggregates.
+    """
+    cur.execute(
+        "SELECT conf_key, regular_season_end_date, frozen_at "
+        "FROM conference_freezes WHERE conf_key = %s",
+        (conf_key,),
+    )
+    return cur.fetchone()
+
+
 # Maps the user-facing `conf` query param to the set of conference
 # names/abbreviations stored in the `conferences` table.
 ALL_CONF_GROUPS = {
@@ -15489,10 +15504,26 @@ def all_conference(
     with get_connection() as conn:
         cur = conn.cursor()
 
+        # ── Freeze check ─────────────────────────────────────────
+        # If this conference's regular season has ended, we serve data
+        # from the *_frozen snapshot tables instead of the live ones so
+        # playoff games don't change the All-Conference teams or awards.
+        # all-pnw (which has None conf_names) can never be frozen directly
+        # since it spans every division.
+        freeze = _get_conf_freeze(cur, conf) if group["conf_names"] is not None else None
+        is_frozen = freeze is not None
+        batting_table = "batting_stats_frozen" if is_frozen else "batting_stats"
+        pitching_table = "pitching_stats_frozen" if is_frozen else "pitching_stats"
+        team_season_table = "team_season_stats_frozen" if is_frozen else "team_season_stats"
+        # Frozen tables have a conf_key stamp; live tables do not.
+        tss_conf_cond = " AND tss.conf_key = %s" if is_frozen else ""
+        bs_conf_cond = " AND bs.conf_key = %s" if is_frozen else ""
+        ps_conf_cond = " AND ps.conf_key = %s" if is_frozen else ""
+
         # ── Resolve the set of team_ids in scope ─────────────────
         if group["conf_names"] is None:
             # all-pnw: every active team with stats this season
-            cur.execute("""
+            cur.execute(f"""
                 SELECT t.id, t.name, t.short_name, t.logo_url,
                        c.name as conference_name, c.abbreviation as conference_abbrev,
                        d.level as division_level,
@@ -15500,12 +15531,13 @@ def all_conference(
                 FROM teams t
                 JOIN conferences c ON c.id = t.conference_id
                 JOIN divisions d ON d.id = c.division_id
-                LEFT JOIN team_season_stats tss
+                LEFT JOIN {team_season_table} tss
                   ON tss.team_id = t.id AND tss.season = %s
                 WHERE t.is_active = 1
             """, (season,))
         else:
-            cur.execute("""
+            tss_params = (conf,) if is_frozen else ()
+            cur.execute(f"""
                 SELECT t.id, t.name, t.short_name, t.logo_url,
                        c.name as conference_name, c.abbreviation as conference_abbrev,
                        d.level as division_level,
@@ -15513,11 +15545,11 @@ def all_conference(
                 FROM teams t
                 JOIN conferences c ON c.id = t.conference_id
                 JOIN divisions d ON d.id = c.division_id
-                LEFT JOIN team_season_stats tss
-                  ON tss.team_id = t.id AND tss.season = %s
+                LEFT JOIN {team_season_table} tss
+                  ON tss.team_id = t.id AND tss.season = %s{tss_conf_cond}
                 WHERE t.is_active = 1
                   AND (c.name = ANY(%s) OR c.abbreviation = ANY(%s))
-            """, (season, group["conf_names"], group["conf_abbrevs"]))
+            """, (season, *tss_params, group["conf_names"], group["conf_abbrevs"]))
 
         team_rows = cur.fetchall()
         teams_by_id = {t["id"]: dict(t) for t in team_rows}
@@ -15527,7 +15559,8 @@ def all_conference(
                     "first_team": {}, "second_team": {}, "honorable_mentions": {}, "teams": []}
 
         # ── Pull batting stats for players on these teams ─────────
-        cur.execute("""
+        bs_params = (conf,) if is_frozen else ()
+        cur.execute(f"""
             SELECT bs.player_id, bs.team_id,
                    p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
                    p.year_in_school, p.bats, p.throws,
@@ -15537,15 +15570,16 @@ def all_conference(
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
                    bs.iso, bs.woba, bs.k_pct, bs.bb_pct,
                    bs.wrc_plus, bs.offensive_war
-            FROM batting_stats bs
+            FROM {batting_table} bs
             JOIN players p ON p.id = bs.player_id
-            WHERE bs.season = %s AND bs.team_id = ANY(%s)
-        """, (season, team_ids))
+            WHERE bs.season = %s AND bs.team_id = ANY(%s){bs_conf_cond}
+        """, (season, team_ids, *bs_params))
         batting_rows = [dict(r) for r in cur.fetchall()]
         batting_by_pid = {b["player_id"]: b for b in batting_rows}
 
         # ── Pull pitching stats for players on these teams ────────
-        cur.execute("""
+        ps_params = (conf,) if is_frozen else ()
+        cur.execute(f"""
             SELECT ps.player_id, ps.team_id,
                    p.first_name, p.last_name, p.headshot_url, p.position as listed_position,
                    p.year_in_school, p.bats, p.throws,
@@ -15554,16 +15588,18 @@ def all_conference(
                    ps.strikeouts, ps.walks, ps.k_pct, ps.bb_pct,
                    ps.wins, ps.saves,
                    ps.pitching_war
-            FROM pitching_stats ps
+            FROM {pitching_table} ps
             JOIN players p ON p.id = ps.player_id
-            WHERE ps.season = %s AND ps.team_id = ANY(%s)
-        """, (season, team_ids))
+            WHERE ps.season = %s AND ps.team_id = ANY(%s){ps_conf_cond}
+        """, (season, team_ids, *ps_params))
         pitching_rows = [dict(r) for r in cur.fetchall()]
         pitching_by_pid = {p["player_id"]: p for p in pitching_rows}
 
         # ── Pull position-games per player from game_batting ──────
         # We use normalized position buckets: C, 1B, 2B, 3B, SS, LF, CF, RF,
-        # DH, P.  Anything else is ignored.
+        # DH, P.  Anything else is ignored. Postseason games are excluded
+        # so playoff appearances don't affect position eligibility — the
+        # all-conference pools should reflect the regular season only.
         cur.execute("""
             SELECT gb.player_id, gb.position,
                    COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games
@@ -15575,6 +15611,7 @@ def all_conference(
               AND gb.position IS NOT NULL
               AND gb.position != ''
               AND gb.position != '-'
+              AND (g.is_postseason IS NULL OR g.is_postseason = FALSE)
             GROUP BY gb.player_id, gb.position
         """, (season, team_ids))
         pos_rows = cur.fetchall()
@@ -16235,4 +16272,9 @@ def all_conference(
         "second_team": second_team,
         "honorable_mentions": hm_out,
         "awards": awards,
+        "frozen": is_frozen,
+        "frozen_at": freeze["frozen_at"].isoformat() if is_frozen else None,
+        "regular_season_end_date": (
+            freeze["regular_season_end_date"].isoformat() if is_frozen else None
+        ),
     }
