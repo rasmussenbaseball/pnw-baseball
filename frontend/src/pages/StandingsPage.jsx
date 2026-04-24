@@ -20,21 +20,55 @@ function formatPct(pct) {
   return pct === 1 ? '1.000' : `.${String(Math.round(pct * 1000)).padStart(3, '0')}`
 }
 
+// Map a conference object from the API to the conf_key used by the backend
+// freeze system. Returns null for conferences that cannot be frozen (D1, etc).
+function getConfKey(conf) {
+  const abbrev = (conf.conference_abbrev || '').toUpperCase()
+  if (abbrev === 'GNAC') return 'gnac'
+  if (abbrev === 'NWC') return 'nwc'
+  if (abbrev === 'CCC') return 'ccc'
+  const name = (conf.conference_name || '').toLowerCase()
+  if (name.includes('nwac')) {
+    if (name.includes('north')) return 'nwac-north'
+    if (name.includes('east')) return 'nwac-east'
+    if (name.includes('south')) return 'nwac-south'
+    if (name.includes('west')) return 'nwac-west'
+  }
+  return null
+}
+
+// Format an ISO date (YYYY-MM-DD) as a short human label (e.g. "Apr 26").
+// Used for the "Frozen" banner on the standings card.
+function formatShortDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 // ─── Compact conference standings table ───
-function ConferenceTable({ conference, clinchedTeams }) {
+function ConferenceTable({ conference, clinchedTeams, frozenInfo }) {
   const badgeClass = BADGE_COLORS[conference.division_level] || 'bg-gray-500 text-white'
   const clinched = clinchedTeams || new Set()
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-2.5 py-1.5 border-b border-gray-100 flex items-center gap-2">
+      <div className="px-2.5 py-1.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
           {conference.division_level}
         </span>
         <h3 className="text-xs font-bold text-gray-800 truncate">
           {conference.conference_name}
         </h3>
+        {frozenInfo && (
+          <span
+            title={`Regular season ended ${formatShortDate(frozenInfo.regular_season_end_date)}. Standings shown as of that date; playoff games are excluded.`}
+            className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200"
+          >
+            Frozen · {formatShortDate(frozenInfo.regular_season_end_date)}
+          </span>
+        )}
       </div>
 
       {/* Table */}
@@ -281,6 +315,13 @@ export default function StandingsPage() {
   // Overall table: only PNW teams (non-PNW won't have stats)
   const overall = (data?.overall || []).filter(t => t.is_pnw)
 
+  // Build a conf_key -> freeze-info map so the banner can render per conference.
+  // Empty object when nothing is frozen.
+  const frozenByKey = {}
+  for (const f of (data?.frozen_conferences || [])) {
+    if (f && f.conf_key) frozenByKey[f.conf_key] = f
+  }
+
   // Group conferences by division for visual grouping
   const divisionGroups = {}
   conferences.forEach(conf => {
@@ -348,19 +389,34 @@ export default function StandingsPage() {
                 }`}>
                   {/* Large conferences render normally */}
                   {largeConfs.map(conf => (
-                    <ConferenceTable key={conf.conference_id} conference={conf} clinchedTeams={clinchedTeams} />
+                    <ConferenceTable
+                      key={conf.conference_id}
+                      conference={conf}
+                      clinchedTeams={clinchedTeams}
+                      frozenInfo={frozenByKey[getConfKey(conf)]}
+                    />
                   ))}
                   {/* Stack small conferences in one column */}
                   {smallConfs.length > 0 && (
                     <div className="flex flex-col gap-3">
                       {smallConfs.map(conf => (
-                        <ConferenceTable key={conf.conference_id} conference={conf} clinchedTeams={clinchedTeams} />
+                        <ConferenceTable
+                          key={conf.conference_id}
+                          conference={conf}
+                          clinchedTeams={clinchedTeams}
+                          frozenInfo={frozenByKey[getConfKey(conf)]}
+                        />
                       ))}
                     </div>
                   )}
                   {/* If no small/large split needed, render single conference */}
                   {smallConfs.length === 0 && largeConfs.length === 0 && confs.map(conf => (
-                    <ConferenceTable key={conf.conference_id} conference={conf} clinchedTeams={clinchedTeams} />
+                    <ConferenceTable
+                      key={conf.conference_id}
+                      conference={conf}
+                      clinchedTeams={clinchedTeams}
+                      frozenInfo={frozenByKey[getConfKey(conf)]}
+                    />
                   ))}
                 </div>
               </div>
