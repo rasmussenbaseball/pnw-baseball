@@ -587,13 +587,25 @@ function drawAwardCard(ctx, x, y, w, h, title, player, headshotImg, logoImg) {
   ctx.fillText(tName, teamStartX + miniLogoSz + gapBetween, teamY)
 }
 
-function drawAwardsRow(ctx, x, y, w, h, awards, headshots, teamLogos) {
+// NWAC is JUCO: players typically only spend 2 years there, and
+// most are first-year anyway, so "Transfer" and "Freshman" awards
+// aren't meaningful.  Only MVP / Hitter / Pitcher run for NWAC pages.
+function isNwacConf(conf) {
+  if (!conf) return false
+  const c = String(conf).toLowerCase()
+  return c.startsWith('nwac') || c === 'all-nwac'
+}
+
+function drawAwardsRow(ctx, x, y, w, h, awards, headshots, teamLogos, conf) {
   if (!awards) return
-  const count = AWARD_ORDER.length
+  const awardList = isNwacConf(conf)
+    ? AWARD_ORDER.filter(a => a.key === 'mvp' || a.key === 'hitter_of_year' || a.key === 'pitcher_of_year')
+    : AWARD_ORDER
+  const count = awardList.length
   const gap = 10
   const cardW = Math.floor((w - gap * (count - 1)) / count)
   for (let i = 0; i < count; i++) {
-    const a = AWARD_ORDER[i]
+    const a = awardList[i]
     const player = awards[a.key] || null
     const cx = x + i * (cardW + gap)
     const headshotImg = player ? headshots[player.player_id] : null
@@ -604,7 +616,7 @@ function drawAwardsRow(ctx, x, y, w, h, awards, headshots, teamLogos) {
 
 // ─── Team view renderer (1st Team or 2nd Team) ───
 function renderTeamView({
-  ctx, W, H, result, team, teamLabel, faviconImg, headshots, teamLogos, showAwards,
+  ctx, W, H, result, team, teamLabel, faviconImg, headshots, teamLogos, showAwards, conf,
 }) {
   drawBackground(ctx, W, H)
   const padX = 40
@@ -631,7 +643,8 @@ function renderTeamView({
       awardsH,
       result.awards,
       headshots,
-      teamLogos
+      teamLogos,
+      conf
     )
     // Subtle divider between awards row and position grid
     const divY = bodyTop + awardsH + 14
@@ -908,6 +921,7 @@ export default function AllConferenceGraphic() {
         headshots: images.headshots,
         teamLogos: images.teamLogos,
         showAwards: view === 'first',
+        conf,
       })
     }
   }, [result, images, view])
