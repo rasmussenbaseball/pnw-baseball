@@ -352,9 +352,19 @@ function BattingTable({ rows }) {
   }
   return (
     <table className="w-full text-xs">
-      <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-        <tr>
-          <th className="text-left px-2 py-1.5">Player</th>
+      <thead>
+        {/* Section header: matchup vs season */}
+        <tr className="bg-gray-100 text-gray-600 uppercase tracking-wide text-[9px]">
+          <th className="sticky left-0 z-20 bg-gray-100" colSpan={1}></th>
+          <th colSpan={16} className="text-center py-1 border-r border-gray-300 font-semibold">
+            Matchup
+          </th>
+          <th colSpan={6} className="text-center py-1 bg-pnw-cream text-pnw-forest font-semibold">
+            Season
+          </th>
+        </tr>
+        <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
+          <th className="text-left px-2 py-1.5 sticky left-0 z-20 bg-gray-50">Player</th>
           <th className="px-1 py-1.5">G</th>
           <th className="px-1 py-1.5">PA</th>
           <th className="px-1 py-1.5">AB</th>
@@ -370,33 +380,48 @@ function BattingTable({ rows }) {
           <th className="px-1 py-1.5">AVG</th>
           <th className="px-1 py-1.5">OBP</th>
           <th className="px-1 py-1.5">SLG</th>
-          <th className="px-1 py-1.5">OPS</th>
+          <th className="px-1 py-1.5 border-r border-gray-300">OPS</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">PA</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">AVG</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">OPS</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">HR</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">K%</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">BB%</th>
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
-          <tr key={r.player_id || `n${i}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-            <td className="text-left px-2 py-1.5 text-gray-900 font-medium whitespace-nowrap">
-              {r.player_name}
-            </td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.g}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.pa}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.ab}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.r}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.h}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.doubles}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.triples}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.hr}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.rbi}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.sb}</td>
-            <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtRate(r.avg)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.obp)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.slg)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.ops)}</td>
-          </tr>
-        ))}
+        {rows.map((r, i) => {
+          const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+          return (
+            <tr key={r.player_id || `n${i}`} className={rowBg}>
+              <td className={`text-left px-2 py-1.5 text-gray-900 font-medium whitespace-nowrap sticky left-0 z-10 ${rowBg}`}>
+                {r.player_name}
+              </td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.g}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.pa}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.ab}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.r}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.h}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.doubles}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.triples}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.hr}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.rbi}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.sb}</td>
+              <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtRate(r.avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.obp)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.slg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 border-r border-gray-300">{fmtRate(r.ops)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_pa ?? '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30 font-semibold">{fmtRate(r.season_avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtRate(r.season_ops)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_hr ?? '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_k_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_bb_pct)}</td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )
@@ -411,7 +436,7 @@ function PitchingTable({ rows }) {
       <thead>
         {/* Section header: matchup vs season */}
         <tr className="bg-gray-100 text-gray-600 uppercase tracking-wide text-[9px]">
-          <th colSpan={1}></th>
+          <th className="sticky left-0 z-20 bg-gray-100" colSpan={1}></th>
           <th colSpan={12} className="text-center py-1 border-r border-gray-300 font-semibold">
             Matchup
           </th>
@@ -420,7 +445,7 @@ function PitchingTable({ rows }) {
           </th>
         </tr>
         <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-          <th className="text-left px-2 py-1.5">Player</th>
+          <th className="text-left px-2 py-1.5 sticky left-0 z-20 bg-gray-50">Player</th>
           <th className="px-1 py-1.5">G</th>
           <th className="px-1 py-1.5">GS</th>
           <th className="px-1 py-1.5">Dec</th>
@@ -440,31 +465,34 @@ function PitchingTable({ rows }) {
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
-          <tr key={r.player_id || `n${i}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-            <td className="text-left px-2 py-1.5 text-gray-900 font-medium whitespace-nowrap">
-              {r.player_name}
-            </td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.g}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.gs}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700 text-[10px]">
-              {r.decision_summary || '-'}
-            </td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtIp(r.ip)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.h}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.r}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.er}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
-            <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtNum(r.era, 2)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtNum(r.whip, 2)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700 border-r border-gray-300">{fmtRate(r.opp_avg)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30 font-semibold">{fmtNum(r.season_fip, 2)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_k_pct)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_bb_pct)}</td>
-          </tr>
-        ))}
+        {rows.map((r, i) => {
+          const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+          return (
+            <tr key={r.player_id || `n${i}`} className={rowBg}>
+              <td className={`text-left px-2 py-1.5 text-gray-900 font-medium whitespace-nowrap sticky left-0 z-10 ${rowBg}`}>
+                {r.player_name}
+              </td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.g}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.gs}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 text-[10px]">
+                {r.decision_summary || '-'}
+              </td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{fmtIp(r.ip)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.h}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.r}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.er}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
+              <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtNum(r.era, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700">{fmtNum(r.whip, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 border-r border-gray-300">{fmtRate(r.opp_avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30 font-semibold">{fmtNum(r.season_fip, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_k_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_bb_pct)}</td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )
