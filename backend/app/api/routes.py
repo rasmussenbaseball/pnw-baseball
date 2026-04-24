@@ -15579,6 +15579,26 @@ def all_conference(
         """, (season, team_ids))
         pos_rows = cur.fetchall()
 
+        # ── First-season-at-team lookup (for Transfer of the Year) ──
+        # A player is "first-year at program" if their earliest season
+        # at the current team_id is this season.  Uses batting_stats
+        # UNION pitching_stats so two-way guys get covered either way.
+        cur.execute("""
+            SELECT player_id, team_id, MIN(season) AS first_season
+            FROM (
+                SELECT player_id, team_id, season FROM batting_stats
+                UNION
+                SELECT player_id, team_id, season FROM pitching_stats
+            ) s
+            WHERE team_id = ANY(%s)
+            GROUP BY player_id, team_id
+        """, (team_ids,))
+        first_season_rows = cur.fetchall()
+        first_season_by_pid_team = {
+            (r["player_id"], r["team_id"]): r["first_season"]
+            for r in first_season_rows
+        }
+
     # Normalize positions locally (same logic as update_positions.py uses,
     # but simple enough to inline)
     def norm_pos(raw):
@@ -15614,7 +15634,7 @@ def all_conference(
 
     # ── Build per-player candidate objects ───────────────────────
     # One entry per player, whether they hit, pitch, or both.
-    def base_player(pid, team_id, first_name, last_name, headshot, listed):
+    def base_player(pid, team_id, first_name, last_name, headshot, listed, year_in_school):
         team = teams_by_id.get(team_id, {}) or {}
         return {
             "player_id": pid,
@@ -15630,6 +15650,7 @@ def all_conference(
             "last_name": last_name,
             "headshot_url": headshot,
             "listed_position": listed,
+            "year_in_school": year_in_school,
         }
 
     players = {}  # pid -> merged record
@@ -15637,7 +15658,7 @@ def all_conference(
         pid = b["player_id"]
         rec = players.get(pid) or base_player(
             pid, b["team_id"], b["first_name"], b["last_name"],
-            b["headshot_url"], b["listed_position"]
+            b["headshot_url"], b["listed_position"], b.get("year_in_school")
         )
         pa = float(b.get("plate_appearances") or 0)
         war = float(b.get("offensive_war") or 0)
@@ -15666,7 +15687,7 @@ def all_conference(
         pid = p["player_id"]
         rec = players.get(pid) or base_player(
             pid, p["team_id"], p["first_name"], p["last_name"],
-            p["headshot_url"], p["listed_position"]
+            p["headshot_url"], p["listed_position"], p.get("year_in_school")
         )
         ip = float(p.get("innings_pitched") or 0)
         pwar = float(p.get("pitching_war") or 0)
@@ -16057,6 +16078,148 @@ def all_conference(
     hm_out["SP"] = [serialize_pitcher(pid, "SP") for pid in hm_sp]
     hm_out["RP"] = [serialize_pitcher(pid, "RP") for pid in hm_rp]
 
+    # ── Awards (MVP, HoY, PoY, Transfer of Year, Freshman of Year) ──
+    # Awards rank all players in the conference by their total WAR
+    # (bat_war + pit_war for two-way guys).  The five awards are
+    # mutually exclusive so each goes to a different player.
+    FRESHMAN_YEARS = {"Fr", "R-Fr"}
+
+    def award_total_war(rec):
+        # Combine both sides of the ball for two-way players so
+        # dominant two-way guys can win MVP off pure total value.
+        b = rec["war_bat"] if rec["pa"] > 0 else 0
+        p = rec["war_pit"] if rec["ip"] > 0 else 0
+        return b + p
+
+    def is_freshman(rec):
+        y = rec.get("year_in_school")
+        return y in FRESHMAN_YEARS
+
+    def is_transfer(rec):
+        # First-year at current program AND not a freshman.
+        if is_freshman(rec):
+            return False
+        first_season = first_season_by_pid_team.get(
+            (rec["player_id"], rec["team_id"])
+        )
+        return first_season == season
+
+    # Sort all players by MVP-style total WAR descending
+    award_ranked = sorted(
+        [(pid, rec, award_total_war(rec)) for pid, rec in players.items()
+         if award_total_war(rec) > 0],
+        key=lambda x: x[2],
+        reverse=True,
+    )
+
+    def find_award(predicate, taken):
+        for pid, rec, war in award_ranked:
+            if pid in taken:
+                continue
+            if predicate(pid, rec):
+                return pid
+        return None
+
+    taken_awards = set()
+
+    # MVP: top total WAR, any role
+    mvp_pid = find_award(lambda pid, rec: True, taken_awards)
+    if mvp_pid:
+        taken_awards.add(mvp_pid)
+
+    # Hitter of the Year: best non-MVP hitter (primary_role == BAT)
+    hoy_pid = find_award(
+        lambda pid, rec: primary_role.get(pid) == "BAT" and rec["war_bat"] > 0,
+        taken_awards,
+    )
+    if hoy_pid:
+        taken_awards.add(hoy_pid)
+
+    # Pitcher of the Year: best non-MVP pitcher
+    # Ranking by total WAR matches the MVP ordering, which is fine —
+    # a two-way guy wins PoY only if their pitching WAR alone still
+    # ranks them higher than all other pitchers' pitching WAR.
+    def pitcher_war_only(rec):
+        return rec["war_pit"] if rec["ip"] > 0 else 0
+
+    pitchers_ranked = sorted(
+        [(pid, rec) for pid, rec in players.items()
+         if pitcher_war_only(rec) > 0 and primary_role.get(pid) == "PIT"],
+        key=lambda x: pitcher_war_only(x[1]),
+        reverse=True,
+    )
+    poy_pid = None
+    for pid, rec in pitchers_ranked:
+        if pid in taken_awards:
+            continue
+        poy_pid = pid
+        break
+    if poy_pid:
+        taken_awards.add(poy_pid)
+
+    # Transfer of the Year: first-year at program, not freshman
+    transfer_pid = find_award(
+        lambda pid, rec: is_transfer(rec),
+        taken_awards,
+    )
+    if transfer_pid:
+        taken_awards.add(transfer_pid)
+
+    # Freshman of the Year: Fr/R-Fr with the most WAR
+    freshman_pid = find_award(
+        lambda pid, rec: is_freshman(rec),
+        taken_awards,
+    )
+    if freshman_pid:
+        taken_awards.add(freshman_pid)
+
+    def serialize_award(pid):
+        if not pid:
+            return None
+        rec = players[pid]
+        # Pick a position label: the player's first_team slot if they
+        # landed on the first team, else their listed_position, else
+        # role-based fallback.
+        slot = None
+        for s, p in first_picks.items():
+            if p == pid:
+                slot = s
+                break
+        if not slot:
+            for s, p in second_picks.items():
+                if p == pid:
+                    slot = s
+                    break
+        if not slot:
+            if pid in first_sp or pid in second_sp:
+                slot = "SP"
+            elif pid in first_rp or pid in second_rp:
+                slot = "RP"
+            elif primary_role.get(pid) == "PIT":
+                slot = "P"
+            else:
+                slot = rec.get("listed_position") or "UTIL"
+        return {
+            "player_id": pid,
+            "name": rec["name"],
+            "team_id": rec["team_id"],
+            "team_short": rec["team_short"],
+            "team_logo": rec["team_logo"],
+            "conference": rec["conference_abbrev"],
+            "division_level": rec["division_level"],
+            "headshot_url": rec["headshot_url"],
+            "position": slot,
+            "year_in_school": rec.get("year_in_school"),
+        }
+
+    awards = {
+        "mvp": serialize_award(mvp_pid),
+        "hitter_of_year": serialize_award(hoy_pid),
+        "pitcher_of_year": serialize_award(poy_pid),
+        "transfer_of_year": serialize_award(transfer_pid),
+        "freshman_of_year": serialize_award(freshman_pid),
+    }
+
     return {
         "conf": conf,
         "label": group["label"],
@@ -16071,4 +16234,5 @@ def all_conference(
         "first_team": first_team,
         "second_team": second_team,
         "honorable_mentions": hm_out,
+        "awards": awards,
     }

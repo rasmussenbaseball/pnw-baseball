@@ -349,13 +349,42 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.textAlign = 'left'
   ctx.fillText(tName, teamStartX + miniLogoSz + gapBetween, teamY)
 
-  // Stats panel (3 rows × 2 cols = 6 stats)
+  // Stats panel: true table grid (3 rows × 2 cols = 6 stats).
+  // Outer rounded rect, thin row separators, center column divider,
+  // label on top of each cell and value beneath.  Looks contained
+  // rather than floating in space.
   const statsTop = teamY + 12
   const statsBottom = y + h - 8
   const statsH = statsBottom - statsTop
-  const cellW = (w - 12) / 2
-  const cellH = statsH / 3
   const sx = x + 6
+  const sw = w - 12
+  const cellW = sw / 2
+  const cellH = statsH / 3
+
+  // Table background + border
+  ctx.fillStyle = 'rgba(255,255,255,0.03)'
+  roundRect(ctx, sx, statsTop, sw, statsH, 8)
+  ctx.fill()
+  ctx.strokeStyle = THEME.cardBorder
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  // Center vertical divider
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(sx + cellW, statsTop + 4)
+  ctx.lineTo(sx + cellW, statsTop + statsH - 4)
+  ctx.stroke()
+
+  // Horizontal row dividers (between rows 1-2 and 2-3)
+  for (let r = 1; r < 3; r++) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+    ctx.beginPath()
+    ctx.moveTo(sx + 4, statsTop + r * cellH)
+    ctx.lineTo(sx + sw - 4, statsTop + r * cellH)
+    ctx.stroke()
+  }
 
   const stats = buildStats(player, kind, rateMode)
 
@@ -367,9 +396,9 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
     const cx = sx + col * cellW + cellW / 2
     const cy = statsTop + row * cellH + cellH / 2
 
-    ctx.font = `600 8px ${font}`
+    ctx.font = `700 8px ${font}`
     ctx.fillStyle = THEME.textMuted
-    ctx.fillText(stats[i].label, cx, cy - 9)
+    ctx.fillText(stats[i].label, cx, cy - 8)
 
     ctx.font = `800 14px ${font}`
     ctx.fillStyle = THEME.textPrimary
@@ -418,9 +447,150 @@ function buildStats(player, kind, rateMode) {
   }
 }
 
+// ─── Awards row (First Team only) ───
+// Equal row of 5 award cards at the top of the First Team graphic.
+// Stats intentionally omitted — just team logo, headshot, name, slot.
+const AWARD_ORDER = [
+  { key: 'mvp',              title: 'MVP' },
+  { key: 'hitter_of_year',   title: 'HITTER OF THE YEAR' },
+  { key: 'pitcher_of_year',  title: 'PITCHER OF THE YEAR' },
+  { key: 'transfer_of_year', title: 'TRANSFER OF THE YEAR' },
+  { key: 'freshman_of_year', title: 'FRESHMAN OF THE YEAR' },
+]
+
+function drawAwardCard(ctx, x, y, w, h, title, player, headshotImg, logoImg) {
+  const font = 'Inter, Helvetica Neue, sans-serif'
+
+  // Card background — slightly richer than position cards
+  ctx.fillStyle = 'rgba(125,211,252,0.07)'
+  roundRect(ctx, x, y, w, h, 12)
+  ctx.fill()
+  ctx.strokeStyle = THEME.accentBorder
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+
+  // Title banner across the top — solid accent-soft band
+  const bannerH = 22
+  const bannerR = 12
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(x + bannerR, y)
+  ctx.lineTo(x + w - bannerR, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + bannerR)
+  ctx.lineTo(x + w, y + bannerH)
+  ctx.lineTo(x, y + bannerH)
+  ctx.lineTo(x, y + bannerR)
+  ctx.quadraticCurveTo(x, y, x + bannerR, y)
+  ctx.closePath()
+  ctx.fillStyle = 'rgba(125,211,252,0.18)'
+  ctx.fill()
+  ctx.restore()
+  ctx.strokeStyle = THEME.accentBorder
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(x, y + bannerH)
+  ctx.lineTo(x + w, y + bannerH)
+  ctx.stroke()
+
+  // Title text (auto-shrink if it overflows the banner)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = THEME.accent
+  let titleFontSize = 10
+  ctx.font = `900 ${titleFontSize}px ${font}`
+  while (ctx.measureText(title).width > w - 8 && titleFontSize > 7) {
+    titleFontSize -= 0.5
+    ctx.font = `900 ${titleFontSize}px ${font}`
+  }
+  ctx.fillText(title, x + w / 2, y + bannerH / 2 + 1)
+
+  if (!player) {
+    ctx.font = `500 11px ${font}`
+    ctx.fillStyle = THEME.textMuted
+    ctx.fillText('No winner', x + w / 2, y + h / 2 + 10)
+    return
+  }
+
+  // Headshot / logo — larger than position cards since this is a hero
+  const showLogo = isNwac(player)
+  const imgR = 34
+  const imgCX = x + w / 2
+  const imgCY = y + bannerH + 10 + imgR
+
+  // Circle background
+  ctx.fillStyle = THEME.circleBg
+  ctx.beginPath()
+  ctx.arc(imgCX, imgCY, imgR + 2, 0, Math.PI * 2)
+  ctx.fill()
+
+  if (showLogo) {
+    if (logoImg) drawImageContain(ctx, logoImg, imgCX - imgR + 3, imgCY - imgR + 3, imgR * 2 - 6, imgR * 2 - 6)
+  } else {
+    if (headshotImg) drawImageCover(ctx, headshotImg, imgCX, imgCY, imgR)
+    else if (logoImg) drawImageContain(ctx, logoImg, imgCX - imgR + 3, imgCY - imgR + 3, imgR * 2 - 6, imgR * 2 - 6)
+  }
+  // Accent ring around the hero
+  ctx.strokeStyle = THEME.accent
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.arc(imgCX, imgCY, imgR, 0, Math.PI * 2)
+  ctx.stroke()
+
+  // Position slot pill, centered just under the image
+  const posY = imgCY + imgR + 12
+  const posText = (player.position || '').toUpperCase()
+  ctx.font = `800 10px ${font}`
+  const posW = Math.max(28, ctx.measureText(posText).width + 12)
+  const posX = x + (w - posW) / 2
+  ctx.fillStyle = 'rgba(125,211,252,0.18)'
+  roundRect(ctx, posX, posY - 7, posW, 14, 7)
+  ctx.fill()
+  ctx.fillStyle = THEME.accent
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(posText, x + w / 2, posY)
+
+  // Player name
+  const nameY = posY + 16
+  ctx.font = `800 13px ${font}`
+  ctx.fillStyle = THEME.textPrimary
+  ctx.fillText(truncText(ctx, player.name || '', w - 10), x + w / 2, nameY)
+
+  // Team (logo + short name)
+  const teamY = nameY + 15
+  ctx.font = `600 11px ${font}`
+  const tName = player.team_short || ''
+  const nameWidth = ctx.measureText(tName).width
+  const miniLogoSz = 12
+  const gapBetween = 4
+  const totalTeamW = miniLogoSz + gapBetween + nameWidth
+  const teamStartX = x + (w - totalTeamW) / 2
+  if (logoImg) {
+    drawImageContain(ctx, logoImg, teamStartX, teamY - miniLogoSz / 2, miniLogoSz, miniLogoSz)
+  }
+  ctx.fillStyle = THEME.textSecondary
+  ctx.textAlign = 'left'
+  ctx.fillText(tName, teamStartX + miniLogoSz + gapBetween, teamY)
+}
+
+function drawAwardsRow(ctx, x, y, w, h, awards, headshots, teamLogos) {
+  if (!awards) return
+  const count = AWARD_ORDER.length
+  const gap = 10
+  const cardW = Math.floor((w - gap * (count - 1)) / count)
+  for (let i = 0; i < count; i++) {
+    const a = AWARD_ORDER[i]
+    const player = awards[a.key] || null
+    const cx = x + i * (cardW + gap)
+    const headshotImg = player ? headshots[player.player_id] : null
+    const logoImg = player ? teamLogos[player.team_id] : null
+    drawAwardCard(ctx, cx, y, cardW, h, a.title, player, headshotImg, logoImg)
+  }
+}
+
 // ─── Team view renderer (1st Team or 2nd Team) ───
 function renderTeamView({
-  ctx, W, H, result, team, teamLabel, faviconImg, headshots, teamLogos,
+  ctx, W, H, result, team, teamLabel, faviconImg, headshots, teamLogos, showAwards,
 }) {
   drawBackground(ctx, W, H)
   const padX = 40
@@ -434,7 +604,33 @@ function renderTeamView({
 
   const bodyTop = headerH + 14
   const bodyBottom = H - 40 - 8
-  const bodyH = bodyBottom - bodyTop
+  let gridTop = bodyTop
+
+  // Awards row (First Team only) — sits above the position grid.
+  if (showAwards && result.awards) {
+    const awardsH = 230
+    drawAwardsRow(
+      ctx,
+      padX,
+      bodyTop,
+      W - padX * 2,
+      awardsH,
+      result.awards,
+      headshots,
+      teamLogos
+    )
+    // Subtle divider between awards row and position grid
+    const divY = bodyTop + awardsH + 14
+    ctx.strokeStyle = THEME.border
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(padX, divY)
+    ctx.lineTo(W - padX, divY)
+    ctx.stroke()
+    gridTop = divY + 14
+  }
+
+  const bodyH = bodyBottom - gridTop
 
   const rowsCount = 3
   const colsCount = 5
@@ -449,7 +645,7 @@ function renderTeamView({
 
   for (let r = 0; r < rowsCount; r++) {
     const slots = layout[r]
-    const y = bodyTop + r * (rowH + gap)
+    const y = gridTop + r * (rowH + gap)
     const isPitcherRow = r === 2
     for (let c = 0; c < colsCount; c++) {
       const slot = slots[c]
@@ -617,6 +813,11 @@ function collectPlayersAndTeams(result) {
     (list || []).forEach(addPlayer)
   })
 
+  // Awards winners might be the same players as the first team, but
+  // they might not — so run them through addPlayer to be safe.
+  const awards = result.awards || {}
+  Object.values(awards).forEach(addPlayer)
+
   return { players, teams }
 }
 
@@ -692,6 +893,7 @@ export default function AllConferenceGraphic() {
         faviconImg: images.faviconImg,
         headshots: images.headshots,
         teamLogos: images.teamLogos,
+        showAwards: view === 'first',
       })
     }
   }, [result, images, view])
@@ -725,6 +927,7 @@ export default function AllConferenceGraphic() {
           faviconImg: images.faviconImg,
           headshots: images.headshots,
           teamLogos: images.teamLogos,
+          showAwards: view === 'first',
         })
       }
 
