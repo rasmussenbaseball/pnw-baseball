@@ -21,6 +21,17 @@ const POSITION_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'OF1', 'OF2', 'OF3', 'DH', 
 const HM_CATEGORIES = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH', 'UTIL']
 
 // Helpers
+
+// Format an ISO date (YYYY-MM-DD) as a short human label (e.g. "Apr 26").
+// Used by the "Frozen · <date>" banner to show when a conference's regular
+// season ended.
+function formatFrozenDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 function fmtAvg(v) {
   if (v === null || v === undefined) return '-'
   return v.toFixed(3).replace(/^0/, '')
@@ -361,8 +372,18 @@ export default function AllConferenceGenerator() {
 
       {data && !loading && (
         <>
-          <div className="mb-4 text-sm text-gray-500">
-            {data.label} | {data.team_count} team{data.team_count !== 1 ? 's' : ''} | Season {data.season}
+          <div className="mb-4 text-sm text-gray-500 flex items-center gap-2 flex-wrap">
+            <span>
+              {data.label} | {data.team_count} team{data.team_count !== 1 ? 's' : ''} | Season {data.season}
+            </span>
+            {data.frozen && data.regular_season_end_date && (
+              <span
+                title={`Regular season ended ${formatFrozenDate(data.regular_season_end_date)}. Stats shown exclude postseason games.`}
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200 whitespace-nowrap"
+              >
+                Frozen · {formatFrozenDate(data.regular_season_end_date)}
+              </span>
+            )}
           </div>
 
           <TeamSection
