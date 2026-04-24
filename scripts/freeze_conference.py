@@ -27,6 +27,12 @@ What it does, in order:
    row is the signal to the rest of the app that "this conference is
    frozen, use the snapshot."
 
+6. Captures the current /playoff-projections output for this conference
+   into projection_snapshots, keyed by conf_key. The projections endpoint
+   will replace this conference's section of its response with the
+   snapshot when serving, so Monte Carlo never re-runs for frozen
+   conferences.
+
 The script is safe to run in --dry-run mode first to preview the effect.
 
 Usage:
@@ -48,11 +54,13 @@ Supported conf keys:
 import sys
 import os
 import argparse
+import json
 import logging
 from datetime import date, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
+import psycopg2.extras
 from app.models.database import get_connection
 
 logging.basicConfig(
@@ -111,6 +119,20 @@ CONF_GROUPS = {
     # all-pnw intentionally omitted: there is no "end of regular season" for
     # a virtual grouping that spans every division, and its All-PNW page
     # derives from the individual conference freezes anyway.
+}
+
+
+# Maps conf_key to the conference_abbrev value used inside the
+# /playoff-projections response. Used to extract the matching section of
+# the response at snapshot time.
+CONF_KEY_TO_RESPONSE_ABBREV = {
+    "gnac": "GNAC",
+    "nwc": "NWC",
+    "ccc": "CCC",
+    "nwac-north": "NWAC-N",
+    "nwac-east": "NWAC-E",
+    "nwac-south": "NWAC-S",
+    "nwac-west": "NWAC-W",
 }
 
 
@@ -198,6 +220,80 @@ def snapshot_table(cur, live_table, frozen_table, conf_key, season, team_ids, dr
     return count
 
 
+def snapshot_playoff_projection(cur, conf_key, season, dry_run):
+    """Capture the /playoff-projections output for this conference and store it.
+
+    Runs the live projection, then extracts:
+      - The `conferences[N]` entry whose abbrev matches this conf_key
+        (projected standings + Monte Carlo odds for every team)
+      - The `playoffs[M]` bracket whose abbrev matches (the seeded
+        tournament entries). For NWAC divisions, the cross-conference
+        bracket does not match a single division abbrev, so no bracket
+        section is captured -- that case gets handled separately once all
+        four NWAC divisions are frozen.
+
+    Stored as a JSONB blob in projection_snapshots. The endpoint will pull
+    this row and swap it into the live response for this conference.
+    """
+    response_abbrev = CONF_KEY_TO_RESPONSE_ABBREV.get(conf_key)
+    if not response_abbrev:
+        logger.warning("No response abbrev mapping for %s; skipping projection snapshot.", conf_key)
+        return None
+
+    # Import here so the freeze script only imports the full routes module
+    # when it actually needs the projection output. Keeps the --dry-run
+    # path cheap (this helper is skipped entirely in dry-run).
+    from app.api.routes import playoff_projections
+
+    logger.info("Running live playoff projection to capture snapshot...")
+    full_response = playoff_projections(season=season)
+
+    conf_section = None
+    for c in full_response.get("conferences", []):
+        if c.get("conference_abbrev") == response_abbrev:
+            conf_section = c
+            break
+
+    bracket_section = None
+    for b in full_response.get("playoffs", []):
+        if b.get("conference_abbrev") == response_abbrev:
+            bracket_section = b
+            break
+
+    if conf_section is None:
+        logger.warning(
+            "No matching conference section found in projection response "
+            "(looked for abbrev=%s). Snapshot will be empty.",
+            response_abbrev,
+        )
+
+    snapshot = {
+        "conf_key": conf_key,
+        "response_abbrev": response_abbrev,
+        "conference_section": conf_section,
+        "bracket_section": bracket_section,
+        "schedule_last_updated": full_response.get("schedule_last_updated"),
+    }
+
+    logger.info("  conference entry captured: %s", conf_section is not None)
+    logger.info("  bracket entry captured:    %s", bracket_section is not None)
+
+    if dry_run:
+        return snapshot
+
+    cur.execute(
+        """
+        INSERT INTO projection_snapshots (conf_key, season, snapshot_json, snapshotted_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (conf_key, season) DO UPDATE
+          SET snapshot_json = EXCLUDED.snapshot_json,
+              snapshotted_at = NOW()
+        """,
+        (conf_key, season, psycopg2.extras.Json(snapshot)),
+    )
+    return snapshot
+
+
 def mark_postseason_games(cur, team_ids, end_date, dry_run):
     """Flag games after end_date involving any of the given teams as postseason."""
     cur.execute(
@@ -283,12 +379,25 @@ def run(conf_key, end_date, season, force, dry_run):
                 """,
                 (conf_key, end_date),
             )
+            # Commit the freeze metadata + snapshot tables now so the
+            # projection snapshot (run next) sees the frozen state via
+            # the downstream endpoints.
             conn.commit()
             logger.info("Freeze recorded in conference_freezes.")
+
+            logger.info("Capturing playoff projection snapshot...")
+            snapshot_playoff_projection(cur, conf_key, season, dry_run=False)
+            conn.commit()
+            logger.info("Projection snapshot stored.")
+
             logger.info("DONE.")
         else:
             conn.rollback()
             logger.info("DRY RUN: no changes written.")
+            # Still preview the projection snapshot extraction so the
+            # operator can see what would be captured.
+            logger.info("Previewing projection snapshot extraction (dry run)...")
+            snapshot_playoff_projection(cur, conf_key, season, dry_run=True)
 
 
 def parse_args():
