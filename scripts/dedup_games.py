@@ -361,12 +361,91 @@ def dedup_games(season, dry_run=False):
     total_batting_deleted += phantom_bat_deleted
     total_pitching_deleted += phantom_pit_deleted
 
+    # ========== Pass 4: orientation-swapped schedule-only phantoms ==========
+    # When Sidearm's team schedule lists a game the scraper cannot match to a
+    # real box score URL, scrape_boxscores.py synthesizes a gamelog:// URL and
+    # inserts a schedule-only row (final status, W/L, no batting/pitching). If
+    # the real box score is already stored under a different source_url, we end
+    # up with two rows on the same date for the same team pair but with
+    # different game_number values — Pass 1 misses them because it groups by
+    # game_number, and Pass 3 misses them because both rows have real team_ids.
+    #
+    # Signature that makes this safe against legitimate doubleheaders:
+    #   - same date, same team pair (either orientation)
+    #   - different game_number (or one NULL)
+    #   - phantom has 0 batting rows AND 0 pitching rows
+    #   - canon has batting rows
+    # Real doubleheaders scraped by us always have batting on both games.
+    cur.execute("""
+        SELECT g1.id AS phantom_id, g1.game_date,
+               g1.game_number AS phantom_gn, g2.game_number AS canon_gn,
+               g1.source_url  AS phantom_src,
+               g2.id AS canon_id
+        FROM games g1
+        JOIN games g2
+          ON g1.season = g2.season
+         AND g1.game_date = g2.game_date
+         AND g1.id <> g2.id
+         AND (g1.game_number IS DISTINCT FROM g2.game_number)
+         AND LEAST(g1.home_team_id, g1.away_team_id)
+             = LEAST(g2.home_team_id, g2.away_team_id)
+         AND GREATEST(g1.home_team_id, g1.away_team_id)
+             = GREATEST(g2.home_team_id, g2.away_team_id)
+        WHERE g1.season = %s
+          AND g1.status = 'final' AND g2.status = 'final'
+          AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
+          AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM game_batting  WHERE game_id = g1.id)
+          AND NOT EXISTS (SELECT 1 FROM game_pitching WHERE game_id = g1.id)
+          AND EXISTS     (SELECT 1 FROM game_batting  WHERE game_id = g2.id)
+        ORDER BY g1.game_date, g1.id
+    """, (season,))
+
+    raw_p4 = cur.fetchall()
+    # A single phantom can match multiple canons (e.g., legit doubleheader
+    # where our row happens to lack batting on game 2). Keep one canon per
+    # phantom — the one whose game_number matches the phantom's, else the
+    # lowest canon id. This ensures we only delete each phantom once.
+    seen = set()
+    phantoms_p4 = []
+    for r in raw_p4:
+        if r["phantom_id"] in seen:
+            continue
+        seen.add(r["phantom_id"])
+        phantoms_p4.append(r)
+
+    logger.info(f"Pass 4 (orientation-swapped schedule-only phantoms): "
+                f"found {len(phantoms_p4)}")
+
+    p4_deleted = 0
+    for r in phantoms_p4:
+        logger.info(
+            f"  {r['game_date']} phantom=g{r['phantom_id']} "
+            f"gn={r['phantom_gn']} src={r['phantom_src']!r} "
+            f"-> canon=g{r['canon_id']} gn={r['canon_gn']}"
+        )
+        if dry_run:
+            p4_deleted += 1
+            continue
+        # Phantom has no batting/pitching by construction, so no child rows
+        # to clean up. Still issue the DELETEs defensively in case of race.
+        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (r["phantom_id"],))
+        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (r["phantom_id"],))
+        cur.execute("DELETE FROM games         WHERE id      = %s", (r["phantom_id"],))
+        p4_deleted += 1
+
+    if not dry_run:
+        conn.commit()
+
+    total_deleted += p4_deleted
+
     # ========== Summary ==========
     logger.info(f"\n{'='*60}")
     logger.info(f"{'DRY RUN - ' if dry_run else ''}Dedup complete for season {season}")
     logger.info(f"  Pass 1 duplicate groups: {len(dup_groups)}")
     logger.info(f"  Pass 2 orphan games:     {len(orphans)}")
     logger.info(f"  Pass 3 phantom pairs:    {len(phantoms)}")
+    logger.info(f"  Pass 4 schedule-only:    {len(phantoms_p4)}")
     logger.info(f"  Games deleted:           {total_deleted}")
     logger.info(f"  Batting rows deleted:    {total_batting_deleted}")
     logger.info(f"  Pitching rows deleted:   {total_pitching_deleted}")
