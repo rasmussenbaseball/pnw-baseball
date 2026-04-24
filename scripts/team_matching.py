@@ -85,16 +85,47 @@ def get_team_id_by_short_name(cur, short_name):
     return row["id"] if row else None
 
 
+def _get_hint_division(cur, prefer_division_of_team_id):
+    """Look up the division_id of prefer_division_of_team_id, or None."""
+    if not prefer_division_of_team_id:
+        return None
+    cur.execute(
+        """
+        SELECT c.division_id
+        FROM teams t JOIN conferences c ON c.id = t.conference_id
+        WHERE t.id = %s
+        """,
+        (prefer_division_of_team_id,),
+    )
+    row = cur.fetchone()
+    return row["division_id"] if row else None
+
+
+def _prefer_same_division(rows, hint_div):
+    """If hint_div is given and any row matches it, return only those;
+    otherwise return rows unchanged. Used to break ties between two teams
+    whose short_name or school_name collides (e.g. NWC Pacific vs WCC
+    University of the Pacific both have short_name='Pacific')."""
+    if not hint_div:
+        return rows
+    same_div = [r for r in rows if r.get("division_id") == hint_div]
+    return same_div if same_div else rows
+
+
 def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     """Fuzzy-lookup a team by school_name, name, or short_name.
 
     Resolution order:
       1. Alias table match on raw and normalized name
-      2. Exact short_name match (case-insensitive)
-      3. Exact school_name or name match
-      4. Bidirectional LIKE match (only if exact match returned nothing)
-      5. If multiple fuzzy hits, prefer the shortest name; then prefer a team
-         in the same division as prefer_division_of_team_id when provided.
+      2. Exact short_name match (case-insensitive). Ties between multiple
+         actives broken by prefer_division_of_team_id.
+      3. Exact school_name or name match. Same tie-break.
+      4. Forward LIKE fuzzy match (team name contained in or containing
+         the input). The bare `input LIKE '%team_name%'` form was removed
+         because it silently matched "Fresno Pacific University" to D3
+         Pacific. Prefix-unqualified schools now fall through to OOC.
+      5. If multiple fuzzy hits, prefer the shortest short_name, then
+         prefer a team in the same division as the caller's hint.
 
     Returns team_id or None when nothing could be matched.
     """
@@ -125,6 +156,7 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     if name_fragment.strip().lower() != normalized.lower():
         names_to_try.append(name_fragment)
 
+    hint_div = _get_hint_division(cur, prefer_division_of_team_id)
     rows = []
 
     # 2) + 3) Exact matches. Each query orders is_active=1 rows first so
@@ -132,7 +164,9 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     # real team wins. This is the guard that keeps us from ever resolving
     # to an OOC shadow again.
     for frag in names_to_try:
-        # Exact short_name match — highest confidence
+        # Exact short_name match — highest confidence.
+        # When two real teams share a short_name (NWC Pacific id=17 vs
+        # WCC Pacific id=32857), caller's division hint picks the right one.
         cur.execute(
             """
             SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
@@ -148,7 +182,8 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
             # If any active team matched, use it; ignore inactive placeholders.
             active = [r for r in rows if r.get("is_active")]
             if active:
-                return active[0]["id"]
+                chosen = _prefer_same_division(active, hint_div)
+                return chosen[0]["id"]
             # No active match — fall through to try school/name before accepting OOC
             pass
 
@@ -168,10 +203,20 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
         if rows:
             active = [r for r in rows if r.get("is_active")]
             if active:
-                return active[0]["id"]
+                chosen = _prefer_same_division(active, hint_div)
+                return chosen[0]["id"]
             break
 
-    # 4) Fuzzy matching only when exact matches found nothing active
+    # 4) Fuzzy matching only when exact matches found nothing active.
+    # NOTE: The previous backward LIKE `input LIKE '%team_name%'` was
+    # removed — it silently matched "Fresno Pacific University" against
+    # D3 Pacific's school_name "Pacific University" and created ghost
+    # games. Forward LIKE is kept because it handles the useful case
+    # where the caller passes a prefix of a longer school_name (e.g.
+    # input "Pacific" matching school_name "Pacific University"). Inputs
+    # with a qualifying prefix that no team row covers (e.g. "Fresno
+    # Pacific") now fall through to get_or_create_ooc_team, which
+    # creates a clearly-visible OOC placeholder.
     if not rows or not any(r.get("is_active") for r in rows):
         for frag in names_to_try:
             cur.execute(
@@ -181,10 +226,8 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
                 JOIN conferences c ON c.id = t.conference_id
                 WHERE LOWER(t.school_name) LIKE LOWER(%s)
                    OR LOWER(t.name) LIKE LOWER(%s)
-                   OR LOWER(%s) LIKE '%%' || LOWER(t.school_name) || '%%'
-                   OR LOWER(%s) LIKE '%%' || LOWER(t.name) || '%%'
                 """,
-                (f"%{frag}%", f"%{frag}%", frag, frag),
+                (f"%{frag}%", f"%{frag}%"),
             )
             rows = cur.fetchall()
             if rows:
@@ -215,25 +258,11 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     if len(rows) == 1:
         return rows[0]["id"]
 
-    # 5) Multiple matches — prefer same division when caller supplied a hint
-    if prefer_division_of_team_id:
-        cur.execute(
-            """
-            SELECT c.division_id
-            FROM teams t
-            JOIN conferences c ON c.id = t.conference_id
-            WHERE t.id = %s
-            """,
-            (prefer_division_of_team_id,),
-        )
-        div_row = cur.fetchone()
-        if div_row:
-            same_div = [
-                r for r in rows
-                if r["division_id"] == div_row["division_id"]
-            ]
-            if same_div:
-                return same_div[0]["id"]
+    # 5) Multiple fuzzy matches — prefer same division when caller supplied a hint
+    if hint_div:
+        filtered = _prefer_same_division(rows, hint_div)
+        if filtered:
+            return filtered[0]["id"]
 
     return rows[0]["id"]
 

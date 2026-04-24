@@ -515,7 +515,14 @@ def parse_game_date(date_str, season_year):
 
 
 def parse_score(score_str):
-    """Parse a score string like 'W, 8-3' or 'L, 4-10' into (team_score, opp_score, result)."""
+    """Parse a score string like 'W, 8-3' or 'L, 4-10' into (team_score, opp_score, result).
+
+    Sidearm schedules sometimes format losses as "L, 9-2" where the first number
+    is the *winning* (opponent) score and the second is our losing score. We use
+    the W/L letter as source of truth and swap the numeric pair whenever the
+    ordering disagrees with the result — so caller always gets (team_score,
+    opp_score) with team's runs first.
+    """
     if not score_str:
         return None, None, None
 
@@ -527,6 +534,13 @@ def parse_score(score_str):
         result = m.group(1).upper()
         s1 = int(m.group(2))
         s2 = int(m.group(3))
+        # Canonicalize: team_score must agree with the result letter.
+        # "L, 9-2" on a schedule page means team lost 9 to 2 (opp first, us
+        # second). Swap so team_score=2, opp_score=9. Same logic for W.
+        if result == 'L' and s1 > s2:
+            s1, s2 = s2, s1
+        elif result == 'W' and s1 < s2:
+            s1, s2 = s2, s1
         return s1, s2, result
 
     # Just a score: "8-3"
@@ -901,9 +915,17 @@ def _parse_sidearm_schedule_v3(html, base_url, season_year, db_short=None):
             # Pattern: "W, 6-2Feb 13(Fri) 3:05 p.m." or "L, 1-8Feb 14(Sat) 10 a.m."
             score_m = re.match(r'([WLT]),\s*(\d+)-(\d+)', st_text)
             if score_m:
-                game["result"] = score_m.group(1)
-                game["team_score"] = int(score_m.group(2))
-                game["opp_score"] = int(score_m.group(3))
+                game["result"] = score_m.group(1).upper()
+                s1 = int(score_m.group(2))
+                s2 = int(score_m.group(3))
+                # Sidearm can list winner's score first on loss lines; normalize
+                # so team_score agrees with the result letter.
+                if game["result"] == "L" and s1 > s2:
+                    s1, s2 = s2, s1
+                elif game["result"] == "W" and s1 < s2:
+                    s1, s2 = s2, s1
+                game["team_score"] = s1
+                game["opp_score"] = s2
 
                 # Extract date from remaining text after score
                 rest = st_text[score_m.end():]
