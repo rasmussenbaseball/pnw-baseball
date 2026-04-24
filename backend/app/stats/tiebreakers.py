@@ -88,6 +88,7 @@ def apply_head_to_head(
                       AND home_score IS NOT NULL
                       AND away_score IS NOT NULL
                       AND home_score <> away_score
+                      AND (is_postseason IS NULL OR is_postseason = FALSE)
                     """,
                     (season, tids, tids),
                 )

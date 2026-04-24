@@ -655,22 +655,28 @@ def standings(
     """
     with get_connection() as conn:
         cur = conn.cursor()
+        # COALESCE(sf.*, s.*) makes teams in a frozen conference pull their
+        # snapshotted W-L from team_season_stats_frozen while teams in live
+        # conferences continue using team_season_stats. A team only has a
+        # row in _frozen if its conference's regular season has ended.
         cur.execute("""
             SELECT t.id, t.short_name, t.logo_url, t.city, t.state,
                    c.id as conference_id, c.name as conference_name, c.abbreviation as conference_abbrev,
                    d.id as division_id, d.name as division_name, d.level as division_level,
-                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
-                   COALESCE(s.conference_wins, 0) as conf_wins,
-                   COALESCE(s.conference_losses, 0) as conf_losses,
+                   COALESCE(sf.wins, s.wins, 0) as wins,
+                   COALESCE(sf.losses, s.losses, 0) as losses,
+                   COALESCE(sf.conference_wins, s.conference_wins, 0) as conf_wins,
+                   COALESCE(sf.conference_losses, s.conference_losses, 0) as conf_losses,
                    cr.composite_rank as national_rank
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats_frozen sf ON sf.team_id = t.id AND sf.season = %s
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
             LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
             WHERE t.is_active = 1
             ORDER BY d.id, c.name, t.short_name
-        """, (season, season))
+        """, (season, season, season))
         rows = cur.fetchall()
 
         # Fetch PPI ranks for JUCO teams (no national rankings exist for them)
@@ -681,12 +687,14 @@ def standings(
                    COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
                    COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
                    COALESCE(pit.team_fip, 4.5) as team_fip,
-                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
-                   COALESCE(s.conference_wins, 0) as conf_wins,
-                   COALESCE(s.conference_losses, 0) as conf_losses
+                   COALESCE(sf.wins, s.wins, 0) as wins,
+                   COALESCE(sf.losses, s.losses, 0) as losses,
+                   COALESCE(sf.conference_wins, s.conference_wins, 0) as conf_wins,
+                   COALESCE(sf.conference_losses, s.conference_losses, 0) as conf_losses
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats_frozen sf ON sf.team_id = t.id AND sf.season = %s
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
             LEFT JOIN (
                 SELECT team_id,
@@ -703,7 +711,7 @@ def standings(
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
-        """, (season, season, season))
+        """, (season, season, season, season))
         juco_rows = cur.fetchall()
         # Compute PPI and build lookup
         juco_teams_for_ppi = []
@@ -798,9 +806,31 @@ def standings(
             overall_wins_key="wins",
         )
 
+        # Load frozen-conference metadata so the frontend can show a banner
+        # on each frozen conference's section of the standings page.
+        cur.execute(
+            """
+            SELECT conf_key, regular_season_end_date, frozen_at
+            FROM conference_freezes
+            """
+        )
+        frozen_rows = cur.fetchall()
+        frozen_conferences = [
+            {
+                "conf_key": r["conf_key"],
+                "regular_season_end_date": (
+                    r["regular_season_end_date"].isoformat()
+                    if r["regular_season_end_date"] else None
+                ),
+                "frozen_at": r["frozen_at"].isoformat() if r["frozen_at"] else None,
+            }
+            for r in frozen_rows
+        ]
+
         return {
             "conferences": list(conferences.values()),
             "overall": all_teams,
+            "frozen_conferences": frozen_conferences,
         }
 
 
@@ -822,25 +852,29 @@ def conference_standings_graphic(
     with get_connection() as conn:
         cur = conn.cursor()
 
-        # 1. Get team records + national rank
+        # 1. Get team records + national rank.
+        # COALESCE pattern: prefer team_season_stats_frozen when a conference
+        # has been frozen (regular season ended); fall back to live otherwise.
         cur.execute("""
             SELECT t.id, t.short_name, t.logo_url,
                    c.id as conference_id, c.name as conference_name,
                    c.abbreviation as conference_abbrev,
                    d.id as division_id, d.name as division_name, d.level as division_level,
-                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
-                   COALESCE(s.conference_wins, 0) as conf_wins,
-                   COALESCE(s.conference_losses, 0) as conf_losses,
+                   COALESCE(sf.wins, s.wins, 0) as wins,
+                   COALESCE(sf.losses, s.losses, 0) as losses,
+                   COALESCE(sf.conference_wins, s.conference_wins, 0) as conf_wins,
+                   COALESCE(sf.conference_losses, s.conference_losses, 0) as conf_losses,
                    cr.composite_rank as national_rank
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats_frozen sf ON sf.team_id = t.id AND sf.season = %s
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
             LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
             WHERE t.is_active = 1
               AND d.level != 'D1'
             ORDER BY d.id, c.name, t.short_name
-        """, (season, season))
+        """, (season, season, season))
         team_rows = cur.fetchall()
 
         # 2. Get power ratings (same query as playoff-projections)
@@ -924,7 +958,10 @@ def conference_standings_graphic(
                     opp_ratings_remaining.setdefault(away_id, []).append(
                         team_ratings[home_id]["power_rating"])
 
-        # 4. For JUCO teams, compute PPI ranks
+        # 4. For JUCO teams, compute PPI ranks.
+        # COALESCE pattern: read wins/losses from team_season_stats_frozen first
+        # (so a frozen NWAC conference keeps its end-of-regular-season record),
+        # falling back to the live table for conferences still playing.
         cur.execute("""
             SELECT t.id,
                    COALESCE(bat.total_owar, 0) as team_owar,
@@ -932,12 +969,14 @@ def conference_standings_graphic(
                    COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
                    COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
                    COALESCE(pit.team_fip, 4.5) as team_fip,
-                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
-                   COALESCE(s.conference_wins, 0) as conf_wins,
-                   COALESCE(s.conference_losses, 0) as conf_losses
+                   COALESCE(sf.wins, s.wins, 0) as wins,
+                   COALESCE(sf.losses, s.losses, 0) as losses,
+                   COALESCE(sf.conference_wins, s.conference_wins, 0) as conf_wins,
+                   COALESCE(sf.conference_losses, s.conference_losses, 0) as conf_losses
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats_frozen sf ON sf.team_id = t.id AND sf.season = %s
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
             LEFT JOIN (
                 SELECT team_id,
@@ -954,7 +993,7 @@ def conference_standings_graphic(
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
-        """, (season, season, season))
+        """, (season, season, season, season))
         juco_rows = cur.fetchall()
         juco_teams_for_ppi = []
         for r in juco_rows:
@@ -1038,9 +1077,28 @@ def conference_standings_graphic(
                 if "sos_remaining_rank" not in t:
                     t["sos_remaining_rank"] = None
 
+        # Frozen conferences metadata for the frontend banner.
+        # Empty list means nothing is frozen; otherwise the frontend can
+        # show "Frozen as of [date]" per conf_key that appears here.
+        cur.execute("""
+            SELECT conf_key, regular_season_end_date, frozen_at
+            FROM conference_freezes
+        """)
+        frozen_rows = cur.fetchall()
+        frozen_conferences = [
+            {
+                "conf_key": r["conf_key"],
+                "regular_season_end_date": r["regular_season_end_date"].isoformat()
+                    if r["regular_season_end_date"] else None,
+                "frozen_at": r["frozen_at"].isoformat() if r["frozen_at"] else None,
+            }
+            for r in frozen_rows
+        ]
+
         return {
             "conferences": sorted(conferences.values(),
                                   key=lambda c: (c["division_level"], c["conference_name"])),
+            "frozen_conferences": frozen_conferences,
         }
 
 
