@@ -44,18 +44,22 @@ def main():
                 print(f"  {k}: {v}")
         print()
 
-        # team_season_stats current record.
+        # team_season_stats current record. Dump every column so we can see
+        # whatever timestamp field it actually uses (updated_at, scraped_at,
+        # etc).
         cur.execute("""
-            SELECT wins, losses, ties, last_updated
+            SELECT *
             FROM team_season_stats
             WHERE team_id = %s AND season = %s
         """, (tid, args.season))
         rec = cur.fetchone()
         if rec:
             r = dict(rec)
-            print(f"team_season_stats: {r['wins']}-{r['losses']}  "
-                  f"(ties={r['ties']})  "
-                  f"last_updated={r.get('last_updated')}")
+            print(f"team_season_stats: {r.get('wins')}-{r.get('losses')}  "
+                  f"(ties={r.get('ties')})")
+            for k, v in r.items():
+                if any(s in k.lower() for s in ("update", "scrape", "time", "stamp", "at")):
+                    print(f"  {k}: {v}")
         else:
             print("team_season_stats: NO ROW")
         print()
