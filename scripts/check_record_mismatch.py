@@ -99,11 +99,21 @@ def main():
             print("MISMATCH DETECTED. Listing every final game for this team")
             print("(sorted by date). Look for flipped scores or unexpected rows.")
             print()
+            # Discover which optional columns exist so the SELECT doesn't blow up
+            # on schemas that don't have is_conference or is_postseason yet.
             cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'games'
+            """)
+            cols = {r["column_name"] for r in cur.fetchall()}
+            optional = [c for c in ("is_conference", "is_postseason") if c in cols]
+            extra_sql = (", " + ", ".join(optional)) if optional else ""
+
+            cur.execute(f"""
                 SELECT id, game_date,
                        home_team_id, away_team_id,
                        home_score, away_score,
-                       is_conference, is_postseason, status
+                       status{extra_sql}
                 FROM games
                 WHERE season = %s
                   AND status = 'final'
@@ -113,8 +123,12 @@ def main():
                 ORDER BY game_date, id
             """, (args.season, tid, tid))
             rows = cur.fetchall()
-            print(f"{'id':>7} {'date':10} {'side':4} {'score':>7} {'opp_id':>6} "
-                  f"{'result':>6} {'conf':>4} {'post':>4}")
+
+            header = f"{'id':>7}  {'date':10}  {'side':4}  {'score':>7}  {'opp':>6}  {'res':>4}"
+            for c in optional:
+                header += f"  {c:>6}"
+            print(header)
+
             wins_check = losses_check = 0
             for r in rows:
                 r = dict(r)
@@ -124,17 +138,16 @@ def main():
                 their = r["away_score"] if is_home else r["home_score"]
                 opp = r["away_team_id"] if is_home else r["home_team_id"]
                 if our > their:
-                    result = "W"
-                    wins_check += 1
+                    result = "W"; wins_check += 1
                 elif our < their:
-                    result = "L"
-                    losses_check += 1
+                    result = "L"; losses_check += 1
                 else:
                     result = "T"
-                print(f"{r['id']:>7} {str(r['game_date']):10} {side:4} "
-                      f"{our}-{their:>3} {opp:>6} {result:>6} "
-                      f"{'Y' if r['is_conference'] else 'N':>4} "
-                      f"{'Y' if r['is_postseason'] else 'N':>4}")
+                line = (f"{r['id']:>7}  {str(r['game_date']):10}  {side:4}  "
+                        f"{str(our)+'-'+str(their):>7}  {opp:>6}  {result:>4}")
+                for c in optional:
+                    line += f"  {'Y' if r.get(c) else 'N':>6}"
+                print(line)
             print()
             print(f"  games-table tally: {wins_check}-{losses_check}")
 
