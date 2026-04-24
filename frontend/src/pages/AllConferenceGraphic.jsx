@@ -147,6 +147,16 @@ function isNwac(player) {
   return player?.division_level === 'JUCO'
 }
 
+// Collapse OF1/OF2/OF3 → "OF" and SP1/SP2/SP3/SP4 → "SP".
+// All other slot labels (C, 1B, UTIL, DH, RP, etc.) pass through unchanged.
+function displaySlot(slot) {
+  if (!slot) return ''
+  const s = String(slot).toUpperCase()
+  if (s.startsWith('OF')) return 'OF'
+  if (s.startsWith('SP')) return 'SP'
+  return s
+}
+
 // ─── Shared header / footer ───
 function drawBackground(ctx, W, H) {
   const ang = 160 * Math.PI / 180
@@ -278,12 +288,12 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.lineTo(x + w, y + badgeH)
   ctx.stroke()
 
-  // Position label
+  // Position label (collapses OF1/OF2/OF3 → OF, SP1/SP2... → SP)
   ctx.font = `800 13px ${font}`
   ctx.fillStyle = THEME.accent
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText((player?.slot || '').toUpperCase(), x + w / 2, y + badgeH / 2 + 1)
+  ctx.fillText(displaySlot(player?.slot), x + w / 2, y + badgeH / 2 + 1)
 
   if (!player) {
     // Placeholder
@@ -295,11 +305,15 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
     return
   }
 
-  // Decide whether to show headshot or team logo (NWAC = team logo)
+  // Decide whether to show headshot or team logo (NWAC = team logo).
+  // When the card is short (e.g. First Team cards squeezed by the
+  // awards row above), shrink the headshot so the stats table below
+  // has enough room.  Second Team cards are taller → full-size image.
+  const compact = h < 260
   const showLogo = isNwac(player)
-  const imgR = 38
+  const imgR = compact ? 28 : 38
   const imgCX = x + w / 2
-  const imgCY = y + badgeH + 8 + imgR
+  const imgCY = y + badgeH + (compact ? 6 : 8) + imgR
 
   // Circle background
   ctx.fillStyle = THEME.circleBg
@@ -326,15 +340,15 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   ctx.stroke()
 
   // Player name
-  const nameY = imgCY + imgR + 14
-  ctx.font = `700 14px ${font}`
+  const nameY = imgCY + imgR + (compact ? 11 : 14)
+  ctx.font = `700 ${compact ? 13 : 14}px ${font}`
   ctx.fillStyle = THEME.textPrimary
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(truncText(ctx, player.name || '', w - 12), x + w / 2, nameY)
 
   // Team line (small logo + short name)
-  const teamY = nameY + 16
+  const teamY = nameY + (compact ? 13 : 16)
   ctx.font = `500 11px ${font}`
   const tName = player.team_short || ''
   const nameWidth = ctx.measureText(tName).width
@@ -353,7 +367,7 @@ function drawPlayerCard(ctx, x, y, w, h, player, headshotImg, logoImg, kind, rat
   // Outer rounded rect, thin row separators, center column divider,
   // label on top of each cell and value beneath.  Looks contained
   // rather than floating in space.
-  const statsTop = teamY + 12
+  const statsTop = teamY + (compact ? 9 : 12)
   const statsBottom = y + h - 8
   const statsH = statsBottom - statsTop
   const sx = x + 6
@@ -511,11 +525,11 @@ function drawAwardCard(ctx, x, y, w, h, title, player, headshotImg, logoImg) {
     return
   }
 
-  // Headshot / logo — larger than position cards since this is a hero
+  // Headshot / logo
   const showLogo = isNwac(player)
-  const imgR = 34
+  const imgR = 28
   const imgCX = x + w / 2
-  const imgCY = y + bannerH + 10 + imgR
+  const imgCY = y + bannerH + 8 + imgR
 
   // Circle background
   ctx.fillStyle = THEME.circleBg
@@ -536,9 +550,9 @@ function drawAwardCard(ctx, x, y, w, h, title, player, headshotImg, logoImg) {
   ctx.arc(imgCX, imgCY, imgR, 0, Math.PI * 2)
   ctx.stroke()
 
-  // Position slot pill, centered just under the image
-  const posY = imgCY + imgR + 12
-  const posText = (player.position || '').toUpperCase()
+  // Position slot pill, centered just under the image (OF1→OF, SP1→SP)
+  const posY = imgCY + imgR + 11
+  const posText = displaySlot(player.position)
   ctx.font = `800 10px ${font}`
   const posW = Math.max(28, ctx.measureText(posText).width + 12)
   const posX = x + (w - posW) / 2
@@ -551,13 +565,13 @@ function drawAwardCard(ctx, x, y, w, h, title, player, headshotImg, logoImg) {
   ctx.fillText(posText, x + w / 2, posY)
 
   // Player name
-  const nameY = posY + 16
+  const nameY = posY + 15
   ctx.font = `800 13px ${font}`
   ctx.fillStyle = THEME.textPrimary
   ctx.fillText(truncText(ctx, player.name || '', w - 10), x + w / 2, nameY)
 
   // Team (logo + short name)
-  const teamY = nameY + 15
+  const teamY = nameY + 14
   ctx.font = `600 11px ${font}`
   const tName = player.team_short || ''
   const nameWidth = ctx.measureText(tName).width
@@ -608,7 +622,7 @@ function renderTeamView({
 
   // Awards row (First Team only) — sits above the position grid.
   if (showAwards && result.awards) {
-    const awardsH = 230
+    const awardsH = 160
     drawAwardsRow(
       ctx,
       padX,
