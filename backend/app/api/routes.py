@@ -16788,7 +16788,58 @@ def historic_matchup(
             out.sort(key=lambda x: (-(x["pa"]), -(x["avg"] or 0)))
             return out
 
-        def _aggregate_pitching(side_team_id):
+        # ── Season-to-date stats for every pitcher in the matchup ──
+        # One batched query keyed by player_id, summed across rows in case
+        # a pitcher transferred mid-season (rare, but be defensive).
+        pitcher_player_ids = sorted({
+            r["player_id"] for r in pit_rows if r["player_id"]
+        })
+        season_pitching_by_player: dict = {}
+        if pitcher_player_ids:
+            cur.execute("""
+                SELECT ps.player_id,
+                       SUM(ps.innings_pitched)   AS ip,
+                       SUM(ps.strikeouts)        AS k,
+                       SUM(ps.walks)             AS bb,
+                       SUM(ps.home_runs_allowed) AS hr,
+                       SUM(ps.hit_batters)       AS hbp,
+                       SUM(ps.batters_faced)     AS bf
+                FROM pitching_stats ps
+                WHERE ps.player_id = ANY(%s)
+                  AND ps.season = %s
+                GROUP BY ps.player_id
+            """, (pitcher_player_ids, season))
+            season_pitching_by_player = {
+                r["player_id"]: dict(r) for r in cur.fetchall()
+            }
+
+        def _season_stats_for(player_id, division_level):
+            """Compute (season_ip, season_fip, season_k_pct, season_bb_pct)
+            for a single pitcher, using the side's division for FIP constant.
+            Returns Nones if the player has no season totals.
+            """
+            row = season_pitching_by_player.get(player_id)
+            if not row or not row.get("ip"):
+                return None, None, None, None
+            ip = float(row["ip"] or 0)
+            k = int(row["k"] or 0)
+            bb = int(row["bb"] or 0)
+            hr = int(row["hr"] or 0)
+            hbp = int(row["hbp"] or 0)
+            bf = int(row["bf"] or 0)
+            outs = innings_to_outs(ip)
+            if outs <= 0:
+                return None, None, None, None
+            ip_decimal = outs / 3.0
+            lc = _get_league_constants(cur, season, division_level or "D1")
+            fip = (
+                (13 * hr + 3 * (bb + hbp) - 2 * k) / ip_decimal
+            ) + lc["fip_constant"]
+            k_pct = (k / bf) if bf > 0 else None
+            bb_pct = (bb / bf) if bf > 0 else None
+            return ip, round(fip, 2), k_pct, bb_pct
+
+        def _aggregate_pitching(side_team_id, division_level=None):
             bucket = {}
             for r in pit_rows:
                 home_id, away_id = game_sides[r["game_id"]]
@@ -16853,6 +16904,9 @@ def historic_matchup(
                 if p["sv"]:
                     decision_parts.append(f"{p['sv']}SV")
                 decision_summary = " ".join(decision_parts) or None
+                s_ip, s_fip, s_k_pct, s_bb_pct = _season_stats_for(
+                    p["player_id"], division_level
+                )
                 out.append({
                     **p,
                     "ip": ip_display,
@@ -16862,6 +16916,10 @@ def historic_matchup(
                     "bb9": bb9,
                     "opp_avg": opp_avg,
                     "decision_summary": decision_summary,
+                    "season_ip": s_ip,
+                    "season_fip": s_fip,
+                    "season_k_pct": s_k_pct,
+                    "season_bb_pct": s_bb_pct,
                 })
             # Sort: most outs first (workhorses on top), tie-break by lower ERA.
             out.sort(key=lambda x: (-(x["outs"]), x["era"] if x["era"] is not None else 999))
@@ -17024,9 +17082,9 @@ def historic_matchup(
             "team_b": _team_payload(team_b),
             "games": games_out,
             "team_a_batting": _aggregate_batting(team_a),
-            "team_a_pitching": _aggregate_pitching(team_a),
+            "team_a_pitching": _aggregate_pitching(team_a, team_a_division),
             "team_b_batting": _aggregate_batting(team_b),
-            "team_b_pitching": _aggregate_pitching(team_b),
+            "team_b_pitching": _aggregate_pitching(team_b, team_b_division),
             "team_a_totals": {
                 "batting": _team_batting_totals(team_a, team_a_division),
                 "pitching": _team_pitching_totals(team_a, team_a_division),

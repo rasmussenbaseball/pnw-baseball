@@ -322,7 +322,6 @@ function TeamPitchingTotals({ t }) {
         <Stat label="BB%" value={fmtPct(t.bb_pct)} />
         <Stat label="K/BB" value={fmtNum(t.k_bb, 2)} />
         <Stat label="BABIP" value={fmtRate(t.babip)} />
-        <Stat label="HR/9" value={fmtNum(t.hr9, 2)} />
         <Stat label="IP" value={fmtIp(t.ip)} />
         <Stat label="K" value={t.k} />
         <Stat label="BB" value={t.bb} />
@@ -409,8 +408,18 @@ function PitchingTable({ rows }) {
   }
   return (
     <table className="w-full text-xs">
-      <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-        <tr>
+      <thead>
+        {/* Section header: matchup vs season */}
+        <tr className="bg-gray-100 text-gray-600 uppercase tracking-wide text-[9px]">
+          <th colSpan={1}></th>
+          <th colSpan={12} className="text-center py-1 border-r border-gray-300 font-semibold">
+            Matchup
+          </th>
+          <th colSpan={4} className="text-center py-1 bg-pnw-cream text-pnw-forest font-semibold">
+            Season
+          </th>
+        </tr>
+        <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
           <th className="text-left px-2 py-1.5">Player</th>
           <th className="px-1 py-1.5">G</th>
           <th className="px-1 py-1.5">GS</th>
@@ -421,12 +430,13 @@ function PitchingTable({ rows }) {
           <th className="px-1 py-1.5">ER</th>
           <th className="px-1 py-1.5">BB</th>
           <th className="px-1 py-1.5">K</th>
-          <th className="px-1 py-1.5">HR</th>
           <th className="px-1 py-1.5">ERA</th>
           <th className="px-1 py-1.5">WHIP</th>
-          <th className="px-1 py-1.5">K/9</th>
-          <th className="px-1 py-1.5">BB/9</th>
-          <th className="px-1 py-1.5">oAVG</th>
+          <th className="px-1 py-1.5 border-r border-gray-300">oAVG</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">IP</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">FIP</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">K%</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50">BB%</th>
         </tr>
       </thead>
       <tbody>
@@ -446,12 +456,13 @@ function PitchingTable({ rows }) {
             <td className="text-center px-1 py-1.5 text-gray-700">{r.er}</td>
             <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
             <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{r.hr}</td>
             <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtNum(r.era, 2)}</td>
             <td className="text-center px-1 py-1.5 text-gray-700">{fmtNum(r.whip, 2)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtNum(r.k9, 1)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtNum(r.bb9, 1)}</td>
-            <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.opp_avg)}</td>
+            <td className="text-center px-1 py-1.5 text-gray-700 border-r border-gray-300">{fmtRate(r.opp_avg)}</td>
+            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
+            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30 font-semibold">{fmtNum(r.season_fip, 2)}</td>
+            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_k_pct)}</td>
+            <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_bb_pct)}</td>
           </tr>
         ))}
       </tbody>
