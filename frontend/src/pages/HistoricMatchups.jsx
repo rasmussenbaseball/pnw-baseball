@@ -165,12 +165,14 @@ export default function HistoricMatchups() {
               team={data.team_a}
               batting={data.team_a_batting}
               pitching={data.team_a_pitching}
+              totals={data.team_a_totals}
               mode={mode}
             />
             <SideStats
               team={data.team_b}
               batting={data.team_b_batting}
               pitching={data.team_b_pitching}
+              totals={data.team_b_totals}
               mode={mode}
             />
           </div>
@@ -249,7 +251,7 @@ function GameCard({ game, teamAId }) {
   )
 }
 
-function SideStats({ team, batting, pitching, mode }) {
+function SideStats({ team, batting, pitching, totals, mode }) {
   return (
     <div className="border border-gray-200 rounded">
       <div className="flex items-center gap-2 px-3 py-2 bg-pnw-forest text-white rounded-t">
@@ -261,12 +263,88 @@ function SideStats({ team, batting, pitching, mode }) {
           {team.conference_abbrev} · {team.division_level}
         </span>
       </div>
+
+      {totals && mode === 'batting' && <TeamBattingTotals t={totals.batting} />}
+      {totals && mode === 'pitching' && <TeamPitchingTotals t={totals.pitching} />}
+
       <div className="overflow-x-auto">
         {mode === 'batting' && <BattingTable rows={batting} />}
         {mode === 'pitching' && <PitchingTable rows={pitching} />}
       </div>
     </div>
   )
+}
+
+function TeamBattingTotals({ t }) {
+  if (!t) return null
+  return (
+    <div className="border-b border-gray-200 bg-pnw-cream/50 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
+        Series Totals
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+        <Stat label="AVG" value={fmtRate(t.avg)} />
+        <Stat label="OBP" value={fmtRate(t.obp)} />
+        <Stat label="SLG" value={fmtRate(t.slg)} />
+        <Stat label="OPS" value={fmtRate(t.ops)} />
+        <Stat label="ISO" value={fmtRate(t.iso)} />
+        <Stat label="wOBA" value={fmtRate(t.woba)} />
+        <Stat label="wRC+" value={fmtNum(t.wrc_plus, 0)} />
+        <Stat label="BABIP" value={fmtRate(t.babip)} />
+        <Stat label="BB%" value={fmtPct(t.bb_pct)} />
+        <Stat label="K%" value={fmtPct(t.k_pct)} />
+        <Stat label="HR" value={t.hr} />
+        <Stat label="SB" value={t.sb} />
+        <Stat label="R" value={t.r} />
+        <Stat label="H" value={t.h} />
+        <Stat label="PA" value={t.pa} />
+        <Stat label="AB" value={t.ab} />
+      </div>
+    </div>
+  )
+}
+
+function TeamPitchingTotals({ t }) {
+  if (!t) return null
+  return (
+    <div className="border-b border-gray-200 bg-pnw-cream/50 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
+        Series Totals
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+        <Stat label="ERA" value={fmtNum(t.era, 2)} />
+        <Stat label="FIP" value={fmtNum(t.fip, 2)} />
+        <Stat label="xFIP" value={fmtNum(t.xfip, 2)} />
+        <Stat label="WHIP" value={fmtNum(t.whip, 2)} />
+        <Stat label="K/9" value={fmtNum(t.k9, 1)} />
+        <Stat label="BB/9" value={fmtNum(t.bb9, 1)} />
+        <Stat label="K%" value={fmtPct(t.k_pct)} />
+        <Stat label="BB%" value={fmtPct(t.bb_pct)} />
+        <Stat label="K/BB" value={fmtNum(t.k_bb, 2)} />
+        <Stat label="BABIP" value={fmtRate(t.babip)} />
+        <Stat label="HR/9" value={fmtNum(t.hr9, 2)} />
+        <Stat label="IP" value={fmtIp(t.ip)} />
+        <Stat label="K" value={t.k} />
+        <Stat label="BB" value={t.bb} />
+        <Stat label="H" value={t.h} />
+        <Stat label="ER" value={t.er} />
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="text-center">
+      <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">{label}</div>
+      <div className="text-xs font-semibold text-gray-900">{value ?? '-'}</div>
+    </div>
+  )
+}
+
+function fmtPct(v) {
+  if (v === null || v === undefined) return '-'
+  return (v * 100).toFixed(1) + '%'
 }
 
 function BattingTable({ rows }) {

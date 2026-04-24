@@ -30,6 +30,7 @@ from ..stats.advanced import (
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
     normalize_position, DEFAULT_WEIGHTS,
     POSITION_ADJUSTMENTS_FULL,
+    compute_fip_constant, innings_to_outs,
 )
 from ..stats.ppi import compute_ppi_for_division
 from ..stats.tiebreakers import apply_head_to_head
@@ -16396,6 +16397,151 @@ def all_conference(
 # location, W/L/S decisions). Used by the "Historic" page in the Coaching
 # tab to show how a team's players performed against a specific opponent.
 
+
+# In-process cache for league constants. Keyed by (season, division_level).
+# Constants change slowly relative to request rate, and recomputing them
+# requires two SUMs over batting_stats/pitching_stats — fine to compute
+# on-demand the first time for a given season+division and reuse after.
+_LEAGUE_CONSTANTS_CACHE: dict = {}
+
+
+def _get_league_constants(cur, season: int, division_level: str) -> dict:
+    """Return league constants for a given division+season needed to compute
+    advanced stats (FIP, wOBA, wRC+, etc.). Mirrors the multi-year run
+    environment used by scripts/recalculate_league_adjusted.py — averages
+    across 2022 through `season`, which keeps the FIP constant stable
+    early in the year.
+    """
+    key = (season, division_level)
+    if key in _LEAGUE_CONSTANTS_CACHE:
+        return _LEAGUE_CONSTANTS_CACHE[key]
+
+    # Batting aggregates for the division.
+    cur.execute("""
+        SELECT SUM(bs.plate_appearances) AS total_pa,
+               SUM(bs.at_bats) AS total_ab,
+               SUM(bs.hits) AS total_h,
+               SUM(bs.doubles) AS total_2b,
+               SUM(bs.triples) AS total_3b,
+               SUM(bs.home_runs) AS total_hr,
+               SUM(bs.runs) AS total_r,
+               SUM(bs.walks) AS total_bb,
+               SUM(bs.intentional_walks) AS total_ibb,
+               SUM(bs.strikeouts) AS total_k,
+               SUM(bs.hit_by_pitch) AS total_hbp,
+               SUM(bs.sacrifice_flies) AS total_sf
+        FROM batting_stats bs
+        JOIN teams t ON bs.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE bs.season BETWEEN 2022 AND %s
+          AND d.level = %s
+          AND bs.plate_appearances >= 5
+    """, (season, division_level))
+    bat = cur.fetchone()
+
+    cur.execute("""
+        SELECT SUM(ps.innings_pitched) AS total_ip,
+               SUM(ps.earned_runs) AS total_er,
+               SUM(ps.hits_allowed) AS total_h,
+               SUM(ps.walks) AS total_bb,
+               SUM(ps.strikeouts) AS total_k,
+               SUM(ps.home_runs_allowed) AS total_hr,
+               SUM(ps.hit_batters) AS total_hbp
+        FROM pitching_stats ps
+        JOIN teams t ON ps.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE ps.season BETWEEN 2022 AND %s
+          AND d.level = %s
+          AND ps.innings_pitched >= 1
+    """, (season, division_level))
+    pit = cur.fetchone()
+
+    weights = DEFAULT_WEIGHTS.get(division_level, DEFAULT_WEIGHTS["D1"])
+
+    # Defaults if a division has no rows yet (e.g. season too early).
+    fallback = {
+        "lg_avg": 0.270, "lg_obp": 0.350, "lg_slg": 0.400,
+        "lg_woba": 0.320, "lg_r_per_pa": weights.runs_per_pa,
+        "lg_era": 4.50, "lg_fip": 4.20, "fip_constant": 3.10,
+        "weights": weights, "division_level": division_level,
+    }
+    if not bat or not bat.get("total_pa") or not pit or not pit.get("total_ip"):
+        _LEAGUE_CONSTANTS_CACHE[key] = fallback
+        return fallback
+
+    total_pa = bat["total_pa"] or 1
+    total_ab = bat["total_ab"] or 1
+    total_ip = pit["total_ip"] or 1
+
+    lg_h = bat["total_h"] or 0
+    lg_2b = bat["total_2b"] or 0
+    lg_3b = bat["total_3b"] or 0
+    lg_hr = bat["total_hr"] or 0
+    lg_1b = lg_h - lg_2b - lg_3b - lg_hr
+    lg_bb = bat["total_bb"] or 0
+    lg_ibb = bat["total_ibb"] or 0
+    lg_ubb = lg_bb - lg_ibb
+    lg_hbp = bat["total_hbp"] or 0
+    lg_sf = bat["total_sf"] or 0
+    lg_runs = bat["total_r"] or 0
+
+    lg_avg = lg_h / total_ab
+    lg_obp = (lg_h + lg_bb + lg_hbp) / (total_ab + lg_bb + lg_hbp + lg_sf)
+    lg_tb = lg_1b + 2 * lg_2b + 3 * lg_3b + 4 * lg_hr
+    lg_slg = lg_tb / total_ab
+    lg_r_per_pa = lg_runs / total_pa
+
+    woba_num = (
+        weights.w_bb * lg_ubb
+        + weights.w_hbp * lg_hbp
+        + weights.w_1b * lg_1b
+        + weights.w_2b * lg_2b
+        + weights.w_3b * lg_3b
+        + weights.w_hr * lg_hr
+    )
+    woba_denom = total_ab + lg_ubb + lg_sf + lg_hbp
+    lg_woba = woba_num / woba_denom if woba_denom > 0 else 0.320
+
+    pit_er = pit["total_er"] or 0
+    pit_bb = pit["total_bb"] or 0
+    pit_k = pit["total_k"] or 0
+    pit_hr = pit["total_hr"] or 0
+    pit_hbp = pit["total_hbp"] or 0
+
+    lg_era = (pit_er * 9) / total_ip if total_ip > 0 else 4.50
+
+    fip_const = compute_fip_constant(
+        league_era=lg_era,
+        league_hr=pit_hr,
+        league_bb=pit_bb,
+        league_hbp=pit_hbp,
+        league_k=pit_k,
+        league_ip=total_ip,
+    )
+
+    ip_decimal = innings_to_outs(total_ip) / 3.0 if total_ip else 1
+    lg_fip = (
+        (13 * pit_hr + 3 * (pit_bb + pit_hbp) - 2 * pit_k) / ip_decimal
+    ) + fip_const
+
+    constants = {
+        "lg_avg": lg_avg,
+        "lg_obp": lg_obp,
+        "lg_slg": lg_slg,
+        "lg_woba": lg_woba,
+        "lg_r_per_pa": lg_r_per_pa,
+        "lg_era": lg_era,
+        "lg_fip": lg_fip,
+        "fip_constant": fip_const,
+        "weights": weights,
+        "division_level": division_level,
+    }
+    _LEAGUE_CONSTANTS_CACHE[key] = constants
+    return constants
+
+
 @router.get("/coaching/historic-matchup")
 def historic_matchup(
     team_a: int = Query(..., description="First team id"),
@@ -16628,6 +16774,11 @@ def historic_matchup(
                 ops = round(obp + slg, 3) if (obp is not None and slg is not None) else None
                 xbh = b["doubles"] + b["triples"] + b["hr"]
                 pa = ab + bb + hbp + sf + b["sh"]
+                # Skip players who never came to the plate in the matchup
+                # (typically pitchers who pitched but didn't bat). Keeps the
+                # batting table focused on actual hitters.
+                if pa <= 0:
+                    continue
                 out.append({
                     **b,
                     "pa": pa, "tb": tb, "xbh": xbh,
@@ -16716,6 +16867,157 @@ def historic_matchup(
             out.sort(key=lambda x: (-(x["outs"]), x["era"] if x["era"] is not None else 999))
             return out
 
+        # ── Team-level series totals (with advanced stats) ──
+        #
+        # Sums every batting/pitching row for the side, then runs it through
+        # compute_batting_advanced / compute_pitching_advanced using the
+        # division's league constants (FIP constant, league wOBA, league
+        # R/PA), so the wRC+/FIP/etc. are calibrated the same way they are
+        # everywhere else on the site.
+
+        def _team_batting_totals(side_team_id: int, division_level: str) -> dict:
+            line = BattingLine()
+            for r in bat_rows:
+                home_id, away_id = game_sides[r["game_id"]]
+                if r["team_id"] not in (home_id, away_id):
+                    continue
+                if r["team_id"] != side_team_id:
+                    continue
+                line.ab += r["at_bats"] or 0
+                line.hits += r["hits"] or 0
+                line.doubles += r["doubles"] or 0
+                line.triples += r["triples"] or 0
+                line.hr += r["home_runs"] or 0
+                line.bb += r["walks"] or 0
+                line.k += r["strikeouts"] or 0
+                line.hbp += r["hit_by_pitch"] or 0
+                line.sf += r["sacrifice_flies"] or 0
+                line.sh += r["sacrifice_bunts"] or 0
+                line.sb += r["stolen_bases"] or 0
+                line.cs += r["caught_stealing"] or 0
+            line.pa = line.ab + line.bb + line.hbp + line.sf + line.sh
+
+            # Sum runs separately — BattingLine has no runs field.
+            runs = sum(
+                (r["runs"] or 0)
+                for r in bat_rows
+                if r["team_id"] == side_team_id
+                and r["team_id"] in game_sides[r["game_id"]]
+            )
+            rbi = sum(
+                (r["rbi"] or 0)
+                for r in bat_rows
+                if r["team_id"] == side_team_id
+                and r["team_id"] in game_sides[r["game_id"]]
+            )
+
+            lc = _get_league_constants(cur, season, division_level or "D1")
+            adv = compute_batting_advanced(
+                line,
+                weights=lc["weights"],
+                league_woba=lc["lg_woba"],
+                league_obp=lc["lg_obp"],
+                park_factor=1.0,  # Series-level: we don't blend park factors
+                division_level=lc["division_level"],
+            )
+
+            def _r(v, d=3):
+                return round(v, d) if v is not None else None
+
+            return {
+                "pa": line.pa, "ab": line.ab, "r": runs, "h": line.hits,
+                "doubles": line.doubles, "triples": line.triples,
+                "hr": line.hr, "rbi": rbi,
+                "bb": line.bb, "k": line.k, "hbp": line.hbp,
+                "sf": line.sf, "sh": line.sh,
+                "sb": line.sb, "cs": line.cs,
+                "tb": line.tb,
+                "avg": _r(adv.batting_avg, 3),
+                "obp": _r(adv.obp, 3),
+                "slg": _r(adv.slg, 3),
+                "ops": _r(adv.ops, 3),
+                "iso": _r(adv.iso, 3),
+                "babip": _r(adv.babip, 3),
+                "bb_pct": _r(adv.bb_pct, 4),
+                "k_pct": _r(adv.k_pct, 4),
+                "woba": _r(adv.woba, 3),
+                "wobacon": _r(adv.wobacon, 3),
+                "wraa": _r(adv.wraa, 1),
+                "wrc_plus": _r(adv.wrc_plus, 0),
+                "lg_woba": _r(lc["lg_woba"], 3),
+            }
+
+        def _team_pitching_totals(side_team_id: int, division_level: str) -> dict:
+            outs = 0
+            h = bb = k = hr = hbp = er = r_allowed = bf = 0
+            wins = losses = saves = 0
+            for row in pit_rows:
+                home_id, away_id = game_sides[row["game_id"]]
+                if row["team_id"] not in (home_id, away_id):
+                    continue
+                if row["team_id"] != side_team_id:
+                    continue
+                outs += ip_to_outs(row["innings_pitched"])
+                h += row["hits_allowed"] or 0
+                bb += row["walks"] or 0
+                k += row["strikeouts"] or 0
+                hr += row["home_runs_allowed"] or 0
+                hbp += row["hit_batters"] or 0
+                er += row["earned_runs"] or 0
+                r_allowed += row["runs_allowed"] or 0
+                bf += row["batters_faced"] or 0
+                d = (row["decision"] or "").upper()
+                if d == "W":
+                    wins += 1
+                elif d == "L":
+                    losses += 1
+                elif d == "S":
+                    saves += 1
+
+            ip_display = outs_to_ip(outs)
+            lc = _get_league_constants(cur, season, division_level or "D1")
+
+            line = PitchingLine(
+                ip=ip_display, hits=h, er=er, runs=r_allowed,
+                bb=bb, k=k, hr=hr, hbp=hbp, bf=bf,
+                wins=wins, losses=losses, saves=saves,
+            )
+            adv = compute_pitching_advanced(
+                line,
+                fip_constant=lc["fip_constant"],
+                league_era=lc["lg_era"],
+                league_fip=lc["lg_fip"],
+                division_level=lc["division_level"],
+            )
+
+            def _r(v, d=2):
+                return round(v, d) if v is not None else None
+
+            return {
+                "ip": ip_display, "outs": outs,
+                "h": h, "r": r_allowed, "er": er,
+                "bb": bb, "k": k, "hr": hr, "hbp": hbp, "bf": bf,
+                "w": wins, "l": losses, "sv": saves,
+                "era": _r(adv.era, 2),
+                "whip": _r(adv.whip, 2),
+                "k9": _r(adv.k_per_9, 2),
+                "bb9": _r(adv.bb_per_9, 2),
+                "h9": _r(adv.h_per_9, 2),
+                "hr9": _r(adv.hr_per_9, 2),
+                "k_pct": _r(adv.k_pct, 4),
+                "bb_pct": _r(adv.bb_pct, 4),
+                "fip": _r(adv.fip, 2),
+                "xfip": _r(adv.xfip, 2),
+                "k_bb": _r(adv.k_bb_ratio, 2),
+                "babip": _r(adv.babip_against, 3),
+                "lob_pct": _r(adv.lob_pct, 4),
+                "lg_era": _r(lc["lg_era"], 2),
+                "lg_fip": _r(lc["lg_fip"], 2),
+            }
+
+        team_a_division = team_rows[team_a].get("division_level")
+        team_b_division = team_rows[team_b].get("division_level")
+
         return {
             "season": season,
             "team_a": _team_payload(team_a),
@@ -16725,6 +17027,14 @@ def historic_matchup(
             "team_a_pitching": _aggregate_pitching(team_a),
             "team_b_batting": _aggregate_batting(team_b),
             "team_b_pitching": _aggregate_pitching(team_b),
+            "team_a_totals": {
+                "batting": _team_batting_totals(team_a, team_a_division),
+                "pitching": _team_pitching_totals(team_a, team_a_division),
+            },
+            "team_b_totals": {
+                "batting": _team_batting_totals(team_b, team_b_division),
+                "pitching": _team_pitching_totals(team_b, team_b_division),
+            },
         }
 
 
