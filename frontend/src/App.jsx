@@ -94,6 +94,7 @@ import PlayerScouting from './pages/PlayerScouting'
 import TeamScouting from './pages/TeamScouting'
 import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
+import HistoricMatchups from './pages/HistoricMatchups'
 import ParkFactors from './pages/ParkFactors'
 import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
@@ -168,6 +169,7 @@ export default function App() {
           <Route path="/team-scouting" element={<RequireAuth><TeamScouting /></RequireAuth>} />
           <Route path="/enhanced-scouting" element={<RequireAuth><EnhancedScouting /></RequireAuth>} />
           <Route path="/opponent-trends" element={<RequireAuth><OpponentTrends /></RequireAuth>} />
+          <Route path="/historic" element={<RequireAuth><HistoricMatchups /></RequireAuth>} />
           <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
 
           {/* Draft (auth required) */}

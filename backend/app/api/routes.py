@@ -16387,3 +16387,399 @@ def all_conference(
             freeze["regular_season_end_date"].isoformat() if is_frozen else None
         ),
     }
+
+
+# ── Historic Matchup (Coaching Tool) ────────────────────────────────────
+#
+# Returns aggregated batting + pitching player stats from every game played
+# between two teams in a given season, plus a list of those games (scores,
+# location, W/L/S decisions). Used by the "Historic" page in the Coaching
+# tab to show how a team's players performed against a specific opponent.
+
+@router.get("/coaching/historic-matchup")
+def historic_matchup(
+    team_a: int = Query(..., description="First team id"),
+    team_b: int = Query(..., description="Opponent team id"),
+    season: int = Query(2026, description="Season year"),
+):
+    """Per-player batting and pitching aggregates for the games team_a
+    and team_b played each other this season, plus a list of those games.
+    """
+    if team_a == team_b:
+        raise HTTPException(
+            status_code=400,
+            detail="team_a and team_b must be different",
+        )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── Team metadata ──
+        cur.execute("""
+            SELECT t.id, t.name, t.short_name, t.logo_url,
+                   c.abbreviation AS conference_abbrev,
+                   d.level AS division_level
+            FROM teams t
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            WHERE t.id = ANY(%s)
+        """, ([team_a, team_b],))
+        team_rows = {r["id"]: dict(r) for r in cur.fetchall()}
+        if team_a not in team_rows or team_b not in team_rows:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        def _team_payload(tid):
+            r = team_rows[tid]
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "short_name": r["short_name"] or r["name"],
+                "logo_url": r["logo_url"],
+                "conference_abbrev": r["conference_abbrev"],
+                "division_level": r["division_level"],
+            }
+
+        # ── Games between the two teams this season ──
+        cur.execute("""
+            SELECT g.id, g.game_date, g.home_team_id, g.away_team_id,
+                   g.home_score, g.away_score,
+                   g.is_neutral_site, g.location,
+                   g.game_number,
+                   COALESCE(ht.short_name, ht.name) AS home_short,
+                   COALESCE(at2.short_name, at2.name) AS away_short
+            FROM games g
+            LEFT JOIN teams ht ON g.home_team_id = ht.id
+            LEFT JOIN teams at2 ON g.away_team_id = at2.id
+            WHERE g.season = %s
+              AND g.status = 'final'
+              AND g.home_score IS NOT NULL
+              AND g.away_score IS NOT NULL
+              AND (
+                (g.home_team_id = %s AND g.away_team_id = %s)
+                OR (g.home_team_id = %s AND g.away_team_id = %s)
+              )
+            ORDER BY g.game_date ASC,
+                     g.game_number ASC NULLS LAST,
+                     g.id ASC
+        """, (season, team_a, team_b, team_b, team_a))
+        games_rows = [dict(r) for r in cur.fetchall()]
+
+        if not games_rows:
+            return {
+                "season": season,
+                "team_a": _team_payload(team_a),
+                "team_b": _team_payload(team_b),
+                "games": [],
+                "team_a_batting": [],
+                "team_a_pitching": [],
+                "team_b_batting": [],
+                "team_b_pitching": [],
+            }
+
+        game_ids = [g["id"] for g in games_rows]
+        # Map of game_id -> (home_team_id, away_team_id) for ghost-row guard.
+        game_sides = {
+            g["id"]: (g["home_team_id"], g["away_team_id"])
+            for g in games_rows
+        }
+
+        # ── Decisions per game (W / L / S) ──
+        cur.execute("""
+            SELECT game_id, team_id, player_id, player_name, decision
+            FROM game_pitching
+            WHERE game_id = ANY(%s)
+              AND decision IN ('W', 'L', 'S')
+        """, (game_ids,))
+        decisions_by_game = {}
+        for r in cur.fetchall():
+            decisions_by_game.setdefault(r["game_id"], []).append(dict(r))
+
+        def _decision_for(game_id, team_id, kind):
+            for d in decisions_by_game.get(game_id, []):
+                if d["team_id"] == team_id and d["decision"] == kind:
+                    return d["player_name"]
+            return None
+
+        # Build games[] payload.
+        games_out = []
+        for g in games_rows:
+            home_id = g["home_team_id"]
+            away_id = g["away_team_id"]
+            if g["home_score"] > g["away_score"]:
+                winning_team_id, losing_team_id = home_id, away_id
+            elif g["away_score"] > g["home_score"]:
+                winning_team_id, losing_team_id = away_id, home_id
+            else:
+                winning_team_id = losing_team_id = None
+
+            wp = (
+                _decision_for(g["id"], winning_team_id, "W")
+                if winning_team_id else None
+            )
+            lp = (
+                _decision_for(g["id"], losing_team_id, "L")
+                if losing_team_id else None
+            )
+            sv = (
+                _decision_for(g["id"], winning_team_id, "S")
+                if winning_team_id else None
+            )
+
+            games_out.append({
+                "id": g["id"],
+                "game_date": g["game_date"].isoformat() if g["game_date"] else None,
+                "game_number": g["game_number"],
+                "home_team_id": home_id,
+                "away_team_id": away_id,
+                "home_short": g["home_short"],
+                "away_short": g["away_short"],
+                "home_score": g["home_score"],
+                "away_score": g["away_score"],
+                "is_neutral_site": g["is_neutral_site"],
+                "location": g["location"],
+                "winning_pitcher": wp,
+                "losing_pitcher": lp,
+                "save_pitcher": sv,
+            })
+
+        # ── Aggregate batting per side ──
+        # Pull every game_batting row across all matchup games, with the
+        # ghost-row guard (team_id must match one of the game's two sides).
+        cur.execute("""
+            SELECT gb.game_id, gb.player_id, gb.player_name, gb.team_id,
+                   gb.at_bats, gb.runs, gb.hits, gb.doubles, gb.triples,
+                   gb.home_runs, gb.rbi, gb.walks, gb.strikeouts,
+                   gb.hit_by_pitch, gb.sacrifice_flies, gb.sacrifice_bunts,
+                   gb.stolen_bases, gb.caught_stealing,
+                   p.headshot_url, p.jersey_number,
+                   p.first_name, p.last_name
+            FROM game_batting gb
+            LEFT JOIN players p ON p.id = gb.player_id
+            WHERE gb.game_id = ANY(%s)
+        """, (game_ids,))
+        bat_rows = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT gp.game_id, gp.player_id, gp.player_name, gp.team_id,
+                   gp.innings_pitched, gp.hits_allowed, gp.runs_allowed,
+                   gp.earned_runs, gp.walks, gp.strikeouts,
+                   gp.home_runs_allowed, gp.hit_batters,
+                   gp.wild_pitches, gp.batters_faced, gp.decision,
+                   gp.is_starter,
+                   p.headshot_url, p.jersey_number,
+                   p.first_name, p.last_name
+            FROM game_pitching gp
+            LEFT JOIN players p ON p.id = gp.player_id
+            WHERE gp.game_id = ANY(%s)
+        """, (game_ids,))
+        pit_rows = [dict(r) for r in cur.fetchall()]
+
+        def _aggregate_batting(side_team_id):
+            bucket = {}
+            for r in bat_rows:
+                # Ghost-row guard: only include rows where team_id matches
+                # one of the game's two sides AND matches the side we want.
+                home_id, away_id = game_sides[r["game_id"]]
+                if r["team_id"] not in (home_id, away_id):
+                    continue
+                if r["team_id"] != side_team_id:
+                    continue
+                # Group by player_id when available, fall back to name.
+                key = r["player_id"] or ("name:" + (r["player_name"] or ""))
+                if key not in bucket:
+                    bucket[key] = {
+                        "player_id": r["player_id"],
+                        "player_name": (
+                            (r["first_name"] or "") + " " + (r["last_name"] or "")
+                        ).strip() or r["player_name"],
+                        "headshot_url": r["headshot_url"],
+                        "jersey_number": r["jersey_number"],
+                        "g": 0, "ab": 0, "r": 0, "h": 0,
+                        "doubles": 0, "triples": 0, "hr": 0, "rbi": 0,
+                        "bb": 0, "k": 0, "hbp": 0, "sf": 0, "sh": 0,
+                        "sb": 0, "cs": 0,
+                    }
+                b = bucket[key]
+                b["g"] += 1
+                b["ab"] += r["at_bats"] or 0
+                b["r"] += r["runs"] or 0
+                b["h"] += r["hits"] or 0
+                b["doubles"] += r["doubles"] or 0
+                b["triples"] += r["triples"] or 0
+                b["hr"] += r["home_runs"] or 0
+                b["rbi"] += r["rbi"] or 0
+                b["bb"] += r["walks"] or 0
+                b["k"] += r["strikeouts"] or 0
+                b["hbp"] += r["hit_by_pitch"] or 0
+                b["sf"] += r["sacrifice_flies"] or 0
+                b["sh"] += r["sacrifice_bunts"] or 0
+                b["sb"] += r["stolen_bases"] or 0
+                b["cs"] += r["caught_stealing"] or 0
+
+            out = []
+            for b in bucket.values():
+                ab, h, bb, hbp, sf = b["ab"], b["h"], b["bb"], b["hbp"], b["sf"]
+                obp_denom = ab + bb + hbp + sf
+                singles = h - b["doubles"] - b["triples"] - b["hr"]
+                tb = singles + 2 * b["doubles"] + 3 * b["triples"] + 4 * b["hr"]
+                avg = round(h / ab, 3) if ab > 0 else None
+                obp = round((h + bb + hbp) / obp_denom, 3) if obp_denom > 0 else None
+                slg = round(tb / ab, 3) if ab > 0 else None
+                ops = round(obp + slg, 3) if (obp is not None and slg is not None) else None
+                xbh = b["doubles"] + b["triples"] + b["hr"]
+                pa = ab + bb + hbp + sf + b["sh"]
+                out.append({
+                    **b,
+                    "pa": pa, "tb": tb, "xbh": xbh,
+                    "avg": avg, "obp": obp, "slg": slg, "ops": ops,
+                })
+            # Sort: most PA first (regulars on top), tie-break by AVG desc.
+            out.sort(key=lambda x: (-(x["pa"]), -(x["avg"] or 0)))
+            return out
+
+        def _aggregate_pitching(side_team_id):
+            bucket = {}
+            for r in pit_rows:
+                home_id, away_id = game_sides[r["game_id"]]
+                if r["team_id"] not in (home_id, away_id):
+                    continue
+                if r["team_id"] != side_team_id:
+                    continue
+                key = r["player_id"] or ("name:" + (r["player_name"] or ""))
+                if key not in bucket:
+                    bucket[key] = {
+                        "player_id": r["player_id"],
+                        "player_name": (
+                            (r["first_name"] or "") + " " + (r["last_name"] or "")
+                        ).strip() or r["player_name"],
+                        "headshot_url": r["headshot_url"],
+                        "jersey_number": r["jersey_number"],
+                        "g": 0, "gs": 0, "outs": 0,
+                        "h": 0, "r": 0, "er": 0,
+                        "bb": 0, "k": 0, "hr": 0, "hbp": 0,
+                        "wp": 0, "bf": 0,
+                        "w": 0, "l": 0, "sv": 0,
+                    }
+                p = bucket[key]
+                p["g"] += 1
+                if r["is_starter"]:
+                    p["gs"] += 1
+                p["outs"] += ip_to_outs(r["innings_pitched"])
+                p["h"] += r["hits_allowed"] or 0
+                p["r"] += r["runs_allowed"] or 0
+                p["er"] += r["earned_runs"] or 0
+                p["bb"] += r["walks"] or 0
+                p["k"] += r["strikeouts"] or 0
+                p["hr"] += r["home_runs_allowed"] or 0
+                p["hbp"] += r["hit_batters"] or 0
+                p["wp"] += r["wild_pitches"] or 0
+                p["bf"] += r["batters_faced"] or 0
+                d = (r["decision"] or "").upper()
+                if d == "W":
+                    p["w"] += 1
+                elif d == "L":
+                    p["l"] += 1
+                elif d == "S":
+                    p["sv"] += 1
+
+            out = []
+            for p in bucket.values():
+                outs = p["outs"]
+                ip_display = outs_to_ip(outs)
+                era = round(p["er"] * 27 / outs, 2) if outs > 0 else None
+                whip = round((p["h"] + p["bb"]) * 3 / outs, 2) if outs > 0 else None
+                k9 = round(p["k"] * 27 / outs, 2) if outs > 0 else None
+                bb9 = round(p["bb"] * 27 / outs, 2) if outs > 0 else None
+                # Approximate opp-AVG: opp_AB ≈ BF − BB − HBP
+                # (we don't track opp SF / SH separately).
+                opp_ab = max(p["bf"] - p["bb"] - p["hbp"], 0)
+                opp_avg = round(p["h"] / opp_ab, 3) if opp_ab > 0 else None
+                decision_parts = []
+                if p["w"]:
+                    decision_parts.append(f"{p['w']}W")
+                if p["l"]:
+                    decision_parts.append(f"{p['l']}L")
+                if p["sv"]:
+                    decision_parts.append(f"{p['sv']}SV")
+                decision_summary = " ".join(decision_parts) or None
+                out.append({
+                    **p,
+                    "ip": ip_display,
+                    "era": era,
+                    "whip": whip,
+                    "k9": k9,
+                    "bb9": bb9,
+                    "opp_avg": opp_avg,
+                    "decision_summary": decision_summary,
+                })
+            # Sort: most outs first (workhorses on top), tie-break by lower ERA.
+            out.sort(key=lambda x: (-(x["outs"]), x["era"] if x["era"] is not None else 999))
+            return out
+
+        return {
+            "season": season,
+            "team_a": _team_payload(team_a),
+            "team_b": _team_payload(team_b),
+            "games": games_out,
+            "team_a_batting": _aggregate_batting(team_a),
+            "team_a_pitching": _aggregate_pitching(team_a),
+            "team_b_batting": _aggregate_batting(team_b),
+            "team_b_pitching": _aggregate_pitching(team_b),
+        }
+
+
+# ── Historic Matchup: opponent options ──────────────────────────────────
+#
+# Helper endpoint for the Historic page's opponent dropdown: returns the
+# list of teams that team_a actually played at least one final game against
+# in the given season, so the dropdown isn't a 100-team list.
+
+@router.get("/coaching/historic-matchup/opponents")
+def historic_matchup_opponents(
+    team_a: int = Query(..., description="Team id whose opponents to list"),
+    season: int = Query(2026, description="Season year"),
+):
+    """Distinct opponents team_a played at least one final game against."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT
+                CASE
+                    WHEN g.home_team_id = %s THEN g.away_team_id
+                    ELSE g.home_team_id
+                END AS opp_id
+            FROM games g
+            WHERE g.season = %s
+              AND g.status = 'final'
+              AND g.home_score IS NOT NULL
+              AND g.away_score IS NOT NULL
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+        """, (team_a, season, team_a, team_a))
+        opp_ids = [r["opp_id"] for r in cur.fetchall() if r["opp_id"]]
+
+        if not opp_ids:
+            return {"opponents": []}
+
+        cur.execute("""
+            SELECT t.id, t.name, t.short_name, t.logo_url,
+                   c.abbreviation AS conference_abbrev,
+                   d.level AS division_level
+            FROM teams t
+            LEFT JOIN conferences c ON t.conference_id = c.id
+            LEFT JOIN divisions d ON c.division_id = d.id
+            WHERE t.id = ANY(%s)
+            ORDER BY COALESCE(t.short_name, t.name)
+        """, (opp_ids,))
+        return {
+            "opponents": [
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "short_name": r["short_name"] or r["name"],
+                    "logo_url": r["logo_url"],
+                    "conference_abbrev": r["conference_abbrev"],
+                    "division_level": r["division_level"],
+                }
+                for r in cur.fetchall()
+            ]
+        }

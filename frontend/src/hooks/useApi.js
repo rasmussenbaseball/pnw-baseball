@@ -467,3 +467,28 @@ export function useRecruitingBreakdown(season = CURRENT_SEASON) {
 export function useOpponentTrends(teamId, season = CURRENT_SEASON) {
   return useApi(teamId ? `/opponent-trends/${teamId}` : null, { season }, [teamId, season])
 }
+
+/**
+ * Historic Matchup - per-player batting and pitching aggregates from
+ * every game two teams played each other in the given season, plus the
+ * list of those games (scores, location, W/L/S decisions).
+ */
+export function useHistoricMatchup(teamA, teamB, season = CURRENT_SEASON) {
+  return useApi(
+    teamA && teamB ? '/coaching/historic-matchup' : null,
+    { team_a: teamA, team_b: teamB, season },
+    [teamA, teamB, season]
+  )
+}
+
+/**
+ * Historic Matchup opponents - distinct teams that team_a played at
+ * least one final game against, used to populate the opponent dropdown.
+ */
+export function useHistoricMatchupOpponents(teamId, season = CURRENT_SEASON) {
+  return useApi(
+    teamId ? '/coaching/historic-matchup/opponents' : null,
+    { team_a: teamId, season },
+    [teamId, season]
+  )
+}

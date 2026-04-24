@@ -11,6 +11,12 @@ glance, then the exact per-team breakdown.
 Usage:
     PYTHONPATH=backend python3 scripts/audit_team_record_mismatches.py
     PYTHONPATH=backend python3 scripts/audit_team_record_mismatches.py --season 2026
+    PYTHONPATH=backend python3 scripts/audit_team_record_mismatches.py --all-teams
+
+Default behavior is PNW-only (state IN WA, OR, ID, MT, BC). OOC opponents
+like UCLA only have a handful of games against PNW teams in our DB, so
+their Overall record will always disagree with the games-table aggregation.
+Pass --all-teams to include them anyway.
 """
 
 import argparse
@@ -22,23 +28,39 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from app.models.database import get_connection
 
 
+PNW_STATES = ("WA", "OR", "ID", "MT", "BC")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, default=2026)
+    ap.add_argument("--all-teams", action="store_true",
+                    help="Include non-PNW opponents (default: PNW only)")
     args = ap.parse_args()
 
     with get_connection() as conn:
         cur = conn.cursor()
 
         # Every team that has a season row for this season.
-        cur.execute("""
-            SELECT t.id, t.short_name,
-                   s.wins AS stats_wins, s.losses AS stats_losses
-            FROM team_season_stats s
-            JOIN teams t ON t.id = s.team_id
-            WHERE s.season = %s
-            ORDER BY t.short_name
-        """, (args.season,))
+        if args.all_teams:
+            cur.execute("""
+                SELECT t.id, t.short_name,
+                       s.wins AS stats_wins, s.losses AS stats_losses
+                FROM team_season_stats s
+                JOIN teams t ON t.id = s.team_id
+                WHERE s.season = %s
+                ORDER BY t.short_name
+            """, (args.season,))
+        else:
+            cur.execute("""
+                SELECT t.id, t.short_name,
+                       s.wins AS stats_wins, s.losses AS stats_losses
+                FROM team_season_stats s
+                JOIN teams t ON t.id = s.team_id
+                WHERE s.season = %s
+                  AND t.state = ANY(%s)
+                ORDER BY t.short_name
+            """, (args.season, list(PNW_STATES)))
         teams = [dict(r) for r in cur.fetchall()]
 
         rows = []
@@ -96,23 +118,81 @@ def main():
         print()
         print(f"Teams with mismatches: {len(mismatched)} / {len(rows)}")
 
-        if mismatched:
+        # Categorize each mismatch:
+        #   score_swap: dW = -dL and both nonzero (true swap signature)
+        #   missing_games: dW <= 0 and dL <= 0, at least one negative
+        #     (games table is missing W and/or L vs season stats)
+        #   extra_games: dW >= 0 and dL >= 0, at least one positive
+        #     (games table has more W and/or L than season stats)
+        #   other: any other shape (rare — partial swap + drift)
+        score_swap = []
+        missing_games = []
+        extra_games = []
+        other = []
+        for r in mismatched:
+            dw, dl = r["delta_wins"], r["delta_losses"]
+            if dw != 0 and dw == -dl:
+                score_swap.append(r)
+            elif dw <= 0 and dl <= 0:
+                missing_games.append(r)
+            elif dw >= 0 and dl >= 0:
+                extra_games.append(r)
+            else:
+                other.append(r)
+
+        def print_section(title, items, formatter):
+            if not items:
+                return
             print()
-            print("Suspected score-swap counts per team "
-                  "(each swap adds +1 win and -1 loss "
-                  "OR -1 win and +1 loss):")
-            for r in mismatched:
-                # If stats say W-L and games say W+k, L-k, then k swaps
-                # where stored score made a loss look like a win.
-                # If stats say W-L and games say W-k, L+k, then k swaps
-                # where stored score made a win look like a loss.
-                swap_guess = max(abs(r["delta_wins"]), abs(r["delta_losses"]))
-                direction = (
-                    "losses flipped to wins" if r["delta_wins"] > 0
-                    else "wins flipped to losses"
-                )
-                print(f"  {r['short_name']:<28}  ~{swap_guess} games "
-                      f"({direction})")
+            print(title)
+            for r in items:
+                print(f"  {r['short_name']:<28}  {formatter(r)}")
+
+        print_section(
+            "SCORE-SWAP candidates "
+            "(dW = -dL — same shape as the C of I bug):",
+            score_swap,
+            lambda r: (
+                f"~{abs(r['delta_wins'])} games "
+                f"({'losses flipped to wins' if r['delta_wins'] > 0 else 'wins flipped to losses'})"
+            ),
+        )
+
+        print_section(
+            "MISSING games "
+            "(season stats has more W and/or L than games table):",
+            missing_games,
+            lambda r: (
+                f"missing ~{abs(r['delta_wins']) + abs(r['delta_losses'])} game(s) "
+                f"(dW={r['delta_wins']:+d}, dL={r['delta_losses']:+d})"
+            ),
+        )
+
+        print_section(
+            "EXTRA games "
+            "(games table has more W and/or L than season stats — "
+            "duplicates or season stats stale):",
+            extra_games,
+            lambda r: (
+                f"extra ~{r['delta_wins'] + r['delta_losses']} game(s) "
+                f"(dW={r['delta_wins']:+d}, dL={r['delta_losses']:+d})"
+            ),
+        )
+
+        print_section(
+            "OTHER (mixed pattern — possible partial swap + missing/extra):",
+            other,
+            lambda r: f"dW={r['delta_wins']:+d}, dL={r['delta_losses']:+d}",
+        )
+
+        # Final scoreboard
+        print()
+        print(
+            f"Summary: score_swap={len(score_swap)}  "
+            f"missing={len(missing_games)}  "
+            f"extra={len(extra_games)}  "
+            f"other={len(other)}"
+        )
 
 
 if __name__ == "__main__":
