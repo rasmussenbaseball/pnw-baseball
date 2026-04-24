@@ -2843,12 +2843,63 @@ def playoff_projections(
                 team["tourney_win_pct"] = mc.get("tourney_win_pct", 0)
                 team["seed_probabilities"] = mc.get("seed_probabilities", {})
 
+        # ── Overlay any frozen-conference snapshots ──────────────
+        # For conferences whose regular season has ended (and whose
+        # /playoff-projections output was snapshotted at freeze time), we
+        # replace the live-computed entries with the snapshot so the page
+        # shows the "frozen at end of regular season" view. This is how
+        # the user sees stable standings/odds for a frozen conference
+        # even if power ratings drift from post-season game data.
+        cur.execute(
+            """
+            SELECT ps.conf_key, ps.snapshot_json, cf.regular_season_end_date, cf.frozen_at
+            FROM projection_snapshots ps
+            JOIN conference_freezes cf ON cf.conf_key = ps.conf_key
+            WHERE ps.season = %s
+            """,
+            (season,),
+        )
+        snapshot_rows = cur.fetchall()
+
+        frozen_conferences_meta = []
+        for row in snapshot_rows:
+            snap = row["snapshot_json"] or {}
+            response_abbrev = snap.get("response_abbrev")
+            if not response_abbrev:
+                continue
+
+            frozen_at = row["frozen_at"]
+            end_date = row["regular_season_end_date"]
+            frozen_conferences_meta.append({
+                "conf_key": row["conf_key"],
+                "conference_abbrev": response_abbrev,
+                "frozen_at": frozen_at.isoformat() if frozen_at else None,
+                "regular_season_end_date": end_date.isoformat() if end_date else None,
+            })
+
+            # Swap the matching conference entry
+            conf_section = snap.get("conference_section")
+            if conf_section:
+                for i, c in enumerate(projected_conferences):
+                    if c.get("conference_abbrev") == response_abbrev:
+                        projected_conferences[i] = conf_section
+                        break
+
+            # Swap the matching bracket entry (if one was captured)
+            bracket_section = snap.get("bracket_section")
+            if bracket_section:
+                for i, b in enumerate(playoff_brackets):
+                    if b.get("conference_abbrev") == response_abbrev:
+                        playoff_brackets[i] = bracket_section
+                        break
+
         return {
             "season": season,
             "schedule_last_updated": future_data.get("last_updated"),
             "total_future_games": len(future_games),
             "conferences": projected_conferences,
             "playoffs": playoff_brackets,
+            "frozen_conferences": frozen_conferences_meta,
         }
 
 
