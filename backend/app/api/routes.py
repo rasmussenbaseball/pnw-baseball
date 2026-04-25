@@ -11384,12 +11384,22 @@ def get_player_pitch_level_stats(
         all_pids = [player_id] + linked_ids
 
         # ── Discipline metrics ──
-        # Counts of pitch-types in pitch_sequence are derived via
-        # (length(seq) - length(replace(seq, X, ''))) which gives the
-        # count of letter X in the string.
+        # Many source PBP feeds (e.g. some Sidearm sites) publish narrative
+        # lines like "Player walked." with NO count or pitch sequence in
+        # parens. Those events have pitches_thrown IS NULL — pitch-level
+        # stats can't be computed for them. We compute discipline ONLY
+        # over the "pitch-tracked" subset (pitches_thrown IS NOT NULL)
+        # and surface both totals so the user can judge sample reliability.
+        cur.execute("""
+            SELECT COUNT(*) AS total_pa FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = ANY(%s) AND g.season = %s
+        """, (all_pids, season))
+        total_pa = cur.fetchone()["total_pa"] or 0
+
         cur.execute("""
             SELECT
-                COUNT(*) AS pa,
+                COUNT(*) AS tracked_pa,
                 COALESCE(SUM(pitches_thrown), 0) AS pitches,
                 COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS k_count,
                 COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS s_count,
@@ -11410,30 +11420,39 @@ def get_player_pitch_level_stats(
             JOIN games g ON g.id = ge.game_id
             WHERE ge.batter_player_id = ANY(%s)
               AND g.season = %s
+              AND ge.pitches_thrown IS NOT NULL
         """, (all_pids, season))
         r = cur.fetchone()
-        pa = r["pa"] or 0
+        tracked_pa = r["tracked_pa"] or 0
         pitches = r["pitches"] or 0
         k = r["k_count"]; f = r["f_count"]; in_play = r["in_play"]
         swings = k + f + in_play
         contact = f + in_play
+        whiffs = k
         discipline = {
-            "pa": pa,
+            "total_pa": total_pa,
+            "tracked_pa": tracked_pa,
             "pitches": pitches,
             "swings": swings,
+            "whiffs": whiffs,
             "swing_pct": (swings / pitches) if pitches > 0 else None,
+            "whiff_pct": (whiffs / swings) if swings > 0 else None,
             "contact_pct": (contact / swings) if swings > 0 else None,
-            "first_pitch_swing_pct": (r["f1_swings"] / pa) if pa > 0 else None,
-            "first_pitch_strike_pct": (r["f1_strikes"] / pa) if pa > 0 else None,
-            "pitches_per_pa": (pitches / pa) if pa > 0 else None,
+            "first_pitch_swing_pct": (r["f1_swings"] / tracked_pa) if tracked_pa > 0 else None,
+            "first_pitch_strike_pct": (r["f1_strikes"] / tracked_pa) if tracked_pa > 0 else None,
+            "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
         }
 
         # ── Count-state slash lines ──
-        # Helper: aggregate batting line under a WHERE filter.
+        # Returns slash + sample sizes (PA + pitches seen). The
+        # `pitches` field is a sample-size signal; it's NULL-summed so
+        # PAs without pitch data still count toward `pa` but don't
+        # inflate `pitches`.
         def _slash(filter_sql, filter_params):
             cur.execute(f"""
                 SELECT
                     COUNT(*) AS pa,
+                    COALESCE(SUM(pitches_thrown), 0) AS pitches,
                     SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
                     SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
                     SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d,
@@ -11468,10 +11487,9 @@ def get_player_pitch_level_stats(
             slg = (tb / ab) if ab > 0 else None
             ops = ((obp or 0) + (slg or 0)) if (obp is not None and slg is not None) else None
             return {
-                "pa": n_pa, "ab": ab, "h": h, "hr": hr, "bb": bb, "k": kct,
+                "pa": n_pa, "pitches": row["pitches"] or 0,
+                "ab": ab, "h": h, "hr": hr, "bb": bb, "k": kct,
                 "ba": ba, "obp": obp, "slg": slg, "ops": ops,
-                "k_pct": (kct / n_pa) if n_pa > 0 else None,
-                "bb_pct": (bb / n_pa) if n_pa > 0 else None,
             }
 
         # Define count groups per common baseball convention
