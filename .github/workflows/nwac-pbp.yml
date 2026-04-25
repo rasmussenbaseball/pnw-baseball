@@ -1,0 +1,78 @@
+name: NWAC PBP Scraper
+
+on:
+  schedule:
+    # 11 PM Pacific (6 AM UTC) — runs after the 10 PM Pacific NWAC
+    # box-score scrape (5 AM UTC) so player IDs from the box are
+    # already in place before we try to match PBP narrative names.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode: daily (default) or backfill'
+        required: false
+        default: 'daily'
+      limit:
+        description: 'Max games to process (0 = unlimited)'
+        required: false
+        default: '0'
+      rescrape:
+        description: 'Include already-scraped games (true/false)'
+        required: false
+        default: 'false'
+      dry_run:
+        description: 'Dry run (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 psycopg2-binary python-dotenv
+
+      - name: Scrape NWAC PBP via scrape_pbp.py
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEASON_YEAR: '2026'
+        run: |
+          cd $GITHUB_WORKSPACE
+          MODE="${{ github.event.inputs.mode }}"
+          LIMIT="${{ github.event.inputs.limit }}"
+          RESCRAPE="${{ github.event.inputs.rescrape }}"
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+
+          ARGS="--season 2026"
+          if [ "$MODE" = "backfill" ]; then
+            ARGS="$ARGS --backfill"
+          fi
+          if [ -n "$LIMIT" ] && [ "$LIMIT" != "0" ]; then
+            ARGS="$ARGS --limit $LIMIT"
+          fi
+          if [ "$RESCRAPE" = "true" ]; then
+            ARGS="$ARGS --rescrape"
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+
+          echo "Running: python3 scripts/scrape_pbp.py $ARGS"
+          PYTHONPATH=backend python3 scripts/scrape_pbp.py $ARGS
+
+      # Note: This workflow processes ALL games where pbp_scraped_at IS
+      # NULL (not just NWAC). Sidearm games happen to also be picked up,
+      # which is fine — they fetch directly without using ScraperAPI
+      # credits. The server's nightly cron also processes Sidearm games;
+      # whichever runs first wins (the SCRAPED_AT filter prevents redundant
+      # work).

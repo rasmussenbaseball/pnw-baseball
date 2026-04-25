@@ -29,6 +29,7 @@ Re-scrape an already-scraped game:
 
 import argparse
 import logging
+import os
 import re
 import sys
 import time
@@ -44,7 +45,15 @@ from app.models.database import get_connection
 # Local script imports — same scripts/ dir
 sys.path.insert(0, "scripts")
 from parse_pbp_events import parse_pbp_events  # noqa: E402
+from parse_presto_events import parse_presto_events  # noqa: E402
 from scrape_boxscores import find_player_id  # noqa: E402
+
+# ── ScraperAPI for NWAC and other Presto sites ──
+SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "")
+SCRAPER_API_BASE = "https://api.scraperapi.com"
+
+# Hosts that run on PrestoSports (need ?view=plays + ScraperAPI)
+PRESTO_HOSTS = ("nwacsports.com", "wubearcats.com")
 
 
 def _normalize_name(name):
@@ -198,6 +207,38 @@ def fetch_html(url, timeout=30):
     return resp.text
 
 
+def _is_presto_url(url):
+    """True if this URL needs Presto parsing + ScraperAPI."""
+    return any(h in (url or "") for h in PRESTO_HOSTS)
+
+
+def _presto_pbp_url(url):
+    """Append ?view=plays so we get the play-by-play, not the box."""
+    if "view=plays" in url:
+        return url
+    sep = "&" if "?" in url else "?"
+    return url + sep + "view=plays"
+
+
+def fetch_html_smart(url, timeout=60):
+    """Auto-route: ScraperAPI for Presto hosts (NWAC blocks direct), direct for Sidearm.
+
+    Adds the ?view=plays query for Presto so we get the PBP page rather
+    than the standard box score.
+    """
+    if _is_presto_url(url):
+        target = _presto_pbp_url(url)
+        if not SCRAPER_API_KEY:
+            log.warning("Presto URL fetched without SCRAPER_API_KEY — likely to fail")
+            return fetch_html(target, timeout=timeout)
+        params = {"api_key": SCRAPER_API_KEY, "url": target, "premium": "true"}
+        resp = requests.get(SCRAPER_API_BASE, params=params, timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
+    # Sidearm: direct fetch
+    return fetch_html(url, timeout=timeout)
+
+
 # ─────────────────────────────────────────────────────────────────
 # Team-name → team_id mapping
 # ─────────────────────────────────────────────────────────────────
@@ -338,9 +379,17 @@ def process_game(cur, game, dry_run=False, verbose=False):
         "error": None,
     }
 
-    # ── Fetch ──
+    # ── Skip Presto URLs when no API key (server cron) ──
+    # These will be picked up by the GH Actions workflow that has the
+    # SCRAPER_API_KEY secret. Don't bump attempt count — we want to try
+    # again next time the script runs in an environment that can fetch.
+    if _is_presto_url(url) and not SCRAPER_API_KEY:
+        result["error"] = "skipped:no_scraper_api_key"
+        return result
+
+    # ── Fetch (auto-routes Presto via ScraperAPI) ──
     try:
-        html = fetch_html(url)
+        html = fetch_html_smart(url)
         result["fetched"] = True
     except Exception as e:
         result["error"] = f"fetch:{type(e).__name__}:{e}"
@@ -351,8 +400,9 @@ def process_game(cur, game, dry_run=False, verbose=False):
             """, (gid,))
         return result
 
-    # ── First-pass parse to discover team names from captions ──
-    _, meta = parse_pbp_events(html)
+    # ── Parse: pick parser based on source host ──
+    parser_fn = parse_presto_events if _is_presto_url(url) else parse_pbp_events
+    _, meta = parser_fn(html)
     if not meta["has_pbp"]:
         # No PBP section — Oregon/OSU/WSU home games etc. Bump counter so
         # we eventually give up after MAX_ATTEMPTS.
@@ -390,8 +440,8 @@ def process_game(cur, game, dry_run=False, verbose=False):
         if team_id in starters_by_team_id:
             starters_by_pbp_name[pbp_name] = starters_by_team_id[team_id]
 
-    # ── Second-pass parse with starters seeded ──
-    events, _ = parse_pbp_events(html, starters=starters_by_pbp_name)
+    # ── Second-pass parse with starters seeded (same parser as before) ──
+    events, _ = parser_fn(html, starters=starters_by_pbp_name)
     result["events_total"] = len(events)
 
     # ── Resolve player_ids per event ──
@@ -509,8 +559,11 @@ def process_game(cur, game, dry_run=False, verbose=False):
 def select_games(cur, args):
     where = [
         "g.source_url IS NOT NULL",
-        # NOTE: %% — psycopg2 treats % as parameter marker even in quoted strings
-        "g.source_url LIKE 'https://%%/sports/baseball/stats/%%/boxscore/%%'",
+        # NOTE: %% — psycopg2 treats % as parameter marker even in quoted strings.
+        # Match either Sidearm box URL pattern OR Presto/NWAC box URL pattern.
+        "(g.source_url LIKE 'https://%%/sports/baseball/stats/%%/boxscore/%%'"
+        " OR g.source_url LIKE '%%nwacsports.com/sports/%%/boxscores/%%.xml'"
+        " OR g.source_url LIKE '%%wubearcats.com/sports/%%/boxscores/%%.xml')",
         "g.pbp_attempt_count < %s",
     ]
     params = [MAX_ATTEMPTS]
