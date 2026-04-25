@@ -1,49 +1,103 @@
 #!/usr/bin/env python3
 """
-PBP scraper — Phase 0 (HR allowed only)
-========================================
+PBP scraper — Phase 1 (full per-PA event extraction)
+=====================================================
 
-Walks games whose play-by-play hasn't been scraped yet, re-fetches the
-box-score URL we already have stored in `games.source_url`, parses the
-play-by-play section to count HRs allowed per pitcher, and writes those
-counts into `game_pitching.home_runs_allowed`.
+Walks games whose play-by-play hasn't been scraped, re-fetches the
+box-score URL from `games.source_url`, parses every plate appearance
+into the `game_events` table, and (as a derived secondary write) keeps
+`game_pitching.home_runs_allowed` in sync from those events.
 
-Independent from `scrape_boxscores.py`. Designed to run once per night
-(2 AM Pacific via cron) so we can wait for the official scorer to push
-the StatCrew PBP file to Sidearm — that often lags the box-score totals
-by hours.
+Designed to run once per night (3 AM Pacific via cron) so we can wait
+for the official scorer to push the StatCrew PBP file to Sidearm —
+that often lags the box-score totals by hours.
 
 Usage
 -----
-Default mode (run from cron — only games from last 14 days, max 3 attempts):
+Default (cron mode — last 14 days, max 3 attempts, only unscraped games):
     PYTHONPATH=backend python3 scripts/scrape_pbp.py
 
 Backfill all 2026 games (one-time historical pass):
     PYTHONPATH=backend python3 scripts/scrape_pbp.py --backfill --season 2026
 
-Test on a single game (no DB writes):
+Test on one game (no DB writes):
     PYTHONPATH=backend python3 scripts/scrape_pbp.py --game-id 3539 --dry-run
 
-Verbose per-game output:
-    PYTHONPATH=backend python3 scripts/scrape_pbp.py --game-id 3539 --verbose
+Re-scrape an already-scraped game:
+    PYTHONPATH=backend python3 scripts/scrape_pbp.py --game-id 3539 --rescrape
 """
 
 import argparse
 import logging
+import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import unicodedata
 from difflib import SequenceMatcher
 
 import requests
+import psycopg2.extras
 
 # Project imports
 from app.models.database import get_connection
 
 # Local script imports — same scripts/ dir
 sys.path.insert(0, "scripts")
-from parse_pbp_hr import parse_pbp_hr  # noqa: E402
+from parse_pbp_events import parse_pbp_events  # noqa: E402
 from scrape_boxscores import find_player_id  # noqa: E402
+
+
+def _normalize_name(name):
+    """Strip apostrophes, dashes, accents, and extra whitespace from a name.
+
+    Used so PBP names like "ONeil,Dillon" can match roster names like
+    "O'Neil, Dillon" — and similar accent / punctuation variations.
+    """
+    if not name:
+        return ""
+    # Decompose accents (é → e + combining accent), then drop non-ASCII
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    # Strip any character that isn't a letter, comma, or whitespace
+    s = re.sub(r"[^\w,\s]", "", s)
+    # Collapse whitespace
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def find_player_id_with_fallback(cur, team_id, name, season):
+    """find_player_id, then a normalized-name fallback if that misses.
+
+    The fallback fetches all players on the team once per call, normalizes
+    each name, and matches against the normalized input. This handles
+    apostrophes (O'Neil/ONeil), accents (José/Jose), and similar.
+    Returns (player_id, fallback_used) where fallback_used is True if the
+    original lookup missed.
+    """
+    pid = find_player_id(cur, team_id, name, season)
+    if pid:
+        return pid, False
+    norm_input = _normalize_name(name).lower()
+    if not norm_input:
+        return None, False
+    cur.execute("""
+        SELECT id, first_name, last_name FROM players WHERE team_id = %s
+    """, (team_id,))
+    candidates = []
+    for r in cur.fetchall():
+        # Normalize both "First Last" and "Last, First" forms
+        first = r["first_name"] or ""
+        last = r["last_name"] or ""
+        forms = [
+            _normalize_name(f"{first} {last}").lower(),
+            _normalize_name(f"{last}, {first}").lower(),
+            _normalize_name(f"{last},{first}").lower(),
+            _normalize_name(last).lower(),  # last-name-only
+        ]
+        if any(f == norm_input for f in forms):
+            candidates.append(r["id"])
+    if len(candidates) == 1:
+        return candidates[0], True
+    return None, False
 
 
 logging.basicConfig(
@@ -70,7 +124,7 @@ def fetch_html(url, timeout=30):
 
 
 # ─────────────────────────────────────────────────────────────────
-# Team-name → team_id mapping for one game
+# Team-name → team_id mapping
 # ─────────────────────────────────────────────────────────────────
 
 def _similarity(a, b):
@@ -78,15 +132,6 @@ def _similarity(a, b):
 
 
 def _best_score(pbp_name, candidate_strings):
-    """Return the max SequenceMatcher ratio of pbp_name vs any candidate.
-
-    None / empty candidates are skipped. Used so we can compare a PBP
-    caption like "Eastern Oregon" against the team's stored
-    home_team_name ('EOU'), full name ('Eastern Oregon Mountaineers'),
-    school_name ('Eastern Oregon University'), and short_name ('EOU')
-    — and pick the highest match. Without this, abbreviation-only
-    home_team_name values fail the threshold and HRs get dropped.
-    """
     best = 0.0
     for c in candidate_strings:
         if not c:
@@ -102,11 +147,7 @@ def map_caption_to_team_id(pbp_team_names, home_team_id, home_variants, away_tea
 
     home_variants and away_variants are lists of strings the PBP name
     could plausibly equal — typically [team_name, full name, school
-    name, short name]. We pick the side whose best variant scores
-    higher (so an exact short-name match beats a weak partial on
-    home_team_name).
-
-    Returns dict: {pbp_name: team_id} for every name we resolved.
+    name, short name]. Best variant wins.
     """
     out = {}
     for pbp_name in pbp_team_names:
@@ -116,7 +157,6 @@ def map_caption_to_team_id(pbp_team_names, home_team_id, home_variants, away_tea
             out[pbp_name] = home_team_id
         elif s_away > s_home and s_away >= 0.5:
             out[pbp_name] = away_team_id
-        # else: leave unresolved
     return out
 
 
@@ -135,7 +175,7 @@ def get_starters(cur, game_id):
 
 
 def process_game(cur, game, dry_run=False, verbose=False):
-    """Scrape one game's PBP, return dict with stats.
+    """Scrape one game's PBP, write events to game_events, update HR-allowed.
 
     Always increments pbp_attempt_count. Sets pbp_scraped_at only when
     we successfully extracted at least one event (or confirmed there's
@@ -150,9 +190,12 @@ def process_game(cur, game, dry_run=False, verbose=False):
         "url": url,
         "fetched": False,
         "had_pbp": False,
-        "hr_events": 0,
-        "pitchers_updated": 0,
-        "unmatched_pitchers": [],
+        "events_total": 0,
+        "events_inserted": 0,
+        "batters_resolved": 0,
+        "pitchers_resolved": 0,
+        "hr_pitchers_updated": 0,
+        "warnings": [],
         "error": None,
     }
 
@@ -162,7 +205,6 @@ def process_game(cur, game, dry_run=False, verbose=False):
         result["fetched"] = True
     except Exception as e:
         result["error"] = f"fetch:{type(e).__name__}:{e}"
-        # Still bump attempt count so we eventually give up
         if not dry_run:
             cur.execute("""
                 UPDATE games SET pbp_attempt_count = pbp_attempt_count + 1
@@ -170,13 +212,11 @@ def process_game(cur, game, dry_run=False, verbose=False):
             """, (gid,))
         return result
 
-    # ── First-pass parse to get team-name list (no starters yet) ──
-    _, _, meta = parse_pbp_hr(html)
+    # ── First-pass parse to discover team names from captions ──
+    _, meta = parse_pbp_events(html)
     if not meta["has_pbp"]:
-        # No PBP section present (e.g. Oregon, OSU, WSU home games).
-        # Bump attempt count; mark scraped_at so we don't keep retrying
-        # forever — after MAX_ATTEMPTS, the cron filter ignores the row.
-        result["had_pbp"] = False
+        # No PBP section — Oregon/OSU/WSU home games etc. Bump counter so
+        # we eventually give up after MAX_ATTEMPTS.
         if not dry_run:
             cur.execute("""
                 UPDATE games SET pbp_attempt_count = pbp_attempt_count + 1
@@ -186,7 +226,7 @@ def process_game(cur, game, dry_run=False, verbose=False):
 
     result["had_pbp"] = True
 
-    # ── Map PBP team names → DB team_ids ──
+    # ── Map PBP captions → DB team_ids ──
     home_variants = [
         game["home_team_name"], game.get("home_db_name"),
         game.get("home_db_school"), game.get("home_db_short"),
@@ -200,11 +240,9 @@ def process_game(cur, game, dry_run=False, verbose=False):
         game["home_team_id"], home_variants,
         game["away_team_id"], away_variants,
     )
-    # Surface any caption names we couldn't resolve so they don't silently
-    # drop their HR events.
     for n in meta["all_team_names"]:
         if n not in name_to_team:
-            result["unmatched_pitchers"].append(f"<unmappable_team:{n!r}>")
+            result["warnings"].append(f"<unmappable_team:{n!r}>")
 
     # ── Seed starters from game_pitching ──
     starters_by_team_id = get_starters(cur, gid)
@@ -214,63 +252,104 @@ def process_game(cur, game, dry_run=False, verbose=False):
             starters_by_pbp_name[pbp_name] = starters_by_team_id[team_id]
 
     # ── Second-pass parse with starters seeded ──
-    hr_by_pitcher, events, _ = parse_pbp_hr(html, starters=starters_by_pbp_name)
-    result["hr_events"] = len(events)
+    events, _ = parse_pbp_events(html, starters=starters_by_pbp_name)
+    result["events_total"] = len(events)
+
+    # ── Resolve player_ids per event ──
+    # batter is on batting_team; pitcher is on defending_team.
+    # Cache lookups within one game to avoid hammering find_player_id.
+    batter_cache = {}    # (team_id, name) -> player_id or None
+    pitcher_cache = {}
+
+    def resolve(name, team_id, cache):
+        if not name or name == "<UNKNOWN STARTER>":
+            return None
+        key = (team_id, name)
+        if key in cache:
+            return cache[key]
+        if not team_id:
+            cache[key] = None
+            return None
+        pid, _used_fallback = find_player_id_with_fallback(cur, team_id, name, season)
+        cache[key] = pid
+        return pid
+
+    enriched = []
+    for ev in events:
+        batting_team_id = name_to_team.get(ev["batting_team_name"])
+        defending_team_id = name_to_team.get(ev["defending_team_name"])
+        if not batting_team_id or not defending_team_id:
+            continue   # team unmappable — already warned above
+        batter_pid = resolve(ev["batter_name"], batting_team_id, batter_cache)
+        pitcher_pid = resolve(ev["pitcher_name"], defending_team_id, pitcher_cache)
+        if batter_pid:
+            result["batters_resolved"] += 1
+        if pitcher_pid:
+            result["pitchers_resolved"] += 1
+        enriched.append({
+            **ev,
+            "batting_team_id": batting_team_id,
+            "defending_team_id": defending_team_id,
+            "batter_player_id": batter_pid,
+            "pitcher_player_id": pitcher_pid,
+        })
 
     if verbose:
-        log.info(f"  game {gid}: {len(events)} HR events, {len(hr_by_pitcher)} pitchers credited")
-        for e in events:
-            log.info(f"    {e['batter']} ({e['batting_team']}) off "
-                     f"{e['pitcher']} ({e['defending_team']})")
+        log.info(f"  game {gid}: parsed {len(events)} events, "
+                 f"{result['batters_resolved']} batter IDs, "
+                 f"{result['pitchers_resolved']} pitcher IDs")
 
-    # ── Write updates per pitcher ──
-    # We invert the events list to also get the defending_team for each
-    # HR — needed because hr_by_pitcher only carries pitcher name, but
-    # name lookup is team-scoped.
-    hr_by_team_pitcher = {}  # (team_id, pitcher_name) -> count
-    for e in events:
-        team_id = name_to_team.get(e["defending_team"])
-        if not team_id:
-            continue
-        key = (team_id, e["pitcher"])
-        hr_by_team_pitcher[key] = hr_by_team_pitcher.get(key, 0) + 1
+    # ── Write game_events (idempotent: DELETE then INSERT) ──
+    if not dry_run and enriched:
+        cur.execute("DELETE FROM game_events WHERE game_id = %s", (gid,))
+        psycopg2.extras.execute_values(
+            cur,
+            """
+            INSERT INTO game_events (
+                game_id, inning, half, sequence_idx,
+                batting_team_id, defending_team_id,
+                batter_player_id, batter_name,
+                pitcher_player_id, pitcher_name,
+                balls_before, strikes_before, pitch_sequence,
+                pitches_thrown, was_in_play,
+                result_type, result_text, rbi
+            ) VALUES %s
+            """,
+            [(
+                gid, ev["inning"], ev["half"], ev["sequence_idx"],
+                ev["batting_team_id"], ev["defending_team_id"],
+                ev["batter_player_id"], ev["batter_name"],
+                ev["pitcher_player_id"], ev["pitcher_name"],
+                ev["balls_before"], ev["strikes_before"], ev["pitch_sequence"],
+                ev["pitches_thrown"], ev["was_in_play"],
+                ev["result_type"], ev["result_text"], ev["rbi"],
+            ) for ev in enriched],
+            page_size=200,
+        )
+        result["events_inserted"] = len(enriched)
 
-    for (team_id, pitcher_name), n in hr_by_team_pitcher.items():
-        if pitcher_name == "<UNKNOWN STARTER>":
-            result["unmatched_pitchers"].append(f"<starter:team_id={team_id}>")
+    # ── Derived: update game_pitching.home_runs_allowed from events ──
+    # Count HRs per (defending_team_id, pitcher_player_id) and UPDATE.
+    # Pitchers we couldn't resolve are silently dropped — same OOC
+    # behavior as Phase 0.
+    hr_by_pp = {}   # (team_id, pitcher_pid) -> count
+    for ev in enriched:
+        if ev["result_type"] != "home_run":
             continue
-        pid = find_player_id(cur, team_id, pitcher_name, season)
-        if not pid:
-            result["unmatched_pitchers"].append(f"{pitcher_name}@team_id={team_id}")
+        if not ev["pitcher_player_id"]:
             continue
-        if dry_run:
-            # Verify a game_pitching row exists for this pitcher in this
-            # game, but don't write. Tells us if the name match goes all
-            # the way through to a real row.
-            cur.execute("""
-                SELECT 1 FROM game_pitching
-                WHERE game_id = %s AND team_id = %s AND player_id = %s
-            """, (gid, team_id, pid))
-            if cur.fetchone():
-                result["pitchers_updated"] += 1
-                if verbose:
-                    log.info(f"    [dry-run] would update {pitcher_name} (player_id={pid}) +HR×{n}")
-            else:
-                result["unmatched_pitchers"].append(
-                    f"{pitcher_name}@team_id={team_id} (no game_pitching row)"
-                )
-        else:
+        key = (ev["defending_team_id"], ev["pitcher_player_id"])
+        hr_by_pp[key] = hr_by_pp.get(key, 0) + 1
+
+    if not dry_run:
+        for (team_id, pid), n in hr_by_pp.items():
             cur.execute("""
                 UPDATE game_pitching
                 SET home_runs_allowed = %s
                 WHERE game_id = %s AND team_id = %s AND player_id = %s
             """, (n, gid, team_id, pid))
             if cur.rowcount > 0:
-                result["pitchers_updated"] += 1
-            else:
-                result["unmatched_pitchers"].append(
-                    f"{pitcher_name}@team_id={team_id} (no game_pitching row)"
-                )
+                result["hr_pitchers_updated"] += 1
 
     # ── Mark game complete ──
     if not dry_run:
@@ -285,15 +364,13 @@ def process_game(cur, game, dry_run=False, verbose=False):
 
 
 # ─────────────────────────────────────────────────────────────────
-# Main
+# Game selection
 # ─────────────────────────────────────────────────────────────────
 
 def select_games(cur, args):
-    """Build the games-to-scrape query based on CLI flags."""
     where = [
         "g.source_url IS NOT NULL",
-        # NOTE: %% — psycopg2 treats % as parameter marker even inside
-        # quoted strings, so each literal % in the LIKE pattern doubles.
+        # NOTE: %% — psycopg2 treats % as parameter marker even in quoted strings
         "g.source_url LIKE 'https://%%/sports/baseball/stats/%%/boxscore/%%'",
         "g.pbp_attempt_count < %s",
     ]
@@ -306,15 +383,8 @@ def select_games(cur, args):
         if args.season:
             where.append("g.season = %s")
             params.append(args.season)
-        if args.backfill:
-            # All games in selected season, regardless of date.
-            pass
-        else:
-            # Only games from last RECENT_DAYS days.
+        if not args.backfill:
             where.append(f"g.game_date >= CURRENT_DATE - INTERVAL '{RECENT_DAYS} days'")
-
-        # In all non-single-game modes, skip games we already scraped
-        # (unless --rescrape).
         if not args.rescrape:
             where.append("g.pbp_scraped_at IS NULL")
 
@@ -339,7 +409,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, default=2026)
     ap.add_argument("--backfill", action="store_true",
-                    help="Process all games in season, not just recent")
+                    help="Process all games in season, not just last 14 days")
     ap.add_argument("--rescrape", action="store_true",
                     help="Include games already marked pbp_scraped_at")
     ap.add_argument("--game-id", type=int,
@@ -358,8 +428,10 @@ def main():
                  f"(backfill={args.backfill}, dry_run={args.dry_run})")
 
         totals = {
-            "fetched": 0, "had_pbp": 0, "hr_events": 0,
-            "pitchers_updated": 0, "unmatched": 0, "errors": 0,
+            "fetched": 0, "had_pbp": 0,
+            "events_total": 0, "events_inserted": 0,
+            "batters_resolved": 0, "pitchers_resolved": 0,
+            "hr_pitchers_updated": 0, "errors": 0,
         }
 
         for i, g in enumerate(games, 1):
@@ -376,33 +448,33 @@ def main():
                 log.warning(f"  error: {r['error']}")
                 totals["errors"] += 1
             else:
-                if r["fetched"]:
-                    totals["fetched"] += 1
-                if r["had_pbp"]:
-                    totals["had_pbp"] += 1
-                totals["hr_events"] += r["hr_events"]
-                totals["pitchers_updated"] += r["pitchers_updated"]
-                totals["unmatched"] += len(r["unmatched_pitchers"])
-                if r["unmatched_pitchers"]:
-                    log.warning(f"  unmatched: {r['unmatched_pitchers']}")
+                if r["fetched"]: totals["fetched"] += 1
+                if r["had_pbp"]: totals["had_pbp"] += 1
+                totals["events_total"] += r["events_total"]
+                totals["events_inserted"] += r["events_inserted"]
+                totals["batters_resolved"] += r["batters_resolved"]
+                totals["pitchers_resolved"] += r["pitchers_resolved"]
+                totals["hr_pitchers_updated"] += r["hr_pitchers_updated"]
+                if r["warnings"]:
+                    log.warning(f"  warnings: {r['warnings']}")
                 else:
-                    log.info(f"  ok: {r['hr_events']} HR events, "
-                             f"{r['pitchers_updated']} pitchers updated")
+                    log.info(f"  ok: {r['events_total']} events, "
+                             f"{r['batters_resolved']} batter IDs, "
+                             f"{r['pitchers_resolved']} pitcher IDs, "
+                             f"{r['hr_pitchers_updated']} HR pitcher updates")
 
-            # Commit per-game so a later failure doesn't roll back
-            # everything. Cheap given commit volume.
             if not args.dry_run:
                 conn.commit()
 
-            # Be polite — short pause between games. Different domains
-            # within the loop, so one per second is plenty.
             time.sleep(0.5)
 
         log.info("─" * 60)
-        log.info(f"DONE: fetched={totals['fetched']}, had_pbp={totals['had_pbp']}, "
-                 f"hr_events={totals['hr_events']}, "
-                 f"pitchers_updated={totals['pitchers_updated']}, "
-                 f"unmatched={totals['unmatched']}, errors={totals['errors']}")
+        log.info(
+            f"DONE: fetched={totals['fetched']}, had_pbp={totals['had_pbp']}, "
+            f"events_total={totals['events_total']}, events_inserted={totals['events_inserted']}, "
+            f"batter_ids={totals['batters_resolved']}, pitcher_ids={totals['pitchers_resolved']}, "
+            f"hr_updates={totals['hr_pitchers_updated']}, errors={totals['errors']}"
+        )
 
 
 if __name__ == "__main__":
