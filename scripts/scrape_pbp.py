@@ -100,11 +100,16 @@ def find_player_id_with_fallback(cur, team_id, name, season, game_id=None):
     for r in cur.fetchall():
         first = r["first_name"] or ""
         last = r["last_name"] or ""
+        first_init = first[0] if first else ""
         forms = [
             _normalize_name(f"{first} {last}").lower(),
             _normalize_name(f"{last}, {first}").lower(),
             _normalize_name(f"{last},{first}").lower(),
             _normalize_name(last).lower(),
+            # "Last, F" / "Last, F." — accent-stripped lookups for
+            # "Sanchez, R" (PBP) → "Sánchez, Ricky" (DB).
+            f"{_normalize_name(last).lower()}, {first_init.lower()}",
+            f"{_normalize_name(last).lower()},{first_init.lower()}",
         ]
         if any(f == norm_input for f in forms):
             candidates.append(r["id"])
@@ -137,18 +142,27 @@ def find_player_id_with_fallback(cur, team_id, name, season, game_id=None):
         initial = m_init.group(1)
         last_prefix = m_init.group(2).strip()
         if last_prefix:
+            # Match if last_name STARTS WITH the prefix, OR if any word
+            # within last_name (split on space/hyphen) starts with it.
+            # The latter handles cases like "J. hoy" → "Au Hoy" where
+            # the source truncates a multi-word lastname to just one word.
             cur.execute("""
                 SELECT p.id FROM players p
                 WHERE p.team_id = %s
                   AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = LOWER(%s)
-                  AND LOWER(p.last_name) LIKE LOWER(%s)
-                LIMIT 2
-            """, (team_id, initial, last_prefix + "%"))
+                  AND (
+                    LOWER(p.last_name) LIKE LOWER(%s)
+                    OR EXISTS (
+                      SELECT 1 FROM regexp_split_to_table(LOWER(p.last_name), %s) AS word
+                      WHERE word LIKE LOWER(%s)
+                    )
+                  )
+                LIMIT 3
+            """, (team_id, initial, last_prefix + "%", r'[\s\-]+', last_prefix.lower() + "%"))
             rows = cur.fetchall()
             if len(rows) == 1:
                 return rows[0]["id"], True
             if len(rows) > 1 and game_id is not None:
-                # Disambiguate by box presence again
                 cand_ids = [r["id"] for r in rows]
                 cur.execute("""
                     SELECT DISTINCT player_id FROM game_batting
