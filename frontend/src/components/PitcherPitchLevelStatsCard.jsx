@@ -19,7 +19,7 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
     : 0
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
       <div className="flex items-baseline justify-between mb-1">
         <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider">
           Pitch-Level Stats
@@ -29,14 +29,14 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
       <p className="text-[10px] text-gray-500 mb-2">
         {d.total_pa} PA faced · {d.tracked_pa} with pitch data ({trackedShare}%) · {d.pitches} pitches thrown
       </p>
-      <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-3 flex-wrap">
+      <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-5 flex-wrap">
         <span>Color vs {data.division_level} decile rank:</span>
         <ColorScale />
-        <span className="text-gray-400">(hover any cell for league value)</span>
+        <span className="text-gray-400">(hover any cell for league average)</span>
       </div>
 
       {/* ── Plate discipline (pitcher's side) ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-6">
         <Tile label="Pitches" value={d.pitches} sub={`over ${d.tracked_pa} PA`} />
         <Tile label="Strike %" value={fmtPct(d.strike_pct)} sub="thrown" />
         <Tile label="Called-Strike %" value={fmtPct(d.called_strike_pct)} sub="of all pitches" />
@@ -47,126 +47,168 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
       </div>
 
       {/* ── Count-state opponent slash ── */}
-      <div className="mb-4">
-        <h4 className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
-          Opponent Slash by Count
-        </h4>
-        <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs min-w-[820px]">
-            <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-              <tr>
-                <th className="text-left px-2 py-1.5">Count</th>
-                <th className="text-right px-2 py-1.5">PA</th>
-                <th className="text-right px-2 py-1.5">Pit</th>
-                <th className="text-right px-2 py-1.5">BIP</th>
-                <th className="text-right px-2 py-1.5">opp BA</th>
-                <th className="text-right px-2 py-1.5">opp OBP</th>
-                <th className="text-right px-2 py-1.5">opp SLG</th>
-                <th className="text-right px-2 py-1.5">opp OPS</th>
-                <th className="text-right px-2 py-1.5">opp ISO</th>
-                <th className="text-right px-2 py-1.5">opp wOBA</th>
-                <th className="text-right px-2 py-1.5">wRC+ allowed</th>
-                <th className="text-right px-2 py-1.5">K%</th>
-                <th className="text-right px-2 py-1.5">BB%</th>
-                <th className="text-right px-2 py-1.5">Strike%</th>
-                <th className="text-right px-2 py-1.5">Whiff%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.count_states.map((cs) => (
-                <tr key={cs.label}>
-                  <td className="px-2 py-1.5 align-top">
-                    <div className="font-medium text-gray-900">{cs.label}</div>
-                    <div className="text-[10px] text-gray-400">{cs.detail}</div>
-                  </td>
-                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{cs.pa}</td>
-                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.pitches}</td>
-                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.bip}</td>
-                  <ColorCell row={cs} metric="opp_ba" formatter={fmtRate} bold />
-                  <ColorCell row={cs} metric="opp_obp" formatter={fmtRate} />
-                  <ColorCell row={cs} metric="opp_slg" formatter={fmtRate} />
-                  <ColorCell row={cs} metric="opp_ops" formatter={fmtRate} />
-                  <ColorCell row={cs} metric="opp_iso" formatter={fmtRate} />
-                  <ColorCell row={cs} metric="opp_woba" formatter={fmtRate} />
-                  <ColorCell row={cs} metric="wrc_plus_against" formatter={fmtInt} />
-                  <ColorCell row={cs} metric="k_pct" formatter={fmtPct} />
-                  <ColorCell row={cs} metric="bb_pct" formatter={fmtPct} />
-                  <ColorCell row={cs} metric="strike_pct" formatter={fmtPct} />
-                  <ColorCell row={cs} metric="whiff_pct" formatter={fmtPct} />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <SectionHeader>Opponent Slash by Count</SectionHeader>
+      <DataTable minWidth={880} className="mb-6">
+        <thead>
+          <HeaderRow>
+            <Th align="left">Count</Th>
+            <Th>PA</Th>
+            <Th>Pit</Th>
+            <Th>BIP</Th>
+            <Th>opp BA</Th>
+            <Th>opp OBP</Th>
+            <Th>opp SLG</Th>
+            <Th>opp OPS</Th>
+            <Th>opp ISO</Th>
+            <Th>opp wOBA</Th>
+            <Th>wRC+ allowed</Th>
+            <Th>K%</Th>
+            <Th>BB%</Th>
+            <Th>Strike%</Th>
+            <Th>Whiff%</Th>
+          </HeaderRow>
+        </thead>
+        <tbody>
+          {data.count_states.map((cs) => (
+            <BodyRow key={cs.label}>
+              <CountCell label={cs.label} detail={cs.detail} />
+              <NumCell value={cs.pa} muted={false} />
+              <NumCell value={cs.pitches} muted />
+              <NumCell value={cs.bip} muted />
+              <ColorCell row={cs} metric="opp_ba" formatter={fmtRate} bold />
+              <ColorCell row={cs} metric="opp_obp" formatter={fmtRate} />
+              <ColorCell row={cs} metric="opp_slg" formatter={fmtRate} />
+              <ColorCell row={cs} metric="opp_ops" formatter={fmtRate} />
+              <ColorCell row={cs} metric="opp_iso" formatter={fmtRate} />
+              <ColorCell row={cs} metric="opp_woba" formatter={fmtRate} />
+              <ColorCell row={cs} metric="wrc_plus_against" formatter={fmtInt} />
+              <ColorCell row={cs} metric="k_pct" formatter={fmtPct} />
+              <ColorCell row={cs} metric="bb_pct" formatter={fmtPct} />
+              <ColorCell row={cs} metric="strike_pct" formatter={fmtPct} />
+              <ColorCell row={cs} metric="whiff_pct" formatter={fmtPct} />
+            </BodyRow>
+          ))}
+        </tbody>
+      </DataTable>
 
       {/* ── L/R batter splits ── */}
-      <div>
-        <h4 className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
-          Batter Hand Splits
-        </h4>
-        <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs min-w-[820px]">
-            <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-              <tr>
-                <th className="text-left px-2 py-1.5">Split</th>
-                <th className="text-right px-2 py-1.5">PA</th>
-                <th className="text-right px-2 py-1.5">Pit</th>
-                <th className="text-right px-2 py-1.5">BIP</th>
-                <th className="text-right px-2 py-1.5">opp BA</th>
-                <th className="text-right px-2 py-1.5">opp OBP</th>
-                <th className="text-right px-2 py-1.5">opp SLG</th>
-                <th className="text-right px-2 py-1.5">opp OPS</th>
-                <th className="text-right px-2 py-1.5">opp ISO</th>
-                <th className="text-right px-2 py-1.5">opp wOBA</th>
-                <th className="text-right px-2 py-1.5">wRC+ allowed</th>
-                <th className="text-right px-2 py-1.5">K%</th>
-                <th className="text-right px-2 py-1.5">BB%</th>
-                <th className="text-right px-2 py-1.5">Strike%</th>
-                <th className="text-right px-2 py-1.5">Whiff%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lr_splits.map((sp) => (
-                <tr key={sp.label}>
-                  <td className="px-2 py-1.5 font-medium text-gray-900">{sp.label}</td>
-                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{sp.pa}</td>
-                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.pitches}</td>
-                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.bip}</td>
-                  <ColorCell row={sp} metric="opp_ba" formatter={fmtRate} bold />
-                  <ColorCell row={sp} metric="opp_obp" formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_slg" formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_ops" formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_iso" formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_woba" formatter={fmtRate} />
-                  <ColorCell row={sp} metric="wrc_plus_against" formatter={fmtInt} />
-                  <ColorCell row={sp} metric="k_pct" formatter={fmtPct} />
-                  <ColorCell row={sp} metric="bb_pct" formatter={fmtPct} />
-                  <ColorCell row={sp} metric="strike_pct" formatter={fmtPct} />
-                  <ColorCell row={sp} metric="whiff_pct" formatter={fmtPct} />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {data.lr_splits.find(s => s.label === 'vs Unknown' && s.pa > 0) && (
-          <p className="text-[10px] text-gray-400 mt-1.5 italic">
-            Unknown = batter's handedness not in our roster data.
-          </p>
-        )}
-      </div>
+      <SectionHeader>Batter Hand Splits</SectionHeader>
+      <DataTable minWidth={880}>
+        <thead>
+          <HeaderRow>
+            <Th align="left">Split</Th>
+            <Th>PA</Th>
+            <Th>Pit</Th>
+            <Th>BIP</Th>
+            <Th>opp BA</Th>
+            <Th>opp OBP</Th>
+            <Th>opp SLG</Th>
+            <Th>opp OPS</Th>
+            <Th>opp ISO</Th>
+            <Th>opp wOBA</Th>
+            <Th>wRC+ allowed</Th>
+            <Th>K%</Th>
+            <Th>BB%</Th>
+            <Th>Strike%</Th>
+            <Th>Whiff%</Th>
+          </HeaderRow>
+        </thead>
+        <tbody>
+          {data.lr_splits.map((sp) => (
+            <BodyRow key={sp.label}>
+              <td className="px-3 py-2.5 align-middle font-medium text-gray-900 whitespace-nowrap border-r border-gray-100">
+                {sp.label}
+              </td>
+              <NumCell value={sp.pa} muted={false} />
+              <NumCell value={sp.pitches} muted />
+              <NumCell value={sp.bip} muted />
+              <ColorCell row={sp} metric="opp_ba" formatter={fmtRate} bold />
+              <ColorCell row={sp} metric="opp_obp" formatter={fmtRate} />
+              <ColorCell row={sp} metric="opp_slg" formatter={fmtRate} />
+              <ColorCell row={sp} metric="opp_ops" formatter={fmtRate} />
+              <ColorCell row={sp} metric="opp_iso" formatter={fmtRate} />
+              <ColorCell row={sp} metric="opp_woba" formatter={fmtRate} />
+              <ColorCell row={sp} metric="wrc_plus_against" formatter={fmtInt} />
+              <ColorCell row={sp} metric="k_pct" formatter={fmtPct} />
+              <ColorCell row={sp} metric="bb_pct" formatter={fmtPct} />
+              <ColorCell row={sp} metric="strike_pct" formatter={fmtPct} />
+              <ColorCell row={sp} metric="whiff_pct" formatter={fmtPct} />
+            </BodyRow>
+          ))}
+        </tbody>
+      </DataTable>
+      {data.lr_splits.find(s => s.label === 'vs Unknown' && s.pa > 0) && (
+        <p className="text-[10px] text-gray-400 mt-2 italic">
+          Unknown = batter's handedness not in our roster data.
+        </p>
+      )}
     </div>
   )
 }
 
-// ── helpers (mirror of hitter card, with inverted opp_* directions) ─
+// ── Layout primitives ──────────────────────────────────────────
+
+function SectionHeader({ children }) {
+  return (
+    <h4 className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-2">
+      {children}
+    </h4>
+  )
+}
+
+function DataTable({ children, minWidth = 700, className = '' }) {
+  return (
+    <div className={`overflow-x-auto -mx-4 sm:mx-0 ${className}`}>
+      <table className="w-full text-xs border-collapse" style={{ minWidth: `${minWidth}px` }}>
+        {children}
+      </table>
+    </div>
+  )
+}
+
+function HeaderRow({ children }) {
+  return (
+    <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px] border-b border-gray-200">
+      {children}
+    </tr>
+  )
+}
+
+function Th({ children, align = 'center' }) {
+  const cls = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center'
+  return (
+    <th className={`${cls} px-3 py-2 align-middle font-semibold whitespace-nowrap`}>
+      {children}
+    </th>
+  )
+}
+
+function BodyRow({ children }) {
+  return <tr className="border-b border-gray-100 last:border-0">{children}</tr>
+}
+
+function CountCell({ label, detail }) {
+  return (
+    <td className="px-3 py-2.5 align-middle whitespace-nowrap border-r border-gray-100">
+      <span className="font-medium text-gray-900">{label}</span>
+      {detail && <span className="text-gray-400 ml-1.5">· {detail}</span>}
+    </td>
+  )
+}
+
+function NumCell({ value, muted = false, text = false }) {
+  const cls = `text-center px-3 py-2.5 align-middle tabular-nums ${
+    muted ? 'text-gray-400' : 'text-gray-700'
+  }`
+  return <td className={cls}>{value ?? '-'}</td>
+}
+
+// ── Color coding (mirror of hitter, with inverted opp_* directions) ─
 
 const METRIC_DIRECTION = {
-  // For PITCHERS, low opponent slash is good → 'low' (red)
   opp_ba: 'low', opp_obp: 'low', opp_slg: 'low', opp_ops: 'low',
   opp_iso: 'low', opp_woba: 'low', wrc_plus_against: 'low',
   bb_pct: 'low',
-  // High K%, Strike%, Whiff% are good
   k_pct: 'high', strike_pct: 'high', whiff_pct: 'high',
 }
 
@@ -208,7 +250,7 @@ function ColorCell({ row, metric, formatter, bold = false }) {
   const leagueValue = lg[metric]
   const leagueText = leagueValue != null ? formatter(leagueValue) : '—'
   return (
-    <td className={`relative group text-right px-2 py-1.5 tabular-nums ${shade} ${bold ? 'font-semibold' : ''}`}>
+    <td className={`relative group text-center px-3 py-2.5 align-middle tabular-nums ${shade} ${bold ? 'font-semibold' : ''}`}>
       {valueText}
       <span className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 bottom-full mb-1
                        opacity-0 group-hover:opacity-100 transition-opacity
@@ -237,13 +279,19 @@ function ColorScale() {
 
 function Tile({ label, value, sub }) {
   return (
-    <div className="text-center py-2 px-1 border border-gray-100 rounded bg-gray-50">
-      <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">{label}</div>
-      <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums">{value ?? '-'}</div>
-      <div className="text-[9px] text-gray-400">{sub}</div>
+    <div className="flex flex-col items-center justify-center min-h-[80px] py-2 px-2 border border-gray-100 rounded bg-gray-50">
+      <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold text-center">
+        {label}
+      </div>
+      <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums my-0.5">
+        {value ?? '-'}
+      </div>
+      <div className="text-[9px] text-gray-400 text-center">{sub}</div>
     </div>
   )
 }
+
+// ── Formatters ──────────────────────────────────────────────────
 
 function fmtPct(v) {
   if (v === null || v === undefined) return '-'
