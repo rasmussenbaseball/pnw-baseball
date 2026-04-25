@@ -11640,7 +11640,15 @@ def get_player_pitch_level_stats(
                     WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
                     WHEN pitch_sequence = '' AND was_in_play THEN 1
                     ELSE 0
-                END), 0) AS f1_strikes
+                END), 0) AS f1_strikes,
+                COALESCE(SUM(CASE
+                    WHEN pitch_sequence = '' AND was_in_play THEN 1
+                    ELSE 0
+                END), 0) AS f1_in_play,
+                COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
+                COALESCE(SUM(CASE WHEN strikes_before = 2
+                    AND result_type IN ('strikeout_swinging','strikeout_looking')
+                    THEN 1 ELSE 0 END), 0) AS two_strike_k
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             WHERE ge.batter_player_id = ANY(%s)
@@ -11654,6 +11662,8 @@ def get_player_pitch_level_stats(
         swings = k + f + in_play
         contact = f + in_play
         whiffs = k
+        two_strike_pa = r["two_strike_pa"] or 0
+        two_strike_k  = r["two_strike_k"] or 0
         discipline = {
             "total_pa": total_pa,
             "tracked_pa": tracked_pa,
@@ -11663,8 +11673,14 @@ def get_player_pitch_level_stats(
             "swing_pct": (swings / pitches) if pitches > 0 else None,
             "whiff_pct": (whiffs / swings) if swings > 0 else None,
             "contact_pct": (contact / swings) if swings > 0 else None,
-            "first_pitch_swing_pct": (r["f1_swings"] / tracked_pa) if tracked_pa > 0 else None,
-            "first_pitch_strike_pct": (r["f1_strikes"] / tracked_pa) if tracked_pa > 0 else None,
+            "first_pitch_swing_pct":   (r["f1_swings"]   / tracked_pa) if tracked_pa > 0 else None,
+            "first_pitch_strike_pct":  (r["f1_strikes"]  / tracked_pa) if tracked_pa > 0 else None,
+            "first_pitch_in_play_pct": (r["f1_in_play"]  / tracked_pa) if tracked_pa > 0 else None,
+            "two_strike_pa": two_strike_pa,
+            # From the HITTER's perspective: lower putaway_pct is better
+            # (you survive more 2-strike counts). It's the same number
+            # the pitcher endpoint surfaces; we label it differently.
+            "putaway_pct":   (two_strike_k / two_strike_pa) if two_strike_pa > 0 else None,
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
         }
 
@@ -12117,6 +12133,7 @@ def get_player_pitch_level_stats_pitcher(
             "called_strike_pct": (pS / pitches) if pitches > 0 else None,
             "whiff_pct": (pK / swings) if swings > 0 else None,
             "first_pitch_strike_pct": (r["f1_strikes"] / tracked_pa) if tracked_pa > 0 else None,
+            "two_strike_pa": r["two_strike_pa"] or 0,
             "putaway_pct": (r["two_strike_k"] / r["two_strike_pa"]) if r["two_strike_pa"] > 0 else None,
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
         }

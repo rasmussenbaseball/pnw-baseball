@@ -45,7 +45,7 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
         <Tile label="Called-Strike %" value={fmtPct(d.called_strike_pct)} sub="of all pitches" />
         <Tile label="Whiff %" value={fmtPct(d.whiff_pct)} sub={`${d.whiffs} of ${d.swings}`} />
         <Tile label="1st-Pitch Strike" value={fmtPct(d.first_pitch_strike_pct)} sub={`of ${d.tracked_pa} PA`} />
-        <Tile label="Putaway %" value={fmtPct(d.putaway_pct)} sub="K rate w/ 2 strikes" />
+        <Tile label="Putaway %" value={fmtPct(d.putaway_pct)} sub={`of ${d.two_strike_pa} 2K PAs`} />
         <Tile label="P / PA" value={fmtNum(d.pitches_per_pa, 2)} sub={`${d.pitches}÷${d.tracked_pa}`} />
       </div>
 
