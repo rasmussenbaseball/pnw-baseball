@@ -16720,6 +16720,71 @@ def historic_matchup(
         """, (game_ids,))
         pit_rows = [dict(r) for r in cur.fetchall()]
 
+        # ── Season-to-date stats for every batter in the matchup ──
+        batter_player_ids = sorted({
+            r["player_id"] for r in bat_rows if r["player_id"]
+        })
+        season_batting_by_player: dict = {}
+        if batter_player_ids:
+            cur.execute("""
+                SELECT bs.player_id,
+                       SUM(bs.plate_appearances) AS pa,
+                       SUM(bs.at_bats)           AS ab,
+                       SUM(bs.hits)              AS h,
+                       SUM(bs.doubles)           AS doubles,
+                       SUM(bs.triples)           AS triples,
+                       SUM(bs.home_runs)         AS hr,
+                       SUM(bs.walks)             AS bb,
+                       SUM(bs.strikeouts)        AS k,
+                       SUM(bs.hit_by_pitch)      AS hbp,
+                       SUM(bs.sacrifice_flies)   AS sf
+                FROM batting_stats bs
+                WHERE bs.player_id = ANY(%s)
+                  AND bs.season = %s
+                GROUP BY bs.player_id
+            """, (batter_player_ids, season))
+            season_batting_by_player = {
+                r["player_id"]: dict(r) for r in cur.fetchall()
+            }
+
+        def _season_batting_for(player_id):
+            """Compute a small dict of season stats for one batter, derived
+            from summed batting_stats rows (handles transfers cleanly).
+            Returns dict with pa, avg, ops, hr, k_pct, bb_pct (or Nones).
+            """
+            row = season_batting_by_player.get(player_id)
+            if not row or not row.get("pa"):
+                return {
+                    "season_pa": None, "season_avg": None, "season_ops": None,
+                    "season_hr": None, "season_k_pct": None,
+                    "season_bb_pct": None,
+                }
+            pa = int(row["pa"] or 0)
+            ab = int(row["ab"] or 0)
+            h = int(row["h"] or 0)
+            doubles = int(row["doubles"] or 0)
+            triples = int(row["triples"] or 0)
+            hr = int(row["hr"] or 0)
+            bb = int(row["bb"] or 0)
+            k = int(row["k"] or 0)
+            hbp = int(row["hbp"] or 0)
+            sf = int(row["sf"] or 0)
+            singles = h - doubles - triples - hr
+            tb = singles + 2 * doubles + 3 * triples + 4 * hr
+            avg = round(h / ab, 3) if ab > 0 else None
+            obp_denom = ab + bb + hbp + sf
+            obp = round((h + bb + hbp) / obp_denom, 3) if obp_denom > 0 else None
+            slg = round(tb / ab, 3) if ab > 0 else None
+            ops = round((obp or 0) + (slg or 0), 3) if (obp is not None and slg is not None) else None
+            return {
+                "season_pa": pa,
+                "season_avg": avg,
+                "season_ops": ops,
+                "season_hr": hr,
+                "season_k_pct": (k / pa) if pa > 0 else None,
+                "season_bb_pct": (bb / pa) if pa > 0 else None,
+            }
+
         def _aggregate_batting(side_team_id):
             bucket = {}
             for r in bat_rows:
@@ -16783,6 +16848,7 @@ def historic_matchup(
                     **b,
                     "pa": pa, "tb": tb, "xbh": xbh,
                     "avg": avg, "obp": obp, "slg": slg, "ops": ops,
+                    **_season_batting_for(b["player_id"]),
                 })
             # Sort: most PA first (regulars on top), tie-break by AVG desc.
             out.sort(key=lambda x: (-(x["pa"]), -(x["avg"] or 0)))
