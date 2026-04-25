@@ -11347,6 +11347,122 @@ _PITCH_LEVEL_BASELINES_CACHE: dict = {}
 _PITCH_LEVEL_BASELINES_TTL = 6 * 3600  # seconds
 
 
+def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_sql: str, weights, league_woba=None):
+    """For each metric, return the 9 decile thresholds (10th-90th
+    percentile) across all qualifying players in the division for the
+    given filter. Used to bucket each cell into a 10-shade color
+    gradient on the frontend.
+
+    A player must have >= 5 PAs in the filter to be included in the
+    distribution — keeps tiny samples from skewing the deciles.
+    """
+    cur.execute(f"""
+        WITH per_player AS (
+            SELECT
+                ge.batter_player_id AS pid,
+                COUNT(*) AS pa,
+                COALESCE(SUM(pitches_thrown), 0) AS pitches,
+                SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
+                SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
+                SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d2,
+                SUM(CASE WHEN result_type = 'triple' THEN 1 ELSE 0 END) AS d3,
+                SUM(CASE WHEN result_type = 'home_run' THEN 1 ELSE 0 END) AS hr,
+                SUM(CASE WHEN result_type = 'walk' THEN 1 ELSE 0 END) AS ubb,
+                SUM(CASE WHEN result_type IN ('walk','intentional_walk') THEN 1 ELSE 0 END) AS bb,
+                SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
+                SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
+                SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
+                COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            JOIN players p ON p.id = ge.batter_player_id
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE g.season = %s AND d.level = %s
+              AND ge.batter_player_id IS NOT NULL
+              AND {filter_sql}
+            GROUP BY ge.batter_player_id
+            HAVING COUNT(*) >= 5
+        )
+        SELECT pa, pitches, ab, h, d2, d3, hr, ubb, bb, hbp, sf, k, f_k, f_f, f_in_play
+        FROM per_player
+    """, [season, division_level])
+    rows = cur.fetchall()
+    if not rows:
+        return {}
+
+    # Compute per-player metric values, then sort each metric and pick deciles.
+    metrics = {k: [] for k in ('ba','obp','slg','ops','iso','woba','wrc_plus','k_pct','bb_pct','swing_pct','contact_pct','whiff_pct')}
+    for r in rows:
+        ab = r["ab"] or 0; h = r["h"] or 0
+        d2 = r["d2"] or 0; d3 = r["d3"] or 0; hr = r["hr"] or 0
+        ubb = r["ubb"] or 0; bb = r["bb"] or 0
+        hbp = r["hbp"] or 0; sf = r["sf"] or 0; k = r["k"] or 0
+        pa = r["pa"] or 0; pitches = r["pitches"] or 0
+        f_k = r["f_k"] or 0; f_f = r["f_f"] or 0; f_in_play = r["f_in_play"] or 0
+        singles = h - d2 - d3 - hr
+        tb = singles + 2*d2 + 3*d3 + 4*hr
+        obp_denom = ab + bb + hbp + sf
+        if ab > 0:
+            metrics["ba"].append(h / ab)
+            metrics["slg"].append(tb / ab)
+            metrics["iso"].append((tb - h) / ab)
+        if obp_denom > 0:
+            obp_v = (h + bb + hbp) / obp_denom
+            metrics["obp"].append(obp_v)
+            if ab > 0:
+                metrics["ops"].append(obp_v + tb / ab)
+        woba_denom = ab + ubb + sf + hbp
+        if woba_denom > 0:
+            woba_v = (weights.w_bb * ubb + weights.w_hbp * hbp +
+                      weights.w_1b * singles + weights.w_2b * d2 +
+                      weights.w_3b * d3 + weights.w_hr * hr) / woba_denom
+            metrics["woba"].append(woba_v)
+            # wRC+ requires the filter's league wOBA as denominator.
+            # If not provided (initial mean computation), skip — wrc_plus
+            # decile distribution is only useful relative to a known league.
+            if league_woba is not None and weights.woba_scale > 0 and weights.runs_per_pa > 0:
+                wrc = ((woba_v - league_woba) / weights.woba_scale + weights.runs_per_pa) / weights.runs_per_pa * 100
+                metrics["wrc_plus"].append(wrc)
+        if pa > 0:
+            metrics["k_pct"].append(k / pa)
+            metrics["bb_pct"].append(bb / pa)
+        swings = f_k + f_f + f_in_play
+        if pitches > 0:
+            metrics["swing_pct"].append(swings / pitches)
+        if swings > 0:
+            metrics["contact_pct"].append((f_f + f_in_play) / swings)
+            metrics["whiff_pct"].append(f_k / swings)
+
+    # 9 decile thresholds (10th, 20th, ..., 90th) per metric.
+    out = {}
+    deciles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    for m, vals in metrics.items():
+        if not vals:
+            out[m] = None
+            continue
+        vals_sorted = sorted(vals)
+        out[m] = [_quantile(vals_sorted, q) for q in deciles]
+    return out
+
+
+def _quantile(sorted_vals, q):
+    """Linear interpolation quantile (matches numpy default)."""
+    if not sorted_vals:
+        return None
+    n = len(sorted_vals)
+    if n == 1:
+        return sorted_vals[0]
+    pos = q * (n - 1)
+    lo = int(pos)
+    hi = min(lo + 1, n - 1)
+    frac = pos - lo
+    return sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac
+
+
 def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_sql: str, weights):
     """Aggregate league-wide stats over all PNW players in the division
     matching the given filter. Returns a dict matching the player-row
@@ -11434,7 +11550,15 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
     }
     out = {}
     for k, fsql in filters.items():
-        out[k] = _compute_pitch_level_baseline(cur, season, division_level, fsql, weights)
+        mean = _compute_pitch_level_baseline(cur, season, division_level, fsql, weights)
+        # wRC+ for the league mean is 100 by definition (the average
+        # player IS the league average → wRC+ = 100).
+        mean["wrc_plus"] = 100 if mean.get("woba") is not None else None
+        deciles = _compute_pitch_level_deciles(
+            cur, season, division_level, fsql, weights,
+            league_woba=mean.get("woba"),
+        )
+        out[k] = {"mean": mean, "deciles": deciles}
     _PITCH_LEVEL_BASELINES_CACHE[key] = {"ts": now, "data": out}
     return out
 
@@ -11633,6 +11757,8 @@ def get_player_pitch_level_stats(
                 "swing_pct": swing_pct, "contact_pct": contact_pct, "whiff_pct": whiff_pct,
                 "k_pct": (kct / n_pa) if n_pa > 0 else None,
                 "bb_pct": (bb / n_pa) if n_pa > 0 else None,
+                # wRC+ filled in below once we have the league baseline for this filter
+                "wrc_plus": None,
             }
 
         # Define count groups per common baseball convention.
@@ -11675,14 +11801,26 @@ def get_player_pitch_level_stats(
             {"label": "vs Unknown", "filter_key": None,         **_split_unknown()},
         ]
 
-        # ── Attach league baselines for color coding ──
-        # We compute (or read from cache) per-division per-filter
-        # league averages so the frontend can render Savant-style
-        # red=above-league / blue=below-league cell coloring.
+        # ── Attach league baselines + deciles for color coding ──
+        # Per-division per-filter league averages (for tooltips) and
+        # decile thresholds (for Savant-style 10-shade gradient).
         baselines = _get_pitch_level_baselines(cur, season, division_level, weights)
         for row in count_states + lr_splits:
             fk = row.get("filter_key")
-            row["league"] = baselines.get(fk) if fk else None
+            entry = baselines.get(fk) if fk else None
+            league = entry["mean"] if entry else None
+            row["league"] = league
+            row["deciles"] = entry["deciles"] if entry else None
+            # Compute wRC+ for the player using THIS filter's league wOBA.
+            league_woba = (league.get("woba") if league else None)
+            if (row.get("woba") is not None and league_woba is not None
+                    and weights.woba_scale > 0 and weights.runs_per_pa > 0):
+                row["wrc_plus"] = round(
+                    ((row["woba"] - league_woba) / weights.woba_scale
+                     + weights.runs_per_pa) / weights.runs_per_pa * 100
+                )
+            else:
+                row["wrc_plus"] = None
 
         return {
             "player_id": player_id,

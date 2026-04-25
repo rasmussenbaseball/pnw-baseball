@@ -3,16 +3,13 @@ import { usePlayerPitchLevelStats } from '../hooks/useApi'
 /**
  * Pitch-Level Stats card for a hitter.
  *
- * Important: many source PBP feeds publish narrative without count or
- * pitch sequence (e.g. "Player walked." with no parens). For those PAs
- * we record the OUTCOME but not the pitches. The card distinguishes
- * total PA from pitch-tracked PA so users can judge sample reliability
- * for any pitch-level metric.
+ * Color coding: each comparable cell is bucketed against the player's
+ * own division's decile distribution for that filter. 10 shades from
+ * dark blue (worst decile) to dark red (best decile), with neutral
+ * gray near the median. K%/Whiff% inverted (low is good).
  *
- * Sections:
- *   1. Plate discipline tile row — only over pitch-tracked PAs
- *   2. Count-state slash lines — over all PAs (results-based)
- *   3. L/R splits — over all PAs (results-based)
+ * Tooltip on every colored cell shows the league average for that
+ * exact filter — e.g. NAIA hitters in 2-strike counts.
  */
 export default function PitchLevelStatsCard({ playerId, season }) {
   const { data, loading, error } = usePlayerPitchLevelStats(playerId, season)
@@ -36,51 +33,20 @@ export default function PitchLevelStatsCard({ playerId, season }) {
       <p className="text-[10px] text-gray-500 mb-2">
         {d.total_pa} PA total · {d.tracked_pa} with pitch data ({trackedShare}%) · {d.pitches} pitches seen
       </p>
-      <div className="flex items-center gap-3 text-[10px] text-gray-500 mb-3">
-        <span>Color vs {data.division_level} league avg:</span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded bg-red-200 border border-gray-200"></span>
-          better
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded bg-blue-200 border border-gray-200"></span>
-          worse
-        </span>
-        <span className="text-gray-400">(hover any cell for league value)</span>
+      <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-3 flex-wrap">
+        <span>Color vs {data.division_level} decile rank:</span>
+        <ColorScale />
+        <span className="text-gray-400">(hover any cell for league average)</span>
       </div>
 
       {/* ── Plate discipline ── */}
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-4">
-        <Tile
-          label="Pitches"
-          value={d.pitches}
-          sub={`over ${d.tracked_pa} PA`}
-        />
-        <Tile
-          label="Swing %"
-          value={fmtPct(d.swing_pct)}
-          sub={`${d.swings} of ${d.pitches}`}
-        />
-        <Tile
-          label="Whiff %"
-          value={fmtPct(d.whiff_pct)}
-          sub={`${d.whiffs} of ${d.swings}`}
-        />
-        <Tile
-          label="1st-Pitch Swing"
-          value={fmtPct(d.first_pitch_swing_pct)}
-          sub={`of ${d.tracked_pa} PA`}
-        />
-        <Tile
-          label="1st-Pitch Strike"
-          value={fmtPct(d.first_pitch_strike_pct)}
-          sub={`of ${d.tracked_pa} PA`}
-        />
-        <Tile
-          label="P / PA"
-          value={fmtNum(d.pitches_per_pa, 2)}
-          sub={`${d.pitches}÷${d.tracked_pa}`}
-        />
+        <Tile label="Pitches" value={d.pitches} sub={`over ${d.tracked_pa} PA`} />
+        <Tile label="Swing %" value={fmtPct(d.swing_pct)} sub={`${d.swings} of ${d.pitches}`} />
+        <Tile label="Whiff %" value={fmtPct(d.whiff_pct)} sub={`${d.whiffs} of ${d.swings}`} />
+        <Tile label="1st-Pitch Swing" value={fmtPct(d.first_pitch_swing_pct)} sub={`of ${d.tracked_pa} PA`} />
+        <Tile label="1st-Pitch Strike" value={fmtPct(d.first_pitch_strike_pct)} sub={`of ${d.tracked_pa} PA`} />
+        <Tile label="P / PA" value={fmtNum(d.pitches_per_pa, 2)} sub={`${d.pitches}÷${d.tracked_pa}`} />
       </div>
 
       {/* ── Count-state slash lines ── */}
@@ -89,7 +55,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
           Count-State Slash
         </h4>
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs min-w-[720px]">
+          <table className="w-full text-xs min-w-[780px]">
             <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
               <tr>
                 <th className="text-left px-2 py-1.5">Count</th>
@@ -102,35 +68,32 @@ export default function PitchLevelStatsCard({ playerId, season }) {
                 <th className="text-right px-2 py-1.5">OPS</th>
                 <th className="text-right px-2 py-1.5">ISO</th>
                 <th className="text-right px-2 py-1.5">wOBA</th>
+                <th className="text-right px-2 py-1.5">wRC+</th>
                 <th className="text-right px-2 py-1.5">Swing%</th>
                 <th className="text-right px-2 py-1.5">Contact%</th>
               </tr>
             </thead>
             <tbody>
-              {data.count_states.map((cs, i) => {
-                const lg = cs.league || {}
-                const c = (m) => `text-right px-2 py-1.5 tabular-nums ${colorClass(m, cs[m], lg[m])}`
-                const t = (m, fn) => cellTitle(m, cs[m], lg[m], fn)
-                return (
-                  <tr key={cs.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-2 py-1.5">
-                      <div className="font-medium text-gray-900">{cs.label}</div>
-                      <div className="text-[10px] text-gray-400">{cs.detail}</div>
-                    </td>
-                    <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{cs.pa}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.pitches}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.bip}</td>
-                    <td className={`${c('ba')} font-semibold text-gray-900`} title={t('ba', fmtRate)}>{fmtRate(cs.ba)}</td>
-                    <td className={c('obp')} title={t('obp', fmtRate)}>{fmtRate(cs.obp)}</td>
-                    <td className={c('slg')} title={t('slg', fmtRate)}>{fmtRate(cs.slg)}</td>
-                    <td className={c('ops')} title={t('ops', fmtRate)}>{fmtRate(cs.ops)}</td>
-                    <td className={c('iso')} title={t('iso', fmtRate)}>{fmtRate(cs.iso)}</td>
-                    <td className={c('woba')} title={t('woba', fmtRate)}>{fmtRate(cs.woba)}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(cs.swing_pct)}</td>
-                    <td className={c('contact_pct')} title={t('contact_pct', fmtPct)}>{fmtPct(cs.contact_pct)}</td>
-                  </tr>
-                )
-              })}
+              {data.count_states.map((cs) => (
+                <tr key={cs.label}>
+                  <td className="px-2 py-1.5 align-top">
+                    <div className="font-medium text-gray-900">{cs.label}</div>
+                    <div className="text-[10px] text-gray-400">{cs.detail}</div>
+                  </td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{cs.pa}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.pitches}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.bip}</td>
+                  <ColorCell row={cs} metric="ba" formatter={fmtRate} bold />
+                  <ColorCell row={cs} metric="obp" formatter={fmtRate} />
+                  <ColorCell row={cs} metric="slg" formatter={fmtRate} />
+                  <ColorCell row={cs} metric="ops" formatter={fmtRate} />
+                  <ColorCell row={cs} metric="iso" formatter={fmtRate} />
+                  <ColorCell row={cs} metric="woba" formatter={fmtRate} />
+                  <ColorCell row={cs} metric="wrc_plus" formatter={fmtInt} />
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(cs.swing_pct)}</td>
+                  <ColorCell row={cs} metric="contact_pct" formatter={fmtPct} />
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -142,7 +105,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
           Pitcher Hand Splits
         </h4>
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs min-w-[800px]">
+          <table className="w-full text-xs min-w-[860px]">
             <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
               <tr>
                 <th className="text-left px-2 py-1.5">Split</th>
@@ -155,6 +118,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
                 <th className="text-right px-2 py-1.5">OPS</th>
                 <th className="text-right px-2 py-1.5">ISO</th>
                 <th className="text-right px-2 py-1.5">wOBA</th>
+                <th className="text-right px-2 py-1.5">wRC+</th>
                 <th className="text-right px-2 py-1.5">K%</th>
                 <th className="text-right px-2 py-1.5">BB%</th>
                 <th className="text-right px-2 py-1.5">Swing%</th>
@@ -162,29 +126,25 @@ export default function PitchLevelStatsCard({ playerId, season }) {
               </tr>
             </thead>
             <tbody>
-              {data.lr_splits.map((sp, i) => {
-                const lg = sp.league || {}
-                const c = (m) => `text-right px-2 py-1.5 tabular-nums ${colorClass(m, sp[m], lg[m])}`
-                const t = (m, fn) => cellTitle(m, sp[m], lg[m], fn)
-                return (
-                  <tr key={sp.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-2 py-1.5 font-medium text-gray-900">{sp.label}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{sp.pa}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.pitches}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.bip}</td>
-                    <td className={`${c('ba')} font-semibold text-gray-900`} title={t('ba', fmtRate)}>{fmtRate(sp.ba)}</td>
-                    <td className={c('obp')} title={t('obp', fmtRate)}>{fmtRate(sp.obp)}</td>
-                    <td className={c('slg')} title={t('slg', fmtRate)}>{fmtRate(sp.slg)}</td>
-                    <td className={c('ops')} title={t('ops', fmtRate)}>{fmtRate(sp.ops)}</td>
-                    <td className={c('iso')} title={t('iso', fmtRate)}>{fmtRate(sp.iso)}</td>
-                    <td className={c('woba')} title={t('woba', fmtRate)}>{fmtRate(sp.woba)}</td>
-                    <td className={c('k_pct')} title={t('k_pct', fmtPct)}>{fmtPct(sp.k_pct)}</td>
-                    <td className={c('bb_pct')} title={t('bb_pct', fmtPct)}>{fmtPct(sp.bb_pct)}</td>
-                    <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(sp.swing_pct)}</td>
-                    <td className={c('contact_pct')} title={t('contact_pct', fmtPct)}>{fmtPct(sp.contact_pct)}</td>
-                  </tr>
-                )
-              })}
+              {data.lr_splits.map((sp) => (
+                <tr key={sp.label}>
+                  <td className="px-2 py-1.5 font-medium text-gray-900">{sp.label}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{sp.pa}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.pitches}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.bip}</td>
+                  <ColorCell row={sp} metric="ba" formatter={fmtRate} bold />
+                  <ColorCell row={sp} metric="obp" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="slg" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="ops" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="iso" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="woba" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="wrc_plus" formatter={fmtInt} />
+                  <ColorCell row={sp} metric="k_pct" formatter={fmtPct} />
+                  <ColorCell row={sp} metric="bb_pct" formatter={fmtPct} />
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(sp.swing_pct)}</td>
+                  <ColorCell row={sp} metric="contact_pct" formatter={fmtPct} />
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -200,15 +160,93 @@ export default function PitchLevelStatsCard({ playerId, season }) {
 
 // ── helpers ──────────────────────────────────────────────────────
 
+const METRIC_DIRECTION = {
+  ba: 'high', obp: 'high', slg: 'high', ops: 'high',
+  iso: 'high', woba: 'high', wrc_plus: 'high',
+  contact_pct: 'high', bb_pct: 'high',
+  k_pct: 'low', whiff_pct: 'low',
+}
+
+// 11 buckets total (10 shades plus a "no signal" white when deciles are flat).
+// Index 0 = worst, 10 = best. From the player's perspective.
+const SHADE_PALETTE = [
+  'bg-blue-700 text-white',     // 0 — worst (below 10th percentile)
+  'bg-blue-500 text-white',     // 1
+  'bg-blue-400 text-white',     // 2
+  'bg-blue-300 text-gray-900',  // 3
+  'bg-blue-100 text-gray-900',  // 4 — slightly below
+  'bg-gray-50  text-gray-900',  // 5 — neutral (~50th)
+  'bg-red-100  text-gray-900',  // 6 — slightly above
+  'bg-red-300  text-gray-900',  // 7
+  'bg-red-400  text-white',     // 8
+  'bg-red-500  text-white',     // 9
+  'bg-red-700  text-white',     // 10 — best (above 90th percentile)
+]
+
+function shadeForValue(metric, value, deciles) {
+  // Returns palette index 0-10, or null if no signal.
+  if (value == null || !deciles) return null
+  const dir = METRIC_DIRECTION[metric]
+  if (!dir) return null
+  // Check if the distribution has any spread; if all deciles equal, no signal.
+  const min = deciles[0], max = deciles[deciles.length - 1]
+  if (min === max) return null
+  // Find the decile the value falls into.
+  let idx = 0
+  for (let i = 0; i < deciles.length; i++) {
+    if (value > deciles[i]) idx = i + 1
+  }
+  // idx is 0-10: 0 = below 10p, 10 = above 90p.
+  // For low-is-good metrics, invert.
+  if (dir === 'low') idx = 10 - idx
+  return idx
+}
+
+function ColorCell({ row, metric, formatter, bold = false }) {
+  const value = row[metric]
+  const lg = row.league || {}
+  const decs = (row.deciles || {})[metric]
+  const idx = shadeForValue(metric, value, decs)
+  const shade = idx != null ? SHADE_PALETTE[idx] : ''
+  const valueText = formatter(value)
+  const leagueValue = lg[metric]
+  const leagueText = leagueValue != null ? formatter(leagueValue) : '—'
+
+  return (
+    <td className={`relative group text-right px-2 py-1.5 tabular-nums ${shade} ${bold ? 'font-semibold' : ''}`}>
+      {valueText}
+      {/* CSS-only popover that always works on hover */}
+      <span className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 bottom-full mb-1
+                       opacity-0 group-hover:opacity-100 transition-opacity
+                       whitespace-nowrap rounded bg-gray-900 text-white text-[10px] px-2 py-1 shadow-lg">
+        League {metric.toUpperCase().replace('_PCT', '%').replace('_', ' ')}: {leagueText}
+      </span>
+    </td>
+  )
+}
+
+function ColorScale() {
+  // Visual mini-scale: dark blue → gray → dark red
+  const swatches = [
+    'bg-blue-700', 'bg-blue-500', 'bg-blue-400', 'bg-blue-300', 'bg-blue-100',
+    'bg-gray-50', 'bg-red-100', 'bg-red-300', 'bg-red-400', 'bg-red-500', 'bg-red-700'
+  ]
+  return (
+    <span className="inline-flex items-center gap-[1px]">
+      <span className="text-[9px] text-gray-500 mr-1">worse</span>
+      {swatches.map((c, i) => (
+        <span key={i} className={`inline-block w-3 h-3 ${c} border border-gray-200`}></span>
+      ))}
+      <span className="text-[9px] text-gray-500 ml-1">better</span>
+    </span>
+  )
+}
+
 function Tile({ label, value, sub }) {
   return (
     <div className="text-center py-2 px-1 border border-gray-100 rounded bg-gray-50">
-      <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">
-        {label}
-      </div>
-      <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums">
-        {value ?? '-'}
-      </div>
+      <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">{label}</div>
+      <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums">{value ?? '-'}</div>
       <div className="text-[9px] text-gray-400">{sub}</div>
     </div>
   )
@@ -230,48 +268,7 @@ function fmtNum(v, decimals = 2) {
   return v.toFixed(decimals)
 }
 
-// ── Color coding (Savant-style) ─────────────────────────────────
-// Compares cell value to league baseline (league average for the same
-// division + same filter). Red = above league (good for batter), blue
-// = below league (bad). Direction inverts for K%/Whiff% where low is
-// good. Returns Tailwind background class or '' when no signal.
-
-const METRIC_DIRECTION = {
-  ba: 'high', obp: 'high', slg: 'high', ops: 'high',
-  iso: 'high', woba: 'high', contact_pct: 'high', bb_pct: 'high',
-  k_pct: 'low', whiff_pct: 'low',
-  // swing_pct intentionally omitted — not inherently good or bad
-}
-
-const METRIC_THRESHOLDS = {
-  ba: [0.030, 0.060],
-  obp: [0.040, 0.080],
-  slg: [0.060, 0.120],
-  ops: [0.100, 0.200],
-  iso: [0.040, 0.080],
-  woba: [0.040, 0.080],
-  contact_pct: [0.040, 0.080],
-  bb_pct: [0.030, 0.060],
-  k_pct: [0.040, 0.080],
-  whiff_pct: [0.040, 0.080],
-}
-
-function colorClass(metric, value, leagueValue) {
-  if (value == null || leagueValue == null) return ''
-  const dir = METRIC_DIRECTION[metric]
-  const t = METRIC_THRESHOLDS[metric]
-  if (!dir || !t) return ''
-  let delta = value - leagueValue
-  if (dir === 'low') delta = -delta
-  if (delta >= t[1]) return 'bg-red-200'
-  if (delta >= t[0]) return 'bg-red-100'
-  if (delta <= -t[1]) return 'bg-blue-200'
-  if (delta <= -t[0]) return 'bg-blue-100'
-  return ''
-}
-
-function cellTitle(metric, value, leagueValue, formatter) {
-  // tooltip: "League: .293" so user can hover to see the benchmark
-  if (leagueValue == null) return undefined
-  return `League ${formatter(leagueValue)}`
+function fmtInt(v) {
+  if (v === null || v === undefined) return '-'
+  return Math.round(v).toString()
 }
