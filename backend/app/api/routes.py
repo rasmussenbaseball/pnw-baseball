@@ -11547,6 +11547,21 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
         "two_strike":  "strikes_before = 2",
         "vs_lhp":      "ge.pitcher_player_id IN (SELECT id FROM players WHERE UPPER(throws) = 'L')",
         "vs_rhp":      "ge.pitcher_player_id IN (SELECT id FROM players WHERE UPPER(throws) = 'R')",
+        # Situational (Phase A state). Match the hitter endpoint definitions.
+        "bases_empty":   "bases_before = '000'",
+        "runner_on":     "bases_before IS NOT NULL AND bases_before <> '000'",
+        "risp":          ("bases_before IS NOT NULL AND "
+                          "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                          "SUBSTRING(bases_before, 3, 1) = '1')"),
+        "risp_2out":     ("bases_before IS NOT NULL AND "
+                          "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                          "SUBSTRING(bases_before, 3, 1) = '1') AND outs_before = 2"),
+        "innings_early": "inning BETWEEN 1 AND 3",
+        "innings_mid":   "inning BETWEEN 4 AND 6",
+        "innings_late":  "inning >= 7",
+        "late_close":    ("inning >= 7 AND bat_score_before IS NOT NULL "
+                          "AND ABS(bat_score_before - fld_score_before) <= 1"),
+        "leadoff":       "outs_before = 0 AND bases_before = '000'",
     }
     out = {}
     for k, fsql in filters.items():
@@ -11817,11 +11832,40 @@ def get_player_pitch_level_stats(
             {"label": "vs Unknown", "filter_key": None,         **_split_unknown()},
         ]
 
+        # ── Situational splits — uses base/out/score state from Phase A ──
+        # All filters guard with `bases_before IS NOT NULL` so PAs from
+        # not-yet-state-derived games (or pre-Phase-A backfill) are
+        # excluded rather than miscounted.
+        bases_empty   = "bases_before = '000'"
+        runner_on     = "bases_before IS NOT NULL AND bases_before <> '000'"
+        # RISP = 2B or 3B occupied (char 2 or char 3 of '100' format = '1')
+        risp          = ("bases_before IS NOT NULL AND "
+                         "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                         "SUBSTRING(bases_before, 3, 1) = '1')")
+        risp_2out     = f"({risp}) AND outs_before = 2"
+        innings_early = "inning BETWEEN 1 AND 3"
+        innings_mid   = "inning BETWEEN 4 AND 6"
+        innings_late  = "inning >= 7"
+        late_close    = ("inning >= 7 AND bat_score_before IS NOT NULL "
+                         "AND ABS(bat_score_before - fld_score_before) <= 1")
+        leadoff       = "outs_before = 0 AND bases_before = '000'"
+        situational_splits = [
+            {"label": "Bases empty",   "detail": "no runners on",        "filter_key": "bases_empty",   **_slash(bases_empty,   [])},
+            {"label": "Runner(s) on",  "detail": "any base occupied",    "filter_key": "runner_on",     **_slash(runner_on,     [])},
+            {"label": "RISP",          "detail": "2B or 3B occupied",    "filter_key": "risp",          **_slash(risp,          [])},
+            {"label": "RISP / 2 out",  "detail": "RISP w/ 2 outs",       "filter_key": "risp_2out",     **_slash(risp_2out,     [])},
+            {"label": "Innings 1-3",   "detail": "early",                "filter_key": "innings_early", **_slash(innings_early, [])},
+            {"label": "Innings 4-6",   "detail": "middle",               "filter_key": "innings_mid",   **_slash(innings_mid,   [])},
+            {"label": "Innings 7+",    "detail": "late",                 "filter_key": "innings_late",  **_slash(innings_late,  [])},
+            {"label": "Late & close",  "detail": "7+ inn, score ±1",     "filter_key": "late_close",    **_slash(late_close,    [])},
+            {"label": "Leadoff PA",    "detail": "first PA of inning",   "filter_key": "leadoff",       **_slash(leadoff,       [])},
+        ]
+
         # ── Attach league baselines + deciles for color coding ──
         # Per-division per-filter league averages (for tooltips) and
         # decile thresholds (for Savant-style 10-shade gradient).
         baselines = _get_pitch_level_baselines(cur, season, division_level, weights)
-        for row in count_states + lr_splits:
+        for row in count_states + lr_splits + situational_splits:
             fk = row.get("filter_key")
             entry = baselines.get(fk) if fk else None
             league = entry["mean"] if entry else None
@@ -11845,6 +11889,7 @@ def get_player_pitch_level_stats(
             "discipline": discipline,
             "count_states": count_states,
             "lr_splits": lr_splits,
+            "situational_splits": situational_splits,
         }
 
 
@@ -12037,6 +12082,21 @@ def _get_pitcher_pitch_level_baselines(cur, season, division_level, weights):
         "two_strike":  "strikes_before = 2",
         "vs_lhb":      "ge.batter_player_id IN (SELECT id FROM players WHERE UPPER(bats) = 'L')",
         "vs_rhb":      "ge.batter_player_id IN (SELECT id FROM players WHERE UPPER(bats) = 'R')",
+        # Situational (Phase A state). Match the pitcher endpoint definitions.
+        "bases_empty":   "bases_before = '000'",
+        "runner_on":     "bases_before IS NOT NULL AND bases_before <> '000'",
+        "risp":          ("bases_before IS NOT NULL AND "
+                          "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                          "SUBSTRING(bases_before, 3, 1) = '1')"),
+        "risp_2out":     ("bases_before IS NOT NULL AND "
+                          "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                          "SUBSTRING(bases_before, 3, 1) = '1') AND outs_before = 2"),
+        "innings_early": "inning BETWEEN 1 AND 3",
+        "innings_mid":   "inning BETWEEN 4 AND 6",
+        "innings_late":  "inning >= 7",
+        "late_close":    ("inning >= 7 AND bat_score_before IS NOT NULL "
+                          "AND ABS(bat_score_before - fld_score_before) <= 1"),
+        "leadoff":       "outs_before = 0 AND bases_before = '000'",
     }
     out = {}
     for k, fsql in filters.items():
@@ -12225,9 +12285,36 @@ def get_player_pitch_level_stats_pitcher(
             {"label": "vs Unknown", "filter_key": None, **_split_unknown()},
         ]
 
+        # ── Situational splits (pitcher's perspective) ──
+        # Same Phase A state filters as the hitter card. Reads as
+        # "opponent BA when we have RISP / late & close / etc."
+        bases_empty   = "bases_before = '000'"
+        runner_on     = "bases_before IS NOT NULL AND bases_before <> '000'"
+        risp          = ("bases_before IS NOT NULL AND "
+                         "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                         "SUBSTRING(bases_before, 3, 1) = '1')")
+        risp_2out     = f"({risp}) AND outs_before = 2"
+        innings_early = "inning BETWEEN 1 AND 3"
+        innings_mid   = "inning BETWEEN 4 AND 6"
+        innings_late  = "inning >= 7"
+        late_close    = ("inning >= 7 AND bat_score_before IS NOT NULL "
+                         "AND ABS(bat_score_before - fld_score_before) <= 1")
+        leadoff       = "outs_before = 0 AND bases_before = '000'"
+        situational_splits = [
+            {"label": "Bases empty",   "detail": "no runners on",       "filter_key": "bases_empty",   **_opp_slash(bases_empty,   [])},
+            {"label": "Runner(s) on",  "detail": "any base occupied",   "filter_key": "runner_on",     **_opp_slash(runner_on,     [])},
+            {"label": "RISP",          "detail": "2B or 3B occupied",   "filter_key": "risp",          **_opp_slash(risp,          [])},
+            {"label": "RISP / 2 out",  "detail": "RISP w/ 2 outs",      "filter_key": "risp_2out",     **_opp_slash(risp_2out,     [])},
+            {"label": "Innings 1-3",   "detail": "early",               "filter_key": "innings_early", **_opp_slash(innings_early, [])},
+            {"label": "Innings 4-6",   "detail": "middle",              "filter_key": "innings_mid",   **_opp_slash(innings_mid,   [])},
+            {"label": "Innings 7+",    "detail": "late",                "filter_key": "innings_late",  **_opp_slash(innings_late,  [])},
+            {"label": "Late & close",  "detail": "7+ inn, score ±1",    "filter_key": "late_close",    **_opp_slash(late_close,    [])},
+            {"label": "Leadoff PA",    "detail": "first PA of inning",  "filter_key": "leadoff",       **_opp_slash(leadoff,       [])},
+        ]
+
         # Attach baselines + compute wRC+ allowed
         baselines = _get_pitcher_pitch_level_baselines(cur, season, division_level, weights)
-        for row in count_states + lr_splits:
+        for row in count_states + lr_splits + situational_splits:
             fk = row.get("filter_key")
             entry = baselines.get(fk) if fk else None
             league = entry["mean"] if entry else None
@@ -12250,6 +12337,7 @@ def get_player_pitch_level_stats_pitcher(
             "discipline": discipline,
             "count_states": count_states,
             "lr_splits": lr_splits,
+            "situational_splits": situational_splits,
         }
 
 

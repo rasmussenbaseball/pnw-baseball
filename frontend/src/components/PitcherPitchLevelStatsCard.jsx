@@ -145,6 +145,60 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
           Unknown = batter's handedness not in our roster data.
         </p>
       )}
+
+      {/* ── Situational splits (base state / inning / late & close) ── */}
+      {data.situational_splits && data.situational_splits.length > 0 && (
+        <>
+          <div className="mt-6">
+            <SectionHeader>Situational Splits (opponent batting)</SectionHeader>
+          </div>
+          <DataTable minWidth={880}>
+            <thead>
+              <HeaderRow>
+                <Th align="left">Split</Th>
+                <Th>PA</Th>
+                <Th>Pit</Th>
+                <Th>BIP</Th>
+                <Th>opp BA</Th>
+                <Th>opp OBP</Th>
+                <Th>opp SLG</Th>
+                <Th>opp OPS</Th>
+                <Th>opp ISO</Th>
+                <Th>opp wOBA</Th>
+                <Th>wRC+ against</Th>
+                <Th>K%</Th>
+                <Th>BB%</Th>
+                <Th>Whiff%</Th>
+              </HeaderRow>
+            </thead>
+            <tbody>
+              {data.situational_splits.map((sp) => (
+                <BodyRow key={sp.label}>
+                  <CountCell label={sp.label} detail={sp.detail} />
+                  <NumCell value={sp.pa} muted={false} />
+                  <NumCell value={sp.pitches} muted />
+                  <NumCell value={sp.bip} muted />
+                  <ColorCell row={sp} metric="opp_ba"   formatter={fmtRate} bold />
+                  <ColorCell row={sp} metric="opp_obp"  formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_slg"  formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_ops"  formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_iso"  formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_woba" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="wrc_plus_against" formatter={fmtInt} />
+                  <ColorCell row={sp} metric="k_pct"      formatter={fmtPct} />
+                  <ColorCell row={sp} metric="bb_pct"     formatter={fmtPct} />
+                  <ColorCell row={sp} metric="whiff_pct"  formatter={fmtPct} />
+                </BodyRow>
+              ))}
+            </tbody>
+          </DataTable>
+          <p className="text-[10px] text-gray-400 mt-2 italic">
+            Situational splits use base/out/score state from PBP. Some 2026 PAs
+            are not yet state-derived (especially OOC opponents) — totals here
+            may be slightly lower than the season totals above.
+          </p>
+        </>
+      )}
     </div>
   )
 }
