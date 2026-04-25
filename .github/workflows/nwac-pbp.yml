@@ -28,7 +28,9 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Bumped to 180 to fit one-time backfill of ~800 NWAC games at ~10s each
+    # via ScraperAPI premium. Daily runs only touch new games (5-10 typical).
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
