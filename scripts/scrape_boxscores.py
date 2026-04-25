@@ -1970,6 +1970,11 @@ def _apply_batting_annotations(table, players):
     def _normalize(name):
         """Return lowercase 'last first' regardless of format."""
         name = name.strip()
+        # Strip leading position prefixes like 'b' / 'cf/rf' that the
+        # table parser can leave attached to the name (e.g. 'bBELL' →
+        # 'BELL'). Without this, footnote lookups for HR/2B/etc miss
+        # because the name_to_idx key has the prefix glued on.
+        name = re.sub(r'^[a-z0-9/]+(?=[A-Z])', '', name)
         name = re.sub(r'\s*\(.*?\)\s*', '', name)  # Remove (season count)
         name = re.sub(r'^\d+\s*', '', name)  # Remove jersey numbers
         if ',' in name:
@@ -2355,15 +2360,19 @@ def find_player_id(cur, team_id, player_name, season):
     else:
         last = name
     if last:
+        # LIMIT 2 — we only need to know if there's MORE than one player
+        # with this last name on the team. Originally this had LIMIT 1
+        # which silently broke the uniqueness check and made us return
+        # the first match for ambiguous last names (e.g. two "Bertram"s
+        # on MSUB → always picks Cole instead of correctly returning None).
         cur.execute("""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
               AND LOWER(p.last_name) = LOWER(%s)
-            LIMIT 1
+            LIMIT 2
         """, (team_id, last))
-        rows = cur.fetchall() if hasattr(cur, 'fetchall') else [cur.fetchone()]
-        # Only use if exactly one player with that last name on the team
-        if len(rows) == 1 and rows[0]:
+        rows = cur.fetchall()
+        if len(rows) == 1:
             return rows[0]["id"]
 
     return None
