@@ -77,16 +77,21 @@ export default function PitchLevelStatsCard({ playerId, season }) {
           Count-State Slash
         </h4>
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs min-w-[480px]">
+          <table className="w-full text-xs min-w-[720px]">
             <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
               <tr>
                 <th className="text-left px-2 py-1.5">Count</th>
                 <th className="text-right px-2 py-1.5">PA</th>
-                <th className="text-right px-2 py-1.5">Pitches</th>
+                <th className="text-right px-2 py-1.5">Pit</th>
+                <th className="text-right px-2 py-1.5">BIP</th>
                 <th className="text-right px-2 py-1.5">BA</th>
                 <th className="text-right px-2 py-1.5">OBP</th>
                 <th className="text-right px-2 py-1.5">SLG</th>
                 <th className="text-right px-2 py-1.5">OPS</th>
+                <th className="text-right px-2 py-1.5">ISO</th>
+                <th className="text-right px-2 py-1.5">wOBA</th>
+                <th className="text-right px-2 py-1.5">Swing%</th>
+                <th className="text-right px-2 py-1.5">Contact%</th>
               </tr>
             </thead>
             <tbody>
@@ -98,10 +103,15 @@ export default function PitchLevelStatsCard({ playerId, season }) {
                   </td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{cs.pa}</td>
                   <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.pitches}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{cs.bip}</td>
                   <td className="text-right px-2 py-1.5 font-semibold text-gray-900 tabular-nums">{fmtRate(cs.ba)}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(cs.obp)}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(cs.slg)}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(cs.ops)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(cs.iso)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(cs.woba)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(cs.swing_pct)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(cs.contact_pct)}</td>
                 </tr>
               ))}
             </tbody>
@@ -115,16 +125,23 @@ export default function PitchLevelStatsCard({ playerId, season }) {
           Pitcher Hand Splits
         </h4>
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs min-w-[480px]">
+          <table className="w-full text-xs min-w-[800px]">
             <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
               <tr>
                 <th className="text-left px-2 py-1.5">Split</th>
                 <th className="text-right px-2 py-1.5">PA</th>
-                <th className="text-right px-2 py-1.5">Pitches</th>
+                <th className="text-right px-2 py-1.5">Pit</th>
+                <th className="text-right px-2 py-1.5">BIP</th>
                 <th className="text-right px-2 py-1.5">BA</th>
                 <th className="text-right px-2 py-1.5">OBP</th>
                 <th className="text-right px-2 py-1.5">SLG</th>
                 <th className="text-right px-2 py-1.5">OPS</th>
+                <th className="text-right px-2 py-1.5">ISO</th>
+                <th className="text-right px-2 py-1.5">wOBA</th>
+                <th className="text-right px-2 py-1.5">K%</th>
+                <th className="text-right px-2 py-1.5">BB%</th>
+                <th className="text-right px-2 py-1.5">Swing%</th>
+                <th className="text-right px-2 py-1.5">Contact%</th>
               </tr>
             </thead>
             <tbody>
@@ -133,10 +150,17 @@ export default function PitchLevelStatsCard({ playerId, season }) {
                   <td className="px-2 py-1.5 font-medium text-gray-900">{sp.label}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{sp.pa}</td>
                   <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.pitches}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-500 tabular-nums">{sp.bip}</td>
                   <td className="text-right px-2 py-1.5 font-semibold text-gray-900 tabular-nums">{fmtRate(sp.ba)}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(sp.obp)}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(sp.slg)}</td>
                   <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(sp.ops)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(sp.iso)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtRate(sp.woba)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(sp.k_pct)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(sp.bb_pct)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(sp.swing_pct)}</td>
+                  <td className="text-right px-2 py-1.5 text-gray-700 tabular-nums">{fmtPct(sp.contact_pct)}</td>
                 </tr>
               ))}
             </tbody>

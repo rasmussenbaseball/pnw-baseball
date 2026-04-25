@@ -11443,11 +11443,26 @@ def get_player_pitch_level_stats(
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
         }
 
-        # ── Count-state slash lines ──
-        # Returns slash + sample sizes (PA + pitches seen). The
-        # `pitches` field is a sample-size signal; it's NULL-summed so
-        # PAs without pitch data still count toward `pa` but don't
-        # inflate `pitches`.
+        # ── Pull division-specific weights for wOBA ──
+        # Player's division comes from their team → conference → division.
+        # Defaults to D1 weights if we can't resolve.
+        cur.execute("""
+            SELECT d.level
+            FROM players p
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE p.id = %s
+        """, (player_id,))
+        div_row = cur.fetchone()
+        division_level = (div_row["level"] if div_row else "D1") or "D1"
+        weights = DEFAULT_WEIGHTS.get(division_level, DEFAULT_WEIGHTS["D1"])
+
+        # ── Count-state / split slash lines ──
+        # Returns slash + sample sizes + plate-discipline within the
+        # filter. The `pitches` and discipline counts are NULL-summed
+        # so PAs without pitch data still count toward `pa` but don't
+        # inflate pitch-derived numbers.
         def _slash(filter_sql, filter_params):
             cur.execute(f"""
                 SELECT
@@ -11458,10 +11473,16 @@ def get_player_pitch_level_stats(
                     SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d,
                     SUM(CASE WHEN result_type = 'triple' THEN 1 ELSE 0 END) AS t,
                     SUM(CASE WHEN result_type = 'home_run' THEN 1 ELSE 0 END) AS hr,
+                    SUM(CASE WHEN result_type IN ('walk') THEN 1 ELSE 0 END) AS ubb,
                     SUM(CASE WHEN result_type IN ('walk','intentional_walk') THEN 1 ELSE 0 END) AS bb,
                     SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
                     SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
-                    SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf
+                    SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
+                    SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END) AS bip,
+                    -- Plate discipline counts within this filter (NULL-summed for tracked PAs only)
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
+                    COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play
                 FROM game_events ge
                 JOIN games g ON g.id = ge.game_id
                 WHERE ge.batter_player_id = ANY(%s)
@@ -11470,15 +11491,18 @@ def get_player_pitch_level_stats(
             """, [all_pids, season] + filter_params)
             row = cur.fetchone()
             n_pa = row["pa"] or 0
+            n_pitches = row["pitches"] or 0
             ab = row["ab"] or 0
             h = row["h"] or 0
             d = row["d"] or 0
             tr = row["t"] or 0
             hr = row["hr"] or 0
+            ubb = row["ubb"] or 0
             bb = row["bb"] or 0
             hbp = row["hbp"] or 0
             sf = row["sf"] or 0
             kct = row["k"] or 0
+            bip = row["bip"] or 0
             singles = h - d - tr - hr
             tb = singles + 2*d + 3*tr + 4*hr
             obp_denom = ab + bb + hbp + sf
@@ -11486,10 +11510,28 @@ def get_player_pitch_level_stats(
             obp = ((h + bb + hbp) / obp_denom) if obp_denom > 0 else None
             slg = (tb / ab) if ab > 0 else None
             ops = ((obp or 0) + (slg or 0)) if (obp is not None and slg is not None) else None
+            iso = ((slg - ba) if (slg is not None and ba is not None) else None)
+            # wOBA = (w_bb*uBB + w_hbp*HBP + w_1b*1B + w_2b*2B + w_3b*3B + w_hr*HR) / (AB + BB - IBB + SF + HBP)
+            # Using uBB (walks excl. intentional) per Fangraphs convention.
+            woba_num = (weights.w_bb * ubb + weights.w_hbp * hbp +
+                        weights.w_1b * singles + weights.w_2b * d +
+                        weights.w_3b * tr + weights.w_hr * hr)
+            woba_denom = ab + ubb + sf + hbp
+            woba = (woba_num / woba_denom) if woba_denom > 0 else None
+            # Plate discipline within filter (over pitch-tracked subset)
+            swings = row["f_k"] + row["f_f"] + row["f_in_play"]
+            contact = row["f_f"] + row["f_in_play"]
+            swing_pct = (swings / n_pitches) if n_pitches > 0 else None
+            contact_pct = (contact / swings) if swings > 0 else None
+            whiff_pct = (row["f_k"] / swings) if swings > 0 else None
             return {
-                "pa": n_pa, "pitches": row["pitches"] or 0,
+                "pa": n_pa, "pitches": n_pitches, "bip": bip,
                 "ab": ab, "h": h, "hr": hr, "bb": bb, "k": kct,
                 "ba": ba, "obp": obp, "slg": slg, "ops": ops,
+                "iso": iso, "woba": woba,
+                "swing_pct": swing_pct, "contact_pct": contact_pct, "whiff_pct": whiff_pct,
+                "k_pct": (kct / n_pa) if n_pa > 0 else None,
+                "bb_pct": (bb / n_pa) if n_pa > 0 else None,
             }
 
         # Define count groups per common baseball convention
