@@ -189,6 +189,17 @@ export function usePlayerPitchLevelStats(playerId, season = CURRENT_SEASON) {
 }
 
 /**
+ * Same idea but for pitchers: opponent slash + induced K%/Whiff%/etc.
+ */
+export function usePlayerPitchLevelStatsPitcher(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    `/players/${playerId}/pitch-level-stats-pitcher`,
+    { season },
+    [playerId, season]
+  )
+}
+
+/**
  * Fetch stat leaders (top N per category).
  */
 export function useStatLeaders(season, limit = 5, qualified = false, level = null, split = null) {

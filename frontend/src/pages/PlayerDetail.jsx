@@ -5,6 +5,7 @@ import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
+import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 
 // ── Percentile bubble configs ──────────────────────────────────
 const BATTING_PERCENTILE_METRICS = [
@@ -1186,6 +1187,9 @@ export default function PlayerDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Pitcher Pitch-Level Stats (PBP-derived; auto-hides if no events) ── */}
+      {hasPitching && <PitcherPitchLevelStatsCard playerId={playerId} season={2026} />}
 
       {/* ── Summer Ball Stats ── */}
       {hasSummerStats && (
