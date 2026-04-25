@@ -64,14 +64,20 @@ def _normalize_name(name):
     return s
 
 
-def find_player_id_with_fallback(cur, team_id, name, season):
+def find_player_id_with_fallback(cur, team_id, name, season, game_id=None):
     """find_player_id, then a normalized-name fallback if that misses.
 
     The fallback fetches all players on the team once per call, normalizes
     each name, and matches against the normalized input. This handles
     apostrophes (O'Neil/ONeil), accents (José/Jose), and similar.
-    Returns (player_id, fallback_used) where fallback_used is True if the
-    original lookup missed.
+
+    When the fallback finds MULTIPLE candidates (e.g. two "Bertram"s on
+    one team) AND we have a game_id, we disambiguate by asking game_batting
+    which of those candidates actually appeared in the box for that game.
+    If exactly one of the candidates is in the box, we use that one.
+
+    Returns (player_id, fallback_used) where fallback_used is True if
+    the original lookup missed.
     """
     pid = find_player_id(cur, team_id, name, season)
     if pid:
@@ -79,24 +85,79 @@ def find_player_id_with_fallback(cur, team_id, name, season):
     norm_input = _normalize_name(name).lower()
     if not norm_input:
         return None, False
+    # Pull the input's last token (often the lastname) for hyphenated
+    # match attempts ("KATAYAMA, C" → input_last = "katayama" matches
+    # DB lastname "Katayama-Stall").
+    input_parts = norm_input.split()
+    # Strip trailing commas left over from "Last, First" splits.
+    input_last = (input_parts[0] if "," in name
+                  else (input_parts[-1] if input_parts else ""))
+    input_last = input_last.rstrip(",").strip()
     cur.execute("""
         SELECT id, first_name, last_name FROM players WHERE team_id = %s
     """, (team_id,))
     candidates = []
     for r in cur.fetchall():
-        # Normalize both "First Last" and "Last, First" forms
         first = r["first_name"] or ""
         last = r["last_name"] or ""
         forms = [
             _normalize_name(f"{first} {last}").lower(),
             _normalize_name(f"{last}, {first}").lower(),
             _normalize_name(f"{last},{first}").lower(),
-            _normalize_name(last).lower(),  # last-name-only
+            _normalize_name(last).lower(),
         ]
         if any(f == norm_input for f in forms):
             candidates.append(r["id"])
+            continue
+        # Hyphenated-lastname fallback: if the input's last token matches
+        # any HYPHEN-SEPARATED PART of the DB lastname, count as candidate.
+        # Handles "KATAYAMA, C" → "Katayama-Stall", "Smith" → "McFarland-Smith".
+        if input_last and "-" in last:
+            parts = [_normalize_name(p).lower() for p in last.split("-") if p]
+            if input_last in parts:
+                candidates.append(r["id"])
     if len(candidates) == 1:
         return candidates[0], True
+    if len(candidates) > 1 and game_id is not None:
+        # Ambiguous on team — disambiguate via game_batting presence.
+        cur.execute("""
+            SELECT DISTINCT player_id FROM game_batting
+            WHERE game_id = %s AND team_id = %s AND player_id = ANY(%s)
+        """, (game_id, team_id, candidates))
+        in_game = [r["player_id"] for r in cur.fetchall()]
+        if len(in_game) == 1:
+            return in_game[0], True
+
+    # Truncated-lastname fallback for "F. Lastname" inputs.
+    # Some Sidearm sites truncate long names at ~12 characters in PBP
+    # (e.g. "M. Thoma-Bri" instead of "M. Thoma-Britt"). Match by
+    # first-initial + last_name STARTING WITH the input prefix.
+    m_init = re.match(r"^([A-Za-z])\.?\s+(.+?)\.?$", name.strip())
+    if m_init:
+        initial = m_init.group(1)
+        last_prefix = m_init.group(2).strip()
+        if last_prefix:
+            cur.execute("""
+                SELECT p.id FROM players p
+                WHERE p.team_id = %s
+                  AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = LOWER(%s)
+                  AND LOWER(p.last_name) LIKE LOWER(%s)
+                LIMIT 2
+            """, (team_id, initial, last_prefix + "%"))
+            rows = cur.fetchall()
+            if len(rows) == 1:
+                return rows[0]["id"], True
+            if len(rows) > 1 and game_id is not None:
+                # Disambiguate by box presence again
+                cand_ids = [r["id"] for r in rows]
+                cur.execute("""
+                    SELECT DISTINCT player_id FROM game_batting
+                    WHERE game_id = %s AND team_id = %s AND player_id = ANY(%s)
+                """, (game_id, team_id, cand_ids))
+                in_game = [r["player_id"] for r in cur.fetchall()]
+                if len(in_game) == 1:
+                    return in_game[0], True
+
     return None, False
 
 
@@ -334,7 +395,7 @@ def process_game(cur, game, dry_run=False, verbose=False):
         if not team_id:
             cache[key] = None
             return None
-        pid, _used_fallback = find_player_id_with_fallback(cur, team_id, name, season)
+        pid, _used_fallback = find_player_id_with_fallback(cur, team_id, name, season, game_id=gid)
         cache[key] = pid
         return pid
 
