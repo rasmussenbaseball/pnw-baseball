@@ -43,7 +43,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
       </div>
 
       {/* ── Plate discipline ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-2 mb-6">
         <Tile label="Pitches" value={d.pitches} sub={`over ${d.tracked_pa} PA`} />
         <Tile label="Swing %" value={fmtPct(d.swing_pct)} sub={`${d.swings} of ${d.pitches}`} />
         <Tile label="Whiff %" value={fmtPct(d.whiff_pct)} sub={`${d.whiffs} of ${d.swings}`} />
@@ -51,6 +51,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
         <Tile label="1st-Pitch Strike" value={fmtPct(d.first_pitch_strike_pct)} sub={`of ${d.tracked_pa} PA`} />
         <Tile label="0-0 BIP %" value={fmtPct(d.first_pitch_in_play_pct)} sub={`of ${d.tracked_pa} PA`} />
         <Tile label="Putaway %" value={fmtPct(d.putaway_pct)} sub={`of ${d.two_strike_pa} 2K PAs`} />
+        <Tile label="Avg LI" value={fmtNum(d.avg_li, 2)} sub={d.li_pa ? `peak ${fmtNum(d.max_li, 1)}` : '—'} />
         <Tile label="P / PA" value={fmtNum(d.pitches_per_pa, 2)} sub={`${d.pitches}÷${d.tracked_pa}`} />
       </div>
 

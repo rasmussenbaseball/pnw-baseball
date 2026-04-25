@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 from ..models.database import get_connection
 from .auth import require_admin
+from .leverage import compute_li
 from ..stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -11699,6 +11700,37 @@ def get_player_pitch_level_stats(
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
         }
 
+        # ── Leverage Index (Phase D MVP) ──
+        # Avg LI across every PA where state was derived. Tells us the
+        # importance of moments this hitter typically faced. ~1.0 is
+        # average; > 1.5 means high-leverage at-bats; < 0.7 means low-
+        # leverage spots.
+        cur.execute("""
+            SELECT inning, half, bat_score_before, fld_score_before,
+                   bases_before, outs_before
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = ANY(%s)
+              AND g.season = %s
+              AND ge.bases_before IS NOT NULL
+        """, (all_pids, season))
+        li_rows = cur.fetchall()
+        if li_rows:
+            li_values = [
+                compute_li(
+                    r["inning"], r["half"],
+                    (r["bat_score_before"] or 0) - (r["fld_score_before"] or 0),
+                    r["bases_before"], r["outs_before"]
+                ) for r in li_rows
+            ]
+            discipline["avg_li"] = sum(li_values) / len(li_values)
+            discipline["li_pa"] = len(li_values)
+            discipline["max_li"] = max(li_values)
+        else:
+            discipline["avg_li"] = None
+            discipline["li_pa"] = 0
+            discipline["max_li"] = None
+
         # ── Pull division-specific weights for wOBA ──
         # Player's division comes from their team → conference → division.
         # Defaults to D1 weights if we can't resolve.
@@ -12197,6 +12229,36 @@ def get_player_pitch_level_stats_pitcher(
             "putaway_pct": (r["two_strike_k"] / r["two_strike_pa"]) if r["two_strike_pa"] > 0 else None,
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
         }
+
+        # ── Leverage Index (Phase D MVP) ──
+        # Avg LI is the headline reliever stat: closers come in for high
+        # LI moments (1.5+), mop-up relievers see low LI (≤0.5). For
+        # starters, avg LI tends to drift toward 1.0.
+        cur.execute("""
+            SELECT inning, half, bat_score_before, fld_score_before,
+                   bases_before, outs_before
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = ANY(%s)
+              AND g.season = %s
+              AND ge.bases_before IS NOT NULL
+        """, (all_pids, season))
+        li_rows = cur.fetchall()
+        if li_rows:
+            li_values = [
+                compute_li(
+                    r["inning"], r["half"],
+                    (r["bat_score_before"] or 0) - (r["fld_score_before"] or 0),
+                    r["bases_before"], r["outs_before"]
+                ) for r in li_rows
+            ]
+            discipline["avg_li"] = sum(li_values) / len(li_values)
+            discipline["li_pa"] = len(li_values)
+            discipline["max_li"] = max(li_values)
+        else:
+            discipline["avg_li"] = None
+            discipline["li_pa"] = 0
+            discipline["max_li"] = None
 
         # ── Count-state opponent slash (from pitcher's POV) ──
         def _opp_slash(filter_sql, params):
