@@ -540,6 +540,28 @@ def process_game(cur, game, dry_run=False, verbose=False):
             if cur.rowcount > 0:
                 result["hr_pitchers_updated"] += 1
 
+        # ── Derived: backfill game_pitching.pitches_thrown (NP) from events ──
+        # Box-score scrapers don't always capture pitch counts (especially
+        # on sources that omit them from their pitching tables). Sum NP
+        # from events when available so player game logs show NP for the
+        # majority of games.
+        cur.execute("""
+            UPDATE game_pitching gp
+            SET pitches_thrown = sub.np
+            FROM (
+              SELECT pitcher_player_id, SUM(pitches_thrown) AS np
+              FROM game_events
+              WHERE game_id = %s
+                AND pitcher_player_id IS NOT NULL
+                AND pitches_thrown IS NOT NULL
+              GROUP BY pitcher_player_id
+              HAVING SUM(pitches_thrown) > 0
+            ) sub
+            WHERE gp.game_id = %s
+              AND gp.player_id = sub.pitcher_player_id
+              AND (gp.pitches_thrown IS NULL OR gp.pitches_thrown = 0)
+        """, (gid, gid))
+
     # ── Mark game complete ──
     if not dry_run:
         cur.execute("""
