@@ -145,14 +145,52 @@ def _best_score(pbp_name, candidate_strings):
 def map_caption_to_team_id(pbp_team_names, home_team_id, home_variants, away_team_id, away_variants):
     """Match each PBP-caption team name to home_team_id or away_team_id.
 
-    home_variants and away_variants are lists of strings the PBP name
-    could plausibly equal — typically [team_name, full name, school
-    name, short name]. Best variant wins.
+    BIPARTITE ASSIGNMENT: when there are exactly two PBP captions, force
+    them to map to DIFFERENT team_ids. We compute all four (caption,
+    team) similarity scores and pick the pairing that maximizes the
+    total score subject to the constraint.
+
+    This prevents short-abbreviation collisions like "CSUSB" mapping to
+    CWU instead of "Cal State San Bernardino" because "CSUSB" vs "CWU"
+    SequenceMatcher ratio (0.50) beats "CSUSB" vs "Cal State..." (0.28)
+    on raw character similarity. Bipartite matching forces the lower-
+    confidence caption onto the other team rather than letting both
+    collide on the same side.
+
+    For !=2 captions (rare/never), falls back to independent matching
+    with the 0.5 threshold.
     """
+    names = list(pbp_team_names)
+    home_vars = [v for v in home_variants if v]
+    away_vars = [v for v in away_variants if v]
+
+    if len(names) == 2:
+        n0, n1 = names
+        s00 = _best_score(n0, home_vars)   # n0 → home
+        s01 = _best_score(n0, away_vars)   # n0 → away
+        s10 = _best_score(n1, home_vars)   # n1 → home
+        s11 = _best_score(n1, away_vars)   # n1 → away
+        # Two valid assignments under the must-be-different constraint:
+        opt_a = s00 + s11   # n0=home, n1=away
+        opt_b = s01 + s10   # n0=away, n1=home
+        # Each assignment requires at least one side to clear a low bar
+        # so we don't fabricate a match for two unrelated names. 0.3 is
+        # well below the old 0.5 threshold but above noise.
+        out = {}
+        if opt_a >= opt_b and max(s00, s11) >= 0.3:
+            out[n0] = home_team_id
+            out[n1] = away_team_id
+        elif opt_b > opt_a and max(s01, s10) >= 0.3:
+            out[n0] = away_team_id
+            out[n1] = home_team_id
+        return out
+
+    # Fallback (one or three+ captions — shouldn't happen for a normal
+    # nine-inning game but handle gracefully).
     out = {}
-    for pbp_name in pbp_team_names:
-        s_home = _best_score(pbp_name, home_variants)
-        s_away = _best_score(pbp_name, away_variants)
+    for pbp_name in names:
+        s_home = _best_score(pbp_name, home_vars)
+        s_away = _best_score(pbp_name, away_vars)
         if s_home >= s_away and s_home >= 0.5:
             out[pbp_name] = home_team_id
         elif s_away > s_home and s_away >= 0.5:

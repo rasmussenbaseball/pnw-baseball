@@ -176,12 +176,20 @@ def extract_batter_name(text, result_type):
 
 
 def parse_count_seq(text):
-    """Return (balls_before, strikes_before, sequence) or (None, None, None)."""
+    """Return (balls_before, strikes_before, sequence) or (None, None, None).
+
+    Some scorers (notably PLU's) print counts that include EVERY foul as
+    a strike, producing impossible-looking counts like (0-4 KKF) on a
+    flyout. Under standard baseball rules a count tops out at 3-2 before
+    the PA-ending pitch — fouls past 2 strikes don't increment. We cap
+    balls<=3 and strikes<=2 to normalize. The original count text and
+    sequence are preserved in result_text for any future re-derivation.
+    """
     m = COUNT_SEQ_RE.search(text)
     if not m:
         return None, None, None
-    balls = int(m.group(1))
-    strikes = int(m.group(2))
+    balls = min(int(m.group(1)), 3)
+    strikes = min(int(m.group(2)), 2)
     seq = (m.group(3) or "").strip()
     return balls, strikes, seq
 
