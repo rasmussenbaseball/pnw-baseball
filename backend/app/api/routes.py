@@ -11338,6 +11338,107 @@ def get_player_splits(
 # ============================================================
 # Pitch-Level Stats — derived from game_events (Phase 1 PBP)
 # ============================================================
+
+# Per-division per-filter league baselines for color coding.
+# Cache keyed by (season, division_level) → {filter_key: {metric: value}}.
+# TTL = 6 hours; refreshed on first request after expiry.
+import time as _pl_time
+_PITCH_LEVEL_BASELINES_CACHE: dict = {}
+_PITCH_LEVEL_BASELINES_TTL = 6 * 3600  # seconds
+
+
+def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_sql: str, weights):
+    """Aggregate league-wide stats over all PNW players in the division
+    matching the given filter. Returns a dict matching the player-row
+    metric keys so the frontend can compare apples-to-apples.
+    """
+    cur.execute(f"""
+        SELECT
+            COUNT(*) AS pa,
+            COALESCE(SUM(pitches_thrown), 0) AS pitches,
+            SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
+            SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
+            SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d,
+            SUM(CASE WHEN result_type = 'triple' THEN 1 ELSE 0 END) AS t,
+            SUM(CASE WHEN result_type = 'home_run' THEN 1 ELSE 0 END) AS hr,
+            SUM(CASE WHEN result_type IN ('walk') THEN 1 ELSE 0 END) AS ubb,
+            SUM(CASE WHEN result_type IN ('walk','intentional_walk') THEN 1 ELSE 0 END) AS bb,
+            SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
+            SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
+            SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
+            SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END) AS bip,
+            COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+            COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
+            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        JOIN players p ON p.id = ge.batter_player_id
+        JOIN teams t ON t.id = p.team_id
+        JOIN conferences c ON c.id = t.conference_id
+        JOIN divisions d ON d.id = c.division_id
+        WHERE g.season = %s
+          AND d.level = %s
+          AND ge.batter_player_id IS NOT NULL
+          AND {filter_sql}
+    """, [season, division_level])
+    r = cur.fetchone()
+    n_pa = r["pa"] or 0
+    n_pitches = r["pitches"] or 0
+    ab = r["ab"] or 0; h = r["h"] or 0
+    d_ = r["d"] or 0; tr = r["t"] or 0; hr = r["hr"] or 0
+    ubb = r["ubb"] or 0; bb = r["bb"] or 0
+    hbp = r["hbp"] or 0; sf = r["sf"] or 0; kct = r["k"] or 0
+    singles = h - d_ - tr - hr
+    tb = singles + 2*d_ + 3*tr + 4*hr
+    obp_denom = ab + bb + hbp + sf
+    ba = (h / ab) if ab > 0 else None
+    obp = ((h + bb + hbp) / obp_denom) if obp_denom > 0 else None
+    slg = (tb / ab) if ab > 0 else None
+    ops = ((obp or 0) + (slg or 0)) if (obp is not None and slg is not None) else None
+    iso = ((slg - ba) if (slg is not None and ba is not None) else None)
+    woba_num = (weights.w_bb * ubb + weights.w_hbp * hbp +
+                weights.w_1b * singles + weights.w_2b * d_ +
+                weights.w_3b * tr + weights.w_hr * hr)
+    woba_denom = ab + ubb + sf + hbp
+    woba = (woba_num / woba_denom) if woba_denom > 0 else None
+    swings = r["f_k"] + r["f_f"] + r["f_in_play"]
+    contact = r["f_f"] + r["f_in_play"]
+    return {
+        "pa": n_pa, "pitches": n_pitches, "ba": ba, "obp": obp, "slg": slg, "ops": ops,
+        "iso": iso, "woba": woba,
+        "swing_pct": (swings / n_pitches) if n_pitches > 0 else None,
+        "contact_pct": (contact / swings) if swings > 0 else None,
+        "whiff_pct": (r["f_k"] / swings) if swings > 0 else None,
+        "k_pct": (kct / n_pa) if n_pa > 0 else None,
+        "bb_pct": (bb / n_pa) if n_pa > 0 else None,
+    }
+
+
+def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -> dict:
+    """Return cached or freshly computed league baselines for every
+    Pitch-Level Stats filter (count states + L/R splits).
+    """
+    key = (season, division_level)
+    now = _pl_time.time()
+    cached = _PITCH_LEVEL_BASELINES_CACHE.get(key)
+    if cached and (now - cached["ts"]) < _PITCH_LEVEL_BASELINES_TTL:
+        return cached["data"]
+
+    filters = {
+        "hitters":     "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,1))",
+        "neutral":     "(balls_before, strikes_before) IN ((0,0),(1,1),(2,1),(2,2),(3,2))",
+        "pitchers":    "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))",
+        "two_strike":  "strikes_before = 2",
+        "vs_lhp":      "ge.pitcher_player_id IN (SELECT id FROM players WHERE UPPER(throws) = 'L')",
+        "vs_rhp":      "ge.pitcher_player_id IN (SELECT id FROM players WHERE UPPER(throws) = 'R')",
+    }
+    out = {}
+    for k, fsql in filters.items():
+        out[k] = _compute_pitch_level_baseline(cur, season, division_level, fsql, weights)
+    _PITCH_LEVEL_BASELINES_CACHE[key] = {"ts": now, "data": out}
+    return out
+
+
 #
 # Stats menu (hitter side):
 #   Plate discipline:
@@ -11534,17 +11635,24 @@ def get_player_pitch_level_stats(
                 "bb_pct": (bb / n_pa) if n_pa > 0 else None,
             }
 
-        # Define count groups per common baseball convention
-        hitters_counts = "(balls_before, strikes_before) IN ((1,0),(2,0),(3,1))"
+        # Define count groups per common baseball convention.
+        # Hitters / Neutral / Pitchers form a complete partition of
+        # all valid pre-PA counts (every PA falls into exactly one).
+        # 2-strike is a cross-cutting analytical lens that overlaps
+        # with Pitchers (0-2, 1-2) and Neutral (2-2, 3-2).
+        hitters_counts = "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,1))"
         pitchers_counts = "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))"
+        neutral_counts = "(balls_before, strikes_before) IN ((0,0),(1,1),(2,1),(2,2),(3,2))"
         two_strike = "strikes_before = 2"
         count_states = [
-            {"label": "Hitter's counts", "detail": "1-0, 2-0, 3-1",
-             **_slash(hitters_counts, [])},
+            {"label": "Hitter's counts", "detail": "1-0, 2-0, 3-0, 3-1",
+             "filter_key": "hitters", **_slash(hitters_counts, [])},
+            {"label": "Neutral counts", "detail": "0-0, 1-1, 2-1, 2-2, 3-2",
+             "filter_key": "neutral", **_slash(neutral_counts, [])},
             {"label": "Pitcher's counts", "detail": "0-1, 0-2, 1-2",
-             **_slash(pitchers_counts, [])},
-            {"label": "2-strike",        "detail": "any 2-strike count",
-             **_slash(two_strike, [])},
+             "filter_key": "pitchers", **_slash(pitchers_counts, [])},
+            {"label": "2-strike", "detail": "any 2-strike count",
+             "filter_key": "two_strike", **_slash(two_strike, [])},
         ]
 
         # ── L/R splits (vs LHP, RHP, Unknown) ──
@@ -11562,14 +11670,24 @@ def get_player_pitch_level_stats(
                 []
             )
         lr_splits = [
-            {"label": "vs LHP", **_split("UPPER(throws) = 'L'")},
-            {"label": "vs RHP", **_split("UPPER(throws) = 'R'")},
-            {"label": "vs Unknown", **_split_unknown()},
+            {"label": "vs LHP",     "filter_key": "vs_lhp",     **_split("UPPER(throws) = 'L'")},
+            {"label": "vs RHP",     "filter_key": "vs_rhp",     **_split("UPPER(throws) = 'R'")},
+            {"label": "vs Unknown", "filter_key": None,         **_split_unknown()},
         ]
+
+        # ── Attach league baselines for color coding ──
+        # We compute (or read from cache) per-division per-filter
+        # league averages so the frontend can render Savant-style
+        # red=above-league / blue=below-league cell coloring.
+        baselines = _get_pitch_level_baselines(cur, season, division_level, weights)
+        for row in count_states + lr_splits:
+            fk = row.get("filter_key")
+            row["league"] = baselines.get(fk) if fk else None
 
         return {
             "player_id": player_id,
             "season": season,
+            "division_level": division_level,
             "discipline": discipline,
             "count_states": count_states,
             "lr_splits": lr_splits,
