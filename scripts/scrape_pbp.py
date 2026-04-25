@@ -131,9 +131,35 @@ def _similarity(a, b):
     return SequenceMatcher(None, (a or "").lower(), (b or "").lower()).ratio()
 
 
+def _expand_with_acronyms(variants):
+    """Generate acronyms for multi-word variants and append them.
+
+    Without this, a PBP caption like 'CSUSB' has only character-similarity
+    to compete with — and will sometimes false-positive against another
+    team's abbreviation (e.g. 'CSUSB' vs 'MSUB' = 0.67) instead of matching
+    its own full name ('Cal State University San Bernardino' = 0.25).
+    Adding 'CSUSB' (the acronym of the full name) to the variants gives a
+    1.0 perfect match in those cases.
+    """
+    out = list(variants)
+    seen = {v.lower() for v in variants if v}
+    for v in variants:
+        if not v or " " not in v:
+            continue
+        words = re.findall(r"[A-Za-z]+", v)
+        # Acronym from initial letters
+        if len(words) >= 2:
+            acro = "".join(w[0] for w in words).upper()
+            if acro and acro.lower() not in seen and 2 <= len(acro) <= 8:
+                out.append(acro)
+                seen.add(acro.lower())
+    return out
+
+
 def _best_score(pbp_name, candidate_strings):
+    candidates = _expand_with_acronyms(candidate_strings)
     best = 0.0
-    for c in candidate_strings:
+    for c in candidates:
         if not c:
             continue
         s = _similarity(pbp_name, c)
