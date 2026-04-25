@@ -11336,6 +11336,187 @@ def get_player_splits(
 
 
 # ============================================================
+# Pitch-Level Stats — derived from game_events (Phase 1 PBP)
+# ============================================================
+#
+# Stats menu (hitter side):
+#   Plate discipline:
+#     - swing %         : (K + F + in_play_contact) / total_pitches
+#     - first_pitch_swing % : per PA, was 1st pitch a swing
+#     - contact %       : (F + in_play_contact) / total_swings
+#     - pitches per PA  : total_pitches / total_PA
+#   Count states (slash lines):
+#     - hitter's counts (1-0, 2-0, 3-1)
+#     - pitcher's counts (0-1, 0-2, 1-2)
+#     - 2-strike (any 2-strike count)
+#   L/R splits: vs LHP / RHP / Unknown
+#
+# Pitch sequence letters: B=ball, K=swinging strike, S=called strike,
+# F=foul, H=HBP. Empty pitch_sequence with was_in_play=True means the
+# 0-0 first pitch was put in play — that counts as 1 swing/contact.
+
+@router.get("/players/{player_id}/pitch-level-stats")
+def get_player_pitch_level_stats(
+    player_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """Hitter pitch-level stats from game_events.
+
+    Returns plate discipline, count-state slash lines, and L/R splits
+    each with sample sizes (PA + total pitches as relevant).
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Resolve canonical player and gather linked IDs (handles transfers)
+        cur.execute(
+            "SELECT canonical_id FROM player_links WHERE linked_id = %s",
+            (player_id,),
+        )
+        canonical = cur.fetchone()
+        if canonical:
+            player_id = canonical["canonical_id"]
+        cur.execute(
+            "SELECT linked_id FROM player_links WHERE canonical_id = %s",
+            (player_id,),
+        )
+        linked_ids = [r["linked_id"] for r in cur.fetchall()]
+        all_pids = [player_id] + linked_ids
+
+        # ── Discipline metrics ──
+        # Counts of pitch-types in pitch_sequence are derived via
+        # (length(seq) - length(replace(seq, X, ''))) which gives the
+        # count of letter X in the string.
+        cur.execute("""
+            SELECT
+                COUNT(*) AS pa,
+                COALESCE(SUM(pitches_thrown), 0) AS pitches,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS k_count,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS s_count,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_count,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))), 0) AS b_count,
+                COALESCE(SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END), 0) AS in_play,
+                COALESCE(SUM(CASE
+                    WHEN LEFT(pitch_sequence, 1) IN ('K', 'F') THEN 1
+                    WHEN pitch_sequence = '' AND was_in_play THEN 1
+                    ELSE 0
+                END), 0) AS f1_swings,
+                COALESCE(SUM(CASE
+                    WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
+                    WHEN pitch_sequence = '' AND was_in_play THEN 1
+                    ELSE 0
+                END), 0) AS f1_strikes
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = ANY(%s)
+              AND g.season = %s
+        """, (all_pids, season))
+        r = cur.fetchone()
+        pa = r["pa"] or 0
+        pitches = r["pitches"] or 0
+        k = r["k_count"]; f = r["f_count"]; in_play = r["in_play"]
+        swings = k + f + in_play
+        contact = f + in_play
+        discipline = {
+            "pa": pa,
+            "pitches": pitches,
+            "swings": swings,
+            "swing_pct": (swings / pitches) if pitches > 0 else None,
+            "contact_pct": (contact / swings) if swings > 0 else None,
+            "first_pitch_swing_pct": (r["f1_swings"] / pa) if pa > 0 else None,
+            "first_pitch_strike_pct": (r["f1_strikes"] / pa) if pa > 0 else None,
+            "pitches_per_pa": (pitches / pa) if pa > 0 else None,
+        }
+
+        # ── Count-state slash lines ──
+        # Helper: aggregate batting line under a WHERE filter.
+        def _slash(filter_sql, filter_params):
+            cur.execute(f"""
+                SELECT
+                    COUNT(*) AS pa,
+                    SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
+                    SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
+                    SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d,
+                    SUM(CASE WHEN result_type = 'triple' THEN 1 ELSE 0 END) AS t,
+                    SUM(CASE WHEN result_type = 'home_run' THEN 1 ELSE 0 END) AS hr,
+                    SUM(CASE WHEN result_type IN ('walk','intentional_walk') THEN 1 ELSE 0 END) AS bb,
+                    SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
+                    SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
+                    SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                WHERE ge.batter_player_id = ANY(%s)
+                  AND g.season = %s
+                  AND {filter_sql}
+            """, [all_pids, season] + filter_params)
+            row = cur.fetchone()
+            n_pa = row["pa"] or 0
+            ab = row["ab"] or 0
+            h = row["h"] or 0
+            d = row["d"] or 0
+            tr = row["t"] or 0
+            hr = row["hr"] or 0
+            bb = row["bb"] or 0
+            hbp = row["hbp"] or 0
+            sf = row["sf"] or 0
+            kct = row["k"] or 0
+            singles = h - d - tr - hr
+            tb = singles + 2*d + 3*tr + 4*hr
+            obp_denom = ab + bb + hbp + sf
+            ba = (h / ab) if ab > 0 else None
+            obp = ((h + bb + hbp) / obp_denom) if obp_denom > 0 else None
+            slg = (tb / ab) if ab > 0 else None
+            ops = ((obp or 0) + (slg or 0)) if (obp is not None and slg is not None) else None
+            return {
+                "pa": n_pa, "ab": ab, "h": h, "hr": hr, "bb": bb, "k": kct,
+                "ba": ba, "obp": obp, "slg": slg, "ops": ops,
+                "k_pct": (kct / n_pa) if n_pa > 0 else None,
+                "bb_pct": (bb / n_pa) if n_pa > 0 else None,
+            }
+
+        # Define count groups per common baseball convention
+        hitters_counts = "(balls_before, strikes_before) IN ((1,0),(2,0),(3,1))"
+        pitchers_counts = "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))"
+        two_strike = "strikes_before = 2"
+        count_states = [
+            {"label": "Hitter's counts", "detail": "1-0, 2-0, 3-1",
+             **_slash(hitters_counts, [])},
+            {"label": "Pitcher's counts", "detail": "0-1, 0-2, 1-2",
+             **_slash(pitchers_counts, [])},
+            {"label": "2-strike",        "detail": "any 2-strike count",
+             **_slash(two_strike, [])},
+        ]
+
+        # ── L/R splits (vs LHP, RHP, Unknown) ──
+        # Use pitcher_player_id → players.throws to classify
+        def _split(throws_filter):
+            return _slash(
+                f"ge.pitcher_player_id IN (SELECT id FROM players WHERE {throws_filter})",
+                []
+            )
+        def _split_unknown():
+            # Unknown = pitcher_player_id IS NULL OR pitcher's throws is null
+            return _slash(
+                "(ge.pitcher_player_id IS NULL OR ge.pitcher_player_id IN "
+                "(SELECT id FROM players WHERE throws IS NULL))",
+                []
+            )
+        lr_splits = [
+            {"label": "vs LHP", **_split("UPPER(throws) = 'L'")},
+            {"label": "vs RHP", **_split("UPPER(throws) = 'R'")},
+            {"label": "vs Unknown", **_split_unknown()},
+        ]
+
+        return {
+            "player_id": player_id,
+            "season": season,
+            "discipline": discipline,
+            "count_states": count_states,
+            "lr_splits": lr_splits,
+        }
+
+
+# ============================================================
 # ============================================================
 # IMAGE PROXY - for canvas export (avoids CORS issues)
 # ============================================================

@@ -4,6 +4,7 @@ import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 
 // ── Percentile bubble configs ──────────────────────────────────
 const BATTING_PERCENTILE_METRICS = [
@@ -1168,6 +1169,9 @@ export default function PlayerDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Pitch-Level Stats (PBP-derived; auto-hides if no events) ── */}
+      {hasBatting && <PitchLevelStatsCard playerId={playerId} season={2026} />}
 
       {/* ── Pitching Stats Table (career) ── */}
       {hasPitching && (

@@ -176,6 +176,19 @@ export function usePlayerSplits(playerId, season = CURRENT_SEASON) {
 }
 
 /**
+ * Fetch player pitch-level stats (Phase 1 PBP-derived) — discipline,
+ * count-state slash lines, L/R splits. Returns null discipline.pa
+ * when the player has no game_events.
+ */
+export function usePlayerPitchLevelStats(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    `/players/${playerId}/pitch-level-stats`,
+    { season },
+    [playerId, season]
+  )
+}
+
+/**
  * Fetch stat leaders (top N per category).
  */
 export function useStatLeaders(season, limit = 5, qualified = false, level = null, split = null) {
