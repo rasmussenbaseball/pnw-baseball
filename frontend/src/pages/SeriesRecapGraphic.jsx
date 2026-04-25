@@ -331,12 +331,15 @@ async function drawTeamPerformers(ctx, title, players, x, y, w, type) {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#0f172a'
-    ctx.font = '600 12px "Inter", system-ui, sans-serif'
     const maxW = x + nameColW - curX - 2
-    let displayName = name
-    while (ctx.measureText(displayName).width > maxW && displayName.length > 3) displayName = displayName.slice(0, -1)
-    if (displayName !== name) displayName += '.'
-    ctx.fillText(displayName, curX, rMidY)
+    // Shrink font to fit instead of truncating chars — preserve full names
+    let nameFS = 12
+    ctx.font = `600 ${nameFS}px "Inter", system-ui, sans-serif`
+    while (ctx.measureText(name).width > maxW && nameFS > 8) {
+      nameFS -= 1
+      ctx.font = `600 ${nameFS}px "Inter", system-ui, sans-serif`
+    }
+    ctx.fillText(name, curX, rMidY)
 
     // Stats
     const statFS = 11

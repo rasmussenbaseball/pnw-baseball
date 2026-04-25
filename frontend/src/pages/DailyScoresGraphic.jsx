@@ -284,26 +284,25 @@ async function drawStatTable(ctx, title, players, x, y, w, h, type) {
     }
     curX += logoSize + 3
 
-    // Player name
+    // Player name — shrink the font to fit instead of truncating chars
     const name = p.display_name || 'Unknown'
     const team = p.team_short || ''
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#0f172a'
-    ctx.font = '600 14px "Inter", system-ui, sans-serif'
-
     const maxW = x + nameColW - curX - 2
-    let displayName = name
-    while (ctx.measureText(`${displayName} ${team}`).width > maxW && displayName.length > 3) {
-      displayName = displayName.slice(0, -1)
+    let nameFS = 14
+    ctx.font = `600 ${nameFS}px "Inter", system-ui, sans-serif`
+    while (ctx.measureText(`${name} ${team}`).width > maxW && nameFS > 9) {
+      nameFS -= 1
+      ctx.font = `600 ${nameFS}px "Inter", system-ui, sans-serif`
     }
-    if (displayName !== name) displayName += '.'
-    ctx.fillText(displayName, curX, rMidY)
+    ctx.fillText(name, curX, rMidY)
 
-    // Team abbrev in gray
-    const nameW = ctx.measureText(displayName + ' ').width
+    // Team abbrev in gray (use a slightly smaller font scaled with name)
+    const nameW = ctx.measureText(name + ' ').width
     ctx.fillStyle = '#94a3b8'
-    ctx.font = '400 10px "Inter", system-ui, sans-serif'
+    ctx.font = `400 ${Math.max(nameFS - 4, 9)}px "Inter", system-ui, sans-serif`
     ctx.fillText(team, curX + nameW, rMidY)
 
     // Stats

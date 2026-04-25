@@ -295,24 +295,27 @@ async function drawPerformerCard(ctx, p, px, py, cardW, cardH) {
   if (p.position) tagParts.push(p.position.toUpperCase())
   const tag = tagParts.join(' | ')
 
-  // Draw name
+  // Draw name — shrink the FONT to fit instead of truncating chars,
+  // so long names (e.g. "Mitchell Thoma-Britt") still render in full.
   ctx.fillStyle = COLORS.text_dark
-  ctx.font = `700 ${nameFontSize}px "Inter", system-ui, sans-serif`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  let displayName = name
-  while (ctx.measureText(displayName).width > maxW * 0.65 && displayName.length > 3) displayName = displayName.slice(0, -1)
-  if (displayName !== name) displayName += '.'
+  let dynamicNameFontSize = nameFontSize
+  ctx.font = `700 ${dynamicNameFontSize}px "Inter", system-ui, sans-serif`
+  while (ctx.measureText(name).width > maxW * 0.65 && dynamicNameFontSize > 10) {
+    dynamicNameFontSize -= 1
+    ctx.font = `700 ${dynamicNameFontSize}px "Inter", system-ui, sans-serif`
+  }
 
   // Position name and tag on same line
   const nameY = p.commitment ? pMidY - nameFontSize * 0.9 : pMidY - nameFontSize * 0.6
-  ctx.fillText(displayName, curX, nameY)
+  ctx.fillText(name, curX, nameY)
 
   // Draw year/position tag after name
   if (tag) {
-    const nameW = ctx.measureText(displayName + '  ').width
+    const nameW = ctx.measureText(name + '  ').width
     ctx.fillStyle = COLORS.text_gray
-    ctx.font = `500 ${Math.max(nameFontSize - 4, 10)}px "Inter", system-ui, sans-serif`
+    ctx.font = `500 ${Math.max(dynamicNameFontSize - 4, 10)}px "Inter", system-ui, sans-serif`
     ctx.fillText(tag, curX + nameW, nameY)
   }
 

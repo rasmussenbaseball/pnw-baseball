@@ -25,8 +25,11 @@ export default function PitchLevelStatsCard({ playerId, season }) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
       <div className="flex items-baseline justify-between mb-1">
-        <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider">
+        <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider flex items-center gap-2">
           Pitch-Level Stats
+          <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+            Beta
+          </span>
         </h3>
         <span className="text-[10px] text-gray-400">{season}</span>
       </div>
