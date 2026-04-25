@@ -123,6 +123,17 @@ run_step "Future schedules (playoff projections)" \
 run_step "Backfill player IDs in game logs" \
     python3 scripts/backfill_player_ids.py
 
+# ── Step 4d: Deduplicate games ─────────────────────────────
+# Catches games scraped twice — flipped home/away, NULL-opponent orphans,
+# OOC-placeholder phantoms, schedule-only phantoms, and identical-stats
+# duplicates (e.g., a school site publishing one game under two URLs which
+# the scraper auto-bumps to game_number=2). Must run AFTER scrape_boxscores
+# (Step 2) and player ID backfill (above) so Pass 5 stat signatures are
+# stable.
+
+run_step "Deduplicate games" \
+    python3 scripts/dedup_games.py --season "$SEASON"
+
 # ── Step 5: Recalculate advanced metrics ───────────────────
 # Recalc is now OWNED by the GitHub Actions workflow .github/workflows/nwac-stats.yml
 # which fires at 8 PM Pacific (after this server's 7 PM scrape completes AND after

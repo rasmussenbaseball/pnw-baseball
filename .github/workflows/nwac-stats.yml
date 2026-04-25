@@ -46,6 +46,13 @@ jobs:
             PYTHONPATH=backend python3 scripts/scrape_nwac.py --season 2025-26 --skip-rosters
           fi
 
+      - name: Deduplicate games
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          PYTHONPATH=backend python3 scripts/dedup_games.py --season 2026
+
       - name: Recalculate league-adjusted stats
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

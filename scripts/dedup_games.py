@@ -9,12 +9,17 @@ Games can be duplicated when:
 - A scraper creates an OOC placeholder (team_id > 30000) for an opponent that
   team_matching.py could not resolve, shadowing a real-team game on the same date
 
-Three passes:
+Five passes:
   Pass 1: same team pair, home/away flipped.
   Pass 2: one side has NULL team_id, matched to a valid same-date counterpart.
   Pass 3: phantom pair — one side has an OOC placeholder; the other side is all
           real teams; their batting rows share >= 50% of players (same real game
           scraped twice).
+  Pass 4: orientation-swapped schedule-only phantom (no batting rows on one side).
+  Pass 5: identical-stats duplicate — same teams, same date, different
+          game_number, but byte-identical per-player stat lines. Catches
+          schools that publish the same box score under two URLs (different
+          internal IDs) which the scraper auto-bumps to game_number=2.
 
 Usage (on server):
     cd /opt/pnw-baseball
@@ -439,6 +444,138 @@ def dedup_games(season, dry_run=False):
 
     total_deleted += p4_deleted
 
+    # ========== Pass 5: identical-stats duplicate scrapes ==========
+    # Some Sidearm sites publish the same game under multiple internal IDs
+    # (e.g., smusaints.com served the SMU @ CWU 4/24/2026 game at both
+    # /boxscore/6357 and /boxscore/6571). The scraper visits both URLs,
+    # finds no source_url match, and inserts the second one as
+    # game_number=2, which Pass 1 then misses because it groups by
+    # game_number.
+    #
+    # Signature that makes this safe against legitimate doubleheaders:
+    #   - same date, same team pair (either orientation)
+    #   - different game_number (or one NULL)
+    #   - same final score
+    #   - both games have batting rows
+    #   - per-player stat lines are byte-identical (computed in Python)
+    # A real doubleheader will always have different per-player stat lines
+    # because no two games unfold identically.
+    cur.execute("""
+        SELECT g1.id AS id1, g2.id AS id2, g1.game_date,
+               g1.game_number AS gn1, g2.game_number AS gn2,
+               g1.source_url AS src1, g2.source_url AS src2,
+               g1.home_score, g1.away_score
+        FROM games g1
+        JOIN games g2
+          ON g1.season = g2.season
+         AND g1.game_date = g2.game_date
+         AND g1.id < g2.id
+         AND (g1.game_number IS DISTINCT FROM g2.game_number)
+         AND LEAST(g1.home_team_id, g1.away_team_id)
+             = LEAST(g2.home_team_id, g2.away_team_id)
+         AND GREATEST(g1.home_team_id, g1.away_team_id)
+             = GREATEST(g2.home_team_id, g2.away_team_id)
+         AND g1.home_score = g2.home_score
+         AND g1.away_score = g2.away_score
+        WHERE g1.season = %s
+          AND g1.status = 'final' AND g2.status = 'final'
+          AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
+          AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM game_batting WHERE game_id = g1.id)
+          AND EXISTS (SELECT 1 FROM game_batting WHERE game_id = g2.id)
+        ORDER BY g1.game_date, g1.id
+    """, (season,))
+
+    p5_candidates = cur.fetchall()
+
+    def _stat_signature(cur, game_id):
+        """Order-independent hash of per-player batting + pitching stat lines.
+
+        Uses player_id when present, else normalized last name. Two games with
+        identical signatures are byte-identical real-game scrapes."""
+        import hashlib
+        cur.execute("""
+            SELECT player_id, player_name, team_id,
+                   at_bats, hits, runs, rbi
+            FROM game_batting WHERE game_id = %s
+        """, (game_id,))
+        bat_keys = sorted(
+            (r["player_id"] or _last_name(r["player_name"]),
+             r["team_id"], r["at_bats"], r["hits"], r["runs"], r["rbi"])
+            for r in cur.fetchall()
+        )
+        cur.execute("""
+            SELECT player_id, player_name, team_id,
+                   innings_pitched, hits_allowed, runs_allowed,
+                   strikeouts, walks
+            FROM game_pitching WHERE game_id = %s
+        """, (game_id,))
+        pit_keys = sorted(
+            (r["player_id"] or _last_name(r["player_name"]),
+             r["team_id"],
+             # innings_pitched is baseball notation (decimal-ish); cast to str
+             str(r["innings_pitched"]),
+             r["hits_allowed"], r["runs_allowed"],
+             r["strikeouts"], r["walks"])
+            for r in cur.fetchall()
+        )
+        return hashlib.md5(
+            (str(bat_keys) + "|" + str(pit_keys)).encode()
+        ).hexdigest()
+
+    p5_pairs = []
+    for c in p5_candidates:
+        sig1 = _stat_signature(cur, c["id1"])
+        sig2 = _stat_signature(cur, c["id2"])
+        if sig1 == sig2:
+            p5_pairs.append(c)
+
+    logger.info(f"Pass 5 (identical-stats duplicate scrapes): "
+                f"found {len(p5_pairs)}")
+
+    p5_deleted = 0
+    p5_bat_deleted = 0
+    p5_pit_deleted = 0
+    p5_evt_deleted = 0
+    for c in p5_pairs:
+        # Keep the lower id (older/canonical) and delete the duplicate.
+        canon_id = c["id1"]
+        dup_id = c["id2"]
+        logger.info(
+            f"  {c['game_date']} canon=g{canon_id}(gn={c['gn1']}) "
+            f"dup=g{dup_id}(gn={c['gn2']}) score={c['home_score']}-{c['away_score']} "
+            f"src_dup={c['src2']!r}"
+        )
+        if dry_run:
+            cur.execute("SELECT COUNT(*) AS cnt FROM game_batting WHERE game_id = %s",
+                        (dup_id,))
+            p5_bat_deleted += cur.fetchone()["cnt"]
+            cur.execute("SELECT COUNT(*) AS cnt FROM game_pitching WHERE game_id = %s",
+                        (dup_id,))
+            p5_pit_deleted += cur.fetchone()["cnt"]
+            p5_deleted += 1
+            continue
+
+        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (dup_id,))
+        p5_bat_deleted += cur.rowcount
+        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (dup_id,))
+        p5_pit_deleted += cur.rowcount
+        # game_events may not exist on every install yet; guard with try.
+        try:
+            cur.execute("DELETE FROM game_events WHERE game_id = %s", (dup_id,))
+            p5_evt_deleted += cur.rowcount
+        except psycopg2.errors.UndefinedTable:
+            conn.rollback()  # game_events table doesn't exist
+        cur.execute("DELETE FROM games WHERE id = %s", (dup_id,))
+        p5_deleted += 1
+
+    if not dry_run:
+        conn.commit()
+
+    total_deleted += p5_deleted
+    total_batting_deleted += p5_bat_deleted
+    total_pitching_deleted += p5_pit_deleted
+
     # ========== Summary ==========
     logger.info(f"\n{'='*60}")
     logger.info(f"{'DRY RUN - ' if dry_run else ''}Dedup complete for season {season}")
@@ -446,6 +583,7 @@ def dedup_games(season, dry_run=False):
     logger.info(f"  Pass 2 orphan games:     {len(orphans)}")
     logger.info(f"  Pass 3 phantom pairs:    {len(phantoms)}")
     logger.info(f"  Pass 4 schedule-only:    {len(phantoms_p4)}")
+    logger.info(f"  Pass 5 identical-stats:  {len(p5_pairs)}")
     logger.info(f"  Games deleted:           {total_deleted}")
     logger.info(f"  Batting rows deleted:    {total_batting_deleted}")
     logger.info(f"  Pitching rows deleted:   {total_pitching_deleted}")

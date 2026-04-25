@@ -612,6 +612,28 @@ export default function DailyScoresGraphic() {
           dbMatchups.add(oppKey)
         }
       }
+      // Defensive dedup: same date + same team pair + same score AND same
+      // hits AND same errors = the same real game scraped twice. Includes
+      // hits + errors so a legitimate doubleheader where both games happen
+      // to share a final score (it happens) is NOT collapsed. Keeps the
+      // first occurrence. Belt-and-suspenders for the backend Pass 5 in
+      // dedup_games.py in case a duplicate slips through before nightly
+      // dedup runs.
+      const seenGames = new Set()
+      json.games = json.games.filter(g => {
+        const a = (g.home_short || g.home_team_name || '').toLowerCase()
+        const b = (g.away_short || g.away_team_name || '').toLowerCase()
+        const teams = [a, b].sort().join('|')
+        const key = [
+          g.game_date, teams,
+          g.home_score, g.away_score,
+          g.home_hits, g.away_hits,
+          g.home_errors, g.away_errors,
+        ].join('|')
+        if (seenGames.has(key)) return false
+        seenGames.add(key)
+        return true
+      })
       setData(json)
     } catch (err) {
       setError(err.message)
