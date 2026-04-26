@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useLayoutEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
@@ -1087,6 +1087,24 @@ export default function PlayerDetail() {
   const { data: gameLogs } = usePlayerGameLogs(playerId, 2026)
   const { data: splits } = usePlayerSplits(playerId, 2026)
 
+  // ── Bars-height measurement for the 2026 2-col layout ──────────
+  // The right column should never exceed the LEFT (bars) column's
+  // natural height. We measure the bars wrapper after render and feed
+  // its height into the right column as maxHeight + overflow-hidden,
+  // so the right column scrolls excess content internally.
+  const barsRef = useRef(null)
+  const [barsHeight, setBarsHeight] = useState(null)
+  useLayoutEffect(() => {
+    if (!barsRef.current) return
+    const el = barsRef.current
+    const update = () => setBarsHeight(el.offsetHeight)
+    update()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [data, percentileSeason])
+
   if (loading && !data) {
     return (
       <div className="flex justify-center py-20">
@@ -1319,12 +1337,17 @@ export default function PlayerDetail() {
           </div>
         ) : null
 
-        // 2026 layout: bars + awards side-by-side, equal height
+        // 2026 layout: bars + awards side-by-side. Left column is at
+        // its natural height; right column is CAPPED to that height via
+        // a JS-measured maxHeight (see barsRef / barsHeight at the top
+        // of this component). Excess content scrolls inside cards.
         if (isCurrent2026 && hasBars && (hasAwards || hasPosition)) {
           return (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-stretch">
-              {/* LEFT: percentile bars (one container, both batting + pitching inside) */}
-              <div className="flex flex-col h-full">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
+              {/* LEFT: percentile bars — natural height (no h-full /
+                  fillHeight; we want the rectangle to end right under
+                  the "Min 5 IP" footer line). */}
+              <div ref={barsRef} className="flex flex-col">
                 {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
                   <PercentileBars
                     percentiles={batting_percentiles}
@@ -1332,7 +1355,6 @@ export default function PlayerDetail() {
                     title={`Batting · ${percentileLabel}`}
                     divisionLevel={player.division_level}
                     seasonFilter={seasonFilter}
-                    fillHeight={!pitching_percentiles || Object.keys(pitching_percentiles || {}).length === 0}
                   />
                 )}
                 {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
@@ -1342,19 +1364,18 @@ export default function PlayerDetail() {
                     title={`Pitching · ${percentileLabel}`}
                     divisionLevel={player.division_level}
                     seasonFilter={!batting_percentiles || Object.keys(batting_percentiles || {}).length === 0 ? seasonFilter : null}
-                    fillHeight={true}
                   />
                 )}
               </div>
 
-              {/* RIGHT: awards + position + glance + recent games.
-                  CAPPED at left column height: min-h-0 + overflow-hidden
-                  on the wrapper means the row's height is dictated by
-                  the LEFT (bars) column. RecentGames is the bottom
-                  card with flex-grow + internal scroll so it consumes
-                  the remaining space (and excess games scroll instead
-                  of pushing the row taller). */}
-              <div className="flex flex-col h-full gap-4 min-h-0 overflow-hidden">
+              {/* RIGHT: priority order — Awards → Position → Glance → Recent Games.
+                  maxHeight set to LEFT column height so we never overflow
+                  past the bars. Bottom card uses flex-grow with internal
+                  scroll to consume remaining space. */}
+              <div
+                className="flex flex-col gap-4 overflow-hidden"
+                style={barsHeight ? { maxHeight: `${barsHeight}px` } : undefined}
+              >
                 {hasAwards && (
                   <TeamAwards
                     awards={awards || []}
@@ -1366,6 +1387,9 @@ export default function PlayerDetail() {
                 {hasPosition && (
                   <PositionPieChart breakdown={position_breakdown} />
                 )}
+                {/* Filler cards only if there's still vertical room. We
+                    render them anyway and let overflow-hidden + the
+                    Recent-Games internal scroll handle the spillover. */}
                 <SeasonGlance
                   bat={batting_stats?.find(r => r.season === 2026)}
                   pit={pitching_stats?.find(r => r.season === 2026)}
