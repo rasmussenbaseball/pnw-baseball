@@ -1,45 +1,46 @@
 import { useState, useMemo } from 'react'
 
 /**
- * Statcast-style spray chart for a hitter (or opponent contact for a
- * pitcher). 9 wedges fan out from home plate:
- *   Outfield arc (5):  LF / LC / CF / RC / RF
- *   Infield ring  (4): 3B / SS / MID / 1B
+ * Statcast-style spray chart for a hitter.
  *
- * IF_C (catcher foul pops) is folded into IF_MID for the visual since
- * those are foul-territory balls that don't sit cleanly on the fan.
+ * Layout:
+ *   Outfield arc (3): LF / CF / RF — equal thirds across the fan.
+ *                     LC + RC counts are folded into the adjacent OF
+ *                     zone for visual cleanliness (sample is too thin
+ *                     to render as separate gap wedges per player).
+ *   Infield ring (4): 3B / SS / MID / 1B (catcher folds into MID).
  *
- * Props:
- *   data      — { all: {ZONE: count}, vs_lhp, vs_rhp, all_total, ... }
- *   bats      — 'L' / 'R' / 'S' (used for orientation hint, not rotation)
- *   defaultFilter — 'all' / 'vs_lhp' / 'vs_rhp'
+ * Filter chips: All Pitchers / vs RHP / vs LHP / XBH / HR.
+ *
+ * Outside the outfield fence: HR-percentage badges per OF third
+ * (only shown when this player has at least one HR in the season).
  */
 
+// NW Teal palette — light to dark
 const SHADES = [
-  '#f5f5f5',  // 0%
-  '#e8f5e8',  // very low
-  '#c8e6c9',
-  '#a5d6a7',
-  '#81c784',
-  '#66bb6a',
-  '#4caf50',
-  '#388e3c',
-  '#2e7d32',
-  '#1b5e20',  // peak
+  '#f1f6f7',   // near-white
+  '#dceef0',
+  '#bee0e3',
+  '#9dd0d6',
+  '#73bcc6',
+  '#48a8b6',
+  '#1f95a6',
+  '#008a9e',   // nw-teal-light
+  '#00687a',   // nw-teal
+  '#004d5a',   // nw-teal-dark
 ]
 
-function shadeFor(pct, peak) {
-  if (peak <= 0 || !pct) return SHADES[0]
-  const idx = Math.min(SHADES.length - 1,
-                       Math.max(0, Math.round((pct / peak) * (SHADES.length - 1))))
-  return SHADES[idx]
+const TEXT_DARK_SHADES = new Set([6, 7, 8, 9])  // shade indexes where text should be white
+
+function shadeIndex(pct, peak) {
+  if (peak <= 0 || !pct) return 0
+  return Math.min(SHADES.length - 1,
+                  Math.max(0, Math.round((pct / peak) * (SHADES.length - 1))))
 }
 
-// Build an SVG <path> for a circular wedge between two angles + two radii.
-// Angles in degrees, measured from straight-up (12 o'clock) clockwise.
-// (cx, cy) is the wedge apex (home plate).
+// Build SVG <path> for a circular wedge between two angles + two radii.
+// Angles in degrees from straight-up (12 o'clock), clockwise.
 function wedgePath(cx, cy, r1, r2, angStart, angEnd) {
-  // Convert to math angles (0 = right, ccw positive)
   const a1 = (angStart - 90) * Math.PI / 180
   const a2 = (angEnd - 90) * Math.PI / 180
   const x1in = cx + r1 * Math.cos(a1)
@@ -61,87 +62,122 @@ function wedgePath(cx, cy, r1, r2, angStart, angEnd) {
   ].join(' ')
 }
 
-// Compute centroid for placing the percentage label
 function wedgeLabelPos(cx, cy, r1, r2, angStart, angEnd) {
   const aMid = ((angStart + angEnd) / 2 - 90) * Math.PI / 180
   const rMid = (r1 + r2) / 2
   return [cx + rMid * Math.cos(aMid), cy + rMid * Math.sin(aMid)]
 }
 
-// 9-wedge layout. Foul lines = -45° to +45° from straight-up.
-//   OF arc:  -45° to +45°, 5 wedges of 18° each (LF on left for the viewer)
-//   IF ring: same -45° to +45°, 4 wedges of 22.5° each
-const FAN_HALF_ANGLE = 45  // degrees from straight up
-
-// Outfield zones: order from left (-45°) to right (+45°)
-const OF_ZONES = ['LF', 'LC', 'CF', 'RC', 'RF']
-// Infield zones: order from left (-45°) to right (+45°)
+const FAN_HALF_ANGLE = 45
+const OF_ZONES = ['LF', 'CF', 'RF']
 const IF_ZONES = ['IF_3B', 'IF_SS', 'IF_MID', 'IF_1B']
-
 const ZONE_LABEL = {
-  LF: 'LF', LC: 'LC', CF: 'CF', RC: 'RC', RF: 'RF',
+  LF: 'LF', CF: 'CF', RF: 'RF',
   IF_3B: '3B', IF_SS: 'SS', IF_MID: 'MID', IF_1B: '1B',
 }
 
-export default function SprayChart({ data, bats, defaultFilter = 'all' }) {
-  const [filter, setFilter] = useState(defaultFilter)
+// Fold the fine zones (10) into the visual zones (3 OF + 4 IF).
+// LC → LF, RC → RF, IF_C → IF_MID.
+function condense(counts = {}) {
+  return {
+    LF:     (counts.LF     || 0) + (counts.LC || 0),
+    CF:     (counts.CF     || 0),
+    RF:     (counts.RF     || 0) + (counts.RC || 0),
+    IF_3B:  counts.IF_3B   || 0,
+    IF_SS:  counts.IF_SS   || 0,
+    IF_MID: (counts.IF_MID || 0) + (counts.IF_C || 0),
+    IF_1B:  counts.IF_1B   || 0,
+  }
+}
 
-  const counts = data?.[filter] || {}
+const HITTER_FILTERS = [
+  ['all',    'All Pitchers'],
+  ['vs_rhp', 'vs RHP'],
+  ['vs_lhp', 'vs LHP'],
+  ['xbh',    'XBH'],
+  ['hr',     'HR'],
+]
+const PITCHER_FILTERS = [
+  ['all',    'All Batters'],
+  ['vs_rhb', 'vs RHB'],
+  ['vs_lhb', 'vs LHB'],
+  ['xbh',    'XBH'],
+  ['hr',     'HR'],
+]
+
+export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter' }) {
+  const FILTERS = mode === 'pitcher' ? PITCHER_FILTERS : HITTER_FILTERS
+  const [filter, setFilter] = useState(defaultFilter)
+  const counts = condense(data?.[filter])
   const total = data?.[`${filter}_total`] || 0
 
-  // Fold IF_C into IF_MID for visual purposes
-  const if_c = counts.IF_C || 0
-  const display = useMemo(() => {
-    const out = { ...counts }
-    out.IF_MID = (out.IF_MID || 0) + if_c
-    return out
-  }, [counts, if_c])
+  // HR badges: % of HRs hit to each OF third
+  const hrCondensed = useMemo(() => condense(data?.hr), [data])
+  const hrTotal = data?.hr_total || 0
 
-  // Compute peak for color scaling (use the larger of either ring's max)
-  const peakOF = Math.max(...OF_ZONES.map(z => display[z] || 0))
-  const peakIF = Math.max(...IF_ZONES.map(z => display[z] || 0))
-  const peak = Math.max(peakOF, peakIF)
+  // Color peak: scale by the max wedge in current view
+  const allWedges = [
+    ...OF_ZONES.map(z => counts[z] || 0),
+    ...IF_ZONES.map(z => counts[z] || 0),
+  ]
+  const peak = Math.max(...allWedges, 1)
 
-  // Geometry — chart is 500 wide, 360 tall
-  const W = 500, H = 360
+  // Smaller geometry (was 500x360, now 360x270)
+  const W = 360, H = 270
   const HOME = { x: W / 2, y: H - 20 }
-  const R_HOME = 12       // small "home plate" inner radius
-  const R_INF_OUT = 150   // infield outer radius (= OF inner)
-  const R_OF_OUT = 290    // outfield outer radius
+  const R_HOME = 6
+  const R_INF_OUT = 100   // infield outer radius
+  const R_OF_OUT = 200    // outfield outer radius
+  const R_HR_BADGE = R_OF_OUT + 18  // outside the fence
 
-  // Wedge angle ranges
   const ofWedge = (FAN_HALF_ANGLE * 2) / OF_ZONES.length
   const ifWedge = (FAN_HALF_ANGLE * 2) / IF_ZONES.length
+  const ofAngles = i => [
+    -FAN_HALF_ANGLE + i * ofWedge,
+    -FAN_HALF_ANGLE + (i + 1) * ofWedge,
+  ]
+  const ifAngles = i => [
+    -FAN_HALF_ANGLE + i * ifWedge,
+    -FAN_HALF_ANGLE + (i + 1) * ifWedge,
+  ]
 
-  function ofAngles(i) {
-    return [
-      -FAN_HALF_ANGLE + i * ofWedge,
-      -FAN_HALF_ANGLE + (i + 1) * ofWedge,
-    ]
-  }
-  function ifAngles(i) {
-    return [
-      -FAN_HALF_ANGLE + i * ifWedge,
-      -FAN_HALF_ANGLE + (i + 1) * ifWedge,
-    ]
+  // Bases positions for the diamond (1B right, 2B up, 3B left)
+  const BASE_DIST = 70  // distance from home along the diagonal
+  const baseSize = 5    // half-side of the diamond
+  // Foul lines run at -45° / +45° from straight up
+  const a45 = 45 * Math.PI / 180
+  const firstBase  = { x: HOME.x + BASE_DIST * Math.sin(a45), y: HOME.y - BASE_DIST * Math.cos(a45) }
+  const thirdBase  = { x: HOME.x - BASE_DIST * Math.sin(a45), y: HOME.y - BASE_DIST * Math.cos(a45) }
+  const secondBase = { x: HOME.x, y: HOME.y - BASE_DIST * Math.sqrt(2) }
+
+  function renderBase(b, key) {
+    return (
+      <rect
+        key={key}
+        x={b.x - baseSize}
+        y={b.y - baseSize}
+        width={baseSize * 2}
+        height={baseSize * 2}
+        fill="#ffffff"
+        stroke="#9ca3af"
+        strokeWidth="1.2"
+        transform={`rotate(45 ${b.x} ${b.y})`}
+      />
+    )
   }
 
   return (
-    <div className="bg-white rounded-md border border-gray-200 p-4">
-      <div className="flex items-center justify-between mb-2">
+    <div className="bg-white rounded-md border border-gray-200 p-3">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-gray-800">Spray Chart</h3>
-        <div className="flex items-center gap-1 text-[11px]">
-          {[
-            ['all',    'All'],
-            ['vs_rhp', 'vs RHP'],
-            ['vs_lhp', 'vs LHP'],
-          ].map(([k, label]) => (
+        <div className="flex items-center flex-wrap gap-1 text-[10px]">
+          {FILTERS.map(([k, label]) => (
             <button
               key={k}
               onClick={() => setFilter(k)}
-              className={`px-2 py-0.5 rounded font-medium ${
+              className={`px-2 py-0.5 rounded font-medium transition-colors ${
                 filter === k
-                  ? 'bg-gray-800 text-white'
+                  ? 'bg-nw-teal text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -151,149 +187,178 @@ export default function SprayChart({ data, bats, defaultFilter = 'all' }) {
         </div>
       </div>
 
-      <div className="relative">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
-          {/* Foul-line backdrop (white triangle behind everything) */}
-          <path
-            d={`M ${HOME.x} ${HOME.y}
-                L ${HOME.x - R_OF_OUT * Math.cos((45 - 90) * Math.PI / 180) * -1} ${HOME.y + R_OF_OUT * Math.sin((45 - 90) * Math.PI / 180)}
-                L ${HOME.x + R_OF_OUT * Math.cos((45 - 90) * Math.PI / 180) * -1} ${HOME.y + R_OF_OUT * Math.sin((45 - 90) * Math.PI / 180)} Z`}
-            fill="white"
-            stroke="#d4d4d4"
-            strokeWidth="1.5"
-          />
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+        {/* Outfield wedges (outer ring) */}
+        {OF_ZONES.map((z, i) => {
+          const [a1, a2] = ofAngles(i)
+          const n = counts[z] || 0
+          const pct = total > 0 ? n / total : 0
+          const sIdx = shadeIndex(n, peak)
+          const fill = SHADES[sIdx]
+          const [lx, ly] = wedgeLabelPos(HOME.x, HOME.y, R_INF_OUT, R_OF_OUT, a1, a2)
+          const pctText = total > 0 ? `${(pct * 100).toFixed(0)}%` : '—'
+          const textColor = TEXT_DARK_SHADES.has(sIdx) ? '#ffffff' : '#1f2937'
+          return (
+            <g key={`of-${z}`}>
+              <path
+                d={wedgePath(HOME.x, HOME.y, R_INF_OUT, R_OF_OUT, a1, a2)}
+                fill={fill}
+                stroke="white"
+                strokeWidth="2"
+              />
+              {n > 0 && (
+                <text
+                  x={lx} y={ly}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{ fontSize: '13px', fontWeight: 700, fill: textColor, pointerEvents: 'none' }}
+                >
+                  {pctText}
+                </text>
+              )}
+            </g>
+          )
+        })}
 
-          {/* Outfield wedges (outer ring) */}
-          {OF_ZONES.map((z, i) => {
-            const [a1, a2] = ofAngles(i)
-            const n = display[z] || 0
-            const pct = total > 0 ? n / total : 0
-            const fill = shadeFor(n, peak)
-            const [lx, ly] = wedgeLabelPos(HOME.x, HOME.y, R_INF_OUT, R_OF_OUT, a1, a2)
-            const pctText = total > 0 ? `${(pct * 100).toFixed(0)}%` : '—'
-            return (
-              <g key={`of-${z}`}>
-                <path
-                  d={wedgePath(HOME.x, HOME.y, R_INF_OUT, R_OF_OUT, a1, a2)}
-                  fill={fill}
-                  stroke="white"
-                  strokeWidth="2"
-                />
-                {n > 0 && (
-                  <text
-                    x={lx} y={ly}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="fill-gray-900 font-bold"
-                    style={{ fontSize: '14px', pointerEvents: 'none' }}
-                  >
-                    {pctText}
-                  </text>
-                )}
-              </g>
-            )
-          })}
+        {/* Infield wedges (inner ring) */}
+        {IF_ZONES.map((z, i) => {
+          const [a1, a2] = ifAngles(i)
+          const n = counts[z] || 0
+          const pct = total > 0 ? n / total : 0
+          const sIdx = shadeIndex(n, peak)
+          const fill = SHADES[sIdx]
+          const [lx, ly] = wedgeLabelPos(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2)
+          const pctText = total > 0 ? `${(pct * 100).toFixed(0)}%` : '—'
+          const textColor = TEXT_DARK_SHADES.has(sIdx) ? '#ffffff' : '#1f2937'
+          return (
+            <g key={`if-${z}`}>
+              <path
+                d={wedgePath(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2)}
+                fill={fill}
+                stroke="white"
+                strokeWidth="2"
+              />
+              {n > 0 && (
+                <text
+                  x={lx} y={ly}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{ fontSize: '11px', fontWeight: 700, fill: textColor, pointerEvents: 'none' }}
+                >
+                  {pctText}
+                </text>
+              )}
+            </g>
+          )
+        })}
 
-          {/* Infield wedges (inner ring) */}
-          {IF_ZONES.map((z, i) => {
-            const [a1, a2] = ifAngles(i)
-            const n = display[z] || 0
-            const pct = total > 0 ? n / total : 0
-            const fill = shadeFor(n, peak)
-            const [lx, ly] = wedgeLabelPos(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2)
-            const pctText = total > 0 ? `${(pct * 100).toFixed(0)}%` : '—'
-            return (
-              <g key={`if-${z}`}>
-                <path
-                  d={wedgePath(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2)}
-                  fill={fill}
-                  stroke="white"
-                  strokeWidth="2"
-                />
-                {n > 0 && (
-                  <text
-                    x={lx} y={ly}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="fill-gray-900 font-bold"
-                    style={{ fontSize: '13px', pointerEvents: 'none' }}
-                  >
-                    {pctText}
-                  </text>
-                )}
-              </g>
-            )
-          })}
+        {/* Bases — diamond formation, white squares rotated 45° */}
+        {renderBase(firstBase,  'b1')}
+        {renderBase(secondBase, 'b2')}
+        {renderBase(thirdBase,  'b3')}
 
-          {/* Home plate marker */}
-          <polygon
-            points={`${HOME.x - 8},${HOME.y} ${HOME.x + 8},${HOME.y} ${HOME.x + 8},${HOME.y - 6} ${HOME.x},${HOME.y - 12} ${HOME.x - 8},${HOME.y - 6}`}
-            fill="#9ca3af"
-            stroke="#6b7280"
-            strokeWidth="1"
-          />
+        {/* Home plate — pentagon with point DOWN toward catcher,
+            flat side facing pitcher's mound (away from camera) */}
+        <polygon
+          points={`
+            ${HOME.x - 7},${HOME.y - 8}
+            ${HOME.x + 7},${HOME.y - 8}
+            ${HOME.x + 7},${HOME.y - 2}
+            ${HOME.x},    ${HOME.y + 5}
+            ${HOME.x - 7},${HOME.y - 2}
+          `}
+          fill="#ffffff"
+          stroke="#9ca3af"
+          strokeWidth="1.2"
+        />
 
-          {/* Bases (visual only) */}
-          <circle cx={HOME.x - 70} cy={HOME.y - 100} r="3" fill="#9ca3af" />
-          <circle cx={HOME.x}      cy={HOME.y - 130} r="3" fill="#9ca3af" />
-          <circle cx={HOME.x + 70} cy={HOME.y - 100} r="3" fill="#9ca3af" />
+        {/* OF zone labels */}
+        {OF_ZONES.map((z, i) => {
+          const [a1, a2] = ofAngles(i)
+          const aMid = ((a1 + a2) / 2 - 90) * Math.PI / 180
+          const r = R_OF_OUT + 12
+          return (
+            <text
+              key={`lab-${z}`}
+              x={HOME.x + r * Math.cos(aMid)}
+              y={HOME.y + r * Math.sin(aMid)}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ fontSize: '10px', fontWeight: 600, fill: '#6b7280' }}
+            >
+              {ZONE_LABEL[z]}
+            </text>
+          )
+        })}
 
-          {/* Zone labels (small position markers above each wedge) */}
-          {OF_ZONES.map((z, i) => {
-            const [a1, a2] = ofAngles(i)
-            const aMid = ((a1 + a2) / 2 - 90) * Math.PI / 180
-            const r = R_OF_OUT + 14
-            return (
+        {/* HR badges OUTSIDE the fence — only shown when player has HRs */}
+        {hrTotal > 0 && OF_ZONES.map((z, i) => {
+          const hr = hrCondensed[z] || 0
+          if (hr === 0) return null
+          const [a1, a2] = ofAngles(i)
+          const aMid = ((a1 + a2) / 2 - 90) * Math.PI / 180
+          const bx = HOME.x + R_HR_BADGE * Math.cos(aMid)
+          const by = HOME.y + R_HR_BADGE * Math.sin(aMid)
+          const pct = `${Math.round((hr / hrTotal) * 100)}%`
+          return (
+            <g key={`hr-${z}`} transform={`translate(${bx}, ${by})`}>
+              <rect
+                x="-22" y="-9"
+                width="44" height="18"
+                rx="9" ry="9"
+                fill="#004d5a"
+              />
               <text
-                key={`lab-${z}`}
-                x={HOME.x + r * Math.cos(aMid)}
-                y={HOME.y + r * Math.sin(aMid)}
+                x="0" y="0"
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-gray-500"
-                style={{ fontSize: '11px' }}
+                style={{ fontSize: '10px', fontWeight: 700, fill: '#ffffff' }}
               >
-                {ZONE_LABEL[z]}
+                HR {pct}
               </text>
-            )
-          })}
+            </g>
+          )
+        })}
 
-          {/* BIP badge */}
-          <g transform={`translate(${W - 70}, 16)`}>
-            <text x="0" y="0" textAnchor="end" className="fill-gray-500" style={{ fontSize: '10px', fontWeight: 600 }}>
-              BIP
-            </text>
-            <text x="55" y="2" textAnchor="end" className="fill-gray-900" style={{ fontSize: '16px', fontWeight: 700 }}>
-              {total}
-            </text>
-          </g>
+        {/* BIP badge */}
+        <g transform={`translate(${W - 8}, 12)`}>
+          <text x="0" y="0" textAnchor="end" style={{ fontSize: '9px', fontWeight: 600, fill: '#6b7280' }}>
+            BIP
+          </text>
+          <text x="0" y="14" textAnchor="end" style={{ fontSize: '14px', fontWeight: 700, fill: '#1f2937' }}>
+            {total}
+          </text>
+        </g>
 
-          {/* Filter chip / batting hand badge */}
-          <g transform="translate(16, 16)">
-            <rect x="-4" y="-12" rx="4" ry="4" width="78" height="20" fill="#1f2937" />
-            <text x="35" y="2" textAnchor="middle" className="fill-white" style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em' }}>
-              {filter === 'all' ? 'ALL PITCHERS' : filter === 'vs_lhp' ? 'VS LHP' : 'VS RHP'}
-            </text>
-          </g>
-        </svg>
+        {/* Filter chip */}
+        <g transform="translate(8, 8)">
+          <rect x="0" y="0" rx="3" ry="3" width="76" height="16" fill="#1f2937" />
+          <text x="38" y="11" textAnchor="middle" style={{ fontSize: '9px', fontWeight: 700, fill: '#ffffff', letterSpacing: '0.04em' }}>
+            {(FILTERS.find(([k]) => k === filter) || [, 'ALL'])[1].toUpperCase()}
+          </text>
+        </g>
+      </svg>
 
-        {/* Legend / handedness hint */}
-        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-500">
-          <span>Pull side {bats === 'L' ? '→' : bats === 'R' ? '←' : ''} {bats === 'L' ? 'right' : bats === 'R' ? 'left' : '(switch)'}</span>
-          <div className="flex items-center gap-1">
-            <span>Less</span>
-            {SHADES.slice(1).map((c, i) => (
-              <span key={i} className="inline-block w-3 h-3 rounded" style={{ backgroundColor: c }} />
-            ))}
-            <span>More</span>
-          </div>
+      {/* Legend / handedness hint */}
+      <div className="flex items-center justify-between mt-2 text-[10px] text-gray-500">
+        <span>
+          Pull side: <strong className="text-gray-700">
+            {bats === 'L' ? 'right' : bats === 'R' ? 'left' : '(switch)'}
+          </strong>
+        </span>
+        <div className="flex items-center gap-1">
+          <span>Less</span>
+          {SHADES.slice(1).map((c, i) => (
+            <span key={i} className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: c }} />
+          ))}
+          <span>More</span>
         </div>
-        {if_c > 0 && (
-          <p className="text-[10px] text-gray-400 mt-1 italic">
-            Note: {if_c} catcher foul-pop{if_c === 1 ? '' : 's'} folded into MID for the visual.
-          </p>
-        )}
       </div>
+      {hrTotal > 0 && (
+        <p className="text-[10px] text-gray-400 mt-1 italic">
+          HR badges show % of {hrTotal} home run{hrTotal === 1 ? '' : 's'} pulled to each outfield zone.
+        </p>
+      )}
     </div>
   )
 }

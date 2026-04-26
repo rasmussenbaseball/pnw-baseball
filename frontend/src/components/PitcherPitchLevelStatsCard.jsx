@@ -1,4 +1,5 @@
 import { usePlayerPitchLevelStatsPitcher } from '../hooks/useApi'
+import SprayChart from './SprayChart'
 
 /**
  * Pitcher Pitch-Level Stats — mirror of the hitter card.
@@ -163,6 +164,17 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
             Type of contact this pitcher induces. Sinkerballers run high GB%; flyball pitchers run high FB%; weak-contact specialists keep LD% low.
           </p>
         </>
+      )}
+
+      {/* ── Phase F: Opponent Spray Chart (where opponents hit against this pitcher) ── */}
+      {data.opp_spray_chart && data.opp_spray_chart.all_total > 0 && (
+        <div className="mt-4 mb-6">
+          <SprayChart
+            data={data.opp_spray_chart}
+            mode="pitcher"
+            defaultFilter="all"
+          />
+        </div>
       )}
 
       {/* ── Situational splits (base state / inning / late & close) ── */}

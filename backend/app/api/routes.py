@@ -11783,9 +11783,15 @@ def get_player_pitch_level_stats(
                     spray_counts[spray] = spray_counts.get(spray, 0) + n
         spray_total = sum(spray_counts.values())
 
-        # ── Phase F: 10-zone spray chart breakdown ──
+        # ── Phase F: zoned spray chart breakdown ──
         # Returns counts (NOT percentages — the frontend computes those
-        # so it can re-normalize when filtering). One scope per LHP/RHP/all.
+        # so it can re-normalize when filtering). One bucket per filter:
+        #   all       — every BIP
+        #   vs_lhp    — BIP vs left-handed pitchers
+        #   vs_rhp    — BIP vs right-handed pitchers
+        #   xbh       — extra-base hits only (2B/3B/HR)
+        #   hr        — home runs only
+        # Plus hr_by_outfield (LF/CF/RF totals — for fence badges).
         FINE_ZONES = ["LF", "LC", "CF", "RC", "RF",
                       "IF_3B", "IF_SS", "IF_MID", "IF_1B", "IF_C"]
         cur.execute("""
@@ -11795,6 +11801,7 @@ def get_player_pitch_level_stats(
                      WHEN UPPER(p.throws) = 'R' THEN 'RHP'
                      ELSE 'UNK'
                    END AS pitcher_hand,
+                   result_type,
                    COUNT(*) AS c
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
@@ -11802,24 +11809,31 @@ def get_player_pitch_level_stats(
             WHERE ge.batter_player_id = ANY(%s)
               AND g.season = %s
               AND ge.field_zone_fine IS NOT NULL
-            GROUP BY field_zone_fine, pitcher_hand
+            GROUP BY field_zone_fine, pitcher_hand, result_type
         """, (all_pids, season))
         spray_chart = {
-            "all": {z: 0 for z in FINE_ZONES},
+            "all":    {z: 0 for z in FINE_ZONES},
             "vs_lhp": {z: 0 for z in FINE_ZONES},
             "vs_rhp": {z: 0 for z in FINE_ZONES},
+            "xbh":    {z: 0 for z in FINE_ZONES},
+            "hr":     {z: 0 for z in FINE_ZONES},
         }
+        XBH_TYPES = {"double", "triple", "home_run"}
         for r in cur.fetchall():
             z = r["field_zone_fine"]
             n = r["c"]
-            spray_chart["all"][z] = spray_chart["all"].get(z, 0) + n
+            rt = r["result_type"]
+            spray_chart["all"][z] += n
             if r["pitcher_hand"] == "LHP":
-                spray_chart["vs_lhp"][z] = spray_chart["vs_lhp"].get(z, 0) + n
+                spray_chart["vs_lhp"][z] += n
             elif r["pitcher_hand"] == "RHP":
-                spray_chart["vs_rhp"][z] = spray_chart["vs_rhp"].get(z, 0) + n
-        spray_chart["all_total"]    = sum(spray_chart["all"].values())
-        spray_chart["vs_lhp_total"] = sum(spray_chart["vs_lhp"].values())
-        spray_chart["vs_rhp_total"] = sum(spray_chart["vs_rhp"].values())
+                spray_chart["vs_rhp"][z] += n
+            if rt in XBH_TYPES:
+                spray_chart["xbh"][z] += n
+            if rt == "home_run":
+                spray_chart["hr"][z] += n
+        for k in ("all", "vs_lhp", "vs_rhp", "xbh", "hr"):
+            spray_chart[f"{k}_total"] = sum(spray_chart[k].values())
         contact_profile = {
             "bb_total": bb_total,
             "zone_total": zone_total,
@@ -12398,6 +12412,48 @@ def get_player_pitch_level_stats_pitcher(
             "pu_count": bb_counts["PU"],
         }
 
+        # ── Phase F: opponent spray chart (zone × LHB/RHB × xbh/hr) ──
+        FINE_ZONES = ["LF", "LC", "CF", "RC", "RF",
+                      "IF_3B", "IF_SS", "IF_MID", "IF_1B", "IF_C"]
+        cur.execute("""
+            SELECT field_zone_fine,
+                   CASE
+                     WHEN UPPER(p.bats) = 'L' THEN 'LHB'
+                     WHEN UPPER(p.bats) = 'R' THEN 'RHB'
+                     ELSE 'UNK'
+                   END AS batter_hand,
+                   result_type,
+                   COUNT(*) AS c
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            LEFT JOIN players p ON p.id = ge.batter_player_id
+            WHERE ge.pitcher_player_id = ANY(%s)
+              AND g.season = %s
+              AND ge.field_zone_fine IS NOT NULL
+            GROUP BY field_zone_fine, batter_hand, result_type
+        """, (all_pids, season))
+        opp_spray_chart = {
+            "all":    {z: 0 for z in FINE_ZONES},
+            "vs_lhb": {z: 0 for z in FINE_ZONES},
+            "vs_rhb": {z: 0 for z in FINE_ZONES},
+            "xbh":    {z: 0 for z in FINE_ZONES},
+            "hr":     {z: 0 for z in FINE_ZONES},
+        }
+        XBH_TYPES = {"double", "triple", "home_run"}
+        for r in cur.fetchall():
+            z = r["field_zone_fine"]; n = r["c"]; rt = r["result_type"]
+            opp_spray_chart["all"][z] += n
+            if r["batter_hand"] == "LHB":
+                opp_spray_chart["vs_lhb"][z] += n
+            elif r["batter_hand"] == "RHB":
+                opp_spray_chart["vs_rhb"][z] += n
+            if rt in XBH_TYPES:
+                opp_spray_chart["xbh"][z] += n
+            if rt == "home_run":
+                opp_spray_chart["hr"][z] += n
+        for k in ("all", "vs_lhb", "vs_rhb", "xbh", "hr"):
+            opp_spray_chart[f"{k}_total"] = sum(opp_spray_chart[k].values())
+
         # ── Count-state opponent slash (from pitcher's POV) ──
         def _opp_slash(filter_sql, params):
             cur.execute(f"""
@@ -12539,6 +12595,7 @@ def get_player_pitch_level_stats_pitcher(
             "lr_splits": lr_splits,
             "situational_splits": situational_splits,
             "opp_contact_profile": opp_contact_profile,
+            "opp_spray_chart": opp_spray_chart,
         }
 
 
