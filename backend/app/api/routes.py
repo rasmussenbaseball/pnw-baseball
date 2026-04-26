@@ -12064,6 +12064,36 @@ def get_player_pitch_level_stats(
             discipline["li_pa"] = 0
             discipline["max_li"] = None
 
+        # ── WPA (Phase D.5) ──
+        # Total Win Probability Added across every PA. Positive = the
+        # hitter contributed wins, negative = lost wins for his team.
+        # Computed in scripts/compute_wpa.py from an empirical WP table
+        # built from 2026 PBP. Also surface peak WPA (the most clutch
+        # single PA — usually a walk-off or lead-changing late hit).
+        cur.execute("""
+            SELECT
+                SUM(ge.wpa_batter)            AS total_wpa,
+                COUNT(ge.wpa_batter)          AS wpa_pa,
+                MAX(ge.wpa_batter)            AS peak_wpa,
+                AVG(ABS(ge.wpa_batter))       AS mean_abs_wpa
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = ANY(%s)
+              AND g.season = %s
+              AND ge.wpa_batter IS NOT NULL
+        """, (all_pids, season))
+        wr = cur.fetchone()
+        if wr and wr["wpa_pa"]:
+            discipline["total_wpa"]    = float(wr["total_wpa"])
+            discipline["wpa_pa"]       = int(wr["wpa_pa"])
+            discipline["peak_wpa"]     = float(wr["peak_wpa"])
+            discipline["mean_abs_wpa"] = float(wr["mean_abs_wpa"])
+        else:
+            discipline["total_wpa"]    = None
+            discipline["wpa_pa"]       = 0
+            discipline["peak_wpa"]     = None
+            discipline["mean_abs_wpa"] = None
+
         # ── Phase E: Contact profile (bb_type) + spray (Pull/Center/Oppo) ──
         # Counts of GB/FB/LD/PU and field zones derived from the
         # narrative. Spray Pull/Center/Oppo is derived from field_zone +
@@ -12792,6 +12822,35 @@ def get_player_pitch_level_stats_pitcher(
             discipline["avg_li"] = None
             discipline["li_pa"] = 0
             discipline["max_li"] = None
+
+        # ── WPA (Phase D.5) ──
+        # Total Win Probability Added across every PA faced. Positive
+        # = pitcher contributed wins (induced low-WPA outcomes for the
+        # batter). Closers often post highest WPA per IP because their
+        # outs come in the highest-leverage states.
+        cur.execute("""
+            SELECT
+                SUM(ge.wpa_pitcher)           AS total_wpa,
+                COUNT(ge.wpa_pitcher)         AS wpa_pa,
+                MAX(ge.wpa_pitcher)           AS peak_wpa,
+                AVG(ABS(ge.wpa_pitcher))      AS mean_abs_wpa
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = ANY(%s)
+              AND g.season = %s
+              AND ge.wpa_pitcher IS NOT NULL
+        """, (all_pids, season))
+        wr = cur.fetchone()
+        if wr and wr["wpa_pa"]:
+            discipline["total_wpa"]    = float(wr["total_wpa"])
+            discipline["wpa_pa"]       = int(wr["wpa_pa"])
+            discipline["peak_wpa"]     = float(wr["peak_wpa"])
+            discipline["mean_abs_wpa"] = float(wr["mean_abs_wpa"])
+        else:
+            discipline["total_wpa"]    = None
+            discipline["wpa_pa"]       = 0
+            discipline["peak_wpa"]     = None
+            discipline["mean_abs_wpa"] = None
 
         # ── Phase E: opponent contact profile (induced bb_type) ──
         # GB% / FB% / LD% / PU% on balls in play AGAINST this pitcher.

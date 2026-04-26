@@ -86,9 +86,13 @@ export default function PitchLevelStatsCard({ playerId, season }) {
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
           </div>
 
-          {/* Avg LI with explanatory tooltip */}
-          <div className="grid grid-cols-1 mb-5">
+          {/* Avg LI + total WPA — paired because they answer adjacent
+              questions: "how big were the moments this hitter saw?"
+              and "what did he do with them?" */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
             <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
+            <WpaTile totalWPA={d.total_wpa} peakWPA={d.peak_wpa}
+              pa={d.wpa_pa} side="batter" />
           </div>
 
           {cp.bb_total > 0 && (
@@ -476,6 +480,66 @@ function LeverageTile({ avgLI, maxLI, pa }) {
         Leverage Index measures how much a single PA can swing the win probability.
         1.0 = average moment. 2.0+ = closer pitching in a 1-run 9th. Below 0.5 = mop-up duty.
         For hitters, this is a proxy for "how often did this player come up in big spots."
+      </p>
+    </div>
+  )
+}
+
+function WpaTile({ totalWPA, peakWPA, pa, side }) {
+  if (totalWPA == null || pa == null || pa === 0) {
+    return (
+      <div className="relative bg-gray-50 border border-gray-100 rounded p-3">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1">
+          Win Probability Added
+        </div>
+        <div className="text-sm text-gray-400">No PBP coverage yet.</div>
+      </div>
+    )
+  }
+  // Tier the season total. Calibrated from the 2026 league
+  // distribution — top hitters land in the +2.0+ band.
+  const tier = totalWPA >= 2.0 ? 'Elite contributor' :
+               totalWPA >= 1.0 ? 'Strong contributor' :
+               totalWPA >= 0.3 ? 'Above average' :
+               totalWPA >= -0.3 ? 'Roughly neutral' :
+               totalWPA >= -1.0 ? 'Below average' :
+                                  'Net negative impact'
+  const sign = totalWPA >= 0 ? '+' : ''
+  // Color the headline number — green for positive, red for negative
+  const color = totalWPA >= 0.3 ? 'text-emerald-700' :
+                totalWPA <= -0.3 ? 'text-rose-700' :
+                                   'text-gray-900'
+  const peakSign = (peakWPA ?? 0) >= 0 ? '+' : ''
+  const sideLabel = side === 'pitcher' ? 'BF' : 'PA'
+  return (
+    <div className="relative group bg-gray-50 border border-gray-100 rounded p-3">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+          Win Probability Added
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className={`text-2xl font-bold tabular-nums ${color}`}>
+            {sign}{fmtNum(totalWPA, 2)}
+          </span>
+          <span className="text-[10px] text-gray-500">
+            peak {peakSign}{fmtNum(peakWPA || 0, 2)} · {pa} {sideLabel}
+          </span>
+        </div>
+      </div>
+      <div className="text-[11px] text-gray-700">
+        <span className="font-semibold">{tier}</span>
+        <span className="text-gray-500"> · </span>
+        <span className="text-gray-600">
+          {totalWPA >= 0
+            ? `added ${fmtNum(totalWPA, 1)} expected wins to his team`
+            : `cost his team ${fmtNum(Math.abs(totalWPA), 1)} expected wins`}
+        </span>
+      </div>
+      <p className="text-[10px] text-gray-500 mt-1 leading-snug">
+        Win Probability Added measures the cumulative change in win probability
+        from each PA. A walk-off HR in a tight game can be worth +0.5 in a
+        single swing. Season totals reward production in the highest-leverage
+        spots, not just rate stats. Built from 1,100+ games of 2026 PBP data.
       </p>
     </div>
   )
