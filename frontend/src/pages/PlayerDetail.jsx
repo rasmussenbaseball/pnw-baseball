@@ -605,6 +605,57 @@ const POS_COLORS = {
   'OF': '#059669', 'IF': '#4f46e5', 'DH': '#6b7280', 'UT': '#9ca3af', 'N/A': '#d1d5db',
 }
 
+// Filler/summary card for the right column. Always renders so the
+// awards + position + glance stack matches the bars' height. Shows
+// big-number season counting stats (different from the percentile
+// rate stats already in the bars).
+function SeasonGlance({ bat, pit, className = '' }) {
+  // Only render when we have at least one stat block for the season
+  if (!bat && !pit) return null
+
+  const tiles = []
+  if (bat && (bat.plate_appearances || 0) > 0) {
+    const ip = (bat.plate_appearances - bat.walks - bat.hit_by_pitch - (bat.sacrifice_flies||0))
+    tiles.push({ label: 'AVG', value: bat.batting_avg != null ? Number(bat.batting_avg).toFixed(3).replace(/^0/, '') : '-' })
+    tiles.push({ label: 'OPS', value: bat.ops != null ? Number(bat.ops).toFixed(3).replace(/^0/, '') : '-' })
+    tiles.push({ label: 'HR',  value: bat.home_runs ?? '-' })
+    tiles.push({ label: 'RBI', value: bat.rbi ?? '-' })
+    tiles.push({ label: 'R',   value: bat.runs ?? '-' })
+    tiles.push({ label: 'SB',  value: bat.stolen_bases ?? '-' })
+    tiles.push({ label: 'BB',  value: bat.walks ?? '-' })
+    tiles.push({ label: 'K',   value: bat.strikeouts ?? '-' })
+    tiles.push({ label: 'G',   value: bat.games ?? '-' })
+  }
+  if (pit && (pit.innings_pitched || 0) > 0) {
+    tiles.push({ label: 'W-L', value: `${pit.wins ?? 0}-${pit.losses ?? 0}` })
+    tiles.push({ label: 'ERA', value: pit.era != null ? Number(pit.era).toFixed(2) : '-' })
+    tiles.push({ label: 'WHIP', value: pit.whip != null ? Number(pit.whip).toFixed(2) : '-' })
+    tiles.push({ label: 'IP',  value: pit.innings_pitched != null ? Number(pit.innings_pitched).toFixed(1) : '-' })
+    tiles.push({ label: 'K',   value: pit.strikeouts ?? '-' })
+    tiles.push({ label: 'BB',  value: pit.walks ?? '-' })
+    tiles.push({ label: 'SV',  value: pit.saves ?? '-' })
+    tiles.push({ label: 'G',   value: pit.games ?? '-' })
+  }
+
+  if (tiles.length === 0) return null
+
+  return (
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${className}`}>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        2026 Season Glance
+      </h3>
+      <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 flex-grow content-start">
+        {tiles.map((t, i) => (
+          <div key={i} className="bg-gray-50 rounded border border-gray-100 px-2 py-2 text-center">
+            <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">{t.label}</div>
+            <div className="text-base font-bold text-gray-900 tabular-nums">{t.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PositionPieChart({ breakdown }) {
   if (!breakdown || breakdown.length === 0) return null
   const total = breakdown.reduce((s, b) => s + b.games, 0)
@@ -1205,7 +1256,11 @@ export default function PlayerDetail() {
                 )}
               </div>
 
-              {/* RIGHT: awards + position (always same height as left) */}
+              {/* RIGHT: awards + position + dynamic Season Glance.
+                  Season Glance always renders so the column has bulk
+                  even when the player has no awards or no position
+                  breakdown (e.g. pitchers, role players). It uses
+                  flex-grow so it stretches to match the bars' height. */}
               <div className="flex flex-col h-full gap-4">
                 {hasAwards && (
                   <TeamAwards
@@ -1218,8 +1273,11 @@ export default function PlayerDetail() {
                 {hasPosition && (
                   <PositionPieChart breakdown={position_breakdown} />
                 )}
-                {/* Spacer pushes content up if right side is shorter */}
-                <div className="flex-grow" />
+                <SeasonGlance
+                  bat={batting_stats?.find(r => r.season === 2026)}
+                  pit={pitching_stats?.find(r => r.season === 2026)}
+                  className="flex-grow"
+                />
               </div>
             </div>
           )

@@ -62,9 +62,12 @@ function wedgePath(cx, cy, r1, r2, angStart, angEnd) {
   ].join(' ')
 }
 
-function wedgeLabelPos(cx, cy, r1, r2, angStart, angEnd) {
+function wedgeLabelPos(cx, cy, r1, r2, angStart, angEnd, radiusFrac = 0.5) {
+  // radiusFrac=0 → at inner ring, 1 → at outer ring. Pushing labels
+  // outward gives narrow inner-ring wedges more horizontal space
+  // between adjacent labels (arc length ∝ radius).
   const aMid = ((angStart + angEnd) / 2 - 90) * Math.PI / 180
-  const rMid = (r1 + r2) / 2
+  const rMid = r1 + (r2 - r1) * radiusFrac
   return [cx + rMid * Math.cos(aMid), cy + rMid * Math.sin(aMid)]
 }
 
@@ -122,13 +125,14 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   ]
   const peak = Math.max(...allWedges, 1)
 
-  // Smaller geometry (was 500x360, now 360x270)
-  const W = 360, H = 270
-  const HOME = { x: W / 2, y: H - 20 }
+  // Geometry — slightly wider to give the IF wedges room to breathe.
+  // Bumping H so the OF arc has padding for the HR badges + zone labels.
+  const W = 400, H = 300
+  const HOME = { x: W / 2, y: H - 24 }
   const R_HOME = 6
-  const R_INF_OUT = 100   // infield outer radius
-  const R_OF_OUT = 200    // outfield outer radius
-  const R_HR_BADGE = R_OF_OUT + 18  // outside the fence
+  const R_INF_OUT = 110   // infield outer radius
+  const R_OF_OUT = 220    // outfield outer radius
+  const R_HR_BADGE = R_OF_OUT + 22  // outside the fence (padded for label clearance)
 
   const ofWedge = (FAN_HALF_ANGLE * 2) / OF_ZONES.length
   const ifWedge = (FAN_HALF_ANGLE * 2) / IF_ZONES.length
@@ -141,9 +145,12 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
     -FAN_HALF_ANGLE + (i + 1) * ifWedge,
   ]
 
-  // Bases positions for the diamond (1B right, 2B up, 3B left)
-  const BASE_DIST = 70  // distance from home along the diagonal
-  const baseSize = 5    // half-side of the diamond
+  // Bases positions for the diamond (1B right, 2B up, 3B left).
+  // Bases sit ~midway up the IF wedge ring; smaller size + nudged
+  // inward so they don't crowd the IF percentage labels (which now
+  // sit near the OF boundary).
+  const BASE_DIST = 55  // distance from home along the diagonal
+  const baseSize = 3.5  // half-side of the diamond
   // Foul lines run at -45° / +45° from straight up
   const a45 = 45 * Math.PI / 180
   const firstBase  = { x: HOME.x + BASE_DIST * Math.sin(a45), y: HOME.y - BASE_DIST * Math.cos(a45) }
@@ -220,14 +227,15 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           )
         })}
 
-        {/* Infield wedges (inner ring) */}
+        {/* Infield wedges (inner ring) — labels pushed outward (radiusFrac=0.85)
+            so adjacent wedges' percentages don't collide horizontally. */}
         {IF_ZONES.map((z, i) => {
           const [a1, a2] = ifAngles(i)
           const n = counts[z] || 0
           const pct = total > 0 ? n / total : 0
           const sIdx = shadeIndex(n, peak)
           const fill = SHADES[sIdx]
-          const [lx, ly] = wedgeLabelPos(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2)
+          const [lx, ly] = wedgeLabelPos(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2, 0.85)
           const pctText = total > 0 ? `${(pct * 100).toFixed(0)}%` : '—'
           const textColor = TEXT_DARK_SHADES.has(sIdx) ? '#ffffff' : '#1f2937'
           return (
@@ -243,7 +251,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
                   x={lx} y={ly}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  style={{ fontSize: '11px', fontWeight: 700, fill: textColor, pointerEvents: 'none' }}
+                  style={{ fontSize: '10px', fontWeight: 700, fill: textColor, pointerEvents: 'none' }}
                 >
                   {pctText}
                 </text>
