@@ -98,26 +98,22 @@ def main() -> int:
         print("Creating / checking li_lookup table...")
         cur.execute(CREATE_TABLE_SQL)
 
-        # Pull every event with WPA + state populated FROM AUDIT-CLEAN
-        # GAMES ONLY. Audit-bad games have score-state columns that are
-        # off by 1-3 runs from missing-run scorer omissions; those events
-        # land in the wrong bucket and inflate "mop-up" type states with
-        # high-leverage PAs that were really happening at different
-        # scores. Same filter we use in build_wp_table.py.
-        print("Loading audit-clean 2026 events with WPA + state...")
+        # Pull every event with WPA + state populated. We include
+        # AUDIT-BAD games here, even though build_wp_table.py filters
+        # them out. The reason: closer states ('bot 9, home up 1',
+        # etc.) are technically impossible in correctly-derived data
+        # (game ends when home takes the bot-9 lead). Those states
+        # only exist as derivation artifacts in audit-bad games. But
+        # at *runtime*, compute_li reads the same artifact-state from
+        # game_events, so we need matching buckets in the lookup.
+        # If we excluded audit-bad games, every closer's PA would
+        # fall through to the default LI=1.0, and AVG LI would not
+        # distinguish closers from average pitchers (we just verified
+        # this — Ivanoff/Palmateer/etc. all landed near 1.0).
+        # Including audit-bad gives us bug-state buckets matched to
+        # their bug-derived empirical leverage.
+        print("Loading 2026 events with WPA + state populated...")
         cur.execute("""
-            WITH game_audit AS (
-                SELECT g.id AS game_id,
-                       (g.home_score + g.away_score) AS actual_total,
-                       COALESCE(SUM(ge.runs_on_play), 0) AS derived_total
-                FROM games g
-                LEFT JOIN game_events ge ON ge.game_id = g.id
-                WHERE g.season = %s
-                  AND g.home_score IS NOT NULL
-                  AND g.away_score IS NOT NULL
-                  AND g.home_score <> g.away_score
-                GROUP BY g.id
-            )
             SELECT
                 CASE WHEN d.name = 'NWAC' THEN 'NWAC' ELSE 'NCAA' END
                     AS division_group,
@@ -128,8 +124,6 @@ def main() -> int:
                 ge.outs_before,
                 ABS(ge.wpa_batter) AS abs_wpa
             FROM game_events ge
-            JOIN game_audit ga ON ga.game_id = ge.game_id
-                              AND ga.derived_total = ga.actual_total
             JOIN games g       ON g.id = ge.game_id
             JOIN teams t       ON t.id = CASE WHEN ge.half = 'top'
                                               THEN g.away_team_id
@@ -144,9 +138,9 @@ def main() -> int:
               AND ge.fld_score_before IS NOT NULL
               AND ge.inning IS NOT NULL
               AND ge.half IN ('top', 'bottom')
-        """, (SEASON, SEASON))
+        """, (SEASON,))
         rows = cur.fetchall()
-        print(f"  {len(rows):,} events loaded (audit-clean only)")
+        print(f"  {len(rows):,} events loaded")
 
         # Aggregate at fine bucket + global granularity. We do NOT
         # aggregate supercells — see top-of-file note about why
