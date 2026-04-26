@@ -41,13 +41,19 @@ SEASON = 2026
 INNING_CAP = 10
 SCORE_DIFF_CAP = 6
 
-# Smoothing strengths (units = phantom PAs):
-#   PRIOR_STRENGTH adds phantom PAs at the supercell's mean to each
-#       fine bucket. Sparse buckets get pulled toward supercell.
-#   META_STRENGTH adds phantom PAs at the global mean to each
-#       supercell. Sparse supercells get pulled toward overall.
-PRIOR_STRENGTH = 30.0
-META_STRENGTH = 30.0
+# Smoothing strength (units = phantom PAs at the global mean |WPA|).
+# We use a SINGLE flat prior toward the global mean, NOT a hierarchical
+# supercell prior the way build_wp_table.py does. The reason: within
+# a supercell like (NCAA, 9, bot, 0), the per-bucket leverages span a
+# 5-10x range — peak leverage (bases loaded, 2 outs) versus floor
+# (bases empty, 0 outs) live in the same supercell. Shrinking peak
+# buckets toward the supercell mean crushes the real signal.
+#
+# 10 phantom events is a lighter prior than build_wp's 30 — for LI we
+# want to trust the empirical data sooner, even when sparse, because
+# extreme states genuinely have extreme |WPA| signals that smoothing
+# can't recover from elsewhere.
+PRIOR_STRENGTH = 10.0
 
 # Bound LI values — a single PA can't produce LI=20 in any realistic
 # college baseball state. The MLB Tango table caps near 10. We use 8.
@@ -92,13 +98,26 @@ def main() -> int:
         print("Creating / checking li_lookup table...")
         cur.execute(CREATE_TABLE_SQL)
 
-        # Pull every event with WPA + state populated, with division
-        # group derived from the half-inning (top → away, bottom → home).
-        # We do NOT filter to audit-clean games here — for LI, individual
-        # PA noise averages out within each bucket, and we want as much
-        # data as possible filling out sparse extreme states.
-        print("Loading 2026 events with WPA + state populated...")
+        # Pull every event with WPA + state populated FROM AUDIT-CLEAN
+        # GAMES ONLY. Audit-bad games have score-state columns that are
+        # off by 1-3 runs from missing-run scorer omissions; those events
+        # land in the wrong bucket and inflate "mop-up" type states with
+        # high-leverage PAs that were really happening at different
+        # scores. Same filter we use in build_wp_table.py.
+        print("Loading audit-clean 2026 events with WPA + state...")
         cur.execute("""
+            WITH game_audit AS (
+                SELECT g.id AS game_id,
+                       (g.home_score + g.away_score) AS actual_total,
+                       COALESCE(SUM(ge.runs_on_play), 0) AS derived_total
+                FROM games g
+                LEFT JOIN game_events ge ON ge.game_id = g.id
+                WHERE g.season = %s
+                  AND g.home_score IS NOT NULL
+                  AND g.away_score IS NOT NULL
+                  AND g.home_score <> g.away_score
+                GROUP BY g.id
+            )
             SELECT
                 CASE WHEN d.name = 'NWAC' THEN 'NWAC' ELSE 'NCAA' END
                     AS division_group,
@@ -109,6 +128,8 @@ def main() -> int:
                 ge.outs_before,
                 ABS(ge.wpa_batter) AS abs_wpa
             FROM game_events ge
+            JOIN game_audit ga ON ga.game_id = ge.game_id
+                              AND ga.derived_total = ga.actual_total
             JOIN games g       ON g.id = ge.game_id
             JOIN teams t       ON t.id = CASE WHEN ge.half = 'top'
                                               THEN g.away_team_id
@@ -123,18 +144,17 @@ def main() -> int:
               AND ge.fld_score_before IS NOT NULL
               AND ge.inning IS NOT NULL
               AND ge.half IN ('top', 'bottom')
-        """, (SEASON,))
+        """, (SEASON, SEASON))
         rows = cur.fetchall()
-        print(f"  {len(rows):,} events loaded")
+        print(f"  {len(rows):,} events loaded (audit-clean only)")
 
-        # Aggregate sums + counts at fine + supercell + global granularity
+        # Aggregate at fine bucket + global granularity. We do NOT
+        # aggregate supercells — see top-of-file note about why
+        # supercell smoothing is wrong for LI.
         FineKey = Tuple[str, int, str, int, str, int]
-        SuperKey = Tuple[str, int, str, int]
 
         fine_n: Dict[FineKey, int] = defaultdict(int)
         fine_sum: Dict[FineKey, float] = defaultdict(float)
-        super_n: Dict[SuperKey, int] = defaultdict(int)
-        super_sum: Dict[SuperKey, float] = defaultdict(float)
 
         global_n = 0
         global_sum = 0.0
@@ -149,48 +169,37 @@ def main() -> int:
             abs_wpa = float(r["abs_wpa"])
 
             fk: FineKey = (div, inn, half, sd, bases, outs)
-            sk: SuperKey = (div, inn, half, sd)
-
             fine_n[fk] += 1
             fine_sum[fk] += abs_wpa
-            super_n[sk] += 1
-            super_sum[sk] += abs_wpa
             global_n += 1
             global_sum += abs_wpa
 
         print(f"  {len(fine_n):,} distinct fine buckets")
-        print(f"  {len(super_n):,} distinct supercells")
         global_mean = (global_sum / global_n) if global_n else 0.0
         print(f"  global mean |WPA|: {global_mean:.4f}")
 
-        # First tier: smooth each supercell's mean toward the global mean
-        super_smoothed: Dict[SuperKey, float] = {}
-        for sk, sn in super_n.items():
-            ss = super_sum[sk]
-            super_smoothed[sk] = (
-                (ss + META_STRENGTH * global_mean)
-                / (sn + META_STRENGTH)
-            )
-
-        # Second tier: smooth each fine bucket's mean toward its supercell
+        # Smooth each fine bucket toward the global mean. PRIOR_STRENGTH
+        # phantom events at the global mean — sparse buckets shrink
+        # toward "average leverage", populated buckets keep their signal.
         out_rows = []
         for fk, n in fine_n.items():
             div, inn, half, sd, bases, outs = fk
             s = fine_sum[fk]
-            sk: SuperKey = (div, inn, half, sd)
-            supercell_mean = super_smoothed.get(sk, global_mean)
 
             smoothed_mean = (
-                (s + PRIOR_STRENGTH * supercell_mean)
+                (s + PRIOR_STRENGTH * global_mean)
                 / (n + PRIOR_STRENGTH)
             )
             li = (smoothed_mean / global_mean) if global_mean > 0 else 1.0
             li = max(LI_FLOOR, min(li, LI_CEIL))
 
             raw_mean = s / n if n else 0.0
+            # `supercell_mean` column is now the global mean prior we
+            # used (same value for all rows). Kept for schema parity
+            # and so the leverage.py fallback layer can read it.
             out_rows.append((
                 div, inn, half, sd, bases, outs,
-                n, raw_mean, supercell_mean, li,
+                n, raw_mean, global_mean, li,
             ))
 
         # Write
