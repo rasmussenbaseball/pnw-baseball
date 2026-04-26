@@ -257,16 +257,18 @@ function computeCareerTotals(seasons, type) {
 
 // ── Components ─────────────────────────────────────────────────
 
-function PercentileBars({ percentiles, metrics, title, divisionLevel }) {
+function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilter, fillHeight = false }) {
   const available = metrics.filter(m => percentiles[m.key])
   if (!available.length) return null
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 mb-4 sm:mb-6 overflow-hidden flex flex-col ${fillHeight ? 'h-full' : ''}`}>
       {/* Header bar */}
       <div className="px-3 sm:px-5 pt-4 sm:pt-5 pb-2 sm:pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-base sm:text-lg font-bold text-gray-800">{title}</h3>
+          {/* Season filter chips (passed in) — render inside the rectangle */}
+          {seasonFilter}
           <span className="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wide">
             vs. {divisionLevel || 'Division'}
           </span>
@@ -487,7 +489,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort }) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
       {/* Season Awards */}
       {hasSeasonAwards && (
         <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100' : ''}>
@@ -611,7 +613,7 @@ function PositionPieChart({ breakdown }) {
   // If only one position at 100%, show a compact inline display
   if (breakdown.length === 1) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4 sm:mb-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <div className="flex items-center gap-3">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0">Position</h3>
           <div className="flex items-center gap-2">
@@ -645,7 +647,7 @@ function PositionPieChart({ breakdown }) {
   })
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4 sm:mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
       <div className="flex items-center gap-4 flex-wrap">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0">Position</h3>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
@@ -1069,6 +1071,31 @@ export default function PlayerDetail() {
             )}
           </div>
 
+          {/* Multi-school career path — inline in header (was a separate card) */}
+          {isTransfer && (
+            <div className="basis-full flex flex-wrap items-center gap-1.5 mt-2 text-xs text-gray-600">
+              <span className="text-gray-400 mr-1">Career</span>
+              {linked_players.map((lp, idx) => (
+                <span key={lp.id} className="inline-flex items-center gap-1">
+                  {idx > 0 && <span className="text-gray-300 mr-0.5">→</span>}
+                  <Link
+                    to={`/team/${lp.team_id}`}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-50 rounded border border-gray-200 hover:border-nw-teal hover:text-nw-teal transition-colors"
+                  >
+                    {lp.logo_url && (
+                      <img src={lp.logo_url} alt="" className="w-3.5 h-3.5 object-contain"
+                        loading="lazy" onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="font-medium">{lp.team_short}</span>
+                    <span className={`px-1 py-0 rounded text-[9px] font-bold ${divisionBadgeClass(lp.division_level)}`}>
+                      {lp.division_level}
+                    </span>
+                  </Link>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Commitment status - NWAC/JUCO players only */}
           {player.division_level === 'JUCO' && (
             <div className="mt-2">
@@ -1089,77 +1116,21 @@ export default function PlayerDetail() {
         </div>
       </div>
 
-      {/* ── Transfer History (multi-school career) ── */}
-      {isTransfer && (
-        <div className="bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg border border-blue-200 p-4 mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-            <span className="text-sm font-semibold text-blue-700">Multi-School Career</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {linked_players.map((lp, idx) => (
-              <div key={lp.id} className="flex items-center gap-1.5">
-                {idx > 0 && <span className="text-gray-400 mr-1">→</span>}
-                <Link
-                  to={`/team/${lp.team_id}`}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-full border border-gray-200 text-sm font-medium text-gray-700 hover:border-nw-teal hover:text-nw-teal transition-colors"
-                >
-                  {lp.logo_url && (
-                    <img src={lp.logo_url} alt="" className="w-4 h-4 object-contain" loading="lazy"
-                      onError={(e) => { e.target.style.display = 'none' }} />
-                  )}
-                  {lp.team_short}
-                  <span className={`ml-0.5 px-1.5 py-0 rounded text-[10px] font-bold ${divisionBadgeClass(lp.division_level)}`}>
-                    {lp.division_level}
-                  </span>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* (Multi-school career now lives in the player header above.
+            Season filter is embedded inside the PercentileBars header below.) */}
 
-      {/* ── Season Filter (only show if player has multiple seasons) ── */}
-      {hasMultipleSeasons && (hasBatting || hasPitching) && (
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Rankings</span>
-          {allSeasons.map(season => (
-            <button
-              key={season}
-              onClick={() => setPercentileSeason(
-                percentileSeason === String(season) ? null : String(season)
-              )}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                (percentileSeason === String(season)) || (!percentileSeason && activePercentileSeason === String(season))
-                  ? 'bg-nw-teal text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {season}
-            </button>
-          ))}
-          <button
-            onClick={() => setPercentileSeason(percentileSeason === 'career' ? null : 'career')}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-              percentileSeason === 'career'
-                ? 'bg-nw-teal text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Career
-          </button>
-          {loading && (
-            <div className="animate-spin h-4 w-4 border-2 border-nw-teal border-t-transparent rounded-full ml-1" />
-          )}
-        </div>
-      )}
+      {/* Season filter chips — passed as an element to PercentileBars. */}
+      {(() => {
+        // Defined here so the JSX block below can hand it to PercentileBars.
+        // We build the element once and pass to whichever PercentileBars
+        // renders FIRST (batting if present, else pitching).
+        return null
+      })()}
 
-      {/* ── Percentile Bars + Awards ──
-          For 2026, use the new metric set and a 2-column layout (bars
-          on left, awards on right). For pre-2026 seasons keep the full-
-          width legacy layout so historic profiles look the same as before. */}
+      {/* ── Percentile Bars + Awards + Position ──
+          For 2026, use the new metric set and a 2-column equal-height
+          layout (bars on the left, awards + position on the right).
+          Pre-2026: keep the legacy stacked full-width layout. */}
       {(() => {
         const isCurrent2026 = activePercentileSeason === '2026'
         const battingMetrics = isCurrent2026 ? BATTING_PERCENTILE_METRICS_2026 : BATTING_PERCENTILE_METRICS
@@ -1167,20 +1138,59 @@ export default function PlayerDetail() {
         const hasAwards = (awards && awards.length > 0)
                        || (career_rankings && career_rankings.length > 0)
                        || (pnw_rankings && pnw_rankings.length > 0)
+        const hasPosition = position_breakdown && position_breakdown.length > 0
         const hasBars = (batting_percentiles && Object.keys(batting_percentiles).length > 0)
                      || (pitching_percentiles && Object.keys(pitching_percentiles).length > 0)
 
-        // 2026 layout: bars + awards side-by-side
-        if (isCurrent2026 && hasBars && hasAwards) {
+        // Season-filter chip group, embedded inside the bars header
+        // (was a standalone row above the cards before).
+        const seasonFilter = hasMultipleSeasons && (hasBatting || hasPitching) ? (
+          <div className="flex items-center gap-1 flex-wrap">
+            {allSeasons.map(season => (
+              <button
+                key={season}
+                onClick={() => setPercentileSeason(
+                  percentileSeason === String(season) ? null : String(season)
+                )}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                  (percentileSeason === String(season)) || (!percentileSeason && activePercentileSeason === String(season))
+                    ? 'bg-nw-teal text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {season}
+              </button>
+            ))}
+            <button
+              onClick={() => setPercentileSeason(percentileSeason === 'career' ? null : 'career')}
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                percentileSeason === 'career'
+                  ? 'bg-nw-teal text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Career
+            </button>
+            {loading && (
+              <div className="animate-spin h-3 w-3 border-2 border-nw-teal border-t-transparent rounded-full ml-1" />
+            )}
+          </div>
+        ) : null
+
+        // 2026 layout: bars + awards side-by-side, equal height
+        if (isCurrent2026 && hasBars && (hasAwards || hasPosition)) {
           return (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              <div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-stretch">
+              {/* LEFT: percentile bars (one container, both batting + pitching inside) */}
+              <div className="flex flex-col h-full">
                 {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
                   <PercentileBars
                     percentiles={batting_percentiles}
                     metrics={battingMetrics}
                     title={`Batting · ${percentileLabel}`}
                     divisionLevel={player.division_level}
+                    seasonFilter={seasonFilter}
+                    fillHeight={!pitching_percentiles || Object.keys(pitching_percentiles || {}).length === 0}
                   />
                 )}
                 {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
@@ -1189,16 +1199,27 @@ export default function PlayerDetail() {
                     metrics={pitchingMetrics}
                     title={`Pitching · ${percentileLabel}`}
                     divisionLevel={player.division_level}
+                    seasonFilter={!batting_percentiles || Object.keys(batting_percentiles || {}).length === 0 ? seasonFilter : null}
+                    fillHeight={true}
                   />
                 )}
               </div>
-              <div>
-                <TeamAwards
-                  awards={awards || []}
-                  careerRankings={career_rankings || []}
-                  pnwRankings={pnw_rankings || []}
-                  teamShort={player.team_short}
-                />
+
+              {/* RIGHT: awards + position (always same height as left) */}
+              <div className="flex flex-col h-full gap-4">
+                {hasAwards && (
+                  <TeamAwards
+                    awards={awards || []}
+                    careerRankings={career_rankings || []}
+                    pnwRankings={pnw_rankings || []}
+                    teamShort={player.team_short}
+                  />
+                )}
+                {hasPosition && (
+                  <PositionPieChart breakdown={position_breakdown} />
+                )}
+                {/* Spacer pushes content up if right side is shorter */}
+                <div className="flex-grow" />
               </div>
             </div>
           )
@@ -1214,6 +1235,12 @@ export default function PlayerDetail() {
                 pnwRankings={pnw_rankings || []}
                 teamShort={player.team_short}
               />
+            )}
+            {seasonFilter && (
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Rankings</span>
+                {seasonFilter}
+              </div>
             )}
             {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
               <PercentileBars
@@ -1235,8 +1262,11 @@ export default function PlayerDetail() {
         )
       })()}
 
-      {/* ── Position Breakdown (pie chart from game logs) ── */}
-      {position_breakdown && position_breakdown.length > 0 && (
+      {/* ── Position Breakdown ──
+          For 2026 the position chart now lives inside the awards
+          column above. For pre-2026 seasons it stays as a standalone
+          card here so historic profiles still show position usage. */}
+      {activePercentileSeason !== '2026' && position_breakdown && position_breakdown.length > 0 && (
         <PositionPieChart breakdown={position_breakdown} />
       )}
 
