@@ -5114,10 +5114,70 @@ def _pct_from_deciles(value, deciles, higher_better=True):
     return max(1, min(99, pct))
 
 
+# WPA decile cache. Keyed by (season, division_level, side='batter'|'pitcher').
+# Each entry is the 9 decile thresholds for total WPA among qualified
+# players in that division. 6-hour TTL matches the pitch-level baseline
+# cache. Cleared whenever scrape_pbp / compute_wpa runs (next page load
+# rebuilds it).
+_WPA_DECILES_CACHE = {}
+_WPA_DECILES_TTL = 6 * 3600
+
+
+def _get_wpa_deciles(cur, season: int, division_level: str, side: str):
+    """Return 9 decile thresholds (10th-90th) for total WPA among
+    qualified players in this division/season. Used by percentile bars.
+
+    side: 'batter' or 'pitcher'.
+    Qualification: 50+ PAs (batter) or 50+ batters faced (pitcher) so
+    bench bats / mop-up arms don't crowd the distribution near zero.
+    """
+    key = (season, division_level, side)
+    now = _pl_time.time()
+    cached = _WPA_DECILES_CACHE.get(key)
+    if cached and (now - cached["ts"]) < _WPA_DECILES_TTL:
+        return cached["data"]
+
+    if side == "batter":
+        col = "wpa_batter"
+        pid_col = "batter_player_id"
+    else:
+        col = "wpa_pitcher"
+        pid_col = "pitcher_player_id"
+
+    cur.execute(f"""
+        WITH per_player AS (
+            SELECT ge.{pid_col} AS pid,
+                   SUM(ge.{col}) AS total_wpa,
+                   COUNT(*)      AS n
+            FROM game_events ge
+            JOIN games g       ON g.id = ge.game_id
+            JOIN players p     ON p.id = ge.{pid_col}
+            JOIN teams t       ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d   ON d.id = c.division_id
+            WHERE g.season = %s AND d.level = %s
+              AND ge.{pid_col} IS NOT NULL
+              AND ge.{col}     IS NOT NULL
+            GROUP BY ge.{pid_col}
+            HAVING COUNT(*) >= 50
+        )
+        SELECT total_wpa FROM per_player ORDER BY total_wpa
+    """, (season, division_level))
+    values = [float(r["total_wpa"]) for r in cur.fetchall()
+              if r["total_wpa"] is not None]
+    if len(values) < 10:
+        deciles = []
+    else:
+        deciles = [values[int(len(values) * i / 10)] for i in range(1, 10)]
+
+    _WPA_DECILES_CACHE[key] = {"ts": now, "data": deciles}
+    return deciles
+
+
 def _compute_2026_pbp_batting_percentiles(conn, division_level, season, player_id, weights):
     """Compute percentiles for batter metrics that come from game_events
-    (Contact%, AIRPULL%) — only available for 2026+ since they require
-    the Phase A/E enrichment.
+    (Contact%, AIRPULL%, WPA) — only available for 2026+ since they
+    require the Phase A/E + D.5 enrichment.
     """
     from psycopg2.extras import RealDictCursor as _RDC
     cur = conn.cursor(cursor_factory=_RDC)
@@ -5159,6 +5219,23 @@ def _compute_2026_pbp_batting_percentiles(conn, division_level, season, player_i
         p = _pct_from_deciles(air_pull_pct, deciles.get("air_pull_pct"), higher_better=True)
         if p is not None:
             out["air_pull_pct"] = {"value": air_pull_pct, "percentile": p}
+
+    # WPA — total Win Probability Added across the season. Phase D.5.
+    cur.execute("""
+        SELECT SUM(wpa_batter) AS total_wpa, COUNT(*) AS n
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        WHERE ge.batter_player_id = %s AND g.season = %s
+          AND ge.wpa_batter IS NOT NULL
+    """, (player_id, season))
+    wr = cur.fetchone() or {}
+    total_wpa = wr.get("total_wpa")
+    if total_wpa is not None and (wr.get("n") or 0) >= 1:
+        wpa_deciles = _get_wpa_deciles(cur, season, division_level, "batter")
+        if wpa_deciles:
+            p = _pct_from_deciles(float(total_wpa), wpa_deciles, higher_better=True)
+            if p is not None:
+                out["wpa"] = {"value": float(total_wpa), "percentile": p}
     return out
 
 
@@ -5253,6 +5330,23 @@ def _compute_2026_pbp_pitching_percentiles(conn, division_level, season, player_
     add("opp_woba",   opp_woba,   False)   # low is good for pitcher
     add("opp_air_pull_pct", opp_air_pull_pct, False)
     add("hr_pa_pct",  hr_pa_pct,  False)   # low is good for pitcher
+
+    # WPA — total Win Probability Added across the season. Phase D.5.
+    cur.execute("""
+        SELECT SUM(wpa_pitcher) AS total_wpa, COUNT(*) AS n
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        WHERE ge.pitcher_player_id = %s AND g.season = %s
+          AND ge.wpa_pitcher IS NOT NULL
+    """, (player_id, season))
+    wr = cur.fetchone() or {}
+    total_wpa = wr.get("total_wpa")
+    if total_wpa is not None and (wr.get("n") or 0) >= 1:
+        wpa_deciles = _get_wpa_deciles(cur, season, division_level, "pitcher")
+        if wpa_deciles:
+            p = _pct_from_deciles(float(total_wpa), wpa_deciles, higher_better=True)
+            if p is not None:
+                out["wpa"] = {"value": float(total_wpa), "percentile": p}
     return out
 
 

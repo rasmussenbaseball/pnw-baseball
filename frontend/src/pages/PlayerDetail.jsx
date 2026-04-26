@@ -49,6 +49,7 @@ const BATTING_PERCENTILE_METRICS_2026 = [
   { key: 'bb_pct',        label: 'BB%',     format: 'pct' },
   { key: 'contact_pct',   label: 'Contact%',format: 'pct' },
   { key: 'air_pull_pct',  label: 'AIRPULL%',format: 'pct' },
+  { key: 'wpa',           label: 'WPA',     format: 'wpa' },
 ]
 
 const PITCHING_PERCENTILE_METRICS_2026 = [
@@ -63,6 +64,7 @@ const PITCHING_PERCENTILE_METRICS_2026 = [
   { key: 'first_pitch_strike_pct', label: 'FPS%',         format: 'pct' },
   { key: 'whiff_pct',              label: 'Whiff%',       format: 'pct' },
   { key: 'opp_air_pull_pct',       label: 'opp AIRPULL%', format: 'pct' },
+  { key: 'wpa',                    label: 'WPA',          format: 'wpa' },
 ]
 
 // ── Stat table column configs ──────────────────────────────────

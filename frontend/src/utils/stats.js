@@ -139,6 +139,10 @@ export function formatStat(value, format) {
       return value.toFixed(1)
     case 'int':
       return Math.round(value).toString()
+    case 'wpa':
+      // Signed decimal with 2 places, always show the sign so positive
+      // and negative WPA totals are immediately distinguishable.
+      return (value >= 0 ? '+' : '') + value.toFixed(2)
     default:
       return String(value)
   }
