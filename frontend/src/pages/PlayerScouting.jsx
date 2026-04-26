@@ -27,7 +27,8 @@ export default function PlayerScouting() {
     { q: searchTerm, limit: 20 },
     [searchTerm]
   )
-  const searchResults = searchData?.players || []
+  // /players/search returns a flat array, not a {players: [...]} envelope
+  const searchResults = Array.isArray(searchData) ? searchData : []
 
   const handleSearch = (e) => {
     e.preventDefault()
