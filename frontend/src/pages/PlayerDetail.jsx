@@ -371,10 +371,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
       </div>
 
       {/* Footer */}
-      <div className="px-3 sm:px-5 pb-3 flex items-center justify-between">
-        <span className="text-[10px] text-gray-400">
-          Min 10 PA / 5 IP to qualify
-        </span>
+      <div className="px-3 sm:px-5 pb-3 flex items-center justify-end">
         <span className="text-[10px] text-gray-400 italic">
           vs. {divisionLevel || 'division'}
         </span>
@@ -683,13 +680,11 @@ function RecentGames({ batting, pitching, limit = 6, className = '' }) {
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col overflow-hidden ${className}`}>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 shrink-0">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${className}`}>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
         Recent Games
       </h3>
-      {/* Internal scroll — extra games scroll inside this container,
-          which keeps the right column from pushing past the bars. */}
-      <div className="space-y-1.5 flex-grow min-h-0 overflow-y-auto pr-1">
+      <div className="space-y-1.5">
         {bat.map((g, i) => (
           <div key={`b-${i}`} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 text-[11px] py-1 border-b border-gray-50 last:border-0">
             <span className="text-gray-400 tabular-nums">{shortDate(g.game_date)}</span>
@@ -1414,47 +1409,42 @@ export default function PlayerDetail() {
               )}
             </div>
 
-            {/* RIGHT: capped at LEFT column natural height.
-                Priority order:
-                  1. Position — never cut, fixed natural height
-                  2. Awards — internal scroll if too many (ScrollableCard)
-                  3. SeasonGlance — counting stats card
-                  4. RecentGames — fills remaining vertical space, scrolls
-                Cards 3-4 always render so the column has bulk for
-                pitchers / players without awards. */}
+            {/* RIGHT: single scroll container capped at LEFT column
+                natural height. Every card at its natural size — they
+                flow vertically and the user scrolls if total content
+                exceeds the bars' height. No flex-grow gymnastics, no
+                cards getting cut in half. Order:
+                  1. Position
+                  2. Awards / Records
+                  3. Season Glance
+                  4. Recent Games */}
             <div
-              className="flex flex-col gap-4 overflow-hidden"
+              className="overflow-y-auto pr-1 -mr-1"
               style={barsHeight ? { maxHeight: `${barsHeight}px` } : undefined}
             >
-              {hasPosition && (
-                <div className="shrink-0">
+              <div className="flex flex-col gap-4">
+                {hasPosition && (
                   <PositionPieChart breakdown={position_breakdown} />
-                </div>
-              )}
-              {hasAwards && (
-                <ScrollableCard>
+                )}
+                {hasAwards && (
                   <TeamAwards
                     awards={awards || []}
                     careerRankings={career_rankings || []}
                     pnwRankings={pnw_rankings || []}
                     teamShort={player.team_short}
-                    embedded
                   />
-                </ScrollableCard>
-              )}
-              {/* Always-rendered fillers. They auto-shrink/scroll if
-                  position+awards already fill the column. */}
-              <SeasonGlance
-                bat={batting_stats?.find(r => r.season === targetSeason)}
-                pit={pitching_stats?.find(r => r.season === targetSeason)}
-                season={targetSeason}
-              />
-              <RecentGames
-                batting={gameLogs?.batting}
-                pitching={gameLogs?.pitching}
-                limit={20}
-                className="flex-grow min-h-0"
-              />
+                )}
+                <SeasonGlance
+                  bat={batting_stats?.find(r => r.season === targetSeason)}
+                  pit={pitching_stats?.find(r => r.season === targetSeason)}
+                  season={targetSeason}
+                />
+                <RecentGames
+                  batting={gameLogs?.batting}
+                  pitching={gameLogs?.pitching}
+                  limit={20}
+                />
+              </div>
             </div>
           </div>
         )

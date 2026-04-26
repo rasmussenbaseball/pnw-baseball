@@ -5515,7 +5515,8 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                JOIN divisions d ON c.division_id = d.id
                WHERE d.level = %s
                GROUP BY bs.player_id
-               HAVING num_seasons >= 2 AND pa >= 100""",
+               HAVING COUNT(DISTINCT bs.season) >= 2
+                  AND SUM(bs.plate_appearances) >= 100""",
             (division_level,),
         )
         all_players = cur.fetchall()
@@ -5571,7 +5572,8 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                JOIN divisions d ON c.division_id = d.id
                WHERE d.level = %s
                GROUP BY ps.player_id
-               HAVING num_seasons >= 2 AND ip >= 20""",
+               HAVING COUNT(DISTINCT ps.season) >= 2
+                  AND SUM(ps.innings_pitched) >= 20""",
             (division_level,),
         )
         all_players = cur.fetchall()
