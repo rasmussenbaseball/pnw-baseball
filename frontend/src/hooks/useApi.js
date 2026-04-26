@@ -252,6 +252,14 @@ export function useSeasons() {
 }
 
 /**
+ * Top moments of the season — best single-PA WPA swings + clutch
+ * leaderboards for hitters and pitchers. Powers the /top-moments page.
+ */
+export function useTopMoments(season = 2026, opts = {}) {
+  return useApi('/top-moments', { season, ...opts }, [season, JSON.stringify(opts)])
+}
+
+/**
  * Fetch park factors data with optional filters.
  */
 export function useParkFactors(filters = {}) {

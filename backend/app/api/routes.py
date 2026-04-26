@@ -18568,6 +18568,216 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
     return constants
 
 
+# ── Top Moments of the season (Phase D.5 surface) ────────────────────
+#
+# Three-in-one endpoint powering the /top-moments page. Returns the
+# season's biggest single-PA WPA swings, the cumulative-WPA hitter
+# leaderboard, and the cumulative-WPA pitcher leaderboard.
+#
+# Moments are filtered to AUDIT-CLEAN games — we don't want artifact
+# walk-offs from games with scorer-omitted runs (we saw +0.94 fakes
+# during Phase D.5 development from missing-run games). Player
+# leaderboards include all events because per-PA noise averages out
+# when you sum across 50+ PAs.
+
+@router.get("/top-moments")
+def top_moments(
+    season: int = Query(2026, description="Season year"),
+    moments_limit: int = Query(25, description="How many top PAs to return"),
+    leaderboard_limit: int = Query(25, description="How many leaderboard rows"),
+    min_pa: int = Query(50, description="Minimum PAs/BFs for leaderboard inclusion"),
+):
+    SUBEVENT_TYPES = (
+        'stolen_base', 'caught_stealing', 'wild_pitch',
+        'passed_ball', 'balk', 'pickoff', 'runner_other',
+    )
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # ── Top single-PA WPA moments ──
+        # Audit-clean games only. Join everything we need to render
+        # rich game-context cards on the frontend without a second
+        # round-trip per moment.
+        cur.execute("""
+            WITH game_audit AS (
+                SELECT g.id AS game_id,
+                       (g.home_score + g.away_score) AS actual_total,
+                       COALESCE(SUM(ge.runs_on_play), 0) AS derived_total
+                FROM games g
+                LEFT JOIN game_events ge ON ge.game_id = g.id
+                WHERE g.season = %s
+                  AND g.home_score IS NOT NULL
+                  AND g.away_score IS NOT NULL
+                  AND g.home_score <> g.away_score
+                GROUP BY g.id
+            )
+            SELECT
+                ge.id, ge.game_id, g.game_date,
+                ge.inning, ge.half, ge.sequence_idx,
+                ge.balls_before, ge.strikes_before, ge.pitch_sequence,
+                ge.bat_score_before, ge.fld_score_before, ge.runs_on_play,
+                ge.batter_player_id, ge.batter_name, ge.batting_team_id,
+                ge.pitcher_player_id, ge.pitcher_name,
+                ge.result_type, ge.result_text,
+                ge.wpa_batter, ge.wp_before, ge.wp_after,
+                g.home_team_id, g.away_team_id,
+                g.home_score AS final_home, g.away_score AS final_away,
+                COALESCE(th.short_name, th.name) AS home_short,
+                COALESCE(ta.short_name, ta.name) AS away_short,
+                th.logo_url AS home_logo, ta.logo_url AS away_logo
+            FROM game_events ge
+            JOIN game_audit ga ON ga.game_id = ge.game_id
+                              AND ga.derived_total = ga.actual_total
+            JOIN games g  ON g.id = ge.game_id
+            JOIN teams th ON th.id = g.home_team_id
+            JOIN teams ta ON ta.id = g.away_team_id
+            WHERE g.season = %s
+              AND ge.wpa_batter IS NOT NULL
+              AND ge.batter_player_id IS NOT NULL
+              AND ge.pitcher_player_id IS NOT NULL
+              AND ge.result_type NOT IN %s
+            ORDER BY ge.wpa_batter DESC
+            LIMIT %s
+        """, (season, season, SUBEVENT_TYPES, moments_limit))
+        moments = []
+        for r in cur.fetchall():
+            home_batting = (r["half"] == "bottom")
+            batter_team_id = r["home_team_id"] if home_batting else r["away_team_id"]
+            pitcher_team_id = r["away_team_id"] if home_batting else r["home_team_id"]
+            moments.append({
+                "id": r["id"],
+                "game_id": r["game_id"],
+                "game_date": r["game_date"].isoformat() if r["game_date"] else None,
+                "inning": r["inning"],
+                "half": r["half"],
+                "balls_before": r["balls_before"],
+                "strikes_before": r["strikes_before"],
+                "pitch_sequence": r["pitch_sequence"],
+                "bat_score_before": r["bat_score_before"],
+                "fld_score_before": r["fld_score_before"],
+                "runs_on_play": r["runs_on_play"] or 0,
+                "result_type": r["result_type"],
+                "result_text": r["result_text"],
+                "wpa": float(r["wpa_batter"]) if r["wpa_batter"] is not None else None,
+                "wp_before": float(r["wp_before"]) if r["wp_before"] is not None else None,
+                "wp_after": float(r["wp_after"]) if r["wp_after"] is not None else None,
+                "batter": {
+                    "id": r["batter_player_id"],
+                    "name": r["batter_name"],
+                    "team_id": batter_team_id,
+                },
+                "pitcher": {
+                    "id": r["pitcher_player_id"],
+                    "name": r["pitcher_name"],
+                    "team_id": pitcher_team_id,
+                },
+                "game": {
+                    "home_short": r["home_short"],
+                    "away_short": r["away_short"],
+                    "home_logo": r["home_logo"],
+                    "away_logo": r["away_logo"],
+                    "final_home": r["final_home"],
+                    "final_away": r["final_away"],
+                },
+            })
+
+        # ── Top hitters by total WPA ──
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.bats,
+                   t.id AS team_id, t.short_name AS team_short,
+                   t.logo_url AS team_logo,
+                   d.level AS division_level,
+                   c.abbreviation AS conference_abbrev,
+                   SUM(ge.wpa_batter)        AS total_wpa,
+                   COUNT(ge.wpa_batter)      AS pa,
+                   MAX(ge.wpa_batter)        AS peak_wpa,
+                   AVG(ABS(ge.wpa_batter))   AS mean_abs_wpa
+            FROM game_events ge
+            JOIN games g       ON g.id = ge.game_id
+            JOIN players p     ON p.id = ge.batter_player_id
+            JOIN teams t       ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d   ON d.id = c.division_id
+            WHERE g.season = %s AND ge.wpa_batter IS NOT NULL
+            GROUP BY p.id, p.first_name, p.last_name, p.position, p.bats,
+                     t.id, t.short_name, t.logo_url,
+                     d.level, c.abbreviation
+            HAVING COUNT(ge.wpa_batter) >= %s
+            ORDER BY SUM(ge.wpa_batter) DESC
+            LIMIT %s
+        """, (season, min_pa, leaderboard_limit))
+        top_hitters = []
+        for i, r in enumerate(cur.fetchall(), start=1):
+            top_hitters.append({
+                "rank": i,
+                "player_id": r["id"],
+                "name": f"{r['first_name']} {r['last_name']}",
+                "position": r["position"],
+                "bats": r["bats"],
+                "team_id": r["team_id"],
+                "team_short": r["team_short"],
+                "team_logo": r["team_logo"],
+                "division_level": r["division_level"],
+                "conference": r["conference_abbrev"],
+                "total_wpa": float(r["total_wpa"]),
+                "peak_wpa": float(r["peak_wpa"]) if r["peak_wpa"] is not None else None,
+                "mean_abs_wpa": float(r["mean_abs_wpa"]) if r["mean_abs_wpa"] is not None else None,
+                "pa": int(r["pa"]),
+            })
+
+        # ── Top pitchers by total WPA ──
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.throws,
+                   t.id AS team_id, t.short_name AS team_short,
+                   t.logo_url AS team_logo,
+                   d.level AS division_level,
+                   c.abbreviation AS conference_abbrev,
+                   SUM(ge.wpa_pitcher)        AS total_wpa,
+                   COUNT(ge.wpa_pitcher)      AS bf,
+                   MAX(ge.wpa_pitcher)        AS peak_wpa,
+                   AVG(ABS(ge.wpa_pitcher))   AS mean_abs_wpa
+            FROM game_events ge
+            JOIN games g       ON g.id = ge.game_id
+            JOIN players p     ON p.id = ge.pitcher_player_id
+            JOIN teams t       ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d   ON d.id = c.division_id
+            WHERE g.season = %s AND ge.wpa_pitcher IS NOT NULL
+            GROUP BY p.id, p.first_name, p.last_name, p.position, p.throws,
+                     t.id, t.short_name, t.logo_url,
+                     d.level, c.abbreviation
+            HAVING COUNT(ge.wpa_pitcher) >= %s
+            ORDER BY SUM(ge.wpa_pitcher) DESC
+            LIMIT %s
+        """, (season, min_pa, leaderboard_limit))
+        top_pitchers = []
+        for i, r in enumerate(cur.fetchall(), start=1):
+            top_pitchers.append({
+                "rank": i,
+                "player_id": r["id"],
+                "name": f"{r['first_name']} {r['last_name']}",
+                "position": r["position"],
+                "throws": r["throws"],
+                "team_id": r["team_id"],
+                "team_short": r["team_short"],
+                "team_logo": r["team_logo"],
+                "division_level": r["division_level"],
+                "conference": r["conference_abbrev"],
+                "total_wpa": float(r["total_wpa"]),
+                "peak_wpa": float(r["peak_wpa"]) if r["peak_wpa"] is not None else None,
+                "mean_abs_wpa": float(r["mean_abs_wpa"]) if r["mean_abs_wpa"] is not None else None,
+                "bf": int(r["bf"]),
+            })
+
+        return {
+            "season": season,
+            "moments": moments,
+            "top_hitters": top_hitters,
+            "top_pitchers": top_pitchers,
+            "min_pa": min_pa,
+        }
+
+
 @router.get("/coaching/historic-matchup")
 def historic_matchup(
     team_a: int = Query(..., description="First team id"),

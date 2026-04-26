@@ -80,6 +80,7 @@ const NAV = [
     label: 'Misc',
     authRequired: true,
     items: [
+      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
       { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
       { to: '/team-quiz', label: 'Team Quiz', desc: 'Test your knowledge of a PNW team across one or more seasons' },
       { to: '/all-conference', label: 'All-Conference Generator', desc: 'Build mock first, second, and HM teams from season stats' },

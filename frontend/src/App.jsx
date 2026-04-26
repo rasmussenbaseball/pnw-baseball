@@ -102,6 +102,7 @@ import Scoreboard from './pages/Scoreboard'
 import About from './pages/About'
 import RecruitingBreakdown from './pages/RecruitingBreakdown'
 import PnwGrid from './pages/PnwGrid'
+import TopMoments from './pages/TopMoments'
 import AllConferenceGenerator from './pages/AllConferenceGenerator'
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
@@ -179,6 +180,7 @@ export default function App() {
           <Route path="/draft/2028" element={<RequireAuth><DraftBoard year="28" /></RequireAuth>} />
 
           {/* Misc (auth required) */}
+          <Route path="/top-moments" element={<RequireAuth><TopMoments /></RequireAuth>} />
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
           <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
