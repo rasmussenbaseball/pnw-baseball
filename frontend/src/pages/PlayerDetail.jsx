@@ -262,7 +262,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
   if (!available.length) return null
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 mb-4 sm:mb-6 overflow-hidden flex flex-col ${fillHeight ? 'h-full' : ''}`}>
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col ${fillHeight ? 'h-full' : ''}`}>
       {/* Header bar */}
       <div className="px-3 sm:px-5 pt-4 sm:pt-5 pb-2 sm:pb-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -441,7 +441,7 @@ function StatsTable({ rows, columns, careerRow }) {
 
 // ── Team Awards ─────────────────────────────────────────────────
 
-function TeamAwards({ awards, careerRankings, pnwRankings, teamShort }) {
+function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded = false }) {
   // Group season awards by year + team
   const bySeason = {}
   awards.forEach(a => {
@@ -488,8 +488,18 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort }) {
     )
   }
 
+  // When embedded inside a ScrollableCard wrapper, skip our own card
+  // chrome (the wrapper provides rounded + border + padding).
+  const Wrapper = embedded
+    ? ({ children }) => <>{children}</>
+    : ({ children }) => (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+          {children}
+        </div>
+      )
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+    <Wrapper>
       {/* Season Awards */}
       {hasSeasonAwards && (
         <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100' : ''}>
@@ -593,7 +603,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort }) {
           <p className="text-[10px] text-gray-400 mt-2">All-time team career rankings (since 2022, min 50 PA / 20 IP)</p>
         </div>
       )}
-    </div>
+    </Wrapper>
   )
 }
 
@@ -605,14 +615,16 @@ const POS_COLORS = {
   'OF': '#059669', 'IF': '#4f46e5', 'DH': '#6b7280', 'UT': '#9ca3af', 'N/A': '#d1d5db',
 }
 
-// Wraps a child card so its CONTENT scrolls vertically when it would
-// otherwise overflow its allotted space. Used for the Awards card on
-// the 2026 player page so a player with many awards still fits below
-// the position breakdown without cutting off either card.
+// Wraps content with card chrome (rounded + border + bg) and gives
+// the inner area an internal scrollbar. Used for Awards on the 2026
+// player page so a long award list scrolls inside a single card with
+// proper rounded corners — no half-cut card visuals.
 function ScrollableCard({ children }) {
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-      {children}
+    <div className="flex-1 min-h-0 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5">
+        {children}
+      </div>
     </div>
   )
 }
@@ -1100,16 +1112,20 @@ export default function PlayerDetail() {
   const { data: splits } = usePlayerSplits(playerId, 2026)
 
   // ── Bars-height measurement for the 2026 2-col layout ──────────
-  // The right column should never exceed the LEFT (bars) column's
-  // natural height. We measure the bars wrapper after render and feed
-  // its height into the right column as maxHeight + overflow-hidden,
-  // so the right column scrolls excess content internally.
+  // Right column should never exceed the LEFT (bars) column's natural
+  // height. Measure bars wrapper after render and feed offsetHeight
+  // to right column as maxHeight + overflow-hidden so excess content
+  // scrolls internally. Reset to null whenever the season changes so
+  // the legacy layout (used for pre-2026) doesn't apply a stale height.
   const barsRef = useRef(null)
   const [barsHeight, setBarsHeight] = useState(null)
   useLayoutEffect(() => {
+    setBarsHeight(null) // clear stale value on season switch
     if (!barsRef.current) return
     const el = barsRef.current
-    const update = () => setBarsHeight(el.offsetHeight)
+    const update = () => {
+      if (el && el.isConnected) setBarsHeight(el.offsetHeight)
+    }
     update()
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(update)
@@ -1358,8 +1374,10 @@ export default function PlayerDetail() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
               {/* LEFT: percentile bars — natural height (no h-full /
                   fillHeight; we want the rectangle to end right under
-                  the "Min 5 IP" footer line). */}
-              <div ref={barsRef} className="flex flex-col">
+                  the "Min 5 IP" footer line). gap-4 between batting +
+                  pitching cards mirrors the right column's gap-4 so
+                  heights line up exactly. */}
+              <div ref={barsRef} className="flex flex-col gap-4">
                 {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
                   <PercentileBars
                     percentiles={batting_percentiles}
@@ -1409,6 +1427,7 @@ export default function PlayerDetail() {
                       careerRankings={career_rankings || []}
                       pnwRankings={pnw_rankings || []}
                       teamShort={player.team_short}
+                      embedded
                     />
                   </ScrollableCard>
                 )}
@@ -1434,9 +1453,10 @@ export default function PlayerDetail() {
           )
         }
 
-        // Default: stack awards then bars full-width (legacy layout)
+        // Default: stack awards then bars full-width (legacy layout
+        // for pre-2026 seasons or players with no awards/position).
         return (
-          <>
+          <div className="space-y-4 sm:space-y-6 mb-4 sm:mb-6">
             {hasAwards && (
               <TeamAwards
                 awards={awards || []}
@@ -1446,7 +1466,7 @@ export default function PlayerDetail() {
               />
             )}
             {seasonFilter && (
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Rankings</span>
                 {seasonFilter}
               </div>
@@ -1467,7 +1487,7 @@ export default function PlayerDetail() {
                 divisionLevel={player.division_level}
               />
             )}
-          </>
+          </div>
         )
       })()}
 
