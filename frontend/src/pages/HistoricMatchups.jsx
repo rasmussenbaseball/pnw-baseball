@@ -176,10 +176,217 @@ export default function HistoricMatchups() {
               mode={mode}
             />
           </div>
+
+          {/* PA-level matchup history (Phase D.5) */}
+          {data.pa_matchups && data.pa_matchups.total_pas > 0 && (
+            <MatchupHistorySection
+              data={data.pa_matchups}
+              teamA={data.team_a}
+              teamB={data.team_b}
+            />
+          )}
         </>
       )}
     </div>
   )
+}
+
+// ── Matchup History ────────────────────────────────────────────
+// Per-PA history of every batter-vs-pitcher confrontation in the
+// games these teams played. Built on game_events from Phase 1+ PBP
+// scrape. Two columns: team_a's hitters vs team_b's pitchers, and
+// vice versa. Each matchup is a collapsible card that opens to a
+// list of every PA (date, inning, count, pitch sequence, result,
+// WPA). The killer scouting feature this data unlocks.
+
+function MatchupHistorySection({ data, teamA, teamB }) {
+  return (
+    <div className="mt-6">
+      <h2 className="text-xs uppercase tracking-wide text-gray-500 mb-2 font-semibold">
+        Matchup history · {data.total_pas} plate appearances
+      </h2>
+      <p className="text-[11px] text-gray-500 mb-3 leading-snug">
+        Every individual PA between hitters and pitchers from these games. Click
+        a matchup to expand the full pitch-by-pitch sequence.
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <MatchupColumn
+          title={`${teamA.short_name} at the plate`}
+          batterTeamLogo={teamA.logo_url}
+          pitcherTeamLogo={teamB.logo_url}
+          matchups={data.team_a_at_bat}
+        />
+        <MatchupColumn
+          title={`${teamB.short_name} at the plate`}
+          batterTeamLogo={teamB.logo_url}
+          pitcherTeamLogo={teamA.logo_url}
+          matchups={data.team_b_at_bat}
+        />
+      </div>
+    </div>
+  )
+}
+
+function MatchupColumn({ title, batterTeamLogo, pitcherTeamLogo, matchups }) {
+  return (
+    <div className="border border-gray-200 rounded">
+      <div className="flex items-center gap-2 px-3 py-2 bg-pnw-forest text-white rounded-t">
+        {batterTeamLogo && (
+          <img src={batterTeamLogo} alt="" className="h-4 w-4 object-contain" />
+        )}
+        <span className="text-xs font-semibold">{title}</span>
+      </div>
+      {matchups.length === 0 ? (
+        <div className="text-xs text-gray-400 text-center py-6">
+          No PA data available
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {matchups.map((m, i) => (
+            <MatchupCard
+              key={`${m.batter.id}-${m.pitcher.id}-${i}`}
+              matchup={m}
+              pitcherTeamLogo={pitcherTeamLogo}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MatchupCard({ matchup, pitcherTeamLogo }) {
+  const [open, setOpen] = useState(false)
+  const m = matchup
+  const wpa = m.total_wpa
+  const wpaSign = wpa >= 0 ? '+' : ''
+  const wpaColor = wpa >= 0.05 ? 'text-emerald-700' :
+                   wpa <= -0.05 ? 'text-rose-700' : 'text-gray-600'
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left"
+      >
+        <span className={`text-[11px] text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`}>
+          ▶
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-gray-900 truncate">
+              {m.batter.name}
+            </span>
+            <span className="text-xs text-gray-400">vs</span>
+            <span className="text-sm text-gray-700 truncate flex items-center gap-1">
+              {pitcherTeamLogo && (
+                <img src={pitcherTeamLogo} alt="" className="h-3 w-3 object-contain" />
+              )}
+              {m.pitcher.name}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-500 mt-0.5">
+            {m.pa_count} PA · {m.hits} H · {m.walks} BB · {m.strikeouts} K
+            {m.home_runs > 0 ? ` · ${m.home_runs} HR` : ''}
+            {m.rbi > 0 ? ` · ${m.rbi} RBI` : ''}
+            <span className={`ml-2 font-semibold ${wpaColor}`}>
+              {wpaSign}{wpa.toFixed(2)} WPA
+            </span>
+          </div>
+        </div>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-1 bg-gray-50">
+          <div className="space-y-1">
+            {m.pas.map((pa, i) => (
+              <PaRow key={i} pa={pa} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Single-PA row inside an expanded matchup card.
+function PaRow({ pa }) {
+  const inn = `${pa.half === 'top' ? 'T' : 'B'}${pa.inning}`
+  const count = `${pa.balls_before ?? '?'}-${pa.strikes_before ?? '?'}`
+  const score = `${pa.bat_score_before ?? '?'}-${pa.fld_score_before ?? '?'}`
+  const result = formatResultType(pa.result_type)
+  const wpa = pa.wpa
+  const wpaSign = wpa != null && wpa >= 0 ? '+' : ''
+  const wpaColor = wpa == null ? 'text-gray-400' :
+                   wpa >= 0.05 ? 'text-emerald-700' :
+                   wpa <= -0.05 ? 'text-rose-700' : 'text-gray-600'
+  const date = pa.game_date
+    ? new Date(pa.game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—'
+  return (
+    <div className="flex items-center gap-2 text-[11px] py-1 px-2 bg-white rounded border border-gray-100">
+      <span className="text-gray-500 tabular-nums w-12 shrink-0">{date}</span>
+      <span className="text-gray-500 tabular-nums w-7 shrink-0">{inn}</span>
+      <span className="text-gray-500 tabular-nums w-9 shrink-0">{score}</span>
+      <span className="text-gray-500 tabular-nums w-7 shrink-0">{count}</span>
+      <PitchSequence seq={pa.pitch_sequence} />
+      <span className="flex-1 text-gray-700 truncate" title={pa.result_text || ''}>
+        {result}
+      </span>
+      <span className={`tabular-nums shrink-0 font-semibold ${wpaColor}`}>
+        {wpa == null ? '—' : `${wpaSign}${wpa.toFixed(2)}`}
+      </span>
+    </div>
+  )
+}
+
+// Render a pitch sequence with each pitch color-coded by type.
+// Letter codes: B=ball, K=swinging strike, S=called strike,
+// F=foul, H=HBP. Empty string = ball-in-play first pitch.
+function PitchSequence({ seq }) {
+  if (!seq) return <span className="text-gray-300 text-[10px] w-20 shrink-0">—</span>
+  return (
+    <span className="font-mono tracking-tight w-20 shrink-0 truncate">
+      {[...seq].map((c, i) => {
+        const cls =
+          c === 'B' ? 'text-blue-600' :
+          c === 'K' || c === 'S' ? 'text-rose-600' :
+          c === 'F' ? 'text-amber-600' :
+          c === 'H' ? 'text-orange-700' :
+          'text-gray-500'
+        return (
+          <span key={i} className={cls}>
+            {c}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+// Result type → display label
+function formatResultType(rt) {
+  const map = {
+    home_run: 'Home run',
+    triple: 'Triple',
+    double: 'Double',
+    single: 'Single',
+    walk: 'Walk',
+    intentional_walk: 'IBB',
+    hbp: 'HBP',
+    strikeout_swinging: 'K (swinging)',
+    strikeout_looking: 'K (looking)',
+    ground_out: 'Ground out',
+    fly_out: 'Fly out',
+    line_out: 'Line out',
+    pop_out: 'Pop out',
+    sac_fly: 'Sac fly',
+    sac_bunt: 'Sac bunt',
+    fielders_choice: 'Fielder\'s choice',
+    error: 'Reached on error',
+    double_play: 'Double play',
+    triple_play: 'Triple play',
+    catcher_interference: 'Catcher\'s int.',
+  }
+  return map[rt] || rt || '—'
 }
 
 function Empty({ icon, text, spin }) {

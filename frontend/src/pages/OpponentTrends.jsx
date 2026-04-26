@@ -142,6 +142,10 @@ function LineupsTab({ d }) {
 }
 
 function LineupTable({ title, sub, data, accent }) {
+  // Track which lineup spot (if any) is expanded to show tendencies.
+  // Spots without a resolved player_id (no tendencies data) are not
+  // expandable — clicking them is a no-op.
+  const [expandedSpot, setExpandedSpot] = useState(null)
   if (!data || !data.lineup) return (
     <div className="bg-white rounded-lg border border-gray-100 p-4 text-center text-gray-400 text-xs">
       {title}: Not enough data
@@ -164,26 +168,49 @@ function LineupTable({ title, sub, data, accent }) {
           </tr>
         </thead>
         <tbody>
-          {data.lineup.map((row, i) => (
-            <tr key={i} className="border-b border-gray-50 last:border-0 align-top">
-              <td className="text-center py-1 font-bold text-gray-400">{row.spot}</td>
-              <td className="text-center py-1 text-gray-500 font-medium">{row.position}</td>
-              <td className="py-1 pl-2">
-                <span className="font-medium text-gray-900">{row.player_name}</span>
-                {row.alts && row.alts.length > 0 && (
-                  <span className="text-gray-500">
-                    {row.alts.map((alt, ai) => (
-                      <span key={ai}>
-                        <span className="text-gray-300"> / </span>
-                        <span>{alt.player_name}</span>
+          {data.lineup.map((row, i) => {
+            const hasTendencies = !!row.tendencies
+            const isOpen = expandedSpot === row.spot
+            return (
+              <Fragment key={i}>
+                <tr
+                  className={`border-b border-gray-50 last:border-0 align-top ${
+                    hasTendencies ? 'cursor-pointer hover:bg-gray-50' : ''
+                  }`}
+                  onClick={() => hasTendencies && setExpandedSpot(isOpen ? null : row.spot)}
+                >
+                  <td className="text-center py-1 font-bold text-gray-400">
+                    {hasTendencies && (
+                      <span className={`text-gray-400 text-[10px] mr-1 inline-block transition-transform ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                    )}
+                    {row.spot}
+                  </td>
+                  <td className="text-center py-1 text-gray-500 font-medium">{row.position}</td>
+                  <td className="py-1 pl-2">
+                    <span className="font-medium text-gray-900">{row.player_name}</span>
+                    {row.alts && row.alts.length > 0 && (
+                      <span className="text-gray-500">
+                        {row.alts.map((alt, ai) => (
+                          <span key={ai}>
+                            <span className="text-gray-300"> / </span>
+                            <span>{alt.player_name}</span>
+                          </span>
+                        ))}
                       </span>
-                    ))}
-                  </span>
+                    )}
+                  </td>
+                  <td className="py-1 text-right pr-3 text-gray-500">{row.pct > 0 ? `${row.pct}%` : ''}</td>
+                </tr>
+                {isOpen && hasTendencies && (
+                  <tr>
+                    <td colSpan={4} className="bg-gray-50 px-3 py-2">
+                      <HitterTendenciesBlock tendencies={row.tendencies} />
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="py-1 text-right pr-3 text-gray-500">{row.pct > 0 ? `${row.pct}%` : ''}</td>
-            </tr>
-          ))}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
       {data.bench && data.bench.length > 0 && (
@@ -486,10 +513,13 @@ function StarterRows({ sp, expanded, toggle }) {
         <td className="text-center">{sp.slots?.['3'] || '—'}</td>
         <td className="text-center pr-3">{sp.slots?.['4'] || '—'}</td>
       </tr>
-      {expanded && (sp.recent?.length > 0 || (sp.slot_splits && Object.keys(sp.slot_splits).length > 0)) && (
+      {expanded && (sp.recent?.length > 0 || (sp.slot_splits && Object.keys(sp.slot_splits).length > 0) || sp.tendencies) && (
         <tr>
           <td colSpan={13} className="bg-gray-50 px-3 py-2">
             <div className="space-y-3">
+              {sp.tendencies && (
+                <PitcherTendenciesBlock tendencies={sp.tendencies} />
+              )}
               {sp.slot_splits && Object.keys(sp.slot_splits).length > 0 && (
                 <div>
                   <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">By Series Game</div>
@@ -671,22 +701,146 @@ function RelieverRows({ r, expanded, toggle }) {
         <td className="text-center font-bold">{r.saves || '—'}</td>
         <td className="text-center pr-3">{r.leverage_pct}%</td>
       </tr>
-      {expanded && r.recent?.length > 0 && (
+      {expanded && (r.recent?.length > 0 || r.tendencies) && (
         <tr>
-          <td colSpan={13} className="bg-gray-50 px-3 py-1">
-            <div className="flex flex-wrap gap-1.5">
-              {[...r.recent].reverse().map((a, i) => (
-                <span key={i} className="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5">
-                  {fmtDate(a.date)} {a.opp} {a.ip}IP {a.k}K
-                  {a.er > 0 && <span className="text-red-500"> {a.er}ER</span>}
-                  {a.dec && <span className={a.dec === 'S' ? 'text-green-600 font-bold' : ''}> {a.dec}</span>}
-                </span>
-              ))}
+          <td colSpan={13} className="bg-gray-50 px-3 py-2">
+            <div className="space-y-2">
+              {r.tendencies && (
+                <PitcherTendenciesBlock tendencies={r.tendencies} />
+              )}
+              {r.recent?.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Recent Appearances</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[...r.recent].reverse().map((a, i) => (
+                      <span key={i} className="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5">
+                        {fmtDate(a.date)} {a.opp} {a.ip}IP {a.k}K
+                        {a.er > 0 && <span className="text-red-500"> {a.er}ER</span>}
+                        {a.dec && <span className={a.dec === 'S' ? 'text-green-600 font-bold' : ''}> {a.dec}</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </td>
         </tr>
       )}
     </>
+  )
+}
+
+// PBP-derived tendencies block — same shape for starters + relievers.
+// Renders a row of mini-tiles showing FPS%, Whiff%, Putaway%, GB%, plus
+// total WPA. Built from game_events (Phase D.5). Falls back gracefully
+// when individual metrics are missing (some pitchers have low pitch-
+// tracked sample because their league publishes narrative-only PBP).
+function PitcherTendenciesBlock({ tendencies }) {
+  const t = tendencies
+  if (!t) return null
+  const tiles = [
+    { label: 'FPS%', value: t.fps_pct, fmt: 'pct',
+      tip: 'First-pitch strike rate' },
+    { label: 'Whiff%', value: t.whiff_pct, fmt: 'pct',
+      tip: 'Swinging strikes / total swings' },
+    { label: 'Putaway%', value: t.putaway_pct, fmt: 'pct',
+      tip: 'Strikeouts in 2-strike counts' },
+    { label: 'Strike%', value: t.strike_pct, fmt: 'pct',
+      tip: 'Strikes / total pitches' },
+    { label: 'GB%', value: t.gb_pct, fmt: 'pct',
+      tip: 'Ground balls / balls in play' },
+    { label: 'HR/PA', value: t.hr_pa_pct, fmt: 'pct',
+      tip: 'Home runs allowed per PA' },
+  ]
+  const wpa = t.total_wpa
+  const wpaSign = wpa != null && wpa >= 0 ? '+' : ''
+  const wpaColor = wpa == null ? 'text-gray-400' :
+                   wpa >= 0.3 ? 'text-emerald-700' :
+                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700'
+  return (
+    <div>
+      <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Tendencies (PBP)</div>
+      <div className="grid grid-cols-3 sm:grid-cols-7 gap-1.5">
+        {tiles.map(tile => (
+          <TinyTile key={tile.label} {...tile} />
+        ))}
+        <div className="bg-white border border-gray-200 rounded p-1.5 text-center"
+             title="Total Win Probability Added — cumulative WP this pitcher has earned for his team">
+          <div className="text-[9px] uppercase text-gray-400">WPA</div>
+          <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
+            {wpa == null ? '—' : `${wpaSign}${wpa.toFixed(2)}`}
+          </div>
+          <div className="text-[9px] text-gray-400">{t.wpa_pa || 0} BF</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// PBP-derived hitter tendencies. Mirrors PitcherTendenciesBlock but
+// with hitter-relevant tiles: contact mix (GB/LD/FB/PU), spray
+// (Pull/Center/Oppo), 2-strike approach, and total WPA.
+function HitterTendenciesBlock({ tendencies }) {
+  const t = tendencies
+  if (!t) return null
+  const tiles = [
+    { label: 'GB%', value: t.gb_pct, fmt: 'pct',
+      tip: 'Ground balls / balls in play' },
+    { label: 'LD%', value: t.ld_pct, fmt: 'pct',
+      tip: 'Line drives / balls in play' },
+    { label: 'FB%', value: t.fb_pct, fmt: 'pct',
+      tip: 'Fly balls / balls in play' },
+    { label: 'PU%', value: t.pu_pct, fmt: 'pct',
+      tip: 'Popups / balls in play' },
+    { label: 'Pull%', value: t.pull_pct, fmt: 'pct',
+      tip: 'Balls hit to the pull side' },
+    { label: 'Oppo%', value: t.oppo_pct, fmt: 'pct',
+      tip: 'Balls hit to the opposite field' },
+    { label: 'AIRPULL%', value: t.air_pull_pct, fmt: 'pct',
+      tip: 'Pulled fly balls + line drives — power indicator' },
+    { label: 'Whiff%', value: t.whiff_pct, fmt: 'pct',
+      tip: 'Swinging strikes / total swings (lower is better for hitter)' },
+    { label: 'Putaway%', value: t.putaway_pct, fmt: 'pct',
+      tip: 'K rate in 2-strike counts (lower is better for hitter)' },
+  ]
+  const wpa = t.total_wpa
+  const wpaSign = wpa != null && wpa >= 0 ? '+' : ''
+  const wpaColor = wpa == null ? 'text-gray-400' :
+                   wpa >= 0.3 ? 'text-emerald-700' :
+                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700'
+  return (
+    <div>
+      <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">
+        Tendencies (PBP) {t.bats && <span className="ml-1 text-gray-500">— bats {t.bats}</span>}
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+        {tiles.map(tile => (
+          <TinyTile key={tile.label} {...tile} />
+        ))}
+        <div className="bg-white border border-gray-200 rounded p-1.5 text-center"
+             title="Total Win Probability Added — cumulative WP this hitter has earned">
+          <div className="text-[9px] uppercase text-gray-400">WPA</div>
+          <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
+            {wpa == null ? '—' : `${wpaSign}${wpa.toFixed(2)}`}
+          </div>
+          <div className="text-[9px] text-gray-400">{t.wpa_pa || 0} PA</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Tiny tile used in tendencies blocks. Single percentage value
+// with a label and tooltip.
+function TinyTile({ label, value, fmt, tip }) {
+  const display = value == null ? '—'
+    : fmt === 'pct' ? `${(value * 100).toFixed(1)}%`
+    : value.toFixed(2)
+  return (
+    <div className="bg-white border border-gray-200 rounded p-1.5 text-center" title={tip}>
+      <div className="text-[9px] uppercase text-gray-400">{label}</div>
+      <div className="text-sm font-bold text-gray-900 tabular-nums">{display}</div>
+    </div>
   )
 }
 

@@ -17286,6 +17286,199 @@ def opponent_trends(
         # Sort by appearances for the main list display
         relievers_list.sort(key=lambda x: -x["apps"])
 
+        # ── PBP tendencies (Phase D.5) ──
+        # For every pitcher in starters+relievers, pull PBP-derived
+        # tendencies from game_events: first-pitch strike rate, whiff
+        # rate, putaway rate, ground-ball rate, opponent contact mix,
+        # total WPA. One bulk query keyed on player_id, attach to each
+        # pitcher entry. Keys default to None so the frontend can show
+        # "—" for pitchers without enough PBP-tracked data.
+        pitcher_pids = []
+        for s in starters_list:
+            if s.get("player_id"):
+                pitcher_pids.append(s["player_id"])
+        for r in relievers_list:
+            if r.get("player_id"):
+                pitcher_pids.append(r["player_id"])
+
+        pitcher_tendencies = {}  # player_id -> tendencies dict
+        if pitcher_pids:
+            cur.execute("""
+                SELECT
+                    ge.pitcher_player_id AS pid,
+                    COUNT(*) AS pa,
+                    COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
+                    COALESCE(SUM(pitches_thrown), 0) AS pitches,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
+                    COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+                    COUNT(*) FILTER (
+                        WHERE pitches_thrown IS NOT NULL AND
+                              (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
+                               OR (pitch_sequence = '' AND was_in_play))
+                    ) AS f1_strikes,
+                    COUNT(*) FILTER (WHERE strikes_before = 2) AS two_strike_pa,
+                    COUNT(*) FILTER (
+                        WHERE strikes_before = 2
+                          AND result_type IN ('strikeout_swinging','strikeout_looking')
+                    ) AS two_strike_k,
+                    COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+                    COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+                    COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+                    COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+                    COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+                    COUNT(*) FILTER (WHERE result_type = 'home_run') AS hr,
+                    SUM(ge.wpa_pitcher)        AS total_wpa,
+                    COUNT(ge.wpa_pitcher)      AS wpa_pa
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                WHERE g.season = %s
+                  AND ge.pitcher_player_id = ANY(%s)
+                GROUP BY ge.pitcher_player_id
+            """, (season, pitcher_pids))
+            for r in cur.fetchall():
+                pa = r["pa"] or 0
+                tracked = r["tracked_pa"] or 0
+                pitches = r["pitches"] or 0
+                pk = r["pk"] or 0; ps = r["ps"] or 0; pf = r["pf"] or 0
+                inp = r["in_play"] or 0
+                swings = pk + pf + inp
+                bb_total = r["bb_total"] or 0
+                two_k_pa = r["two_strike_pa"] or 0
+                pitcher_tendencies[r["pid"]] = {
+                    "pa": pa,
+                    "fps_pct": ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
+                    "whiff_pct": (pk / swings) if swings > 0 else None,
+                    "putaway_pct": ((r["two_strike_k"] or 0) / two_k_pa) if two_k_pa > 0 else None,
+                    "strike_pct": ((pk + ps + pf + inp) / pitches) if pitches > 0 else None,
+                    "gb_pct": ((r["gb_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "ld_pct": ((r["ld_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "fb_pct": ((r["fb_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "pu_pct": ((r["pu_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "hr_pa_pct": ((r["hr"] or 0) / pa) if pa > 0 else None,
+                    "total_wpa": float(r["total_wpa"]) if r["total_wpa"] is not None else None,
+                    "wpa_pa": int(r["wpa_pa"] or 0),
+                }
+        # Attach to each pitcher entry
+        for s in starters_list:
+            s["tendencies"] = pitcher_tendencies.get(s.get("player_id"))
+        for r in relievers_list:
+            r["tendencies"] = pitcher_tendencies.get(r.get("player_id"))
+
+        # ── Hitter tendencies (Phase D.5) ──
+        # Same idea for hitters in the lineup. Pull contact profile
+        # (GB/LD/FB/PU + Pull/Center/Oppo), 2-strike approach, and
+        # total WPA per hitter. Lets coaches plan how to attack each
+        # batter.
+        #
+        # Lineup spots only carry `player_name`, not `player_id` —
+        # build a name->id map from raw_batting (which has both),
+        # then resolve each spot to a pid before querying tendencies.
+        name_to_pid = {}
+        for b in raw_batting:
+            n = b.get("player_name")
+            pid = b.get("player_id")
+            if n and pid and n not in name_to_pid:
+                name_to_pid[n] = pid
+
+        def _walk_lineup_spots():
+            """Yield (spot_dict) for every lineup spot in lineup_trends."""
+            for hand_key in ("vs_rhp", "vs_lhp"):
+                hand = lineup_trends.get(hand_key) or {}
+                for s in (hand.get("lineup") or []):
+                    yield s
+            by_gn = lineup_trends.get("by_game_number") or {}
+            for slot_data in by_gn.values():
+                for s in (slot_data.get("lineup") or []):
+                    yield s
+
+        # Resolve spot.player_name to player_id, attach as spot.player_id
+        # so the frontend can deep-link if needed.
+        batter_pids = set()
+        for spot in _walk_lineup_spots():
+            n = spot.get("player_name")
+            pid = name_to_pid.get(n)
+            if pid:
+                spot["player_id"] = pid
+                batter_pids.add(pid)
+
+        batter_tendencies = {}
+        if batter_pids:
+            cur.execute("""
+                SELECT
+                    ge.batter_player_id AS pid,
+                    p.bats AS bats,
+                    COUNT(*) AS pa,
+                    COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+                    COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+                    COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+                    COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+                    COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+                    COUNT(*) FILTER (
+                        WHERE bb_type IN ('LD','FB')
+                          AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                            OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+                    ) AS air_pull,
+                    COUNT(*) FILTER (
+                        WHERE field_zone = 'LEFT' AND UPPER(p.bats) = 'R'
+                           OR field_zone = 'RIGHT' AND UPPER(p.bats) = 'L'
+                    ) AS pull_n,
+                    COUNT(*) FILTER (WHERE field_zone = 'CENTER') AS center_n,
+                    COUNT(*) FILTER (
+                        WHERE field_zone = 'RIGHT' AND UPPER(p.bats) = 'R'
+                           OR field_zone = 'LEFT' AND UPPER(p.bats) = 'L'
+                    ) AS oppo_n,
+                    COUNT(*) FILTER (WHERE field_zone IS NOT NULL) AS zone_total,
+                    COUNT(*) FILTER (WHERE strikes_before = 2) AS two_strike_pa,
+                    COUNT(*) FILTER (
+                        WHERE strikes_before = 2
+                          AND result_type IN ('strikeout_swinging','strikeout_looking')
+                    ) AS two_strike_k,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
+                    COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+                    SUM(ge.wpa_batter)         AS total_wpa,
+                    COUNT(ge.wpa_batter)       AS wpa_pa
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                JOIN players p ON p.id = ge.batter_player_id
+                WHERE g.season = %s
+                  AND ge.batter_player_id = ANY(%s)
+                GROUP BY ge.batter_player_id, p.bats
+            """, (season, list(batter_pids)))
+            for r in cur.fetchall():
+                bb_total = r["bb_total"] or 0
+                zone_total = r["zone_total"] or 0
+                two_k_pa = r["two_strike_pa"] or 0
+                pk = r["pk"] or 0; pf = r["pf"] or 0; inp = r["in_play"] or 0
+                swings = pk + pf + inp
+                contact = pf + inp
+                batter_tendencies[r["pid"]] = {
+                    "pa": r["pa"] or 0,
+                    "bats": r["bats"],
+                    "gb_pct": ((r["gb_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "ld_pct": ((r["ld_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "fb_pct": ((r["fb_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "pu_pct": ((r["pu_n"] or 0) / bb_total) if bb_total > 0 else None,
+                    "pull_pct": ((r["pull_n"] or 0) / zone_total) if zone_total > 0 else None,
+                    "center_pct": ((r["center_n"] or 0) / zone_total) if zone_total > 0 else None,
+                    "oppo_pct": ((r["oppo_n"] or 0) / zone_total) if zone_total > 0 else None,
+                    "air_pull_pct": ((r["air_pull"] or 0) / bb_total) if bb_total > 0 else None,
+                    "putaway_pct": ((r["two_strike_k"] or 0) / two_k_pa) if two_k_pa > 0 else None,
+                    "contact_pct": (contact / swings) if swings > 0 else None,
+                    "whiff_pct": (pk / swings) if swings > 0 else None,
+                    "total_wpa": float(r["total_wpa"]) if r["total_wpa"] is not None else None,
+                    "wpa_pa": int(r["wpa_pa"] or 0),
+                }
+
+        # Attach hitter tendencies onto each lineup spot using the same
+        # walker as the pid-resolution step above.
+        for spot in _walk_lineup_spots():
+            pid = spot.get("player_id")
+            if pid:
+                spot["tendencies"] = batter_tendencies.get(pid)
+
         return {
             "team": team,
             "games_analyzed": n_games,
@@ -18975,6 +19168,124 @@ def historic_matchup(
         team_a_division = team_rows[team_a].get("division_level")
         team_b_division = team_rows[team_b].get("division_level")
 
+        # ── PA-level matchup history (Phase D.5 unlock) ──
+        # For every PA between these two teams, group by (batter,
+        # pitcher) so a coach can see "Smith faced Jones 4 times this
+        # series — here's the pitch sequence and outcome of each one."
+        # Skipping sub-events (steals, WPs, etc.) — just PA results.
+        SUBEVENT_TYPES = (
+            'stolen_base', 'caught_stealing', 'wild_pitch',
+            'passed_ball', 'balk', 'pickoff', 'runner_other',
+        )
+        cur.execute("""
+            SELECT
+                ge.id, ge.game_id, g.game_date,
+                ge.inning, ge.half, ge.sequence_idx,
+                ge.batter_player_id, ge.batter_name, ge.batting_team_id,
+                ge.pitcher_player_id, ge.pitcher_name,
+                CASE WHEN ge.batting_team_id = g.home_team_id
+                     THEN g.away_team_id
+                     ELSE g.home_team_id END AS pitcher_team_id,
+                ge.balls_before, ge.strikes_before, ge.pitch_sequence,
+                ge.result_type, ge.result_text,
+                ge.bat_score_before, ge.fld_score_before,
+                ge.runs_on_play, ge.rbi,
+                ge.wpa_batter, ge.wpa_pitcher
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.game_id = ANY(%s)
+              AND ge.batter_player_id IS NOT NULL
+              AND ge.pitcher_player_id IS NOT NULL
+              AND ge.result_type IS NOT NULL
+              AND ge.result_type NOT IN %s
+            ORDER BY g.game_date ASC, ge.inning ASC,
+                     CASE WHEN ge.half = 'top' THEN 0 ELSE 1 END,
+                     ge.sequence_idx ASC
+        """, (game_ids, SUBEVENT_TYPES))
+        pa_rows = cur.fetchall()
+
+        # Group by (batter_id, pitcher_id) into matchup buckets.
+        # Hit / walk / strikeout / HR counts give the summary line for
+        # each matchup card. total_wpa is from the BATTER's perspective.
+        HIT_TYPES = {'single', 'double', 'triple', 'home_run'}
+        BB_TYPES = {'walk', 'intentional_walk'}
+        K_TYPES = {'strikeout_swinging', 'strikeout_looking'}
+
+        matchups = {}   # (bat_id, pit_id) -> matchup dict
+        for r in pa_rows:
+            bid = r["batter_player_id"]
+            pid = r["pitcher_player_id"]
+            key = (bid, pid)
+            m = matchups.get(key)
+            if m is None:
+                m = {
+                    "batter": {
+                        "id": bid,
+                        "name": r["batter_name"],
+                        "team_id": r["batting_team_id"],
+                    },
+                    "pitcher": {
+                        "id": pid,
+                        "name": r["pitcher_name"],
+                        "team_id": r["pitcher_team_id"],
+                    },
+                    "pa_count": 0,
+                    "hits": 0, "walks": 0, "strikeouts": 0, "home_runs": 0,
+                    "rbi": 0,
+                    "total_wpa": 0.0,
+                    "pas": [],
+                }
+                matchups[key] = m
+            m["pa_count"] += 1
+            rt = r["result_type"]
+            if rt in HIT_TYPES:    m["hits"] += 1
+            if rt in BB_TYPES:     m["walks"] += 1
+            if rt in K_TYPES:      m["strikeouts"] += 1
+            if rt == 'home_run':   m["home_runs"] += 1
+            m["rbi"] += int(r["rbi"] or 0)
+            if r["wpa_batter"] is not None:
+                m["total_wpa"] += float(r["wpa_batter"])
+            m["pas"].append({
+                "game_id": r["game_id"],
+                "game_date": r["game_date"].isoformat() if r["game_date"] else None,
+                "inning": r["inning"],
+                "half": r["half"],
+                "balls_before": r["balls_before"],
+                "strikes_before": r["strikes_before"],
+                "pitch_sequence": r["pitch_sequence"],
+                "result_type": r["result_type"],
+                "result_text": r["result_text"],
+                "bat_score_before": r["bat_score_before"],
+                "fld_score_before": r["fld_score_before"],
+                "runs_on_play": r["runs_on_play"] or 0,
+                "rbi": r["rbi"] or 0,
+                "wpa": float(r["wpa_batter"]) if r["wpa_batter"] is not None else None,
+            })
+
+        # Round total_wpa for cleaner JSON
+        for m in matchups.values():
+            m["total_wpa"] = round(m["total_wpa"], 4)
+
+        # Split by which team is at bat. Sort each list by pa_count
+        # desc so the most-faced matchups surface first.
+        def _matchup_sort_key(m):
+            return (-m["pa_count"], -m["pa_count"], m["batter"]["name"] or "")
+
+        team_a_at_bat = sorted(
+            [m for m in matchups.values() if m["batter"]["team_id"] == team_a],
+            key=_matchup_sort_key,
+        )
+        team_b_at_bat = sorted(
+            [m for m in matchups.values() if m["batter"]["team_id"] == team_b],
+            key=_matchup_sort_key,
+        )
+
+        pa_matchups = {
+            "team_a_at_bat": team_a_at_bat,
+            "team_b_at_bat": team_b_at_bat,
+            "total_pas": len(pa_rows),
+        }
+
         return {
             "season": season,
             "team_a": _team_payload(team_a),
@@ -18992,6 +19303,7 @@ def historic_matchup(
                 "batting": _team_batting_totals(team_b, team_b_division),
                 "pitching": _team_pitching_totals(team_b, team_b_division),
             },
+            "pa_matchups": pa_matchups,
         }
 
 
