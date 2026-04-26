@@ -8,6 +8,8 @@ import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 
 // ── Percentile bubble configs ──────────────────────────────────
+// Pre-2026: original metric set. Kept stable for historic seasons so
+// old player profiles don't suddenly lose stats they had before.
 const BATTING_PERCENTILE_METRICS = [
   { key: 'woba',         label: 'wOBA',   format: 'avg' },
   { key: 'wrc_plus',     label: 'wRC+',   format: 'int' },
@@ -32,6 +34,35 @@ const PITCHING_PERCENTILE_METRICS = [
   { key: 'hr_per_9',     label: 'HR/9',   format: 'era' },
   { key: 'pitching_war', label: 'WAR',    format: 'war' },
   { key: 'k_bb_pct',     label: 'K-BB%',  format: 'pct' },
+]
+
+// 2026+ metric set — leans on PBP-derived stats (Contact%, AIRPULL%,
+// Strike%, FPS%, Whiff%, etc.) that we only have for games with
+// pitch-level data.
+const BATTING_PERCENTILE_METRICS_2026 = [
+  { key: 'offensive_war', label: 'WAR',     format: 'war' },
+  { key: 'wrc_plus',      label: 'wRC+',    format: 'int' },
+  { key: 'iso',           label: 'ISO',     format: 'avg' },
+  { key: 'hr_pa_pct',     label: 'HR/PA',   format: 'pct' },
+  { key: 'sb_per_pa',     label: 'SB/PA',   format: 'pct' },
+  { key: 'k_pct',         label: 'K%',      format: 'pct' },
+  { key: 'bb_pct',        label: 'BB%',     format: 'pct' },
+  { key: 'contact_pct',   label: 'Contact%',format: 'pct' },
+  { key: 'air_pull_pct',  label: 'AIRPULL%',format: 'pct' },
+]
+
+const PITCHING_PERCENTILE_METRICS_2026 = [
+  { key: 'pitching_war',           label: 'WAR',          format: 'war' },
+  { key: 'k_pct',                  label: 'K%',           format: 'pct' },
+  { key: 'bb_pct',                 label: 'BB%',          format: 'pct' },
+  { key: 'fip',                    label: 'FIP',          format: 'era' },
+  { key: 'siera',                  label: 'SIERA',        format: 'era' },
+  { key: 'hr_pa_pct',              label: 'HR/PA',        format: 'pct' },
+  { key: 'opp_woba',               label: 'opp wOBA',     format: 'avg' },
+  { key: 'strike_pct',             label: 'Strike%',      format: 'pct' },
+  { key: 'first_pitch_strike_pct', label: 'FPS%',         format: 'pct' },
+  { key: 'whiff_pct',              label: 'Whiff%',       format: 'pct' },
+  { key: 'opp_air_pull_pct',       label: 'opp AIRPULL%', format: 'pct' },
 ]
 
 // ── Stat table column configs ──────────────────────────────────
@@ -1090,11 +1121,6 @@ export default function PlayerDetail() {
         </div>
       )}
 
-      {/* ── Team Awards & Career Rankings ── */}
-      {((awards && awards.length > 0) || (career_rankings && career_rankings.length > 0) || (pnw_rankings && pnw_rankings.length > 0)) && (
-        <TeamAwards awards={awards || []} careerRankings={career_rankings || []} pnwRankings={pnw_rankings || []} teamShort={player.team_short} />
-      )}
-
       {/* ── Season Filter (only show if player has multiple seasons) ── */}
       {hasMultipleSeasons && (hasBatting || hasPitching) && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -1103,8 +1129,6 @@ export default function PlayerDetail() {
             <button
               key={season}
               onClick={() => setPercentileSeason(
-                // If clicking the most recent season and we're already on default (null), do nothing
-                // Otherwise set it. If already selected, go back to default (most recent).
                 percentileSeason === String(season) ? null : String(season)
               )}
               className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
@@ -1132,25 +1156,84 @@ export default function PlayerDetail() {
         </div>
       )}
 
-      {/* ── Batting Percentiles ── */}
-      {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
-        <PercentileBars
-          percentiles={batting_percentiles}
-          metrics={BATTING_PERCENTILE_METRICS}
-          title={`Batting · ${percentileLabel}`}
-          divisionLevel={player.division_level}
-        />
-      )}
+      {/* ── Percentile Bars + Awards ──
+          For 2026, use the new metric set and a 2-column layout (bars
+          on left, awards on right). For pre-2026 seasons keep the full-
+          width legacy layout so historic profiles look the same as before. */}
+      {(() => {
+        const isCurrent2026 = activePercentileSeason === '2026'
+        const battingMetrics = isCurrent2026 ? BATTING_PERCENTILE_METRICS_2026 : BATTING_PERCENTILE_METRICS
+        const pitchingMetrics = isCurrent2026 ? PITCHING_PERCENTILE_METRICS_2026 : PITCHING_PERCENTILE_METRICS
+        const hasAwards = (awards && awards.length > 0)
+                       || (career_rankings && career_rankings.length > 0)
+                       || (pnw_rankings && pnw_rankings.length > 0)
+        const hasBars = (batting_percentiles && Object.keys(batting_percentiles).length > 0)
+                     || (pitching_percentiles && Object.keys(pitching_percentiles).length > 0)
 
-      {/* ── Pitching Percentiles ── */}
-      {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
-        <PercentileBars
-          percentiles={pitching_percentiles}
-          metrics={PITCHING_PERCENTILE_METRICS}
-          title={`Pitching · ${percentileLabel}`}
-          divisionLevel={player.division_level}
-        />
-      )}
+        // 2026 layout: bars + awards side-by-side
+        if (isCurrent2026 && hasBars && hasAwards) {
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              <div>
+                {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
+                  <PercentileBars
+                    percentiles={batting_percentiles}
+                    metrics={battingMetrics}
+                    title={`Batting · ${percentileLabel}`}
+                    divisionLevel={player.division_level}
+                  />
+                )}
+                {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
+                  <PercentileBars
+                    percentiles={pitching_percentiles}
+                    metrics={pitchingMetrics}
+                    title={`Pitching · ${percentileLabel}`}
+                    divisionLevel={player.division_level}
+                  />
+                )}
+              </div>
+              <div>
+                <TeamAwards
+                  awards={awards || []}
+                  careerRankings={career_rankings || []}
+                  pnwRankings={pnw_rankings || []}
+                  teamShort={player.team_short}
+                />
+              </div>
+            </div>
+          )
+        }
+
+        // Default: stack awards then bars full-width (legacy layout)
+        return (
+          <>
+            {hasAwards && (
+              <TeamAwards
+                awards={awards || []}
+                careerRankings={career_rankings || []}
+                pnwRankings={pnw_rankings || []}
+                teamShort={player.team_short}
+              />
+            )}
+            {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
+              <PercentileBars
+                percentiles={batting_percentiles}
+                metrics={battingMetrics}
+                title={`Batting · ${percentileLabel}`}
+                divisionLevel={player.division_level}
+              />
+            )}
+            {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
+              <PercentileBars
+                percentiles={pitching_percentiles}
+                metrics={pitchingMetrics}
+                title={`Pitching · ${percentileLabel}`}
+                divisionLevel={player.division_level}
+              />
+            )}
+          </>
+        )
+      })()}
 
       {/* ── Position Breakdown (pie chart from game logs) ── */}
       {position_breakdown && position_breakdown.length > 0 && (

@@ -5079,6 +5079,183 @@ def search_players(
         return [dict(r) for r in rows]
 
 
+def _pct_from_deciles(value, deciles, higher_better=True):
+    """Estimate percentile rank (1-99) from 9 decile thresholds.
+    `deciles` should be a list of 9 numbers (10th, 20th, ..., 90th).
+    Linear interpolation within each decile bucket.
+    """
+    if value is None or not deciles or len(deciles) < 9:
+        return None
+    pct = None
+    for i, d in enumerate(deciles):
+        if value <= d:
+            if i == 0:
+                pct = max(1.0, ((value / d) * 10.0)) if d > 0 else 5.0
+            else:
+                prev = deciles[i - 1]
+                if d > prev:
+                    frac = (value - prev) / (d - prev)
+                else:
+                    frac = 0.5
+                pct = (i * 10) + (frac * 10)
+            break
+    if pct is None:
+        # Above 90th percentile
+        last = deciles[-1]
+        prev = deciles[-2] if len(deciles) >= 2 else last
+        if last > prev:
+            frac = min(1.0, (value - last) / max(last - prev, 1e-9))
+        else:
+            frac = 0.5
+        pct = 90 + frac * 10
+    pct = round(pct)
+    if not higher_better:
+        pct = 100 - pct
+    return max(1, min(99, pct))
+
+
+def _compute_2026_pbp_batting_percentiles(conn, division_level, season, player_id, weights):
+    """Compute percentiles for batter metrics that come from game_events
+    (Contact%, AIRPULL%) — only available for 2026+ since they require
+    the Phase A/E enrichment.
+    """
+    from psycopg2.extras import RealDictCursor as _RDC
+    cur = conn.cursor(cursor_factory=_RDC)
+
+    cur.execute("""
+        SELECT
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS f_in_play,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+          ) AS air_pull,
+          COUNT(*) AS pa
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        JOIN players p ON p.id = ge.batter_player_id
+        WHERE ge.batter_player_id = %s AND g.season = %s
+    """, (player_id, season))
+    r = cur.fetchone() or {}
+    swings = (r.get("f_k") or 0) + (r.get("f_f") or 0) + (r.get("f_in_play") or 0)
+    contact = (r.get("f_f") or 0) + (r.get("f_in_play") or 0)
+    bb_total = r.get("bb_total") or 0
+    contact_pct = (contact / swings) if swings > 0 else None
+    air_pull_pct = (r.get("air_pull", 0) / bb_total) if bb_total > 0 else None
+
+    baselines = _get_pitch_level_baselines(cur, season, division_level, weights)
+    overall = baselines.get("overall") or {}
+    deciles = overall.get("deciles") or {}
+
+    out = {}
+    if contact_pct is not None:
+        p = _pct_from_deciles(contact_pct, deciles.get("contact_pct"), higher_better=True)
+        if p is not None:
+            out["contact_pct"] = {"value": contact_pct, "percentile": p}
+    if air_pull_pct is not None:
+        p = _pct_from_deciles(air_pull_pct, deciles.get("air_pull_pct"), higher_better=True)
+        if p is not None:
+            out["air_pull_pct"] = {"value": air_pull_pct, "percentile": p}
+    return out
+
+
+def _compute_2026_pbp_pitching_percentiles(conn, division_level, season, player_id, weights):
+    """Pitcher metrics from game_events: Strike%, FPS%, Whiff%, opp wOBA,
+    Opp AIRPULL%, HR/PA.
+    """
+    from psycopg2.extras import RealDictCursor as _RDC
+    cur = conn.cursor(cursor_factory=_RDC)
+
+    cur.execute("""
+        SELECT
+          COUNT(*) AS pa,
+          COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
+          COALESCE(SUM(pitches_thrown), 0) AS pitches,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS p_inplay,
+          COUNT(*) FILTER (
+              WHERE pitches_thrown IS NOT NULL AND
+                    (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
+                     OR (pitch_sequence = '' AND was_in_play))
+          ) AS f1_strikes,
+          COUNT(*) FILTER (WHERE result_type = 'home_run') AS hr,
+          SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
+          SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
+          SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d,
+          SUM(CASE WHEN result_type = 'triple' THEN 1 ELSE 0 END) AS t,
+          SUM(CASE WHEN result_type = 'walk' THEN 1 ELSE 0 END) AS ubb,
+          SUM(CASE WHEN result_type IN ('walk','intentional_walk') THEN 1 ELSE 0 END) AS bb,
+          SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
+          SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(b.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(b.bats) = 'L' AND field_zone = 'RIGHT'))
+          ) AS opp_air_pull
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players b ON b.id = ge.batter_player_id
+        WHERE ge.pitcher_player_id = %s AND g.season = %s
+    """, (player_id, season))
+    r = cur.fetchone() or {}
+    pa = r.get("pa") or 0
+    tracked = r.get("tracked_pa") or 0
+    pitches = r.get("pitches") or 0
+    pK = r.get("pk") or 0
+    pS = r.get("ps") or 0
+    pF = r.get("pf") or 0
+    in_play = r.get("p_inplay") or 0
+    swings = pK + pF + in_play
+    strikes = pK + pS + pF + in_play
+    bb_total = r.get("bb_total") or 0
+
+    strike_pct = (strikes / pitches) if pitches > 0 else None
+    whiff_pct = (pK / swings) if swings > 0 else None
+    fps_pct = ((r.get("f1_strikes") or 0) / tracked) if tracked > 0 else None
+    hr_pa_pct = ((r.get("hr") or 0) / pa) if pa > 0 else None
+    opp_air_pull_pct = ((r.get("opp_air_pull") or 0) / bb_total) if bb_total > 0 else None
+
+    ab = r.get("ab") or 0
+    h = r.get("h") or 0
+    d_ = r.get("d") or 0
+    tr = r.get("t") or 0
+    hr = r.get("hr") or 0
+    ubb = r.get("ubb") or 0
+    hbp = r.get("hbp") or 0
+    sf = r.get("sf") or 0
+    singles = h - d_ - tr - hr
+    woba_num = (weights.w_bb * ubb + weights.w_hbp * hbp +
+                weights.w_1b * singles + weights.w_2b * d_ +
+                weights.w_3b * tr + weights.w_hr * hr)
+    woba_denom = ab + ubb + sf + hbp
+    opp_woba = (woba_num / woba_denom) if woba_denom > 0 else None
+
+    baselines = _get_pitcher_pitch_level_baselines(cur, season, division_level, weights)
+    overall = baselines.get("overall") or {}
+    deciles = overall.get("deciles") or {}
+
+    out = {}
+    def add(key, value, hb):
+        if value is None: return
+        p = _pct_from_deciles(value, deciles.get(key), higher_better=hb)
+        if p is not None:
+            out[key] = {"value": value, "percentile": p}
+
+    add("strike_pct", strike_pct, True)
+    add("whiff_pct",  whiff_pct,  True)
+    add("first_pitch_strike_pct", fps_pct, True)
+    add("opp_woba",   opp_woba,   False)   # low is good for pitcher
+    add("opp_air_pull_pct", opp_air_pull_pct, False)
+    add("hr_pa_pct",  hr_pa_pct,  False)   # low is good for pitcher
+    return out
+
+
 def _compute_percentiles(conn, division_level: str, season: int, player_stats: dict, stat_type: str):
     """
     Compute Baseball Savant-style percentiles for a player within their division.
@@ -5833,6 +6010,16 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                     conn, player_dict["division_level"], bat_row["season"],
                     bat_row, "batting"
                 )
+                # Phase J: 2026+ adds Contact% + AIRPULL% from PBP data
+                if bat_row["season"] >= 2026:
+                    weights = DEFAULT_WEIGHTS.get(player_dict["division_level"],
+                                                  DEFAULT_WEIGHTS["D1"])
+                    pbp_pct = _compute_2026_pbp_batting_percentiles(
+                        conn, player_dict["division_level"],
+                        bat_row["season"], bat_row.get("player_id") or player_id,
+                        weights,
+                    )
+                    batting_percentiles.update(pbp_pct)
 
             if pitching_list:
                 pit_row = None
@@ -5846,6 +6033,17 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                     conn, player_dict["division_level"], pit_row["season"],
                     pit_row, "pitching"
                 )
+                # Phase J: 2026+ adds Strike%, FPS%, Whiff%, opp wOBA,
+                # opp AIRPULL%, HR/PA from PBP data
+                if pit_row["season"] >= 2026:
+                    weights = DEFAULT_WEIGHTS.get(player_dict["division_level"],
+                                                  DEFAULT_WEIGHTS["D1"])
+                    pbp_pct = _compute_2026_pbp_pitching_percentiles(
+                        conn, player_dict["division_level"],
+                        pit_row["season"], pit_row.get("player_id") or player_id,
+                        weights,
+                    )
+                    pitching_percentiles.update(pbp_pct)
 
         # ── Team awards: check awards for each team the player was on ──
         all_awards = {"season_awards": [], "career_rankings": []}
@@ -12228,13 +12426,19 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
             COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
             COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
             COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
-            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
+            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+            COUNT(*) FILTER (
+                WHERE bb_type IN ('LD','FB')
+                  AND ((UPPER(b.bats) = 'R' AND field_zone = 'LEFT')
+                    OR (UPPER(b.bats) = 'L' AND field_zone = 'RIGHT'))
+            ) AS opp_air_pull_n
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
         JOIN players p ON p.id = ge.pitcher_player_id
         JOIN teams t ON t.id = p.team_id
         JOIN conferences c ON c.id = t.conference_id
         JOIN divisions d ON d.id = c.division_id
+        LEFT JOIN players b ON b.id = ge.batter_player_id
         WHERE g.season = %s AND d.level = %s
           AND ge.pitcher_player_id IS NOT NULL
           AND {filter_sql}
@@ -12281,6 +12485,8 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
         "fb_pct": (r["fb_n"] / bb_total) if bb_total > 0 else None,
         "ld_pct": (r["ld_n"] / bb_total) if bb_total > 0 else None,
         "pu_pct": (r["pu_n"] / bb_total) if bb_total > 0 else None,
+        "opp_air_pull_pct": (r["opp_air_pull_n"] / bb_total) if bb_total > 0 else None,
+        "hr_pa_pct": (hr / n_pa) if n_pa > 0 else None,
     }
 
 
@@ -12314,13 +12520,19 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
                    COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
                    COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
                    COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
-                   COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
+                   COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+                   COUNT(*) FILTER (
+                       WHERE bb_type IN ('LD','FB')
+                         AND ((UPPER(b.bats) = 'R' AND field_zone = 'LEFT')
+                           OR (UPPER(b.bats) = 'L' AND field_zone = 'RIGHT'))
+                   ) AS opp_air_pull_n
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             JOIN players p ON p.id = ge.pitcher_player_id
             JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
+            LEFT JOIN players b ON b.id = ge.batter_player_id
             WHERE g.season = %s AND d.level = %s
               AND ge.pitcher_player_id IS NOT NULL
               AND {filter_sql}
@@ -12335,7 +12547,8 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
     metrics = {k: [] for k in ('opp_ba','opp_obp','opp_slg','opp_ops','opp_iso','opp_woba','wrc_plus_against',
                                 'k_pct','bb_pct','strike_pct','called_strike_pct','whiff_pct',
                                 'first_pitch_strike_pct','putaway_pct','pitches_per_pa',
-                                'gb_pct','fb_pct','ld_pct','pu_pct')}
+                                'gb_pct','fb_pct','ld_pct','pu_pct',
+                                'hr_pa_pct','opp_air_pull_pct')}
     for r in rows:
         ab = r["ab"] or 0; h = r["h"] or 0
         d2 = r["d2"] or 0; d3 = r["d3"] or 0; hr = r["hr"] or 0
@@ -12386,6 +12599,9 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
             metrics["fb_pct"].append((r["fb_n"] or 0) / bb_total)
             metrics["ld_pct"].append((r["ld_n"] or 0) / bb_total)
             metrics["pu_pct"].append((r["pu_n"] or 0) / bb_total)
+            metrics["opp_air_pull_pct"].append((r["opp_air_pull_n"] or 0) / bb_total)
+        if pa >= 10:
+            metrics["hr_pa_pct"].append((r["hr"] or 0) / pa)
     out = {}
     deciles = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]
     for m, vals in metrics.items():
