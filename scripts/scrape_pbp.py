@@ -584,8 +584,8 @@ def process_game(cur, game, dry_run=False, verbose=False):
             """, (gid, list(_CONTACT_TYPES)))
             bb_updates = []
             for r in cur.fetchall():
-                bb, zone = classify(r["result_type"], r["result_text"])
-                bb_updates.append((bb, zone, r["id"]))
+                bb, zone, zone_fine = classify(r["result_type"], r["result_text"])
+                bb_updates.append((bb, zone, zone_fine, r["id"]))
             if bb_updates:
                 psycopg2.extras.execute_batch(
                     cur,
@@ -593,6 +593,7 @@ def process_game(cur, game, dry_run=False, verbose=False):
                     UPDATE game_events
                     SET bb_type = %s,
                         field_zone = %s,
+                        field_zone_fine = %s,
                         bb_derived_at = now()
                     WHERE id = %s
                     """,

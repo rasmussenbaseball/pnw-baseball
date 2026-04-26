@@ -93,6 +93,56 @@ _ZONE_PATTERNS = [
                 "2b", "second base", "p", "pitcher", "c", "catcher"]),
 ]
 
+# 10-zone fine classification for the spray chart (Option B from data audit).
+# Order matters: gap zones (left center / right center) before LF/RF;
+# specific positions before generic side names.
+#
+# OUTFIELD (5):  LF / LC / CF / RC / RF
+# INFIELD  (5):  IF_3B / IF_SS / IF_MID / IF_1B / IF_C
+#
+# Zone meanings:
+#   LF        — left field (incl. lf line, lf foul ground)
+#   LC        — left-center gap
+#   CF        — straight center
+#   RC        — right-center gap
+#   RF        — right field (incl. rf line, rf foul ground)
+#   IF_3B     — 3rd base, third-base line, dribblers down the line
+#   IF_SS     — shortstop, "left side" of infield
+#   IF_MID    — 2nd base, pitcher, "up the middle"
+#   IF_1B     — 1st base, "right side" of infield
+#   IF_C      — catcher (foul pops behind plate)
+_ZONE_FINE_PATTERNS = [
+    # Outfield gaps must beat OF positions
+    ("LC", ["left center", "lf to left center", "cf to left center"]),
+    ("RC", ["right center", "rf to right center", "cf to right center"]),
+    ("LF", ["lf line", "lf foul", "lf",  "left field"]),
+    ("RF", ["rf line", "rf foul", "rf",  "right field"]),
+    ("CF", ["cf", "center field", "centerfield"]),
+    # Infield positions
+    ("IF_C",   ["catcher"]),
+    ("IF_3B",  ["3b", "third base", "third", "3b line"]),
+    ("IF_SS",  ["ss", "shortstop", "left side"]),
+    ("IF_1B",  ["1b", "first base", "right side", "1b line"]),
+    ("IF_MID", ["2b", "second base", "up the middle", "middle", "pitcher"]),
+]
+
+
+def _classify_zone_fine(loc: str):
+    """Return one of LF/LC/CF/RC/RF/IF_3B/IF_SS/IF_MID/IF_1B/IF_C, or None."""
+    if not loc:
+        return None
+    s = loc.strip().lower()
+    for zone, patterns in _ZONE_FINE_PATTERNS:
+        for pat in patterns:
+            if re.search(rf"\b{re.escape(pat)}\b", s):
+                return zone
+    # Single-letter fallbacks (location IS just "p" or "c")
+    if s == "p":
+        return "IF_MID"
+    if s == "c":
+        return "IF_C"
+    return None
+
 
 def _classify_zone(loc: str) -> Optional[str]:
     """Return 'LEFT' / 'CENTER' / 'RIGHT', or None if location string
@@ -184,12 +234,15 @@ _CONTACT_TYPES = {
 }
 
 
-def classify(result_type: str, result_text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Return (bb_type, field_zone) or (None, None) if not contact / unparseable."""
+def classify(result_type: str, result_text: str):
+    """Return (bb_type, field_zone, field_zone_fine) — None for any
+    field that can't be inferred. Backwards-compatible: callers using
+    `bb, zone = classify(...)` still work because Python tuples unpack
+    by position. We document the 3-tuple in derive scripts."""
     if not result_type or result_type not in _CONTACT_TYPES:
-        return None, None
+        return None, None, None
     if not result_text:
-        return None, None
+        return None, None, None
 
     # Special cases that bypass verb matching
     if result_type in ("double_play", "triple_play", "fielders_choice"):
@@ -197,42 +250,37 @@ def classify(result_type: str, result_text: str) -> Tuple[Optional[str], Optiona
         # "X grounded into double play SS to 2B to 1B" — the FIRST
         # position mentioned (SS here) is where the ball was hit.
         m = _VERB_LOC_RE.search(result_text)
-        zone = _classify_zone(m.group("loc")) if m else None
+        loc = m.group("loc") if m else None
+        zone = _classify_zone(loc) if loc else None
+        zone_fine = _classify_zone_fine(loc) if loc else None
         if not zone:
-            # Try to pull from "p to 1b" / "ss to 2b" pattern: first token
             m2 = re.search(r"\b(?:double\s+play|fielder'?s\s+choice|triple\s+play)\s+"
                            r"(?:to\s+)?([a-z0-9]+(?:\s+base)?)\b",
                            result_text, re.IGNORECASE)
             if m2:
                 zone = _classify_zone(m2.group(1))
-        return "GB", zone
+                zone_fine = _classify_zone_fine(m2.group(1))
+        return "GB", zone, zone_fine
 
     if result_type == "error":
-        # Pull field zone from "by X" — the position that committed the
-        # error is a reasonable proxy for where the ball went.
         m = _ERROR_BY_RE.search(result_text)
-        zone = _classify_zone(m.group("loc")) if m else None
-        # Most reached-on-error are GB but not all. Without a verb we
-        # leave bb_type NULL (already a small slice; ~125 events).
-        return None, zone
+        loc = m.group("loc") if m else None
+        zone = _classify_zone(loc) if loc else None
+        fine = _classify_zone_fine(loc) if loc else None
+        return None, zone, fine
 
     if result_type == "sac_fly":
-        # Always FB by definition
         m = _VERB_LOC_RE.search(result_text)
-        zone = _classify_zone(m.group("loc")) if m else None
-        return "FB", zone
+        loc = m.group("loc") if m else None
+        return "FB", _classify_zone(loc), _classify_zone_fine(loc)
 
     if result_type == "sac_bunt":
-        # Always GB (bunts are grounders)
         m = _VERB_LOC_RE.search(result_text)
-        zone = _classify_zone(m.group("loc")) if m else None
-        return "GB", zone
+        loc = m.group("loc") if m else None
+        return "GB", _classify_zone(loc), _classify_zone_fine(loc)
 
     # Find verb + location in the batter clause (text before first ;)
     batter_clause = result_text.split(";", 1)[0]
-    # Normalize Presto noise: strip "(N out)" markers and collapse all
-    # whitespace (including embedded newlines/tabs from the Presto cells)
-    # to single spaces. THEN strip the count tail and any trailing period.
     batter_clause = _OUT_MARKER_RE.sub("", batter_clause)
     batter_clause = re.sub(r"\s+", " ", batter_clause).strip()
     batter_clause = _COUNT_TAIL_RE.sub("", batter_clause)
@@ -244,11 +292,10 @@ def classify(result_type: str, result_text: str) -> Tuple[Optional[str], Optiona
         location = m.group("loc")
         bb = _classify_bb_type(verb, location, result_type)
         zone = _classify_zone(location)
-        return bb, zone
+        fine = _classify_zone_fine(location)
+        return bb, zone, fine
 
     # Fallback: result_type implies bb_type but no "to X" location.
-    # Common for terse scorer narratives like "Caden Taylor singled."
-    # — we credit the bb_type but leave zone NULL.
     bb_only = {
         "ground_out": "GB",
         "fly_out":    "FB",
@@ -257,13 +304,8 @@ def classify(result_type: str, result_text: str) -> Tuple[Optional[str], Optiona
         "home_run":   "FB",
     }.get(result_type)
     if bb_only:
-        return bb_only, None
-    if result_type in ("single", "double", "triple"):
-        # Unknown contact type without location — leave bb NULL too.
-        # (Could be GB or LD; admitting ignorance > guessing.)
-        return None, None
-
-    return None, None
+        return bb_only, None, None
+    return None, None, None
 
 
 # ─────────────────────────────────────────────────────────────────

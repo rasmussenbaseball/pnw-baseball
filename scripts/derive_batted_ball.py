@@ -83,53 +83,45 @@ def derive(season=None, force=False, dry_run=False, batch=2000):
     classified = 0
     bb_set = 0
     zone_set = 0
+    fine_set = 0
     updates = []
+
+    UPDATE_SQL = """
+        UPDATE game_events
+        SET bb_type = %s,
+            field_zone = %s,
+            field_zone_fine = %s,
+            bb_derived_at = now()
+        WHERE id = %s
+    """
+
     for r in rows:
-        bb, zone = classify(r["result_type"], r["result_text"])
+        bb, zone, zone_fine = classify(r["result_type"], r["result_text"])
         if bb:
             bb_set += 1
         if zone:
             zone_set += 1
-        updates.append((bb, zone, r["id"]))
+        if zone_fine:
+            fine_set += 1
+        updates.append((bb, zone, zone_fine, r["id"]))
         classified += 1
 
         if len(updates) >= batch:
             if not dry_run:
-                psycopg2.extras.execute_batch(
-                    cur,
-                    """
-                    UPDATE game_events
-                    SET bb_type = %s,
-                        field_zone = %s,
-                        bb_derived_at = now()
-                    WHERE id = %s
-                    """,
-                    updates,
-                    page_size=500,
-                )
+                psycopg2.extras.execute_batch(cur, UPDATE_SQL, updates, page_size=500)
                 conn.commit()
             updates = []
             logger.info("  progress: %d / %d", classified, total)
 
-    # Flush tail
     if updates and not dry_run:
-        psycopg2.extras.execute_batch(
-            cur,
-            """
-            UPDATE game_events
-            SET bb_type = %s,
-                field_zone = %s,
-                bb_derived_at = now()
-            WHERE id = %s
-            """,
-            updates,
-            page_size=500,
-        )
+        psycopg2.extras.execute_batch(cur, UPDATE_SQL, updates, page_size=500)
         conn.commit()
 
-    logger.info("DONE: classified=%d  bb_set=%d (%.1f%%)  zone_set=%d (%.1f%%)",
-                classified, bb_set, 100 * bb_set / max(classified, 1),
-                zone_set, 100 * zone_set / max(classified, 1))
+    logger.info("DONE: classified=%d  bb_set=%d (%.1f%%)  zone_set=%d (%.1f%%)  fine_set=%d (%.1f%%)",
+                classified,
+                bb_set, 100 * bb_set / max(classified, 1),
+                zone_set, 100 * zone_set / max(classified, 1),
+                fine_set, 100 * fine_set / max(classified, 1))
     conn.close()
 
 

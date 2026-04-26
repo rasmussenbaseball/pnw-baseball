@@ -1,4 +1,5 @@
 import { usePlayerPitchLevelStats } from '../hooks/useApi'
+import SprayChart from './SprayChart'
 
 /**
  * Pitch-Level Stats card for a hitter.
@@ -168,6 +169,17 @@ export default function PitchLevelStatsCard({ playerId, season }) {
             Switch hitters and unknown handedness show no spray split.
           </p>
         </>
+      )}
+
+      {/* ── Phase F: Spray Chart (10-zone fan visual) ── */}
+      {data.spray_chart && data.spray_chart.all_total > 0 && (
+        <div className="mt-4 mb-6">
+          <SprayChart
+            data={data.spray_chart}
+            bats={data.contact_profile?.bats}
+            defaultFilter="all"
+          />
+        </div>
       )}
 
       {/* ── Situational splits (base state / inning / late & close) ── */}

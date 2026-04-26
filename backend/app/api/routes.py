@@ -11782,6 +11782,44 @@ def get_player_pitch_level_stats(
                 if spray:
                     spray_counts[spray] = spray_counts.get(spray, 0) + n
         spray_total = sum(spray_counts.values())
+
+        # ── Phase F: 10-zone spray chart breakdown ──
+        # Returns counts (NOT percentages — the frontend computes those
+        # so it can re-normalize when filtering). One scope per LHP/RHP/all.
+        FINE_ZONES = ["LF", "LC", "CF", "RC", "RF",
+                      "IF_3B", "IF_SS", "IF_MID", "IF_1B", "IF_C"]
+        cur.execute("""
+            SELECT field_zone_fine,
+                   CASE
+                     WHEN UPPER(p.throws) = 'L' THEN 'LHP'
+                     WHEN UPPER(p.throws) = 'R' THEN 'RHP'
+                     ELSE 'UNK'
+                   END AS pitcher_hand,
+                   COUNT(*) AS c
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            LEFT JOIN players p ON p.id = ge.pitcher_player_id
+            WHERE ge.batter_player_id = ANY(%s)
+              AND g.season = %s
+              AND ge.field_zone_fine IS NOT NULL
+            GROUP BY field_zone_fine, pitcher_hand
+        """, (all_pids, season))
+        spray_chart = {
+            "all": {z: 0 for z in FINE_ZONES},
+            "vs_lhp": {z: 0 for z in FINE_ZONES},
+            "vs_rhp": {z: 0 for z in FINE_ZONES},
+        }
+        for r in cur.fetchall():
+            z = r["field_zone_fine"]
+            n = r["c"]
+            spray_chart["all"][z] = spray_chart["all"].get(z, 0) + n
+            if r["pitcher_hand"] == "LHP":
+                spray_chart["vs_lhp"][z] = spray_chart["vs_lhp"].get(z, 0) + n
+            elif r["pitcher_hand"] == "RHP":
+                spray_chart["vs_rhp"][z] = spray_chart["vs_rhp"].get(z, 0) + n
+        spray_chart["all_total"]    = sum(spray_chart["all"].values())
+        spray_chart["vs_lhp_total"] = sum(spray_chart["vs_lhp"].values())
+        spray_chart["vs_rhp_total"] = sum(spray_chart["vs_rhp"].values())
         contact_profile = {
             "bb_total": bb_total,
             "zone_total": zone_total,
@@ -11992,6 +12030,7 @@ def get_player_pitch_level_stats(
             "lr_splits": lr_splits,
             "situational_splits": situational_splits,
             "contact_profile": contact_profile,
+            "spray_chart": spray_chart,
         }
 
 
