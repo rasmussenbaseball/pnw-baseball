@@ -51,79 +51,94 @@ export default function PitchLevelStatsCard({ playerId, season }) {
         <span className="text-gray-400">(hover any cell for league average)</span>
       </div>
 
-      {/* ── 1. Plate Discipline ── */}
-      <SectionHeader>Plate Discipline</SectionHeader>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-3">
-        <ColorTile label="Swing %"          metric="swing_pct"
-          value={d.swing_pct}   sub={`${d.swings} of ${d.pitches}`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-        <ColorTile label="Whiff %"          metric="whiff_pct"
-          value={d.whiff_pct}   sub={`${d.whiffs} of ${d.swings}`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-        <ColorTile label="Contact %"        metric="contact_pct"
-          value={d.contact_pct} sub={`vs lg ${fmtPct(d.league?.contact_pct)}`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-        <ColorTile label="P / PA"           metric="pitches_per_pa"
-          value={d.pitches_per_pa} sub={`${d.pitches}÷${d.tracked_pa}`}
-          league={d.league} deciles={d.deciles} formatter={(v) => fmtNum(v, 2)} />
-        <Tile label="Avg LI" value={fmtNum(d.avg_li, 2)}
-              sub={d.li_pa ? `peak ${fmtNum(d.max_li, 1)}` : '—'} />
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-        <ColorTile label="1st-Pitch Swing"  metric="first_pitch_swing_pct"
-          value={d.first_pitch_swing_pct}   sub={`vs lg ${fmtPct(d.league?.first_pitch_swing_pct)}`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-        <ColorTile label="1st-Pitch Strike" metric="first_pitch_strike_pct"
-          value={d.first_pitch_strike_pct}  sub={`vs lg ${fmtPct(d.league?.first_pitch_strike_pct)}`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-        <ColorTile label="0-0 BIP %"        metric="first_pitch_in_play_pct"
-          value={d.first_pitch_in_play_pct} sub={`vs lg ${fmtPct(d.league?.first_pitch_in_play_pct)}`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-        <ColorTile label="Putaway %"        metric="putaway_pct"
-          value={d.putaway_pct} sub={`of ${d.two_strike_pa} 2K PAs`}
-          league={d.league} deciles={d.deciles} formatter={fmtPct} />
-      </div>
+      {/* ── 1 + 2: Plate Discipline + Batted Ball Profile in 2-column layout ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
-      {/* ── 2. Batted Ball Profile ── */}
-      {cp.bb_total > 0 && (
-        <>
-          <SectionHeader>Batted Ball Profile</SectionHeader>
+        {/* LEFT column: Plate Discipline + Batted Ball tiles */}
+        <div>
+          <SectionHeader>Plate Discipline</SectionHeader>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            <ColorTile label="GB %" metric="gb_pct" value={cp.gb_pct}
-              sub={`${cp.gb_count} of ${cp.bb_total}`}
+            <ColorTile label="Swing %"   metric="swing_pct"
+              value={d.swing_pct}   sub={`${d.swings} of ${d.pitches}`}
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
-            <ColorTile label="LD %" metric="ld_pct" value={cp.ld_pct}
-              sub={`${cp.ld_count} of ${cp.bb_total}`}
+            <ColorTile label="Whiff %"   metric="whiff_pct"
+              value={d.whiff_pct}   sub={`${d.whiffs} of ${d.swings}`}
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
-            <ColorTile label="FB %" metric="fb_pct" value={cp.fb_pct}
-              sub={`${cp.fb_count} of ${cp.bb_total}`}
+            <ColorTile label="Contact %" metric="contact_pct"
+              value={d.contact_pct} sub={`${d.swings - d.whiffs} of ${d.swings}`}
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
-            <ColorTile label="PU %" metric="pu_pct" value={cp.pu_pct}
-              sub={`${cp.pu_count} of ${cp.bb_total}`}
+            <ColorTile label="P / PA"    metric="pitches_per_pa"
+              value={d.pitches_per_pa} sub={`${d.pitches}÷${d.tracked_pa}`}
+              league={d.league} deciles={d.deciles} formatter={(v) => fmtNum(v, 2)} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <ColorTile label="1st-P Swing"  metric="first_pitch_swing_pct"
+              value={d.first_pitch_swing_pct}   sub={`of ${d.tracked_pa} PA`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="1st-P Strike" metric="first_pitch_strike_pct"
+              value={d.first_pitch_strike_pct}  sub={`of ${d.tracked_pa} PA`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="0-0 BIP %"    metric="first_pitch_in_play_pct"
+              value={d.first_pitch_in_play_pct} sub={`of ${d.tracked_pa} PA`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="Putaway %"    metric="putaway_pct"
+              value={d.putaway_pct} sub={`of ${d.two_strike_pa} 2K PAs`}
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
           </div>
-          {cp.spray_total > 0 && (
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <Tile label="Pull %"   value={fmtPct(cp.pull_pct)}   sub={`of ${cp.spray_total}`} />
-              <Tile label="Center %" value={fmtPct(cp.center_pct)} sub={`of ${cp.spray_total}`} />
-              <Tile label="Oppo %"   value={fmtPct(cp.oppo_pct)}   sub={`of ${cp.spray_total}`} />
-            </div>
+
+          {/* Avg LI with explanatory tooltip */}
+          <div className="grid grid-cols-1 mb-5">
+            <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
+          </div>
+
+          {cp.bb_total > 0 && (
+            <>
+              <SectionHeader>Batted Ball Profile</SectionHeader>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <ColorTile label="GB %" metric="gb_pct" value={cp.gb_pct}
+                  sub={`${cp.gb_count} of ${cp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                <ColorTile label="LD %" metric="ld_pct" value={cp.ld_pct}
+                  sub={`${cp.ld_count} of ${cp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                <ColorTile label="FB %" metric="fb_pct" value={cp.fb_pct}
+                  sub={`${cp.fb_count} of ${cp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                <ColorTile label="PU %" metric="pu_pct" value={cp.pu_pct}
+                  sub={`${cp.pu_count} of ${cp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+              </div>
+              {cp.spray_total > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                  <Tile label="Pull %"   value={fmtPct(cp.pull_pct)}   sub={`of ${cp.spray_total}`} />
+                  <Tile label="Center %" value={fmtPct(cp.center_pct)} sub={`of ${cp.spray_total}`} />
+                  <Tile label="Oppo %"   value={fmtPct(cp.oppo_pct)}   sub={`of ${cp.spray_total}`} />
+                  <ColorTile label="AirPull %" metric="air_pull_pct" value={cp.air_pull_pct}
+                    sub={`${cp.air_pull_count}/${cp.air_denom} BIP`}
+                    league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                </div>
+              )}
+            </>
           )}
-          {data.spray_chart && data.spray_chart.all_total > 0 && (
-            <div className="mt-2 mb-6">
-              <SprayChart data={data.spray_chart} bats={cp.bats} defaultFilter="all" />
-            </div>
-          )}
-        </>
-      )}
+        </div>
+
+        {/* RIGHT column: Spray Chart */}
+        {data.spray_chart && data.spray_chart.all_total > 0 && (
+          <div>
+            <SectionHeader>Spray Chart</SectionHeader>
+            <SprayChart data={data.spray_chart} bats={cp.bats} defaultFilter="all" />
+          </div>
+        )}
+      </div>
 
       {/* ── 3. Count Battle ── */}
       <SectionHeader>Count Battle</SectionHeader>
-      <DataTable minWidth={780} className="mb-6">
+      <DataTable minWidth={840} className="mb-6">
         <thead>
           <HeaderRow>
             <Th align="left">Count</Th>
             <Th>PA</Th>
+            <Th>Pit</Th>
             <Th>BIP</Th>
             <Th>BA</Th>
             <Th>OBP</Th>
@@ -141,6 +156,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
             <BodyRow key={cs.label}>
               <CountCell label={cs.label} detail={cs.detail} />
               <NumCell value={cs.pa} muted={false} />
+              <NumCell value={cs.pitches} muted />
               <NumCell value={cs.bip} muted />
               <ColorCell row={cs} metric="ba" formatter={fmtRate} bold />
               <ColorCell row={cs} metric="obp" formatter={fmtRate} />
@@ -158,11 +174,12 @@ export default function PitchLevelStatsCard({ playerId, season }) {
 
       {/* ── 4. Pitcher Hand Splits ── */}
       <SectionHeader>Pitcher Hand Splits</SectionHeader>
-      <DataTable minWidth={860} className="mb-6">
+      <DataTable minWidth={920} className="mb-6">
         <thead>
           <HeaderRow>
             <Th align="left">Split</Th>
             <Th>PA</Th>
+            <Th>Pit</Th>
             <Th>BIP</Th>
             <Th>BA</Th>
             <Th>OBP</Th>
@@ -181,6 +198,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
             <BodyRow key={sp.label}>
               <CountCell label={sp.label} />
               <NumCell value={sp.pa} muted={false} />
+              <NumCell value={sp.pitches} muted />
               <NumCell value={sp.bip} muted />
               <ColorCell row={sp} metric="ba" formatter={fmtRate} bold />
               <ColorCell row={sp} metric="obp" formatter={fmtRate} />
@@ -201,11 +219,12 @@ export default function PitchLevelStatsCard({ playerId, season }) {
       {data.situational_splits?.length > 0 && (
         <>
           <SectionHeader>Situational Performance</SectionHeader>
-          <DataTable minWidth={860}>
+          <DataTable minWidth={920}>
             <thead>
               <HeaderRow>
                 <Th align="left">Split</Th>
                 <Th>PA</Th>
+                <Th>Pit</Th>
                 <Th>BIP</Th>
                 <Th>BA</Th>
                 <Th>OBP</Th>
@@ -222,6 +241,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
                 <BodyRow key={sp.label}>
                   <CountCell label={sp.label} detail={sp.detail} />
                   <NumCell value={sp.pa} muted={false} />
+                  <NumCell value={sp.pitches} muted />
                   <NumCell value={sp.bip} muted />
                   <ColorCell row={sp} metric="ba" formatter={fmtRate} bold />
                   <ColorCell row={sp} metric="obp" formatter={fmtRate} />
@@ -420,6 +440,43 @@ function Tile({ label, value, sub }) {
         {value ?? '-'}
       </div>
       <div className="text-[9px] text-gray-400 text-center">{sub}</div>
+    </div>
+  )
+}
+
+function LeverageTile({ avgLI, maxLI, pa }) {
+  const li = avgLI ?? 1.0
+  const tier = li >= 1.8 ? 'Closer-tier' :
+               li >= 1.4 ? 'High leverage' :
+               li >= 1.1 ? 'Above average' :
+               li >= 0.9 ? 'Average' :
+               li >= 0.6 ? 'Below average' :
+                           'Mop-up'
+  return (
+    <div className="relative group bg-gray-50 border border-gray-100 rounded p-3">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+          Avg Leverage Index (LI)
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-bold text-gray-900 tabular-nums">{fmtNum(li, 2)}</span>
+          <span className="text-[10px] text-gray-500">peak {fmtNum(maxLI || 0, 1)} · {pa || 0} PA</span>
+        </div>
+      </div>
+      <div className="text-[11px] text-gray-700">
+        <span className="font-semibold">{tier}</span>
+        <span className="text-gray-500"> · </span>
+        <span className="text-gray-600">
+          {li >= 1.0
+            ? `${((li - 1) * 100).toFixed(0)}% above league-average importance`
+            : `${((1 - li) * 100).toFixed(0)}% below league-average importance`}
+        </span>
+      </div>
+      <p className="text-[10px] text-gray-500 mt-1 leading-snug">
+        Leverage Index measures how much a single PA can swing the win probability.
+        1.0 = average moment. 2.0+ = closer pitching in a 1-run 9th. Below 0.5 = mop-up duty.
+        For hitters, this is a proxy for "how often did this player come up in big spots."
+      </p>
     </div>
   )
 }

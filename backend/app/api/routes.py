@@ -11404,7 +11404,16 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
                 COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
                 COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
                 COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
-                COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
+                COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+                COUNT(*) FILTER (
+                    WHERE bb_type IN ('LD','FB')
+                      AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                        OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+                ) AS air_pull_n,
+                COUNT(*) FILTER (
+                    WHERE bb_type IS NOT NULL
+                      AND UPPER(p.bats) IN ('L','R')
+                ) AS air_denom_n
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             JOIN players p ON p.id = ge.batter_player_id
@@ -11428,7 +11437,7 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
         'swing_pct','contact_pct','whiff_pct',
         'first_pitch_swing_pct','first_pitch_strike_pct','first_pitch_in_play_pct',
         'putaway_pct','pitches_per_pa',
-        'gb_pct','fb_pct','ld_pct','pu_pct',
+        'gb_pct','fb_pct','ld_pct','pu_pct','air_pull_pct',
     )}
     for r in rows:
         ab = r["ab"] or 0; h = r["h"] or 0
@@ -11481,6 +11490,9 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
             metrics["fb_pct"].append((r["fb_n"] or 0) / bb_total)
             metrics["ld_pct"].append((r["ld_n"] or 0) / bb_total)
             metrics["pu_pct"].append((r["pu_n"] or 0) / bb_total)
+        air_denom = r["air_denom_n"] or 0
+        if air_denom >= 5:
+            metrics["air_pull_pct"].append((r["air_pull_n"] or 0) / air_denom)
 
     # 9 decile thresholds (10th, 20th, ..., 90th) per metric.
     out = {}
@@ -11516,6 +11528,7 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
     cur.execute(f"""
         SELECT
             COUNT(*) AS pa,
+            COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
             COALESCE(SUM(pitches_thrown), 0) AS pitches,
             SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
             SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
@@ -11546,7 +11559,18 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
             COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
             COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
             COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
-            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
+            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+            -- Air-pull: LD+FB hit to pull side. Pull = LEFT for RHB,
+            -- RIGHT for LHB. Switch hitters & unknown hand excluded.
+            COUNT(*) FILTER (
+                WHERE bb_type IN ('LD','FB')
+                  AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                    OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+            ) AS air_pull_n,
+            COUNT(*) FILTER (
+                WHERE bb_type IS NOT NULL
+                  AND UPPER(p.bats) IN ('L','R')
+            ) AS air_denom_n
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
         JOIN players p ON p.id = ge.batter_player_id
@@ -11560,6 +11584,7 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
     """, [season, division_level])
     r = cur.fetchone()
     n_pa = r["pa"] or 0
+    n_tracked = r["tracked_pa"] or 0
     n_pitches = r["pitches"] or 0
     ab = r["ab"] or 0; h = r["h"] or 0
     d_ = r["d"] or 0; tr = r["t"] or 0; hr = r["hr"] or 0
@@ -11582,23 +11607,27 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
     contact = r["f_f"] + r["f_in_play"]
     bb_total = r["bb_total"] or 0
     two_strike_pa = r["two_strike_pa"] or 0
+    air_denom = r["air_denom_n"] or 0
     return {
-        "pa": n_pa, "pitches": n_pitches, "ba": ba, "obp": obp, "slg": slg, "ops": ops,
+        "pa": n_pa, "tracked_pa": n_tracked, "pitches": n_pitches,
+        "ba": ba, "obp": obp, "slg": slg, "ops": ops,
         "iso": iso, "woba": woba,
         "swing_pct": (swings / n_pitches) if n_pitches > 0 else None,
         "contact_pct": (contact / swings) if swings > 0 else None,
         "whiff_pct": (r["f_k"] / swings) if swings > 0 else None,
         "k_pct": (kct / n_pa) if n_pa > 0 else None,
         "bb_pct": (bb / n_pa) if n_pa > 0 else None,
-        "first_pitch_swing_pct":   (r["f1_swings"]  / n_pa) if n_pa > 0 else None,
-        "first_pitch_strike_pct":  (r["f1_strikes"] / n_pa) if n_pa > 0 else None,
-        "first_pitch_in_play_pct": (r["f1_in_play"] / n_pa) if n_pa > 0 else None,
+        # F1 / putaway / P-PA denominators are TRACKED PAs only
+        "first_pitch_swing_pct":   (r["f1_swings"]  / n_tracked) if n_tracked > 0 else None,
+        "first_pitch_strike_pct":  (r["f1_strikes"] / n_tracked) if n_tracked > 0 else None,
+        "first_pitch_in_play_pct": (r["f1_in_play"] / n_tracked) if n_tracked > 0 else None,
         "putaway_pct": (r["two_strike_k"] / two_strike_pa) if two_strike_pa > 0 else None,
-        "pitches_per_pa": (n_pitches / n_pa) if n_pa > 0 else None,
+        "pitches_per_pa": (n_pitches / n_tracked) if n_tracked > 0 else None,
         "gb_pct": (r["gb_n"] / bb_total) if bb_total > 0 else None,
         "fb_pct": (r["fb_n"] / bb_total) if bb_total > 0 else None,
         "ld_pct": (r["ld_n"] / bb_total) if bb_total > 0 else None,
         "pu_pct": (r["pu_n"] / bb_total) if bb_total > 0 else None,
+        "air_pull_pct": (r["air_pull_n"] / air_denom) if air_denom > 0 else None,
     }
 
 
@@ -11832,6 +11861,7 @@ def get_player_pitch_level_stats(
         spray_counts = {"Pull": 0, "Center": 0, "Oppo": 0}
         bb_total = 0
         zone_total = 0
+        air_pull = 0  # numerator: LD+FB pulled
         for r in cur.fetchall():
             n = r["c"]
             if r["bb_type"]:
@@ -11843,6 +11873,15 @@ def get_player_pitch_level_stats(
                 spray = _spray_for(r["field_zone"], bats)
                 if spray:
                     spray_counts[spray] = spray_counts.get(spray, 0) + n
+                # AIRPULL%: LD or FB to pull side, as fraction of ALL
+                # batted balls (FanGraphs / Statcast convention).
+                if r["bb_type"] in ("LD", "FB") and spray == "Pull":
+                    air_pull += n
+        # Denominator for AIRPULL% is total BIP for hitters with known
+        # handedness — switch hitters & unknown bats excluded from
+        # numerator; we reflect that in the denominator only when we
+        # have a usable handedness on the player.
+        air_denom = bb_total if bats and bats.upper() in ("L", "R") else 0
         spray_total = sum(spray_counts.values())
 
         # ── Phase F: zoned spray chart breakdown ──
@@ -11912,6 +11951,9 @@ def get_player_pitch_level_stats(
             "pull_pct":   (spray_counts["Pull"]   / spray_total) if spray_total > 0 else None,
             "center_pct": (spray_counts["Center"] / spray_total) if spray_total > 0 else None,
             "oppo_pct":   (spray_counts["Oppo"]   / spray_total) if spray_total > 0 else None,
+            "air_pull_pct": (air_pull / air_denom) if air_denom > 0 else None,
+            "air_pull_count": air_pull,
+            "air_denom": air_denom,
         }
 
         # ── Pull division-specific weights for wOBA ──
