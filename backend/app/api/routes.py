@@ -11388,7 +11388,23 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
                 SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
                 COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
                 COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
-                COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play
+                COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play,
+                COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'F') THEN 1
+                                  WHEN pitch_sequence = '' AND was_in_play THEN 1
+                                  ELSE 0 END), 0) AS f1_swings,
+                COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
+                                  WHEN pitch_sequence = '' AND was_in_play THEN 1
+                                  ELSE 0 END), 0) AS f1_strikes,
+                COALESCE(SUM(CASE WHEN pitch_sequence = '' AND was_in_play THEN 1
+                                  ELSE 0 END), 0) AS f1_in_play,
+                COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
+                COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
+                    ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+                COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+                COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+                COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+                COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+                COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             JOIN players p ON p.id = ge.batter_player_id
@@ -11401,15 +11417,19 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
             GROUP BY ge.batter_player_id
             HAVING COUNT(*) >= 5
         )
-        SELECT pa, pitches, ab, h, d2, d3, hr, ubb, bb, hbp, sf, k, f_k, f_f, f_in_play
-        FROM per_player
+        SELECT * FROM per_player
     """, [season, division_level])
     rows = cur.fetchall()
     if not rows:
         return {}
 
-    # Compute per-player metric values, then sort each metric and pick deciles.
-    metrics = {k: [] for k in ('ba','obp','slg','ops','iso','woba','wrc_plus','k_pct','bb_pct','swing_pct','contact_pct','whiff_pct')}
+    metrics = {k: [] for k in (
+        'ba','obp','slg','ops','iso','woba','wrc_plus','k_pct','bb_pct',
+        'swing_pct','contact_pct','whiff_pct',
+        'first_pitch_swing_pct','first_pitch_strike_pct','first_pitch_in_play_pct',
+        'putaway_pct','pitches_per_pa',
+        'gb_pct','fb_pct','ld_pct','pu_pct',
+    )}
     for r in rows:
         ab = r["ab"] or 0; h = r["h"] or 0
         d2 = r["d2"] or 0; d3 = r["d3"] or 0; hr = r["hr"] or 0
@@ -11435,21 +11455,32 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
                       weights.w_1b * singles + weights.w_2b * d2 +
                       weights.w_3b * d3 + weights.w_hr * hr) / woba_denom
             metrics["woba"].append(woba_v)
-            # wRC+ requires the filter's league wOBA as denominator.
-            # If not provided (initial mean computation), skip — wrc_plus
-            # decile distribution is only useful relative to a known league.
             if league_woba is not None and weights.woba_scale > 0 and weights.runs_per_pa > 0:
                 wrc = ((woba_v - league_woba) / weights.woba_scale + weights.runs_per_pa) / weights.runs_per_pa * 100
                 metrics["wrc_plus"].append(wrc)
         if pa > 0:
             metrics["k_pct"].append(k / pa)
             metrics["bb_pct"].append(bb / pa)
+            metrics["first_pitch_swing_pct"].append((r["f1_swings"] or 0) / pa)
+            metrics["first_pitch_strike_pct"].append((r["f1_strikes"] or 0) / pa)
+            metrics["first_pitch_in_play_pct"].append((r["f1_in_play"] or 0) / pa)
+        if pitches > 0:
+            metrics["pitches_per_pa"].append(pitches / pa)
         swings = f_k + f_f + f_in_play
         if pitches > 0:
             metrics["swing_pct"].append(swings / pitches)
         if swings > 0:
             metrics["contact_pct"].append((f_f + f_in_play) / swings)
             metrics["whiff_pct"].append(f_k / swings)
+        ts_pa = r["two_strike_pa"] or 0
+        if ts_pa >= 5:
+            metrics["putaway_pct"].append((r["two_strike_k"] or 0) / ts_pa)
+        bb_total = r["bb_total"] or 0
+        if bb_total >= 5:
+            metrics["gb_pct"].append((r["gb_n"] or 0) / bb_total)
+            metrics["fb_pct"].append((r["fb_n"] or 0) / bb_total)
+            metrics["ld_pct"].append((r["ld_n"] or 0) / bb_total)
+            metrics["pu_pct"].append((r["pu_n"] or 0) / bb_total)
 
     # 9 decile thresholds (10th, 20th, ..., 90th) per metric.
     out = {}
@@ -11499,7 +11530,23 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
             SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END) AS bip,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
-            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play
+            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play,
+            COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'F') THEN 1
+                              WHEN pitch_sequence = '' AND was_in_play THEN 1
+                              ELSE 0 END), 0) AS f1_swings,
+            COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
+                              WHEN pitch_sequence = '' AND was_in_play THEN 1
+                              ELSE 0 END), 0) AS f1_strikes,
+            COALESCE(SUM(CASE WHEN pitch_sequence = '' AND was_in_play THEN 1
+                              ELSE 0 END), 0) AS f1_in_play,
+            COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
+            COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
+                ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+            COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+            COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+            COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+            COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
         JOIN players p ON p.id = ge.batter_player_id
@@ -11533,6 +11580,8 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
     woba = (woba_num / woba_denom) if woba_denom > 0 else None
     swings = r["f_k"] + r["f_f"] + r["f_in_play"]
     contact = r["f_f"] + r["f_in_play"]
+    bb_total = r["bb_total"] or 0
+    two_strike_pa = r["two_strike_pa"] or 0
     return {
         "pa": n_pa, "pitches": n_pitches, "ba": ba, "obp": obp, "slg": slg, "ops": ops,
         "iso": iso, "woba": woba,
@@ -11541,6 +11590,15 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
         "whiff_pct": (r["f_k"] / swings) if swings > 0 else None,
         "k_pct": (kct / n_pa) if n_pa > 0 else None,
         "bb_pct": (bb / n_pa) if n_pa > 0 else None,
+        "first_pitch_swing_pct":   (r["f1_swings"]  / n_pa) if n_pa > 0 else None,
+        "first_pitch_strike_pct":  (r["f1_strikes"] / n_pa) if n_pa > 0 else None,
+        "first_pitch_in_play_pct": (r["f1_in_play"] / n_pa) if n_pa > 0 else None,
+        "putaway_pct": (r["two_strike_k"] / two_strike_pa) if two_strike_pa > 0 else None,
+        "pitches_per_pa": (n_pitches / n_pa) if n_pa > 0 else None,
+        "gb_pct": (r["gb_n"] / bb_total) if bb_total > 0 else None,
+        "fb_pct": (r["fb_n"] / bb_total) if bb_total > 0 else None,
+        "ld_pct": (r["ld_n"] / bb_total) if bb_total > 0 else None,
+        "pu_pct": (r["pu_n"] / bb_total) if bb_total > 0 else None,
     }
 
 
@@ -11555,6 +11613,10 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
         return cached["data"]
 
     filters = {
+        # Overall — every PA. Used as the wRC+ baseline AND for the
+        # discipline-tile color coding ("how does this player's overall
+        # swing% compare to the division average?").
+        "overall":     "TRUE",
         "hitters":     "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,1))",
         "neutral":     "(balls_before, strikes_before) IN ((0,0),(1,1),(2,1),(2,2),(3,2))",
         "pitchers":    "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))",
@@ -12017,23 +12079,32 @@ def get_player_pitch_level_stats(
         # ── Attach league baselines + deciles for color coding ──
         # Per-division per-filter league averages (for tooltips) and
         # decile thresholds (for Savant-style 10-shade gradient).
+        # wRC+ is keyed off the OVERALL season league wOBA (not the per-
+        # filter wOBA) so situational wRC+ swings around 100 meaningfully:
+        # a player who performs at his normal .330 wOBA in pitcher counts
+        # (where league avg is .220) lights up at wRC+ ~140, not 100.
         baselines = _get_pitch_level_baselines(cur, season, division_level, weights)
+        overall_entry = baselines.get("overall") or {}
+        overall_league_woba = (overall_entry.get("mean") or {}).get("woba")
         for row in count_states + lr_splits + situational_splits:
             fk = row.get("filter_key")
             entry = baselines.get(fk) if fk else None
             league = entry["mean"] if entry else None
             row["league"] = league
             row["deciles"] = entry["deciles"] if entry else None
-            # Compute wRC+ for the player using THIS filter's league wOBA.
-            league_woba = (league.get("woba") if league else None)
-            if (row.get("woba") is not None and league_woba is not None
+            if (row.get("woba") is not None and overall_league_woba is not None
                     and weights.woba_scale > 0 and weights.runs_per_pa > 0):
                 row["wrc_plus"] = round(
-                    ((row["woba"] - league_woba) / weights.woba_scale
+                    ((row["woba"] - overall_league_woba) / weights.woba_scale
                      + weights.runs_per_pa) / weights.runs_per_pa * 100
                 )
             else:
                 row["wrc_plus"] = None
+
+        # Attach league baselines to the discipline block for color
+        # coding the top tile row (Swing %, Whiff %, Contact %, etc.).
+        discipline["league"] = overall_entry.get("mean")
+        discipline["deciles"] = overall_entry.get("deciles")
 
         return {
             "player_id": player_id,
@@ -12088,7 +12159,18 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))), 0) AS pB,
-            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS p_inplay
+            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS p_inplay,
+            COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
+                              WHEN pitch_sequence = '' AND was_in_play THEN 1
+                              ELSE 0 END), 0) AS f1_strikes,
+            COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
+            COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
+                ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+            COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+            COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+            COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+            COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
         JOIN players p ON p.id = ge.pitcher_player_id
@@ -12122,6 +12204,8 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
     pK = r["pk"]; pS = r["ps"]; pF = r["pf"]; in_play = r["p_inplay"]
     swings = pK + pF + in_play
     strikes = pK + pS + pF + in_play
+    bb_total = r["bb_total"] or 0
+    two_strike_pa = r["two_strike_pa"] or 0
     return {
         "pa": n_pa, "pitches": n_pitches,
         "opp_ba": ba, "opp_obp": obp, "opp_slg": slg, "opp_ops": ops,
@@ -12131,7 +12215,13 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
         "strike_pct": (strikes / n_pitches) if n_pitches > 0 else None,
         "called_strike_pct": (pS / n_pitches) if n_pitches > 0 else None,
         "whiff_pct": (pK / swings) if swings > 0 else None,
+        "first_pitch_strike_pct": (r["f1_strikes"] / n_pa) if n_pa > 0 else None,
+        "putaway_pct": (r["two_strike_k"] / two_strike_pa) if two_strike_pa > 0 else None,
         "pitches_per_pa": (n_pitches / n_pa) if n_pa > 0 else None,
+        "gb_pct": (r["gb_n"] / bb_total) if bb_total > 0 else None,
+        "fb_pct": (r["fb_n"] / bb_total) if bb_total > 0 else None,
+        "ld_pct": (r["ld_n"] / bb_total) if bb_total > 0 else None,
+        "pu_pct": (r["pu_n"] / bb_total) if bb_total > 0 else None,
     }
 
 
@@ -12154,7 +12244,18 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
-                   COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS p_inplay
+                   COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS p_inplay,
+                   COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
+                                     WHEN pitch_sequence = '' AND was_in_play THEN 1
+                                     ELSE 0 END), 0) AS f1_strikes,
+                   COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
+                   COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
+                       ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+                   COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+                   COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+                   COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+                   COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+                   COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             JOIN players p ON p.id = ge.pitcher_player_id
@@ -12167,14 +12268,15 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
             GROUP BY ge.pitcher_player_id
             HAVING COUNT(*) >= 5
         )
-        SELECT pa, pitches, ab, h, d2, d3, hr, ubb, bb, hbp, sf, k, pK, pS, pF, p_inplay
-        FROM per_pitcher
+        SELECT * FROM per_pitcher
     """, [season, division_level])
     rows = cur.fetchall()
     if not rows:
         return {}
     metrics = {k: [] for k in ('opp_ba','opp_obp','opp_slg','opp_ops','opp_iso','opp_woba','wrc_plus_against',
-                                'k_pct','bb_pct','strike_pct','called_strike_pct','whiff_pct')}
+                                'k_pct','bb_pct','strike_pct','called_strike_pct','whiff_pct',
+                                'first_pitch_strike_pct','putaway_pct','pitches_per_pa',
+                                'gb_pct','fb_pct','ld_pct','pu_pct')}
     for r in rows:
         ab = r["ab"] or 0; h = r["h"] or 0
         d2 = r["d2"] or 0; d3 = r["d3"] or 0; hr = r["hr"] or 0
@@ -12206,6 +12308,9 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
         if pa > 0:
             metrics["k_pct"].append(k / pa)
             metrics["bb_pct"].append(bb / pa)
+            metrics["first_pitch_strike_pct"].append((r["f1_strikes"] or 0) / pa)
+            if pitches > 0:
+                metrics["pitches_per_pa"].append(pitches / pa)
         swings = pK + pF + in_play
         strikes = pK + pS + pF + in_play
         if pitches > 0:
@@ -12213,6 +12318,15 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
             metrics["called_strike_pct"].append(pS / pitches)
         if swings > 0:
             metrics["whiff_pct"].append(pK / swings)
+        ts_pa = r["two_strike_pa"] or 0
+        if ts_pa >= 5:
+            metrics["putaway_pct"].append((r["two_strike_k"] or 0) / ts_pa)
+        bb_total = r["bb_total"] or 0
+        if bb_total >= 5:
+            metrics["gb_pct"].append((r["gb_n"] or 0) / bb_total)
+            metrics["fb_pct"].append((r["fb_n"] or 0) / bb_total)
+            metrics["ld_pct"].append((r["ld_n"] or 0) / bb_total)
+            metrics["pu_pct"].append((r["pu_n"] or 0) / bb_total)
     out = {}
     deciles = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]
     for m, vals in metrics.items():
@@ -12231,6 +12345,7 @@ def _get_pitcher_pitch_level_baselines(cur, season, division_level, weights):
     if cached and (now - cached["ts"]) < _PITCH_LEVEL_BASELINES_TTL:
         return cached["data"]
     filters = {
+        "overall":     "TRUE",
         "hitters":     "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,1))",
         "neutral":     "(balls_before, strikes_before) IN ((0,0),(1,1),(2,1),(2,2),(3,2))",
         "pitchers":    "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))",
@@ -12568,23 +12683,29 @@ def get_player_pitch_level_stats_pitcher(
             {"label": "Leadoff PA",    "detail": "first PA of inning",  "filter_key": "leadoff",       **_opp_slash(leadoff,       [])},
         ]
 
-        # Attach baselines + compute wRC+ allowed
+        # Attach baselines + compute wRC+ allowed (vs OVERALL league wOBA,
+        # not the per-filter wOBA — same fix as the hitter endpoint).
         baselines = _get_pitcher_pitch_level_baselines(cur, season, division_level, weights)
+        overall_entry = baselines.get("overall") or {}
+        overall_league_opp_woba = (overall_entry.get("mean") or {}).get("opp_woba")
         for row in count_states + lr_splits + situational_splits:
             fk = row.get("filter_key")
             entry = baselines.get(fk) if fk else None
             league = entry["mean"] if entry else None
             row["league"] = league
             row["deciles"] = entry["deciles"] if entry else None
-            league_woba = (league.get("opp_woba") if league else None)
-            if (row.get("opp_woba") is not None and league_woba is not None
+            if (row.get("opp_woba") is not None and overall_league_opp_woba is not None
                     and weights.woba_scale > 0 and weights.runs_per_pa > 0):
                 row["wrc_plus_against"] = round(
-                    ((row["opp_woba"] - league_woba) / weights.woba_scale
+                    ((row["opp_woba"] - overall_league_opp_woba) / weights.woba_scale
                      + weights.runs_per_pa) / weights.runs_per_pa * 100
                 )
             else:
                 row["wrc_plus_against"] = None
+
+        # Attach overall baseline to discipline for top-row tile coloring
+        discipline["league"] = overall_entry.get("mean")
+        discipline["deciles"] = overall_entry.get("deciles")
 
         return {
             "player_id": player_id,
