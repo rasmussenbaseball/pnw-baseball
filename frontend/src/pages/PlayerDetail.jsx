@@ -605,6 +605,18 @@ const POS_COLORS = {
   'OF': '#059669', 'IF': '#4f46e5', 'DH': '#6b7280', 'UT': '#9ca3af', 'N/A': '#d1d5db',
 }
 
+// Wraps a child card so its CONTENT scrolls vertically when it would
+// otherwise overflow its allotted space. Used for the Awards card on
+// the 2026 player page so a player with many awards still fits below
+// the position breakdown without cutting off either card.
+function ScrollableCard({ children }) {
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+      {children}
+    </div>
+  )
+}
+
 // Recent games card — last N games' compact lines. Used as a right-
 // column filler so the column always has enough vertical bulk to match
 // the bars' height. Shows hitting and/or pitching depending on what
@@ -1368,38 +1380,55 @@ export default function PlayerDetail() {
                 )}
               </div>
 
-              {/* RIGHT: priority order — Awards → Position → Glance → Recent Games.
-                  maxHeight set to LEFT column height so we never overflow
-                  past the bars. Bottom card uses flex-grow with internal
-                  scroll to consume remaining space. */}
+              {/* RIGHT: capped at LEFT column natural height.
+                  Priority rules:
+                    1. POSITION renders first — fixed natural size,
+                       NEVER cut off (shrink-0).
+                    2. AWARDS renders second with INTERNAL scroll if
+                       there are many. Card itself shrinks to fit
+                       remaining space; long award lists scroll inside.
+                    3. Filler cards (Glance, Recent Games) render ONLY
+                       when the player has neither position nor awards
+                       — i.e., the right column would otherwise be empty.
+                  This guarantees: position never cut, awards never
+                  cut in half (it just gets a scrollbar if huge), and
+                  no orphaned partial cards. */}
               <div
                 className="flex flex-col gap-4 overflow-hidden"
                 style={barsHeight ? { maxHeight: `${barsHeight}px` } : undefined}
               >
-                {hasAwards && (
-                  <TeamAwards
-                    awards={awards || []}
-                    careerRankings={career_rankings || []}
-                    pnwRankings={pnw_rankings || []}
-                    teamShort={player.team_short}
-                  />
-                )}
                 {hasPosition && (
-                  <PositionPieChart breakdown={position_breakdown} />
+                  <div className="shrink-0">
+                    <PositionPieChart breakdown={position_breakdown} />
+                  </div>
                 )}
-                {/* Filler cards only if there's still vertical room. We
-                    render them anyway and let overflow-hidden + the
-                    Recent-Games internal scroll handle the spillover. */}
-                <SeasonGlance
-                  bat={batting_stats?.find(r => r.season === 2026)}
-                  pit={pitching_stats?.find(r => r.season === 2026)}
-                />
-                <RecentGames
-                  batting={gameLogs?.batting}
-                  pitching={gameLogs?.pitching}
-                  limit={20}
-                  className="flex-grow min-h-0"
-                />
+                {hasAwards && (
+                  <ScrollableCard>
+                    <TeamAwards
+                      awards={awards || []}
+                      careerRankings={career_rankings || []}
+                      pnwRankings={pnw_rankings || []}
+                      teamShort={player.team_short}
+                    />
+                  </ScrollableCard>
+                )}
+                {/* Fillers ONLY for players without awards or position
+                    (e.g. pitchers without team ranks) — the only case
+                    where the right column would otherwise be empty. */}
+                {!hasPosition && !hasAwards && (
+                  <>
+                    <SeasonGlance
+                      bat={batting_stats?.find(r => r.season === 2026)}
+                      pit={pitching_stats?.find(r => r.season === 2026)}
+                    />
+                    <RecentGames
+                      batting={gameLogs?.batting}
+                      pitching={gameLogs?.pitching}
+                      limit={20}
+                      className="flex-grow min-h-0"
+                    />
+                  </>
+                )}
               </div>
             </div>
           )
