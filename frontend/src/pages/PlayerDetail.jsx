@@ -659,11 +659,13 @@ function RecentGames({ batting, pitching, limit = 6, className = '' }) {
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${className}`}>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col overflow-hidden ${className}`}>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 shrink-0">
         Recent Games
       </h3>
-      <div className="space-y-1.5 flex-grow">
+      {/* Internal scroll — extra games scroll inside this container,
+          which keeps the right column from pushing past the bars. */}
+      <div className="space-y-1.5 flex-grow min-h-0 overflow-y-auto pr-1">
         {bat.map((g, i) => (
           <div key={`b-${i}`} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 text-[11px] py-1 border-b border-gray-50 last:border-0">
             <span className="text-gray-400 tabular-nums">{shortDate(g.game_date)}</span>
@@ -1346,11 +1348,13 @@ export default function PlayerDetail() {
               </div>
 
               {/* RIGHT: awards + position + glance + recent games.
-                  Always renders all three filler cards so columns match
-                  height. RecentGames carries flex-grow because its
-                  content is most flexible (variable game count).
-                  For players with no game logs, Glance gets flex-grow. */}
-              <div className="flex flex-col h-full gap-4">
+                  CAPPED at left column height: min-h-0 + overflow-hidden
+                  on the wrapper means the row's height is dictated by
+                  the LEFT (bars) column. RecentGames is the bottom
+                  card with flex-grow + internal scroll so it consumes
+                  the remaining space (and excess games scroll instead
+                  of pushing the row taller). */}
+              <div className="flex flex-col h-full gap-4 min-h-0 overflow-hidden">
                 {hasAwards && (
                   <TeamAwards
                     awards={awards || []}
@@ -1369,8 +1373,8 @@ export default function PlayerDetail() {
                 <RecentGames
                   batting={gameLogs?.batting}
                   pitching={gameLogs?.pitching}
-                  limit={6}
-                  className="flex-grow"
+                  limit={20}
+                  className="flex-grow min-h-0"
                 />
               </div>
             </div>
