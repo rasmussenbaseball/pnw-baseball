@@ -5263,10 +5263,14 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
     Comparison pool: 10+ PA for batters, 5+ IP for pitchers.
     Returns dict of { stat_key: { value, percentile } }.
     """
-    # Check player qualification thresholds
-    if stat_type == "batting" and (player_stats.get("plate_appearances") or 0) < 10:
+    # Player qualification thresholds — kept very low so small-sample
+    # players still see their bars (the comparison pool below uses a
+    # stricter qualified set, so percentile rank vs LEAGUE is still
+    # apples-to-apples). The footer text on the bars card explains
+    # qualified-pool minimums.
+    if stat_type == "batting" and (player_stats.get("plate_appearances") or 0) < 1:
         return {}
-    if stat_type == "pitching" and (player_stats.get("innings_pitched") or 0) < 5:
+    if stat_type == "pitching" and (player_stats.get("innings_pitched") or 0) < 1:
         return {}
 
     if stat_type == "batting":

@@ -722,7 +722,7 @@ function RecentGames({ batting, pitching, limit = 6, className = '' }) {
 // awards + position + glance stack matches the bars' height. Shows
 // big-number season counting stats (different from the percentile
 // rate stats already in the bars).
-function SeasonGlance({ bat, pit, className = '' }) {
+function SeasonGlance({ bat, pit, season, className = '' }) {
   // Only render when we have at least one stat block for the season
   if (!bat && !pit) return null
 
@@ -755,7 +755,7 @@ function SeasonGlance({ bat, pit, className = '' }) {
   return (
     <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${className}`}>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-        2026 Season Glance
+        {season ? `${season} Season Glance` : 'Season Glance'}
       </h3>
       <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 flex-grow content-start">
         {tiles.map((t, i) => (
@@ -1316,9 +1316,10 @@ export default function PlayerDetail() {
       })()}
 
       {/* ── Percentile Bars + Awards + Position ──
-          For 2026, use the new metric set and a 2-column equal-height
-          layout (bars on the left, awards + position on the right).
-          Pre-2026: keep the legacy stacked full-width layout. */}
+          Unified 2-column layout for ALL seasons. Left column = bars
+          (2026 metric set when on 2026, legacy metric set otherwise).
+          Right column = Position → Awards → Glance → RecentGames in
+          priority order, capped at the bars' natural height. */}
       {(() => {
         const isCurrent2026 = activePercentileSeason === '2026'
         const battingMetrics = isCurrent2026 ? BATTING_PERCENTILE_METRICS_2026 : BATTING_PERCENTILE_METRICS
@@ -1329,6 +1330,12 @@ export default function PlayerDetail() {
         const hasPosition = position_breakdown && position_breakdown.length > 0
         const hasBars = (batting_percentiles && Object.keys(batting_percentiles).length > 0)
                      || (pitching_percentiles && Object.keys(pitching_percentiles).length > 0)
+        // Use the season currently being viewed for the Glance/RecentGames
+        // when looking at past years (so the right-column card reflects
+        // the same year as the bars). Default to 2026 most-recent.
+        const targetSeason = activePercentileSeason && activePercentileSeason !== 'career'
+          ? parseInt(activePercentileSeason, 10)
+          : 2026
 
         // Season-filter chip group, embedded inside the bars header
         // (was a standalone row above the cards before).
@@ -1365,139 +1372,96 @@ export default function PlayerDetail() {
           </div>
         ) : null
 
-        // 2026 layout: bars + awards side-by-side. Left column is at
-        // its natural height; right column is CAPPED to that height via
-        // a JS-measured maxHeight (see barsRef / barsHeight at the top
-        // of this component). Excess content scrolls inside cards.
-        if (isCurrent2026 && hasBars && (hasAwards || hasPosition)) {
-          return (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
-              {/* LEFT: percentile bars — natural height (no h-full /
-                  fillHeight; we want the rectangle to end right under
-                  the "Min 5 IP" footer line). gap-4 between batting +
-                  pitching cards mirrors the right column's gap-4 so
-                  heights line up exactly. */}
-              <div ref={barsRef} className="flex flex-col gap-4">
-                {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
-                  <PercentileBars
-                    percentiles={batting_percentiles}
-                    metrics={battingMetrics}
-                    title={`Batting · ${percentileLabel}`}
-                    divisionLevel={player.division_level}
-                    seasonFilter={seasonFilter}
-                  />
-                )}
-                {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
-                  <PercentileBars
-                    percentiles={pitching_percentiles}
-                    metrics={pitchingMetrics}
-                    title={`Pitching · ${percentileLabel}`}
-                    divisionLevel={player.division_level}
-                    seasonFilter={!batting_percentiles || Object.keys(batting_percentiles || {}).length === 0 ? seasonFilter : null}
-                  />
-                )}
-              </div>
-
-              {/* RIGHT: capped at LEFT column natural height.
-                  Priority rules:
-                    1. POSITION renders first — fixed natural size,
-                       NEVER cut off (shrink-0).
-                    2. AWARDS renders second with INTERNAL scroll if
-                       there are many. Card itself shrinks to fit
-                       remaining space; long award lists scroll inside.
-                    3. Filler cards (Glance, Recent Games) render ONLY
-                       when the player has neither position nor awards
-                       — i.e., the right column would otherwise be empty.
-                  This guarantees: position never cut, awards never
-                  cut in half (it just gets a scrollbar if huge), and
-                  no orphaned partial cards. */}
-              <div
-                className="flex flex-col gap-4 overflow-hidden"
-                style={barsHeight ? { maxHeight: `${barsHeight}px` } : undefined}
-              >
-                {hasPosition && (
-                  <div className="shrink-0">
-                    <PositionPieChart breakdown={position_breakdown} />
-                  </div>
-                )}
-                {hasAwards && (
-                  <ScrollableCard>
-                    <TeamAwards
-                      awards={awards || []}
-                      careerRankings={career_rankings || []}
-                      pnwRankings={pnw_rankings || []}
-                      teamShort={player.team_short}
-                      embedded
-                    />
-                  </ScrollableCard>
-                )}
-                {/* Fillers ONLY for players without awards or position
-                    (e.g. pitchers without team ranks) — the only case
-                    where the right column would otherwise be empty. */}
-                {!hasPosition && !hasAwards && (
-                  <>
-                    <SeasonGlance
-                      bat={batting_stats?.find(r => r.season === 2026)}
-                      pit={pitching_stats?.find(r => r.season === 2026)}
-                    />
-                    <RecentGames
-                      batting={gameLogs?.batting}
-                      pitching={gameLogs?.pitching}
-                      limit={20}
-                      className="flex-grow min-h-0"
-                    />
-                  </>
-                )}
-              </div>
-            </div>
-          )
+        // Unified 2-column layout — every player, every season.
+        // Left = bars (whatever metric set fits the season).
+        // Right = Position → Awards → SeasonGlance → RecentGames,
+        // capped at the bars' natural height via JS measurement.
+        if (!hasBars) {
+          // No bars at all (very rare — player has no stats anywhere).
+          // Fall back to a single TeamAwards card if any.
+          return hasAwards ? (
+            <TeamAwards
+              awards={awards || []}
+              careerRankings={career_rankings || []}
+              pnwRankings={pnw_rankings || []}
+              teamShort={player.team_short}
+            />
+          ) : null
         }
 
-        // Default: stack awards then bars full-width (legacy layout
-        // for pre-2026 seasons or players with no awards/position).
         return (
-          <div className="space-y-4 sm:space-y-6 mb-4 sm:mb-6">
-            {hasAwards && (
-              <TeamAwards
-                awards={awards || []}
-                careerRankings={career_rankings || []}
-                pnwRankings={pnw_rankings || []}
-                teamShort={player.team_short}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
+            {/* LEFT: percentile bars — natural height, ends right
+                under the "Min 5 IP" footer line. */}
+            <div ref={barsRef} className="flex flex-col gap-4">
+              {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
+                <PercentileBars
+                  percentiles={batting_percentiles}
+                  metrics={battingMetrics}
+                  title={`Batting · ${percentileLabel}`}
+                  divisionLevel={player.division_level}
+                  seasonFilter={seasonFilter}
+                />
+              )}
+              {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
+                <PercentileBars
+                  percentiles={pitching_percentiles}
+                  metrics={pitchingMetrics}
+                  title={`Pitching · ${percentileLabel}`}
+                  divisionLevel={player.division_level}
+                  seasonFilter={!batting_percentiles || Object.keys(batting_percentiles || {}).length === 0 ? seasonFilter : null}
+                />
+              )}
+            </div>
+
+            {/* RIGHT: capped at LEFT column natural height.
+                Priority order:
+                  1. Position — never cut, fixed natural height
+                  2. Awards — internal scroll if too many (ScrollableCard)
+                  3. SeasonGlance — counting stats card
+                  4. RecentGames — fills remaining vertical space, scrolls
+                Cards 3-4 always render so the column has bulk for
+                pitchers / players without awards. */}
+            <div
+              className="flex flex-col gap-4 overflow-hidden"
+              style={barsHeight ? { maxHeight: `${barsHeight}px` } : undefined}
+            >
+              {hasPosition && (
+                <div className="shrink-0">
+                  <PositionPieChart breakdown={position_breakdown} />
+                </div>
+              )}
+              {hasAwards && (
+                <ScrollableCard>
+                  <TeamAwards
+                    awards={awards || []}
+                    careerRankings={career_rankings || []}
+                    pnwRankings={pnw_rankings || []}
+                    teamShort={player.team_short}
+                    embedded
+                  />
+                </ScrollableCard>
+              )}
+              {/* Always-rendered fillers. They auto-shrink/scroll if
+                  position+awards already fill the column. */}
+              <SeasonGlance
+                bat={batting_stats?.find(r => r.season === targetSeason)}
+                pit={pitching_stats?.find(r => r.season === targetSeason)}
+                season={targetSeason}
               />
-            )}
-            {seasonFilter && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Rankings</span>
-                {seasonFilter}
-              </div>
-            )}
-            {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
-              <PercentileBars
-                percentiles={batting_percentiles}
-                metrics={battingMetrics}
-                title={`Batting · ${percentileLabel}`}
-                divisionLevel={player.division_level}
+              <RecentGames
+                batting={gameLogs?.batting}
+                pitching={gameLogs?.pitching}
+                limit={20}
+                className="flex-grow min-h-0"
               />
-            )}
-            {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
-              <PercentileBars
-                percentiles={pitching_percentiles}
-                metrics={pitchingMetrics}
-                title={`Pitching · ${percentileLabel}`}
-                divisionLevel={player.division_level}
-              />
-            )}
+            </div>
           </div>
         )
       })()}
 
-      {/* ── Position Breakdown ──
-          For 2026 the position chart now lives inside the awards
-          column above. For pre-2026 seasons it stays as a standalone
-          card here so historic profiles still show position usage. */}
-      {activePercentileSeason !== '2026' && position_breakdown && position_breakdown.length > 0 && (
-        <PositionPieChart breakdown={position_breakdown} />
-      )}
+      {/* (Position now always lives inside the right column above —
+            no standalone render needed.) */}
 
       {/* ── Batting Stats Table (career) ── */}
       {hasBatting && (
