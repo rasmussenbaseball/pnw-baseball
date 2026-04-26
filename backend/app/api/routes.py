@@ -11543,18 +11543,29 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
             SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END) AS bip,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
-            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play,
-            COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'F') THEN 1
-                              WHEN pitch_sequence = '' AND was_in_play THEN 1
-                              ELSE 0 END), 0) AS f1_swings,
-            COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
-                              WHEN pitch_sequence = '' AND was_in_play THEN 1
-                              ELSE 0 END), 0) AS f1_strikes,
-            COALESCE(SUM(CASE WHEN pitch_sequence = '' AND was_in_play THEN 1
-                              ELSE 0 END), 0) AS f1_in_play,
-            COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
-            COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
-                ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+            COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS f_in_play,
+            -- F1 counts: only over PAs WITH pitch tracking, otherwise
+            -- the in-play branch falsely fires for events that lack a
+            -- pitch sequence string (untracked PAs have empty seq).
+            COUNT(*) FILTER (
+                WHERE pitches_thrown IS NOT NULL AND
+                      (LEFT(pitch_sequence, 1) IN ('K', 'F')
+                       OR (pitch_sequence = '' AND was_in_play))
+            ) AS f1_swings,
+            COUNT(*) FILTER (
+                WHERE pitches_thrown IS NOT NULL AND
+                      (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
+                       OR (pitch_sequence = '' AND was_in_play))
+            ) AS f1_strikes,
+            COUNT(*) FILTER (
+                WHERE pitches_thrown IS NOT NULL
+                      AND pitch_sequence = '' AND was_in_play
+            ) AS f1_in_play,
+            COUNT(*) FILTER (WHERE strikes_before = 2) AS two_strike_pa,
+            COUNT(*) FILTER (
+                WHERE strikes_before = 2 AND result_type IN
+                ('strikeout_swinging','strikeout_looking')
+            ) AS two_strike_k,
             COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
             COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
             COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
@@ -12185,6 +12196,7 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
     cur.execute(f"""
         SELECT
             COUNT(*) AS pa,
+            COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
             COALESCE(SUM(pitches_thrown), 0) AS pitches,
             SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
             SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
@@ -12201,13 +12213,17 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))), 0) AS pB,
-            COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS p_inplay,
-            COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
-                              WHEN pitch_sequence = '' AND was_in_play THEN 1
-                              ELSE 0 END), 0) AS f1_strikes,
-            COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
-            COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
-                ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+            COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS p_inplay,
+            COUNT(*) FILTER (
+                WHERE pitches_thrown IS NOT NULL AND
+                      (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
+                       OR (pitch_sequence = '' AND was_in_play))
+            ) AS f1_strikes,
+            COUNT(*) FILTER (WHERE strikes_before = 2) AS two_strike_pa,
+            COUNT(*) FILTER (
+                WHERE strikes_before = 2 AND result_type IN
+                ('strikeout_swinging','strikeout_looking')
+            ) AS two_strike_k,
             COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
             COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
             COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
@@ -12248,8 +12264,9 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
     strikes = pK + pS + pF + in_play
     bb_total = r["bb_total"] or 0
     two_strike_pa = r["two_strike_pa"] or 0
+    n_tracked = r["tracked_pa"] or 0
     return {
-        "pa": n_pa, "pitches": n_pitches,
+        "pa": n_pa, "tracked_pa": n_tracked, "pitches": n_pitches,
         "opp_ba": ba, "opp_obp": obp, "opp_slg": slg, "opp_ops": ops,
         "opp_iso": iso, "opp_woba": woba,
         "k_pct": (kct / n_pa) if n_pa > 0 else None,
@@ -12257,9 +12274,9 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
         "strike_pct": (strikes / n_pitches) if n_pitches > 0 else None,
         "called_strike_pct": (pS / n_pitches) if n_pitches > 0 else None,
         "whiff_pct": (pK / swings) if swings > 0 else None,
-        "first_pitch_strike_pct": (r["f1_strikes"] / n_pa) if n_pa > 0 else None,
+        "first_pitch_strike_pct": (r["f1_strikes"] / n_tracked) if n_tracked > 0 else None,
         "putaway_pct": (r["two_strike_k"] / two_strike_pa) if two_strike_pa > 0 else None,
-        "pitches_per_pa": (n_pitches / n_pa) if n_pa > 0 else None,
+        "pitches_per_pa": (n_pitches / n_tracked) if n_tracked > 0 else None,
         "gb_pct": (r["gb_n"] / bb_total) if bb_total > 0 else None,
         "fb_pct": (r["fb_n"] / bb_total) if bb_total > 0 else None,
         "ld_pct": (r["ld_n"] / bb_total) if bb_total > 0 else None,

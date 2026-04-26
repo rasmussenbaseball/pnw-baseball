@@ -2,11 +2,19 @@ import { usePlayerPitchLevelStatsPitcher } from '../hooks/useApi'
 import SprayChart from './SprayChart'
 
 /**
- * Pitcher Pitch-Level Stats — mirror of the hitter card.
+ * Pitcher Pitch-Level Stats — full Phase G/H redesign mirror of the
+ * hitter card.
  *
  * Color semantics: red = good for THIS pitcher (low opponent BA, high
- * Whiff%, high Strike%, etc.). Direction is inverted for opponent
- * slash columns since for a pitcher, low opponent OPS is GOOD.
+ * Whiff%, high Strike%, low BB%, etc.). Direction is INVERTED for
+ * opponent slash columns since LOW opp_OPS is GOOD for the pitcher.
+ *
+ * Sections:
+ *   1. Plate Discipline — colored tiles
+ *   2. Opponent Contact + Spray — 2-col layout
+ *   3. Opponent Slash by Count — color-coded slash
+ *   4. Batter Hand Splits — color-coded slash
+ *   5. Situational Performance — color-coded slash
  */
 export default function PitcherPitchLevelStatsCard({ playerId, season }) {
   const { data, loading, error } = usePlayerPitchLevelStatsPitcher(playerId, season)
@@ -14,23 +22,18 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
   if (loading || error || !data) return null
   const d = data.discipline
   if (!d || !d.total_pa) return null
-
-  const trackedShare = d.tracked_pa > 0
-    ? Math.round(100 * d.tracked_pa / d.total_pa)
-    : 0
+  const ocp = data.opp_contact_profile || {}
+  const trackedShare = d.tracked_pa > 0 ? Math.round(100 * d.tracked_pa / d.total_pa) : 0
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
-      <div className="flex items-baseline justify-between mb-1">
-        <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider flex items-center gap-2">
-          Pitch-Level Stats
-          <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-            Beta
-          </span>
-        </h3>
-        <span className="text-[10px] text-gray-400">{season}</span>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mt-6 overflow-hidden">
+      <div className="flex items-center gap-2 mb-1">
+        <h3 className="text-lg font-bold text-gray-900">Pitch-Level Stats</h3>
+        <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+          Beta
+        </span>
       </div>
-      <p className="text-[10px] text-gray-500 mb-2">
+      <p className="text-[11px] text-gray-500 mb-2">
         {d.total_pa} PA faced · {d.tracked_pa} with pitch data ({trackedShare}%) · {d.pitches} pitches thrown
       </p>
       <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-5 flex-wrap">
@@ -39,21 +42,76 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
         <span className="text-gray-400">(hover any cell for league average)</span>
       </div>
 
-      {/* ── Plate discipline (pitcher's side) ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-6">
-        <Tile label="Pitches" value={d.pitches} sub={`over ${d.tracked_pa} PA`} />
-        <Tile label="Strike %" value={fmtPct(d.strike_pct)} sub="thrown" />
-        <Tile label="Called-Strike %" value={fmtPct(d.called_strike_pct)} sub="of all pitches" />
-        <Tile label="Whiff %" value={fmtPct(d.whiff_pct)} sub={`${d.whiffs} of ${d.swings}`} />
-        <Tile label="1st-Pitch Strike" value={fmtPct(d.first_pitch_strike_pct)} sub={`of ${d.tracked_pa} PA`} />
-        <Tile label="Putaway %" value={fmtPct(d.putaway_pct)} sub={`of ${d.two_strike_pa} 2K PAs`} />
-        <Tile label="Avg LI" value={fmtNum(d.avg_li, 2)} sub={d.li_pa ? `peak ${fmtNum(d.max_li, 1)}` : '—'} />
-        <Tile label="P / PA" value={fmtNum(d.pitches_per_pa, 2)} sub={`${d.pitches}÷${d.tracked_pa}`} />
+      {/* ── 1 + 2: Plate Discipline + Opp Contact in 2-column layout ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+        {/* LEFT column: Plate Discipline + Opp Contact tiles */}
+        <div>
+          <SectionHeader>Plate Discipline</SectionHeader>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <ColorTile label="Strike %"        metric="strike_pct"
+              value={d.strike_pct} sub="of all pitches"
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="Called-Str %"    metric="called_strike_pct"
+              value={d.called_strike_pct} sub="of all pitches"
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="Whiff %"         metric="whiff_pct"
+              value={d.whiff_pct} sub={`${d.whiffs} of ${d.swings}`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="P / PA"          metric="pitches_per_pa"
+              value={d.pitches_per_pa} sub={`${d.pitches}÷${d.tracked_pa}`}
+              league={d.league} deciles={d.deciles} formatter={(v) => fmtNum(v, 2)} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+            <ColorTile label="1st-P Strike"    metric="first_pitch_strike_pct"
+              value={d.first_pitch_strike_pct} sub={`of ${d.tracked_pa} PA`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <ColorTile label="Putaway %"       metric="putaway_pct"
+              value={d.putaway_pct} sub={`of ${d.two_strike_pa} 2K PAs`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            <Tile label="Pitches" value={d.pitches} sub={`over ${d.tracked_pa} PA`} />
+          </div>
+
+          <div className="grid grid-cols-1 mb-5">
+            <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
+          </div>
+
+          {ocp.bb_total > 0 && (
+            <>
+              <SectionHeader>Opponent Contact Profile</SectionHeader>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <ColorTile label="GB %" metric="gb_pct" value={ocp.gb_pct}
+                  sub={`${ocp.gb_count} of ${ocp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                <ColorTile label="LD %" metric="ld_pct" value={ocp.ld_pct}
+                  sub={`${ocp.ld_count} of ${ocp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                <ColorTile label="FB %" metric="fb_pct" value={ocp.fb_pct}
+                  sub={`${ocp.fb_count} of ${ocp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+                <ColorTile label="PU %" metric="pu_pct" value={ocp.pu_pct}
+                  sub={`${ocp.pu_count} of ${ocp.bb_total}`}
+                  league={d.league} deciles={d.deciles} formatter={fmtPct} />
+              </div>
+              <p className="text-[10px] text-gray-400 italic">
+                Type of contact this pitcher induces. High GB% = sinkerballer; low LD% = weak contact.
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* RIGHT column: Opponent Spray Chart */}
+        {data.opp_spray_chart && data.opp_spray_chart.all_total > 0 && (
+          <div>
+            <SectionHeader>Opponent Spray (where balls go against this pitcher)</SectionHeader>
+            <SprayChart data={data.opp_spray_chart} mode="pitcher" defaultFilter="all" />
+          </div>
+        )}
       </div>
 
-      {/* ── Count-state opponent slash ── */}
+      {/* ── 3. Opponent Slash by Count ── */}
       <SectionHeader>Opponent Slash by Count</SectionHeader>
-      <DataTable minWidth={880} className="mb-6">
+      <DataTable minWidth={920} className="mb-6">
         <thead>
           <HeaderRow>
             <Th align="left">Count</Th>
@@ -64,12 +122,10 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
             <Th>opp OBP</Th>
             <Th>opp SLG</Th>
             <Th>opp OPS</Th>
-            <Th>opp ISO</Th>
             <Th>opp wOBA</Th>
             <Th>wRC+ allowed</Th>
             <Th>K%</Th>
             <Th>BB%</Th>
-            <Th>Strike%</Th>
             <Th>Whiff%</Th>
           </HeaderRow>
         </thead>
@@ -84,21 +140,19 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
               <ColorCell row={cs} metric="opp_obp" formatter={fmtRate} />
               <ColorCell row={cs} metric="opp_slg" formatter={fmtRate} />
               <ColorCell row={cs} metric="opp_ops" formatter={fmtRate} />
-              <ColorCell row={cs} metric="opp_iso" formatter={fmtRate} />
               <ColorCell row={cs} metric="opp_woba" formatter={fmtRate} />
               <ColorCell row={cs} metric="wrc_plus_against" formatter={fmtInt} />
               <ColorCell row={cs} metric="k_pct" formatter={fmtPct} />
               <ColorCell row={cs} metric="bb_pct" formatter={fmtPct} />
-              <ColorCell row={cs} metric="strike_pct" formatter={fmtPct} />
               <ColorCell row={cs} metric="whiff_pct" formatter={fmtPct} />
             </BodyRow>
           ))}
         </tbody>
       </DataTable>
 
-      {/* ── L/R batter splits ── */}
+      {/* ── 4. Batter Hand Splits ── */}
       <SectionHeader>Batter Hand Splits</SectionHeader>
-      <DataTable minWidth={880}>
+      <DataTable minWidth={920} className="mb-6">
         <thead>
           <HeaderRow>
             <Th align="left">Split</Th>
@@ -109,21 +163,17 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
             <Th>opp OBP</Th>
             <Th>opp SLG</Th>
             <Th>opp OPS</Th>
-            <Th>opp ISO</Th>
             <Th>opp wOBA</Th>
             <Th>wRC+ allowed</Th>
             <Th>K%</Th>
             <Th>BB%</Th>
-            <Th>Strike%</Th>
             <Th>Whiff%</Th>
           </HeaderRow>
         </thead>
         <tbody>
           {data.lr_splits.map((sp) => (
             <BodyRow key={sp.label}>
-              <td className="px-3 py-2.5 align-middle font-medium text-gray-900 whitespace-nowrap border-r border-gray-100">
-                {sp.label}
-              </td>
+              <CountCell label={sp.label} />
               <NumCell value={sp.pa} muted={false} />
               <NumCell value={sp.pitches} muted />
               <NumCell value={sp.bip} muted />
@@ -131,59 +181,21 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
               <ColorCell row={sp} metric="opp_obp" formatter={fmtRate} />
               <ColorCell row={sp} metric="opp_slg" formatter={fmtRate} />
               <ColorCell row={sp} metric="opp_ops" formatter={fmtRate} />
-              <ColorCell row={sp} metric="opp_iso" formatter={fmtRate} />
               <ColorCell row={sp} metric="opp_woba" formatter={fmtRate} />
               <ColorCell row={sp} metric="wrc_plus_against" formatter={fmtInt} />
               <ColorCell row={sp} metric="k_pct" formatter={fmtPct} />
               <ColorCell row={sp} metric="bb_pct" formatter={fmtPct} />
-              <ColorCell row={sp} metric="strike_pct" formatter={fmtPct} />
               <ColorCell row={sp} metric="whiff_pct" formatter={fmtPct} />
             </BodyRow>
           ))}
         </tbody>
       </DataTable>
-      {data.lr_splits.find(s => s.label === 'vs Unknown' && s.pa > 0) && (
-        <p className="text-[10px] text-gray-400 mt-2 italic">
-          Unknown = batter's handedness not in our roster data.
-        </p>
-      )}
 
-      {/* ── Phase E: Opponent Contact Profile (induced bb_type) ── */}
-      {data.opp_contact_profile && data.opp_contact_profile.bb_total > 0 && (
+      {/* ── 5. Situational Performance ── */}
+      {data.situational_splits?.length > 0 && (
         <>
-          <div className="mt-6">
-            <SectionHeader>Opponent Contact Profile</SectionHeader>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-            <Tile label="GB %" value={fmtPct(data.opp_contact_profile.gb_pct)} sub={`${data.opp_contact_profile.gb_count} of ${data.opp_contact_profile.bb_total}`} />
-            <Tile label="LD %" value={fmtPct(data.opp_contact_profile.ld_pct)} sub={`${data.opp_contact_profile.ld_count} of ${data.opp_contact_profile.bb_total}`} />
-            <Tile label="FB %" value={fmtPct(data.opp_contact_profile.fb_pct)} sub={`${data.opp_contact_profile.fb_count} of ${data.opp_contact_profile.bb_total}`} />
-            <Tile label="PU %" value={fmtPct(data.opp_contact_profile.pu_pct)} sub={`${data.opp_contact_profile.pu_count} of ${data.opp_contact_profile.bb_total}`} />
-          </div>
-          <p className="text-[10px] text-gray-400 mb-4 italic">
-            Type of contact this pitcher induces. Sinkerballers run high GB%; flyball pitchers run high FB%; weak-contact specialists keep LD% low.
-          </p>
-        </>
-      )}
-
-      {/* ── Phase F: Opponent Spray Chart (where opponents hit against this pitcher) ── */}
-      {data.opp_spray_chart && data.opp_spray_chart.all_total > 0 && (
-        <div className="mt-4 mb-6">
-          <SprayChart
-            data={data.opp_spray_chart}
-            mode="pitcher"
-            defaultFilter="all"
-          />
-        </div>
-      )}
-
-      {/* ── Situational splits (base state / inning / late & close) ── */}
-      {data.situational_splits && data.situational_splits.length > 0 && (
-        <>
-          <div className="mt-6">
-            <SectionHeader>Situational Splits (opponent batting)</SectionHeader>
-          </div>
-          <DataTable minWidth={880}>
+          <SectionHeader>Situational Performance</SectionHeader>
+          <DataTable minWidth={920}>
             <thead>
               <HeaderRow>
                 <Th align="left">Split</Th>
@@ -194,12 +206,10 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
                 <Th>opp OBP</Th>
                 <Th>opp SLG</Th>
                 <Th>opp OPS</Th>
-                <Th>opp ISO</Th>
                 <Th>opp wOBA</Th>
-                <Th>wRC+ against</Th>
+                <Th>wRC+ allowed</Th>
                 <Th>K%</Th>
                 <Th>BB%</Th>
-                <Th>Whiff%</Th>
               </HeaderRow>
             </thead>
             <tbody>
@@ -209,24 +219,20 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
                   <NumCell value={sp.pa} muted={false} />
                   <NumCell value={sp.pitches} muted />
                   <NumCell value={sp.bip} muted />
-                  <ColorCell row={sp} metric="opp_ba"   formatter={fmtRate} bold />
-                  <ColorCell row={sp} metric="opp_obp"  formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_slg"  formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_ops"  formatter={fmtRate} />
-                  <ColorCell row={sp} metric="opp_iso"  formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_ba" formatter={fmtRate} bold />
+                  <ColorCell row={sp} metric="opp_obp" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_slg" formatter={fmtRate} />
+                  <ColorCell row={sp} metric="opp_ops" formatter={fmtRate} />
                   <ColorCell row={sp} metric="opp_woba" formatter={fmtRate} />
                   <ColorCell row={sp} metric="wrc_plus_against" formatter={fmtInt} />
-                  <ColorCell row={sp} metric="k_pct"      formatter={fmtPct} />
-                  <ColorCell row={sp} metric="bb_pct"     formatter={fmtPct} />
-                  <ColorCell row={sp} metric="whiff_pct"  formatter={fmtPct} />
+                  <ColorCell row={sp} metric="k_pct" formatter={fmtPct} />
+                  <ColorCell row={sp} metric="bb_pct" formatter={fmtPct} />
                 </BodyRow>
               ))}
             </tbody>
           </DataTable>
           <p className="text-[10px] text-gray-400 mt-2 italic">
-            Situational splits use base/out/score state from PBP. Some 2026 PAs
-            are not yet state-derived (especially OOC opponents) — totals here
-            may be slightly lower than the season totals above.
+            Situational splits use base/out/score state from PBP.
           </p>
         </>
       )}
@@ -234,16 +240,20 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
   )
 }
 
-// ── Layout primitives ──────────────────────────────────────────
+// ── Formatters ──────────────────────────────────────────────────
+const fmtPct = (v) => v == null ? '-' : `${(v * 100).toFixed(0)}%`
+const fmtRate = (v) => v == null ? '-' : (v >= 1 ? v.toFixed(3) : v.toFixed(3).replace(/^0/, ''))
+const fmtNum = (v, digits = 0) => v == null ? '-' : v.toFixed(digits)
+const fmtInt = (v) => v == null ? '-' : Math.round(v)
 
+// ── Layout primitives ──────────────────────────────────────────
 function SectionHeader({ children }) {
   return (
-    <h4 className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-2">
+    <h4 className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-2 mt-1">
       {children}
     </h4>
   )
 }
-
 function DataTable({ children, minWidth = 700, className = '' }) {
   return (
     <div className={`overflow-x-auto -mx-4 sm:mx-0 ${className}`}>
@@ -253,7 +263,6 @@ function DataTable({ children, minWidth = 700, className = '' }) {
     </div>
   )
 }
-
 function HeaderRow({ children }) {
   return (
     <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px] border-b border-gray-200">
@@ -261,20 +270,17 @@ function HeaderRow({ children }) {
     </tr>
   )
 }
-
 function Th({ children, align = 'center' }) {
-  const cls = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center'
+  const cls = align === 'left' ? 'text-left' : 'text-center'
   return (
     <th className={`${cls} px-3 py-2 align-middle font-semibold whitespace-nowrap`}>
       {children}
     </th>
   )
 }
-
 function BodyRow({ children }) {
   return <tr className="border-b border-gray-100 last:border-0">{children}</tr>
 }
-
 function CountCell({ label, detail }) {
   return (
     <td className="px-3 py-2.5 align-middle whitespace-nowrap border-r border-gray-100">
@@ -283,37 +289,32 @@ function CountCell({ label, detail }) {
     </td>
   )
 }
-
-function NumCell({ value, muted = false, text = false }) {
-  const cls = `text-center px-3 py-2.5 align-middle tabular-nums ${
-    muted ? 'text-gray-400' : 'text-gray-700'
-  }`
+function NumCell({ value, muted = false }) {
+  const cls = `text-center px-3 py-2.5 align-middle tabular-nums ${muted ? 'text-gray-400' : 'text-gray-700'}`
   return <td className={cls}>{value ?? '-'}</td>
 }
 
-// ── Color coding (mirror of hitter, with inverted opp_* directions) ─
-
+// ── Color coding (pitcher direction-flipped) ─────────────────────
 const METRIC_DIRECTION = {
+  // Opponent slash — LOW is GOOD (blue scale bottom = bad, red top = good for pitcher)
   opp_ba: 'low', opp_obp: 'low', opp_slg: 'low', opp_ops: 'low',
   opp_iso: 'low', opp_woba: 'low', wrc_plus_against: 'low',
-  bb_pct: 'low',
-  k_pct: 'high', strike_pct: 'high', whiff_pct: 'high',
+  // K% high = good, BB% low = good
+  k_pct: 'high', bb_pct: 'low',
+  // Pitcher discipline — higher = better
+  strike_pct: 'high', called_strike_pct: 'high', whiff_pct: 'high',
+  first_pitch_strike_pct: 'high', putaway_pct: 'high',
+  pitches_per_pa: 'low',                  // lower = more efficient
+  // Opp contact profile — pitcher style; treat as "high = high" (no skill polarity)
+  gb_pct: 'high', fb_pct: 'high', ld_pct: 'low', pu_pct: 'high',
 }
-
 const SHADE_PALETTE = [
-  'bg-blue-700 text-white',
-  'bg-blue-500 text-white',
-  'bg-blue-400 text-white',
-  'bg-blue-300 text-gray-900',
-  'bg-blue-100 text-gray-900',
+  'bg-blue-700 text-white', 'bg-blue-500 text-white', 'bg-blue-400 text-white',
+  'bg-blue-300 text-gray-900', 'bg-blue-100 text-gray-900',
   'bg-gray-50  text-gray-900',
-  'bg-red-100  text-gray-900',
-  'bg-red-300  text-gray-900',
-  'bg-red-400  text-white',
-  'bg-red-500  text-white',
-  'bg-red-700  text-white',
+  'bg-red-100  text-gray-900', 'bg-red-300  text-gray-900',
+  'bg-red-400  text-white', 'bg-red-500  text-white', 'bg-red-700  text-white',
 ]
-
 function shadeForValue(metric, value, deciles) {
   if (value == null || !deciles) return null
   const dir = METRIC_DIRECTION[metric]
@@ -327,7 +328,18 @@ function shadeForValue(metric, value, deciles) {
   if (dir === 'low') idx = 10 - idx
   return idx
 }
-
+function tooltipLabel(metric) {
+  const map = {
+    opp_ba: 'opp BA', opp_obp: 'opp OBP', opp_slg: 'opp SLG',
+    opp_ops: 'opp OPS', opp_iso: 'opp ISO', opp_woba: 'opp wOBA',
+    wrc_plus_against: 'wRC+ allowed', k_pct: 'K%', bb_pct: 'BB%',
+    strike_pct: 'Strike%', called_strike_pct: 'Called-Str%', whiff_pct: 'Whiff%',
+    first_pitch_strike_pct: '1st-P Strike%', putaway_pct: 'Putaway%',
+    pitches_per_pa: 'P/PA',
+    gb_pct: 'GB%', fb_pct: 'FB%', ld_pct: 'LD%', pu_pct: 'PU%',
+  }
+  return map[metric] || metric.toUpperCase()
+}
 function ColorCell({ row, metric, formatter, bold = false }) {
   const value = row[metric]
   const lg = row.league || {}
@@ -343,12 +355,11 @@ function ColorCell({ row, metric, formatter, bold = false }) {
       <span className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 bottom-full mb-1
                        opacity-0 group-hover:opacity-100 transition-opacity
                        whitespace-nowrap rounded bg-gray-900 text-white text-[10px] px-2 py-1 shadow-lg">
-        League {metric.toUpperCase().replace('_PCT', '%').replace('_', ' ')}: {leagueText}
+        Lg {tooltipLabel(metric)}: {leagueText}
       </span>
     </td>
   )
 }
-
 function ColorScale() {
   const swatches = [
     'bg-blue-700', 'bg-blue-500', 'bg-blue-400', 'bg-blue-300', 'bg-blue-100',
@@ -364,7 +375,6 @@ function ColorScale() {
     </span>
   )
 }
-
 function Tile({ label, value, sub }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[80px] py-2 px-2 border border-gray-100 rounded bg-gray-50">
@@ -378,23 +388,61 @@ function Tile({ label, value, sub }) {
     </div>
   )
 }
-
-// ── Formatters ──────────────────────────────────────────────────
-
-function fmtPct(v) {
-  if (v === null || v === undefined) return '-'
-  return (v * 100).toFixed(1) + '%'
+function ColorTile({ label, metric, value, sub, league, deciles, formatter }) {
+  const decs = deciles?.[metric]
+  const idx = shadeForValue(metric, value, decs)
+  const shade = idx != null ? SHADE_PALETTE[idx] : 'bg-gray-50 text-gray-900'
+  const leagueText = league?.[metric] != null ? formatter(league[metric]) : '—'
+  return (
+    <div className={`relative group flex flex-col items-center justify-center min-h-[80px] py-2 px-2 rounded border border-gray-100 ${shade}`}>
+      <div className="text-[9px] uppercase tracking-wide font-semibold text-center opacity-90">
+        {label}
+      </div>
+      <div className="text-base sm:text-lg font-bold tabular-nums my-0.5">
+        {value == null ? '-' : formatter(value)}
+      </div>
+      <div className="text-[9px] opacity-75 text-center">{sub}</div>
+      <span className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 -top-1 -translate-y-full
+                       opacity-0 group-hover:opacity-100 transition-opacity
+                       whitespace-nowrap rounded bg-gray-900 text-white text-[10px] px-2 py-1 shadow-lg">
+        Lg {tooltipLabel(metric)}: {leagueText}
+      </span>
+    </div>
+  )
 }
-function fmtRate(v) {
-  if (v === null || v === undefined) return '-'
-  const s = v.toFixed(3)
-  return s.startsWith('0') ? s.slice(1) : s
-}
-function fmtNum(v, decimals = 2) {
-  if (v === null || v === undefined) return '-'
-  return v.toFixed(decimals)
-}
-function fmtInt(v) {
-  if (v === null || v === undefined) return '-'
-  return Math.round(v).toString()
+function LeverageTile({ avgLI, maxLI, pa }) {
+  const li = avgLI ?? 1.0
+  const tier = li >= 1.8 ? 'Closer-tier' :
+               li >= 1.4 ? 'High leverage' :
+               li >= 1.1 ? 'Above average' :
+               li >= 0.9 ? 'Average' :
+               li >= 0.6 ? 'Below average' :
+                           'Mop-up'
+  return (
+    <div className="bg-gray-50 border border-gray-100 rounded p-3">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+          Avg Leverage Index (LI)
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-bold text-gray-900 tabular-nums">{fmtNum(li, 2)}</span>
+          <span className="text-[10px] text-gray-500">peak {fmtNum(maxLI || 0, 1)} · {pa || 0} PA</span>
+        </div>
+      </div>
+      <div className="text-[11px] text-gray-700">
+        <span className="font-semibold">{tier}</span>
+        <span className="text-gray-500"> · </span>
+        <span className="text-gray-600">
+          {li >= 1.0
+            ? `${((li - 1) * 100).toFixed(0)}% above league-average importance`
+            : `${((1 - li) * 100).toFixed(0)}% below league-average importance`}
+        </span>
+      </div>
+      <p className="text-[10px] text-gray-500 mt-1 leading-snug">
+        Leverage Index measures how much a single PA can swing the win probability.
+        For pitchers this is the killer reliever stat: closers come in for high-LI moments
+        (1.5+), mop-up relievers see low LI (≤0.5). Starters drift toward 1.0.
+      </p>
+    </div>
+  )
 }
