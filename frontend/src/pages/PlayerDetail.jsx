@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect } from 'react'
+import { useState, useRef, useLayoutEffect, cloneElement } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
@@ -622,6 +622,63 @@ function ScrollableCard({ children }) {
       <div className="flex-1 min-h-0 overflow-y-auto p-5">
         {children}
       </div>
+    </div>
+  )
+}
+
+// Right column wrapper that caps its height to the bars column and adds
+// a visible scroll affordance: a fade overlay + chevron hint along the
+// bottom edge whenever the inner content actually overflows. The hint
+// hides itself once the user has scrolled to the bottom.
+function ScrollColumn({ maxHeight, children }) {
+  const scrollRef = useRef(null)
+  const [showHint, setShowHint] = useState(false)
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => {
+      const overflows = el.scrollHeight - el.clientHeight > 4
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4
+      setShowHint(overflows && !atBottom)
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    let ro
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(update)
+      ro.observe(el)
+    }
+    return () => {
+      el.removeEventListener('scroll', update)
+      if (ro) ro.disconnect()
+    }
+  }, [maxHeight, children])
+
+  return (
+    <div className="relative">
+      <div
+        ref={scrollRef}
+        className="overflow-y-auto pr-1 -mr-1 nw-scroll"
+        style={maxHeight ? { maxHeight: `${maxHeight}px` } : undefined}
+      >
+        <div className="flex flex-col gap-4 pb-2">
+          {children}
+        </div>
+      </div>
+      {/* Bottom fade + chevron hint. Pointer-events-none so it doesn't
+          block scroll/clicks. Only renders while there is more content
+          below the visible area. */}
+      {showHint && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 flex items-end justify-center bg-gradient-to-t from-white via-white/80 to-transparent rounded-b-lg">
+          <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-nw-teal/80 uppercase tracking-wide animate-pulse">
+            <span>Scroll</span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1384,68 +1441,84 @@ export default function PlayerDetail() {
           ) : null
         }
 
+        // Render pitcher bars first when the player's primary role is
+        // pitching. Otherwise batting first. (Two-way players still get
+        // batting first unless explicitly listed as P.)
+        const isPitcherFirst = (player.position || '').toUpperCase() === 'P'
+        const battingBlock = batting_percentiles && Object.keys(batting_percentiles).length > 0 ? (
+          <PercentileBars
+            key="bat"
+            percentiles={batting_percentiles}
+            metrics={battingMetrics}
+            title={`Batting · ${percentileLabel}`}
+            divisionLevel={player.division_level}
+          />
+        ) : null
+        const pitchingBlock = pitching_percentiles && Object.keys(pitching_percentiles).length > 0 ? (
+          <PercentileBars
+            key="pit"
+            percentiles={pitching_percentiles}
+            metrics={pitchingMetrics}
+            title={`Pitching · ${percentileLabel}`}
+            divisionLevel={player.division_level}
+          />
+        ) : null
+        const orderedBars = isPitcherFirst
+          ? [pitchingBlock, battingBlock]
+          : [battingBlock, pitchingBlock]
+        // Hand the season-filter chips to the FIRST bars block that
+        // actually renders, so the chips always appear in the header
+        // of whichever card is on top.
+        let filterAttached = false
+        const orderedBarsWithFilter = orderedBars.filter(Boolean).map(node => {
+          if (filterAttached || !seasonFilter) return node
+          filterAttached = true
+          return cloneElement(node, { seasonFilter })
+        })
+
         return (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
             {/* LEFT: percentile bars — natural height, ends right
-                under the "Min 5 IP" footer line. */}
+                under the bars footer. Pitcher bars come first when the
+                player is listed as P; batter bars first otherwise. */}
             <div ref={barsRef} className="flex flex-col gap-4">
-              {batting_percentiles && Object.keys(batting_percentiles).length > 0 && (
-                <PercentileBars
-                  percentiles={batting_percentiles}
-                  metrics={battingMetrics}
-                  title={`Batting · ${percentileLabel}`}
-                  divisionLevel={player.division_level}
-                  seasonFilter={seasonFilter}
-                />
-              )}
-              {pitching_percentiles && Object.keys(pitching_percentiles).length > 0 && (
-                <PercentileBars
-                  percentiles={pitching_percentiles}
-                  metrics={pitchingMetrics}
-                  title={`Pitching · ${percentileLabel}`}
-                  divisionLevel={player.division_level}
-                  seasonFilter={!batting_percentiles || Object.keys(batting_percentiles || {}).length === 0 ? seasonFilter : null}
-                />
-              )}
+              {orderedBarsWithFilter}
             </div>
 
             {/* RIGHT: single scroll container capped at LEFT column
                 natural height. Every card at its natural size — they
                 flow vertically and the user scrolls if total content
-                exceeds the bars' height. No flex-grow gymnastics, no
-                cards getting cut in half. Order:
+                exceeds the bars' height. The fade overlay + chevron
+                hint at the bottom signal that more content is below
+                when the column overflows.
+                Order:
                   1. Position
                   2. Awards / Records
                   3. Season Glance
                   4. Recent Games */}
-            <div
-              className="overflow-y-auto pr-1 -mr-1"
-              style={barsHeight ? { maxHeight: `${barsHeight}px` } : undefined}
-            >
-              <div className="flex flex-col gap-4">
-                {hasPosition && (
-                  <PositionPieChart breakdown={position_breakdown} />
-                )}
-                {hasAwards && (
-                  <TeamAwards
-                    awards={awards || []}
-                    careerRankings={career_rankings || []}
-                    pnwRankings={pnw_rankings || []}
-                    teamShort={player.team_short}
-                  />
-                )}
-                <SeasonGlance
-                  bat={batting_stats?.find(r => r.season === targetSeason)}
-                  pit={pitching_stats?.find(r => r.season === targetSeason)}
-                  season={targetSeason}
+            <ScrollColumn maxHeight={barsHeight}>
+              {hasPosition && (
+                <PositionPieChart breakdown={position_breakdown} />
+              )}
+              {hasAwards && (
+                <TeamAwards
+                  awards={awards || []}
+                  careerRankings={career_rankings || []}
+                  pnwRankings={pnw_rankings || []}
+                  teamShort={player.team_short}
                 />
-                <RecentGames
-                  batting={gameLogs?.batting}
-                  pitching={gameLogs?.pitching}
-                  limit={20}
-                />
-              </div>
-            </div>
+              )}
+              <SeasonGlance
+                bat={batting_stats?.find(r => r.season === targetSeason)}
+                pit={pitching_stats?.find(r => r.season === targetSeason)}
+                season={targetSeason}
+              />
+              <RecentGames
+                batting={gameLogs?.batting}
+                pitching={gameLogs?.pitching}
+                limit={20}
+              />
+            </ScrollColumn>
           </div>
         )
       })()}

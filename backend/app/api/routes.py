@@ -6004,52 +6004,66 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             if percentile_season and percentile_season.isdigit():
                 target_season = int(percentile_season)
 
-            if batting_list:
-                # Find matching season or default to most recent
-                bat_row = None
-                if target_season:
-                    bat_row = next((r for r in batting_list if r["season"] == target_season), None)
-                if not bat_row:
-                    bat_row = batting_list[-1]
-                percentile_label = str(bat_row["season"])
-                batting_percentiles = _compute_percentiles(
-                    conn, player_dict["division_level"], bat_row["season"],
-                    bat_row, "batting"
+            # Default to the most recent season across BOTH batting and
+            # pitching. Without this, a player like a 2026 pitcher who
+            # had a tiny 2025 batting line would default to 2025 batting
+            # (since batting_list[-1] was used independently of pitching).
+            if not target_season:
+                all_seasons = (
+                    [r["season"] for r in batting_list] +
+                    [r["season"] for r in pitching_list]
                 )
-                # Phase J: 2026+ adds Contact% + AIRPULL% from PBP data
-                if bat_row["season"] >= 2026:
-                    weights = DEFAULT_WEIGHTS.get(player_dict["division_level"],
-                                                  DEFAULT_WEIGHTS["D1"])
-                    pbp_pct = _compute_2026_pbp_batting_percentiles(
-                        conn, player_dict["division_level"],
-                        bat_row["season"], bat_row.get("player_id") or player_id,
-                        weights,
-                    )
-                    batting_percentiles.update(pbp_pct)
+                if all_seasons:
+                    target_season = max(all_seasons)
 
-            if pitching_list:
-                pit_row = None
-                if target_season:
-                    pit_row = next((r for r in pitching_list if r["season"] == target_season), None)
-                if not pit_row:
-                    pit_row = pitching_list[-1]
-                if not percentile_label:
-                    percentile_label = str(pit_row["season"])
-                pitching_percentiles = _compute_percentiles(
-                    conn, player_dict["division_level"], pit_row["season"],
-                    pit_row, "pitching"
+            # Compute percentiles only for the side(s) that actually have
+            # stats in target_season. A pitcher with no batting in 2026
+            # gets pitching_percentiles only and no stale 2025 batting bars.
+            if batting_list and target_season:
+                bat_row = next(
+                    (r for r in batting_list if r["season"] == target_season),
+                    None,
                 )
-                # Phase J: 2026+ adds Strike%, FPS%, Whiff%, opp wOBA,
-                # opp AIRPULL%, HR/PA from PBP data
-                if pit_row["season"] >= 2026:
-                    weights = DEFAULT_WEIGHTS.get(player_dict["division_level"],
-                                                  DEFAULT_WEIGHTS["D1"])
-                    pbp_pct = _compute_2026_pbp_pitching_percentiles(
-                        conn, player_dict["division_level"],
-                        pit_row["season"], pit_row.get("player_id") or player_id,
-                        weights,
+                if bat_row:
+                    percentile_label = str(bat_row["season"])
+                    batting_percentiles = _compute_percentiles(
+                        conn, player_dict["division_level"], bat_row["season"],
+                        bat_row, "batting"
                     )
-                    pitching_percentiles.update(pbp_pct)
+                    # Phase J: 2026+ adds Contact% + AIRPULL% from PBP data
+                    if bat_row["season"] >= 2026:
+                        weights = DEFAULT_WEIGHTS.get(player_dict["division_level"],
+                                                      DEFAULT_WEIGHTS["D1"])
+                        pbp_pct = _compute_2026_pbp_batting_percentiles(
+                            conn, player_dict["division_level"],
+                            bat_row["season"], bat_row.get("player_id") or player_id,
+                            weights,
+                        )
+                        batting_percentiles.update(pbp_pct)
+
+            if pitching_list and target_season:
+                pit_row = next(
+                    (r for r in pitching_list if r["season"] == target_season),
+                    None,
+                )
+                if pit_row:
+                    if not percentile_label:
+                        percentile_label = str(pit_row["season"])
+                    pitching_percentiles = _compute_percentiles(
+                        conn, player_dict["division_level"], pit_row["season"],
+                        pit_row, "pitching"
+                    )
+                    # Phase J: 2026+ adds Strike%, FPS%, Whiff%, opp wOBA,
+                    # opp AIRPULL%, HR/PA from PBP data
+                    if pit_row["season"] >= 2026:
+                        weights = DEFAULT_WEIGHTS.get(player_dict["division_level"],
+                                                      DEFAULT_WEIGHTS["D1"])
+                        pbp_pct = _compute_2026_pbp_pitching_percentiles(
+                            conn, player_dict["division_level"],
+                            pit_row["season"], pit_row.get("player_id") or player_id,
+                            weights,
+                        )
+                        pitching_percentiles.update(pbp_pct)
 
         # ── Team awards: check awards for each team the player was on ──
         all_awards = {"season_awards": [], "career_rankings": []}
