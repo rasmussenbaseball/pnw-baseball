@@ -18594,73 +18594,55 @@ def top_moments(
     with get_connection() as conn:
         cur = conn.cursor()
 
-        # ── Top single-PA WPA moments ──
-        # Audit-clean games only. Join everything we need to render
-        # rich game-context cards on the frontend without a second
-        # round-trip per moment.
-        cur.execute("""
-            WITH game_audit AS (
-                SELECT g.id AS game_id,
-                       (g.home_score + g.away_score) AS actual_total,
-                       COALESCE(SUM(ge.runs_on_play), 0) AS derived_total
-                FROM games g
-                LEFT JOIN game_events ge ON ge.game_id = g.id
-                WHERE g.season = %s
-                  AND g.home_score IS NOT NULL
-                  AND g.away_score IS NOT NULL
-                  AND g.home_score <> g.away_score
-                GROUP BY g.id
-            )
-            SELECT
-                ge.id, ge.game_id, g.game_date,
-                ge.inning, ge.half, ge.sequence_idx,
-                ge.balls_before, ge.strikes_before, ge.pitch_sequence,
-                ge.bat_score_before, ge.fld_score_before, ge.runs_on_play,
-                ge.batter_player_id, ge.batter_name, ge.batting_team_id,
-                ge.pitcher_player_id, ge.pitcher_name,
-                ge.result_type, ge.result_text,
-                ge.wpa_batter, ge.wp_before, ge.wp_after,
-                g.home_team_id, g.away_team_id,
-                g.home_score AS final_home, g.away_score AS final_away,
-                COALESCE(th.short_name, th.name) AS home_short,
-                COALESCE(ta.short_name, ta.name) AS away_short,
-                th.logo_url AS home_logo, ta.logo_url AS away_logo
-            FROM game_events ge
-            JOIN game_audit ga ON ga.game_id = ge.game_id
-                              AND ga.derived_total = ga.actual_total
-            JOIN games g  ON g.id = ge.game_id
-            JOIN teams th ON th.id = g.home_team_id
-            JOIN teams ta ON ta.id = g.away_team_id
-            WHERE g.season = %s
-              AND ge.wpa_batter IS NOT NULL
-              AND ge.batter_player_id IS NOT NULL
-              AND ge.pitcher_player_id IS NOT NULL
-              AND ge.result_type NOT IN %s
-            ORDER BY ge.wpa_batter DESC
-            LIMIT %s
-        """, (season, season, SUBEVENT_TYPES, moments_limit))
-        moments = []
-        for r in cur.fetchall():
+        # ── Top single-PA WPA moments (HITTER + PITCHER lists) ──
+        # We surface BOTH perspectives:
+        #   - Hitter moments: ORDER BY wpa_batter DESC — big swings,
+        #     walk-off hits, lead-changing HRs.
+        #   - Pitcher moments: ORDER BY wpa_pitcher DESC — escape-
+        #     the-jam strikeouts, inning-ending outs in big spots.
+        # WPA values per event satisfy wpa_batter = -wpa_pitcher, so
+        # a pitcher moment's wpa_pitcher = +0.45 corresponds to the
+        # batter losing -0.45 WPA on that PA. Each list shows the
+        # SAME moments from a different actor's perspective.
+        # Audit-clean games only — we don't want artifact walk-offs
+        # from games with scorer-omitted runs.
+
+        def _shape_moment(r, perspective: str):
+            """perspective: 'batter' or 'pitcher' — controls which
+            wpa column populates the headline `wpa` field."""
             home_batting = (r["half"] == "bottom")
             batter_team_id = r["home_team_id"] if home_batting else r["away_team_id"]
             pitcher_team_id = r["away_team_id"] if home_batting else r["home_team_id"]
-            moments.append({
+            wpa = r["wpa_batter"] if perspective == "batter" else r["wpa_pitcher"]
+            wp_before_perspective = r["wp_before"]
+            wp_after_perspective = r["wp_after"]
+            # WP is stored from BATTING team's perspective. For pitcher
+            # cards, flip it to the pitcher's perspective (1 - WP) so
+            # "WP swing 0.05 → 0.50" means "the pitcher's chance went
+            # from 5% to 50%" — which is what a coach reads naturally.
+            if perspective == "pitcher":
+                wp_before_perspective = 1.0 - r["wp_before"] if r["wp_before"] is not None else None
+                wp_after_perspective  = 1.0 - r["wp_after"]  if r["wp_after"]  is not None else None
+            return {
                 "id": r["id"],
                 "game_id": r["game_id"],
                 "game_date": r["game_date"].isoformat() if r["game_date"] else None,
                 "inning": r["inning"],
                 "half": r["half"],
+                "perspective": perspective,
                 "balls_before": r["balls_before"],
                 "strikes_before": r["strikes_before"],
+                "bases_before": r["bases_before"],
+                "outs_before": r["outs_before"],
                 "pitch_sequence": r["pitch_sequence"],
                 "bat_score_before": r["bat_score_before"],
                 "fld_score_before": r["fld_score_before"],
                 "runs_on_play": r["runs_on_play"] or 0,
                 "result_type": r["result_type"],
                 "result_text": r["result_text"],
-                "wpa": float(r["wpa_batter"]) if r["wpa_batter"] is not None else None,
-                "wp_before": float(r["wp_before"]) if r["wp_before"] is not None else None,
-                "wp_after": float(r["wp_after"]) if r["wp_after"] is not None else None,
+                "wpa": float(wpa) if wpa is not None else None,
+                "wp_before": float(wp_before_perspective) if wp_before_perspective is not None else None,
+                "wp_after":  float(wp_after_perspective)  if wp_after_perspective is not None else None,
                 "batter": {
                     "id": r["batter_player_id"],
                     "name": r["batter_name"],
@@ -18679,7 +18661,61 @@ def top_moments(
                     "final_home": r["final_home"],
                     "final_away": r["final_away"],
                 },
-            })
+            }
+
+        moment_select = """
+            WITH game_audit AS (
+                SELECT g.id AS game_id,
+                       (g.home_score + g.away_score) AS actual_total,
+                       COALESCE(SUM(ge.runs_on_play), 0) AS derived_total
+                FROM games g
+                LEFT JOIN game_events ge ON ge.game_id = g.id
+                WHERE g.season = %s
+                  AND g.home_score IS NOT NULL
+                  AND g.away_score IS NOT NULL
+                  AND g.home_score <> g.away_score
+                GROUP BY g.id
+            )
+            SELECT
+                ge.id, ge.game_id, g.game_date,
+                ge.inning, ge.half, ge.sequence_idx,
+                ge.balls_before, ge.strikes_before, ge.bases_before, ge.outs_before,
+                ge.pitch_sequence,
+                ge.bat_score_before, ge.fld_score_before, ge.runs_on_play,
+                ge.batter_player_id, ge.batter_name, ge.batting_team_id,
+                ge.pitcher_player_id, ge.pitcher_name,
+                ge.result_type, ge.result_text,
+                ge.wpa_batter, ge.wpa_pitcher, ge.wp_before, ge.wp_after,
+                g.home_team_id, g.away_team_id,
+                g.home_score AS final_home, g.away_score AS final_away,
+                COALESCE(th.short_name, th.name) AS home_short,
+                COALESCE(ta.short_name, ta.name) AS away_short,
+                th.logo_url AS home_logo, ta.logo_url AS away_logo
+            FROM game_events ge
+            JOIN game_audit ga ON ga.game_id = ge.game_id
+                              AND ga.derived_total = ga.actual_total
+            JOIN games g  ON g.id = ge.game_id
+            JOIN teams th ON th.id = g.home_team_id
+            JOIN teams ta ON ta.id = g.away_team_id
+            WHERE g.season = %s
+              AND ge.batter_player_id IS NOT NULL
+              AND ge.pitcher_player_id IS NOT NULL
+              AND ge.result_type NOT IN %s
+        """
+
+        # Hitter moments
+        cur.execute(
+            moment_select + " AND ge.wpa_batter IS NOT NULL ORDER BY ge.wpa_batter DESC LIMIT %s",
+            (season, season, SUBEVENT_TYPES, moments_limit),
+        )
+        hitter_moments = [_shape_moment(r, "batter") for r in cur.fetchall()]
+
+        # Pitcher moments
+        cur.execute(
+            moment_select + " AND ge.wpa_pitcher IS NOT NULL ORDER BY ge.wpa_pitcher DESC LIMIT %s",
+            (season, season, SUBEVENT_TYPES, moments_limit),
+        )
+        pitcher_moments = [_shape_moment(r, "pitcher") for r in cur.fetchall()]
 
         # ── Top hitters by total WPA ──
         cur.execute("""
@@ -18771,7 +18807,8 @@ def top_moments(
 
         return {
             "season": season,
-            "moments": moments,
+            "hitter_moments": hitter_moments,
+            "pitcher_moments": pitcher_moments,
             "top_hitters": top_hitters,
             "top_pitchers": top_pitchers,
             "min_pa": min_pa,
