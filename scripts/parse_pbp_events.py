@@ -128,6 +128,78 @@ def classify_result(text):
 
 
 # ─────────────────────────────────────────────────────────────────
+# Sub-event classification
+# ─────────────────────────────────────────────────────────────────
+# Some PBP rows are not plate appearances — they are standalone
+# happenings between PAs that affect base/out/score state:
+#   stolen base, caught stealing (standalone), wild pitch, passed ball,
+#   balk, pickoff, defensive indifference, runner-only advance.
+# derive_event_state.py needs these as their own rows so the runner
+# clauses can be applied to the base-state machine.
+#
+# Order matters: more specific (wild pitch / passed ball / balk) before
+# generic stolen / caught-stealing / runner_other.
+SUBEVENT_PATTERNS = [
+    (re.compile(r"\bwild\s+pitch\b",                 re.I), "wild_pitch"),
+    (re.compile(r"\bpassed\s+ball\b",                re.I), "passed_ball"),
+    (re.compile(r"\bbalk\b",                         re.I), "balk"),
+    (re.compile(r"\bcaught\s+stealing\b",            re.I), "caught_stealing"),
+    (re.compile(r"\bstole\s+(?:second|third|home)\b", re.I), "stolen_base"),
+    (re.compile(r"\bpicked\s+off\b",                 re.I), "pickoff"),
+    # Catch-all: any runner movement / "out at" without one of the verbs above
+    (re.compile(r"\b(?:advanced\s+to|scored|out\s+at)\b", re.I), "runner_other"),
+]
+
+
+def classify_subevent(text):
+    """Return a sub-event result_type, or None if the row isn't a sub-event.
+
+    Called only after classify_result returned None — so this never
+    competes with PA classification.
+    """
+    # Failed pickoff attempts have no state change — don't waste a row.
+    if re.search(r"failed\s+pickoff\s+attempt", text, re.I):
+        return None
+    for pat, stype in SUBEVENT_PATTERNS:
+        if pat.search(text):
+            return stype
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────
+# Substitution narrative classification (italic rows in PBP).
+# ─────────────────────────────────────────────────────────────────
+# Pinch runners are the only subs that affect base STATE — when "Jones
+# pinch ran for Smith" appears, Jones takes Smith's spot on whichever
+# base Smith was on. Pinch hitters don't need state work (the next PA
+# already names the new batter). Defensive subs and position changes
+# affect roster but not the bases.
+#
+# Pattern based on real Sidearm narratives sampled 2026-04-26:
+#   "Braydon Olson pinch ran for Sam Mieszkowski-Lapping."
+#   "Cadence Ueyama pinch ran for Jim O'Brien."
+# Group 1 = new runner, group 2 = displaced runner.
+PINCH_RUNNER_RE = re.compile(
+    r"^(.+?)\s+(?:pinch|courtesy)\s+ran\s+for\s+(.+?)\.?\s*$",
+    re.I,
+)
+
+
+def classify_substitution(text):
+    """Detect substitution narratives that affect base STATE.
+
+    Returns ('runner_sub', new_name, displaced_name) for pinch/courtesy
+    runner subs. Returns None for everything else (pinch hitters,
+    defensive subs, position changes, roster announcements) — those
+    don't change which base has whom on it.
+    """
+    m = PINCH_RUNNER_RE.match((text or "").strip())
+    if m:
+        return ("runner_sub", m.group(1).strip(), m.group(2).strip())
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────
 # Per-row helpers
 # ─────────────────────────────────────────────────────────────────
 
@@ -145,8 +217,13 @@ def extract_batter_name(text, result_type):
         "triple":              r"\btripled\b",
         "double":              r"\bdoubled\b",
         "single":              r"\bsingled\b",
-        "walk":                r"\bwalked\b",
-        "intentional_walk":    r"\bintentionally walked\b",
+        "walk":                r"\b(?:was )?walked\b",
+        # Sidearm narratives are "X was intentionally walked" — the
+        # "was " prefix needs to be optionally consumed, otherwise
+        # the extracted batter_name has " was" appended (which then
+        # breaks any downstream code that does name-by-last-name match,
+        # like the runner_sub state-machine swap).
+        "intentional_walk":    r"\b(?:was )?intentionally walked\b",
         "hbp":                 r"\b(?:was )?hit by pitch\b",
         "strikeout_swinging":  r"\bstruck out\b",
         "strikeout_looking":   r"\bstruck out\b",
@@ -166,7 +243,12 @@ def extract_batter_name(text, result_type):
     if pattern:
         m = re.search(pattern, text, flags=re.IGNORECASE)
         if m:
-            return text[:m.start()].strip().rstrip(",").strip()
+            name = text[:m.start()].strip().rstrip(",").strip()
+            # Defense in depth: strip trailing helping-verb fragments
+            # ("was", "is", "were", "are") in case a future anchor we
+            # add doesn't include the optional `(?:was )?` consumption.
+            name = re.sub(r"\s+(?:was|is|were|are)$", "", name, flags=re.IGNORECASE)
+            return name
     # Fallback: take everything before the first verb-like word
     parts = re.split(r"\s+(?=walked|homered|tripled|doubled|singled|struck|grounded|flied|lined|popped|reached|sacrificed)",
                      text, maxsplit=1)
@@ -300,14 +382,67 @@ def parse_pbp_events(html, starters=None):
                     current_pitcher.setdefault(defending_team, old_p)
                     current_pitcher[defending_team] = new_p
                     continue
-                # Italic but not a pitching change — substitutions, mound
-                # visits, courtesy runner notes, etc. Skip silently.
+                # Italic but not a pitching change — could be a pinch
+                # runner sub (which affects base state) or a fielding
+                # sub / pinch hitter / mound visit (which don't).
+                sub = classify_substitution(txt)
+                if sub:
+                    sub_type, _new_name, _old_name = sub
+                    sequence_idx += 1
+                    # Pinch runners come in BEFORE the next PA on the
+                    # batting team. The pitcher hasn't changed, so we
+                    # use the current pitcher as context for the row.
+                    pitcher_name = current_pitcher.get(defending_team, "<UNKNOWN STARTER>")
+                    events.append({
+                        "inning": inning,
+                        "half": half,
+                        "sequence_idx": sequence_idx,
+                        "batting_team_name": batting_team,
+                        "defending_team_name": defending_team,
+                        "batter_name": None,        # no batter for sub-event
+                        "pitcher_name": pitcher_name,
+                        "balls_before": 0,
+                        "strikes_before": 0,
+                        "pitch_sequence": "",
+                        "pitches_thrown": 0,
+                        "was_in_play": False,
+                        "result_type": sub_type,
+                        "result_text": txt,
+                        "rbi": 0,
+                    })
+                    continue
+                # Defensive sub, pinch hitter, mound visit, etc. —
+                # nothing to record for state purposes.
                 skipped += 1
                 continue
 
             # ── Try to classify as a real PA event ──
             result_type, was_in_play = classify_result(txt)
+
             if not result_type:
+                # Not a PA — try sub-event (standalone steal, WP, balk, etc.)
+                sub = classify_subevent(txt)
+                if sub:
+                    sequence_idx += 1
+                    pitcher_name = current_pitcher.get(defending_team, "<UNKNOWN STARTER>")
+                    events.append({
+                        "inning": inning,
+                        "half": half,
+                        "sequence_idx": sequence_idx,
+                        "batting_team_name": batting_team,
+                        "defending_team_name": defending_team,
+                        "batter_name": None,            # no batter for sub-event
+                        "pitcher_name": pitcher_name,
+                        "balls_before": 0,
+                        "strikes_before": 0,
+                        "pitch_sequence": "",
+                        "pitches_thrown": 0,
+                        "was_in_play": False,
+                        "result_type": sub,
+                        "result_text": txt,
+                        "rbi": 0,
+                    })
+                    continue
                 # Mound visit, "(WSU)" notes, scoring summary echos, etc.
                 skipped += 1
                 continue

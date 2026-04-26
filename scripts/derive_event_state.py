@@ -177,7 +177,15 @@ SUBEVENT_TYPES = {
     "wild_pitch", "passed_ball", "balk",
     "stolen_base", "caught_stealing",
     "pickoff", "runner_other",
+    "runner_sub",   # pinch/courtesy runner — handled specially below
 }
+
+# Pattern matches the same narratives parse_pbp_events.PINCH_RUNNER_RE
+# matches. Group 1 = new runner; group 2 = displaced runner.
+RUNNER_SUB_RE = re.compile(
+    r"^(.+?)\s+(?:pinch|courtesy)\s+ran\s+for\s+(.+?)\.?\s*$",
+    re.IGNORECASE,
+)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -557,7 +565,23 @@ def derive_game(cur, game_id, dry_run=False, force=False):
         outs_added_total = 0
         clauses = split_clauses(ev["result_text"])
 
-        if ev["result_type"] in SUBEVENT_TYPES:
+        if ev["result_type"] == "runner_sub":
+            # Pinch / courtesy runner. No outs, no runs — just swap
+            # the displaced runner's name on whichever base he's on
+            # for the new runner's name. The next event's bases_before
+            # will then reflect the correct identity.
+            m = RUNNER_SUB_RE.match(ev["result_text"] or "")
+            if m:
+                new_name = m.group(1).strip()
+                old_name = m.group(2).strip()
+                old_last = _norm_last(old_name)
+                for base_idx in (1, 2, 3):
+                    occupant = bases.get(base_idx)
+                    if occupant and _norm_last(occupant) == old_last:
+                        bases[base_idx] = new_name
+                        break
+            # No clauses to process — skip into the post-event bookkeeping.
+        elif ev["result_type"] in SUBEVENT_TYPES:
             # Sub-event row — no batter outcome to apply; every clause
             # in the narrative describes a runner movement.
             for clause in clauses:

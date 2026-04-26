@@ -34,6 +34,8 @@ from bs4 import BeautifulSoup
 sys.path.insert(0, "scripts")
 from parse_pbp_events import (
     classify_result,
+    classify_subevent,
+    classify_substitution,
     extract_batter_name,
     parse_count_seq,
     parse_rbi,
@@ -137,6 +139,56 @@ def parse_presto_events(html, starters=None):
                 # Try to classify as a real PA event
                 result_type, was_in_play = classify_result(txt)
                 if not result_type:
+                    # Try sub-event (standalone steal, WP, balk, etc.)
+                    sub = classify_subevent(txt)
+                    if sub:
+                        sequence_idx += 1
+                        pitcher_name = current_pitcher.get(defending_team, "<UNKNOWN STARTER>")
+                        events.append({
+                            "inning": inning,
+                            "half": half,
+                            "sequence_idx": sequence_idx,
+                            "batting_team_name": batting_team,
+                            "defending_team_name": defending_team,
+                            "batter_name": None,
+                            "pitcher_name": pitcher_name,
+                            "balls_before": 0,
+                            "strikes_before": 0,
+                            "pitch_sequence": "",
+                            "pitches_thrown": 0,
+                            "was_in_play": False,
+                            "result_type": sub,
+                            "result_text": raw_text,
+                            "rbi": 0,
+                        })
+                        continue
+                    # Pinch / courtesy runner substitution? Affects
+                    # base state — emit as runner_sub so derive_event_state
+                    # can swap the runner identity. Same grammar as
+                    # Sidearm — see parse_pbp_events.PINCH_RUNNER_RE.
+                    sub_swap = classify_substitution(txt)
+                    if sub_swap:
+                        sub_type, _new_name, _old_name = sub_swap
+                        sequence_idx += 1
+                        pitcher_name = current_pitcher.get(defending_team, "<UNKNOWN STARTER>")
+                        events.append({
+                            "inning": inning,
+                            "half": half,
+                            "sequence_idx": sequence_idx,
+                            "batting_team_name": batting_team,
+                            "defending_team_name": defending_team,
+                            "batter_name": None,
+                            "pitcher_name": pitcher_name,
+                            "balls_before": 0,
+                            "strikes_before": 0,
+                            "pitch_sequence": "",
+                            "pitches_thrown": 0,
+                            "was_in_play": False,
+                            "result_type": sub_type,
+                            "result_text": raw_text,
+                            "rbi": 0,
+                        })
+                        continue
                     skipped += 1
                     continue
 
