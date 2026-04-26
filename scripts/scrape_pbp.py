@@ -73,6 +73,70 @@ def _normalize_name(name):
     return s
 
 
+def _phantom_parse_name(name: str) -> tuple[str, str]:
+    """Parse a PBP-format name into (first, last) for phantom creation.
+
+    Handles 'First Last', 'F. Last', 'Last, First', 'Last,First',
+    'GAMBOA, AJ', and single-token names ('HOWARD'). Mirrors the parsing
+    in scripts/create_phantom_players.py — keep them in sync.
+    """
+    name = (name or "").strip()
+    if not name:
+        return "", ""
+    if "," in name:
+        parts = name.split(",", 1)
+        return parts[1].strip(), parts[0].strip()
+    if " " in name:
+        m = re.match(r"^([A-Z]\.?)\s+(.+)$", name)
+        if m:
+            first = m.group(1)
+            if not first.endswith("."):
+                first += "."
+            return first, m.group(2).strip()
+        first, last = name.rsplit(" ", 1)
+        return first.strip(), last.strip()
+    return "", name
+
+
+def _resolve_phantom(cur, team_id: int, name: str) -> int | None:
+    """Look up an existing phantom for (team_id, name) — or create one
+    if none exists. Returns the player_id.
+
+    Phantoms are flagged via players.is_phantom = TRUE. They give OOC
+    opponents (Cal D3, etc.) a player_id we can group PA-level stats
+    by, even though we never roster-scraped them. See
+    scripts/create_phantom_players.py for the backfill rationale.
+    """
+    first, last = _phantom_parse_name(name)
+    if not first and not last:
+        return None
+    cur.execute(
+        """
+        SELECT id FROM players
+        WHERE team_id = %s
+          AND COALESCE(first_name, '') = %s
+          AND COALESCE(last_name, '') = %s
+          AND is_phantom = TRUE
+        LIMIT 1
+        """,
+        (team_id, first, last),
+    )
+    existing = cur.fetchone()
+    if existing:
+        return existing["id"]
+    cur.execute(
+        """
+        INSERT INTO players
+            (team_id, first_name, last_name, position, is_phantom,
+             created_at, updated_at)
+        VALUES (%s, %s, %s, 'P', TRUE, NOW(), NOW())
+        RETURNING id
+        """,
+        (team_id, first, last),
+    )
+    return cur.fetchone()["id"]
+
+
 def find_player_id_with_fallback(cur, team_id, name, season, game_id=None):
     """find_player_id, then a normalized-name fallback if that misses.
 
@@ -451,6 +515,15 @@ def process_game(cur, game, dry_run=False, verbose=False):
     pitcher_cache = {}
 
     def resolve(name, team_id, cache):
+        """Resolve a name to a player_id.
+
+        Tries the real-player matcher first. If that misses (typically
+        an OOC opponent we never roster-scraped), creates a phantom
+        player record on the team and uses that. Phantoms are flagged
+        with players.is_phantom = TRUE so leaderboards can filter them
+        out — see scripts/create_phantom_players.py for the bulk
+        backfill that introduced this pattern.
+        """
         if not name or name == "<UNKNOWN STARTER>":
             return None
         key = (team_id, name)
@@ -459,7 +532,13 @@ def process_game(cur, game, dry_run=False, verbose=False):
         if not team_id:
             cache[key] = None
             return None
+        # 1. Try real-player match.
         pid, _used_fallback = find_player_id_with_fallback(cur, team_id, name, season, game_id=gid)
+        if pid:
+            cache[key] = pid
+            return pid
+        # 2. Fall back to phantom: lookup-or-create.
+        pid = _resolve_phantom(cur, team_id, name)
         cache[key] = pid
         return pid
 
