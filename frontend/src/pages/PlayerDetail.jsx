@@ -605,6 +605,93 @@ const POS_COLORS = {
   'OF': '#059669', 'IF': '#4f46e5', 'DH': '#6b7280', 'UT': '#9ca3af', 'N/A': '#d1d5db',
 }
 
+// Recent games card — last N games' compact lines. Used as a right-
+// column filler so the column always has enough vertical bulk to match
+// the bars' height. Shows hitting and/or pitching depending on what
+// the player did in the last games.
+function RecentGames({ batting, pitching, limit = 6, className = '' }) {
+  // Sort newest-first by game_date and take the most recent `limit`
+  const bat = (batting || []).slice().sort((a, b) => (b.game_date || '').localeCompare(a.game_date || '')).slice(0, limit)
+  const pit = (pitching || []).slice().sort((a, b) => (b.game_date || '').localeCompare(a.game_date || '')).slice(0, limit)
+
+  if (bat.length === 0 && pit.length === 0) return null
+
+  function shortDate(d) {
+    if (!d) return ''
+    const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (!m) return d
+    return `${parseInt(m[2], 10)}/${parseInt(m[3], 10)}`
+  }
+
+  function batLine(g) {
+    const parts = [`${g.h}-${g.ab}`]
+    if (g.hr)  parts.push(`${g.hr} HR`)
+    if (g['2b']) parts.push(`${g['2b']} 2B`)
+    if (g['3b']) parts.push(`${g['3b']} 3B`)
+    if (g.rbi)   parts.push(`${g.rbi} RBI`)
+    if (g.bb)    parts.push(`${g.bb} BB`)
+    if (g.k)     parts.push(`${g.k} K`)
+    if (g.sb)    parts.push(`${g.sb} SB`)
+    return parts.join(', ')
+  }
+
+  function pitLine(g) {
+    const parts = [`${g.ip} IP`]
+    if (g.er != null) parts.push(`${g.er} ER`)
+    if (g.h != null)  parts.push(`${g.h} H`)
+    if (g.bb != null) parts.push(`${g.bb} BB`)
+    if (g.k != null)  parts.push(`${g.k} K`)
+    return parts.join(', ')
+  }
+
+  // Decision-style decoration for hitter games (W/L/T)
+  function resultColor(g) {
+    if (g.team_score == null || g.opp_score == null) return 'text-gray-400'
+    if (g.team_score > g.opp_score)  return 'text-green-600'
+    if (g.team_score < g.opp_score)  return 'text-red-500'
+    return 'text-gray-400'
+  }
+  function resultLetter(g) {
+    if (g.team_score == null || g.opp_score == null) return ''
+    if (g.team_score > g.opp_score)  return 'W'
+    if (g.team_score < g.opp_score)  return 'L'
+    return 'T'
+  }
+
+  return (
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${className}`}>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        Recent Games
+      </h3>
+      <div className="space-y-1.5 flex-grow">
+        {bat.map((g, i) => (
+          <div key={`b-${i}`} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 text-[11px] py-1 border-b border-gray-50 last:border-0">
+            <span className="text-gray-400 tabular-nums">{shortDate(g.game_date)}</span>
+            <span className="text-gray-700 truncate">
+              <span className={`font-bold ${resultColor(g)} mr-1`}>{resultLetter(g)}</span>
+              <span className="text-gray-500">{g.home_away}{g.opponent_short || '?'}</span>
+              <span className="text-gray-400 ml-1.5 text-[10px]">{g.team_score}-{g.opp_score}</span>
+            </span>
+            <span className="text-gray-700 tabular-nums text-right text-[11px]">{batLine(g)}</span>
+          </div>
+        ))}
+        {pit.map((g, i) => (
+          <div key={`p-${i}`} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 text-[11px] py-1 border-b border-gray-50 last:border-0">
+            <span className="text-gray-400 tabular-nums">{shortDate(g.game_date)}</span>
+            <span className="text-gray-700 truncate">
+              <span className={`font-bold ${g.decision === 'W' ? 'text-green-600' : g.decision === 'L' ? 'text-red-500' : g.decision === 'S' ? 'text-blue-500' : 'text-gray-400'} mr-1`}>
+                {g.decision || '·'}
+              </span>
+              <span className="text-gray-500">{g.home_away}{g.opponent_short || '?'}</span>
+            </span>
+            <span className="text-gray-700 tabular-nums text-right text-[11px]">{pitLine(g)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Filler/summary card for the right column. Always renders so the
 // awards + position + glance stack matches the bars' height. Shows
 // big-number season counting stats (different from the percentile
@@ -661,61 +748,63 @@ function PositionPieChart({ breakdown }) {
   const total = breakdown.reduce((s, b) => s + b.games, 0)
   if (total === 0) return null
 
-  // If only one position at 100%, show a compact inline display
-  if (breakdown.length === 1) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0">Position</h3>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
-              style={{ backgroundColor: POS_COLORS[breakdown[0].position] || '#6b7280' }}>
-              {breakdown[0].position}
-            </div>
-            <span className="text-sm text-gray-500">100% ({breakdown[0].games} gm)</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Build SVG pie chart
-  const size = 80
-  const cx = size / 2, cy = size / 2, r = 36
-  let cumAngle = -Math.PI / 2 // start at top
-  const slices = breakdown.map((b) => {
-    const frac = b.games / total
-    const startAngle = cumAngle
-    const endAngle = cumAngle + frac * 2 * Math.PI
-    cumAngle = endAngle
-    const largeArc = frac > 0.5 ? 1 : 0
-    const x1 = cx + r * Math.cos(startAngle)
-    const y1 = cy + r * Math.sin(startAngle)
-    const x2 = cx + r * Math.cos(endAngle)
-    const y2 = cy + r * Math.sin(endAngle)
-    const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
-    return { ...b, d, frac, color: POS_COLORS[b.position] || '#6b7280' }
-  })
+  // Sort by games descending for the bar list
+  const rows = [...breakdown].sort((a, b) => b.games - a.games)
+  const maxFrac = rows[0].games / total
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="flex items-center gap-4 flex-wrap">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0">Position</h3>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-          {slices.map((s, i) => (
-            <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth="1.5" />
-          ))}
-        </svg>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {slices.map((s, i) => (
-            <div key={i} className="flex items-center gap-1.5 text-sm">
-              <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: s.color }} />
-              <span className="font-bold text-gray-900">{s.position}</span>
-              <span className="text-gray-400">{s.percentage}%</span>
-              <span className="text-gray-400 text-xs">({s.games})</span>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Position Breakdown
+        </h3>
+        <span className="text-[10px] text-gray-400">{total} games tracked</span>
+      </div>
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const frac = row.games / total
+          // Bar widths scale relative to the most-played position so
+          // the largest reads as 100% wide (more visually distinct than
+          // raw % which can leave a single-position player with one tiny bar).
+          const widthPct = maxFrac > 0 ? Math.max(2, (frac / maxFrac) * 100) : 0
+          const color = POS_COLORS[row.position] || '#6b7280'
+          return (
+            <div key={row.position} className="flex items-center gap-2">
+              {/* Position badge */}
+              <div
+                className="shrink-0 w-9 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: color }}
+              >
+                {row.position}
+              </div>
+              {/* Bar */}
+              <div className="flex-1 relative h-7 bg-gray-50 rounded overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 rounded"
+                  style={{
+                    width: `${widthPct}%`,
+                    backgroundColor: color,
+                    opacity: 0.18,
+                    transition: 'width 0.5s ease',
+                  }}
+                />
+                <div
+                  className="absolute inset-y-0 left-0"
+                  style={{
+                    width: `${widthPct}%`,
+                    borderLeft: `3px solid ${color}`,
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-between px-2.5 text-[11px]">
+                  <span className="font-semibold text-gray-700 tabular-nums">
+                    {(frac * 100).toFixed(1)}%
+                  </span>
+                  <span className="text-gray-400 tabular-nums">{row.games}g</span>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -1256,11 +1345,11 @@ export default function PlayerDetail() {
                 )}
               </div>
 
-              {/* RIGHT: awards + position + dynamic Season Glance.
-                  Season Glance always renders so the column has bulk
-                  even when the player has no awards or no position
-                  breakdown (e.g. pitchers, role players). It uses
-                  flex-grow so it stretches to match the bars' height. */}
+              {/* RIGHT: awards + position + glance + recent games.
+                  Always renders all three filler cards so columns match
+                  height. RecentGames carries flex-grow because its
+                  content is most flexible (variable game count).
+                  For players with no game logs, Glance gets flex-grow. */}
               <div className="flex flex-col h-full gap-4">
                 {hasAwards && (
                   <TeamAwards
@@ -1276,6 +1365,11 @@ export default function PlayerDetail() {
                 <SeasonGlance
                   bat={batting_stats?.find(r => r.season === 2026)}
                   pit={pitching_stats?.find(r => r.season === 2026)}
+                />
+                <RecentGames
+                  batting={gameLogs?.batting}
+                  pitching={gameLogs?.pitching}
+                  limit={6}
                   className="flex-grow"
                 />
               </div>
