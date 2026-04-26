@@ -148,6 +148,28 @@ export default function PitchLevelStatsCard({ playerId, season }) {
         </p>
       )}
 
+      {/* ── Phase E: Contact Profile (bb_type + spray) ── */}
+      {data.contact_profile && data.contact_profile.bb_total > 0 && (
+        <>
+          <div className="mt-6">
+            <SectionHeader>Contact Profile</SectionHeader>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-2">
+            <Tile label="GB %" value={fmtPct(data.contact_profile.gb_pct)} sub={`${data.contact_profile.gb_count} of ${data.contact_profile.bb_total}`} />
+            <Tile label="LD %" value={fmtPct(data.contact_profile.ld_pct)} sub={`${data.contact_profile.ld_count} of ${data.contact_profile.bb_total}`} />
+            <Tile label="FB %" value={fmtPct(data.contact_profile.fb_pct)} sub={`${data.contact_profile.fb_count} of ${data.contact_profile.bb_total}`} />
+            <Tile label="PU %" value={fmtPct(data.contact_profile.pu_pct)} sub={`${data.contact_profile.pu_count} of ${data.contact_profile.bb_total}`} />
+            <Tile label="Pull %"   value={fmtPct(data.contact_profile.pull_pct)}   sub={data.contact_profile.spray_total ? `of ${data.contact_profile.spray_total}` : '—'} />
+            <Tile label="Center %" value={fmtPct(data.contact_profile.center_pct)} sub={data.contact_profile.spray_total ? `of ${data.contact_profile.spray_total}` : '—'} />
+            <Tile label="Oppo %"   value={fmtPct(data.contact_profile.oppo_pct)}   sub={data.contact_profile.spray_total ? `of ${data.contact_profile.spray_total}` : '—'} />
+          </div>
+          <p className="text-[10px] text-gray-400 mb-4 italic">
+            Pull / Center / Oppo derived from batter handedness ({data.contact_profile.bats || '?'}).
+            Switch hitters and unknown handedness show no spray split.
+          </p>
+        </>
+      )}
+
       {/* ── Situational splits (base state / inning / late & close) ── */}
       {data.situational_splits && data.situational_splits.length > 0 && (
         <>

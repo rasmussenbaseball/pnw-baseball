@@ -26,6 +26,19 @@ from typing import Optional
 from ..models.database import get_connection
 from .auth import require_admin
 from .leverage import compute_li
+
+# Phase E: batted-ball + spray classifier (lives in scripts/ but is
+# pure Python — import via path manipulation so the API can use it.)
+import sys as _sys
+import pathlib as _pathlib
+_sys.path.insert(
+    0,
+    str(_pathlib.Path(__file__).resolve().parents[3] / "scripts"),
+)
+try:
+    from classify_batted_ball import spray_for as _spray_for  # noqa: E402
+except ImportError:
+    _spray_for = lambda zone, bats: None  # noqa: E731
 from ..stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -11731,6 +11744,62 @@ def get_player_pitch_level_stats(
             discipline["li_pa"] = 0
             discipline["max_li"] = None
 
+        # ── Phase E: Contact profile (bb_type) + spray (Pull/Center/Oppo) ──
+        # Counts of GB/FB/LD/PU and field zones derived from the
+        # narrative. Spray Pull/Center/Oppo is derived from field_zone +
+        # players.bats — switch hitters return None (would need pitcher
+        # hand to disambiguate).
+        cur.execute(
+            "SELECT bats FROM players WHERE id = %s",
+            (player_id,),
+        )
+        bats_row = cur.fetchone()
+        bats = bats_row["bats"] if bats_row else None
+
+        cur.execute("""
+            SELECT bb_type, field_zone, COUNT(*) AS c
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = ANY(%s)
+              AND g.season = %s
+              AND (bb_type IS NOT NULL OR field_zone IS NOT NULL)
+            GROUP BY bb_type, field_zone
+        """, (all_pids, season))
+        bb_counts = {"GB": 0, "FB": 0, "LD": 0, "PU": 0}
+        zone_counts = {"LEFT": 0, "CENTER": 0, "RIGHT": 0}
+        spray_counts = {"Pull": 0, "Center": 0, "Oppo": 0}
+        bb_total = 0
+        zone_total = 0
+        for r in cur.fetchall():
+            n = r["c"]
+            if r["bb_type"]:
+                bb_counts[r["bb_type"]] = bb_counts.get(r["bb_type"], 0) + n
+                bb_total += n
+            if r["field_zone"]:
+                zone_counts[r["field_zone"]] = zone_counts.get(r["field_zone"], 0) + n
+                zone_total += n
+                spray = _spray_for(r["field_zone"], bats)
+                if spray:
+                    spray_counts[spray] = spray_counts.get(spray, 0) + n
+        spray_total = sum(spray_counts.values())
+        contact_profile = {
+            "bb_total": bb_total,
+            "zone_total": zone_total,
+            "spray_total": spray_total,
+            "bats": bats,
+            "gb_pct": (bb_counts["GB"] / bb_total) if bb_total > 0 else None,
+            "fb_pct": (bb_counts["FB"] / bb_total) if bb_total > 0 else None,
+            "ld_pct": (bb_counts["LD"] / bb_total) if bb_total > 0 else None,
+            "pu_pct": (bb_counts["PU"] / bb_total) if bb_total > 0 else None,
+            "gb_count": bb_counts["GB"],
+            "fb_count": bb_counts["FB"],
+            "ld_count": bb_counts["LD"],
+            "pu_count": bb_counts["PU"],
+            "pull_pct":   (spray_counts["Pull"]   / spray_total) if spray_total > 0 else None,
+            "center_pct": (spray_counts["Center"] / spray_total) if spray_total > 0 else None,
+            "oppo_pct":   (spray_counts["Oppo"]   / spray_total) if spray_total > 0 else None,
+        }
+
         # ── Pull division-specific weights for wOBA ──
         # Player's division comes from their team → conference → division.
         # Defaults to D1 weights if we can't resolve.
@@ -11922,6 +11991,7 @@ def get_player_pitch_level_stats(
             "count_states": count_states,
             "lr_splits": lr_splits,
             "situational_splits": situational_splits,
+            "contact_profile": contact_profile,
         }
 
 
@@ -12260,6 +12330,35 @@ def get_player_pitch_level_stats_pitcher(
             discipline["li_pa"] = 0
             discipline["max_li"] = None
 
+        # ── Phase E: opponent contact profile (induced bb_type) ──
+        # GB% / FB% / LD% / PU% on balls in play AGAINST this pitcher.
+        # Headline pitcher stats: GB% (sinkerballers > 50%), LD% (low =
+        # weak contact). No spray — spray depends on batter's hand.
+        cur.execute("""
+            SELECT bb_type, COUNT(*) AS c
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = ANY(%s)
+              AND g.season = %s
+              AND bb_type IS NOT NULL
+            GROUP BY bb_type
+        """, (all_pids, season))
+        bb_counts = {"GB": 0, "FB": 0, "LD": 0, "PU": 0}
+        for r in cur.fetchall():
+            bb_counts[r["bb_type"]] = bb_counts.get(r["bb_type"], 0) + r["c"]
+        bb_total = sum(bb_counts.values())
+        opp_contact_profile = {
+            "bb_total": bb_total,
+            "gb_pct": (bb_counts["GB"] / bb_total) if bb_total > 0 else None,
+            "fb_pct": (bb_counts["FB"] / bb_total) if bb_total > 0 else None,
+            "ld_pct": (bb_counts["LD"] / bb_total) if bb_total > 0 else None,
+            "pu_pct": (bb_counts["PU"] / bb_total) if bb_total > 0 else None,
+            "gb_count": bb_counts["GB"],
+            "fb_count": bb_counts["FB"],
+            "ld_count": bb_counts["LD"],
+            "pu_count": bb_counts["PU"],
+        }
+
         # ── Count-state opponent slash (from pitcher's POV) ──
         def _opp_slash(filter_sql, params):
             cur.execute(f"""
@@ -12400,6 +12499,7 @@ def get_player_pitch_level_stats_pitcher(
             "count_states": count_states,
             "lr_splits": lr_splits,
             "situational_splits": situational_splits,
+            "opp_contact_profile": opp_contact_profile,
         }
 
 

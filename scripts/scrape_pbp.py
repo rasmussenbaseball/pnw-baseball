@@ -562,6 +562,46 @@ def process_game(cur, game, dry_run=False, verbose=False):
               AND (gp.pitches_thrown IS NULL OR gp.pitches_thrown = 0)
         """, (gid, gid))
 
+        # ── Derive base/out/score state for the freshly-written events ──
+        # Powers situational splits, leverage, WPA. Logs a warning on
+        # score-mismatch but doesn't block — the audit lives in derive.
+        try:
+            from derive_event_state import derive_game
+            derive_game(cur, gid, dry_run=False, force=True)
+        except Exception as e:
+            log.warning(f"  derive_event_state failed for game {gid}: {e}")
+
+        # ── Classify batted-ball type + field zone from narrative ──
+        # Powers spray / Pull-Center-Oppo splits and contact-profile cards.
+        # Operates on result_text we already wrote — pure Python regex,
+        # no extra HTTP/DB cost.
+        try:
+            from classify_batted_ball import classify, _CONTACT_TYPES
+            cur.execute("""
+                SELECT id, result_type, result_text
+                FROM game_events WHERE game_id = %s
+                  AND result_type = ANY(%s)
+            """, (gid, list(_CONTACT_TYPES)))
+            bb_updates = []
+            for r in cur.fetchall():
+                bb, zone = classify(r["result_type"], r["result_text"])
+                bb_updates.append((bb, zone, r["id"]))
+            if bb_updates:
+                psycopg2.extras.execute_batch(
+                    cur,
+                    """
+                    UPDATE game_events
+                    SET bb_type = %s,
+                        field_zone = %s,
+                        bb_derived_at = now()
+                    WHERE id = %s
+                    """,
+                    bb_updates,
+                    page_size=200,
+                )
+        except Exception as e:
+            log.warning(f"  classify_batted_ball failed for game {gid}: {e}")
+
     # ── Mark game complete ──
     if not dry_run:
         cur.execute("""
@@ -586,9 +626,13 @@ def select_games(cur, args):
         "(g.source_url LIKE 'https://%%/sports/baseball/stats/%%/boxscore/%%'"
         " OR g.source_url LIKE '%%nwacsports.com/sports/%%/boxscores/%%.xml'"
         " OR g.source_url LIKE '%%wubearcats.com/sports/%%/boxscores/%%.xml')",
-        "g.pbp_attempt_count < %s",
     ]
-    params = [MAX_ATTEMPTS]
+    params = []
+    # MAX_ATTEMPTS budget skipped on --rescrape so re-derive runs after a
+    # parser change re-process previously-scraped games regardless of count.
+    if not args.rescrape:
+        where.append("g.pbp_attempt_count < %s")
+        params.append(MAX_ATTEMPTS)
 
     if args.game_id:
         where.append("g.id = %s")

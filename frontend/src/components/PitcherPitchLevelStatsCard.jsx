@@ -147,6 +147,24 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
         </p>
       )}
 
+      {/* ── Phase E: Opponent Contact Profile (induced bb_type) ── */}
+      {data.opp_contact_profile && data.opp_contact_profile.bb_total > 0 && (
+        <>
+          <div className="mt-6">
+            <SectionHeader>Opponent Contact Profile</SectionHeader>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+            <Tile label="GB %" value={fmtPct(data.opp_contact_profile.gb_pct)} sub={`${data.opp_contact_profile.gb_count} of ${data.opp_contact_profile.bb_total}`} />
+            <Tile label="LD %" value={fmtPct(data.opp_contact_profile.ld_pct)} sub={`${data.opp_contact_profile.ld_count} of ${data.opp_contact_profile.bb_total}`} />
+            <Tile label="FB %" value={fmtPct(data.opp_contact_profile.fb_pct)} sub={`${data.opp_contact_profile.fb_count} of ${data.opp_contact_profile.bb_total}`} />
+            <Tile label="PU %" value={fmtPct(data.opp_contact_profile.pu_pct)} sub={`${data.opp_contact_profile.pu_count} of ${data.opp_contact_profile.bb_total}`} />
+          </div>
+          <p className="text-[10px] text-gray-400 mb-4 italic">
+            Type of contact this pitcher induces. Sinkerballers run high GB%; flyball pitchers run high FB%; weak-contact specialists keep LD% low.
+          </p>
+        </>
+      )}
+
       {/* ── Situational splits (base state / inning / late & close) ── */}
       {data.situational_splits && data.situational_splits.length > 0 && (
         <>
