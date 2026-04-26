@@ -415,6 +415,40 @@ function ColorTile({ label, metric, value, sub, league, deciles, formatter }) {
     </div>
   )
 }
+// Shared shell so LI and WPA tiles share an identical visual structure.
+// Each tile has 4 stacked rows: label / headline / tier / explanation.
+// Stacking (rather than flexing label and number into the same row)
+// is what makes paired tiles align cleanly — the rows match by index.
+function StatTile({ label, headline, headlineColor, subRight, tier, summary, explanation }) {
+  return (
+    <div className="relative group bg-gray-50 border border-gray-100 rounded p-3 flex flex-col">
+      {/* Row 1: Label (uppercase, small, single line via nowrap) */}
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold whitespace-nowrap mb-2">
+        {label}
+      </div>
+      {/* Row 2: Big number on left, peak/PA sub-text right-aligned to baseline */}
+      <div className="flex items-baseline justify-between mb-2">
+        <span className={`text-3xl font-bold tabular-nums ${headlineColor || 'text-gray-900'}`}>
+          {headline}
+        </span>
+        <span className="text-[10px] text-gray-500 text-right whitespace-nowrap ml-2">
+          {subRight}
+        </span>
+      </div>
+      {/* Row 3: Tier + one-line summary */}
+      <div className="text-[11px] text-gray-700 mb-2">
+        <span className="font-semibold">{tier}</span>
+        <span className="text-gray-500"> · </span>
+        <span className="text-gray-600">{summary}</span>
+      </div>
+      {/* Row 4: Explanation (small, gray, fills remaining vertical space) */}
+      <p className="text-[10px] text-gray-500 leading-snug mt-auto">
+        {explanation}
+      </p>
+    </div>
+  )
+}
+
 function LeverageTile({ avgLI, maxLI, pa }) {
   const li = avgLI ?? 1.0
   const tier = li >= 1.8 ? 'Closer-tier' :
@@ -423,44 +457,45 @@ function LeverageTile({ avgLI, maxLI, pa }) {
                li >= 0.9 ? 'Average' :
                li >= 0.6 ? 'Below average' :
                            'Mop-up'
+  const summary = li >= 1.0
+    ? `${((li - 1) * 100).toFixed(0)}% above league-average importance`
+    : `${((1 - li) * 100).toFixed(0)}% below league-average importance`
   return (
-    <div className="bg-gray-50 border border-gray-100 rounded p-3">
-      <div className="flex items-baseline justify-between mb-1">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
-          Avg Leverage Index (LI)
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-gray-900 tabular-nums">{fmtNum(li, 2)}</span>
-          <span className="text-[10px] text-gray-500">peak {fmtNum(maxLI || 0, 1)} · {pa || 0} PA</span>
-        </div>
-      </div>
-      <div className="text-[11px] text-gray-700">
-        <span className="font-semibold">{tier}</span>
-        <span className="text-gray-500"> · </span>
-        <span className="text-gray-600">
-          {li >= 1.0
-            ? `${((li - 1) * 100).toFixed(0)}% above league-average importance`
-            : `${((1 - li) * 100).toFixed(0)}% below league-average importance`}
-        </span>
-      </div>
-      <p className="text-[10px] text-gray-500 mt-1 leading-snug">
-        Leverage Index measures how much a single PA can swing the win probability.
-        For pitchers this is the killer reliever stat: closers come in for high-LI moments
-        (1.5+), mop-up relievers see low LI (≤0.5). Starters drift toward 1.0.
-      </p>
-    </div>
+    <StatTile
+      label="Avg Leverage Index"
+      headline={fmtNum(li, 2)}
+      subRight={`peak ${fmtNum(maxLI || 0, 1)} · ${pa || 0} PA`}
+      tier={tier}
+      summary={summary}
+      explanation={
+        <>
+          Leverage Index measures how much a single PA can swing the win
+          probability. For pitchers this is the killer reliever stat: closers
+          come in for high-LI moments (1.5+), mop-up relievers see low LI
+          (≤0.5). Starters drift toward 1.0.
+        </>
+      }
+    />
   )
 }
 
 function WpaTile({ totalWPA, peakWPA, pa, side }) {
   if (totalWPA == null || pa == null || pa === 0) {
     return (
-      <div className="bg-gray-50 border border-gray-100 rounded p-3">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1">
-          Win Probability Added
-        </div>
-        <div className="text-sm text-gray-400">No PBP coverage yet.</div>
-      </div>
+      <StatTile
+        label="Win Probability Added"
+        headline="—"
+        subRight=""
+        tier="No PBP coverage yet"
+        summary="WPA appears once play-by-play data is available."
+        explanation={
+          <>
+            Win Probability Added measures the cumulative change in win
+            probability from each batter faced. Built from 1,100+ games of
+            2026 PBP data.
+          </>
+        }
+      />
     )
   }
   // Tier the season total. Pitcher totals tend to run a bit lower
@@ -478,36 +513,25 @@ function WpaTile({ totalWPA, peakWPA, pa, side }) {
                                    'text-gray-900'
   const peakSign = (peakWPA ?? 0) >= 0 ? '+' : ''
   const sideLabel = side === 'pitcher' ? 'BF' : 'PA'
+  const summary = totalWPA >= 0
+    ? `added ${fmtNum(totalWPA, 1)} expected wins to his team`
+    : `cost his team ${fmtNum(Math.abs(totalWPA), 1)} expected wins`
   return (
-    <div className="bg-gray-50 border border-gray-100 rounded p-3">
-      <div className="flex items-baseline justify-between mb-1">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
-          Win Probability Added
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className={`text-2xl font-bold tabular-nums ${color}`}>
-            {sign}{fmtNum(totalWPA, 2)}
-          </span>
-          <span className="text-[10px] text-gray-500">
-            peak {peakSign}{fmtNum(peakWPA || 0, 2)} · {pa} {sideLabel}
-          </span>
-        </div>
-      </div>
-      <div className="text-[11px] text-gray-700">
-        <span className="font-semibold">{tier}</span>
-        <span className="text-gray-500"> · </span>
-        <span className="text-gray-600">
-          {totalWPA >= 0
-            ? `added ${fmtNum(totalWPA, 1)} expected wins to his team`
-            : `cost his team ${fmtNum(Math.abs(totalWPA), 1)} expected wins`}
-        </span>
-      </div>
-      <p className="text-[10px] text-gray-500 mt-1 leading-snug">
-        Win Probability Added measures the cumulative change in win probability
-        from each batter faced. A pitcher who escapes a bases-loaded jam in a
-        tied 9th can earn +0.2 in a single AB. Closers and aces lead season
-        totals because their outs come in the highest-leverage spots.
-      </p>
-    </div>
+    <StatTile
+      label="Win Probability Added"
+      headline={`${sign}${fmtNum(totalWPA, 2)}`}
+      headlineColor={color}
+      subRight={`peak ${peakSign}${fmtNum(peakWPA || 0, 2)} · ${pa} ${sideLabel}`}
+      tier={tier}
+      summary={summary}
+      explanation={
+        <>
+          Win Probability Added measures the cumulative change in win
+          probability from each batter faced. A pitcher who escapes a
+          bases-loaded jam in a tied 9th can earn +0.2 in a single AB. Closers
+          and aces lead because their outs come in the highest-leverage spots.
+        </>
+      }
+    />
   )
 }
