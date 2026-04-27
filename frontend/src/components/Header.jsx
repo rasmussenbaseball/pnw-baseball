@@ -67,6 +67,7 @@ const NAV = [
       { to: '/daily-scores', label: 'Daily Scoreboard', desc: 'Download daily scoreboard graphic' },
       { to: '/key-matchup', label: 'Key Matchup', desc: 'Matchup of the day graphic' },
       { to: '/series-recap', label: 'Weekly Series Recap', desc: 'Weekly series recap graphics' },
+      { to: '/tournament-bracket', label: 'Tournament Bracket', desc: 'Conference tournament bracket graphic' },
       { to: '/daily-recap', label: 'Daily Game Recap', desc: 'Daily game recap graphics' },
       { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
       { to: '/conference-standings', label: 'Standings', desc: 'Conference standings graphics' },

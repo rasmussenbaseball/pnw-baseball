@@ -85,6 +85,7 @@ import SocialGraphics from './pages/SocialGraphics'
 import DailyScoresGraphic from './pages/DailyScoresGraphic'
 import KeyMatchupGraphic from './pages/KeyMatchupGraphic'
 import SeriesRecapGraphic from './pages/SeriesRecapGraphic'
+import TournamentBracketGraphic from './pages/TournamentBracketGraphic'
 import DailyRecapGraphic from './pages/DailyRecapGraphic'
 
 // ─── New pages ───
@@ -230,6 +231,7 @@ export default function App() {
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
           <Route path="/key-matchup" element={<RequireAuth><KeyMatchupGraphic /></RequireAuth>} />
           <Route path="/series-recap" element={<RequireAuth><SeriesRecapGraphic /></RequireAuth>} />
+          <Route path="/tournament-bracket" element={<RequireAuth><TournamentBracketGraphic /></RequireAuth>} />
           <Route path="/daily-recap" element={<RequireAuth><DailyRecapGraphic /></RequireAuth>} />
           <Route path="/feature-request" element={<RequireAuth><FeatureRequest /></RequireAuth>} />
           <Route path="/player-pages" element={<RequireAuth><PlayerGraphic /></RequireAuth>} />
