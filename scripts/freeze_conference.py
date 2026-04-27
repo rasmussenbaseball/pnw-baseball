@@ -220,6 +220,86 @@ def snapshot_table(cur, live_table, frozen_table, conf_key, season, team_ids, dr
     return count
 
 
+def _fixup_frozen_conference_section(cur, season, conf_section, bracket_section):
+    """For a conference whose regular season has ended, replace each team's
+    projected_X stats with their actual current totals (no Monte Carlo drift)
+    and re-sort using the head-to-head tiebreaker. Also re-order the bracket
+    to match.
+
+    Mutates `conf_section` and `bracket_section` in place.
+    """
+    from app.stats.tiebreakers import apply_head_to_head
+    from app.models.database import get_connection
+
+    teams = conf_section.get("teams") or []
+    if not teams:
+        return
+
+    team_ids = [t["team_id"] for t in teams]
+    cur.execute(
+        """
+        SELECT team_id, wins, losses, conference_wins, conference_losses
+        FROM team_season_stats
+        WHERE season = %s AND team_id = ANY(%s)
+        """,
+        (season, team_ids),
+    )
+    actuals = {r["team_id"]: dict(r) for r in cur.fetchall()}
+
+    for t in teams:
+        a = actuals.get(t["team_id"])
+        if not a:
+            continue
+        t["projected_wins"] = a["wins"]
+        t["projected_losses"] = a["losses"]
+        t["projected_conf_wins"] = a["conference_wins"]
+        t["projected_conf_losses"] = a["conference_losses"]
+        wt = (a["wins"] or 0) + (a["losses"] or 0)
+        ct = (a["conference_wins"] or 0) + (a["conference_losses"] or 0)
+        t["projected_win_pct"] = round(a["wins"] / wt, 3) if wt > 0 else 0.0
+        t["projected_conf_win_pct"] = round(a["conference_wins"] / ct, 3) if ct > 0 else 0.0
+
+    # Re-sort with H2H tiebreaker. apply_head_to_head expects keys named
+    # `id`, `conf_win_pct`, `win_pct`, `wins`. We adapt by aliasing.
+    proxies = []
+    for t in teams:
+        proxies.append({
+            **t,
+            "id": t["team_id"],
+            "conf_win_pct": t.get("projected_conf_win_pct", 0),
+            "win_pct": t.get("projected_win_pct", 0),
+            "wins": t.get("projected_wins", 0),
+        })
+    proxies.sort(key=lambda x: x["conf_win_pct"], reverse=True)
+    proxies = apply_head_to_head(
+        proxies, get_connection, season,
+        primary_key="conf_win_pct",
+    )
+    # Rebuild conf_section["teams"] keyed by team_id, in the new sorted order.
+    # We preserve the original team dicts (with their full Monte Carlo odds,
+    # seed_probabilities, etc.) and just reshuffle the list.
+    by_pid = {t["team_id"]: t for t in teams}
+    conf_section["teams"] = [by_pid[p["team_id"]] for p in proxies]
+
+    # Re-order the bracket section the same way (bracket teams have a
+    # `team_id` field too). Preserve seed metadata if present.
+    if bracket_section and bracket_section.get("teams"):
+        b_by_pid = {t["team_id"]: t for t in bracket_section["teams"]}
+        # Bracket only includes teams that made the cut; preserve membership
+        # but reseed in the new order.
+        new_bracket_teams = []
+        seed = 1
+        for p in proxies:
+            if p["team_id"] in b_by_pid:
+                bt = dict(b_by_pid[p["team_id"]])
+                bt["seed"] = seed
+                seed += 1
+                new_bracket_teams.append(bt)
+        bracket_section["teams"] = new_bracket_teams
+
+    logger.info("  fixup applied: actuals overrode projections, H2H tiebreaker re-sorted")
+
+
 def snapshot_playoff_projection(cur, conf_key, season, dry_run):
     """Capture the /playoff-projections output for this conference and store it.
 
@@ -266,6 +346,15 @@ def snapshot_playoff_projection(cur, conf_key, season, dry_run):
             "(looked for abbrev=%s). Snapshot will be empty.",
             response_abbrev,
         )
+
+    # ── Post-process: regular season is OVER by definition. Override
+    # projected stats with the team's actual current record so a phantom
+    # +0.4 wins from never-to-be-played scheduled games doesn't drift
+    # standings. Then re-sort with the head-to-head tiebreaker (the
+    # projection's native sort skips H2H, so two teams with identical
+    # actual records can come out in the wrong order).
+    if conf_section:
+        _fixup_frozen_conference_section(cur, season, conf_section, bracket_section)
 
     snapshot = {
         "conf_key": conf_key,
