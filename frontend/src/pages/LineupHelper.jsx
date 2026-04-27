@@ -183,7 +183,7 @@ function LineupTable({ starters }) {
         <tbody>
           {starters.map((s) => (
             <tr key={`${s.slot}-${s.player_id}`}
-                className="border-b border-gray-100 last:border-0">
+                className="border-b border-gray-100 last:border-0 align-top">
               <td className="py-2">
                 <span
                   className="inline-flex items-center justify-center w-7 h-7 rounded-full
@@ -194,12 +194,20 @@ function LineupTable({ starters }) {
                 </span>
               </td>
               <td className="py-2">
-                <Link
-                  to={`/players/${s.player_id}`}
-                  className="text-portal-purple hover:underline font-medium"
-                >
-                  {s.first_name} {s.last_name}
-                </Link>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link
+                    to={`/players/${s.player_id}`}
+                    className="text-portal-purple hover:underline font-medium"
+                  >
+                    {s.first_name} {s.last_name}
+                  </Link>
+                  <FormBadge form={s.recent_form} />
+                </div>
+                {s.slot_reasoning && (
+                  <p className="text-xs text-gray-500 italic mt-0.5 leading-snug">
+                    {s.slot_reasoning}
+                  </p>
+                )}
               </td>
               <td className="py-2">
                 <span className="inline-block px-1.5 py-0.5 rounded
@@ -246,15 +254,23 @@ function BenchTable({ bench }) {
         <tbody>
           {bench.map((b, idx) => (
             <tr key={b.player_id}
-                className="border-b border-gray-100 last:border-0">
+                className="border-b border-gray-100 last:border-0 align-top">
               <td className="py-2 text-gray-500">{idx + 1}</td>
               <td className="py-2">
-                <Link
-                  to={`/players/${b.player_id}`}
-                  className="text-portal-purple hover:underline font-medium"
-                >
-                  {b.first_name} {b.last_name}
-                </Link>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link
+                    to={`/players/${b.player_id}`}
+                    className="text-portal-purple hover:underline font-medium"
+                  >
+                    {b.first_name} {b.last_name}
+                  </Link>
+                  <FormBadge form={b.recent_form} />
+                </div>
+                {b.bench_reasoning && (
+                  <p className="text-xs text-gray-500 italic mt-0.5 leading-snug">
+                    {b.bench_reasoning}
+                  </p>
+                )}
               </td>
               <td className="py-2">
                 <span className="inline-block px-1.5 py-0.5 rounded
@@ -271,6 +287,36 @@ function BenchTable({ bench }) {
         </tbody>
       </table>
     </div>
+  )
+}
+
+
+/* ============================================================
+ * Hot/Cold form badge
+ * ============================================================ */
+
+function FormBadge({ form }) {
+  if (!form) return null
+  const { status, recent_wOBA, delta_vs_season, recent_pa, days } = form
+  if (status === 'unknown' || status === 'neutral') return null
+
+  const isHot = status === 'hot'
+  const className = isHot
+    ? 'bg-orange-100 text-orange-800 border-orange-300'
+    : 'bg-blue-100 text-blue-800 border-blue-300'
+  const label = isHot ? 'HOT' : 'COLD'
+  const sign = delta_vs_season >= 0 ? '+' : ''
+  const tooltip =
+    `Last ${days} days: ${recent_wOBA.toFixed(3).replace(/^0/, '')} wOBA in ${recent_pa} PA ` +
+    `(${sign}${delta_vs_season.toFixed(3)} vs season).`
+
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold tracking-wider ${className}`}
+      title={tooltip}
+    >
+      {label}
+    </span>
   )
 }
 
@@ -303,6 +349,19 @@ function MethodologyCard() {
           they have eight or more starts this season. DH is open to anyone.
           The bench panel ranks the top five players who didn't make the
           starting nine, with each player tagged at their best position.
+        </p>
+        <p>
+          The HOT and COLD badges compare the player's last 14 days of plate
+          appearances to their season baseline. A 50-point or larger wOBA jump
+          earns HOT. The same drop earns COLD. Players with fewer than 12 PAs
+          in the window get no badge. The hot/cold signal is shown for context
+          only — the optimizer itself uses the recency-weighted season profile,
+          which already gives more weight to recent games.
+        </p>
+        <p>
+          The italic reasoning under each starter explains the slot fit.
+          Bench reasoning shows which starter beat them out at their best
+          eligible position, and why.
         </p>
       </div>
     </Card>
