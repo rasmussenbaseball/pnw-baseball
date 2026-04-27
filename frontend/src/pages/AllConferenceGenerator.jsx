@@ -194,6 +194,76 @@ function TeamSection({ title, team, rateMode, accentColor }) {
   )
 }
 
+// Awards section: MVP + 4 specialty awards displayed as portrait cards
+function AwardsSection({ awards }) {
+  if (!awards) return null
+  const items = [
+    { key: 'mvp',              label: 'Player of the Year',   data: awards.mvp,              accent: 'bg-amber-50  border-amber-300  text-amber-800' },
+    { key: 'hitter_of_year',   label: 'Hitter of the Year',   data: awards.hitter_of_year,   accent: 'bg-rose-50   border-rose-300   text-rose-800' },
+    { key: 'pitcher_of_year',  label: 'Pitcher of the Year',  data: awards.pitcher_of_year,  accent: 'bg-sky-50    border-sky-300    text-sky-800' },
+    { key: 'freshman_of_year', label: 'Freshman of the Year', data: awards.freshman_of_year, accent: 'bg-emerald-50 border-emerald-300 text-emerald-800' },
+    { key: 'transfer_of_year', label: 'Transfer of the Year', data: awards.transfer_of_year, accent: 'bg-indigo-50  border-indigo-300  text-indigo-800' },
+  ].filter(i => i.data)
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="mb-8">
+      <h2 className="text-lg font-bold text-nw-teal mb-3 border-b-2 border-current pb-1 inline-block">
+        Awards
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {items.map(item => (
+          <AwardCard key={item.key} label={item.label} player={item.data} accent={item.accent} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AwardCard({ label, player, accent }) {
+  if (!player) return null
+  return (
+    <div className={`rounded-lg border ${accent} p-3 flex flex-col items-center text-center`}>
+      <div className="text-[10px] font-bold uppercase tracking-wider mb-2">{label}</div>
+      {player.headshot_url ? (
+        <img
+          src={player.headshot_url}
+          alt={player.name}
+          className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm mb-2 bg-gray-100"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        />
+      ) : (
+        <div className="w-16 h-16 rounded-full bg-gray-200 mb-2 flex items-center justify-center text-gray-400 text-xs">
+          No photo
+        </div>
+      )}
+      <Link
+        to={`/player/${player.player_id}`}
+        className="font-semibold text-sm text-gray-900 hover:underline leading-tight"
+      >
+        {player.name}
+      </Link>
+      <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] text-gray-600">
+        {player.team_logo && (
+          <img
+            src={player.team_logo}
+            alt=""
+            className="w-3.5 h-3.5 object-contain"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+          />
+        )}
+        <span>{player.team_short}</span>
+      </div>
+      <div className="text-[10px] text-gray-500 mt-0.5">
+        {player.position}
+        {player.year_in_school ? ` · ${player.year_in_school}` : ''}
+      </div>
+    </div>
+  )
+}
+
+
 // Honorable mentions section: top 3 per slot, presented compactly
 function HonorableMentions({ hm, rateMode }) {
   if (!hm) return null
@@ -385,6 +455,8 @@ export default function AllConferenceGenerator() {
               </span>
             )}
           </div>
+
+          {data.awards && <AwardsSection awards={data.awards} />}
 
           <TeamSection
             title="First Team"
