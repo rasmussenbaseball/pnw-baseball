@@ -12879,6 +12879,16 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
                 WHERE strikes_before = 2 AND result_type IN
                 ('strikeout_swinging','strikeout_looking')
             ) AS two_strike_k,
+            -- "On or Out in 3" — efficiency stat. PAs that ended in 1-3
+            -- pitches with the batter either getting a hit or making an
+            -- out (incl. K). Walks, IBBs, HBP, and catcher's interference
+            -- are excluded — those are pitcher-inefficient outcomes that
+            -- happened to end quickly.
+            COUNT(*) FILTER (
+                WHERE pitches_thrown BETWEEN 1 AND 3
+                  AND result_type NOT IN
+                    ('walk','intentional_walk','hbp','catcher_interference')
+            ) AS on_or_out_3,
             COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
             COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
             COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
@@ -13004,6 +13014,7 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
     metrics = {k: [] for k in ('opp_ba','opp_obp','opp_slg','opp_ops','opp_iso','opp_woba','wrc_plus_against',
                                 'k_pct','bb_pct','strike_pct','called_strike_pct','whiff_pct',
                                 'first_pitch_strike_pct','putaway_pct','pitches_per_pa',
+                                'on_or_out_3_pct',
                                 'gb_pct','fb_pct','ld_pct','pu_pct',
                                 'hr_pa_pct','opp_air_pull_pct')}
     for r in rows:
@@ -13050,6 +13061,13 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
         ts_pa = r["two_strike_pa"] or 0
         if ts_pa >= 5:
             metrics["putaway_pct"].append((r["two_strike_k"] or 0) / ts_pa)
+        # On/Out-in-3: denominator is tracked PAs (we can only judge a
+        # PA's pitch count if pitches were tracked). Min 10 tracked PAs
+        # to avoid noisy tiny samples.
+        tracked_pa_row = r["tracked_pa"] or 0
+        if tracked_pa_row >= 10:
+            metrics["on_or_out_3_pct"].append(
+                (r["on_or_out_3"] or 0) / tracked_pa_row)
         bb_total = r["bb_total"] or 0
         if bb_total >= 5:
             metrics["gb_pct"].append((r["gb_n"] or 0) / bb_total)
@@ -13173,7 +13191,16 @@ def get_player_pitch_level_stats_pitcher(
                     WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
                     WHEN pitch_sequence = '' AND was_in_play THEN 1
                     ELSE 0
-                END), 0) AS f1_strikes
+                END), 0) AS f1_strikes,
+                -- "On or Out in 3": efficiency stat. Tracked PAs that
+                -- ended in 1-3 pitches with the batter getting a hit
+                -- or making an out. Walks/IBBs/HBP/CI are excluded.
+                COALESCE(SUM(CASE
+                    WHEN pitches_thrown BETWEEN 1 AND 3
+                      AND result_type NOT IN
+                        ('walk','intentional_walk','hbp','catcher_interference')
+                    THEN 1 ELSE 0
+                END), 0) AS on_or_out_3
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             WHERE ge.pitcher_player_id = ANY(%s) AND g.season = %s
@@ -13202,6 +13229,10 @@ def get_player_pitch_level_stats_pitcher(
             "two_strike_pa": r["two_strike_pa"] or 0,
             "putaway_pct": (r["two_strike_k"] / r["two_strike_pa"]) if r["two_strike_pa"] > 0 else None,
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
+            # On/Out-in-3: PAs that ended in 1-3 pitches with hit-or-out
+            # outcome (walks/HBP excluded). Quick-decision efficiency.
+            "on_or_out_3": r["on_or_out_3"] or 0,
+            "on_or_out_3_pct": (r["on_or_out_3"] / tracked_pa) if tracked_pa > 0 else None,
         }
 
         # ── Leverage Index (Phase D MVP) ──

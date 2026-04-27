@@ -62,12 +62,17 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
               value={d.pitches_per_pa} sub={`${d.pitches}÷${d.tracked_pa}`}
               league={d.league} deciles={d.deciles} formatter={(v) => fmtNum(v, 2)} />
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             <ColorTile label="1st-P Strike"    metric="first_pitch_strike_pct"
               value={d.first_pitch_strike_pct} sub={`of ${d.tracked_pa} PA`}
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
             <ColorTile label="Putaway %"       metric="putaway_pct"
               value={d.putaway_pct} sub={`of ${d.two_strike_pa} 2K PAs`}
+              league={d.league} deciles={d.deciles} formatter={fmtPct} />
+            {/* On/Out in 3 — % of tracked PAs ending in 1-3 pitches with
+                a hit-or-out outcome. Walks/HBP excluded. Efficiency stat. */}
+            <ColorTile label="On/Out in 3"     metric="on_or_out_3_pct"
+              value={d.on_or_out_3_pct} sub={`${d.on_or_out_3 ?? 0} of ${d.tracked_pa}`}
               league={d.league} deciles={d.deciles} formatter={fmtPct} />
             <Tile label="Pitches" value={d.pitches} sub={`over ${d.tracked_pa} PA`} />
           </div>
@@ -309,6 +314,7 @@ const METRIC_DIRECTION = {
   // Pitcher discipline — higher = better
   strike_pct: 'high', called_strike_pct: 'high', whiff_pct: 'high',
   first_pitch_strike_pct: 'high', putaway_pct: 'high',
+  on_or_out_3_pct: 'high',                // higher = quicker decisions
   pitches_per_pa: 'low',                  // lower = more efficient
   // Opp contact profile — pitcher style; treat as "high = high" (no skill polarity)
   gb_pct: 'high', fb_pct: 'high', ld_pct: 'low', pu_pct: 'high',
@@ -340,6 +346,7 @@ function tooltipLabel(metric) {
     wrc_plus_against: 'wRC+ allowed', k_pct: 'K%', bb_pct: 'BB%',
     strike_pct: 'Strike%', called_strike_pct: 'Called-Str%', whiff_pct: 'Whiff%',
     first_pitch_strike_pct: '1st-P Strike%', putaway_pct: 'Putaway%',
+    on_or_out_3_pct: 'On/Out in 3',
     pitches_per_pa: 'P/PA',
     gb_pct: 'GB%', fb_pct: 'FB%', ld_pct: 'LD%', pu_pct: 'PU%',
   }
