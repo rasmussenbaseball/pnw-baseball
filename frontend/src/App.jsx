@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
@@ -122,12 +122,18 @@ import Percentiles from './pages/Percentiles'
 import TeamQuiz from './pages/TeamQuiz'
 
 export default function App() {
+  // Portal routes get their own full-page shell — no main-site Header,
+  // no global <main> width constraint, no main-site footer. Inside the
+  // portal, PortalLayout provides its own header/wrapper.
+  const { pathname } = useLocation()
+  const isPortal = pathname.startsWith('/portal')
+
   return (
     <AuthProvider>
-    <div className="min-h-screen bg-nw-cream">
-      <Header />
+    <div className={`min-h-screen ${isPortal ? 'bg-portal-cream' : 'bg-nw-cream'}`}>
+      {!isPortal && <Header />}
       <SignupPopup />
-      <main className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
+      <RouteContainer isPortal={isPortal}>
         <Routes>
           {/* Homepage */}
           <Route path="/" element={<Homepage />} />
@@ -224,8 +230,9 @@ export default function App() {
           {/* Legacy route: redirect old / batting path */}
           <Route path="/player/:playerId" element={<PlayerDetail />} />
         </Routes>
-      </main>
+      </RouteContainer>
 
+      {!isPortal && (
       <footer className="border-t border-gray-200 mt-12 bg-pnw-slate text-white">
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
@@ -281,7 +288,23 @@ export default function App() {
           </div>
         </div>
       </footer>
+      )}
     </div>
     </AuthProvider>
+  )
+}
+
+// On the main site, all routed pages live inside a centered, padded
+// <main> wrapper. The portal pages use the full viewport (their own
+// PortalLayout handles padding internally), so this helper picks the
+// right wrapper based on the current route.
+function RouteContainer({ isPortal, children }) {
+  if (isPortal) {
+    return <>{children}</>
+  }
+  return (
+    <main className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
+      {children}
+    </main>
   )
 }
