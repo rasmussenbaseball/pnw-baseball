@@ -10,7 +10,7 @@
  * and modern sabermetric slot weights from The Book.
  */
 
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
@@ -39,6 +39,70 @@ export default function LineupHelper() {
     [team?.id],
   )
 
+  // Per-side custom lineups produced by user swaps.
+  const [customRhp, setCustomRhp] = useState(null)
+  const [customLhp, setCustomLhp] = useState(null)
+  const [swapping, setSwapping] = useState(false)
+  const [swapError, setSwapError] = useState(null)
+
+  // Reset customizations when team changes
+  const teamId = team?.id
+  useEffect(() => {
+    setCustomRhp(null)
+    setCustomLhp(null)
+    setSwapError(null)
+  }, [teamId])
+
+  // The block we actually display for each side (custom overrides auto).
+  const rhpBlock = customRhp || data?.vs_RHP
+  const lhpBlock = customLhp || data?.vs_LHP
+
+  /**
+   * Replace a starter with a bench player and re-optimize the order via
+   * POST /coaching/lineup-helper/override. Affects only the side specified.
+   */
+  const performSwap = async ({ vsHand, slotPosition, newPlayerId }) => {
+    if (!teamId) return
+    const block = vsHand === 'R' ? rhpBlock : lhpBlock
+    if (!block?.starters?.length) return
+    setSwapping(true)
+    setSwapError(null)
+    // Build the new 9 starters: replace the player at `slotPosition` with newPlayerId
+    const newAssignments = block.starters.map(s => ({
+      player_id: s.assigned_position === slotPosition ? newPlayerId : s.player_id,
+      position: s.assigned_position,
+    }))
+    try {
+      const body = {
+        team_id: teamId,
+        season: SEASON,
+        [vsHand === 'R' ? 'vs_RHP' : 'vs_LHP']: newAssignments,
+      }
+      const resp = await fetch('/api/v1/coaching/lineup-helper/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!resp.ok) {
+        const detail = await resp.json().catch(() => ({}))
+        throw new Error(detail.detail || `${resp.status} ${resp.statusText}`)
+      }
+      const result = await resp.json()
+      if (vsHand === 'R') setCustomRhp(result.vs_RHP)
+      else setCustomLhp(result.vs_LHP)
+    } catch (e) {
+      setSwapError(e.message)
+    } finally {
+      setSwapping(false)
+    }
+  }
+
+  const resetSide = (vsHand) => {
+    if (vsHand === 'R') setCustomRhp(null)
+    else setCustomLhp(null)
+    setSwapError(null)
+  }
+
   if (!team) {
     return (
       <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5">
@@ -53,7 +117,7 @@ export default function LineupHelper() {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5 space-y-4">
-      <Hero team={team} data={data} loading={loading} />
+      <Hero team={team} data={data} loading={loading || swapping} />
 
       {error && (
         <Card title="Couldn't load lineup">
@@ -61,12 +125,32 @@ export default function LineupHelper() {
         </Card>
       )}
 
+      {swapError && (
+        <Card title="Swap failed">
+          <p className="text-sm text-red-700">{swapError}</p>
+        </Card>
+      )}
+
       {loading && !data && <LoadingState />}
 
       {data && !data.error && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <LineupColumn vsHand="R" block={data.vs_RHP} />
-          <LineupColumn vsHand="L" block={data.vs_LHP} />
+          <LineupColumn
+            vsHand="R"
+            block={rhpBlock}
+            customized={!!customRhp}
+            onSwap={performSwap}
+            onReset={() => resetSide('R')}
+            swapping={swapping}
+          />
+          <LineupColumn
+            vsHand="L"
+            block={lhpBlock}
+            customized={!!customLhp}
+            onSwap={performSwap}
+            onReset={() => resetSide('L')}
+            swapping={swapping}
+          />
         </div>
       )}
 
@@ -131,7 +215,7 @@ function Hero({ team, data, loading }) {
  * Lineup column (one per pitcher hand)
  * ============================================================ */
 
-function LineupColumn({ vsHand, block }) {
+function LineupColumn({ vsHand, block, customized, onSwap, onReset, swapping }) {
   const label = vsHand === 'R' ? 'vs Right-Handed Pitching' : 'vs Left-Handed Pitching'
   const subtitle = vsHand === 'R'
     ? 'Most opponents will throw a RHP'
@@ -147,10 +231,36 @@ function LineupColumn({ vsHand, block }) {
     )
   }
 
+  const titleNode = (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span>{label}</span>
+      {customized && (
+        <span className="px-1.5 py-0.5 rounded bg-portal-accent/20 text-portal-accent text-[10px] font-bold uppercase tracking-wider">
+          Custom
+        </span>
+      )}
+      {customized && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-[11px] text-portal-purple hover:underline"
+        >
+          Reset to optimal
+        </button>
+      )}
+    </div>
+  )
+
   return (
     <div className="space-y-4">
-      <Card title={label} subtitle={subtitle}>
-        <LineupTable starters={block.starters} />
+      <Card title={titleNode} subtitle={subtitle}>
+        <LineupTable
+          starters={block.starters}
+          bench={block.bench || []}
+          vsHand={vsHand}
+          onSwap={onSwap}
+          swapping={swapping}
+        />
       </Card>
       <Card title="Top 5 bench options" subtitle="Ranked by best-slot fit">
         <BenchTable bench={block.bench || []} />
@@ -164,8 +274,9 @@ function LineupColumn({ vsHand, block }) {
  * Lineup table
  * ============================================================ */
 
-function LineupTable({ starters }) {
+function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
   const [expanded, setExpanded] = useState(() => new Set())
+  const [swapTarget, setSwapTarget] = useState(null)  // player_id whose row's swap menu is open
   const toggle = (pid) => setExpanded(prev => {
     const next = new Set(prev)
     next.has(pid) ? next.delete(pid) : next.add(pid)
@@ -185,17 +296,21 @@ function LineupTable({ starters }) {
             <Th className="w-12 text-right">K%</Th>
             <Th className="w-12 text-right">BB%</Th>
             <Th className="w-12 text-right">PA</Th>
-            <Th className="w-8" />
+            <Th className="w-16 text-right">Actions</Th>
           </tr>
         </thead>
         <tbody>
           {starters.map((s) => {
             const isOpen = expanded.has(s.player_id)
+            const isSwapping = swapTarget === s.player_id
+            // Bench players who could replace this starter at this position
+            const eligibleSubs = bench.filter(
+              b => b.eligible_positions?.includes(s.assigned_position)
+            )
             return (
               <Fragment key={`${s.slot}-${s.player_id}`}>
-                <tr className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => toggle(s.player_id)}>
-                  <td className="py-2">
+                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-2 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     <span
                       className="inline-flex items-center justify-center w-7 h-7 rounded-full
                                  bg-portal-purple text-portal-cream text-xs font-bold"
@@ -204,7 +319,7 @@ function LineupTable({ starters }) {
                       {s.slot}
                     </span>
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         to={`/players/${s.player_id}`}
@@ -216,21 +331,76 @@ function LineupTable({ starters }) {
                       <FormBadge form={s.recent_form} />
                     </div>
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     <span className="inline-block px-1.5 py-0.5 rounded
                                      bg-gray-100 text-gray-800 text-xs font-mono">
                       {s.assigned_position}
                     </span>
                   </td>
-                  <td className="py-2 text-gray-600">{s.bats || '?'}</td>
-                  <td className="py-2 text-right font-mono">{fmt3(s.wOBA)}</td>
-                  <td className="py-2 text-right font-mono">{fmtPct(s.K_pct)}</td>
-                  <td className="py-2 text-right font-mono">{fmtPct(s.BB_pct)}</td>
-                  <td className="py-2 text-right text-gray-500">{s.raw_pa}</td>
+                  <td className="py-2 text-gray-600 cursor-pointer" onClick={() => toggle(s.player_id)}>
+                    {s.bats || '?'}
+                  </td>
+                  <td className="py-2 text-right font-mono cursor-pointer" onClick={() => toggle(s.player_id)}>
+                    {fmt3(s.wOBA)}
+                  </td>
+                  <td className="py-2 text-right font-mono cursor-pointer" onClick={() => toggle(s.player_id)}>
+                    {fmtPct(s.K_pct)}
+                  </td>
+                  <td className="py-2 text-right font-mono cursor-pointer" onClick={() => toggle(s.player_id)}>
+                    {fmtPct(s.BB_pct)}
+                  </td>
+                  <td className="py-2 text-right text-gray-500 cursor-pointer" onClick={() => toggle(s.player_id)}>
+                    {s.raw_pa}
+                  </td>
                   <td className="py-2 text-right">
-                    <Chevron open={isOpen} />
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSwapTarget(isSwapping ? null : s.player_id)
+                        }}
+                        disabled={swapping || eligibleSubs.length === 0}
+                        title={eligibleSubs.length === 0
+                          ? 'No bench players eligible at this position'
+                          : 'Swap this player'}
+                        className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider
+                                   border border-portal-purple/40 rounded text-portal-purple
+                                   hover:bg-portal-purple hover:text-white transition-colors
+                                   disabled:opacity-30 disabled:hover:bg-transparent
+                                   disabled:hover:text-portal-purple disabled:cursor-not-allowed"
+                      >
+                        Swap
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggle(s.player_id)}
+                        className="text-gray-400 hover:text-gray-700 px-1"
+                      >
+                        <Chevron open={isOpen} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
+                {isSwapping && (
+                  <tr className="border-b border-gray-100 bg-portal-purple/5">
+                    <td colSpan={9} className="px-3 py-3">
+                      <SwapMenu
+                        currentStarter={s}
+                        eligibleSubs={eligibleSubs}
+                        onPick={(newPid) => {
+                          onSwap({
+                            vsHand,
+                            slotPosition: s.assigned_position,
+                            newPlayerId: newPid,
+                          })
+                          setSwapTarget(null)
+                        }}
+                        onCancel={() => setSwapTarget(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
                 {isOpen && (
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <td colSpan={9} className="px-3 py-3">
@@ -247,6 +417,70 @@ function LineupTable({ starters }) {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+
+/* ============================================================
+ * Swap menu — bench candidates eligible at this position
+ * ============================================================ */
+
+function SwapMenu({ currentStarter, eligibleSubs, onPick, onCancel }) {
+  if (!eligibleSubs.length) {
+    return (
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-gray-700">
+          No bench players are eligible at <strong>{currentStarter.assigned_position}</strong>.
+        </span>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs text-portal-purple hover:underline"
+        >
+          Close
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-600">
+          Replace <strong>{currentStarter.first_name} {currentStarter.last_name}</strong>
+          {' '}at <strong>{currentStarter.assigned_position}</strong> with:
+        </p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs text-portal-purple hover:underline"
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {eligibleSubs.map(sub => (
+          <button
+            key={sub.player_id}
+            type="button"
+            onClick={() => onPick(sub.player_id)}
+            className="text-left px-3 py-2 bg-white border border-gray-200 rounded-md
+                       hover:border-portal-purple hover:bg-portal-purple/5 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-portal-purple-dark">
+                {sub.first_name} {sub.last_name}
+              </span>
+              <span className="text-xs font-mono text-gray-500">
+                {fmt3(sub.wOBA)} wOBA
+              </span>
+            </div>
+            <div className="text-[11px] text-gray-500 mt-0.5">
+              {sub.bats || '?'} · {sub.raw_pa} PA · best fit slot {sub.best_slot}
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

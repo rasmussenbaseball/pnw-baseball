@@ -555,8 +555,17 @@ def compute_team_lineup_helper(
     half_life_weeks: float = DEFAULT_HALF_LIFE_WEEKS,
     k_regress: float = DEFAULT_REGRESSION_PA,
     reference_date: Optional[date] = None,
+    overrides: Optional[dict] = None,
 ) -> dict:
-    """Build the full Lineup Helper response for a team."""
+    """Build the full Lineup Helper response for a team.
+
+    Args:
+        overrides: optional {'vs_RHP': [{'player_id': X, 'position': 'C'}, ... 9 entries],
+                              'vs_LHP': [...]}.
+                   When provided for a side, those 9 players are used as starters
+                   (no auto-selection) and only the batting order is optimized.
+                   Bench is still computed from non-starter eligible players.
+    """
     if reference_date is None:
         reference_date = date.today()
 
@@ -639,25 +648,43 @@ def compute_team_lineup_helper(
 
     # For each pitcher hand, run the engine
     results = {}
+    overrides = overrides or {}
     for vs_hand in ('R', 'L'):
-        starter_pick = select_optimal_starters(
-            eligible_players, vs_hand, speeds_by_pid=speed_z_by_pid
-        )
-        if starter_pick is None:
-            results[f'vs_{vs_hand}HP'] = {
-                'error': 'No feasible starting 9 — likely missing position eligibility somewhere (e.g., no eligible catcher).',
-                'starters': [],
-                'bench': [],
-            }
-            continue
+        override = overrides.get(f'vs_{vs_hand}HP') or overrides.get(vs_hand)
 
-        # Build the 9 starters in a list, with their assigned position
-        starter_list = []
-        starter_pids = set()
-        for pos in LINEUP_POSITIONS:
-            entry = starter_pick[pos]
-            starter_list.append(entry)
-            starter_pids.add(entry['player_id'])
+        if override:
+            # User-supplied 9 starters with positions: skip select_optimal_starters
+            pid_to_player = {p['player_id']: p for p in eligible_players}
+            try:
+                starter_list = [pid_to_player[entry['player_id']] for entry in override]
+            except KeyError as e:
+                results[f'vs_{vs_hand}HP'] = {
+                    'error': f'Override player {e.args[0]} not found in eligible roster.',
+                    'starters': [], 'bench': [],
+                }
+                continue
+            # Build a starter_pick-compatible dict for downstream reasoning
+            starter_pick = {entry['position']: pid_to_player[entry['player_id']] for entry in override}
+            starter_pids = {p['player_id'] for p in starter_list}
+        else:
+            starter_pick = select_optimal_starters(
+                eligible_players, vs_hand, speeds_by_pid=speed_z_by_pid
+            )
+            if starter_pick is None:
+                results[f'vs_{vs_hand}HP'] = {
+                    'error': 'No feasible starting 9 — likely missing position eligibility somewhere (e.g., no eligible catcher).',
+                    'starters': [],
+                    'bench': [],
+                }
+                continue
+
+            # Build the 9 starters in a list, with their assigned position
+            starter_list = []
+            starter_pids = set()
+            for pos in LINEUP_POSITIONS:
+                entry = starter_pick[pos]
+                starter_list.append(entry)
+                starter_pids.add(entry['player_id'])
 
         # Pass profiles + speed_z list (in same order) to the batting-order optimizer
         profiles_for_order = [s['profile'] for s in starter_list]

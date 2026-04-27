@@ -20053,3 +20053,68 @@ def lineup_helper_manual(req: ManualLineupRequest):
         if 'error' in result:
             raise HTTPException(status_code=400, detail=result['error'])
         return result
+
+
+# ── Override / swap endpoint: same response shape as auto mode ───────────────
+
+class OverrideAssignment(BaseModel):
+    player_id: int
+    position: str
+
+
+class LineupOverrideRequest(BaseModel):
+    team_id: int
+    season: int = 2026
+    min_pa: int = 30
+    min_position_starts: int = 8
+    half_life_weeks: float = 6.0
+    vs_RHP: Optional[list[OverrideAssignment]] = None
+    vs_LHP: Optional[list[OverrideAssignment]] = None
+
+
+@router.post("/coaching/lineup-helper/override")
+def lineup_helper_override(req: LineupOverrideRequest):
+    """Re-run the engine for a team using user-specified starters for one or
+    both pitcher hands. Same response shape as the GET (auto) endpoint, so the
+    frontend can swap in the response wholesale."""
+    valid_positions = {'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'}
+    overrides = {}
+    for hand_key, lineup in (('vs_RHP', req.vs_RHP), ('vs_LHP', req.vs_LHP)):
+        if lineup is None:
+            continue
+        if len(lineup) != 9:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{hand_key} override must have exactly 9 assignments, got {len(lineup)}",
+            )
+        positions = [a.position for a in lineup]
+        if set(positions) != valid_positions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{hand_key} override must cover each of {sorted(valid_positions)} exactly once.",
+            )
+        if len(set(a.player_id for a in lineup)) != 9:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{hand_key} override has duplicate player_ids.",
+            )
+        overrides[hand_key] = [a.model_dump() for a in lineup]
+
+    if not overrides:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of vs_RHP or vs_LHP must be provided.",
+        )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = compute_team_lineup_helper(
+            cur, req.team_id, req.season,
+            min_pa=req.min_pa,
+            min_position_starts=req.min_position_starts,
+            half_life_weeks=req.half_life_weeks,
+            overrides=overrides,
+        )
+        if 'error' in result and 'team' not in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        return result
