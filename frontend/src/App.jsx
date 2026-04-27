@@ -56,6 +56,19 @@ function RequireAdmin({ children }) {
   return children
 }
 
+// Portal access - strictly nate.rasmussen26@gmail.com only.
+// Tighter than RequireAdmin (which also allows the pnwcbr admin
+// account). Add additional emails to PORTAL_OWNERS if/when you want
+// to grant other people access to the Coach & Scouting Portal.
+const PORTAL_OWNERS = ['nate.rasmussen26@gmail.com']
+function RequirePortalAccess({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (!PORTAL_OWNERS.includes(user.email)) return <Navigate to="/" replace />
+  return children
+}
+
 // ─── Existing pages ───
 import BattingLeaderboard from './pages/BattingLeaderboard'
 import PitchingLeaderboard from './pages/PitchingLeaderboard'
@@ -187,17 +200,17 @@ export default function App() {
           <Route path="/player-scouting"
                  element={<Navigate to="/portal/player-scouting" replace />} />
 
-          {/* Coach & Scouting Portal (auth required, themed layout) */}
-          {/* Flat routes — each wraps the page in PortalLayout via the
-              children prop. Easier to reason about than nested + Outlet. */}
+          {/* Coach & Scouting Portal — locked to PORTAL_OWNERS only.
+              Anyone else (including signed-in non-owners) gets bounced
+              to the main-site homepage. */}
           <Route path="/portal"
-                 element={<RequireAuth><PortalLayout><PortalHome /></PortalLayout></RequireAuth>} />
+                 element={<RequirePortalAccess><PortalLayout><PortalHome /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/trends"
-                 element={<RequireAuth><PortalLayout><OpponentTrends /></PortalLayout></RequireAuth>} />
+                 element={<RequirePortalAccess><PortalLayout><OpponentTrends /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/historic"
-                 element={<RequireAuth><PortalLayout><HistoricMatchups /></PortalLayout></RequireAuth>} />
+                 element={<RequirePortalAccess><PortalLayout><HistoricMatchups /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/player-scouting"
-                 element={<RequireAuth><PortalLayout><PlayerScouting /></PortalLayout></RequireAuth>} />
+                 element={<RequirePortalAccess><PortalLayout><PlayerScouting /></PortalLayout></RequirePortalAccess>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />

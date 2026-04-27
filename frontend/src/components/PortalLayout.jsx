@@ -25,7 +25,10 @@ import PortalTeamGate from './PortalTeamGate'
 export default function PortalLayout({ children }) {
   return (
     <PortalTeamProvider>
-      <div className="min-h-screen bg-portal-cream">
+      {/* font-portal cascades the Outfit typeface to everything inside
+          the portal — header, home page, plus all wrapped pages
+          (Trends, Historic, Player Scouting). */}
+      <div className="min-h-screen bg-portal-cream font-portal">
         <PortalHeader />
         <PortalTeamGate>
           <main>

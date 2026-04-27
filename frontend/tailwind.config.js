@@ -33,8 +33,10 @@ export default {
       fontFamily: {
         'display': ['"HK Modular"', 'system-ui', 'sans-serif'],
         'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        // Handwritten/script face for the portal title.
-        'script': ['"Caveat"', 'cursive'],
+        // Portal-wide typeface — clean modern sans, distinct from
+        // Inter without feeling weird. Applied via PortalLayout to
+        // every page inside the Coach & Scouting Portal.
+        'portal': ['Outfit', 'system-ui', '-apple-system', 'sans-serif'],
       },
     },
   },

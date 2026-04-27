@@ -87,8 +87,8 @@ function PortalLogo() {
         className="h-12 w-auto object-contain"
         onError={(e) => { e.currentTarget.style.display = 'none' }}
       />
-      <span className="font-script text-portal-cream text-2xl sm:text-3xl
-                       leading-none tracking-wide">
+      <span className="text-portal-cream text-base sm:text-lg
+                       font-medium tracking-wide leading-none">
         Coaching &amp; Scouting Portal
       </span>
     </Link>
