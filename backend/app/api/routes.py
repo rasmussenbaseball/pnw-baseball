@@ -3922,8 +3922,13 @@ def team_info_graphic(
         def _to_f(v):
             return float(v) if v is not None else None
 
-        def _pack(value, rb):
-            return {"value": _to_f(value), **rb}
+        def _pack(value, rb, comparison="division"):
+            # `comparison` records the peer set used for the percentile —
+            # either "division" (40+ teams, granular) or "conference"
+            # (6-12 teams, coach-meaningful). Frontend reads this field
+            # to render the rank text correctly ("#3 / 24 div" vs
+            # "#2 / 8 conf").
+            return {"value": _to_f(value), "comparison": comparison, **rb}
 
         batting_percentiles = {
             "batting_avg": _pack(my_bat.get("batting_avg"),
@@ -3949,6 +3954,143 @@ def team_info_graphic(
             "pwar":  _pack(my_pit.get("pwar"),
                            _rank_block([p.get("pwar") for p in pit_div], my_pit.get("pwar"), True)),
         }
+
+        # ── 12b. Conference-relative pitch-level metrics ──
+        # Six additional Savant-style stats coaches asked for:
+        #   Hitters:  contact%, swing%, air-pull% (LD/FB pulled / all BIP)
+        #   Pitchers: strike%, first-pitch-strike%, whiff%
+        # Computed from game_events.pitch_sequence character counts and
+        # bb_type/field_zone, mirroring the formulas used on player
+        # profile cards (/players/{id}/pitch-level-stats and
+        # /players/{id}/pitch-level-stats-pitcher). Comparison group is
+        # the team's CONFERENCE — that's the peer set coaches actually
+        # care about.
+        #
+        # Pitch-sequence character legend (from routes.py:12022):
+        #   B = ball, K = swinging strike, S = called strike, F = foul,
+        #   H = hit by pitch.  An empty pitch_sequence with was_in_play
+        #   counts as a 1-pitch swing/contact (0-0 BIP).
+        try:
+            cur.execute("""
+                SELECT id FROM teams
+                WHERE conference_id = %s AND is_active = 1
+            """, (team["conference_id"],))
+            conf_team_ids = [r["id"] for r in cur.fetchall()]
+        except Exception:
+            conf_team_ids = [team_id]
+
+        def _rates_from_counts(rows, kind):
+            """Convert a list of per-team count rows into per-team
+            rate dicts. kind = 'bat' or 'pit'."""
+            out = []
+            for r in rows:
+                pitches = int(r.get("pitches") or 0)
+                in_play = int(r.get("in_play") or 0)
+                k = int(r.get("k_count") or 0)
+                f = int(r.get("f_count") or 0)
+                s = int(r.get("s_count") or 0)
+                if kind == "bat":
+                    swings = k + f + in_play
+                    contact = f + in_play
+                    bb_total = int(r.get("bb_total") or 0)
+                    air_pull = int(r.get("air_pull") or 0)
+                    out.append({
+                        "team_id": r["team_id"],
+                        "contact_pct":  (contact / swings) if swings > 0 else None,
+                        "swing_pct":    (swings / pitches) if pitches > 0 else None,
+                        "air_pull_pct": (air_pull / bb_total) if bb_total > 0 else None,
+                    })
+                else:  # pit
+                    swings = k + f + in_play
+                    strikes = k + s + f + in_play
+                    tracked_pa = int(r.get("tracked_pa") or 0)
+                    f1_strikes = int(r.get("f1_strikes") or 0)
+                    out.append({
+                        "team_id":    r["team_id"],
+                        "strike_pct": (strikes / pitches) if pitches > 0 else None,
+                        "fps_pct":    (f1_strikes / tracked_pa) if tracked_pa > 0 else None,
+                        "whiff_pct":  (k / swings) if swings > 0 else None,
+                    })
+            return out
+
+        bat_conf_rates = []
+        pit_conf_rates = []
+        try:
+            # ── Hitting pitch metrics, grouped by batting team ──
+            cur.execute("""
+                SELECT
+                    ge.batting_team_id AS team_id,
+                    SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'K', ''))) AS k_count,
+                    SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'F', ''))) AS f_count,
+                    SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'S', ''))) AS s_count,
+                    SUM(COALESCE(ge.pitches_thrown, 0)) AS pitches,
+                    COUNT(*) FILTER (WHERE ge.was_in_play AND ge.pitches_thrown IS NOT NULL) AS in_play,
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL AND UPPER(p.bats) IN ('L','R')) AS bb_total,
+                    COUNT(*) FILTER (WHERE ge.bb_type IN ('LD','FB')
+                        AND ((UPPER(p.bats) = 'R' AND ge.field_zone = 'LEFT')
+                          OR (UPPER(p.bats) = 'L' AND ge.field_zone = 'RIGHT'))) AS air_pull
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                LEFT JOIN players p ON p.id = ge.batter_player_id
+                WHERE g.season = %s
+                  AND ge.batting_team_id = ANY(%s)
+                GROUP BY ge.batting_team_id
+            """, (season, conf_team_ids))
+            bat_conf_rates = _rates_from_counts([dict(r) for r in cur.fetchall()], "bat")
+
+            # ── Pitching pitch metrics, grouped by pitcher's team ──
+            cur.execute("""
+                SELECT
+                    pp.team_id AS team_id,
+                    SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'K', ''))) AS k_count,
+                    SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'F', ''))) AS f_count,
+                    SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'S', ''))) AS s_count,
+                    SUM(COALESCE(ge.pitches_thrown, 0)) AS pitches,
+                    COUNT(*) FILTER (WHERE ge.was_in_play AND ge.pitches_thrown IS NOT NULL) AS in_play,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown IS NOT NULL) AS tracked_pa,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown IS NOT NULL
+                        AND (LEFT(ge.pitch_sequence, 1) IN ('K','S','F')
+                             OR (ge.pitch_sequence = '' AND ge.was_in_play))) AS f1_strikes
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                JOIN players pp ON pp.id = ge.pitcher_player_id
+                WHERE g.season = %s
+                  AND pp.team_id = ANY(%s)
+                GROUP BY pp.team_id
+            """, (season, conf_team_ids))
+            pit_conf_rates = _rates_from_counts([dict(r) for r in cur.fetchall()], "pit")
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+        # Bring our team's rates into scope (default empty dict if our
+        # team had no tracked PAs — happens early in the season).
+        my_bat_pitch = next((b for b in bat_conf_rates if b["team_id"] == team_id), {}) or {}
+        my_pit_pitch = next((p for p in pit_conf_rates if p["team_id"] == team_id), {}) or {}
+
+        # All six new metrics are higher-is-better:
+        #   contact% — putting bat on ball is a good thing
+        #   swing% — neutral but treated as positive (more aggressive offense)
+        #   air-pull% — pull power on balls in air (XBH driver)
+        #   strike% — staff filling up the zone
+        #   FPS% — ahead-in-count rate is one of the strongest pitcher signals
+        #   whiff% — bat-missing rate
+        for key in ("contact_pct", "swing_pct", "air_pull_pct"):
+            batting_percentiles[key] = _pack(
+                my_bat_pitch.get(key),
+                _rank_block([b.get(key) for b in bat_conf_rates],
+                            my_bat_pitch.get(key), True),
+                comparison="conference",
+            )
+        for key in ("strike_pct", "fps_pct", "whiff_pct"):
+            pitching_percentiles[key] = _pack(
+                my_pit_pitch.get(key),
+                _rank_block([p.get(key) for p in pit_conf_rates],
+                            my_pit_pitch.get(key), True),
+                comparison="conference",
+            )
 
         # Inject convenience "name" into top performers
         for h in top_hitters:

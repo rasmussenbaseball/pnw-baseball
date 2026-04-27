@@ -233,6 +233,7 @@ function RecentFormPills({ teamId }) {
         const myScore = isHome ? g.home_score : g.away_score
         const oppScore = isHome ? g.away_score : g.home_score
         const oppShort = isHome ? g.away_short : g.home_short
+        const oppLogo = isHome ? g.away_logo : g.home_logo
         const won = myScore > oppScore
         const tied = myScore === oppScore
         const cls = tied
@@ -244,13 +245,16 @@ function RecentFormPills({ teamId }) {
           <div
             key={g.id}
             className={`flex flex-col items-center justify-center
-                        rounded border w-12 h-12 leading-tight ${cls}`}
+                        rounded border w-14 h-14 leading-tight ${cls}`}
             title={`${formatDate(g.game_date)} ${isHome ? 'vs' : '@'} ${oppShort} · ${myScore}-${oppScore}`}
           >
-            <div className="text-[10px] font-bold">
+            {oppLogo
+              ? <img src={oppLogo} alt="" className="h-4 w-4 object-contain bg-white/80 rounded-sm p-px" />
+              : <div className="h-4 w-4" />}
+            <div className="text-[10px] font-bold leading-none mt-0.5">
               {tied ? 'T' : won ? 'W' : 'L'}
             </div>
-            <div className="text-[10px] font-semibold tabular-nums">
+            <div className="text-[10px] font-semibold tabular-nums leading-none mt-0.5">
               {myScore}-{oppScore}
             </div>
           </div>
@@ -284,9 +288,14 @@ function TrendChart({ teamId }) {
     return <div /> // hide chart until we have ≥2 finals
   }
 
-  const lastPct = series[series.length - 1].pct
-  const above500 = lastPct >= 0.5
-  const lineColor = above500 ? '#86efac' : '#fda4af'
+  // Three-color logic: green when above .500, yellow at exactly .500,
+  // rose when below.  An "exactly .500" team has wins == losses.
+  const last = series[series.length - 1]
+  const lineColor = last.w > last.l
+    ? '#86efac'  // green (above .500)
+    : last.w === last.l
+      ? '#fde047'  // yellow (exactly .500)
+      : '#fda4af'  // rose (below .500)
 
   return (
     <div className="h-16 w-full -mb-1">
@@ -328,29 +337,41 @@ function TrendChart({ teamId }) {
 // ────────────────────────────────────────────────────────────────
 // 2. Team Savant card — 5 percentile bars vs division
 // ────────────────────────────────────────────────────────────────
+// Rows are rendered top → bottom in this order. Items with comparison:
+// "division" rank against ~30+ teams (granular percentile); items with
+// comparison: "conference" rank against the team's 6-12 conference
+// peers (more coach-relevant).  The Savant card shows that comparison
+// label inline, so coaches always know the peer set.
+const PCT_FMT = v => v != null ? `${(v * 100).toFixed(1)}%` : '—'
 const SAVANT_LABELS = {
   batting: [
-    { key: 'wrc_plus',   label: 'wRC+',  fmt: v => v != null ? Math.round(v) : '—' },
-    { key: 'woba',       label: 'wOBA',  fmt: v => fmtAvg(v) },
-    { key: 'batting_avg',label: 'AVG',   fmt: v => fmtAvg(v) },
-    { key: 'hr_per_pa',  label: 'HR/PA', fmt: v => v != null ? `${(v * 100).toFixed(1)}%` : '—' },
-    { key: 'owar',       label: 'oWAR',  fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'wrc_plus',     label: 'wRC+',     fmt: v => v != null ? Math.round(v) : '—' },
+    { key: 'woba',         label: 'wOBA',     fmt: v => fmtAvg(v) },
+    { key: 'batting_avg',  label: 'AVG',      fmt: v => fmtAvg(v) },
+    { key: 'hr_per_pa',    label: 'HR/PA',    fmt: v => v != null ? `${(v * 100).toFixed(1)}%` : '—' },
+    { key: 'owar',         label: 'oWAR',     fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'contact_pct',  label: 'Contact%', fmt: PCT_FMT },
+    { key: 'swing_pct',    label: 'Swing%',   fmt: PCT_FMT },
+    { key: 'air_pull_pct', label: 'AirPull%', fmt: PCT_FMT },
   ],
   pitching: [
-    { key: 'siera', label: 'SIERA',  fmt: v => v != null ? v.toFixed(2) : '—' },
-    { key: 'era',   label: 'ERA',    fmt: v => v != null ? v.toFixed(2) : '—' },
-    { key: 'k_pct', label: 'K%',     fmt: v => v != null ? `${v.toFixed(1)}%` : '—' },
-    { key: 'baa',   label: 'BAA',    fmt: v => fmtAvg(v) },
-    { key: 'pwar',  label: 'pWAR',   fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'siera',      label: 'SIERA',   fmt: v => v != null ? v.toFixed(2) : '—' },
+    { key: 'era',        label: 'ERA',     fmt: v => v != null ? v.toFixed(2) : '—' },
+    { key: 'k_pct',      label: 'K%',      fmt: v => v != null ? `${v.toFixed(1)}%` : '—' },
+    { key: 'baa',        label: 'BAA',     fmt: v => fmtAvg(v) },
+    { key: 'pwar',       label: 'pWAR',    fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'strike_pct', label: 'Strike%', fmt: PCT_FMT },
+    { key: 'fps_pct',    label: 'FPS%',    fmt: PCT_FMT },
+    { key: 'whiff_pct',  label: 'Whiff%',  fmt: PCT_FMT },
   ],
 }
 
 function SavantCard({ title, data, layout }) {
   const rows = SAVANT_LABELS[layout]
-  if (!data) return <Skeleton label={title} rows={5} />
+  if (!data) return <Skeleton label={title} rows={6} />
   return (
-    <Card title={title} subtitle="Percentile vs division">
-      <div className="space-y-2.5">
+    <Card title={title} subtitle="Percentile vs peers">
+      <div className="space-y-2">
         {rows.map(({ key, label, fmt }) => {
           const block = data[key] || {}
           return (
@@ -361,6 +382,7 @@ function SavantCard({ title, data, layout }) {
               percentile={block.percentile}
               rank={block.rank}
               total={block.total}
+              comparison={block.comparison}
             />
           )
         })}
@@ -370,11 +392,15 @@ function SavantCard({ title, data, layout }) {
 }
 
 
-function PercentileRow({ label, valueText, percentile, rank, total }) {
+function PercentileRow({ label, valueText, percentile, rank, total, comparison }) {
   const pct = percentile ?? 50
   const color = percentileColor(percentile)
+  // Short comparison-group tag rendered next to the rank ("div" vs "conf")
+  // so coaches always know what peer set they're being measured against.
+  const compShort = comparison === 'conference' ? 'conf'
+    : comparison === 'division' ? 'div' : ''
   return (
-    <div className="grid grid-cols-[60px,1fr,72px,52px] items-center gap-2">
+    <div className="grid grid-cols-[68px,1fr,84px,56px] items-center gap-2">
       <div className="text-xs font-bold text-gray-700">{label}</div>
       <div className="relative h-4 bg-gray-100 rounded overflow-hidden">
         <div
@@ -383,8 +409,10 @@ function PercentileRow({ label, valueText, percentile, rank, total }) {
         />
         <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300" />
       </div>
-      <div className="text-[11px] tabular-nums text-right text-gray-600">
-        {rank != null && total != null ? `#${rank} / ${total}` : '—'}
+      <div className="text-[10px] tabular-nums text-right text-gray-600 leading-tight">
+        {rank != null && total != null
+          ? <>#{rank}/{total}<span className="text-gray-400 ml-1">{compShort}</span></>
+          : '—'}
       </div>
       <div className="text-sm font-bold tabular-nums text-right">
         {valueText}
