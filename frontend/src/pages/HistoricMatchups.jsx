@@ -5,12 +5,18 @@ import {
   useHistoricMatchup,
   useHistoricMatchupOpponents,
 } from '../hooks/useApi'
+import { usePortalTeam } from '../context/PortalTeamContext'
 
 const SEASON = 2026
 
 export default function HistoricMatchups() {
+  // Pre-fill team A from the portal team when rendered inside the
+  // Coach & Scouting Portal. Outside the portal, portalTeam is null
+  // and the user picks both teams normally.
+  const { team: portalTeam } = usePortalTeam()
+
   const [divisionId, setDivisionId] = useState('')
-  const [teamAId, setTeamAId] = useState(null)
+  const [teamAId, setTeamAId] = useState(portalTeam?.id || null)
   const [teamBId, setTeamBId] = useState(null)
   const [mode, setMode] = useState('batting')   // 'batting' | 'pitching'
 

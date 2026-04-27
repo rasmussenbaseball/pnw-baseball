@@ -1,11 +1,17 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useTeams, useDivisions, useOpponentTrends } from '../hooks/useApi'
+import { usePortalTeam } from '../context/PortalTeamContext'
 
 const SEASON = 2026
 
 export default function OpponentTrends() {
+  // Pre-fill from the portal team if this page is rendered inside the
+  // Coach & Scouting Portal. usePortalTeam returns {team: null, ...}
+  // when called from the main site (no provider), so this is safe.
+  const { team: portalTeam } = usePortalTeam()
+
   const [divisionId, setDivisionId] = useState('')
-  const [selectedTeamId, setSelectedTeamId] = useState(null)
+  const [selectedTeamId, setSelectedTeamId] = useState(portalTeam?.id || null)
   const [activeTab, setActiveTab] = useState('lineups')
 
   const { data: divisions } = useDivisions()

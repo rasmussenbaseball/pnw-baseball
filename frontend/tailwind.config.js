@@ -33,6 +33,8 @@ export default {
       fontFamily: {
         'display': ['"HK Modular"', 'system-ui', 'sans-serif'],
         'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // Handwritten/script face for the portal title.
+        'script': ['"Caveat"', 'cursive'],
       },
     },
   },

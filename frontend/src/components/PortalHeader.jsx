@@ -80,10 +80,16 @@ export default function PortalHeader() {
 
 function PortalLogo() {
   return (
-    <Link to="/portal" className="flex items-baseline gap-1.5 shrink-0">
-      <span className="text-2xl font-bold text-portal-cream tracking-tight">NW</span>
-      <span className="text-[10px] uppercase tracking-widest text-portal-accent font-semibold">
-        Coach Portal
+    <Link to="/portal" className="flex items-center gap-3 shrink-0">
+      <img
+        src="/images/nw-portal-logo.png"
+        alt="NW"
+        className="h-12 w-auto object-contain"
+        onError={(e) => { e.currentTarget.style.display = 'none' }}
+      />
+      <span className="font-script text-portal-cream text-2xl sm:text-3xl
+                       leading-none tracking-wide">
+        Coaching &amp; Scouting Portal
       </span>
     </Link>
   )

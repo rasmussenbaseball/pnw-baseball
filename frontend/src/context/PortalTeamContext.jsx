@@ -53,11 +53,20 @@ export function PortalTeamProvider({ children }) {
 /**
  * usePortalTeam — read or update the portal's primary team.
  * Returns { team, setTeam, clearTeam }.
+ *
+ * Safe to call from ANY component (including main-site pages).
+ * When called outside a PortalTeamProvider, returns a no-op stub
+ * with team=null. That lets pages like OpponentTrends and
+ * HistoricMatchups optionally pre-fill from the portal team without
+ * needing to know whether they're rendered inside the portal.
  */
+const NULL_CTX = {
+  team: null,
+  setTeam: () => {},
+  clearTeam: () => {},
+}
+
 export function usePortalTeam() {
   const ctx = useContext(PortalTeamContext)
-  if (!ctx) {
-    throw new Error('usePortalTeam must be used inside <PortalTeamProvider>')
-  }
-  return ctx
+  return ctx || NULL_CTX
 }
