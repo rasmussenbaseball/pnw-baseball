@@ -10,7 +10,7 @@
  * and modern sabermetric slot weights from The Book.
  */
 
-import { useMemo } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
@@ -165,6 +165,13 @@ function LineupColumn({ vsHand, block }) {
  * ============================================================ */
 
 function LineupTable({ starters }) {
+  const [expanded, setExpanded] = useState(() => new Set())
+  const toggle = (pid) => setExpanded(prev => {
+    const next = new Set(prev)
+    next.has(pid) ? next.delete(pid) : next.add(pid)
+    return next
+  })
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -178,50 +185,66 @@ function LineupTable({ starters }) {
             <Th className="w-12 text-right">K%</Th>
             <Th className="w-12 text-right">BB%</Th>
             <Th className="w-12 text-right">PA</Th>
+            <Th className="w-8" />
           </tr>
         </thead>
         <tbody>
-          {starters.map((s) => (
-            <tr key={`${s.slot}-${s.player_id}`}
-                className="border-b border-gray-100 last:border-0 align-top">
-              <td className="py-2">
-                <span
-                  className="inline-flex items-center justify-center w-7 h-7 rounded-full
-                             bg-portal-purple text-portal-cream text-xs font-bold"
-                  title={SLOT_DESCRIPTIONS[s.slot]}
-                >
-                  {s.slot}
-                </span>
-              </td>
-              <td className="py-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Link
-                    to={`/players/${s.player_id}`}
-                    className="text-portal-purple hover:underline font-medium"
-                  >
-                    {s.first_name} {s.last_name}
-                  </Link>
-                  <FormBadge form={s.recent_form} />
-                </div>
-                {s.slot_reasoning && (
-                  <p className="text-xs text-gray-500 italic mt-0.5 leading-snug">
-                    {s.slot_reasoning}
-                  </p>
+          {starters.map((s) => {
+            const isOpen = expanded.has(s.player_id)
+            return (
+              <Fragment key={`${s.slot}-${s.player_id}`}>
+                <tr className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => toggle(s.player_id)}>
+                  <td className="py-2">
+                    <span
+                      className="inline-flex items-center justify-center w-7 h-7 rounded-full
+                                 bg-portal-purple text-portal-cream text-xs font-bold"
+                      title={SLOT_DESCRIPTIONS[s.slot]}
+                    >
+                      {s.slot}
+                    </span>
+                  </td>
+                  <td className="py-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        to={`/players/${s.player_id}`}
+                        className="text-portal-purple hover:underline font-medium"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {s.first_name} {s.last_name}
+                      </Link>
+                      <FormBadge form={s.recent_form} />
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <span className="inline-block px-1.5 py-0.5 rounded
+                                     bg-gray-100 text-gray-800 text-xs font-mono">
+                      {s.assigned_position}
+                    </span>
+                  </td>
+                  <td className="py-2 text-gray-600">{s.bats || '?'}</td>
+                  <td className="py-2 text-right font-mono">{fmt3(s.wOBA)}</td>
+                  <td className="py-2 text-right font-mono">{fmtPct(s.K_pct)}</td>
+                  <td className="py-2 text-right font-mono">{fmtPct(s.BB_pct)}</td>
+                  <td className="py-2 text-right text-gray-500">{s.raw_pa}</td>
+                  <td className="py-2 text-right">
+                    <Chevron open={isOpen} />
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <td colSpan={9} className="px-3 py-3">
+                      <PlayerDetailPanel
+                        entry={s}
+                        reasoning={s.slot_reasoning}
+                        reasoningLabel="Why this slot"
+                      />
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="py-2">
-                <span className="inline-block px-1.5 py-0.5 rounded
-                                 bg-gray-100 text-gray-800 text-xs font-mono">
-                  {s.assigned_position}
-                </span>
-              </td>
-              <td className="py-2 text-gray-600">{s.bats || '?'}</td>
-              <td className="py-2 text-right font-mono">{fmt3(s.wOBA)}</td>
-              <td className="py-2 text-right font-mono">{fmtPct(s.K_pct)}</td>
-              <td className="py-2 text-right font-mono">{fmtPct(s.BB_pct)}</td>
-              <td className="py-2 text-right text-gray-500">{s.raw_pa}</td>
-            </tr>
-          ))}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -234,6 +257,13 @@ function LineupTable({ starters }) {
  * ============================================================ */
 
 function BenchTable({ bench }) {
+  const [expanded, setExpanded] = useState(() => new Set())
+  const toggle = (pid) => setExpanded(prev => {
+    const next = new Set(prev)
+    next.has(pid) ? next.delete(pid) : next.add(pid)
+    return next
+  })
+
   if (!bench.length) {
     return <p className="text-sm text-gray-500 italic">No bench depth.</p>
   }
@@ -249,43 +279,163 @@ function BenchTable({ bench }) {
             <Th className="w-16 text-right">wOBA</Th>
             <Th className="w-12 text-right">PA</Th>
             <Th className="w-16 text-right">Best Slot</Th>
+            <Th className="w-8" />
           </tr>
         </thead>
         <tbody>
-          {bench.map((b, idx) => (
-            <tr key={b.player_id}
-                className="border-b border-gray-100 last:border-0 align-top">
-              <td className="py-2 text-gray-500">{idx + 1}</td>
-              <td className="py-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Link
-                    to={`/players/${b.player_id}`}
-                    className="text-portal-purple hover:underline font-medium"
-                  >
-                    {b.first_name} {b.last_name}
-                  </Link>
-                  <FormBadge form={b.recent_form} />
-                </div>
-                {b.bench_reasoning && (
-                  <p className="text-xs text-gray-500 italic mt-0.5 leading-snug">
-                    {b.bench_reasoning}
-                  </p>
+          {bench.map((b, idx) => {
+            const isOpen = expanded.has(b.player_id)
+            return (
+              <Fragment key={b.player_id}>
+                <tr className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => toggle(b.player_id)}>
+                  <td className="py-2 text-gray-500">{idx + 1}</td>
+                  <td className="py-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        to={`/players/${b.player_id}`}
+                        className="text-portal-purple hover:underline font-medium"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {b.first_name} {b.last_name}
+                      </Link>
+                      <FormBadge form={b.recent_form} />
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <span className="inline-block px-1.5 py-0.5 rounded
+                                     bg-gray-100 text-gray-800 text-xs font-mono">
+                      {b.best_position}
+                    </span>
+                  </td>
+                  <td className="py-2 text-gray-600">{b.bats || '?'}</td>
+                  <td className="py-2 text-right font-mono">{fmt3(b.wOBA)}</td>
+                  <td className="py-2 text-right text-gray-500">{b.raw_pa}</td>
+                  <td className="py-2 text-right text-gray-600">#{b.best_slot}</td>
+                  <td className="py-2 text-right">
+                    <Chevron open={isOpen} />
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <td colSpan={8} className="px-3 py-3">
+                      <PlayerDetailPanel
+                        entry={b}
+                        reasoning={b.bench_reasoning}
+                        reasoningLabel="Why on the bench"
+                      />
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="py-2">
-                <span className="inline-block px-1.5 py-0.5 rounded
-                                 bg-gray-100 text-gray-800 text-xs font-mono">
-                  {b.best_position}
-                </span>
-              </td>
-              <td className="py-2 text-gray-600">{b.bats || '?'}</td>
-              <td className="py-2 text-right font-mono">{fmt3(b.wOBA)}</td>
-              <td className="py-2 text-right text-gray-500">{b.raw_pa}</td>
-              <td className="py-2 text-right text-gray-600">#{b.best_slot}</td>
-            </tr>
-          ))}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+
+/* ============================================================
+ * Expand chevron
+ * ============================================================ */
+
+function Chevron({ open }) {
+  return (
+    <span className={`inline-block transition-transform text-gray-400 ${open ? 'rotate-180' : ''}`}>
+      ▾
+    </span>
+  )
+}
+
+
+/* ============================================================
+ * Player detail panel — shown when a row is expanded
+ * ============================================================ */
+
+function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
+  const pbp = entry.pbp_stats || {}
+  const season = entry.season_view || {}
+  const form = entry.recent_form
+
+  return (
+    <div className="space-y-3">
+      {reasoning && (
+        <div className="text-sm">
+          <span className="font-semibold text-portal-purple-dark">{reasoningLabel}: </span>
+          <span className="text-gray-700">{reasoning}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatGroup title="Plate Discipline">
+          <StatRow label="K%" value={fmtPct(entry.K_pct)} />
+          <StatRow label="BB%" value={fmtPct(entry.BB_pct)} />
+          <StatRow label="Contact%" value={fmtPct(pbp.contact_pct)} />
+          <StatRow label="Swing%" value={fmtPct(pbp.swing_pct)} />
+          <StatRow label="Whiff%" value={fmtPct(pbp.whiff_pct)} />
+        </StatGroup>
+
+        <StatGroup title="Power & Output">
+          <StatRow label="wOBA" value={fmt3(entry.wOBA)} />
+          <StatRow label="OBP" value={fmt3(entry.OBP)} />
+          <StatRow label="SLG" value={fmt3(entry.SLG)} />
+          <StatRow label="ISO" value={fmt3(pbp.iso)} />
+          <StatRow label="HR%" value={fmtPct(pbp.hr_pct)} />
+          <StatRow label="AIRPULL%" value={fmtPct(pbp.air_pull_pct)} />
+        </StatGroup>
+
+        <StatGroup title="Batted Ball">
+          <StatRow label="GB%" value={fmtPct(pbp.gb_pct)} />
+          <StatRow label="LD%" value={fmtPct(pbp.ld_pct)} />
+          <StatRow label="FB%" value={fmtPct(pbp.fb_pct)} />
+          <StatRow label="PU%" value={fmtPct(pbp.pu_pct)} />
+          <StatRow label="Batted balls" value={pbp.bb_total ?? '—'} />
+        </StatGroup>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-200">
+        <div className="text-xs text-gray-600 pt-2">
+          <span className="font-semibold">Recent form (last {form?.days || 14} days): </span>
+          {form?.status === 'unknown' || !form?.recent_wOBA
+            ? <span className="italic">not enough recent PAs</span>
+            : (
+              <span>
+                {fmt3(form.recent_wOBA)} wOBA in {form.recent_pa} PA
+                {' '}({form.delta_vs_season >= 0 ? '+' : ''}{form.delta_vs_season.toFixed(3)} vs season)
+              </span>
+            )}
+        </div>
+        <div className="text-xs text-gray-600 pt-2">
+          <span className="font-semibold">Eligible positions: </span>
+          {entry.eligible_positions?.length
+            ? entry.eligible_positions.join(', ')
+            : <span className="italic">DH only</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function StatGroup({ title, children }) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-2.5">
+      <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+        {title}
+      </h4>
+      <div className="space-y-1">{children}</div>
+    </div>
+  )
+}
+
+
+function StatRow({ label, value }) {
+  return (
+    <div className="flex justify-between items-baseline text-xs">
+      <span className="text-gray-600">{label}</span>
+      <span className="font-mono text-gray-900">{value ?? '—'}</span>
     </div>
   )
 }

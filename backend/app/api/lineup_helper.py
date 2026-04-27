@@ -148,6 +148,113 @@ def _fetch_eligible_players(
 
 
 # ============================================================
+# PBP stats — Contact%, Swing%, AIRPULL%, batted-ball mix, HR%, SB
+# Bulk-fetched in one query for all eligible players.
+# ============================================================
+
+def _fetch_pbp_stats_bulk(cur, player_ids: list, season: int) -> dict:
+    """Pull pitch-level + batted-ball stats for every player in one query.
+
+    Returns: {player_id: {contact_pct, swing_pct, whiff_pct, air_pull_pct,
+                          gb_pct, fb_pct, ld_pct, pu_pct, hr_pct, iso, sb_count}}.
+    Missing values are None when sample is too small.
+    """
+    if not player_ids:
+        return {}
+
+    cur.execute(
+        """
+        SELECT
+          ge.batter_player_id AS pid,
+          SUM(COALESCE(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', '')), 0)) AS k_pitches,
+          SUM(COALESCE(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', '')), 0)) AS f_pitches,
+          SUM(COALESCE(LENGTH(pitch_sequence), 0)) AS seq_total,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb,
+          COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb,
+          COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld,
+          COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu,
+          COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+          ) AS air_pull,
+          COUNT(*) FILTER (WHERE ge.result_type = 'home_run') AS hr,
+          COUNT(*) FILTER (
+            WHERE ge.result_type IN (
+              'single','double','triple','home_run',
+              'walk','intentional_walk','hbp',
+              'strikeout_swinging','strikeout_looking',
+              'ground_out','fly_out','line_out','pop_out',
+              'sac_fly','sac_bunt','fielders_choice','error','double_play','other'
+            )
+          ) AS pa,
+          COUNT(*) FILTER (WHERE ge.result_type = 'single') AS singles,
+          COUNT(*) FILTER (WHERE ge.result_type = 'double') AS doubles,
+          COUNT(*) FILTER (WHERE ge.result_type = 'triple') AS triples,
+          COUNT(*) FILTER (
+            WHERE ge.result_type IN (
+              'single','double','triple','home_run',
+              'strikeout_swinging','strikeout_looking',
+              'ground_out','fly_out','line_out','pop_out',
+              'fielders_choice','error','double_play','other'
+            )
+          ) AS ab
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        JOIN players p ON p.id = ge.batter_player_id
+        WHERE ge.batter_player_id = ANY(%s)
+          AND g.season = %s
+        GROUP BY ge.batter_player_id
+        """,
+        (player_ids, season),
+    )
+
+    out = {}
+    for r in cur.fetchall():
+        pid = r['pid']
+        k_p = r['k_pitches'] or 0
+        f_p = r['f_pitches'] or 0
+        seq = r['seq_total'] or 0
+        in_play = r['in_play'] or 0
+        bb_total = r['bb_total'] or 0
+        pa = r['pa'] or 0
+        ab = r['ab'] or 0
+        hr = r['hr'] or 0
+
+        swings = k_p + f_p + in_play
+        contact = f_p + in_play
+        total_pitches = seq + in_play
+
+        def _safe(num, denom):
+            return (num / denom) if denom else None
+
+        # ISO = SLG - AVG = (TB - hits) / AB
+        h = (r['singles'] or 0) + (r['doubles'] or 0) + (r['triples'] or 0) + hr
+        tb = (r['singles'] or 0) + 2 * (r['doubles'] or 0) + 3 * (r['triples'] or 0) + 4 * hr
+        iso = ((tb - h) / ab) if ab else None
+        slg = (tb / ab) if ab else None
+
+        out[pid] = {
+            'contact_pct': _safe(contact, swings),
+            'swing_pct': _safe(swings, total_pitches),
+            'whiff_pct': _safe(k_p, swings),
+            'air_pull_pct': _safe(r['air_pull'] or 0, bb_total),
+            'gb_pct': _safe(r['gb'] or 0, bb_total),
+            'fb_pct': _safe(r['fb'] or 0, bb_total),
+            'ld_pct': _safe(r['ld'] or 0, bb_total),
+            'pu_pct': _safe(r['pu'] or 0, bb_total),
+            'hr_pct': _safe(hr, pa),
+            'iso': iso,
+            'slg': slg,
+            'bb_total': bb_total,
+            'pitches_seen': total_pitches,
+        }
+    return out
+
+
+# ============================================================
 # Recent form (last 14 days) — for hot/cold indicator
 # ============================================================
 
@@ -239,38 +346,80 @@ def _fmt_pct(v):
 
 
 def _explain_starter_slot(slot: int, entry: dict, all_starters: list) -> str:
-    """One-sentence reasoning for why this player got this slot."""
+    """One-sentence reasoning for why this player got this slot.
+
+    Incorporates PBP stats (Contact%, AIRPULL%, ISO) when available to give
+    a richer picture than just wOBA + K%/BB%.
+    """
     woba = entry['wOBA']
     k_pct = entry['K_pct']
     bb_pct = entry['BB_pct']
+    pbp = entry.get('pbp_stats') or {}
+    contact = pbp.get('contact_pct')
+    air_pull = pbp.get('air_pull_pct')
+    iso = pbp.get('iso')
 
     all_woba = sorted([s['wOBA'] for s in all_starters], reverse=True)
     all_k = sorted([s['K_pct'] for s in all_starters])
+    all_iso = sorted(
+        [s.get('pbp_stats', {}).get('iso') for s in all_starters if s.get('pbp_stats', {}).get('iso') is not None],
+        reverse=True,
+    )
     woba_rank = all_woba.index(woba) + 1
     k_rank = all_k.index(k_pct) + 1
+    iso_rank = (all_iso.index(iso) + 1) if iso is not None and iso in all_iso else None
 
     if slot == 1:
+        bits = []
         if k_rank <= 2:
-            return f"Lowest-K bat in the lineup ({_fmt_pct(k_pct)}) — ideal leadoff."
-        return f"Contact-and-OBP profile fits the leadoff role."
+            bits.append(f"lowest-K bat in the lineup ({_fmt_pct(k_pct)})")
+        if contact is not None and contact >= 0.78:
+            bits.append(f"high contact rate ({_fmt_pct(contact)})")
+        if not bits:
+            bits.append(f"contact-and-OBP profile")
+        return f"Leadoff: {', '.join(bits)}."
     if slot == 2:
+        bits = []
         if woba_rank <= 3:
-            return f"Top-3 wOBA in the lineup ({_fmt_woba(woba)}) — high-leverage 2-hole."
-        return f"OBP profile ({_fmt_pct(bb_pct)} BB) fits the 2-hole."
+            bits.append(f"top-3 wOBA in the lineup ({_fmt_woba(woba)})")
+        if bb_pct >= 0.10:
+            bits.append(f"strong walk rate ({_fmt_pct(bb_pct)})")
+        if not bits:
+            bits.append(f"OBP-leaning profile")
+        return f"2-hole, the highest-leverage spot per The Book: {', '.join(bits)}."
     if slot == 3:
         return f"Per The Book, #3 sees the most 2-out empty PAs — least-impact top-5 slot."
     if slot == 4:
+        bits = []
         if woba_rank == 1:
-            return f"Best wOBA on the team ({_fmt_woba(woba)}) — anchors cleanup."
-        return f"Top power bat available ({_fmt_woba(woba)} wOBA) for the cleanup spot."
+            bits.append(f"best wOBA on the team ({_fmt_woba(woba)})")
+        else:
+            bits.append(f"top power bat available ({_fmt_woba(woba)} wOBA)")
+        if iso is not None and (iso_rank == 1 or iso >= 0.180):
+            bits.append(f"team-leading ISO ({iso:.3f})")
+        if air_pull is not None and air_pull >= 0.20:
+            bits.append(f"pulls air balls at a {_fmt_pct(air_pull)} clip")
+        return f"Cleanup: {', '.join(bits)}."
     if slot == 5:
-        return f"Second power bat ({_fmt_woba(woba)} wOBA) — protects the cleanup hitter."
+        bits = [f"second power bat ({_fmt_woba(woba)} wOBA)"]
+        if iso is not None and iso >= 0.150:
+            bits.append(f"ISO {iso:.3f}")
+        return f"Protects the cleanup hitter: {', '.join(bits)}."
     if slot in (6, 7):
         return f"Mid-order continuation ({_fmt_woba(woba)} wOBA)."
     if slot == 8:
         return f"Bottom of the order — weaker bat or platoon-disadvantaged here."
     if slot == 9:
-        return f"Real OBP guy ({_fmt_pct(bb_pct)} BB, {_fmt_pct(k_pct)} K) — second leadoff."
+        bits = []
+        if bb_pct >= 0.09:
+            bits.append(f"{_fmt_pct(bb_pct)} BB")
+        if k_pct <= 0.16:
+            bits.append(f"{_fmt_pct(k_pct)} K")
+        if contact is not None and contact >= 0.78:
+            bits.append(f"{_fmt_pct(contact)} contact")
+        if not bits:
+            bits.append(f"OBP-leaning profile")
+        return f"Second leadoff role: {', '.join(bits)} — feeds the top of the order."
     return ""
 
 
@@ -355,6 +504,9 @@ def compute_team_lineup_helper(
         cur, season, division_level, half_life_weeks, reference_date
     )
 
+    # Bulk-fetch PBP stats (Contact%, Swing%, AIRPULL%, batted-ball mix, ISO, etc.)
+    pbp_stats = _fetch_pbp_stats_bulk(cur, [r['id'] for r in roster], season)
+
     # Build profiles for every eligible player
     eligible_players = []
     for r in roster:
@@ -385,6 +537,7 @@ def compute_team_lineup_helper(
             'profile': profile,
             'eligible_positions': eligibility.get(r['id'], set()),
             'recent_form': recent_form,
+            'pbp_stats': pbp_stats.get(r['id'], {}),
         })
 
     # For each pitcher hand, run the engine
@@ -427,6 +580,11 @@ def compute_team_lineup_helper(
                 'assigned_position': pid_to_assigned_pos[entry['player_id']],
                 'pa_total': base['pa_total'],
                 'recent_form': base['recent_form'],
+                'pbp_stats': base['pbp_stats'],
+                'season_view': base['profile']['season_view'],
+                'eligible_positions': sorted(base['eligible_positions']) + (
+                    ['DH'] if 'DH' not in base['eligible_positions'] else []
+                ),
             })
 
         # Per-slot reasoning (computed AFTER the full ordered list exists,
@@ -454,6 +612,8 @@ def compute_team_lineup_helper(
             b['jersey_number'] = base['jersey_number']
             b['headshot_url'] = base['headshot_url']
             b['recent_form'] = base['recent_form']
+            b['pbp_stats'] = base['pbp_stats']
+            b['season_view'] = base['profile']['season_view']
             b['bench_reasoning'] = _explain_bench(b, starters_by_pos)
 
         results[f'vs_{vs_hand}HP'] = {
