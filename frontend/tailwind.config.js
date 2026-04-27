@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Brand colors
+        // Main-site brand (teal / cream)
         'nw-teal': '#00687a',
         'nw-teal-dark': '#004d5a',
         'nw-teal-light': '#008a9e',
@@ -18,6 +18,17 @@ export default {
         'pnw-sky': '#008a9e',      // lighter teal for links/accents
         'pnw-slate': '#00687a',    // header background
         'pnw-cream': '#faf8f5',
+
+        // Coach & Scouting Portal palette — deep indigo / antique gold.
+        // Hex values estimated from the reference logos; tweak in this
+        // one place if any color reads slightly off in production.
+        'portal-purple':       '#1d1f4d',  // primary dark indigo (header, nav)
+        'portal-purple-light': '#2c2f6b',  // hover / secondary surfaces
+        'portal-purple-dark':  '#13153a',  // deepest, for shadows / hover-pressed
+        'portal-dark':         '#0a0d1c',  // near-black accent (text, dividers)
+        'portal-accent':       '#8e7553',  // antique gold / brown (links, badges)
+        'portal-accent-light': '#a89070',  // brighter gold for hover
+        'portal-cream':        '#f5f3ef',  // off-white text on dark backgrounds
       },
       fontFamily: {
         'display': ['"HK Modular"', 'system-ui', 'sans-serif'],

@@ -96,6 +96,9 @@ import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import ParkFactors from './pages/ParkFactors'
+// Coach & Scouting Portal
+import PortalLayout from './components/PortalLayout'
+import PortalHome from './pages/PortalHome'
 import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
@@ -166,12 +169,25 @@ export default function App() {
           {/* Coaching (auth required) */}
           <Route path="/juco-tracker" element={<RequireAuth><JucoTracker /></RequireAuth>} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
-          <Route path="/player-scouting" element={<RequireAuth><PlayerScouting /></RequireAuth>} />
           <Route path="/team-scouting" element={<RequireAuth><TeamScouting /></RequireAuth>} />
           <Route path="/enhanced-scouting" element={<RequireAuth><EnhancedScouting /></RequireAuth>} />
-          <Route path="/opponent-trends" element={<RequireAuth><OpponentTrends /></RequireAuth>} />
-          <Route path="/historic" element={<RequireAuth><HistoricMatchups /></RequireAuth>} />
           <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
+
+          {/* Old URLs → redirect into the portal so bookmarks still work */}
+          <Route path="/opponent-trends"
+                 element={<Navigate to="/portal/trends" replace />} />
+          <Route path="/historic"
+                 element={<Navigate to="/portal/historic" replace />} />
+          <Route path="/player-scouting"
+                 element={<Navigate to="/portal/player-scouting" replace />} />
+
+          {/* Coach & Scouting Portal (auth required, themed layout) */}
+          <Route path="/portal" element={<RequireAuth><PortalLayout /></RequireAuth>}>
+            <Route index element={<PortalHome />} />
+            <Route path="trends" element={<OpponentTrends />} />
+            <Route path="historic" element={<HistoricMatchups />} />
+            <Route path="player-scouting" element={<PlayerScouting />} />
+          </Route>
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
