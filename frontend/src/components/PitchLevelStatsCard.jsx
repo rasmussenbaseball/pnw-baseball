@@ -140,7 +140,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
       <DataTable minWidth={840} className="mb-6">
         <thead>
           <HeaderRow>
-            <Th align="left">Count</Th>
+            <Th align="left" sticky>Count</Th>
             <Th>PA</Th>
             <Th>Pit</Th>
             <Th>BIP</Th>
@@ -181,7 +181,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
       <DataTable minWidth={920} className="mb-6">
         <thead>
           <HeaderRow>
-            <Th align="left">Split</Th>
+            <Th align="left" sticky>Split</Th>
             <Th>PA</Th>
             <Th>Pit</Th>
             <Th>BIP</Th>
@@ -226,7 +226,7 @@ export default function PitchLevelStatsCard({ playerId, season }) {
           <DataTable minWidth={920}>
             <thead>
               <HeaderRow>
-                <Th align="left">Split</Th>
+                <Th align="left" sticky>Split</Th>
                 <Th>PA</Th>
                 <Th>Pit</Th>
                 <Th>BIP</Th>
@@ -304,10 +304,11 @@ function HeaderRow({ children }) {
   )
 }
 
-function Th({ children, align = 'center' }) {
-  const cls = align === 'left' ? 'text-left' : 'text-center'
+function Th({ children, align = 'center', sticky = false }) {
+  const alignCls = align === 'left' ? 'text-left' : 'text-center'
+  const stickyCls = sticky ? 'sticky left-0 bg-gray-50 z-20' : ''
   return (
-    <th className={`${cls} px-3 py-2 align-middle font-semibold whitespace-nowrap`}>
+    <th className={`${alignCls} ${stickyCls} px-3 py-2 align-middle font-semibold whitespace-nowrap`}>
       {children}
     </th>
   )
@@ -318,8 +319,10 @@ function BodyRow({ children }) {
 }
 
 function CountCell({ label, detail }) {
+  // Sticky to the left so the row label stays visible when the table
+  // scrolls horizontally on mobile.
   return (
-    <td className="px-3 py-2.5 align-middle whitespace-nowrap border-r border-gray-100">
+    <td className="sticky left-0 bg-white z-10 px-3 py-2.5 align-middle whitespace-nowrap border-r border-gray-100">
       <span className="font-medium text-gray-900">{label}</span>
       {detail && <span className="text-gray-400 ml-1.5">· {detail}</span>}
     </td>

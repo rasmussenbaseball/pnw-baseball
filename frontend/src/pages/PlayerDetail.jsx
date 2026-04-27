@@ -691,8 +691,17 @@ function ScrollColumn({ maxHeight, children }) {
 // the bars' height. Shows hitting and/or pitching depending on what
 // the player did in the last games.
 function RecentGames({ batting, pitching, limit = 6, className = '' }) {
-  // Sort newest-first by game_date and take the most recent `limit`
-  const bat = (batting || []).slice().sort((a, b) => (b.game_date || '').localeCompare(a.game_date || '')).slice(0, limit)
+  // Sort newest-first by game_date and take the most recent `limit`.
+  // Drop "batting" entries where the player had no PA — that shows up for
+  // pitchers who appeared but never came to the plate, where the boxscore
+  // still emits a 0-0 batting row.
+  const hasPA = (g) =>
+    (g.ab || 0) + (g.bb || 0) + (g.hbp || 0) + (g.sf || 0) + (g.sh || 0) > 0
+  const bat = (batting || [])
+    .filter(hasPA)
+    .slice()
+    .sort((a, b) => (b.game_date || '').localeCompare(a.game_date || ''))
+    .slice(0, limit)
   const pit = (pitching || []).slice().sort((a, b) => (b.game_date || '').localeCompare(a.game_date || '')).slice(0, limit)
 
   if (bat.length === 0 && pit.length === 0) return null
