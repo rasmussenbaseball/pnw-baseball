@@ -82,6 +82,22 @@ export function useTeamStats(teamId, season) {
 }
 
 /**
+ * Fetch the rich team-overview payload used by the social info-graphic
+ * — record splits, run diff, Pythag, national/conf/power ranks, top 5
+ * hitters and pitchers (with headshots + rate stats), 5-stat batting
+ * AND pitching percentile cards vs division, and last 5 games.
+ *
+ * Excellent single-payload data source for a coach dashboard.
+ */
+export function useTeamInfoGraphic(teamId, season) {
+  return useApi(
+    `/teams/${teamId}/info-graphic`,
+    { season },
+    [teamId, season],
+  )
+}
+
+/**
  * Fetch batting leaderboard.
  */
 export function useBattingLeaderboard(params) {
