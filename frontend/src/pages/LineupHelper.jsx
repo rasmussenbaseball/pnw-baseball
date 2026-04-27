@@ -356,7 +356,7 @@ function Chevron({ open }) {
 
 function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
   const pbp = entry.pbp_stats || {}
-  const season = entry.season_view || {}
+  const speedInputs = entry.speed_inputs || {}
   const form = entry.recent_form
 
   return (
@@ -368,30 +368,39 @@ function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatGroup title="Plate Discipline">
-          <StatRow label="K%" value={fmtPct(entry.K_pct)} />
-          <StatRow label="BB%" value={fmtPct(entry.BB_pct)} />
-          <StatRow label="Contact%" value={fmtPct(pbp.contact_pct)} />
-          <StatRow label="Swing%" value={fmtPct(pbp.swing_pct)} />
-          <StatRow label="Whiff%" value={fmtPct(pbp.whiff_pct)} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatGroup title="On-base & Power" subtitle="Used by the engine">
+          <StatRow label="OBP" value={fmt3(entry.OBP)} highlight />
+          <StatRow label="SLG" value={fmt3(entry.SLG)} highlight />
+          <StatRow label="ISO" value={fmt3(entry.ISO)} highlight />
+          <StatRow label="wOBA" value={fmt3(entry.wOBA)} muted />
+          <StatRow label="HR%" value={fmtPct(pbp.hr_pct)} muted />
+          <StatRow label="AIRPULL%" value={fmtPct(pbp.air_pull_pct)} muted />
         </StatGroup>
 
-        <StatGroup title="Power & Output">
-          <StatRow label="wOBA" value={fmt3(entry.wOBA)} />
-          <StatRow label="OBP" value={fmt3(entry.OBP)} />
-          <StatRow label="SLG" value={fmt3(entry.SLG)} />
-          <StatRow label="ISO" value={fmt3(pbp.iso)} />
-          <StatRow label="HR%" value={fmtPct(pbp.hr_pct)} />
-          <StatRow label="AIRPULL%" value={fmtPct(pbp.air_pull_pct)} />
+        <StatGroup title="Plate Discipline" subtitle="Used by the engine">
+          <StatRow label="K%" value={fmtPct(entry.K_pct)} highlight />
+          <StatRow label="BB%" value={fmtPct(entry.BB_pct)} highlight />
+          <StatRow label="Contact%" value={fmtPct(entry.Contact_pct)} highlight />
+          <StatRow label="Swing%" value={fmtPct(pbp.swing_pct)} muted />
+          <StatRow label="Whiff%" value={fmtPct(pbp.whiff_pct)} muted />
         </StatGroup>
 
-        <StatGroup title="Batted Ball">
-          <StatRow label="GB%" value={fmtPct(pbp.gb_pct)} />
-          <StatRow label="LD%" value={fmtPct(pbp.ld_pct)} />
-          <StatRow label="FB%" value={fmtPct(pbp.fb_pct)} />
-          <StatRow label="PU%" value={fmtPct(pbp.pu_pct)} />
-          <StatRow label="Batted balls" value={pbp.bb_total ?? '—'} />
+        <StatGroup title="Batted Ball" subtitle="GB% used by the engine">
+          <StatRow label="GB%" value={fmtPct(entry.GB_pct)} highlight />
+          <StatRow label="LD%" value={fmtPct(pbp.ld_pct)} muted />
+          <StatRow label="FB%" value={fmtPct(pbp.fb_pct)} muted />
+          <StatRow label="PU%" value={fmtPct(pbp.pu_pct)} muted />
+          <StatRow label="Batted balls" value={pbp.bb_total ?? '—'} muted />
+        </StatGroup>
+
+        <StatGroup title="Speed (team-relative)" subtitle="Used by the engine">
+          <StatRow label="Speed z-score" value={fmt2(entry.speed_z)} highlight />
+          <StatRow label="SB" value={speedInputs.sb ?? '—'} muted />
+          <StatRow label="CS" value={speedInputs.cs ?? '—'} muted />
+          <StatRow label="Singles" value={speedInputs.singles ?? '—'} muted />
+          <StatRow label="BB" value={speedInputs.walks ?? '—'} muted />
+          <StatRow label="HBP" value={speedInputs.hbp ?? '—'} muted />
         </StatGroup>
       </div>
 
@@ -419,23 +428,32 @@ function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
 }
 
 
-function StatGroup({ title, children }) {
+function StatGroup({ title, subtitle, children }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-2.5">
-      <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+      <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
         {title}
       </h4>
-      <div className="space-y-1">{children}</div>
+      {subtitle && (
+        <div className="text-[9px] text-portal-purple/70 mb-1.5 italic">{subtitle}</div>
+      )}
+      <div className="space-y-1 mt-1">{children}</div>
     </div>
   )
 }
 
 
-function StatRow({ label, value }) {
+function StatRow({ label, value, highlight = false, muted = false }) {
+  const labelClass = muted ? 'text-gray-400' : 'text-gray-600'
+  const valueClass = muted
+    ? 'text-gray-400'
+    : highlight
+      ? 'text-portal-purple-dark font-semibold'
+      : 'text-gray-900'
   return (
     <div className="flex justify-between items-baseline text-xs">
-      <span className="text-gray-600">{label}</span>
-      <span className="font-mono text-gray-900">{value ?? '—'}</span>
+      <span className={labelClass}>{label}</span>
+      <span className={`font-mono ${valueClass}`}>{value ?? '—'}</span>
     </div>
   )
 }
@@ -480,38 +498,46 @@ function MethodologyCard() {
     <Card title="How this works" subtitle="The math behind the picks">
       <div className="text-sm text-gray-700 space-y-2 leading-relaxed">
         <p>
-          The Lineup Helper picks the 9 starters and orders them based on
-          modern sabermetric research, primarily The Book (Tango, Lichtman,
-          and Dolphin). The headline rules: best three hitters at slots 1, 2,
-          and 4. Slot 4 is the cleanup spot, slot 2 gets one of your top
-          three, and slot 9 is treated as a "second leadoff" — a real OBP guy,
-          not your worst bat.
+          The engine picks and orders the lineup using a 7-stat fitness score
+          calibrated from The Book (Tango, Lichtman, Dolphin) and follow-on
+          research by Lichtman, Carleton, and Petriello. The headline rule:
+          your best on-base hitter goes in the 2-hole, not the cleanup spot.
+          Putting the best hitter at #4 instead of #2 costs roughly 4 to 7
+          runs over a college season. That is the single largest lever in
+          lineup construction.
         </p>
         <p>
-          Stats are recency-weighted with a 6-week half-life, so a game from
-          this week counts twice as much as a game from six weeks ago. Splits
-          vs RHP and vs LHP are sample-regressed because most college players
-          never reach the sample size where raw splits stabilize. A hitter
-          with three hot vs-LHP at-bats won't get over-rewarded.
+          Each slot weights stats differently. Slots 1 and 2 weight OBP most
+          heavily. Slot 4 weights ISO (clean power, no contamination from
+          singles). Slots 2 and 8 add a contact-rate bonus. Slots 2 and 3
+          carry a ground-ball penalty above 45% to discourage double-play
+          risk. Slots 1, 2, and 9 add a within-team speed-z bonus from
+          (SB minus 0.5 times CS) divided by times-on-first-base.
         </p>
         <p>
-          Position eligibility: a player can be slotted at any position where
-          they have eight or more starts this season. DH is open to anyone.
-          The bench panel ranks the top five players who didn't make the
-          starting nine, with each player tagged at their best position.
+          Sample regression: every rate stat is regressed toward the player's
+          season baseline using the stat's stabilization PA count from
+          Carleton's reliability work. K% pulls in 60 PAs, BB% in 120, ISO in
+          160, SLG in 320, OBP in 460, wOBA in 600, Contact% in 100, GB% in
+          110. A 5-PA vs-LHP sample with a 0% K rate gets pulled hard back to
+          the player's season K%, and slot picks no longer get fooled by
+          tiny-sample noise.
         </p>
         <p>
-          The HOT and COLD badges compare the player's last 14 days of plate
-          appearances to their season baseline. A 50-point or larger wOBA jump
-          earns HOT. The same drop earns COLD. Players with fewer than 12 PAs
-          in the window get no badge. The hot/cold signal is shown for context
-          only — the optimizer itself uses the recency-weighted season profile,
-          which already gives more weight to recent games.
+          Recency: every PA is weighted with a 6-week exponential decay. A
+          game from this week counts twice as much as a game from six weeks
+          ago. Recent at-bats genuinely move the engine.
         </p>
         <p>
-          The italic reasoning under each starter explains the slot fit.
-          Bench reasoning shows which starter beat them out at their best
-          eligible position, and why.
+          Position eligibility: a player can start at any position where they
+          have 8 or more starts this season. DH is open to anyone. The HOT
+          and COLD badges compare last-14-days wOBA to season wOBA, with a
+          50-point threshold and a 12-PA minimum.
+        </p>
+        <p>
+          The dropdown for each player shows every stat the engine actually
+          uses (highlighted), plus the supporting context stats (muted). Hover
+          a slot number to see the role of that slot.
         </p>
       </div>
     </Card>
@@ -580,6 +606,12 @@ function LoadingState() {
 function fmt3(n) {
   if (n === null || n === undefined || isNaN(n)) return '—'
   return n.toFixed(3).replace(/^0/, '')
+}
+
+function fmt2(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—'
+  const sign = n >= 0 ? '+' : ''
+  return `${sign}${n.toFixed(2)}`
 }
 
 function fmtPct(n) {

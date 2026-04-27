@@ -148,6 +148,67 @@ def _fetch_eligible_players(
 
 
 # ============================================================
+# Speed proxy — SB-and-CS rate per time on first base.
+# Within-team z-score, clamped to [-2, +2].
+# ============================================================
+
+def _fetch_speed_inputs_bulk(cur, player_ids: list, season: int) -> dict:
+    """Pull SB, CS, singles, walks, HBP for each player from batting_stats."""
+    if not player_ids:
+        return {}
+    cur.execute(
+        """
+        SELECT player_id,
+               COALESCE(stolen_bases, 0) AS sb,
+               COALESCE(caught_stealing, 0) AS cs,
+               COALESCE(hits, 0) - COALESCE(doubles, 0)
+                 - COALESCE(triples, 0) - COALESCE(home_runs, 0) AS singles,
+               COALESCE(walks, 0) AS walks,
+               COALESCE(hit_by_pitch, 0) AS hbp
+        FROM batting_stats
+        WHERE player_id = ANY(%s) AND season = %s
+        """,
+        (player_ids, season),
+    )
+    return {r['player_id']: dict(r) for r in cur.fetchall()}
+
+
+def _compute_team_speed_z(speed_inputs: dict) -> dict:
+    """Compute within-team z-score of speed proxy for every player passed in.
+
+    Speed proxy = (SB - 0.5 * CS) / (1B + BB + HBP). Per-team z-score, clamped
+    to [-2, +2]. Players with no opportunities (denominator = 0) get 0.
+    """
+    proxies = {}
+    for pid, si in speed_inputs.items():
+        sb = float(si.get('sb') or 0)
+        cs = float(si.get('cs') or 0)
+        opps = float((si.get('singles') or 0) + (si.get('walks') or 0) + (si.get('hbp') or 0))
+        proxies[pid] = ((sb - 0.5 * cs) / opps) if opps > 0 else 0.0
+
+    if not proxies:
+        return {}
+
+    vals = list(proxies.values())
+    mean = sum(vals) / len(vals)
+    if len(vals) > 1:
+        var = sum((v - mean) ** 2 for v in vals) / len(vals)
+        stdev = var ** 0.5
+    else:
+        stdev = 0.0
+
+    z_by_pid = {}
+    for pid, proxy in proxies.items():
+        if stdev > 0:
+            z = (proxy - mean) / stdev
+            z = max(-2.0, min(2.0, z))
+        else:
+            z = 0.0
+        z_by_pid[pid] = z
+    return z_by_pid
+
+
+# ============================================================
 # PBP stats — Contact%, Swing%, AIRPULL%, batted-ball mix, HR%, SB
 # Bulk-fetched in one query for all eligible players.
 # ============================================================
@@ -299,7 +360,7 @@ def _compute_recent_form(
     for r in rows:
         if r['result_type'] not in PA_RESULT_TYPES:
             continue
-        comps = _event_components(r['result_type'], weights)
+        comps = _event_components(r, weights)
         if comps['pa'] == 0:
             continue
         pa_count += 1
@@ -348,107 +409,137 @@ def _fmt_pct(v):
 def _explain_starter_slot(slot: int, entry: dict, all_starters: list) -> str:
     """One-sentence reasoning for why this player got this slot.
 
-    Incorporates PBP stats (Contact%, AIRPULL%, ISO) when available to give
-    a richer picture than just wOBA + K%/BB%.
+    Cites the actual stat that drove the decision per the new 7-stat formula:
+    OBP, SLG/ISO, Contact%, GB%, K%, BB%, speed_z. Picks the most relevant
+    stat for the slot and reports the player's rank or absolute value.
     """
-    woba = entry['wOBA']
+    obp = entry.get('OBP', 0) or 0
+    slg = entry.get('SLG', 0) or 0
+    iso = entry.get('ISO', 0) or 0
     k_pct = entry['K_pct']
     bb_pct = entry['BB_pct']
-    pbp = entry.get('pbp_stats') or {}
-    contact = pbp.get('contact_pct')
-    air_pull = pbp.get('air_pull_pct')
-    iso = pbp.get('iso')
+    contact = entry.get('Contact_pct')
+    gb = entry.get('GB_pct')
+    spd = entry.get('speed_z', 0) or 0
 
-    all_woba = sorted([s['wOBA'] for s in all_starters], reverse=True)
+    all_obp = sorted([s.get('OBP', 0) or 0 for s in all_starters], reverse=True)
+    all_slg = sorted([s.get('SLG', 0) or 0 for s in all_starters], reverse=True)
+    all_iso = sorted([s.get('ISO', 0) or 0 for s in all_starters], reverse=True)
     all_k = sorted([s['K_pct'] for s in all_starters])
-    all_iso = sorted(
-        [s.get('pbp_stats', {}).get('iso') for s in all_starters if s.get('pbp_stats', {}).get('iso') is not None],
-        reverse=True,
-    )
-    woba_rank = all_woba.index(woba) + 1
-    k_rank = all_k.index(k_pct) + 1
-    iso_rank = (all_iso.index(iso) + 1) if iso is not None and iso in all_iso else None
+    obp_rank = all_obp.index(obp) + 1 if obp in all_obp else None
+    slg_rank = all_slg.index(slg) + 1 if slg in all_slg else None
+    iso_rank = all_iso.index(iso) + 1 if iso in all_iso else None
+    k_rank = all_k.index(k_pct) + 1 if k_pct in all_k else None
 
     if slot == 1:
         bits = []
-        if k_rank <= 2:
+        if k_rank and k_rank <= 2:
             bits.append(f"lowest-K bat in the lineup ({_fmt_pct(k_pct)})")
         if contact is not None and contact >= 0.78:
-            bits.append(f"high contact rate ({_fmt_pct(contact)})")
+            bits.append(f"high contact ({_fmt_pct(contact)})")
+        if spd >= 1.0:
+            bits.append("plus team-relative speed")
         if not bits:
-            bits.append(f"contact-and-OBP profile")
+            bits.append("contact-and-OBP profile")
         return f"Leadoff: {', '.join(bits)}."
     if slot == 2:
         bits = []
-        if woba_rank <= 3:
-            bits.append(f"top-3 wOBA in the lineup ({_fmt_woba(woba)})")
-        if bb_pct >= 0.10:
-            bits.append(f"strong walk rate ({_fmt_pct(bb_pct)})")
+        if obp_rank == 1:
+            bits.append(f"team-best OBP ({_fmt_woba(obp)})")
+        elif obp_rank and obp_rank <= 3:
+            bits.append(f"top-3 OBP ({_fmt_woba(obp)})")
+        if contact is not None and contact >= 0.80:
+            bits.append(f"elite contact rate ({_fmt_pct(contact)})")
+        if gb is not None and gb < 0.40:
+            bits.append("avoids ground balls (low DP risk)")
         if not bits:
-            bits.append(f"OBP-leaning profile")
-        return f"2-hole, the highest-leverage spot per The Book: {', '.join(bits)}."
+            bits.append("highest-leverage on-base profile")
+        return f"2-hole — the highest-leverage spot per The Book: {', '.join(bits)}."
     if slot == 3:
-        return f"Per The Book, #3 sees the most 2-out empty PAs — least-impact top-5 slot."
+        # Slot 3 weights SLG nearly as much as slot 4 (175 vs 200). High-SLG
+        # hitters whose OBP just trails the slot-2 winner often land here.
+        if slg_rank and slg_rank <= 2:
+            return (f"Top-{slg_rank} SLG ({_fmt_woba(slg)}) lands him here. "
+                    "Slot 3 weights SLG nearly as much as slot 4 — his power "
+                    "profile fits even though his OBP just trails the slot-2 winner.")
+        return ("Per The Book, #3 sees the most 2-out empty PAs of any top-5 slot. "
+                "Lower-leverage among the top-5 by design.")
     if slot == 4:
         bits = []
-        if woba_rank == 1:
-            bits.append(f"best wOBA on the team ({_fmt_woba(woba)})")
-        else:
-            bits.append(f"top power bat available ({_fmt_woba(woba)} wOBA)")
-        if iso is not None and (iso_rank == 1 or iso >= 0.180):
-            bits.append(f"team-leading ISO ({iso:.3f})")
-        if air_pull is not None and air_pull >= 0.20:
-            bits.append(f"pulls air balls at a {_fmt_pct(air_pull)} clip")
+        if iso_rank == 1:
+            bits.append(f"team-best ISO ({iso:.3f})")
+        elif slg_rank == 1:
+            bits.append(f"team-best SLG ({_fmt_woba(slg)})")
+        elif iso_rank and iso_rank <= 2:
+            bits.append(f"top-2 ISO ({iso:.3f})")
+        if obp_rank and obp_rank <= 3:
+            bits.append(f"top-3 OBP ({_fmt_woba(obp)})")
+        if not bits:
+            bits.append("best power bat available")
         return f"Cleanup: {', '.join(bits)}."
     if slot == 5:
-        bits = [f"second power bat ({_fmt_woba(woba)} wOBA)"]
-        if iso is not None and iso >= 0.150:
-            bits.append(f"ISO {iso:.3f}")
+        bits = [f"second power bat ({_fmt_woba(slg)} SLG, {iso:.3f} ISO)"]
         return f"Protects the cleanup hitter: {', '.join(bits)}."
-    if slot in (6, 7):
-        return f"Mid-order continuation ({_fmt_woba(woba)} wOBA)."
+    if slot == 6:
+        return f"Mid-order continuation ({_fmt_woba(obp)} OBP, {_fmt_woba(slg)} SLG)."
+    if slot == 7:
+        return f"Lower-order placement ({_fmt_woba(obp)} OBP)."
     if slot == 8:
-        return f"Bottom of the order — weaker bat or platoon-disadvantaged here."
+        bits = []
+        if contact is not None and contact >= 0.80:
+            bits.append(f"strong contact ({_fmt_pct(contact)})")
+        if k_pct <= 0.15:
+            bits.append(f"low K% ({_fmt_pct(k_pct)})")
+        if not bits:
+            bits.append("contact-leaning bat")
+        return f"#8: {', '.join(bits)} — sets up the turnover."
     if slot == 9:
         bits = []
-        if bb_pct >= 0.09:
-            bits.append(f"{_fmt_pct(bb_pct)} BB")
+        if obp_rank and obp_rank <= 4:
+            bits.append(f"strong OBP ({_fmt_woba(obp)})")
         if k_pct <= 0.16:
-            bits.append(f"{_fmt_pct(k_pct)} K")
-        if contact is not None and contact >= 0.78:
-            bits.append(f"{_fmt_pct(contact)} contact")
+            bits.append(f"low K% ({_fmt_pct(k_pct)})")
+        if spd >= 0.5:
+            bits.append("plus team-relative speed")
         if not bits:
-            bits.append(f"OBP-leaning profile")
-        return f"Second leadoff role: {', '.join(bits)} — feeds the top of the order."
+            bits.append(f"OBP-leaning profile ({_fmt_pct(bb_pct)} BB)")
+        return f"Second leadoff: {', '.join(bits)} — feeds the top of the order."
     return ""
 
 
 def _explain_bench(bench_entry: dict, starters_by_pos: dict) -> str:
-    """Why is this player on the bench?"""
+    """Why is this player on the bench? Cites the OBP/SLG/Contact mismatch."""
     eligible = set(bench_entry.get('eligible_positions', []))
-    eligible.discard('DH')  # everyone is DH-eligible; not informative
+    eligible.discard('DH')
 
     if not eligible:
         return "DH-only role — lost out to a stronger bat at DH."
 
-    # Find which starters they lost to, ordered by wOBA gap (smallest = closest call)
     losses = []
     for pos in eligible:
         starter = starters_by_pos.get(pos)
         if starter:
-            losses.append((pos, starter, starter['wOBA'] - bench_entry['wOBA']))
+            losses.append((pos, starter))
 
     if not losses:
         return "All eligible positions taken by stronger bats."
 
-    # Pick the closest call — shows the relevant competition
-    losses.sort(key=lambda x: x[2])
-    pos, starter, gap = losses[0]
+    # Pick the position where they have the closest call — same position, smallest score gap.
+    # We don't have score directly here; use OBP gap as proxy.
+    losses.sort(key=lambda x: abs((x[1].get('OBP', 0) or 0) - (bench_entry.get('OBP', 0) or 0)))
+    pos, starter = losses[0]
     starter_name = f"{starter['first_name']} {starter['last_name']}"
-    if gap >= 0:
-        return f"Behind {starter_name} at {pos} (similar wOBA, weaker plate-discipline mix)."
-    # Bench player has higher wOBA but lost on overall slot fit
-    return f"Behind {starter_name} at {pos} — {starter_name}'s K%/BB% mix fits the engine's slot weights better."
+    bench_obp = bench_entry.get('OBP', 0) or 0
+    starter_obp = starter.get('OBP', 0) or 0
+    bench_slg = bench_entry.get('SLG', 0) or 0
+    starter_slg = starter.get('SLG', 0) or 0
+
+    # Identify the most distinguishing stat
+    if starter_obp - bench_obp >= 0.020:
+        return f"Behind {starter_name} at {pos} — {starter_name}'s higher OBP ({_fmt_woba(starter_obp)} vs {_fmt_woba(bench_obp)}) wins the slot fit."
+    if starter_slg - bench_slg >= 0.030:
+        return f"Behind {starter_name} at {pos} — {starter_name}'s higher SLG ({_fmt_woba(starter_slg)} vs {_fmt_woba(bench_slg)}) wins the slot fit."
+    return f"Behind {starter_name} at {pos} — close call decided by the K%/BB%/contact mix."
 
 
 # ============================================================
@@ -507,6 +598,10 @@ def compute_team_lineup_helper(
     # Bulk-fetch PBP stats (Contact%, Swing%, AIRPULL%, batted-ball mix, ISO, etc.)
     pbp_stats = _fetch_pbp_stats_bulk(cur, [r['id'] for r in roster], season)
 
+    # Speed proxy: (SB - 0.5*CS) / (1B + BB + HBP), z-scored within team.
+    speed_inputs = _fetch_speed_inputs_bulk(cur, [r['id'] for r in roster], season)
+    speed_z_by_pid = _compute_team_speed_z(speed_inputs)
+
     # Build profiles for every eligible player
     eligible_players = []
     for r in roster:
@@ -538,12 +633,16 @@ def compute_team_lineup_helper(
             'eligible_positions': eligibility.get(r['id'], set()),
             'recent_form': recent_form,
             'pbp_stats': pbp_stats.get(r['id'], {}),
+            'speed_z': speed_z_by_pid.get(r['id'], 0.0),
+            'speed_inputs': speed_inputs.get(r['id'], {}),
         })
 
     # For each pitcher hand, run the engine
     results = {}
     for vs_hand in ('R', 'L'):
-        starter_pick = select_optimal_starters(eligible_players, vs_hand)
+        starter_pick = select_optimal_starters(
+            eligible_players, vs_hand, speeds_by_pid=speed_z_by_pid
+        )
         if starter_pick is None:
             results[f'vs_{vs_hand}HP'] = {
                 'error': 'No feasible starting 9 — likely missing position eligibility somewhere (e.g., no eligible catcher).',
@@ -560,9 +659,12 @@ def compute_team_lineup_helper(
             starter_list.append(entry)
             starter_pids.add(entry['player_id'])
 
-        # Pass profiles to the batting-order optimizer
+        # Pass profiles + speed_z list (in same order) to the batting-order optimizer
         profiles_for_order = [s['profile'] for s in starter_list]
-        order_result = optimize_batting_order(profiles_for_order, vs_hand=vs_hand)
+        speeds_for_order = [speed_z_by_pid.get(s['player_id'], 0.0) for s in starter_list]
+        order_result = optimize_batting_order(
+            profiles_for_order, vs_hand=vs_hand, speeds=speeds_for_order
+        )
 
         # Merge: attach assigned position + name to each ordered slot
         pid_to_starter = {s['player_id']: s for s in starter_list}
@@ -582,6 +684,7 @@ def compute_team_lineup_helper(
                 'recent_form': base['recent_form'],
                 'pbp_stats': base['pbp_stats'],
                 'season_view': base['profile']['season_view'],
+                'speed_inputs': base['speed_inputs'],
                 'eligible_positions': sorted(base['eligible_positions']) + (
                     ['DH'] if 'DH' not in base['eligible_positions'] else []
                 ),
@@ -595,7 +698,10 @@ def compute_team_lineup_helper(
             )
 
         # Bench
-        bench = rank_bench(eligible_players, starter_pids, vs_hand, top_n=5)
+        bench = rank_bench(
+            eligible_players, starter_pids, vs_hand, top_n=5,
+            speeds_by_pid=speed_z_by_pid,
+        )
         # Build a lookup of starters keyed by their assigned position so we
         # can explain bench players' losses.
         starters_by_pos = {
@@ -614,6 +720,7 @@ def compute_team_lineup_helper(
             b['recent_form'] = base['recent_form']
             b['pbp_stats'] = base['pbp_stats']
             b['season_view'] = base['profile']['season_view']
+            b['speed_inputs'] = base['speed_inputs']
             b['bench_reasoning'] = _explain_bench(b, starters_by_pos)
 
         results[f'vs_{vs_hand}HP'] = {

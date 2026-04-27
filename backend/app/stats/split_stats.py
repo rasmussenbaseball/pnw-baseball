@@ -46,11 +46,25 @@ Carleton/Tango: vs-hand splits stabilize around 600 PAs. We blend observed
 split with the expected target using this as the prior weight."""
 
 K_PCT_REGRESSION_PA = 60
-"""K% stabilizes around 60 PAs (Carleton). For split views, we regress
-observed K% toward season K% with this much prior weight."""
+"""K% stabilizes around 60 PAs (Carleton)."""
 
 BB_PCT_REGRESSION_PA = 120
-"""BB% stabilizes around 120 PAs. Used analogously to K_PCT_REGRESSION_PA."""
+"""BB% stabilizes around 120 PAs."""
+
+OBP_REGRESSION_PA = 460
+"""OBP stabilizes around 460 PAs."""
+
+SLG_REGRESSION_PA = 320
+"""SLG stabilizes around 320 PAs."""
+
+ISO_REGRESSION_PA = 160
+"""ISO stabilizes around 160 PAs."""
+
+CONTACT_PCT_REGRESSION_PA = 100
+"""Contact% stabilizes around 100 swings; we approximate with PA-equivalent."""
+
+GB_PCT_REGRESSION_PA = 110
+"""GB% stabilizes around 110 PAs (or 80 BIPs); approximate with PA."""
 
 
 # Result types we treat as plate appearances.
@@ -90,12 +104,14 @@ def decay_weight(game_date: date, reference_date: date, half_life_weeks: float) 
 # Per-event PA component breakdown (for wOBA/OBP/SLG aggregation)
 # ============================================================
 
-def _event_components(result_type: str, weights: LinearWeights) -> dict:
-    """Return the per-event contributions to wOBA numerator, OBP/SLG components.
+def _event_components(event_row: dict, weights: LinearWeights) -> dict:
+    """Return the per-event contributions used for all view-level rate stats.
 
-    Each key is in PA-units, so a single event contributes to AT MOST one of:
-    `singles`, `doubles`, `triples`, `hr`, `bb` (unintentional walks),
-    `ibb` (intentional walks), `hbp`, `k`, `sf`, `sh`, `out`.
+    `event_row` is expected to have keys: result_type, pitch_sequence (str or None),
+    was_in_play (bool), bb_type (str or None).
+
+    Returns a dict with components for wOBA/OBP/SLG/AVG plus pitch counts for
+    Contact%/Whiff%/Swing% and batted-ball counts for GB%/FB%/LD%/PU%.
     """
     out = {
         'singles': 0, 'doubles': 0, 'triples': 0, 'hr': 0,
@@ -105,8 +121,19 @@ def _event_components(result_type: str, weights: LinearWeights) -> dict:
         'on_base': 0,  # H + BB + HBP (for OBP)
         'tb': 0,       # Total bases (for SLG)
         'woba_num': 0.0,
+        # Pitch-level: counts of K/F/B chars in pitch_sequence + the terminal
+        # in-play pitch. K = swinging strike (whiff). F = foul (contact). B = ball.
+        'k_pitches': 0,
+        'f_pitches': 0,
+        'b_pitches': 0,
+        'in_play': 0,
+        'pitches_total': 0,
+        # Batted-ball type counts (only when bb_type is set)
+        'bb_total': 0,
+        'gb': 0, 'fb': 0, 'ld': 0, 'pu': 0,
     }
-    rt = result_type
+
+    rt = event_row.get('result_type') if isinstance(event_row, dict) else None
     if rt == 'single':
         out['singles'] = 1; out['ab'] = 1; out['on_base'] = 1; out['tb'] = 1
         out['woba_num'] = weights.w_1b
@@ -124,7 +151,6 @@ def _event_components(result_type: str, weights: LinearWeights) -> dict:
         out['woba_num'] = weights.w_bb
     elif rt == 'intentional_walk':
         out['ibb'] = 1; out['on_base'] = 1
-        # IBBs don't count in wOBA numerator (per FanGraphs convention)
     elif rt == 'hbp':
         out['hbp'] = 1; out['on_base'] = 1
         out['woba_num'] = weights.w_hbp
@@ -138,13 +164,33 @@ def _event_components(result_type: str, weights: LinearWeights) -> dict:
                 'fielders_choice', 'error', 'double_play', 'other'}:
         out['ab'] = 1; out['out'] = 1
     else:
-        # Unknown result type — don't count as a PA.
         out['pa'] = 0
+
+    # Pitch-level counts from pitch_sequence + the terminal (if was_in_play)
+    seq = event_row.get('pitch_sequence') if isinstance(event_row, dict) else None
+    if seq:
+        out['k_pitches'] = seq.count('K')
+        out['f_pitches'] = seq.count('F')
+        out['b_pitches'] = seq.count('B')
+        out['pitches_total'] = len(seq)
+    if event_row.get('was_in_play'):
+        out['in_play'] = 1
+        out['pitches_total'] += 1
+
+    # Batted-ball type
+    bb_type = event_row.get('bb_type') if isinstance(event_row, dict) else None
+    if bb_type in ('GB', 'FB', 'LD', 'PU'):
+        out['bb_total'] = 1
+        if bb_type == 'GB': out['gb'] = 1
+        elif bb_type == 'FB': out['fb'] = 1
+        elif bb_type == 'LD': out['ld'] = 1
+        elif bb_type == 'PU': out['pu'] = 1
+
     return out
 
 
 def _aggregate_to_rates(agg: dict) -> dict:
-    """Given a weighted-aggregate dict, return wOBA/OBP/SLG/K%/BB%/AVG."""
+    """Given a weighted-aggregate dict, return all rate stats used downstream."""
     pa = agg['pa']
     ab = agg['ab']
     sf = agg['sf']
@@ -152,34 +198,60 @@ def _aggregate_to_rates(agg: dict) -> dict:
     hbp = agg['hbp']
     h = agg['singles'] + agg['doubles'] + agg['triples'] + agg['hr']
 
-    # wOBA: (woba_num) / (AB + uBB + SF + HBP)
     woba_denom = ab + bb + sf + hbp
     woba = agg['woba_num'] / woba_denom if woba_denom > 0 else 0.0
 
-    # OBP: (H + BB + IBB + HBP) / (AB + BB + IBB + HBP + SF)
     obp_num = h + bb + agg['ibb'] + hbp
     obp_denom = ab + bb + agg['ibb'] + hbp + sf
     obp = obp_num / obp_denom if obp_denom > 0 else 0.0
 
-    # SLG: TB / AB
     slg = agg['tb'] / ab if ab > 0 else 0.0
-
-    # AVG: H / AB
     avg = h / ab if ab > 0 else 0.0
+    iso = (slg - avg) if ab > 0 else 0.0
 
-    # K% / BB% as fraction of PA
     k_pct = agg['k'] / pa if pa > 0 else 0.0
     bb_pct = (agg['bb'] + agg['ibb']) / pa if pa > 0 else 0.0
 
+    # Contact%: contact / swings, where swings = K + F + in_play
+    swings = agg.get('k_pitches', 0) + agg.get('f_pitches', 0) + agg.get('in_play', 0)
+    contact = agg.get('f_pitches', 0) + agg.get('in_play', 0)
+    contact_pct = (contact / swings) if swings > 0 else None
+    whiff_pct = (agg.get('k_pitches', 0) / swings) if swings > 0 else None
+    swing_pct = (swings / agg['pitches_total']) if agg.get('pitches_total', 0) > 0 else None
+
+    bb_total = agg.get('bb_total', 0)
+    gb_pct = (agg.get('gb', 0) / bb_total) if bb_total > 0 else None
+    fb_pct = (agg.get('fb', 0) / bb_total) if bb_total > 0 else None
+    ld_pct = (agg.get('ld', 0) / bb_total) if bb_total > 0 else None
+    pu_pct = (agg.get('pu', 0) / bb_total) if bb_total > 0 else None
+
     return {
-        'wOBA': woba, 'OBP': obp, 'SLG': slg, 'AVG': avg,
+        'wOBA': woba, 'OBP': obp, 'SLG': slg, 'AVG': avg, 'ISO': iso,
         'K_pct': k_pct, 'BB_pct': bb_pct,
+        'Contact_pct': contact_pct, 'Whiff_pct': whiff_pct, 'Swing_pct': swing_pct,
+        'GB_pct': gb_pct, 'FB_pct': fb_pct, 'LD_pct': ld_pct, 'PU_pct': pu_pct,
+        '_swings': swings, '_bb_total': bb_total,
     }
 
 
 # ============================================================
 # League platoon constants (computed empirically, cached per call)
 # ============================================================
+
+_EMPTY_AGG = {
+    'pa': 0.0, 'ab': 0.0, 'sf': 0.0, 'bb': 0.0, 'hbp': 0.0, 'ibb': 0.0,
+    'singles': 0.0, 'doubles': 0.0, 'triples': 0.0, 'hr': 0.0,
+    'tb': 0.0, 'woba_num': 0.0, 'k': 0.0, 'sh': 0.0, 'out': 0.0,
+    'on_base': 0.0,
+    'k_pitches': 0.0, 'f_pitches': 0.0, 'b_pitches': 0.0,
+    'in_play': 0.0, 'pitches_total': 0.0,
+    'bb_total': 0.0, 'gb': 0.0, 'fb': 0.0, 'ld': 0.0, 'pu': 0.0,
+}
+
+
+def _new_agg():
+    return dict(_EMPTY_AGG)
+
 
 def compute_league_platoon_deltas(
     cur,
@@ -188,16 +260,15 @@ def compute_league_platoon_deltas(
     half_life_weeks: float = DEFAULT_HALF_LIFE_WEEKS,
     reference_date: Optional[date] = None,
 ) -> dict:
-    """Compute the league-average wOBA delta for each (bats, throws) bucket
-    relative to that batter handedness's overall wOBA.
+    """Compute league-average rate-stat deltas per (bats, throws) bucket relative
+    to each batter-handedness's overall rate. Returns deltas for wOBA, OBP, SLG, ISO.
 
     Returns:
         {
-            'R': {'R': delta_R_vs_R, 'L': delta_R_vs_L},
-            'L': {'R': delta_L_vs_R, 'L': delta_L_vs_L},
+          'R': {'R': {'wOBA': dx, 'OBP': dx, 'SLG': dx, 'ISO': dx}, 'L': {...}},
+          'L': {...},
+          'B': {'R': {'wOBA': 0, ...}, 'L': {'wOBA': 0, ...}},  # switch: no adj
         }
-
-    For switch hitters we return zeros — by design they neutralize platoon.
     """
     if reference_date is None:
         reference_date = date.today()
@@ -206,7 +277,8 @@ def compute_league_platoon_deltas(
 
     cur.execute(
         """
-        SELECT pb.bats, pp.throws, ge.result_type, g.game_date
+        SELECT pb.bats, pp.throws, ge.result_type, g.game_date,
+               ge.pitch_sequence, ge.was_in_play, ge.bb_type
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
         JOIN players pb ON pb.id = ge.batter_player_id
@@ -224,58 +296,50 @@ def compute_league_platoon_deltas(
     )
     rows = cur.fetchall()
 
-    # Aggregate by (bats, throws)
     buckets = {('R','R'): [], ('R','L'): [], ('L','R'): [], ('L','L'): [],
                ('B','R'): [], ('B','L'): []}
     for r in rows:
         bats = r['bats']; throws = r['throws']
-        rt = r['result_type']; gd = r['game_date']
-        if rt not in PA_RESULT_TYPES:
+        if r['result_type'] not in PA_RESULT_TYPES:
             continue
-        w = decay_weight(gd, reference_date, half_life_weeks)
-        comps = _event_components(rt, weights)
+        w = decay_weight(r['game_date'], reference_date, half_life_weeks)
+        comps = _event_components(r, weights)
         buckets[(bats, throws)].append((w, comps))
 
-    # Compute weighted wOBA per bucket
-    woba_by_bucket = {}
-    for key, evts in buckets.items():
-        agg = {'pa': 0.0, 'ab': 0.0, 'sf': 0.0, 'bb': 0.0, 'hbp': 0.0, 'ibb': 0.0,
-               'singles': 0.0, 'doubles': 0.0, 'triples': 0.0, 'hr': 0.0,
-               'tb': 0.0, 'woba_num': 0.0, 'k': 0.0, 'sh': 0.0, 'out': 0.0,
-               'on_base': 0.0}
-        for w, c in evts:
+    def _rates_for_bucket(bucket_evts):
+        agg = _new_agg()
+        for w, c in bucket_evts:
             for k, v in c.items():
                 agg[k] = agg.get(k, 0.0) + w * v
-        rates = _aggregate_to_rates(agg)
-        woba_by_bucket[key] = rates['wOBA']
+        return _aggregate_to_rates(agg)
 
-    # Aggregate across pitcher-hand to get per-bats-hand season baseline
-    rhb_overall = _woba_overall(buckets[('R','R')] + buckets[('R','L')], weights)
-    lhb_overall = _woba_overall(buckets[('L','R')] + buckets[('L','L')], weights)
+    rates_by_bucket = {key: _rates_for_bucket(evts) for key, evts in buckets.items()}
 
-    deltas = {
+    rhb_overall = _rates_for_bucket(buckets[('R','R')] + buckets[('R','L')])
+    lhb_overall = _rates_for_bucket(buckets[('L','R')] + buckets[('L','L')])
+
+    def _delta_block(bucket_rates, baseline_rates):
+        return {
+            'wOBA': bucket_rates['wOBA'] - baseline_rates['wOBA'],
+            'OBP':  bucket_rates['OBP']  - baseline_rates['OBP'],
+            'SLG':  bucket_rates['SLG']  - baseline_rates['SLG'],
+            'ISO':  bucket_rates['ISO']  - baseline_rates['ISO'],
+        }
+
+    return {
         'R': {
-            'R': woba_by_bucket.get(('R','R'), 0.0) - rhb_overall,
-            'L': woba_by_bucket.get(('R','L'), 0.0) - rhb_overall,
+            'R': _delta_block(rates_by_bucket[('R','R')], rhb_overall),
+            'L': _delta_block(rates_by_bucket[('R','L')], rhb_overall),
         },
         'L': {
-            'R': woba_by_bucket.get(('L','R'), 0.0) - lhb_overall,
-            'L': woba_by_bucket.get(('L','L'), 0.0) - lhb_overall,
+            'R': _delta_block(rates_by_bucket[('L','R')], lhb_overall),
+            'L': _delta_block(rates_by_bucket[('L','L')], lhb_overall),
         },
-        'B': {'R': 0.0, 'L': 0.0},  # switch hitters: no adjustment
+        'B': {
+            'R': {'wOBA': 0.0, 'OBP': 0.0, 'SLG': 0.0, 'ISO': 0.0},
+            'L': {'wOBA': 0.0, 'OBP': 0.0, 'SLG': 0.0, 'ISO': 0.0},
+        },
     }
-    return deltas
-
-
-def _woba_overall(evts, weights):
-    agg = {'pa': 0.0, 'ab': 0.0, 'sf': 0.0, 'bb': 0.0, 'hbp': 0.0, 'ibb': 0.0,
-           'singles': 0.0, 'doubles': 0.0, 'triples': 0.0, 'hr': 0.0,
-           'tb': 0.0, 'woba_num': 0.0, 'k': 0.0, 'sh': 0.0, 'out': 0.0,
-           'on_base': 0.0}
-    for w, c in evts:
-        for k, v in c.items():
-            agg[k] = agg.get(k, 0.0) + w * v
-    return _aggregate_to_rates(agg)['wOBA']
 
 
 # ============================================================
@@ -316,11 +380,11 @@ def compute_player_split_profile(
 
     weights = DEFAULT_WEIGHTS.get(division_level, DEFAULT_WEIGHTS['NAIA'])
 
-    # Pull all batter PAs for this player in this season, with pitcher hand and game date
     cur.execute(
         """
         SELECT ge.result_type, g.game_date, pp.throws AS pitcher_hand,
-               pb.bats AS batter_hand
+               pb.bats AS batter_hand,
+               ge.pitch_sequence, ge.was_in_play, ge.bb_type
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
         JOIN players pb ON pb.id = ge.batter_player_id
@@ -338,7 +402,6 @@ def compute_player_split_profile(
 
     bats = rows[0]['batter_hand'] or 'R'
 
-    # Bucket events by (vs_R, vs_L, all)
     season_evts = []
     vs_r_evts = []
     vs_l_evts = []
@@ -347,7 +410,7 @@ def compute_player_split_profile(
         if rt not in PA_RESULT_TYPES:
             continue
         w = decay_weight(r['game_date'], reference_date, half_life_weeks)
-        comps = _event_components(rt, weights)
+        comps = _event_components(r, weights)
         if comps['pa'] == 0:
             continue
         season_evts.append((w, comps))
@@ -356,32 +419,30 @@ def compute_player_split_profile(
             vs_r_evts.append((w, comps))
         elif ph == 'L':
             vs_l_evts.append((w, comps))
-        # else: unknown pitcher hand — counts toward season only
 
-    # Season view: no regression (the season *is* the prior for the splits).
     season_view = _build_view(season_evts)
 
-    # Regression target for each split = season wOBA + league delta for this batter hand
     bats_key = bats if bats in ('R', 'L', 'B') else 'R'
-    target_woba_vs_r = season_view['wOBA'] + league_deltas[bats_key]['R']
-    target_woba_vs_l = season_view['wOBA'] + league_deltas[bats_key]['L']
-    # K% and BB% targets are the player's season values (no platoon delta needed —
-    # platoon effects on K%/BB% are very small in college samples).
-    target_k = season_view['K_pct']
-    target_bb = season_view['BB_pct']
+    deltas_r = league_deltas[bats_key]['R']
+    deltas_l = league_deltas[bats_key]['L']
 
-    vs_r_view = _build_view(
-        vs_r_evts,
-        regress_woba_to=target_woba_vs_r, k_regress_woba=k_regress,
-        regress_k_pct_to=target_k, k_regress_k_pct=K_PCT_REGRESSION_PA,
-        regress_bb_pct_to=target_bb, k_regress_bb_pct=BB_PCT_REGRESSION_PA,
-    )
-    vs_l_view = _build_view(
-        vs_l_evts,
-        regress_woba_to=target_woba_vs_l, k_regress_woba=k_regress,
-        regress_k_pct_to=target_k, k_regress_k_pct=K_PCT_REGRESSION_PA,
-        regress_bb_pct_to=target_bb, k_regress_bb_pct=BB_PCT_REGRESSION_PA,
-    )
+    def _build_split(evts, deltas):
+        return _build_view(
+            evts,
+            regress_woba_to=season_view['wOBA'] + deltas['wOBA'], k_regress_woba=k_regress,
+            regress_obp_to=season_view['OBP'] + deltas['OBP'], k_regress_obp=OBP_REGRESSION_PA,
+            regress_slg_to=season_view['SLG'] + deltas['SLG'], k_regress_slg=SLG_REGRESSION_PA,
+            regress_iso_to=season_view['ISO'] + deltas['ISO'], k_regress_iso=ISO_REGRESSION_PA,
+            regress_k_pct_to=season_view['K_pct'], k_regress_k_pct=K_PCT_REGRESSION_PA,
+            regress_bb_pct_to=season_view['BB_pct'], k_regress_bb_pct=BB_PCT_REGRESSION_PA,
+            regress_contact_pct_to=season_view.get('Contact_pct'),
+            k_regress_contact_pct=CONTACT_PCT_REGRESSION_PA,
+            regress_gb_pct_to=season_view.get('GB_pct'),
+            k_regress_gb_pct=GB_PCT_REGRESSION_PA,
+        )
+
+    vs_r_view = _build_split(vs_r_evts, deltas_r)
+    vs_l_view = _build_split(vs_l_evts, deltas_l)
 
     return {
         'player_id': player_id,
@@ -407,16 +468,23 @@ def _build_view(
     evts,
     regress_woba_to: Optional[float] = None,
     k_regress_woba: float = 0,
+    regress_obp_to: Optional[float] = None,
+    k_regress_obp: float = 0,
+    regress_slg_to: Optional[float] = None,
+    k_regress_slg: float = 0,
+    regress_iso_to: Optional[float] = None,
+    k_regress_iso: float = 0,
     regress_k_pct_to: Optional[float] = None,
     k_regress_k_pct: float = 0,
     regress_bb_pct_to: Optional[float] = None,
     k_regress_bb_pct: float = 0,
+    regress_contact_pct_to: Optional[float] = None,
+    k_regress_contact_pct: float = 0,
+    regress_gb_pct_to: Optional[float] = None,
+    k_regress_gb_pct: float = 0,
 ) -> dict:
-    """Aggregate weighted events; optionally regress wOBA, K%, and BB%."""
-    agg = {'pa': 0.0, 'ab': 0.0, 'sf': 0.0, 'bb': 0.0, 'hbp': 0.0, 'ibb': 0.0,
-           'singles': 0.0, 'doubles': 0.0, 'triples': 0.0, 'hr': 0.0,
-           'tb': 0.0, 'woba_num': 0.0, 'k': 0.0, 'sh': 0.0, 'out': 0.0,
-           'on_base': 0.0}
+    """Aggregate weighted events; optionally regress each rate stat."""
+    agg = _new_agg()
     raw_pa = 0
     for w, c in evts:
         raw_pa += c['pa']
@@ -425,30 +493,69 @@ def _build_view(
 
     rates = _aggregate_to_rates(agg)
     effective_pa = agg['pa']
-    observed_woba = rates['wOBA']
-    observed_k_pct = rates['K_pct']
-    observed_bb_pct = rates['BB_pct']
+    effective_swings = agg.get('k_pitches', 0) + agg.get('f_pitches', 0) + agg.get('in_play', 0)
+    effective_bb_total = agg.get('bb_total', 0)
 
-    # Apply regression on each rate stat independently.
+    # Snapshot observed values before regression
+    observed = {
+        'wOBA': rates['wOBA'],
+        'OBP':  rates['OBP'],
+        'SLG':  rates['SLG'],
+        'ISO':  rates['ISO'],
+        'K_pct': rates['K_pct'],
+        'BB_pct': rates['BB_pct'],
+        'Contact_pct': rates['Contact_pct'],
+        'GB_pct': rates['GB_pct'],
+    }
+
     if regress_woba_to is not None:
-        rates['wOBA'] = _regress(observed_woba, effective_pa, regress_woba_to, k_regress_woba)
+        rates['wOBA'] = _regress(rates['wOBA'], effective_pa, regress_woba_to, k_regress_woba)
+    if regress_obp_to is not None:
+        rates['OBP'] = _regress(rates['OBP'], effective_pa, regress_obp_to, k_regress_obp)
+    if regress_slg_to is not None:
+        rates['SLG'] = _regress(rates['SLG'], effective_pa, regress_slg_to, k_regress_slg)
+    if regress_iso_to is not None:
+        rates['ISO'] = _regress(rates['ISO'], effective_pa, regress_iso_to, k_regress_iso)
     if regress_k_pct_to is not None:
-        rates['K_pct'] = _regress(observed_k_pct, effective_pa, regress_k_pct_to, k_regress_k_pct)
+        rates['K_pct'] = _regress(rates['K_pct'], effective_pa, regress_k_pct_to, k_regress_k_pct)
     if regress_bb_pct_to is not None:
-        rates['BB_pct'] = _regress(observed_bb_pct, effective_pa, regress_bb_pct_to, k_regress_bb_pct)
+        rates['BB_pct'] = _regress(rates['BB_pct'], effective_pa, regress_bb_pct_to, k_regress_bb_pct)
+    if regress_contact_pct_to is not None and rates['Contact_pct'] is not None:
+        rates['Contact_pct'] = _regress(
+            rates['Contact_pct'], effective_swings, regress_contact_pct_to, k_regress_contact_pct
+        )
+    if regress_gb_pct_to is not None and rates['GB_pct'] is not None:
+        rates['GB_pct'] = _regress(
+            rates['GB_pct'], effective_bb_total, regress_gb_pct_to, k_regress_gb_pct
+        )
 
-    rates['observed_wOBA'] = observed_woba
-    rates['observed_K_pct'] = observed_k_pct
-    rates['observed_BB_pct'] = observed_bb_pct
+    rates['observed_wOBA'] = observed['wOBA']
+    rates['observed_OBP'] = observed['OBP']
+    rates['observed_SLG'] = observed['SLG']
+    rates['observed_ISO'] = observed['ISO']
+    rates['observed_K_pct'] = observed['K_pct']
+    rates['observed_BB_pct'] = observed['BB_pct']
+    rates['observed_Contact_pct'] = observed['Contact_pct']
+    rates['observed_GB_pct'] = observed['GB_pct']
     rates['effective_pa'] = round(effective_pa, 2)
+    rates['effective_swings'] = round(effective_swings, 2)
+    rates['effective_bb_total'] = round(effective_bb_total, 2)
     rates['raw_pa'] = raw_pa
     return rates
 
 
 def _empty_profile(player_id: int, season: int) -> dict:
-    empty_view = {'wOBA': 0.0, 'OBP': 0.0, 'SLG': 0.0, 'AVG': 0.0,
-                  'K_pct': 0.0, 'BB_pct': 0.0,
-                  'observed_wOBA': 0.0, 'effective_pa': 0.0, 'raw_pa': 0}
+    empty_view = {
+        'wOBA': 0.0, 'OBP': 0.0, 'SLG': 0.0, 'AVG': 0.0, 'ISO': 0.0,
+        'K_pct': 0.0, 'BB_pct': 0.0,
+        'Contact_pct': None, 'Whiff_pct': None, 'Swing_pct': None,
+        'GB_pct': None, 'FB_pct': None, 'LD_pct': None, 'PU_pct': None,
+        'observed_wOBA': 0.0, 'observed_OBP': 0.0, 'observed_SLG': 0.0,
+        'observed_ISO': 0.0, 'observed_K_pct': 0.0, 'observed_BB_pct': 0.0,
+        'observed_Contact_pct': None, 'observed_GB_pct': None,
+        'effective_pa': 0.0, 'effective_swings': 0.0, 'effective_bb_total': 0.0,
+        'raw_pa': 0,
+    }
     return {
         'player_id': player_id,
         'season': season,
