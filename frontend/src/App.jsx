@@ -108,6 +108,7 @@ import TeamScouting from './pages/TeamScouting'
 import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
+import LineupHelper from './pages/LineupHelper'
 import ParkFactors from './pages/ParkFactors'
 // Coach & Scouting Portal
 import PortalLayout from './components/PortalLayout'
@@ -211,6 +212,8 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><HistoricMatchups /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/player-scouting"
                  element={<RequirePortalAccess><PortalLayout><PlayerScouting /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/lineup-helper"
+                 element={<RequirePortalAccess><PortalLayout><LineupHelper /></PortalLayout></RequirePortalAccess>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />

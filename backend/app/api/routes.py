@@ -26,6 +26,10 @@ from typing import Optional
 from ..models.database import get_connection
 from .auth import require_admin
 from .leverage import compute_li
+from .lineup_helper import (
+    compute_team_lineup_helper,
+    compute_manual_lineup,
+)
 
 # Phase E: batted-ball + spray classifier (lives in scripts/ but is
 # pure Python — import via path manipulation so the API can use it.)
@@ -19973,3 +19977,79 @@ def historic_matchup_opponents(
                 for r in cur.fetchall()
             ]
         }
+
+
+# ============================================================
+# Lineup Helper (Coaching & Scouting Portal)
+# ============================================================
+
+@router.get("/coaching/lineup-helper")
+def lineup_helper_auto(
+    team_id: int = Query(..., description="Team id to optimize lineup for"),
+    season: int = Query(2026, description="Season year"),
+    min_pa: int = Query(30, description="Minimum PA threshold for inclusion"),
+    min_position_starts: int = Query(8, description="Min games started at a position to be eligible there"),
+    half_life_weeks: float = Query(6.0, description="Recency-decay half-life in weeks"),
+):
+    """Auto mode: pick the optimal 9-player starting lineup vs RHP and LHP
+    for the given team, with bench rankings.
+
+    Uses time-weighted, sample-regressed split stats (see split_stats.py)
+    and modern sabermetric slot weights (see lineup_engine.py)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = compute_team_lineup_helper(
+            cur, team_id, season,
+            min_pa=min_pa,
+            min_position_starts=min_position_starts,
+            half_life_weeks=half_life_weeks,
+        )
+        if 'error' in result and 'team' not in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        return result
+
+
+from pydantic import BaseModel, Field
+
+
+class ManualLineupAssignment(BaseModel):
+    player_id: int
+    position: str = Field(..., description="One of: C, 1B, 2B, 3B, SS, LF, CF, RF, DH")
+
+
+class ManualLineupRequest(BaseModel):
+    season: int = 2026
+    division_level: str = 'NAIA'
+    half_life_weeks: float = 6.0
+    assignments: list[ManualLineupAssignment]
+
+
+@router.post("/coaching/lineup-helper/manual")
+def lineup_helper_manual(req: ManualLineupRequest):
+    """Manual mode: user supplies 9 (player_id, position) pairs, we order them
+    optimally vs RHP and LHP."""
+    if len(req.assignments) != 9:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Manual mode requires exactly 9 assignments, got {len(req.assignments)}",
+        )
+    valid_positions = {'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'}
+    for a in req.assignments:
+        if a.position not in valid_positions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid position '{a.position}'. Must be one of {sorted(valid_positions)}",
+            )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = compute_manual_lineup(
+            cur,
+            player_assignments=[a.model_dump() for a in req.assignments],
+            season=req.season,
+            division_level=req.division_level,
+            half_life_weeks=req.half_life_weeks,
+        )
+        if 'error' in result:
+            raise HTTPException(status_code=400, detail=result['error'])
+        return result

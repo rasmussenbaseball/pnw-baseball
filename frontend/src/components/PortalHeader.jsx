@@ -24,6 +24,8 @@ const NAV_SECTIONS = [
     items: [
       { to: '/portal/trends', label: 'Trends',
         desc: 'Lineups, rotation & bullpen scouting' },
+      { to: '/portal/lineup-helper', label: 'Lineup Helper',
+        desc: 'Optimal vs RHP / vs LHP batting orders + bench' },
     ],
   },
   {
