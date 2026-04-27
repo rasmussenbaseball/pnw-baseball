@@ -4047,8 +4047,14 @@ def team_info_graphic(
                     SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'S', ''))) AS s_count,
                     SUM(COALESCE(ge.pitches_thrown, 0)) AS pitches,
                     COUNT(*) FILTER (WHERE ge.was_in_play AND ge.pitches_thrown IS NOT NULL) AS in_play,
-                    COUNT(*) FILTER (WHERE ge.pitches_thrown IS NOT NULL) AS tracked_pa,
-                    COUNT(*) FILTER (WHERE ge.pitches_thrown IS NOT NULL
+                    -- pitches_thrown >= 1, NOT just IS NOT NULL: the parser
+                    -- emits pitches_thrown=0 for untracked PAs that have a
+                    -- "(0-0)" count notation but no actual pitch sequence
+                    -- (common from Presto/non-Sidearm sources). Those rows
+                    -- can NEVER satisfy the FPS numerator, so including
+                    -- them in the denominator silently deflates FPS%.
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS tracked_pa,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1
                         AND (LEFT(ge.pitch_sequence, 1) IN ('K','S','F')
                              OR (ge.pitch_sequence = '' AND ge.was_in_play))) AS f1_strikes
                 FROM game_events ge
@@ -5391,14 +5397,18 @@ def _compute_2026_pbp_pitching_percentiles(conn, division_level, season, player_
     cur.execute("""
         SELECT
           COUNT(*) AS pa,
-          COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
+          -- pitches_thrown >= 1 (not just IS NOT NULL): excludes "(0-0)"
+          -- untracked PAs that the parser stamps with pitches_thrown=0.
+          -- Those rows can never satisfy the FPS numerator, so leaving
+          -- them in tracked_pa silently deflates first-pitch-strike%.
+          COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
           COALESCE(SUM(pitches_thrown), 0) AS pitches,
           COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
           COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
           COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS p_inplay,
           COUNT(*) FILTER (
-              WHERE pitches_thrown IS NOT NULL AND
+              WHERE pitches_thrown >= 1 AND
                     (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
                      OR (pitch_sequence = '' AND was_in_play))
           ) AS f1_strikes,
@@ -11982,7 +11992,12 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
     cur.execute(f"""
         SELECT
             COUNT(*) AS pa,
-            COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
+            -- pitches_thrown >= 1 (not just IS NOT NULL): the parser emits
+            -- pitches_thrown=0 for PAs that have a "(0-0)" count notation
+            -- in the source HTML but no actual pitch sequence string. Those
+            -- rows can never satisfy the FPS numerator branches, so leaving
+            -- them in tracked_pa silently deflates first-pitch-strike%.
+            COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
             COALESCE(SUM(pitches_thrown), 0) AS pitches,
             SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
             SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
@@ -11998,21 +12013,20 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
             COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS f_in_play,
-            -- F1 counts: only over PAs WITH pitch tracking, otherwise
-            -- the in-play branch falsely fires for events that lack a
-            -- pitch sequence string (untracked PAs have empty seq).
+            -- F1 counts: tighten to pitches_thrown >= 1 (same reason as
+            -- tracked_pa above — pitches_thrown=0 rows are untracked).
             COUNT(*) FILTER (
-                WHERE pitches_thrown IS NOT NULL AND
+                WHERE pitches_thrown >= 1 AND
                       (LEFT(pitch_sequence, 1) IN ('K', 'F')
                        OR (pitch_sequence = '' AND was_in_play))
             ) AS f1_swings,
             COUNT(*) FILTER (
-                WHERE pitches_thrown IS NOT NULL AND
+                WHERE pitches_thrown >= 1 AND
                       (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
                        OR (pitch_sequence = '' AND was_in_play))
             ) AS f1_strikes,
             COUNT(*) FILTER (
-                WHERE pitches_thrown IS NOT NULL
+                WHERE pitches_thrown >= 1
                       AND pitch_sequence = '' AND was_in_play
             ) AS f1_in_play,
             COUNT(*) FILTER (WHERE strikes_before = 2) AS two_strike_pa,
@@ -12379,7 +12393,10 @@ def get_player_pitch_level_stats(
             JOIN games g ON g.id = ge.game_id
             WHERE ge.batter_player_id = ANY(%s)
               AND g.season = %s
-              AND ge.pitches_thrown IS NOT NULL
+              -- pitches_thrown >= 1, not just IS NOT NULL: parser stamps
+              -- pitches_thrown=0 on "(0-0)" PAs from sources that don't
+              -- ship a pitch sequence string.
+              AND ge.pitches_thrown >= 1
         """, (all_pids, season))
         r = cur.fetchone()
         tracked_pa = r["tracked_pa"] or 0
@@ -12821,7 +12838,11 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
     cur.execute(f"""
         SELECT
             COUNT(*) AS pa,
-            COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
+            -- pitches_thrown >= 1, not just IS NOT NULL: the parser emits
+            -- pitches_thrown=0 for untracked "(0-0)" PAs from sources that
+            -- don't ship a pitch sequence string. Those can never be in
+            -- the FPS numerator, so they'd silently deflate FPS%.
+            COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
             COALESCE(SUM(pitches_thrown), 0) AS pitches,
             SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
             SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
@@ -12840,7 +12861,7 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))), 0) AS pB,
             COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS p_inplay,
             COUNT(*) FILTER (
-                WHERE pitches_thrown IS NOT NULL AND
+                WHERE pitches_thrown >= 1 AND
                       (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
                        OR (pitch_sequence = '' AND was_in_play))
             ) AS f1_strikes,
@@ -13147,7 +13168,11 @@ def get_player_pitch_level_stats_pitcher(
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             WHERE ge.pitcher_player_id = ANY(%s) AND g.season = %s
-              AND ge.pitches_thrown IS NOT NULL
+              -- pitches_thrown >= 1, not just IS NOT NULL: parser stamps
+              -- pitches_thrown=0 on "(0-0)" PAs from sources that don't
+              -- ship a pitch sequence string.  Including those silently
+              -- deflates FPS%.
+              AND ge.pitches_thrown >= 1
         """, (all_pids, season))
         r = cur.fetchone()
         tracked_pa = r["tracked_pa"] or 0
@@ -17590,14 +17615,18 @@ def opponent_trends(
                 SELECT
                     ge.pitcher_player_id AS pid,
                     COUNT(*) AS pa,
-                    COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL) AS tracked_pa,
+                    -- pitches_thrown >= 1, not just IS NOT NULL: parser
+                    -- stamps pitches_thrown=0 on "(0-0)" PAs from sources
+                    -- that don't ship a pitch sequence. Excluding those
+                    -- avoids silently deflating FPS%.
+                    COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
                     COALESCE(SUM(pitches_thrown), 0) AS pitches,
                     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
                     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
                     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
                     COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
                     COUNT(*) FILTER (
-                        WHERE pitches_thrown IS NOT NULL AND
+                        WHERE pitches_thrown >= 1 AND
                               (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
                                OR (pitch_sequence = '' AND was_in_play))
                     ) AS f1_strikes,
