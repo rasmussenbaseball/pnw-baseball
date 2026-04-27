@@ -4047,12 +4047,13 @@ def team_info_graphic(
                     SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'S', ''))) AS s_count,
                     SUM(COALESCE(ge.pitches_thrown, 0)) AS pitches,
                     COUNT(*) FILTER (WHERE ge.was_in_play AND ge.pitches_thrown IS NOT NULL) AS in_play,
-                    -- pitches_thrown >= 1, NOT just IS NOT NULL: the parser
+                    -- pitches_thrown >= 1 (not just IS NOT NULL): the parser
                     -- emits pitches_thrown=0 for untracked PAs that have a
                     -- "(0-0)" count notation but no actual pitch sequence
-                    -- (common from Presto/non-Sidearm sources). Those rows
-                    -- can NEVER satisfy the FPS numerator, so including
-                    -- them in the denominator silently deflates FPS%.
+                    -- (common from Presto / non-Sidearm sources). Those
+                    -- rows can never satisfy the FPS numerator, so leaving
+                    -- them in the denominator silently deflates first-
+                    -- pitch-strike rate.
                     COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS tracked_pa,
                     COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1
                         AND (LEFT(ge.pitch_sequence, 1) IN ('K','S','F')
@@ -5408,7 +5409,7 @@ def _compute_2026_pbp_pitching_percentiles(conn, division_level, season, player_
           -- pitches_thrown >= 1 (not just IS NOT NULL): excludes "(0-0)"
           -- untracked PAs that the parser stamps with pitches_thrown=0.
           -- Those rows can never satisfy the FPS numerator, so leaving
-          -- them in tracked_pa silently deflates first-pitch-strike%.
+          -- them in tracked_pa silently deflates first-pitch-strike rate.
           COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
           COALESCE(SUM(pitches_thrown), 0) AS pitches,
           COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
@@ -12004,7 +12005,7 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
             -- pitches_thrown=0 for PAs that have a "(0-0)" count notation
             -- in the source HTML but no actual pitch sequence string. Those
             -- rows can never satisfy the FPS numerator branches, so leaving
-            -- them in tracked_pa silently deflates first-pitch-strike%.
+            -- them in tracked_pa silently deflates first-pitch-strike rate.
             COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
             COALESCE(SUM(pitches_thrown), 0) AS pitches,
             SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
@@ -12849,7 +12850,7 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
             -- pitches_thrown >= 1, not just IS NOT NULL: the parser emits
             -- pitches_thrown=0 for untracked "(0-0)" PAs from sources that
             -- don't ship a pitch sequence string. Those can never be in
-            -- the FPS numerator, so they'd silently deflate FPS%.
+            -- the FPS numerator, so they'd silently deflate that rate.
             COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
             COALESCE(SUM(pitches_thrown), 0) AS pitches,
             SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
@@ -13176,10 +13177,10 @@ def get_player_pitch_level_stats_pitcher(
             FROM game_events ge
             JOIN games g ON g.id = ge.game_id
             WHERE ge.pitcher_player_id = ANY(%s) AND g.season = %s
-              -- pitches_thrown >= 1, not just IS NOT NULL: parser stamps
-              -- pitches_thrown=0 on "(0-0)" PAs from sources that don't
-              -- ship a pitch sequence string.  Including those silently
-              -- deflates FPS%.
+              -- Require pitches_thrown >= 1, not just IS NOT NULL: the
+              -- parser stamps pitches_thrown=0 on "(0-0)" PAs from
+              -- sources that don't ship a pitch sequence string. Leaving
+              -- those rows in the denominator silently deflates FPS.
               AND ge.pitches_thrown >= 1
         """, (all_pids, season))
         r = cur.fetchone()
@@ -17626,7 +17627,7 @@ def opponent_trends(
                     -- pitches_thrown >= 1, not just IS NOT NULL: parser
                     -- stamps pitches_thrown=0 on "(0-0)" PAs from sources
                     -- that don't ship a pitch sequence. Excluding those
-                    -- avoids silently deflating FPS%.
+                    -- avoids silently deflating that rate.
                     COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
                     COALESCE(SUM(pitches_thrown), 0) AS pitches,
                     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
