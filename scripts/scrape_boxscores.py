@@ -2284,17 +2284,29 @@ def find_player_id(cur, team_id, player_name, season):
     if not name:
         return None
 
+    # SQL fragment used in every strategy below: matches LOWER(last_name)
+    # to the input either exactly OR after stripping a generational suffix
+    # (Jr, Sr, II, III, IV) — handles cases like input "Nikki Scott"
+    # matching DB record "Nikki Scott II". Prefer non-phantom rows on
+    # ties (ORDER BY is_phantom ASC).
+    LAST_MATCH = (
+        "(LOWER(p.last_name) = LOWER(%s)"
+        " OR LOWER(REGEXP_REPLACE(p.last_name, "
+        "'\\s+(jr|sr|ii|iii|iv)\\.?$', '', 'i')) = LOWER(%s))"
+    )
+
     # ── Strategy 1: "First Last" format ──
     parts = name.split(None, 1)
     if len(parts) == 2:
         first, last = parts
-        cur.execute("""
+        cur.execute(f"""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
               AND LOWER(p.first_name) = LOWER(%s)
-              AND LOWER(p.last_name) = LOWER(%s)
+              AND {LAST_MATCH}
+            ORDER BY p.is_phantom ASC, p.id ASC
             LIMIT 1
-        """, (team_id, first, last))
+        """, (team_id, first, last, last))
         row = cur.fetchone()
         if row:
             return row["id"]
@@ -2305,13 +2317,14 @@ def find_player_id(cur, team_id, player_name, season):
         last = parts[0].strip()
         first = parts[1].strip()
         if first and last:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT p.id FROM players p
                 WHERE p.team_id = %s
                   AND LOWER(p.first_name) = LOWER(%s)
-                  AND LOWER(p.last_name) = LOWER(%s)
+                  AND {LAST_MATCH}
+                ORDER BY p.is_phantom ASC, p.id ASC
                 LIMIT 1
-            """, (team_id, first, last))
+            """, (team_id, first, last, last))
             row = cur.fetchone()
             if row:
                 return row["id"]
@@ -2321,13 +2334,14 @@ def find_player_id(cur, team_id, player_name, season):
     if initial_m:
         initial = initial_m.group(1).lower()
         last = initial_m.group(2).strip()
-        cur.execute("""
+        cur.execute(f"""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
               AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = %s
-              AND LOWER(p.last_name) = LOWER(%s)
+              AND {LAST_MATCH}
+            ORDER BY p.is_phantom ASC, p.id ASC
             LIMIT 1
-        """, (team_id, initial, last))
+        """, (team_id, initial, last, last))
         row = cur.fetchone()
         if row:
             return row["id"]
@@ -2340,13 +2354,14 @@ def find_player_id(cur, team_id, player_name, season):
         initial_m2 = re.match(r'^([A-Z])\.?$', first_part)
         if initial_m2 and last:
             initial = initial_m2.group(1).lower()
-            cur.execute("""
+            cur.execute(f"""
                 SELECT p.id FROM players p
                 WHERE p.team_id = %s
                   AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = %s
-                  AND LOWER(p.last_name) = LOWER(%s)
+                  AND {LAST_MATCH}
+                ORDER BY p.is_phantom ASC, p.id ASC
                 LIMIT 1
-            """, (team_id, initial, last))
+            """, (team_id, initial, last, last))
             row = cur.fetchone()
             if row:
                 return row["id"]
@@ -2365,12 +2380,14 @@ def find_player_id(cur, team_id, player_name, season):
         # which silently broke the uniqueness check and made us return
         # the first match for ambiguous last names (e.g. two "Bertram"s
         # on MSUB → always picks Cole instead of correctly returning None).
-        cur.execute("""
+        # Suffix-stripped match handles "Scott" matching "Scott II".
+        cur.execute(f"""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
-              AND LOWER(p.last_name) = LOWER(%s)
+              AND {LAST_MATCH}
+            ORDER BY p.is_phantom ASC, p.id ASC
             LIMIT 2
-        """, (team_id, last))
+        """, (team_id, last, last))
         rows = cur.fetchall()
         if len(rows) == 1:
             return rows[0]["id"]
