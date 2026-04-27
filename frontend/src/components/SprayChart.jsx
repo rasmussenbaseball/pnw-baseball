@@ -132,7 +132,10 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   const R_HOME = 6
   const R_INF_OUT = 110   // infield outer radius
   const R_OF_OUT = 220    // outfield outer radius
-  const R_HR_BADGE = R_OF_OUT + 22  // outside the fence (padded for label clearance)
+  // HR badge sits INSIDE the OF wedge near the wall — that's where the
+  // HRs left from. Keeps the LF/CF/RF zone labels (which are placed
+  // OUTSIDE the fence) free of overlap.
+  const R_HR_BADGE = R_OF_OUT - 26
 
   const ofWedge = (FAN_HALF_ANGLE * 2) / OF_ZONES.length
   const ifWedge = (FAN_HALF_ANGLE * 2) / IF_ZONES.length
@@ -299,7 +302,9 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           )
         })}
 
-        {/* HR badges OUTSIDE the fence — only shown when player has HRs */}
+        {/* HR badges INSIDE the OF wedge near the wall — only shown when
+            player has HRs. Sits clear of the LF/CF/RF zone labels which
+            are positioned just OUTSIDE the fence. */}
         {hrTotal > 0 && OF_ZONES.map((z, i) => {
           const hr = hrCondensed[z] || 0
           if (hr === 0) return null

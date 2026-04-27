@@ -12948,6 +12948,9 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
         "first_pitch_strike_pct": (r["f1_strikes"] / n_tracked) if n_tracked > 0 else None,
         "putaway_pct": (r["two_strike_k"] / two_strike_pa) if two_strike_pa > 0 else None,
         "pitches_per_pa": (n_pitches / n_tracked) if n_tracked > 0 else None,
+        # On/Out-in-3 league mean: tracked PAs ending in 1-3 pitches
+        # with hit-or-out outcome, over all tracked PAs.
+        "on_or_out_3_pct": (r["on_or_out_3"] / n_tracked) if n_tracked > 0 else None,
         "gb_pct": (r["gb_n"] / bb_total) if bb_total > 0 else None,
         "fb_pct": (r["fb_n"] / bb_total) if bb_total > 0 else None,
         "ld_pct": (r["ld_n"] / bb_total) if bb_total > 0 else None,
