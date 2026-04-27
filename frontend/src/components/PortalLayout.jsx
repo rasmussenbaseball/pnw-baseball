@@ -13,20 +13,23 @@
 // their own teal/green palette internally — that's by design,
 // the portal "frames" them with the dark theme.
 
-import { Outlet, Link, useLocation } from 'react-router-dom'
 import PortalHeader from './PortalHeader'
 import { PortalTeamProvider } from '../context/PortalTeamContext'
 import PortalTeamGate from './PortalTeamGate'
 
 
-export default function PortalLayout() {
+// PortalLayout takes its content via the `children` prop now. Each
+// portal route declares <PortalLayout><Page /></PortalLayout> directly
+// in App.jsx — simpler than nested routes + Outlet, and easier to
+// reason about when routes don't render as expected.
+export default function PortalLayout({ children }) {
   return (
     <PortalTeamProvider>
       <div className="min-h-screen bg-portal-cream">
         <PortalHeader />
         <PortalTeamGate>
           <main>
-            <Outlet />
+            {children}
           </main>
         </PortalTeamGate>
       </div>

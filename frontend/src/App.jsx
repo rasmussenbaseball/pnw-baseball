@@ -188,12 +188,16 @@ export default function App() {
                  element={<Navigate to="/portal/player-scouting" replace />} />
 
           {/* Coach & Scouting Portal (auth required, themed layout) */}
-          <Route path="/portal" element={<RequireAuth><PortalLayout /></RequireAuth>}>
-            <Route index element={<PortalHome />} />
-            <Route path="trends" element={<OpponentTrends />} />
-            <Route path="historic" element={<HistoricMatchups />} />
-            <Route path="player-scouting" element={<PlayerScouting />} />
-          </Route>
+          {/* Flat routes — each wraps the page in PortalLayout via the
+              children prop. Easier to reason about than nested + Outlet. */}
+          <Route path="/portal"
+                 element={<RequireAuth><PortalLayout><PortalHome /></PortalLayout></RequireAuth>} />
+          <Route path="/portal/trends"
+                 element={<RequireAuth><PortalLayout><OpponentTrends /></PortalLayout></RequireAuth>} />
+          <Route path="/portal/historic"
+                 element={<RequireAuth><PortalLayout><HistoricMatchups /></PortalLayout></RequireAuth>} />
+          <Route path="/portal/player-scouting"
+                 element={<RequireAuth><PortalLayout><PlayerScouting /></PortalLayout></RequireAuth>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
