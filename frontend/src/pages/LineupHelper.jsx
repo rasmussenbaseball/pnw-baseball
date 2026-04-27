@@ -684,6 +684,31 @@ function StatGroup({ title, subtitle, children }) {
 }
 
 
+const STAT_TOOLTIPS = {
+  'wOBA': 'Weighted On-Base Average. Composite offensive metric where each event (walk, single, etc.) is weighted by its real run value. League average around .350.',
+  'OBP': 'On-Base Percentage. (Hits + Walks + HBP) / (AB + Walks + HBP + SF). Single best predictor of run-scoring at the lineup-construction level.',
+  'SLG': 'Slugging Percentage. Total bases per at-bat. Measures power output.',
+  'ISO': 'Isolated Power. SLG minus AVG — extra-base hits per at-bat. Cleanest power signal because it strips out singles.',
+  'K%': 'Strikeout rate as a percentage of plate appearances.',
+  'BB%': 'Walk rate as a percentage of plate appearances.',
+  'Contact%': 'Bat-to-ball ability. (Fouls + Balls in Play) / Swings. League average around 78%. Captures contact skill independent of how often a hitter swings.',
+  'Swing%': 'How often a hitter swings at any pitch. Pitches Swung At / Total Pitches Seen.',
+  'Whiff%': 'Swing-and-miss rate. Whiffs / Swings.',
+  'HR%': 'Home Run rate as a percentage of plate appearances.',
+  'AIRPULL%': 'Of all line drives and fly balls, the percentage pulled. Strong power proxy — pulled airballs travel further than oppo airballs.',
+  'GB%': 'Ground Ball percentage of all batted balls. High GB hitters create more double-play risk at slots 2 and 3.',
+  'LD%': 'Line Drive percentage of all batted balls.',
+  'FB%': 'Fly Ball percentage of all batted balls.',
+  'PU%': 'Pop-Up percentage of all batted balls. PUs are nearly always outs.',
+  'Speed z-score': 'Within-team z-score of speed proxy = (SB - 0.5×CS) / (1B + BB + HBP). +2 means top of the team in baserunning value, -2 means bottom. Used by slots 1, 2, and 9.',
+  'SB': 'Stolen bases for the season.',
+  'CS': 'Caught stealing for the season.',
+  'Singles': '1B hits — denominator for the speed proxy.',
+  'BB': 'Walks — also a speed-proxy denominator (any time on first counts).',
+  'HBP': 'Hit by pitches — also a speed-proxy denominator.',
+  'Batted balls': 'Sample size for batted-ball type percentages (GB/LD/FB/PU).',
+}
+
 function StatRow({ label, value, highlight = false, muted = false }) {
   const labelClass = muted ? 'text-gray-400' : 'text-gray-600'
   const valueClass = muted
@@ -691,9 +716,12 @@ function StatRow({ label, value, highlight = false, muted = false }) {
     : highlight
       ? 'text-portal-purple-dark font-semibold'
       : 'text-gray-900'
+  const tooltip = STAT_TOOLTIPS[label]
   return (
-    <div className="flex justify-between items-baseline text-xs">
-      <span className={labelClass}>{label}</span>
+    <div className="flex justify-between items-baseline text-xs" title={tooltip}>
+      <span className={`${labelClass} ${tooltip ? 'cursor-help underline decoration-dotted decoration-gray-300 underline-offset-2' : ''}`}>
+        {label}
+      </span>
       <span className={`font-mono ${valueClass}`}>{value ?? '—'}</span>
     </div>
   )
@@ -834,8 +862,16 @@ function BuildView({ teamId, season }) {
         subtitle="Pick any player at any position. We'll find the optimal batting order."
       >
         <div className="space-y-3">
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Useful for trying out new combinations: a freshman you want to see
+            in the leadoff spot, a defensive specialist at a new position, or
+            running a "what if" lineup against a specific pitcher matchup.
+            No minimum games required at any position. The engine just orders
+            the 9 you give it.
+          </p>
+
           {/* vs hand selector */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <span className="text-sm font-semibold text-portal-purple-dark">Optimize for:</span>
             <VsHandRadio value={vsHand} setValue={setVsHand} />
           </div>
