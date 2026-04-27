@@ -329,7 +329,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
                   <td className="py-2 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
-                        to={`/players/${s.player_id}`}
+                        to={`/player/${s.player_id}`}
                         className="text-portal-purple hover:underline font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -534,7 +534,7 @@ function BenchTable({ bench }) {
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
-                        to={`/players/${b.player_id}`}
+                        to={`/player/${b.player_id}`}
                         className="text-portal-purple hover:underline font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >

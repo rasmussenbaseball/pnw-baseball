@@ -45,6 +45,14 @@ const NAV_SECTIONS = [
 
 
 export default function PortalHeader() {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
   return (
     <header className="bg-portal-purple text-portal-cream shadow-md">
       <div className="max-w-7xl mx-auto px-4">
@@ -66,15 +74,85 @@ export default function PortalHeader() {
             <CurrentTeamChip />
             <Link
               to="/"
-              className="text-xs px-3 py-1.5 rounded border border-portal-cream/30
+              className="hidden sm:inline-block text-xs px-3 py-1.5 rounded
+                         border border-portal-cream/30
                          text-portal-cream hover:bg-portal-purple-light
                          transition-colors whitespace-nowrap"
             >
               ← Main Site
             </Link>
+            {/* Hamburger — mobile only */}
+            <button
+              type="button"
+              onClick={() => setMobileOpen(o => !o)}
+              className="md:hidden p-2 rounded hover:bg-portal-purple-light transition-colors"
+              aria-label="Open navigation menu"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                {mobileOpen ? (
+                  <>
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="6" y1="18" x2="18" y2="6" />
+                  </>
+                ) : (
+                  <>
+                    <line x1="4" y1="6" x2="20" y2="6" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="4" y1="18" x2="20" y2="18" />
+                  </>
+                )}
+              </svg>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Mobile menu drawer */}
+      {mobileOpen && (
+        <nav className="md:hidden border-t border-portal-cream/20 bg-portal-purple">
+          <div className="max-w-7xl mx-auto px-4 py-2 space-y-1">
+            <Link
+              to="/portal"
+              className="block px-3 py-2 rounded text-sm font-semibold
+                         hover:bg-portal-purple-light"
+            >
+              Home
+            </Link>
+            {NAV_SECTIONS.map(section => (
+              <div key={section.label} className="pt-2">
+                <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider opacity-70">
+                  {section.label}
+                </div>
+                {section.items.length === 0 ? (
+                  <div className="px-3 py-1.5 text-sm opacity-50 italic">Coming soon</div>
+                ) : (
+                  section.items.map(item => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className="block px-3 py-2 rounded text-sm
+                                 hover:bg-portal-purple-light"
+                    >
+                      <div className="font-medium">{item.label}</div>
+                      {item.desc && (
+                        <div className="text-[11px] opacity-70 leading-snug">{item.desc}</div>
+                      )}
+                    </Link>
+                  ))
+                )}
+              </div>
+            ))}
+            <Link
+              to="/"
+              className="block mt-3 px-3 py-2 rounded text-sm border border-portal-cream/30 text-center
+                         hover:bg-portal-purple-light"
+            >
+              ← Main Site
+            </Link>
+          </div>
+        </nav>
+      )}
     </header>
   )
 }
@@ -89,7 +167,7 @@ function PortalLogo() {
         className="h-12 w-auto object-contain"
         onError={(e) => { e.currentTarget.style.display = 'none' }}
       />
-      <span className="text-portal-cream text-base sm:text-lg
+      <span className="hidden md:inline text-portal-cream text-base sm:text-lg
                        font-medium tracking-wide leading-none">
         Coaching &amp; Scouting Portal
       </span>
