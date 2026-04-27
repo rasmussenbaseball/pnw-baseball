@@ -4065,7 +4065,15 @@ def team_info_graphic(
                 GROUP BY pp.team_id
             """, (season, conf_team_ids))
             pit_conf_rates = _rates_from_counts([dict(r) for r in cur.fetchall()], "pit")
-        except Exception:
+        except Exception as _conf_pitch_err:
+            # Print to stderr so it shows up in the FastAPI service log,
+            # but still let the endpoint return — these conf metrics are
+            # nice-to-have, not load-bearing.
+            import traceback
+            print(f"[info-graphic] conf pitch metric query FAILED for "
+                  f"team_id={team_id}: {type(_conf_pitch_err).__name__}: "
+                  f"{_conf_pitch_err}", flush=True)
+            traceback.print_exc()
             try:
                 conn.rollback()
             except Exception:
