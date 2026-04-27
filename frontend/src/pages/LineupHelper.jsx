@@ -39,7 +39,10 @@ export default function LineupHelper() {
     [team?.id],
   )
 
-  // Per-side custom lineups produced by user swaps.
+  // Mode: 'auto' (optimized starters) or 'build' (user-picked 9)
+  const [mode, setMode] = useState('auto')
+
+  // Per-side custom lineups produced by user swaps (auto mode only).
   const [customRhp, setCustomRhp] = useState(null)
   const [customLhp, setCustomLhp] = useState(null)
   const [swapping, setSwapping] = useState(false)
@@ -119,21 +122,23 @@ export default function LineupHelper() {
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5 space-y-4">
       <Hero team={team} data={data} loading={loading || swapping} />
 
-      {error && (
+      <ModeTabs mode={mode} setMode={setMode} />
+
+      {error && mode === 'auto' && (
         <Card title="Couldn't load lineup">
           <p className="text-sm text-red-700">{error}</p>
         </Card>
       )}
 
-      {swapError && (
+      {swapError && mode === 'auto' && (
         <Card title="Swap failed">
           <p className="text-sm text-red-700">{swapError}</p>
         </Card>
       )}
 
-      {loading && !data && <LoadingState />}
+      {mode === 'auto' && loading && !data && <LoadingState />}
 
-      {data && !data.error && (
+      {mode === 'auto' && data && !data.error && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <LineupColumn
             vsHand="R"
@@ -154,12 +159,14 @@ export default function LineupHelper() {
         </div>
       )}
 
-      {data && data.error && (
+      {mode === 'build' && <BuildView teamId={team.id} season={SEASON} />}
+
+      {mode === 'auto' && data && data.error && (
         <Card title="Not enough data yet">
           <p className="text-sm text-gray-700">{data.error}</p>
           <p className="text-xs text-gray-500 mt-2">
-            We need 9 hitters with at least 30 plate appearances each. Check back
-            once your team has more games played.
+            We need 9 hitters with at least 30 plate appearances each. Use
+            "Build from scratch" instead if you want full control over the lineup.
           </p>
         </Card>
       )}
@@ -720,6 +727,265 @@ function FormBadge({ form }) {
       {label}
     </span>
   )
+}
+
+
+/* ============================================================
+ * Mode tabs (Optimized vs Build from scratch)
+ * ============================================================ */
+
+function ModeTabs({ mode, setMode }) {
+  const tabClass = (active) =>
+    `px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
+      active
+        ? 'bg-portal-purple text-portal-cream'
+        : 'bg-white text-portal-purple-dark border border-gray-200 hover:bg-gray-50'
+    }`
+  return (
+    <div className="flex gap-2">
+      <button type="button" className={tabClass(mode === 'auto')} onClick={() => setMode('auto')}>
+        Optimized lineup
+      </button>
+      <button type="button" className={tabClass(mode === 'build')} onClick={() => setMode('build')}>
+        Build from scratch
+      </button>
+    </div>
+  )
+}
+
+
+/* ============================================================
+ * Build mode — user picks 9 players + positions, we order them
+ * ============================================================ */
+
+const BUILD_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']
+
+function BuildView({ teamId, season }) {
+  const { data: roster, loading: rosterLoading } = useApi(
+    `/teams/${teamId}/roster`,
+    {},
+    [teamId],
+  )
+
+  const [vsHand, setVsHand] = useState('R')
+  // 9 rows; positions default to standard order, players empty.
+  const [assignments, setAssignments] = useState(
+    BUILD_POSITIONS.map(pos => ({ player_id: null, position: pos }))
+  )
+  const [building, setBuilding] = useState(false)
+  const [buildError, setBuildError] = useState(null)
+  const [result, setResult] = useState(null)
+
+  // Reset when team changes
+  useEffect(() => {
+    setAssignments(BUILD_POSITIONS.map(pos => ({ player_id: null, position: pos })))
+    setResult(null)
+    setBuildError(null)
+  }, [teamId])
+
+  const updateRow = (idx, patch) => {
+    setAssignments(prev => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)))
+  }
+
+  const usedPlayerIds = new Set(assignments.filter(a => a.player_id).map(a => a.player_id))
+  const usedPositions = assignments.map(a => a.position)
+  const allFilled = assignments.every(a => a.player_id && a.position)
+  const positionsValid = new Set(usedPositions).size === 9
+  const submitDisabled = !allFilled || !positionsValid || building
+
+  const submit = async () => {
+    setBuilding(true)
+    setBuildError(null)
+    try {
+      const resp = await fetch('/api/v1/coaching/lineup-helper/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_id: teamId,
+          season,
+          vs_hand: vsHand,
+          assignments,
+        }),
+      })
+      if (!resp.ok) {
+        const detail = await resp.json().catch(() => ({}))
+        throw new Error(detail.detail || `${resp.status} ${resp.statusText}`)
+      }
+      const data = await resp.json()
+      setResult(data)
+    } catch (e) {
+      setBuildError(e.message)
+      setResult(null)
+    } finally {
+      setBuilding(false)
+    }
+  }
+
+  const block = result
+    ? (vsHand === 'R' ? result.vs_RHP
+       : vsHand === 'L' ? result.vs_LHP
+       : result.vs_unknown)
+    : null
+
+  return (
+    <div className="space-y-4">
+      <Card
+        title="Build your own 9"
+        subtitle="Pick any player at any position. We'll find the optimal batting order."
+      >
+        <div className="space-y-3">
+          {/* vs hand selector */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-portal-purple-dark">Optimize for:</span>
+            <VsHandRadio value={vsHand} setValue={setVsHand} />
+          </div>
+
+          {/* 9 player rows */}
+          <div className="border-t border-gray-200 pt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {assignments.map((a, idx) => (
+                <BuildRow
+                  key={idx}
+                  rowIdx={idx}
+                  assignment={a}
+                  roster={roster || []}
+                  usedPlayerIds={usedPlayerIds}
+                  usedPositions={usedPositions}
+                  rosterLoading={rosterLoading}
+                  onChange={(patch) => updateRow(idx, patch)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {!positionsValid && allFilled && (
+            <p className="text-xs text-red-700">
+              Each position must be used exactly once. Check the position dropdowns.
+            </p>
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitDisabled}
+              className="px-4 py-2 rounded-md bg-portal-purple text-portal-cream font-semibold
+                         text-sm hover:bg-portal-purple-dark disabled:opacity-40
+                         disabled:cursor-not-allowed transition-colors"
+            >
+              {building ? 'Optimizing...' : 'Build optimal order'}
+            </button>
+            {!allFilled && (
+              <span className="text-xs text-gray-500">
+                Fill all 9 spots to continue.
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {buildError && (
+        <Card title="Build failed">
+          <p className="text-sm text-red-700">{buildError}</p>
+        </Card>
+      )}
+
+      {block && (
+        <Card
+          title={`Optimal order — ${vsHandLabel(vsHand)}`}
+          subtitle={`Total slot score: ${block.total_score?.toFixed(2) ?? '—'}`}
+        >
+          <LineupTable
+            starters={block.starters}
+            bench={[]}
+            vsHand={vsHand}
+            onSwap={null}
+            swapping={false}
+          />
+        </Card>
+      )}
+    </div>
+  )
+}
+
+
+function VsHandRadio({ value, setValue }) {
+  const options = [
+    { v: 'R', label: 'vs RHP' },
+    { v: 'L', label: 'vs LHP' },
+    { v: 'unknown', label: 'vs Unknown (overall splits)' },
+  ]
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(o => (
+        <button
+          key={o.v}
+          type="button"
+          onClick={() => setValue(o.v)}
+          className={`px-3 py-1 text-xs font-semibold rounded border transition-colors ${
+            value === o.v
+              ? 'bg-portal-purple text-portal-cream border-portal-purple'
+              : 'bg-white text-portal-purple-dark border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+
+function BuildRow({ rowIdx, assignment, roster, usedPlayerIds, usedPositions, rosterLoading, onChange }) {
+  const sortedRoster = [...roster].sort((a, b) =>
+    (a.last_name || '').localeCompare(b.last_name || '')
+  )
+  return (
+    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-md border border-gray-200">
+      <span className="w-6 text-center text-xs font-bold text-gray-400">{rowIdx + 1}</span>
+      <select
+        value={assignment.player_id ?? ''}
+        onChange={(e) => onChange({ player_id: e.target.value ? Number(e.target.value) : null })}
+        className="flex-1 text-sm bg-white border border-gray-300 rounded px-2 py-1
+                   focus:outline-none focus:ring-1 focus:ring-portal-purple"
+      >
+        <option value="">{rosterLoading ? 'Loading roster...' : 'Pick player...'}</option>
+        {sortedRoster.map(p => (
+          <option
+            key={p.id}
+            value={p.id}
+            disabled={usedPlayerIds.has(p.id) && p.id !== assignment.player_id}
+          >
+            {p.last_name}, {p.first_name}
+            {p.jersey_number ? ` (#${p.jersey_number})` : ''}
+          </option>
+        ))}
+      </select>
+      <select
+        value={assignment.position ?? ''}
+        onChange={(e) => onChange({ position: e.target.value || null })}
+        className="text-sm bg-white border border-gray-300 rounded px-2 py-1 w-20
+                   focus:outline-none focus:ring-1 focus:ring-portal-purple"
+      >
+        {BUILD_POSITIONS.map(p => (
+          <option
+            key={p}
+            value={p}
+            disabled={usedPositions.includes(p) && p !== assignment.position}
+          >
+            {p}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+
+function vsHandLabel(vsHand) {
+  if (vsHand === 'R') return 'vs RHP'
+  if (vsHand === 'L') return 'vs LHP'
+  return 'vs Unknown (overall splits)'
 }
 
 

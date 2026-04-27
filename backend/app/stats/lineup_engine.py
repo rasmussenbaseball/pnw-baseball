@@ -128,15 +128,15 @@ def score_player_for_slot(view: dict, speed_z: float, slot: int) -> float:
 
 def optimize_batting_order(
     players: list,
-    vs_hand: str = 'R',
+    vs_hand: Optional[str] = 'R',
     speeds: Optional[list] = None,
 ) -> dict:
     """Find the optimal 1-9 batting order for these 9 players vs the given hand.
 
     Args:
         players: list of 9 split profiles from `compute_player_split_profile`.
-                 Each must have 'vs_RHP' and 'vs_LHP' views.
-        vs_hand: 'R' or 'L'.
+        vs_hand: 'R' for vs RHP, 'L' for vs LHP, or None / 'unknown' to use the
+                 season view (no platoon adjustment).
         speeds:  list of 9 floats (within-team speed_z values). Defaults to 0.0
                  (neutral) for everyone if omitted.
     """
@@ -145,7 +145,12 @@ def optimize_batting_order(
     if speeds is None:
         speeds = [0.0] * 9
 
-    view_key = 'vs_RHP' if vs_hand == 'R' else 'vs_LHP'
+    if vs_hand == 'R':
+        view_key = 'vs_RHP'
+    elif vs_hand == 'L':
+        view_key = 'vs_LHP'
+    else:
+        view_key = 'season_view'
 
     # Precompute 9x9 cost matrix
     cost = []

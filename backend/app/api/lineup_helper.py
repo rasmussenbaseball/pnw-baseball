@@ -785,65 +785,192 @@ def compute_manual_lineup(
     k_regress: float = DEFAULT_REGRESSION_PA,
     reference_date: Optional[date] = None,
 ) -> dict:
-    """Manual mode: user gives 9 (player_id, position) pairs, we order them.
+    """Legacy manual mode (kept for backwards compatibility). Prefer
+    `compute_build_lineup` which returns richer data."""
+    return compute_build_lineup(
+        cur,
+        team_id=None,
+        season=season,
+        assignments=player_assignments,
+        division_level_override=division_level,
+        half_life_weeks=half_life_weeks,
+        k_regress=k_regress,
+        reference_date=reference_date,
+        vs_hand=None,  # all three
+    )
+
+
+def compute_build_lineup(
+    cur,
+    team_id: Optional[int],
+    season: int,
+    assignments: list,
+    vs_hand: Optional[str] = None,  # 'R', 'L', 'unknown', or None for all three
+    division_level_override: Optional[str] = None,
+    half_life_weeks: float = DEFAULT_HALF_LIFE_WEEKS,
+    k_regress: float = DEFAULT_REGRESSION_PA,
+    reference_date: Optional[date] = None,
+) -> dict:
+    """Build-from-scratch lineup with no position-eligibility or min-PA filter.
+
+    Computes rich data (recent_form, pbp_stats, season_view, speed_z,
+    slot reasoning) so the response is shape-compatible with auto mode.
 
     Args:
-        player_assignments: [{'player_id': 123, 'position': 'C'}, ...] (length 9)
+        assignments: list of {'player_id': X, 'position': 'C'} (length 9). The
+                     same player_id can only appear once.
+        vs_hand: 'R', 'L', 'unknown', or None to compute all three.
+        team_id: if provided, used for division context and speed_z baseline.
+                 If None, division_level_override must be provided.
     """
     if reference_date is None:
         reference_date = date.today()
-    if len(player_assignments) != 9:
-        return {'error': 'Manual mode requires exactly 9 player assignments.'}
+    if len(assignments) != 9:
+        return {'error': 'Build mode requires exactly 9 player assignments.'}
+    if len({a['player_id'] for a in assignments}) != 9:
+        return {'error': 'Each player can only appear once in the lineup.'}
+
+    # Resolve division
+    if team_id:
+        cur.execute(
+            """
+            SELECT t.id, t.name, t.short_name, t.logo_url, c.name AS conference_name,
+                   d.level AS division_level, d.name AS division_name
+            FROM teams t
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE t.id = %s
+            """,
+            (team_id,),
+        )
+        team_row = cur.fetchone()
+        if not team_row:
+            return {'error': f'Team {team_id} not found.'}
+        division_level = team_row['division_level']
+    else:
+        team_row = None
+        division_level = division_level_override or 'NAIA'
 
     league_deltas = compute_league_platoon_deltas(
         cur, season, division_level, half_life_weeks, reference_date
     )
 
-    # Build profiles for the 9
+    pid_list = [a['player_id'] for a in assignments]
+    pid_to_pos = {a['player_id']: a['position'] for a in assignments}
+
+    # Pull player metadata
+    cur.execute(
+        """SELECT id, first_name, last_name, bats, jersey_number, headshot_url, position
+           FROM players WHERE id = ANY(%s)""",
+        (pid_list,),
+    )
+    pid_to_meta = {r['id']: dict(r) for r in cur.fetchall()}
+
+    # Speed z-score baseline: if team_id is provided, use the team roster as
+    # the reference population so a "fast" player here has the same meaning
+    # as in auto mode. Otherwise z-score within the 9 chosen players.
+    if team_id:
+        cur.execute(
+            "SELECT id FROM players WHERE team_id = %s",
+            (team_id,),
+        )
+        baseline_pids = [r['id'] for r in cur.fetchall()]
+    else:
+        baseline_pids = pid_list
+    speed_inputs = _fetch_speed_inputs_bulk(cur, baseline_pids, season)
+    speed_z_by_pid = _compute_team_speed_z(speed_inputs)
+    # Players in the 9 who weren't on the speed baseline (cross-team picks)
+    # default to 0.0 (neutral)
+    for pid in pid_list:
+        speed_z_by_pid.setdefault(pid, 0.0)
+        speed_inputs.setdefault(pid, {})
+
+    # PBP stats for the 9
+    pbp_stats = _fetch_pbp_stats_bulk(cur, pid_list, season)
+
+    # Build profiles for the 9 in assignment order
     profiles = []
-    for pa in player_assignments:
+    rich_players = []
+    for a in assignments:
+        pid = a['player_id']
         profile = compute_player_split_profile(
-            cur, pa['player_id'], season,
+            cur, pid, season,
             division_level=division_level,
             half_life_weeks=half_life_weeks,
             k_regress=k_regress,
             reference_date=reference_date,
             league_deltas=league_deltas,
         )
+        recent_form = _compute_recent_form(
+            cur, pid, season,
+            season_woba=profile['season_view']['wOBA'],
+            division_level=division_level,
+            reference_date=reference_date,
+        )
+        meta = pid_to_meta.get(pid, {})
+        rich_players.append({
+            'player_id': pid,
+            'first_name': meta.get('first_name'),
+            'last_name': meta.get('last_name'),
+            'bats': meta.get('bats'),
+            'jersey_number': meta.get('jersey_number'),
+            'headshot_url': meta.get('headshot_url'),
+            'profile': profile,
+            'recent_form': recent_form,
+            'pbp_stats': pbp_stats.get(pid, {}),
+            'speed_inputs': speed_inputs.get(pid, {}),
+            'eligible_positions': [pid_to_pos[pid]],  # user-chosen, no eligibility filter
+        })
         profiles.append(profile)
 
-    # Run optimizer for both hands
-    vs_r = optimize_batting_order(profiles, vs_hand='R')
-    vs_l = optimize_batting_order(profiles, vs_hand='L')
+    speeds_for_order = [speed_z_by_pid.get(p['player_id'], 0.0) for p in rich_players]
 
-    # Decorate with player metadata
-    pid_list = [pa['player_id'] for pa in player_assignments]
-    cur.execute(
-        """SELECT id, first_name, last_name, bats, jersey_number, headshot_url
-           FROM players WHERE id = ANY(%s)""",
-        (pid_list,),
-    )
-    pid_to_meta = {r['id']: dict(r) for r in cur.fetchall()}
-    pid_to_pos = {pa['player_id']: pa['position'] for pa in player_assignments}
-
-    def _decorate(order_result):
-        out = []
+    def _build_for_hand(vs_hand_arg):
+        order_result = optimize_batting_order(
+            profiles, vs_hand=vs_hand_arg, speeds=speeds_for_order,
+        )
+        pid_to_player = {p['player_id']: p for p in rich_players}
+        ordered = []
         for entry in order_result['order']:
-            meta = pid_to_meta.get(entry['player_id'], {})
-            out.append({
+            base = pid_to_player[entry['player_id']]
+            ordered.append({
                 **entry,
-                'first_name': meta.get('first_name'),
-                'last_name': meta.get('last_name'),
-                'bats': meta.get('bats'),
-                'jersey_number': meta.get('jersey_number'),
-                'headshot_url': meta.get('headshot_url'),
+                'first_name': base['first_name'],
+                'last_name': base['last_name'],
+                'bats': base['bats'],
+                'jersey_number': base['jersey_number'],
+                'headshot_url': base['headshot_url'],
                 'assigned_position': pid_to_pos[entry['player_id']],
+                'recent_form': base['recent_form'],
+                'pbp_stats': base['pbp_stats'],
+                'season_view': base['profile']['season_view'],
+                'speed_inputs': base['speed_inputs'],
+                'eligible_positions': base['eligible_positions'],
             })
-        return {'order': out, 'total_score': order_result['total_score'], 'vs_hand': order_result['vs_hand']}
+        # Slot reasoning AFTER full ordered list exists
+        for s_entry in ordered:
+            s_entry['slot_reasoning'] = _explain_starter_slot(
+                s_entry['slot'], s_entry, ordered
+            )
+        return {
+            'starters': ordered,
+            'bench': [],   # no bench in build mode (user chose all 9)
+            'total_score': order_result['total_score'],
+        }
 
-    return {
+    out = {
         'season': season,
         'as_of_date': reference_date.isoformat(),
-        'vs_RHP': _decorate(vs_r),
-        'vs_LHP': _decorate(vs_l),
+        'mode': 'build',
     }
+    if team_row:
+        out['team'] = dict(team_row)
+
+    hands_to_compute = (
+        ['R', 'L', 'unknown'] if vs_hand is None else [vs_hand]
+    )
+    for h in hands_to_compute:
+        key = 'vs_RHP' if h == 'R' else ('vs_LHP' if h == 'L' else 'vs_unknown')
+        engine_arg = h if h in ('R', 'L') else None
+        out[key] = _build_for_hand(engine_arg)
+    return out

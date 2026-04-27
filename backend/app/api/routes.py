@@ -29,6 +29,7 @@ from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,
     compute_manual_lineup,
+    compute_build_lineup,
 )
 
 # Phase E: batted-ball + spray classifier (lives in scripts/ but is
@@ -20070,6 +20071,57 @@ class LineupOverrideRequest(BaseModel):
     half_life_weeks: float = 6.0
     vs_RHP: Optional[list[OverrideAssignment]] = None
     vs_LHP: Optional[list[OverrideAssignment]] = None
+
+
+class BuildLineupRequest(BaseModel):
+    team_id: Optional[int] = None
+    season: int = 2026
+    division_level: Optional[str] = None
+    vs_hand: Optional[str] = None  # 'R', 'L', 'unknown', or None for all three
+    half_life_weeks: float = 6.0
+    assignments: list[ManualLineupAssignment]
+
+
+@router.post("/coaching/lineup-helper/build")
+def lineup_helper_build(req: BuildLineupRequest):
+    """Build-from-scratch mode. User picks 9 players (any positions, no
+    eligibility check, no minimum PA) and we order them optimally.
+
+    `vs_hand` accepts 'R' (vs RHP), 'L' (vs LHP), 'unknown' (uses season
+    splits with no platoon adjustment), or null to compute all three.
+    """
+    if len(req.assignments) != 9:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Build mode requires exactly 9 assignments, got {len(req.assignments)}",
+        )
+    valid_positions = {'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'}
+    positions = [a.position for a in req.assignments]
+    if set(positions) != valid_positions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Build mode requires each of {sorted(valid_positions)} exactly once.",
+        )
+    if req.vs_hand is not None and req.vs_hand not in ('R', 'L', 'unknown'):
+        raise HTTPException(
+            status_code=400,
+            detail=f"vs_hand must be one of 'R', 'L', 'unknown', or null.",
+        )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = compute_build_lineup(
+            cur,
+            team_id=req.team_id,
+            season=req.season,
+            assignments=[a.model_dump() for a in req.assignments],
+            vs_hand=req.vs_hand,
+            division_level_override=req.division_level,
+            half_life_weeks=req.half_life_weeks,
+        )
+        if 'error' in result and 'team' not in result:
+            raise HTTPException(status_code=400, detail=result['error'])
+        return result
 
 
 @router.post("/coaching/lineup-helper/override")
