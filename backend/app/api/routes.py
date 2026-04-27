@@ -12962,6 +12962,7 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
         WITH per_pitcher AS (
             SELECT ge.pitcher_player_id AS pid,
                    COUNT(*) AS pa,
+                   COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
                    COALESCE(SUM(pitches_thrown), 0) AS pitches,
                    SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
                    SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
@@ -12983,6 +12984,14 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
                    COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
                    COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
                        ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+                   -- "On or Out in 3" — efficiency stat. PAs ending in 1-3
+                   -- pitches with hit-or-out outcome (walks/HBP/CI excluded).
+                   COALESCE(SUM(CASE
+                       WHEN pitches_thrown BETWEEN 1 AND 3
+                         AND result_type NOT IN
+                           ('walk','intentional_walk','hbp','catcher_interference')
+                       THEN 1 ELSE 0
+                   END), 0) AS on_or_out_3,
                    COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
                    COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
                    COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
