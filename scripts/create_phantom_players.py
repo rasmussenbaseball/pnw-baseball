@@ -245,6 +245,11 @@ def main() -> int:
         logger.info("  %d game_events rows updated (batter_player_id)", n_batter_updates)
 
         # ── Final coverage check ──
+        # Exclude all sub-event types from the denominator: they
+        # don't have a batter_name by design, so including them
+        # would make the batter-resolution rate look artificially
+        # low. (runner_sub specifically has both batter_name and
+        # batter_player_id as NULL — it's a substitution, not a PA.)
         cur.execute("""
             SELECT
                 COUNT(*) AS total,
@@ -255,7 +260,8 @@ def main() -> int:
             WHERE g.season = %s
               AND ge.result_type IS NOT NULL
               AND ge.result_type NOT IN ('stolen_base','caught_stealing','wild_pitch',
-                                          'passed_ball','balk','pickoff','runner_other')
+                                          'passed_ball','balk','pickoff','runner_other',
+                                          'runner_sub')
         """, (args.season,))
         r = cur.fetchone()
         tot = r["total"]

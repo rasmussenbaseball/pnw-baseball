@@ -6,6 +6,7 @@ import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
+import WpaByGameChart from '../components/WpaByGameChart'
 
 // ── Percentile bubble configs ──────────────────────────────────
 // Pre-2026: original metric set. Kept stable for historic seasons so
@@ -1561,6 +1562,11 @@ export default function PlayerDetail() {
 
       {/* ── Pitcher Pitch-Level Stats (PBP-derived; auto-hides if no events) ── */}
       {hasPitching && <PitcherPitchLevelStatsCard playerId={playerId} season={2026} />}
+
+      {/* ── Rolling cumulative WPA chart (PBP-derived; auto-hides if no events) ── */}
+      <div className="mb-4 sm:mb-6">
+        <WpaByGameChart playerId={playerId} position={player.position} />
+      </div>
 
       {/* ── Summer Ball Stats ── */}
       {hasSummerStats && (

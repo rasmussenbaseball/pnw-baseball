@@ -12023,6 +12023,147 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
 # F=foul, H=HBP. Empty pitch_sequence with was_in_play=True means the
 # 0-0 first pitch was put in play — that counts as 1 swing/contact.
 
+
+@router.get("/players/{player_id}/wpa-by-game")
+def get_player_wpa_by_game(
+    player_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """Per-game WPA totals + running cumulative for one player.
+
+    Powers the rolling-WPA chart on the player profile. Returns two
+    parallel series so two-way players can render both sides:
+
+        {
+          "batter":  [{game_id, date, opp, is_home, result, wpa, pa, cumulative}, ...],
+          "pitcher": [{game_id, date, opp, is_home, result, wpa, bf, cumulative}, ...]
+        }
+
+    Each list is in chronological order. `cumulative` is the running
+    sum of `wpa` from the start of the season through that game —
+    that's what gets plotted on the y-axis. `wpa` per row is the
+    per-game total (sum of wpa_batter or wpa_pitcher across all PAs
+    in that game).
+
+    Aggregates across linked players (transfers) the same way the
+    rest of the player profile does.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Resolve canonical player + linked IDs (handles transfers)
+        cur.execute(
+            "SELECT canonical_id FROM player_links WHERE linked_id = %s",
+            (player_id,),
+        )
+        canonical = cur.fetchone()
+        if canonical:
+            player_id = canonical["canonical_id"]
+        cur.execute(
+            "SELECT linked_id FROM player_links WHERE canonical_id = %s",
+            (player_id,),
+        )
+        linked_ids = [r["linked_id"] for r in cur.fetchall()]
+        all_pids = [player_id] + linked_ids
+
+        def _build_series(side: str):
+            """side: 'batter' or 'pitcher'. Returns chronologically-
+            ordered list of per-game WPA rows with running cumulative."""
+            id_col = "batter_player_id" if side == "batter" else "pitcher_player_id"
+            wpa_col = "wpa_batter" if side == "batter" else "wpa_pitcher"
+            count_label = "pa" if side == "batter" else "bf"
+
+            # Per-game aggregates. Note: a player can appear in a game
+            # via team_id either home or away — we don't filter by team
+            # because phantoms / transfers might land on either side.
+            cur.execute(f"""
+                SELECT
+                    g.id AS game_id,
+                    g.game_date,
+                    g.home_team_id, g.away_team_id,
+                    g.home_score, g.away_score,
+                    th.short_name AS home_short, th.logo_url AS home_logo,
+                    ta.short_name AS away_short, ta.logo_url AS away_logo,
+                    SUM(ge.{wpa_col})       AS wpa,
+                    COUNT(ge.{wpa_col})     AS n_pa,
+                    -- determine whether the player's team was home or
+                    -- away from the events themselves: if the player
+                    -- batted in the bottom half, his team was home.
+                    BOOL_OR(
+                        CASE WHEN ge.{id_col} = ANY(%s) AND ge.half =
+                            CASE WHEN '{side}' = 'batter' THEN 'bottom'
+                                 ELSE 'top' END
+                            THEN TRUE ELSE FALSE END
+                    ) AS player_team_home
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                JOIN teams th ON th.id = g.home_team_id
+                JOIN teams ta ON ta.id = g.away_team_id
+                WHERE ge.{id_col} = ANY(%s)
+                  AND g.season = %s
+                  AND ge.{wpa_col} IS NOT NULL
+                GROUP BY g.id, g.game_date, g.home_team_id, g.away_team_id,
+                         g.home_score, g.away_score,
+                         th.short_name, th.logo_url, ta.short_name, ta.logo_url
+                ORDER BY g.game_date ASC, g.id ASC
+            """, (all_pids, all_pids, season))
+            rows = cur.fetchall()
+
+            out = []
+            cumulative = 0.0
+            for r in rows:
+                wpa = float(r["wpa"]) if r["wpa"] is not None else 0.0
+                cumulative += wpa
+                # Player's team won?
+                player_won = None
+                if r["home_score"] is not None and r["away_score"] is not None:
+                    if r["player_team_home"]:
+                        player_won = r["home_score"] > r["away_score"]
+                    else:
+                        player_won = r["away_score"] > r["home_score"]
+                # Build "W 7-3" or "L 4-5" string from player's perspective
+                if (r["home_score"] is None or r["away_score"] is None
+                        or player_won is None):
+                    result_str = None
+                else:
+                    if r["player_team_home"]:
+                        result_str = (
+                            f"{'W' if player_won else 'L'} "
+                            f"{r['home_score']}-{r['away_score']}"
+                        )
+                    else:
+                        result_str = (
+                            f"{'W' if player_won else 'L'} "
+                            f"{r['away_score']}-{r['home_score']}"
+                        )
+                # Opposing team
+                if r["player_team_home"]:
+                    opp_short = r["away_short"]
+                    opp_logo = r["away_logo"]
+                else:
+                    opp_short = r["home_short"]
+                    opp_logo = r["home_logo"]
+                out.append({
+                    "game_id": r["game_id"],
+                    "date": r["game_date"].isoformat() if r["game_date"] else None,
+                    "is_home": r["player_team_home"],
+                    "opp_short": opp_short,
+                    "opp_logo": opp_logo,
+                    "result": result_str,
+                    "won": player_won,
+                    "wpa": round(wpa, 4),
+                    count_label: int(r["n_pa"] or 0),
+                    "cumulative": round(cumulative, 4),
+                })
+            return out
+
+        return {
+            "season": season,
+            "batter": _build_series("batter"),
+            "pitcher": _build_series("pitcher"),
+        }
+
+
 @router.get("/players/{player_id}/pitch-level-stats")
 def get_player_pitch_level_stats(
     player_id: int,

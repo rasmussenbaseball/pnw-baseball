@@ -191,6 +191,19 @@ export function usePlayerPitchLevelStats(playerId, season = CURRENT_SEASON) {
 /**
  * Same idea but for pitchers: opponent slash + induced K%/Whiff%/etc.
  */
+/**
+ * Per-game WPA totals + running cumulative for the rolling chart on
+ * the player profile. Returns { batter: [...], pitcher: [...] } so
+ * two-way players can render both sides.
+ */
+export function usePlayerWpaByGame(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    playerId ? `/players/${playerId}/wpa-by-game` : null,
+    { season },
+    [playerId, season]
+  )
+}
+
 export function usePlayerPitchLevelStatsPitcher(playerId, season = CURRENT_SEASON) {
   return useApi(
     `/players/${playerId}/pitch-level-stats-pitcher`,
