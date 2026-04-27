@@ -47,14 +47,23 @@ from parse_pbp_events import (
 HEADER_RE = re.compile(r"(Top|Bottom)\s+of\s+(\d+)", re.IGNORECASE)
 
 
-def parse_presto_events(html, starters=None):
+def parse_presto_events(html, starters=None,
+                        home_team_name=None, away_team_name=None):
     """Parse a PrestoSports box-score-with-plays HTML page.
 
     Args / Returns: identical signature to parse_pbp_events for the
     Sidearm parser so the orchestrator can use either interchangeably.
+
+    home_team_name / away_team_name (optional): canonical team names
+    from the games table. Used as a fallback when the page's
+    `<span class="offscreen">` accessibility text is missing — without
+    them, a half-inning whose h3 lacks the offscreen span gets silently
+    skipped, dropping a chunk of data. Pass them whenever we know
+    which two teams played.
     """
     soup = BeautifulSoup(html, "html.parser")
-    meta = {"has_pbp": False, "all_team_names": [], "skipped_rows": 0}
+    meta = {"has_pbp": False, "all_team_names": [], "skipped_rows": 0,
+            "team_fallback_used": False}
 
     # Find the All Plays section — has a <section> wrapping per-inning
     # tab-panels. The simplest reliable target: any tab-panel whose
@@ -76,8 +85,18 @@ def parse_presto_events(html, starters=None):
                 t = offscreen.get_text(" ", strip=True)
                 if t:
                     team_names.add(t)
+
+    # Fallback: if the page didn't have offscreen spans (or only one),
+    # fall back to the home/away names from the games table. This
+    # prevents the parser from silently returning zero events on pages
+    # whose accessibility markup differs from the canonical Presto
+    # format.
     if len(team_names) < 2:
-        return [], meta
+        if home_team_name and away_team_name:
+            team_names = {home_team_name, away_team_name}
+            meta["team_fallback_used"] = True
+        else:
+            return [], meta
 
     meta["has_pbp"] = True
     meta["all_team_names"] = sorted(team_names)
@@ -104,9 +123,19 @@ def parse_presto_events(html, starters=None):
             half = "top" if m.group(1).lower() == "top" else "bottom"
             inning = int(m.group(2))
             offscreen = header.find("span", class_="offscreen")
-            if not offscreen:
+            batting_team = None
+            if offscreen:
+                batting_team = offscreen.get_text(" ", strip=True) or None
+            # Fallback: if the offscreen span is missing or empty AND we
+            # have canonical home/away names, derive batting team from
+            # the half (top → away bats, bottom → home bats). Without
+            # this fallback we silently drop the entire half-inning.
+            if not batting_team and home_team_name and away_team_name:
+                batting_team = (away_team_name if half == "top"
+                                 else home_team_name)
+                meta["team_fallback_used"] = True
+            if not batting_team:
                 continue
-            batting_team = offscreen.get_text(" ", strip=True)
             defending_candidates = team_names - {batting_team}
             if len(defending_candidates) != 1:
                 continue

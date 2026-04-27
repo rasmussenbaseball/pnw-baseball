@@ -466,7 +466,26 @@ def process_game(cur, game, dry_run=False, verbose=False):
 
     # ── Parse: pick parser based on source host ──
     parser_fn = parse_presto_events if _is_presto_url(url) else parse_pbp_events
-    _, meta = parser_fn(html)
+
+    # Build kwargs that only the Presto parser accepts. Sidearm
+    # parser ignores these — we only pass them to Presto.
+    parser_kwargs = {}
+    if parser_fn is parse_presto_events:
+        # Use the team's full name as it would appear in PBP narrative;
+        # falls back through several db name fields. The Presto parser
+        # uses these to recover from missing offscreen-span markup.
+        parser_kwargs["home_team_name"] = (
+            game.get("home_team_name") or game.get("home_db_name")
+            or game.get("home_db_school")
+        )
+        parser_kwargs["away_team_name"] = (
+            game.get("away_team_name") or game.get("away_db_name")
+            or game.get("away_db_school")
+        )
+
+    _, meta = parser_fn(html, **parser_kwargs)
+    if meta.get("team_fallback_used"):
+        log.info("game %d: presto team-name fallback applied (offscreen span missing)", gid)
     if not meta["has_pbp"]:
         # No PBP section — Oregon/OSU/WSU home games etc. Bump counter so
         # we eventually give up after MAX_ATTEMPTS.
@@ -505,7 +524,7 @@ def process_game(cur, game, dry_run=False, verbose=False):
             starters_by_pbp_name[pbp_name] = starters_by_team_id[team_id]
 
     # ── Second-pass parse with starters seeded (same parser as before) ──
-    events, _ = parser_fn(html, starters=starters_by_pbp_name)
+    events, _ = parser_fn(html, starters=starters_by_pbp_name, **parser_kwargs)
     result["events_total"] = len(events)
 
     # ── Resolve player_ids per event ──
