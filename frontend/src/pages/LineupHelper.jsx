@@ -762,9 +762,9 @@ const BUILD_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']
 
 function BuildView({ teamId, season }) {
   const { data: roster, loading: rosterLoading } = useApi(
-    `/teams/${teamId}/roster`,
-    {},
-    [teamId],
+    `/teams/${teamId}/active-roster`,
+    { season },
+    [teamId, season],
   )
 
   const [vsHand, setVsHand] = useState('R')

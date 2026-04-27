@@ -6664,6 +6664,33 @@ def team_roster(team_id: int, season: Optional[int] = None):
         return [dict(r) for r in rows]
 
 
+@router.get("/teams/{team_id}/active-roster")
+def team_active_roster(team_id: int, season: int = Query(..., description="Season year")):
+    """Roster of real (non-phantom) players who actually appeared for this
+    team in `season`. Used by Lineup Helper's build-from-scratch mode so we
+    don't leak phantom-parser rows or prior-year players."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT
+                p.id, p.first_name, p.last_name, p.bats, p.throws,
+                p.jersey_number, p.position, p.headshot_url
+            FROM players p
+            LEFT JOIN batting_stats bs
+              ON bs.player_id = p.id AND bs.season = %s
+            LEFT JOIN pitching_stats ps
+              ON ps.player_id = p.id AND ps.season = %s
+            WHERE p.team_id = %s
+              AND COALESCE(p.is_phantom, FALSE) = FALSE
+              AND (bs.player_id IS NOT NULL OR ps.player_id IS NOT NULL)
+            ORDER BY p.last_name, p.first_name
+            """,
+            (season, season, team_id),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
 @router.get("/teams/{team_id}/stats")
 def team_stats(team_id: int, season: int = Query(...)):
     """Get team info plus full batting and pitching stat tables for a season."""
