@@ -59,7 +59,7 @@ function Hero({ team }) {
   const { data: stats } = useTeamStats(team.id, SEASON)
   const { data: rankings } = useTeamRankings(team.id, SEASON)
 
-  const ts = stats?.team_season_stats || {}
+  const ts = stats?.team_stats || {}
   const wins = ts.wins ?? 0
   const losses = ts.losses ?? 0
   const ties = ts.ties ?? 0
@@ -68,6 +68,7 @@ function Hero({ team }) {
   const run_diff = runs_for - runs_against
   const recordStr = ties ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`
   const winPct = (wins + losses) > 0 ? (wins / (wins + losses)) : 0
+  const compositeRank = rankings?.composite?.composite_rank ?? null
 
   return (
     <div className="bg-portal-purple text-portal-cream rounded-2xl shadow-md
@@ -97,8 +98,8 @@ function Hero({ team }) {
           {rankings?.conference_rank && (
             <Stat label="Conf rank" value={`#${rankings.conference_rank}`} />
           )}
-          {rankings?.composite_rank && (
-            <Stat label="National" value={`#${rankings.composite_rank}`} />
+          {compositeRank && (
+            <Stat label="National" value={`#${compositeRank}`} />
           )}
         </div>
       </div>
@@ -475,7 +476,9 @@ function ClutchRow({ player, unit }) {
 // 6. Upcoming schedule
 // ───────────────────────────────────────────────────────────────
 function UpcomingSchedule({ teamId }) {
-  const { data: games } = useTeamFutureGames(teamId, 6)
+  const { data } = useTeamFutureGames(teamId, 6)
+  // /games/future returns { games, total, last_updated } — unwrap.
+  const games = data?.games
   if (!games) return <Skeleton label="Upcoming" rows={3} />
   if (games.length === 0) {
     return (
