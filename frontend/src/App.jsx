@@ -56,16 +56,14 @@ function RequireAdmin({ children }) {
   return children
 }
 
-// Portal access - strictly nate.rasmussen26@gmail.com only.
-// Tighter than RequireAdmin (which also allows the pnwcbr admin
-// account). Add additional emails to PORTAL_OWNERS if/when you want
-// to grant other people access to the Coach & Scouting Portal.
-const PORTAL_OWNERS = ['nate.rasmussen26@gmail.com']
+// Portal access - any signed-in user with a free account. The PORTAL_OWNERS
+// list is retained as documentation but no longer used for gating; tighten
+// this back up by re-adding the includes() check if a paid tier ships.
+const PORTAL_OWNERS = ['nate.rasmussen26@gmail.com']  // legacy / reference
 function RequirePortalAccess({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  if (!PORTAL_OWNERS.includes(user.email)) return <Navigate to="/" replace />
   return children
 }
 
