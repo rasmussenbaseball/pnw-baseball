@@ -6666,27 +6666,27 @@ def team_roster(team_id: int, season: Optional[int] = None):
 
 @router.get("/teams/{team_id}/active-roster")
 def team_active_roster(team_id: int, season: int = Query(..., description="Season year")):
-    """Roster of real (non-phantom) players who actually appeared for this
-    team in `season`. Used by Lineup Helper's build-from-scratch mode so we
-    don't leak phantom-parser rows or prior-year players."""
+    """Hitters (any player with at least one PA) for this team in `season`.
+    Used by Lineup Helper's build-from-scratch mode. Pure pitchers without
+    a single PA are excluded; two-way players show up because they have
+    batting stats."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT DISTINCT
+            SELECT
                 p.id, p.first_name, p.last_name, p.bats, p.throws,
-                p.jersey_number, p.position, p.headshot_url
+                p.jersey_number, p.position, p.headshot_url,
+                bs.plate_appearances AS pa
             FROM players p
-            LEFT JOIN batting_stats bs
+            JOIN batting_stats bs
               ON bs.player_id = p.id AND bs.season = %s
-            LEFT JOIN pitching_stats ps
-              ON ps.player_id = p.id AND ps.season = %s
             WHERE p.team_id = %s
               AND COALESCE(p.is_phantom, FALSE) = FALSE
-              AND (bs.player_id IS NOT NULL OR ps.player_id IS NOT NULL)
+              AND bs.plate_appearances > 0
             ORDER BY p.last_name, p.first_name
             """,
-            (season, season, team_id),
+            (season, team_id),
         )
         return [dict(r) for r in cur.fetchall()]
 
