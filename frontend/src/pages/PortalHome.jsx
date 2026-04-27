@@ -233,7 +233,6 @@ function RecentFormPills({ teamId }) {
         const myScore = isHome ? g.home_score : g.away_score
         const oppScore = isHome ? g.away_score : g.home_score
         const oppShort = isHome ? g.away_short : g.home_short
-        const oppLogo = isHome ? g.away_logo : g.home_logo
         const won = myScore > oppScore
         const tied = myScore === oppScore
         const cls = tied
@@ -248,10 +247,12 @@ function RecentFormPills({ teamId }) {
                         rounded border w-14 h-14 leading-tight ${cls}`}
             title={`${formatDate(g.game_date)} ${isHome ? 'vs' : '@'} ${oppShort} · ${myScore}-${oppScore}`}
           >
-            {oppLogo
-              ? <img src={oppLogo} alt="" className="h-4 w-4 object-contain bg-white/80 rounded-sm p-px" />
-              : <div className="h-4 w-4" />}
-            <div className="text-[10px] font-bold leading-none mt-0.5">
+            {/* Opponent short name across the top, e.g. "WPU" or "LCSC" */}
+            <div className="text-[9px] font-semibold uppercase tracking-tight
+                            text-portal-cream/85 truncate max-w-full px-0.5 leading-none">
+              {(isHome ? '' : '@') + (oppShort || '—')}
+            </div>
+            <div className="text-[11px] font-bold leading-none mt-1">
               {tied ? 'T' : won ? 'W' : 'L'}
             </div>
             <div className="text-[10px] font-semibold tabular-nums leading-none mt-0.5">
@@ -288,23 +289,44 @@ function TrendChart({ teamId }) {
     return <div /> // hide chart until we have ≥2 finals
   }
 
-  // Three-color logic: green when above .500, yellow at exactly .500,
-  // rose when below.  An "exactly .500" team has wins == losses.
-  const last = series[series.length - 1]
-  const lineColor = last.w > last.l
-    ? '#86efac'  // green (above .500)
-    : last.w === last.l
-      ? '#fde047'  // yellow (exactly .500)
-      : '#fda4af'  // rose (below .500)
+  // Build per-game color (green > .500, yellow at .500, rose < .500).
+  const colorAt = (g) => g.w > g.l ? '#86efac'        // green
+                       : g.w === g.l ? '#fde047'      // yellow
+                       : '#fda4af'                    // rose
+
+  // Build a horizontal gradient where each game's segment is colored
+  // by THAT game's state — sharp transitions at midpoints between
+  // adjacent games.  Two stops per game (left+right edges) at the same
+  // color make each segment a solid block; the next segment starts
+  // with its own color, creating a hard transition.
+  const n = series.length
+  const stops = []
+  for (let i = 0; i < n; i++) {
+    const color = colorAt(series[i])
+    const xLeft  = i === 0     ? 0   : ((i - 0.5) / (n - 1)) * 100
+    const xRight = i === n - 1 ? 100 : ((i + 0.5) / (n - 1)) * 100
+    stops.push(<stop key={`${i}-l`} offset={`${xLeft}%`}  stopColor={color} />)
+    stops.push(<stop key={`${i}-r`} offset={`${xRight}%`} stopColor={color} />)
+  }
 
   return (
     <div className="h-16 w-full -mb-1">
       <ResponsiveContainer>
         <AreaChart data={series} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lineColor} stopOpacity={0.5} />
-              <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+            {/* Horizontal multi-color gradient — used for both stroke
+                and fill so the line and the shaded area beneath both
+                follow the same per-game color logic. */}
+            <linearGradient id="trendStrokeGrad" x1="0" y1="0" x2="1" y2="0">
+              {stops}
+            </linearGradient>
+            <linearGradient id="trendFillGrad" x1="0" y1="0" x2="1" y2="0">
+              {/* Same horizontal stops, but rendered at lower opacity
+                  so the shaded area under the line softens nicely. */}
+              {stops.map((s, i) =>
+                <stop key={`f${i}`} offset={s.props.offset}
+                      stopColor={s.props.stopColor} stopOpacity={0.35} />
+              )}
             </linearGradient>
           </defs>
           <YAxis hide domain={[0, 1]} />
@@ -322,8 +344,9 @@ function TrendChart({ teamId }) {
             labelFormatter={(idx, p) => p?.[0]?.payload?.date
               ? formatDate(p[0].payload.date) : `Game ${idx}`}
           />
-          <Area type="monotone" dataKey="pct" stroke={lineColor} strokeWidth={2}
-                fill="url(#trendGrad)" isAnimationActive={false} />
+          <Area type="monotone" dataKey="pct"
+                stroke="url(#trendStrokeGrad)" strokeWidth={2}
+                fill="url(#trendFillGrad)" isAnimationActive={false} />
         </AreaChart>
       </ResponsiveContainer>
       <div className="text-[9px] uppercase tracking-widest text-portal-cream/55 -mt-1 text-right pr-1">
