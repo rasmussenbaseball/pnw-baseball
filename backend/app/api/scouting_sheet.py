@@ -283,18 +283,54 @@ def _percentile_rank(value, all_values, direction):
     return round(pct, 1)
 
 
-def _attach_percentiles(rows, dir_map):
+def _attach_percentiles(rows, dir_map, qualifier_fn):
     """For each row in `rows`, attach row['percentiles'] = {key: pct}.
-    Percentiles are computed across the cohort passed in (all hitters or
-    all pitchers in the same conference)."""
+
+    `qualifier_fn(row) -> bool` decides whether the row contributes to
+    the percentile distribution. Low-sample rows are still kept in the
+    output (the sheet shows everyone on the roster) but they:
+      - get `row['low_sample'] = True`
+      - get `row['percentiles']` filled entirely with None (so the
+        frontend renders their cells in a neutral gray instead of
+        green/red — they're visible but flagged)
+    Qualified rows are ranked only against other qualified rows so a
+    handful of 2-PA outliers can't distort everyone else's percentiles.
+    """
     if not rows:
         return
-    cohort = {k: [r.get(k) for r in rows] for k in dir_map.keys()}
+    qualified = [r for r in rows if qualifier_fn(r)]
+    cohort = {k: [r.get(k) for r in qualified] for k in dir_map.keys()}
     for r in rows:
-        r['percentiles'] = {
-            k: _percentile_rank(r.get(k), cohort[k], direction)
-            for k, direction in dir_map.items()
-        }
+        is_qualified = qualifier_fn(r)
+        r['low_sample'] = not is_qualified
+        if is_qualified:
+            r['percentiles'] = {
+                k: _percentile_rank(r.get(k), cohort[k], direction)
+                for k, direction in dir_map.items()
+            }
+        else:
+            r['percentiles'] = {k: None for k in dir_map.keys()}
+
+
+# Sample-size qualifiers — a player below these thresholds is shown
+# on the sheet with neutral gray cells and is excluded from the
+# percentile cohort so their tiny-sample wOBA can't skew rankings.
+HITTER_MIN_PA = 25
+PITCHER_MIN_IP = 5.0
+
+
+def _hitter_qualified(row):
+    return (row.get('pa') or 0) >= HITTER_MIN_PA
+
+
+def _pitcher_qualified(row):
+    ip = row.get('ip')
+    if ip is None:
+        return False
+    # innings_pitched is stored in baseball notation (6.2 = 6 2/3 IP).
+    # For the qualifier we just need a rough total — int(ip) gets the
+    # whole-innings part, which is fine at a 5 IP threshold.
+    return float(ip) >= PITCHER_MIN_IP
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -587,8 +623,8 @@ def build_scouting_sheet(cur, team_id, season):
     all_hitter_rows  = _build_hitter_rows(raw_hitters_conf, vs_rhp, vs_lhp, pbp_h, extras)
     all_pitcher_rows = _build_pitcher_rows(raw_pitchers_conf, vs_rhh, vs_lhh, pbp_p)
 
-    _attach_percentiles(all_hitter_rows, HITTER_PCT_DIRS)
-    _attach_percentiles(all_pitcher_rows, PITCHER_PCT_DIRS)
+    _attach_percentiles(all_hitter_rows, HITTER_PCT_DIRS, _hitter_qualified)
+    _attach_percentiles(all_pitcher_rows, PITCHER_PCT_DIRS, _pitcher_qualified)
 
     # Filter down to just this team's roster for the response
     team_hitters  = [r for r in all_hitter_rows  if r['team_id'] == team_id]
@@ -610,5 +646,11 @@ def build_scouting_sheet(cur, team_id, season):
         'cohort_size': {
             'hitters': len(all_hitter_rows),
             'pitchers': len(all_pitcher_rows),
+            'hitters_qualified':  sum(1 for r in all_hitter_rows  if _hitter_qualified(r)),
+            'pitchers_qualified': sum(1 for r in all_pitcher_rows if _pitcher_qualified(r)),
+        },
+        'thresholds': {
+            'hitter_min_pa':  HITTER_MIN_PA,
+            'pitcher_min_ip': PITCHER_MIN_IP,
         },
     }

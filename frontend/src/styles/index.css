@@ -99,3 +99,64 @@ tr:hover td.sticky-col {
 .stat-tooltip:hover::after {
   @apply opacity-100;
 }
+
+
+/* ─────────────────────────────────────────────────────────
+   Scouting Sheet — print layout (one US Letter page per side)
+   ─────────────────────────────────────────────────────────
+   On screen, the page is just a normal portal page with two
+   stacked tables. On print, we strip the portal chrome, force
+   each table onto its own page, and shrink the body padding
+   so the table edges align with the printable area.
+*/
+
+.sheet-pagebreak {
+  height: 18px;     /* breathing room between tables on screen */
+}
+
+@media print {
+  /* US Letter portrait, half-inch margins all around. */
+  @page {
+    size: letter;
+    margin: 0.4in;
+  }
+
+  /* Hide everything outside the scouting sheet content. The
+     PortalHeader, footer, and any toolbar buttons all carry
+     `print:hidden` already, but this is a belt-and-suspenders
+     safety net so screenshot artifacts never sneak through. */
+  body * {
+    visibility: hidden;
+  }
+  .scouting-sheet-page,
+  .scouting-sheet-page * {
+    visibility: visible;
+  }
+  .scouting-sheet-page {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: white;
+  }
+
+  /* Force pitchers onto a fresh sheet of paper. */
+  .sheet-pagebreak {
+    page-break-before: always;
+    height: 0;
+  }
+  .sheet-page {
+    page-break-inside: avoid;
+  }
+
+  /* Make sure the green/red percentile shading actually prints
+     instead of being optimized away as "background color". */
+  .scouting-sheet-page table,
+  .scouting-sheet-page td,
+  .scouting-sheet-page th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

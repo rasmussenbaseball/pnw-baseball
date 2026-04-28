@@ -104,6 +104,7 @@ import RecruitingField from './pages/RecruitingField'
 import RecruitingGuide from './pages/RecruitingGuide'
 import PlayerScouting from './pages/PlayerScouting'
 import TeamScouting from './pages/TeamScouting'
+import ScoutingSheet from './pages/ScoutingSheet'
 import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
@@ -215,6 +216,10 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><LineupHelper /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/team-scouting"
                  element={<RequirePortalAccess><PortalLayout><TeamScouting /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/scouting-sheet"
+                 element={<RequirePortalAccess><PortalLayout><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/scouting-sheet/:teamId"
+                 element={<RequirePortalAccess><PortalLayout><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
