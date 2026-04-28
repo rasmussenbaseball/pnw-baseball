@@ -115,10 +115,20 @@ tr:hover td.sticky-col {
 }
 
 @media print {
-  /* US Letter portrait, half-inch margins all around. */
+  /* US Letter PORTRAIT, half-inch margins. We name `portrait`
+     explicitly so a browser/printer that defaults to landscape
+     still flips into portrait for these pages. */
   @page {
-    size: letter;
+    size: letter portrait;
     margin: 0.4in;
+  }
+
+  /* Strip the on-screen 820px container limit so the sheet uses
+     the full printable width of a US Letter portrait page. */
+  .scouting-sheet-page,
+  .scouting-sheet-page .sheet-page {
+    max-width: none !important;
+    width: 100% !important;
   }
 
   /* Hide everything outside the scouting sheet content. The

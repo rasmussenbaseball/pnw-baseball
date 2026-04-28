@@ -1,55 +1,53 @@
 // ScoutingSheet — printable per-team roster sheet.
 //
-// One US Letter page of hitters, one page of pitchers.  Matches the
-// 643 Charts visual format but powered by NWBB Stats data:
+// One US Letter portrait page of hitters, one page of pitchers.
+// Modeled on the 643 Charts scouting sheet but powered by NWBB Stats
+// data:
 //
 //   HITTERS  (13 stats):
 //     PA, wOBA vR, wOBA vL, GB% or FB%, K%, BB%, ISO, SB/SBA,
 //     HR/FB, Contact%, First Pitch Swing%, Swing%, Putaway%
 //
-//   PITCHERS (11 stats):
+//   PITCHERS (12 stats):
 //     IP, wOBA vR, wOBA vL, K%, BB%, Whiff%, ISO against,
-//     BAA against, GB% or FB%, Strike%, FPS%
+//     BAA against, GB% or FB%, Strike%, FPS%, Putaway%
 //
-// Cells are shaded by percentile vs the team's conference cohort
-// (green = elite, white = avg, red = poor).  Player names are red
-// for lefties, blue for righties, purple for switch hitters.
+// Cells are shaded by percentile vs the team's CONFERENCE qualifier
+// cohort (green = elite, white = avg, red = poor). Player names are
+// red for lefties, blue for righties, purple for switch hitters.
+// Each table has a totals row at the bottom showing the team's
+// aggregate, percentile-ranked vs OTHER teams in the conference.
 //
 // Print: a "Print / Save PDF" button calls window.print(); the
 // `@media print` rules in src/styles/index.css strip the portal
-// chrome so each table prints on its own page.
+// chrome so each table prints on its own portrait page.
 
-import { useParams } from 'react-router-dom'
-import { useApi } from '../hooks/useApi'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useApi, useTeams } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 
 
-// Default season is 2026 — same as the rest of the portal.
 const SEASON = 2026
 
 
 // ─────────────────────────────────────────────────────────
-// Cell-shade palette — green→white→red gradient.  Mirrors
-// the 643 Charts inspiration (good = green, bad = red).
-// Pass `direction='neutral'` for stats that should always
-// stay gray (e.g. GB%/FB% pick — high or low isn't "good").
+// Cell-shade palette — green→white→red (643 inspiration).
+// 'neutral' direction always returns transparent.
+// The server already inverts percentiles for lower-better
+// stats, so high pct here means GOOD regardless of direction.
 // ─────────────────────────────────────────────────────────
 function pctColor(pct, direction = 'higher_better') {
   if (pct == null) return 'transparent'
   if (direction === 'neutral') return 'transparent'
-  // For 'lower_better' the percentile is already inverted server-side;
-  // the value here is "how good is this", so high pct = green either way.
   const p = Math.max(0, Math.min(100, pct)) / 100
   let r, g, b, a
   if (p >= 0.5) {
-    // green half: white (255,255,255) → green (162,210,162)
     const t = (p - 0.5) * 2
     r = Math.round(255 + (162 - 255) * t)
     g = Math.round(255 + (210 - 255) * t)
     b = Math.round(255 + (162 - 255) * t)
-    a = 0.55 + 0.40 * t  // softer near the middle, stronger at the extreme
+    a = 0.55 + 0.40 * t
   } else {
-    // red half: white (255,255,255) → red (245,170,170)
     const t = (0.5 - p) * 2
     r = Math.round(255 + (245 - 255) * t)
     g = Math.round(255 + (170 - 255) * t)
@@ -60,28 +58,25 @@ function pctColor(pct, direction = 'higher_better') {
 }
 
 
-// Player name color — red for lefties, blue for righties, purple
-// for switch hitters.  Mirrors the 643 sheet convention.
 function handColor(hand) {
   const h = (hand || '').toUpperCase()
   if (h === 'L') return '#c0392b'  // red
   if (h === 'R') return '#1f4e8c'  // blue
-  if (h === 'B') return '#7d3c98'  // switch — purple blend
+  if (h === 'B') return '#7d3c98'  // switch — purple
   return '#374151'                 // gray-700 fallback
 }
 
 
-// ─────────────────────────────────────────────────────────
-// Cell formatters
-// ─────────────────────────────────────────────────────────
 const fmt = {
   int: v => (v == null ? '–' : Math.round(v)),
-  rate: v => (v == null ? '–' : v.toFixed(3).replace(/^0\./, '.').replace(/^-0\./, '-.')),
+  rate: v => {
+    if (v == null) return '–'
+    const n = typeof v === 'string' ? parseFloat(v) : v
+    return n.toFixed(3).replace(/^0\./, '.').replace(/^-0\./, '-.')
+  },
   pct: v => (v == null ? '–' : `${(v * 100).toFixed(1)}%`),
-  pct0: v => (v == null ? '–' : `${(v * 100).toFixed(0)}%`),
   ip: v => {
     if (v == null) return '–'
-    // Postgres NUMERIC comes through as a string sometimes
     const n = typeof v === 'string' ? parseFloat(v) : v
     return n.toFixed(1)
   },
@@ -93,40 +88,37 @@ const fmt = {
 }
 
 
-// ─────────────────────────────────────────────────────────
-// Hitter columns spec
-// `pctKey` selects which entry from row.percentiles drives the
-// cell color; `direction` is 'neutral' for stats that should be
-// gray no matter the percentile rank.
-// ─────────────────────────────────────────────────────────
+// 13 hitter stats. `direction: 'neutral'` keeps the cell gray (used
+// only for GB/FB which is a "type tag" not a directional metric).
 const HITTER_COLS = [
-  { label: 'PA',          val: r => fmt.int(r.pa),                pctKey: 'pa',                    width: 28  },
-  { label: 'wOBA vR',     val: r => fmt.rate(r.woba_vs_rhp),      pctKey: 'woba_vs_rhp',           width: 38  },
-  { label: 'wOBA vL',     val: r => fmt.rate(r.woba_vs_lhp),      pctKey: 'woba_vs_lhp',           width: 38  },
-  { label: 'GB / FB',     val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value',        width: 50, direction: 'neutral' },
-  { label: 'K%',          val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct',                 width: 38  },
-  { label: 'BB%',         val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct',                width: 38  },
-  { label: 'ISO',         val: r => fmt.rate(r.iso),              pctKey: 'iso',                   width: 38  },
-  { label: 'SB',          val: r => fmt.raw(r.sb_str),            pctKey: 'sb_made',               width: 32  },
-  { label: 'HR/FB',       val: r => fmt.pct(r.hr_per_fb),         pctKey: 'hr_per_fb',             width: 42  },
-  { label: 'Cont%',       val: r => fmt.pct(r.contact_pct),       pctKey: 'contact_pct',           width: 38  },
-  { label: 'FPS%',        val: r => fmt.pct(r.first_pitch_swing_pct), pctKey: 'first_pitch_swing_pct', width: 38, direction: 'neutral' },
-  { label: 'Sw%',         val: r => fmt.pct(r.swing_pct),         pctKey: 'swing_pct',             width: 38, direction: 'neutral' },
-  { label: 'Put%',        val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct',           width: 38  },
+  { label: 'PA',      val: r => fmt.int(r.pa),                pctKey: 'pa' },
+  { label: 'wOBA vR', val: r => fmt.rate(r.woba_vs_rhp),      pctKey: 'woba_vs_rhp' },
+  { label: 'wOBA vL', val: r => fmt.rate(r.woba_vs_lhp),      pctKey: 'woba_vs_lhp' },
+  { label: 'GB / FB', val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value', direction: 'neutral' },
+  { label: 'K%',      val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct' },
+  { label: 'BB%',     val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct' },
+  { label: 'ISO',     val: r => fmt.rate(r.iso),              pctKey: 'iso' },
+  { label: 'SB',      val: r => fmt.raw(r.sb_str),            pctKey: 'sb_made' },
+  { label: 'HR/FB',   val: r => fmt.pct(r.hr_per_fb),         pctKey: 'hr_per_fb' },
+  { label: 'Cont%',   val: r => fmt.pct(r.contact_pct),       pctKey: 'contact_pct' },
+  { label: 'FPS%',    val: r => fmt.pct(r.first_pitch_swing_pct), pctKey: 'first_pitch_swing_pct' },
+  { label: 'Sw%',     val: r => fmt.pct(r.swing_pct),         pctKey: 'swing_pct' },
+  { label: 'Put%',    val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct' },
 ]
 
 const PITCHER_COLS = [
-  { label: 'IP',          val: r => fmt.ip(r.ip),                 pctKey: 'ip',                    width: 36  },
-  { label: 'wOBA vR',     val: r => fmt.rate(r.woba_vs_rhh),      pctKey: 'woba_vs_rhh',           width: 42  },
-  { label: 'wOBA vL',     val: r => fmt.rate(r.woba_vs_lhh),      pctKey: 'woba_vs_lhh',           width: 42  },
-  { label: 'K%',          val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct',                 width: 42  },
-  { label: 'BB%',         val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct',                width: 42  },
-  { label: 'Whf%',        val: r => fmt.pct(r.whiff_pct),         pctKey: 'whiff_pct',             width: 42  },
-  { label: 'ISO',         val: r => fmt.rate(r.iso_against),      pctKey: 'iso_against',           width: 42  },
-  { label: 'BAA',         val: r => fmt.rate(r.baa_against),      pctKey: 'baa_against',           width: 42  },
-  { label: 'GB / FB',     val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value',        width: 56, direction: 'neutral' },
-  { label: 'Stk%',        val: r => fmt.pct(r.strike_pct),        pctKey: 'strike_pct',            width: 42  },
-  { label: 'FPS%',        val: r => fmt.pct(r.fps_pct),           pctKey: 'fps_pct',               width: 42  },
+  { label: 'IP',      val: r => fmt.ip(r.ip),                 pctKey: 'ip' },
+  { label: 'wOBA vR', val: r => fmt.rate(r.woba_vs_rhh),      pctKey: 'woba_vs_rhh' },
+  { label: 'wOBA vL', val: r => fmt.rate(r.woba_vs_lhh),      pctKey: 'woba_vs_lhh' },
+  { label: 'K%',      val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct' },
+  { label: 'BB%',     val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct' },
+  { label: 'Whf%',    val: r => fmt.pct(r.whiff_pct),         pctKey: 'whiff_pct' },
+  { label: 'ISO',     val: r => fmt.rate(r.iso_against),      pctKey: 'iso_against' },
+  { label: 'BAA',     val: r => fmt.rate(r.baa_against),      pctKey: 'baa_against' },
+  { label: 'GB / FB', val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value', direction: 'neutral' },
+  { label: 'Stk%',    val: r => fmt.pct(r.strike_pct),        pctKey: 'strike_pct' },
+  { label: 'FPS%',    val: r => fmt.pct(r.fps_pct),           pctKey: 'fps_pct' },
+  { label: 'Put%',    val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct' },
 ]
 
 
@@ -134,9 +126,8 @@ const PITCHER_COLS = [
 // Page
 // ─────────────────────────────────────────────────────────
 export default function ScoutingSheet() {
-  // teamId can come from the URL (when linked from an index/picker) or
-  // fall back to the user's selected portal team.
   const params = useParams()
+  const navigate = useNavigate()
   const { team: portalTeam } = usePortalTeam()
   const teamId = params.teamId
     ? parseInt(params.teamId, 10)
@@ -147,11 +138,23 @@ export default function ScoutingSheet() {
     { season: SEASON },
     [teamId]
   )
+  const { data: teamsList } = useTeams()
+
+  // Teams sorted alphabetically and grouped by conference for the picker.
+  const teamsByConf = (teamsList || []).reduce((acc, t) => {
+    const k = t.conference_abbrev || t.conference_name || 'Other'
+    if (!acc[k]) acc[k] = []
+    acc[k].push(t)
+    return acc
+  }, {})
 
   if (!teamId) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <p className="text-gray-500">Select a team in the portal header to load a scouting sheet.</p>
+        <p className="text-gray-500 mb-4">
+          Pick a team to load its scouting sheet.
+        </p>
+        <TeamPicker teamsByConf={teamsByConf} onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)} />
       </div>
     )
   }
@@ -173,13 +176,15 @@ export default function ScoutingSheet() {
   const team = data.team || {}
   const hitters = data.hitters || []
   const pitchers = data.pitchers || []
+  const teamHitterTotals  = data.team_hitter_totals  || null
+  const teamPitcherTotals = data.team_pitcher_totals || null
 
   return (
-    <div className="scouting-sheet-page max-w-[820px] mx-auto px-3 py-4 print:px-0 print:py-0 print:max-w-none">
+    <div className="scouting-sheet-page mx-auto px-3 py-4 print:px-0 print:py-0">
       {/* Toolbar — hidden on print */}
-      <div className="flex items-center justify-between gap-3 mb-3 print:hidden">
-        <div>
-          <h1 className="text-xl font-bold text-portal-purple-dark">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 print:hidden max-w-[820px] mx-auto">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-portal-purple-dark truncate">
             Scouting Sheet — {team.short_name || team.name}
           </h1>
           <p className="text-xs text-gray-500">
@@ -189,19 +194,34 @@ export default function ScoutingSheet() {
             {' '}of {data.cohort_size?.hitters}H / {data.cohort_size?.pitchers}P in conference
           </p>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
-        >
-          Print / Save as PDF
-        </button>
+        <div className="flex items-center gap-2">
+          <TeamPicker
+            teamsByConf={teamsByConf}
+            currentId={teamId}
+            onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)}
+            compact
+          />
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                       bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
+          >
+            Print / Save as PDF
+          </button>
+        </div>
       </div>
 
       {/* Page 1: HITTERS */}
-      <section className="sheet-page">
+      <section className="sheet-page max-w-[820px] mx-auto print:max-w-none">
         <SheetHeader team={team} season={data.season} side="HITTERS" count={hitters.length} />
-        <RosterTable rows={hitters} cols={HITTER_COLS} handField="bats" />
+        <RosterTable
+          rows={hitters}
+          cols={HITTER_COLS}
+          handField="bats"
+          totals={teamHitterTotals}
+          totalsLabel="TEAM"
+          totalsHint={teamHitterTotals?.n_teams ? `vs ${teamHitterTotals.n_teams} teams` : ''}
+        />
         <SheetLegend kind="hitters" thresholds={data.thresholds} />
       </section>
 
@@ -209,9 +229,16 @@ export default function ScoutingSheet() {
       <div className="sheet-pagebreak" />
 
       {/* Page 2: PITCHERS */}
-      <section className="sheet-page">
+      <section className="sheet-page max-w-[820px] mx-auto print:max-w-none">
         <SheetHeader team={team} season={data.season} side="PITCHING STAFF" count={pitchers.length} />
-        <RosterTable rows={pitchers} cols={PITCHER_COLS} handField="throws" />
+        <RosterTable
+          rows={pitchers}
+          cols={PITCHER_COLS}
+          handField="throws"
+          totals={teamPitcherTotals}
+          totalsLabel="TEAM"
+          totalsHint={teamPitcherTotals?.n_teams ? `vs ${teamPitcherTotals.n_teams} teams` : ''}
+        />
         <SheetLegend kind="pitchers" thresholds={data.thresholds} />
       </section>
     </div>
@@ -220,7 +247,41 @@ export default function ScoutingSheet() {
 
 
 // ─────────────────────────────────────────────────────────
-// Header banner — team logo, name, conference, season
+// Team picker — grouped <select> across NWC / NWAC / CCC / etc.
+// ─────────────────────────────────────────────────────────
+function TeamPicker({ teamsByConf, currentId, onPick, compact = false }) {
+  const groups = Object.keys(teamsByConf).sort()
+  return (
+    <select
+      value={currentId || ''}
+      onChange={(e) => {
+        const id = parseInt(e.target.value, 10)
+        if (Number.isFinite(id)) onPick(id)
+      }}
+      className={`rounded border border-gray-300 bg-white text-gray-900
+                  ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'}`}
+    >
+      {!currentId && <option value="">— pick a team —</option>}
+      {groups.map(g => (
+        <optgroup key={g} label={g}>
+          {teamsByConf[g]
+            .slice()
+            .sort((a, b) => (a.short_name || a.name).localeCompare(b.short_name || b.name))
+            .map(t => (
+              <option key={t.id} value={t.id}>
+                {t.short_name || t.name}
+              </option>
+            ))}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────
+// Sheet header — team logo + name on the left, side label
+// (HITTERS / PITCHING STAFF) on the right.
 // ─────────────────────────────────────────────────────────
 function SheetHeader({ team, season, side, count }) {
   return (
@@ -250,9 +311,11 @@ function SheetHeader({ team, season, side, count }) {
 
 
 // ─────────────────────────────────────────────────────────
-// Roster table — one row per player, dense, color-shaded
+// Roster table — row per player, optional team-totals row.
+// Column widths use percentages so the same table fills both
+// the on-screen 820px container and a printed portrait page.
 // ─────────────────────────────────────────────────────────
-function RosterTable({ rows, cols, handField }) {
+function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint }) {
   if (!rows.length) {
     return <div className="text-center text-gray-400 italic py-6 text-sm">No players found.</div>
   }
@@ -267,13 +330,13 @@ function RosterTable({ rows, cols, handField }) {
   })
 
   return (
-    <table className="w-full border-collapse text-[9px] leading-tight tabular-nums">
+    <table className="w-full border-collapse text-[9px] leading-tight tabular-nums table-fixed">
       <colgroup>
-        <col style={{ width: 24 }} />   {/* # */}
-        <col style={{ width: 130 }} />  {/* Name */}
-        <col style={{ width: 28 }} />   {/* Pos */}
-        <col style={{ width: 18 }} />   {/* B/T */}
-        {cols.map((c, i) => <col key={i} style={{ width: c.width }} />)}
+        <col style={{ width: '3%' }}  />  {/* # */}
+        <col style={{ width: '15%' }} />  {/* Name */}
+        <col style={{ width: '4%' }}  />  {/* Pos */}
+        <col style={{ width: '3%' }}  />  {/* B/T */}
+        {cols.map((_, i) => <col key={i} style={{ width: `${75 / cols.length}%` }} />)}
       </colgroup>
       <thead>
         <tr className="bg-portal-purple text-portal-cream">
@@ -291,13 +354,10 @@ function RosterTable({ rows, cols, handField }) {
       </thead>
       <tbody>
         {sorted.map((row, i) => {
-          // Low-sample rows get a uniform neutral gray on every stat
-          // cell + an italic name and a leading dagger so coaches can
-          // still see the player but know the numbers are noisy.
           const isLow = row.low_sample
-          const lowSampleBg = 'rgba(229, 231, 235, 0.55)'  // gray-200 ~55%
+          const lowSampleBg = 'rgba(229, 231, 235, 0.55)'
           return (
-            <tr key={row.player_id || i} className={isLow ? 'opacity-90' : ''}>
+            <tr key={row.player_id || i}>
               <td className="text-right px-1 py-0.5 border border-gray-200 text-gray-500">
                 {row.jersey_number || '–'}
               </td>
@@ -332,6 +392,33 @@ function RosterTable({ rows, cols, handField }) {
             </tr>
           )
         })}
+
+        {/* Team totals row — bold header band + percentile-shaded cells
+            ranked vs OTHER teams in the conference. */}
+        {totals && (
+          <tr className="border-t-2 border-portal-purple-dark">
+            <td className="text-right px-1 py-1 border border-portal-purple-dark bg-portal-purple/5 text-[8.5px] font-bold text-portal-purple-dark">
+              ─
+            </td>
+            <td className="text-left px-1 py-1 border border-portal-purple-dark bg-portal-purple/5 text-[10px] font-bold text-portal-purple-dark uppercase tracking-wider"
+                colSpan={3}
+                title={totalsHint || ''}>
+              {totalsLabel}
+            </td>
+            {cols.map(c => {
+              const pct = totals.percentiles ? totals.percentiles[c.pctKey] : null
+              const bg = pctColor(pct, c.direction || 'higher_better')
+              return (
+                <td key={c.label}
+                    className="text-center px-0.5 py-1 border border-portal-purple-dark font-bold whitespace-nowrap"
+                    style={{ backgroundColor: bg }}
+                    title={pct != null ? `${pct}th percentile vs other teams` : undefined}>
+                  {c.val(totals)}
+                </td>
+              )
+            })}
+          </tr>
+        )}
       </tbody>
     </table>
   )
@@ -339,12 +426,9 @@ function RosterTable({ rows, cols, handField }) {
 
 
 // ─────────────────────────────────────────────────────────
-// Legend strip below each table — key for the percentile
-// shading + the player-name handedness coloring.
+// Legend strip below each table
 // ─────────────────────────────────────────────────────────
 function SheetLegend({ kind, thresholds }) {
-  // Sample-size minimum for the qualifier — falls back to sane
-  // defaults if the backend payload didn't include the threshold.
   const minStr = kind === 'hitters'
     ? `< ${thresholds?.hitter_min_pa ?? 25} PA`
     : `< ${thresholds?.pitcher_min_ip ?? 5} IP`
@@ -358,7 +442,7 @@ function SheetLegend({ kind, thresholds }) {
         <span>avg</span>
         <span className="inline-block w-4 h-2.5" style={{ backgroundColor: 'rgba(162,210,162,0.95)' }} />
         <span>elite</span>
-        <span className="text-gray-400">(percentile vs conference qualifiers)</span>
+        <span className="text-gray-400">(percentile vs conference qualifiers; team row vs other teams)</span>
       </div>
       <div className="flex items-center gap-1.5">
         <span>Name:</span>

@@ -85,8 +85,22 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
     """Per-pitcher PBP discipline + batted-ball + ISO against + BAA against.
 
     Returns:
-      {pid: {whiff_pct, strike_pct, fps_pct, gb_pct, fb_pct,
+      {pid: {whiff_pct, strike_pct, fps_pct, putaway_pct, gb_pct, fb_pct,
              iso_against, baa_against, bf_pbp}}
+
+    PARSER CONVENTION (important for getting the strike% right):
+      - pitch_sequence is a string of B/K/S/F/H letters where:
+          B = ball, K = swinging strike, S = called strike,
+          F = foul, H = hit-by-pitch
+      - For strikeouts and walks, pitch_sequence INCLUDES the terminal
+        pitch — so the K of a strikeout is already counted in the seq.
+      - For balls put in play, pitch_sequence excludes the terminal
+        pitch — so we add `+1` for each was_in_play row to count it.
+      - pitches_thrown column = LEN(seq) + (1 if was_in_play else 0).
+
+    Strike count therefore = K + S + F (from seq) + in_play (terminal).
+    Don't add a separate "terminal_strikes" — that double-counts the K
+    on strikeouts since the K is already in the seq.
     """
     if not player_ids:
         return {}
@@ -95,20 +109,26 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
         SELECT
           ge.pitcher_player_id AS pid,
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))) AS s_pitches,
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
-          SUM(LENGTH(pitch_sequence)) AS seq_total,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))) AS b_pitches,
           SUM(pitches_thrown) AS pitches_total,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+          -- First-pitch STRIKE: any first-pitch outcome the pitcher
+          --   wants — called strike (S), swinging strike (K), foul (F),
+          --   first-pitch in-play, or first-pitch strikeout looking/swinging
+          --   when the seq is empty (1-pitch K).
           COUNT(*) FILTER (
-            WHERE was_in_play
-               OR ge.result_type IN ('strikeout_swinging','strikeout_looking')
-          ) AS terminal_strikes,
-          COUNT(*) FILTER (
-            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','F'))
+            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','S','F'))
                OR (LENGTH(pitch_sequence) = 0 AND was_in_play)
                OR (LENGTH(pitch_sequence) = 0
                    AND ge.result_type IN ('strikeout_swinging','strikeout_looking'))
           ) AS first_pitch_strikes,
+          COUNT(*) FILTER (WHERE strikes_before >= 2) AS two_strike_pa,
+          COUNT(*) FILTER (
+            WHERE strikes_before >= 2
+              AND ge.result_type IN ('strikeout_swinging','strikeout_looking')
+          ) AS putaway_k,
           COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb,
           COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb,
           COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
@@ -137,16 +157,24 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
     out = {}
     for r in cur.fetchall():
         k_p = float(r['k_pitches'] or 0)
+        s_p = float(r['s_pitches'] or 0)
         f_p = float(r['f_pitches'] or 0)
-        seq = float(r['seq_total'] or 0)
         in_play = float(r['in_play'] or 0)
         bb_total = float(r['bb_total'] or 0)
         pa = float(r['pa'] or 0)
         ab = float(r['ab'] or 0)
-        pitches_total = float(r['pitches_total'] or (seq + in_play))
-        terminal_strikes = float(r['terminal_strikes'] or 0)
+        # pitches_total comes straight from the parser (already the sum
+        # of seq length + 1 for in_play rows), so it matches the
+        # numerator's coverage exactly.
+        pitches_total = float(r['pitches_total'] or 0)
+
+        # Swings: only motions where the bat moved → K (whiff), F (foul),
+        # in_play. Called strikes (S) are takes, not swings.
         swings = k_p + f_p + in_play
-        strikes = k_p + f_p + terminal_strikes
+        # All strikes (for strike%): K + S + F from seq, plus in_play
+        # (every batted ball counts as a strike). Strikeouts have the
+        # final K already in the seq, so don't add it again.
+        strikes = k_p + s_p + f_p + in_play
 
         singles = r['singles'] or 0
         doubles = r['doubles'] or 0
@@ -161,10 +189,12 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
         def _safe(num, denom):
             return (float(num) / float(denom)) if denom else None
 
+        two_strike = r['two_strike_pa'] or 0
         out[r['pid']] = {
             'whiff_pct':    _safe(k_p, swings),
             'strike_pct':   _safe(strikes, pitches_total),
             'fps_pct':      _safe(r['first_pitch_strikes'] or 0, pa),
+            'putaway_pct':  _safe(r['putaway_k'] or 0, two_strike),
             'gb_pct':       _safe(r['gb'] or 0, bb_total),
             'fb_pct':       _safe(r['fb'] or 0, bb_total),
             'iso_against':  iso_against,
@@ -246,8 +276,8 @@ HITTER_PCT_DIRS = {
     'sb_made':               'higher_better',
     'hr_per_fb':             'higher_better',
     'contact_pct':           'higher_better',
-    'first_pitch_swing_pct': 'neutral',
-    'swing_pct':             'neutral',
+    'first_pitch_swing_pct': 'higher_better',  # Nate: aggressive at-bats are a positive
+    'swing_pct':             'higher_better',
     'putaway_pct':           'lower_better',  # for HITTER, lower K% with 2 strikes = better
 }
 
@@ -263,6 +293,7 @@ PITCHER_PCT_DIRS = {
     'gb_or_fb_value':'neutral',
     'strike_pct':    'higher_better',
     'fps_pct':       'higher_better',
+    'putaway_pct':   'higher_better',  # pitcher putaway = ability to finish ABs
 }
 
 
@@ -569,8 +600,162 @@ def _build_pitcher_rows(raw_pitchers, vs_rhh, vs_lhh, pbp_pit):
             'gb_or_fb_value': gb_or_fb_value,
             'strike_pct':   pbp_row.get('strike_pct'),
             'fps_pct':      pbp_row.get('fps_pct'),
+            'putaway_pct':  pbp_row.get('putaway_pct'),
         })
     return out
+
+
+# ─────────────────────────────────────────────────────────────────
+# Team-level aggregation rows (for the totals row at the bottom of
+# each table). We do a PA-weighted (or IP-weighted) average of each
+# rate stat across the team's qualified players, then percentile-rank
+# the team against OTHER TEAMS in the conference so the colored
+# totals row is comparable peer-to-peer.
+# ─────────────────────────────────────────────────────────────────
+
+def _wavg(rows, value_key, weight_key):
+    """Weighted average of `value_key` across `rows`, weighting by
+    `weight_key`. Skips rows where either is None."""
+    num = 0.0
+    den = 0.0
+    for r in rows:
+        v = r.get(value_key)
+        w = r.get(weight_key)
+        if v is None or w is None or w <= 0:
+            continue
+        num += v * w
+        den += w
+    return (num / den) if den > 0 else None
+
+
+def _team_groupings(all_rows):
+    """Group rows by team_id."""
+    groups = {}
+    for r in all_rows:
+        groups.setdefault(r['team_id'], []).append(r)
+    return groups
+
+
+def _aggregate_team_hitters(all_hitter_rows, target_team_id):
+    """Build the team-level totals row for the hitters table. Returns a
+    dict shaped like an individual hitter row (with 'percentiles' filled
+    against the other teams in the conference)."""
+    groups = _team_groupings(all_hitter_rows)
+    team_aggs = {}
+    for tid, rows in groups.items():
+        total_pa = sum((r.get('pa') or 0) for r in rows)
+        if total_pa == 0:
+            continue
+        agg = {
+            'team_id': tid,
+            'pa':                    total_pa,
+            'woba_vs_rhp':           _wavg(rows, 'woba_vs_rhp', 'pa_vs_rhp'),
+            'woba_vs_lhp':           _wavg(rows, 'woba_vs_lhp', 'pa_vs_lhp'),
+            'k_pct':                 _wavg(rows, 'k_pct', 'pa'),
+            'bb_pct':                _wavg(rows, 'bb_pct', 'pa'),
+            'iso':                   _wavg(rows, 'iso', 'pa'),
+            'hr_per_fb':             _wavg(rows, 'hr_per_fb', 'pa'),
+            'contact_pct':           _wavg(rows, 'contact_pct', 'pa'),
+            'first_pitch_swing_pct': _wavg(rows, 'first_pitch_swing_pct', 'pa'),
+            'swing_pct':             _wavg(rows, 'swing_pct', 'pa'),
+            'putaway_pct':           _wavg(rows, 'putaway_pct', 'pa'),
+            'sb_made':               sum((r.get('sb_made') or 0)     for r in rows),
+            'sb_attempts':           sum((r.get('sb_attempts') or 0) for r in rows),
+        }
+        agg['sb_str'] = f"{agg['sb_made']}/{agg['sb_attempts']}"
+        # GB/FB pick at team level: pool the team's hitters' GB and FB rates,
+        # PA-weighted, then pick whichever is higher.
+        team_gb = _wavg(
+            [r for r in rows if r.get('gb_or_fb_type') == 'GB'],
+            'gb_or_fb_value', 'pa'
+        )
+        team_fb = _wavg(
+            [r for r in rows if r.get('gb_or_fb_type') == 'FB'],
+            'gb_or_fb_value', 'pa'
+        )
+        if team_gb is not None and team_fb is not None:
+            if team_gb >= team_fb:
+                agg['gb_or_fb_type'] = 'GB'; agg['gb_or_fb_value'] = team_gb
+            else:
+                agg['gb_or_fb_type'] = 'FB'; agg['gb_or_fb_value'] = team_fb
+        elif team_gb is not None:
+            agg['gb_or_fb_type'] = 'GB'; agg['gb_or_fb_value'] = team_gb
+        elif team_fb is not None:
+            agg['gb_or_fb_type'] = 'FB'; agg['gb_or_fb_value'] = team_fb
+        else:
+            agg['gb_or_fb_type'] = None; agg['gb_or_fb_value'] = None
+        team_aggs[tid] = agg
+
+    target = team_aggs.get(target_team_id)
+    if not target:
+        return None
+
+    # Percentile rank target team vs other teams in the conference.
+    cohort_lists = {k: [a.get(k) for a in team_aggs.values()] for k in HITTER_PCT_DIRS.keys()}
+    target['percentiles'] = {
+        k: _percentile_rank(target.get(k), cohort_lists[k], direction)
+        for k, direction in HITTER_PCT_DIRS.items()
+    }
+    target['low_sample'] = False
+    target['n_teams'] = len(team_aggs)
+    return target
+
+
+def _aggregate_team_pitchers(all_pitcher_rows, target_team_id):
+    """Same as _aggregate_team_hitters but for pitching."""
+    groups = _team_groupings(all_pitcher_rows)
+    team_aggs = {}
+    for tid, rows in groups.items():
+        total_ip = sum(float(r.get('ip') or 0) for r in rows)
+        if total_ip == 0:
+            continue
+        agg = {
+            'team_id': tid,
+            'ip':            total_ip,
+            'woba_vs_rhh':   _wavg(rows, 'woba_vs_rhh', 'bf_vs_rhh'),
+            'woba_vs_lhh':   _wavg(rows, 'woba_vs_lhh', 'bf_vs_lhh'),
+            'k_pct':         _wavg(rows, 'k_pct', 'ip'),
+            'bb_pct':        _wavg(rows, 'bb_pct', 'ip'),
+            'whiff_pct':     _wavg(rows, 'whiff_pct', 'ip'),
+            'iso_against':   _wavg(rows, 'iso_against', 'ip'),
+            'baa_against':   _wavg(rows, 'baa_against', 'ip'),
+            'strike_pct':    _wavg(rows, 'strike_pct', 'ip'),
+            'fps_pct':       _wavg(rows, 'fps_pct', 'ip'),
+            'putaway_pct':   _wavg(rows, 'putaway_pct', 'ip'),
+        }
+        team_gb = _wavg(
+            [r for r in rows if r.get('gb_or_fb_type') == 'GB'],
+            'gb_or_fb_value', 'ip'
+        )
+        team_fb = _wavg(
+            [r for r in rows if r.get('gb_or_fb_type') == 'FB'],
+            'gb_or_fb_value', 'ip'
+        )
+        if team_gb is not None and team_fb is not None:
+            if team_gb >= team_fb:
+                agg['gb_or_fb_type'] = 'GB'; agg['gb_or_fb_value'] = team_gb
+            else:
+                agg['gb_or_fb_type'] = 'FB'; agg['gb_or_fb_value'] = team_fb
+        elif team_gb is not None:
+            agg['gb_or_fb_type'] = 'GB'; agg['gb_or_fb_value'] = team_gb
+        elif team_fb is not None:
+            agg['gb_or_fb_type'] = 'FB'; agg['gb_or_fb_value'] = team_fb
+        else:
+            agg['gb_or_fb_type'] = None; agg['gb_or_fb_value'] = None
+        team_aggs[tid] = agg
+
+    target = team_aggs.get(target_team_id)
+    if not target:
+        return None
+
+    cohort_lists = {k: [a.get(k) for a in team_aggs.values()] for k in PITCHER_PCT_DIRS.keys()}
+    target['percentiles'] = {
+        k: _percentile_rank(target.get(k), cohort_lists[k], direction)
+        for k, direction in PITCHER_PCT_DIRS.items()
+    }
+    target['low_sample'] = False
+    target['n_teams'] = len(team_aggs)
+    return target
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -630,6 +815,13 @@ def build_scouting_sheet(cur, team_id, season):
     team_hitters  = [r for r in all_hitter_rows  if r['team_id'] == team_id]
     team_pitchers = [r for r in all_pitcher_rows if r['team_id'] == team_id]
 
+    # Team aggregate rows — sum the team's PAs/IP and roll up the rate
+    # stats. Each rate stat gets a percentile vs OTHER TEAMS in the
+    # conference (not vs individual players) so the colored team row
+    # is interpretable.
+    team_hitter_agg  = _aggregate_team_hitters(all_hitter_rows, team_id)
+    team_pitcher_agg = _aggregate_team_pitchers(all_pitcher_rows, team_id)
+
     return {
         'team': {
             'id': team['id'],
@@ -643,6 +835,8 @@ def build_scouting_sheet(cur, team_id, season):
         'season': season,
         'hitters': team_hitters,
         'pitchers': team_pitchers,
+        'team_hitter_totals':  team_hitter_agg,
+        'team_pitcher_totals': team_pitcher_agg,
         'cohort_size': {
             'hitters': len(all_hitter_rows),
             'pitchers': len(all_pitcher_rows),
