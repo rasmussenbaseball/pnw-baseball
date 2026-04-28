@@ -387,7 +387,7 @@ def _fetch_pitchers(cur, team_ids, season):
           ps.walks             AS bb,
           ps.hits_allowed      AS h_allowed,
           ps.home_runs_allowed AS hr_allowed,
-          ps.opp_avg           AS opp_avg
+          ps.hit_batters       AS hbp_allowed
         FROM players p
         JOIN pitching_stats ps ON ps.player_id = p.id AND ps.season = %s
         WHERE p.team_id = ANY(%s)
@@ -485,8 +485,13 @@ def _build_pitcher_rows(raw_pitchers, vs_rhh, vs_lhh, pbp_pit):
         bf = p['bf'] or 0
         so = p['so'] or 0
         bb = p['bb'] or 0
+        hbp_allowed = p['hbp_allowed'] or 0
+        h_allowed = p['h_allowed'] or 0
         k_pct = (so / bf) if bf else None
         bb_pct = (bb / bf) if bf else None
+        # Computed BAA from raw counts: H / (BF - BB - HBP)
+        baa_denom = bf - bb - hbp_allowed
+        baa_computed = (h_allowed / baa_denom) if baa_denom > 0 else None
 
         pbp_row = pbp_pit.get(pid, {})
         gb = pbp_row.get('gb_pct')
@@ -523,7 +528,7 @@ def _build_pitcher_rows(raw_pitchers, vs_rhh, vs_lhh, pbp_pit):
             'whiff_pct':    pbp_row.get('whiff_pct'),
             'iso_against':  pbp_row.get('iso_against'),
             'baa_against':  pbp_row.get('baa_against') if pbp_row.get('baa_against') is not None
-                            else (float(p['opp_avg']) if p['opp_avg'] is not None else None),
+                            else baa_computed,
             'gb_or_fb_type':  gb_or_fb_type,
             'gb_or_fb_value': gb_or_fb_value,
             'strike_pct':   pbp_row.get('strike_pct'),
