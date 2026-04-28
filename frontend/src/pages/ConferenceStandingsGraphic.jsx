@@ -54,8 +54,26 @@ const THEME = {
   red: '#f87171',
 }
 
+// Maps conference abbreviation/name to the conf_key used by the freeze
+// system. Mirrors StandingsPage.jsx and PlayoffProjections.jsx.
+function getConfKey(conf) {
+  const abbrev = (conf.conference_abbrev || '').toUpperCase()
+  if (abbrev === 'GNAC') return 'gnac'
+  if (abbrev === 'NWC')  return 'nwc'
+  if (abbrev === 'CCC')  return 'ccc'
+  const name = (conf.conference_name || '').toLowerCase()
+  if (name.includes('nwac')) {
+    if (name.includes('north')) return 'nwac-north'
+    if (name.includes('east'))  return 'nwac-east'
+    if (name.includes('south')) return 'nwac-south'
+    if (name.includes('west'))  return 'nwac-west'
+  }
+  return null
+}
+
+
 // ─── Core render function (draws to any canvas context) ───
-function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
+function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs, isFrozen = false) {
   const font = 'Inter, Helvetica Neue, sans-serif'
 
   // ─── Background gradient ───
@@ -138,14 +156,9 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
   ctx.lineTo(W, headerH)
   ctx.stroke()
 
-  // ─── Frozen detection ───
-  // If every team has zero conference games remaining, the regular
-  // season is over for this conference — drop REM and REM SOS columns
-  // since they're meaningless. Triggered automatically by data, no
-  // extra API plumbing needed.
-  const isFrozen = teams.length > 0 && teams.every(
-    t => t.conf_games_remaining == null || t.conf_games_remaining === 0
-  )
+  // ─── Frozen detection (passed in from caller via frozen_conferences) ───
+  // When true, drop REM and REM SOS columns — they're meaningless once
+  // the regular season is over.
 
   // ─── Column layout ───
   const rankColX = padX
@@ -326,6 +339,7 @@ export default function ConferenceStandingsGraphic() {
 
   const { data: result, loading } = useApi('/conference-standings-graphic', { season }, [season])
   const conferences = result?.conferences || []
+  const frozenSet = new Set((result?.frozen_conferences || []).map(f => f.conf_key))
 
   // Auto-select first conference
   if (conferences.length > 0 && selectedConf === null) {
@@ -367,8 +381,9 @@ export default function ConferenceStandingsGraphic() {
     const ctx = canvas.getContext('2d')
     ctx.scale(dpr, dpr)
 
-    renderStandings(ctx, W, H, activeConf, activeConf.teams, images.faviconImg, images.logoImgs)
-  }, [activeConf, images])
+    const isFrozen = frozenSet.has(getConfKey(activeConf))
+    renderStandings(ctx, W, H, activeConf, activeConf.teams, images.faviconImg, images.logoImgs, isFrozen)
+  }, [activeConf, images, frozenSet])
 
   // ─── Export handler ───
   const handleExport = useCallback(async () => {
@@ -389,7 +404,8 @@ export default function ConferenceStandingsGraphic() {
       const ctx = canvas.getContext('2d')
       ctx.scale(dpr, dpr)
 
-      renderStandings(ctx, W, H, activeConf, activeConf.teams, faviconImg, logoImgs)
+      const isFrozen = frozenSet.has(getConfKey(activeConf))
+      renderStandings(ctx, W, H, activeConf, activeConf.teams, faviconImg, logoImgs, isFrozen)
 
       const link = document.createElement('a')
       const safeName = activeConf.conference_abbrev || activeConf.conference_name.replace(/\s+/g, '-')
