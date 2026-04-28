@@ -35,6 +35,8 @@ COMMITMENTS = [
     ("Hirai", "Alex", "Big Bend", "Warner Pacific"),
     ("Imai", "Yuji", "Olympic", "Tabor College"),
     ("Tordiffe", "Anderson", "Clackamas", "Washington State"),
+    ("Mar", "Ethan", "Tacoma", "Washington"),
+    ("Hendrix", "Basil", "Everett", "George Mason"),
 ]
 
 def main():
