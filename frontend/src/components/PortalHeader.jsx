@@ -31,6 +31,8 @@ const NAV_SECTIONS = [
   {
     label: 'Opponent Scouting',
     items: [
+      { to: '/portal/team-scouting', label: 'Team Scouting',
+        desc: 'Full team report — every stat with percentile context' },
       { to: '/portal/historic', label: 'Historic Matchups',
         desc: 'Per-PA matchup history vs an opponent' },
       { to: '/portal/player-scouting', label: 'Player Scouting',

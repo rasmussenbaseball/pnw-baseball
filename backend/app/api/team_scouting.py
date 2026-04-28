@@ -1,0 +1,856 @@
+"""
+Team Scouting page backend.
+
+Aggregates EVERY team-level stat (offense, pitching, plate discipline,
+batted-ball, situational) for a single team plus per-player breakdowns,
+each with percentile rank within the team's CONFERENCE (so NAIA teams
+get compared to NAIA, D3 to D3, etc.).
+
+Phase A scope:
+  - Team header + last-10 record
+  - Team stats with conference percentiles
+  - Hitters (>=30 PA), Starters (>=15 IP, GS>0), Relievers (>=5 IP, GS=0)
+  - Per-player strengths/weaknesses (top-2 / bottom-2 by percentile)
+  - Auto-generated team writeup (template-based, picks top strengths/weaknesses)
+
+Phase B (deferred): situational splits, reliever-usage tracker, trends.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Optional
+
+
+# ─────────────────────────────────────────────────────────────────
+# Stat catalog
+#   key         : column name in batting_stats / pitching_stats / our agg
+#   label       : human-readable display name
+#   group       : which panel this lives in (offense / pitching / plate_discipline / batted_ball)
+#   direction   : 'higher_better' or 'lower_better' (drives the color flip)
+#   format      : 'rate' (3 decimals .350), 'pct' (37.0%), 'int', 'era' (3.45), 'war' (1.7)
+# ─────────────────────────────────────────────────────────────────
+
+TEAM_OFFENSE_STATS = [
+    {'key': 'batting_avg',  'label': 'AVG',    'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'on_base_pct',  'label': 'OBP',    'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'slugging_pct', 'label': 'SLG',    'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'ops',          'label': 'OPS',    'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'iso',          'label': 'ISO',    'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'woba',         'label': 'wOBA',   'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'wrc_plus',     'label': 'wRC+',   'direction': 'higher_better', 'format': 'int'},
+    {'key': 'bb_pct',       'label': 'BB%',    'direction': 'higher_better', 'format': 'pct'},
+    {'key': 'k_pct',        'label': 'K%',     'direction': 'lower_better',  'format': 'pct'},
+    {'key': 'home_runs',    'label': 'HR',     'direction': 'higher_better', 'format': 'int'},
+    {'key': 'hr_per_pa',    'label': 'HR/PA',  'direction': 'higher_better', 'format': 'pct'},
+    {'key': 'stolen_bases', 'label': 'SB',     'direction': 'higher_better', 'format': 'int'},
+    {'key': 'babip',        'label': 'BABIP',  'direction': 'higher_better', 'format': 'rate'},
+    {'key': 'runs_per_game','label': 'R/G',    'direction': 'higher_better', 'format': 'era'},
+]
+
+TEAM_PITCHING_STATS = [
+    {'key': 'era',          'label': 'ERA',    'direction': 'lower_better',  'format': 'era'},
+    {'key': 'fip',          'label': 'FIP',    'direction': 'lower_better',  'format': 'era'},
+    {'key': 'siera',        'label': 'SIERA',  'direction': 'lower_better',  'format': 'era'},
+    {'key': 'whip',         'label': 'WHIP',   'direction': 'lower_better',  'format': 'era'},
+    {'key': 'k_pct',        'label': 'K%',     'direction': 'higher_better', 'format': 'pct'},
+    {'key': 'bb_pct',       'label': 'BB%',    'direction': 'lower_better',  'format': 'pct'},
+    {'key': 'k_per_9',      'label': 'K/9',    'direction': 'higher_better', 'format': 'era'},
+    {'key': 'bb_per_9',     'label': 'BB/9',   'direction': 'lower_better',  'format': 'era'},
+    {'key': 'hr_per_9',     'label': 'HR/9',   'direction': 'lower_better',  'format': 'era'},
+    {'key': 'k_bb_ratio',   'label': 'K/BB',   'direction': 'higher_better', 'format': 'era'},
+    {'key': 'opp_avg',      'label': 'opp AVG','direction': 'lower_better',  'format': 'rate'},
+    {'key': 'ra_per_game',  'label': 'RA/G',   'direction': 'lower_better',  'format': 'era'},
+]
+
+TEAM_PBP_DISCIPLINE_STATS = [
+    {'key': 'contact_pct',      'label': 'Contact%',     'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'swing_pct',        'label': 'Swing%',       'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'whiff_pct',        'label': 'Whiff%',       'direction': 'lower_better',  'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'fps_pct',          'label': 'FPS%',         'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'putaway_pct',      'label': 'Putaway%',     'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'opp_contact_pct',  'label': 'opp Contact%', 'direction': 'lower_better',  'format': 'pct', 'group': 'pbp_pitching'},
+    {'key': 'opp_whiff_pct',    'label': 'opp Whiff%',   'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_pitching'},
+]
+
+TEAM_PBP_BATTED_BALL_STATS = [
+    {'key': 'gb_pct',           'label': 'GB%',          'direction': 'neutral',       'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'ld_pct',           'label': 'LD%',          'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'fb_pct',           'label': 'FB%',          'direction': 'neutral',       'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'pu_pct',           'label': 'PU%',          'direction': 'lower_better',  'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'air_pull_pct',     'label': 'AIRPULL%',     'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'opp_gb_pct',       'label': 'opp GB%',      'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_pitching'},
+    {'key': 'opp_ld_pct',       'label': 'opp LD%',      'direction': 'lower_better',  'format': 'pct', 'group': 'pbp_pitching'},
+    {'key': 'opp_fb_pct',       'label': 'opp FB%',      'direction': 'neutral',       'format': 'pct', 'group': 'pbp_pitching'},
+]
+
+# Per-player strength/weakness candidate stats. We pick top-2 percentile and
+# bottom-2 percentile from these per player.
+HITTER_FLAG_STATS = [
+    {'key': 'on_base_pct',  'label': 'OBP',    'direction': 'higher_better'},
+    {'key': 'slugging_pct', 'label': 'SLG',    'direction': 'higher_better'},
+    {'key': 'iso',          'label': 'ISO',    'direction': 'higher_better'},
+    {'key': 'woba',         'label': 'wOBA',   'direction': 'higher_better'},
+    {'key': 'wrc_plus',     'label': 'wRC+',   'direction': 'higher_better'},
+    {'key': 'bb_pct',       'label': 'BB%',    'direction': 'higher_better'},
+    {'key': 'k_pct',        'label': 'K%',     'direction': 'lower_better'},
+    {'key': 'hr_per_pa',    'label': 'HR/PA',  'direction': 'higher_better'},
+]
+
+PITCHER_FLAG_STATS = [
+    {'key': 'era',          'label': 'ERA',    'direction': 'lower_better'},
+    {'key': 'fip',          'label': 'FIP',    'direction': 'lower_better'},
+    {'key': 'k_pct',        'label': 'K%',     'direction': 'higher_better'},
+    {'key': 'bb_pct',       'label': 'BB%',    'direction': 'lower_better'},
+    {'key': 'whip',         'label': 'WHIP',   'direction': 'lower_better'},
+    {'key': 'hr_per_9',     'label': 'HR/9',   'direction': 'lower_better'},
+    {'key': 'babip_against','label': 'BABIP',  'direction': 'lower_better'},
+]
+
+
+# ─────────────────────────────────────────────────────────────────
+# Percentile + color helpers
+# ─────────────────────────────────────────────────────────────────
+
+def percentile_rank(value, all_values, direction):
+    """Rank `value` against `all_values` and return percentile (0-100).
+    For direction='higher_better', higher value = higher percentile.
+    For 'lower_better', lower value = higher percentile.
+    For 'neutral', return None (no good/bad coloring).
+    """
+    if value is None:
+        return None
+    vals = [v for v in all_values if v is not None]
+    if len(vals) < 2:
+        return 50.0
+    if direction == 'neutral':
+        return None
+    if direction == 'lower_better':
+        below = sum(1 for v in vals if v > value)  # values worse than ours
+    else:
+        below = sum(1 for v in vals if v < value)
+    equal = sum(1 for v in vals if v == value)
+    pct = ((below + equal * 0.5) / len(vals)) * 100.0
+    return round(pct, 1)
+
+
+def percentile_to_color(p):
+    """Bucket percentile into a color label."""
+    if p is None:
+        return 'neutral'
+    if p >= 90: return 'elite'
+    if p >= 70: return 'good'
+    if p >= 30: return 'avg'
+    if p >= 10: return 'poor'
+    return 'bad'
+
+
+def rank_within(value, all_values, direction):
+    """Return (rank, total) where rank=1 is best."""
+    if value is None:
+        return None, len(all_values)
+    vals = sorted(
+        [v for v in all_values if v is not None],
+        reverse=(direction == 'higher_better'),
+    )
+    if not vals:
+        return None, 0
+    # Rank = number of values strictly better + 1
+    if direction == 'higher_better':
+        better = sum(1 for v in vals if v > value)
+    elif direction == 'lower_better':
+        better = sum(1 for v in vals if v < value)
+    else:
+        return None, len(vals)
+    return better + 1, len(vals)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Team-level aggregations
+# ─────────────────────────────────────────────────────────────────
+
+def _aggregate_team_offense(cur, team_id, season):
+    """Aggregate batting_stats for one team into a single row of team-level
+    rate stats. Recomputes rates from sums (don't average rates)."""
+    cur.execute("""
+        SELECT
+          SUM(plate_appearances) AS pa,
+          SUM(at_bats)           AS ab,
+          SUM(hits)              AS h,
+          SUM(doubles)           AS db,
+          SUM(triples)           AS tp,
+          SUM(home_runs)         AS hr,
+          SUM(walks)             AS bb,
+          SUM(intentional_walks) AS ibb,
+          SUM(hit_by_pitch)      AS hbp,
+          SUM(strikeouts)        AS so,
+          SUM(stolen_bases)      AS sb,
+          SUM(caught_stealing)   AS cs,
+          SUM(sacrifice_flies)   AS sf,
+          SUM(sacrifice_bunts)   AS sh,
+          SUM(runs)              AS r,
+          SUM(rbi)               AS rbi
+        FROM batting_stats
+        WHERE team_id = %s AND season = %s
+    """, (team_id, season))
+    r = cur.fetchone()
+    if not r or not r['pa']:
+        return None
+    pa, ab, h, db, tp, hr, bb, ibb, hbp, so, sb, cs, sf, sh = (
+        r['pa'], r['ab'], r['h'], r['db'], r['tp'], r['hr'],
+        r['bb'], r['ibb'], r['hbp'], r['so'], r['sb'], r['cs'],
+        r['sf'], r['sh']
+    )
+    bb_total = (bb or 0) + (ibb or 0)
+    singles = (h or 0) - (db or 0) - (tp or 0) - (hr or 0)
+    tb = singles + 2*(db or 0) + 3*(tp or 0) + 4*(hr or 0)
+
+    avg = h / ab if ab else 0
+    obp = (h + bb_total + (hbp or 0)) / (ab + bb_total + (hbp or 0) + (sf or 0)) if (ab + bb_total + (hbp or 0) + (sf or 0)) else 0
+    slg = tb / ab if ab else 0
+    iso = slg - avg
+    bb_pct = bb_total / pa if pa else 0
+    k_pct = (so or 0) / pa if pa else 0
+    hr_per_pa = (hr or 0) / pa if pa else 0
+    babip_denom = (ab - so - hr + sf) if (ab and so is not None and hr is not None) else 0
+    babip = (h - hr) / babip_denom if babip_denom else 0
+
+    # wOBA from D3/NAIA-style linear weights (close enough for percentile use).
+    # We're not computing perfect college wRC+ here — use the avg of player wOBAs
+    # weighted by PA from batting_stats instead.
+    cur.execute("""
+        SELECT
+          SUM(woba * plate_appearances) / NULLIF(SUM(plate_appearances), 0) AS team_woba,
+          SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+            / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) AS team_wrc_plus
+        FROM batting_stats
+        WHERE team_id = %s AND season = %s
+    """, (team_id, season))
+    woba_row = cur.fetchone() or {}
+
+    return {
+        'pa': pa, 'ab': ab, 'hits': h, 'home_runs': hr, 'stolen_bases': sb,
+        'runs': r['r'], 'rbi': r['rbi'],
+        'batting_avg': avg, 'on_base_pct': obp, 'slugging_pct': slg,
+        'ops': obp + slg, 'iso': iso, 'babip': babip,
+        'bb_pct': bb_pct, 'k_pct': k_pct, 'hr_per_pa': hr_per_pa,
+        'woba': float(woba_row.get('team_woba') or 0),
+        'wrc_plus': float(woba_row.get('team_wrc_plus') or 100),
+    }
+
+
+def _aggregate_team_pitching(cur, team_id, season):
+    """Aggregate pitching_stats for one team."""
+    cur.execute("""
+        SELECT
+          SUM(games)              AS g,
+          SUM(innings_pitched)    AS ip,
+          SUM(earned_runs)        AS er,
+          SUM(hits_allowed)       AS h,
+          SUM(walks)              AS bb,
+          SUM(strikeouts)         AS so,
+          SUM(home_runs_allowed)  AS hr,
+          SUM(hit_batters)        AS hbp,
+          SUM(batters_faced)      AS bf
+        FROM pitching_stats
+        WHERE team_id = %s AND season = %s
+    """, (team_id, season))
+    r = cur.fetchone()
+    if not r or not r['ip']:
+        return None
+    ip, er, h, bb, so, hr, bf = (
+        float(r['ip']), float(r['er'] or 0), float(r['h'] or 0),
+        float(r['bb'] or 0), float(r['so'] or 0), float(r['hr'] or 0),
+        float(r['bf'] or 0),
+    )
+    era = (er * 9 / ip) if ip else 0
+    whip = (h + bb) / ip if ip else 0
+    k_per_9 = (so * 9 / ip) if ip else 0
+    bb_per_9 = (bb * 9 / ip) if ip else 0
+    hr_per_9 = (hr * 9 / ip) if ip else 0
+    k_bb_ratio = (so / bb) if bb else (so if so else 0)
+    k_pct = (so / bf) if bf else 0
+    bb_pct = (bb / bf) if bf else 0
+    opp_avg = (h / (bf - bb - r.get('hbp', 0))) if (bf - bb - (r.get('hbp') or 0)) > 0 else 0
+
+    # Team-level FIP/SIERA: weighted avg of player FIP / SIERA by IP
+    cur.execute("""
+        SELECT
+          SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+            / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) AS team_fip,
+          SUM(siera * innings_pitched) FILTER (WHERE siera IS NOT NULL)
+            / NULLIF(SUM(innings_pitched) FILTER (WHERE siera IS NOT NULL), 0) AS team_siera
+        FROM pitching_stats
+        WHERE team_id = %s AND season = %s
+    """, (team_id, season))
+    f = cur.fetchone() or {}
+
+    return {
+        'g': r['g'], 'ip': ip, 'er': er, 'so': so, 'bb': bb, 'hr': hr,
+        'era': era, 'whip': whip,
+        'k_per_9': k_per_9, 'bb_per_9': bb_per_9, 'hr_per_9': hr_per_9,
+        'k_bb_ratio': k_bb_ratio, 'k_pct': k_pct, 'bb_pct': bb_pct,
+        'opp_avg': opp_avg,
+        'fip': float(f.get('team_fip') or 0),
+        'siera': float(f.get('team_siera') or 0),
+    }
+
+
+def _aggregate_team_pbp_offense(cur, team_id, season):
+    """Aggregate game_events for the team's HITTERS (batting_team_id)."""
+    cur.execute("""
+        SELECT
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
+          SUM(LENGTH(pitch_sequence)) AS seq_total,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+          COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb,
+          COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb,
+          COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld,
+          COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+          ) AS air_pull,
+          COUNT(*) FILTER (WHERE balls_before = 0 AND strikes_before = 0
+                           AND was_in_play) AS first_pitch_in_play,
+          COUNT(*) FILTER (WHERE strikes_before >= 2
+                           AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS putaway_k,
+          COUNT(*) FILTER (WHERE strikes_before >= 2) AS two_strike_pa,
+          COUNT(*) AS pa
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players p ON p.id = ge.batter_player_id
+        WHERE ge.batting_team_id = %s AND g.season = %s
+          AND ge.result_type IS NOT NULL
+    """, (team_id, season))
+    r = cur.fetchone() or {}
+    k_p = float(r.get('k_pitches') or 0)
+    f_p = float(r.get('f_pitches') or 0)
+    seq = float(r.get('seq_total') or 0)
+    in_play = float(r.get('in_play') or 0)
+    bb_total = float(r.get('bb_total') or 0)
+    pa = float(r.get('pa') or 0)
+
+    swings = k_p + f_p + in_play
+    contact = f_p + in_play
+    total_pitches = seq + in_play
+
+    def _safe(num, denom):
+        return float(num) / float(denom) if denom else None
+
+    return {
+        'contact_pct': _safe(contact, swings),
+        'swing_pct':   _safe(swings, total_pitches),
+        'whiff_pct':   _safe(k_p, swings),
+        'gb_pct':      _safe(r.get('gb') or 0, bb_total),
+        'fb_pct':      _safe(r.get('fb') or 0, bb_total),
+        'ld_pct':      _safe(r.get('ld') or 0, bb_total),
+        'pu_pct':      _safe(r.get('pu') or 0, bb_total),
+        'air_pull_pct':_safe(r.get('air_pull') or 0, bb_total),
+        'fps_pct':     _safe(r.get('first_pitch_in_play') or 0, pa),  # rough proxy
+        'putaway_pct': _safe(r.get('putaway_k') or 0, r.get('two_strike_pa') or 0),
+    }
+
+
+def _aggregate_team_pbp_pitching(cur, team_id, season):
+    """Aggregate game_events for the team's PITCHERS (defending_team_id)."""
+    cur.execute("""
+        SELECT
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
+          SUM(LENGTH(pitch_sequence)) AS seq_total,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+          COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb,
+          COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb,
+          COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) AS pa
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        WHERE ge.defending_team_id = %s AND g.season = %s
+          AND ge.result_type IS NOT NULL
+    """, (team_id, season))
+    r = cur.fetchone() or {}
+    k_p = float(r.get('k_pitches') or 0)
+    f_p = float(r.get('f_pitches') or 0)
+    seq = float(r.get('seq_total') or 0)
+    in_play = float(r.get('in_play') or 0)
+    bb_total = float(r.get('bb_total') or 0)
+    swings = k_p + f_p + in_play
+    contact = f_p + in_play
+
+    def _safe(num, denom):
+        return float(num) / float(denom) if denom else None
+
+    return {
+        'opp_contact_pct': _safe(contact, swings),
+        'opp_whiff_pct':   _safe(k_p, swings),
+        'opp_gb_pct':      _safe(r.get('gb') or 0, bb_total),
+        'opp_fb_pct':      _safe(r.get('fb') or 0, bb_total),
+        'opp_ld_pct':      _safe(r.get('ld') or 0, bb_total),
+    }
+
+
+def _team_runs_for_against(cur, team_id, season):
+    """Compute team runs scored / allowed and games played."""
+    cur.execute("""
+        SELECT
+          COUNT(*) AS g,
+          SUM(CASE WHEN home_team_id = %s THEN home_score ELSE away_score END) AS rf,
+          SUM(CASE WHEN home_team_id = %s THEN away_score ELSE home_score END) AS ra
+        FROM games
+        WHERE season = %s AND status = 'final'
+          AND home_score IS NOT NULL AND away_score IS NOT NULL
+          AND (home_team_id = %s OR away_team_id = %s)
+    """, (team_id, team_id, season, team_id, team_id))
+    r = cur.fetchone() or {}
+    g = r.get('g') or 0
+    rf = r.get('rf') or 0
+    ra = r.get('ra') or 0
+    return {
+        'games': g,
+        'runs_for': rf,
+        'runs_against': ra,
+        'runs_per_game': (rf / g) if g else 0,
+        'ra_per_game':   (ra / g) if g else 0,
+    }
+
+
+def aggregate_team_stats(cur, team_id, season):
+    """All team-level stats merged into one dict."""
+    out = {}
+    o = _aggregate_team_offense(cur, team_id, season) or {}
+    p = _aggregate_team_pitching(cur, team_id, season) or {}
+    pbp_o = _aggregate_team_pbp_offense(cur, team_id, season) or {}
+    pbp_p = _aggregate_team_pbp_pitching(cur, team_id, season) or {}
+    rfra = _team_runs_for_against(cur, team_id, season)
+    # Pitching runs-allowed-per-game replaces the simple value from rfra
+    p['ra_per_game'] = rfra['ra_per_game']
+    out.update({f'{k}': v for k, v in o.items()})  # offense raw keys
+    out['runs_per_game'] = rfra['runs_per_game']
+    # Prefix-shifting: pitching stats kept under their own keys but we collide
+    # on 'k_pct' and 'bb_pct' (both offense and pitching). Use namespacing.
+    out['offense'] = o
+    out['pitching'] = p
+    out['pbp_offense'] = pbp_o
+    out['pbp_pitching'] = pbp_p
+    out['rfra'] = rfra
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────
+# Recent form (last 10 games)
+# ─────────────────────────────────────────────────────────────────
+
+def fetch_last_10_games(cur, team_id, season):
+    """Return last 10 final games as a list with W/L tagging."""
+    cur.execute("""
+        SELECT g.id, g.game_date, g.home_team_id, g.away_team_id,
+               g.home_score, g.away_score,
+               t_home.short_name AS home_short, t_away.short_name AS away_short
+        FROM games g
+        LEFT JOIN teams t_home ON t_home.id = g.home_team_id
+        LEFT JOIN teams t_away ON t_away.id = g.away_team_id
+        WHERE g.season = %s AND g.status = 'final'
+          AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+          AND (g.home_team_id = %s OR g.away_team_id = %s)
+          AND COALESCE(g.is_postseason, FALSE) = FALSE
+        ORDER BY g.game_date DESC, g.id DESC
+        LIMIT 10
+    """, (season, team_id, team_id))
+    rows = list(cur.fetchall())
+    games = []
+    wins = 0
+    losses = 0
+    for r in rows:
+        d = dict(r)
+        is_home = d['home_team_id'] == team_id
+        my_score = d['home_score'] if is_home else d['away_score']
+        opp_score = d['away_score'] if is_home else d['home_score']
+        opp_short = d['away_short'] if is_home else d['home_short']
+        if my_score > opp_score:
+            result = 'W'; wins += 1
+        elif my_score < opp_score:
+            result = 'L'; losses += 1
+        else:
+            result = 'T'
+        games.append({
+            'date': d['game_date'].isoformat() if d['game_date'] else None,
+            'home_away': 'vs' if is_home else '@',
+            'opponent': opp_short,
+            'score': f"{my_score}-{opp_score}",
+            'result': result,
+        })
+    return {
+        'record': f"{wins}-{losses}",
+        'wins': wins, 'losses': losses,
+        'games': list(reversed(games)),  # oldest-first for chart-ready order
+    }
+
+
+# ─────────────────────────────────────────────────────────────────
+# Conference baseline — pull all teams in the same conference and
+# aggregate each one's team-level stats so we can rank our team.
+# ─────────────────────────────────────────────────────────────────
+
+def fetch_conference_team_ids(cur, conference_id):
+    cur.execute("""
+        SELECT id FROM teams
+        WHERE conference_id = %s AND is_active = 1
+    """, (conference_id,))
+    return [r['id'] for r in cur.fetchall()]
+
+
+def build_conference_baseline(cur, conference_team_ids, season):
+    """Aggregate team-level stats for every team in the conference.
+    Returns: {team_id: aggregate_dict}.
+    """
+    out = {}
+    for tid in conference_team_ids:
+        out[tid] = aggregate_team_stats(cur, tid, season)
+    return out
+
+
+def _stat_value(team_agg, group, key):
+    """Pull a stat from the team_agg dict at the right group nesting."""
+    g = team_agg.get(group) or {}
+    return g.get(key)
+
+
+def _build_panel(catalog, default_group, our_team_id, baseline):
+    """For each stat in `catalog`, compute our value, conf rank, percentile, color.
+
+    Each stat may override the default group via `spec.get('group')`. Stats not
+    found in the group (or top-level) get NULL value/rank.
+    """
+    rows = []
+    for spec in catalog:
+        key = spec['key']
+        group = spec.get('group') or default_group
+        all_values = [
+            _stat_value(baseline.get(tid, {}), group, key)
+            for tid in baseline.keys()
+        ]
+        # Fallback: try top-level keys (for stats stored flat like runs_per_game)
+        if all(v is None for v in all_values):
+            all_values = [
+                baseline.get(tid, {}).get(key)
+                for tid in baseline.keys()
+            ]
+            our_val = baseline.get(our_team_id, {}).get(key)
+        else:
+            our_val = _stat_value(baseline.get(our_team_id, {}), group, key)
+        pct = percentile_rank(our_val, all_values, spec['direction'])
+        rank, total = rank_within(our_val, all_values, spec['direction'])
+        rows.append({
+            'key': key,
+            'label': spec['label'],
+            'value': our_val,
+            'format': spec['format'],
+            'direction': spec['direction'],
+            'rank': rank,
+            'total': total,
+            'percentile': pct,
+            'color': percentile_to_color(pct),
+        })
+    return rows
+
+
+def build_team_panels(our_team_id, baseline):
+    """Build the four team-stats panels."""
+    return {
+        'offense':         _build_panel(TEAM_OFFENSE_STATS,         'offense',      our_team_id, baseline),
+        'pitching':        _build_panel(TEAM_PITCHING_STATS,        'pitching',     our_team_id, baseline),
+        'plate_discipline': _build_panel(
+            TEAM_PBP_DISCIPLINE_STATS,
+            'pbp_offense',  # most stats; opp_X stats live in pbp_pitching
+            our_team_id, baseline,
+        ),
+        'batted_ball':     _build_panel(TEAM_PBP_BATTED_BALL_STATS, 'pbp_offense',  our_team_id, baseline),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────
+# Player roster + per-player percentiles + strengths/weaknesses
+# ─────────────────────────────────────────────────────────────────
+
+def fetch_hitters(cur, conference_team_ids, season, min_pa=30):
+    """Return all hitters in the conference with min_pa PAs.
+    Used for both the team's roster AND the percentile baseline."""
+    cur.execute("""
+        SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school,
+               p.bats, p.team_id, t.short_name AS team_short, t.logo_url AS team_logo
+        FROM batting_stats bs
+        JOIN players p ON p.id = bs.player_id
+        JOIN teams t ON t.id = p.team_id
+        WHERE bs.season = %s
+          AND p.team_id = ANY(%s)
+          AND bs.plate_appearances >= %s
+        ORDER BY bs.woba DESC NULLS LAST
+    """, (season, conference_team_ids, min_pa))
+    return [dict(r) for r in cur.fetchall()]
+
+
+def fetch_pitchers(cur, conference_team_ids, season, min_ip=5):
+    """Return all pitchers in the conference with min_ip innings."""
+    cur.execute("""
+        SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school,
+               p.throws, p.team_id, t.short_name AS team_short, t.logo_url AS team_logo
+        FROM pitching_stats ps
+        JOIN players p ON p.id = ps.player_id
+        JOIN teams t ON t.id = p.team_id
+        WHERE ps.season = %s
+          AND p.team_id = ANY(%s)
+          AND ps.innings_pitched >= %s
+        ORDER BY ps.fip ASC NULLS LAST
+    """, (season, conference_team_ids, min_ip))
+    return [dict(r) for r in cur.fetchall()]
+
+
+def player_percentile(player, pool, key, direction):
+    """Percentile rank of `player[key]` within `pool` (list of dicts)."""
+    val = player.get(key)
+    if val is None:
+        return None
+    pool_vals = [p.get(key) for p in pool if p.get(key) is not None]
+    return percentile_rank(val, pool_vals, direction)
+
+
+def flag_player(player, pool, flag_stats):
+    """Return (strengths, weaknesses) — top 2 / bottom 2 percentile flags."""
+    flags = []
+    for spec in flag_stats:
+        pct = player_percentile(player, pool, spec['key'], spec['direction'])
+        if pct is None:
+            continue
+        flags.append({'key': spec['key'], 'label': spec['label'],
+                      'value': player.get(spec['key']), 'percentile': pct})
+    flags.sort(key=lambda x: x['percentile'], reverse=True)
+    strengths = [f for f in flags[:2] if f['percentile'] >= 70]
+    weaknesses = [f for f in reversed(flags[-2:]) if f['percentile'] <= 30]
+    return strengths, weaknesses
+
+
+def decorate_hitters_for_team(team_id, hitters_pool):
+    """Pick our team's hitters out of the pool and tag each with strengths/weaknesses."""
+    pool = hitters_pool  # full conference pool for percentile baseline
+    out = []
+    for h in pool:
+        if h['team_id'] != team_id:
+            continue
+        strengths, weaknesses = flag_player(h, pool, HITTER_FLAG_STATS)
+        # Build a percentile snapshot for every flag stat (for color-coding the row)
+        percentiles = {}
+        for spec in HITTER_FLAG_STATS:
+            percentiles[spec['key']] = player_percentile(h, pool, spec['key'], spec['direction'])
+        out.append({
+            **h,
+            'strengths': strengths,
+            'weaknesses': weaknesses,
+            'percentiles': percentiles,
+        })
+    out.sort(key=lambda r: r.get('plate_appearances') or 0, reverse=True)
+    return out
+
+
+def decorate_pitchers_for_team(team_id, pitchers_pool, role):
+    """role: 'starter' or 'reliever' — filters by games_started."""
+    pool = pitchers_pool
+    out = []
+    for p in pool:
+        if p['team_id'] != team_id:
+            continue
+        # We don't have a games_started column, so use the heuristic:
+        # starters: IP >= 15 AND avg IP/game >= 4
+        # relievers: GS == 0 (not stored) — fall back to IP < 15
+        ip = float(p.get('innings_pitched') or 0)
+        g = float(p.get('games') or 0) or 1
+        avg_ip_per_game = ip / g
+        is_starter_like = avg_ip_per_game >= 3.5 and ip >= 15
+        if role == 'starter' and not is_starter_like:
+            continue
+        if role == 'reliever' and is_starter_like:
+            continue
+        if role == 'reliever' and ip < 5:
+            continue
+        if role == 'starter' and ip < 15:
+            continue
+        strengths, weaknesses = flag_player(p, pool, PITCHER_FLAG_STATS)
+        percentiles = {}
+        for spec in PITCHER_FLAG_STATS:
+            percentiles[spec['key']] = player_percentile(p, pool, spec['key'], spec['direction'])
+        out.append({
+            **p,
+            'strengths': strengths,
+            'weaknesses': weaknesses,
+            'percentiles': percentiles,
+        })
+    out.sort(key=lambda r: r.get('innings_pitched') or 0, reverse=True)
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────
+# Auto-generated team writeup
+# ─────────────────────────────────────────────────────────────────
+
+def generate_writeup(team_name, panels, recent):
+    """Build a 3-paragraph scouting narrative from the percentile-ranked panels."""
+    # Collect strengths / weaknesses across all panels
+    strengths = []
+    weaknesses = []
+    for panel_key in ('offense', 'pitching', 'plate_discipline', 'batted_ball'):
+        for row in panels.get(panel_key, []):
+            if row['percentile'] is None:
+                continue
+            entry = {**row, 'panel': panel_key}
+            if row['percentile'] >= 80:
+                strengths.append(entry)
+            elif row['percentile'] <= 20:
+                weaknesses.append(entry)
+
+    strengths.sort(key=lambda r: r['percentile'], reverse=True)
+    weaknesses.sort(key=lambda r: r['percentile'])
+
+    def _fmt_value(row):
+        v = row['value']
+        if v is None:
+            return '?'
+        f = row['format']
+        if f == 'rate':
+            return f"{v:.3f}".lstrip('0') if v < 1 else f"{v:.3f}"
+        if f == 'pct':
+            return f"{v*100:.1f}%"
+        if f == 'era':
+            return f"{v:.2f}"
+        if f == 'int':
+            return f"{int(round(v))}"
+        return str(v)
+
+    def _fmt_pct(p):
+        return f"{round(p)}th percentile"
+
+    # Paragraph 1: offense
+    offense_lines = []
+    off_strengths = [s for s in strengths if s['panel'] == 'offense'][:2]
+    off_weaknesses = [w for w in weaknesses if w['panel'] == 'offense'][:2]
+    if off_strengths:
+        for s in off_strengths:
+            offense_lines.append(f"{s['label']} {_fmt_value(s)} ({_fmt_pct(s['percentile'])} in CCC)")
+    if off_weaknesses:
+        for w in off_weaknesses:
+            offense_lines.append(f"struggle in {w['label']} ({_fmt_value(w)}, {_fmt_pct(w['percentile'])})")
+
+    if off_strengths or off_weaknesses:
+        bits = []
+        if off_strengths:
+            bits.append("strong " + " and ".join(s['label'] + ' ' + _fmt_value(s) for s in off_strengths))
+        if off_weaknesses:
+            bits.append("but weak in " + " and ".join(w['label'] + ' ' + _fmt_value(w) for w in off_weaknesses))
+        para1 = f"Offensively, {team_name} has " + ', '.join(bits) + "."
+    else:
+        para1 = f"Offensively, {team_name} sits roughly in the middle of the conference across the board."
+
+    # Paragraph 2: pitching
+    pit_strengths = [s for s in strengths if s['panel'] == 'pitching'][:2]
+    pit_weaknesses = [w for w in weaknesses if w['panel'] == 'pitching'][:2]
+    if pit_strengths or pit_weaknesses:
+        bits = []
+        if pit_strengths:
+            bits.append("staff excels at " + " and ".join(s['label'] + ' ' + _fmt_value(s) for s in pit_strengths))
+        if pit_weaknesses:
+            bits.append("vulnerable in " + " and ".join(w['label'] + ' ' + _fmt_value(w) for w in pit_weaknesses))
+        para2 = f"On the mound, the {bits[0]}" + (("; " + bits[1]) if len(bits) > 1 else "") + "."
+    else:
+        para2 = "The pitching staff grades out as conference-average."
+
+    # Paragraph 3: discipline / batted ball + recent form
+    disc_strengths = [s for s in strengths if s['panel'] in ('plate_discipline', 'batted_ball')][:2]
+    bits3 = []
+    if disc_strengths:
+        bits3.append(
+            "they show "
+            + " and ".join(s['label'] + ' ' + _fmt_value(s) + ' (' + _fmt_pct(s['percentile']) + ')'
+                           for s in disc_strengths)
+        )
+    rec = recent.get('record') if recent else None
+    if rec:
+        bits3.append(f"have gone {rec} over their last 10 games")
+    if bits3:
+        para3 = "At the pitch level, " + ', and '.join(bits3) + "."
+    else:
+        para3 = ""
+
+    paragraphs = [para1, para2]
+    if para3:
+        paragraphs.append(para3)
+    return "\n\n".join(paragraphs)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Main entry point
+# ─────────────────────────────────────────────────────────────────
+
+def compute_team_scouting(cur, team_id, season):
+    """Build the full scouting report for a team."""
+    # Team metadata
+    cur.execute("""
+        SELECT t.id, t.name, t.short_name, t.logo_url, t.city, t.state,
+               c.id AS conference_id, c.name AS conference_name,
+               c.abbreviation AS conference_abbrev,
+               d.id AS division_id, d.name AS division_name, d.level AS division_level
+        FROM teams t
+        JOIN conferences c ON c.id = t.conference_id
+        JOIN divisions d ON d.id = c.division_id
+        WHERE t.id = %s
+    """, (team_id,))
+    team_row = cur.fetchone()
+    if not team_row:
+        return {'error': f'Team {team_id} not found'}
+    team = dict(team_row)
+
+    # Team season record
+    cur.execute("""
+        SELECT wins, losses, ties, conference_wins, conference_losses
+        FROM team_season_stats
+        WHERE team_id = %s AND season = %s
+    """, (team_id, season))
+    ts = cur.fetchone()
+    if ts:
+        team.update(dict(ts))
+
+    # Conference baseline
+    conf_team_ids = fetch_conference_team_ids(cur, team['conference_id'])
+    baseline = build_conference_baseline(cur, conf_team_ids, season)
+
+    # Recent form
+    recent = fetch_last_10_games(cur, team_id, season)
+
+    # Team panels
+    panels = build_team_panels(team_id, baseline)
+
+    # Writeup
+    writeup = generate_writeup(team['short_name'] or team['name'], panels, recent)
+
+    # Player tables (full conference pool for percentiles)
+    hitters_pool = fetch_hitters(cur, conf_team_ids, season, min_pa=30)
+    pitchers_pool = fetch_pitchers(cur, conf_team_ids, season, min_ip=5)
+
+    hitters = decorate_hitters_for_team(team_id, hitters_pool)
+    starters = decorate_pitchers_for_team(team_id, pitchers_pool, role='starter')
+    relievers = decorate_pitchers_for_team(team_id, pitchers_pool, role='reliever')
+
+    return {
+        'team': team,
+        'season': season,
+        'recent': recent,
+        'panels': panels,
+        'writeup': writeup,
+        'hitters': hitters,
+        'starters': starters,
+        'relievers': relievers,
+        'conference_team_count': len(conf_team_ids),
+    }
+

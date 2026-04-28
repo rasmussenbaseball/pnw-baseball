@@ -31,6 +31,7 @@ from .lineup_helper import (
     compute_manual_lineup,
     compute_build_lineup,
 )
+from .team_scouting import compute_team_scouting
 
 # Phase E: batted-ball + spray classifier (lives in scripts/ but is
 # pure Python — import via path manipulation so the API can use it.)
@@ -20107,6 +20108,21 @@ class BuildLineupRequest(BaseModel):
     vs_hand: Optional[str] = None  # 'R', 'L', 'unknown', or None for all three
     half_life_weeks: float = 6.0
     assignments: list[ManualLineupAssignment]
+
+
+@router.get("/portal/team-scouting")
+def portal_team_scouting(
+    team_id: int = Query(..., description="Team to scout"),
+    season: int = Query(2026, description="Season year"),
+):
+    """Comprehensive team scouting page data: team-level stats with conference
+    percentiles, per-player breakdowns, auto-generated writeup, last-10 form."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = compute_team_scouting(cur, team_id, season)
+        if 'error' in result and 'team' not in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        return result
 
 
 @router.post("/coaching/lineup-helper/build")
