@@ -75,26 +75,35 @@ _ERROR_BY_RE = re.compile(
 _GROUNDED_DP_RE = re.compile(r"\bgrounded\s+into\s+(?:double|triple)\s+play\b", re.I)
 
 # Depth/trajectory keywords that strongly imply a fly ball trajectory.
-# Used to upgrade OF hits from the default LD/FB classification to FB
-# when the narrative gives us extra signal.
+# Tightened to avoid false positives: "deep" only counts when followed by
+# an OF reference; "in front of" was removed (it usually flags LDs that
+# fall in front of an outfielder, not flies).
 _FB_KEYWORDS_RE = re.compile(
-    r"\b(?:"
-    r"deep|"                                  # "deep to left field"
-    r"off\s+the\s+(?:wall|fence|fences)|"     # "off the wall"
-    r"warning\s+track|"                       # "warning track"
-    r"to\s+the\s+(?:wall|fence|track)|"       # "to the wall"
-    r"bloop(?:er|ed)?|"                       # "bloop double"
-    r"dunked?|"                                # "dunked into shallow"
-    r"shallow|"                                # "shallow left"
-    r"texas\s+leaguer|"                       # "Texas leaguer"
-    r"in\s+front\s+of|"                       # "in front of the LF"
-    r"over\s+the\s+(?:head|wall|fence|"        # "over the head", "over the wall"
-        r"(?:left|center|right)\s+fielder)|"  # "over the right fielder"
-    r"between\s+(?:the\s+)?(?:lf|cf|rf|"       # "between the LF and CF"
+    r"(?:"
+    # "deep to LF / deep into the gap / deep over" — fly-ball language only
+    # when paired with an OF or directional reference.
+    r"\bdeep\s+(?:to|into|over|down|toward(?:s)?)\s+"
+        r"(?:lf|cf|rf|left|center|centerfield|right|the\s+gap|"
+        r"the\s+(?:wall|fence|track))\b|"
+    # Off-the-wall / fence — unambiguous FB
+    r"\boff\s+the\s+(?:wall|fence|fences)\b|"
+    # Warning track — unambiguous FB
+    r"\bwarning\s+track\b|"
+    # Hit "to the wall/fence/track" — unambiguous FB
+    r"\bto\s+the\s+(?:wall|fence|track)\b|"
+    # Bloop / dunk / Texas leaguer — soft FBs
+    r"\bbloop(?:er|ed)?\b|"
+    r"\bdunked?\b|"
+    r"\btexas\s+leaguer\b|"
+    # Over the head / wall / fence / fielder — fly trajectory
+    r"\bover\s+the\s+(?:head|wall|fence|"
+        r"(?:left|center|right)\s+fielder)\b|"
+    # Between two outfielders — split-the-gap fly
+    r"\bbetween\s+(?:the\s+)?(?:lf|cf|rf|"
         r"left\s+(?:fielder)?|"
         r"center\s+(?:fielder)?|"
         r"right\s+(?:fielder)?)\s+(?:and|&)"
-    r")\b",
+    r")",
     re.IGNORECASE,
 )
 
@@ -242,13 +251,15 @@ def _classify_bb_type(verb: str, location: str, result_type: str,
         if _FB_KEYWORDS_RE.search(text):
             return "FB"
 
-        # No depth keyword: differentiate by hit type. Extra-base hits to
-        # the OF are predominantly fly balls (gap doubles, down-the-line
-        # triples) — singles to the OF are predominantly line drives.
-        if v in ("doubled", "tripled"):
+        # No depth keyword: differentiate by hit type.
+        # Triples to OF default to FB — triples are typically the deepest
+        # gap-or-down-the-line hits and lean fly-ball.
+        if v == "tripled":
             return "FB"
 
-        # Singled to OF: LD is the modal classification.
+        # Singles AND doubles to OF default to LD — line drives are the
+        # modal classification for both. Per Statcast, OF doubles are
+        # ~55-60% LD, ~35% FB; singles even more LD-heavy.
         if any(p in loc for p in ("lf", "left field", "left center",
                                   "cf", "center field", "centerfield",
                                   "rf", "right field", "right center",
