@@ -251,15 +251,14 @@ def _classify_bb_type(verb: str, location: str, result_type: str,
         if _FB_KEYWORDS_RE.search(text):
             return "FB"
 
-        # No depth keyword: differentiate by hit type.
-        # Triples to OF default to FB — triples are typically the deepest
-        # gap-or-down-the-line hits and lean fly-ball.
-        if v == "tripled":
+        # No depth keyword: differentiate by hit type. Extra-base hits
+        # (doubles, triples) to the OF default to FB — at the college
+        # level the gap doubles and down-the-line shots are predominantly
+        # fly balls. Singles to the OF default to LD (modal classification
+        # for hard-hit OF singles).
+        if v in ("doubled", "tripled"):
             return "FB"
 
-        # Singles AND doubles to OF default to LD — line drives are the
-        # modal classification for both. Per Statcast, OF doubles are
-        # ~55-60% LD, ~35% FB; singles even more LD-heavy.
         if any(p in loc for p in ("lf", "left field", "left center",
                                   "cf", "center field", "centerfield",
                                   "rf", "right field", "right center",
