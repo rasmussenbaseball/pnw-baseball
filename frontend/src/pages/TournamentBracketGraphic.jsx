@@ -55,20 +55,32 @@ const TOURNAMENTS = {
   },
 }
 
-// Explicit bracket positions: { gameNum: { x, y, w, h } } in 1080x1080 canvas
+// Canvas dimensions — 1920x1080 (16:9). Brackets flow left-to-right and
+// need horizontal room.
+const CANVAS_W = 1920
+const CANVAS_H = 1080
+
+// Explicit bracket positions: { gameNum: { x, y, w, h } } in 1920x1080.
+//
+// Column structure (5 columns total):
+//   Col 1 (R1 / play-in):  G1 only
+//   Col 2 (R2 / QF / LB R1): G2 and G3 (both bye-into-QF), G4 (LB R1)
+//   Col 3 (WB Final / LB R2): G5, G6
+//   Col 4 (LB Final): G7
+//   Col 5 (Championship): G8, G9
 const LAYOUT = {
-  // Winner's bracket (top)
-  1: { x: 40,  y: 240, w: 290, h: 88 },   // G1: 4 vs 5
-  2: { x: 40,  y: 430, w: 290, h: 88 },   // G2: 2 vs 3
-  3: { x: 380, y: 320, w: 290, h: 88 },   // G3: 1 vs WG1
-  5: { x: 720, y: 365, w: 320, h: 88 },   // G5: WG2 vs WG3 (WB Final)
-  // Championship (center-right between WB and LB)
-  8: { x: 720, y: 545, w: 320, h: 92 },   // G8: WG5 vs WG7
-  9: { x: 720, y: 644, w: 320, h: 36 },   // G9: rematch (if necessary, smaller card)
-  // Loser's bracket (bottom)
-  4: { x: 40,  y: 750, w: 290, h: 88 },   // G4: LG1 vs LG2
-  6: { x: 380, y: 800, w: 290, h: 88 },   // G6: LG3 vs WG4
-  7: { x: 720, y: 850, w: 290, h: 88 },   // G7: WG6 vs LG5 (LB Final)
+  // Winner's bracket (top half)
+  1: { x: 60,   y: 420, w: 320, h: 100 },  // G1: 4 vs 5  (R1 play-in)
+  2: { x: 420,  y: 280, w: 320, h: 100 },  // G2: 2 vs 3  (R2/QF, BYE)
+  3: { x: 420,  y: 420, w: 320, h: 100 },  // G3: 1 vs WG1 (R2/QF, BYE)
+  5: { x: 780,  y: 350, w: 320, h: 100 },  // G5: WG2 vs WG3 (WB Final)
+  // Championship (right side)
+  8: { x: 1500, y: 580, w: 320, h: 110 },  // G8: WG5 vs WG7
+  9: { x: 1500, y: 700, w: 320, h: 36 },   // G9: rematch (if necessary)
+  // Loser's bracket (bottom half)
+  4: { x: 420,  y: 720, w: 320, h: 100 },  // G4: LG1 vs LG2 (LB R1)
+  6: { x: 780,  y: 760, w: 320, h: 100 },  // G6: LG3 vs WG4 (LB R2)
+  7: { x: 1140, y: 800, w: 320, h: 100 },  // G7: WG6 vs LG5 (LB Final)
 }
 
 // Connections drawn as bracket lines: from→to
@@ -132,7 +144,7 @@ function shortLabelForRef(ref, seedMap) {
 // ────────────────────────────────────────────
 
 async function renderBracket(canvas, tournament, teamLogoMap) {
-  const W = 1080, H = 1080
+  const W = CANVAS_W, H = CANVAS_H
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
@@ -158,39 +170,39 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
     const size = 44
     let dw = size, dh = size
     if (a >= 1) dh = size / a; else dw = size * a
-    ctx.drawImage(nwImg, 16, (headerH - 3 - dh) / 2, dw, dh)
+    ctx.drawImage(nwImg, 24, (headerH - 3 - dh) / 2, dw, dh)
   } catch { /* skip */ }
 
   // Header title
   ctx.fillStyle = PALETTE.textPrimary
-  ctx.font = 'bold 20px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  ctx.font = 'bold 22px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText('NW BASEBALL STATS', 72, (headerH - 3) / 2)
+  ctx.fillText('NW BASEBALL STATS', 84, (headerH - 3) / 2)
 
   ctx.textAlign = 'right'
   ctx.fillStyle = PALETTE.accentDim
-  ctx.font = '14px system-ui, sans-serif'
-  ctx.fillText('nwbaseballstats.com', W - 16, (headerH - 3) / 2)
+  ctx.font = '15px system-ui, sans-serif'
+  ctx.fillText('nwbaseballstats.com', W - 24, (headerH - 3) / 2)
 
-  // Title + subtitle
+  // Title + subtitle (centered)
   ctx.textAlign = 'center'
   ctx.fillStyle = PALETTE.textPrimary
-  ctx.font = 'bold 52px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText(tournament.label.toUpperCase(), W / 2, headerH + 56)
+  ctx.font = 'bold 64px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText(tournament.label.toUpperCase(), W / 2, headerH + 64)
 
   ctx.fillStyle = PALETTE.accentDim
-  ctx.font = '20px system-ui, sans-serif'
-  ctx.fillText(tournament.sub, W / 2, headerH + 92)
+  ctx.font = '24px system-ui, sans-serif'
+  ctx.fillText(tournament.sub, W / 2, headerH + 110)
 
   ctx.fillStyle = PALETTE.textMuted
-  ctx.font = 'italic 14px system-ui, sans-serif'
-  ctx.fillText('Double-elimination bracket', W / 2, headerH + 116)
+  ctx.font = 'italic 16px system-ui, sans-serif'
+  ctx.fillText('Double-elimination bracket', W / 2, headerH + 138)
 
   // Section labels
-  drawSectionLabel(ctx, "WINNER'S BRACKET", 40, 215, W - 80)
-  drawSectionLabel(ctx, "CHAMPIONSHIP",     720, 520, 320, true)
-  drawSectionLabel(ctx, "LOSER'S BRACKET",  40, 720, 660)
+  drawSectionLabel(ctx, "WINNER'S BRACKET", 60,   240, 800)
+  drawSectionLabel(ctx, "CHAMPIONSHIP",     1500, 555, 320, true)
+  drawSectionLabel(ctx, "LOSER'S BRACKET",  60,   695, 800)
 
   // Build maps for game lookup
   const seedMap = {}
@@ -223,9 +235,9 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
 
   // Footer
   ctx.fillStyle = PALETTE.textMuted
-  ctx.font = '14px system-ui, sans-serif'
+  ctx.font = '15px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('Bracket format · Final scores will populate when games complete', W / 2, H - 22)
+  ctx.fillText('Bracket format · Final scores will populate when games complete', W / 2, H - 28)
 }
 
 function drawSectionLabel(ctx, text, x, y, w, centered = false) {
@@ -495,13 +507,14 @@ export default function TournamentBracketGraphic() {
         <canvas
           ref={canvasRef}
           className="w-full max-w-full h-auto rounded-lg"
-          style={{ aspectRatio: '1 / 1' }}
+          style={{ aspectRatio: '16 / 9' }}
         />
       </div>
 
       <p className="text-xs text-gray-500 mt-3">
-        1080 x 1080 PNG, ready for Instagram, Twitter, or any other social
-        feed. Click Download PNG to save.
+        1920 x 1080 PNG (16:9). Great for Twitter, Facebook, and link
+        previews. Instagram will crop unless posted as a landscape feed image.
+        Click Download PNG to save.
       </p>
     </div>
   )
