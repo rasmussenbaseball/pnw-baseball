@@ -138,18 +138,34 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
   ctx.lineTo(W, headerH)
   ctx.stroke()
 
+  // ─── Frozen detection ───
+  // If every team has zero conference games remaining, the regular
+  // season is over for this conference — drop REM and REM SOS columns
+  // since they're meaningless. Triggered automatically by data, no
+  // extra API plumbing needed.
+  const isFrozen = teams.length > 0 && teams.every(
+    t => t.conf_games_remaining == null || t.conf_games_remaining === 0
+  )
+
   // ─── Column layout ───
   const rankColX = padX
   const logoColX = padX + 28
   const nameColX = logoColX + logoSize + 8
-  const cols = [
-    { label: 'OVERALL', x: 520, w: 80 },
-    { label: 'CONF', x: 610, w: 75 },
-    { label: 'REM', x: 695, w: 45 },
-    { label: 'REM SOS', x: 755, w: 55 },
-    { label: 'GB', x: 820, w: 50 },
-    { label: teams[0]?.rank_label || 'RANK', x: 880, w: 60 },
-  ]
+  const cols = isFrozen
+    ? [
+        { label: 'OVERALL', x: 600, w: 80 },
+        { label: 'CONF',    x: 720, w: 75 },
+        { label: 'GB',      x: 820, w: 50 },
+        { label: teams[0]?.rank_label || 'RANK', x: 890, w: 60 },
+      ]
+    : [
+        { label: 'OVERALL', x: 520, w: 80 },
+        { label: 'CONF',    x: 610, w: 75 },
+        { label: 'REM',     x: 695, w: 45 },
+        { label: 'REM SOS', x: 755, w: 55 },
+        { label: 'GB',      x: 820, w: 50 },
+        { label: teams[0]?.rank_label || 'RANK', x: 880, w: 60 },
+      ]
 
   // Column headers
   const colY = bodyTop
@@ -221,21 +237,27 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
     // Conf W-L
     ctx.fillText(`${t.conf_wins}-${t.conf_losses}`, cols[1].x, cellCY)
 
-    // Conf games remaining
-    ctx.fillStyle = THEME.textSecondary
-    ctx.fillText(`${t.conf_games_remaining ?? '-'}`, cols[2].x, cellCY)
+    // Column indices shift when frozen (no REM / REM SOS)
+    const gbColIdx = isFrozen ? 2 : 4
+    const rankColIdx = isFrozen ? 3 : 5
 
-    // SOS remaining rank
-    if (t.sos_remaining_rank != null) {
-      const total = teams.length
-      const pct = (t.sos_remaining_rank - 1) / Math.max(total - 1, 1)
-      if (pct < 0.33) ctx.fillStyle = THEME.red
-      else if (pct > 0.66) ctx.fillStyle = THEME.green
-      else ctx.fillStyle = THEME.textSecondary
-      ctx.fillText(`${t.sos_remaining_rank}`, cols[3].x, cellCY)
-    } else {
-      ctx.fillStyle = THEME.textMuted
-      ctx.fillText('-', cols[3].x, cellCY)
+    if (!isFrozen) {
+      // Conf games remaining
+      ctx.fillStyle = THEME.textSecondary
+      ctx.fillText(`${t.conf_games_remaining ?? '-'}`, cols[2].x, cellCY)
+
+      // SOS remaining rank
+      if (t.sos_remaining_rank != null) {
+        const total = teams.length
+        const pct = (t.sos_remaining_rank - 1) / Math.max(total - 1, 1)
+        if (pct < 0.33) ctx.fillStyle = THEME.red
+        else if (pct > 0.66) ctx.fillStyle = THEME.green
+        else ctx.fillStyle = THEME.textSecondary
+        ctx.fillText(`${t.sos_remaining_rank}`, cols[3].x, cellCY)
+      } else {
+        ctx.fillStyle = THEME.textMuted
+        ctx.fillText('-', cols[3].x, cellCY)
+      }
     }
 
     // Games back (from playoff cutoff)
@@ -243,25 +265,25 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs) {
     if (gb != null && gb <= 0) {
       // In playoff position or tied for cutoff
       ctx.fillStyle = THEME.accent
-      if (gb === 0) ctx.fillText('-', cols[4].x, cellCY)
-      else ctx.fillText(`+${Math.abs(gb) % 1 === 0 ? Math.abs(gb) : Math.abs(gb).toFixed(1)}`, cols[4].x, cellCY)
+      if (gb === 0) ctx.fillText('-', cols[gbColIdx].x, cellCY)
+      else ctx.fillText(`+${Math.abs(gb) % 1 === 0 ? Math.abs(gb) : Math.abs(gb).toFixed(1)}`, cols[gbColIdx].x, cellCY)
     } else if (gb != null) {
       ctx.fillStyle = THEME.textSecondary
-      ctx.fillText(`${gb % 1 === 0 ? gb : gb.toFixed(1)}`, cols[4].x, cellCY)
+      ctx.fillText(`${gb % 1 === 0 ? gb : gb.toFixed(1)}`, cols[gbColIdx].x, cellCY)
     } else {
       ctx.fillStyle = THEME.textMuted
-      ctx.fillText('-', cols[4].x, cellCY)
+      ctx.fillText('-', cols[gbColIdx].x, cellCY)
     }
 
     // National/PPI rank
     if (t.rank != null) {
       ctx.font = `700 ${fontSize}px ${font}`
       ctx.fillStyle = THEME.accent
-      ctx.fillText(`#${Math.round(t.rank)}`, cols[5].x, cellCY)
+      ctx.fillText(`#${Math.round(t.rank)}`, cols[rankColIdx].x, cellCY)
     } else {
       ctx.fillStyle = THEME.textMuted
       ctx.font = `500 ${fontSize}px ${font}`
-      ctx.fillText('-', cols[5].x, cellCY)
+      ctx.fillText('-', cols[rankColIdx].x, cellCY)
     }
   }
 
