@@ -3,26 +3,29 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 const API_BASE = '/api/v1'
 
 // ────────────────────────────────────────────
-// Teal palette (matches NW brand)
+// Palette — teal background, brighter teal cards for contrast,
+// gold championship accent so the trophy game stands out.
 // ────────────────────────────────────────────
 const PALETTE = {
-  bg: '#012a33',          // deep teal (background)
-  bgGradTop: '#01323d',
-  bgGradBottom: '#012027',
-  card: '#0a4855',        // card background
-  cardEliminated: '#0a3540',
-  cardChampionship: '#10566a',
-  border: '#00687a',      // NW teal
-  borderBright: '#26C6DA',
-  accent: '#26C6DA',      // bright cyan accent
-  accentDim: '#80DEEA',   // light teal text
+  bg: '#062029',
+  bgGradTop: '#082e3a',
+  bgGradBottom: '#04181f',
+  card: '#1a5f74',          // brighter than bg, real contrast
+  cardEliminated: '#0f3e4a',
+  cardChampionship: '#266b85',
+  border: '#3aa3bd',        // brighter teal border for visibility
+  borderBright: '#5fd4eb',
+  championshipBorder: '#ffd54f',  // gold for the trophy game
+  accent: '#5fd4eb',        // bright cyan for section labels
+  accentDim: '#a7edff',
   textPrimary: '#ffffff',
-  textSecondary: '#b3e5fc',
-  textMuted: 'rgba(255,255,255,0.45)',
-  scoreBoxBorder: 'rgba(255,255,255,0.18)',
-  scoreBoxText: 'rgba(255,255,255,0.30)',
-  connector: '#00687a',
-  ifNecessaryDim: 'rgba(255,255,255,0.10)',
+  textSecondary: '#cef0fa',
+  textMuted: 'rgba(255,255,255,0.50)',
+  scoreBoxBorder: 'rgba(255,255,255,0.25)',
+  scoreBoxText: 'rgba(255,255,255,0.40)',
+  connector: '#3aa3bd',
+  ifNecessaryDim: 'rgba(255,255,255,0.12)',
+  topStrip: 'rgba(0,0,0,0.45)',
 }
 
 // ────────────────────────────────────────────
@@ -62,25 +65,29 @@ const CANVAS_H = 1080
 
 // Explicit bracket positions: { gameNum: { x, y, w, h } } in 1920x1080.
 //
-// Column structure (5 columns total):
-//   Col 1 (R1 / play-in):  G1 only
-//   Col 2 (R2 / QF / LB R1): G2 and G3 (both bye-into-QF), G4 (LB R1)
-//   Col 3 (WB Final / LB R2): G5, G6
-//   Col 4 (LB Final): G7
-//   Col 5 (Championship): G8, G9
+// Column structure (4 columns):
+//   Col 1: G1 (WB R1 play-in)         + G4 (LB R1)
+//   Col 2: G2, G3 (WB R2 / QF byes)   + G6 (LB R2)
+//   Col 3: G5 (WB Final)              + G7 (LB Final)
+//   Col 4: G8 + G9 (Championship)
+//
+// G2 and G3 sit together in Col 2 because both are bye-round QFs —
+// #2 vs #3 and #1 vs play-in winner. G4's LG1 + LG2 inputs come from
+// G1 (Col 1 WB) and G2 (Col 2 WB), so G4 chronologically follows them
+// but visually we shift it to Col 1 since the LB now starts there.
 const LAYOUT = {
   // Winner's bracket (top half)
-  1: { x: 60,   y: 420, w: 320, h: 100 },  // G1: 4 vs 5  (R1 play-in)
-  2: { x: 420,  y: 280, w: 320, h: 100 },  // G2: 2 vs 3  (R2/QF, BYE)
-  3: { x: 420,  y: 420, w: 320, h: 100 },  // G3: 1 vs WG1 (R2/QF, BYE)
-  5: { x: 780,  y: 350, w: 320, h: 100 },  // G5: WG2 vs WG3 (WB Final)
-  // Championship (right side)
-  8: { x: 1500, y: 580, w: 320, h: 110 },  // G8: WG5 vs WG7
-  9: { x: 1500, y: 700, w: 320, h: 36 },   // G9: rematch (if necessary)
-  // Loser's bracket (bottom half)
-  4: { x: 420,  y: 720, w: 320, h: 100 },  // G4: LG1 vs LG2 (LB R1)
-  6: { x: 780,  y: 760, w: 320, h: 100 },  // G6: LG3 vs WG4 (LB R2)
-  7: { x: 1140, y: 800, w: 320, h: 100 },  // G7: WG6 vs LG5 (LB Final)
+  1: { x: 60,   y: 400, w: 380, h: 120 },  // G1: 4 vs 5  (R1 play-in)
+  2: { x: 500,  y: 240, w: 380, h: 120 },  // G2: 2 vs 3  (R2/QF, BYE)
+  3: { x: 500,  y: 400, w: 380, h: 120 },  // G3: 1 vs WG1 (R2/QF, BYE)
+  5: { x: 940,  y: 320, w: 380, h: 120 },  // G5: WG2 vs WG3 (WB Final)
+  // Championship (far right, y centered between G5 and G7)
+  8: { x: 1380, y: 540, w: 380, h: 130 },  // G8: WG5 vs WG7
+  9: { x: 1380, y: 685, w: 380, h: 40 },   // G9: rematch (if necessary)
+  // Loser's bracket (bottom half) — now starts in Col 1
+  4: { x: 60,   y: 720, w: 380, h: 120 },  // G4: LG1 vs LG2 (LB R1)
+  6: { x: 500,  y: 760, w: 380, h: 120 },  // G6: LG3 vs WG4 (LB R2)
+  7: { x: 940,  y: 800, w: 380, h: 120 },  // G7: WG6 vs LG5 (LB Final)
 }
 
 // Connections drawn as bracket lines: from→to
@@ -200,9 +207,9 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
   ctx.fillText('Double-elimination bracket', W / 2, headerH + 138)
 
   // Section labels
-  drawSectionLabel(ctx, "WINNER'S BRACKET", 60,   240, 800)
-  drawSectionLabel(ctx, "CHAMPIONSHIP",     1500, 555, 320, true)
-  drawSectionLabel(ctx, "LOSER'S BRACKET",  60,   695, 800)
+  drawSectionLabel(ctx, "WINNER'S BRACKET", 60,   210, 1000)
+  drawSectionLabel(ctx, "CHAMPIONSHIP",     1380, 510, 380, true)
+  drawSectionLabel(ctx, "LOSER'S BRACKET",  60,   690, 1000)
 
   // Build maps for game lookup
   const seedMap = {}
@@ -213,7 +220,7 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
 
   // Draw connector lines first (so cards sit on top)
   ctx.strokeStyle = PALETTE.connector
-  ctx.lineWidth = 2.2
+  ctx.lineWidth = 3
   ctx.lineJoin = 'round'
   for (const conn of CONNECTIONS) {
     const a = LAYOUT[conn.from]
@@ -242,7 +249,7 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
 
 function drawSectionLabel(ctx, text, x, y, w, centered = false) {
   ctx.fillStyle = PALETTE.accent
-  ctx.font = 'bold 16px system-ui, sans-serif'
+  ctx.font = 'bold 22px system-ui, sans-serif'
   ctx.textBaseline = 'middle'
   if (centered) {
     ctx.textAlign = 'center'
@@ -255,9 +262,9 @@ function drawSectionLabel(ctx, text, x, y, w, centered = false) {
   ctx.fillStyle = PALETTE.accent
   if (centered) {
     const tw = ctx.measureText(text).width
-    ctx.fillRect(x + (w - tw) / 2, y + 12, tw, 1.5)
+    ctx.fillRect(x + (w - tw) / 2, y + 16, tw, 2)
   } else {
-    ctx.fillRect(x, y + 12, ctx.measureText(text).width, 1.5)
+    ctx.fillRect(x, y + 16, ctx.measureText(text).width, 2)
   }
 }
 
@@ -282,63 +289,63 @@ async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap) {
 
   // Card bg
   ctx.fillStyle = isChamp ? PALETTE.cardChampionship : PALETTE.card
-  roundRect(ctx, x, y, w, h, 8)
+  roundRect(ctx, x, y, w, h, 10)
   ctx.fill()
 
-  // Card border
-  ctx.strokeStyle = isChamp ? PALETTE.borderBright : PALETTE.border
-  ctx.lineWidth = isChamp ? 2 : 1.4
+  // Card border — gold for the championship, bright teal for the rest
+  ctx.strokeStyle = isChamp ? PALETTE.championshipBorder : PALETTE.border
+  ctx.lineWidth = isChamp ? 2.5 : 1.6
   ctx.stroke()
 
   // Top strip with game number + time + day
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'
-  roundRect(ctx, x, y, w, 22, 8)
+  const stripH = 28
+  ctx.fillStyle = PALETTE.topStrip
+  roundRect(ctx, x, y, w, stripH, 10)
   ctx.fill()
-  // Square off bottom of strip
-  ctx.fillRect(x, y + 8, w, 14)
+  ctx.fillRect(x, y + 14, w, stripH - 14)
 
   // Game number badge
-  ctx.fillStyle = isChamp ? PALETTE.borderBright : PALETTE.accent
-  ctx.font = 'bold 11px system-ui, sans-serif'
+  ctx.fillStyle = isChamp ? PALETTE.championshipBorder : PALETTE.accent
+  ctx.font = 'bold 14px system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`G${game.num}`, x + 10, y + 11)
+  ctx.fillText(`G${game.num}`, x + 12, y + 14)
 
   // Day + time
   ctx.fillStyle = PALETTE.textSecondary
-  ctx.font = '10.5px system-ui, sans-serif'
-  ctx.fillText(`${game.day} · ${game.time}`, x + 36, y + 11)
+  ctx.font = '13px system-ui, sans-serif'
+  ctx.fillText(`${game.day} · ${game.time}`, x + 46, y + 14)
 
   // Two team rows
   const homeRef = shortLabelForRef(game.home, seedMap)
   const awayRef = shortLabelForRef(game.away, seedMap)
-  const rowTop = y + 22
-  const rowH = (h - 22) / 2
+  const rowTop = y + stripH
+  const rowH = (h - stripH) / 2
 
   await drawTeamRow(ctx, awayRef, x, rowTop,         w, rowH, teamLogoMap)
   // Divider line between teams
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)'
   ctx.lineWidth = 1
   ctx.beginPath()
-  ctx.moveTo(x + 8, rowTop + rowH)
-  ctx.lineTo(x + w - 8, rowTop + rowH)
+  ctx.moveTo(x + 10, rowTop + rowH)
+  ctx.lineTo(x + w - 10, rowTop + rowH)
   ctx.stroke()
   await drawTeamRow(ctx, homeRef, x, rowTop + rowH, w, rowH, teamLogoMap)
 }
 
 async function drawIfNecessaryCard(ctx, game, pos, seedMap, teamLogoMap) {
   const { x, y, w, h } = pos
-  ctx.fillStyle = 'rgba(255,255,255,0.04)'
+  ctx.fillStyle = 'rgba(255,255,255,0.05)'
   roundRect(ctx, x, y, w, h, 6)
   ctx.fill()
   ctx.strokeStyle = PALETTE.ifNecessaryDim
-  ctx.lineWidth = 1
-  ctx.setLineDash([4, 3])
+  ctx.lineWidth = 1.2
+  ctx.setLineDash([5, 4])
   ctx.stroke()
   ctx.setLineDash([])
 
   ctx.fillStyle = PALETTE.textMuted
-  ctx.font = 'italic 12px system-ui, sans-serif'
+  ctx.font = 'italic 14px system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(`G${game.num} · ${game.day} ${game.time} (if necessary)`, x + w / 2, y + h / 2)
@@ -346,8 +353,8 @@ async function drawIfNecessaryCard(ctx, game, pos, seedMap, teamLogoMap) {
 
 async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
   // Logo or placeholder
-  const logoSize = Math.min(h - 8, 28)
-  const logoX = x + 8
+  const logoSize = Math.min(h - 12, 38)
+  const logoX = x + 10
   const logoY = y + (h - logoSize) / 2
 
   if (teamRef.team_id) {
@@ -362,43 +369,43 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
       } catch { /* skip */ }
     }
   } else {
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    ctx.fillStyle = 'rgba(255,255,255,0.10)'
     ctx.beginPath()
     ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 - 1, 0, Math.PI * 2)
     ctx.fill()
     ctx.fillStyle = PALETTE.textMuted
-    ctx.font = 'bold 14px system-ui, sans-serif'
+    ctx.font = 'bold 18px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText('?', logoX + logoSize / 2, logoY + logoSize / 2)
   }
 
   // Seed badge
-  const afterLogoX = logoX + logoSize + 8
+  const afterLogoX = logoX + logoSize + 12
   let nameStartX = afterLogoX
   if (teamRef.seed) {
-    const seedW = 20
+    const seedW = 28
     ctx.fillStyle = PALETTE.border
-    roundRect(ctx, afterLogoX, y + h / 2 - 9, seedW, 18, 3)
+    roundRect(ctx, afterLogoX, y + h / 2 - 12, seedW, 24, 4)
     ctx.fill()
     ctx.fillStyle = PALETTE.textPrimary
-    ctx.font = 'bold 10px system-ui, sans-serif'
+    ctx.font = 'bold 13px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(`#${teamRef.seed}`, afterLogoX + seedW / 2, y + h / 2)
-    nameStartX = afterLogoX + seedW + 8
+    nameStartX = afterLogoX + seedW + 10
   }
 
   // Team name (truncate if too long)
   ctx.fillStyle = teamRef.placeholder ? PALETTE.textMuted : PALETTE.textPrimary
   ctx.font = teamRef.placeholder
-    ? 'italic 13px system-ui, sans-serif'
-    : 'bold 14px system-ui, sans-serif'
+    ? 'italic 17px system-ui, sans-serif'
+    : 'bold 19px system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   let displayName = teamRef.name
-  const scoreBoxW = 38
-  const maxNameW = w - (nameStartX - x) - scoreBoxW - 18
+  const scoreBoxW = 50
+  const maxNameW = w - (nameStartX - x) - scoreBoxW - 22
   while (ctx.measureText(displayName).width > maxNameW && displayName.length > 4) {
     displayName = displayName.slice(0, -1)
   }
@@ -406,15 +413,15 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
   ctx.fillText(displayName, nameStartX, y + h / 2)
 
   // Score box on right (empty for now)
-  const scoreBoxH = 22
-  const scoreBoxX = x + w - scoreBoxW - 8
+  const scoreBoxH = 30
+  const scoreBoxX = x + w - scoreBoxW - 10
   const scoreBoxY = y + (h - scoreBoxH) / 2
   ctx.strokeStyle = PALETTE.scoreBoxBorder
-  ctx.lineWidth = 1
-  roundRect(ctx, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 4)
+  ctx.lineWidth = 1.2
+  roundRect(ctx, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 5)
   ctx.stroke()
   ctx.fillStyle = PALETTE.scoreBoxText
-  ctx.font = 'bold 13px system-ui, sans-serif'
+  ctx.font = 'bold 18px system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText('-', scoreBoxX + scoreBoxW / 2, scoreBoxY + scoreBoxH / 2)
