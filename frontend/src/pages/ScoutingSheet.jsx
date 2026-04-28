@@ -223,6 +223,7 @@ export default function ScoutingSheet() {
           totalsHint={teamHitterTotals?.n_teams ? `vs ${teamHitterTotals.n_teams} teams` : ''}
         />
         <SheetLegend kind="hitters" thresholds={data.thresholds} />
+        <NotesPanel label="Notes" />
       </section>
 
       {/* Page break for print */}
@@ -240,6 +241,7 @@ export default function ScoutingSheet() {
           totalsHint={teamPitcherTotals?.n_teams ? `vs ${teamPitcherTotals.n_teams} teams` : ''}
         />
         <SheetLegend kind="pitchers" thresholds={data.thresholds} />
+        <NotesPanel label="Notes" />
       </section>
     </div>
   )
@@ -421,6 +423,21 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
         )}
       </tbody>
     </table>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────
+// Notes panel — flex-grow box that eats any leftover vertical
+// space below the table.  On screen it stays a tidy ~80px tall;
+// on print it stretches to fill the rest of the page so smaller
+// rosters never leave a big white gap.
+// ─────────────────────────────────────────────────────────
+function NotesPanel({ label = 'Notes' }) {
+  return (
+    <div className="sheet-notes mt-2 min-h-[80px]">
+      <div className="sheet-notes-label">{label}</div>
+    </div>
   )
 }
 

@@ -115,9 +115,7 @@ tr:hover td.sticky-col {
 }
 
 @media print {
-  /* US Letter PORTRAIT, half-inch margins. We name `portrait`
-     explicitly so a browser/printer that defaults to landscape
-     still flips into portrait for these pages. */
+  /* US Letter PORTRAIT, half-inch margins. */
   @page {
     size: letter portrait;
     margin: 0.4in;
@@ -131,10 +129,7 @@ tr:hover td.sticky-col {
     width: 100% !important;
   }
 
-  /* Hide everything outside the scouting sheet content. The
-     PortalHeader, footer, and any toolbar buttons all carry
-     `print:hidden` already, but this is a belt-and-suspenders
-     safety net so screenshot artifacts never sneak through. */
+  /* Hide everything outside the scouting sheet content. */
   body * {
     visibility: hidden;
   }
@@ -152,13 +147,63 @@ tr:hover td.sticky-col {
     background: white;
   }
 
-  /* Force pitchers onto a fresh sheet of paper. */
+  /* Each .sheet-page is its own physical page. Lay it out as a
+     flex column with min-height = printable area (10.2in for
+     letter portrait at 0.4in margins). The Notes panel underneath
+     gets `flex: 1 1 auto` so it eats whatever vertical space the
+     table doesn't use — net effect: the page is always full. */
+  .sheet-page {
+    page-break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+    min-height: 10.2in;
+  }
   .sheet-pagebreak {
     page-break-before: always;
     height: 0;
   }
-  .sheet-page {
-    page-break-inside: avoid;
+
+  /* Print typography — bigger than on screen so the page is
+     readable in the dugout. */
+  .sheet-page table {
+    font-size: 10.5px;
+  }
+  .sheet-page table td,
+  .sheet-page table th {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+  .sheet-page table th {
+    font-size: 10px;
+  }
+  /* Player-name col bumps to a slightly larger size so coach names
+     are easy to scan. */
+  .sheet-page table td:nth-child(2) {
+    font-size: 11px;
+  }
+
+  /* Notes panel — fills whatever vertical space the table leaves.
+     Rendered as a single big bordered box with faint horizontal
+     rules so coaches can write in it. */
+  .sheet-notes {
+    flex: 1 1 auto;
+    margin-top: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 10px 12px;
+    /* Faint guide lines so the empty space looks intentional and
+       is comfortable to write on. */
+    background-image: repeating-linear-gradient(
+      to bottom, transparent 0, transparent 23px, #e5e7eb 23px, #e5e7eb 24px
+    );
+    background-position: 0 22px;
+  }
+  .sheet-notes-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6b7280;
   }
 
   /* Make sure the green/red percentile shading actually prints

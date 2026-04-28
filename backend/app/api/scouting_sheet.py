@@ -37,8 +37,17 @@ from .team_scouting import _bulk_hitter_split, _bulk_pitcher_split
 # ─────────────────────────────────────────────────────────────────
 
 def _bulk_hitter_extras(cur, player_ids, season):
-    """Per-hitter First Pitch Swing% + Putaway% (% of 2-strike PAs
-    ending in K). Both come from game_events.
+    """Per-hitter First Pitch Swing% + Putaway%.
+
+    First Pitch Swing% denominator note: we ONLY count PAs where the
+    pitch info was actually captured (pitches_thrown IS NOT NULL).
+    Box scores from some scorers have no per-pitch count — those
+    rows arrive with seq='' and pitches_thrown=NULL even when many
+    pitches were thrown. If we counted them in the denominator,
+    every in-play hit (was_in_play=true) on a no-count row would
+    look like a 1-pitch swing and inflate the rate dramatically.
+    By filtering on pitches_thrown IS NOT NULL we use only the
+    PAs where the answer is actually knowable.
 
     Returns: {pid: {'first_pitch_swing_pct': float|None,
                     'putaway_pct': float|None}}
@@ -49,13 +58,20 @@ def _bulk_hitter_extras(cur, player_ids, season):
         """
         SELECT
           ge.batter_player_id AS pid,
-          COUNT(*) AS pa,
+          -- Numerator: PAs with confirmed first-pitch SWING.
+          --   K = swing-and-miss, F = foul (both swings).
+          --   Empty seq + was_in_play + pitches_thrown=1 = 1-pitch
+          --   in-play (definitely a swing).  The pitches_thrown=1
+          --   guard prevents counting unknown-count PAs.
+          --   S = called strike (a TAKE) — deliberately excluded.
           COUNT(*) FILTER (
             WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','F'))
-               OR (LENGTH(pitch_sequence) = 0 AND was_in_play)
-               OR (LENGTH(pitch_sequence) = 0
-                   AND ge.result_type = 'strikeout_swinging')
+               OR (LENGTH(pitch_sequence) = 0 AND was_in_play AND pitches_thrown = 1)
           ) AS first_pitch_swings,
+          -- Denominator: PAs where we actually know the pitch info.
+          COUNT(*) FILTER (
+            WHERE pitches_thrown IS NOT NULL AND pitches_thrown >= 1
+          ) AS fps_pa_known,
           COUNT(*) FILTER (WHERE strikes_before >= 2) AS two_strike_pa,
           COUNT(*) FILTER (
             WHERE strikes_before >= 2
@@ -72,10 +88,10 @@ def _bulk_hitter_extras(cur, player_ids, season):
     )
     out = {}
     for r in cur.fetchall():
-        pa = r['pa'] or 0
+        denom = r['fps_pa_known'] or 0
         two_strike = r['two_strike_pa'] or 0
         out[r['pid']] = {
-            'first_pitch_swing_pct': (r['first_pitch_swings'] / pa) if pa else None,
+            'first_pitch_swing_pct': (r['first_pitch_swings'] / denom) if denom else None,
             'putaway_pct': (r['putaway_k'] / two_strike) if two_strike else None,
         }
     return out
@@ -115,15 +131,18 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
           SUM(pitches_thrown) AS pitches_total,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
           -- First-pitch STRIKE: any first-pitch outcome the pitcher
-          --   wants — called strike (S), swinging strike (K), foul (F),
-          --   first-pitch in-play, or first-pitch strikeout looking/swinging
-          --   when the seq is empty (1-pitch K).
+          --   wants — K (swing+miss), S (called strike), F (foul),
+          --   or 1-pitch in-play (a strike by definition).  Same
+          --   pitches_thrown=1 guard as on the hitter side: PAs
+          --   without captured pitch counts get excluded so they
+          --   don't inflate the rate.
           COUNT(*) FILTER (
             WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','S','F'))
-               OR (LENGTH(pitch_sequence) = 0 AND was_in_play)
-               OR (LENGTH(pitch_sequence) = 0
-                   AND ge.result_type IN ('strikeout_swinging','strikeout_looking'))
+               OR (LENGTH(pitch_sequence) = 0 AND was_in_play AND pitches_thrown = 1)
           ) AS first_pitch_strikes,
+          COUNT(*) FILTER (
+            WHERE pitches_thrown IS NOT NULL AND pitches_thrown >= 1
+          ) AS fps_pa_known,
           COUNT(*) FILTER (WHERE strikes_before >= 2) AS two_strike_pa,
           COUNT(*) FILTER (
             WHERE strikes_before >= 2
@@ -193,7 +212,7 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
         out[r['pid']] = {
             'whiff_pct':    _safe(k_p, swings),
             'strike_pct':   _safe(strikes, pitches_total),
-            'fps_pct':      _safe(r['first_pitch_strikes'] or 0, pa),
+            'fps_pct':      _safe(r['first_pitch_strikes'] or 0, r['fps_pa_known'] or 0),
             'putaway_pct':  _safe(r['putaway_k'] or 0, two_strike),
             'gb_pct':       _safe(r['gb'] or 0, bb_total),
             'fb_pct':       _safe(r['fb'] or 0, bb_total),
