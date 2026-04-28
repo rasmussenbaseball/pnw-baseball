@@ -20125,6 +20125,24 @@ def portal_team_scouting(
         return result
 
 
+@router.get("/portal/scouting-sheet/{team_id}")
+def portal_scouting_sheet(
+    team_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """Printable per-team scouting sheet — every hitter on one page,
+    every pitcher on another. Returns full roster with the 13 hitter
+    stats / 11 pitcher stats and percentile ranks vs the team's
+    conference cohort (used for color shading on the frontend)."""
+    from .scouting_sheet import build_scouting_sheet
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = build_scouting_sheet(cur, team_id, season)
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
+        return result
+
+
 @router.post("/coaching/lineup-helper/build")
 def lineup_helper_build(req: BuildLineupRequest):
     """Build-from-scratch mode. User picks 9 players (any positions, no
