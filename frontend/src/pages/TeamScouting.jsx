@@ -148,6 +148,21 @@ export default function TeamScouting() {
             <StatPanel title="Batted Ball" subtitle="From per-PA PBP data" rows={data.panels.batted_ball} />
           </div>
 
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <TeamSplitsPanel
+              title="Hitter Splits"
+              subtitle="Team aggregates by pitcher hand and base state"
+              splits={data.team_hitter_splits}
+              statSpecs={HITTER_SPLIT_STATS}
+            />
+            <TeamSplitsPanel
+              title="Pitcher Splits"
+              subtitle="Team aggregates by batter hand and base state"
+              splits={data.team_pitcher_splits}
+              statSpecs={PITCHER_SPLIT_STATS}
+            />
+          </div>
+
           <RosterStrengthsSummary
             hitters={data.hitters}
             starters={data.starters}
@@ -302,6 +317,71 @@ function StatPanelRow({ row }) {
 
 
 /* ============================================================
+ * Team splits panel — displays vs LHP/RHP/RISP (or LHH/RHH/RISP) as columns
+ * ============================================================ */
+
+const HITTER_SPLIT_STATS = [
+  { key: 'woba',         label: 'wOBA',     fmt: fmt3 },
+  { key: 'iso',          label: 'ISO',      fmt: fmt3 },
+  { key: 'contact_pct',  label: 'Contact%', fmt: fmtPct },
+  { key: 'k_pct',        label: 'K%',       fmt: fmtPct },
+  { key: 'bb_pct',       label: 'BB%',      fmt: fmtPct },
+]
+
+const PITCHER_SPLIT_STATS = [
+  { key: 'fip',         label: 'FIP',     fmt: fmtEra },
+  { key: 'k_pct',       label: 'K%',      fmt: fmtPct },
+  { key: 'bb_pct',      label: 'BB%',     fmt: fmtPct },
+  { key: 'whiff_pct',   label: 'Whiff%',  fmt: fmtPct },
+]
+
+function TeamSplitsPanel({ title, subtitle, splits, statSpecs }) {
+  if (!splits || splits.length === 0) return null
+  return (
+    <Card title={title} subtitle={subtitle}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left border-b border-gray-200">
+              <Th className="w-[120px]">Stat</Th>
+              {splits.map(s => (
+                <Th key={s.label} className="text-right">{s.label}</Th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {statSpecs.map(spec => (
+              <tr key={spec.key} className="border-b border-gray-100 last:border-0">
+                <td className="py-2 text-gray-600 text-xs font-semibold uppercase tracking-wider">
+                  {spec.label}
+                </td>
+                {splits.map(s => {
+                  const v = s.stats?.[spec.key]
+                  return (
+                    <td key={s.label} className="py-2 text-right font-mono text-sm text-gray-800">
+                      {v == null ? '—' : spec.fmt(v)}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            <tr className="text-[11px] text-gray-400">
+              <td className="pt-2">Sample</td>
+              {splits.map(s => (
+                <td key={s.label} className="pt-2 text-right tabular-nums">
+                  {s.stats?.pa != null ? `${s.stats.pa} PA` : (s.stats?.bf != null ? `${s.stats.bf} BF` : '—')}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
+
+
+/* ============================================================
  * Roster strengths/weaknesses summary
  * ============================================================ */
 
@@ -406,7 +486,46 @@ const PITCHER_COLS = [
   { key: 'babip_against',   label: 'BABIP',     fmt: fmt3,   pctileKey: 'babip_against' },
 ]
 
+// Per-filter column sets. When a split filter is active, we show a SLIM
+// table — just the split stats — because the split aggregates we computed
+// don't include every column (HR, SB, etc. only make sense at season scope).
+const HITTER_SPLIT_COLS = [
+  { key: 'pa',           label: 'PA',       fmt: v => v ?? '—', muted: true },
+  { key: 'batting_avg',  label: 'AVG',      fmt: fmt3 },
+  { key: 'slugging_pct', label: 'SLG',      fmt: fmt3 },
+  { key: 'iso',          label: 'ISO',      fmt: fmt3 },
+  { key: 'woba',         label: 'wOBA',     fmt: fmt3 },
+  { key: 'k_pct',        label: 'K%',       fmt: fmtPct },
+  { key: 'bb_pct',       label: 'BB%',      fmt: fmtPct },
+  { key: 'contact_pct',  label: 'Contact%', fmt: fmtPct },
+]
+const PITCHER_SPLIT_COLS = [
+  { key: 'bf',              label: 'BF',     fmt: v => v ?? '—', muted: true },
+  { key: 'innings_pitched', label: 'IP',     fmt: v => v == null ? '—' : Number(v).toFixed(1) },
+  { key: 'fip',             label: 'FIP',    fmt: fmtEra },
+  { key: 'k_pct',           label: 'K%',     fmt: fmtPct },
+  { key: 'bb_pct',          label: 'BB%',    fmt: fmtPct },
+  { key: 'whiff_pct',       label: 'Whiff%', fmt: fmtPct },
+]
+
+const HITTER_FILTERS = [
+  { key: 'season', label: 'Season',    splitKey: null },
+  { key: 'vs_rhp', label: 'vs RHP',    splitKey: 'vs_rhp' },
+  { key: 'vs_lhp', label: 'vs LHP',    splitKey: 'vs_lhp' },
+  { key: 'risp',   label: 'w/ RISP',   splitKey: 'risp' },
+]
+const PITCHER_FILTERS = [
+  { key: 'season', label: 'Season',    splitKey: null },
+  { key: 'vs_rhh', label: 'vs RHH',    splitKey: 'vs_rhh' },
+  { key: 'vs_lhh', label: 'vs LHH',    splitKey: 'vs_lhh' },
+  { key: 'risp',   label: 'w/ RISP',   splitKey: 'risp' },
+]
+
 function PlayerTable({ title, subtitle, kind, rows }) {
+  const filterOptions = kind === 'hitter' ? HITTER_FILTERS : PITCHER_FILTERS
+  const [filterKey, setFilterKey] = useState('season')
+  const activeFilter = filterOptions.find(f => f.key === filterKey) || filterOptions[0]
+
   if (!rows || rows.length === 0) {
     return (
       <Card title={title} subtitle={subtitle}>
@@ -414,9 +533,17 @@ function PlayerTable({ title, subtitle, kind, rows }) {
       </Card>
     )
   }
-  const cols = kind === 'hitter' ? HITTER_COLS : PITCHER_COLS
+
+  // When a split is active, swap to the slim split column set and
+  // pull row values from each player's `splits[splitKey]` block.
+  const isSplit = !!activeFilter.splitKey
+  const cols = isSplit
+    ? (kind === 'hitter' ? HITTER_SPLIT_COLS : PITCHER_SPLIT_COLS)
+    : (kind === 'hitter' ? HITTER_COLS : PITCHER_COLS)
+
   return (
     <Card title={title} subtitle={subtitle}>
+      <FilterTabs options={filterOptions} value={filterKey} onChange={setFilterKey} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -431,16 +558,54 @@ function PlayerTable({ title, subtitle, kind, rows }) {
           </thead>
           <tbody>
             {rows.map(p => (
-              <PlayerRow key={p.player_id} player={p} cols={cols} kind={kind} />
+              <PlayerRow
+                key={p.player_id}
+                player={p}
+                cols={cols}
+                kind={kind}
+                splitKey={activeFilter.splitKey}
+              />
             ))}
           </tbody>
         </table>
       </div>
+      {isSplit && (
+        <p className="text-[11px] text-gray-400 italic mt-2">
+          Split values are unfiltered conference-pool — color-coding is paused while a split is active.
+        </p>
+      )}
     </Card>
   )
 }
 
-function PlayerRow({ player, cols, kind }) {
+function FilterTabs({ options, value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-3">
+      {options.map(o => {
+        const active = o.key === value
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={`px-2.5 py-1 text-xs font-semibold rounded border transition-colors ${
+              active
+                ? 'bg-portal-purple text-portal-cream border-portal-purple'
+                : 'bg-white text-portal-purple-dark border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function PlayerRow({ player, cols, kind, splitKey }) {
+  // When a split is active, source row values from player.splits[splitKey].
+  // We still keep position/bats/throws/year from the player root.
+  const valueSource = splitKey ? (player.splits?.[splitKey] || {}) : player
   return (
     <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
       <td className="py-2 sticky left-0 bg-white z-10">
@@ -456,9 +621,11 @@ function PlayerRow({ player, cols, kind }) {
       </td>
       <td className="py-2 text-gray-600 text-xs">{player.year_in_school || '—'}</td>
       {cols.map(c => {
-        const val = player[c.key]
+        const val = valueSource[c.key]
         const display = c.fmt ? c.fmt(val) : (val ?? '—')
-        const pctile = c.pctileKey ? pctileFor(player, c.pctileKey) : null
+        // Percentile coloring is only valid on the season view since the
+        // baseline pool is the season-wide conference pool.
+        const pctile = (!splitKey && c.pctileKey) ? pctileFor(player, c.pctileKey) : null
         const colorClass = c.muted
           ? 'text-gray-400'
           : (pctile != null ? COLOR_TEXT[colorForPctile(pctile)] : 'text-gray-800')

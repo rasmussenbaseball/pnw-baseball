@@ -71,9 +71,10 @@ TEAM_PITCHING_STATS = [
 
 # Plate Discipline = the team's HITTERS' approach. No pitcher-side metrics here.
 TEAM_PBP_DISCIPLINE_STATS = [
-    {'key': 'contact_pct',  'label': 'Contact%', 'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
-    {'key': 'swing_pct',    'label': 'Swing%',   'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
-    {'key': 'zero_zero_bip_pct','label': '0-0 BIP%','direction': 'higher_better','format': 'pct','group': 'pbp_offense'},
+    {'key': 'contact_pct',         'label': 'Contact%',    'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'swing_pct',           'label': 'Swing%',      'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
+    {'key': 'first_pitch_swing_pct','label': 'First Pitch Swing%','direction': 'neutral','format': 'pct','group': 'pbp_offense'},
+    {'key': 'zero_zero_bip_pct',   'label': '0-0 BIP%',    'direction': 'higher_better', 'format': 'pct', 'group': 'pbp_offense'},
 ]
 
 TEAM_PBP_BATTED_BALL_STATS = [
@@ -326,6 +327,16 @@ def _aggregate_team_pbp_offense(cur, team_id, season):
           ) AS air_pull,
           COUNT(*) FILTER (WHERE balls_before = 0 AND strikes_before = 0
                            AND was_in_play) AS first_pitch_in_play,
+          -- First-pitch swings: batter offered at the first pitch
+          --   - Sequence starts with K (swing-and-miss) or F (foul ball)
+          --   - OR sequence empty and was_in_play (1-pitch ball in play)
+          --   - OR sequence empty and result was a swinging K (1-pitch swinging K)
+          COUNT(*) FILTER (
+            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','F'))
+               OR (LENGTH(pitch_sequence) = 0 AND was_in_play)
+               OR (LENGTH(pitch_sequence) = 0
+                   AND ge.result_type = 'strikeout_swinging')
+          ) AS first_pitch_swings,
           COUNT(*) AS pa
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
@@ -349,14 +360,15 @@ def _aggregate_team_pbp_offense(cur, team_id, season):
         return float(num) / float(denom) if denom else None
 
     return {
-        'contact_pct':          _safe(contact, swings),
-        'swing_pct':            _safe(swings, total_pitches),
-        'gb_pct':               _safe(r.get('gb') or 0, bb_total),
-        'fb_pct':               _safe(r.get('fb') or 0, bb_total),
-        'ld_pct':               _safe(r.get('ld') or 0, bb_total),
-        'pu_pct':               _safe(r.get('pu') or 0, bb_total),
-        'air_pull_pct':         _safe(r.get('air_pull') or 0, bb_total),
-        'zero_zero_bip_pct':    _safe(r.get('first_pitch_in_play') or 0, pa),
+        'contact_pct':              _safe(contact, swings),
+        'swing_pct':                _safe(swings, total_pitches),
+        'first_pitch_swing_pct':    _safe(r.get('first_pitch_swings') or 0, pa),
+        'gb_pct':                   _safe(r.get('gb') or 0, bb_total),
+        'fb_pct':                   _safe(r.get('fb') or 0, bb_total),
+        'ld_pct':                   _safe(r.get('ld') or 0, bb_total),
+        'pu_pct':                   _safe(r.get('pu') or 0, bb_total),
+        'air_pull_pct':             _safe(r.get('air_pull') or 0, bb_total),
+        'zero_zero_bip_pct':        _safe(r.get('first_pitch_in_play') or 0, pa),
     }
 
 
@@ -469,6 +481,353 @@ def aggregate_team_stats(cur, team_id, season):
     out['pbp_offense'] = pbp_o
     out['pbp_pitching'] = pbp_p
     out['rfra'] = rfra
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────
+# Team-level splits (vs LHP / vs RHP / w RISP for hitters,
+# vs LHH / vs RHH / w RISP for pitchers).
+#
+# Each split returns: woba, iso, contact_pct, k_pct, bb_pct (for hitters),
+# fip_raw, k_pct, bb_pct, whiff_pct (for pitchers).
+# ─────────────────────────────────────────────────────────────────
+
+# RISP filter: runner on 2nd or 3rd. bases_before is a 3-char string '000'
+# to '111' where idx 0 = 1B, idx 1 = 2B, idx 2 = 3B (Postgres SUBSTRING is
+# 1-indexed so position 2 = 2B and position 3 = 3B).
+_RISP_FILTER = (
+    "AND (SUBSTRING(bases_before, 2, 1) = '1' "
+    "  OR SUBSTRING(bases_before, 3, 1) = '1')"
+)
+
+
+def _aggregate_team_hitter_split(cur, team_id, season, extra_where, extra_params=()):
+    """Aggregate one hitter-side split for a team. Returns dict of woba,
+    iso, contact_pct, k_pct, bb_pct (or all None if no data)."""
+    sql = f"""
+        SELECT
+          COUNT(*) AS pa,
+          COUNT(*) FILTER (WHERE result_type IN
+            ('single','double','triple','home_run',
+             'strikeout_swinging','strikeout_looking',
+             'ground_out','fly_out','line_out','pop_out',
+             'fielders_choice','error','double_play','other')) AS ab,
+          COUNT(*) FILTER (WHERE result_type = 'single') AS singles,
+          COUNT(*) FILTER (WHERE result_type = 'double') AS doubles,
+          COUNT(*) FILTER (WHERE result_type = 'triple') AS triples,
+          COUNT(*) FILTER (WHERE result_type = 'home_run') AS hr,
+          COUNT(*) FILTER (WHERE result_type IN ('walk','intentional_walk')) AS bb,
+          COUNT(*) FILTER (WHERE result_type = 'hbp') AS hbp,
+          COUNT(*) FILTER (WHERE result_type = 'sac_fly') AS sf,
+          COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging','strikeout_looking')) AS k,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players pp ON pp.id = ge.pitcher_player_id
+        WHERE ge.batting_team_id = %s
+          AND g.season = %s
+          AND ge.result_type IS NOT NULL
+          {extra_where}
+    """
+    cur.execute(sql, (team_id, season, *extra_params))
+    r = cur.fetchone() or {}
+    pa = r.get('pa') or 0
+    ab = r.get('ab') or 0
+    if pa == 0 or ab == 0:
+        return {'woba': None, 'iso': None, 'contact_pct': None, 'k_pct': None, 'bb_pct': None, 'pa': pa}
+    singles = r.get('singles') or 0
+    doubles = r.get('doubles') or 0
+    triples = r.get('triples') or 0
+    hr = r.get('hr') or 0
+    bb = r.get('bb') or 0
+    hbp = r.get('hbp') or 0
+    sf = r.get('sf') or 0
+    k = r.get('k') or 0
+    h = singles + doubles + triples + hr
+    tb = singles + 2 * doubles + 3 * triples + 4 * hr
+    avg = h / ab if ab else 0
+    slg = tb / ab if ab else 0
+    iso = slg - avg
+    # Approximate wOBA with D3/NAIA-ish weights
+    woba_num = 0.69 * bb + 0.72 * hbp + 0.88 * singles + 1.24 * doubles + 1.56 * triples + 2.0 * hr
+    woba_denom = ab + bb + sf + hbp
+    woba = woba_num / woba_denom if woba_denom else 0
+
+    k_p = float(r.get('k_pitches') or 0)
+    f_p = float(r.get('f_pitches') or 0)
+    in_play = float(r.get('in_play') or 0)
+    swings = k_p + f_p + in_play
+    contact = f_p + in_play
+    contact_pct = (contact / swings) if swings else None
+
+    return {
+        'woba': woba,
+        'iso': iso,
+        'contact_pct': contact_pct,
+        'k_pct': k / pa if pa else 0,
+        'bb_pct': bb / pa if pa else 0,
+        'pa': pa,
+    }
+
+
+def _aggregate_team_pitcher_split(cur, team_id, season, extra_where, extra_params=()):
+    """Aggregate one pitcher-side split for a team. Returns fip_raw, k_pct,
+    bb_pct, whiff_pct."""
+    sql = f"""
+        SELECT
+          COUNT(*) AS bf,
+          COUNT(*) FILTER (WHERE result_type = 'home_run') AS hr,
+          COUNT(*) FILTER (WHERE result_type IN ('walk','intentional_walk')) AS bb,
+          COUNT(*) FILTER (WHERE result_type = 'hbp') AS hbp,
+          COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging','strikeout_looking')) AS k,
+          -- Outs estimator (close enough for FIP; see comments above)
+          SUM(CASE
+            WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1
+            WHEN result_type IN ('ground_out','fly_out','line_out','pop_out',
+                                 'sac_fly','sac_bunt','fielders_choice') THEN 1
+            WHEN result_type = 'double_play' THEN 2
+            WHEN result_type = 'triple_play' THEN 3
+            ELSE 0
+          END) AS outs,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players pb ON pb.id = ge.batter_player_id
+        WHERE ge.defending_team_id = %s
+          AND g.season = %s
+          AND ge.result_type IS NOT NULL
+          {extra_where}
+    """
+    cur.execute(sql, (team_id, season, *extra_params))
+    r = cur.fetchone() or {}
+    bf = r.get('bf') or 0
+    if bf == 0:
+        return {'fip': None, 'k_pct': None, 'bb_pct': None, 'whiff_pct': None, 'bf': bf}
+    hr = r.get('hr') or 0
+    bb = r.get('bb') or 0
+    hbp = r.get('hbp') or 0
+    k = r.get('k') or 0
+    outs = r.get('outs') or 0
+    ip = outs / 3.0 if outs else 0
+    # FIP-raw: (13*HR + 3*(BB+HBP) - 2*K)/IP. We don't add the FIP constant
+    # since the percentile baseline is the same conference; relative ranks
+    # are unchanged.
+    fip_raw = (13 * hr + 3 * (bb + hbp) - 2 * k) / ip if ip else 0
+    # Add a typical FIP constant for D3/NAIA so the displayed number
+    # looks ERA-like (~3.0 to 6.0). Constant ~3.20 covers most leagues.
+    fip = fip_raw + 3.20
+
+    k_p = float(r.get('k_pitches') or 0)
+    f_p = float(r.get('f_pitches') or 0)
+    in_play = float(r.get('in_play') or 0)
+    swings = k_p + f_p + in_play
+    whiff_pct = (k_p / swings) if swings else None
+
+    return {
+        'fip': fip,
+        'k_pct': k / bf if bf else 0,
+        'bb_pct': bb / bf if bf else 0,
+        'whiff_pct': whiff_pct,
+        'bf': bf,
+    }
+
+
+def compute_team_hitter_splits(cur, team_id, season):
+    """Returns list of {label, stats} for vs LHP, vs RHP, w/ RISP."""
+    return [
+        {'label': 'vs LHP',  'stats': _aggregate_team_hitter_split(cur, team_id, season, "AND pp.throws = 'L'")},
+        {'label': 'vs RHP',  'stats': _aggregate_team_hitter_split(cur, team_id, season, "AND pp.throws = 'R'")},
+        {'label': 'w/ RISP', 'stats': _aggregate_team_hitter_split(cur, team_id, season, _RISP_FILTER)},
+    ]
+
+
+def compute_team_pitcher_splits(cur, team_id, season):
+    """Returns list of {label, stats} for vs LHH, vs RHH, w/ RISP."""
+    return [
+        {'label': 'vs LHH',  'stats': _aggregate_team_pitcher_split(cur, team_id, season, "AND pb.bats = 'L'")},
+        {'label': 'vs RHH',  'stats': _aggregate_team_pitcher_split(cur, team_id, season, "AND pb.bats = 'R'")},
+        {'label': 'w/ RISP', 'stats': _aggregate_team_pitcher_split(cur, team_id, season, _RISP_FILTER)},
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────
+# Per-player splits (used by the table filter UI)
+# ─────────────────────────────────────────────────────────────────
+
+def _bulk_hitter_split(cur, player_ids, season, extra_where):
+    """Aggregate per-hitter split. Returns {pid: {woba, iso, contact_pct, k_pct, bb_pct, pa}}."""
+    if not player_ids:
+        return {}
+    sql = f"""
+        SELECT
+          ge.batter_player_id AS pid,
+          COUNT(*) AS pa,
+          COUNT(*) FILTER (WHERE result_type IN
+            ('single','double','triple','home_run',
+             'strikeout_swinging','strikeout_looking',
+             'ground_out','fly_out','line_out','pop_out',
+             'fielders_choice','error','double_play','other')) AS ab,
+          COUNT(*) FILTER (WHERE result_type = 'single') AS singles,
+          COUNT(*) FILTER (WHERE result_type = 'double') AS doubles,
+          COUNT(*) FILTER (WHERE result_type = 'triple') AS triples,
+          COUNT(*) FILTER (WHERE result_type = 'home_run') AS hr,
+          COUNT(*) FILTER (WHERE result_type IN ('walk','intentional_walk')) AS bb,
+          COUNT(*) FILTER (WHERE result_type = 'hbp') AS hbp,
+          COUNT(*) FILTER (WHERE result_type = 'sac_fly') AS sf,
+          COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging','strikeout_looking')) AS k,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players pp ON pp.id = ge.pitcher_player_id
+        WHERE ge.batter_player_id = ANY(%s)
+          AND g.season = %s
+          AND ge.result_type IS NOT NULL
+          {extra_where}
+        GROUP BY ge.batter_player_id
+    """
+    cur.execute(sql, (player_ids, season))
+    out = {}
+    for r in cur.fetchall():
+        pid = r['pid']
+        pa = r.get('pa') or 0
+        ab = r.get('ab') or 0
+        if pa == 0:
+            continue
+        singles = r.get('singles') or 0
+        doubles = r.get('doubles') or 0
+        triples = r.get('triples') or 0
+        hr = r.get('hr') or 0
+        bb = r.get('bb') or 0
+        hbp = r.get('hbp') or 0
+        sf = r.get('sf') or 0
+        k = r.get('k') or 0
+        h = singles + doubles + triples + hr
+        tb = singles + 2 * doubles + 3 * triples + 4 * hr
+        avg = h / ab if ab else 0
+        slg = tb / ab if ab else 0
+        iso = slg - avg
+        woba_num = 0.69 * bb + 0.72 * hbp + 0.88 * singles + 1.24 * doubles + 1.56 * triples + 2.0 * hr
+        woba_denom = ab + bb + sf + hbp
+        woba = woba_num / woba_denom if woba_denom else 0
+
+        k_p = float(r.get('k_pitches') or 0)
+        f_p = float(r.get('f_pitches') or 0)
+        in_play = float(r.get('in_play') or 0)
+        swings = k_p + f_p + in_play
+        contact = f_p + in_play
+        contact_pct = (contact / swings) if swings else None
+
+        out[pid] = {
+            'pa': pa,
+            'woba': woba,
+            'iso': iso,
+            'contact_pct': contact_pct,
+            'k_pct': k / pa if pa else 0,
+            'bb_pct': bb / pa if pa else 0,
+            'batting_avg': avg,
+            'slugging_pct': slg,
+        }
+    return out
+
+
+def _bulk_pitcher_split(cur, player_ids, season, extra_where):
+    """Aggregate per-pitcher split. Returns {pid: {fip, k_pct, bb_pct, whiff_pct, bf}}."""
+    if not player_ids:
+        return {}
+    sql = f"""
+        SELECT
+          ge.pitcher_player_id AS pid,
+          COUNT(*) AS bf,
+          COUNT(*) FILTER (WHERE result_type = 'home_run') AS hr,
+          COUNT(*) FILTER (WHERE result_type IN ('walk','intentional_walk')) AS bb,
+          COUNT(*) FILTER (WHERE result_type = 'hbp') AS hbp,
+          COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging','strikeout_looking')) AS k,
+          SUM(CASE
+            WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1
+            WHEN result_type IN ('ground_out','fly_out','line_out','pop_out',
+                                 'sac_fly','sac_bunt','fielders_choice') THEN 1
+            WHEN result_type = 'double_play' THEN 2
+            WHEN result_type = 'triple_play' THEN 3
+            ELSE 0
+          END) AS outs,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players pb ON pb.id = ge.batter_player_id
+        WHERE ge.pitcher_player_id = ANY(%s)
+          AND g.season = %s
+          AND ge.result_type IS NOT NULL
+          {extra_where}
+        GROUP BY ge.pitcher_player_id
+    """
+    cur.execute(sql, (player_ids, season))
+    out = {}
+    for r in cur.fetchall():
+        pid = r['pid']
+        bf = r.get('bf') or 0
+        if bf == 0:
+            continue
+        hr = r.get('hr') or 0
+        bb = r.get('bb') or 0
+        hbp = r.get('hbp') or 0
+        k = r.get('k') or 0
+        outs = r.get('outs') or 0
+        ip = outs / 3.0 if outs else 0
+        fip_raw = (13 * hr + 3 * (bb + hbp) - 2 * k) / ip if ip else 0
+        fip = fip_raw + 3.20
+
+        k_p = float(r.get('k_pitches') or 0)
+        f_p = float(r.get('f_pitches') or 0)
+        in_play = float(r.get('in_play') or 0)
+        swings = k_p + f_p + in_play
+        whiff_pct = (k_p / swings) if swings else None
+
+        out[pid] = {
+            'bf': bf,
+            'fip': fip,
+            'k_pct': k / bf if bf else 0,
+            'bb_pct': bb / bf if bf else 0,
+            'whiff_pct': whiff_pct,
+            'innings_pitched': ip,
+        }
+    return out
+
+
+def compute_player_hitter_splits(cur, player_ids, season):
+    """Returns {pid: {vs_rhp: {...}, vs_lhp: {...}, risp: {...}}}."""
+    vs_rhp = _bulk_hitter_split(cur, player_ids, season, "AND pp.throws = 'R'")
+    vs_lhp = _bulk_hitter_split(cur, player_ids, season, "AND pp.throws = 'L'")
+    risp   = _bulk_hitter_split(cur, player_ids, season, _RISP_FILTER)
+    out = {}
+    for pid in player_ids:
+        out[pid] = {
+            'vs_rhp': vs_rhp.get(pid, {}),
+            'vs_lhp': vs_lhp.get(pid, {}),
+            'risp':   risp.get(pid, {}),
+        }
+    return out
+
+
+def compute_player_pitcher_splits(cur, player_ids, season):
+    """Returns {pid: {vs_rhh: {...}, vs_lhh: {...}, risp: {...}}}."""
+    vs_rhh = _bulk_pitcher_split(cur, player_ids, season, "AND pb.bats = 'R'")
+    vs_lhh = _bulk_pitcher_split(cur, player_ids, season, "AND pb.bats = 'L'")
+    risp   = _bulk_pitcher_split(cur, player_ids, season, _RISP_FILTER)
+    out = {}
+    for pid in player_ids:
+        out[pid] = {
+            'vs_rhh': vs_rhh.get(pid, {}),
+            'vs_lhh': vs_lhh.get(pid, {}),
+            'risp':   risp.get(pid, {}),
+        }
     return out
 
 
@@ -971,6 +1330,22 @@ def compute_team_scouting(cur, team_id, season):
     starters = decorate_pitchers_for_team(team_id, pitchers_pool, role='starter')
     relievers = decorate_pitchers_for_team(team_id, pitchers_pool, role='reliever')
 
+    # Per-player splits (for the player-table filter UI)
+    our_hitter_ids   = [h['player_id'] for h in hitters]
+    our_pitcher_ids  = [p['player_id'] for p in (starters + relievers)]
+    hitter_splits    = compute_player_hitter_splits(cur, our_hitter_ids, season)
+    pitcher_splits   = compute_player_pitcher_splits(cur, our_pitcher_ids, season)
+    for h in hitters:
+        h['splits'] = hitter_splits.get(h['player_id'], {})
+    for p in starters:
+        p['splits'] = pitcher_splits.get(p['player_id'], {})
+    for p in relievers:
+        p['splits'] = pitcher_splits.get(p['player_id'], {})
+
+    # Team-level splits (rendered as a separate panel per role)
+    team_hitter_splits  = compute_team_hitter_splits(cur, team_id, season)
+    team_pitcher_splits = compute_team_pitcher_splits(cur, team_id, season)
+
     return {
         'team': team,
         'season': season,
@@ -980,6 +1355,8 @@ def compute_team_scouting(cur, team_id, season):
         'hitters': hitters,
         'starters': starters,
         'relievers': relievers,
+        'team_hitter_splits':  team_hitter_splits,
+        'team_pitcher_splits': team_pitcher_splits,
         'conference_team_count': len(conf_team_ids),
     }
 
