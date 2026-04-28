@@ -41,7 +41,10 @@ const NAV_SECTIONS = [
   },
   {
     label: 'PDFs',
-    items: [],   // empty for now — coming soon
+    items: [
+      { to: '/portal/scouting-sheet', label: 'Scouting Sheet',
+        desc: 'Printable hitter + pitcher rosters with conference percentiles' },
+    ],
   },
 ]
 
