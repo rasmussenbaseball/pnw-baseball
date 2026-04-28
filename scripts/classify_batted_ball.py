@@ -74,6 +74,30 @@ _ERROR_BY_RE = re.compile(
 # Special sub-patterns we want to recognize for bb_type assignment
 _GROUNDED_DP_RE = re.compile(r"\bgrounded\s+into\s+(?:double|triple)\s+play\b", re.I)
 
+# Depth/trajectory keywords that strongly imply a fly ball trajectory.
+# Used to upgrade OF hits from the default LD/FB classification to FB
+# when the narrative gives us extra signal.
+_FB_KEYWORDS_RE = re.compile(
+    r"\b(?:"
+    r"deep|"                                  # "deep to left field"
+    r"off\s+the\s+(?:wall|fence|fences)|"     # "off the wall"
+    r"warning\s+track|"                       # "warning track"
+    r"to\s+the\s+(?:wall|fence|track)|"       # "to the wall"
+    r"bloop(?:er|ed)?|"                       # "bloop double"
+    r"dunked?|"                                # "dunked into shallow"
+    r"shallow|"                                # "shallow left"
+    r"texas\s+leaguer|"                       # "Texas leaguer"
+    r"in\s+front\s+of|"                       # "in front of the LF"
+    r"over\s+the\s+(?:head|wall|fence|"        # "over the head", "over the wall"
+        r"(?:left|center|right)\s+fielder)|"  # "over the right fielder"
+    r"between\s+(?:the\s+)?(?:lf|cf|rf|"       # "between the LF and CF"
+        r"left\s+(?:fielder)?|"
+        r"center\s+(?:fielder)?|"
+        r"right\s+(?:fielder)?)\s+(?:and|&)"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 # ─────────────────────────────────────────────────────────────────
 # Field zone classification
@@ -166,21 +190,26 @@ def _classify_zone(loc: str) -> Optional[str]:
 # Batted-ball type classification
 # ─────────────────────────────────────────────────────────────────
 
-def _classify_bb_type(verb: str, location: str, result_type: str) -> Optional[str]:
-    """Map (verb, location, result_type) -> 'GB'/'FB'/'LD'/'PU'/None.
+def _classify_bb_type(verb: str, location: str, result_type: str,
+                      result_text: str = "") -> Optional[str]:
+    """Map (verb, location, result_type, result_text) -> 'GB'/'FB'/'LD'/'PU'/None.
 
-    Conservative rules:
+    Rules:
       - Explicit verbs win first: grounded=GB, lined=LD, popped=PU,
-        flied/fouled=FB.
-      - Hits without an explicit batted-ball verb (singled/doubled/
-        tripled/homered) inferred from location:
-          * HR → FB
+        flied/fouled=FB, homered=FB.
+      - Hits (singled/doubled/tripled) without an explicit batted-ball
+        verb are inferred from location AND depth/trajectory keywords:
           * Hit to infield position → GB (most infield singles)
-          * Hit to OF → LD (default — could be FB but LD is more common
-            on hits)
+          * Depth/trajectory keyword present (deep, off the wall, bloop,
+            shallow, over the head, etc.) → FB
+          * Doubled / tripled to OF → FB (extra-base OF hits are mostly
+            fly balls into the gap or down the line)
+          * Singled to OF → LD (line drives are the modal classification
+            for outfield singles)
     """
     v = (verb or "").lower()
     loc = (location or "").lower()
+    text = result_text or ""
 
     # Explicit batted-ball verbs
     if v == "grounded":
@@ -192,22 +221,34 @@ def _classify_bb_type(verb: str, location: str, result_type: str) -> Optional[st
     if v in ("flied", "fouled"):
         return "FB"
 
-    # Hits — disambiguate from location
+    # Hits — disambiguate from location and depth keywords
     if v == "homered":
         return "FB"
     if v in ("singled", "doubled", "tripled"):
-        # Infield positions → GB (true on most infield hits)
+        # Infield positions → GB (true on most infield hits, ground singles
+        # through the holes, soft choppers, etc.)
         if any(p in loc for p in ("ss", "shortstop", "3b", "third base",
                                   "2b", "second base", "1b", "first base",
                                   "p ", "pitcher", "left side",
                                   "right side", "up the middle")):
-            # But "up the middle" doubles are extremely rare; if a
-            # double goes "up the middle" treat as LD.
-            if v == "double" and "up the middle" in loc:
+            # Doubles "up the middle" are nearly always liners through, not GBs
+            if v == "doubled" and "up the middle" in loc:
                 return "LD"
             return "GB"
-        # Outfield hits → LD by default. Doubles to gap are sometimes
-        # FB, but LD is the modal classification.
+
+        # OF hits: check for depth/trajectory keywords first. These
+        # strongly imply a fly-ball arc (deep gap shots, blooped flares,
+        # over-the-head flies, balls off the wall).
+        if _FB_KEYWORDS_RE.search(text):
+            return "FB"
+
+        # No depth keyword: differentiate by hit type. Extra-base hits to
+        # the OF are predominantly fly balls (gap doubles, down-the-line
+        # triples) — singles to the OF are predominantly line drives.
+        if v in ("doubled", "tripled"):
+            return "FB"
+
+        # Singled to OF: LD is the modal classification.
         if any(p in loc for p in ("lf", "left field", "left center",
                                   "cf", "center field", "centerfield",
                                   "rf", "right field", "right center",
@@ -267,7 +308,10 @@ def classify(result_type: str, result_text: str):
         loc = m.group("loc") if m else None
         zone = _classify_zone(loc) if loc else None
         fine = _classify_zone_fine(loc) if loc else None
-        return None, zone, fine
+        # Errors at infield positions are nearly always ground balls.
+        # OF errors stay None (could be misplayed fly OR liner — ambiguous).
+        bb = "GB" if (fine and fine.startswith("IF_")) else None
+        return bb, zone, fine
 
     if result_type == "sac_fly":
         m = _VERB_LOC_RE.search(result_text)
@@ -290,7 +334,7 @@ def classify(result_type: str, result_text: str):
     if m:
         verb = m.group("verb")
         location = m.group("loc")
-        bb = _classify_bb_type(verb, location, result_type)
+        bb = _classify_bb_type(verb, location, result_type, batter_clause)
         zone = _classify_zone(location)
         fine = _classify_zone_fine(location)
         return bb, zone, fine
@@ -364,11 +408,12 @@ if __name__ == "__main__":
             'ground_out','fly_out','line_out','pop_out','sac_fly')
         ORDER BY RANDOM() LIMIT {int(args.sample)}
     """)
-    print(f"{'BB':>3s} {'ZONE':>6s}  {'TYPE':14s}  TEXT")
+    print(f"{'BB':>3s} {'ZONE':>6s}  {'FINE':>6s}  {'TYPE':14s}  TEXT")
     print("-" * 100)
     for r in cur.fetchall():
-        bb, z = classify(r["result_type"], r["result_text"])
+        bb, z, fine = classify(r["result_type"], r["result_text"])
         bb_s = bb or "—"
         z_s = z or "—"
+        fine_s = fine or "—"
         text = (r["result_text"] or "")[:80]
-        print(f"{bb_s:>3s} {z_s:>6s}  {r['result_type']:14s}  {text}")
+        print(f"{bb_s:>3s} {z_s:>6s}  {fine_s:>6s}  {r['result_type']:14s}  {text}")
