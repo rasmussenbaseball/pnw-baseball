@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect, cloneElement } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect, cloneElement } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
@@ -1171,6 +1171,11 @@ export default function PlayerDetail() {
   const { playerId } = useParams()
   const [percentileSeason, setPercentileSeason] = useState(null) // null = most recent (default)
   const [headshotError, setHeadshotError] = useState(false)
+  // For two-way players: which side ('batting' or 'pitching') is the
+  // page currently showing? null until data loads — a useEffect below
+  // sets it to whichever side has more total WAR. The user can then
+  // toggle freely; their choice sticks until they leave the page.
+  const [viewSide, setViewSide] = useState(null)
   const { data, loading, error } = usePlayer(playerId, percentileSeason)
   const { data: gameLogs } = usePlayerGameLogs(playerId, 2026)
   const { data: splits } = usePlayerSplits(playerId, 2026)
@@ -1222,6 +1227,32 @@ export default function PlayerDetail() {
   const hasSummerStats = hasSummerBatting || hasSummerPitching
   const battingCareer = hasBatting ? computeCareerTotals(batting_stats, 'batting') : null
   const pitchingCareer = hasPitching ? computeCareerTotals(pitching_stats, 'pitching') : null
+
+  // Two-way detection — used to gate the hitting/pitching toggle and
+  // to filter which side's content blocks render. We pick the default
+  // side by total career WAR: more pWAR → pitcher first, more oWAR →
+  // hitter first. Single-side players just see their own side; the
+  // toggle UI only appears when both sides have stats.
+  const isTwoWay = hasBatting && hasPitching
+  const totalBattingWar = battingCareer?.offensive_war || 0
+  const totalPitchingWar = pitchingCareer?.pitching_war || 0
+  const defaultSide = isTwoWay
+    ? (totalPitchingWar > totalBattingWar ? 'pitching' : 'batting')
+    : (hasPitching ? 'pitching' : 'batting')
+
+  // Sync viewSide to the computed default whenever the player changes
+  // (or stats first arrive). Once viewSide is set, the user can flip
+  // it freely without us snapping it back.
+  useEffect(() => {
+    if (viewSide === null && (hasBatting || hasPitching)) {
+      setViewSide(defaultSide)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId, hasBatting, hasPitching, defaultSide])
+
+  // The "active" side for rendering. Falls back to defaultSide before
+  // the useEffect fires so first paint still picks the right side.
+  const activeSide = viewSide || defaultSide
 
   // Build available seasons for the toggle (from both batting and pitching)
   const allSeasons = [
@@ -1371,6 +1402,45 @@ export default function PlayerDetail() {
       {/* (Multi-school career now lives in the player header above.
             Season filter is embedded inside the PercentileBars header below.) */}
 
+      {/* ── Two-way player toggle ──
+            For players with BOTH hitting and pitching stats, give the
+            user a clear pill toggle to flip between the two sides
+            instead of cramming everything onto one page. The toggle
+            pre-selects whichever side carries more career WAR (a 40-IP
+            pitcher who took 10 PA defaults to the pitching view), and
+            single-side players never see this toggle. */}
+      {isTwoWay && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3 mb-4 sm:mb-6 flex flex-wrap items-center gap-3">
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">
+            Two-way player
+          </span>
+          <div className="inline-flex rounded-full bg-gray-100 p-0.5">
+            {[
+              { id: 'batting',  label: 'Hitting',
+                hint: `oWAR ${totalBattingWar.toFixed(1)}` },
+              { id: 'pitching', label: 'Pitching',
+                hint: `pWAR ${totalPitchingWar.toFixed(1)}` },
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setViewSide(opt.id)}
+                className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all ${
+                  activeSide === opt.id
+                    ? 'bg-nw-teal text-white shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title={`${opt.label} (${opt.hint})`}
+              >
+                {opt.label}
+                <span className="ml-1.5 text-[9px] font-normal opacity-70">
+                  {opt.hint}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Season filter chips — passed as an element to PercentileBars. */}
       {(() => {
         // Defined here so the JSX block below can hand it to PercentileBars.
@@ -1453,10 +1523,10 @@ export default function PlayerDetail() {
           ) : null
         }
 
-        // Render pitcher bars first when the player's primary role is
-        // pitching. Otherwise batting first. (Two-way players still get
-        // batting first unless explicitly listed as P.)
-        const isPitcherFirst = (player.position || '').toUpperCase() === 'P'
+        // For two-way players we ONLY show the bars for the active
+        // toggle side. Single-side players see their own side. The
+        // older isPitcherFirst ordering is no longer needed because
+        // we never render both sides at once anymore.
         const battingBlock = batting_percentiles && Object.keys(batting_percentiles).length > 0 ? (
           <PercentileBars
             key="bat"
@@ -1475,8 +1545,10 @@ export default function PlayerDetail() {
             divisionLevel={player.division_level}
           />
         ) : null
-        const orderedBars = isPitcherFirst
-          ? [pitchingBlock, battingBlock]
+        // Two-way: show only the active side's bars. Single-side: show
+        // whichever block we have.
+        const orderedBars = isTwoWay
+          ? [activeSide === 'pitching' ? pitchingBlock : battingBlock]
           : [battingBlock, pitchingBlock]
         // Hand the season-filter chips to the FIRST bars block that
         // actually renders, so the chips always appear in the header
@@ -1521,13 +1593,15 @@ export default function PlayerDetail() {
                 />
               )}
               <SeasonGlance
-                bat={batting_stats?.find(r => r.season === targetSeason)}
-                pit={pitching_stats?.find(r => r.season === targetSeason)}
+                bat={(!isTwoWay || activeSide === 'batting')
+                  ? batting_stats?.find(r => r.season === targetSeason) : undefined}
+                pit={(!isTwoWay || activeSide === 'pitching')
+                  ? pitching_stats?.find(r => r.season === targetSeason) : undefined}
                 season={targetSeason}
               />
               <RecentGames
-                batting={gameLogs?.batting}
-                pitching={gameLogs?.pitching}
+                batting={(!isTwoWay || activeSide === 'batting') ? gameLogs?.batting : undefined}
+                pitching={(!isTwoWay || activeSide === 'pitching') ? gameLogs?.pitching : undefined}
                 limit={20}
               />
             </ScrollColumn>
@@ -1538,87 +1612,95 @@ export default function PlayerDetail() {
       {/* (Position now always lives inside the right column above —
             no standalone render needed.) */}
 
-      {/* ── Batting Stats Table (career) ── */}
-      {hasBatting && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-          <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
-            {batting_stats.length > 1 ? 'Career Batting Stats' : 'Batting Stats'}
-          </h3>
-          <div className="overflow-x-auto -mx-3 sm:mx-0">
-            <div className="min-w-[700px] px-3 sm:px-0">
-              <StatsTable rows={batting_stats} columns={BATTING_TABLE_COLS} careerRow={battingCareer} />
+      {/* ── Batting blocks (gated by toggle for two-way players) ── */}
+      {hasBatting && (!isTwoWay || activeSide === 'batting') && (
+        <>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
+              {batting_stats.length > 1 ? 'Career Batting Stats' : 'Batting Stats'}
+            </h3>
+            <div className="overflow-x-auto -mx-3 sm:mx-0">
+              <div className="min-w-[700px] px-3 sm:px-0">
+                <StatsTable rows={batting_stats} columns={BATTING_TABLE_COLS} careerRow={battingCareer} />
+              </div>
             </div>
           </div>
-        </div>
+          <PitchLevelStatsCard playerId={playerId} season={2026} />
+        </>
       )}
 
-      {/* ── Pitch-Level Stats (PBP-derived; auto-hides if no events) ── */}
-      {hasBatting && <PitchLevelStatsCard playerId={playerId} season={2026} />}
-
-      {/* ── Pitching Stats Table (career) ── */}
-      {hasPitching && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-          <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
-            {pitching_stats.length > 1 ? 'Career Pitching Stats' : 'Pitching Stats'}
-          </h3>
-          <div className="overflow-x-auto -mx-3 sm:mx-0">
-            <div className="min-w-[700px] px-3 sm:px-0">
-              <StatsTable rows={pitching_stats} columns={PITCHING_TABLE_COLS} careerRow={pitchingCareer} />
+      {/* ── Pitching blocks (gated by toggle for two-way players) ── */}
+      {hasPitching && (!isTwoWay || activeSide === 'pitching') && (
+        <>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
+              {pitching_stats.length > 1 ? 'Career Pitching Stats' : 'Pitching Stats'}
+            </h3>
+            <div className="overflow-x-auto -mx-3 sm:mx-0">
+              <div className="min-w-[700px] px-3 sm:px-0">
+                <StatsTable rows={pitching_stats} columns={PITCHING_TABLE_COLS} careerRow={pitchingCareer} />
+              </div>
             </div>
           </div>
-        </div>
+          <PitcherPitchLevelStatsCard playerId={playerId} season={2026} />
+        </>
       )}
-
-      {/* ── Pitcher Pitch-Level Stats (PBP-derived; auto-hides if no events) ── */}
-      {hasPitching && <PitcherPitchLevelStatsCard playerId={playerId} season={2026} />}
 
       {/* ── Rolling cumulative WPA chart (PBP-derived; auto-hides if no events) ── */}
       <div className="mb-4 sm:mb-6">
         <WpaByGameChart playerId={playerId} position={player.position} />
       </div>
 
-      {/* ── Summer Ball Stats ── */}
-      {hasSummerStats && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg shadow-sm border border-amber-200 p-3 sm:p-5 mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm sm:text-base font-bold text-amber-800 uppercase tracking-wider">
-              Summer Ball
-            </h3>
+      {/* ── Summer Ball Stats ── (gated by toggle for two-way players) */}
+      {(() => {
+        const showSummerBatting  = hasSummerBatting  && (!isTwoWay || activeSide === 'batting')
+        const showSummerPitching = hasSummerPitching && (!isTwoWay || activeSide === 'pitching')
+        if (!showSummerBatting && !showSummerPitching) return null
+        return (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg shadow-sm border border-amber-200 p-3 sm:p-5 mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-sm sm:text-base font-bold text-amber-800 uppercase tracking-wider">
+                Summer Ball
+              </h3>
+            </div>
+
+            {showSummerBatting && (
+              <div className="mb-4">
+                <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Batting</h4>
+                <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
+                  <div className="min-w-[650px]">
+                    <StatsTable rows={summer_batting} columns={SUMMER_BATTING_TABLE_COLS} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showSummerPitching && (
+              <div>
+                <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Pitching</h4>
+                <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
+                  <div className="min-w-[650px]">
+                    <StatsTable rows={summer_pitching} columns={SUMMER_PITCHING_TABLE_COLS} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+        )
+      })()}
 
-          {hasSummerBatting && (
-            <div className="mb-4">
-              <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Batting</h4>
-              <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
-                <div className="min-w-[650px]">
-                  <StatsTable rows={summer_batting} columns={SUMMER_BATTING_TABLE_COLS} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {hasSummerPitching && (
-            <div>
-              <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Pitching</h4>
-              <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
-                <div className="min-w-[650px]">
-                  <StatsTable rows={summer_pitching} columns={SUMMER_PITCHING_TABLE_COLS} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Game Logs ── */}
-      {gameLogs?.batting?.length > 0 && gameLogs.batting.some(g => (g.ab || 0) + (g.bb || 0) + (g.hbp || 0) + (g.sf || 0) + (g.sh || 0) > 0) && (
+      {/* ── Game Logs ── (gated by toggle for two-way players) */}
+      {gameLogs?.batting?.length > 0
+        && gameLogs.batting.some(g => (g.ab || 0) + (g.bb || 0) + (g.hbp || 0) + (g.sf || 0) + (g.sh || 0) > 0)
+        && (!isTwoWay || activeSide === 'batting') && (
         <GameLogTable
           title="Batting Game Log"
           logs={gameLogs.batting}
           columns={BATTING_GAMELOG_COLS}
         />
       )}
-      {gameLogs?.pitching?.length > 0 && (
+      {gameLogs?.pitching?.length > 0
+        && (!isTwoWay || activeSide === 'pitching') && (
         <GameLogTable
           title="Pitching Game Log"
           logs={gameLogs.pitching}
