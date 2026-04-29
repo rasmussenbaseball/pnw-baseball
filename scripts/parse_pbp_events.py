@@ -124,8 +124,10 @@ RESULT_PATTERNS = [
     (re.compile(r"\breached (?:first |second |third )?on an? (?:fielding |throwing |muffed |dropped )?error\b", re.I),
                                                          "error",              True),
 
-    # Catcher's interference is rare but real
-    (re.compile(r"\bcatcher'?s interference\b",   re.I), "catcher_interference", False),
+    # Catcher's interference is rare but real. Anchor on "reached
+    # on" so any future runner-advance narrative referencing a
+    # catcher's interference doesn't accidentally classify as a PA.
+    (re.compile(r"\breached on catcher'?s interference\b", re.I), "catcher_interference", False),
 ]
 
 
@@ -243,8 +245,16 @@ def extract_batter_name(text, result_type):
         "fly_out":             r"\b(?:flied out|fouled out)\b",
         "line_out":            r"\blined out\b",
         "pop_out":             r"\bpopped (?:out|up)\b",
-        "sac_fly":             r"\b(?:sacrifice fly|sac fly)\b",
-        "sac_bunt":            r"\b(?:sac bunt|sacrificed)\b",
+        # Sac fly narratives are "X flied out to lf, sacrifice fly,
+        # RBI; Y scored." The classify_result regex anchors on
+        # "sacrifice fly", but the BATTER name comes BEFORE the
+        # verb ("flied out") — we need to anchor on whichever
+        # play-verb appears at the start of the narrative, not on
+        # the "sacrifice fly" tag (which comes after the verb).
+        "sac_fly":             r"\b(?:flied out|fouled out|popped (?:out|up)|lined out|grounded out)\b",
+        # Sac bunts most commonly start with "X sacrificed" but can
+        # also start with a play verb. Cover both.
+        "sac_bunt":            r"\b(?:sacrificed|grounded out|popped (?:out|up)|reached on|lined out)\b",
         # Anchored on "reached on" only — see RESULT_PATTERNS for why.
         # If a future Sidearm narrative uses a different phrasing for
         # the batter PA case, add it here, but do NOT fall back to a
@@ -252,7 +262,11 @@ def extract_batter_name(text, result_type):
         # runner-advance narratives.
         "fielders_choice":     r"\breached on a fielder'?s choice\b|\breached on a fielders choice\b",
         "error":               r"\breached (?:first |second |third )?on an? (?:fielding |throwing |muffed |dropped )?error\b",
-        "catcher_interference": r"\bcatcher'?s interference\b",
+        # Catcher's interference narratives are "X reached on
+        # catcher's interference" — anchor on "reached on" so we
+        # don't slice off the trailing "reached on" as part of the
+        # batter name.
+        "catcher_interference": r"\breached on catcher'?s interference\b",
     }
     pattern = verb_anchors.get(result_type)
     if pattern:
