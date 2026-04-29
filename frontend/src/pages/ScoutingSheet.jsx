@@ -88,37 +88,51 @@ const fmt = {
 }
 
 
-// 13 hitter stats. `direction: 'neutral'` keeps the cell gray (used
-// only for GB/FB which is a "type tag" not a directional metric).
+// Column specs.
+//
+// `width` is the column's slice of the table, expressed as a percentage.
+// We size each column based on the widest content it has to display so
+// nothing overflows into its neighbor:
+//   - "wOBA vR" / "wOBA vL" headers are 7 chars and dominate those cols
+//   - "GB / FB" cells like "FB 100.0%" need the most room
+//   - "SB" cells go up to "22/27" (5 chars)
+//   - HR/FB and rate-pct cols all top out at "100.0%" (5 chars)
+//
+// HITTER stat widths sum to ~74%; combined with the fixed Name (16%) +
+// jersey/pos/B columns (8%) the table totals ~98% — small buffer keeps
+// borders crisp.
+//
+// `direction: 'neutral'` keeps the cell shading gray for stats where a
+// raw value isn't directionally good or bad (only GB / FB pick).
 const HITTER_COLS = [
-  { label: 'PA',      val: r => fmt.int(r.pa),                pctKey: 'pa' },
-  { label: 'wOBA vR', val: r => fmt.rate(r.woba_vs_rhp),      pctKey: 'woba_vs_rhp' },
-  { label: 'wOBA vL', val: r => fmt.rate(r.woba_vs_lhp),      pctKey: 'woba_vs_lhp' },
-  { label: 'GB / FB', val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value', direction: 'neutral' },
-  { label: 'K%',      val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct' },
-  { label: 'BB%',     val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct' },
-  { label: 'ISO',     val: r => fmt.rate(r.iso),              pctKey: 'iso' },
-  { label: 'SB',      val: r => fmt.raw(r.sb_str),            pctKey: 'sb_made' },
-  { label: 'HR/FB',   val: r => fmt.pct(r.hr_per_fb),         pctKey: 'hr_per_fb' },
-  { label: 'Cont%',   val: r => fmt.pct(r.contact_pct),       pctKey: 'contact_pct' },
-  { label: 'FPS%',    val: r => fmt.pct(r.first_pitch_swing_pct), pctKey: 'first_pitch_swing_pct' },
-  { label: 'Sw%',     val: r => fmt.pct(r.swing_pct),         pctKey: 'swing_pct' },
-  { label: 'Put%',    val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct' },
+  { label: 'PA',      val: r => fmt.int(r.pa),                pctKey: 'pa',                    width: '4%'   },
+  { label: 'wOBA vR', val: r => fmt.rate(r.woba_vs_rhp),      pctKey: 'woba_vs_rhp',           width: '6.5%' },
+  { label: 'wOBA vL', val: r => fmt.rate(r.woba_vs_lhp),      pctKey: 'woba_vs_lhp',           width: '6.5%' },
+  { label: 'GB / FB', val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value',        width: '9%',   direction: 'neutral' },
+  { label: 'K%',      val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct',                 width: '5.5%' },
+  { label: 'BB%',     val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct',                width: '5.5%' },
+  { label: 'ISO',     val: r => fmt.rate(r.iso),              pctKey: 'iso',                   width: '5%'   },
+  { label: 'SB',      val: r => fmt.raw(r.sb_str),            pctKey: 'sb_made',               width: '5%'   },
+  { label: 'HR/FB',   val: r => fmt.pct(r.hr_per_fb),         pctKey: 'hr_per_fb',             width: '5.5%' },
+  { label: 'Cont%',   val: r => fmt.pct(r.contact_pct),       pctKey: 'contact_pct',           width: '5.5%' },
+  { label: 'FPS%',    val: r => fmt.pct(r.first_pitch_swing_pct), pctKey: 'first_pitch_swing_pct', width: '5.5%' },
+  { label: 'Sw%',     val: r => fmt.pct(r.swing_pct),         pctKey: 'swing_pct',             width: '5%'   },
+  { label: 'Put%',    val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct',           width: '5%'   },
 ]
 
 const PITCHER_COLS = [
-  { label: 'IP',      val: r => fmt.ip(r.ip),                 pctKey: 'ip' },
-  { label: 'wOBA vR', val: r => fmt.rate(r.woba_vs_rhh),      pctKey: 'woba_vs_rhh' },
-  { label: 'wOBA vL', val: r => fmt.rate(r.woba_vs_lhh),      pctKey: 'woba_vs_lhh' },
-  { label: 'K%',      val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct' },
-  { label: 'BB%',     val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct' },
-  { label: 'Whf%',    val: r => fmt.pct(r.whiff_pct),         pctKey: 'whiff_pct' },
-  { label: 'ISO',     val: r => fmt.rate(r.iso_against),      pctKey: 'iso_against' },
-  { label: 'BAA',     val: r => fmt.rate(r.baa_against),      pctKey: 'baa_against' },
-  { label: 'GB / FB', val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value', direction: 'neutral' },
-  { label: 'Stk%',    val: r => fmt.pct(r.strike_pct),        pctKey: 'strike_pct' },
-  { label: 'FPS%',    val: r => fmt.pct(r.fps_pct),           pctKey: 'fps_pct' },
-  { label: 'Put%',    val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct' },
+  { label: 'IP',      val: r => fmt.ip(r.ip),                 pctKey: 'ip',                    width: '5%'   },
+  { label: 'wOBA vR', val: r => fmt.rate(r.woba_vs_rhh),      pctKey: 'woba_vs_rhh',           width: '6.5%' },
+  { label: 'wOBA vL', val: r => fmt.rate(r.woba_vs_lhh),      pctKey: 'woba_vs_lhh',           width: '6.5%' },
+  { label: 'K%',      val: r => fmt.pct(r.k_pct),             pctKey: 'k_pct',                 width: '5.5%' },
+  { label: 'BB%',     val: r => fmt.pct(r.bb_pct),            pctKey: 'bb_pct',                width: '5.5%' },
+  { label: 'Whf%',    val: r => fmt.pct(r.whiff_pct),         pctKey: 'whiff_pct',             width: '6%'   },
+  { label: 'ISO',     val: r => fmt.rate(r.iso_against),      pctKey: 'iso_against',           width: '5.5%' },
+  { label: 'BAA',     val: r => fmt.rate(r.baa_against),      pctKey: 'baa_against',           width: '5.5%' },
+  { label: 'GB / FB', val: r => fmt.gbfb(r),                  pctKey: 'gb_or_fb_value',        width: '9%',   direction: 'neutral' },
+  { label: 'Stk%',    val: r => fmt.pct(r.strike_pct),        pctKey: 'strike_pct',            width: '6%'   },
+  { label: 'FPS%',    val: r => fmt.pct(r.fps_pct),           pctKey: 'fps_pct',               width: '6%'   },
+  { label: 'Put%',    val: r => fmt.pct(r.putaway_pct),       pctKey: 'putaway_pct',           width: '6%'   },
 ]
 
 
@@ -334,11 +348,17 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
   return (
     <table className="w-full border-collapse text-[9px] leading-tight tabular-nums table-fixed">
       <colgroup>
+        {/* Non-stat anchor columns (#, Name, Pos, B/T) sum to 26.5%;
+            the per-column widths in cols sum to ~73%, leaving a small
+            buffer so headers like "wOBA vR" don't bleed into "wOBA vL"
+            and GB/FB cells don't crowd the K% column. */}
         <col style={{ width: '3%' }}  />  {/* # */}
-        <col style={{ width: '15%' }} />  {/* Name */}
-        <col style={{ width: '4%' }}  />  {/* Pos */}
+        <col style={{ width: '17%' }} />  {/* Name */}
+        <col style={{ width: '3.5%' }} /> {/* Pos */}
         <col style={{ width: '3%' }}  />  {/* B/T */}
-        {cols.map((_, i) => <col key={i} style={{ width: `${75 / cols.length}%` }} />)}
+        {cols.map((c, i) => (
+          <col key={i} style={{ width: c.width || `${73 / cols.length}%` }} />
+        ))}
       </colgroup>
       <thead>
         <tr className="bg-portal-purple text-portal-cream">
@@ -348,7 +368,7 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
           <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">{handField === 'bats' ? 'B' : 'T'}</th>
           {cols.map(c => (
             <th key={c.label}
-                className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px] font-semibold whitespace-nowrap">
+                className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
               {c.label}
             </th>
           ))}
@@ -382,7 +402,7 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
                   : pctColor(pct, c.direction || 'higher_better')
                 return (
                   <td key={c.label}
-                      className="text-center px-0.5 py-0.5 border border-gray-200 whitespace-nowrap"
+                      className="text-center px-0.5 py-0.5 border border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis"
                       style={{ backgroundColor: bg }}
                       title={isLow
                         ? 'Below qualifier — not ranked'
@@ -412,7 +432,7 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
               const bg = pctColor(pct, c.direction || 'higher_better')
               return (
                 <td key={c.label}
-                    className="text-center px-0.5 py-1 border border-portal-purple-dark font-bold whitespace-nowrap"
+                    className="text-center px-0.5 py-1 border border-portal-purple-dark font-bold whitespace-nowrap overflow-hidden text-ellipsis"
                     style={{ backgroundColor: bg }}
                     title={pct != null ? `${pct}th percentile vs other teams` : undefined}>
                   {c.val(totals)}
