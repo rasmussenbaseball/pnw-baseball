@@ -2976,9 +2976,20 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                 # ── Try Sidearm JSON API first for new Nuxt sites ──
                 tenant = SIDEARM_API_TENANTS.get(base_url)
                 if tenant and platform == "sidearm":
-                    # Extract game ID from box score URL (last path segment)
-                    box_game_id = real_box_url.rstrip("/").split("/")[-1]
-                    if box_game_id.isdigit():
+                    # Pull the numeric game id out of any common Sidearm URL
+                    # shape:
+                    #   /sports/baseball/stats/2026/x/boxscore/12345  (Nuxt)
+                    #   /boxscore.aspx?id=12345                       (legacy)
+                    # The legacy URL still works if we hit the modern API
+                    # endpoint with the same id, since Sidearm's tenants
+                    # expose all box scores via /api/v2/stats/boxscore/<id>.
+                    # Without this, .aspx URLs fall through to HTML parsing
+                    # of a Nuxt page that renders client-side — we'd get
+                    # partial stats and miss columns like HR.
+                    m = re.search(r'/boxscore/(\d+)', real_box_url) \
+                        or re.search(r'[?&]id=(\d+)', real_box_url)
+                    box_game_id = m.group(1) if m else None
+                    if box_game_id and box_game_id.isdigit():
                         box = fetch_sidearm_api_boxscore(base_url, box_game_id, tenant)
                         if box:
                             logger.info(f"    Got box score from Sidearm API (game {box_game_id})")
