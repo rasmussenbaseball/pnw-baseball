@@ -983,9 +983,10 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
           SUM(pitches_thrown) AS pitches_total,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
           -- See _aggregate_team_pbp_pitching for the parser-convention
-          -- explanation. Strike% counts K + S + F in seq plus in-play
-          -- (terminal pitch). Don't add a separate terminal_strikes
-          -- count — strikeouts already include the K in pitch_sequence.
+          -- explanation. Strike rate counts K + S + F in seq plus
+          -- in-play (terminal pitch). Don't add a separate
+          -- terminal_strikes count — strikeouts already include the
+          -- K in pitch_sequence.
           COUNT(*) FILTER (
             WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','S','F'))
                OR (LENGTH(pitch_sequence) = 0 AND was_in_play AND pitches_thrown = 1)
