@@ -106,7 +106,30 @@ def _resolve_phantom(cur, team_id: int, name: str) -> int | None:
     opponents (Cal D3, etc.) a player_id we can group PA-level stats
     by, even though we never roster-scraped them. See
     scripts/create_phantom_players.py for the backfill rationale.
+
+    DEFENSIVE: refuse to create phantoms whose names contain PBP
+    narrative fragments. If `name` is "Nick Gimino lined out to lf"
+    instead of "Nick Gimino", the upstream parser blew the batter
+    name extraction — creating a phantom would pollute the players
+    table with a row that pretends to be a real person. Better to
+    return None and skip the row than to persist garbage. See
+    feedback_strike_pct_formula and project_phantom_players for the
+    history of what good parser output looks like.
     """
+    NARRATIVE_TOKENS = {
+        'lined', 'flied', 'fouled', 'grounded', 'struck', 'popped',
+        'reached', 'doubled', 'singled', 'tripled', 'homered', 'walked',
+        'sacrificed', 'advanced', 'scored', 'stole', 'homerun',
+    }
+    if name:
+        tokens = {t.lower() for t in re.split(r'[\s,]+', name) if t}
+        if tokens & NARRATIVE_TOKENS:
+            log.warning(
+                "  Refusing to create phantom for narrative-shaped name "
+                "(team_id=%s, name=%r). Upstream parser likely failed.",
+                team_id, name,
+            )
+            return None
     first, last = _phantom_parse_name(name)
     if not first and not last:
         return None
