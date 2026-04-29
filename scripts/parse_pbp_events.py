@@ -110,9 +110,19 @@ RESULT_PATTERNS = [
     (re.compile(r"\bfouled out\b",                re.I), "fly_out",            True),
 
     # Reached on …
-    (re.compile(r"\breached on a fielder'?s choice\b|\breached on a fielders choice\b|\bfielder'?s choice\b", re.I),
+    # The bare "fielder's choice" match (no "reached on" prefix) used
+    # to be in this regex; we removed it because it was catching
+    # runner-advance narratives like "Miles Bergman advanced to
+    # second on a fielder's choice." — those are runner_other
+    # sub-events, NOT batter PAs.  Real batter PAs always start with
+    # "X reached on ..."; runner narratives start with "X advanced
+    # to ..." and fall through to classify_subevent below.
+    (re.compile(r"\breached on a fielder'?s choice\b|\breached on a fielders choice\b", re.I),
                                                          "fielders_choice",    True),
-    (re.compile(r"\breached on an? error\b",      re.I), "error",              True),
+    # Same logic for errors — anchor on "reached" so a runner who
+    # advances on an error doesn't get mis-classified as a PA.
+    (re.compile(r"\breached (?:first |second |third )?on an? (?:fielding |throwing |muffed |dropped )?error\b", re.I),
+                                                         "error",              True),
 
     # Catcher's interference is rare but real
     (re.compile(r"\bcatcher'?s interference\b",   re.I), "catcher_interference", False),
@@ -235,8 +245,13 @@ def extract_batter_name(text, result_type):
         "pop_out":             r"\bpopped (?:out|up)\b",
         "sac_fly":             r"\b(?:sacrifice fly|sac fly)\b",
         "sac_bunt":            r"\b(?:sac bunt|sacrificed)\b",
-        "fielders_choice":     r"\b(?:reached on a fielder'?s choice|fielder'?s choice)\b",
-        "error":               r"\breached on an? error\b",
+        # Anchored on "reached on" only — see RESULT_PATTERNS for why.
+        # If a future Sidearm narrative uses a different phrasing for
+        # the batter PA case, add it here, but do NOT fall back to a
+        # bare "fielder's choice" / "error" match — that would catch
+        # runner-advance narratives.
+        "fielders_choice":     r"\breached on a fielder'?s choice\b|\breached on a fielders choice\b",
+        "error":               r"\breached (?:first |second |third )?on an? (?:fielding |throwing |muffed |dropped )?error\b",
         "catcher_interference": r"\bcatcher'?s interference\b",
     }
     pattern = verb_anchors.get(result_type)
