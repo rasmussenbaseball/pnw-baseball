@@ -379,23 +379,20 @@ def _aggregate_team_pbp_pitching(cur, team_id, season):
     cur.execute("""
         SELECT
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))) AS s_pitches,
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))) AS b_pitches,
-          SUM(LENGTH(pitch_sequence)) AS seq_total,
           SUM(pitches_thrown) AS pitches_total,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
-          -- Count terminal pitches that were strikes (K terminal OR was_in_play)
+          -- First-pitch strike: K/S/F first char, OR 1-pitch in-play. The
+          -- pitches_thrown=1 guard excludes PAs whose box score didn't
+          -- capture pitch counts (otherwise every empty-seq + was_in_play
+          -- looks like a 1-pitch strike and inflates the rate).
           COUNT(*) FILTER (
-            WHERE was_in_play
-               OR ge.result_type IN ('strikeout_swinging','strikeout_looking')
-          ) AS terminal_strikes,
-          -- First-pitch strike: first char of seq is K/F, or seq empty AND was_in_play, or seq empty AND K terminal
-          COUNT(*) FILTER (
-            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','F'))
-               OR (LENGTH(pitch_sequence) = 0 AND was_in_play)
-               OR (LENGTH(pitch_sequence) = 0
-                   AND ge.result_type IN ('strikeout_swinging','strikeout_looking'))
+            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','S','F'))
+               OR (LENGTH(pitch_sequence) = 0 AND was_in_play AND pitches_thrown = 1)
           ) AS first_pitch_strikes,
+          COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL AND pitches_thrown >= 1) AS fps_pa_known,
           COUNT(*) FILTER (WHERE strikes_before >= 2
                            AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS putaway_k,
           COUNT(*) FILTER (WHERE strikes_before >= 2) AS two_strike_pa,
@@ -411,17 +408,20 @@ def _aggregate_team_pbp_pitching(cur, team_id, season):
     """, (team_id, season))
     r = cur.fetchone() or {}
     k_p = float(r.get('k_pitches') or 0)
+    s_p = float(r.get('s_pitches') or 0)
     f_p = float(r.get('f_pitches') or 0)
-    seq = float(r.get('seq_total') or 0)
     in_play = float(r.get('in_play') or 0)
     bb_total = float(r.get('bb_total') or 0)
     pa = float(r.get('pa') or 0)
-    pitches_total = float(r.get('pitches_total') or (seq + in_play))
-    terminal_strikes = float(r.get('terminal_strikes') or 0)
+    pitches_total = float(r.get('pitches_total') or 0)
     swings = k_p + f_p + in_play
 
-    # Strike%: K + F in seq + every terminal that was a strike
-    strikes = k_p + f_p + terminal_strikes
+    # Strike% — count all strike letters in the sequence (K=swing+miss,
+    # S=called strike, F=foul) PLUS in-play pitches (the terminal pitch
+    # of any batted ball is a strike by definition). Strikeouts have
+    # the terminal K already in pitch_sequence, so don't add it again.
+    # Pitches denominator is the parser's stored pitches_thrown sum.
+    strikes = k_p + s_p + f_p + in_play
 
     def _safe(num, denom):
         return float(num) / float(denom) if denom else None
@@ -429,7 +429,7 @@ def _aggregate_team_pbp_pitching(cur, team_id, season):
     return {
         'strike_pct':   _safe(strikes, pitches_total),
         'whiff_pct':    _safe(k_p, swings),
-        'fps_pct':      _safe(r.get('first_pitch_strikes') or 0, pa),
+        'fps_pct':      _safe(r.get('first_pitch_strikes') or 0, r.get('fps_pa_known') or 0),
         'putaway_pct':  _safe(r.get('putaway_k') or 0, r.get('two_strike_pa') or 0),
         'opp_gb_pct':   _safe(r.get('gb') or 0, bb_total),
         'opp_fb_pct':   _safe(r.get('fb') or 0, bb_total),
@@ -978,20 +978,19 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
         SELECT
           ge.pitcher_player_id AS pid,
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
+          SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))) AS s_pitches,
           SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
-          SUM(LENGTH(pitch_sequence)) AS seq_total,
           SUM(pitches_thrown) AS pitches_total,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+          -- See _aggregate_team_pbp_pitching for the parser-convention
+          -- explanation. Strike% counts K + S + F in seq plus in-play
+          -- (terminal pitch). Don't add a separate terminal_strikes
+          -- count — strikeouts already include the K in pitch_sequence.
           COUNT(*) FILTER (
-            WHERE was_in_play
-               OR ge.result_type IN ('strikeout_swinging','strikeout_looking')
-          ) AS terminal_strikes,
-          COUNT(*) FILTER (
-            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','F'))
-               OR (LENGTH(pitch_sequence) = 0 AND was_in_play)
-               OR (LENGTH(pitch_sequence) = 0
-                   AND ge.result_type IN ('strikeout_swinging','strikeout_looking'))
+            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','S','F'))
+               OR (LENGTH(pitch_sequence) = 0 AND was_in_play AND pitches_thrown = 1)
           ) AS first_pitch_strikes,
+          COUNT(*) FILTER (WHERE pitches_thrown IS NOT NULL AND pitches_thrown >= 1) AS fps_pa_known,
           COUNT(*) FILTER (WHERE strikes_before >= 2
                            AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS putaway_k,
           COUNT(*) FILTER (WHERE strikes_before >= 2) AS two_strike_pa,
@@ -1020,16 +1019,17 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
     for r in cur.fetchall():
         pid = r['pid']
         k_p = float(r['k_pitches'] or 0)
+        s_p = float(r['s_pitches'] or 0)
         f_p = float(r['f_pitches'] or 0)
-        seq = float(r['seq_total'] or 0)
         in_play = float(r['in_play'] or 0)
         bb_total = float(r['bb_total'] or 0)
         bf = float(r['bf'] or 0)
-        pitches_total = float(r['pitches_total'] or (seq + in_play))
-        terminal_strikes = float(r['terminal_strikes'] or 0)
+        pitches_total = float(r['pitches_total'] or 0)
         swings = k_p + f_p + in_play
         contact = f_p + in_play
-        strikes = k_p + f_p + terminal_strikes
+        # All strikes from sequence + the in-play pitch (terminal of any
+        # batted ball is a strike). K + S + F + in_play.
+        strikes = k_p + s_p + f_p + in_play
 
         def _safe(num, denom):
             return float(num) / float(denom) if denom else None
@@ -1039,7 +1039,7 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
             'swing_pct':    _safe(swings, pitches_total),
             'whiff_pct':    _safe(k_p, swings),
             'contact_pct':  _safe(contact, swings),
-            'fps_pct':      _safe(r['first_pitch_strikes'] or 0, bf),
+            'fps_pct':      _safe(r['first_pitch_strikes'] or 0, r['fps_pa_known'] or 0),
             'putaway_pct':  _safe(r['putaway_k'] or 0, r['two_strike_pa'] or 0),
             'opp_gb_pct':   _safe(r['gb'] or 0, bb_total),
             'opp_fb_pct':   _safe(r['fb'] or 0, bb_total),
