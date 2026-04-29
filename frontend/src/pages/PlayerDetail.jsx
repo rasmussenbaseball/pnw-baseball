@@ -1172,10 +1172,18 @@ export default function PlayerDetail() {
   const [percentileSeason, setPercentileSeason] = useState(null) // null = most recent (default)
   const [headshotError, setHeadshotError] = useState(false)
   // For two-way players: which side ('batting' or 'pitching') is the
-  // page currently showing? null until data loads — a useEffect below
-  // sets it to whichever side has more total WAR. The user can then
-  // toggle freely; their choice sticks until they leave the page.
+  // page currently showing? null means "use defaultSide" — derived
+  // later from career WAR once stats are loaded. The user can click
+  // the toggle to set it explicitly; their choice sticks across
+  // season changes and data refreshes for the same player.
   const [viewSide, setViewSide] = useState(null)
+  // Reset viewSide whenever the user navigates to a different player.
+  // React-router reuses this same component for /players/:id changes,
+  // so without this reset a hitter-first player B would inherit the
+  // 'pitching' choice from the pitcher-first player A we just left.
+  useEffect(() => {
+    setViewSide(null)
+  }, [playerId])
   const { data, loading, error } = usePlayer(playerId, percentileSeason)
   const { data: gameLogs } = usePlayerGameLogs(playerId, 2026)
   const { data: splits } = usePlayerSplits(playerId, 2026)
@@ -1240,18 +1248,11 @@ export default function PlayerDetail() {
     ? (totalPitchingWar > totalBattingWar ? 'pitching' : 'batting')
     : (hasPitching ? 'pitching' : 'batting')
 
-  // Sync viewSide to the computed default whenever the player changes
-  // (or stats first arrive). Once viewSide is set, the user can flip
-  // it freely without us snapping it back.
-  useEffect(() => {
-    if (viewSide === null && (hasBatting || hasPitching)) {
-      setViewSide(defaultSide)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerId, hasBatting, hasPitching, defaultSide])
-
-  // The "active" side for rendering. Falls back to defaultSide before
-  // the useEffect fires so first paint still picks the right side.
+  // The "active" side for rendering. `viewSide` starts at null on
+  // every player navigation (see the playerId-keyed effect at the top
+  // of the component) so a fresh player always gets defaultSide. Once
+  // the user clicks the toggle, viewSide carries their choice and
+  // sticks across season changes / data refreshes.
   const activeSide = viewSide || defaultSide
 
   // Build available seasons for the toggle (from both batting and pitching)
