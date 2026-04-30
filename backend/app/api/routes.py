@@ -11615,6 +11615,138 @@ def get_player_gamelogs(
         }
 
 
+@router.get("/players/{player_id}/vs-team/{team_id}")
+def get_player_vs_team(
+    player_id: int,
+    team_id: int,
+    season: int = Query(2026, description="Season year"),
+    side: str = Query('batting', description="'batting' or 'pitching'"),
+):
+    """How this player has performed against a specific opposing team.
+
+    Used by the Player Card PDF when the user has a portal team set —
+    e.g. a Bushnell coach views an OIT player's card and immediately
+    sees how that player did vs Bushnell pitchers (or how that
+    pitcher did vs Bushnell hitters).
+
+    Returns:
+      {
+        "overall": { pa, ab, h, hr, bb, k, avg, obp, slg, ops, woba,
+                     iso, k_pct, bb_pct },
+        "matchups": [   # per-opponent-pitcher (or per-opponent-batter)
+          { player_id, name, pa, ab, h, hr, bb, k, avg, woba, ... }
+        ],
+        "games": int,   # how many games this matchup happened in
+      }
+    """
+    if side not in ('batting', 'pitching'):
+        raise HTTPException(status_code=400, detail="side must be 'batting' or 'pitching'")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Resolve canonical/linked
+        cur.execute("SELECT canonical_id FROM player_links WHERE linked_id = %s", (player_id,))
+        canon = cur.fetchone()
+        if canon:
+            player_id = canon["canonical_id"]
+        cur.execute("SELECT linked_id FROM player_links WHERE canonical_id = %s", (player_id,))
+        all_pids = [player_id] + [r["linked_id"] for r in cur.fetchall()]
+
+        # Pull every PA between this player and that team's roster
+        if side == 'batting':
+            self_filter = "ge.batter_player_id = ANY(%s)"
+            opp_filter = "ge.defending_team_id = %s"
+            opp_id_col = "ge.pitcher_player_id"
+        else:
+            self_filter = "ge.pitcher_player_id = ANY(%s)"
+            opp_filter = "ge.batting_team_id = %s"
+            opp_id_col = "ge.batter_player_id"
+
+        cur.execute(f"""
+            SELECT ge.result_type, {opp_id_col} AS opp_pid, ge.game_id
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            WHERE {self_filter}
+              AND g.season = %s
+              AND {opp_filter}
+              AND ge.result_type IS NOT NULL
+        """, (all_pids, season, team_id))
+        events = list(cur.fetchall())
+
+        if not events:
+            return {"overall": None, "matchups": [], "games": 0,
+                    "team_id": team_id, "season": season, "side": side}
+
+        # Aggregate the slash line + advanced rate stats
+        def _slash_from_events(rows):
+            singles = sum(1 for r in rows if r["result_type"] == "single")
+            doubles = sum(1 for r in rows if r["result_type"] == "double")
+            triples = sum(1 for r in rows if r["result_type"] == "triple")
+            hr = sum(1 for r in rows if r["result_type"] == "home_run")
+            bb = sum(1 for r in rows if r["result_type"] in ("walk", "intentional_walk"))
+            hbp = sum(1 for r in rows if r["result_type"] == "hbp")
+            sf = sum(1 for r in rows if r["result_type"] == "sac_fly")
+            k = sum(1 for r in rows if r["result_type"] in ("strikeout_swinging", "strikeout_looking"))
+            ab_types = {"single", "double", "triple", "home_run",
+                        "strikeout_swinging", "strikeout_looking",
+                        "ground_out", "fly_out", "line_out", "pop_out",
+                        "fielders_choice", "error", "double_play", "other"}
+            ab = sum(1 for r in rows if r["result_type"] in ab_types)
+            h = singles + doubles + triples + hr
+            tb = singles + 2 * doubles + 3 * triples + 4 * hr
+            pa = len(rows)
+            avg = (h / ab) if ab else 0
+            obp_denom = ab + bb + hbp + sf
+            obp = ((h + bb + hbp) / obp_denom) if obp_denom else 0
+            slg = (tb / ab) if ab else 0
+            iso = slg - avg
+            # D3/NAIA-ish wOBA weights (same as elsewhere in the codebase)
+            woba_num = (0.69 * bb + 0.72 * hbp + 0.88 * singles +
+                        1.24 * doubles + 1.56 * triples + 2.0 * hr)
+            woba_denom = ab + bb + sf + hbp
+            woba = (woba_num / woba_denom) if woba_denom else 0
+            return {
+                "pa": pa, "ab": ab, "h": h, "hr": hr, "bb": bb, "k": k,
+                "avg": avg, "obp": obp, "slg": slg, "ops": obp + slg,
+                "woba": woba, "iso": iso,
+                "k_pct": (k / pa) if pa else 0,
+                "bb_pct": (bb / pa) if pa else 0,
+            }
+
+        overall = _slash_from_events(events)
+        overall["games"] = len(set(e["game_id"] for e in events))
+
+        # Per-opponent-player breakdown
+        by_opp = {}
+        for e in events:
+            opp_pid = e["opp_pid"]
+            by_opp.setdefault(opp_pid, []).append(e)
+        matchup_rows = []
+        for opp_pid, rows in by_opp.items():
+            if not opp_pid:
+                continue
+            cur.execute("SELECT id, first_name, last_name FROM players WHERE id = %s", (opp_pid,))
+            p = cur.fetchone()
+            if not p:
+                continue
+            stats = _slash_from_events(rows)
+            matchup_rows.append({
+                "player_id": p["id"],
+                "name": f"{p['first_name']} {p['last_name']}".strip(),
+                **stats,
+            })
+        # Sort by sample size desc — coach cares about real exposure first
+        matchup_rows.sort(key=lambda r: r["pa"], reverse=True)
+
+        return {
+            "overall": overall,
+            "matchups": matchup_rows,
+            "games": overall["games"],
+            "team_id": team_id,
+            "season": season,
+            "side": side,
+        }
+
+
 @router.get("/players/{player_id}/splits")
 def get_player_splits(
     player_id: int,

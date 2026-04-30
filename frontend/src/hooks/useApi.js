@@ -15,6 +15,15 @@ export function useApi(endpoint, params = {}, deps = []) {
     setLoading(true)
     setError(null)
 
+    // Allow callers to opt out of the fetch by passing null/undefined
+    // as the endpoint — useful for conditional hooks (e.g. don't fetch
+    // vs-team data when no portal team is selected).
+    if (!endpoint) {
+      setLoading(false)
+      setData(null)
+      return
+    }
+
     try {
       const searchParams = new URLSearchParams()
       Object.entries(params).forEach(([key, value]) => {
@@ -225,6 +234,19 @@ export function usePlayerPitchLevelStatsPitcher(playerId, season = CURRENT_SEASO
     `/players/${playerId}/pitch-level-stats-pitcher`,
     { season },
     [playerId, season]
+  )
+}
+
+/**
+ * Player's stats vs a specific opposing team (PBP-derived). Used by the
+ * Player Card PDF when a portal team is set. Pass null teamId to skip
+ * the fetch (no team selected).
+ */
+export function usePlayerVsTeam(playerId, teamId, side = 'batting', season = CURRENT_SEASON) {
+  return useApi(
+    teamId ? `/players/${playerId}/vs-team/${teamId}` : null,
+    { season, side },
+    [playerId, teamId, side, season]
   )
 }
 

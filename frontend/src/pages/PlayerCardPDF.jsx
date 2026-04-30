@@ -25,7 +25,9 @@ import {
   usePlayer,
   usePlayerPitchLevelStats,
   usePlayerPitchLevelStatsPitcher,
+  usePlayerVsTeam,
 } from '../hooks/useApi'
+import { usePortalTeam } from '../context/PortalTeamContext'
 import SprayChart from '../components/SprayChart'
 
 
@@ -240,6 +242,11 @@ export default function PlayerCardPDF() {
   const { data, loading, error } = usePlayer(playerId, null)
   const { data: hitterPbp } = usePlayerPitchLevelStats(playerId, SEASON)
   const { data: pitcherPbp } = usePlayerPitchLevelStatsPitcher(playerId, SEASON)
+  // Portal team — when set, we fetch this player's stats vs that team
+  // and render a vs-team panel in the leftover space below the
+  // percentile bars. Skipped entirely when no portal team is set
+  // (the panel falls back to a "set your team" prompt).
+  const { team: portalTeam } = usePortalTeam()
 
   if (loading || !data) {
     return <div className="p-8 text-gray-500 animate-pulse">Loading…</div>
@@ -287,12 +294,22 @@ export default function PlayerCardPDF() {
       <section className="card-page">
         <CardHeader player={player} side={side} season={SEASON} />
 
-        <div className="grid grid-cols-[1fr_1.1fr] gap-3 mt-2">
-          <PercentilePanel
-            side={side}
-            battingPercentiles={batting_percentiles}
-            pitchingPercentiles={pitching_percentiles}
-          />
+        <div className="grid grid-cols-[1fr_1.1fr] gap-3 mt-2 items-stretch">
+          {/* Left column: percentile bars on top, vs-team panel below
+              fills the remaining vertical space so the column matches
+              the spray chart's height. */}
+          <div className="flex flex-col gap-2">
+            <PercentilePanel
+              side={side}
+              battingPercentiles={batting_percentiles}
+              pitchingPercentiles={pitching_percentiles}
+            />
+            <VsTeamPanel
+              playerId={playerId}
+              side={side}
+              portalTeam={portalTeam}
+            />
+          </div>
           <SprayPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} player={player} />
         </div>
 
@@ -302,8 +319,6 @@ export default function PlayerCardPDF() {
           <SplitsPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
           <CountStatesPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
         </div>
-
-        <SituationalSplitsTable side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
 
         <SeasonStatsTable side={side} battingStats={battingStats} pitchingStats={pitchingStats} />
 
@@ -574,6 +589,156 @@ function Row({ label, children }) {
 
 
 // ───────────────────────────────────────────────────────────
+// Vs-Team panel — when the user has a portal team set, show this
+// player's stats against that team's pitchers (or, for a pitcher
+// card, against that team's hitters). Renders an overall slash line
+// + the top 3 individual matchups by sample size.
+//
+// Sits in the leftover vertical space below the percentile bars and
+// `flex-1` grows to match the spray chart's height.
+// ───────────────────────────────────────────────────────────
+function VsTeamPanel({ playerId, side, portalTeam }) {
+  const teamId = portalTeam?.id || null
+  const { data, loading } = usePlayerVsTeam(playerId, teamId, side)
+  const teamLabel = portalTeam?.short_name || portalTeam?.name || 'your team'
+
+  // Empty state — no portal team selected
+  if (!teamId) {
+    return (
+      <div className="border border-dashed border-gray-300 rounded p-2 flex-1 flex items-center justify-center text-center">
+        <div className="text-[9px] text-gray-400 leading-tight">
+          Set your team in the portal to see this player's history vs your roster.
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="border border-gray-200 rounded p-2 flex-1 animate-pulse">
+        <div className="text-[10px] uppercase tracking-widest text-portal-purple-dark font-bold mb-1">
+          Vs {teamLabel}…
+        </div>
+      </div>
+    )
+  }
+
+  if (!data || !data.overall) {
+    return (
+      <div className="border border-gray-200 rounded p-2 flex-1">
+        <div className="text-[10px] uppercase tracking-widest text-portal-purple-dark font-bold mb-1">
+          Vs {teamLabel}
+        </div>
+        <div className="text-[9.5px] text-gray-500 italic mt-2">
+          No PA recorded against {teamLabel} this season.
+        </div>
+      </div>
+    )
+  }
+
+  const isPitcher = side === 'pitching'
+  const o = data.overall
+  const matchups = data.matchups || []
+
+  // Sort matchups: best for the *opposing coach* first.
+  // For HITTER cards (pitcher matchups), opposing coach wants pitchers
+  //   who held this guy down → low wOBA = "best"
+  // For PITCHER cards (hitter matchups), opposing coach wants hitters
+  //   who got to this pitcher → high wOBA = "best"
+  const bestSorted = [...matchups].sort((a, b) =>
+    isPitcher ? (b.woba - a.woba) : (a.woba - b.woba))
+  const worstSorted = [...matchups].sort((a, b) =>
+    isPitcher ? (a.woba - b.woba) : (b.woba - a.woba))
+  const topN = 3
+  const minPaForLeaderboard = 2  // need at least 2 PA to mean anything
+
+  const renderMiniRow = (m) => {
+    const score = thresholdScore(isPitcher ? 'opp_woba' : 'woba', m.woba)
+    const bg = score != null ? scoreColor(score, 0.85) : undefined
+    return (
+      <div key={m.player_id}
+           className="flex justify-between items-baseline border-b border-gray-100 last:border-0 py-0.5">
+        <span className="text-gray-700 truncate text-[9.5px]">{m.name}</span>
+        <div className="flex items-baseline gap-1.5 shrink-0">
+          <span className="font-semibold tabular-nums px-1 rounded text-[9.5px]"
+                style={bg ? { backgroundColor: bg } : undefined}>
+            {fmt.rate(m.woba)}
+          </span>
+          <span className="text-[8.5px] text-gray-400 tabular-nums w-12 text-right">
+            {m.h}/{m.ab} · {m.pa}pa
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border border-gray-200 rounded p-2 flex-1 flex flex-col">
+      {/* Header — bold so coaches scan to it fast */}
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-[10px] uppercase tracking-widest text-portal-purple-dark font-bold">
+          Vs {teamLabel}
+        </div>
+        <div className="text-[8.5px] text-gray-400">
+          {data.games} {data.games === 1 ? 'game' : 'games'}
+        </div>
+      </div>
+
+      {/* Overall line — compact 2-row stat strip */}
+      <div className="bg-portal-purple/5 border border-portal-purple/15 rounded px-2 py-1 mb-1.5">
+        <div className="flex justify-between text-[9px] text-gray-500 leading-none mb-0.5 font-bold uppercase tracking-wider">
+          <span>{o.pa} PA · {o.h}-{o.ab}</span>
+          <span>{isPitcher ? 'Allowed' : 'Slash'}</span>
+        </div>
+        <div className="grid grid-cols-6 gap-1 text-[9.5px] tabular-nums">
+          <Cell label="AVG"  val={o.avg}  fmt={fmt.rate} stat="batting_avg"  flip={isPitcher} />
+          <Cell label="OBP"  val={o.obp}  fmt={fmt.rate} stat="on_base_pct"  flip={isPitcher} />
+          <Cell label="SLG"  val={o.slg}  fmt={fmt.rate} stat="slugging_pct" flip={isPitcher} />
+          <Cell label="wOBA" val={o.woba} fmt={fmt.rate} stat={isPitcher ? 'opp_woba' : 'woba'} />
+          <Cell label="K%"   val={o.k_pct} fmt={fmt.pct}  stat="k_pct" flip={!isPitcher} />
+          <Cell label="BB%"  val={o.bb_pct} fmt={fmt.pct} stat="bb_pct" flip={isPitcher} />
+        </div>
+      </div>
+
+      {/* Top matchups — best vs worst for the opposing coach */}
+      <div className="grid grid-cols-2 gap-1.5 flex-1 overflow-hidden">
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">
+            {isPitcher ? 'Hot Hitters' : 'Best Pitchers'}
+          </div>
+          {bestSorted.filter(m => m.pa >= minPaForLeaderboard).slice(0, topN).map(renderMiniRow)}
+        </div>
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-rose-700 mb-0.5">
+            {isPitcher ? 'Cold Hitters' : 'Worst Pitchers'}
+          </div>
+          {worstSorted.filter(m => m.pa >= minPaForLeaderboard).slice(0, topN).map(renderMiniRow)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Tiny stat strip cell. `flip` swaps the threshold direction (used so
+// e.g. K% looks bad on a hitter card but good on a pitcher card).
+function Cell({ label, val, fmt: fmter, stat, flip = false }) {
+  // For a "flip", we flip the score around 50.
+  let score = stat ? thresholdScore(stat, val) : null
+  if (flip && score != null) score = 100 - score
+  const bg = score != null ? scoreColor(score, 0.85) : undefined
+  return (
+    <div className="flex flex-col items-center">
+      <span className="text-[8px] text-gray-500 leading-none">{label}</span>
+      <span className="font-semibold tabular-nums px-1 rounded leading-tight"
+            style={bg ? { backgroundColor: bg } : undefined}>
+        {fmter(val)}
+      </span>
+    </div>
+  )
+}
+
+
+// ───────────────────────────────────────────────────────────
 // Count States — Hitter's / Neutral / Pitcher's / 2-strike.
 // Compact mini-card with wOBA + sample size per count state.
 // ───────────────────────────────────────────────────────────
@@ -606,75 +771,6 @@ function CountStatesPanel({ side, hitterPbp, pitcherPbp }) {
         )
       })}
     </MiniCard>
-  )
-}
-
-
-// ───────────────────────────────────────────────────────────
-// Situational Splits — wider table covering bases empty,
-// runner(s) on, RISP, RISP/2-out, Late&close. Shows wOBA, OPS,
-// wRC+ (or opp_woba/opp_iso/etc for pitchers) + sample per row.
-// ───────────────────────────────────────────────────────────
-function SituationalSplitsTable({ side, hitterPbp, pitcherPbp }) {
-  const splits = (side === 'pitching' ? pitcherPbp?.situational_splits : hitterPbp?.situational_splits) || []
-  if (!splits.length) return null
-  const isPitcher = side === 'pitching'
-  // Picks (in display order)
-  const want = ['bases_empty', 'runner_on', 'risp', 'risp_2out', 'late_close', 'innings_late']
-  const rows = want.map(k => splits.find(s => s.filter_key === k)).filter(Boolean)
-  if (!rows.length) return null
-
-  const cols = isPitcher
-    ? [
-        { key: 'opp_woba',    label: 'opp wOBA', fmt: fmt.rate, threshold: 'opp_woba' },
-        { key: 'opp_iso',     label: 'opp ISO',  fmt: fmt.rate, threshold: 'opp_iso'  },
-        { key: 'k_pct',       label: 'K%',       fmt: fmt.pct,  threshold: null       },
-        { key: 'bb_pct',      label: 'BB%',      fmt: fmt.pct,  threshold: null       },
-        { key: 'pa',          label: 'PA',       fmt: v => v ?? '–', threshold: null  },
-      ]
-    : [
-        { key: 'woba',     label: 'wOBA',  fmt: fmt.rate, threshold: 'woba'         },
-        { key: 'iso',      label: 'ISO',   fmt: fmt.rate, threshold: 'iso'          },
-        { key: 'wrc_plus', label: 'wRC+',  fmt: v => v != null ? Math.round(v) : '–', threshold: 'wrc_plus' },
-        { key: 'k_pct',    label: 'K%',    fmt: fmt.pct,  threshold: 'k_pct'        },
-        { key: 'bb_pct',   label: 'BB%',   fmt: fmt.pct,  threshold: 'bb_pct'       },
-        { key: 'pa',       label: 'PA',    fmt: v => v ?? '–', threshold: null      },
-      ]
-  return (
-    <div className="mt-2 border border-gray-200 rounded overflow-hidden">
-      <div className="bg-portal-purple text-portal-cream text-[9.5px] px-2 py-1 font-bold uppercase tracking-widest">
-        Situational Splits
-      </div>
-      <table className="w-full text-[9.5px] leading-tight tabular-nums">
-        <thead className="bg-gray-50 text-gray-600 font-semibold">
-          <tr>
-            <th className="px-1.5 py-1 text-left border-b border-gray-200">Situation</th>
-            {cols.map(c => (
-              <th key={c.key} className="px-1.5 py-1 text-right border-b border-gray-200">{c.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.filter_key} className="border-b border-gray-100 last:border-0">
-              <td className="px-1.5 py-1 text-left text-gray-700">{r.label}</td>
-              {cols.map(c => {
-                const raw = r[c.key]
-                const score = c.threshold ? thresholdScore(c.threshold, raw) : null
-                const bg = score != null ? scoreColor(score, 0.85) : undefined
-                return (
-                  <td key={c.key} className="px-1.5 py-1 text-right">
-                    <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
-                      {c.fmt(raw)}
-                    </span>
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   )
 }
 
