@@ -101,6 +101,33 @@ tr:hover td.sticky-col {
 }
 
 
+/* Notes panel — used by both the Scouting Sheet and the Player
+   Card PDF. Renders as a bordered box with faint horizontal rules
+   for handwritten coach notes. `flex: 1 1 auto` lets it grow to
+   fill whatever vertical space the parent's flex column gives it
+   (so a half-empty page expands the panel; a full page shrinks it).
+   Outside @media print so the same styling works on screen. */
+.sheet-notes {
+  flex: 1 1 auto;
+  margin-top: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 10px 12px;
+  min-height: 100px;
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0, transparent 23px, #e5e7eb 23px, #e5e7eb 24px
+  );
+  background-position: 0 22px;
+}
+.sheet-notes-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #6b7280;
+}
+
+
 /* ─────────────────────────────────────────────────────────
    Scouting Sheet — print layout (one US Letter page per side)
    ─────────────────────────────────────────────────────────
@@ -210,30 +237,6 @@ tr:hover td.sticky-col {
      are easy to scan. */
   .sheet-page table td:nth-child(2) {
     font-size: 11px;
-  }
-
-  /* Notes panel — fills whatever vertical space the table leaves.
-     Rendered as a single big bordered box with faint horizontal
-     rules so coaches can write in it. */
-  .sheet-notes {
-    flex: 1 1 auto;
-    margin-top: 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    padding: 10px 12px;
-    /* Faint guide lines so the empty space looks intentional and
-       is comfortable to write on. */
-    background-image: repeating-linear-gradient(
-      to bottom, transparent 0, transparent 23px, #e5e7eb 23px, #e5e7eb 24px
-    );
-    background-position: 0 22px;
-  }
-  .sheet-notes-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #6b7280;
   }
 
   /* Make sure the green/red percentile shading actually prints

@@ -358,6 +358,13 @@ export default function PlayerCardPDF() {
         />
 
         <RecentKsPanel playerId={playerId} side={side} portalTeam={portalTeam} />
+
+        {/* Notes panel — flex-grows to absorb any vertical space the
+            content above didn't claim. Coaches get a clean spot to
+            jot in-game observations on the printed sheet. */}
+        <div className="sheet-notes mt-2">
+          <div className="sheet-notes-label">Notes</div>
+        </div>
       </section>
     </div>
   )
@@ -1050,7 +1057,7 @@ function PitchingStatsTable({ rows }) {
               <td className="px-1.5 py-1 text-right">{r.home_runs_allowed || 0}</td>
               <td className="px-1.5 py-1 text-right">{r.k_pct != null ? `${(r.k_pct * 100).toFixed(1)}%` : '–'}</td>
               <td className="px-1.5 py-1 text-right">{r.bb_pct != null ? `${(r.bb_pct * 100).toFixed(1)}%` : '–'}</td>
-              <ColoredCell value={r.opp_avg} statKey="opp_avg" formatter={fmt.rate} />
+              <ColoredCell value={computeBaa(r)} statKey="opp_avg" formatter={fmt.rate} />
               <td className="px-1.5 py-1 text-right font-semibold tabular-nums">{fmt.war(r.pitching_war)}</td>
             </tr>
           ))}
@@ -1169,6 +1176,23 @@ function aggregateBatting(rows) {
     wrcPlus: pa > 0 ? wrc_num / pa : null,
   }
 }
+
+// Compute BAA from raw pitching_stats counts: H / (BF − BB − HBP).
+// `pitching_stats` doesn't store opp_avg per season (only computed on
+// the career rollup) so the table previously showed "–" for every
+// per-season row. Falling back to this formula whenever opp_avg is
+// null fills those gaps without a backend round-trip.
+function computeBaa(r) {
+  if (r?.opp_avg != null) return r.opp_avg
+  const bf = r?.batters_faced
+  const bb = r?.walks
+  const hbp = r?.hit_batters
+  const h = r?.hits_allowed
+  if (bf == null || h == null) return null
+  const denom = bf - (bb || 0) - (hbp || 0)
+  return denom > 0 ? h / denom : null
+}
+
 
 function aggregatePitching(rows) {
   let w = 0, l = 0, h = 0, bb = 0, k = 0, hr = 0, war = 0
