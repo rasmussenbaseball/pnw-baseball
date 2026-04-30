@@ -319,33 +319,41 @@ function RosterTable({ pitchers }) {
 
 
 // ─────────────────────────────────────────────────────────────
-// Situational leaderboards — 3-col grid, top 5 by lowest wOBA.
+// Situational leaderboards.
+//
+// The handedness leaderboards (vs LHH, vs RHH) get 10 spots each
+// because matchup-based bullpen decisions need bench depth, not
+// just a podium. Everything else stays at 5.
+//
+// Layout:
+//   Row 1: vs LHH | vs RHH                 (deeper boards, side-by-side)
+//   Row 2: Home | Road | Bases Empty       (3 small boards)
+//   Row 3: Runners On | Late & Close       (2 small boards)
 // ─────────────────────────────────────────────────────────────
-const LEADERBOARD_DEFS = [
-  { key: 'home',         label: 'Best @ Home' },
-  { key: 'road',         label: 'Best @ Road' },
-  { key: 'vs_lhh',       label: 'Best vs LHH' },
-  { key: 'vs_rhh',       label: 'Best vs RHH' },
-  { key: 'bases_empty',  label: 'Bases Empty' },
-  { key: 'runners_on',   label: 'Runners On' },
-  { key: 'late_close',   label: 'Late & Close' },
-]
-
-
 function Leaderboards({ leaderboards }) {
   return (
     <div className="mt-2">
       <div className="text-[10px] uppercase tracking-widest text-portal-purple-dark font-bold mb-1">
-        Situational Leaderboards <span className="text-gray-400 font-normal">· top 5 by opponent wOBA · min 15 PA (5 for vs LHH)</span>
+        Situational Leaderboards <span className="text-gray-400 font-normal">· best opponent wOBA · min 15 PA (5 for vs LHH)</span>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        {LEADERBOARD_DEFS.map(def => (
-          <Leaderboard
-            key={def.key}
-            label={def.label}
-            rows={leaderboards[def.key] || []}
-          />
-        ))}
+
+      {/* Row 1 — handedness boards, deeper (top 10) */}
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <Leaderboard label="Best vs LHH" rows={leaderboards.vs_lhh || []} />
+        <Leaderboard label="Best vs RHH" rows={leaderboards.vs_rhh || []} />
+      </div>
+
+      {/* Row 2 — venue + bases empty (top 5 each) */}
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <Leaderboard label="Best @ Home" rows={leaderboards.home || []} />
+        <Leaderboard label="Best @ Road" rows={leaderboards.road || []} />
+        <Leaderboard label="Bases Empty" rows={leaderboards.bases_empty || []} />
+      </div>
+
+      {/* Row 3 — runners-on + late & close (top 5 each) */}
+      <div className="grid grid-cols-2 gap-2">
+        <Leaderboard label="Runners On" rows={leaderboards.runners_on || []} />
+        <Leaderboard label="Late & Close" rows={leaderboards.late_close || []} />
       </div>
     </div>
   )

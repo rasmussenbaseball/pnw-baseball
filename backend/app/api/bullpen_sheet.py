@@ -454,6 +454,11 @@ def build_bullpen_sheet(cur, team_id, season):
     # would empty the vs-LHH card on most teams.
     MIN_PA_DEFAULT = 15
     MIN_PA_VS_LHH = 5
+    # Most leaderboards show top 5; the L/R-handed splits get 10
+    # because identifying the deeper bullpen options for matchup-based
+    # decisions matters more than a pick-3-over-the-others podium.
+    LIMIT_DEFAULT = 5
+    LIMIT_VS_HAND = 10
     leaderboards = {}
     name_lookup = {p['player_id']: p for p in pitchers}
     for split_key in ['home', 'road', 'vs_lhh', 'vs_rhh',
@@ -461,6 +466,7 @@ def build_bullpen_sheet(cur, team_id, season):
         rows = []
         split_data = splits.get(split_key, {})
         min_pa = MIN_PA_VS_LHH if split_key == 'vs_lhh' else MIN_PA_DEFAULT
+        limit = LIMIT_VS_HAND if split_key in ('vs_lhh', 'vs_rhh') else LIMIT_DEFAULT
         for pid, stats in split_data.items():
             if (stats.get('pa') or 0) < min_pa:
                 continue
@@ -484,7 +490,7 @@ def build_bullpen_sheet(cur, team_id, season):
             })
         # Sort ascending by wOBA — best at suppressing offense first.
         rows.sort(key=lambda r: r['woba'])
-        leaderboards[split_key] = rows[:5]
+        leaderboards[split_key] = rows[:limit]
 
     return {
         'team': {
