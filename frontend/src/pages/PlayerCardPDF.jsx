@@ -238,13 +238,33 @@ function scoreColor(score, alpha = 0.8) {
 
 
 // ───────────────────────────────────────────────────────────
-// Page
+// Page wrapper (URL-driven) — the route entry point. Reads
+// playerId from the URL and `?side=` from query, then defers
+// the heavy lifting to <PlayerCard> below. The inner component
+// accepts playerId/side as PROPS so the bulk view can stack
+// many cards on one big print run without touching the URL.
 // ───────────────────────────────────────────────────────────
 export default function PlayerCardPDF() {
   const { playerId } = useParams()
   const [searchParams] = useSearchParams()
   const sideParam = searchParams.get('side')   // 'batting' | 'pitching' | null
+  return (
+    <PlayerCard
+      playerId={playerId}
+      sideParam={sideParam}
+      showToolbar={true}
+    />
+  )
+}
 
+
+// ───────────────────────────────────────────────────────────
+// PlayerCard — the actual one-page profile, parameterized by
+// playerId + sideParam props. Used both by PlayerCardPDF (single
+// view, with the print toolbar) and by BulkPlayerCards (many
+// instances stacked, no per-card toolbar).
+// ───────────────────────────────────────────────────────────
+export function PlayerCard({ playerId, sideParam, showToolbar = true }) {
   const { data, loading, error } = usePlayer(playerId, null)
   const { data: hitterPbp } = usePlayerPitchLevelStats(playerId, SEASON)
   const { data: pitcherPbp } = usePlayerPitchLevelStatsPitcher(playerId, SEASON)
@@ -305,20 +325,24 @@ export default function PlayerCardPDF() {
 
   return (
     <div className="player-card-pdf mx-auto px-3 py-4 max-w-[820px] print:px-0 print:py-0 print:max-w-none">
-      {/* Toolbar — hidden on print */}
-      <div className="flex items-center justify-between gap-3 mb-3 print:hidden">
-        <h1 className="text-lg font-bold text-portal-purple-dark">
-          Player Card · {player.first_name} {player.last_name} ·{' '}
-          <span className="capitalize">{side}</span>
-        </h1>
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
-        >
-          Print / Save as PDF
-        </button>
-      </div>
+      {/* Toolbar — hidden on print AND in bulk mode (the bulk page
+          shows its own single Print button at the top instead of one
+          per card). */}
+      {showToolbar && (
+        <div className="flex items-center justify-between gap-3 mb-3 print:hidden">
+          <h1 className="text-lg font-bold text-portal-purple-dark">
+            Player Card · {player.first_name} {player.last_name} ·{' '}
+            <span className="capitalize">{side}</span>
+          </h1>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                       bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
+          >
+            Print / Save as PDF
+          </button>
+        </div>
+      )}
 
       <section className="card-page">
         <CardHeader player={player} side={side} season={SEASON} />

@@ -178,6 +178,21 @@ tr:hover td.sticky-col {
     margin: 0;
     background: white;
   }
+  /* Bulk player-cards mode — many .player-card-pdf instances stacked.
+     `position: absolute` on each one would make them overlap, so we
+     override that inside a .bulk-cards wrapper: cards flow naturally
+     and the page-break-inside: avoid + .sheet-pagebreak between them
+     handles per-card pagination. */
+  .bulk-cards,
+  .bulk-cards * {
+    visibility: visible;
+  }
+  .bulk-cards .player-card-pdf {
+    position: static;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
   .player-card-pdf .card-page {
     page-break-inside: avoid;
     /* Fill the printable area of US Letter portrait at 0.4in margins

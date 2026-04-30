@@ -48,6 +48,8 @@ const NAV_SECTIONS = [
         desc: 'Printable hitter + pitcher rosters with conference percentiles' },
       { to: '/portal/pdfs', label: 'Player Card',
         desc: 'One-page Statcast-style profile (spray chart, percentiles, splits)' },
+      { to: '/portal/pdfs', label: 'Bulk Player Cards',
+        desc: 'Print cards for an entire roster (or a subset) in one job' },
     ],
   },
 ]

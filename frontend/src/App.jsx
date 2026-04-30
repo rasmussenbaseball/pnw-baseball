@@ -106,6 +106,7 @@ import PlayerScouting from './pages/PlayerScouting'
 import TeamScouting from './pages/TeamScouting'
 import ScoutingSheet from './pages/ScoutingSheet'
 import PlayerCardPDF from './pages/PlayerCardPDF'
+import BulkPlayerCards from './pages/BulkPlayerCards'
 import PortalPDFs from './pages/PortalPDFs'
 import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
@@ -226,6 +227,8 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><PortalPDFs /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/pdfs/player-card/:playerId"
                  element={<RequirePortalAccess><PortalLayout><PlayerCardPDF /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/pdfs/bulk-player-cards"
+                 element={<RequirePortalAccess><PortalLayout><BulkPlayerCards /></PortalLayout></RequirePortalAccess>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
