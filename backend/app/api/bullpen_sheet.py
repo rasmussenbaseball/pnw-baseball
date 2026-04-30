@@ -447,16 +447,22 @@ def build_bullpen_sheet(cur, team_id, season):
     pitchers.sort(key=lambda r: r.get('ip') or 0, reverse=True)
 
     # Build leaderboards: top 5 per situation by lowest opp_woba.
-    # Min PA threshold so a guy with 1 PA in some bucket doesn't take #1.
-    MIN_PA = 5
+    # Min PA so a 1-PA outlier doesn't claim #1. We use a higher
+    # threshold (15) for most splits to keep the leaderboards
+    # meaningful, but vs LHH gets a softer 5 PA floor — most college
+    # bullpens see way more righties than lefties, and a strict 15
+    # would empty the vs-LHH card on most teams.
+    MIN_PA_DEFAULT = 15
+    MIN_PA_VS_LHH = 5
     leaderboards = {}
     name_lookup = {p['player_id']: p for p in pitchers}
     for split_key in ['home', 'road', 'vs_lhh', 'vs_rhh',
                       'bases_empty', 'runners_on', 'late_close']:
         rows = []
         split_data = splits.get(split_key, {})
+        min_pa = MIN_PA_VS_LHH if split_key == 'vs_lhh' else MIN_PA_DEFAULT
         for pid, stats in split_data.items():
-            if (stats.get('pa') or 0) < MIN_PA:
+            if (stats.get('pa') or 0) < min_pa:
                 continue
             if stats.get('woba') is None:
                 continue
@@ -493,6 +499,7 @@ def build_bullpen_sheet(cur, team_id, season):
         'pitchers': pitchers,
         'leaderboards': leaderboards,
         'thresholds': {
-            'min_pa_for_leaderboard': MIN_PA,
+            'min_pa_default': MIN_PA_DEFAULT,
+            'min_pa_vs_lhh': MIN_PA_VS_LHH,
         },
     }

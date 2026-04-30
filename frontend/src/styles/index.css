@@ -185,9 +185,6 @@ tr:hover td.sticky-col {
   }
   .bullpen-sheet-page .bullpen-page {
     page-break-inside: avoid;
-    display: flex;
-    flex-direction: column;
-    min-height: 10.2in;
   }
   .bullpen-sheet-page table {
     font-size: 9.5px;
@@ -196,6 +193,14 @@ tr:hover td.sticky-col {
   .bullpen-sheet-page table th {
     padding-top: 3px;
     padding-bottom: 3px;
+  }
+  /* Force the green/red cell shading to actually print instead of
+     being optimized away by the browser as "background color".
+     Without this, the bullpen sheet PDF saves in black-and-white. */
+  .bullpen-sheet-page,
+  .bullpen-sheet-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   /* Bulk player-cards mode — many .player-card-pdf instances stacked.
      `position: absolute` on each one would make them overlap, so we

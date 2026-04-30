@@ -213,9 +213,6 @@ export default function BullpenSheet() {
         <SheetHeader team={team} season={data.season} pitcherCount={pitchers.length} />
         <RosterTable pitchers={pitchers} />
         <Leaderboards leaderboards={leaderboards} />
-        <div className="sheet-notes mt-2">
-          <div className="sheet-notes-label">Notes</div>
-        </div>
       </section>
     </div>
   )
@@ -339,7 +336,7 @@ function Leaderboards({ leaderboards }) {
   return (
     <div className="mt-2">
       <div className="text-[10px] uppercase tracking-widest text-portal-purple-dark font-bold mb-1">
-        Situational Leaderboards <span className="text-gray-400 font-normal">· top 5 by opponent wOBA · min 5 PA</span>
+        Situational Leaderboards <span className="text-gray-400 font-normal">· top 5 by opponent wOBA · min 15 PA (5 for vs LHH)</span>
       </div>
       <div className="grid grid-cols-3 gap-2">
         {LEADERBOARD_DEFS.map(def => (
