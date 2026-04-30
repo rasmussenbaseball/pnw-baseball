@@ -86,7 +86,7 @@ _PA_AGG_SQL = """
       COUNT(*) FILTER (WHERE result_type = 'hbp') AS hbp,
       COUNT(*) FILTER (WHERE result_type = 'sac_fly') AS sf,
       COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging','strikeout_looking')) AS k,
-      -- Pitch-level (for whiff%/strike%/etc. when needed)
+      -- Pitch-level totals (for whiff rate / strike rate / etc.)
       SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k_pitches,
       SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))) AS s_pitches,
       SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f_pitches,
