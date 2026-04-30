@@ -94,28 +94,139 @@ function PercentileRow({ label, value, percentile }) {
 }
 
 
-// Hitter percentile metric set — same as the player page's 2026 set
+// Hitter percentile metric set — exactly matches BATTING_PERCENTILE_METRICS_2026
+// in PlayerDetail.jsx so the PDF mirrors what the user sees on screen.
 const HITTER_METRICS = [
-  { key: 'wrc_plus',     label: 'wRC+',      fmt: v => v != null ? Math.round(v) : '–' },
-  { key: 'woba',         label: 'wOBA',      fmt: v => fmt.rate(v) },
-  { key: 'batting_avg',  label: 'AVG',       fmt: v => fmt.rate(v) },
-  { key: 'hr_per_pa',    label: 'HR/PA',     fmt: v => fmt.pct(v) },
-  { key: 'owar',         label: 'oWAR',      fmt: v => fmt.war(v) },
-  { key: 'contact_pct',  label: 'Contact%',  fmt: v => fmt.pct(v) },
-  { key: 'swing_pct',    label: 'Swing%',    fmt: v => fmt.pct(v) },
-  { key: 'air_pull_pct', label: 'AirPull%',  fmt: v => fmt.pct(v) },
+  { key: 'offensive_war', label: 'WAR',      fmt: v => fmt.war(v) },
+  { key: 'wrc_plus',      label: 'wRC+',     fmt: v => v != null ? Math.round(v) : '–' },
+  { key: 'iso',           label: 'ISO',      fmt: v => fmt.rate(v) },
+  { key: 'hr_pa_pct',     label: 'HR/PA',    fmt: v => fmt.pct(v) },
+  { key: 'sb_per_pa',     label: 'SB/PA',    fmt: v => fmt.pct(v) },
+  { key: 'k_pct',         label: 'K%',       fmt: v => fmt.pct(v) },
+  { key: 'bb_pct',        label: 'BB%',      fmt: v => fmt.pct(v) },
+  { key: 'contact_pct',   label: 'Contact%', fmt: v => fmt.pct(v) },
+  { key: 'air_pull_pct',  label: 'AirPull%', fmt: v => fmt.pct(v) },
+  { key: 'wpa',           label: 'WPA',      fmt: v => v != null ? Number(v).toFixed(2) : '–' },
 ]
 
 const PITCHER_METRICS = [
-  { key: 'siera',      label: 'SIERA',   fmt: v => fmt.era(v) },
-  { key: 'era',        label: 'ERA',     fmt: v => fmt.era(v) },
-  { key: 'k_pct',      label: 'K%',      fmt: v => v != null ? `${Number(v).toFixed(1)}%` : '–' },
-  { key: 'baa',        label: 'BAA',     fmt: v => fmt.rate(v) },
-  { key: 'pwar',       label: 'pWAR',    fmt: v => fmt.war(v) },
-  { key: 'strike_pct', label: 'Strike%', fmt: v => fmt.pct(v) },
-  { key: 'fps_pct',    label: 'FPS%',    fmt: v => fmt.pct(v) },
-  { key: 'whiff_pct',  label: 'Whiff%',  fmt: v => fmt.pct(v) },
+  { key: 'pitching_war',           label: 'WAR',         fmt: v => fmt.war(v) },
+  { key: 'k_pct',                  label: 'K%',          fmt: v => fmt.pct(v) },
+  { key: 'bb_pct',                 label: 'BB%',         fmt: v => fmt.pct(v) },
+  { key: 'fip',                    label: 'FIP',         fmt: v => fmt.era(v) },
+  { key: 'siera',                  label: 'SIERA',       fmt: v => fmt.era(v) },
+  { key: 'hr_pa_pct',              label: 'HR/PA',       fmt: v => fmt.pct(v) },
+  { key: 'opp_woba',               label: 'opp wOBA',    fmt: v => fmt.rate(v) },
+  { key: 'strike_pct',             label: 'Strike%',     fmt: v => fmt.pct(v) },
+  { key: 'first_pitch_strike_pct', label: 'FPS%',        fmt: v => fmt.pct(v) },
+  { key: 'whiff_pct',              label: 'Whiff%',      fmt: v => fmt.pct(v) },
+  { key: 'opp_air_pull_pct',       label: 'opp AirPull', fmt: v => fmt.pct(v) },
+  { key: 'wpa',                    label: 'WPA',         fmt: v => v != null ? Number(v).toFixed(2) : '–' },
 ]
+
+
+// ───────────────────────────────────────────────────────────
+// Threshold-based color coding for cells that don't have an
+// explicit percentile attached. Each entry maps a stat key to
+// (good_threshold, mid_range, bad_threshold) and a direction —
+// `higher_better` means values above good_threshold get green,
+// values below bad_threshold get red. `lower_better` flips it.
+// Values in between get scaled white→green / white→red.
+// ───────────────────────────────────────────────────────────
+const STAT_THRESHOLDS = {
+  // Hitter — overall slash & rate stats
+  batting_avg:  { good: 0.310, mid: [0.250, 0.310], bad: 0.225, dir: 'higher' },
+  on_base_pct:  { good: 0.400, mid: [0.330, 0.400], bad: 0.300, dir: 'higher' },
+  slugging_pct: { good: 0.480, mid: [0.380, 0.480], bad: 0.340, dir: 'higher' },
+  woba:         { good: 0.400, mid: [0.330, 0.400], bad: 0.300, dir: 'higher' },
+  iso:          { good: 0.180, mid: [0.110, 0.180], bad: 0.080, dir: 'higher' },
+  ops:          { good: 0.880, mid: [0.700, 0.880], bad: 0.620, dir: 'higher' },
+  wrc_plus:     { good: 130,   mid: [90, 130],     bad: 75,    dir: 'higher' },
+  k_pct:        { good: 0.15,  mid: [0.15, 0.22],  bad: 0.27,  dir: 'lower'  },
+  bb_pct:       { good: 0.12,  mid: [0.07, 0.12],  bad: 0.05,  dir: 'higher' },
+  hr_per_pa:    { good: 0.04,  mid: [0.02, 0.04],  bad: 0.01,  dir: 'higher' },
+  hr_per_fb:    { good: 0.18,  mid: [0.08, 0.18],  bad: 0.04,  dir: 'higher' },
+  contact_pct:  { good: 0.82,  mid: [0.72, 0.82],  bad: 0.65,  dir: 'higher' },
+  swing_pct:    { good: 0.50,  mid: [0.42, 0.55],  bad: 0.38,  dir: 'higher' },
+  whiff_pct:    { good: 0.18,  mid: [0.18, 0.28],  bad: 0.32,  dir: 'lower'  },
+  fps_pct:      { good: 0.65,  mid: [0.55, 0.65],  bad: 0.50,  dir: 'higher' },
+  putaway_pct:  { good: 0.22,  mid: [0.18, 0.22],  bad: 0.15,  dir: 'lower'  },
+  air_pull_pct: { good: 0.22,  mid: [0.12, 0.22],  bad: 0.08,  dir: 'higher' },
+  pull_pct:     { good: 0.45,  mid: [0.35, 0.45],  bad: 0.30,  dir: 'higher' },
+  babip:        { good: 0.350, mid: [0.290, 0.350], bad: 0.260, dir: 'higher' },
+  // Batted-ball share — neutral (no good/bad), shown gray
+  gb_pct:       { dir: 'neutral' },
+  fb_pct:       { dir: 'neutral' },
+  ld_pct:       { good: 0.22,  mid: [0.16, 0.22],  bad: 0.12,  dir: 'higher' },
+  pu_pct:       { good: 0.05,  mid: [0.05, 0.10],  bad: 0.13,  dir: 'lower'  },
+  // Pitcher — opponent slash + own rate stats
+  era:          { good: 3.00,  mid: [3.00, 4.50],  bad: 5.50,  dir: 'lower'  },
+  fip:          { good: 3.20,  mid: [3.20, 4.50],  bad: 5.50,  dir: 'lower'  },
+  siera:        { good: 3.40,  mid: [3.40, 4.40],  bad: 5.20,  dir: 'lower'  },
+  whip:         { good: 1.10,  mid: [1.10, 1.40],  bad: 1.60,  dir: 'lower'  },
+  k_per_9:      { good: 11,    mid: [8, 11],       bad: 6,     dir: 'higher' },
+  bb_per_9:     { good: 2.5,   mid: [2.5, 4.0],    bad: 5.0,   dir: 'lower'  },
+  hr_per_9:     { good: 0.6,   mid: [0.6, 1.2],    bad: 1.6,   dir: 'lower'  },
+  opp_avg:      { good: 0.220, mid: [0.220, 0.270], bad: 0.300, dir: 'lower' },
+  opp_woba:     { good: 0.290, mid: [0.290, 0.340], bad: 0.380, dir: 'lower' },
+  opp_iso:      { good: 0.100, mid: [0.100, 0.150], bad: 0.180, dir: 'lower' },
+  strike_pct:   { good: 0.66,  mid: [0.60, 0.66],  bad: 0.56,  dir: 'higher' },
+  first_pitch_strike_pct: { good: 0.62, mid: [0.55, 0.62], bad: 0.50, dir: 'higher' },
+  called_strike_pct:      { good: 0.20, mid: [0.16, 0.20], bad: 0.13, dir: 'higher' },
+  pitches_per_pa:         { good: 3.5,  mid: [3.5, 4.0],   bad: 4.2,  dir: 'lower' },
+}
+
+// Map a value to a 0-100 percentile-like score using the threshold
+// ramp. Returns null when there's no value or the stat is neutral.
+function thresholdScore(statKey, value) {
+  if (value == null) return null
+  const t = STAT_THRESHOLDS[statKey]
+  if (!t || t.dir === 'neutral') return null
+  const v = Number(value)
+  const flip = t.dir === 'lower'
+  const norm = flip ? -v : -v + 0  // sign convention: bigger raw = bigger score
+  // We just compare against thresholds directly; convert each into a
+  // 0–100 score based on linear interpolation between bad/mid/good.
+  const good = t.good
+  const bad = t.bad
+  const [midLo, midHi] = t.mid
+  let score
+  if (flip) {
+    // lower_better: v ≤ good → 100, v ≥ bad → 0
+    if (v <= good) score = 90
+    else if (v >= bad) score = 10
+    else if (v <= midLo) score = 70
+    else if (v <= midHi) score = 50
+    else score = 30
+  } else {
+    // higher_better
+    if (v >= good) score = 90
+    else if (v <= bad) score = 10
+    else if (v >= midHi) score = 70
+    else if (v >= midLo) score = 50
+    else score = 30
+  }
+  return score
+}
+
+// Convert a 0–100 score into a Savant red→white→blue rgba.
+function scoreColor(score, alpha = 0.8) {
+  if (score == null) return 'transparent'
+  const p = Math.max(0, Math.min(100, score)) / 100
+  let r, g, b
+  if (p >= 0.5) {
+    const t = (p - 0.5) * 2
+    r = Math.round(255 + (162 - 255) * t)
+    g = Math.round(255 + (210 - 255) * t)
+    b = Math.round(255 + (162 - 255) * t)
+  } else {
+    const t = (0.5 - p) * 2
+    r = Math.round(255 + (245 - 255) * t)
+    g = Math.round(255 + (170 - 255) * t)
+    b = Math.round(255 + (170 - 255) * t)
+  }
+  return `rgba(${r},${g},${b},${alpha})`
+}
 
 
 // ───────────────────────────────────────────────────────────
@@ -185,11 +296,14 @@ export default function PlayerCardPDF() {
           <SprayPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} player={player} />
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-2">
+        <div className="grid grid-cols-4 gap-2 mt-2">
           <DisciplinePanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
           <BattedBallPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
           <SplitsPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
+          <CountStatesPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
         </div>
+
+        <SituationalSplitsTable side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
 
         <SeasonStatsTable side={side} battingStats={battingStats} pitchingStats={pitchingStats} />
 
@@ -316,25 +430,29 @@ function SprayPanel({ side, hitterPbp, pitcherPbp, player }) {
 // Plate discipline mini panel
 // ───────────────────────────────────────────────────────────
 function DisciplinePanel({ side, hitterPbp, pitcherPbp }) {
+  // Each row: [label, raw_value, stat_key]. stat_key drives color coding
+  // via thresholdScore(); label and raw_value are for display.
   const rows = side === 'pitching' ? [
-    ['Strike%',   pitcherPbp?.discipline?.strike_pct],
-    ['FPS%',      pitcherPbp?.discipline?.first_pitch_strike_pct],
-    ['Whiff%',    pitcherPbp?.discipline?.whiff_pct],
-    ['Putaway%',  pitcherPbp?.discipline?.putaway_pct],
-    ['Called K%', pitcherPbp?.discipline?.called_strike_pct],
-    ['P/PA',      pitcherPbp?.discipline?.pitches_per_pa],
+    ['Strike%',   pitcherPbp?.discipline?.strike_pct,             'strike_pct'],
+    ['FPS%',      pitcherPbp?.discipline?.first_pitch_strike_pct, 'first_pitch_strike_pct'],
+    ['Whiff%',    pitcherPbp?.discipline?.whiff_pct,              'whiff_pct'],
+    ['Putaway%',  pitcherPbp?.discipline?.putaway_pct,            'putaway_pct'],
+    ['Called K%', pitcherPbp?.discipline?.called_strike_pct,      'called_strike_pct'],
+    ['P/PA',      pitcherPbp?.discipline?.pitches_per_pa,         'pitches_per_pa'],
   ] : [
-    ['Contact%',  hitterPbp?.discipline?.contact_pct],
-    ['Swing%',    hitterPbp?.discipline?.swing_pct],
-    ['Whiff%',    hitterPbp?.discipline?.whiff_pct],
-    ['FPSwing%',  hitterPbp?.discipline?.first_pitch_swing_pct],
-    ['Putaway%',  hitterPbp?.discipline?.putaway_pct],
-    ['0-0 BIP%',  hitterPbp?.discipline?.zero_zero_bip_pct],
+    ['Contact%',  hitterPbp?.discipline?.contact_pct,             'contact_pct'],
+    ['Swing%',    hitterPbp?.discipline?.swing_pct,               'swing_pct'],
+    ['Whiff%',    hitterPbp?.discipline?.whiff_pct,               'whiff_pct'],
+    ['FPSwing%',  hitterPbp?.discipline?.first_pitch_swing_pct,    null],
+    ['Putaway%',  hitterPbp?.discipline?.putaway_pct,             'putaway_pct'],
+    ['0-0 BIP%',  hitterPbp?.discipline?.zero_zero_bip_pct,        null],
   ]
   return (
     <MiniCard title="Plate Discipline">
-      {rows.map(([label, val]) => (
+      {rows.map(([label, val, key]) => (
         <StatLine key={label} label={label}
+          rawValue={val}
+          statKey={key}
           value={label === 'P/PA' ? (val == null ? '–' : Number(val).toFixed(1)) : fmt.pct(val)} />
       ))}
     </MiniCard>
@@ -350,14 +468,14 @@ function BattedBallPanel({ side, hitterPbp, pitcherPbp }) {
   const prefix = side === 'pitching' ? 'opp ' : ''
   return (
     <MiniCard title={side === 'pitching' ? 'Batted Ball Allowed' : 'Batted Ball'}>
-      <StatLine label={`${prefix}GB%`} value={fmt.pct(cp?.gb_pct)} />
-      <StatLine label={`${prefix}FB%`} value={fmt.pct(cp?.fb_pct)} />
-      <StatLine label={`${prefix}LD%`} value={fmt.pct(cp?.ld_pct)} />
-      <StatLine label={`${prefix}PU%`} value={fmt.pct(cp?.pu_pct)} />
+      <StatLine label={`${prefix}GB%`}  rawValue={cp?.gb_pct} statKey="gb_pct" value={fmt.pct(cp?.gb_pct)} />
+      <StatLine label={`${prefix}FB%`}  rawValue={cp?.fb_pct} statKey="fb_pct" value={fmt.pct(cp?.fb_pct)} />
+      <StatLine label={`${prefix}LD%`}  rawValue={cp?.ld_pct} statKey="ld_pct" value={fmt.pct(cp?.ld_pct)} />
+      <StatLine label={`${prefix}PU%`}  rawValue={cp?.pu_pct} statKey="pu_pct" value={fmt.pct(cp?.pu_pct)} />
       {side !== 'pitching' && (
         <>
-          <StatLine label="Pull%"  value={fmt.pct(cp?.pull_pct)} />
-          <StatLine label="AirPull%" value={fmt.pct(cp?.air_pull_pct)} />
+          <StatLine label="Pull%"    rawValue={cp?.pull_pct}     statKey="pull_pct"     value={fmt.pct(cp?.pull_pct)} />
+          <StatLine label="AirPull%" rawValue={cp?.air_pull_pct} statKey="air_pull_pct" value={fmt.pct(cp?.air_pull_pct)} />
         </>
       )}
     </MiniCard>
@@ -391,17 +509,17 @@ function SplitsPanel({ side, hitterPbp, pitcherPbp }) {
   const lookup = key => findSplit(lrSplits, key) || findSplit(sitSplits, key)
   const rows = isPitcher
     ? [
-        { keys: ['opp_woba','woba'], label: 'opp wOBA', fmt: fmt.rate },
-        { keys: ['opp_iso','iso'],   label: 'opp ISO',  fmt: fmt.rate },
-        { keys: ['k_pct'],           label: 'K%',       fmt: fmt.pct },
-        { keys: ['bb_pct'],          label: 'BB%',      fmt: fmt.pct },
+        { keys: ['opp_woba','woba'], label: 'opp wOBA', fmt: fmt.rate, threshold: 'opp_woba' },
+        { keys: ['opp_iso','iso'],   label: 'opp ISO',  fmt: fmt.rate, threshold: 'opp_iso'  },
+        { keys: ['k_pct'],           label: 'K%',       fmt: fmt.pct,  threshold: null       },
+        { keys: ['bb_pct'],          label: 'BB%',      fmt: fmt.pct,  threshold: null       },
       ]
     : [
-        { keys: ['woba'],        label: 'wOBA',    fmt: fmt.rate },
-        { keys: ['iso'],         label: 'ISO',     fmt: fmt.rate },
-        { keys: ['contact_pct'], label: 'Contact%', fmt: fmt.pct },
-        { keys: ['k_pct'],       label: 'K%',      fmt: fmt.pct },
-        { keys: ['bb_pct'],      label: 'BB%',     fmt: fmt.pct },
+        { keys: ['woba'],        label: 'wOBA',    fmt: fmt.rate, threshold: 'woba'        },
+        { keys: ['iso'],         label: 'ISO',     fmt: fmt.rate, threshold: 'iso'         },
+        { keys: ['contact_pct'], label: 'Contact%', fmt: fmt.pct, threshold: 'contact_pct' },
+        { keys: ['k_pct'],       label: 'K%',      fmt: fmt.pct,  threshold: 'k_pct'       },
+        { keys: ['bb_pct'],      label: 'BB%',     fmt: fmt.pct,  threshold: 'bb_pct'      },
       ]
   // For each (column, row) cell, find the first matching key in the
   // split entry — covers naming variation between hitter and pitcher
@@ -426,9 +544,14 @@ function SplitsPanel({ side, hitterPbp, pitcherPbp }) {
           <Row key={r.label} label={r.label}>
             {cols.map(([colKey]) => {
               const block = lookup(colKey)
+              const raw = cellValue(block, r.keys)
+              const score = r.threshold ? thresholdScore(r.threshold, raw) : null
+              const bg = score != null ? scoreColor(score, 0.85) : undefined
               return (
                 <div key={colKey} className="text-right tabular-nums font-semibold">
-                  {r.fmt(cellValue(block, r.keys))}
+                  <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
+                    {r.fmt(raw)}
+                  </span>
                 </div>
               )
             })}
@@ -451,6 +574,112 @@ function Row({ label, children }) {
 
 
 // ───────────────────────────────────────────────────────────
+// Count States — Hitter's / Neutral / Pitcher's / 2-strike.
+// Compact mini-card with wOBA + sample size per count state.
+// ───────────────────────────────────────────────────────────
+function CountStatesPanel({ side, hitterPbp, pitcherPbp }) {
+  const states = (side === 'pitching' ? pitcherPbp?.count_states : hitterPbp?.count_states) || []
+  const isPitcher = side === 'pitching'
+  // Picks: hitters, neutral, pitchers, two_strike
+  const wanted = ['hitters', 'neutral', 'pitchers', 'two_strike']
+  const labels = { hitters: "Hitter's", neutral: 'Neutral', pitchers: "Pitcher's", two_strike: '2-Strike' }
+  return (
+    <MiniCard title="Count States">
+      {wanted.map(k => {
+        const block = states.find(s => s.filter_key === k)
+        const woba = block?.woba ?? null
+        const score = thresholdScore(isPitcher ? 'opp_woba' : 'woba', woba)
+        const bg = score != null ? scoreColor(score, 0.85) : undefined
+        return (
+          <div key={k} className="flex justify-between items-baseline border-b border-gray-100 last:border-0 py-0.5">
+            <span className="text-gray-600 text-[9px]">{labels[k]}</span>
+            <div className="flex items-baseline gap-1">
+              <span className="font-semibold tabular-nums px-1 rounded"
+                    style={bg ? { backgroundColor: bg } : undefined}>
+                {fmt.rate(woba)}
+              </span>
+              <span className="text-[8px] text-gray-400 tabular-nums">
+                {block?.pa ?? 0}pa
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </MiniCard>
+  )
+}
+
+
+// ───────────────────────────────────────────────────────────
+// Situational Splits — wider table covering bases empty,
+// runner(s) on, RISP, RISP/2-out, Late&close. Shows wOBA, OPS,
+// wRC+ (or opp_woba/opp_iso/etc for pitchers) + sample per row.
+// ───────────────────────────────────────────────────────────
+function SituationalSplitsTable({ side, hitterPbp, pitcherPbp }) {
+  const splits = (side === 'pitching' ? pitcherPbp?.situational_splits : hitterPbp?.situational_splits) || []
+  if (!splits.length) return null
+  const isPitcher = side === 'pitching'
+  // Picks (in display order)
+  const want = ['bases_empty', 'runner_on', 'risp', 'risp_2out', 'late_close', 'innings_late']
+  const rows = want.map(k => splits.find(s => s.filter_key === k)).filter(Boolean)
+  if (!rows.length) return null
+
+  const cols = isPitcher
+    ? [
+        { key: 'opp_woba',    label: 'opp wOBA', fmt: fmt.rate, threshold: 'opp_woba' },
+        { key: 'opp_iso',     label: 'opp ISO',  fmt: fmt.rate, threshold: 'opp_iso'  },
+        { key: 'k_pct',       label: 'K%',       fmt: fmt.pct,  threshold: null       },
+        { key: 'bb_pct',      label: 'BB%',      fmt: fmt.pct,  threshold: null       },
+        { key: 'pa',          label: 'PA',       fmt: v => v ?? '–', threshold: null  },
+      ]
+    : [
+        { key: 'woba',     label: 'wOBA',  fmt: fmt.rate, threshold: 'woba'         },
+        { key: 'iso',      label: 'ISO',   fmt: fmt.rate, threshold: 'iso'          },
+        { key: 'wrc_plus', label: 'wRC+',  fmt: v => v != null ? Math.round(v) : '–', threshold: 'wrc_plus' },
+        { key: 'k_pct',    label: 'K%',    fmt: fmt.pct,  threshold: 'k_pct'        },
+        { key: 'bb_pct',   label: 'BB%',   fmt: fmt.pct,  threshold: 'bb_pct'       },
+        { key: 'pa',       label: 'PA',    fmt: v => v ?? '–', threshold: null      },
+      ]
+  return (
+    <div className="mt-2 border border-gray-200 rounded overflow-hidden">
+      <div className="bg-portal-purple text-portal-cream text-[9.5px] px-2 py-1 font-bold uppercase tracking-widest">
+        Situational Splits
+      </div>
+      <table className="w-full text-[9.5px] leading-tight tabular-nums">
+        <thead className="bg-gray-50 text-gray-600 font-semibold">
+          <tr>
+            <th className="px-1.5 py-1 text-left border-b border-gray-200">Situation</th>
+            {cols.map(c => (
+              <th key={c.key} className="px-1.5 py-1 text-right border-b border-gray-200">{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.filter_key} className="border-b border-gray-100 last:border-0">
+              <td className="px-1.5 py-1 text-left text-gray-700">{r.label}</td>
+              {cols.map(c => {
+                const raw = r[c.key]
+                const score = c.threshold ? thresholdScore(c.threshold, raw) : null
+                const bg = score != null ? scoreColor(score, 0.85) : undefined
+                return (
+                  <td key={c.key} className="px-1.5 py-1 text-right">
+                    <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
+                      {c.fmt(raw)}
+                    </span>
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+
+// ───────────────────────────────────────────────────────────
 // Reusable mini card
 // ───────────────────────────────────────────────────────────
 function MiniCard({ title, children }) {
@@ -464,11 +693,21 @@ function MiniCard({ title, children }) {
   )
 }
 
-function StatLine({ label, value }) {
+function StatLine({ label, value, statKey, rawValue }) {
+  // If a statKey is given, color-code the value based on the threshold
+  // table so coaches get a quick read on each stat without having to
+  // remember what's good for college baseball. Pass `rawValue` (the
+  // numeric value before formatting) when the displayed `value` is a
+  // pre-formatted string like "30.5%".
+  const score = statKey != null ? thresholdScore(statKey, rawValue ?? value) : null
+  const bg = score != null ? scoreColor(score, 0.85) : undefined
   return (
     <div className="flex justify-between items-baseline border-b border-gray-100 last:border-0 py-0.5">
       <span className="text-gray-600">{label}</span>
-      <span className="font-semibold tabular-nums">{value}</span>
+      <span className="font-semibold tabular-nums px-1 rounded"
+            style={bg ? { backgroundColor: bg } : undefined}>
+        {value}
+      </span>
     </div>
   )
 }
@@ -482,6 +721,20 @@ function SeasonStatsTable({ side, battingStats, pitchingStats }) {
     return <PitchingStatsTable rows={pitchingStats} />
   }
   return <BattingStatsTable rows={battingStats} />
+}
+
+
+// Tiny helper: render a number cell with threshold-based shading.
+function ColoredCell({ value, statKey, formatter, className = '' }) {
+  const score = statKey ? thresholdScore(statKey, value) : null
+  const bg = score != null ? scoreColor(score, 0.85) : undefined
+  return (
+    <td className={`px-1.5 py-1 text-right tabular-nums ${className}`}>
+      <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
+        {formatter ? formatter(value) : (value ?? '–')}
+      </span>
+    </td>
+  )
 }
 
 
@@ -517,12 +770,13 @@ function BattingStatsTable({ rows }) {
               <td className="px-1.5 py-1 text-right">{r.stolen_bases || 0}</td>
               <td className="px-1.5 py-1 text-right">{r.walks || 0}</td>
               <td className="px-1.5 py-1 text-right">{r.strikeouts || 0}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.rate(r.batting_avg)}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.rate(r.on_base_pct)}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.rate(r.slugging_pct)}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.rate(r.woba)}</td>
-              <td className="px-1.5 py-1 text-right">{r.wrc_plus != null ? Math.round(r.wrc_plus) : '–'}</td>
-              <td className="px-1.5 py-1 text-right font-semibold">{fmt.war(r.offensive_war)}</td>
+              <ColoredCell value={r.batting_avg}  statKey="batting_avg"  formatter={fmt.rate} />
+              <ColoredCell value={r.on_base_pct}  statKey="on_base_pct"  formatter={fmt.rate} />
+              <ColoredCell value={r.slugging_pct} statKey="slugging_pct" formatter={fmt.rate} />
+              <ColoredCell value={r.woba}         statKey="woba"         formatter={fmt.rate} />
+              <ColoredCell value={r.wrc_plus}     statKey="wrc_plus"
+                formatter={v => v != null ? Math.round(v) : '–'} />
+              <td className="px-1.5 py-1 text-right font-semibold tabular-nums">{fmt.war(r.offensive_war)}</td>
             </tr>
           ))}
           {sorted.length > 1 && (
@@ -575,9 +829,9 @@ function PitchingStatsTable({ rows }) {
               <td className="px-1.5 py-1 font-semibold text-left">{r.season}</td>
               <td className="px-1.5 py-1 text-right text-gray-500">{r.team_short || ''}</td>
               <td className="px-1.5 py-1 text-right">{(r.wins || 0)}-{(r.losses || 0)}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.era(r.era)}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.era(r.fip)}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.era(r.whip)}</td>
+              <ColoredCell value={r.era}  statKey="era"  formatter={fmt.era} />
+              <ColoredCell value={r.fip}  statKey="fip"  formatter={fmt.era} />
+              <ColoredCell value={r.whip} statKey="whip" formatter={fmt.era} />
               <td className="px-1.5 py-1 text-right">{fmt.ip(r.innings_pitched)}</td>
               <td className="px-1.5 py-1 text-right">{r.hits_allowed || 0}</td>
               <td className="px-1.5 py-1 text-right">{r.walks || 0}</td>
@@ -585,8 +839,8 @@ function PitchingStatsTable({ rows }) {
               <td className="px-1.5 py-1 text-right">{r.home_runs_allowed || 0}</td>
               <td className="px-1.5 py-1 text-right">{r.k_pct != null ? `${(r.k_pct * 100).toFixed(1)}%` : '–'}</td>
               <td className="px-1.5 py-1 text-right">{r.bb_pct != null ? `${(r.bb_pct * 100).toFixed(1)}%` : '–'}</td>
-              <td className="px-1.5 py-1 text-right">{fmt.rate(r.opp_avg)}</td>
-              <td className="px-1.5 py-1 text-right font-semibold">{fmt.war(r.pitching_war)}</td>
+              <ColoredCell value={r.opp_avg} statKey="opp_avg" formatter={fmt.rate} />
+              <td className="px-1.5 py-1 text-right font-semibold tabular-nums">{fmt.war(r.pitching_war)}</td>
             </tr>
           ))}
           {sorted.length > 1 && (

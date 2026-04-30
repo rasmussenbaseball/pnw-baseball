@@ -153,6 +153,28 @@ tr:hover td.sticky-col {
   }
   .player-card-pdf .card-page {
     page-break-inside: avoid;
+    /* Fill the printable area of US Letter portrait at 0.4in margins
+       (11in - 0.8in = 10.2in tall). Lays out as a flex column so the
+       Season Stats / Summer Ball blocks at the bottom hug the bottom
+       of the page rather than leaving a big white gap. */
+    display: flex;
+    flex-direction: column;
+    min-height: 10.2in;
+  }
+  /* Bump typography slightly for readability in the dugout. */
+  .player-card-pdf .card-page table {
+    font-size: 10px;
+  }
+  .player-card-pdf .card-page table td,
+  .player-card-pdf .card-page table th {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  /* Make sure the colored cell shading actually prints. */
+  .player-card-pdf,
+  .player-card-pdf * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* Each .sheet-page is its own physical page. Lay it out as a
