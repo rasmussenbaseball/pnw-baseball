@@ -10586,9 +10586,10 @@ def games_future(
         pass
 
     # Enrich games with team logos / names / postseason flag.
-    # Postseason rule (per coach decision 2026-04-30): any game between
-    # two CCC teams from today onwards is the CCC tournament, so it
-    # gets is_postseason=True and is_conference=False.
+    # Postseason rule (per coach decision 2026-04-30): any game
+    # involving a CCC team from today onwards is a playoff game —
+    # CCC tournament starts tomorrow and CCC teams play out-of-CCC
+    # opponents in NAIA regionals starting next week.
     from datetime import date as _date
     today_iso = _date.today().isoformat()
     enriched = []
@@ -10598,7 +10599,7 @@ def games_future(
         home_conf = team_info.get(home_id, {}).get("conference_abbrev")
         away_conf = team_info.get(away_id, {}).get("conference_abbrev")
         is_postseason = (
-            home_conf == 'CCC' and away_conf == 'CCC'
+            (home_conf == 'CCC' or away_conf == 'CCC')
             and (g.get("game_date") or '') >= today_iso
         )
         enriched.append({
