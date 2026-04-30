@@ -121,23 +121,28 @@ tr:hover td.sticky-col {
     margin: 0.4in;
   }
 
-  /* Strip the on-screen 820px container limit so the sheet uses
+  /* Strip the on-screen container limit so the sheet/card uses
      the full printable width of a US Letter portrait page. */
   .scouting-sheet-page,
-  .scouting-sheet-page .sheet-page {
+  .scouting-sheet-page .sheet-page,
+  .player-card-pdf,
+  .player-card-pdf .card-page {
     max-width: none !important;
     width: 100% !important;
   }
 
-  /* Hide everything outside the scouting sheet content. */
+  /* Hide everything outside the printable content. */
   body * {
     visibility: hidden;
   }
   .scouting-sheet-page,
-  .scouting-sheet-page * {
+  .scouting-sheet-page *,
+  .player-card-pdf,
+  .player-card-pdf * {
     visibility: visible;
   }
-  .scouting-sheet-page {
+  .scouting-sheet-page,
+  .player-card-pdf {
     position: absolute;
     left: 0;
     top: 0;
@@ -145,6 +150,9 @@ tr:hover td.sticky-col {
     padding: 0;
     margin: 0;
     background: white;
+  }
+  .player-card-pdf .card-page {
+    page-break-inside: avoid;
   }
 
   /* Each .sheet-page is its own physical page. Lay it out as a
