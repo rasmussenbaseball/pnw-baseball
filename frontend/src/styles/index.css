@@ -142,10 +142,62 @@ tr:hover td.sticky-col {
 }
 
 @media print {
-  /* US Letter PORTRAIT, half-inch margins. */
+  /* US Letter PORTRAIT, half-inch margins. Most PDFs in the portal
+     use this. The catcher-cards page overrides the page size below
+     when its body class is set. */
   @page {
     size: letter portrait;
     margin: 0.4in;
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Catcher Cards — strict 5×2 inch pages.
+     The body class gets added/removed by the CatcherCards page so
+     this @page rule only applies when that page is mounted.
+     Each .catcher-card becomes its own physical page; we hide
+     everything else (toolbar, headers, etc).
+     ───────────────────────────────────────────────────────── */
+  body.print-catcher-cards {
+    background: white;
+  }
+  body.print-catcher-cards * {
+    visibility: hidden;
+  }
+  body.print-catcher-cards .catcher-card,
+  body.print-catcher-cards .catcher-card * {
+    visibility: visible;
+  }
+  body.print-catcher-cards {
+    /* Override the default letter page with the strict 5×2 size.
+       margin:0 means no browser-imposed page padding so the table
+       fills the card edge-to-edge. */
+  }
+  /* The actual page-size override. CSS only allows one @page rule
+     per media query at the spec level, but Chrome/Safari accept
+     multiple — the most specific match wins. We scope by body class
+     using the @page :first / @page name approach with named pages. */
+  body.print-catcher-cards .catcher-card {
+    page: catchercard;
+    page-break-after: always;
+    position: relative;
+    width: 5in !important;
+    height: 2in !important;
+    margin: 0 !important;
+    border: none !important;  /* paper edge IS the border */
+    box-sizing: border-box;
+  }
+  body.print-catcher-cards .catcher-card:last-child {
+    page-break-after: auto;
+  }
+  @page catchercard {
+    size: 5in 2in;
+    margin: 0;
+  }
+  /* Force the green/red threshold shading to actually print. */
+  body.print-catcher-cards .catcher-card,
+  body.print-catcher-cards .catcher-card * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* Strip the on-screen container limit so the sheet/card uses

@@ -109,6 +109,7 @@ import PlayerCardPDF from './pages/PlayerCardPDF'
 import BulkPlayerCards from './pages/BulkPlayerCards'
 import PortalPDFs from './pages/PortalPDFs'
 import BullpenSheet from './pages/BullpenSheet'
+import CatcherCards from './pages/CatcherCards'
 import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
@@ -234,6 +235,10 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/bullpen-sheet/:teamId"
                  element={<RequirePortalAccess><PortalLayout><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/catcher-cards"
+                 element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/catcher-cards/:teamId"
+                 element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
