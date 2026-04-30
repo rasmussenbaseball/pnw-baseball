@@ -343,57 +343,64 @@ function Leaderboards({ leaderboards }) {
         <Leaderboard label="Best vs RHH" rows={leaderboards.vs_rhh || []} />
       </div>
 
-      {/* Row 2 — venue + bases empty (top 5 each) */}
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        <Leaderboard label="Best @ Home" rows={leaderboards.home || []} />
-        <Leaderboard label="Best @ Road" rows={leaderboards.road || []} />
-        <Leaderboard label="Bases Empty" rows={leaderboards.bases_empty || []} />
-      </div>
-
-      {/* Row 3 — runners-on + late & close (top 5 each) */}
-      <div className="grid grid-cols-2 gap-2">
-        <Leaderboard label="Runners On" rows={leaderboards.runners_on || []} />
-        <Leaderboard label="Late & Close" rows={leaderboards.late_close || []} />
+      {/* Row 2 — five small leaderboards in one row to save vertical
+          space (the previous 3-then-2 layout pushed the page over a
+          full 8.5×11). At 5-col the cards are narrow but still fit
+          7 stat columns at the print font size. */}
+      <div className="grid grid-cols-5 gap-1.5">
+        <Leaderboard label="Best @ Home"  rows={leaderboards.home || []}        compact />
+        <Leaderboard label="Best @ Road"  rows={leaderboards.road || []}        compact />
+        <Leaderboard label="Bases Empty"  rows={leaderboards.bases_empty || []} compact />
+        <Leaderboard label="Runners On"   rows={leaderboards.runners_on || []}  compact />
+        <Leaderboard label="Late & Close" rows={leaderboards.late_close || []}  compact />
       </div>
     </div>
   )
 }
 
 
-function Leaderboard({ label, rows }) {
+function Leaderboard({ label, rows, compact = false }) {
+  // Compact mode (used for the 5-col bottom row) drops PA + Stk% from
+  // the header / body so the table fits in a ~1.4" wide card. The
+  // big LHH/RHH boards above keep the full column set.
   return (
     <div className="border border-gray-200 rounded overflow-hidden">
-      <div className="bg-portal-purple/90 text-portal-cream text-[9px] px-1.5 py-0.5 font-bold uppercase tracking-widest">
+      <div className={`bg-portal-purple/90 text-portal-cream font-bold uppercase tracking-widest
+                        ${compact ? 'text-[8px] px-1 py-0.5' : 'text-[9px] px-1.5 py-0.5'}`}>
         {label}
       </div>
       {!rows.length ? (
         <div className="text-[9px] text-gray-400 italic px-2 py-1.5">No qualifiers yet.</div>
       ) : (
-        <table className="w-full text-[8.5px] leading-tight tabular-nums">
+        <table className={`w-full leading-tight tabular-nums ${compact ? 'text-[8px]' : 'text-[8.5px]'}`}>
           <thead className="bg-gray-50 text-gray-500 font-semibold">
             <tr>
-              <th className="px-1 py-0.5 text-left">Pitcher</th>
-              <th className="px-1 py-0.5 text-right">PA</th>
-              <th className="px-1 py-0.5 text-right">wOBA</th>
-              <th className="px-1 py-0.5 text-right">K%</th>
-              <th className="px-1 py-0.5 text-right">BB%</th>
-              <th className="px-1 py-0.5 text-right">Whf%</th>
-              <th className="px-1 py-0.5 text-right">Stk%</th>
+              <th className="px-0.5 py-0.5 text-left">Pitcher</th>
+              {!compact && <th className="px-1 py-0.5 text-right">PA</th>}
+              <th className="px-0.5 py-0.5 text-right">wOBA</th>
+              <th className="px-0.5 py-0.5 text-right">K%</th>
+              <th className="px-0.5 py-0.5 text-right">BB%</th>
+              <th className="px-0.5 py-0.5 text-right">Whf%</th>
+              {!compact && <th className="px-1 py-0.5 text-right">Stk%</th>}
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.player_id} className="border-t border-gray-100">
-                <td className="px-1 py-0.5 text-left font-bold whitespace-nowrap"
+                <td className="px-0.5 py-0.5 text-left font-bold whitespace-nowrap"
                     style={{ color: handColor(r.throws) }}>
                   {r.first_name?.[0]}. {r.last_name}
                 </td>
-                <td className="px-1 py-0.5 text-right text-gray-500">{r.pa}</td>
-                <Cell value={r.woba}       statKey="woba"       formatter={fmt.rate} />
-                <Cell value={r.k_pct}      statKey="k_pct"      formatter={fmt.pct} />
-                <Cell value={r.bb_pct}     statKey="bb_pct"     formatter={fmt.pct} />
-                <Cell value={r.whiff_pct}  statKey="whiff_pct"  formatter={fmt.pct} />
-                <Cell value={r.strike_pct} statKey="strike_pct" formatter={fmt.pct} />
+                {!compact && (
+                  <td className="px-1 py-0.5 text-right text-gray-500">{r.pa}</td>
+                )}
+                <Cell value={r.woba}      statKey="woba"      formatter={fmt.rate} />
+                <Cell value={r.k_pct}     statKey="k_pct"     formatter={fmt.pct} />
+                <Cell value={r.bb_pct}    statKey="bb_pct"    formatter={fmt.pct} />
+                <Cell value={r.whiff_pct} statKey="whiff_pct" formatter={fmt.pct} />
+                {!compact && (
+                  <Cell value={r.strike_pct} statKey="strike_pct" formatter={fmt.pct} />
+                )}
               </tr>
             ))}
           </tbody>

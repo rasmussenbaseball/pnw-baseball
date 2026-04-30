@@ -187,12 +187,21 @@ tr:hover td.sticky-col {
     page-break-inside: avoid;
   }
   .bullpen-sheet-page table {
-    font-size: 9.5px;
+    font-size: 8.5px;
   }
   .bullpen-sheet-page table td,
   .bullpen-sheet-page table th {
-    padding-top: 3px;
-    padding-bottom: 3px;
+    padding-top: 1.5px;
+    padding-bottom: 1.5px;
+  }
+  /* Even tighter for the small 5-col bottom-row leaderboards. */
+  .bullpen-sheet-page .grid-cols-5 table {
+    font-size: 7.5px;
+  }
+  .bullpen-sheet-page .grid-cols-5 table td,
+  .bullpen-sheet-page .grid-cols-5 table th {
+    padding-top: 1px;
+    padding-bottom: 1px;
   }
   /* Force the green/red cell shading to actually print instead of
      being optimized away by the browser as "background color".
