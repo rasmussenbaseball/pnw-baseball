@@ -275,9 +275,11 @@ export function PlayerCard({ playerId, sideParam, showToolbar = true }) {
   const { team: portalTeam } = usePortalTeam()
 
   // Set the document title so the browser's "Save as PDF" dialog
-  // pre-fills a useful filename instead of "NW Baseball Stats..." for
-  // every download. Format: "Sharp_Andrew_Hitting_2026.pdf". Restore
-  // the original title on unmount so we don't pollute other pages.
+  // pre-fills a useful filename like "Sharp_Andrew_Hitting_2026.pdf".
+  // We don't restore on unmount — the next portal page's own
+  // useEffect overrides this title, which is more reliable than
+  // trying to capture/restore (React 18 effect double-invocation
+  // could capture the player name as the "original" title).
   // IMPORTANT: this useEffect must live above the early-return guards
   // below — React requires hooks to run in the same order every
   // render (Rules of Hooks).
@@ -292,9 +294,7 @@ export function PlayerCard({ playerId, sideParam, showToolbar = true }) {
       ? 'pitching' : 'batting'
     const effectiveSide = sideParam || fallback
     const sideLabel = effectiveSide === 'pitching' ? 'Pitching' : 'Hitting'
-    const orig = document.title
     document.title = `${safe(data.player.last_name)}_${safe(data.player.first_name)}_${sideLabel}_${SEASON}`
-    return () => { document.title = orig }
   }, [data, sideParam])
 
   if (loading || !data) {

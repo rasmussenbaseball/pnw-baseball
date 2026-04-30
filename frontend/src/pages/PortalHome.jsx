@@ -28,7 +28,7 @@
 // leaderboard/moment limits so smaller teams still surface entries),
 // and /games/future (upcoming schedule).
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip as RTooltip,
@@ -73,6 +73,16 @@ function percentileColor(pct) {
 export default function PortalHome() {
   const { team } = usePortalTeam()
   const { data: ig } = useTeamInfoGraphic(team?.id, SEASON)
+
+  // Reset the tab title on every visit. PlayerCardPDF sets the title
+  // to the player's name so the print dialog suggests a useful
+  // filename — that title can stick around when navigating back
+  // here, so override it explicitly.
+  useEffect(() => {
+    document.title = team?.short_name
+      ? `${team.short_name} · Coaching Portal`
+      : 'Coaching Portal · NW Baseball Stats'
+  }, [team])
 
   if (!team) return null
 

@@ -40,12 +40,13 @@ export default function BulkPlayerCards() {
 
   // Set the document title once based on how many cards are in the
   // batch. The print dialog's "Save as PDF" suggestion picks this up.
+  // No cleanup/restore — other portal pages set their own titles on
+  // mount, which avoids the React 18 effect-double-invocation pitfall
+  // of capturing a stale "original" value.
   useEffect(() => {
-    const orig = document.title
     document.title = items.length === 1
       ? 'PlayerCards_1'
       : `PlayerCards_${items.length}`
-    return () => { document.title = orig }
   }, [items.length])
 
   if (!items.length) {

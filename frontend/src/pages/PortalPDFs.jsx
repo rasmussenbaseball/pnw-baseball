@@ -16,6 +16,14 @@ import { useTeams, usePlayerSearch, useApi } from '../hooks/useApi'
 
 export default function PortalPDFs() {
   const navigate = useNavigate()
+  // Restore a sensible tab title on every visit. Without this, the
+  // tab can stay stuck on the most recent Player Card filename
+  // (e.g. "ODaniel_Michael_Hitting_2026") after you navigate back
+  // here, since PlayerCardPDF's cleanup doesn't always restore the
+  // pre-card title cleanly.
+  useEffect(() => {
+    document.title = 'PDFs · NW Baseball Stats'
+  }, [])
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
       <div>
