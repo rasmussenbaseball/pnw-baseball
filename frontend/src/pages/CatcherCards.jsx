@@ -123,12 +123,63 @@ export default function CatcherCards() {
     }
   }, [data])
 
-  // Add a body class while this page is mounted so the print @page
-  // rule kicks in (sized to 5"×2") and other PDF print rules
-  // (which target US Letter portrait) stand down.
+  // Inject a print-only stylesheet that fully overrides the
+  // global `@page` size to 5×2 inches while this page is mounted.
+  //
+  // We can't put this in index.css because `@page` rules are NOT
+  // selector-scoped — having both `@page { size: letter }` and
+  // `@page catcher { size: 5in 2in }` in the same stylesheet falls
+  // back to letter in Chrome (which is what the user just saw —
+  // the named-page rule got ignored and each 5×2 card landed on a
+  // full Letter page). Dynamically appending+removing a <style> tag
+  // means the override is only present when this page actually
+  // wants it, and other PDFs (scouting sheet, bullpen sheet, etc.)
+  // keep their Letter-portrait `@page` rule untouched.
   useEffect(() => {
     document.body.classList.add('print-catcher-cards')
-    return () => document.body.classList.remove('print-catcher-cards')
+    const style = document.createElement('style')
+    style.id = 'catcher-cards-print-style'
+    style.textContent = `
+      @media print {
+        /* Force the entire print run to use 5"×2" pages. This
+           overrides the default letter-portrait @page rule only
+           because this <style> is appended LATER and CSS @page
+           rules from later sources win. */
+        @page { size: 5in 2in; margin: 0; }
+        body { background: white; margin: 0; }
+        body * { visibility: hidden; }
+        .catcher-card, .catcher-card * { visibility: visible; }
+        .catcher-card {
+          position: relative;
+          width: 5in !important;
+          height: 2in !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          box-sizing: border-box !important;
+          page-break-after: always;
+          page-break-inside: avoid;
+          break-after: page;
+          break-inside: avoid;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .catcher-card:last-child {
+          page-break-after: auto;
+          break-after: auto;
+        }
+        .catcher-card * {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+      }
+    `
+    document.head.appendChild(style)
+    return () => {
+      document.body.classList.remove('print-catcher-cards')
+      const existing = document.getElementById('catcher-cards-print-style')
+      if (existing) existing.remove()
+    }
   }, [])
 
   // Top 14 hitters by PA, split into 2 groups of 7.
