@@ -26,6 +26,7 @@ import {
   usePlayerPitchLevelStats,
   usePlayerPitchLevelStatsPitcher,
   usePlayerVsTeam,
+  usePlayerRecentKs,
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import SprayChart from '../components/SprayChart'
@@ -152,7 +153,11 @@ const STAT_THRESHOLDS = {
   swing_pct:    { good: 0.50,  mid: [0.42, 0.55],  bad: 0.38,  dir: 'higher' },
   whiff_pct:    { good: 0.18,  mid: [0.18, 0.28],  bad: 0.32,  dir: 'lower'  },
   fps_pct:      { good: 0.65,  mid: [0.55, 0.65],  bad: 0.50,  dir: 'higher' },
-  putaway_pct:  { good: 0.22,  mid: [0.18, 0.22],  bad: 0.15,  dir: 'lower'  },
+  // Putaway% means different things on each side, so split into two
+  // keyed thresholds. Hitter view: lower (avoiding the 2-strike K) is
+  // green. Pitcher view: higher (finishing batters) is green.
+  putaway_pct_hitter:  { good: 0.15, mid: [0.15, 0.22], bad: 0.27, dir: 'lower'  },
+  putaway_pct_pitcher: { good: 0.22, mid: [0.16, 0.22], bad: 0.13, dir: 'higher' },
   air_pull_pct: { good: 0.22,  mid: [0.12, 0.22],  bad: 0.08,  dir: 'higher' },
   pull_pct:     { good: 0.45,  mid: [0.35, 0.45],  bad: 0.30,  dir: 'higher' },
   babip:        { good: 0.350, mid: [0.290, 0.350], bad: 0.260, dir: 'higher' },
@@ -327,6 +332,8 @@ export default function PlayerCardPDF() {
           summerBatting={summerBatting}
           summerPitching={summerPitching}
         />
+
+        <RecentKsPanel playerId={playerId} side={side} />
       </section>
     </div>
   )
@@ -451,7 +458,7 @@ function DisciplinePanel({ side, hitterPbp, pitcherPbp }) {
     ['Strike%',   pitcherPbp?.discipline?.strike_pct,             'strike_pct'],
     ['FPS%',      pitcherPbp?.discipline?.first_pitch_strike_pct, 'first_pitch_strike_pct'],
     ['Whiff%',    pitcherPbp?.discipline?.whiff_pct,              'whiff_pct'],
-    ['Putaway%',  pitcherPbp?.discipline?.putaway_pct,            'putaway_pct'],
+    ['Putaway%',  pitcherPbp?.discipline?.putaway_pct,            'putaway_pct_pitcher'],
     ['Called K%', pitcherPbp?.discipline?.called_strike_pct,      'called_strike_pct'],
     ['P/PA',      pitcherPbp?.discipline?.pitches_per_pa,         'pitches_per_pa'],
   ] : [
@@ -459,7 +466,7 @@ function DisciplinePanel({ side, hitterPbp, pitcherPbp }) {
     ['Swing%',    hitterPbp?.discipline?.swing_pct,               'swing_pct'],
     ['Whiff%',    hitterPbp?.discipline?.whiff_pct,               'whiff_pct'],
     ['FPSwing%',  hitterPbp?.discipline?.first_pitch_swing_pct,    null],
-    ['Putaway%',  hitterPbp?.discipline?.putaway_pct,             'putaway_pct'],
+    ['Putaway%',  hitterPbp?.discipline?.putaway_pct,             'putaway_pct_hitter'],
     ['0-0 BIP%',  hitterPbp?.discipline?.zero_zero_bip_pct,        null],
   ]
   return (
@@ -589,6 +596,77 @@ function Row({ label, children }) {
 
 
 // ───────────────────────────────────────────────────────────
+// Recent K's — for hitter cards, the pitchers who've struck this
+// hitter out most recently (in chronological order, newest first).
+// For pitcher cards, the batters this pitcher has K'd most recently.
+// Sits at the bottom of the page in a 2-column compact list to fill
+// any vertical space the season-stats / summer-ball blocks didn't
+// claim.
+// ───────────────────────────────────────────────────────────
+function RecentKsPanel({ playerId, side }) {
+  const { data, loading } = usePlayerRecentKs(playerId, side, undefined, 8)
+  const ks = data?.strikeouts || []
+  if (loading || !ks.length) return null
+  const isPitcher = side === 'pitching'
+
+  const formatDate = (iso) => {
+    if (!iso) return ''
+    try {
+      const d = new Date(iso + 'T12:00:00')  // noon UTC to avoid TZ shift
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    } catch { return iso }
+  }
+  const formatType = (t) =>
+    t === 'strikeout_swinging' ? 'K (swinging)' :
+    t === 'strikeout_looking'  ? 'K (looking)'  : 'K'
+  const formatCount = (b, s) => `${b ?? 0}-${s ?? 0}`
+
+  // Split into 2 columns so the panel reads left-to-right top-to-bottom
+  // like a card; left column is the most-recent half.
+  const half = Math.ceil(ks.length / 2)
+  const left = ks.slice(0, half)
+  const right = ks.slice(half)
+
+  const headerLabel = isPitcher ? 'Recent Strikeouts (Hitters K\'d)' : "Recent Strikeouts (Pitchers Who K'd Him)"
+  const oppHeader   = isPitcher ? 'Hitter' : 'Pitcher'
+
+  const renderRow = (k, i) => (
+    <div key={i}
+         className="grid grid-cols-[60px_1fr_60px_70px] items-baseline gap-1 py-0.5
+                    border-b border-gray-100 last:border-0 text-[9px]">
+      <span className="text-gray-500 tabular-nums">{formatDate(k.game_date)}</span>
+      <span className="font-semibold text-gray-800 truncate" title={k.opponent_name}>
+        {k.opponent_name}
+        {k.opponent_team_short && (
+          <span className="text-gray-400 font-normal ml-1">({k.opponent_team_short})</span>
+        )}
+      </span>
+      <span className="text-rose-700 font-bold whitespace-nowrap">{formatType(k.result_type)}</span>
+      <span className="text-gray-400 tabular-nums text-right">
+        {formatCount(k.balls_before, k.strikes_before)}
+        {k.pitch_sequence ? <span className="text-gray-300 ml-1">{k.pitch_sequence}</span> : null}
+      </span>
+    </div>
+  )
+
+  return (
+    <div className="mt-2 border border-gray-200 rounded overflow-hidden">
+      <div className="bg-portal-purple text-portal-cream text-[9.5px] px-2 py-1 font-bold uppercase tracking-widest flex justify-between">
+        <span>{headerLabel}</span>
+        <span className="text-[8.5px] text-portal-cream/70 font-normal normal-case tracking-normal">
+          most recent first · {oppHeader} · count + sequence
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 px-2 py-1">
+        <div>{left.map(renderRow)}</div>
+        <div>{right.map(renderRow)}</div>
+      </div>
+    </div>
+  )
+}
+
+
+// ───────────────────────────────────────────────────────────
 // Vs-Team panel — when the user has a portal team set, show this
 // player's stats against that team's pitchers (or, for a pitcher
 // card, against that team's hitters). Renders an overall slash line
@@ -650,7 +728,6 @@ function VsTeamPanel({ playerId, side, portalTeam }) {
   const worstSorted = [...matchups].sort((a, b) =>
     isPitcher ? (a.woba - b.woba) : (b.woba - a.woba))
   const topN = 3
-  const minPaForLeaderboard = 2  // need at least 2 PA to mean anything
 
   const renderMiniRow = (m) => {
     const score = thresholdScore(isPitcher ? 'opp_woba' : 'woba', m.woba)
@@ -706,13 +783,13 @@ function VsTeamPanel({ playerId, side, portalTeam }) {
           <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">
             {isPitcher ? 'Hot Hitters' : 'Best Pitchers'}
           </div>
-          {bestSorted.filter(m => m.pa >= minPaForLeaderboard).slice(0, topN).map(renderMiniRow)}
+          {bestSorted.slice(0, topN).map(renderMiniRow)}
         </div>
         <div>
           <div className="text-[9px] font-bold uppercase tracking-wider text-rose-700 mb-0.5">
             {isPitcher ? 'Cold Hitters' : 'Worst Pitchers'}
           </div>
-          {worstSorted.filter(m => m.pa >= minPaForLeaderboard).slice(0, topN).map(renderMiniRow)}
+          {worstSorted.slice(0, topN).map(renderMiniRow)}
         </div>
       </div>
     </div>

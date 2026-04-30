@@ -11615,6 +11615,84 @@ def get_player_gamelogs(
         }
 
 
+@router.get("/players/{player_id}/recent-ks")
+def get_player_recent_ks(
+    player_id: int,
+    season: int = Query(2026, description="Season year"),
+    side: str = Query('batting', description="'batting' or 'pitching'"),
+    limit: int = Query(8, ge=1, le=30),
+):
+    """Recent strikeout events involving this player.
+
+    For batters (side='batting'): the pitchers who struck them out
+    most recently — used on the Player Card PDF to show coaches who's
+    had the most success setting this hitter down.
+
+    For pitchers (side='pitching'): the batters they recently
+    struck out — equivalent leaderboard for the other side.
+
+    Each entry: { game_date, opponent_name, opponent_team_short,
+    result_type, inning, half, balls_before, strikes_before,
+    pitch_sequence }.
+    """
+    if side not in ('batting', 'pitching'):
+        raise HTTPException(status_code=400, detail="side must be 'batting' or 'pitching'")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT canonical_id FROM player_links WHERE linked_id = %s", (player_id,))
+        canon = cur.fetchone()
+        if canon:
+            player_id = canon["canonical_id"]
+        cur.execute("SELECT linked_id FROM player_links WHERE canonical_id = %s", (player_id,))
+        all_pids = [player_id] + [r["linked_id"] for r in cur.fetchall()]
+
+        if side == 'batting':
+            self_filter = "ge.batter_player_id = ANY(%s)"
+            opp_id_col = "ge.pitcher_player_id"
+            opp_team_col = "ge.defending_team_id"
+        else:
+            self_filter = "ge.pitcher_player_id = ANY(%s)"
+            opp_id_col = "ge.batter_player_id"
+            opp_team_col = "ge.batting_team_id"
+
+        cur.execute(f"""
+            SELECT
+              ge.result_type, ge.inning, ge.half,
+              ge.balls_before, ge.strikes_before, ge.pitch_sequence,
+              g.game_date,
+              p.id AS opp_id, p.first_name, p.last_name,
+              t.short_name AS opp_team_short
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            LEFT JOIN players p ON p.id = {opp_id_col}
+            LEFT JOIN teams t ON t.id = {opp_team_col}
+            WHERE {self_filter}
+              AND g.season = %s
+              AND ge.result_type IN ('strikeout_swinging', 'strikeout_looking')
+            ORDER BY g.game_date DESC, ge.id DESC
+            LIMIT %s
+        """, (all_pids, season, limit))
+
+        rows = []
+        for r in cur.fetchall():
+            rows.append({
+                "game_date": r["game_date"].isoformat() if r["game_date"] else None,
+                "opponent_id": r["opp_id"],
+                "opponent_name": (
+                    f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+                    or "Unknown"
+                ),
+                "opponent_team_short": r["opp_team_short"],
+                "result_type": r["result_type"],
+                "inning": r["inning"],
+                "half": r["half"],
+                "balls_before": r["balls_before"],
+                "strikes_before": r["strikes_before"],
+                "pitch_sequence": r["pitch_sequence"],
+            })
+        return {"strikeouts": rows, "season": season, "side": side}
+
+
 @router.get("/players/{player_id}/vs-team/{team_id}")
 def get_player_vs_team(
     player_id: int,

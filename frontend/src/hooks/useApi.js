@@ -251,6 +251,19 @@ export function usePlayerVsTeam(playerId, teamId, side = 'batting', season = CUR
 }
 
 /**
+ * Recent strikeout events for/by this player. Hitter side returns
+ * the pitchers who struck them out most recently; pitcher side
+ * returns the batters they recently struck out.
+ */
+export function usePlayerRecentKs(playerId, side = 'batting', season = CURRENT_SEASON, limit = 8) {
+  return useApi(
+    `/players/${playerId}/recent-ks`,
+    { season, side, limit },
+    [playerId, side, season, limit]
+  )
+}
+
+/**
  * Fetch stat leaders (top N per category).
  */
 export function useStatLeaders(season, limit = 5, qualified = false, level = null, split = null) {
