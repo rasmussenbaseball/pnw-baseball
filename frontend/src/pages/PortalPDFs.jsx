@@ -36,7 +36,12 @@ export default function PortalPDFs() {
 // Scouting sheet picker — group teams by conference
 // ─────────────────────────────────────────────────────────
 function ScoutingSheetCard({ onPick }) {
-  const { data: teams = [] } = useTeams()
+  // Important: useApi starts with `data: null`, and a `data = []` default
+  // in destructuring only kicks in for `undefined` — not `null`. If we
+  // try `for (const t of null)` we crash with "t is not iterable" (the
+  // exact bug we hit on first deploy). Use a defensive fallback.
+  const { data } = useTeams()
+  const teams = Array.isArray(data) ? data : []
   const grouped = useMemo(() => {
     const g = {}
     for (const t of teams) {

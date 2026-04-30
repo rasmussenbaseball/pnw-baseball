@@ -137,15 +137,20 @@ export default function PlayerCardPDF() {
     return <div className="p-8 text-rose-600">Could not load player.</div>
   }
 
-  const { player, batting_stats = [], pitching_stats = [],
-          batting_percentiles, pitching_percentiles,
-          summer_batting = [], summer_pitching = [] } = data
+  const { player, batting_percentiles, pitching_percentiles } = data
+  // Defensive: useApi starts with data=null, and even after data loads
+  // some fields can come through as null rather than missing. Default
+  // destructuring only catches undefined, so coerce to [] explicitly.
+  const battingStats = Array.isArray(data.batting_stats) ? data.batting_stats : []
+  const pitchingStats = Array.isArray(data.pitching_stats) ? data.pitching_stats : []
+  const summerBatting = Array.isArray(data.summer_batting) ? data.summer_batting : []
+  const summerPitching = Array.isArray(data.summer_pitching) ? data.summer_pitching : []
 
-  const hasBatting = batting_stats.length > 0
-  const hasPitching = pitching_stats.length > 0
+  const hasBatting = battingStats.length > 0
+  const hasPitching = pitchingStats.length > 0
   // Default side: higher career WAR. Same logic as the player page.
-  const totBatWar = batting_stats.reduce((s, r) => s + (r.offensive_war || 0), 0)
-  const totPitWar = pitching_stats.reduce((s, r) => s + (r.pitching_war || 0), 0)
+  const totBatWar = battingStats.reduce((s, r) => s + (r.offensive_war || 0), 0)
+  const totPitWar = pitchingStats.reduce((s, r) => s + (r.pitching_war || 0), 0)
   const defaultSide = (hasBatting && hasPitching)
     ? (totPitWar > totBatWar ? 'pitching' : 'batting')
     : (hasPitching ? 'pitching' : 'batting')
@@ -186,12 +191,12 @@ export default function PlayerCardPDF() {
           <SplitsPanel side={side} hitterPbp={hitterPbp} pitcherPbp={pitcherPbp} />
         </div>
 
-        <SeasonStatsTable side={side} battingStats={batting_stats} pitchingStats={pitching_stats} />
+        <SeasonStatsTable side={side} battingStats={battingStats} pitchingStats={pitchingStats} />
 
         <SummerBallTable
           side={side}
-          summerBatting={summer_batting}
-          summerPitching={summer_pitching}
+          summerBatting={summerBatting}
+          summerPitching={summerPitching}
         />
       </section>
     </div>
