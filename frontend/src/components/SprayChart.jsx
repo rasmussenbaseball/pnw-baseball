@@ -352,12 +352,19 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
         </g>
       </svg>
 
-      {/* Legend / handedness hint */}
+      {/* Legend / handedness hint. For pitcher mode the pull-side
+          label is meaningless — opponents of both handedness contribute
+          — so we suppress it instead of saying "(switch)" which falsely
+          implies the player is a switch hitter. */}
       <div className="flex items-center justify-between mt-2 text-[10px] text-gray-500">
         <span>
-          Pull side: <strong className="text-gray-700">
-            {bats === 'L' ? 'right' : bats === 'R' ? 'left' : '(switch)'}
-          </strong>
+          {mode === 'pitcher' ? (
+            <>Mixed batters · pull-side varies</>
+          ) : (
+            <>Pull side: <strong className="text-gray-700">
+              {bats === 'L' ? 'right' : bats === 'R' ? 'left' : '(switch)'}
+            </strong></>
+          )}
         </span>
         <div className="flex items-center gap-1">
           <span>Less</span>

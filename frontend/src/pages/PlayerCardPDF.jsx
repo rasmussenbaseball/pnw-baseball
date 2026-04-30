@@ -20,6 +20,7 @@
 // query param, defaulting to higher-WAR side). The PDFs picker
 // surfaces both sides for two-way guys.
 
+import { useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   usePlayer,
@@ -252,6 +253,29 @@ export default function PlayerCardPDF() {
   // percentile bars. Skipped entirely when no portal team is set
   // (the panel falls back to a "set your team" prompt).
   const { team: portalTeam } = usePortalTeam()
+
+  // Set the document title so the browser's "Save as PDF" dialog
+  // pre-fills a useful filename instead of "NW Baseball Stats..." for
+  // every download. Format: "Sharp_Andrew_Hitting_2026.pdf". Restore
+  // the original title on unmount so we don't pollute other pages.
+  // IMPORTANT: this useEffect must live above the early-return guards
+  // below — React requires hooks to run in the same order every
+  // render (Rules of Hooks).
+  useEffect(() => {
+    if (!data?.player) return
+    const safe = (s) => (s || '').replace(/[^A-Za-z0-9]/g, '')
+    const battingStats = Array.isArray(data.batting_stats) ? data.batting_stats : []
+    const pitchingStats = Array.isArray(data.pitching_stats) ? data.pitching_stats : []
+    const totBatWar = battingStats.reduce((s, r) => s + (r.offensive_war || 0), 0)
+    const totPitWar = pitchingStats.reduce((s, r) => s + (r.pitching_war || 0), 0)
+    const fallback = pitchingStats.length && (totPitWar > totBatWar || !battingStats.length)
+      ? 'pitching' : 'batting'
+    const effectiveSide = sideParam || fallback
+    const sideLabel = effectiveSide === 'pitching' ? 'Pitching' : 'Hitting'
+    const orig = document.title
+    document.title = `${safe(data.player.last_name)}_${safe(data.player.first_name)}_${sideLabel}_${SEASON}`
+    return () => { document.title = orig }
+  }, [data, sideParam])
 
   if (loading || !data) {
     return <div className="p-8 text-gray-500 animate-pulse">Loading…</div>
@@ -524,8 +548,11 @@ function SplitsPanel({ side, hitterPbp, pitcherPbp }) {
   }
   const lrSplits = pbp.lr_splits || []
   const sitSplits = pbp.situational_splits || []
+  // Filter keys must match the backend's lr_splits payload exactly.
+  // Pitcher endpoint uses vs_rhb/vs_lhb (B for batter), hitter uses
+  // vs_rhp/vs_lhp (P for pitcher). Mixing these up nukes the column.
   const cols = isPitcher
-    ? [['vs_rhh', 'vR'], ['vs_lhh', 'vL'], ['risp', 'RISP']]
+    ? [['vs_rhb', 'vR'], ['vs_lhb', 'vL'], ['risp', 'RISP']]
     : [['vs_rhp', 'vR'], ['vs_lhp', 'vL'], ['risp', 'RISP']]
   // For each column key, look in lr_splits first, then situational.
   const lookup = key => findSplit(lrSplits, key) || findSplit(sitSplits, key)
