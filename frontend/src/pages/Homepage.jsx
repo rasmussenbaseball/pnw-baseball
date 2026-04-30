@@ -582,9 +582,11 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
           {/* VS / Win prob */}
           <div className="text-center px-3 shrink-0">
             <div className="text-lg font-black text-gray-200 mb-0.5">VS</div>
-            {matchup.is_conference_game && (
+            {matchup.is_postseason ? (
+              <span className="px-1.5 py-0.5 bg-rose-600 text-white rounded text-[9px] font-bold">PLAYOFFS</span>
+            ) : matchup.is_conference_game ? (
               <span className="px-1.5 py-0.5 bg-gray-100 text-pnw-slate rounded text-[9px] font-bold">CONF</span>
-            )}
+            ) : null}
           </div>
 
           {/* Home team */}

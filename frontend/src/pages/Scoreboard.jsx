@@ -415,9 +415,13 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
               {game.team_division}
             </span>
           )}
-          {game.is_conference && (
+          {game.is_postseason ? (
+            <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-rose-600 text-white">
+              Playoffs
+            </span>
+          ) : game.is_conference ? (
             <span className="text-[9px] text-gray-400">Conf</span>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -573,9 +577,13 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
               {division}
             </span>
           )}
-          {game.is_conference_game && (
+          {game.is_postseason ? (
+            <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-rose-600 text-white">
+              Playoffs
+            </span>
+          ) : game.is_conference_game ? (
             <span className="text-[9px] text-gray-400">Conf</span>
-          )}
+          ) : null}
           {game.innings && game.innings !== 9 && (
             <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">
               {game.innings}

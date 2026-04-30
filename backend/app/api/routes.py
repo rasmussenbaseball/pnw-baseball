@@ -10561,22 +10561,46 @@ def games_future(
     if end_date:
         games = [g for g in games if g.get("game_date", "") <= end_date]
 
-    # Build a team info lookup for logos/names
+    # Build a team info lookup for logos / names / conference. We
+    # also pull conference_abbrev so we can flag CCC-vs-CCC games as
+    # POSTSEASON on the fly (the JSON future-schedules feed doesn't
+    # know about the playoff bracket — we compute it here).
     team_info = {}
     try:
         with get_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT id, short_name, logo_url FROM teams WHERE is_active = 1")
+            cur.execute("""
+                SELECT t.id, t.short_name, t.logo_url,
+                       c.abbreviation AS conference_abbrev
+                FROM teams t
+                LEFT JOIN conferences c ON c.id = t.conference_id
+                WHERE t.is_active = 1
+            """)
             for row in cur.fetchall():
-                team_info[row["id"]] = {"short_name": row["short_name"], "logo_url": row["logo_url"]}
+                team_info[row["id"]] = {
+                    "short_name": row["short_name"],
+                    "logo_url": row["logo_url"],
+                    "conference_abbrev": row["conference_abbrev"],
+                }
     except Exception:
         pass
 
-    # Enrich games with team logos and names from DB
+    # Enrich games with team logos / names / postseason flag.
+    # Postseason rule (per coach decision 2026-04-30): any game between
+    # two CCC teams from today onwards is the CCC tournament, so it
+    # gets is_postseason=True and is_conference=False.
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
     enriched = []
     for g in games[:limit]:
         home_id = g.get("home_team_id")
         away_id = g.get("away_team_id")
+        home_conf = team_info.get(home_id, {}).get("conference_abbrev")
+        away_conf = team_info.get(away_id, {}).get("conference_abbrev")
+        is_postseason = (
+            home_conf == 'CCC' and away_conf == 'CCC'
+            and (g.get("game_date") or '') >= today_iso
+        )
         enriched.append({
             **g,
             "home_logo": team_info.get(home_id, {}).get("logo_url") if home_id else None,
@@ -10584,6 +10608,9 @@ def games_future(
             "home_short": team_info.get(home_id, {}).get("short_name", g.get("home_team", "")),
             "away_short": team_info.get(away_id, {}).get("short_name", g.get("away_team", "")),
             "status": "scheduled",
+            "is_postseason": is_postseason,
+            # If marked as postseason, suppress the conference flag.
+            "is_conference": False if is_postseason else g.get("is_conference", False),
         })
 
     return {"games": enriched, "total": len(games), "last_updated": last_updated}

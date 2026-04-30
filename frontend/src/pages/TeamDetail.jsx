@@ -169,9 +169,11 @@ export default function TeamDetail() {
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
                       <span className="text-sm font-semibold text-gray-800">{oppName}</span>
-                      {g.is_conference && (
+                      {g.is_postseason ? (
+                        <span className="text-[9px] font-bold text-white bg-rose-600 px-1.5 py-0.5 rounded">PLAYOFFS</span>
+                      ) : g.is_conference ? (
                         <span className="text-[9px] font-bold text-pnw-teal bg-teal-50 px-1.5 py-0.5 rounded">CONF</span>
-                      )}
+                      ) : null}
                     </div>
                   )
                 })}

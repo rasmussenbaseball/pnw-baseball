@@ -881,13 +881,19 @@ function UpcomingSchedule({ teamId }) {
               <span className="font-medium text-gray-900 truncate flex-1">
                 {oppShort || 'TBD'}
               </span>
-              {g.is_conference && (
+              {g.is_postseason ? (
+                <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5
+                                  rounded bg-rose-600 text-white
+                                  font-bold shrink-0">
+                  Playoffs
+                </span>
+              ) : g.is_conference ? (
                 <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5
                                   rounded bg-portal-accent/15 text-portal-accent
                                   font-bold shrink-0">
                   Conf
                 </span>
-              )}
+              ) : null}
             </li>
           )
         })}
