@@ -251,15 +251,17 @@ export function usePlayerVsTeam(playerId, teamId, side = 'batting', season = CUR
 }
 
 /**
- * Recent strikeout events for/by this player. Hitter side returns
- * the pitchers who struck them out most recently; pitcher side
- * returns the batters they recently struck out.
+ * Strikeout events for/by this player. When teamId is provided,
+ * filters to K's where the opponent (pitcher / batter) is on that
+ * team — used by the Player Card PDF's vs-team strikeout panel.
  */
-export function usePlayerRecentKs(playerId, side = 'batting', season = CURRENT_SEASON, limit = 8) {
+export function usePlayerRecentKs(playerId, side = 'batting', teamId = null, season = CURRENT_SEASON, limit = 20) {
+  const params = { season, side, limit }
+  if (teamId) params.team_id = teamId
   return useApi(
     `/players/${playerId}/recent-ks`,
-    { season, side, limit },
-    [playerId, side, season, limit]
+    params,
+    [playerId, side, teamId, season, limit]
   )
 }
 

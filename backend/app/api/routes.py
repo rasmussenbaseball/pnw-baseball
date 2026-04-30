@@ -11620,16 +11620,19 @@ def get_player_recent_ks(
     player_id: int,
     season: int = Query(2026, description="Season year"),
     side: str = Query('batting', description="'batting' or 'pitching'"),
-    limit: int = Query(8, ge=1, le=30),
+    limit: int = Query(20, ge=1, le=50),
+    team_id: int | None = Query(None, description="Filter to strikeouts where the opponent is on this team"),
 ):
-    """Recent strikeout events involving this player.
+    """Strikeout events involving this player.
 
-    For batters (side='batting'): the pitchers who struck them out
-    most recently — used on the Player Card PDF to show coaches who's
-    had the most success setting this hitter down.
+    For batters (side='batting'): the pitchers who struck them out.
+    For pitchers (side='pitching'): the batters they struck out.
 
-    For pitchers (side='pitching'): the batters they recently
-    struck out — equivalent leaderboard for the other side.
+    When `team_id` is set (e.g. the user's portal team), only K's
+    against players from that team are returned. That powers the
+    Player Card PDF's "Strikeouts vs <my team>" panel.
+
+    Without team_id, returns the most recent N strikeouts league-wide.
 
     Each entry: { game_date, opponent_name, opponent_team_short,
     result_type, inning, half, balls_before, strikes_before,
@@ -11655,6 +11658,13 @@ def get_player_recent_ks(
             opp_id_col = "ge.batter_player_id"
             opp_team_col = "ge.batting_team_id"
 
+        params = [all_pids, season]
+        team_clause = ""
+        if team_id is not None:
+            team_clause = f" AND {opp_team_col} = %s"
+            params.append(team_id)
+        params.append(limit)
+
         cur.execute(f"""
             SELECT
               ge.result_type, ge.inning, ge.half,
@@ -11669,9 +11679,10 @@ def get_player_recent_ks(
             WHERE {self_filter}
               AND g.season = %s
               AND ge.result_type IN ('strikeout_swinging', 'strikeout_looking')
+              {team_clause}
             ORDER BY g.game_date DESC, ge.id DESC
             LIMIT %s
-        """, (all_pids, season, limit))
+        """, params)
 
         rows = []
         for r in cur.fetchall():

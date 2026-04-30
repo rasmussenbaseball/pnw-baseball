@@ -333,7 +333,7 @@ export default function PlayerCardPDF() {
           summerPitching={summerPitching}
         />
 
-        <RecentKsPanel playerId={playerId} side={side} />
+        <RecentKsPanel playerId={playerId} side={side} portalTeam={portalTeam} />
       </section>
     </div>
   )
@@ -603,11 +603,17 @@ function Row({ label, children }) {
 // any vertical space the season-stats / summer-ball blocks didn't
 // claim.
 // ───────────────────────────────────────────────────────────
-function RecentKsPanel({ playerId, side }) {
-  const { data, loading } = usePlayerRecentKs(playerId, side, undefined, 8)
+function RecentKsPanel({ playerId, side, portalTeam }) {
+  // The panel is gated on having a portal team selected — the whole
+  // point is "K's vs MY team", not "recent K's anywhere". Render
+  // nothing when the user hasn't picked a team.
+  const teamId = portalTeam?.id || null
+  const { data, loading } = usePlayerRecentKs(playerId, side, teamId, undefined, 30)
+  if (!teamId) return null
   const ks = data?.strikeouts || []
   if (loading || !ks.length) return null
   const isPitcher = side === 'pitching'
+  const teamLabel = portalTeam.short_name || portalTeam.name || 'team'
 
   const formatDate = (iso) => {
     if (!iso) return ''
@@ -627,8 +633,13 @@ function RecentKsPanel({ playerId, side }) {
   const left = ks.slice(0, half)
   const right = ks.slice(half)
 
-  const headerLabel = isPitcher ? 'Recent Strikeouts (Hitters K\'d)' : "Recent Strikeouts (Pitchers Who K'd Him)"
-  const oppHeader   = isPitcher ? 'Hitter' : 'Pitcher'
+  // Header text: "Strikeouts vs <my team>" — directional regardless of
+  // side. Hitter card → pitchers from MY team that K'd him.
+  // Pitcher card → batters from MY team this pitcher K'd.
+  const headerLabel = isPitcher
+    ? `${teamLabel} Hitters K'd by This Pitcher`
+    : `Pitchers from ${teamLabel} Who Struck Him Out`
+  const oppHeader = isPitcher ? 'Hitter' : 'Pitcher'
 
   const renderRow = (k, i) => (
     <div key={i}
