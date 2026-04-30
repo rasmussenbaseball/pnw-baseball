@@ -20346,6 +20346,24 @@ def portal_team_scouting(
         return result
 
 
+@router.get("/portal/bullpen-sheet/{team_id}")
+def portal_bullpen_sheet(
+    team_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """Printable Bullpen Sheet for one team — coaching tool for in-game
+    bullpen decisions. Returns full pitcher roster with situational
+    splits + leaderboards (best on the road, vs RHH, w/ RISP, etc.).
+    """
+    from .bullpen_sheet import build_bullpen_sheet
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = build_bullpen_sheet(cur, team_id, season)
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
+        return result
+
+
 @router.get("/portal/scouting-sheet/{team_id}")
 def portal_scouting_sheet(
     team_id: int,

@@ -153,7 +153,9 @@ tr:hover td.sticky-col {
   .scouting-sheet-page,
   .scouting-sheet-page .sheet-page,
   .player-card-pdf,
-  .player-card-pdf .card-page {
+  .player-card-pdf .card-page,
+  .bullpen-sheet-page,
+  .bullpen-sheet-page .bullpen-page {
     max-width: none !important;
     width: 100% !important;
   }
@@ -165,11 +167,14 @@ tr:hover td.sticky-col {
   .scouting-sheet-page,
   .scouting-sheet-page *,
   .player-card-pdf,
-  .player-card-pdf * {
+  .player-card-pdf *,
+  .bullpen-sheet-page,
+  .bullpen-sheet-page * {
     visibility: visible;
   }
   .scouting-sheet-page,
-  .player-card-pdf {
+  .player-card-pdf,
+  .bullpen-sheet-page {
     position: absolute;
     left: 0;
     top: 0;
@@ -177,6 +182,20 @@ tr:hover td.sticky-col {
     padding: 0;
     margin: 0;
     background: white;
+  }
+  .bullpen-sheet-page .bullpen-page {
+    page-break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+    min-height: 10.2in;
+  }
+  .bullpen-sheet-page table {
+    font-size: 9.5px;
+  }
+  .bullpen-sheet-page table td,
+  .bullpen-sheet-page table th {
+    padding-top: 3px;
+    padding-bottom: 3px;
   }
   /* Bulk player-cards mode — many .player-card-pdf instances stacked.
      `position: absolute` on each one would make them overlap, so we

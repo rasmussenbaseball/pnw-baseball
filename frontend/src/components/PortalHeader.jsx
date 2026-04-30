@@ -46,6 +46,8 @@ const NAV_SECTIONS = [
         desc: 'Pickers for every printable PDF in one place' },
       { to: '/portal/scouting-sheet', label: 'Scouting Sheet',
         desc: 'Printable hitter + pitcher rosters with conference percentiles' },
+      { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet',
+        desc: 'Pitcher roster + situational leaderboards for in-game decisions' },
       { to: '/portal/pdfs', label: 'Player Card',
         desc: 'One-page Statcast-style profile (spray chart, percentiles, splits)' },
       { to: '/portal/pdfs', label: 'Bulk Player Cards',
