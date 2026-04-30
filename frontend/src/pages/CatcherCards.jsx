@@ -123,50 +123,37 @@ export default function CatcherCards() {
     }
   }, [data])
 
-  // Inject a print-only stylesheet that fully overrides the
-  // global `@page` size to 5×2 inches while this page is mounted.
-  //
-  // We can't put this in index.css because `@page` rules are NOT
-  // selector-scoped — having both `@page { size: letter }` and
-  // `@page catcher { size: 5in 2in }` in the same stylesheet falls
-  // back to letter in Chrome (which is what the user just saw —
-  // the named-page rule got ignored and each 5×2 card landed on a
-  // full Letter page). Dynamically appending+removing a <style> tag
-  // means the override is only present when this page actually
-  // wants it, and other PDFs (scouting sheet, bullpen sheet, etc.)
-  // keep their Letter-portrait `@page` rule untouched.
+  // Print stylesheet — kept simple because Chrome ignores
+  // `@page size: 5in 2in` rules in practice (always defaults to
+  // the print-dialog paper size). Instead we print on standard
+  // US Letter and keep the cards at strict 5×2 dimensions with a
+  // dashed cut-line border. The coach prints on regular paper and
+  // cuts along the border — the card itself is still exactly 5×2.
   useEffect(() => {
     document.body.classList.add('print-catcher-cards')
     const style = document.createElement('style')
     style.id = 'catcher-cards-print-style'
     style.textContent = `
       @media print {
-        /* Force the entire print run to use 5"×2" pages. This
-           overrides the default letter-portrait @page rule only
-           because this <style> is appended LATER and CSS @page
-           rules from later sources win. */
-        @page { size: 5in 2in; margin: 0; }
-        body { background: white; margin: 0; }
+        @page { size: letter portrait; margin: 0.5in; }
+        body { background: white; }
         body * { visibility: hidden; }
-        .catcher-card, .catcher-card * { visibility: visible; }
+        .catcher-cards-page,
+        .catcher-cards-page * { visibility: visible; }
+        .catcher-cards-page {
+          position: absolute;
+          left: 0; top: 0;
+          width: 100%;
+          padding: 0; margin: 0;
+        }
         .catcher-card {
-          position: relative;
           width: 5in !important;
           height: 2in !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          border: none !important;
-          box-sizing: border-box !important;
-          page-break-after: always;
           page-break-inside: avoid;
-          break-after: page;
           break-inside: avoid;
+          margin: 0 auto 0.4in auto !important;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
-        }
-        .catcher-card:last-child {
-          page-break-after: auto;
-          break-after: auto;
         }
         .catcher-card * {
           -webkit-print-color-adjust: exact;
@@ -243,7 +230,8 @@ export default function CatcherCards() {
             Catcher Cards — {team.short_name || team.name}
           </h1>
           <p className="text-xs text-gray-500">
-            Each card is exactly 2 in tall × 5 in wide. Save as PDF, print at 100% scale, cut.
+            Each card is exactly 5 in wide × 2 in tall. Print on US Letter at 100% scale,
+            then cut along the dashed border — the card itself is exactly 5×2.
             7 hitters per card · top 14 by PA.
           </p>
         </div>
@@ -274,8 +262,16 @@ export default function CatcherCards() {
 function Card({ hitters, team, cardNumber, totalCards }) {
   return (
     <div
-      className="catcher-card border border-gray-700 bg-white"
-      style={{ width: '5in', height: '2in', boxSizing: 'border-box' }}
+      className="catcher-card bg-white"
+      style={{
+        width: '5in',
+        height: '2in',
+        boxSizing: 'border-box',
+        // Dashed cut-line border — coach prints on Letter and cuts
+        // here. Solid would look like a card outline; dashed
+        // signals "cut along this line".
+        border: '1px dashed #4b5563',
+      }}
     >
       <table
         className="w-full h-full table-fixed"
