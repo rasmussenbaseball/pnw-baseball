@@ -22,10 +22,12 @@ const PALETTE = {
   textSecondary: '#cef0fa',
   textMuted: 'rgba(255,255,255,0.50)',
   scoreBoxBorder: 'rgba(255,255,255,0.25)',
+  scoreBoxBorderWinner: '#ffd54f',
   scoreBoxText: 'rgba(255,255,255,0.40)',
   connector: '#3aa3bd',
   ifNecessaryDim: 'rgba(255,255,255,0.12)',
   topStrip: 'rgba(0,0,0,0.45)',
+  loserDim: 'rgba(255,255,255,0.45)',
 }
 
 // ────────────────────────────────────────────
@@ -45,15 +47,15 @@ const TOURNAMENTS = {
       { seed: 5, team_id: 20,   name: 'Oregon Tech' },
     ],
     games: [
-      { num: 1, day: 'Fri May 1', time: '11:00 AM', home: { ref: 'seed', val: 4 },     away: { ref: 'seed', val: 5 } },
-      { num: 2, day: 'Fri May 1', time: '2:30 PM',  home: { ref: 'seed', val: 2 },     away: { ref: 'seed', val: 3 } },
-      { num: 3, day: 'Fri May 1', time: '6:00 PM',  home: { ref: 'seed', val: 1 },     away: { ref: 'winner', game: 1 } },
-      { num: 4, day: 'Sat May 2', time: '11:00 AM', home: { ref: 'loser',  game: 1 },  away: { ref: 'loser',  game: 2 } },
-      { num: 5, day: 'Sat May 2', time: '2:30 PM',  home: { ref: 'winner', game: 2 },  away: { ref: 'winner', game: 3 } },
-      { num: 6, day: 'Sat May 2', time: '6:00 PM',  home: { ref: 'loser',  game: 3 },  away: { ref: 'winner', game: 4 } },
-      { num: 7, day: 'Sun May 3', time: '11:00 AM', home: { ref: 'winner', game: 6 },  away: { ref: 'loser',  game: 5 } },
-      { num: 8, day: 'Sun May 3', time: '2:30 PM',  home: { ref: 'winner', game: 7 },  away: { ref: 'winner', game: 5 } },
-      { num: 9, day: 'Mon May 4', time: '11:00 AM', home: { ref: 'winner', game: 7 },  away: { ref: 'winner', game: 5 }, ifNecessary: true },
+      { num: 1, iso: '2026-05-01', day: 'Fri May 1', time: '11:00 AM', home: { ref: 'seed', val: 4 },     away: { ref: 'seed', val: 5 } },
+      { num: 2, iso: '2026-05-01', day: 'Fri May 1', time: '2:30 PM',  home: { ref: 'seed', val: 2 },     away: { ref: 'seed', val: 3 } },
+      { num: 3, iso: '2026-05-01', day: 'Fri May 1', time: '6:00 PM',  home: { ref: 'seed', val: 1 },     away: { ref: 'winner', game: 1 } },
+      { num: 4, iso: '2026-05-02', day: 'Sat May 2', time: '11:00 AM', home: { ref: 'loser',  game: 1 },  away: { ref: 'loser',  game: 2 } },
+      { num: 5, iso: '2026-05-02', day: 'Sat May 2', time: '2:30 PM',  home: { ref: 'winner', game: 2 },  away: { ref: 'winner', game: 3 } },
+      { num: 6, iso: '2026-05-02', day: 'Sat May 2', time: '6:00 PM',  home: { ref: 'loser',  game: 3 },  away: { ref: 'winner', game: 4 } },
+      { num: 7, iso: '2026-05-03', day: 'Sun May 3', time: '11:00 AM', home: { ref: 'winner', game: 6 },  away: { ref: 'loser',  game: 5 } },
+      { num: 8, iso: '2026-05-03', day: 'Sun May 3', time: '2:30 PM',  home: { ref: 'winner', game: 7 },  away: { ref: 'winner', game: 5 } },
+      { num: 9, iso: '2026-05-04', day: 'Mon May 4', time: '11:00 AM', home: { ref: 'winner', game: 7 },  away: { ref: 'winner', game: 5 }, ifNecessary: true },
     ],
   },
 }
@@ -136,13 +138,108 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-function shortLabelForRef(ref, seedMap) {
+// ────────────────────────────────────────────
+// Tournament resolution: match bracket games to DB rows, chain winners/losers
+// ────────────────────────────────────────────
+
+async function fetchTournamentGames(tournament) {
+  const dates = [...new Set(tournament.games.map((g) => g.iso).filter(Boolean))]
+  const all = []
+  await Promise.all(
+    dates.map(async (iso) => {
+      try {
+        const res = await fetch(`${API_BASE}/games/by-date?date=${iso}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (Array.isArray(data)) all.push(...data)
+      } catch {
+        /* skip */
+      }
+    })
+  )
+  return all
+}
+
+function resolveBracket(tournament, dbGames) {
+  const seedMap = {}
+  for (const s of tournament.seeds) seedMap[s.seed] = s
+
+  // Index DB games by date + sorted team-id pair.
+  // Bracket "home/away" is positional, not literal hosting, so we match
+  // unordered pairs and re-map scores afterward.
+  const dbByKey = new Map()
+  for (const g of dbGames) {
+    if (!g || !g.home_team_id || !g.away_team_id) continue
+    const pair = [g.home_team_id, g.away_team_id].sort((a, b) => a - b).join('-')
+    const key = `${g.game_date}|${pair}`
+    const existing = dbByKey.get(key)
+    if (!existing || (g.status === 'final' && existing.status !== 'final')) {
+      dbByKey.set(key, g)
+    }
+  }
+
+  function resolveRef(ref, outcomes) {
+    if (!ref) return null
+    if (ref.ref === 'seed')   return seedMap[ref.val]?.team_id || null
+    if (ref.ref === 'winner') return outcomes.get(ref.game)?.winner_id || null
+    if (ref.ref === 'loser')  return outcomes.get(ref.game)?.loser_id  || null
+    return null
+  }
+
+  const outcomes = new Map()
+  for (const g of tournament.games) {
+    const homeId = resolveRef(g.home, outcomes)
+    const awayId = resolveRef(g.away, outcomes)
+    const outcome = {
+      home_team_id: homeId,
+      away_team_id: awayId,
+      status: null,
+      home_score: null,
+      away_score: null,
+      winner_id: null,
+      loser_id:  null,
+      db_game_id: null,
+    }
+    if (homeId && awayId && g.iso) {
+      const pair = [homeId, awayId].sort((a, b) => a - b).join('-')
+      const db = dbByKey.get(`${g.iso}|${pair}`)
+      if (db) {
+        outcome.db_game_id = db.id
+        outcome.status = db.status
+        if (db.status === 'final' && db.home_score != null && db.away_score != null) {
+          // Map DB scores back to bracket-home/away order.
+          const dbHomeIsBracketHome = db.home_team_id === homeId
+          outcome.home_score = dbHomeIsBracketHome ? db.home_score : db.away_score
+          outcome.away_score = dbHomeIsBracketHome ? db.away_score : db.home_score
+          if (outcome.home_score > outcome.away_score) {
+            outcome.winner_id = homeId
+            outcome.loser_id  = awayId
+          } else if (outcome.away_score > outcome.home_score) {
+            outcome.winner_id = awayId
+            outcome.loser_id  = homeId
+          }
+        }
+      }
+    }
+    outcomes.set(g.num, outcome)
+  }
+  return outcomes
+}
+
+function shortLabelForRef(ref, seedMap, outcomes, seeds) {
   if (ref.ref === 'seed') {
     const s = seedMap[ref.val]
     return { name: s?.name || `Seed ${ref.val}`, seed: ref.val, team_id: s?.team_id }
   }
-  if (ref.ref === 'winner') return { name: `Winner G${ref.game}`, placeholder: true }
-  if (ref.ref === 'loser')  return { name: `Loser G${ref.game}`,  placeholder: true }
+  if (ref.ref === 'winner' || ref.ref === 'loser') {
+    const o = outcomes?.get(ref.game)
+    const tid = ref.ref === 'winner' ? o?.winner_id : o?.loser_id
+    if (tid) {
+      const s = seeds.find((x) => x.team_id === tid)
+      return { name: s?.name || `Team ${tid}`, seed: s?.seed, team_id: tid }
+    }
+    return { name: `${ref.ref === 'winner' ? 'Winner' : 'Loser'} G${ref.game}`, placeholder: true }
+  }
   return { name: '???', placeholder: true }
 }
 
@@ -150,7 +247,7 @@ function shortLabelForRef(ref, seedMap) {
 // Renderer
 // ────────────────────────────────────────────
 
-async function renderBracket(canvas, tournament, teamLogoMap) {
+async function renderBracket(canvas, tournament, teamLogoMap, outcomes) {
   const W = CANVAS_W, H = CANVAS_H
   canvas.width = W
   canvas.height = H
@@ -215,9 +312,6 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
   const seedMap = {}
   for (const s of tournament.seeds) seedMap[s.seed] = s
 
-  const gamesByNum = {}
-  for (const g of tournament.games) gamesByNum[g.num] = g
-
   // Draw connector lines first (so cards sit on top)
   ctx.strokeStyle = PALETTE.connector
   ctx.lineWidth = 3
@@ -234,17 +328,21 @@ async function renderBracket(canvas, tournament, teamLogoMap) {
     const pos = LAYOUT[g.num]
     if (!pos) continue
     if (g.ifNecessary) {
-      await drawIfNecessaryCard(ctx, g, pos, seedMap, teamLogoMap)
+      await drawIfNecessaryCard(ctx, g, pos)
     } else {
-      await drawGameCard(ctx, g, pos, seedMap, teamLogoMap)
+      await drawGameCard(ctx, g, pos, seedMap, teamLogoMap, outcomes, tournament.seeds)
     }
   }
 
   // Footer
+  const anyFinal = outcomes && [...outcomes.values()].some((o) => o.status === 'final')
   ctx.fillStyle = PALETTE.textMuted
   ctx.font = '15px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('Bracket format · Final scores will populate when games complete', W / 2, H - 28)
+  const footerText = anyFinal
+    ? 'Bracket format · Final scores update automatically as games complete'
+    : 'Bracket format · Final scores will populate when games complete'
+  ctx.fillText(footerText, W / 2, H - 28)
 }
 
 function drawSectionLabel(ctx, text, x, y, w, centered = false) {
@@ -283,7 +381,7 @@ function drawConnector(ctx, a, b) {
   ctx.stroke()
 }
 
-async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap) {
+async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seeds) {
   const { x, y, w, h } = pos
   const isChamp = game.num === 8
 
@@ -311,18 +409,40 @@ async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap) {
   ctx.textBaseline = 'middle'
   ctx.fillText(`G${game.num}`, x + 12, y + 14)
 
-  // Day + time
+  // Day + time (or "FINAL" badge if game is over)
+  const outcome = outcomes?.get(game.num)
+  const isFinal = outcome?.status === 'final'
   ctx.fillStyle = PALETTE.textSecondary
   ctx.font = '13px system-ui, sans-serif'
   ctx.fillText(`${game.day} · ${game.time}`, x + 46, y + 14)
 
+  if (isFinal) {
+    // FINAL pill on the right of the strip
+    const pillW = 50, pillH = 18
+    const pillX = x + w - pillW - 10
+    const pillY = y + (stripH - pillH) / 2
+    ctx.fillStyle = PALETTE.accent
+    roundRect(ctx, pillX, pillY, pillW, pillH, 4)
+    ctx.fill()
+    ctx.fillStyle = '#062029'
+    ctx.font = 'bold 11px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('FINAL', pillX + pillW / 2, y + 14)
+  }
+
   // Two team rows
-  const homeRef = shortLabelForRef(game.home, seedMap)
-  const awayRef = shortLabelForRef(game.away, seedMap)
+  const homeRef = shortLabelForRef(game.home, seedMap, outcomes, seeds)
+  const awayRef = shortLabelForRef(game.away, seedMap, outcomes, seeds)
   const rowTop = y + stripH
   const rowH = (h - stripH) / 2
 
-  await drawTeamRow(ctx, awayRef, x, rowTop,         w, rowH, teamLogoMap)
+  const homeScore = outcome?.home_score
+  const awayScore = outcome?.away_score
+  const winnerId = outcome?.winner_id || null
+  const homeIsWinner = isFinal && winnerId && homeRef.team_id === winnerId
+  const awayIsWinner = isFinal && winnerId && awayRef.team_id === winnerId
+
+  await drawTeamRow(ctx, awayRef, x, rowTop,         w, rowH, teamLogoMap, awayScore, awayIsWinner, isFinal && !awayIsWinner)
   // Divider line between teams
   ctx.strokeStyle = 'rgba(255,255,255,0.10)'
   ctx.lineWidth = 1
@@ -330,10 +450,10 @@ async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap) {
   ctx.moveTo(x + 10, rowTop + rowH)
   ctx.lineTo(x + w - 10, rowTop + rowH)
   ctx.stroke()
-  await drawTeamRow(ctx, homeRef, x, rowTop + rowH, w, rowH, teamLogoMap)
+  await drawTeamRow(ctx, homeRef, x, rowTop + rowH, w, rowH, teamLogoMap, homeScore, homeIsWinner, isFinal && !homeIsWinner)
 }
 
-async function drawIfNecessaryCard(ctx, game, pos, seedMap, teamLogoMap) {
+async function drawIfNecessaryCard(ctx, game, pos) {
   const { x, y, w, h } = pos
   ctx.fillStyle = 'rgba(255,255,255,0.05)'
   roundRect(ctx, x, y, w, h, 6)
@@ -351,11 +471,15 @@ async function drawIfNecessaryCard(ctx, game, pos, seedMap, teamLogoMap) {
   ctx.fillText(`G${game.num} · ${game.day} ${game.time} (if necessary)`, x + w / 2, y + h / 2)
 }
 
-async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
+async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinner, isLoser) {
   // Logo or placeholder
   const logoSize = Math.min(h - 12, 38)
   const logoX = x + 10
   const logoY = y + (h - logoSize) / 2
+
+  // Save alpha so we can dim losers
+  const prevAlpha = ctx.globalAlpha
+  if (isLoser) ctx.globalAlpha = 0.55
 
   if (teamRef.team_id) {
     const url = teamLogoMap.get(teamRef.team_id)
@@ -400,7 +524,7 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
   ctx.fillStyle = teamRef.placeholder ? PALETTE.textMuted : PALETTE.textPrimary
   ctx.font = teamRef.placeholder
     ? 'italic 17px system-ui, sans-serif'
-    : 'bold 19px system-ui, sans-serif'
+    : (isWinner ? 'bold 20px system-ui, sans-serif' : 'bold 19px system-ui, sans-serif')
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   let displayName = teamRef.name
@@ -412,19 +536,41 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
   if (displayName !== teamRef.name) displayName = displayName.trimEnd() + '…'
   ctx.fillText(displayName, nameStartX, y + h / 2)
 
-  // Score box on right (empty for now)
+  // Score box on right
   const scoreBoxH = 30
   const scoreBoxX = x + w - scoreBoxW - 10
   const scoreBoxY = y + (h - scoreBoxH) / 2
-  ctx.strokeStyle = PALETTE.scoreBoxBorder
-  ctx.lineWidth = 1.2
-  roundRect(ctx, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 5)
-  ctx.stroke()
-  ctx.fillStyle = PALETTE.scoreBoxText
-  ctx.font = 'bold 18px system-ui, sans-serif'
+
+  // Restore alpha for the score box itself (don't dim the winner score by accident,
+  // and the loser score should still be readable but slightly muted via alpha above).
+  if (isWinner) {
+    // Filled gold-bordered box for the winner
+    ctx.fillStyle = 'rgba(255,213,79,0.15)'
+    roundRect(ctx, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 5)
+    ctx.fill()
+    ctx.strokeStyle = PALETTE.scoreBoxBorderWinner
+    ctx.lineWidth = 1.8
+    ctx.stroke()
+  } else {
+    ctx.strokeStyle = PALETTE.scoreBoxBorder
+    ctx.lineWidth = 1.2
+    roundRect(ctx, scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 5)
+    ctx.stroke()
+  }
+
+  if (score != null) {
+    ctx.fillStyle = isWinner ? PALETTE.championshipBorder : PALETTE.textPrimary
+    ctx.font = isWinner ? 'bold 22px system-ui, sans-serif' : 'bold 20px system-ui, sans-serif'
+  } else {
+    ctx.fillStyle = PALETTE.scoreBoxText
+    ctx.font = 'bold 18px system-ui, sans-serif'
+  }
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('-', scoreBoxX + scoreBoxW / 2, scoreBoxY + scoreBoxH / 2)
+  ctx.fillText(score != null ? String(score) : '-', scoreBoxX + scoreBoxW / 2, scoreBoxY + scoreBoxH / 2)
+
+  // Restore alpha
+  ctx.globalAlpha = prevAlpha
 }
 
 // ────────────────────────────────────────────
@@ -434,12 +580,14 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap) {
 export default function TournamentBracketGraphic() {
   const [selectedKey, setSelectedKey] = useState('ccc_2026')
   const [teamLogoMap, setTeamLogoMap] = useState(new Map())
+  const [outcomes, setOutcomes] = useState(new Map())
   const [rendered, setRendered] = useState(false)
   const [error, setError] = useState(null)
   const canvasRef = useRef(null)
 
   const tournament = TOURNAMENTS[selectedKey]
 
+  // Fetch team logos
   useEffect(() => {
     let cancelled = false
     async function fetchLogos() {
@@ -462,11 +610,27 @@ export default function TournamentBracketGraphic() {
     return () => { cancelled = true }
   }, [selectedKey, tournament.seeds])
 
+  // Fetch tournament game results and resolve bracket
+  useEffect(() => {
+    let cancelled = false
+    async function fetchScores() {
+      try {
+        const dbGames = await fetchTournamentGames(tournament)
+        const resolved = resolveBracket(tournament, dbGames)
+        if (!cancelled) setOutcomes(resolved)
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+    }
+    fetchScores()
+    return () => { cancelled = true }
+  }, [selectedKey, tournament])
+
   const generate = useCallback(async () => {
     if (!canvasRef.current) return
-    await renderBracket(canvasRef.current, tournament, teamLogoMap)
+    await renderBracket(canvasRef.current, tournament, teamLogoMap, outcomes)
     setRendered(true)
-  }, [tournament, teamLogoMap])
+  }, [tournament, teamLogoMap, outcomes])
 
   useEffect(() => { generate() }, [generate])
 
@@ -478,12 +642,16 @@ export default function TournamentBracketGraphic() {
     link.click()
   }
 
+  // Quick status read-out for the page (so the user can see what populated)
+  const finalCount = [...outcomes.values()].filter((o) => o.status === 'final').length
+  const totalNonOptional = tournament.games.filter((g) => !g.ifNecessary).length
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Conference Tournament Bracket</h1>
       <p className="text-sm text-gray-500 mb-5">
-        Generate a shareable bracket graphic for a conference tournament. Score boxes
-        will fill with final scores once we wire up live updates.
+        Generate a shareable bracket graphic for a conference tournament. Final scores
+        and matchups update automatically as games complete in the database.
       </p>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -506,6 +674,10 @@ export default function TournamentBracketGraphic() {
         >
           Download PNG
         </button>
+
+        <span className="text-xs text-gray-500">
+          {finalCount} of {totalNonOptional} games final
+        </span>
       </div>
 
       {error && <p className="text-sm text-red-700 mb-3">{error}</p>}
