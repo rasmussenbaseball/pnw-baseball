@@ -151,7 +151,11 @@ async function fetchTournamentGames(tournament) {
         const res = await fetch(`${API_BASE}/games/by-date?date=${iso}`)
         if (!res.ok) return
         const data = await res.json()
-        if (Array.isArray(data)) all.push(...data)
+        // Endpoint returns { games: [...] }, but tolerate a bare array too.
+        const games = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.games) ? data.games : [])
+        if (games.length) all.push(...games)
       } catch {
         /* skip */
       }
