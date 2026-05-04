@@ -155,6 +155,71 @@ const TOURNAMENTS = {
     ],
     championshipGames: [6],
   },
+  gnac_2026: {
+    label: 'GNAC Tournament',
+    sub: 'May 7 to 8, Vail Field — Nampa, ID',
+    season: 2026,
+    formatLabel: 'Round-robin format · Day 2 schedule depends on Day 1 results',
+    seeds: [
+      { seed: 1, team_id: 9, name: 'Northwest Nazarene' },
+      { seed: 2, team_id: 7, name: 'Montana State Billings' },
+      { seed: 3, team_id: 8, name: 'Western Oregon' },
+    ],
+    games: [
+      // Day 1 — fixed round-robin matchups
+      { num: 1, iso: '2026-05-07', day: 'Thu May 7', time: '1:00 PM',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 3 } },
+      { num: 2, iso: '2026-05-07', day: 'Thu May 7', time: '4:00 PM',
+        home: { ref: 'seed', val: 1 }, away: { ref: 'seed', val: 3 } },
+      { num: 3, iso: '2026-05-07', day: 'Thu May 7', time: '7:00 PM',
+        home: { ref: 'seed', val: 1 }, away: { ref: 'seed', val: 2 } },
+      // Day 2 scenario A: 1-1-1 three-way tie
+      // Internal nums 4 + 5; rendered as 'G4' / 'G5'.
+      { num: 4, iso: '2026-05-08', day: 'Fri May 8', time: '3:00 PM',
+        displayLabel: 'G4',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 3 } },
+      { num: 5, iso: '2026-05-08', day: 'Fri May 8', time: '6:00 PM',
+        displayLabel: 'G5',
+        home: { ref: 'seed', val: 1 }, away: { ref: 'winner', game: 4 } },
+      // Day 2 scenario B: one team finishes 2-0
+      // Internal nums 6 + 7; both rendered as 'G4' / 'G5'.
+      // Teams aren't known in advance so they use placeholder refs.
+      { num: 6, iso: '2026-05-08', day: 'Fri May 8', time: '3:00 PM',
+        displayLabel: 'G4',
+        home: { ref: 'placeholder', name: '2-0 Team' },
+        away: { ref: 'placeholder', name: '1-1 Team' } },
+      { num: 7, iso: '2026-05-08', day: 'Fri May 8', time: '~6:30 PM',
+        displayLabel: 'G5',
+        home: { ref: 'placeholder', name: '2-0 Team' },
+        away: { ref: 'placeholder', name: '1-1 Team' },
+        ifNecessary: true },
+    ],
+    // GNAC layout — fundamentally different shape than a bracket.
+    // Top row: three Day 1 round-robin tiles spanning the full canvas.
+    // Bottom: two scenario panels side by side, each with G4 + G5.
+    layout: {
+      // Day 1 (top row, 3 games across)
+      1: { x: 80,   y: 320, w: 540, h: 150 },
+      2: { x: 690,  y: 320, w: 540, h: 150 },
+      3: { x: 1300, y: 320, w: 540, h: 150 },
+      // Scenario A — left panel (1-1-1 tie path)
+      4: { x: 100, y: 620, w: 800, h: 140 },
+      5: { x: 100, y: 800, w: 800, h: 140 },
+      // Scenario B — right panel (one team at 2-0 path)
+      6: { x: 1020, y: 620, w: 800, h: 140 },
+      7: { x: 1020, y: 800, w: 800, h: 40  },
+    },
+    // Round-robin format has no bracket lines. Scenario A's G5 is "Winner
+    // of G4 vs #1", which the team-name resolver handles via the 'winner'
+    // ref — no line needed.
+    connections: [],
+    sectionLabels: [
+      { text: 'DAY 1 — ROUND ROBIN — THU MAY 7', x: 0, y: 290, w: CANVAS_W, centered: true },
+      { text: 'IF THREE-WAY TIE (1-1-1) AFTER DAY 1', x: 100,  y: 590, w: 800, centered: true },
+      { text: 'IF ONE TEAM AT 2-0 AFTER DAY 1',       x: 1020, y: 590, w: 800, centered: true },
+    ],
+    championshipGames: [5, 6],
+  },
 }
 
 // ────────────────────────────────────────────
@@ -295,6 +360,12 @@ function shortLabelForRef(ref, seedMap, outcomes, seeds) {
       return { name: s?.name || `Team ${tid}`, seed: s?.seed, team_id: tid }
     }
     return { name: `${ref.ref === 'winner' ? 'Winner' : 'Loser'} G${ref.game}`, placeholder: true }
+  }
+  if (ref.ref === 'placeholder') {
+    // Static placeholder for slots whose team can't be derived from previous
+    // games (e.g. GNAC scenario B: "2-0 Team" / "1-1 Team", which depend on
+    // round-robin standings that don't fit the winner/loser model).
+    return { name: ref.name || '???', placeholder: true }
   }
   return { name: '???', placeholder: true }
 }
@@ -461,12 +532,14 @@ async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seed
   ctx.fill()
   ctx.fillRect(x, y + 14, w, stripH - 14)
 
-  // Game number badge
+  // Game number badge — use displayLabel override if present (e.g. GNAC
+  // scenario B uses 'G4' / 'G5' as labels even though their internal nums
+  // are 6 / 7 to keep the outcomes Map keys unique).
   ctx.fillStyle = isChamp ? PALETTE.championshipBorder : PALETTE.accent
   ctx.font = 'bold 14px system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`G${game.num}`, x + 12, y + 14)
+  ctx.fillText(game.displayLabel || `G${game.num}`, x + 12, y + 14)
 
   // Day + time (or "FINAL" badge if game is over)
   const outcome = outcomes?.get(game.num)
@@ -527,7 +600,8 @@ async function drawIfNecessaryCard(ctx, game, pos) {
   ctx.font = 'italic 14px system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(`G${game.num} · ${game.day} ${game.time} (if necessary)`, x + w / 2, y + h / 2)
+  const label = game.displayLabel || `G${game.num}`
+  ctx.fillText(`${label} · ${game.day} ${game.time} (if necessary)`, x + w / 2, y + h / 2)
 }
 
 async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinner, isLoser) {
