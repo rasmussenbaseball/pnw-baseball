@@ -31,7 +31,25 @@ const PALETTE = {
 }
 
 // ────────────────────────────────────────────
-// Tournament data (CCC v1)
+// Canvas dimensions — 1920x1080 (16:9). Brackets flow left-to-right and
+// need horizontal room.
+// ────────────────────────────────────────────
+const CANVAS_W = 1920
+const CANVAS_H = 1080
+
+// ────────────────────────────────────────────
+// Tournament data
+//
+// Each tournament entry carries everything the renderer needs:
+//   - seeds:           team_id + display name per seed
+//   - games:           ordered list of games with home/away refs
+//                      (refs can be { ref:'seed', val } / { ref:'winner', game } /
+//                      { ref:'loser', game })
+//   - layout:          { gameNum: { x, y, w, h } } absolute positions
+//   - connections:     bracket-line list [{ from, to }]
+//   - sectionLabels:   labels drawn on the canvas
+//   - formatLabel:     subtitle under tournament name (e.g. "Double-elimination bracket")
+//   - championshipGames: game numbers that get the gold border / championship styling
 // ────────────────────────────────────────────
 
 const TOURNAMENTS = {
@@ -39,6 +57,7 @@ const TOURNAMENTS = {
     label: 'CCC Tournament',
     sub: 'May 1 to 4, Lewis-Clark State',
     season: 2026,
+    formatLabel: 'Double-elimination bracket',
     seeds: [
       { seed: 1, team_id: 22,   name: 'Lewis-Clark State' },
       { seed: 2, team_id: 5720, name: 'British Columbia' },
@@ -57,53 +76,86 @@ const TOURNAMENTS = {
       { num: 8, iso: '2026-05-03', day: 'Sun May 3', time: '2:30 PM',  home: { ref: 'winner', game: 7 },  away: { ref: 'winner', game: 5 } },
       { num: 9, iso: '2026-05-04', day: 'Mon May 4', time: '11:00 AM', home: { ref: 'winner', game: 7 },  away: { ref: 'winner', game: 5 }, ifNecessary: true },
     ],
+    // CCC layout — 4 columns wide:
+    //   Col 1: G1 (WB R1 play-in)         + G4 (LB R1)
+    //   Col 2: G2, G3 (WB R2 / QF byes)   + G6 (LB R2)
+    //   Col 3: G5 (WB Final)              + G7 (LB Final)
+    //   Col 4: G8 + G9 (Championship)
+    layout: {
+      1: { x: 60,   y: 400, w: 380, h: 120 },
+      2: { x: 500,  y: 240, w: 380, h: 120 },
+      3: { x: 500,  y: 400, w: 380, h: 120 },
+      5: { x: 940,  y: 320, w: 380, h: 120 },
+      8: { x: 1380, y: 540, w: 380, h: 130 },
+      9: { x: 1380, y: 685, w: 380, h: 40  },
+      4: { x: 60,   y: 720, w: 380, h: 120 },
+      6: { x: 500,  y: 760, w: 380, h: 120 },
+      7: { x: 940,  y: 800, w: 380, h: 120 },
+    },
+    connections: [
+      { from: 1, to: 3 },
+      { from: 2, to: 5 },
+      { from: 3, to: 5 },
+      { from: 5, to: 8 },
+      { from: 4, to: 6 },
+      { from: 6, to: 7 },
+      { from: 7, to: 8 },
+    ],
+    sectionLabels: [
+      { text: "WINNER'S BRACKET", x: 60,   y: 210, w: 1000 },
+      { text: "CHAMPIONSHIP",     x: 1380, y: 510, w: 380, centered: true },
+      { text: "LOSER'S BRACKET",  x: 60,   y: 690, w: 1000 },
+    ],
+    championshipGames: [8],
+  },
+  nwc_2026: {
+    label: 'NWC Tournament',
+    sub: 'May 8 to 10',
+    season: 2026,
+    formatLabel: 'Double-elimination bracket',
+    seeds: [
+      { seed: 1, team_id: 13, name: 'Whitworth' },
+      { seed: 2, team_id: 14, name: 'Linfield' },
+      { seed: 3, team_id: 15, name: 'Lewis & Clark' },
+      { seed: 4, team_id: 10, name: 'Puget Sound' },
+    ],
+    games: [
+      { num: 1, iso: '2026-05-08', day: 'Fri May 8',  time: '2:00 PM',  home: { ref: 'seed', val: 1 },    away: { ref: 'seed', val: 4 } },
+      { num: 2, iso: '2026-05-08', day: 'Fri May 8',  time: '5:00 PM',  home: { ref: 'seed', val: 2 },    away: { ref: 'seed', val: 3 } },
+      { num: 3, iso: '2026-05-09', day: 'Sat May 9',  time: '10:00 AM', home: { ref: 'loser',  game: 1 }, away: { ref: 'loser',  game: 2 } },
+      { num: 4, iso: '2026-05-09', day: 'Sat May 9',  time: '1:00 PM',  home: { ref: 'winner', game: 1 }, away: { ref: 'winner', game: 2 } },
+      { num: 5, iso: '2026-05-09', day: 'Sat May 9',  time: '4:00 PM',  home: { ref: 'winner', game: 3 }, away: { ref: 'loser',  game: 4 } },
+      { num: 6, iso: '2026-05-10', day: 'Sun May 10', time: '12:00 PM', home: { ref: 'winner', game: 4 }, away: { ref: 'winner', game: 5 } },
+      { num: 7, iso: '2026-05-10', day: 'Sun May 10', time: '3:00 PM',  home: { ref: 'winner', game: 4 }, away: { ref: 'winner', game: 5 }, ifNecessary: true },
+    ],
+    // NWC layout — 4 teams, 7 games:
+    //   Col 1: G1, G2 (WB R1)              + G3 (LB R1)
+    //   Col 2: G4 (WB Final)               + G5 (LB Final)
+    //   Col 3: G6 + G7 (Championship)
+    layout: {
+      1: { x: 200, y: 320, w: 420, h: 130 },
+      2: { x: 200, y: 480, w: 420, h: 130 },
+      4: { x: 740, y: 400, w: 420, h: 130 },
+      3: { x: 200, y: 720, w: 420, h: 130 },
+      5: { x: 740, y: 720, w: 420, h: 130 },
+      6: { x: 1280, y: 540, w: 440, h: 140 },
+      7: { x: 1280, y: 695, w: 440, h: 40  },
+    },
+    connections: [
+      { from: 1, to: 4 },
+      { from: 2, to: 4 },
+      { from: 4, to: 6 },
+      { from: 3, to: 5 },
+      { from: 5, to: 6 },
+    ],
+    sectionLabels: [
+      { text: "WINNER'S BRACKET", x: 200,  y: 290, w: 960 },
+      { text: "CHAMPIONSHIP",     x: 1280, y: 510, w: 440, centered: true },
+      { text: "LOSER'S BRACKET",  x: 200,  y: 690, w: 960 },
+    ],
+    championshipGames: [6],
   },
 }
-
-// Canvas dimensions — 1920x1080 (16:9). Brackets flow left-to-right and
-// need horizontal room.
-const CANVAS_W = 1920
-const CANVAS_H = 1080
-
-// Explicit bracket positions: { gameNum: { x, y, w, h } } in 1920x1080.
-//
-// Column structure (4 columns):
-//   Col 1: G1 (WB R1 play-in)         + G4 (LB R1)
-//   Col 2: G2, G3 (WB R2 / QF byes)   + G6 (LB R2)
-//   Col 3: G5 (WB Final)              + G7 (LB Final)
-//   Col 4: G8 + G9 (Championship)
-//
-// G2 and G3 sit together in Col 2 because both are bye-round QFs —
-// #2 vs #3 and #1 vs play-in winner. G4's LG1 + LG2 inputs come from
-// G1 (Col 1 WB) and G2 (Col 2 WB), so G4 chronologically follows them
-// but visually we shift it to Col 1 since the LB now starts there.
-const LAYOUT = {
-  // Winner's bracket (top half)
-  1: { x: 60,   y: 400, w: 380, h: 120 },  // G1: 4 vs 5  (R1 play-in)
-  2: { x: 500,  y: 240, w: 380, h: 120 },  // G2: 2 vs 3  (R2/QF, BYE)
-  3: { x: 500,  y: 400, w: 380, h: 120 },  // G3: 1 vs WG1 (R2/QF, BYE)
-  5: { x: 940,  y: 320, w: 380, h: 120 },  // G5: WG2 vs WG3 (WB Final)
-  // Championship (far right, y centered between G5 and G7)
-  8: { x: 1380, y: 540, w: 380, h: 130 },  // G8: WG5 vs WG7
-  9: { x: 1380, y: 685, w: 380, h: 40 },   // G9: rematch (if necessary)
-  // Loser's bracket (bottom half) — now starts in Col 1
-  4: { x: 60,   y: 720, w: 380, h: 120 },  // G4: LG1 vs LG2 (LB R1)
-  6: { x: 500,  y: 760, w: 380, h: 120 },  // G6: LG3 vs WG4 (LB R2)
-  7: { x: 940,  y: 800, w: 380, h: 120 },  // G7: WG6 vs LG5 (LB Final)
-}
-
-// Connections drawn as bracket lines: from→to
-const CONNECTIONS = [
-  // Winner's bracket
-  { from: 1, to: 3 },   // G1 winner → G3
-  { from: 2, to: 5 },   // G2 winner → G5
-  { from: 3, to: 5 },   // G3 winner → G5
-  { from: 5, to: 8 },   // G5 winner → G8 (championship)
-  // Loser's bracket
-  { from: 4, to: 6 },   // G4 winner → G6
-  { from: 6, to: 7 },   // G6 winner → G7
-  { from: 7, to: 8 },   // G7 winner → G8 (championship)
-]
 
 // ────────────────────────────────────────────
 // Image cache + helpers
@@ -305,36 +357,39 @@ async function renderBracket(canvas, tournament, teamLogoMap, outcomes) {
 
   ctx.fillStyle = PALETTE.textMuted
   ctx.font = 'italic 16px system-ui, sans-serif'
-  ctx.fillText('Double-elimination bracket', W / 2, headerH + 138)
+  ctx.fillText(tournament.formatLabel || 'Double-elimination bracket', W / 2, headerH + 138)
 
-  // Section labels
-  drawSectionLabel(ctx, "WINNER'S BRACKET", 60,   210, 1000)
-  drawSectionLabel(ctx, "CHAMPIONSHIP",     1380, 510, 380, true)
-  drawSectionLabel(ctx, "LOSER'S BRACKET",  60,   690, 1000)
+  // Section labels — sourced from tournament data so each format can lay out
+  // its own labels (winner's/loser's/championship for double-elim brackets,
+  // round-robin sections for GNAC, etc.).
+  for (const lbl of (tournament.sectionLabels || [])) {
+    drawSectionLabel(ctx, lbl.text, lbl.x, lbl.y, lbl.w, !!lbl.centered)
+  }
 
   // Build maps for game lookup
   const seedMap = {}
   for (const s of tournament.seeds) seedMap[s.seed] = s
+  const championshipGames = new Set(tournament.championshipGames || [])
 
   // Draw connector lines first (so cards sit on top)
   ctx.strokeStyle = PALETTE.connector
   ctx.lineWidth = 3
   ctx.lineJoin = 'round'
-  for (const conn of CONNECTIONS) {
-    const a = LAYOUT[conn.from]
-    const b = LAYOUT[conn.to]
+  for (const conn of (tournament.connections || [])) {
+    const a = tournament.layout[conn.from]
+    const b = tournament.layout[conn.to]
     if (!a || !b) continue
     drawConnector(ctx, a, b)
   }
 
   // Draw all game cards
   for (const g of tournament.games) {
-    const pos = LAYOUT[g.num]
+    const pos = tournament.layout[g.num]
     if (!pos) continue
     if (g.ifNecessary) {
       await drawIfNecessaryCard(ctx, g, pos)
     } else {
-      await drawGameCard(ctx, g, pos, seedMap, teamLogoMap, outcomes, tournament.seeds)
+      await drawGameCard(ctx, g, pos, seedMap, teamLogoMap, outcomes, tournament.seeds, championshipGames)
     }
   }
 
@@ -385,9 +440,9 @@ function drawConnector(ctx, a, b) {
   ctx.stroke()
 }
 
-async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seeds) {
+async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seeds, championshipGames) {
   const { x, y, w, h } = pos
-  const isChamp = game.num === 8
+  const isChamp = championshipGames ? championshipGames.has(game.num) : false
 
   // Card bg
   ctx.fillStyle = isChamp ? PALETTE.cardChampionship : PALETTE.card
