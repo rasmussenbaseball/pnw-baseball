@@ -6988,133 +6988,28 @@ def team_stats(team_id: int, season: int = Query(...)):
         )
         team_stats_row = cur.fetchone()
 
-        # Override team_era with a fresh computation. Two data-sync caveats
-        # we work around here:
-        #
-        # 1. The stored team_era in team_season_stats is not maintained by
-        #    any script and goes stale (Bushnell 2026: stored 5.80 vs reality
-        #    ~5.20). Always recompute.
-        # 2. pitching_stats (cumulative scrape from league portals) and
-        #    game_pitching (per-box-score scrape) disagree on ER for some
-        #    teams: pitching_stats can carry stale ER from before official
-        #    scoring corrections, and game_pitching reflects current box
-        #    scores. To match what each school's site reports, we pull
-        #    ER from game_pitching (per-game truth) but IP from
-        #    pitching_stats (whose cumulative IP is closer to authoritative
-        #    league totals than our box-score IP sums).
-        # 3. innings_pitched is stored in baseball notation (5.2 = 5 2/3),
-        #    so we convert to true decimal innings before dividing.
+        # Override every stored aggregate in team_season_stats with the
+        # canonical helper's fresh values. The stored columns aren't
+        # maintained by any script and go stale (Bushnell 2026 example:
+        # stored RS=282 vs reality 365, stored team_era=5.80 vs ~5.20).
+        # See get_team_aggregates() for source-of-truth details.
         if team_stats_row:
             team_stats_row = dict(team_stats_row)
-            # Pitching aggregates from pitching_stats (cumulative). True IP
-            # converts baseball notation (5.2 = 5 2/3) before summing. ER is
-            # also captured here as a fallback for older seasons that have
-            # no game_pitching coverage.
-            cur.execute(
-                """SELECT
-                     SUM(
-                       FLOOR(innings_pitched) +
-                       CASE
-                         WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 1
-                           THEN 1.0/3.0
-                         WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 2
-                           THEN 2.0/3.0
-                         ELSE 0
-                       END
-                     ) AS total_true_ip,
-                     SUM(earned_runs) AS total_er_ps,
-                     SUM(walks) AS total_bb,
-                     SUM(hits_allowed) AS total_h_allowed
-                   FROM pitching_stats WHERE team_id = %s AND season = %s""",
-                (team_id, season),
-            )
-            ip_row = cur.fetchone()
-            # ER from game_pitching (per-game truth), with ghost-row guard.
-            cur.execute(
-                """SELECT SUM(gp.earned_runs) AS total_er, COUNT(*) AS n
-                   FROM game_pitching gp
-                   JOIN games g ON g.id = gp.game_id
-                   WHERE gp.team_id = %s
-                     AND g.season = %s
-                     AND gp.team_id IN (g.home_team_id, g.away_team_id)""",
-                (team_id, season),
-            )
-            er_row = cur.fetchone()
-            # Batting aggregates from batting_stats. Sum hits/at_bats and
-            # the OBP / SLG components so we can recompute team avg + OPS.
-            cur.execute(
-                """SELECT
-                     SUM(at_bats) AS total_ab,
-                     SUM(hits) AS total_h,
-                     SUM(walks) AS total_bb,
-                     SUM(hit_by_pitch) AS total_hbp,
-                     SUM(sacrifice_flies) AS total_sf,
-                     SUM(doubles) AS total_2b,
-                     SUM(triples) AS total_3b,
-                     SUM(home_runs) AS total_hr
-                   FROM batting_stats WHERE team_id = %s AND season = %s""",
-                (team_id, season),
-            )
-            bat_row = cur.fetchone()
-
-            # ── runs_scored / runs_allowed / run_differential ──
-            # Stored values are wildly stale (set early in the season and
-            # never updated). Compute fresh from the games table.
-            cur.execute(
-                """SELECT
-                     SUM(CASE WHEN home_team_id = %s THEN home_score
-                              WHEN away_team_id = %s THEN away_score ELSE 0 END) AS rs,
-                     SUM(CASE WHEN home_team_id = %s THEN away_score
-                              WHEN away_team_id = %s THEN home_score ELSE 0 END) AS ra
-                   FROM games
-                   WHERE season = %s AND status = 'final'
-                     AND (home_team_id = %s OR away_team_id = %s)""",
-                (team_id, team_id, team_id, team_id, season, team_id, team_id),
-            )
-            scoring = cur.fetchone()
-            if scoring:
-                rs = scoring["rs"] or 0
-                ra = scoring["ra"] or 0
-                team_stats_row["runs_scored"] = rs
-                team_stats_row["runs_allowed"] = ra
-                team_stats_row["run_differential"] = rs - ra
-
-            # ── team_era ──
-            true_ip = float((ip_row or {}).get("total_true_ip") or 0)
-            gp_n = (er_row["n"] if er_row else 0) or 0
-            if gp_n > 0:
-                total_er = (er_row["total_er"] or 0)
-            else:
-                total_er = (ip_row["total_er_ps"] if ip_row else 0) or 0
-            if true_ip > 0:
-                team_stats_row["team_era"] = round(total_er * 9 / true_ip, 2)
-
-            # ── team_whip ──
-            total_bb_pit = (ip_row["total_bb"] if ip_row else 0) or 0
-            total_h_allowed = (ip_row["total_h_allowed"] if ip_row else 0) or 0
-            if true_ip > 0:
-                team_stats_row["team_whip"] = round((total_bb_pit + total_h_allowed) / true_ip, 3)
-
-            # ── team_batting_avg, team_ops ──
-            if bat_row:
-                ab = bat_row["total_ab"] or 0
-                h = bat_row["total_h"] or 0
-                bb = bat_row["total_bb"] or 0
-                hbp = bat_row["total_hbp"] or 0
-                sf = bat_row["total_sf"] or 0
-                d2b = bat_row["total_2b"] or 0
-                t3b = bat_row["total_3b"] or 0
-                hr = bat_row["total_hr"] or 0
-                if ab > 0:
-                    team_stats_row["team_batting_avg"] = round(h / ab, 3)
-                    # SLG = total_bases / AB, where total_bases = 1B + 2*2B + 3*3B + 4*HR
-                    # 1B = H - 2B - 3B - HR
-                    singles = h - d2b - t3b - hr
-                    total_bases = singles + 2 * d2b + 3 * t3b + 4 * hr
-                    slg = total_bases / ab
-                    obp_denom = ab + bb + hbp + sf
-                    obp = (h + bb + hbp) / obp_denom if obp_denom > 0 else 0
-                    team_stats_row["team_ops"] = round(obp + slg, 3)
+            canonical = get_team_aggregates(cur, team_id, season)
+            # Map canonical keys → team_season_stats column names
+            field_map = {
+                "team_era":          "team_era",
+                "team_whip":         "team_whip",
+                "team_avg":          "team_batting_avg",
+                "team_ops":          "team_ops",
+                "runs_scored":       "runs_scored",
+                "runs_allowed":      "runs_allowed",
+                "run_differential":  "run_differential",
+            }
+            for canon_key, ts_key in field_map.items():
+                v = canonical.get(canon_key)
+                if v is not None:
+                    team_stats_row[ts_key] = v
 
         cur.execute(
             """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
@@ -8016,69 +7911,30 @@ def team_history(team_id: int):
             s["team_wrc_plus"] = round(bat_agg["weighted_wrc"] / qpa, 1) if qpa > 0 else None
             qip = pit_agg["qualified_ip"] or 0
             s["team_fip"] = round(pit_agg["weighted_fip"] / qip, 2) if qip > 0 else None
-            # ── Fresh runs_scored / runs_allowed / run_differential from
-            # the games table. Stored values in team_season_stats are
-            # wildly stale (Bushnell 2026: stored 282/244, actual 365/319).
-            cur.execute(
-                """SELECT
-                     SUM(CASE WHEN home_team_id = %s THEN home_score
-                              WHEN away_team_id = %s THEN away_score ELSE 0 END) AS rs,
-                     SUM(CASE WHEN home_team_id = %s THEN away_score
-                              WHEN away_team_id = %s THEN home_score ELSE 0 END) AS ra
-                   FROM games
-                   WHERE season = %s AND status = 'final'
-                     AND (home_team_id = %s OR away_team_id = %s)""",
-                (team_id, team_id, team_id, team_id, yr, team_id, team_id),
-            )
-            scoring = cur.fetchone()
-            if scoring:
-                rs = scoring["rs"] or 0
-                ra = scoring["ra"] or 0
-                # Only override when we actually have games data for the season
-                # (older years pre-game-table population fall back to stored).
-                if rs > 0 or ra > 0:
-                    s["runs_scored"] = rs
-                    s["runs_allowed"] = ra
-                    s["run_differential"] = rs - ra
-
-            # ── Override team_era / team_whip / team_batting_avg / team_ops
-            # with fresh on-the-fly computations. The stored columns in
-            # team_season_stats are not maintained by any script and go stale
-            # within a season as new stats land. Recomputing from the
-            # per-player rows ensures the team page matches the school's
-            # reported team totals.
-            true_ip = float(pit_agg["total_true_ip"] or 0)
-            gp_n = (er_agg["n"] if er_agg else 0) or 0
-            if gp_n > 0:
-                # We have per-game coverage for this season → trust it
-                total_er = er_agg["total_er"] or 0
-            else:
-                # No game_pitching rows (older season) → cumulative stats
-                # are the only source we have
-                total_er = pit_agg["total_er_ps"] or 0
-            if true_ip > 0:
-                s["team_era"] = round(total_er * 9 / true_ip, 2)
-                total_bb_pit = pit_agg["total_bb_pit"] or 0
-                total_h_allowed = pit_agg["total_h_allowed"] or 0
-                s["team_whip"] = round((total_bb_pit + total_h_allowed) / true_ip, 3)
-
-            if bat_team:
-                ab = bat_team["total_ab"] or 0
-                h = bat_team["total_h_bat"] or 0
-                bb = bat_team["total_bb_bat"] or 0
-                hbp = bat_team["total_hbp"] or 0
-                sf = bat_team["total_sf"] or 0
-                d2b = bat_team["total_2b"] or 0
-                t3b = bat_team["total_3b"] or 0
-                hr = bat_team["total_hr_bat"] or 0
-                if ab > 0:
-                    s["team_batting_avg"] = round(h / ab, 3)
-                    singles = h - d2b - t3b - hr
-                    total_bases = singles + 2 * d2b + 3 * t3b + 4 * hr
-                    slg = total_bases / ab
-                    obp_denom = ab + bb + hbp + sf
-                    obp = (h + bb + hbp) / obp_denom if obp_denom > 0 else 0
-                    s["team_ops"] = round(obp + slg, 3)
+            # ── Override every stored team_season_stats aggregate with
+            # the canonical helper's fresh values. The stored columns
+            # aren't maintained by any script and go stale during the
+            # season. See get_team_aggregates() for source-of-truth
+            # details (game_pitching ER, true baseball-notation IP,
+            # NCAA OBP convention, RS/RA from games table, etc.).
+            canonical = get_team_aggregates(cur, team_id, yr)
+            field_map = {
+                "team_era":          "team_era",
+                "team_whip":         "team_whip",
+                "team_avg":          "team_batting_avg",
+                "team_ops":          "team_ops",
+                "runs_scored":       "runs_scored",
+                "runs_allowed":      "runs_allowed",
+                "run_differential":  "run_differential",
+            }
+            for canon_key, ts_key in field_map.items():
+                v = canonical.get(canon_key)
+                # For older seasons with no game_pitching coverage and no
+                # games-table rows, the canonical helper returns None / 0
+                # for some fields. Only override when we actually have a
+                # fresh value to write.
+                if v is not None and not (canon_key in ("runs_scored", "runs_allowed") and v == 0):
+                    s[ts_key] = v
 
         # ---- Season stat leaders (top player per category per season) ----
         available_seasons = [s["season"] for s in seasons]
