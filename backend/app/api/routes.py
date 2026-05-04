@@ -7920,23 +7920,35 @@ def team_history(team_id: int):
             # details (game_pitching ER, true baseball-notation IP,
             # NCAA OBP convention, RS/RA from games table, etc.).
             canonical = get_team_aggregates(cur, team_id, yr)
-            field_map = {
-                "team_era":          "team_era",
-                "team_whip":         "team_whip",
-                "team_avg":          "team_batting_avg",
-                "team_ops":          "team_ops",
-                "runs_scored":       "runs_scored",
-                "runs_allowed":      "runs_allowed",
-                "run_differential":  "run_differential",
-            }
-            for canon_key, ts_key in field_map.items():
+            # team_era/whip/avg/ops always overridden — those come from per-
+            # player tables (batting_stats / pitching_stats) which are
+            # populated for all seasons.
+            for canon_key, ts_key in [
+                ("team_era",  "team_era"),
+                ("team_whip", "team_whip"),
+                ("team_avg",  "team_batting_avg"),
+                ("team_ops",  "team_ops"),
+            ]:
                 v = canonical.get(canon_key)
-                # For older seasons with no game_pitching coverage and no
-                # games-table rows, the canonical helper returns None / 0
-                # for some fields. Only override when we actually have a
-                # fresh value to write.
-                if v is not None and not (canon_key in ("runs_scored", "runs_allowed") and v == 0):
+                if v is not None:
                     s[ts_key] = v
+            # RS/RA/run_diff come from the games table. For older seasons
+            # pre-games-table population, canonical returns 0 — fall back to
+            # the stored team_season_stats values in that case. Compute
+            # run_differential from whichever RS/RA we end up using so it
+            # always matches the displayed numbers (rather than being
+            # overridden to 0 separately).
+            canon_rs = canonical.get("runs_scored") or 0
+            canon_ra = canonical.get("runs_allowed") or 0
+            if canon_rs > 0 or canon_ra > 0:
+                s["runs_scored"] = canon_rs
+                s["runs_allowed"] = canon_ra
+                s["run_differential"] = canon_rs - canon_ra
+            else:
+                # Older season — keep stored RS/RA, recompute run_diff from them
+                rs = s.get("runs_scored") or 0
+                ra = s.get("runs_allowed") or 0
+                s["run_differential"] = rs - ra
 
         # ---- Season stat leaders (top player per category per season) ----
         available_seasons = [s["season"] for s in seasons]
