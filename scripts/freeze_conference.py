@@ -297,6 +297,33 @@ def _fixup_frozen_conference_section(cur, season, conf_section, bracket_section)
                 new_bracket_teams.append(bt)
         bracket_section["teams"] = new_bracket_teams
 
+    # ── Lock in deterministic playoff_pct and seed_probabilities ─────────
+    # The regular season is over by definition for a frozen conference, so
+    # the seed each team holds is FINAL. The Monte Carlo seed_probabilities
+    # carried over from the live projection still reflect simulation-level
+    # variance (tied teams, stale future_schedules entries), which is wrong
+    # post-freeze. Override deterministically based on the post-H2H order.
+    playoff_spots = conf_section.get("playoff_spots") or 0
+    for idx, t in enumerate(conf_section["teams"]):
+        if playoff_spots > 0 and idx < playoff_spots:
+            seed = idx + 1
+            t["playoff_pct"] = 1.0
+            t["seed_probabilities"] = {str(seed): 1.0}
+        else:
+            t["playoff_pct"] = 0.0
+            t["seed_probabilities"] = {}
+            t["tourney_win_pct"] = 0.0  # team did not make the tournament
+
+    # Bracket teams: every team in the bracket made the playoffs, and their
+    # seed was just rewritten by the loop above. Lock the seed_probabilities
+    # to that seed.
+    if bracket_section and bracket_section.get("teams"):
+        for bt in bracket_section["teams"]:
+            bt["playoff_pct"] = 1.0
+            s = bt.get("seed")
+            if s:
+                bt["seed_probabilities"] = {str(s): 1.0}
+
     logger.info("  fixup applied: actuals overrode projections, H2H tiebreaker re-sorted")
 
 
