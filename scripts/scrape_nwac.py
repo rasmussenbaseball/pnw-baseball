@@ -670,6 +670,14 @@ def process_all_data(season_str, season_year, skip_rosters=False):
             logger.info(f"{'='*50}")
             logger.info(f"Scraping {db_short} ({slug})...")
 
+            # Track which players we wrote rows for this team, so we can prune
+            # stale rows (e.g. a position player who was incorrectly attributed
+            # pitching stats in an earlier scrape but is no longer in source data).
+            team_batting_player_ids = set()
+            team_pitching_player_ids = set()
+            team_batting_count = 0
+            team_pitching_count = 0
+
             # ---- Extract team W-L record from team overview page ----
             team_page_url = f"{BASE_URL}/sports/bsb/{season_str}/teams/{slug}"
             team_page_html = fetch_page(team_page_url, season_str=season_str)
@@ -819,6 +827,8 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                         ),
                     )
                     batting_count += 1
+                    team_batting_count += 1
+                    team_batting_player_ids.add(player_id)
 
                 except Exception as e:
                     logger.error(f"  Error processing batting: {batter.get('name')} ({db_short}) - {e}")
@@ -924,10 +934,38 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                         ),
                     )
                     pitching_count += 1
+                    team_pitching_count += 1
+                    team_pitching_player_ids.add(player_id)
 
                 except Exception as e:
                     logger.error(f"  Error processing pitching: {pitcher.get('name')} ({db_short}) - {e}")
                     pitching_errors += 1
+
+            # ---- Prune stale rows ----
+            # Delete batting_stats / pitching_stats rows for this team-season
+            # whose player_id wasn't touched in the current scrape. This stops
+            # phantom rows accumulating when a player disappears from source
+            # (e.g. scoring corrections that retroactively remove an erroneous
+            # pitching attribution from a position player). Sanity threshold
+            # guards against catastrophic deletion if a scrape returned almost
+            # nothing due to a network or parsing error.
+            season_int = int(season_year)
+            if team_pitching_count >= 3 and team_pitching_player_ids:
+                cur.execute(
+                    "DELETE FROM pitching_stats WHERE team_id = %s AND season = %s "
+                    "AND NOT (player_id = ANY(%s))",
+                    (team_id, season_int, list(team_pitching_player_ids))
+                )
+                if cur.rowcount > 0:
+                    logger.info(f"  Pruned {cur.rowcount} stale pitching_stats row(s)")
+            if team_batting_count >= 5 and team_batting_player_ids:
+                cur.execute(
+                    "DELETE FROM batting_stats WHERE team_id = %s AND season = %s "
+                    "AND NOT (player_id = ANY(%s))",
+                    (team_id, season_int, list(team_batting_player_ids))
+                )
+                if cur.rowcount > 0:
+                    logger.info(f"  Pruned {cur.rowcount} stale batting_stats row(s)")
 
     # ---- WAF safeguard ----
     if batting_count == 0 and pitching_count == 0:
@@ -969,6 +1007,11 @@ def process_willamette(season_str, season_year, skip_rosters=False):
 
     batting_count = 0
     pitching_count = 0
+    # Track which players we wrote rows for this scrape, so we can prune
+    # stale rows (e.g. a position player who was incorrectly attributed
+    # pitching stats in an earlier scrape but is no longer in source data).
+    batting_player_ids = set()
+    pitching_player_ids = set()
 
     # Fetch stats via template endpoint (same pattern as NWAC)
     def _wil_template(pos):
@@ -1112,6 +1155,7 @@ def process_willamette(season_str, season_year, skip_rosters=False):
                     ),
                 )
                 batting_count += 1
+                batting_player_ids.add(player_id)
 
             except Exception as e:
                 logger.error(f"  Error processing Willamette batting: {batter.get('name')} - {e}")
@@ -1205,9 +1249,36 @@ def process_willamette(season_str, season_year, skip_rosters=False):
                     ),
                 )
                 pitching_count += 1
+                pitching_player_ids.add(player_id)
 
             except Exception as e:
                 logger.error(f"  Error processing Willamette pitching: {pitcher.get('name')} - {e}")
+
+        # ---- Prune stale rows ----
+        # Delete batting_stats / pitching_stats rows for this team-season
+        # whose player_id wasn't touched in the current scrape. This stops
+        # phantom rows accumulating when a player disappears from source
+        # (e.g. scoring corrections that retroactively remove an erroneous
+        # pitching attribution from a position player). Sanity threshold
+        # guards against catastrophic deletion if a scrape returned almost
+        # nothing due to a network or parsing error.
+        season_int = int(season_year)
+        if pitching_count >= 3 and pitching_player_ids:
+            cur.execute(
+                "DELETE FROM pitching_stats WHERE team_id = %s AND season = %s "
+                "AND NOT (player_id = ANY(%s))",
+                (team_id, season_int, list(pitching_player_ids))
+            )
+            if cur.rowcount > 0:
+                logger.info(f"  Pruned {cur.rowcount} stale pitching_stats row(s)")
+        if batting_count >= 5 and batting_player_ids:
+            cur.execute(
+                "DELETE FROM batting_stats WHERE team_id = %s AND season = %s "
+                "AND NOT (player_id = ANY(%s))",
+                (team_id, season_int, list(batting_player_ids))
+            )
+            if cur.rowcount > 0:
+                logger.info(f"  Pruned {cur.rowcount} stale batting_stats row(s)")
 
         conn.commit()
 
@@ -1296,6 +1367,11 @@ def process_seattle_u(season_year):
 
     batting_count = 0
     pitching_count = 0
+    # Track which players we wrote rows for this scrape, so we can prune
+    # stale rows (e.g. a position player who was incorrectly attributed
+    # pitching stats in an earlier scrape but is no longer in source data).
+    batting_player_ids = set()
+    pitching_player_ids = set()
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1400,6 +1476,7 @@ def process_seattle_u(season_year):
                         ),
                     )
                     batting_count += 1
+                    batting_player_ids.add(player_id)
 
                 # Process pitching
                 if has_pitching:
@@ -1464,9 +1541,36 @@ def process_seattle_u(season_year):
                         ),
                     )
                     pitching_count += 1
+                    pitching_player_ids.add(player_id)
 
             except Exception as e:
                 logger.warning(f"  Error processing Seattle U player {player.get('first_name')} {player.get('last_name')}: {e}")
+
+        # ---- Prune stale rows ----
+        # Delete batting_stats / pitching_stats rows for this team-season
+        # whose player_id wasn't touched in the current scrape. This stops
+        # phantom rows accumulating when a player disappears from source
+        # (e.g. scoring corrections that retroactively remove an erroneous
+        # pitching attribution from a position player). Sanity threshold
+        # guards against catastrophic deletion if a scrape returned almost
+        # nothing due to a network or parsing error.
+        season_int = int(season_year)
+        if pitching_count >= 3 and pitching_player_ids:
+            cur.execute(
+                "DELETE FROM pitching_stats WHERE team_id = %s AND season = %s "
+                "AND NOT (player_id = ANY(%s))",
+                (team_id, season_int, list(pitching_player_ids))
+            )
+            if cur.rowcount > 0:
+                logger.info(f"  Pruned {cur.rowcount} stale pitching_stats row(s)")
+        if batting_count >= 5 and batting_player_ids:
+            cur.execute(
+                "DELETE FROM batting_stats WHERE team_id = %s AND season = %s "
+                "AND NOT (player_id = ANY(%s))",
+                (team_id, season_int, list(batting_player_ids))
+            )
+            if cur.rowcount > 0:
+                logger.info(f"  Pruned {cur.rowcount} stale batting_stats row(s)")
 
         conn.commit()
 
