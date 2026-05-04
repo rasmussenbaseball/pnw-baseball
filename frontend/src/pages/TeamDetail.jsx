@@ -283,7 +283,9 @@ function TeamHistoryTab({ history, loading, teamId }) {
     return <div className="text-gray-500 py-8">No history data available.</div>
   }
 
-  const { seasons, season_leaders, career_batting_leaders, career_pitching_leaders, all_time_summary } = history
+  const { seasons, season_leaders, career_batting_leaders, career_pitching_leaders,
+          single_season_batting_records, single_season_pitching_records,
+          all_time_summary } = history
   const numSeasons = all_time_summary?.num_seasons || 0
   const minYear = seasons.length > 0 ? seasons[seasons.length - 1].season : null
   const maxYear = seasons.length > 0 ? seasons[0].season : null
@@ -517,6 +519,99 @@ function TeamHistoryTab({ history, loading, teamId }) {
           <CareerLeaderboards leaders={career_pitching_leaders} type="pitching" />
         )}
       </div>
+
+      {/* Single-Season Records */}
+      <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-pnw-slate">Single-Season Records</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Top 5 single-season performances · min 50 PA / 20 IP</p>
+          </div>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setLeaderCategory('batting')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                leaderCategory === 'batting'
+                  ? 'bg-white text-pnw-slate shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Batting
+            </button>
+            <button
+              onClick={() => setLeaderCategory('pitching')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                leaderCategory === 'pitching'
+                  ? 'bg-white text-pnw-slate shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Pitching
+            </button>
+          </div>
+        </div>
+
+        {leaderCategory === 'batting' && (
+          <SingleSeasonRecords leaders={single_season_batting_records} type="batting" />
+        )}
+        {leaderCategory === 'pitching' && (
+          <SingleSeasonRecords leaders={single_season_pitching_records} type="pitching" />
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function SingleSeasonRecords({ leaders, type }) {
+  if (!leaders || Object.keys(leaders).length === 0) {
+    return <div className="text-gray-400 text-sm">No single-season data available.</div>
+  }
+
+  const order = type === 'batting'
+    ? ['oWAR', 'AVG', 'OPS', 'wRC+', 'HR', 'RBI', 'H', 'R', 'SB', 'BB']
+    : ['pWAR', 'ERA', 'WHIP', 'FIP', 'K', 'W', 'SV', 'IP']
+
+  const categories = order.filter(k => leaders[k] && leaders[k].length > 0)
+
+  const fmtVal = (cat, value) => {
+    if (value == null) return '—'
+    if (cat === 'AVG' || cat === 'OPS') return value.toFixed(3)
+    if (cat === 'ERA' || cat === 'WHIP' || cat === 'FIP') return value.toFixed(2)
+    if (cat === 'oWAR' || cat === 'pWAR') return value.toFixed(1)
+    if (cat === 'IP') return value.toFixed(1)
+    if (cat === 'wRC+') return Math.round(value)
+    return value
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {categories.map((cat) => (
+        <div key={cat} className="bg-gray-50 rounded-lg p-3">
+          <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{cat}</div>
+          <div className="space-y-1">
+            {leaders[cat].slice(0, 5).map((player, i) => (
+              <div key={`${player.player_id}-${player.season}`} className="flex items-center gap-2 text-xs">
+                <span className={`w-4 text-right font-bold ${
+                  i === 0 ? 'text-amber-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-300'
+                }`}>
+                  {i + 1}
+                </span>
+                <Link
+                  to={`/player/${player.player_id}`}
+                  className="text-pnw-teal hover:underline truncate flex-1"
+                >
+                  {player.name}
+                </Link>
+                <span className="font-semibold text-pnw-slate whitespace-nowrap">{fmtVal(cat, player.value)}</span>
+                <span className="text-gray-400 text-[10px] whitespace-nowrap">
+                  '{String(player.season).slice(-2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

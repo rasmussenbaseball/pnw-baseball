@@ -8155,6 +8155,114 @@ def team_history(team_id: int):
                 if r.get(col) is not None
             ]
 
+        # ---- Single-season records (top 5 per category) ----
+        # Mirrors career leaders but aggregates to (player, season) rows
+        # rather than career-totaled. Qualifiers: 50 PA for batting,
+        # 20 IP for pitching (rate-stat exclusions still applied via the
+        # underlying NULL guards).
+        cur.execute(
+            """SELECT p.id AS player_id, p.first_name, p.last_name, p.position,
+                      bs.season,
+                      bs.plate_appearances AS pa,
+                      bs.batting_avg AS avg,
+                      bs.on_base_pct AS obp,
+                      bs.slugging_pct AS slg,
+                      bs.ops,
+                      bs.wrc_plus,
+                      bs.home_runs AS hr,
+                      bs.rbi,
+                      bs.hits AS h,
+                      bs.runs AS r,
+                      bs.walks AS bb,
+                      bs.stolen_bases AS sb,
+                      bs.offensive_war AS owar
+               FROM batting_stats bs
+               JOIN players p ON p.id = bs.player_id
+               WHERE bs.team_id = %s
+                 AND bs.plate_appearances >= 50""",
+            (team_id,),
+        )
+        season_batting = [dict(r) for r in cur.fetchall()]
+
+        season_bat_records = {}
+        bat_season_cats = [
+            ("owar", "oWAR", True),
+            ("avg",  "AVG",  True),
+            ("ops",  "OPS",  True),
+            ("wrc_plus", "wRC+", True),
+            ("hr",   "HR",   True),
+            ("rbi",  "RBI",  True),
+            ("h",    "H",    True),
+            ("sb",   "SB",   True),
+            ("r",    "R",    True),
+            ("bb",   "BB",   True),
+        ]
+        for col, label, desc in bat_season_cats:
+            sorted_rows = sorted(
+                [r for r in season_batting if r.get(col) is not None],
+                key=lambda x: x[col],
+                reverse=desc,
+            )
+            season_bat_records[label] = [
+                {
+                    "player_id": r["player_id"],
+                    "name": f"{r['first_name']} {r['last_name']}",
+                    "position": r["position"],
+                    "season": r["season"],
+                    "value": r[col],
+                    "pa": r["pa"],
+                }
+                for r in sorted_rows[:5]
+            ]
+
+        cur.execute(
+            """SELECT p.id AS player_id, p.first_name, p.last_name, p.position,
+                      ps.season,
+                      ps.innings_pitched AS ip,
+                      ps.era,
+                      ps.whip,
+                      ps.fip,
+                      ps.strikeouts AS k,
+                      ps.wins AS w,
+                      ps.saves AS sv,
+                      ps.pitching_war AS pwar
+               FROM pitching_stats ps
+               JOIN players p ON p.id = ps.player_id
+               WHERE ps.team_id = %s
+                 AND ps.innings_pitched >= 20""",
+            (team_id,),
+        )
+        season_pitching = [dict(r) for r in cur.fetchall()]
+
+        season_pit_records = {}
+        pit_season_cats = [
+            ("pwar", "pWAR", True),
+            ("era",  "ERA",  False),
+            ("whip", "WHIP", False),
+            ("fip",  "FIP",  False),
+            ("k",    "K",    True),
+            ("w",    "W",    True),
+            ("sv",   "SV",   True),
+            ("ip",   "IP",   True),
+        ]
+        for col, label, desc in pit_season_cats:
+            sorted_rows = sorted(
+                [r for r in season_pitching if r.get(col) is not None],
+                key=lambda x: x[col],
+                reverse=desc,
+            )
+            season_pit_records[label] = [
+                {
+                    "player_id": r["player_id"],
+                    "name": f"{r['first_name']} {r['last_name']}",
+                    "position": r["position"],
+                    "season": r["season"],
+                    "value": r[col],
+                    "ip": float(r["ip"]) if r["ip"] is not None else None,
+                }
+                for r in sorted_rows[:5]
+            ]
+
         # ---- All-time totals summary ----
         cur.execute(
             """SELECT SUM(wins) as total_wins, SUM(losses) as total_losses,
@@ -8189,6 +8297,8 @@ def team_history(team_id: int):
             "season_leaders": season_leaders,
             "career_batting_leaders": career_bat_leaders,
             "career_pitching_leaders": career_pit_leaders,
+            "single_season_batting_records": season_bat_records,
+            "single_season_pitching_records": season_pit_records,
             "all_time_summary": all_time_summary,
         }
 
