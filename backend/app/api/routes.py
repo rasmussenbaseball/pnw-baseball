@@ -6746,13 +6746,14 @@ def team_stats(team_id: int, season: int = Query(...)):
                            THEN 2.0/3.0
                          ELSE 0
                        END
-                     ) AS total_true_ip
+                     ) AS total_true_ip,
+                     SUM(earned_runs) AS total_er_ps
                    FROM pitching_stats WHERE team_id = %s AND season = %s""",
                 (team_id, season),
             )
             ip_row = cur.fetchone()
             cur.execute(
-                """SELECT SUM(gp.earned_runs) AS total_er
+                """SELECT SUM(gp.earned_runs) AS total_er, COUNT(*) AS n
                    FROM game_pitching gp
                    JOIN games g ON g.id = gp.game_id
                    WHERE gp.team_id = %s
@@ -6762,7 +6763,13 @@ def team_stats(team_id: int, season: int = Query(...)):
             )
             er_row = cur.fetchone()
             true_ip = float((ip_row or {}).get("total_true_ip") or 0)
-            total_er = (er_row or {}).get("total_er") or 0
+            gp_n = (er_row["n"] if er_row else 0) or 0
+            if gp_n > 0:
+                # Per-game coverage exists → game_pitching is the truth
+                total_er = (er_row["total_er"] or 0)
+            else:
+                # No game_pitching rows (older season, etc.) → use cumulative
+                total_er = (ip_row["total_er_ps"] if ip_row else 0) or 0
             if true_ip > 0:
                 team_stats_row["team_era"] = round(total_er * 9 / true_ip, 2)
 
@@ -7605,6 +7612,7 @@ def team_history(team_id: int):
                               ELSE 0
                             END
                           ) as total_true_ip,
+                          SUM(earned_runs) as total_er_ps,
                           SUM(strikeouts) as total_k,
                           SUM(wins) as total_w,
                           SUM(losses) as total_l,
@@ -7619,12 +7627,15 @@ def team_history(team_id: int):
             )
             pit_agg = cur.fetchone()
 
-            # ER comes from game_pitching (per-game truth), not the cumulative
-            # pitching_stats which can carry stale ER from before scoring
-            # corrections. See team_stats endpoint comments for why this
-            # hybrid (game_pitching ER + pitching_stats IP) is used.
+            # ER comes from game_pitching (per-game truth) when we have any
+            # box-score coverage for this team-season; the cumulative
+            # pitching_stats can carry stale ER from before scoring
+            # corrections. For older seasons where game_pitching is empty
+            # (we only started per-game scraping recently), fall back to
+            # pitching_stats — those past-season totals don't drift since
+            # the season is closed.
             cur.execute(
-                """SELECT SUM(gp.earned_runs) AS total_er
+                """SELECT SUM(gp.earned_runs) AS total_er, COUNT(*) AS n
                    FROM game_pitching gp
                    JOIN games g ON g.id = gp.game_id
                    WHERE gp.team_id = %s
@@ -7649,7 +7660,14 @@ def team_history(team_id: int):
             # in team_season_stats is not maintained by any script and goes
             # stale within a season as new pitching data lands.
             true_ip = float(pit_agg["total_true_ip"] or 0)
-            total_er = (er_agg["total_er"] if er_agg else 0) or 0
+            gp_n = (er_agg["n"] if er_agg else 0) or 0
+            if gp_n > 0:
+                # We have per-game coverage for this season → trust it
+                total_er = er_agg["total_er"] or 0
+            else:
+                # No game_pitching rows (older season) → cumulative stats
+                # are the only source we have
+                total_er = pit_agg["total_er_ps"] or 0
             if true_ip > 0:
                 s["team_era"] = round(total_er * 9 / true_ip, 2)
 
