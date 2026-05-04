@@ -511,6 +511,12 @@ def run(conf_key, end_date, season, force, dry_run):
             cur.execute("DELETE FROM batting_stats_frozen WHERE conf_key = %s", (conf_key,))
             cur.execute("DELETE FROM pitching_stats_frozen WHERE conf_key = %s", (conf_key,))
             cur.execute("DELETE FROM team_season_stats_frozen WHERE conf_key = %s", (conf_key,))
+            # Also clear the projection snapshot so that the playoff_projections
+            # endpoint (called below to capture fresh data) returns live Monte
+            # Carlo numbers for THIS conference rather than overlaying the old
+            # snapshot. Without this, bugs from prior runs cascade forward.
+            cur.execute("DELETE FROM projection_snapshots WHERE conf_key = %s AND season = %s",
+                        (conf_key, season))
 
         logger.info("Snapshotting player and team aggregates...")
         snapshot_table(cur, "batting_stats", "batting_stats_frozen",
