@@ -6717,6 +6717,35 @@ def team_stats(team_id: int, season: int = Query(...)):
         )
         team_stats_row = cur.fetchone()
 
+        # Override team_era with a fresh computation from pitching_stats.
+        # The stored team_era in team_season_stats is not maintained by any
+        # script and goes stale; compute it on the fly here, using
+        # baseball-notation IP (5.2 = 5 2/3, not decimal 5.2).
+        if team_stats_row:
+            team_stats_row = dict(team_stats_row)
+            cur.execute(
+                """SELECT
+                     SUM(earned_runs) AS total_er,
+                     SUM(
+                       FLOOR(innings_pitched) +
+                       CASE
+                         WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 1
+                           THEN 1.0/3.0
+                         WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 2
+                           THEN 2.0/3.0
+                         ELSE 0
+                       END
+                     ) AS total_true_ip
+                   FROM pitching_stats WHERE team_id = %s AND season = %s""",
+                (team_id, season),
+            )
+            era_row = cur.fetchone()
+            if era_row:
+                true_ip = float(era_row["total_true_ip"] or 0)
+                total_er = era_row["total_er"] or 0
+                if true_ip > 0:
+                    team_stats_row["team_era"] = round(total_er * 9 / true_ip, 2)
+
         cur.execute(
             """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
                FROM batting_stats bs
@@ -7536,9 +7565,27 @@ def team_history(team_id: int):
                 (team_id, yr),
             )
             bat_agg = cur.fetchone()
+            # Note: innings_pitched is stored in baseball notation (5.2 = 5 2/3),
+            # so naive SUM treats 5.2 as a decimal and undercounts. The
+            # `total_true_ip` expression converts each row's notation to a
+            # true decimal innings count before summing. `total_ip` (decimal-
+            # summed) is left as-is for the FIP weighting since both
+            # numerator and denominator use the same convention there and
+            # cancel out.
             cur.execute(
                 """SELECT COUNT(*) as num_pitchers,
                           SUM(innings_pitched) as total_ip,
+                          SUM(
+                            FLOOR(innings_pitched) +
+                            CASE
+                              WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 1
+                                THEN 1.0/3.0
+                              WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 2
+                                THEN 2.0/3.0
+                              ELSE 0
+                            END
+                          ) as total_true_ip,
+                          SUM(earned_runs) as total_er,
                           SUM(strikeouts) as total_k,
                           SUM(wins) as total_w,
                           SUM(losses) as total_l,
@@ -7564,6 +7611,13 @@ def team_history(team_id: int):
             s["team_wrc_plus"] = round(bat_agg["weighted_wrc"] / qpa, 1) if qpa > 0 else None
             qip = pit_agg["qualified_ip"] or 0
             s["team_fip"] = round(pit_agg["weighted_fip"] / qip, 2) if qip > 0 else None
+            # Override team_era with a fresh computation. The stored column
+            # in team_season_stats is not maintained by any script and goes
+            # stale within a season as new pitching data lands.
+            true_ip = float(pit_agg["total_true_ip"] or 0)
+            total_er = pit_agg["total_er"] or 0
+            if true_ip > 0:
+                s["team_era"] = round(total_er * 9 / true_ip, 2)
 
         # ---- Season stat leaders (top player per category per season) ----
         available_seasons = [s["season"] for s in seasons]
