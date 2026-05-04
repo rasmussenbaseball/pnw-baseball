@@ -517,8 +517,15 @@ def get_team_aggregates(cur, team_id: int, season: int) -> dict:
         singles = h - d2b - d3b - hr_bat
         total_bases = singles + 2 * d2b + 3 * d3b + 4 * hr_bat
         result["team_slg"] = round(total_bases / ab, 3)
-        obp_denom = ab + bb_bat + hbp + sf
-        result["team_obp"] = round((h + bb_bat + hbp) / obp_denom, 3) if obp_denom > 0 else None
+        # OBP: NCAA convention uses PA in the denominator (which includes
+        # both sac flies AND sac bunts). Matches what college stats portals
+        # and school sites report. The FanGraphs convention (AB+BB+HBP+SF
+        # only, excluding SH) shifts OBP up by ~.003 for college teams and
+        # is the wrong call for this site.
+        if pa > 0:
+            result["team_obp"] = round((h + bb_bat + hbp) / pa, 3)
+        else:
+            result["team_obp"] = None
         if result["team_obp"] is not None:
             result["team_ops"] = round(result["team_obp"] + result["team_slg"], 3)
         else:
