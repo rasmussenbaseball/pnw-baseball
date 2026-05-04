@@ -281,20 +281,48 @@ def _fixup_frozen_conference_section(cur, season, conf_section, bracket_section)
     by_pid = {t["team_id"]: t for t in teams}
     conf_section["teams"] = [by_pid[p["team_id"]] for p in proxies]
 
-    # Re-order the bracket section the same way (bracket teams have a
-    # `team_id` field too). Preserve seed metadata if present.
+    # Re-build the bracket section from the top-N teams of the re-sorted
+    # conf_section. We can't just reshuffle the original bracket membership:
+    # the live projection may have included teams whose stale projected
+    # win% nudged them above teams who actually finished higher (e.g. GNAC
+    # 2026: live projection put CWU at .469 ahead of WOU at .466 due to
+    # stale future games, but actuals put WOU at .483 vs CWU .469 — so the
+    # bracket field itself needs to change, not just the order).
+    #
+    # Field size is taken from len(original bracket.teams) as a proxy for
+    # the conference's playoff field count (no playoff_spots field is
+    # present on the projections payload).
     if bracket_section and bracket_section.get("teams"):
-        b_by_pid = {t["team_id"]: t for t in bracket_section["teams"]}
-        # Bracket only includes teams that made the cut; preserve membership
-        # but reseed in the new order.
+        n_spots = len(bracket_section["teams"])
+        cs_by_pid = {t["team_id"]: t for t in conf_section["teams"]}
         new_bracket_teams = []
-        seed = 1
-        for p in proxies:
-            if p["team_id"] in b_by_pid:
-                bt = dict(b_by_pid[p["team_id"]])
-                bt["seed"] = seed
-                seed += 1
-                new_bracket_teams.append(bt)
+        for seed_idx, p in enumerate(proxies[:n_spots], start=1):
+            cs_team = cs_by_pid.get(p["team_id"])
+            if cs_team is None:
+                continue
+            # Use actuals (already overridden into projected_* by the loop
+            # at the top of this function) to format the record strings
+            # the bracket uses.
+            pcw = cs_team.get("projected_conf_wins") or 0
+            pcl = cs_team.get("projected_conf_losses") or 0
+            pw = cs_team.get("projected_wins") or 0
+            pl = cs_team.get("projected_losses") or 0
+            new_bracket_teams.append({
+                "seed": seed_idx,
+                "team_id": cs_team["team_id"],
+                "short_name": cs_team.get("short_name"),
+                "logo_url": cs_team.get("logo_url"),
+                "power_rating": cs_team.get("power_rating"),
+                "projected_conf_record": f"{int(pcw)}-{int(pcl)}",
+                "projected_overall_record": f"{int(pw)}-{int(pl)}",
+                "projected_conf_win_pct": cs_team.get("projected_conf_win_pct"),
+                # tourney_win_pct comes from the Monte Carlo simulation of
+                # the upcoming bracket games; carry it over from the conf
+                # section (MC values match between conf and bracket views).
+                # playoff_pct / seed_probabilities are set deterministically
+                # just below.
+                "tourney_win_pct": cs_team.get("tourney_win_pct"),
+            })
         bracket_section["teams"] = new_bracket_teams
 
     # ── Lock in deterministic playoff_pct and seed_probabilities ─────────
