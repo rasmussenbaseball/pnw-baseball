@@ -6735,6 +6735,10 @@ def team_stats(team_id: int, season: int = Query(...)):
         #    so we convert to true decimal innings before dividing.
         if team_stats_row:
             team_stats_row = dict(team_stats_row)
+            # Pitching aggregates from pitching_stats (cumulative). True IP
+            # converts baseball notation (5.2 = 5 2/3) before summing. ER is
+            # also captured here as a fallback for older seasons that have
+            # no game_pitching coverage.
             cur.execute(
                 """SELECT
                      SUM(
@@ -6747,11 +6751,14 @@ def team_stats(team_id: int, season: int = Query(...)):
                          ELSE 0
                        END
                      ) AS total_true_ip,
-                     SUM(earned_runs) AS total_er_ps
+                     SUM(earned_runs) AS total_er_ps,
+                     SUM(walks) AS total_bb,
+                     SUM(hits_allowed) AS total_h_allowed
                    FROM pitching_stats WHERE team_id = %s AND season = %s""",
                 (team_id, season),
             )
             ip_row = cur.fetchone()
+            # ER from game_pitching (per-game truth), with ghost-row guard.
             cur.execute(
                 """SELECT SUM(gp.earned_runs) AS total_er, COUNT(*) AS n
                    FROM game_pitching gp
@@ -6762,16 +6769,59 @@ def team_stats(team_id: int, season: int = Query(...)):
                 (team_id, season),
             )
             er_row = cur.fetchone()
+            # Batting aggregates from batting_stats. Sum hits/at_bats and
+            # the OBP / SLG components so we can recompute team avg + OPS.
+            cur.execute(
+                """SELECT
+                     SUM(at_bats) AS total_ab,
+                     SUM(hits) AS total_h,
+                     SUM(walks) AS total_bb,
+                     SUM(hit_by_pitch) AS total_hbp,
+                     SUM(sacrifice_flies) AS total_sf,
+                     SUM(doubles) AS total_2b,
+                     SUM(triples) AS total_3b,
+                     SUM(home_runs) AS total_hr
+                   FROM batting_stats WHERE team_id = %s AND season = %s""",
+                (team_id, season),
+            )
+            bat_row = cur.fetchone()
+
+            # ── team_era ──
             true_ip = float((ip_row or {}).get("total_true_ip") or 0)
             gp_n = (er_row["n"] if er_row else 0) or 0
             if gp_n > 0:
-                # Per-game coverage exists → game_pitching is the truth
                 total_er = (er_row["total_er"] or 0)
             else:
-                # No game_pitching rows (older season, etc.) → use cumulative
                 total_er = (ip_row["total_er_ps"] if ip_row else 0) or 0
             if true_ip > 0:
                 team_stats_row["team_era"] = round(total_er * 9 / true_ip, 2)
+
+            # ── team_whip ──
+            total_bb_pit = (ip_row["total_bb"] if ip_row else 0) or 0
+            total_h_allowed = (ip_row["total_h_allowed"] if ip_row else 0) or 0
+            if true_ip > 0:
+                team_stats_row["team_whip"] = round((total_bb_pit + total_h_allowed) / true_ip, 3)
+
+            # ── team_batting_avg, team_ops ──
+            if bat_row:
+                ab = bat_row["total_ab"] or 0
+                h = bat_row["total_h"] or 0
+                bb = bat_row["total_bb"] or 0
+                hbp = bat_row["total_hbp"] or 0
+                sf = bat_row["total_sf"] or 0
+                d2b = bat_row["total_2b"] or 0
+                t3b = bat_row["total_3b"] or 0
+                hr = bat_row["total_hr"] or 0
+                if ab > 0:
+                    team_stats_row["team_batting_avg"] = round(h / ab, 3)
+                    # SLG = total_bases / AB, where total_bases = 1B + 2*2B + 3*3B + 4*HR
+                    # 1B = H - 2B - 3B - HR
+                    singles = h - d2b - t3b - hr
+                    total_bases = singles + 2 * d2b + 3 * t3b + 4 * hr
+                    slg = total_bases / ab
+                    obp_denom = ab + bb + hbp + sf
+                    obp = (h + bb + hbp) / obp_denom if obp_denom > 0 else 0
+                    team_stats_row["team_ops"] = round(obp + slg, 3)
 
         cur.execute(
             """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
@@ -7613,6 +7663,8 @@ def team_history(team_id: int):
                             END
                           ) as total_true_ip,
                           SUM(earned_runs) as total_er_ps,
+                          SUM(walks) as total_bb_pit,
+                          SUM(hits_allowed) as total_h_allowed,
                           SUM(strikeouts) as total_k,
                           SUM(wins) as total_w,
                           SUM(losses) as total_l,
@@ -7626,6 +7678,21 @@ def team_history(team_id: int):
                 (team_id, yr),
             )
             pit_agg = cur.fetchone()
+            # Batting aggregates for team_batting_avg + team_ops recompute.
+            cur.execute(
+                """SELECT
+                     SUM(at_bats) AS total_ab,
+                     SUM(hits) AS total_h_bat,
+                     SUM(walks) AS total_bb_bat,
+                     SUM(hit_by_pitch) AS total_hbp,
+                     SUM(sacrifice_flies) AS total_sf,
+                     SUM(doubles) AS total_2b,
+                     SUM(triples) AS total_3b,
+                     SUM(home_runs) AS total_hr_bat
+                   FROM batting_stats WHERE team_id = %s AND season = %s""",
+                (team_id, yr),
+            )
+            bat_team = cur.fetchone()
 
             # ER comes from game_pitching (per-game truth) when we have any
             # box-score coverage for this team-season; the cumulative
@@ -7656,9 +7723,12 @@ def team_history(team_id: int):
             s["team_wrc_plus"] = round(bat_agg["weighted_wrc"] / qpa, 1) if qpa > 0 else None
             qip = pit_agg["qualified_ip"] or 0
             s["team_fip"] = round(pit_agg["weighted_fip"] / qip, 2) if qip > 0 else None
-            # Override team_era with a fresh computation. The stored column
-            # in team_season_stats is not maintained by any script and goes
-            # stale within a season as new pitching data lands.
+            # ── Override team_era / team_whip / team_batting_avg / team_ops
+            # with fresh on-the-fly computations. The stored columns in
+            # team_season_stats are not maintained by any script and go stale
+            # within a season as new stats land. Recomputing from the
+            # per-player rows ensures the team page matches the school's
+            # reported team totals.
             true_ip = float(pit_agg["total_true_ip"] or 0)
             gp_n = (er_agg["n"] if er_agg else 0) or 0
             if gp_n > 0:
@@ -7670,6 +7740,27 @@ def team_history(team_id: int):
                 total_er = pit_agg["total_er_ps"] or 0
             if true_ip > 0:
                 s["team_era"] = round(total_er * 9 / true_ip, 2)
+                total_bb_pit = pit_agg["total_bb_pit"] or 0
+                total_h_allowed = pit_agg["total_h_allowed"] or 0
+                s["team_whip"] = round((total_bb_pit + total_h_allowed) / true_ip, 3)
+
+            if bat_team:
+                ab = bat_team["total_ab"] or 0
+                h = bat_team["total_h_bat"] or 0
+                bb = bat_team["total_bb_bat"] or 0
+                hbp = bat_team["total_hbp"] or 0
+                sf = bat_team["total_sf"] or 0
+                d2b = bat_team["total_2b"] or 0
+                t3b = bat_team["total_3b"] or 0
+                hr = bat_team["total_hr_bat"] or 0
+                if ab > 0:
+                    s["team_batting_avg"] = round(h / ab, 3)
+                    singles = h - d2b - t3b - hr
+                    total_bases = singles + 2 * d2b + 3 * t3b + 4 * hr
+                    slg = total_bases / ab
+                    obp_denom = ab + bb + hbp + sf
+                    obp = (h + bb + hbp) / obp_denom if obp_denom > 0 else 0
+                    s["team_ops"] = round(obp + slg, 3)
 
         # ---- Season stat leaders (top player per category per season) ----
         available_seasons = [s["season"] for s in seasons]
