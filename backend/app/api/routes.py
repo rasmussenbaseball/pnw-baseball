@@ -2454,6 +2454,8 @@ def compare_teams(
                     batting_dict["team_obp"] = canonical["team_obp"]
                 if canonical.get("team_slg") is not None:
                     batting_dict["team_slg"] = canonical["team_slg"]
+                if canonical.get("team_ops") is not None:
+                    batting_dict["team_ops"] = canonical["team_ops"]
 
             row = dict(team)
             row["record"] = dict(record) if record else {"wins": 0, "losses": 0, "ties": 0}
