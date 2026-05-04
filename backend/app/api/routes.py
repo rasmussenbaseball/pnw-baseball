@@ -311,6 +311,248 @@ def _add_era_plus(row: dict) -> dict:
     return row
 
 
+def get_team_aggregates(cur, team_id: int, season: int) -> dict:
+    """Canonical source of truth for team-level aggregate stats.
+
+    Every team-level page on the site should derive ERA / WHIP / AVG / OPS /
+    RS / RA / WAR from THIS function, not from `team_season_stats.team_*`
+    columns (which are stored once and go stale within a season).
+
+    Sources:
+    - `batting_stats` (cumulative per-player) → AVG, OBP, SLG, OPS, wRC+, oWAR
+    - `pitching_stats` (cumulative per-player) → IP (true baseball notation),
+      WHIP, FIP weighting, pWAR
+    - `game_pitching` (per-box-score) → ER (preferred when available; the
+      cumulative pitching_stats can carry stale ER from before official
+      scoring corrections). Falls back to pitching_stats ER when no box-score
+      coverage exists for an older season.
+    - `games` (final scores) → RS, RA, run differential
+
+    Returns a dict with computed stats. Endpoints can pick the fields they
+    need by key. Returns empty dict-like values when there's no data.
+    """
+    result: dict = {}
+
+    # ── Pitching counting + weighted advanced stats from pitching_stats ──
+    # `total_true_ip` converts each row's baseball-notation IP (5.2 = 5 2/3)
+    # to true decimal innings before summing. `total_ip_decimal` is the
+    # naive sum (used only for FIP/xFIP IP-weighting where numerator and
+    # denominator share the same convention so the bug cancels).
+    cur.execute(
+        """SELECT
+             SUM(innings_pitched) AS total_ip_decimal,
+             SUM(
+               FLOOR(innings_pitched) +
+               CASE
+                 WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 1
+                   THEN 1.0/3.0
+                 WHEN ROUND((innings_pitched - FLOOR(innings_pitched))::numeric * 10) = 2
+                   THEN 2.0/3.0
+                 ELSE 0
+               END
+             ) AS total_true_ip,
+             SUM(earned_runs) AS total_er_ps,
+             SUM(runs_allowed) AS total_ra_ps,
+             SUM(walks) AS total_bb_pit,
+             SUM(hits_allowed) AS total_h_allowed,
+             SUM(strikeouts) AS total_k_pit,
+             SUM(home_runs_allowed) AS total_hr_allowed,
+             SUM(hit_batters) AS total_hbp_pit,
+             SUM(batters_faced) AS total_bf,
+             SUM(pitching_war) AS total_pwar,
+             SUM(CASE WHEN innings_pitched >= 3 AND fip IS NOT NULL
+                      THEN fip * innings_pitched ELSE 0 END) AS fip_num,
+             SUM(CASE WHEN innings_pitched >= 3 AND fip IS NOT NULL
+                      THEN innings_pitched ELSE 0 END) AS fip_den,
+             SUM(CASE WHEN innings_pitched >= 3 AND fip_plus IS NOT NULL
+                      THEN fip_plus * innings_pitched ELSE 0 END) AS fip_plus_num,
+             SUM(CASE WHEN innings_pitched >= 3 AND fip_plus IS NOT NULL
+                      THEN innings_pitched ELSE 0 END) AS fip_plus_den,
+             SUM(CASE WHEN innings_pitched >= 3 AND xfip IS NOT NULL
+                      THEN xfip * innings_pitched ELSE 0 END) AS xfip_num,
+             SUM(CASE WHEN innings_pitched >= 3 AND xfip IS NOT NULL
+                      THEN innings_pitched ELSE 0 END) AS xfip_den,
+             SUM(CASE WHEN innings_pitched >= 3 AND era_minus IS NOT NULL
+                      THEN era_minus * innings_pitched ELSE 0 END) AS era_minus_num,
+             SUM(CASE WHEN innings_pitched >= 3 AND era_minus IS NOT NULL
+                      THEN innings_pitched ELSE 0 END) AS era_minus_den
+           FROM pitching_stats WHERE team_id = %s AND season = %s""",
+        (team_id, season),
+    )
+    pit = cur.fetchone() or {}
+
+    # ── ER from game_pitching (preferred) with ghost-row guard ──
+    cur.execute(
+        """SELECT SUM(gp.earned_runs) AS er_gp, COUNT(*) AS n
+           FROM game_pitching gp
+           JOIN games g ON g.id = gp.game_id
+           WHERE gp.team_id = %s AND g.season = %s
+             AND gp.team_id IN (g.home_team_id, g.away_team_id)""",
+        (team_id, season),
+    )
+    gp_er = cur.fetchone() or {}
+
+    # ── Batting counting + weighted advanced stats from batting_stats ──
+    cur.execute(
+        """SELECT
+             SUM(at_bats) AS total_ab,
+             SUM(plate_appearances) AS total_pa,
+             SUM(hits) AS total_h,
+             SUM(walks) AS total_bb_bat,
+             SUM(hit_by_pitch) AS total_hbp,
+             SUM(sacrifice_flies) AS total_sf,
+             SUM(doubles) AS total_2b,
+             SUM(triples) AS total_3b,
+             SUM(home_runs) AS total_hr_bat,
+             SUM(runs) AS total_runs_bat,
+             SUM(rbi) AS total_rbi,
+             SUM(stolen_bases) AS total_sb,
+             SUM(strikeouts) AS total_k_bat,
+             SUM(offensive_war) AS total_owar,
+             SUM(woba * plate_appearances) FILTER (WHERE woba IS NOT NULL) AS woba_num,
+             SUM(plate_appearances) FILTER (WHERE woba IS NOT NULL) AS woba_den,
+             SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL) AS wrc_plus_num,
+             SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL) AS wrc_plus_den,
+             SUM(iso * plate_appearances) FILTER (WHERE iso IS NOT NULL) AS iso_num,
+             SUM(plate_appearances) FILTER (WHERE iso IS NOT NULL) AS iso_den
+           FROM batting_stats WHERE team_id = %s AND season = %s""",
+        (team_id, season),
+    )
+    bat = cur.fetchone() or {}
+
+    # ── RS, RA, run_differential from games table (status='final' only) ──
+    cur.execute(
+        """SELECT
+             SUM(CASE WHEN home_team_id = %s THEN home_score
+                      WHEN away_team_id = %s THEN away_score ELSE 0 END) AS rs,
+             SUM(CASE WHEN home_team_id = %s THEN away_score
+                      WHEN away_team_id = %s THEN home_score ELSE 0 END) AS ra,
+             COUNT(*) AS games
+           FROM games
+           WHERE season = %s AND status = 'final'
+             AND (home_team_id = %s OR away_team_id = %s)""",
+        (team_id, team_id, team_id, team_id, season, team_id, team_id),
+    )
+    scoring = cur.fetchone() or {}
+
+    # Choose ER source: game_pitching when we have any rows for this season,
+    # else fall back to cumulative pitching_stats (older seasons).
+    gp_n = (gp_er.get("n") or 0) if gp_er else 0
+    if gp_n > 0:
+        total_er = gp_er.get("er_gp") or 0
+        result["er_source"] = "game_pitching"
+    else:
+        total_er = pit.get("total_er_ps") or 0
+        result["er_source"] = "pitching_stats"
+
+    # Convenience locals
+    true_ip = float(pit.get("total_true_ip") or 0)
+    ip_decimal = float(pit.get("total_ip_decimal") or 0)
+    bb_pit = pit.get("total_bb_pit") or 0
+    h_allowed = pit.get("total_h_allowed") or 0
+    k_pit = pit.get("total_k_pit") or 0
+    hr_allowed = pit.get("total_hr_allowed") or 0
+    hbp_pit = pit.get("total_hbp_pit") or 0
+    bf = pit.get("total_bf") or 0
+
+    ab = bat.get("total_ab") or 0
+    pa = bat.get("total_pa") or 0
+    h = bat.get("total_h") or 0
+    bb_bat = bat.get("total_bb_bat") or 0
+    hbp = bat.get("total_hbp") or 0
+    sf = bat.get("total_sf") or 0
+    d2b = bat.get("total_2b") or 0
+    d3b = bat.get("total_3b") or 0
+    hr_bat = bat.get("total_hr_bat") or 0
+
+    # ── Pitching rates ──
+    result["true_ip"] = round(true_ip, 2)
+    result["ip_decimal"] = ip_decimal
+    result["er"] = total_er
+    result["bb_pit"] = bb_pit
+    result["h_allowed"] = h_allowed
+    result["k_pit"] = k_pit
+    result["hr_allowed"] = hr_allowed
+    result["hbp_pit"] = hbp_pit
+    result["bf"] = bf
+    if true_ip > 0:
+        result["team_era"] = round(total_er * 9 / true_ip, 2)
+        result["team_whip"] = round((bb_pit + h_allowed) / true_ip, 3)
+        result["k_per_9"] = round(k_pit * 9 / true_ip, 1)
+        result["bb_per_9"] = round(bb_pit * 9 / true_ip, 1)
+        result["h_per_9"] = round(h_allowed * 9 / true_ip, 1)
+        result["hr_per_9"] = round(hr_allowed * 9 / true_ip, 2)
+    else:
+        result["team_era"] = None
+        result["team_whip"] = None
+
+    # IP-weighted advanced pitching stats (ratio of decimal-summed numerator
+    # to decimal-summed denominator — bug cancels).
+    fip_den = float(pit.get("fip_den") or 0)
+    result["avg_fip"] = round(float(pit.get("fip_num") or 0) / fip_den, 2) if fip_den > 0 else None
+    fip_plus_den = float(pit.get("fip_plus_den") or 0)
+    result["avg_fip_plus"] = round(float(pit.get("fip_plus_num") or 0) / fip_plus_den) if fip_plus_den > 0 else None
+    xfip_den = float(pit.get("xfip_den") or 0)
+    result["avg_xfip"] = round(float(pit.get("xfip_num") or 0) / xfip_den, 2) if xfip_den > 0 else None
+    em_den = float(pit.get("era_minus_den") or 0)
+    avg_era_minus = float(pit.get("era_minus_num") or 0) / em_den if em_den > 0 else None
+    result["avg_era_minus"] = round(avg_era_minus) if avg_era_minus is not None else None
+    result["avg_era_plus"] = round(10000.0 / avg_era_minus) if avg_era_minus and avg_era_minus > 0 else None
+
+    # ── Batting rates ──
+    result["ab"] = ab
+    result["pa"] = pa
+    result["hits"] = h
+    result["bb_bat"] = bb_bat
+    result["hbp_bat"] = hbp
+    result["hr_bat"] = hr_bat
+    result["doubles"] = d2b
+    result["triples"] = d3b
+    result["runs_bat"] = bat.get("total_runs_bat") or 0
+    result["rbi"] = bat.get("total_rbi") or 0
+    result["sb"] = bat.get("total_sb") or 0
+    result["k_bat"] = bat.get("total_k_bat") or 0
+    if ab > 0:
+        result["team_avg"] = round(h / ab, 3)
+        singles = h - d2b - d3b - hr_bat
+        total_bases = singles + 2 * d2b + 3 * d3b + 4 * hr_bat
+        result["team_slg"] = round(total_bases / ab, 3)
+        obp_denom = ab + bb_bat + hbp + sf
+        result["team_obp"] = round((h + bb_bat + hbp) / obp_denom, 3) if obp_denom > 0 else None
+        if result["team_obp"] is not None:
+            result["team_ops"] = round(result["team_obp"] + result["team_slg"], 3)
+        else:
+            result["team_ops"] = None
+    else:
+        result["team_avg"] = None
+        result["team_obp"] = None
+        result["team_slg"] = None
+        result["team_ops"] = None
+
+    # PA-weighted batting advanced stats
+    woba_den = float(bat.get("woba_den") or 0)
+    result["avg_woba"] = round(float(bat.get("woba_num") or 0) / woba_den, 3) if woba_den > 0 else None
+    wrc_den = float(bat.get("wrc_plus_den") or 0)
+    result["avg_wrc_plus"] = round(float(bat.get("wrc_plus_num") or 0) / wrc_den, 1) if wrc_den > 0 else None
+    iso_den = float(bat.get("iso_den") or 0)
+    result["avg_iso"] = round(float(bat.get("iso_num") or 0) / iso_den, 3) if iso_den > 0 else None
+
+    # ── WAR (sum across players from per-player rows) ──
+    result["o_war"] = round(float(bat.get("total_owar") or 0), 1)
+    result["p_war"] = round(float(pit.get("total_pwar") or 0), 1)
+    result["total_war"] = round(result["o_war"] + result["p_war"], 1)
+
+    # ── Runs scored, runs allowed, run differential from games table ──
+    rs = scoring.get("rs") or 0
+    ra = scoring.get("ra") or 0
+    result["runs_scored"] = rs
+    result["runs_allowed"] = ra
+    result["run_differential"] = rs - ra
+    result["games_played"] = scoring.get("games") or 0
+
+    return result
+
+
 def _apply_year_filter(query: str, params: list, year_in_school: str, col: str = "p.year_in_school"):
     """Append a year_in_school filter to a SQL query, grouping redshirt with regular."""
     years = _YEAR_GROUPS.get(year_in_school, (year_in_school,))
@@ -2188,10 +2430,28 @@ def compare_teams(
             )
             top_pitchers = [_add_era_plus(dict(r)) for r in cur.fetchall()]
 
+            # Override stale/buggy fields with canonical team aggregates so
+            # team_era / team_whip / team_avg etc. match the team page and
+            # the school's site. (See get_team_aggregates docstring.)
+            canonical = get_team_aggregates(cur, tid, season)
+            batting_dict = dict(batting_agg) if batting_agg else {}
+            pitching_dict = dict(pitching_agg) if pitching_agg else {}
+            if canonical:
+                if canonical.get("team_era") is not None:
+                    pitching_dict["team_era"] = canonical["team_era"]
+                if canonical.get("team_whip") is not None:
+                    pitching_dict["team_whip"] = canonical["team_whip"]
+                if canonical.get("team_avg") is not None:
+                    batting_dict["team_avg"] = canonical["team_avg"]
+                if canonical.get("team_obp") is not None:
+                    batting_dict["team_obp"] = canonical["team_obp"]
+                if canonical.get("team_slg") is not None:
+                    batting_dict["team_slg"] = canonical["team_slg"]
+
             row = dict(team)
             row["record"] = dict(record) if record else {"wins": 0, "losses": 0, "ties": 0}
-            row["batting"] = dict(batting_agg) if batting_agg else {}
-            row["pitching"] = _add_era_plus(dict(pitching_agg)) if pitching_agg else {}
+            row["batting"] = batting_dict
+            row["pitching"] = _add_era_plus(pitching_dict)
             row["top_hitters"] = top_hitters
             row["top_pitchers"] = top_pitchers
             row["total_war"] = round(
@@ -2420,6 +2680,12 @@ def team_matchup(
             if not bat or not pit:
                 continue
 
+            # Canonical aggregates: RS/RA from games table and team_era from
+            # game_pitching ER + true (baseball-notation) IP. Override the
+            # buggy inline values so power-rating + components match what
+            # the team page reports.
+            canonical = get_team_aggregates(cur, tid, season)
+
             # National rating (composite percentile)
             cur.execute("""
                 SELECT national_percentile, composite_rank, num_sources
@@ -2432,8 +2698,11 @@ def team_matchup(
             wins = rec["wins"] or 0
             losses = rec["losses"] or 0
             total_games = wins + losses
-            rs = float(bat["rs"] or 0)
-            ra = float(pit["ra"] or pit["er"] or 0)
+            # Prefer canonical RS/RA from games table; fall back to the inline
+            # batting_stats / pitching_stats aggregations only if games has
+            # no rows yet for this team-season.
+            rs = float(canonical.get("runs_scored") or bat["rs"] or 0)
+            ra = float(canonical.get("runs_allowed") or pit["ra"] or pit["er"] or 0)
             total_war = float(bat["total_owar"] or 0) + float(pit["total_pwar"] or 0)
 
             rating = _compute_power_rating(
@@ -2464,7 +2733,7 @@ def team_matchup(
                     "pyth_win_pct": round(pyth_win, 3),
                     "run_diff_per_game": round(run_diff_pg, 2),
                     "wrc_plus": round(float(bat["avg_wrc_plus"] or 100)),
-                    "team_era": float(pit["team_era"] or 0),
+                    "team_era": float(canonical.get("team_era") or pit["team_era"] or 0),
                     "fip": round(float(pit["avg_fip"] or 4.5), 2),
                     "total_war": round(total_war, 1),
                     "war_per_game": round(total_war / total_games, 2),
@@ -3091,21 +3360,20 @@ def team_scatter(
             if not bat_row or (bat_row["n"] or 0) == 0:
                 continue
 
-            def _compute(stat_name, b=bat_row, p=pit_row):
+            # Canonical team aggregates (single source of truth). Used to
+            # compute team_era / team_whip / team_avg correctly with
+            # baseball-notation IP and game_pitching ER.
+            canonical = get_team_aggregates(cur, tid, season)
+
+            def _compute(stat_name, b=bat_row, p=pit_row, c=canonical):
                 if stat_name == "team_avg":
-                    return round(b["h"] / b["ab"], 3) if b["ab"] else None
+                    return c.get("team_avg")
                 elif stat_name == "team_obp":
-                    d = b["pa"] or 0
-                    return round((b["h"] + b["bb"] + b["hbp"]) / d, 3) if d else None
+                    return c.get("team_obp")
                 elif stat_name == "team_slg":
-                    ab = b["ab"] or 0
-                    if not ab: return None
-                    tb = (b["h"]-b["d2b"]-b["d3b"]-b["hr"]) + 2*b["d2b"] + 3*b["d3b"] + 4*b["hr"]
-                    return round(tb / ab, 3)
+                    return c.get("team_slg")
                 elif stat_name == "team_ops":
-                    obp = _compute("team_obp", b, p)
-                    slg = _compute("team_slg", b, p)
-                    return round(obp + slg, 3) if obp and slg else None
+                    return c.get("team_ops")
                 elif stat_name == "total_hr": return b["hr"]
                 elif stat_name == "total_sb": return b["sb"]
                 elif stat_name == "total_runs": return b["r"]
@@ -3123,11 +3391,9 @@ def team_scatter(
                 elif stat_name == "avg_k_pct":
                     return round(b["avg_k_pct"], 3) if b["avg_k_pct"] else None
                 elif stat_name == "team_era":
-                    ip = (p["ip"] or 0) if p else 0
-                    return round(p["er"] * 9 / ip, 2) if ip > 0 else None
+                    return c.get("team_era")
                 elif stat_name == "team_whip":
-                    ip = (p["ip"] or 0) if p else 0
-                    return round((p["bb"] + p["h"]) / ip, 2) if ip > 0 else None
+                    return c.get("team_whip")
                 elif stat_name == "avg_fip":
                     return round(p["avg_fip"], 2) if p and p["avg_fip"] else None
                 elif stat_name == "avg_fip_plus":
@@ -5063,6 +5329,11 @@ def team_leaderboard(
             pa = b["pa"] or 0
             ip = (p["ip"] or 0) if p else 0
 
+            # Canonical team aggregates: team_era/team_whip/team_avg/team_ops
+            # come from here so the leaderboard matches the team page and
+            # the school's site (correct baseball-notation IP, game_pitching ER).
+            canonical = get_team_aggregates(cur, tid, season)
+
             row = {
                 "team_id": tid,
                 "name": team["name"],
@@ -5075,11 +5346,11 @@ def team_leaderboard(
                 "division_id": team["division_id"],
                 "wins": rec["wins"] if rec else 0,
                 "losses": rec["losses"] if rec else 0,
-                # batting
-                "team_avg": round(b["h"] / ab, 3) if ab else None,
-                "team_obp": round((b["h"] + b["bb"] + b["hbp"]) / pa, 3) if pa else None,
-                "team_slg": None,
-                "team_ops": None,
+                # batting (canonical for AVG/OBP/SLG/OPS)
+                "team_avg": canonical.get("team_avg"),
+                "team_obp": canonical.get("team_obp"),
+                "team_slg": canonical.get("team_slg"),
+                "team_ops": canonical.get("team_ops"),
                 "total_hits": b["h"],
                 "total_hr": b["hr"],
                 "total_sb": b["sb"],
@@ -5091,9 +5362,9 @@ def team_leaderboard(
                 "avg_bb_pct": round(float(b["avg_bb_pct"]), 3) if b["avg_bb_pct"] else None,
                 "avg_k_pct": round(float(b["avg_k_pct"]), 3) if b["avg_k_pct"] else None,
                 "total_owar": round(float(b["total_owar"]), 1) if b["total_owar"] else 0,
-                # pitching
-                "team_era": round(float(p["er"]) * 9 / ip, 2) if ip > 0 else None,
-                "team_whip": round((float(p["bb"]) + float(p["h"])) / ip, 2) if ip > 0 else None,
+                # pitching (canonical for ERA/WHIP)
+                "team_era": canonical.get("team_era"),
+                "team_whip": canonical.get("team_whip"),
                 "avg_fip": round(float(p["avg_fip"]), 2) if p and p["avg_fip"] else None,
                 "avg_fip_plus": round(float(p["avg_fip_plus"])) if p and p["avg_fip_plus"] else None,
                 "avg_era_plus": round(10000.0 / float(p["avg_era_minus"])) if p and p["avg_era_minus"] and float(p["avg_era_minus"]) > 0 else None,
@@ -5106,13 +5377,6 @@ def team_leaderboard(
                 # combined
                 "total_war": round(float(b["total_owar"] or 0) + float(p["total_pwar"] or 0 if p else 0), 1),
             }
-
-            # SLG and OPS
-            if ab > 0:
-                tb = (b["h"] - b["d2b"] - b["d3b"] - b["hr"]) + 2 * b["d2b"] + 3 * b["d3b"] + 4 * b["hr"]
-                row["team_slg"] = round(tb / ab, 3)
-                if row["team_obp"] is not None:
-                    row["team_ops"] = round(row["team_obp"] + row["team_slg"], 3)
 
             results.append(row)
 
