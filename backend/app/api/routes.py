@@ -6717,15 +6717,26 @@ def team_stats(team_id: int, season: int = Query(...)):
         )
         team_stats_row = cur.fetchone()
 
-        # Override team_era with a fresh computation from pitching_stats.
-        # The stored team_era in team_season_stats is not maintained by any
-        # script and goes stale; compute it on the fly here, using
-        # baseball-notation IP (5.2 = 5 2/3, not decimal 5.2).
+        # Override team_era with a fresh computation. Two data-sync caveats
+        # we work around here:
+        #
+        # 1. The stored team_era in team_season_stats is not maintained by
+        #    any script and goes stale (Bushnell 2026: stored 5.80 vs reality
+        #    ~5.20). Always recompute.
+        # 2. pitching_stats (cumulative scrape from league portals) and
+        #    game_pitching (per-box-score scrape) disagree on ER for some
+        #    teams: pitching_stats can carry stale ER from before official
+        #    scoring corrections, and game_pitching reflects current box
+        #    scores. To match what each school's site reports, we pull
+        #    ER from game_pitching (per-game truth) but IP from
+        #    pitching_stats (whose cumulative IP is closer to authoritative
+        #    league totals than our box-score IP sums).
+        # 3. innings_pitched is stored in baseball notation (5.2 = 5 2/3),
+        #    so we convert to true decimal innings before dividing.
         if team_stats_row:
             team_stats_row = dict(team_stats_row)
             cur.execute(
                 """SELECT
-                     SUM(earned_runs) AS total_er,
                      SUM(
                        FLOOR(innings_pitched) +
                        CASE
@@ -6739,12 +6750,21 @@ def team_stats(team_id: int, season: int = Query(...)):
                    FROM pitching_stats WHERE team_id = %s AND season = %s""",
                 (team_id, season),
             )
-            era_row = cur.fetchone()
-            if era_row:
-                true_ip = float(era_row["total_true_ip"] or 0)
-                total_er = era_row["total_er"] or 0
-                if true_ip > 0:
-                    team_stats_row["team_era"] = round(total_er * 9 / true_ip, 2)
+            ip_row = cur.fetchone()
+            cur.execute(
+                """SELECT SUM(gp.earned_runs) AS total_er
+                   FROM game_pitching gp
+                   JOIN games g ON g.id = gp.game_id
+                   WHERE gp.team_id = %s
+                     AND g.season = %s
+                     AND gp.team_id IN (g.home_team_id, g.away_team_id)""",
+                (team_id, season),
+            )
+            er_row = cur.fetchone()
+            true_ip = float((ip_row or {}).get("total_true_ip") or 0)
+            total_er = (er_row or {}).get("total_er") or 0
+            if true_ip > 0:
+                team_stats_row["team_era"] = round(total_er * 9 / true_ip, 2)
 
         cur.execute(
             """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
@@ -7585,7 +7605,6 @@ def team_history(team_id: int):
                               ELSE 0
                             END
                           ) as total_true_ip,
-                          SUM(earned_runs) as total_er,
                           SUM(strikeouts) as total_k,
                           SUM(wins) as total_w,
                           SUM(losses) as total_l,
@@ -7599,6 +7618,21 @@ def team_history(team_id: int):
                 (team_id, yr),
             )
             pit_agg = cur.fetchone()
+
+            # ER comes from game_pitching (per-game truth), not the cumulative
+            # pitching_stats which can carry stale ER from before scoring
+            # corrections. See team_stats endpoint comments for why this
+            # hybrid (game_pitching ER + pitching_stats IP) is used.
+            cur.execute(
+                """SELECT SUM(gp.earned_runs) AS total_er
+                   FROM game_pitching gp
+                   JOIN games g ON g.id = gp.game_id
+                   WHERE gp.team_id = %s
+                     AND g.season = %s
+                     AND gp.team_id IN (g.home_team_id, g.away_team_id)""",
+                (team_id, yr),
+            )
+            er_agg = cur.fetchone()
 
             s["total_owar"] = round(bat_agg["total_owar"] or 0, 1)
             s["total_pwar"] = round(pit_agg["total_pwar"] or 0, 1)
@@ -7615,7 +7649,7 @@ def team_history(team_id: int):
             # in team_season_stats is not maintained by any script and goes
             # stale within a season as new pitching data lands.
             true_ip = float(pit_agg["total_true_ip"] or 0)
-            total_er = pit_agg["total_er"] or 0
+            total_er = (er_agg["total_er"] if er_agg else 0) or 0
             if true_ip > 0:
                 s["team_era"] = round(total_er * 9 / true_ip, 2)
 
