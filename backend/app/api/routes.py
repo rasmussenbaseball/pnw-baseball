@@ -6786,6 +6786,28 @@ def team_stats(team_id: int, season: int = Query(...)):
             )
             bat_row = cur.fetchone()
 
+            # ── runs_scored / runs_allowed / run_differential ──
+            # Stored values are wildly stale (set early in the season and
+            # never updated). Compute fresh from the games table.
+            cur.execute(
+                """SELECT
+                     SUM(CASE WHEN home_team_id = %s THEN home_score
+                              WHEN away_team_id = %s THEN away_score ELSE 0 END) AS rs,
+                     SUM(CASE WHEN home_team_id = %s THEN away_score
+                              WHEN away_team_id = %s THEN home_score ELSE 0 END) AS ra
+                   FROM games
+                   WHERE season = %s AND status = 'final'
+                     AND (home_team_id = %s OR away_team_id = %s)""",
+                (team_id, team_id, team_id, team_id, season, team_id, team_id),
+            )
+            scoring = cur.fetchone()
+            if scoring:
+                rs = scoring["rs"] or 0
+                ra = scoring["ra"] or 0
+                team_stats_row["runs_scored"] = rs
+                team_stats_row["runs_allowed"] = ra
+                team_stats_row["run_differential"] = rs - ra
+
             # ── team_era ──
             true_ip = float((ip_row or {}).get("total_true_ip") or 0)
             gp_n = (er_row["n"] if er_row else 0) or 0
@@ -7723,6 +7745,31 @@ def team_history(team_id: int):
             s["team_wrc_plus"] = round(bat_agg["weighted_wrc"] / qpa, 1) if qpa > 0 else None
             qip = pit_agg["qualified_ip"] or 0
             s["team_fip"] = round(pit_agg["weighted_fip"] / qip, 2) if qip > 0 else None
+            # ── Fresh runs_scored / runs_allowed / run_differential from
+            # the games table. Stored values in team_season_stats are
+            # wildly stale (Bushnell 2026: stored 282/244, actual 365/319).
+            cur.execute(
+                """SELECT
+                     SUM(CASE WHEN home_team_id = %s THEN home_score
+                              WHEN away_team_id = %s THEN away_score ELSE 0 END) AS rs,
+                     SUM(CASE WHEN home_team_id = %s THEN away_score
+                              WHEN away_team_id = %s THEN home_score ELSE 0 END) AS ra
+                   FROM games
+                   WHERE season = %s AND status = 'final'
+                     AND (home_team_id = %s OR away_team_id = %s)""",
+                (team_id, team_id, team_id, team_id, yr, team_id, team_id),
+            )
+            scoring = cur.fetchone()
+            if scoring:
+                rs = scoring["rs"] or 0
+                ra = scoring["ra"] or 0
+                # Only override when we actually have games data for the season
+                # (older years pre-game-table population fall back to stored).
+                if rs > 0 or ra > 0:
+                    s["runs_scored"] = rs
+                    s["runs_allowed"] = ra
+                    s["run_differential"] = rs - ra
+
             # ── Override team_era / team_whip / team_batting_avg / team_ops
             # with fresh on-the-fly computations. The stored columns in
             # team_season_stats are not maintained by any script and go stale
@@ -16740,12 +16787,17 @@ def team_stats_agg(
                 ORDER BY t.short_name
             """, (season, season))
         else:
-            # Pitching: straight SUM of pitching_stats, same as what each team's
-            # own stats page reports. No box-score reconciliation — historically
-            # that caused inflated totals when game_pitching had orphan rows for
-            # unmatched pitchers OR duplicate rows from two scrapers writing the
-            # same pitcher under different name formats. pitching_stats IS the
-            # source of truth for team aggregation.
+            # Pitching uses pitching_stats for COUNTING stats (cumulative
+            # from league portal — most complete source). Two corrections
+            # vs the prior straight-SUM approach:
+            #   1. innings_pitched is stored in baseball notation (5.2 = 5 2/3),
+            #      so naive SUM treats 5.2 as decimal and undercounts. true_ip
+            #      below converts each row's notation before summing.
+            #   2. earned_runs from pitching_stats can carry stale ER from
+            #      before official scoring corrections. We LEFT JOIN
+            #      game_pitching (with ghost-row guard) and prefer that ER
+            #      when present, falling back to pitching_stats ER when no
+            #      box-score coverage exists for a team-season.
             cur.execute("""
                 WITH team_ps AS (
                     SELECT ps.team_id,
@@ -16756,10 +16808,26 @@ def team_stats_agg(
                            SUM(COALESCE(ps.saves, 0))              AS sv,
                            SUM(COALESCE(ps.complete_games, 0))     AS cg,
                            SUM(COALESCE(ps.shutouts, 0))           AS sho,
-                           SUM(COALESCE(ps.innings_pitched, 0))    AS ip,
+                           -- Decimal-summed IP (kept for FIP/xFIP/SIERA weighting
+                           -- where numerator and denominator share the same
+                           -- convention and the bug cancels out)
+                           SUM(COALESCE(ps.innings_pitched, 0))    AS ip_decimal,
+                           -- True IP (baseball notation 5.2 → 5 2/3 → 5.667)
+                           SUM(
+                             FLOOR(COALESCE(ps.innings_pitched, 0)) +
+                             CASE
+                               WHEN ROUND((COALESCE(ps.innings_pitched, 0)
+                                          - FLOOR(COALESCE(ps.innings_pitched, 0)))::numeric * 10) = 1
+                                 THEN 1.0/3.0
+                               WHEN ROUND((COALESCE(ps.innings_pitched, 0)
+                                          - FLOOR(COALESCE(ps.innings_pitched, 0)))::numeric * 10) = 2
+                                 THEN 2.0/3.0
+                               ELSE 0
+                             END
+                           ) AS ip,
                            SUM(COALESCE(ps.hits_allowed, 0))       AS h,
                            SUM(COALESCE(ps.runs_allowed, 0))       AS r,
-                           SUM(COALESCE(ps.earned_runs, 0))        AS er,
+                           SUM(COALESCE(ps.earned_runs, 0))        AS er_ps,
                            SUM(COALESCE(ps.walks, 0))              AS bb,
                            SUM(COALESCE(ps.strikeouts, 0))         AS k,
                            SUM(COALESCE(ps.home_runs_allowed, 0))  AS hr,
@@ -16768,6 +16836,8 @@ def team_stats_agg(
                            SUM(COALESCE(ps.batters_faced, 0))      AS bf,
                            ROUND(SUM(COALESCE(ps.pitching_war, 0))::numeric, 1) AS pwar,
                            -- IP-weighted advanced stat numerators and denominators
+                           -- (uses decimal IP since both numerator and denominator
+                           -- share the same convention)
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.fip IS NOT NULL
                                     THEN ps.fip * ps.innings_pitched ELSE 0 END) AS fip_num,
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.fip IS NOT NULL
@@ -16783,6 +16853,16 @@ def team_stats_agg(
                     FROM pitching_stats ps
                     WHERE ps.season = %s
                     GROUP BY ps.team_id
+                ),
+                team_gp_er AS (
+                    SELECT gp.team_id,
+                           SUM(gp.earned_runs) AS er_gp,
+                           COUNT(*) AS n
+                    FROM game_pitching gp
+                    JOIN games g ON g.id = gp.game_id
+                    WHERE g.season = %s
+                      AND gp.team_id IN (g.home_team_id, g.away_team_id)
+                    GROUP BY gp.team_id
                 )
                 SELECT
                     t.id as team_id,
@@ -16796,11 +16876,16 @@ def team_stats_agg(
                     -- Counting stats
                     tp.g, tp.gs, tp.w, tp.l, tp.sv, tp.cg, tp.sho,
                     ROUND(tp.ip::numeric, 1) as ip,
-                    tp.h, tp.r AS r, tp.er, tp.bb, tp.k as so,
+                    tp.h, tp.r AS r,
+                    -- ER: prefer per-game-derived (truth-tracking) over cumulative
+                    -- (which can carry stale ER pre-scoring-corrections).
+                    COALESCE(gp_er.er_gp, tp.er_ps) as er,
+                    tp.bb, tp.k as so,
                     tp.hr, tp.hbp, tp.wp, tp.bf,
-                    -- Rate stats
+                    -- Rate stats: divide by true_ip (tp.ip), not the inflated
+                    -- baseball-notation-as-decimal sum.
                     CASE WHEN tp.ip > 0
-                         THEN ROUND((tp.er * 9.0 / tp.ip)::numeric, 2)
+                         THEN ROUND((COALESCE(gp_er.er_gp, tp.er_ps) * 9.0 / tp.ip)::numeric, 2)
                          ELSE NULL END as era,
                     CASE WHEN tp.ip > 0
                          THEN ROUND(((tp.bb + tp.h)::numeric / tp.ip)::numeric, 2)
@@ -16852,11 +16937,12 @@ def team_stats_agg(
                 JOIN divisions d ON c.division_id = d.id
                 LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
                 JOIN team_ps tp ON tp.team_id = t.id
+                LEFT JOIN team_gp_er gp_er ON gp_er.team_id = t.id
                 WHERE t.is_active = 1
                   AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
                   AND tp.ip > 0
                 ORDER BY t.short_name
-            """, (season, season))
+            """, (season, season, season))
 
         rows = cur.fetchall()
 
