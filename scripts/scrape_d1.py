@@ -585,6 +585,17 @@ def parse_nuxt_pitching(html):
         if is_footer:
             continue
 
+        # Skip position players: Sidearm includes every roster player in
+        # the pitching object array but encodes pitching stats as -1 for
+        # non-pitchers. Filter them out by requiring inningsPitched to
+        # resolve to a real value. Without this guard, position players
+        # like AJ Singer (47-game starter, never pitches) end up in
+        # pitching_stats with IP=0, polluting the team page and the
+        # homepage stat leaders widget.
+        ip_raw = obj.get("inningsPitched")
+        if ip_raw == -1 or _nuxt_resolve(data, ip_raw) is None:
+            continue
+
         name = _nuxt_resolve(data, obj.get("playerName", 0))
         if not name or not isinstance(name, str):
             continue
@@ -656,6 +667,12 @@ def parse_nuxt_batting(html):
     for obj in batting_objs:
         is_footer = _nuxt_resolve(data, obj.get("isAFooterStat", 0))
         if is_footer:
+            continue
+
+        # Skip pure pitchers: same -1 encoding pattern as parse_nuxt_pitching.
+        # If atBats is -1 (no batting data), this is a non-batter.
+        ab_raw = obj.get("atBats")
+        if ab_raw == -1 or _nuxt_resolve(data, ab_raw) is None:
             continue
 
         name = _nuxt_resolve(data, obj.get("playerName", 0))
@@ -1144,6 +1161,11 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
     batting_count = 0
     pitching_count = 0
     error_count = 0
+    # Track which players we wrote rows for this scrape, so we can prune
+    # stale rows (e.g. position players who were incorrectly written into
+    # pitching_stats by an earlier buggy scrape).
+    batting_player_ids = set()
+    pitching_player_ids = set()
 
     # ---- Seattle U: WMT Games API path ----
     wmt_success = False
@@ -1400,6 +1422,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     ),
                 )
                 batting_count += 1
+                batting_player_ids.add(player_id)
 
             except Exception as e:
                 logger.error(f"  Error processing batter: {batter.get('Player')} ({db_short}) - {e}")
@@ -1522,10 +1545,37 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
                     ),
                 )
                 pitching_count += 1
+                pitching_player_ids.add(player_id)
 
             except Exception as e:
                 logger.error(f"  Error processing pitcher: {pitcher.get('Player')} ({db_short}) - {e}")
                 error_count += 1
+
+        # ---- Prune stale rows ----
+        # Delete batting_stats / pitching_stats rows for this team-season
+        # whose player_id wasn't touched in the current scrape. This stops
+        # phantom rows accumulating when a player disappears from source
+        # (e.g. position players incorrectly written into pitching_stats
+        # by an earlier buggy parse). Sanity threshold guards against
+        # catastrophic deletion if a scrape returned almost nothing due
+        # to a network or parsing error.
+        season_int = int(season_year)
+        if pitching_count >= 3 and pitching_player_ids:
+            cur.execute(
+                "DELETE FROM pitching_stats WHERE team_id = %s AND season = %s "
+                "AND NOT (player_id = ANY(%s))",
+                (team_id, season_int, list(pitching_player_ids))
+            )
+            if cur.rowcount > 0:
+                logger.info(f"  Pruned {cur.rowcount} stale pitching_stats row(s)")
+        if batting_count >= 5 and batting_player_ids:
+            cur.execute(
+                "DELETE FROM batting_stats WHERE team_id = %s AND season = %s "
+                "AND NOT (player_id = ANY(%s))",
+                (team_id, season_int, list(batting_player_ids))
+            )
+            if cur.rowcount > 0:
+                logger.info(f"  Pruned {cur.rowcount} stale batting_stats row(s)")
 
     return batting_count, pitching_count, error_count
 
