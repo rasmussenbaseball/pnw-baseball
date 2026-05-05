@@ -91,9 +91,22 @@ QUALIFIED_PITCHING_JOIN = """
     LEFT JOIN team_season_stats tss
       ON tss.team_id = ps.team_id AND tss.season = ps.season
 """
+# innings_pitched is stored in baseball notation (5.2 = 5 2/3, not 5.2
+# decimal). The qualifier comparison must convert to true innings before
+# comparing against the threshold, otherwise a pitcher at 34.2 (= 34 2/3
+# true) is incorrectly disqualified by a 34.5-IP threshold even though
+# they cleared it. Sam Wilson (Lane 2026) hit this exact case.
+PITCHING_TRUE_IP_SQL = (
+    "(FLOOR(ps.innings_pitched) + "
+    "  CASE "
+    "    WHEN ROUND((ps.innings_pitched - FLOOR(ps.innings_pitched))::numeric * 10) = 1 THEN 1.0/3.0 "
+    "    WHEN ROUND((ps.innings_pitched - FLOOR(ps.innings_pitched))::numeric * 10) = 2 THEN 2.0/3.0 "
+    "    ELSE 0 "
+    "  END)"
+)
 QUALIFIED_PITCHING_WHERE = (
-    " AND ps.innings_pitched >= {ip_per_game} * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))"
-    .format(ip_per_game=QUALIFIED_IP_PER_GAME)
+    f" AND {PITCHING_TRUE_IP_SQL} >= {QUALIFIED_IP_PER_GAME} * "
+    "(COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))"
 )
 
 
@@ -1635,7 +1648,7 @@ def stat_leaders(
                        t.id as team_id, t.short_name, t.logo_url,
                        d.level as division_level,
                        {cat['col']} as value,
-                       CASE WHEN ps.innings_pitched >= {QUALIFIED_IP_PER_GAME} * (COALESCE(tss2.wins,0) + COALESCE(tss2.losses,0) + COALESCE(tss2.ties,0))
+                       CASE WHEN {PITCHING_TRUE_IP_SQL} >= {QUALIFIED_IP_PER_GAME} * (COALESCE(tss2.wins,0) + COALESCE(tss2.losses,0) + COALESCE(tss2.ties,0))
                             THEN true ELSE false END as is_qualified
                 FROM pitching_stats ps
                 JOIN players p ON ps.player_id = p.id
