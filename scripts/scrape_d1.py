@@ -1088,6 +1088,17 @@ def get_d1_team_id_map():
 
 def insert_or_update_player(conn, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
+    # Coerce empty/whitespace strings to None — Sidearm rosters frequently
+    # return "" for missing fields, which Postgres rejects on integer-typed
+    # columns like `weight`. (Caught 2026-05-04 on Portland's "Joe Fagan"
+    # who had no weight listed on goducks.com's roster.)
+    def _clean(v):
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+    for k in list(kwargs.keys()):
+        kwargs[k] = _clean(kwargs[k])
+
     cur = conn.cursor()
     cur.execute(
         "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
