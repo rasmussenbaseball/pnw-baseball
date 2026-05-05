@@ -1840,7 +1840,7 @@ def stat_records(
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN team_season_stats tss
               ON tss.team_id = ps.team_id AND tss.season = ps.season
-            WHERE ps.innings_pitched >= 0.75 * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+            WHERE """ + PITCHING_TRUE_IP_SQL + """ >= 0.75 * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
               AND ps.innings_pitched >= 40
         """)
         all_pit_seasons = [dict(r) for r in cur.fetchall()]
