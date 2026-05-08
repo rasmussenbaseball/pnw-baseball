@@ -526,14 +526,26 @@ export default function KeyMatchupGraphic() {
             const gr = await fetch(`${API_BASE}/teams/${t1.id}/games?season=2026`)
             if (gr.ok) {
               const allGames = await gr.json()
-              const h2h = (Array.isArray(allGames) ? allGames : [])
+              const list = Array.isArray(allGames) ? allGames : (allGames?.games || [])
+              const h2h = list
                 .filter(g => g.status === 'final'
                           && (g.home_team_id === t2.id || g.away_team_id === t2.id)
                           && g.id !== json.matchup.game_id)
                 .sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''))
+              // eslint-disable-next-line no-console
+              console.log('[h2h]', t1.short_name, 'vs', t2.short_name,
+                          '- total games for', t1.short_name + ':', list.length,
+                          '- vs', t2.short_name + ':', h2h.length,
+                          '- current game_id:', json.matchup.game_id)
               json.matchup.previous_matchups = h2h
+            } else {
+              // eslint-disable-next-line no-console
+              console.warn('[h2h] fetch failed', gr.status, gr.statusText)
             }
-          } catch {}
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[h2h] error', err)
+          }
         }
       }
       setData(json)
