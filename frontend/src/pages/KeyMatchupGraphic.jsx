@@ -202,19 +202,43 @@ async function drawGraphic(canvas, data, pred) {
     y += predH + 7
   }
 
-  // ── TEAM STATS ──
+  // ── TEAM STATS + PREVIOUS MATCHUPS (three columns) ──
+  // Layout: OFFENSE | PITCHING | PREVIOUS MATCHUPS
+  // The two stat columns are tighter than before so the new head-to-head
+  // panel can sit on the same row.
   const statsH = 210
   ctx.fillStyle = CARD; roundRect(ctx, P, y, W, statsH, 10); ctx.fill()
 
+  // Column boundaries
+  const offW  = W * 0.28
+  const pitW  = W * 0.28
+  const matchW = W - offW - pitW
+  const offX1 = P
+  const offX2 = offX1 + offW
+  const pitX1 = offX2
+  const pitX2 = pitX1 + pitW
+  const matX1 = pitX2
+  const matX2 = S - P
+
+  // Section headers
   ctx.fillStyle = ac.t; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'
-  ctx.fillText('OFFENSE', P + half / 2, y + 18)
-  ctx.fillStyle = hc.t; ctx.fillText('PITCHING', S - P - half / 2, y + 18)
+  ctx.fillText('OFFENSE', offX1 + offW / 2, y + 18)
+  ctx.fillStyle = hc.t
+  ctx.fillText('PITCHING', pitX1 + pitW / 2, y + 18)
+  ctx.fillStyle = WHITE
+  ctx.fillText('PREVIOUS MATCHUPS', matX1 + matchW / 2, y + 18)
 
+  // Vertical separators between columns
   ctx.strokeStyle = SUBTLE; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(S / 2, y + 6); ctx.lineTo(S / 2, y + statsH - 6); ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(offX2, y + 6); ctx.lineTo(offX2, y + statsH - 6)
+  ctx.moveTo(pitX2, y + 6); ctx.lineTo(pitX2, y + statsH - 6)
+  ctx.stroke()
 
-  drawCompact(ctx, buildOffStats(away, home), P + 8, S / 2 - 8, y + 26, away, home)
-  drawCompact(ctx, buildPitStats(away, home), S / 2 + 8, S - P - 8, y + 26, away, home)
+  drawCompact(ctx, buildOffStats(away, home), offX1 + 6, offX2 - 6, y + 26, away, home)
+  drawCompact(ctx, buildPitStats(away, home), pitX1 + 6, pitX2 - 6, y + 26, away, home)
+  drawPreviousMatchups(ctx, m.previous_matchups || [], away, home,
+                        matX1 + 8, matX2 - 8, y + 30, statsH - 36, ac, hc)
   y += statsH + 6
 
   // ── TOP HITTERS (5) ──
@@ -288,6 +312,102 @@ function drawCompact(ctx, stats, xL, xR, startY, away, home) {
     ctx.textAlign = 'left'; ctx.fillText(r.h, mid + 36, ry + 16)
   }
 }
+
+function drawPreviousMatchups(ctx, games, away, home, xL, xR, startY, maxH, ac, hc) {
+  const colW = xR - xL
+
+  if (!games || games.length === 0) {
+    // No previous meeting this season
+    ctx.fillStyle = LIGHT
+    ctx.font = '12px system-ui'
+    ctx.textAlign = 'center'
+    ctx.fillText('No previous meeting this season', (xL + xR) / 2, startY + maxH / 2 - 6)
+    ctx.fillStyle = DIM
+    ctx.font = 'italic 10px system-ui'
+    ctx.fillText('First matchup of the year', (xL + xR) / 2, startY + maxH / 2 + 10)
+    return
+  }
+
+  // Compute head-to-head record from the games' perspective of `away`
+  let awayWins = 0, homeWins = 0
+  for (const g of games) {
+    const awayIsHome = g.home_team_id === away.id
+    const aScore = awayIsHome ? g.home_score : g.away_score
+    const hScore = awayIsHome ? g.away_score : g.home_score
+    if (aScore == null || hScore == null) continue
+    if (aScore > hScore) awayWins++
+    else if (hScore > aScore) homeWins++
+  }
+
+  // Header: H2H record line
+  const headY = startY
+  ctx.fillStyle = LIGHT
+  ctx.font = 'bold 10px system-ui'
+  ctx.textAlign = 'center'
+  ctx.fillText(`${away.short_name} ${awayWins} – ${homeWins} ${home.short_name}`,
+                (xL + xR) / 2, headY + 4)
+
+  // Game list — auto-shrink row height to fit all games
+  const listTopY = headY + 16
+  const listMaxH = maxH - 16
+  const n = games.length
+  const rh = Math.min(28, Math.max(14, Math.floor(listMaxH / Math.max(n, 1))))
+  const dateColW = colW * 0.32
+  const scoreColW = colW * 0.40
+  const resultColW = colW - dateColW - scoreColW
+
+  for (let i = 0; i < n; i++) {
+    const g = games[i]
+    const ry = listTopY + i * rh
+    if (i % 2 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.03)'
+      ctx.fillRect(xL, ry, colW, rh)
+    }
+
+    const awayIsHome = g.home_team_id === away.id
+    const awayScore = awayIsHome ? g.home_score : g.away_score
+    const homeScore = awayIsHome ? g.away_score : g.home_score
+    const awayWon = awayScore != null && homeScore != null && awayScore > homeScore
+    const homeWon = homeScore != null && awayScore != null && homeScore > awayScore
+
+    // Date (left)
+    const isoDate = g.game_date
+    let dateStr = ''
+    if (isoDate) {
+      const [y, mo, d] = isoDate.split('-').map(Number)
+      const dt = new Date(y, mo - 1, d)
+      dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }
+    ctx.fillStyle = LIGHT
+    ctx.font = '11px system-ui'
+    ctx.textAlign = 'left'
+    ctx.fillText(dateStr, xL + 6, ry + rh / 2 + 4)
+
+    // Score (center): "AwayShort N - M HomeShort"
+    // Use side colors (away = ac, home = hc) for each team's short name.
+    const midX = xL + dateColW + scoreColW / 2
+    const awayLabel = away.short_name.length > 6 ? away.short_name.slice(0, 6) : away.short_name
+    const homeLabel = home.short_name.length > 6 ? home.short_name.slice(0, 6) : home.short_name
+    const aScoreStr = awayScore != null ? String(awayScore) : '–'
+    const hScoreStr = homeScore != null ? String(homeScore) : '–'
+    const scoreText = `${aScoreStr} – ${hScoreStr}`
+    ctx.font = 'bold 13px system-ui'
+    ctx.fillStyle = WHITE
+    ctx.textAlign = 'center'
+    ctx.fillText(scoreText, midX, ry + rh / 2 + 4)
+
+    // Result indicator (right): "W" or "L" from away's perspective, color-coded
+    let resultText = '—'
+    let resultColor = DIM
+    if (awayWon) { resultText = `${away.short_name} W`; resultColor = ac.t }
+    else if (homeWon) { resultText = `${home.short_name} W`; resultColor = hc.t }
+    ctx.font = 'bold 10px system-ui'
+    ctx.fillStyle = resultColor
+    ctx.textAlign = 'right'
+    ctx.fillText(resultText, xR - 6, ry + rh / 2 + 4)
+  }
+}
+
 
 function drawPlayers(ctx, title, awayP, homeP, type, max, P, startY, W, S, ac, hc) {
   const rh = 36
@@ -384,17 +504,39 @@ export default function KeyMatchupGraphic() {
       const resp = await fetch(url)
       if (!resp.ok) throw new Error('Failed to fetch')
       const json = await resp.json()
-      setData(json)
+
       if (json.matchup) {
         setSelGame(json.matchup.game_id)
-        const ids = json.matchup.teams.map(t => t.id).join(',')
+        const teams = json.matchup.teams || []
+        const ids = teams.map(t => t.id).join(',')
         if (ids) {
           try {
             const pr = await fetch(`${API_BASE}/teams/matchup?season=2026&team_ids=${ids}`)
             if (pr.ok) setPred(await pr.json())
           } catch {}
         }
+
+        // Fetch previous head-to-head games this season. Use one team's
+        // game log and filter to games vs the other team. Excludes the
+        // currently-selected game so today's matchup doesn't show as a
+        // "previous" result.
+        if (teams.length === 2) {
+          try {
+            const [t1, t2] = teams
+            const gr = await fetch(`${API_BASE}/teams/${t1.id}/games?season=2026`)
+            if (gr.ok) {
+              const allGames = await gr.json()
+              const h2h = (Array.isArray(allGames) ? allGames : [])
+                .filter(g => g.status === 'final'
+                          && (g.home_team_id === t2.id || g.away_team_id === t2.id)
+                          && g.id !== json.matchup.game_id)
+                .sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''))
+              json.matchup.previous_matchups = h2h
+            }
+          } catch {}
+        }
       }
+      setData(json)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }, [])
