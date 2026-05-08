@@ -237,7 +237,7 @@ async function drawGraphic(canvas, data, pred) {
 
   drawCompact(ctx, buildOffStats(away, home), offX1 + 6, offX2 - 6, y + 26, away, home)
   drawCompact(ctx, buildPitStats(away, home), pitX1 + 6, pitX2 - 6, y + 26, away, home)
-  drawPreviousMatchups(ctx, m.previous_matchups || [], away, home,
+  drawPreviousMatchups(ctx, data.matchup.previous_matchups || [], away, home,
                         matX1 + 8, matX2 - 8, y + 30, statsH - 36, ac, hc)
   y += statsH + 6
 
