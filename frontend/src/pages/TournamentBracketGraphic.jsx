@@ -110,9 +110,9 @@ const TOURNAMENTS = {
   },
   nwc_2026: {
     label: 'NWC Tournament',
-    sub: 'May 8 to 10',
+    sub: 'May 8 — Paul Merkel Field, Spokane (Whitworth)',
     season: 2026,
-    formatLabel: 'Double-elimination bracket',
+    formatLabel: 'Single-elimination tournament — all games at #1 seed',
     seeds: [
       { seed: 1, team_id: 13, name: 'Whitworth' },
       { seed: 2, team_id: 14, name: 'Linfield' },
@@ -120,40 +120,29 @@ const TOURNAMENTS = {
       { seed: 4, team_id: 10, name: 'Puget Sound' },
     ],
     games: [
-      { num: 1, iso: '2026-05-08', day: 'Fri May 8',  time: '2:00 PM',  home: { ref: 'seed', val: 1 },    away: { ref: 'seed', val: 4 } },
-      { num: 2, iso: '2026-05-08', day: 'Fri May 8',  time: '5:00 PM',  home: { ref: 'seed', val: 2 },    away: { ref: 'seed', val: 3 } },
-      { num: 3, iso: '2026-05-09', day: 'Sat May 9',  time: '10:00 AM', home: { ref: 'loser',  game: 1 }, away: { ref: 'loser',  game: 2 } },
-      { num: 4, iso: '2026-05-09', day: 'Sat May 9',  time: '1:00 PM',  home: { ref: 'winner', game: 1 }, away: { ref: 'winner', game: 2 } },
-      { num: 5, iso: '2026-05-09', day: 'Sat May 9',  time: '4:00 PM',  home: { ref: 'winner', game: 3 }, away: { ref: 'loser',  game: 4 } },
-      { num: 6, iso: '2026-05-10', day: 'Sun May 10', time: '12:00 PM', home: { ref: 'winner', game: 4 }, away: { ref: 'winner', game: 5 } },
-      { num: 7, iso: '2026-05-10', day: 'Sun May 10', time: '3:00 PM',  home: { ref: 'winner', game: 4 }, away: { ref: 'winner', game: 5 }, ifNecessary: true },
+      { num: 1, iso: '2026-05-08', day: 'Fri May 8', time: '9:30 AM',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 3 } },
+      { num: 2, iso: '2026-05-08', day: 'Fri May 8', time: '12:30 PM',
+        home: { ref: 'seed', val: 1 }, away: { ref: 'seed', val: 4 } },
+      { num: 3, iso: '2026-05-08', day: 'Fri May 8', time: '3:30 PM',
+        home: { ref: 'winner', game: 1 }, away: { ref: 'winner', game: 2 } },
     ],
-    // NWC layout — 4 teams, 7 games:
-    //   Col 1: G1, G2 (WB R1)              + G3 (LB R1)
-    //   Col 2: G4 (WB Final)               + G5 (LB Final)
-    //   Col 3: G6 + G7 (Championship)
+    // NWC 2026 layout — single-elimination, 3 games. Two semis on left,
+    // championship on right.
     layout: {
-      1: { x: 200, y: 320, w: 420, h: 130 },
-      2: { x: 200, y: 480, w: 420, h: 130 },
-      4: { x: 740, y: 400, w: 420, h: 130 },
-      3: { x: 200, y: 720, w: 420, h: 130 },
-      5: { x: 740, y: 720, w: 420, h: 130 },
-      6: { x: 1280, y: 540, w: 440, h: 140 },
-      7: { x: 1280, y: 695, w: 440, h: 40  },
+      1: { x: 250, y: 360, w: 480, h: 150 },   // semi 1: #2 vs #3
+      2: { x: 250, y: 580, w: 480, h: 150 },   // semi 2: #1 vs #4
+      3: { x: 1100, y: 470, w: 520, h: 160 },  // championship
     },
     connections: [
-      { from: 1, to: 4 },
-      { from: 2, to: 4 },
-      { from: 4, to: 6 },
-      { from: 3, to: 5 },
-      { from: 5, to: 6 },
+      { from: 1, to: 3 },
+      { from: 2, to: 3 },
     ],
     sectionLabels: [
-      { text: "WINNER'S BRACKET", x: 200,  y: 290, w: 960 },
-      { text: "CHAMPIONSHIP",     x: 1280, y: 510, w: 440, centered: true },
-      { text: "LOSER'S BRACKET",  x: 200,  y: 690, w: 960 },
+      { text: 'SEMIFINALS', x: 250,  y: 320, w: 480 },
+      { text: 'CHAMPIONSHIP', x: 1100, y: 430, w: 520, centered: true },
     ],
-    championshipGames: [6],
+    championshipGames: [3],
   },
   gnac_2026: {
     label: 'GNAC Tournament',
