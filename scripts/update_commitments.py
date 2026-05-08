@@ -34,14 +34,27 @@ COMMITMENTS = [
     ("Snyder", "Boston", "Yakima Valley", "Utah"),
     ("Hirai", "Alex", "Big Bend", "Warner Pacific"),
     ("Imai", "Yuji", "Olympic", "Tabor College"),
-    ("Tordiffe", "Anderson", "Clackamas", "Washington State"),
     ("Mar", "Ethan", "Tacoma", "Washington"),
     ("Hendrix", "Basil", "Everett", "George Mason"),
+    ("Wickstrom", "Sawyer", "Everett", "East Carolina"),
+    ("Stenerson", "Silas", "Olympic", "Freed-Hardeman"),
+]
+
+# (last_name, first_name, team_short_name) — players to set back to uncommitted.
+# Use this when a recruit decommits or changes plans.
+UNCOMMITS = [
+    ("Tordiffe", "Anderson", "Clackamas"),
 ]
 
 def main():
     with get_connection() as conn:
+        # Autocommit so each statement releases its row locks immediately.
+        # lock_timeout/statement_timeout make the script fail fast (instead of
+        # hanging silently) if another session holds a lock on the players table.
+        conn.autocommit = True
         cur = conn.cursor()
+        cur.execute("SET lock_timeout = '5s'")
+        cur.execute("SET statement_timeout = '15s'")
         updated = 0
         not_found = []
 
@@ -77,8 +90,37 @@ def main():
                 print(f"  ✓ {first} {last} ({team_short}) → {committed_to}")
                 updated += 1
 
-        conn.commit()
-        print(f"\nUpdated {updated} players")
+        # ── Clear commitments for any players in UNCOMMITS ──
+        cleared = 0
+        for last, first, team_short in UNCOMMITS:
+            cur.execute("""
+                SELECT p.id, p.is_committed, p.committed_to
+                FROM players p
+                JOIN teams t ON p.team_id = t.id
+                WHERE LOWER(p.last_name) = LOWER(%s)
+                  AND LOWER(p.first_name) = LOWER(%s)
+                  AND LOWER(t.short_name) = LOWER(%s)
+            """, (last, first, team_short))
+
+            rows = cur.fetchall()
+            if not rows:
+                not_found.append(f"  {first} {last} ({team_short}) [uncommit]")
+                continue
+
+            for row in rows:
+                pid = row['id']
+                if not row['is_committed'] and not row['committed_to']:
+                    print(f"  SKIP {first} {last} ({team_short}) — already uncommitted")
+                    continue
+                cur.execute("""
+                    UPDATE players
+                    SET is_committed = 0, committed_to = NULL
+                    WHERE id = %s
+                """, (pid,))
+                print(f"  ✗ {first} {last} ({team_short}) — cleared (was {row['committed_to']})")
+                cleared += 1
+
+        print(f"\nUpdated {updated} players, cleared {cleared}")
         if not_found:
             print(f"\nNot found ({len(not_found)}):")
             for nf in not_found:
