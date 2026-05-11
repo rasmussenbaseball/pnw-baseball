@@ -513,40 +513,44 @@ const TOURNAMENTS = {
         home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 },
         ifNecessary: true },
     ],
+    // ── Layout (1920×1080) ──
+    // 7 columns of 230-wide cards (cards are 90h so logos are visible),
+    // with the championship column wider for emphasis. Row pitch is 105
+    // so cards have a 15px gap.
+    //
+    // Vertical alignment — important: SR rows on the left line up
+    // horizontally with the championship round-1 games they feed:
+    //   Row 1 (y=255) → West SR (G105/G106) → G1
+    //   Row 2 (y=360) → East SR (G103/G104) → G2
+    //   Row 3 (y=465) → South SR (G107/G108) → G3
+    //   Row 4 (y=570) → North SR (G101/G102) → G4
     layout: {
-      // ── Super Regionals stacked on far left ──
-      // Rows are ORDERED so each SR sits horizontally aligned with the
-      // championship game it feeds:
-      //   Row 1 (y=245) — West SR  (G105/G106) → G1 (N1 vs WSR)
-      //   Row 2 (y=335) — East SR  (G103/G104) → G2 (S1 vs ESR)
-      //   Row 3 (y=425) — South SR (G107/G108) → G3 (E1 vs SSR)
-      //   Row 4 (y=515) — North SR (G101/G102) → G4 (W1 vs NSR)
-      // Don't change without also updating the championship G1-G4 ys below.
-      105: { x: 40,  y: 245, w: 220, h: 58 },
-      106: { x: 280, y: 245, w: 220, h: 58 },
-      103: { x: 40,  y: 335, w: 220, h: 58 },
-      104: { x: 280, y: 335, w: 220, h: 58 },
-      107: { x: 40,  y: 425, w: 220, h: 58 },
-      108: { x: 280, y: 425, w: 220, h: 58 },
-      101: { x: 40,  y: 515, w: 220, h: 58 },
-      102: { x: 280, y: 515, w: 220, h: 58 },
-      // ── Championships WB ──
-      1: { x: 560,  y: 245, w: 230, h: 60 },
-      2: { x: 560,  y: 335, w: 230, h: 60 },
-      3: { x: 560,  y: 425, w: 230, h: 60 },
-      4: { x: 560,  y: 515, w: 230, h: 60 },
-      7: { x: 830,  y: 290, w: 230, h: 60 },
-      8: { x: 830,  y: 470, w: 230, h: 60 },
-      11:{ x: 1100, y: 380, w: 230, h: 60 },
-      14:{ x: 1620, y: 380, w: 240, h: 78 },
-      15:{ x: 1620, y: 472, w: 240, h: 30 },
-      // ── Championships LB ──
-      5: { x: 560,  y: 700, w: 230, h: 60 },
-      6: { x: 560,  y: 800, w: 230, h: 60 },
-      9: { x: 830,  y: 700, w: 230, h: 60 },
-      10:{ x: 830,  y: 800, w: 230, h: 60 },
-      12:{ x: 1100, y: 750, w: 230, h: 60 },
-      13:{ x: 1370, y: 750, w: 230, h: 60 },
+      // ── Super Regionals (cols 1+2) ──
+      105: { x: 20,  y: 255, w: 230, h: 90 },
+      106: { x: 270, y: 255, w: 230, h: 90 },
+      103: { x: 20,  y: 360, w: 230, h: 90 },
+      104: { x: 270, y: 360, w: 230, h: 90 },
+      107: { x: 20,  y: 465, w: 230, h: 90 },
+      108: { x: 270, y: 465, w: 230, h: 90 },
+      101: { x: 20,  y: 570, w: 230, h: 90 },
+      102: { x: 270, y: 570, w: 230, h: 90 },
+      // ── Championships — Winner's Bracket (top half) ──
+      1: { x: 520,  y: 255, w: 230, h: 90 },     // col 3
+      2: { x: 520,  y: 360, w: 230, h: 90 },
+      3: { x: 520,  y: 465, w: 230, h: 90 },
+      4: { x: 520,  y: 570, w: 230, h: 90 },
+      7: { x: 770,  y: 308, w: 230, h: 90 },     // col 4 — between G1 & G2
+      8: { x: 770,  y: 518, w: 230, h: 90 },     //         between G3 & G4
+      11:{ x: 1020, y: 413, w: 230, h: 90 },     // col 5 — WB Final
+      14:{ x: 1520, y: 413, w: 280, h: 90 },     // col 7 — Championship (wider, gold)
+      15:{ x: 1520, y: 515, w: 280, h: 32 },     //         If necessary
+      // ── Championships — Loser's Bracket (bottom half) ──
+      5: { x: 520,  y: 720, w: 230, h: 80 },     // col 3
+      6: { x: 520,  y: 815, w: 230, h: 80 },
+      9: { x: 770,  y: 720, w: 230, h: 80 },     // col 4
+      10:{ x: 770,  y: 815, w: 230, h: 80 },
+      12:{ x: 1020, y: 768, w: 230, h: 80 },     // col 5 — LB R3
+      13:{ x: 1270, y: 768, w: 230, h: 80 },     // col 6 — LB Final
     },
     connections: [
       // SR
@@ -577,12 +581,17 @@ const TOURNAMENTS = {
     ],
     sectionLabels: [
       { text: 'BYES → CHAMPIONSHIPS:  N1 EVERETT  ·  S1 LINN-BENTON  ·  E1 SPOKANE  ·  W1 LOWER COLUMBIA',
-        x: 0, y: 220, w: CANVAS_W, centered: true },
-      { text: 'SUPER REGIONALS (MAY 15-16)', x: 40, y: 660, w: 460, centered: true },
-      { text: 'CHAMPIONSHIPS — LOWER COLUMBIA (MAY 21-25)', x: 560, y: 660, w: 1300, centered: true },
-      { text: 'CHAMPIONSHIP', x: 1620, y: 358, w: 240, centered: true },
+        x: 0, y: 225, w: CANVAS_W, centered: true },
+      { text: "SUPER REGIONALS — MAY 15-16",
+        x: 20,  y: 695, w: 480, centered: true },
+      { text: "CHAMPIONSHIPS — LOWER COLUMBIA — MAY 21-25",
+        x: 520, y: 695, w: 980, centered: true },
+      { text: "CHAMPIONSHIP",
+        x: 1520, y: 393, w: 280, centered: true },
     ],
-    championshipGames: [14, 102, 104, 106, 108],
+    // Only the actual title game gets the gold border. The BO3 super-regional
+    // finals are regular cards.
+    championshipGames: [14],
   },
 }
 
@@ -880,6 +889,8 @@ function drawConnector(ctx, a, b) {
 async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seeds, championshipGames) {
   const { x, y, w, h } = pos
   const isChamp = championshipGames ? championshipGames.has(game.num) : false
+  // Compact: tighter fonts / smaller strip so cards under ~270px wide stay readable.
+  const compact = w < 270
 
   // Card bg
   ctx.fillStyle = isChamp ? PALETTE.cardChampionship : PALETTE.card
@@ -892,7 +903,7 @@ async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seed
   ctx.stroke()
 
   // Top strip with game number + time + day
-  const stripH = 28
+  const stripH = compact ? 22 : 28
   ctx.fillStyle = PALETTE.topStrip
   roundRect(ctx, x, y, w, stripH, 10)
   ctx.fill()
@@ -901,31 +912,38 @@ async function drawGameCard(ctx, game, pos, seedMap, teamLogoMap, outcomes, seed
   // Game number badge — use displayLabel override if present (e.g. GNAC
   // scenario B uses 'G4' / 'G5' as labels even though their internal nums
   // are 6 / 7 to keep the outcomes Map keys unique).
+  const stripCY = y + stripH / 2
+  const numPadL = compact ? 8 : 12
   ctx.fillStyle = isChamp ? PALETTE.championshipBorder : PALETTE.accent
-  ctx.font = 'bold 14px system-ui, sans-serif'
+  ctx.font = `bold ${compact ? 12 : 14}px system-ui, sans-serif`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(game.displayLabel || `G${game.num}`, x + 12, y + 14)
+  const numText = game.displayLabel || `G${game.num}`
+  ctx.fillText(numText, x + numPadL, stripCY)
+  // Push day/time text past the actual rendered width of the number so longer
+  // game labels ("G102", "G108") don't collide with the time.
+  const numEndX = x + numPadL + ctx.measureText(numText).width
 
   // Day + time (or "FINAL" badge if game is over)
   const outcome = outcomes?.get(game.num)
   const isFinal = outcome?.status === 'final'
   ctx.fillStyle = PALETTE.textSecondary
-  ctx.font = '13px system-ui, sans-serif'
-  ctx.fillText(`${game.day} · ${game.time}`, x + 46, y + 14)
+  ctx.font = `${compact ? 11 : 13}px system-ui, sans-serif`
+  ctx.fillText(`${game.day} · ${game.time}`, numEndX + (compact ? 6 : 10), stripCY)
 
   if (isFinal) {
     // FINAL pill on the right of the strip
-    const pillW = 50, pillH = 18
-    const pillX = x + w - pillW - 10
+    const pillW = compact ? 42 : 50
+    const pillH = compact ? 16 : 18
+    const pillX = x + w - pillW - (compact ? 6 : 10)
     const pillY = y + (stripH - pillH) / 2
     ctx.fillStyle = PALETTE.accent
     roundRect(ctx, pillX, pillY, pillW, pillH, 4)
     ctx.fill()
     ctx.fillStyle = '#062029'
-    ctx.font = 'bold 11px system-ui, sans-serif'
+    ctx.font = `bold ${compact ? 10 : 11}px system-ui, sans-serif`
     ctx.textAlign = 'center'
-    ctx.fillText('FINAL', pillX + pillW / 2, y + 14)
+    ctx.fillText('FINAL', pillX + pillW / 2, stripCY)
   }
 
   // Two team rows
@@ -976,8 +994,9 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
   // overflowing the row.
   const compact = w < 270
 
-  // Logo or placeholder
-  const logoSize = Math.min(h - 10, compact ? 28 : 38)
+  // Logo or placeholder — uses most of the row height so the logo reads
+  // clearly even on the compact bracket.
+  const logoSize = Math.min(h - 6, compact ? 30 : 40)
   const logoX = x + (compact ? 6 : 10)
   const logoY = y + (h - logoSize) / 2
 
@@ -1008,23 +1027,24 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
     ctx.fillText('?', logoX + logoSize / 2, logoY + logoSize / 2)
   }
 
-  // Seed badge — width auto-fits the text so "N1", "W2", etc. don't overflow.
+  // Seed badge — only rendered on roomier (non-compact) cards. On the
+  // dense full-playoff bracket there isn't room for the badge AND the
+  // team name, so the badge is skipped entirely.
   const afterLogoX = logoX + logoSize + (compact ? 6 : 12)
   let nameStartX = afterLogoX
-  if (teamRef.seed) {
-    ctx.font = `bold ${compact ? 11 : 13}px system-ui, sans-serif`
+  if (teamRef.seed && !compact) {
+    ctx.font = 'bold 13px system-ui, sans-serif'
     const seedText = `#${teamRef.seed}`
     const tw = ctx.measureText(seedText).width
-    const seedW = Math.max(compact ? 22 : 28, Math.ceil(tw) + (compact ? 8 : 12))
-    const badgeH = compact ? 20 : 24
+    const seedW = Math.max(28, Math.ceil(tw) + 12)
     ctx.fillStyle = PALETTE.border
-    roundRect(ctx, afterLogoX, y + h / 2 - badgeH / 2, seedW, badgeH, 4)
+    roundRect(ctx, afterLogoX, y + h / 2 - 12, seedW, 24, 4)
     ctx.fill()
     ctx.fillStyle = PALETTE.textPrimary
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(seedText, afterLogoX + seedW / 2, y + h / 2)
-    nameStartX = afterLogoX + seedW + (compact ? 6 : 10)
+    nameStartX = afterLogoX + seedW + 10
   }
 
   // Team name (truncate if too long)
