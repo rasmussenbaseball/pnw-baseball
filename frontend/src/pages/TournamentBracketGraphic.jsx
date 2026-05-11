@@ -580,13 +580,16 @@ const TOURNAMENTS = {
       { from: 13, to: 14 },
     ],
     sectionLabels: [
-      { text: 'BYES → CHAMPIONSHIPS:  N1 EVERETT  ·  S1 LINN-BENTON  ·  E1 SPOKANE  ·  W1 LOWER COLUMBIA',
-        x: 0, y: 225, w: CANVAS_W, centered: true },
-      { text: "SUPER REGIONALS — MAY 15-16",
-        x: 20,  y: 695, w: 480, centered: true },
-      { text: "CHAMPIONSHIPS — LOWER COLUMBIA — MAY 21-25",
-        x: 520, y: 695, w: 980, centered: true },
-      { text: "CHAMPIONSHIP",
+      // Top-of-bracket section headers
+      { text: 'SUPER REGIONALS — MAY 15-16',
+        x: 20,  y: 230, w: 480,  centered: true },
+      { text: "CHAMPIONSHIPS — WINNER'S BRACKET",
+        x: 520, y: 230, w: 1280, centered: true },
+      // Above the loser's bracket row
+      { text: "CHAMPIONSHIPS — LOSER'S BRACKET",
+        x: 520, y: 695, w: 980,  centered: true },
+      // Marker above the championship final
+      { text: 'CHAMPIONSHIP',
         x: 1520, y: 393, w: 280, centered: true },
     ],
     // Only the actual title game gets the gold border. The BO3 super-regional
