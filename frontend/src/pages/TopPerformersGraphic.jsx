@@ -273,7 +273,6 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   const nameZoneEnd = x + 212
   const nameMaxW = nameZoneEnd - nameX
 
-  const headlineCX = x + 250
   const gridLeftX = x + 296
   const gridRightX = x + w - 12
   const gridW = gridRightX - gridLeftX
@@ -323,20 +322,7 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   ctx.fillStyle = THEME.textSecondary
   ctx.fillText(truncText(ctx, tName, nameMaxW - miniSz - gap), nameX + miniSz + gap, imgCY + 12)
 
-  // Headline stat — wRC+ (hitters) or FIP+ (pitchers)
-  const headline = kind === 'hitter'
-    ? { label: 'wRC+', value: fmtInt(player.wrc_plus) }
-    : { label: 'FIP+', value: fmtInt(player.fip_plus) }
-
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.font = `800 10px ${font}`
-  ctx.fillStyle = THEME.textMuted
-  ctx.fillText(headline.label, headlineCX, imgCY - 16)
-
-  ctx.font = `900 20px ${font}`
-  ctx.fillStyle = accent
-  ctx.fillText(headline.value, headlineCX, imgCY + 7)
+  // (Headline stat removed per user request — keep the spot blank.)
 
   // Mini stat cells
   const stats = kind === 'hitter'
