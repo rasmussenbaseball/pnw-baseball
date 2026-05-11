@@ -266,19 +266,22 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   const imgCY = y + h / 2
 
   // ── Fixed-pixel zones (guarantees no overlap at any card width) ──
-  const rankCX = x + 20
-  const imgR = Math.min(26, Math.floor(h * 0.36))
-  const imgCX = x + 74
-  const nameX = imgCX + imgR + 12
-  const nameZoneEnd = x + 212
+  // Rank shifted right so "#10" doesn't brush the left edge. Image and
+  // grid scaled up modestly and grid extended left into the space the
+  // removed headline stat used to occupy.
+  const rankCX = x + 30
+  const imgR = Math.min(30, Math.floor(h * 0.40))
+  const imgCX = x + 86
+  const nameX = imgCX + imgR + 14
+  const nameZoneEnd = x + 232
   const nameMaxW = nameZoneEnd - nameX
 
-  const gridLeftX = x + 296
-  const gridRightX = x + w - 12
+  const gridLeftX = x + 252
+  const gridRightX = x + w - 14
   const gridW = gridRightX - gridLeftX
 
   // Rank number (#1-#10)
-  ctx.font = `900 18px ${font}`
+  ctx.font = `900 20px ${font}`
   ctx.fillStyle = accent
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -306,21 +309,21 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   // Name + team block (with truncation)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  ctx.font = `700 13px ${font}`
+  ctx.font = `700 15px ${font}`
   ctx.fillStyle = THEME.textPrimary
-  ctx.fillText(truncText(ctx, player.display_name || '', nameMaxW), nameX, imgCY - 3)
+  ctx.fillText(truncText(ctx, player.display_name || '', nameMaxW), nameX, imgCY - 4)
 
   // Team (small logo + short)
   ctx.textBaseline = 'middle'
-  ctx.font = `500 11px ${font}`
+  ctx.font = `500 12px ${font}`
   const tName = player.team_short || ''
-  const miniSz = 12
+  const miniSz = 14
   const gap = 4
   if (logoImg) {
-    drawImageContain(ctx, logoImg, nameX, imgCY + 12 - miniSz / 2, miniSz, miniSz)
+    drawImageContain(ctx, logoImg, nameX, imgCY + 14 - miniSz / 2, miniSz, miniSz)
   }
   ctx.fillStyle = THEME.textSecondary
-  ctx.fillText(truncText(ctx, tName, nameMaxW - miniSz - gap), nameX + miniSz + gap, imgCY + 12)
+  ctx.fillText(truncText(ctx, tName, nameMaxW - miniSz - gap), nameX + miniSz + gap, imgCY + 14)
 
   // (Headline stat removed per user request — keep the spot blank.)
 
@@ -348,12 +351,12 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   const cellW = gridW / stats.length
   for (let i = 0; i < stats.length; i++) {
     const cx = gridLeftX + cellW * i + cellW / 2
-    ctx.font = `700 9px ${font}`
+    ctx.font = `700 11px ${font}`
     ctx.fillStyle = THEME.textMuted
-    ctx.fillText(stats[i].label, cx, imgCY - 16)
-    ctx.font = `800 13px ${font}`
+    ctx.fillText(stats[i].label, cx, imgCY - 18)
+    ctx.font = `800 16px ${font}`
     ctx.fillStyle = THEME.textPrimary
-    ctx.fillText(stats[i].value, cx, imgCY + 7)
+    ctx.fillText(stats[i].value, cx, imgCY + 8)
   }
 }
 
