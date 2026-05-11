@@ -351,6 +351,105 @@ function drawRankings(ctx, data, y, h) {
   })
 }
 
+// Used in place of drawRankings for NWAC teams: shows basic team hitting and
+// pitching counting/rate stats split across two side-by-side cards. Same
+// vertical slot as the rankings row so the rest of the layout is unchanged.
+function drawTeamStats(ctx, data, y, h) {
+  const pad = MARGIN
+  const gap = 12
+  const inner = SIZE - pad * 2
+  const cardW = (inner - gap) / 2
+  const cardH = h - 20
+  const cy = y + 10
+
+  const s = data.team_stats || {}
+  const fmt3 = (v) => v == null ? '-' : v.toFixed(3).replace(/^0/, '')
+  const fmt2 = (v) => v == null ? '-' : v.toFixed(2)
+  const fmt1 = (v) => v == null ? '-' : v.toFixed(1)
+  const fmtN = (v) => v == null ? '-' : Math.round(v).toString()
+
+  // Hitting and pitching panels. 2 rows × 4 columns of stat cells per panel.
+  // The user asked for plain info (no ranks, no league avg) so we just print
+  // label + value in a clean grid.
+  const panels = [
+    {
+      title: 'HITTING', tint: '#0ea5e9',
+      cells: [
+        { l: 'AVG', v: fmt3(s.avg) },
+        { l: 'OBP', v: fmt3(s.obp) },
+        { l: 'SLG', v: fmt3(s.slg) },
+        { l: 'OPS', v: fmt3(s.ops) },
+        { l: 'HR',  v: fmtN(s.hr) },
+        { l: 'R',   v: fmtN(s.runs_scored) },
+        { l: 'RBI', v: fmtN(s.rbi) },
+        { l: 'SB',  v: fmtN(s.sb) },
+      ],
+    },
+    {
+      title: 'PITCHING', tint: '#f43f5e',
+      cells: [
+        { l: 'ERA',  v: fmt2(s.era) },
+        { l: 'WHIP', v: fmt2(s.whip) },
+        { l: 'K/9',  v: fmt1(s.k_per_9) },
+        { l: 'BB/9', v: fmt1(s.bb_per_9) },
+        { l: 'IP',   v: fmt1(s.ip) },
+        { l: 'K',    v: fmtN(s.k) },
+        { l: 'BB',   v: fmtN(s.bb) },
+        { l: 'HR-A', v: fmtN(s.hr_allowed) },
+      ],
+    },
+  ]
+
+  panels.forEach((panel, pi) => {
+    const cx = pad + (cardW + gap) * pi
+    // Card background
+    roundRect(ctx, cx, cy, cardW, cardH, 14)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    // Tint bar
+    ctx.save()
+    roundRect(ctx, cx, cy, cardW, cardH, 14)
+    ctx.clip()
+    ctx.fillStyle = panel.tint
+    ctx.fillRect(cx, cy, cardW, 6)
+    ctx.restore()
+
+    // Title
+    ctx.fillStyle = '#64748b'
+    ctx.font = '700 11px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(panel.title, cx + cardW / 2, cy + 18)
+
+    // 2 rows × 4 cols stat grid
+    const gridTop = cy + 36
+    const gridH = cardH - 36 - 8
+    const rows = 2
+    const cols = 4
+    const rowH = gridH / rows
+    const colW = cardW / cols
+    panel.cells.forEach((cell, idx) => {
+      const r = Math.floor(idx / cols)
+      const c = idx % cols
+      const xC = cx + colW * c + colW / 2
+      const yT = gridTop + rowH * r
+
+      // Label
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '600 10px "Inter", system-ui, sans-serif'
+      ctx.fillText(cell.l, xC, yT + 10)
+      // Value
+      ctx.fillStyle = '#0f172a'
+      ctx.font = '800 22px "Inter", system-ui, sans-serif'
+      ctx.fillText(cell.v, xC, yT + rowH / 2 + 8)
+    })
+  })
+}
+
 function drawPercentiles(ctx, data, y, h) {
   const pad = MARGIN
   const headerH = 30
@@ -702,7 +801,15 @@ async function renderTeamInfoGraphic(canvas, data) {
 
   await drawHeader(ctx, data, zones.header.y, zones.header.h)
   drawRecordStrip(ctx, data, zones.record.y, zones.record.h)
-  drawRankings(ctx, data, zones.rankings.y, zones.rankings.h)
+  // NWAC teams: replace the rankings row (which would only show 2 cards
+  // since national rank + SOS don't exist) with a basic team stats panel.
+  const isNwac = data.team?.division_level === 'JUCO'
+                || data.rankings?.division_name === 'NWAC'
+  if (isNwac) {
+    drawTeamStats(ctx, data, zones.rankings.y, zones.rankings.h)
+  } else {
+    drawRankings(ctx, data, zones.rankings.y, zones.rankings.h)
+  }
   drawPercentiles(ctx, data, zones.percentiles.y, zones.percentiles.h)
   await drawPerformers(ctx, data, zones.performers.y, zones.performers.h)
   drawFooter(ctx, data, zones.footer.y, zones.footer.h)

@@ -4407,6 +4407,32 @@ def team_info_graphic(
         for p in top_pitchers:
             p["name"] = f'{p.get("first_name","")} {p.get("last_name","")}'.strip()
 
+        # ── Canonical team aggregates (single source of truth) ──
+        # Used to render the basic team stats panel on the graphic. Pulls from
+        # get_team_aggregates() so these numbers always match the team page,
+        # leaderboards, and team comparison views.
+        agg = get_team_aggregates(cur, team_id, season)
+        team_stats = {
+            # Batting
+            "avg": agg.get("team_avg"),
+            "obp": agg.get("team_obp"),
+            "slg": agg.get("team_slg"),
+            "ops": agg.get("team_ops"),
+            "hr": agg.get("hr_bat"),
+            "sb": agg.get("sb"),
+            "runs_scored": agg.get("runs_scored"),
+            "rbi": agg.get("rbi"),
+            # Pitching
+            "era": agg.get("team_era"),
+            "whip": agg.get("team_whip"),
+            "ip": agg.get("true_ip"),
+            "k": agg.get("k_pit"),
+            "bb": agg.get("bb_pit"),
+            "k_per_9": agg.get("k_per_9"),
+            "bb_per_9": agg.get("bb_per_9"),
+            "hr_allowed": agg.get("hr_allowed"),
+        }
+
         return {
             "season": season,
             "team": team,
@@ -4442,6 +4468,7 @@ def team_info_graphic(
                 "sos": avg_sos,
                 "sos_rank": avg_sos_rank,
             },
+            "team_stats": team_stats,
             "top_hitters": top_hitters,
             "top_pitchers": top_pitchers,
             "batting_percentiles": batting_percentiles,
