@@ -279,13 +279,16 @@ function drawRankings(ctx, data, y, h) {
   const pad = MARGIN
   const gap = 12
   const inner = SIZE - pad * 2
-  const cardW = (inner - gap * 3) / 4
   const cardH = h - 20
   const cy = y + 10
 
   const r = data.rankings || {}
   const confAbbr = r.conference_abbrev || data.team?.conference_abbrev || 'conf'
   const divName = r.division_name || data.team?.division_name || 'div'
+
+  // NWAC (JUCO) teams aren't ranked nationally — composite rankings only cover
+  // NCAA/NAIA. Hide that card for NWAC so we don't show a misleading dash.
+  const isNwac = divName === 'NWAC' || data.team?.division_level === 'JUCO'
 
   // Power rating subtitle: show conference rank; if division is broader (more teams
   // than just this conference), show the division rank too.
@@ -303,12 +306,17 @@ function drawRankings(ctx, data, y, h) {
     prSub = `${ordinal(prDiv)} of ${prDivTotal} in ${divName}`
   }
 
-  const cards = [
-    { label: 'NATIONAL RANK', big: r.national_rank != null ? `#${r.national_rank}` : '-', small: r.national_percentile != null ? `${Math.round(r.national_percentile)} percentile` : '', tint: '#0ea5e9' },
-    { label: 'CONFERENCE RANK', big: r.conference_rank != null ? `#${r.conference_rank}` : '-', small: r.conference_total ? `of ${r.conference_total}` : '', tint: '#14b8a6' },
-    { label: 'POWER RATING', big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: prSub, tint: '#8b5cf6' },
-    { label: 'STRENGTH OF SCHED', big: r.sos_rank != null ? `#${r.sos_rank}` : '-', small: r.sos != null ? `SOS ${r.sos.toFixed(3)}` : '', tint: '#f59e0b' },
+  const allCards = [
+    { key: 'national',   label: 'NATIONAL RANK',    big: r.national_rank != null ? `#${r.national_rank}` : '-', small: r.national_percentile != null ? `${Math.round(r.national_percentile)} percentile` : '', tint: '#0ea5e9' },
+    { key: 'conference', label: 'CONFERENCE RANK',  big: r.conference_rank != null ? `#${r.conference_rank}` : '-', small: r.conference_total ? `of ${r.conference_total}` : '', tint: '#14b8a6' },
+    { key: 'power',      label: 'POWER RATING',     big: r.power_rating != null ? r.power_rating.toFixed(2) : '-', small: prSub, tint: '#8b5cf6' },
+    { key: 'sos',        label: 'STRENGTH OF SCHED', big: r.sos_rank != null ? `#${r.sos_rank}` : '-', small: r.sos != null ? `SOS ${r.sos.toFixed(3)}` : '', tint: '#f59e0b' },
   ]
+  // NWAC has no national ranking and no strength-of-schedule, so drop both.
+  const cards = isNwac
+    ? allCards.filter(c => c.key !== 'national' && c.key !== 'sos')
+    : allCards
+  const cardW = (inner - gap * (cards.length - 1)) / cards.length
 
   cards.forEach((c, i) => {
     const cx = pad + (cardW + gap) * i
