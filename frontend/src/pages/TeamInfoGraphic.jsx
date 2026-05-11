@@ -455,9 +455,9 @@ function drawTeamStats(ctx, data, y, h) {
   })
 }
 
-// Baseball Savant style percentile bars. Two columns: hitter metrics left,
-// pitcher metrics right. Each bar shows the team's percentile (filled width),
-// raw value, rank, and league average from the peer set (division).
+// Division Rank panel: two rows of 4 colored cards (hitting + pitching).
+// Each card shows the stat label, team value (hero number), division rank,
+// and league average. Card background colored by percentile.
 function drawPercentiles(ctx, data, y, h) {
   const pad = MARGIN
   const headerH = 30
@@ -470,25 +470,25 @@ function drawPercentiles(ctx, data, y, h) {
   ctx.fillStyle = '#64748b'
   ctx.font = '500 13px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'right'
-  ctx.fillText('higher % = better', SIZE - pad, y + 22)
+  ctx.fillText('lower rank = better', SIZE - pad, y + 22)
 
   // Formatters
-  const fmt3 = v => v != null ? v.toFixed(3).replace(/^0/, '') : '-'
-  const fmt2 = v => v != null ? v.toFixed(2) : '-'
-  const fmt1 = v => v != null ? v.toFixed(1) : '-'
+  const fmt3   = v => v != null ? v.toFixed(3).replace(/^0/, '') : '-'
+  const fmt2   = v => v != null ? v.toFixed(2) : '-'
+  const fmt1   = v => v != null ? v.toFixed(1) : '-'
+  const fmt0   = v => v != null ? Math.round(v).toString() : '-'
   const fmtPct = (v, d = 1) => v != null ? v.toFixed(d) + '%' : '-'
-  const fmt0 = v => v != null ? Math.round(v).toString() : '-'
+  const fmtRatio = v => v != null ? (v * 100).toFixed(1) + '%' : '-'
 
+  // 4 stats per row — AVG and ERA dropped per user request, leaving the
+  // advanced metrics with room to breathe.
   const battingMetrics = [
-    { key: 'batting_avg', label: 'AVG',   fmt: fmt3 },
-    { key: 'woba',        label: 'wOBA',  fmt: fmt3 },
-    { key: 'hr_per_pa',   label: 'HR/PA', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-',
-                                          avgFmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-' },
-    { key: 'owar',        label: 'oWAR',  fmt: fmt1 },
-    { key: 'wrc_plus',    label: 'wRC+',  fmt: fmt0 },
+    { key: 'woba',      label: 'wOBA',  fmt: fmt3 },
+    { key: 'hr_per_pa', label: 'HR/PA', fmt: fmtRatio, avgFmt: fmtRatio },
+    { key: 'owar',      label: 'oWAR',  fmt: fmt1 },
+    { key: 'wrc_plus',  label: 'wRC+',  fmt: fmt0 },
   ]
   const pitchingMetrics = [
-    { key: 'era',   label: 'ERA',   fmt: fmt2 },
     { key: 'siera', label: 'SIERA', fmt: fmt2 },
     { key: 'k_pct', label: 'K%',    fmt: v => fmtPct(v, 1), avgFmt: v => fmtPct(v, 1) },
     { key: 'baa',   label: 'BAA',   fmt: fmt3 },
@@ -498,34 +498,18 @@ function drawPercentiles(ctx, data, y, h) {
   const batP = data.batting_percentiles || {}
   const pitP = data.pitching_percentiles || {}
 
-  // Layout
-  const sideGap = 16
-  const sideW = (SIZE - pad * 2 - sideGap) / 2
+  // Layout: 4 cards per row, two rows stacked.
   const startY = y + headerH + 8
   const availH = h - headerH - 16
+  const cols = 4
+  const gap = 12
+  const cellW = (SIZE - pad * 2 - gap * (cols - 1)) / cols
+  const rowGap = 10
+  const cellH = (availH - rowGap) / 2
 
-  const subHeaderH = 18
-  const rowsY = startY + subHeaderH
-  const rowsH = availH - subHeaderH
-  const rowH = rowsH / 5  // 5 metrics per side
-
-  const drawSide = (baseX, title, tint, metrics, dataMap) => {
-    // Column geometry — must match the per-row layout below.
-    const labelW = 50
-    const valW = 60
-    const rightW = 78
-    const barX = baseX + labelW + valW + 6
-    const barW = sideW - labelW - valW - rightW - 12
-
-    // Sub-header — centered above the bar area, no accent stripe.
-    ctx.fillStyle = '#0f172a'
-    ctx.font = '800 12px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(title, barX + barW / 2, startY + 9)
-
-    metrics.forEach((m, i) => {
-      const ry = rowsY + i * rowH
+  const drawRow = (metrics, dataMap, rowY) => {
+    metrics.forEach((m, c) => {
+      const cx = pad + c * (cellW + gap)
       const obj = dataMap[m.key] || {}
       const pct = obj.percentile
       const val = obj.value
@@ -533,79 +517,57 @@ function drawPercentiles(ctx, data, y, h) {
       const total = obj.total
       const lgAvg = obj.league_avg
 
-      // labelW/valW/rightW/barX/barW are defined once at the top of drawSide
-      // since they're identical for every row.
-      const barH = 12
-      const barCY = ry + rowH / 2
-      const barY = barCY - barH / 2
+      const bg = percentileColor(pct)
+      const txt = textColorFor(bg)
 
-      // Stat label (left)
-      ctx.fillStyle = '#475569'
-      ctx.font = '800 13px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(m.label, baseX + 2, barCY)
-
-      // Team value (next to label, right-aligned at valW boundary)
-      const valTxt = m.fmt(val)
-      ctx.fillStyle = '#0f172a'
-      ctx.font = '800 17px "Inter", system-ui, sans-serif'
-      ctx.textAlign = 'right'
-      ctx.fillText(valTxt, baseX + labelW + valW, barCY - 1)
-
-      // Bar track
-      ctx.fillStyle = '#e2e8f0'
-      roundRect(ctx, barX, barY, barW, barH, barH / 2)
+      // Card
+      roundRect(ctx, cx, rowY, cellW, cellH, 12)
+      ctx.fillStyle = bg
       ctx.fill()
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      ctx.stroke()
 
-      // Bar fill (clipped so rounded corners stay clean)
-      if (pct != null) {
-        const fillW = Math.max(4, (pct / 100) * barW)
-        ctx.save()
-        roundRect(ctx, barX, barY, barW, barH, barH / 2)
-        ctx.clip()
-        ctx.fillStyle = percentileColor(pct)
-        ctx.fillRect(barX, barY, fillW, barH)
-        ctx.restore()
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
 
-        // Percentile bubble at the end of the fill
-        const bubbleX = barX + Math.max(12, fillW - 1)
-        ctx.fillStyle = percentileColor(pct)
-        ctx.beginPath()
-        ctx.arc(bubbleX, barCY, 9, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 1.5
-        ctx.stroke()
-        ctx.fillStyle = textColorFor(percentileColor(pct))
-        ctx.font = '800 10px "Inter", system-ui, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(String(pct), bubbleX, barCY + 0.5)
+      // Label (top of card)
+      ctx.fillStyle = txt
+      ctx.font = '800 15px "Inter", system-ui, sans-serif'
+      ctx.fillText(m.label, cx + cellW / 2, rowY + 18)
+
+      // Hero value — auto-fit to cell width
+      const valTxt = m.fmt(val)
+      let vSize = 44
+      ctx.font = `900 ${vSize}px "Inter", system-ui, sans-serif`
+      while (ctx.measureText(valTxt).width > cellW - 24 && vSize > 26) {
+        vSize -= 2
+        ctx.font = `900 ${vSize}px "Inter", system-ui, sans-serif`
       }
+      ctx.fillText(valTxt, cx + cellW / 2, rowY + cellH / 2 + 2)
 
-      // Rank (top right of row)
-      const rightX = baseX + sideW
+      // Rank
       if (rank != null && total != null) {
-        ctx.fillStyle = '#0f172a'
         ctx.font = '800 12px "Inter", system-ui, sans-serif'
-        ctx.textAlign = 'right'
-        ctx.textBaseline = 'alphabetic'
-        ctx.fillText(`#${rank} of ${total}`, rightX, barCY - 2)
+        ctx.fillText(`${ordinal(rank)} of ${total}`, cx + cellW / 2, rowY + cellH - 22)
       }
-      // League average (bottom right of row)
+
+      // League average — slightly faded
       if (lgAvg != null) {
         const avgFmt = m.avgFmt || m.fmt
-        ctx.fillStyle = '#94a3b8'
-        ctx.font = '600 10px "Inter", system-ui, sans-serif'
-        ctx.textAlign = 'right'
-        ctx.fillText(`lg ${avgFmt(lgAvg)}`, rightX, barCY + 12)
+        // Mix txt with bg to fade. Simpler: use a fixed alpha for both white
+        // and dark text.
+        ctx.globalAlpha = 0.75
+        ctx.fillStyle = txt
+        ctx.font = '600 11px "Inter", system-ui, sans-serif'
+        ctx.fillText(`lg avg ${avgFmt(lgAvg)}`, cx + cellW / 2, rowY + cellH - 8)
+        ctx.globalAlpha = 1
       }
     })
   }
 
-  drawSide(pad,                       'HITTING',  '#0ea5e9', battingMetrics,  batP)
-  drawSide(pad + sideW + sideGap,     'PITCHING', '#f43f5e', pitchingMetrics, pitP)
+  drawRow(battingMetrics,  batP, startY)
+  drawRow(pitchingMetrics, pitP, startY + cellH + rowGap)
 }
 
 async function drawPerformers(ctx, data, y, h) {
@@ -662,21 +624,37 @@ async function drawPerformers(ctx, data, y, h) {
       ctx.textBaseline = 'middle'
       ctx.fillText(String(i + 1), baseX + 22, ry + rowH / 2 + 1)
 
-      // headshot or initials
+      // Headshot if available, otherwise team logo, otherwise initials.
       const headX = baseX + 44
       const headSize = 36
       let headImg = null
+      let isLogoFallback = false
       if (p.headshot_url) {
         try { headImg = await loadImage(resolveImageUrl(p.headshot_url)) } catch { headImg = null }
+      }
+      if (!headImg && data.team?.logo_url) {
+        try {
+          headImg = await loadImage(resolveImageUrl(data.team.logo_url))
+          isLogoFallback = true
+        } catch { headImg = null }
       }
       ctx.save()
       ctx.beginPath()
       ctx.arc(headX + headSize / 2, ry + rowH / 2, headSize / 2, 0, Math.PI * 2)
-      ctx.fillStyle = '#e2e8f0'
+      ctx.fillStyle = '#ffffff'
       ctx.fill()
       ctx.clip()
       if (headImg) {
-        ctx.drawImage(headImg, headX, ry + (rowH - headSize) / 2, headSize, headSize)
+        // Headshot fills the circle; team logo is letterboxed with padding so
+        // it doesn't look stretched.
+        if (isLogoFallback) {
+          const inset = 4
+          ctx.drawImage(headImg,
+            headX + inset, ry + (rowH - headSize) / 2 + inset,
+            headSize - inset * 2, headSize - inset * 2)
+        } else {
+          ctx.drawImage(headImg, headX, ry + (rowH - headSize) / 2, headSize, headSize)
+        }
       } else {
         ctx.fillStyle = '#64748b'
         ctx.font = '700 14px "Inter", system-ui, sans-serif'
