@@ -1165,6 +1165,58 @@ function SplitsSection({ splits }) {
 }
 
 
+// ── Hit / On-base Streaks Card ──────────────────────────────────
+// Four-tile compact card: current hit, current on-base, season-best hit,
+// season-best on-base. Fetches /players/{id}/streaks. Hides entirely
+// when all four numbers are zero (e.g. pitcher with no batting line).
+function StreaksCard({ playerId, season = 2026 }) {
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/v1/players/${playerId}/streaks?season=${season}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (alive) setData(d) })
+      .catch(() => { if (alive) setData(null) })
+    return () => { alive = false }
+  }, [playerId, season])
+
+  if (!data) return null
+  const anyValue = (data.current_hit_streak || 0)
+                 + (data.current_ob_streak  || 0)
+                 + (data.best_hit_streak    || 0)
+                 + (data.best_ob_streak     || 0)
+  if (!anyValue) return null
+
+  const tile = (label, val, accent) => (
+    <div className="text-center px-2 py-3 rounded-lg bg-gray-50 border border-gray-100">
+      <div className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        {label}
+      </div>
+      <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${accent}`}>
+        {val ?? 0}
+      </div>
+      <div className="text-[10px] text-gray-400 mt-0.5">
+        {(val ?? 0) === 1 ? 'game' : 'games'}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        {season} Streaks
+      </h3>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {tile('Current Hit',     data.current_hit_streak, 'text-emerald-600')}
+        {tile('Current On-Base', data.current_ob_streak,  'text-teal-600')}
+        {tile('Longest Hit',     data.best_hit_streak,    'text-gray-900')}
+        {tile('Longest On-Base', data.best_ob_streak,     'text-gray-900')}
+      </div>
+    </div>
+  )
+}
+
+
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function PlayerDetail() {
@@ -1626,6 +1678,7 @@ export default function PlayerDetail() {
               </div>
             </div>
           </div>
+          <StreaksCard playerId={playerId} season={2026} />
           <PitchLevelStatsCard playerId={playerId} season={2026} />
         </>
       )}

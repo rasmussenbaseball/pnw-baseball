@@ -11979,6 +11979,107 @@ def team_games(
         return [dict(g) for g in games]
 
 
+# ── Player Streaks (current + season-best hit and on-base streaks) ──
+
+@router.get("/players/{player_id}/streaks")
+def get_player_streaks(
+    player_id: int,
+    season: int = Query(2026),
+):
+    """
+    Per-player hit and on-base streaks for a single season.
+
+    Returns the active (current) streak as of the most-recent final game,
+    plus the season's longest streak. MLB convention is used for the hit
+    streak: a game where the batter went 0-for-0 (all walks/HBP, no
+    official AB) preserves the streak — it does NOT break it. The on-base
+    streak follows the simpler rule: any final game with at least 1 PA
+    that ended without reaching base breaks the streak.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Resolve canonical (transfer-aware) player id and gather every
+        # linked id so we don't miss games stored under a prior school's
+        # roster row.
+        cur.execute(
+            "SELECT canonical_id FROM player_links WHERE linked_id = %s",
+            (player_id,),
+        )
+        link = cur.fetchone()
+        if link:
+            player_id = link["canonical_id"]
+        cur.execute(
+            "SELECT linked_id FROM player_links WHERE canonical_id = %s",
+            (player_id,),
+        )
+        linked = cur.fetchall()
+        all_ids = [player_id] + [r["linked_id"] for r in linked]
+        ph = ",".join(["%s"] * len(all_ids))
+
+        cur.execute(
+            f"""
+            SELECT g.game_date,
+                   g.id AS game_id,
+                   COALESCE(gb.at_bats, 0)         AS ab,
+                   COALESCE(gb.hits, 0)            AS h,
+                   COALESCE(gb.walks, 0)           AS bb,
+                   COALESCE(gb.hit_by_pitch, 0)    AS hbp,
+                   COALESCE(gb.sacrifice_flies, 0) AS sf
+            FROM game_batting gb
+            JOIN games g ON gb.game_id = g.id
+            WHERE gb.player_id IN ({ph})
+              AND g.season = %s
+              AND g.status = 'final'
+            ORDER BY g.game_date ASC, g.id ASC
+            """,
+            (*all_ids, season),
+        )
+        rows = cur.fetchall()
+
+        cur_hit = best_hit = 0
+        cur_ob  = best_ob  = 0
+
+        for r in rows:
+            ab  = int(r["ab"]  or 0)
+            h   = int(r["h"]   or 0)
+            bb  = int(r["bb"]  or 0)
+            hbp = int(r["hbp"] or 0)
+            sf  = int(r["sf"]  or 0)
+            pa  = ab + bb + hbp + sf  # close enough; ignores sac bunts
+
+            # Hit streak — MLB rule: only games with an official AB affect
+            # the streak. A 0-AB walks/HBP-only game leaves it intact.
+            if ab >= 1:
+                if h >= 1:
+                    cur_hit += 1
+                    if cur_hit > best_hit:
+                        best_hit = cur_hit
+                else:
+                    cur_hit = 0
+
+            # On-base streak — every game with at least 1 PA either extends
+            # the streak (any time on base) or breaks it.
+            if pa >= 1:
+                on_base = h + bb + hbp
+                if on_base >= 1:
+                    cur_ob += 1
+                    if cur_ob > best_ob:
+                        best_ob = cur_ob
+                else:
+                    cur_ob = 0
+
+        return {
+            "season": season,
+            "player_id": player_id,
+            "current_hit_streak": cur_hit,
+            "current_ob_streak":  cur_ob,
+            "best_hit_streak":    best_hit,
+            "best_ob_streak":     best_ob,
+            "games_counted":      len(rows),
+        }
+
+
 # ── Player Game Logs ──────────────────────────────────────────────────
 
 @router.get("/players/{player_id}/gamelogs")
