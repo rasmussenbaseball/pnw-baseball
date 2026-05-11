@@ -351,16 +351,13 @@ function drawRankings(ctx, data, y, h) {
   })
 }
 
-// Used in place of drawRankings for NWAC teams: shows basic team hitting and
-// pitching counting/rate stats split across two side-by-side cards. Same
-// vertical slot as the rankings row so the rest of the layout is unchanged.
+// Used in place of drawRankings for NWAC teams. Renders two stacked
+// full-width "tables" (one hitting, one pitching) with a left-side label,
+// a header row of stat names, and a value row beneath. Same vertical slot
+// as the rankings row so the rest of the layout is unchanged.
 function drawTeamStats(ctx, data, y, h) {
   const pad = MARGIN
-  const gap = 12
   const inner = SIZE - pad * 2
-  const cardW = (inner - gap) / 2
-  const cardH = h - 20
-  const cy = y + 10
 
   const s = data.team_stats || {}
   const fmt3 = (v) => v == null ? '-' : v.toFixed(3).replace(/^0/, '')
@@ -368,13 +365,10 @@ function drawTeamStats(ctx, data, y, h) {
   const fmt1 = (v) => v == null ? '-' : v.toFixed(1)
   const fmtN = (v) => v == null ? '-' : Math.round(v).toString()
 
-  // Hitting and pitching panels. 2 rows × 4 columns of stat cells per panel.
-  // The user asked for plain info (no ranks, no league avg) so we just print
-  // label + value in a clean grid.
-  const panels = [
+  const tables = [
     {
       title: 'HITTING', tint: '#0ea5e9',
-      cells: [
+      stats: [
         { l: 'AVG', v: fmt3(s.avg) },
         { l: 'OBP', v: fmt3(s.obp) },
         { l: 'SLG', v: fmt3(s.slg) },
@@ -387,69 +381,83 @@ function drawTeamStats(ctx, data, y, h) {
     },
     {
       title: 'PITCHING', tint: '#f43f5e',
-      cells: [
+      stats: [
         { l: 'ERA',  v: fmt2(s.era) },
         { l: 'WHIP', v: fmt2(s.whip) },
-        { l: 'K/9',  v: fmt1(s.k_per_9) },
-        { l: 'BB/9', v: fmt1(s.bb_per_9) },
         { l: 'IP',   v: fmt1(s.ip) },
         { l: 'K',    v: fmtN(s.k) },
         { l: 'BB',   v: fmtN(s.bb) },
+        { l: 'K/9',  v: fmt1(s.k_per_9) },
+        { l: 'BB/9', v: fmt1(s.bb_per_9) },
         { l: 'HR-A', v: fmtN(s.hr_allowed) },
       ],
     },
   ]
 
-  panels.forEach((panel, pi) => {
-    const cx = pad + (cardW + gap) * pi
-    // Card background
-    roundRect(ctx, cx, cy, cardW, cardH, 14)
+  // Two stacked tables, each full inner width.
+  const gap = 8
+  const tableH = (h - 12 - gap) / 2
+  const titleW = 110  // left strip for HITTING/PITCHING label
+
+  tables.forEach((tbl, ti) => {
+    const ty = y + 6 + ti * (tableH + gap)
+
+    // Card bg
+    roundRect(ctx, pad, ty, inner, tableH, 12)
     ctx.fillStyle = '#ffffff'
     ctx.fill()
     ctx.strokeStyle = '#e2e8f0'
     ctx.lineWidth = 1
     ctx.stroke()
 
-    // Tint bar
+    // Left accent strip (clipped to card rounding)
     ctx.save()
-    roundRect(ctx, cx, cy, cardW, cardH, 14)
+    roundRect(ctx, pad, ty, inner, tableH, 12)
     ctx.clip()
-    ctx.fillStyle = panel.tint
-    ctx.fillRect(cx, cy, cardW, 6)
+    ctx.fillStyle = tbl.tint
+    ctx.fillRect(pad, ty, 4, tableH)
     ctx.restore()
 
-    // Title
-    ctx.fillStyle = '#64748b'
-    ctx.font = '700 11px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'center'
+    // Title (left)
+    ctx.fillStyle = '#0f172a'
+    ctx.font = '800 14px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText(panel.title, cx + cardW / 2, cy + 18)
+    ctx.fillText(tbl.title, pad + 16, ty + tableH / 2)
 
-    // 2 rows × 4 cols stat grid
-    const gridTop = cy + 36
-    const gridH = cardH - 36 - 8
-    const rows = 2
-    const cols = 4
-    const rowH = gridH / rows
-    const colW = cardW / cols
-    panel.cells.forEach((cell, idx) => {
-      const r = Math.floor(idx / cols)
-      const c = idx % cols
-      const xC = cx + colW * c + colW / 2
-      const yT = gridTop + rowH * r
+    // Vertical divider between title and stat columns
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.beginPath()
+    ctx.moveTo(pad + titleW, ty + 8)
+    ctx.lineTo(pad + titleW, ty + tableH - 8)
+    ctx.stroke()
 
-      // Label
+    // Stat columns: header (label) above value, evenly spaced
+    const colsAreaX = pad + titleW
+    const colsAreaW = inner - titleW - 4
+    const colW = colsAreaW / tbl.stats.length
+
+    tbl.stats.forEach((stat, si) => {
+      const cx = colsAreaX + colW * si + colW / 2
+
+      // Header label
       ctx.fillStyle = '#94a3b8'
-      ctx.font = '600 10px "Inter", system-ui, sans-serif'
-      ctx.fillText(cell.l, xC, yT + 10)
+      ctx.font = '700 10px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillText(stat.l, cx, ty + 18)
+
       // Value
       ctx.fillStyle = '#0f172a'
       ctx.font = '800 22px "Inter", system-ui, sans-serif'
-      ctx.fillText(cell.v, xC, yT + rowH / 2 + 8)
+      ctx.fillText(stat.v, cx, ty + tableH - 10)
     })
   })
 }
 
+// Baseball Savant style percentile bars. Two columns: hitter metrics left,
+// pitcher metrics right. Each bar shows the team's percentile (filled width),
+// raw value, rank, and league average from the peer set (division).
 function drawPercentiles(ctx, data, y, h) {
   const pad = MARGIN
   const headerH = 30
@@ -462,80 +470,142 @@ function drawPercentiles(ctx, data, y, h) {
   ctx.fillStyle = '#64748b'
   ctx.font = '500 13px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'right'
-  ctx.fillText('lower rank = better', SIZE - pad, y + 22)
+  ctx.fillText('higher % = better', SIZE - pad, y + 22)
+
+  // Formatters
+  const fmt3 = v => v != null ? v.toFixed(3).replace(/^0/, '') : '-'
+  const fmt2 = v => v != null ? v.toFixed(2) : '-'
+  const fmt1 = v => v != null ? v.toFixed(1) : '-'
+  const fmtPct = (v, d = 1) => v != null ? v.toFixed(d) + '%' : '-'
+  const fmt0 = v => v != null ? Math.round(v).toString() : '-'
 
   const battingMetrics = [
-    { key: 'batting_avg', label: 'AVG',   fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
-    { key: 'woba',        label: 'wOBA',  fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
-    { key: 'hr_per_pa',   label: 'HR/PA', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-' },
-    { key: 'owar',        label: 'oWAR',  fmt: v => v != null ? v.toFixed(1) : '-' },
-    { key: 'wrc_plus',    label: 'wRC+',  fmt: v => v != null ? v.toFixed(0) : '-' },
+    { key: 'batting_avg', label: 'AVG',   fmt: fmt3 },
+    { key: 'woba',        label: 'wOBA',  fmt: fmt3 },
+    { key: 'hr_per_pa',   label: 'HR/PA', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-',
+                                          avgFmt: v => v != null ? (v * 100).toFixed(1) + '%' : '-' },
+    { key: 'owar',        label: 'oWAR',  fmt: fmt1 },
+    { key: 'wrc_plus',    label: 'wRC+',  fmt: fmt0 },
   ]
   const pitchingMetrics = [
-    { key: 'era',   label: 'ERA',   fmt: v => v != null ? v.toFixed(2) : '-' },
-    { key: 'siera', label: 'SIERA', fmt: v => v != null ? v.toFixed(2) : '-' },
-    { key: 'k_pct', label: 'K%',    fmt: v => v != null ? v.toFixed(1) + '%' : '-' },
-    { key: 'baa',   label: 'BAA',   fmt: v => v != null ? v.toFixed(3).replace(/^0/, '') : '-' },
-    { key: 'pwar',  label: 'pWAR',  fmt: v => v != null ? v.toFixed(1) : '-' },
+    { key: 'era',   label: 'ERA',   fmt: fmt2 },
+    { key: 'siera', label: 'SIERA', fmt: fmt2 },
+    { key: 'k_pct', label: 'K%',    fmt: v => fmtPct(v, 1), avgFmt: v => fmtPct(v, 1) },
+    { key: 'baa',   label: 'BAA',   fmt: fmt3 },
+    { key: 'pwar',  label: 'pWAR',  fmt: fmt1 },
   ]
 
   const batP = data.batting_percentiles || {}
   const pitP = data.pitching_percentiles || {}
+
+  // Layout
+  const sideGap = 16
+  const sideW = (SIZE - pad * 2 - sideGap) / 2
   const startY = y + headerH + 8
   const availH = h - headerH - 16
-  const cols = 5
-  const gap = 9
-  const cellW = (SIZE - pad * 2 - gap * (cols - 1)) / cols
-  const rowGap = 8
-  const cellH = (availH - rowGap) / 2
 
-  const drawRow = (metrics, data, rowY) => {
-    metrics.forEach((m, c) => {
-      const cx = pad + c * (cellW + gap)
-      const obj = data[m.key] || {}
+  const subHeaderH = 18
+  const rowsY = startY + subHeaderH
+  const rowsH = availH - subHeaderH
+  const rowH = rowsH / 5  // 5 metrics per side
+
+  const drawSide = (baseX, title, tint, metrics, dataMap) => {
+    // Sub-header
+    ctx.fillStyle = tint
+    ctx.fillRect(baseX, startY + 2, 14, 2)
+    ctx.fillStyle = '#0f172a'
+    ctx.font = '800 12px "Inter", system-ui, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(title, baseX + 20, startY + 9)
+
+    metrics.forEach((m, i) => {
+      const ry = rowsY + i * rowH
+      const obj = dataMap[m.key] || {}
       const pct = obj.percentile
       const val = obj.value
       const rank = obj.rank
       const total = obj.total
+      const lgAvg = obj.league_avg
 
-      const bg = percentileColor(pct)
-      const txt = textColorFor(bg)
+      // ── Column geometry within this side panel ──
+      // labelW: stat name | valW: team value | bar in middle | right block
+      const labelW = 50
+      const valW = 60
+      const rightW = 78
+      const barX = baseX + labelW + valW + 6
+      const barW = sideW - labelW - valW - rightW - 12
+      const barH = 12
+      const barCY = ry + rowH / 2
+      const barY = barCY - barH / 2
 
-      roundRect(ctx, cx, rowY, cellW, cellH, 10)
-      ctx.fillStyle = bg
-      ctx.fill()
-      ctx.strokeStyle = '#ffffff'
-      ctx.lineWidth = 2
-      ctx.stroke()
-
-      ctx.textAlign = 'center'
+      // Stat label (left)
+      ctx.fillStyle = '#475569'
+      ctx.font = '800 13px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
+      ctx.fillText(m.label, baseX + 2, barCY)
 
-      // Label (medium)
-      ctx.fillStyle = txt
-      ctx.font = '700 13px "Inter", system-ui, sans-serif'
-      ctx.fillText(m.label, cx + cellW / 2, rowY + 16)
-
-      // Metric value — the hero number, auto-fit to cell width
+      // Team value (next to label, right-aligned at valW boundary)
       const valTxt = m.fmt(val)
-      let vSize = 32
-      ctx.font = `900 ${vSize}px "Inter", system-ui, sans-serif`
-      while (ctx.measureText(valTxt).width > cellW - 18 && vSize > 20) {
-        vSize -= 2
-        ctx.font = `900 ${vSize}px "Inter", system-ui, sans-serif`
-      }
-      ctx.fillText(valTxt, cx + cellW / 2, rowY + cellH / 2 + 4)
+      ctx.fillStyle = '#0f172a'
+      ctx.font = '800 17px "Inter", system-ui, sans-serif'
+      ctx.textAlign = 'right'
+      ctx.fillText(valTxt, baseX + labelW + valW, barCY - 1)
 
-      // Rank chip at bottom — small
+      // Bar track
+      ctx.fillStyle = '#e2e8f0'
+      roundRect(ctx, barX, barY, barW, barH, barH / 2)
+      ctx.fill()
+
+      // Bar fill (clipped so rounded corners stay clean)
+      if (pct != null) {
+        const fillW = Math.max(4, (pct / 100) * barW)
+        ctx.save()
+        roundRect(ctx, barX, barY, barW, barH, barH / 2)
+        ctx.clip()
+        ctx.fillStyle = percentileColor(pct)
+        ctx.fillRect(barX, barY, fillW, barH)
+        ctx.restore()
+
+        // Percentile bubble at the end of the fill
+        const bubbleX = barX + Math.max(12, fillW - 1)
+        ctx.fillStyle = percentileColor(pct)
+        ctx.beginPath()
+        ctx.arc(bubbleX, barCY, 9, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+        ctx.fillStyle = textColorFor(percentileColor(pct))
+        ctx.font = '800 10px "Inter", system-ui, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(pct), bubbleX, barCY + 0.5)
+      }
+
+      // Rank (top right of row)
+      const rightX = baseX + sideW
       if (rank != null && total != null) {
-        ctx.font = '700 11px "Inter", system-ui, sans-serif'
-        ctx.fillText(`${ordinal(rank)} of ${total}`, cx + cellW / 2, rowY + cellH - 14)
+        ctx.fillStyle = '#0f172a'
+        ctx.font = '800 12px "Inter", system-ui, sans-serif'
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'alphabetic'
+        ctx.fillText(`#${rank} of ${total}`, rightX, barCY - 2)
+      }
+      // League average (bottom right of row)
+      if (lgAvg != null) {
+        const avgFmt = m.avgFmt || m.fmt
+        ctx.fillStyle = '#94a3b8'
+        ctx.font = '600 10px "Inter", system-ui, sans-serif'
+        ctx.textAlign = 'right'
+        ctx.fillText(`lg ${avgFmt(lgAvg)}`, rightX, barCY + 12)
       }
     })
   }
 
-  drawRow(battingMetrics, batP, startY)
-  drawRow(pitchingMetrics, pitP, startY + cellH + rowGap)
+  drawSide(pad,                       'HITTING',  '#0ea5e9', battingMetrics,  batP)
+  drawSide(pad + sideW + sideGap,     'PITCHING', '#f43f5e', pitchingMetrics, pitP)
 }
 
 async function drawPerformers(ctx, data, y, h) {

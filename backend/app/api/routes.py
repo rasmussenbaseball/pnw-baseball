@@ -4216,37 +4216,45 @@ def team_info_graphic(
         def _to_f(v):
             return float(v) if v is not None else None
 
-        def _pack(value, rb, comparison="division"):
+        def _league_avg(values):
+            """Mean of non-null values in the peer set, or None."""
+            vals = [v for v in values if v is not None]
+            return (sum(vals) / len(vals)) if vals else None
+
+        def _pack(value, rb, comparison="division", league_avg=None):
             # `comparison` records the peer set used for the percentile —
             # either "division" (40+ teams, granular) or "conference"
             # (6-12 teams, coach-meaningful). Frontend reads this field
             # to render the rank text correctly ("#3 / 24 div" vs
             # "#2 / 8 conf").
-            return {"value": _to_f(value), "comparison": comparison, **rb}
+            return {
+                "value": _to_f(value),
+                "league_avg": _to_f(league_avg),
+                "comparison": comparison,
+                **rb,
+            }
+
+        def _make_stat(my_val, values, higher_is_better=True, comparison="division"):
+            return _pack(
+                my_val,
+                _rank_block(values, my_val, higher_is_better),
+                comparison=comparison,
+                league_avg=_league_avg(values),
+            )
 
         batting_percentiles = {
-            "batting_avg": _pack(my_bat.get("batting_avg"),
-                                 _rank_block([b.get("batting_avg") for b in bat_div], my_bat.get("batting_avg"), True)),
-            "woba":        _pack(my_bat.get("woba"),
-                                 _rank_block([b.get("woba") for b in bat_div], my_bat.get("woba"), True)),
-            "hr_per_pa":   _pack(my_bat.get("hr_per_pa"),
-                                 _rank_block([b.get("hr_per_pa") for b in bat_div], my_bat.get("hr_per_pa"), True)),
-            "owar":        _pack(my_bat.get("owar"),
-                                 _rank_block([b.get("owar") for b in bat_div], my_bat.get("owar"), True)),
-            "wrc_plus":    _pack(my_bat.get("wrc_plus"),
-                                 _rank_block([b.get("wrc_plus") for b in bat_div], my_bat.get("wrc_plus"), True)),
+            "batting_avg": _make_stat(my_bat.get("batting_avg"), [b.get("batting_avg") for b in bat_div], True),
+            "woba":        _make_stat(my_bat.get("woba"),        [b.get("woba")        for b in bat_div], True),
+            "hr_per_pa":   _make_stat(my_bat.get("hr_per_pa"),   [b.get("hr_per_pa")   for b in bat_div], True),
+            "owar":        _make_stat(my_bat.get("owar"),        [b.get("owar")        for b in bat_div], True),
+            "wrc_plus":    _make_stat(my_bat.get("wrc_plus"),    [b.get("wrc_plus")    for b in bat_div], True),
         }
         pitching_percentiles = {
-            "era":   _pack(my_pit.get("era"),
-                           _rank_block([p.get("era") for p in pit_div], my_pit.get("era"), False)),
-            "siera": _pack(my_pit.get("siera"),
-                           _rank_block([p.get("siera") for p in pit_div], my_pit.get("siera"), False)),
-            "k_pct": _pack(my_pit.get("k_pct"),
-                           _rank_block([p.get("k_pct") for p in pit_div], my_pit.get("k_pct"), True)),
-            "baa":   _pack(my_pit.get("baa"),
-                           _rank_block([p.get("baa") for p in pit_div], my_pit.get("baa"), False)),
-            "pwar":  _pack(my_pit.get("pwar"),
-                           _rank_block([p.get("pwar") for p in pit_div], my_pit.get("pwar"), True)),
+            "era":   _make_stat(my_pit.get("era"),   [p.get("era")   for p in pit_div], False),
+            "siera": _make_stat(my_pit.get("siera"), [p.get("siera") for p in pit_div], False),
+            "k_pct": _make_stat(my_pit.get("k_pct"), [p.get("k_pct") for p in pit_div], True),
+            "baa":   _make_stat(my_pit.get("baa"),   [p.get("baa")   for p in pit_div], False),
+            "pwar":  _make_stat(my_pit.get("pwar"),  [p.get("pwar")  for p in pit_div], True),
         }
 
         # ── 12b. Conference-relative pitch-level metrics ──
