@@ -510,14 +510,19 @@ function drawPercentiles(ctx, data, y, h) {
   const rowH = rowsH / 5  // 5 metrics per side
 
   const drawSide = (baseX, title, tint, metrics, dataMap) => {
-    // Sub-header
-    ctx.fillStyle = tint
-    ctx.fillRect(baseX, startY + 2, 14, 2)
+    // Column geometry — must match the per-row layout below.
+    const labelW = 50
+    const valW = 60
+    const rightW = 78
+    const barX = baseX + labelW + valW + 6
+    const barW = sideW - labelW - valW - rightW - 12
+
+    // Sub-header — centered above the bar area, no accent stripe.
     ctx.fillStyle = '#0f172a'
     ctx.font = '800 12px "Inter", system-ui, sans-serif'
-    ctx.textAlign = 'left'
+    ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(title, baseX + 20, startY + 9)
+    ctx.fillText(title, barX + barW / 2, startY + 9)
 
     metrics.forEach((m, i) => {
       const ry = rowsY + i * rowH
@@ -528,13 +533,8 @@ function drawPercentiles(ctx, data, y, h) {
       const total = obj.total
       const lgAvg = obj.league_avg
 
-      // ── Column geometry within this side panel ──
-      // labelW: stat name | valW: team value | bar in middle | right block
-      const labelW = 50
-      const valW = 60
-      const rightW = 78
-      const barX = baseX + labelW + valW + 6
-      const barW = sideW - labelW - valW - rightW - 12
+      // labelW/valW/rightW/barX/barW are defined once at the top of drawSide
+      // since they're identical for every row.
       const barH = 12
       const barCY = ry + rowH / 2
       const barY = barCY - barH / 2
@@ -687,7 +687,7 @@ async function drawPerformers(ctx, data, y, h) {
       }
       ctx.restore()
 
-      // name + sub
+      // name + two-line sub (advanced stats on top, counting stats below)
       ctx.textAlign = 'left'
       ctx.fillStyle = '#0f172a'
       ctx.font = '700 16px "Inter", system-ui, sans-serif'
@@ -699,11 +699,14 @@ async function drawPerformers(ctx, data, y, h) {
         name = name.slice(0, -1)
       }
       if (name !== p.name) name = name.trim() + '…'
-      ctx.fillText(name, nx, ry + rowH / 2 - 2)
+      ctx.fillText(name, nx, ry + 18)
 
       ctx.fillStyle = '#64748b'
-      ctx.font = '500 12px "Inter", system-ui, sans-serif'
-      ctx.fillText(p.sub || '', nx, ry + rowH / 2 + 14)
+      ctx.font = '500 11px "Inter", system-ui, sans-serif'
+      ctx.fillText(p.sub || '',  nx, ry + 32)
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '500 10px "Inter", system-ui, sans-serif'
+      ctx.fillText(p.sub2 || '', nx, ry + 44)
 
       // WAR chip
       ctx.textAlign = 'right'
@@ -719,15 +722,21 @@ async function drawPerformers(ctx, data, y, h) {
 
   const hitters = (data.top_hitters || []).map(h => ({
     name: h.name,
-    sub: `${fmtAvg(h.woba)} wOBA  •  wRC+ ${h.wrc_plus != null ? Math.round(h.wrc_plus) : '-'}`,
+    sub:  `${fmtAvg(h.woba)} wOBA  •  ${h.wrc_plus != null ? Math.round(h.wrc_plus) : '-'} wRC+`,
+    sub2: `${h.plate_appearances != null ? h.plate_appearances : '-'} PA  •  `
+        + `${h.home_runs ?? '-'} HR  •  `
+        + `${h.rbi ?? '-'} RBI  •  `
+        + `${h.stolen_bases ?? '-'} SB`,
     war: h.offensive_war,
     headshot_url: h.headshot_url,
   }))
-  const pitchers = (data.top_pitchers || []).map(h => ({
-    name: h.name,
-    sub: `${fmtEra(h.siera)} SIERA  •  K% ${h.k_pct != null ? h.k_pct.toFixed(1) + '%' : '-'}`,
-    war: h.pitching_war,
-    headshot_url: h.headshot_url,
+  const pitchers = (data.top_pitchers || []).map(p => ({
+    name: p.name,
+    sub:  `${fmtEra(p.siera)} SIERA  •  ${p.k_pct != null ? p.k_pct.toFixed(1) + '%' : '-'} K%`,
+    sub2: `${p.innings_pitched != null ? p.innings_pitched.toFixed(1) : '-'} IP  •  `
+        + `${p.baa != null ? fmtAvg(p.baa) : '-'} BAA`,
+    war: p.pitching_war,
+    headshot_url: p.headshot_url,
   }))
 
   await renderList(hitters, pad)

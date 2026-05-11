@@ -4040,7 +4040,11 @@ def team_info_graphic(
                    bs.batting_avg::float as batting_avg,
                    bs.woba::float as woba,
                    bs.wrc_plus::float as wrc_plus,
-                   bs.offensive_war::float as offensive_war
+                   bs.offensive_war::float as offensive_war,
+                   bs.plate_appearances as plate_appearances,
+                   bs.home_runs as home_runs,
+                   bs.rbi as rbi,
+                   bs.stolen_bases as stolen_bases
             FROM batting_stats bs
             JOIN players p ON bs.player_id = p.id
             LEFT JOIN team_season_stats tss ON tss.team_id = bs.team_id AND tss.season = bs.season
@@ -4054,6 +4058,8 @@ def team_info_graphic(
         top_hitters = [dict(r) for r in cur.fetchall()]
 
         # ── 10. Top 5 pitchers by WAR (min 5 IP, includes non-qualified arms) ──
+        # innings_pitched is baseball notation (5.2 = 5 2/3); leave as-is, the
+        # frontend formats it for display. BAA = hits / (BF - BB - HBP).
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                    p.headshot_url,
@@ -4061,7 +4067,14 @@ def team_info_graphic(
                    ps.siera::float as siera,
                    (COALESCE(ps.k_pct, 0) * 100)::float as k_pct,
                    (COALESCE(ps.bb_pct, 0) * 100)::float as bb_pct,
-                   ps.pitching_war::float as pitching_war
+                   ps.pitching_war::float as pitching_war,
+                   ps.innings_pitched::float as innings_pitched,
+                   CASE WHEN (COALESCE(ps.batters_faced, 0)
+                              - COALESCE(ps.walks, 0)
+                              - COALESCE(ps.hit_batters, 0)) > 0
+                        THEN COALESCE(ps.hits_allowed, 0)::float
+                             / (ps.batters_faced - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))
+                        ELSE NULL END as baa
             FROM pitching_stats ps
             JOIN players p ON ps.player_id = p.id
             WHERE ps.team_id = %s AND ps.season = %s
@@ -4186,7 +4199,13 @@ def team_info_graphic(
         pit_div = [dict(r) for r in cur.fetchall()]
 
         def _rank_block(values, my_val, higher_is_better=True):
-            """Return {percentile, rank, total} for my_val against division peers."""
+            """Return {percentile, rank, total} for my_val against division peers.
+
+            Percentile is rank-based so the #1 team gets 99 (top) and the last
+            team gets 1 (bottom). Using a value-based percentile that includes
+            the team itself in the denominator caps a #1-of-28 at ~98, which
+            reads as "not actually #1" on the graphic.
+            """
             if my_val is None:
                 return {"percentile": None, "rank": None, "total": None}
             vals = [v for v in values if v is not None]
@@ -4198,15 +4217,12 @@ def team_info_graphic(
                 rank = sum(1 for v in vals if v > my_val) + 1
             else:
                 rank = sum(1 for v in vals if v < my_val) + 1
-            # percentile for color
+            # percentile for color — rank 1 → 99, rank N → 1 (linearly interpolated)
             if total < 3:
                 pct = None
             else:
-                below = sum(1 for v in vals if v < my_val)
-                equal = sum(1 for v in vals if v == my_val)
-                pct = round(((below + equal * 0.5) / total) * 100)
-                if not higher_is_better:
-                    pct = 100 - pct
+                # Map rank → percentile: rank 1 of N gets 99, rank N gets 1.
+                pct = round(((total - rank) / (total - 1)) * 100)
                 pct = max(1, min(99, pct))
             return {"percentile": pct, "rank": rank, "total": total}
 
