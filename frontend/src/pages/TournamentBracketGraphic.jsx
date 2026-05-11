@@ -438,6 +438,9 @@ const TOURNAMENTS = {
     sub: 'May 15 to 25, 2026 — Super Regionals → Championships',
     season: 2026,
     formatLabel: 'Super regionals at four host sites → 8-team double elim at Lower Columbia',
+    // The compact bracket uses shortened display names for teams whose full
+    // names would overflow narrow cards. The standalone super-regionals and
+    // championships brackets keep the full names.
     seeds: [
       { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },
       { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },
@@ -448,10 +451,10 @@ const TOURNAMENTS = {
       { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },
       { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },
       { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },
-      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },
-      { seed: 11, seedLabel: 'E3', team_id: 34, name: 'Columbia Basin' },
-      { seed: 12, seedLabel: 'E4', team_id: 39, name: 'Yakima Valley' },
-      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
+      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee' },
+      { seed: 11, seedLabel: 'E3', team_id: 34, name: 'Col. Basin' },
+      { seed: 12, seedLabel: 'E4', team_id: 39, name: 'Yakima' },
+      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Col.' },
       { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },
       { seed: 15, seedLabel: 'W3', team_id: 53, name: 'Tacoma' },
       { seed: 16, seedLabel: 'W4', team_id: 49, name: 'Clark' },
@@ -512,14 +515,21 @@ const TOURNAMENTS = {
     ],
     layout: {
       // ── Super Regionals stacked on far left ──
-      101: { x: 40,  y: 245, w: 220, h: 58 },
-      102: { x: 280, y: 245, w: 220, h: 58 },
+      // Rows are ORDERED so each SR sits horizontally aligned with the
+      // championship game it feeds:
+      //   Row 1 (y=245) — West SR  (G105/G106) → G1 (N1 vs WSR)
+      //   Row 2 (y=335) — East SR  (G103/G104) → G2 (S1 vs ESR)
+      //   Row 3 (y=425) — South SR (G107/G108) → G3 (E1 vs SSR)
+      //   Row 4 (y=515) — North SR (G101/G102) → G4 (W1 vs NSR)
+      // Don't change without also updating the championship G1-G4 ys below.
+      105: { x: 40,  y: 245, w: 220, h: 58 },
+      106: { x: 280, y: 245, w: 220, h: 58 },
       103: { x: 40,  y: 335, w: 220, h: 58 },
       104: { x: 280, y: 335, w: 220, h: 58 },
-      105: { x: 40,  y: 425, w: 220, h: 58 },
-      106: { x: 280, y: 425, w: 220, h: 58 },
-      107: { x: 40,  y: 515, w: 220, h: 58 },
-      108: { x: 280, y: 515, w: 220, h: 58 },
+      107: { x: 40,  y: 425, w: 220, h: 58 },
+      108: { x: 280, y: 425, w: 220, h: 58 },
+      101: { x: 40,  y: 515, w: 220, h: 58 },
+      102: { x: 280, y: 515, w: 220, h: 58 },
       // ── Championships WB ──
       1: { x: 560,  y: 245, w: 230, h: 60 },
       2: { x: 560,  y: 335, w: 230, h: 60 },
@@ -961,9 +971,14 @@ async function drawIfNecessaryCard(ctx, game, pos) {
 }
 
 async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinner, isLoser) {
+  // Compact mode kicks in for narrow cards (e.g. the combined NWAC playoff
+  // bracket). All sizes scale down so longer team names still fit without
+  // overflowing the row.
+  const compact = w < 270
+
   // Logo or placeholder
-  const logoSize = Math.min(h - 12, 38)
-  const logoX = x + 10
+  const logoSize = Math.min(h - 10, compact ? 28 : 38)
+  const logoX = x + (compact ? 6 : 10)
   const logoY = y + (h - logoSize) / 2
 
   // Save alpha so we can dim losers
@@ -994,33 +1009,41 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
   }
 
   // Seed badge — width auto-fits the text so "N1", "W2", etc. don't overflow.
-  const afterLogoX = logoX + logoSize + 12
+  const afterLogoX = logoX + logoSize + (compact ? 6 : 12)
   let nameStartX = afterLogoX
   if (teamRef.seed) {
-    ctx.font = 'bold 13px system-ui, sans-serif'
+    ctx.font = `bold ${compact ? 11 : 13}px system-ui, sans-serif`
     const seedText = `#${teamRef.seed}`
     const tw = ctx.measureText(seedText).width
-    const seedW = Math.max(28, Math.ceil(tw) + 12)
+    const seedW = Math.max(compact ? 22 : 28, Math.ceil(tw) + (compact ? 8 : 12))
+    const badgeH = compact ? 20 : 24
     ctx.fillStyle = PALETTE.border
-    roundRect(ctx, afterLogoX, y + h / 2 - 12, seedW, 24, 4)
+    roundRect(ctx, afterLogoX, y + h / 2 - badgeH / 2, seedW, badgeH, 4)
     ctx.fill()
     ctx.fillStyle = PALETTE.textPrimary
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(seedText, afterLogoX + seedW / 2, y + h / 2)
-    nameStartX = afterLogoX + seedW + 10
+    nameStartX = afterLogoX + seedW + (compact ? 6 : 10)
   }
 
   // Team name (truncate if too long)
   ctx.fillStyle = teamRef.placeholder ? PALETTE.textMuted : PALETTE.textPrimary
-  ctx.font = teamRef.placeholder
-    ? 'italic 17px system-ui, sans-serif'
-    : (isWinner ? 'bold 20px system-ui, sans-serif' : 'bold 19px system-ui, sans-serif')
+  if (compact) {
+    ctx.font = teamRef.placeholder
+      ? 'italic 13px system-ui, sans-serif'
+      : (isWinner ? 'bold 16px system-ui, sans-serif' : 'bold 15px system-ui, sans-serif')
+  } else {
+    ctx.font = teamRef.placeholder
+      ? 'italic 17px system-ui, sans-serif'
+      : (isWinner ? 'bold 20px system-ui, sans-serif' : 'bold 19px system-ui, sans-serif')
+  }
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   let displayName = teamRef.name
-  const scoreBoxW = 50
-  const maxNameW = w - (nameStartX - x) - scoreBoxW - 22
+  const scoreBoxW = compact ? 36 : 50
+  const namePadRight = compact ? 14 : 22
+  const maxNameW = w - (nameStartX - x) - scoreBoxW - namePadRight
   while (ctx.measureText(displayName).width > maxNameW && displayName.length > 4) {
     displayName = displayName.slice(0, -1)
   }
@@ -1028,8 +1051,8 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
   ctx.fillText(displayName, nameStartX, y + h / 2)
 
   // Score box on right
-  const scoreBoxH = 30
-  const scoreBoxX = x + w - scoreBoxW - 10
+  const scoreBoxH = compact ? 22 : 30
+  const scoreBoxX = x + w - scoreBoxW - (compact ? 6 : 10)
   const scoreBoxY = y + (h - scoreBoxH) / 2
 
   // Restore alpha for the score box itself (don't dim the winner score by accident,
@@ -1051,10 +1074,11 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
 
   if (score != null) {
     ctx.fillStyle = isWinner ? PALETTE.championshipBorder : PALETTE.textPrimary
-    ctx.font = isWinner ? 'bold 22px system-ui, sans-serif' : 'bold 20px system-ui, sans-serif'
+    if (compact) ctx.font = isWinner ? 'bold 16px system-ui, sans-serif' : 'bold 15px system-ui, sans-serif'
+    else         ctx.font = isWinner ? 'bold 22px system-ui, sans-serif' : 'bold 20px system-ui, sans-serif'
   } else {
     ctx.fillStyle = PALETTE.scoreBoxText
-    ctx.font = 'bold 18px system-ui, sans-serif'
+    ctx.font = `bold ${compact ? 14 : 18}px system-ui, sans-serif`
   }
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
