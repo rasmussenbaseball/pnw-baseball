@@ -209,6 +209,371 @@ const TOURNAMENTS = {
     ],
     championshipGames: [5, 6],
   },
+
+  // ───────────────────────────────────────────────────────────────
+  // NWAC SUPER REGIONALS — May 15 to 16, 2026
+  //
+  // Four super regionals, each hosted by the #2 seed of a conference.
+  // Each has 3 teams: the #2 seed (host, bye to BO3 final) plus two
+  // teams that play a single-elim play-in (one #3 / #4 from a different
+  // conference). Winners advance to the NWAC Championships in Longview.
+  //
+  // The #1 seed from each conference (N1, S1, E1, W1) gets a direct bye
+  // to the championships and is shown in the byes strip at the top.
+  // ───────────────────────────────────────────────────────────────
+  nwac_super_regionals_2026: {
+    label: 'NWAC Super Regionals',
+    sub: 'May 15 to 16, 2026 — Four regional host sites',
+    season: 2026,
+    formatLabel: 'Single-elim play-in then Best-of-3 series at each host',
+    seeds: [
+      // North conference
+      { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },
+      { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },
+      { seed: 3,  seedLabel: 'N3', team_id: 25, name: 'Bellevue' },
+      { seed: 4,  seedLabel: 'N4', team_id: 31, name: 'Shoreline' },
+      // South conference
+      { seed: 5,  seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },
+      { seed: 6,  seedLabel: 'S2', team_id: 43, name: 'Lane' },
+      { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },
+      { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },
+      // East conference
+      { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },
+      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },
+      { seed: 11, seedLabel: 'E3', team_id: 34, name: 'Columbia Basin' },
+      { seed: 12, seedLabel: 'E4', team_id: 39, name: 'Yakima Valley' },
+      // West conference
+      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
+      { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },
+      { seed: 15, seedLabel: 'W3', team_id: 53, name: 'Tacoma' },
+      { seed: 16, seedLabel: 'W4', team_id: 49, name: 'Clark' },
+    ],
+    games: [
+      // ─ North Super Regional @ Edmonds ─
+      { num: 1, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 7  }, away: { ref: 'seed', val: 16 } },     // S3 vs W4
+      { num: 2, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 2  }, away: { ref: 'winner', game: 1 } },   // N2 vs G1 winner
+      // ─ East Super Regional @ Wenatchee Valley ─
+      { num: 3, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 4  }, away: { ref: 'seed', val: 15 } },     // N4 vs W3
+      { num: 4, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 10 }, away: { ref: 'winner', game: 3 } },   // E2 vs G3 winner
+      // ─ West Super Regional @ Pierce ─
+      { num: 5, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 8  }, away: { ref: 'seed', val: 11 } },     // S4 vs E3
+      { num: 6, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 14 }, away: { ref: 'winner', game: 5 } },   // W2 vs G5 winner
+      // ─ South Super Regional @ Lane ─
+      { num: 7, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 12 }, away: { ref: 'seed', val: 3  } },     // E4 vs N3
+      { num: 8, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 6  }, away: { ref: 'winner', game: 7 } },   // S2 vs G7 winner
+    ],
+    // 2x2 grid layout — each quadrant has the play-in card on the left
+    // and the best-of-3 card on the right, connected.
+    layout: {
+      // Top-left: North
+      1: { x: 80,   y: 340, w: 380, h: 130 },
+      2: { x: 520,  y: 340, w: 380, h: 130 },
+      // Top-right: East
+      3: { x: 1020, y: 340, w: 380, h: 130 },
+      4: { x: 1460, y: 340, w: 380, h: 130 },
+      // Bottom-left: West
+      5: { x: 80,   y: 780, w: 380, h: 130 },
+      6: { x: 520,  y: 780, w: 380, h: 130 },
+      // Bottom-right: South
+      7: { x: 1020, y: 780, w: 380, h: 130 },
+      8: { x: 1460, y: 780, w: 380, h: 130 },
+    },
+    connections: [
+      { from: 1, to: 2 },
+      { from: 3, to: 4 },
+      { from: 5, to: 6 },
+      { from: 7, to: 8 },
+    ],
+    sectionLabels: [
+      // Byes strip
+      { text: 'AUTO-ADVANCED TO CHAMPIONSHIPS:  N1 EVERETT  ·  S1 LINN-BENTON  ·  E1 SPOKANE  ·  W1 LOWER COLUMBIA',
+        x: 0, y: 240, w: CANVAS_W, centered: true },
+      // Regional headers
+      { text: 'NORTH SUPER REGIONAL — @ EDMONDS',
+        x: 80,   y: 305, w: 820, centered: true },
+      { text: 'EAST SUPER REGIONAL — @ WENATCHEE VALLEY',
+        x: 1020, y: 305, w: 820, centered: true },
+      { text: 'WEST SUPER REGIONAL — @ PIERCE',
+        x: 80,   y: 745, w: 820, centered: true },
+      { text: 'SOUTH SUPER REGIONAL — @ LANE',
+        x: 1020, y: 745, w: 820, centered: true },
+      // Champion advances label
+      { text: 'NORTH CHAMP →', x: 80,   y: 490, w: 820, centered: true },
+      { text: 'EAST CHAMP →',  x: 1020, y: 490, w: 820, centered: true },
+      { text: 'WEST CHAMP →',  x: 80,   y: 930, w: 820, centered: true },
+      { text: 'SOUTH CHAMP →', x: 1020, y: 930, w: 820, centered: true },
+    ],
+    championshipGames: [2, 4, 6, 8],  // BO3 finals get the gold treatment
+  },
+
+  // ───────────────────────────────────────────────────────────────
+  // NWAC CHAMPIONSHIPS — May 21 to 25, 2026 @ Lower Columbia
+  //
+  // Eight-team double elimination. The four #1 seeds (one per conference)
+  // get byes through super regionals and enter here directly; their
+  // round-1 opponents are the four super regional winners. Super regional
+  // winners are placeholders until those games complete.
+  // ───────────────────────────────────────────────────────────────
+  nwac_championships_2026: {
+    label: 'NWAC Championships',
+    sub: 'May 21 to 25, 2026 — Lower Columbia College, Longview, WA',
+    season: 2026,
+    formatLabel: 'Double-elimination bracket (8 teams)',
+    seeds: [
+      { seed: 1, seedLabel: 'N1', team_id: 28, name: 'Everett' },
+      { seed: 2, seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },
+      { seed: 3, seedLabel: 'E1', team_id: 35, name: 'Spokane' },
+      { seed: 4, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
+    ],
+    games: [
+      // ── WB Round 1 (Thu May 21) — #1 seeds vs SR winners ──
+      { num: 1, iso: '2026-05-21', day: 'Thu May 21', time: '9:35 AM',
+        home: { ref: 'seed', val: 1 }, away: { ref: 'placeholder', name: 'WSR Winner' } },
+      { num: 2, iso: '2026-05-21', day: 'Thu May 21', time: '12:35 PM',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'placeholder', name: 'ESR Winner' } },
+      { num: 3, iso: '2026-05-21', day: 'Thu May 21', time: '4:35 PM',
+        home: { ref: 'seed', val: 3 }, away: { ref: 'placeholder', name: 'SSR Winner' } },
+      { num: 4, iso: '2026-05-21', day: 'Thu May 21', time: '7:35 PM',
+        home: { ref: 'seed', val: 4 }, away: { ref: 'placeholder', name: 'NSR Winner' } },
+      // ── LB Round 1 (Fri May 22) — losers of WB R1 ──
+      { num: 5, iso: '2026-05-22', day: 'Fri May 22', time: '9:35 AM',
+        home: { ref: 'loser', game: 1 }, away: { ref: 'loser', game: 2 } },
+      { num: 6, iso: '2026-05-22', day: 'Fri May 22', time: '12:35 PM',
+        home: { ref: 'loser', game: 3 }, away: { ref: 'loser', game: 4 } },
+      // ── WB Round 2 (Fri May 22) ──
+      { num: 7, iso: '2026-05-22', day: 'Fri May 22', time: '4:35 PM',
+        home: { ref: 'winner', game: 1 }, away: { ref: 'winner', game: 2 } },
+      { num: 8, iso: '2026-05-22', day: 'Fri May 22', time: '7:35 PM',
+        home: { ref: 'winner', game: 3 }, away: { ref: 'winner', game: 4 } },
+      // ── LB Round 2 (Sat May 23) ──
+      { num: 9,  iso: '2026-05-23', day: 'Sat May 23', time: '11:00 AM',
+        home: { ref: 'winner', game: 5 }, away: { ref: 'loser', game: 7 } },
+      { num: 10, iso: '2026-05-23', day: 'Sat May 23', time: '2:00 PM',
+        home: { ref: 'winner', game: 6 }, away: { ref: 'loser', game: 8 } },
+      // ── WB Final (Sat May 23) ──
+      { num: 11, iso: '2026-05-23', day: 'Sat May 23', time: '5:35 PM',
+        home: { ref: 'winner', game: 7 }, away: { ref: 'winner', game: 8 } },
+      // ── LB Round 3 (Sun May 24) — default pairing per NWAC rules ──
+      { num: 12, iso: '2026-05-24', day: 'Sun May 24', time: '12:00 PM',
+        home: { ref: 'winner', game: 9 }, away: { ref: 'loser', game: 11 } },
+      // ── LB Final (Sun May 24) ──
+      { num: 13, iso: '2026-05-24', day: 'Sun May 24', time: '4:05 PM',
+        home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 12 } },
+      // ── Championship Final (Sun May 24) ──
+      { num: 14, iso: '2026-05-24', day: 'Sun May 24', time: '7:30 PM',
+        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 } },
+      // ── If Necessary (Mon May 25) ──
+      { num: 15, iso: '2026-05-25', day: 'Mon May 25', time: '3:35 PM',
+        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 },
+        ifNecessary: true },
+    ],
+    layout: {
+      // ── Winner's Bracket (top half) ──
+      // Col 1 — WB R1, 4 cards stacked
+      1: { x: 60,   y: 240, w: 320, h: 78 },
+      2: { x: 60,   y: 326, w: 320, h: 78 },
+      3: { x: 60,   y: 412, w: 320, h: 78 },
+      4: { x: 60,   y: 498, w: 320, h: 78 },
+      // Col 2 — WB R2, 2 cards (positioned between feeders)
+      7: { x: 430,  y: 283, w: 320, h: 78 },
+      8: { x: 430,  y: 455, w: 320, h: 78 },
+      // Col 3 — WB Final
+      11: { x: 800, y: 369, w: 320, h: 78 },
+      // Col 4 — Championship + If Necessary
+      14: { x: 1480, y: 369, w: 360, h: 90 },
+      15: { x: 1480, y: 475, w: 360, h: 34 },
+      // ── Loser's Bracket (bottom half) ──
+      // Col 1 — LB R1 (2 cards)
+      5: { x: 60,   y: 660, w: 320, h: 78 },
+      6: { x: 60,   y: 758, w: 320, h: 78 },
+      // Col 2 — LB R2 (2 cards)
+      9:  { x: 430, y: 660, w: 320, h: 78 },
+      10: { x: 430, y: 758, w: 320, h: 78 },
+      // Col 3 — LB R3
+      12: { x: 800, y: 709, w: 320, h: 78 },
+      // Col 4 — LB Final
+      13: { x: 1170, y: 709, w: 320, h: 78 },
+    },
+    connections: [
+      // WB
+      { from: 1, to: 7 },
+      { from: 2, to: 7 },
+      { from: 3, to: 8 },
+      { from: 4, to: 8 },
+      { from: 7, to: 11 },
+      { from: 8, to: 11 },
+      { from: 11, to: 14 },
+      // LB
+      { from: 5, to: 9 },
+      { from: 6, to: 10 },
+      { from: 9, to: 12 },
+      { from: 12, to: 13 },
+      { from: 10, to: 13 },
+      { from: 13, to: 14 },
+    ],
+    sectionLabels: [
+      { text: "WINNER'S BRACKET", x: 60, y: 220, w: 1100 },
+      { text: "LOSER'S BRACKET",  x: 60, y: 640, w: 1100 },
+      { text: 'CHAMPIONSHIP',     x: 1480, y: 340, w: 360, centered: true },
+    ],
+    championshipGames: [14],
+  },
+
+  // ───────────────────────────────────────────────────────────────
+  // NWAC FULL PLAYOFF BRACKET — combined super regionals + championships
+  //
+  // Compact view: super regional column on the far left feeds into the
+  // championship bracket on the right. Tightest layout of the three.
+  // ───────────────────────────────────────────────────────────────
+  nwac_full_2026: {
+    label: 'NWAC Playoff Bracket',
+    sub: 'May 15 to 25, 2026 — Super Regionals → Championships',
+    season: 2026,
+    formatLabel: 'Super regionals at four host sites → 8-team double elim at Lower Columbia',
+    seeds: [
+      { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },
+      { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },
+      { seed: 3,  seedLabel: 'N3', team_id: 25, name: 'Bellevue' },
+      { seed: 4,  seedLabel: 'N4', team_id: 31, name: 'Shoreline' },
+      { seed: 5,  seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },
+      { seed: 6,  seedLabel: 'S2', team_id: 43, name: 'Lane' },
+      { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },
+      { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },
+      { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },
+      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },
+      { seed: 11, seedLabel: 'E3', team_id: 34, name: 'Columbia Basin' },
+      { seed: 12, seedLabel: 'E4', team_id: 39, name: 'Yakima Valley' },
+      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
+      { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },
+      { seed: 15, seedLabel: 'W3', team_id: 53, name: 'Tacoma' },
+      { seed: 16, seedLabel: 'W4', team_id: 49, name: 'Clark' },
+    ],
+    // Game numbering: G101-G108 = super regionals (1-8), G1-G15 = championships.
+    // Using >100 keeps the chained refs unambiguous since both brackets are
+    // in the same `games` array.
+    games: [
+      // ─ Super Regionals ─
+      { num: 101, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 7  }, away: { ref: 'seed', val: 16 } },
+      { num: 102, iso: null, day: 'May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 2  }, away: { ref: 'winner', game: 101 } },
+      { num: 103, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 4  }, away: { ref: 'seed', val: 15 } },
+      { num: 104, iso: null, day: 'May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 10 }, away: { ref: 'winner', game: 103 } },
+      { num: 105, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 8  }, away: { ref: 'seed', val: 11 } },
+      { num: 106, iso: null, day: 'May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 14 }, away: { ref: 'winner', game: 105 } },
+      { num: 107, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
+        home: { ref: 'seed', val: 12 }, away: { ref: 'seed', val: 3  } },
+      { num: 108, iso: null, day: 'May 15-16', time: 'Best of 3',
+        home: { ref: 'seed', val: 6  }, away: { ref: 'winner', game: 107 } },
+      // ─ Championships (WB R1 referencing SR winners) ─
+      { num: 1, iso: '2026-05-21', day: 'Thu May 21', time: '9:35 AM',
+        home: { ref: 'seed', val: 1 }, away: { ref: 'winner', game: 106 } },   // N1 vs WSR
+      { num: 2, iso: '2026-05-21', day: 'Thu May 21', time: '12:35 PM',
+        home: { ref: 'seed', val: 5 }, away: { ref: 'winner', game: 104 } },   // S1 vs ESR
+      { num: 3, iso: '2026-05-21', day: 'Thu May 21', time: '4:35 PM',
+        home: { ref: 'seed', val: 9 }, away: { ref: 'winner', game: 108 } },   // E1 vs SSR
+      { num: 4, iso: '2026-05-21', day: 'Thu May 21', time: '7:35 PM',
+        home: { ref: 'seed', val: 13 }, away: { ref: 'winner', game: 102 } },  // W1 vs NSR
+      { num: 5, iso: '2026-05-22', day: 'Fri May 22', time: '9:35 AM',
+        home: { ref: 'loser', game: 1 }, away: { ref: 'loser', game: 2 } },
+      { num: 6, iso: '2026-05-22', day: 'Fri May 22', time: '12:35 PM',
+        home: { ref: 'loser', game: 3 }, away: { ref: 'loser', game: 4 } },
+      { num: 7, iso: '2026-05-22', day: 'Fri May 22', time: '4:35 PM',
+        home: { ref: 'winner', game: 1 }, away: { ref: 'winner', game: 2 } },
+      { num: 8, iso: '2026-05-22', day: 'Fri May 22', time: '7:35 PM',
+        home: { ref: 'winner', game: 3 }, away: { ref: 'winner', game: 4 } },
+      { num: 9,  iso: '2026-05-23', day: 'Sat May 23', time: '11:00 AM',
+        home: { ref: 'winner', game: 5 }, away: { ref: 'loser', game: 7 } },
+      { num: 10, iso: '2026-05-23', day: 'Sat May 23', time: '2:00 PM',
+        home: { ref: 'winner', game: 6 }, away: { ref: 'loser', game: 8 } },
+      { num: 11, iso: '2026-05-23', day: 'Sat May 23', time: '5:35 PM',
+        home: { ref: 'winner', game: 7 }, away: { ref: 'winner', game: 8 } },
+      { num: 12, iso: '2026-05-24', day: 'Sun May 24', time: '12:00 PM',
+        home: { ref: 'winner', game: 9 }, away: { ref: 'loser', game: 11 } },
+      { num: 13, iso: '2026-05-24', day: 'Sun May 24', time: '4:05 PM',
+        home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 12 } },
+      { num: 14, iso: '2026-05-24', day: 'Sun May 24', time: '7:30 PM',
+        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 } },
+      { num: 15, iso: '2026-05-25', day: 'Mon May 25', time: '3:35 PM',
+        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 },
+        ifNecessary: true },
+    ],
+    layout: {
+      // ── Super Regionals stacked on far left ──
+      101: { x: 40,  y: 245, w: 220, h: 58 },
+      102: { x: 280, y: 245, w: 220, h: 58 },
+      103: { x: 40,  y: 335, w: 220, h: 58 },
+      104: { x: 280, y: 335, w: 220, h: 58 },
+      105: { x: 40,  y: 425, w: 220, h: 58 },
+      106: { x: 280, y: 425, w: 220, h: 58 },
+      107: { x: 40,  y: 515, w: 220, h: 58 },
+      108: { x: 280, y: 515, w: 220, h: 58 },
+      // ── Championships WB ──
+      1: { x: 560,  y: 245, w: 230, h: 60 },
+      2: { x: 560,  y: 335, w: 230, h: 60 },
+      3: { x: 560,  y: 425, w: 230, h: 60 },
+      4: { x: 560,  y: 515, w: 230, h: 60 },
+      7: { x: 830,  y: 290, w: 230, h: 60 },
+      8: { x: 830,  y: 470, w: 230, h: 60 },
+      11:{ x: 1100, y: 380, w: 230, h: 60 },
+      14:{ x: 1620, y: 380, w: 240, h: 78 },
+      15:{ x: 1620, y: 472, w: 240, h: 30 },
+      // ── Championships LB ──
+      5: { x: 560,  y: 700, w: 230, h: 60 },
+      6: { x: 560,  y: 800, w: 230, h: 60 },
+      9: { x: 830,  y: 700, w: 230, h: 60 },
+      10:{ x: 830,  y: 800, w: 230, h: 60 },
+      12:{ x: 1100, y: 750, w: 230, h: 60 },
+      13:{ x: 1370, y: 750, w: 230, h: 60 },
+    },
+    connections: [
+      // SR
+      { from: 101, to: 102 },
+      { from: 103, to: 104 },
+      { from: 105, to: 106 },
+      { from: 107, to: 108 },
+      // SR → Championships
+      { from: 106, to: 1 },
+      { from: 104, to: 2 },
+      { from: 108, to: 3 },
+      { from: 102, to: 4 },
+      // WB
+      { from: 1, to: 7 },
+      { from: 2, to: 7 },
+      { from: 3, to: 8 },
+      { from: 4, to: 8 },
+      { from: 7, to: 11 },
+      { from: 8, to: 11 },
+      { from: 11, to: 14 },
+      // LB
+      { from: 5, to: 9 },
+      { from: 6, to: 10 },
+      { from: 9, to: 12 },
+      { from: 12, to: 13 },
+      { from: 10, to: 13 },
+      { from: 13, to: 14 },
+    ],
+    sectionLabels: [
+      { text: 'BYES → CHAMPIONSHIPS:  N1 EVERETT  ·  S1 LINN-BENTON  ·  E1 SPOKANE  ·  W1 LOWER COLUMBIA',
+        x: 0, y: 220, w: CANVAS_W, centered: true },
+      { text: 'SUPER REGIONALS (MAY 15-16)', x: 40, y: 660, w: 460, centered: true },
+      { text: 'CHAMPIONSHIPS — LOWER COLUMBIA (MAY 21-25)', x: 560, y: 660, w: 1300, centered: true },
+      { text: 'CHAMPIONSHIP', x: 1620, y: 358, w: 240, centered: true },
+    ],
+    championshipGames: [14, 102, 104, 106, 108],
+  },
 }
 
 // ────────────────────────────────────────────
@@ -339,14 +704,16 @@ function resolveBracket(tournament, dbGames) {
 function shortLabelForRef(ref, seedMap, outcomes, seeds) {
   if (ref.ref === 'seed') {
     const s = seedMap[ref.val]
-    return { name: s?.name || `Seed ${ref.val}`, seed: ref.val, team_id: s?.team_id }
+    // seedLabel lets a tournament show conference-prefixed seeds like "N1"
+    // / "W2" without breaking the integer-keyed seed map used for refs.
+    return { name: s?.name || `Seed ${ref.val}`, seed: s?.seedLabel || ref.val, team_id: s?.team_id }
   }
   if (ref.ref === 'winner' || ref.ref === 'loser') {
     const o = outcomes?.get(ref.game)
     const tid = ref.ref === 'winner' ? o?.winner_id : o?.loser_id
     if (tid) {
       const s = seeds.find((x) => x.team_id === tid)
-      return { name: s?.name || `Team ${tid}`, seed: s?.seed, team_id: tid }
+      return { name: s?.name || `Team ${tid}`, seed: s?.seedLabel || s?.seed, team_id: tid }
     }
     return { name: `${ref.ref === 'winner' ? 'Winner' : 'Loser'} G${ref.game}`, placeholder: true }
   }
@@ -626,19 +993,21 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
     ctx.fillText('?', logoX + logoSize / 2, logoY + logoSize / 2)
   }
 
-  // Seed badge
+  // Seed badge — width auto-fits the text so "N1", "W2", etc. don't overflow.
   const afterLogoX = logoX + logoSize + 12
   let nameStartX = afterLogoX
   if (teamRef.seed) {
-    const seedW = 28
+    ctx.font = 'bold 13px system-ui, sans-serif'
+    const seedText = `#${teamRef.seed}`
+    const tw = ctx.measureText(seedText).width
+    const seedW = Math.max(28, Math.ceil(tw) + 12)
     ctx.fillStyle = PALETTE.border
     roundRect(ctx, afterLogoX, y + h / 2 - 12, seedW, 24, 4)
     ctx.fill()
     ctx.fillStyle = PALETTE.textPrimary
-    ctx.font = 'bold 13px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(`#${teamRef.seed}`, afterLogoX + seedW / 2, y + h / 2)
+    ctx.fillText(seedText, afterLogoX + seedW / 2, y + h / 2)
     nameStartX = afterLogoX + seedW + 10
   }
 
