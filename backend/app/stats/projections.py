@@ -843,7 +843,14 @@ def build_projected_standings(current_standings, projections, team_ratings):
         # a safety buffer to cover scraper misses.  4 games matches the
         # largest observed scraper gap (e.g. Bushnell showed 1 left but had
         # 4 scheduled in 2026).
-        SAFETY_BUFFER = 4
+        #
+        # IMPORTANT: when no conference games remain anywhere in the league,
+        # the regular season is over and we DON'T want the buffer adding
+        # phantom wins to chasers — that would falsely deny clinch status to
+        # the #3 / #4 seeds of a finished conference. Disable the buffer when
+        # everyone has 0 games left.
+        total_remaining = sum(t["conf_games_remaining"] for t in teams_list)
+        SAFETY_BUFFER = 4 if total_remaining > 0 else 0
         if teams_list:
             max_observed_total = max(
                 t["current_conf_wins"] + t["current_conf_losses"] + t["conf_games_remaining"]
