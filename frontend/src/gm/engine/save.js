@@ -1,18 +1,24 @@
 /**
- * Save/load — localStorage I/O.
+ * Save/load — localStorage I/O with LZ-string compression.
  *
  * Keyed by Supabase user id so a dynasty travels with the account on the
  * same browser. 3 save slots per user.
  *
- * Format: JSON. We don't compress yet; full save size is a few MB.
+ * Why compression: a full world (199 schools × 35 players + ~1K coaches +
+ * full schedule + recruit pool) is ~6MB uncompressed. localStorage has a
+ * 5MB per-origin quota. LZ-string knocks the typical save down to ~600-900KB,
+ * comfortably under the quota.
  *
  * Save schema is versioned; any breaking shape changes bump SAVE_VERSION
  * and add a migration in `migrateSave`.
  */
 
+import LZString from 'lz-string'
+
 export const SAVE_VERSION = 1
 
 const KEY_PREFIX = 'naia-gm-save'
+const COMPRESSION_MARKER = 'LZ:'
 
 /**
  * Build the localStorage key for a given user + slot.
@@ -23,6 +29,8 @@ function storageKey(userId, slot) {
 
 /**
  * Save the state to localStorage at the given slot.
+ * Compressed with LZ-string (UTF16 variant ~ 50-70% size reduction).
+ *
  * @param {import('./types.js').SaveState} state
  */
 export function saveDynasty(state) {
@@ -30,16 +38,26 @@ export function saveDynasty(state) {
   state.lastSavedAt = new Date().toISOString()
   state.saveVersion = SAVE_VERSION
   try {
-    localStorage.setItem(key, JSON.stringify(state))
-    return { ok: true }
+    const json = JSON.stringify(state)
+    const compressed = COMPRESSION_MARKER + LZString.compressToUTF16(json)
+    localStorage.setItem(key, compressed)
+    return { ok: true, sizeKb: Math.round(compressed.length / 1024) }
   } catch (err) {
     console.error('[gm/save] saveDynasty failed', err)
+    if (err.name === 'QuotaExceededError') {
+      return {
+        ok: false,
+        error: `Save quota exceeded (${err.message}). Try deleting one of your other dynasties.`,
+      }
+    }
     return { ok: false, error: err.message }
   }
 }
 
 /**
- * Load a save at a given slot.
+ * Load a save at a given slot. Backward-compatible with uncompressed saves
+ * (if anyone has any leftover) — the COMPRESSION_MARKER prefix tells us.
+ *
  * @param {string} userId
  * @param {number} slot   1-3
  * @returns {import('./types.js').SaveState | null}
@@ -49,7 +67,18 @@ export function loadDynasty(userId, slot) {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return null
-    const data = JSON.parse(raw)
+    let json
+    if (raw.startsWith(COMPRESSION_MARKER)) {
+      json = LZString.decompressFromUTF16(raw.slice(COMPRESSION_MARKER.length))
+      if (!json) {
+        console.error('[gm/save] failed to decompress save — corrupted?')
+        return null
+      }
+    } else {
+      // Uncompressed legacy save
+      json = raw
+    }
+    const data = JSON.parse(json)
     return migrateSave(data)
   } catch (err) {
     console.error('[gm/save] loadDynasty failed', err)
