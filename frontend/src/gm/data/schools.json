@@ -1,0 +1,412 @@
+{
+  "_meta": {
+    "season": "2025-26",
+    "generatedBy": "Claude Code research agent",
+    "totalConferences": 21,
+    "totalPrograms": 199,
+    "verifyBeforeShipping": [
+      "Colors are best-effort placeholders — verify against each school's athletic style guide before using on team cards.",
+      "HBCUAC and Continental Athletic Conference may have fewer baseball-playing members than listed; verify against current standings pages.",
+      "Frontier Conference is brand-new to baseball in 2025-26 (absorbed former NSAA members); typicalNationalQualifiers is a best guess.",
+      "Shawnee State leaves RSC after 2025-26 (D-II Mountain East); Texas A&M-Texarkana and Xavier (LA) leave after 2025-26 too — needs update next season."
+    ]
+  },
+  "conferences": [
+    {
+      "id": "american-midwest",
+      "name": "American Midwest Conference",
+      "abbreviation": "AMC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 1,
+      "schools": [
+        { "id": "central-baptist", "name": "Central Baptist", "city": "Conway", "state": "AR", "nickname": "Mustangs", "colors": { "primary": "#003366", "secondary": "#FFFFFF" } },
+        { "id": "columbia-mo", "name": "Columbia (MO)", "city": "Columbia", "state": "MO", "nickname": "Cougars", "colors": { "primary": "#003F87", "secondary": "#FFD200" } },
+        { "id": "crowleys-ridge", "name": "Crowley's Ridge", "city": "Paragould", "state": "AR", "nickname": "Pioneers", "colors": { "primary": "#7B2D26", "secondary": "#C9A227" } },
+        { "id": "hannibal-lagrange", "name": "Hannibal-LaGrange", "city": "Hannibal", "state": "MO", "nickname": "Trojans", "colors": { "primary": "#FFD200", "secondary": "#000000" } },
+        { "id": "harris-stowe", "name": "Harris-Stowe State", "city": "St. Louis", "state": "MO", "nickname": "Hornets", "colors": { "primary": "#000000", "secondary": "#FFD200" } },
+        { "id": "mission", "name": "Mission", "city": "Springfield", "state": "MO", "nickname": "Patriots", "colors": { "primary": "#002868", "secondary": "#BF0A30" } },
+        { "id": "uhsp", "name": "Health Sciences & Pharmacy (St. Louis)", "city": "St. Louis", "state": "MO", "nickname": "Eutectics", "colors": { "primary": "#7A003C", "secondary": "#FFFFFF" } },
+        { "id": "williams-baptist", "name": "Williams Baptist", "city": "Walnut Ridge", "state": "AR", "nickname": "Eagles", "colors": { "primary": "#0033A0", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "appalachian-athletic",
+      "name": "Appalachian Athletic Conference",
+      "abbreviation": "AAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "bluefield", "name": "Bluefield", "city": "Bluefield", "state": "VA", "nickname": "Rams", "colors": { "primary": "#005EB8", "secondary": "#FFD100" } },
+        { "id": "bryan", "name": "Bryan", "city": "Dayton", "state": "TN", "nickname": "Lions", "colors": { "primary": "#FFD200", "secondary": "#000000" } },
+        { "id": "columbia-college-sc", "name": "Columbia College (SC)", "city": "Columbia", "state": "SC", "nickname": "Koalas", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } },
+        { "id": "columbia-international", "name": "Columbia International", "city": "Columbia", "state": "SC", "nickname": "Rams", "colors": { "primary": "#002F6C", "secondary": "#FFD200" } },
+        { "id": "johnson", "name": "Johnson", "city": "Knoxville", "state": "TN", "nickname": "Royals", "colors": { "primary": "#4B306A", "secondary": "#FFD200" } },
+        { "id": "milligan", "name": "Milligan", "city": "Elizabethton", "state": "TN", "nickname": "Buffaloes", "colors": { "primary": "#000000", "secondary": "#FF8200" } },
+        { "id": "montreat", "name": "Montreat", "city": "Montreat", "state": "NC", "nickname": "Cavaliers", "colors": { "primary": "#003366", "secondary": "#C0C0C0" } },
+        { "id": "pikeville", "name": "Pikeville", "city": "Pikeville", "state": "KY", "nickname": "Bears", "colors": { "primary": "#FF6900", "secondary": "#000000" } },
+        { "id": "reinhardt", "name": "Reinhardt", "city": "Waleska", "state": "GA", "nickname": "Eagles", "colors": { "primary": "#7B2D26", "secondary": "#000000" } },
+        { "id": "spartanburg-methodist", "name": "Spartanburg Methodist", "city": "Spartanburg", "state": "SC", "nickname": "Pioneers", "colors": { "primary": "#00205B", "secondary": "#C5B783" } },
+        { "id": "tennessee-wesleyan", "name": "Tennessee Wesleyan", "city": "Athens", "state": "TN", "nickname": "Bulldogs", "colors": { "primary": "#522D80", "secondary": "#FFD200" } },
+        { "id": "truett-mcconnell", "name": "Truett McConnell", "city": "Cleveland", "state": "GA", "nickname": "Bears", "colors": { "primary": "#7B2D26", "secondary": "#000000" } },
+        { "id": "union-commonwealth", "name": "Union Commonwealth", "city": "Barbourville", "state": "KY", "nickname": "Bulldogs", "colors": { "primary": "#FF6900", "secondary": "#000000" } }
+      ]
+    },
+    {
+      "id": "california-pacific",
+      "name": "California Pacific Conference",
+      "abbreviation": "Cal Pac",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 1,
+      "schools": [
+        { "id": "cal-maritime", "name": "Cal Maritime", "city": "Vallejo", "state": "CA", "nickname": "Keelhaulers", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "northern-new-mexico", "name": "Northern New Mexico", "city": "Espanola", "state": "NM", "nickname": "Eagles", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
+        { "id": "pacific-union", "name": "Pacific Union", "city": "Angwin", "state": "CA", "nickname": "Pioneers", "colors": { "primary": "#005EB8", "secondary": "#FFD200" } },
+        { "id": "simpson-ca", "name": "Simpson (CA)", "city": "Redding", "state": "CA", "nickname": "Red Hawks", "colors": { "primary": "#BB0000", "secondary": "#000000" } },
+        { "id": "stanton", "name": "Stanton", "city": "Anaheim", "state": "CA", "nickname": "Fighting Elks", "colors": { "primary": "#FFD200", "secondary": "#000000" } },
+        { "id": "westcliff", "name": "Westcliff", "city": "Irvine", "state": "CA", "nickname": "Warriors", "colors": { "primary": "#002868", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "cascade-collegiate",
+      "name": "Cascade Collegiate Conference",
+      "abbreviation": "CCC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "british-columbia", "name": "British Columbia", "city": "Vancouver", "state": "BC", "nickname": "Thunderbirds", "colors": { "primary": "#002145", "secondary": "#FFB81C" } },
+        { "id": "bushnell", "name": "Bushnell", "city": "Eugene", "state": "OR", "nickname": "Beacons", "colors": { "primary": "#1D3D6F", "secondary": "#FFC72C" } },
+        { "id": "college-of-idaho", "name": "College of Idaho", "city": "Caldwell", "state": "ID", "nickname": "Yotes", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "corban", "name": "Corban", "city": "Salem", "state": "OR", "nickname": "Warriors", "colors": { "primary": "#7B2D26", "secondary": "#000000" } },
+        { "id": "eastern-oregon", "name": "Eastern Oregon", "city": "La Grande", "state": "OR", "nickname": "Mountaineers", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "lewis-clark-state", "name": "Lewis-Clark State", "city": "Lewiston", "state": "ID", "nickname": "Warriors", "colors": { "primary": "#00205B", "secondary": "#FFC72C" } },
+        { "id": "oregon-tech", "name": "Oregon Tech", "city": "Klamath Falls", "state": "OR", "nickname": "Owls", "colors": { "primary": "#FF6A13", "secondary": "#000000" } },
+        { "id": "warner-pacific", "name": "Warner Pacific", "city": "Portland", "state": "OR", "nickname": "Knights", "colors": { "primary": "#0033A0", "secondary": "#00843D" } }
+      ]
+    },
+    {
+      "id": "chicagoland-collegiate",
+      "name": "Chicagoland Collegiate Athletic Conference",
+      "abbreviation": "CCAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 2,
+      "schools": [
+        { "id": "calumet-st-joseph", "name": "Calumet College of St. Joseph", "city": "Whiting", "state": "IN", "nickname": "Crimson Wave", "colors": { "primary": "#990000", "secondary": "#FFFFFF" } },
+        { "id": "governors-state", "name": "Governors State", "city": "University Park", "state": "IL", "nickname": "Jaguars", "colors": { "primary": "#000000", "secondary": "#FFD200" } },
+        { "id": "holy-cross", "name": "Holy Cross (IN)", "city": "Notre Dame", "state": "IN", "nickname": "Saints", "colors": { "primary": "#1F2A44", "secondary": "#C9A227" } },
+        { "id": "iu-northwest", "name": "IU Northwest", "city": "Gary", "state": "IN", "nickname": "RedHawks", "colors": { "primary": "#990000", "secondary": "#000000" } },
+        { "id": "iu-south-bend", "name": "IU South Bend", "city": "South Bend", "state": "IN", "nickname": "Titans", "colors": { "primary": "#990000", "secondary": "#FFD200" } },
+        { "id": "judson", "name": "Judson", "city": "Elgin", "state": "IL", "nickname": "Eagles", "colors": { "primary": "#002868", "secondary": "#FFD200" } },
+        { "id": "olivet-nazarene", "name": "Olivet Nazarene", "city": "Bourbonnais", "state": "IL", "nickname": "Tigers", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "st-ambrose", "name": "St. Ambrose", "city": "Davenport", "state": "IA", "nickname": "Fighting Bees", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "st-francis-il", "name": "St. Francis (IL)", "city": "Joliet", "state": "IL", "nickname": "Fighting Saints", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
+        { "id": "st-xavier", "name": "Saint Xavier", "city": "Chicago", "state": "IL", "nickname": "Cougars", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "trinity-christian", "name": "Trinity Christian", "city": "Palos Heights", "state": "IL", "nickname": "Trolls", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "viterbo", "name": "Viterbo", "city": "La Crosse", "state": "WI", "nickname": "V-Hawks", "colors": { "primary": "#582C83", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "continental",
+      "name": "Continental Athletic Conference",
+      "abbreviation": "CAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 1,
+      "schools": [
+        { "id": "arkansas-baptist", "name": "Arkansas Baptist", "city": "Little Rock", "state": "AR", "nickname": "Buffaloes", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
+        { "id": "carolina-u", "name": "Carolina University", "city": "Winston-Salem", "state": "NC", "nickname": "Bruins", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "fisher", "name": "Fisher", "city": "Boston", "state": "MA", "nickname": "Falcons", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "florida-national", "name": "Florida National", "city": "Hialeah", "state": "FL", "nickname": "Conquistadors", "colors": { "primary": "#002868", "secondary": "#BF0A30" } },
+        { "id": "georgia-gwinnett", "name": "Georgia Gwinnett", "city": "Lawrenceville", "state": "GA", "nickname": "Grizzlies", "colors": { "primary": "#005A30", "secondary": "#FFD200" } },
+        { "id": "hesston", "name": "Hesston", "city": "Hesston", "state": "KS", "nickname": "Larks", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "crossroads-league",
+      "name": "Crossroads League",
+      "abbreviation": "CL",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "bethel-in", "name": "Bethel (IN)", "city": "Mishawaka", "state": "IN", "nickname": "Pilots", "colors": { "primary": "#00205B", "secondary": "#FFC72C" } },
+        { "id": "goshen", "name": "Goshen", "city": "Goshen", "state": "IN", "nickname": "Maple Leafs", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } },
+        { "id": "grace-in", "name": "Grace (IN)", "city": "Winona Lake", "state": "IN", "nickname": "Lancers", "colors": { "primary": "#7B2D26", "secondary": "#000000" } },
+        { "id": "huntington", "name": "Huntington", "city": "Huntington", "state": "IN", "nickname": "Foresters", "colors": { "primary": "#005A30", "secondary": "#FFFFFF" } },
+        { "id": "indiana-wesleyan", "name": "Indiana Wesleyan", "city": "Marion", "state": "IN", "nickname": "Wildcats", "colors": { "primary": "#7B2D26", "secondary": "#C9A227" } },
+        { "id": "marian-in", "name": "Marian (IN)", "city": "Indianapolis", "state": "IN", "nickname": "Knights", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "mount-vernon-nazarene", "name": "Mount Vernon Nazarene", "city": "Mount Vernon", "state": "OH", "nickname": "Cougars", "colors": { "primary": "#582C83", "secondary": "#C9A227" } },
+        { "id": "saint-francis-in", "name": "Saint Francis (IN)", "city": "Fort Wayne", "state": "IN", "nickname": "Cougars", "colors": { "primary": "#7B2D26", "secondary": "#C9A227" } },
+        { "id": "spring-arbor", "name": "Spring Arbor", "city": "Spring Arbor", "state": "MI", "nickname": "Cougars", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "taylor", "name": "Taylor", "city": "Upland", "state": "IN", "nickname": "Trojans", "colors": { "primary": "#582C83", "secondary": "#C9A227" } }
+      ]
+    },
+    {
+      "id": "frontier",
+      "name": "Frontier Conference",
+      "abbreviation": "FC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 1,
+      "schools": [
+        { "id": "bellevue", "name": "Bellevue", "city": "Bellevue", "state": "NE", "nickname": "Bruins", "colors": { "primary": "#000000", "secondary": "#FFD200" } },
+        { "id": "bismarck-state", "name": "Bismarck State", "city": "Bismarck", "state": "ND", "nickname": "Mystics", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "dakota-state", "name": "Dakota State", "city": "Madison", "state": "SD", "nickname": "Trojans", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "dickinson-state", "name": "Dickinson State", "city": "Dickinson", "state": "ND", "nickname": "Blue Hawks", "colors": { "primary": "#005EB8", "secondary": "#FFFFFF" } },
+        { "id": "mayville-state", "name": "Mayville State", "city": "Mayville", "state": "ND", "nickname": "Comets", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "valley-city-state", "name": "Valley City State", "city": "Valley City", "state": "ND", "nickname": "Vikings", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "great-plains-athletic",
+      "name": "Great Plains Athletic Conference",
+      "abbreviation": "GPAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "briar-cliff", "name": "Briar Cliff", "city": "Sioux City", "state": "IA", "nickname": "Chargers", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "concordia-ne", "name": "Concordia (NE)", "city": "Seward", "state": "NE", "nickname": "Bulldogs", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } },
+        { "id": "dakota-wesleyan", "name": "Dakota Wesleyan", "city": "Mitchell", "state": "SD", "nickname": "Tigers", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } },
+        { "id": "doane", "name": "Doane", "city": "Crete", "state": "NE", "nickname": "Tigers", "colors": { "primary": "#FF6900", "secondary": "#000000" } },
+        { "id": "dordt", "name": "Dordt", "city": "Sioux Center", "state": "IA", "nickname": "Defenders", "colors": { "primary": "#FFD200", "secondary": "#000000" } },
+        { "id": "hastings", "name": "Hastings", "city": "Hastings", "state": "NE", "nickname": "Broncos", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "midland", "name": "Midland", "city": "Fremont", "state": "NE", "nickname": "Warriors", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "morningside", "name": "Morningside", "city": "Sioux City", "state": "IA", "nickname": "Mustangs", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } },
+        { "id": "mount-marty", "name": "Mount Marty", "city": "Yankton", "state": "SD", "nickname": "Lancers", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "northwestern-ia", "name": "Northwestern (IA)", "city": "Orange City", "state": "IA", "nickname": "Red Raiders", "colors": { "primary": "#BF0A30", "secondary": "#000000" } },
+        { "id": "waldorf", "name": "Waldorf", "city": "Forest City", "state": "IA", "nickname": "Warriors", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "great-southwest-athletic",
+      "name": "Great Southwest Athletic Conference",
+      "abbreviation": "GSAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 2,
+      "schools": [
+        { "id": "arizona-christian", "name": "Arizona Christian", "city": "Glendale", "state": "AZ", "nickname": "Firestorm", "colors": { "primary": "#7B2D26", "secondary": "#C9A227" } },
+        { "id": "benedictine-mesa", "name": "Benedictine Mesa", "city": "Mesa", "state": "AZ", "nickname": "Redhawks", "colors": { "primary": "#7B2D26", "secondary": "#000000" } },
+        { "id": "embry-riddle-az", "name": "Embry-Riddle (AZ)", "city": "Prescott", "state": "AZ", "nickname": "Eagles", "colors": { "primary": "#0033A0", "secondary": "#C9A227" } },
+        { "id": "hope-international", "name": "Hope International", "city": "Fullerton", "state": "CA", "nickname": "Royals", "colors": { "primary": "#582C83", "secondary": "#C9A227" } },
+        { "id": "la-sierra", "name": "La Sierra", "city": "Riverside", "state": "CA", "nickname": "Golden Eagles", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
+        { "id": "masters", "name": "The Master's", "city": "Santa Clarita", "state": "CA", "nickname": "Mustangs", "colors": { "primary": "#7B2D26", "secondary": "#000000" } },
+        { "id": "ottawa-az", "name": "Ottawa (AZ)", "city": "Surprise", "state": "AZ", "nickname": "Spirit", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "park-gilbert", "name": "Park Gilbert", "city": "Gilbert", "state": "AZ", "nickname": "Buccaneers", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "hbcu-athletic",
+      "name": "HBCU Athletic Conference",
+      "abbreviation": "HBCUAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 2,
+      "schools": [
+        { "id": "dillard", "name": "Dillard", "city": "New Orleans", "state": "LA", "nickname": "Bleu Devils", "colors": { "primary": "#005EB8", "secondary": "#FFFFFF" } },
+        { "id": "fisk", "name": "Fisk", "city": "Nashville", "state": "TN", "nickname": "Bulldogs", "colors": { "primary": "#003B5C", "secondary": "#C9A227" } },
+        { "id": "huston-tillotson", "name": "Huston-Tillotson", "city": "Austin", "state": "TX", "nickname": "Rams", "colors": { "primary": "#FF6900", "secondary": "#003B5C" } },
+        { "id": "philander-smith", "name": "Philander Smith", "city": "Little Rock", "state": "AR", "nickname": "Panthers", "colors": { "primary": "#582C83", "secondary": "#C9A227" } },
+        { "id": "rust", "name": "Rust", "city": "Holly Springs", "state": "MS", "nickname": "Bearcats", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "suno", "name": "Southern (New Orleans)", "city": "New Orleans", "state": "LA", "nickname": "Knights", "colors": { "primary": "#FFD200", "secondary": "#003B5C" } },
+        { "id": "stillman", "name": "Stillman", "city": "Tuscaloosa", "state": "AL", "nickname": "Tigers", "colors": { "primary": "#0033A0", "secondary": "#C9A227" } },
+        { "id": "talladega", "name": "Talladega", "city": "Talladega", "state": "AL", "nickname": "Tornadoes", "colors": { "primary": "#BF0A30", "secondary": "#003B5C" } },
+        { "id": "tougaloo", "name": "Tougaloo", "city": "Tougaloo", "state": "MS", "nickname": "Bulldogs", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "voorhees", "name": "Voorhees", "city": "Denmark", "state": "SC", "nickname": "Tigers", "colors": { "primary": "#003B5C", "secondary": "#C9A227" } },
+        { "id": "wilberforce", "name": "Wilberforce", "city": "Wilberforce", "state": "OH", "nickname": "Bulldogs", "colors": { "primary": "#005A30", "secondary": "#C9A227" } },
+        { "id": "wiley", "name": "Wiley", "city": "Marshall", "state": "TX", "nickname": "Wildcats", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "heart-of-america",
+      "name": "Heart of America Athletic Conference",
+      "abbreviation": "HAAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "baker", "name": "Baker", "city": "Baldwin City", "state": "KS", "nickname": "Wildcats", "colors": { "primary": "#FF6900", "secondary": "#000000" } },
+        { "id": "benedictine-ks", "name": "Benedictine (KS)", "city": "Atchison", "state": "KS", "nickname": "Ravens", "colors": { "primary": "#000000", "secondary": "#BF0A30" } },
+        { "id": "central-methodist", "name": "Central Methodist", "city": "Fayette", "state": "MO", "nickname": "Eagles", "colors": { "primary": "#005EB8", "secondary": "#000000" } },
+        { "id": "clarke", "name": "Clarke", "city": "Dubuque", "state": "IA", "nickname": "Pride", "colors": { "primary": "#7B2D26", "secondary": "#C0C0C0" } },
+        { "id": "culver-stockton", "name": "Culver-Stockton", "city": "Canton", "state": "MO", "nickname": "Wildcats", "colors": { "primary": "#0033A0", "secondary": "#FFD200" } },
+        { "id": "graceland", "name": "Graceland", "city": "Lamoni", "state": "IA", "nickname": "Yellowjackets", "colors": { "primary": "#FFD200", "secondary": "#0033A0" } },
+        { "id": "grand-view", "name": "Grand View", "city": "Des Moines", "state": "IA", "nickname": "Vikings", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "midamerica-nazarene", "name": "MidAmerica Nazarene", "city": "Olathe", "state": "KS", "nickname": "Pioneers", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "missouri-baptist", "name": "Missouri Baptist", "city": "Creve Coeur", "state": "MO", "nickname": "Spartans", "colors": { "primary": "#003B5C", "secondary": "#C0C0C0" } },
+        { "id": "missouri-valley", "name": "Missouri Valley", "city": "Marshall", "state": "MO", "nickname": "Vikings", "colors": { "primary": "#FF6900", "secondary": "#000000" } },
+        { "id": "mount-mercy", "name": "Mount Mercy", "city": "Cedar Rapids", "state": "IA", "nickname": "Mustangs", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "park", "name": "Park", "city": "Parkville", "state": "MO", "nickname": "Pirates", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "peru-state", "name": "Peru State", "city": "Peru", "state": "NE", "nickname": "Bobcats", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "william-woods", "name": "William Woods", "city": "Fulton", "state": "MO", "nickname": "Owls", "colors": { "primary": "#005A30", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "kansas-collegiate-athletic",
+      "name": "Kansas Collegiate Athletic Conference",
+      "abbreviation": "KCAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "avila", "name": "Avila", "city": "Kansas City", "state": "MO", "nickname": "Eagles", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
+        { "id": "bethany-ks", "name": "Bethany (KS)", "city": "Lindsborg", "state": "KS", "nickname": "Swedes", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "evangel", "name": "Evangel", "city": "Springfield", "state": "MO", "nickname": "Valor", "colors": { "primary": "#BF0A30", "secondary": "#000000" } },
+        { "id": "friends", "name": "Friends", "city": "Wichita", "state": "KS", "nickname": "Falcons", "colors": { "primary": "#BF0A30", "secondary": "#003B5C" } },
+        { "id": "kansas-wesleyan", "name": "Kansas Wesleyan", "city": "Salina", "state": "KS", "nickname": "Coyotes", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "mcpherson", "name": "McPherson", "city": "McPherson", "state": "KS", "nickname": "Bulldogs", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "oklahoma-wesleyan", "name": "Oklahoma Wesleyan", "city": "Bartlesville", "state": "OK", "nickname": "Eagles", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "ottawa", "name": "Ottawa", "city": "Ottawa", "state": "KS", "nickname": "Braves", "colors": { "primary": "#BF0A30", "secondary": "#000000" } },
+        { "id": "saint-mary-ks", "name": "Saint Mary (KS)", "city": "Leavenworth", "state": "KS", "nickname": "Spires", "colors": { "primary": "#003B5C", "secondary": "#C9A227" } },
+        { "id": "southwestern-ks", "name": "Southwestern (KS)", "city": "Winfield", "state": "KS", "nickname": "Moundbuilders", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "sterling", "name": "Sterling", "city": "Sterling", "state": "KS", "nickname": "Warriors", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
+        { "id": "tabor", "name": "Tabor", "city": "Hillsboro", "state": "KS", "nickname": "Bluejays", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "york", "name": "York", "city": "York", "state": "NE", "nickname": "Panthers", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "mid-south",
+      "name": "Mid-South Conference",
+      "abbreviation": "MSC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "bethel-tn", "name": "Bethel (TN)", "city": "McKenzie", "state": "TN", "nickname": "Wildcats", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "campbellsville", "name": "Campbellsville", "city": "Campbellsville", "state": "KY", "nickname": "Tigers", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "cumberland", "name": "Cumberland", "city": "Lebanon", "state": "TN", "nickname": "Phoenix", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "cumberlands", "name": "Cumberlands", "city": "Williamsburg", "state": "KY", "nickname": "Patriots", "colors": { "primary": "#7B2D26", "secondary": "#003B5C" } },
+        { "id": "freed-hardeman", "name": "Freed-Hardeman", "city": "Henderson", "state": "TN", "nickname": "Lions", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "georgetown-ky", "name": "Georgetown (KY)", "city": "Georgetown", "state": "KY", "nickname": "Tigers", "colors": { "primary": "#FF6900", "secondary": "#000000" } },
+        { "id": "lindsey-wilson", "name": "Lindsey Wilson", "city": "Columbia", "state": "KY", "nickname": "Blue Raiders", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "red-river-athletic",
+      "name": "Red River Athletic Conference",
+      "abbreviation": "RRAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "jarvis-christian", "name": "Jarvis Christian", "city": "Hawkins", "state": "TX", "nickname": "Bulldogs", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "louisiana-christian", "name": "Louisiana Christian", "city": "Pineville", "state": "LA", "nickname": "Wildcats", "colors": { "primary": "#FF6900", "secondary": "#003B5C" } },
+        { "id": "lsu-alexandria", "name": "LSU Alexandria", "city": "Alexandria", "state": "LA", "nickname": "Generals", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "lsu-shreveport", "name": "LSU Shreveport", "city": "Shreveport", "state": "LA", "nickname": "Pilots", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "our-lady-of-the-lake", "name": "Our Lady of the Lake", "city": "San Antonio", "state": "TX", "nickname": "Saints", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "texas-college", "name": "Texas College", "city": "Tyler", "state": "TX", "nickname": "Steers", "colors": { "primary": "#582C83", "secondary": "#FFFFFF" } },
+        { "id": "texas-am-texarkana", "name": "Texas A&M-Texarkana", "city": "Texarkana", "state": "TX", "nickname": "Eagles", "colors": { "primary": "#FF6900", "secondary": "#003B5C" } },
+        { "id": "southwest-nm", "name": "Southwest (NM)", "city": "Hobbs", "state": "NM", "nickname": "Mustangs", "colors": { "primary": "#BF0A30", "secondary": "#FFFFFF" } },
+        { "id": "xavier-la", "name": "Xavier (LA)", "city": "New Orleans", "state": "LA", "nickname": "Gold Rush", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "river-states",
+      "name": "River States Conference",
+      "abbreviation": "RSC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 2,
+      "schools": [
+        { "id": "brescia", "name": "Brescia", "city": "Owensboro", "state": "KY", "nickname": "Bearcats", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "iu-columbus", "name": "IU Columbus", "city": "Columbus", "state": "IN", "nickname": "Crimson Pride", "colors": { "primary": "#990000", "secondary": "#FFFFFF" } },
+        { "id": "iu-east", "name": "IU East", "city": "Richmond", "state": "IN", "nickname": "Red Wolves", "colors": { "primary": "#990000", "secondary": "#000000" } },
+        { "id": "iu-kokomo", "name": "IU Kokomo", "city": "Kokomo", "state": "IN", "nickname": "Cougars", "colors": { "primary": "#990000", "secondary": "#000000" } },
+        { "id": "iu-southeast", "name": "IU Southeast", "city": "New Albany", "state": "IN", "nickname": "Grenadiers", "colors": { "primary": "#990000", "secondary": "#000000" } },
+        { "id": "kentucky-christian", "name": "Kentucky Christian", "city": "Grayson", "state": "KY", "nickname": "Knights", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "midway", "name": "Midway", "city": "Midway", "state": "KY", "nickname": "Eagles", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "oakland-city", "name": "Oakland City", "city": "Oakland City", "state": "IN", "nickname": "Mighty Oaks", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "rio-grande", "name": "Rio Grande", "city": "Rio Grande", "state": "OH", "nickname": "RedStorm", "colors": { "primary": "#BF0A30", "secondary": "#FFFFFF" } },
+        { "id": "shawnee-state", "name": "Shawnee State", "city": "Portsmouth", "state": "OH", "nickname": "Bears", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "wvu-tech", "name": "WVU Tech", "city": "Beckley", "state": "WV", "nickname": "Golden Bears", "colors": { "primary": "#FFD200", "secondary": "#000000" } }
+      ]
+    },
+    {
+      "id": "sooner-athletic",
+      "name": "Sooner Athletic Conference",
+      "abbreviation": "SAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "central-christian-ks", "name": "Central Christian (KS)", "city": "McPherson", "state": "KS", "nickname": "Tigers", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
+        { "id": "college-of-ozarks", "name": "College of the Ozarks", "city": "Point Lookout", "state": "MO", "nickname": "Bobcats", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "mid-america-christian", "name": "Mid-America Christian", "city": "Oklahoma City", "state": "OK", "nickname": "Evangels", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
+        { "id": "nelson", "name": "Nelson", "city": "Waxahachie", "state": "TX", "nickname": "Lions", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "oklahoma-city", "name": "Oklahoma City", "city": "Oklahoma City", "state": "OK", "nickname": "Stars", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "oklahoma-panhandle", "name": "Oklahoma Panhandle State", "city": "Goodwell", "state": "OK", "nickname": "Aggies", "colors": { "primary": "#000000", "secondary": "#FFD200" } },
+        { "id": "science-arts", "name": "Science & Arts (Okla.)", "city": "Chickasha", "state": "OK", "nickname": "Drovers", "colors": { "primary": "#FF6900", "secondary": "#000000" } },
+        { "id": "southwestern-christian", "name": "Southwestern Christian", "city": "Bethany", "state": "OK", "nickname": "Eagles", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "texas-wesleyan", "name": "Texas Wesleyan", "city": "Fort Worth", "state": "TX", "nickname": "Rams", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "wayland-baptist", "name": "Wayland Baptist", "city": "Plainview", "state": "TX", "nickname": "Pioneers", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } }
+      ]
+    },
+    {
+      "id": "southern-states-athletic",
+      "name": "Southern States Athletic Conference",
+      "abbreviation": "SSAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "abac", "name": "Abraham Baldwin", "city": "Tifton", "state": "GA", "nickname": "Golden Stallions", "colors": { "primary": "#FFD200", "secondary": "#003B5C" } },
+        { "id": "blue-mountain", "name": "Blue Mountain Christian", "city": "Blue Mountain", "state": "MS", "nickname": "Toppers", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "brewton-parker", "name": "Brewton-Parker", "city": "Mount Vernon", "state": "GA", "nickname": "Barons", "colors": { "primary": "#FFD200", "secondary": "#003B5C" } },
+        { "id": "dalton-state", "name": "Dalton State", "city": "Dalton", "state": "GA", "nickname": "Roadrunners", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "faulkner", "name": "Faulkner", "city": "Montgomery", "state": "AL", "nickname": "Eagles", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "life", "name": "Life", "city": "Marietta", "state": "GA", "nickname": "Running Eagles", "colors": { "primary": "#005A30", "secondary": "#FFFFFF" } },
+        { "id": "loyola-no", "name": "Loyola New Orleans", "city": "New Orleans", "state": "LA", "nickname": "Wolf Pack", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "mobile", "name": "Mobile", "city": "Mobile", "state": "AL", "nickname": "Rams", "colors": { "primary": "#003B5C", "secondary": "#BF0A30" } },
+        { "id": "point", "name": "Point", "city": "West Point", "state": "GA", "nickname": "Skyhawks", "colors": { "primary": "#003B5C", "secondary": "#C0C0C0" } },
+        { "id": "thomas-ga", "name": "Thomas (GA)", "city": "Thomasville", "state": "GA", "nickname": "Night Hawks", "colors": { "primary": "#000000", "secondary": "#FF6900" } },
+        { "id": "ut-southern", "name": "Tennessee Southern", "city": "Pulaski", "state": "TN", "nickname": "FireHawks", "colors": { "primary": "#BF0A30", "secondary": "#000000" } },
+        { "id": "william-carey", "name": "William Carey", "city": "Hattiesburg", "state": "MS", "nickname": "Crusaders", "colors": { "primary": "#BF0A30", "secondary": "#003B5C" } }
+      ]
+    },
+    {
+      "id": "sun-conference",
+      "name": "The Sun Conference",
+      "abbreviation": "TSC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 3,
+      "schools": [
+        { "id": "ave-maria", "name": "Ave Maria", "city": "Ave Maria", "state": "FL", "nickname": "Gyrenes", "colors": { "primary": "#003B5C", "secondary": "#C9A227" } },
+        { "id": "coastal-georgia", "name": "Coastal Georgia", "city": "Brunswick", "state": "GA", "nickname": "Mariners", "colors": { "primary": "#003B5C", "secondary": "#C9A227" } },
+        { "id": "florida-memorial", "name": "Florida Memorial", "city": "Miami Gardens", "state": "FL", "nickname": "Lions", "colors": { "primary": "#003B5C", "secondary": "#FF6900" } },
+        { "id": "keiser", "name": "Keiser", "city": "West Palm Beach", "state": "FL", "nickname": "Seahawks", "colors": { "primary": "#000000", "secondary": "#BF0A30" } },
+        { "id": "new-college-fl", "name": "New College of Florida", "city": "Sarasota", "state": "FL", "nickname": "Mighty Banyans", "colors": { "primary": "#005A30", "secondary": "#FFD200" } },
+        { "id": "southeastern-fl", "name": "Southeastern", "city": "Lakeland", "state": "FL", "nickname": "Fire", "colors": { "primary": "#BF0A30", "secondary": "#000000" } },
+        { "id": "st-thomas-fl", "name": "St. Thomas (FL)", "city": "Miami Gardens", "state": "FL", "nickname": "Bobcats", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "warner", "name": "Warner", "city": "Lake Wales", "state": "FL", "nickname": "Royals", "colors": { "primary": "#582C83", "secondary": "#FFD200" } },
+        { "id": "webber", "name": "Webber International", "city": "Babson Park", "state": "FL", "nickname": "Warriors", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } }
+      ]
+    },
+    {
+      "id": "wolverine-hoosier",
+      "name": "Wolverine-Hoosier Athletic Conference",
+      "abbreviation": "WHAC",
+      "sponsorsBaseball": true,
+      "hasConferenceTournament": true,
+      "typicalNationalQualifiers": 2,
+      "schools": [
+        { "id": "aquinas-mi", "name": "Aquinas (MI)", "city": "Grand Rapids", "state": "MI", "nickname": "Saints", "colors": { "primary": "#582C83", "secondary": "#C9A227" } },
+        { "id": "cleary", "name": "Cleary", "city": "Howell", "state": "MI", "nickname": "Cougars", "colors": { "primary": "#003B5C", "secondary": "#C9A227" } },
+        { "id": "cornerstone", "name": "Cornerstone", "city": "Grand Rapids", "state": "MI", "nickname": "Golden Eagles", "colors": { "primary": "#7B2D26", "secondary": "#C9A227" } },
+        { "id": "indiana-tech", "name": "Indiana Tech", "city": "Fort Wayne", "state": "IN", "nickname": "Warriors", "colors": { "primary": "#7B2D26", "secondary": "#C0C0C0" } },
+        { "id": "lawrence-tech", "name": "Lawrence Tech", "city": "Southfield", "state": "MI", "nickname": "Blue Devils", "colors": { "primary": "#003B5C", "secondary": "#FFFFFF" } },
+        { "id": "lourdes", "name": "Lourdes", "city": "Sylvania", "state": "OH", "nickname": "Gray Wolves", "colors": { "primary": "#0033A0", "secondary": "#C0C0C0" } },
+        { "id": "madonna", "name": "Madonna", "city": "Livonia", "state": "MI", "nickname": "Crusaders", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "rochester-mi", "name": "Rochester Christian", "city": "Rochester Hills", "state": "MI", "nickname": "Warriors", "colors": { "primary": "#003B5C", "secondary": "#FFD200" } },
+        { "id": "siena-heights", "name": "Siena Heights", "city": "Adrian", "state": "MI", "nickname": "Saints", "colors": { "primary": "#005A30", "secondary": "#FFD200" } },
+        { "id": "unoh", "name": "Northwestern Ohio", "city": "Lima", "state": "OH", "nickname": "Racers", "colors": { "primary": "#005A30", "secondary": "#FFD200" } }
+      ]
+    }
+  ],
+  "independents": []
+}

@@ -1,0 +1,96 @@
+{
+  "_meta": {
+    "purpose": "Per-conference scheduling rules. Date-anchored so the calendar shifts naturally year-to-year (e.g. Feb 20 lands on different weekdays in different years; the engine snaps to the appropriate Friday).",
+    "naiaGameCap": 55,
+    "naiaScrimmageCap": 10,
+    "naiaD1MidweekCap": 2,
+    "naiaSourceNote": "55 games per season per Article I §H. 10 scrimmages (fall + spring week 0) don't count. D1 midweek hard cap of 2 per Nate.",
+    "verifiedConferences": ["cascade-collegiate", "heart-of-america"],
+    "dateFormat": "{ month: 1-12, day: 1-31 } — target date. Engine snaps to the Friday of that calendar week."
+  },
+  "rules": {
+    "cascade-collegiate": {
+      "seriesLength": 4,
+      "confStartDate":   { "month": 2, "day": 20 },
+      "confEndDate":     { "month": 4, "day": 26 },
+      "preConfWeeks": 3,
+      "tournamentFormat": "4-team double elim",
+      "tournamentQualifyingTeams": 4,
+      "tournamentAutoBids": 1,
+      "tournamentHostStyle": "regular-season-champ",
+      "tournamentStartDayOffset": "first weekend of May",
+      "tournamentLengthDays": 4,
+      "verified": true,
+      "notes": "Confirmed via 2026 Bushnell schedule (Feb 20 – Apr 26). Tournament hosted by regular-season champion (UBC in 2025)."
+    },
+    "heart-of-america":  { "seriesLength": 4, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 4, "verified": true },
+    "mid-south":         { "seriesLength": 4, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 4, "verified": false },
+    "kansas-collegiate-athletic": { "seriesLength": 4, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 5, "day": 3 }, "preConfWeeks": 4, "verified": false },
+    "sooner-athletic":   { "seriesLength": 4, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 4, "verified": false },
+    "crossroads-league": { "seriesLength": 4, "confStartDate": { "month": 3, "day": 6 },  "confEndDate": { "month": 5, "day": 10 }, "preConfWeeks": 5, "verified": false },
+    "great-plains-athletic": { "seriesLength": 4, "confStartDate": { "month": 3, "day": 6 }, "confEndDate": { "month": 5, "day": 10 }, "preConfWeeks": 5, "verified": false },
+    "wolverine-hoosier": { "seriesLength": 4, "confStartDate": { "month": 3, "day": 6 },  "confEndDate": { "month": 5, "day": 10 }, "preConfWeeks": 5, "verified": false },
+    "chicagoland-collegiate": { "seriesLength": 4, "confStartDate": { "month": 3, "day": 6 }, "confEndDate": { "month": 5, "day": 10 }, "preConfWeeks": 5, "verified": false },
+    "river-states":      { "seriesLength": 4, "confStartDate": { "month": 3, "day": 6 },  "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 5, "verified": false },
+    "appalachian-athletic": { "seriesLength": 4, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 5, "day": 3 }, "preConfWeeks": 4, "verified": false },
+    "great-southwest-athletic": { "seriesLength": 4, "confStartDate": { "month": 2, "day": 20 }, "confEndDate": { "month": 4, "day": 26 }, "preConfWeeks": 3, "verified": false },
+    "california-pacific":{ "seriesLength": 4, "confStartDate": { "month": 2, "day": 20 }, "confEndDate": { "month": 4, "day": 26 }, "preConfWeeks": 3, "verified": false },
+    "frontier":          { "seriesLength": 4, "confStartDate": { "month": 3, "day": 13 }, "confEndDate": { "month": 5, "day": 10 }, "preConfWeeks": 6, "verified": false },
+    "southern-states-athletic": { "seriesLength": 4, "confStartDate": { "month": 2, "day": 13 }, "confEndDate": { "month": 5, "day": 3 }, "preConfWeeks": 2, "verified": false },
+    "sun-conference":    { "seriesLength": 4, "confStartDate": { "month": 2, "day": 6 },  "confEndDate": { "month": 4, "day": 26 }, "preConfWeeks": 1, "verified": false },
+    "red-river-athletic":{ "seriesLength": 3, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 4, "day": 26 }, "preConfWeeks": 4, "verified": false },
+    "hbcu-athletic":     { "seriesLength": 3, "confStartDate": { "month": 2, "day": 27 }, "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 4, "verified": false },
+    "continental":       { "seriesLength": 3, "confStartDate": { "month": 3, "day": 6 },  "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 5, "verified": false },
+    "american-midwest":  { "seriesLength": 3, "confStartDate": { "month": 3, "day": 6 },  "confEndDate": { "month": 5, "day": 3 },  "preConfWeeks": 5, "verified": false }
+  },
+  "default": {
+    "seriesLength": 4,
+    "confStartDate":   { "month": 3, "day": 1 },
+    "confEndDate":     { "month": 5, "day": 1 },
+    "preConfWeeks": 4,
+    "verified": false
+  },
+  "crossDivisionPolicy": {
+    "naia_vs_nwac": "FALL_SCRIMMAGE_ONLY",
+    "naia_vs_d1": "MIDWEEK_ONLY_HARD_CAP_2",
+    "naia_vs_d2": "SERIES_ALLOWED",
+    "naia_vs_d3": "SERIES_ALLOWED",
+    "naia_vs_juco_other": "FALL_SCRIMMAGE_ONLY"
+  },
+  "tournamentRules": {
+    "_meta": "Conference tournament formats (research-confirmed). Format key: 4dxe, 6dxe, 8dxe = N-team double-elim. 'best-of-3-series' = top seeds host. 'pool-play' = pool format + final. Format dates target last week of April / first week of May.",
+    "american-midwest":         { "format": "6dxe", "qualifying": 6, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true },
+    "appalachian-athletic":     { "format": "10t-modified-dxe", "qualifying": 10, "autoBids": 2, "host": "regular-season-champ", "length": 5, "startWeek": "last-of-april", "verified": true },
+    "california-pacific":       { "format": "4dxe", "qualifying": 4, "autoBids": 1, "host": "regular-season-champ", "length": 3, "startWeek": "first-of-may", "verified": true },
+    "cascade-collegiate":       { "format": "5dxe", "qualifying": 5, "autoBids": 1, "host": "regular-season-champ", "length": 4, "startWeek": "first-of-may", "verified": true, "notes": "Cascade specifically runs 5-team double-elim (per Nate). Regular-season champ hosts." },
+    "chicagoland-collegiate":   { "format": "6dxe", "qualifying": 6, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true },
+    "continental":              { "format": "4dxe", "qualifying": 4, "autoBids": 1, "host": "rotating", "length": 3, "startWeek": "first-of-may", "verified": true },
+    "crossroads-league":        { "format": "8dxe", "qualifying": 8, "autoBids": 2, "host": "rotating", "length": 5, "startWeek": "last-of-april", "verified": true },
+    "frontier":                 { "format": "tbd", "qualifying": 4, "autoBids": 1, "host": "regular-season-champ", "length": 3, "startWeek": "first-of-may", "verified": false, "notes": "New baseball conf for 2025-26; format yet to settle." },
+    "great-plains-athletic":    { "format": "split-2x-4dxe-final", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 5, "startWeek": "first-of-may", "verified": true, "notes": "Unique split-bracket format" },
+    "great-southwest-athletic": { "format": "4dxe", "qualifying": 4, "autoBids": 1, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true },
+    "hbcu-athletic":            { "format": "6dxe", "qualifying": 6, "autoBids": 2, "host": "regular-season-champ", "length": 5, "startWeek": "last-of-april", "verified": true },
+    "heart-of-america":         { "format": "8dxe", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true },
+    "kansas-collegiate-athletic":{ "format": "8dxe", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 5, "startWeek": "last-of-april", "verified": true },
+    "mid-south":                { "format": "8dxe", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true },
+    "red-river-athletic":       { "format": "split-2x-4dxe-final", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "first-of-may", "verified": true },
+    "river-states":             { "format": "6dxe", "qualifying": 6, "autoBids": 1, "host": "regular-season-champ", "length": 4, "startWeek": "first-of-may", "verified": false },
+    "sooner-athletic":          { "format": "best-of-3-series-top4", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true, "notes": "Quirky 2025+ format" },
+    "southern-states-athletic": { "format": "pool-play-8t", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true },
+    "sun-conference":           { "format": "6dxe", "qualifying": 6, "autoBids": 1, "host": "regular-season-champ", "length": 4, "startWeek": "first-of-may", "verified": false },
+    "wolverine-hoosier":        { "format": "8dxe", "qualifying": 8, "autoBids": 2, "host": "regular-season-champ", "length": 4, "startWeek": "last-of-april", "verified": true }
+  },
+  "scrimmageRules": {
+    "totalCap": 10,
+    "fallWindow": { "startMonth": 9, "endMonth": 11 },
+    "springPreseasonWindow": { "startMonth": 1, "endDay": "preSeasonStart" },
+    "typicalFormat": "doubleheaders against single opponent (e.g. 4 Friday DH dates = 8 fall games)",
+    "doesNotCountTowardRecord": true,
+    "developmentValue": "modest — helps with bullpen reps and rust shake-out, not a true season game"
+  },
+  "doubleheaderFormats": {
+    "FRI_DH_SAT_DH": "Friday doubleheader + Saturday doubleheader (4 games over 2 days)",
+    "FRI_SAT_DH_SUN": "Friday single + Saturday doubleheader + Sunday single (4 games over 3 days)",
+    "FRI_SAT_SUN": "3-game series, one per day (used by 3-game-series conferences)"
+  }
+}

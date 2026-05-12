@@ -59,6 +59,11 @@ const NAV = [
     to: '/draft',
   },
   {
+    label: 'GM',
+    to: '/gm',
+    authRequired: true,
+  },
+  {
     label: 'Graphics',
     authRequired: true,
     items: [

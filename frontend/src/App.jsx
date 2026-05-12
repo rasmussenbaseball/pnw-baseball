@@ -56,6 +56,30 @@ function RequireAdmin({ children }) {
   return children
 }
 
+// GM early-access guard — locks the GM game to a single user during private alpha.
+const GM_EARLY_ACCESS_EMAILS = ['nate.rasmussen26@gmail.com']
+function RequireGmEarlyAccess({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (!GM_EARLY_ACCESS_EMAILS.includes(user.email)) {
+    return (
+      <div className="max-w-xl mx-auto py-16 text-center">
+        <h1 className="text-3xl font-bold text-pnw-slate mb-4">NAIA Baseball GM</h1>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
+          <p className="text-sm text-amber-900 mb-2">🔒 <strong>Private Alpha</strong></p>
+          <p className="text-sm text-gray-700">
+            The NAIA Baseball GM is currently in private development. Access is restricted to the lead developer.
+            Public release coming soon.
+          </p>
+        </div>
+        <a href="/" className="mt-6 inline-block text-sm text-pnw-green hover:underline">← Back to NW Baseball Stats</a>
+      </div>
+    )
+  }
+  return children
+}
+
 // Portal access - any signed-in user with a free account. The PORTAL_OWNERS
 // list is retained as documentation but no longer used for gating; tighten
 // this back up by re-adding the includes() check if a paid tier ships.
@@ -139,6 +163,20 @@ import RecordsPage from './pages/RecordsPage'
 import PlayoffProjections from './pages/PlayoffProjections'
 import Percentiles from './pages/Percentiles'
 import TeamQuiz from './pages/TeamQuiz'
+
+// ─── GM (new section, isolated from existing site code) ───
+import GMHome from './pages/gm/GMHome'
+import NewDynasty from './pages/gm/NewDynasty'
+import Dashboard from './pages/gm/Dashboard'
+import Roster from './pages/gm/Roster'
+import Schedule from './pages/gm/Schedule'
+import Standings from './pages/gm/Standings'
+import Rankings from './pages/gm/Rankings'
+import Budget from './pages/gm/Budget'
+import Postseason from './pages/gm/Postseason'
+import Recruiting from './pages/gm/Recruiting'
+import GMPlayerDetail from './pages/gm/PlayerDetail'
+import Coaches from './pages/gm/Coaches'
 
 export default function App() {
   // Portal routes get their own full-page shell — no main-site Header,
@@ -264,6 +302,20 @@ export default function App() {
           <Route path="/top-performers-graphic" element={<RequireAuth><TopPerformersGraphic /></RequireAuth>} />
           <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
+
+          {/* GM (NAIA Baseball GM — private alpha, locked to dev only) */}
+          <Route path="/gm" element={<RequireGmEarlyAccess><GMHome /></RequireGmEarlyAccess>} />
+          <Route path="/gm/new" element={<RequireGmEarlyAccess><NewDynasty /></RequireGmEarlyAccess>} />
+          <Route path="/gm/dashboard" element={<RequireGmEarlyAccess><Dashboard /></RequireGmEarlyAccess>} />
+          <Route path="/gm/roster" element={<RequireGmEarlyAccess><Roster /></RequireGmEarlyAccess>} />
+          <Route path="/gm/schedule" element={<RequireGmEarlyAccess><Schedule /></RequireGmEarlyAccess>} />
+          <Route path="/gm/standings" element={<RequireGmEarlyAccess><Standings /></RequireGmEarlyAccess>} />
+          <Route path="/gm/rankings" element={<RequireGmEarlyAccess><Rankings /></RequireGmEarlyAccess>} />
+          <Route path="/gm/budget" element={<RequireGmEarlyAccess><Budget /></RequireGmEarlyAccess>} />
+          <Route path="/gm/postseason" element={<RequireGmEarlyAccess><Postseason /></RequireGmEarlyAccess>} />
+          <Route path="/gm/recruiting" element={<RequireGmEarlyAccess><Recruiting /></RequireGmEarlyAccess>} />
+          <Route path="/gm/coaches" element={<RequireGmEarlyAccess><Coaches /></RequireGmEarlyAccess>} />
+          <Route path="/gm/player/:playerId" element={<RequireGmEarlyAccess><GMPlayerDetail /></RequireGmEarlyAccess>} />
 
           {/* About */}
           <Route path="/about" element={<About />} />

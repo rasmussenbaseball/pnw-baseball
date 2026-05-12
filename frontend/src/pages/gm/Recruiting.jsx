@@ -1,0 +1,822 @@
+import { useMemo, useState } from 'react'
+import { Link, useSearchParams, Navigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
+import { loadDynasty, saveDynasty } from '../../gm/engine/save'
+import {
+  generateRecruitPool, ACTION_TYPES, applyRecruitingAction,
+  estimateRecruitRatings, recruitingPhase, visibleRecruits,
+  simProspectCamp, predictCampTurnout, fundraise, tryAdvanceRecruit,
+  setLiveOffer, withdrawOffer, totalSuitors, visibleSuitors,
+  academicScholarship,
+  CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
+} from '../../gm/engine/recruits'
+import { makeRng } from '../../gm/engine/rng'
+import TeamLogo from '../../gm/components/TeamLogo'
+
+const POOL_LABELS = {
+  HS_SR: 'HS Senior',
+  JUCO: 'JUCO Transfer',
+  NAIA_TRANSFER: 'NAIA Portal',
+  D1_TRANSFER: 'D1 Portal',
+  D2_TRANSFER: 'D2 Portal',
+  D3_TRANSFER: 'D3 Portal',
+}
+
+const PREFERENCE_LABELS = {
+  financial:        'Wants $$$',
+  proximity:        'Close to home',
+  playing_time:     'Wants playing time',
+  program_history:  'Wants to win',
+  facilities:       'Wants facilities',
+  academics:        'Strong academics',
+  coaching:         'Wants top coaching',
+  pipeline_fit:     'Coach pipeline fit',
+}
+
+export default function Recruiting() {
+  const { user } = useAuth()
+  const [params] = useSearchParams()
+  const slot = parseInt(params.get('slot') || '1', 10)
+  const userId = user?.id || 'guest'
+
+  const [save, setSave] = useState(() => loadDynasty(userId, slot))
+  const [poolFilter, setPoolFilter] = useState('ALL')
+  const [posFilter, setPosFilter] = useState('ALL')
+  const [stateFilter, setStateFilter] = useState('ALL')
+  const [openRecruit, setOpenRecruit] = useState(null)
+  const [showCamp, setShowCamp] = useState(false)
+  const [showFundraise, setShowFundraise] = useState(false)
+  const [fundraiseAP, setFundraiseAP] = useState(5)
+
+  if (!save) return <Navigate to="/gm" replace />
+
+  const phase = recruitingPhase(save.calendar)
+  const userHC = save.coaches[save.teams[save.userSchoolId].headCoachId]
+  const userSchool = save.schools[save.userSchoolId]
+
+  // Lazy-generate recruit pool on first visit, biased by coach
+  const recruits = useMemo(() => {
+    if (save.recruits && Object.keys(save.recruits).length > 0) return save.recruits
+    const pool = generateRecruitPool(save.calendar.year + 1, save.rngSeed, userHC)
+    save.recruits = pool
+    saveDynasty(save)
+    return pool
+  }, [save])
+
+  const visible = visibleRecruits(recruits, save.calendar)
+
+  const stateBreakdown = useMemo(() => {
+    const out = {}
+    for (const r of visible) {
+      const s = r.hometown.state
+      out[s] = (out[s] || 0) + 1
+    }
+    return Object.entries(out).sort((a, b) => b[1] - a[1])
+  }, [visible])
+  const topStates = stateBreakdown.slice(0, 8)
+
+  const list = visible
+    .filter(r => poolFilter === 'ALL' || r.pool === poolFilter)
+    .filter(r => posFilter === 'ALL' || r.primaryPosition === posFilter)
+    .filter(r => stateFilter === 'ALL' || r.hometown.state === stateFilter)
+    .map(r => {
+      const grade = r.scoutGrades[save.userSchoolId]
+      return { recruit: r, interest: grade?.interest ?? 0, noise: grade?.noise ?? 15 }
+    })
+    .sort((a, b) => b.interest - a.interest)
+    .slice(0, 80)
+
+  const signedRecruits = Object.values(recruits).filter(r => r.signedTo === save.userSchoolId)
+  const liveOffers = Object.values(recruits).filter(r =>
+    r.liveOffer && r.liveOffer.schoolId === save.userSchoolId && r.status !== 'signed' && r.status !== 'lost',
+  )
+  const totalOffered = liveOffers.reduce((s, r) => s + (r.liveOffer?.amount || 0), 0)
+
+  function handleAction(recruit, actionKey) {
+    const action = ACTION_TYPES[actionKey]
+    if (!action) return
+    if (save.ap.currentWeek < action.apCost) {
+      alert(`Not enough AP. Need ${action.apCost}, have ${save.ap.currentWeek}.`)
+      return
+    }
+    const rng = makeRng('action', recruit.id, save.userSchoolId, Date.now())
+    const result = applyRecruitingAction(recruit, save.userSchoolId, action, rng)
+    save.recruits[recruit.id] = result.recruit
+    save.ap.currentWeek -= action.apCost
+    save.ap.spentThisWeek += action.apCost
+    save.ap.spentByCategory.recruiting = (save.ap.spentByCategory.recruiting || 0) + action.apCost
+    saveDynasty(save)
+    setSave({ ...save })
+    if (result.revealed) {
+      const label = PREFERENCE_LABELS[result.revealed]
+      alert(`${recruit.firstName} ${recruit.lastName} revealed a priority: "${label}" (weight: ${recruit.preferences[result.revealed]}/10)`)
+    }
+  }
+
+  function handleOffer(recruit, amount) {
+    const existing = save.recruits[recruit.id].liveOffer
+    const isModification = existing && existing.schoolId === save.userSchoolId
+    if (isModification) {
+      // Modifications cost 1 AP
+      if (save.ap.currentWeek < 1) {
+        alert('Modifying an offer costs 1 AP. You don\'t have any left this week.')
+        return
+      }
+      save.ap.currentWeek -= 1
+      save.ap.spentThisWeek += 1
+      save.ap.spentByCategory.recruiting = (save.ap.spentByCategory.recruiting || 0) + 1
+    }
+    // First offer is free; modifications charged above
+    setLiveOffer(save.recruits[recruit.id], save.userSchoolId, amount)
+    const signRng = makeRng('sign', recruit.id, save.userSchoolId, save.calendar.week)
+    const signed = tryAdvanceRecruit(save.recruits[recruit.id], save.userSchoolId, userSchool, signRng)
+    if (signed) {
+      save.newsfeed.unshift({
+        id: `sign_${recruit.id}_${save.calendar.year}`,
+        year: save.calendar.year, week: save.calendar.week,
+        type: 'AWARD',
+        headline: `🖊️ ${recruit.firstName} ${recruit.lastName} (${recruit.primaryPosition}, ${recruit.hometown.state}) signed with ${userSchool.name}!`,
+        payload: {},
+      })
+    }
+    saveDynasty(save)
+    setSave({ ...save })
+  }
+
+  function handleWithdraw(recruit) {
+    withdrawOffer(save.recruits[recruit.id], save.userSchoolId)
+    saveDynasty(save)
+    setSave({ ...save })
+  }
+
+  function handleCamp(fee, invitedIds) {
+    if (!isCampWindowOpen(save.calendar)) {
+      alert('Prospect camp can only be held in August through November.')
+      return
+    }
+    if (save.prospectCamp?.year === save.calendar.year) {
+      alert('You already held a prospect camp this year.')
+      return
+    }
+    const momentum = computeProgramMomentum(save)
+    const result = simProspectCamp(
+      save.recruits, save.userSchoolId, invitedIds, fee,
+      userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
+    )
+    if (result.cancelled) { alert(result.reason); return }
+    save.recruits = result.recruits
+    save.prospectCamp = { fee, attendees: result.attendeeIds.length, revenue: result.revenue, year: save.calendar.year }
+    save.budget.totalAthleticBudget += result.revenue
+    save.newsfeed.unshift({
+      id: `camp_${save.calendar.year}`,
+      year: save.calendar.year, week: save.calendar.week,
+      type: 'AWARD',
+      headline: `🏟 Prospect camp held — ${result.attendeeIds.length} attendees at $${fee} each → +$${(result.revenue / 1000).toFixed(1)}K to budget.`,
+      payload: {},
+    })
+    saveDynasty(save)
+    setSave({ ...save })
+    setShowCamp(false)
+  }
+
+  function handleFundraise() {
+    if (save.ap.currentWeek < fundraiseAP) {
+      alert(`Not enough AP. Need ${fundraiseAP}, have ${save.ap.currentWeek}.`)
+      return
+    }
+    const raised = fundraise(fundraiseAP, userHC.motivator, userSchool.programHistory)
+    save.budget.totalAthleticBudget += raised
+    save.ap.currentWeek -= fundraiseAP
+    save.ap.spentThisWeek += fundraiseAP
+    save.ap.spentByCategory.program = (save.ap.spentByCategory.program || 0) + fundraiseAP
+    save.newsfeed.unshift({
+      id: `fund_${save.calendar.year}_${save.calendar.week}`,
+      year: save.calendar.year, week: save.calendar.week,
+      type: 'AWARD',
+      headline: `💰 Fundraising: ${fundraiseAP} AP → +$${(raised / 1000).toFixed(1)}K added to budget.`,
+      payload: {},
+    })
+    saveDynasty(save)
+    setSave({ ...save })
+    setShowFundraise(false)
+  }
+
+  const phaseLabel = phase === 'PRE_PORTAL'
+    ? 'Pre-Portal — HS + JUCO recruits only'
+    : 'Portal Open — All pools (D1/D2/D3/NAIA transfers + remaining HS/JUCO)'
+  const campWindowOpen = isCampWindowOpen(save.calendar)
+  const campHeldThisYear = save.prospectCamp?.year === save.calendar.year
+
+  return (
+    <div className="max-w-6xl mx-auto py-8">
+      <div className="mb-6 flex justify-between items-start">
+        <div>
+          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
+          <h1 className="text-3xl font-bold text-pnw-slate mt-1">Recruiting Board</h1>
+          <p className="text-sm text-gray-600">
+            {visible.length} recruits visible • {phaseLabel}
+          </p>
+          {(userHC.pipelines?.length > 0 || userHC.regions?.length > 0) && (
+            <p className="text-xs text-gray-500 mt-1">
+              Pipelines: {(userHC.pipelines || []).map(p => p.replace(/_/g, ' ')).join(', ') || 'none'}
+              {' '}• Regions: {(userHC.regions || []).join(', ') || 'none'}
+            </p>
+          )}
+          {topStates.length > 0 && (
+            <p className="text-xs text-gray-400 mt-1">
+              States in pool: {topStates.map(([s, c]) => `${s} ${c}`).join(' • ')}
+            </p>
+          )}
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-pnw-green">{save.ap.currentWeek} AP</div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500">This week</div>
+        </div>
+      </div>
+
+      {/* Action bar */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+        <ActionCard
+          title="Prospect Camp"
+          subtitle={
+            campHeldThisYear
+              ? `Held — ${save.prospectCamp.attendees} attendees, +$${(save.prospectCamp.revenue / 1000).toFixed(1)}K`
+              : campWindowOpen
+                ? 'Aug-Nov window. Set fee + invites.'
+                : 'Window: Aug-Nov only.'
+          }
+          onClick={() => setShowCamp(true)}
+          disabled={campHeldThisYear || !campWindowOpen}
+        />
+        <ActionCard
+          title="Fundraise"
+          subtitle="Spend AP for $$$."
+          onClick={() => setShowFundraise(true)}
+          disabled={save.ap.currentWeek < 1}
+        />
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Signed Class</div>
+          <div className="text-2xl font-bold text-pnw-green">{signedRecruits.length}</div>
+          <div className="text-[10px] text-gray-400">recruits bound to you</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Live Offers</div>
+          <div className="text-2xl font-bold text-pnw-slate">{liveOffers.length}</div>
+          <div className="text-[10px] text-gray-400">${(totalOffered / 1000).toFixed(0)}K committed</div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <span className="text-xs text-gray-500 mr-2">Pool:</span>
+        {['ALL', 'HS_SR', 'JUCO', 'NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'].map(p => {
+          const isLocked = ['NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'].includes(p) && phase === 'PRE_PORTAL'
+          return (
+            <button
+              key={p}
+              onClick={() => !isLocked && setPoolFilter(p)}
+              disabled={isLocked}
+              className={'px-2 py-1 rounded text-xs ' +
+                (poolFilter === p ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700') +
+                (isLocked ? ' opacity-40 cursor-not-allowed' : '')
+              }
+              title={isLocked ? 'Portal opens after season ends' : ''}
+            >
+              {p === 'ALL' ? 'All' : POOL_LABELS[p]}{isLocked ? ' 🔒' : ''}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <span className="text-xs text-gray-500 mr-2">Pos:</span>
+        {['ALL', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'SP', 'RP'].map(p => (
+          <button
+            key={p}
+            onClick={() => setPosFilter(p)}
+            className={'px-2 py-1 rounded text-xs ' + (posFilter === p ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}
+          >{p}</button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <span className="text-xs text-gray-500 mr-2">State:</span>
+        <button onClick={() => setStateFilter('ALL')} className={'px-2 py-1 rounded text-xs ' + (stateFilter === 'ALL' ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>All</button>
+        {topStates.map(([s]) => (
+          <button key={s} onClick={() => setStateFilter(s)} className={'px-2 py-1 rounded text-xs ' + (stateFilter === s ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>{s}</button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr className="text-left text-xs text-gray-500 uppercase">
+              <th className="py-2 px-3">Name</th>
+              <th>Pos</th>
+              <th>Pool</th>
+              <th>State</th>
+              <th>Interest</th>
+              <th>Suitors</th>
+              <th>Offer</th>
+              <th>Priorities</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map(({ recruit, interest, noise }) => {
+              const revealed = recruit.scoutGrades[save.userSchoolId]?.revealedPreferences || []
+              const isSigned = recruit.signedTo === save.userSchoolId
+              const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
+              const totalSuit = totalSuitors(recruit)
+              return (
+                <tr key={recruit.id} className={'border-t ' + (isSigned ? 'bg-green-50' : 'hover:bg-gray-50')}>
+                  <td className="py-2 px-3 font-medium">
+                    {isSigned && '🖊️ '}{recruit.firstName} {recruit.lastName}
+                  </td>
+                  <td>{recruit.primaryPosition}</td>
+                  <td className="text-xs text-gray-500">{POOL_LABELS[recruit.pool]}</td>
+                  <td className="text-xs text-gray-500">{recruit.hometown.state}</td>
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <div className="w-14 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-pnw-green" style={{ width: `${interest}%` }} />
+                      </div>
+                      <span className="text-xs font-mono">{interest}</span>
+                    </div>
+                  </td>
+                  <td className="text-xs">
+                    <SuitorBadge recruit={recruit} />
+                  </td>
+                  <td className="text-xs">
+                    {hasLiveOffer ? (
+                      <span className="font-mono font-bold text-pnw-green">${(recruit.liveOffer.amount / 1000).toFixed(1)}K</span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="text-xs">
+                    {revealed.length === 0 ? <span className="text-gray-400">—</span> :
+                      revealed.slice(0, 2).map(p => (
+                        <span key={p} className="inline-block bg-amber-100 text-amber-900 px-1 py-0.5 rounded text-[10px] mr-1">
+                          {PREFERENCE_LABELS[p]}
+                        </span>
+                      ))}
+                  </td>
+                  <td>
+                    {!isSigned && (
+                      <button onClick={() => setOpenRecruit(recruit)} className="text-xs text-pnw-green hover:underline">
+                        Recruit →
+                      </button>
+                    )}
+                    {isSigned && <span className="text-xs text-green-700 font-bold">SIGNED</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {openRecruit && (
+        <RecruitModal
+          recruit={save.recruits[openRecruit.id] || openRecruit}
+          save={save}
+          onAction={handleAction}
+          onOffer={handleOffer}
+          onWithdraw={handleWithdraw}
+          onClose={() => setOpenRecruit(null)}
+        />
+      )}
+
+      {showCamp && (
+        <CampModal
+          save={save}
+          coach={userHC}
+          recruits={recruits}
+          onConfirm={handleCamp}
+          onClose={() => setShowCamp(false)}
+        />
+      )}
+
+      {showFundraise && (
+        <FundraiseModal
+          ap={fundraiseAP}
+          onChangeAP={setFundraiseAP}
+          maxAP={save.ap.currentWeek}
+          coach={userHC}
+          programHistory={userSchool.programHistory}
+          onConfirm={handleFundraise}
+          onClose={() => setShowFundraise(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+function isCampWindowOpen(calendar) {
+  // Camp window: August through November. In our calendar.year basis, this
+  // means we're in the offseason mode and within the Aug-Nov calendar months.
+  // For simplicity we allow it during the offseason (which spans Sept-Jan in real life).
+  if (calendar.mode !== 'OFFSEASON') return false
+  // Check actual calendar month — derive from offseasonWeek (1 = mid-summer)
+  const month = new Date().getMonth() + 1
+  return month >= 8 && month <= 11   // Aug-Nov real-clock window
+}
+
+function computeProgramMomentum(save) {
+  // Use last completed season's win pct + postseason status
+  const team = save.teams[save.userSchoolId]
+  const totalGames = (team.wins || 0) + (team.losses || 0)
+  const winPct = totalGames > 0 ? (team.wins || 0) / totalGames : 0.5
+  let momentum = winPct * 100
+  if (save.postseason?.userChamp) momentum += 15
+  if (save.postseason?.userInWS) momentum += 20
+  if (save.postseason?.userWSChamp) momentum += 30
+  return Math.min(100, Math.max(0, Math.round(momentum)))
+}
+
+function SuitorBadge({ recruit }) {
+  const vis = visibleSuitors(recruit)
+  if (!vis.revealed) {
+    const color = vis.total >= 6 ? 'text-amber-700' : vis.total >= 3 ? 'text-gray-700' : 'text-gray-500'
+    return <span className={'text-[10px] italic ' + color}>{vis.label}</span>
+  }
+  const suitors = vis.suitors || {}
+  const parts = []
+  if (suitors.d1) parts.push(`${suitors.d1} D1`)
+  if (suitors.topNaia) parts.push(`${suitors.topNaia} top NAIA`)
+  if (suitors.otherNaia) parts.push(`${suitors.otherNaia} NAIA`)
+  if (suitors.d2d3) parts.push(`${suitors.d2d3} D2/D3`)
+  const color = vis.total >= 6 ? 'text-red-700' : vis.total >= 3 ? 'text-amber-700' : 'text-gray-600'
+  return <span className={'text-[10px] ' + color}>{parts.slice(0, 2).join(' • ') || 'none'}</span>
+}
+
+function ActionCard({ title, subtitle, onClick, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={'text-left bg-white border border-gray-200 rounded-xl p-4 shadow-sm transition ' +
+        (disabled ? 'opacity-60 cursor-not-allowed' : 'hover:border-pnw-green')
+      }
+    >
+      <div className="font-semibold text-pnw-slate">{title}</div>
+      <div className="text-xs text-gray-500 mt-1">{subtitle}</div>
+    </button>
+  )
+}
+
+// ── Camp modal ──────────────────────────────────────────────────────────────
+
+function CampModal({ save, coach, recruits, onConfirm, onClose }) {
+  const [fee, setFee] = useState(125)
+  const [invitedIds, setInvitedIds] = useState([])
+  const [showInviteList, setShowInviteList] = useState(false)
+
+  const momentum = useMemo(() => computeProgramMomentum(save), [save])
+
+  const prediction = useMemo(() => {
+    return predictCampTurnout(recruits, save.userSchoolId, invitedIds, fee, coach.recruiter, momentum)
+  }, [recruits, save.userSchoolId, invitedIds, fee, coach.recruiter, momentum])
+
+  const projectedRevenue = prediction.predictedAttendees * fee
+  const isBelowMin = prediction.predictedAttendees < CAMP_MIN_ATTENDEES
+
+  // List of pool recruits to invite from
+  const invitablePool = Object.values(recruits)
+    .filter(r => r.pool === 'HS_SR' && r.status === 'open')
+    .sort((a, b) => {
+      const ia = a.scoutGrades[save.userSchoolId]?.interest ?? 0
+      const ib = b.scoutGrades[save.userSchoolId]?.interest ?? 0
+      return ib - ia
+    })
+    .slice(0, 80)
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+        <div className="flex justify-between items-start mb-3">
+          <h3 className="text-xl font-bold text-pnw-slate">Hold Prospect Camp</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          HS prospects only. One per year, Aug-Nov window. Attendees get +25 interest + scout fog drop + small rating bump. Revenue ($ × attendees) adds to budget immediately. Camp needs <strong>{CAMP_MIN_ATTENDEES} min</strong> attendees or it's cancelled. Max {CAMP_MAX_ATTENDEES}, with walk-ons capped at 25.
+        </p>
+
+        <div className="mb-4">
+          <label className="text-xs uppercase tracking-wider text-gray-500">Fee per attendee</label>
+          <div className="flex items-center gap-3 mt-1">
+            <input type="range" min={25} max={200} step={5} value={fee} onChange={e => setFee(parseInt(e.target.value, 10))} className="flex-1" />
+            <span className="font-mono font-bold text-pnw-green w-16 text-right">${fee}</span>
+          </div>
+        </div>
+
+        <div className="bg-pnw-cream rounded p-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">Predicted</div>
+              <div className={'text-xl font-bold ' + (isBelowMin ? 'text-red-700' : 'text-pnw-green')}>{prediction.predictedAttendees}</div>
+              <div className="text-[10px] text-gray-500">attendees</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">Invited</div>
+              <div className="text-xl font-bold text-pnw-slate">{prediction.invitedAttendees}</div>
+              <div className="text-[10px] text-gray-500">of {invitedIds.length} invites</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">Walk-ons</div>
+              <div className="text-xl font-bold text-pnw-slate">{prediction.walkOns}</div>
+              <div className="text-[10px] text-gray-500">uninvited</div>
+            </div>
+          </div>
+          <div className="mt-3 text-center">
+            <span className="text-sm text-gray-700">Projected revenue: </span>
+            <span className="font-bold text-pnw-green">${(projectedRevenue / 1000).toFixed(1)}K</span>
+          </div>
+          {isBelowMin && (
+            <div className="mt-2 text-xs text-red-700 text-center">
+              ⚠ Below the {CAMP_MIN_ATTENDEES}-attendee minimum. Lower the fee or invite more players, or the camp won't run.
+            </div>
+          )}
+        </div>
+
+        <div className="bg-gray-50 rounded p-2 text-xs text-gray-600 mb-4">
+          Coach recruiter: <strong>{coach.recruiter}</strong> • Program momentum: <strong>{momentum}/100</strong>
+        </div>
+
+        <div className="mb-4">
+          <button
+            onClick={() => setShowInviteList(!showInviteList)}
+            className="text-sm text-pnw-green hover:underline"
+          >
+            {showInviteList ? 'Hide' : 'Show'} invite list ({invitedIds.length} selected)
+          </button>
+        </div>
+
+        {showInviteList && (
+          <div className="border rounded p-2 mb-4 max-h-60 overflow-y-auto">
+            {invitablePool.map(r => {
+              const isInvited = invitedIds.includes(r.id)
+              const interest = r.scoutGrades[save.userSchoolId]?.interest ?? 0
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => {
+                    setInvitedIds(prev =>
+                      isInvited ? prev.filter(x => x !== r.id) : [...prev, r.id],
+                    )
+                  }}
+                  className={'w-full flex items-center justify-between p-1.5 text-xs rounded ' +
+                    (isInvited ? 'bg-pnw-cream' : 'hover:bg-gray-50')
+                  }
+                >
+                  <span>
+                    {isInvited && '✓ '}
+                    {r.firstName} {r.lastName} ({r.primaryPosition}, {r.hometown.state})
+                  </span>
+                  <span className="text-gray-500">Interest {interest}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 border rounded text-sm">Cancel</button>
+          <button
+            onClick={() => onConfirm(fee, invitedIds)}
+            disabled={isBelowMin}
+            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            Hold Camp
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Fundraise modal ─────────────────────────────────────────────────────────
+
+function FundraiseModal({ ap, onChangeAP, maxAP, coach, programHistory, onConfirm, onClose }) {
+  const motivatorMult = 0.7 + (coach.motivator / 100) * 0.9
+  const historyMult = 0.7 + (programHistory / 100) * 0.9
+  const estimated = Math.round(ap * 800 * motivatorMult * historyMult)
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-md w-full p-6">
+        <div className="flex justify-between items-start mb-3">
+          <h3 className="text-xl font-bold text-pnw-slate">Fundraise</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Spend AP on donor + alumni outreach. Money goes directly to your budget.
+        </p>
+        <div className="mb-4">
+          <label className="text-xs uppercase tracking-wider text-gray-500">AP to spend</label>
+          <div className="flex items-center gap-3 mt-1">
+            <input type="range" min={1} max={Math.max(1, maxAP)} step={1} value={Math.min(ap, maxAP)} onChange={e => onChangeAP(parseInt(e.target.value, 10))} className="flex-1" />
+            <span className="font-mono font-bold text-pnw-green w-16 text-right">{ap} AP</span>
+          </div>
+          <div className="text-sm text-gray-700 mt-2">
+            Estimated raise: <span className="font-bold text-pnw-green">${(estimated / 1000).toFixed(1)}K</span>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 border rounded text-sm">Cancel</button>
+          <button onClick={onConfirm} disabled={ap > maxAP} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300">Fundraise</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Recruit modal ───────────────────────────────────────────────────────────
+
+function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose }) {
+  const grade = recruit.scoutGrades[save.userSchoolId] || { noise: 15, interest: 0, revealedPreferences: [], actionsApplied: [] }
+  const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
+  const [offerAmount, setOfferAmount] = useState(recruit.liveOffer?.amount ?? 5000)
+  const totalSuit = totalSuitors(recruit)
+
+  const noisyRatings = useMemo(() => {
+    const rng = makeRng('view', recruit.id, save.userSchoolId, save.calendar.year, grade.noise)
+    return estimateRecruitRatings(recruit, save.userSchoolId, rng)
+  }, [recruit.id, grade.noise, save.calendar.year])
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="text-xl font-bold text-pnw-slate">{recruit.firstName} {recruit.lastName}</h3>
+            <p className="text-sm text-gray-600">
+              {recruit.primaryPosition} • {POOL_LABELS[recruit.pool]} • {recruit.hometown.state} • {recruit.bats}/{recruit.throws}
+            </p>
+            {recruit.previousSchoolName && (
+              <p className="text-xs text-gray-500">From {recruit.previousSchoolName}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="bg-pnw-cream rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
+            <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
+            <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Academics</div>
+            <div className="text-xl font-bold text-gray-700">{recruit.academicRating ?? '—'}</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
+            <div className="text-sm font-bold text-gray-700">
+              {recruit.suitorsRevealed ? totalSuit : '?'}
+            </div>
+          </div>
+        </div>
+
+        {/* Suitor info: vague pre-scouted, exact after */}
+        <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-4 text-xs text-amber-900">
+          {recruit.suitorsRevealed ? (
+            <>
+              <strong>Other interested programs:</strong>
+              {recruit.suitors.d1 > 0 && <span> {recruit.suitors.d1} D1</span>}
+              {recruit.suitors.topNaia > 0 && <span> • {recruit.suitors.topNaia} top NAIA</span>}
+              {recruit.suitors.otherNaia > 0 && <span> • {recruit.suitors.otherNaia} NAIA</span>}
+              {recruit.suitors.d2d3 > 0 && <span> • {recruit.suitors.d2d3} D2/D3</span>}
+              <div className="text-[10px] text-amber-700 mt-1">
+                {totalSuit >= 6 ? 'Heavily recruited — will take longer to commit.' :
+                  totalSuit >= 3 ? 'Several suitors — strong offer recommended.' :
+                  'Few suitors — fair offer should be enough.'}
+              </div>
+            </>
+          ) : (
+            <>
+              <strong>Recruiting interest:</strong>{' '}
+              <em>{visibleSuitors(recruit).label}</em>
+              <div className="text-[10px] text-amber-700 mt-1">
+                Take a Scout Trip, Home Visit, or invite to Camp to learn who else is recruiting them.
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Academic scholarship preview */}
+        {(() => {
+          const academic$ = academicScholarship(recruit, save.schools[save.userSchoolId])
+          if (academic$ <= 0) return null
+          return (
+            <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-4 text-xs text-blue-900">
+              <strong>📚 Academic scholarship:</strong> ${(academic$ / 1000).toFixed(1)}K/year available
+              (academic rating {recruit.academicRating}/99 → {recruit.academicRating >= 85 ? 'presidential/honors' : recruit.academicRating >= 70 ? 'academic scholarship' : 'standard aid'}).
+              Does NOT come out of your athletic budget.
+            </div>
+          )
+        })()}
+
+        {/* Live offer editor */}
+        <div className="bg-white border border-gray-200 rounded p-3 mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-xs uppercase tracking-wider text-gray-500">Scholarship Offer</div>
+            {hasLiveOffer && <span className="text-[10px] text-green-700 font-bold">LIVE OFFER ACTIVE</span>}
+          </div>
+          {hasLiveOffer && (
+            <div className="text-sm text-gray-700 mb-2">
+              Current offer: <span className="font-bold font-mono text-pnw-green">${(recruit.liveOffer.amount / 1000).toFixed(1)}K</span>
+              {' '}• {recruit.liveOffer.changes} change{recruit.liveOffer.changes === 1 ? '' : 's'}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">$</span>
+            <input
+              type="range"
+              min={1000} max={25000} step={500}
+              value={offerAmount}
+              onChange={e => setOfferAmount(parseInt(e.target.value, 10))}
+              className="flex-1"
+            />
+            <span className="font-mono font-bold text-pnw-green w-16 text-right">${(offerAmount / 1000).toFixed(1)}K</span>
+          </div>
+          <div className="text-[10px] text-gray-500 mt-1">
+            Bushnell avg scholarship: <strong>$5K/player</strong>. Anything above $5K is above-average for the program. First offer is free; modifications cost 1 AP.
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => onOffer(recruit, offerAmount)}
+              className="flex-1 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
+            >
+              {hasLiveOffer ? 'Update Offer (1 AP)' : 'Submit Offer'}
+            </button>
+            {hasLiveOffer && (
+              <button
+                onClick={() => onWithdraw(recruit)}
+                className="px-3 py-1.5 border border-red-300 text-red-700 rounded text-xs hover:bg-red-50"
+              >
+                Withdraw
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Estimated ratings</div>
+          <div className="grid grid-cols-4 gap-1 text-xs">
+            {Object.entries(noisyRatings.ratings).map(([k, v]) => (
+              <div key={k} className="bg-gray-50 rounded p-2">
+                <div className="text-[10px] text-gray-500 uppercase">{k}</div>
+                <div className="font-mono font-bold text-pnw-slate">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Revealed priorities</div>
+          {grade.revealedPreferences.length === 0 ? (
+            <p className="text-xs text-gray-400">No priorities revealed yet. Try a Home Visit or Campus Visit.</p>
+          ) : (
+            <div className="space-y-1">
+              {grade.revealedPreferences.map(p => (
+                <div key={p} className="flex items-center gap-2 text-xs">
+                  <span className="inline-block bg-amber-100 text-amber-900 px-2 py-0.5 rounded">{PREFERENCE_LABELS[p]}</span>
+                  <span className="text-gray-500">weight: {recruit.preferences[p]}/10</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mb-3">
+          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Take an action</div>
+          <div className="grid grid-cols-2 gap-2">
+            {Object.values(ACTION_TYPES).filter(a => a.key !== 'SCHOLARSHIP_OFFER').map(action => (
+              <button
+                key={action.key}
+                onClick={() => onAction(recruit, action.key)}
+                disabled={save.ap.currentWeek < action.apCost}
+                className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-sm">{action.label}</span>
+                  <span className="text-xs font-mono bg-pnw-green text-white px-1.5 py-0.5 rounded">{action.apCost} AP</span>
+                </div>
+                <div className="text-[10px] text-gray-500 mt-1">{action.blurb}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 text-[10px] text-gray-400">
+          Actions taken: {grade.actionsApplied.length}
+        </div>
+      </div>
+    </div>
+  )
+}
