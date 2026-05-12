@@ -59,11 +59,6 @@ const NAV = [
     to: '/draft',
   },
   {
-    label: 'GM',
-    to: '/gm',
-    authRequired: true,
-  },
-  {
     label: 'Graphics',
     authRequired: true,
     items: [
@@ -85,6 +80,7 @@ const NAV = [
     label: 'Misc',
     authRequired: true,
     items: [
+      { to: '/gm', label: 'NAIA Baseball GM', desc: 'Build a dynasty — recruit, sim seasons, manage Bushnell (alpha)' },
       { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
       { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
       { to: '/team-quiz', label: 'Team Quiz', desc: 'Test your knowledge of a PNW team across one or more seasons' },
