@@ -166,8 +166,6 @@ export function endOfSeasonDevelopment(player, ctx, seed) {
   return { ...player, hitter: newHitter, pitcher: newPitcher, _devGain: totalGain }
 }
 
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
-
 function avgRatings(block) {
   const vals = Object.values(block)
   return vals.reduce((a, b) => a + b, 0) / vals.length
