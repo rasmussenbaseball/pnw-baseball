@@ -60,16 +60,34 @@ export default function Dashboard() {
   const topHitters = ratedPlayers.filter(x => !x.p.isPitcher).slice(0, 5)
   const topPitchers = ratedPlayers.filter(x => x.p.isPitcher).slice(0, 5)
 
-  // Next game (season mode only)
+  // Next game (season mode only). Skip BYE rows — they have awayId === '__BYE__'
+  // and would otherwise render as a "TBD" opponent on the action bar.
   const nextGame = useMemo(() => {
     if (mode !== 'SEASON') return null
     return (save.schedule || [])
-      .filter(g => !g.played && (g.homeId === save.userSchoolId || g.awayId === save.userSchoolId))
+      .filter(g => !g.played
+        && g.type !== 'BYE'
+        && g.awayId !== '__BYE__'
+        && (g.homeId === save.userSchoolId || g.awayId === save.userSchoolId))
       .sort((a, b) => a.seasonWeek - b.seasonWeek)[0]
   }, [save, mode])
 
+  // Schedule completeness for the UPCOMING season (the one being scheduled in
+  // offseason). If the user has open weekend slots, we hard-block sim until
+  // they fill them in — otherwise their first season has gaps.
+  const seasonYear = save.calendar.year + 1
+  const openSlots = useMemo(
+    () => openNonConfWeeks(save.userSchoolId, school.conferenceId, save.schedule || [], seasonYear),
+    [save, seasonYear, school.conferenceId],
+  )
+  const scheduleBlocked = inOffseason && openSlots.length > 0
+
   // ─── Sim actions ───────────────────────────────────────────────────────────
   function simNextWeek() {
+    if (scheduleBlocked) {
+      alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
+      return
+    }
     setBusy(true)
     setLastWeekRecap(null)
     if (mode === 'OFFSEASON') {
@@ -95,6 +113,10 @@ export default function Dashboard() {
   }
 
   function runSimAhead(preset) {
+    if (scheduleBlocked) {
+      alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
+      return
+    }
     setBusy(true)
     setLastWeekRecap(null)
     const result = simAhead(save, { weeks: preset.weeks, untilFn: preset.untilFn })
@@ -129,6 +151,19 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Schedule-blocked banner (hard gate on advancing) */}
+      {scheduleBlocked && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 flex justify-between items-center">
+          <div className="text-sm text-amber-900">
+            <strong>Schedule incomplete.</strong> You have <strong>{openSlots.length}</strong> open weekend
+            slot{openSlots.length === 1 ? '' : 's'} on the {seasonYear} schedule. Fill them in before you can sim.
+          </div>
+          <Link to={`/gm/schedule?slot=${slot}`} className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs font-semibold hover:opacity-90">
+            Go to Schedule →
+          </Link>
+        </div>
+      )}
+
       {/* Sim action bar */}
       <SimActionBar
         mode={mode}
@@ -136,15 +171,15 @@ export default function Dashboard() {
         nextGame={nextGame}
         userSchoolId={save.userSchoolId}
         save={save}
-        busy={busy}
+        busy={busy || scheduleBlocked}
         onSim={simNextWeek}
         recap={lastWeekRecap}
         offseasonWeek={save.calendar.offseasonWeek}
         startYear={save.calendar.startYear || save.calendar.year}
       />
 
-      {/* Sim-ahead presets */}
-      <SimAheadBar save={save} busy={busy} onRun={runSimAhead} />
+      {/* Sim-ahead presets (also hard-blocked when schedule incomplete) */}
+      {!scheduleBlocked && <SimAheadBar save={save} busy={busy} onRun={runSimAhead} />}
 
       {/* Weekly diff readout — appears after a multi-week sim */}
       {simResult && <SimDiffPanel simResult={simResult} onDismiss={() => setSimResult(null)} />}
@@ -516,7 +551,7 @@ function SimAheadBar({ save, busy, onRun }) {
 }
 
 function SimDiffPanel({ simResult, onDismiss }) {
-  const { preset, weeksAdvanced, weeklyDiffs, aggregateDiff } = simResult
+  const { preset, weeksAdvanced, weeklyDiffs, aggregateDiff, stoppedReason } = simResult
   return (
     <div className="bg-white rounded-xl border border-pnw-green/40 p-4 mb-4 shadow-sm">
       <div className="flex justify-between items-baseline mb-3">
@@ -525,6 +560,14 @@ function SimDiffPanel({ simResult, onDismiss }) {
         </h2>
         <button onClick={onDismiss} className="text-xs text-gray-500 hover:text-pnw-green">Dismiss ✕</button>
       </div>
+
+      {stoppedReason === 'postseason_boundary' && (
+        <div className="mb-3 bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-900">
+          Stopped before the postseason transition. Week 13 (the last regular-season week)
+          hasn't been played yet — click <strong>Advance Week →</strong> once more to play it and
+          fire the postseason bracket + end-of-year wrap (development, draft, transfers).
+        </div>
+      )}
 
       <DiffAggregate diff={aggregateDiff} />
 

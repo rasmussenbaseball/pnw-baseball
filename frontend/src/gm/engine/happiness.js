@@ -160,6 +160,11 @@ export function computeHappinessTarget(player, ctx) {
  * - Ticks down any active 1-on-1 boost.
  */
 export function tickHappiness(state) {
+  // Happiness is driven by playing time + on-field performance. Nothing in the
+  // offseason moves either, so freezing values during offseason keeps the
+  // signal honest. The 1-on-1 coach boost still ticks down by week count
+  // below — we just don't recompute the target.
+  if (state.calendar?.mode !== 'SEASON') return
   const team = state.teams[state.userSchoolId]
   if (!team) return
   const userHC = state.coaches[team.headCoachId]

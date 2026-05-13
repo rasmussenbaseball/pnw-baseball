@@ -135,15 +135,25 @@ export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
   const weeklyDiffs = []
   let prev = start
   let count = 0
+  let stoppedReason = null
   const limit = Math.min(maxWeeks, weeks ?? maxWeeks)
 
   while (count < limit) {
+    // HARD STOP before triggering postseason. advanceWeek runs the full
+    // postseason + end-of-year machinery synchronously (all conference
+    // tournaments, all-team development, MLB draft, transfers, academics,
+    // budget review, portal gen) — that can lock the main thread for many
+    // seconds with 199 schools. Better to leave the user at seasonWeek=13
+    // and let them click "Advance Week" once manually to trigger it.
+    if (save.calendar.mode === 'SEASON' && (save.calendar.seasonWeek ?? 0) >= 13) {
+      stoppedReason = 'postseason_boundary'
+      break
+    }
     const next = tickOneWeek(save)
     weeklyDiffs.push(diffSnapshots(prev, next))
     prev = next
     count++
     if (untilFn && untilFn(next)) break
-    // Safety: bail if we crossed into POSTSEASON or wrapped a year boundary.
     if (next.mode === 'POSTSEASON') break
   }
   return {
@@ -151,6 +161,7 @@ export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
     weeklyDiffs,
     aggregateDiff: diffSnapshots(start, prev),
     finalSnapshot: prev,
+    stoppedReason,
   }
 }
 
@@ -177,9 +188,18 @@ export function simPresets(save) {
     }
     presets.push({ key: 'TO_SEASON', label: 'Sim to Opening Day', est: 27 - ow, untilFn: snap => snap.mode === 'SEASON' })
   } else if (cal.mode === 'SEASON') {
+    const sw = cal.seasonWeek || 1
     presets.push({ key: '3WK', label: 'Sim 3 weeks', est: 3, untilFn: null, weeks: 3 })
-    presets.push({ key: 'TO_CONF', label: 'Sim to Conference Open (Wk 4)', est: Math.max(0, 4 - (cal.seasonWeek || 0)), untilFn: snap => snap.seasonWeek >= 4, hideIf: (cal.seasonWeek || 0) >= 4 })
-    presets.push({ key: 'TO_POST', label: 'Sim to end of regular season', est: 14 - (cal.seasonWeek || 1), untilFn: snap => snap.mode !== 'SEASON' })
+    presets.push({ key: 'TO_CONF', label: 'Sim to Conference Open (Wk 4)', est: Math.max(0, 4 - sw), untilFn: snap => snap.seasonWeek >= 4, hideIf: sw >= 4 })
+    // Stops at seasonWeek=13 (one game-week before postseason). Avoids the
+    // long synchronous postseason+end-of-year tick that hangs the browser.
+    presets.push({
+      key: 'TO_END',
+      label: 'Sim to Week 13',
+      est: Math.max(0, 13 - sw),
+      untilFn: snap => snap.seasonWeek >= 13,
+      hideIf: sw >= 13,
+    })
   }
 
   return presets.filter(p => !p.hideIf)
