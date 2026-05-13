@@ -6,6 +6,7 @@ import {
   BUDGET_CATEGORIES,
   rebalanceAllocations,
   budgetCategoryEffects,
+  BUDGET_GUIDANCE,
 } from '../../gm/engine/budget'
 
 const CATEGORY_LABELS = {
@@ -63,34 +64,54 @@ export default function Budget() {
       <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mb-4">
         Allocations rebalance proportionally — drag one category up and the others scale down to keep the total constant.
         Going over total at year-end cuts next year's budget AND hurts job security.
+        <span className="block mt-1 text-amber-800">The colored bar shows the healthy spending range for each category — green inside, amber outside.</span>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {BUDGET_CATEGORIES.map(cat => {
           const value = budget.allocations[cat] || 0
-          const pct = (value / total) * 100
+          const pct = value / total
           const info = CATEGORY_LABELS[cat]
+          const guide = BUDGET_GUIDANCE[cat]
+          const inRange = guide && pct >= guide.min && pct <= guide.max
+          const guideMin = guide ? Math.round(guide.min * total) : null
+          const guideMax = guide ? Math.round(guide.max * total) : null
           return (
             <div key={cat} className="p-4 border-b last:border-b-0">
-              <div className="flex justify-between items-center mb-1">
-                <div>
+              <div className="flex justify-between items-baseline mb-1">
+                <div className="flex-1 min-w-0">
                   <span className="font-semibold text-pnw-slate text-sm">{info.label}</span>
                   <span className="ml-2 text-xs text-gray-500">{info.blurb}</span>
                 </div>
-                <div className="text-right">
+                <div className="text-right ml-3 whitespace-nowrap">
                   <span className="font-bold text-pnw-slate">${(value / 1000).toFixed(0)}K</span>
-                  <span className="text-xs text-gray-500 ml-1">{pct.toFixed(1)}%</span>
+                  <span className={'text-xs ml-1 ' + (inRange ? 'text-green-700' : 'text-amber-700')}>
+                    {(pct * 100).toFixed(1)}%
+                  </span>
                 </div>
               </div>
-              <input
-                type="range"
-                min={0}
-                max={total}
-                step={1000}
-                value={value}
-                onChange={e => setCategory(cat, parseInt(e.target.value, 10))}
-                className="w-full"
-              />
+              {guide && (
+                <div className="text-[10px] text-gray-500 mb-1">
+                  Suggested: ${(guideMin / 1000).toFixed(0)}K–${(guideMax / 1000).toFixed(0)}K ({(guide.min * 100).toFixed(0)}–{(guide.max * 100).toFixed(0)}%) — {guide.note}
+                </div>
+              )}
+              <div className="relative">
+                <input
+                  type="range"
+                  min={0}
+                  max={total}
+                  step={1000}
+                  value={value}
+                  onChange={e => setCategory(cat, parseInt(e.target.value, 10))}
+                  className="w-full relative z-10"
+                />
+                {guide && (
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 h-1 bg-green-300/40 rounded-full pointer-events-none"
+                    style={{ left: `${guide.min * 100}%`, width: `${(guide.max - guide.min) * 100}%` }}
+                  />
+                )}
+              </div>
             </div>
           )
         })}

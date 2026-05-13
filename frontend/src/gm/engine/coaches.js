@@ -92,6 +92,35 @@ const ROLE_MULTIPLIER = {
   RECRUITING_COORDINATOR: 1.0,
   STRENGTH_CONDITIONING: 0.7,
   DIRECTOR_OF_OPERATIONS: 0.6,
+  GRADUATE_ASSISTANT: 0.4,
+  DATA_ANALYTICS_MANAGER: 0.9,
+}
+
+/**
+ * Required roles every program has at game start. User can fire any of these
+ * but the program functions best when filled.
+ */
+export const STARTING_ROLES = ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
+
+/** Optional roles the user can choose to hire. */
+export const OPTIONAL_ROLES = [
+  'RECRUITING_COORDINATOR',
+  'STRENGTH_CONDITIONING',
+  'DIRECTOR_OF_OPERATIONS',
+  'DATA_ANALYTICS_MANAGER',
+  'GRADUATE_ASSISTANT',
+]
+
+export const ROLE_DESCRIPTIONS = {
+  HEAD_COACH:             'Sets the program direction. AP, recruiting, in-game tactics.',
+  PITCHING_COACH:         'Develops pitchers + pre-game rotation calls.',
+  HITTING_COACH:          'Develops hitters + offensive game plan.',
+  BENCH_COACH:            'Defensive positioning, base-running, scouting reports.',
+  RECRUITING_COORDINATOR: 'Boosts recruiting AP + closing rate on verbals.',
+  STRENGTH_CONDITIONING:  'Reduces injury risk, improves durability.',
+  DIRECTOR_OF_OPERATIONS: 'Travel + logistics. Improves budget efficiency.',
+  DATA_ANALYTICS_MANAGER: 'Unlocks advanced stats (FIP, wOBA, wRC+, WAR) across the league.',
+  GRADUATE_ASSISTANT:     'Free hire — small AP boost. Limited contract.',
 }
 
 // ─── Rating distribution by program strength ─────────────────────────────────
@@ -127,8 +156,10 @@ export function generateCoach(school, role, rng, opts = {}) {
     RECRUITING_COORDINATOR: { developer: 0,  motivator: 0,  recruiter: +12, tactician: 0  },
     STRENGTH_CONDITIONING:  { developer: +6, motivator: +4, recruiter: 0,  tactician: 0  },
     DIRECTOR_OF_OPERATIONS: { developer: 0,  motivator: +2, recruiter: +4, tactician: 0  },
+    GRADUATE_ASSISTANT:     { developer: +2, motivator: +2, recruiter: +2, tactician: 0  },
+    DATA_ANALYTICS_MANAGER: { developer: +6, motivator: 0,  recruiter: 0,  tactician: +6 },
   }
-  const bias = SPECIALIZATION[role]
+  const bias = SPECIALIZATION[role] || { developer: 0, motivator: 0, recruiter: 0, tactician: 0 }
 
   const ratings = {
     developer: Math.round(clamp(rng.gaussian(mean, stddev) + bias.developer, 30, 99)),
@@ -203,6 +234,8 @@ const SALARY_TABLE = {
     RECRUITING_COORDINATOR: { base: 28000,  qualBonus: 18000, floor: 20000 },
     STRENGTH_CONDITIONING:  { base: 22000,  qualBonus: 12000, floor: 15000 },
     DIRECTOR_OF_OPERATIONS: { base: 16000,  qualBonus: 9000,  floor: 12000 },
+    DATA_ANALYTICS_MANAGER: { base: 22000,  qualBonus: 13000, floor: 15000 },
+    GRADUATE_ASSISTANT:     { base: 0,      qualBonus: 0,     floor: 0     },
   },
   WELL_FUNDED: {
     HEAD_COACH:             { base: 78000,  qualBonus: 42000, floor: 55000 },
@@ -212,6 +245,8 @@ const SALARY_TABLE = {
     RECRUITING_COORDINATOR: { base: 15000,  qualBonus: 12000, floor: 10000 },
     STRENGTH_CONDITIONING:  { base: 12000,  qualBonus: 8000,  floor: 8000 },
     DIRECTOR_OF_OPERATIONS: { base: 9000,   qualBonus: 6000,  floor: 7000 },
+    DATA_ANALYTICS_MANAGER: { base: 13000,  qualBonus: 9000,  floor: 9000 },
+    GRADUATE_ASSISTANT:     { base: 0,      qualBonus: 0,     floor: 0     },
   },
   MID: {
     HEAD_COACH:             { base: 48000,  qualBonus: 22000, floor: 35000 },
@@ -221,6 +256,8 @@ const SALARY_TABLE = {
     RECRUITING_COORDINATOR: { base: 13000,  qualBonus: 8000,  floor: 9000 },
     STRENGTH_CONDITIONING:  { base: 10000,  qualBonus: 6000,  floor: 8000 },
     DIRECTOR_OF_OPERATIONS: { base: 8000,   qualBonus: 5000,  floor: 6000 },
+    DATA_ANALYTICS_MANAGER: { base: 9000,   qualBonus: 6000,  floor: 7000 },
+    GRADUATE_ASSISTANT:     { base: 0,      qualBonus: 0,     floor: 0     },
   },
   SHOESTRING: {
     HEAD_COACH:             { base: 30000,  qualBonus: 14000, floor: 22000 },
@@ -230,6 +267,8 @@ const SALARY_TABLE = {
     RECRUITING_COORDINATOR: { base: 5000,   qualBonus: 4000,  floor: 4000 },
     STRENGTH_CONDITIONING:  { base: 4000,   qualBonus: 3000,  floor: 3000 },
     DIRECTOR_OF_OPERATIONS: { base: 3000,   qualBonus: 2000,  floor: 2500 },
+    DATA_ANALYTICS_MANAGER: { base: 5000,   qualBonus: 4000,  floor: 3500 },
+    GRADUATE_ASSISTANT:     { base: 0,      qualBonus: 0,     floor: 0     },
   },
 }
 
@@ -249,26 +288,14 @@ function clamp(v, lo, hi) {
 // ─── Staff generation for a whole school ─────────────────────────────────────
 
 /**
- * Decide how many assistants this program has, by tier.
+ * Default assistant roster — every program starts with these 3. The user can
+ * fire and hire to swap them; optional roles (Recruiting Coord, S&C, DOO,
+ * Analytics Mgr, GA) require a hire.
  */
-function staffSizeForTier(tier) {
-  if (tier === 'D1_LITE') return 6      // HC + 5 assistants
-  if (tier === 'WELL_FUNDED') return 4  // HC + 3 assistants
-  if (tier === 'MID') return 3          // HC + 2 assistants
-  return 2                              // HC + 1 assistant
-}
-
-const STAFF_ROLE_ORDER = [
-  'PITCHING_COACH',
-  'HITTING_COACH',
-  'RECRUITING_COORDINATOR',
-  'BENCH_COACH',
-  'STRENGTH_CONDITIONING',
-  'DIRECTOR_OF_OPERATIONS',
-]
+const DEFAULT_ASSISTANT_ROLES = ['PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
 
 /**
- * Generate a full coaching staff (HC + assistants) for a school.
+ * Generate a full coaching staff (HC + 3 default assistants) for a school.
  * @param {School} school
  * @param {number} seed
  * @returns {{ headCoach: Coach, assistants: Coach[] }}
@@ -279,12 +306,39 @@ export function generateStaff(school, seed) {
     idPrefix: 'hc_' + school.id,
   })
 
-  const staffSize = staffSizeForTier(school.resourceTier)
-  const numAssistants = staffSize - 1
   const assistants = []
-  for (let i = 0; i < numAssistants; i++) {
-    const role = STAFF_ROLE_ORDER[i]
+  DEFAULT_ASSISTANT_ROLES.forEach((role, i) => {
     assistants.push(generateCoach(school, role, rng, { idPrefix: `ast_${school.id}_${i}` }))
-  }
+  })
   return { headCoach, assistants }
+}
+
+/**
+ * Generate N hiring candidates for a given role, spanning a range of quality
+ * (and therefore salary). Returns at least 4 candidates with deliberately
+ * varied quality so the user sees real $$$ tradeoffs.
+ *
+ * @param {School} school
+ * @param {string} role
+ * @param {ReturnType<import('./rng.js').makeRng>} rng
+ * @returns {Coach[]}
+ */
+export function generateHiringCandidates(school, role, rng) {
+  // Force a spread of quality levels so candidates aren't all clustered
+  const qualityTargets = [40, 55, 68, 78]
+  const candidates = []
+  for (let i = 0; i < qualityTargets.length; i++) {
+    const target = qualityTargets[i]
+    const ratingOverride = {
+      developer: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
+      motivator: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
+      recruiter: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
+      tactician: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
+    }
+    candidates.push(generateCoach(school, role, rng, {
+      overrideRatings: ratingOverride,
+      idPrefix: `cand_${role}_${i}`,
+    }))
+  }
+  return candidates
 }

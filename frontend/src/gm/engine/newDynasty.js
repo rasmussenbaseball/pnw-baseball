@@ -12,8 +12,7 @@ import { loadSchools } from './loadSchools'
 import { generateRoster } from './generate'
 import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
-import { buildAllConferenceSchedules, autoFillNonConference } from './schedule'
-import { seedFromPear } from './rankings'
+import { buildAllConferenceSchedules } from './schedule'
 import { defaultBudgetForSchool } from './budget'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
@@ -64,6 +63,23 @@ export function newDynasty(input) {
   /** @type {Object<string, import('./types.js').Player>} */
   const players = {}
 
+  // Normalize generated player scholarships so the team's total equals ~92% of
+  // the school's pool — i.e. the program starts the cycle nearly fully
+  // committed, with only a thin margin of free $ (small unsigned reserves /
+  // late attrition). New scholarship $ each year comes from departing seniors.
+  function normalizeRosterScholarships(team, school, playersMap) {
+    const target = Math.round(school.scholarshipPool * 0.92)
+    const ids = team.rosterPlayerIds
+    const current = ids.reduce((s, id) => s + (playersMap[id]?.scholarship?.annualAmount || 0), 0)
+    if (current <= 0) return
+    const factor = target / current
+    for (const id of ids) {
+      const p = playersMap[id]
+      if (!p) continue
+      p.scholarship.annualAmount = Math.max(0, Math.round(p.scholarship.annualAmount * factor))
+    }
+  }
+
   for (const school of Object.values(schools)) {
     let headCoach
     let assistants
@@ -99,6 +115,7 @@ export function newDynasty(input) {
       confLosses: 0,
       runDiff: 0,
     }
+    normalizeRosterScholarships(teams[school.id], school, players)
   }
 
   // 4. Calendar — dynasty starts first week of August 2026 (offseason) → fall
@@ -115,16 +132,14 @@ export function newDynasty(input) {
     forcedPauseReason: null,
   }
 
-  // 4a. Generate the 2027 conference schedule (predetermined). Non-conference
-  // games auto-filled with regional opponents; user can edit on the schedule page.
-  const ratings2026 = seedFromPear(schools, conferences)
+  // 4a. Generate the conference schedule only — weekend 4-game series.
+  // Non-conference games are now USER-BUILT on the Schedule page (midweeks +
+  // pre-conference weeks 1-3). The auto-filler used to add Mid-South / SAC
+  // opponents during conference weeks which violated the conf-weekends-only
+  // rule; that's gone.
   const confSchedule = buildAllConferenceSchedules(conferences, schools, 2027, seed)
-  // Auto-fill non-conf only for user school in v1 (other teams compute as-needed)
-  const userNonConf = autoFillNonConference(
-    input.userSchoolId, schools, conferences, confSchedule, ratings2026, 2027, seed,
-  )
   /** @type {import('./schedule.js').Game[]} */
-  const schedule = [...confSchedule, ...userNonConf]
+  const schedule = [...confSchedule]
 
   // 5. AP + budget initial state for the user's team
   const userTeam = teams[input.userSchoolId]

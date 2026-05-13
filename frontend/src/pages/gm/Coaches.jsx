@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
-import { generateCoach } from '../../gm/engine/coaches'
+import {
+  generateHiringCandidates, OPTIONAL_ROLES, STARTING_ROLES, ROLE_DESCRIPTIONS,
+} from '../../gm/engine/coaches'
 import { makeRng } from '../../gm/engine/rng'
+import { prettyLabel } from '../../gm/engine/format'
 import AttrTooltip from '../../gm/components/AttrTooltip'
 
-const ROLES = [
-  'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH',
-  'RECRUITING_COORDINATOR', 'STRENGTH_CONDITIONING', 'DIRECTOR_OF_OPERATIONS',
-]
+const INTERVIEW_AP_COST = 3
 
 export default function Coaches() {
   const { user } = useAuth()
@@ -18,7 +18,7 @@ export default function Coaches() {
   const userId = user?.id || 'guest'
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
-  const [interviewing, setInterviewing] = useState(null)   // role being interviewed
+  const [interviewing, setInterviewing] = useState(null)
   const [candidates, setCandidates] = useState([])
 
   if (!save) return <Navigate to="/gm" replace />
@@ -28,19 +28,21 @@ export default function Coaches() {
   const headCoach = save.coaches[userTeam.headCoachId]
   const assistants = userTeam.assistantCoachIds.map(id => save.coaches[id]).filter(Boolean)
 
+  const filledRoles = new Set([headCoach.role, ...assistants.map(c => c.role)])
+  const missingStarting = STARTING_ROLES.filter(r => !filledRoles.has(r))
+  const optionalAvailable = OPTIONAL_ROLES.filter(r => !filledRoles.has(r))
+  const hasAnalyticsMgr = filledRoles.has('DATA_ANALYTICS_MANAGER')
+
   function startInterview(role) {
-    if (save.ap.currentWeek < 3) {
-      alert('Interviewing costs 3 AP — not enough this week.')
+    if (save.ap.currentWeek < INTERVIEW_AP_COST) {
+      alert(`Interviewing costs ${INTERVIEW_AP_COST} AP — not enough this week.`)
       return
     }
-    save.ap.currentWeek -= 3
-    save.ap.spentThisWeek += 3
-    save.ap.spentByCategory.staff = (save.ap.spentByCategory.staff || 0) + 3
+    save.ap.currentWeek -= INTERVIEW_AP_COST
+    save.ap.spentThisWeek += INTERVIEW_AP_COST
+    save.ap.spentByCategory.staff = (save.ap.spentByCategory.staff || 0) + INTERVIEW_AP_COST
     const rng = makeRng('interview', save.userSchoolId, role, Date.now())
-    const slate = []
-    for (let i = 0; i < 4; i++) {
-      slate.push(generateCoach(userSchool, role, rng, { idPrefix: `cand_${role}_${i}` }))
-    }
+    const slate = generateHiringCandidates(userSchool, role, rng)
     setCandidates(slate)
     setInterviewing(role)
     saveDynasty(save)
@@ -48,15 +50,13 @@ export default function Coaches() {
   }
 
   function hireCoach(candidate) {
-    // Add to roster
     save.coaches[candidate.id] = candidate
     userTeam.assistantCoachIds = [...userTeam.assistantCoachIds, candidate.id]
-    // Deduct salary from coaching budget allocation (informational; doesn't gate hiring)
     save.newsfeed.unshift({
       id: `hire_${candidate.id}_${save.calendar.year}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'COACH_HIRED',
-      headline: `🧢 Hired ${candidate.firstName} ${candidate.lastName} as ${roleLabel(candidate.role)} ($${(candidate.salary / 1000).toFixed(0)}K/yr).`,
+      headline: `🧢 Hired ${candidate.firstName} ${candidate.lastName} as ${prettyLabel(candidate.role)} ($${(candidate.salary / 1000).toFixed(0)}K/yr).`,
       payload: { coachId: candidate.id },
     })
     setInterviewing(null)
@@ -66,8 +66,8 @@ export default function Coaches() {
   }
 
   function fireCoach(coach) {
-    if (!confirm(`Fire ${coach.firstName} ${coach.lastName}? Buyout: $${(coach.salary * coach.contractYearsRemaining * 0.5 / 1000).toFixed(0)}K. This will hurt team morale briefly.`)) return
-    const buyout = Math.round(coach.salary * coach.contractYearsRemaining * 0.5)
+    const buyout = Math.round(coach.salary * (coach.contractYearsRemaining || 1) * 0.5)
+    if (!confirm(`Fire ${coach.firstName} ${coach.lastName}? Buyout: $${(buyout / 1000).toFixed(0)}K. This will hurt team morale briefly.`)) return
     userTeam.assistantCoachIds = userTeam.assistantCoachIds.filter(id => id !== coach.id)
     save.budget.totalAthleticBudget = Math.max(0, (save.budget.totalAthleticBudget || 0) - buyout)
     save.newsfeed.unshift({
@@ -81,17 +81,15 @@ export default function Coaches() {
     setSave({ ...save })
   }
 
-  // Roles you don't have an assistant for yet
-  const filledRoles = new Set(assistants.map(c => c.role))
-  const openRoles = ROLES.filter(r => !filledRoles.has(r))
+  const totalPayroll = (headCoach.salary || 0) + assistants.reduce((s, c) => s + (c.salary || 0), 0)
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
+    <div className="max-w-5xl mx-auto py-8 px-4">
       <div className="mb-6 flex justify-between items-start">
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">Coaching Staff</h1>
-          <p className="text-sm text-gray-600">{assistants.length + 1} coaches total • Interview costs 3 AP per role</p>
+          <p className="text-sm text-gray-600">{assistants.length + 1} coaches total • Total payroll <span className="font-semibold">${(totalPayroll / 1000).toFixed(0)}K</span> • Interview costs {INTERVIEW_AP_COST} AP</p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-pnw-green">{save.ap.currentWeek} AP</div>
@@ -99,18 +97,28 @@ export default function Coaches() {
         </div>
       </div>
 
-      {/* Head coach */}
+      {!hasAnalyticsMgr && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900 mb-4">
+          💡 Hire a <strong>Data & Analytics Manager</strong> to unlock advanced stats (FIP, wOBA, wRC+, WAR) across the league.
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
         <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Head Coach (you)</div>
         <CoachCard coach={headCoach} />
       </div>
 
-      {/* Current assistants */}
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-2">Assistants</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {assistants.map(c => (
           <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <div className="flex justify-between items-start mb-2">
-              <div className="text-xs uppercase tracking-wider text-gray-500">{roleLabel(c.role)}</div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-gray-500">{prettyLabel(c.role)}</div>
+                {c.role === 'DATA_ANALYTICS_MANAGER' && (
+                  <div className="text-[10px] text-blue-700">📊 Advanced stats unlocked</div>
+                )}
+              </div>
               <button onClick={() => fireCoach(c)} className="text-xs text-red-700 hover:underline">Fire</button>
             </div>
             <CoachCard coach={c} compact />
@@ -118,54 +126,84 @@ export default function Coaches() {
         ))}
       </div>
 
-      {/* Open roles */}
-      {openRoles.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Open roles</h2>
+      {missingStarting.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-900 mb-2">⚠ Missing standard staff</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {openRoles.map(role => (
-              <button
-                key={role}
-                onClick={() => startInterview(role)}
-                disabled={save.ap.currentWeek < 3}
-                className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <div className="flex justify-between">
-                  <span className="font-semibold text-sm">{roleLabel(role)}</span>
-                  <span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">3 AP</span>
-                </div>
-                <div className="text-[10px] text-gray-500 mt-1">Interview 4 candidates</div>
-              </button>
+            {missingStarting.map(role => (
+              <HireButton key={role} role={role} apCurrent={save.ap.currentWeek} onClick={() => startInterview(role)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {optionalAvailable.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Optional Hires</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {optionalAvailable.map(role => (
+              <HireButton key={role} role={role} apCurrent={save.ap.currentWeek} onClick={() => startInterview(role)} />
             ))}
           </div>
         </div>
       )}
 
       {interviewing && candidates.length > 0 && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-start mb-3">
-              <h3 className="text-xl font-bold text-pnw-slate">Interview — {roleLabel(interviewing)}</h3>
-              <button onClick={() => { setInterviewing(null); setCandidates([]) }} className="text-gray-400">✕</button>
-            </div>
-            <div className="space-y-3">
-              {candidates.map(c => (
-                <div key={c.id} className="border border-gray-200 rounded p-3 flex items-start gap-4">
-                  <div className="flex-1">
-                    <CoachCard coach={c} compact />
-                  </div>
-                  <button
-                    onClick={() => hireCoach(c)}
-                    className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold whitespace-nowrap"
-                  >
-                    Hire ${(c.salary / 1000).toFixed(0)}K
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <InterviewModal
+          role={interviewing}
+          candidates={candidates}
+          onHire={hireCoach}
+          onClose={() => { setInterviewing(null); setCandidates([]) }}
+        />
       )}
+    </div>
+  )
+}
+
+function HireButton({ role, apCurrent, onClick }) {
+  const desc = ROLE_DESCRIPTIONS[role]
+  return (
+    <button
+      onClick={onClick}
+      disabled={apCurrent < INTERVIEW_AP_COST}
+      className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      <div className="flex justify-between items-baseline">
+        <span className="font-semibold text-sm">{prettyLabel(role)}</span>
+        <span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">{INTERVIEW_AP_COST} AP</span>
+      </div>
+      <div className="text-[11px] text-gray-500 mt-1">{desc}</div>
+    </button>
+  )
+}
+
+function InterviewModal({ role, candidates, onHire, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="text-xl font-bold text-pnw-slate">Interview — {prettyLabel(role)}</h3>
+            <div className="text-xs text-gray-500 mt-1">{ROLE_DESCRIPTIONS[role]}</div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <div className="space-y-3">
+          {candidates.map(c => (
+            <div key={c.id} className="border border-gray-200 rounded p-3 flex items-start gap-4">
+              <div className="flex-1">
+                <CoachCard coach={c} compact />
+              </div>
+              <button
+                onClick={() => onHire(c)}
+                className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold whitespace-nowrap"
+              >
+                {c.salary > 0 ? `Hire $${(c.salary / 1000).toFixed(0)}K` : 'Hire (free)'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -175,9 +213,9 @@ function CoachCard({ coach, compact }) {
     <div>
       <div className={'font-semibold ' + (compact ? '' : 'text-lg')}>{coach.firstName} {coach.lastName}</div>
       <div className="text-xs text-gray-500 mb-2">
-        Age {coach.age} • {coach.recruiter_type?.replace(/_/g, ' ')} • {(coach.regions || []).join(', ')}
+        Age {coach.age} • {prettyLabel(coach.recruiter_type)} • {(coach.regions || []).join(', ')}
       </div>
-      <div className="text-xs text-gray-500 mb-2">Pipelines: {(coach.pipelines || []).join(', ') || 'none'}</div>
+      <div className="text-xs text-gray-500 mb-2">Pipelines: {(coach.pipelines || []).map(prettyLabel).join(', ') || 'none'}</div>
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
         <AttrTooltip attr="developer">
           <div className="bg-gray-50 rounded p-1.5 cursor-help">
@@ -204,11 +242,11 @@ function CoachCard({ coach, compact }) {
           </div>
         </AttrTooltip>
       </div>
-      <div className="text-xs text-gray-500 mt-2">Salary ${(coach.salary / 1000).toFixed(0)}K/yr • {coach.contractYearsRemaining} yr{coach.contractYearsRemaining === 1 ? '' : 's'} left</div>
+      <div className="text-xs text-gray-500 mt-2">
+        {coach.salary > 0
+          ? `Salary $${(coach.salary / 1000).toFixed(0)}K/yr • ${coach.contractYearsRemaining || 1} yr${coach.contractYearsRemaining === 1 ? '' : 's'} left`
+          : `Unpaid GA position • 1 yr term`}
+      </div>
     </div>
   )
-}
-
-function roleLabel(role) {
-  return role.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
 }

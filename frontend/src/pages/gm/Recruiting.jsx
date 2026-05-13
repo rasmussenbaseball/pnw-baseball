@@ -7,11 +7,12 @@ import {
   estimateRecruitRatings, recruitingPhase, visibleRecruits,
   simProspectCamp, predictCampTurnout, fundraise, tryAdvanceRecruit,
   setLiveOffer, withdrawOffer, totalSuitors, visibleSuitors,
-  academicScholarship,
+  academicScholarship, academicRatingToGpa,
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
 import { makeRng } from '../../gm/engine/rng'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
+import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 
 const POOL_LABELS = {
@@ -670,6 +671,17 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
     return estimateRecruitRatings(recruit, save.userSchoolId, rng)
   }, [recruit.id, grade.noise, save.calendar.year])
 
+  // Visible stat ranges — noise is the ±3σ band, so half-width = noise / 2
+  // gives a "likely range." As you scout, noise shrinks → range narrows.
+  function ratingRange(v) {
+    const half = Math.max(1, Math.round(grade.noise / 2))
+    return { lo: Math.max(20, v - half), hi: Math.min(99, v + half) }
+  }
+  const estOvrPoint = Math.round(
+    Object.values(noisyRatings.ratings).reduce((s, n) => s + n, 0) / Object.keys(noisyRatings.ratings).length
+  )
+  const estOvrRange = ratingRange(estOvrPoint)
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
@@ -686,18 +698,22 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-5 gap-2 mb-4">
           <div className="bg-pnw-cream rounded p-2 text-center">
             <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
             <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
+            <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
             <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Academics</div>
-            <div className="text-xl font-bold text-gray-700">{recruit.academicRating ?? '—'}</div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
+            <div className="text-xl font-bold text-gray-700">{academicRatingToGpa(recruit.academicRating).toFixed(1)}</div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
@@ -735,13 +751,21 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
 
         {/* Academic scholarship preview */}
         {(() => {
-          const academic$ = academicScholarship(recruit, save.schools[save.userSchoolId])
-          if (academic$ <= 0) return null
+          const school = save.schools[save.userSchoolId]
+          const gpa = academicRatingToGpa(recruit.academicRating)
+          const academic$ = academicScholarship(recruit, school)
+          const pct = school.tuitionPerYear > 0 ? academic$ / school.tuitionPerYear : 0
+          if (academic$ <= 0) {
+            return (
+              <div className="bg-gray-50 border border-gray-200 rounded p-2 mb-4 text-xs text-gray-600">
+                <strong>📚 Academics:</strong> GPA {gpa.toFixed(2)} — doesn't qualify for academic aid at this school (need 2.0+).
+              </div>
+            )
+          }
           return (
             <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-4 text-xs text-blue-900">
-              <strong>📚 Academic scholarship:</strong> ${(academic$ / 1000).toFixed(1)}K/year available
-              (academic rating {recruit.academicRating}/99 → {recruit.academicRating >= 85 ? 'presidential/honors' : recruit.academicRating >= 70 ? 'academic scholarship' : 'standard aid'}).
-              Does NOT come out of your athletic budget.
+              <strong>📚 Academic scholarship:</strong> GPA {gpa.toFixed(2)} → {(pct * 100).toFixed(0)}% of tuition = <span className="font-mono font-bold">${(academic$ / 1000).toFixed(1)}K/yr</span>.
+              Funded by the academic department — does NOT come out of your athletic scholarship pool.
             </div>
           )
         })()}
@@ -791,14 +815,20 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
         </div>
 
         <div className="mb-4">
-          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Estimated ratings</div>
+          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Estimated ratings <span className="normal-case text-gray-400">— range based on scouting; narrows as you scout more.</span></div>
           <div className="grid grid-cols-4 gap-1 text-xs">
-            {Object.entries(noisyRatings.ratings).map(([k, v]) => (
-              <div key={k} className="bg-gray-50 rounded p-2">
-                <div className="text-[10px] text-gray-500 uppercase">{k}</div>
-                <div className="font-mono font-bold text-pnw-slate">{v}</div>
-              </div>
-            ))}
+            {Object.entries(noisyRatings.ratings).map(([k, v]) => {
+              const r = ratingRange(v)
+              const isPoint = r.lo === r.hi
+              return (
+                <div key={k} className="bg-gray-50 rounded p-2">
+                  <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
+                  <div className="font-mono font-bold text-pnw-slate">
+                    {isPoint ? v : `${r.lo}–${r.hi}`}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 

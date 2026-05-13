@@ -5,6 +5,7 @@ import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
+import { prettyLabel } from '../../gm/engine/format'
 
 const REGIONS_LIST = ['NW', 'W', 'SW', 'MW', 'SE', 'NE']
 const PIPELINE_LIST = [
@@ -245,41 +246,63 @@ export default function NewDynasty() {
           <div className="mb-4">
             <label className="text-xs text-gray-500 uppercase tracking-wider">Recruiter Type</label>
             <select className="block w-full mt-1 border rounded px-3 py-2 text-sm" value={archetype} onChange={e => setArchetype(e.target.value)}>
-              {ARCHETYPES.map(a => <option key={a} value={a}>{a.replace('_', ' ')}</option>)}
+              {ARCHETYPES.map(a => <option key={a} value={a}>{prettyLabel(a)}</option>)}
             </select>
           </div>
 
           <div className="mb-4">
-            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 block">
-              Recruiting Regions
+            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 flex justify-between">
+              <span>Recruiting Regions</span>
+              <span className={'normal-case font-mono ' + (regions.length >= 2 ? 'text-amber-700' : 'text-gray-500')}>
+                {regions.length}/2 selected
+              </span>
             </label>
             <div className="flex flex-wrap gap-2">
-              {REGIONS_LIST.map(r => (
-                <button
-                  key={r}
-                  onClick={() => setRegions(regions.includes(r) ? regions.filter(x => x !== r) : [...regions, r])}
-                  className={'px-3 py-1 rounded text-xs ' + (regions.includes(r) ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}
-                >
-                  {r}
-                </button>
-              ))}
+              {REGIONS_LIST.map(r => {
+                const selected = regions.includes(r)
+                const disabled = !selected && regions.length >= 2
+                return (
+                  <button
+                    key={r}
+                    disabled={disabled}
+                    onClick={() => setRegions(selected ? regions.filter(x => x !== r) : [...regions, r])}
+                    className={'px-3 py-1 rounded text-xs ' +
+                      (selected ? 'bg-pnw-green text-white'
+                        : disabled ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : 'bg-gray-100 text-gray-700')}
+                  >
+                    {r}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
           <div className="mb-4">
-            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 block">
-              Pipelines
+            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 flex justify-between">
+              <span>Pipelines</span>
+              <span className={'normal-case font-mono ' + (pipelines.length >= 2 ? 'text-amber-700' : 'text-gray-500')}>
+                {pipelines.length}/2 selected
+              </span>
             </label>
             <div className="flex flex-wrap gap-2">
-              {PIPELINE_LIST.map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPipelines(pipelines.includes(p) ? pipelines.filter(x => x !== p) : [...pipelines, p])}
-                  className={'px-2 py-1 rounded text-xs ' + (pipelines.includes(p) ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}
-                >
-                  {p.replace('_', ' ')}
-                </button>
-              ))}
+              {PIPELINE_LIST.map(p => {
+                const selected = pipelines.includes(p)
+                const disabled = !selected && pipelines.length >= 2
+                return (
+                  <button
+                    key={p}
+                    disabled={disabled}
+                    onClick={() => setPipelines(selected ? pipelines.filter(x => x !== p) : [...pipelines, p])}
+                    className={'px-2 py-1 rounded text-xs ' +
+                      (selected ? 'bg-pnw-green text-white'
+                        : disabled ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : 'bg-gray-100 text-gray-700')}
+                  >
+                    {prettyLabel(p)}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -292,7 +315,7 @@ export default function NewDynasty() {
             {Object.entries(ratings).map(([key, val]) => (
               <div key={key}>
                 <label className="text-xs text-gray-500 uppercase tracking-wider flex justify-between">
-                  <span>{key}</span>
+                  <span>{prettyLabel(key)}</span>
                   <span className="font-mono text-pnw-green font-bold">{val}</span>
                 </label>
                 <input

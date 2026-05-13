@@ -11,6 +11,7 @@ import {
   calendarDateLabel, offseasonPhase, offseasonWeekDate, formatShortDate,
   OFFSEASON_WEEKS,
 } from '../../gm/engine/calendar'
+import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -171,13 +172,13 @@ export default function Dashboard() {
               <Rating label="REC" v={headCoach.recruiter} />
               <Rating label="TAC" v={headCoach.tactician} />
             </div>
-            <div className="text-[11px] text-gray-500 mb-3">{headCoach.recruiter_type} • {(headCoach.pipelines || []).slice(0, 3).join(', ') || 'no pipelines'}</div>
+            <div className="text-[11px] text-gray-500 mb-3">{prettyLabel(headCoach.recruiter_type)} • {(headCoach.pipelines || []).slice(0, 3).map(prettyLabel).join(', ') || 'no pipelines'}</div>
 
             <div className="text-xs text-gray-500 mt-3 mb-1">Assistants ({assistants.length})</div>
             <div className="space-y-1">
               {assistants.map(c => (
                 <div key={c.id} className="flex justify-between text-xs">
-                  <span className="text-gray-700">{c.firstName} {c.lastName} <span className="text-gray-400">{c.role.replace(/_/g, ' ').toLowerCase()}</span></span>
+                  <span className="text-gray-700">{c.firstName} {c.lastName} <span className="text-gray-400">{prettyLabel(c.role)}</span></span>
                   <span className="font-mono text-gray-600">${(c.salary / 1000).toFixed(0)}K</span>
                 </div>
               ))}
@@ -262,6 +263,7 @@ export default function Dashboard() {
               <NavTile to={`/gm/rankings?slot=${slot}`} title="Rankings" sub="Top 50" />
               <NavTile to={`/gm/budget?slot=${slot}`} title="Budget" sub={`$${(save.budget?.totalAthleticBudget / 1000).toFixed(0)}K`} />
               <NavTile to={`/gm/recruiting?slot=${slot}`} title="Recruiting" sub={save.recruits && Object.keys(save.recruits).length > 0 ? `${Object.keys(save.recruits).length} on board` : 'Open board'} />
+              <NavTile to={`/gm/weekly?slot=${slot}`} title="Weekly Actions" sub="Study hall, fundraise, camp" />
               <NavTile to={`/gm/coaches?slot=${slot}`} title="Staff" sub={`${1 + assistants.length} coaches`} />
               {save.postseason && (
                 <NavTile to={`/gm/postseason?slot=${slot}`} title="Postseason" sub={postseasonSub(save.postseason)} />
@@ -272,7 +274,7 @@ export default function Dashboard() {
           <Panel title="Program Profile" actionTo={null}>
             <div className="text-xs grid grid-cols-2 gap-y-1.5">
               <div className="text-gray-500">Resource Tier</div>
-              <div className="text-right">{school.resourceTier.replace('_', ' ')}</div>
+              <div className="text-right">{prettyLabel(school.resourceTier)}</div>
               <div className="text-gray-500">Program History</div>
               <div className="text-right">{school.programHistory}/100</div>
               <div className="text-gray-500">Facilities</div>

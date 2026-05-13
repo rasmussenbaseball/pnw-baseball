@@ -177,6 +177,7 @@ import Postseason from './pages/gm/Postseason'
 import Recruiting from './pages/gm/Recruiting'
 import GMPlayerDetail from './pages/gm/PlayerDetail'
 import Coaches from './pages/gm/Coaches'
+import WeeklyActions from './pages/gm/WeeklyActions'
 
 export default function App() {
   // Portal routes get their own full-page shell — no main-site Header,
@@ -184,13 +185,15 @@ export default function App() {
   // portal, PortalLayout provides its own header/wrapper.
   const { pathname } = useLocation()
   const isPortal = pathname.startsWith('/portal')
+  const isGm = pathname.startsWith('/gm')
 
   return (
     <AuthProvider>
-    <div className={`min-h-screen ${isPortal ? 'bg-portal-cream' : 'bg-nw-cream'}`}>
-      {!isPortal && <Header />}
+    <div className={`min-h-screen ${isPortal ? 'bg-portal-cream' : isGm ? 'bg-gray-50' : 'bg-nw-cream'}`}>
+      {!isPortal && !isGm && <Header />}
+      {isGm && <GmTopBar />}
       <SignupPopup />
-      <RouteContainer isPortal={isPortal}>
+      <RouteContainer isPortal={isPortal} isGm={isGm}>
         <Routes>
           {/* Homepage */}
           <Route path="/" element={<Homepage />} />
@@ -315,6 +318,7 @@ export default function App() {
           <Route path="/gm/postseason" element={<RequireGmEarlyAccess><Postseason /></RequireGmEarlyAccess>} />
           <Route path="/gm/recruiting" element={<RequireGmEarlyAccess><Recruiting /></RequireGmEarlyAccess>} />
           <Route path="/gm/coaches" element={<RequireGmEarlyAccess><Coaches /></RequireGmEarlyAccess>} />
+          <Route path="/gm/weekly" element={<RequireGmEarlyAccess><WeeklyActions /></RequireGmEarlyAccess>} />
           <Route path="/gm/player/:playerId" element={<RequireGmEarlyAccess><GMPlayerDetail /></RequireGmEarlyAccess>} />
 
           {/* About */}
@@ -330,7 +334,7 @@ export default function App() {
         </Routes>
       </RouteContainer>
 
-      {!isPortal && (
+      {!isPortal && !isGm && (
       <footer className="border-t border-gray-200 mt-12 bg-pnw-slate text-white">
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
@@ -396,13 +400,27 @@ export default function App() {
 // <main> wrapper. The portal pages use the full viewport (their own
 // PortalLayout handles padding internally), so this helper picks the
 // right wrapper based on the current route.
-function RouteContainer({ isPortal, children }) {
-  if (isPortal) {
+function RouteContainer({ isPortal, isGm, children }) {
+  if (isPortal || isGm) {
     return <>{children}</>
   }
   return (
     <main className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6">
       {children}
     </main>
+  )
+}
+
+// Slim top bar shown only on /gm routes — provides a "back to main site"
+// escape hatch and a Settings link. No site-wide nav clutter.
+function GmTopBar() {
+  return (
+    <div className="bg-pnw-slate text-white border-b border-pnw-slate/40">
+      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between text-xs">
+        <a href="/" className="opacity-80 hover:opacity-100 hover:underline">← Return to NW Baseball Stats</a>
+        <div className="font-semibold tracking-wide">NAIA Baseball GM</div>
+        <a href="/gm" className="opacity-80 hover:opacity-100 hover:underline">Dynasties</a>
+      </div>
+    </div>
   )
 }

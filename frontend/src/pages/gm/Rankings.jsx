@@ -52,12 +52,7 @@ export default function Rankings() {
       <div className="mb-6">
         <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
         <h1 className="text-3xl font-bold text-pnw-slate mt-1">National Rankings</h1>
-        <p className="text-sm text-gray-600">Predictive, SOS-adjusted. Replaces NAIA's RPI/BoChip.</p>
-      </div>
-
-      <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mb-4">
-        These rankings are <strong>seeded from PEAR 2025-26</strong> until simulated games accrue.
-        After your first weeks of play, this list recomputes from in-game results — properly weighting SOS so that a #1 ERA in a weak conference doesn't outrank a #15 ERA in the toughest conference.
+        <p className="text-sm text-gray-600">Predictive, SOS-adjusted national poll. Recomputes from in-game results.</p>
       </div>
 
       <div className="flex justify-between items-center mb-3">

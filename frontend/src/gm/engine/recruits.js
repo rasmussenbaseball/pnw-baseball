@@ -310,30 +310,51 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
 }
 
 /**
- * Compute the academic scholarship $ a recruit qualifies for at a given school.
- * Comes from the school's academic department, NOT the athletic budget.
+ * Convert a 30-99 academicRating to a believable GPA.
+ *   30 → 1.5,  50 → 2.5,  60 → 2.9,  75 → 3.5,  90 → 3.9,  99 → 4.0
+ */
+export function academicRatingToGpa(rating) {
+  const r = rating ?? 60
+  if (r >= 99) return 4.0
+  if (r >= 90) return Math.round((3.7 + (r - 90) * 0.033) * 10) / 10   // 3.7-4.0
+  if (r >= 75) return Math.round((3.3 + (r - 75) * 0.026) * 10) / 10   // 3.3-3.7
+  if (r >= 60) return Math.round((2.8 + (r - 60) * 0.033) * 10) / 10   // 2.8-3.3
+  if (r >= 50) return Math.round((2.4 + (r - 50) * 0.04) * 10) / 10    // 2.4-2.8
+  return Math.round((1.5 + (r - 30) * 0.045) * 10) / 10                // 1.5-2.4
+}
+
+/**
+ * GPA-tiered academic scholarship — % of tuition the recruit's GPA qualifies
+ * them for at this school. Comes from the school's academic department, NOT
+ * the athletic budget.
  *
- *   academic 30-50: $0–$1K (minimal)
- *   academic 50-70: $1K–$3K (standard academic aid)
- *   academic 70-85: $3K–$7K (academic scholarship)
- *   academic 85+: $7K–$12K (presidential / honors scholarship)
- *
- * Scales with the school's tuition (more aid at higher-tuition schools).
- *
+ *   4.0       → 50% of tuition
+ *   3.8-3.99  → 45%
+ *   3.5-3.79  → 40%
+ *   3.0-3.49  → 30%
+ *   2.5-2.99  → 20%
+ *   2.0-2.49  → 10%
+ *   < 2.0     → 0%
+ */
+export function academicScholarshipPct(gpa) {
+  if (gpa >= 4.0)  return 0.50
+  if (gpa >= 3.8)  return 0.45
+  if (gpa >= 3.5)  return 0.40
+  if (gpa >= 3.0)  return 0.30
+  if (gpa >= 2.5)  return 0.20
+  if (gpa >= 2.0)  return 0.10
+  return 0
+}
+
+/**
  * @param {import('./types.js').Recruit} recruit
  * @param {import('./types.js').School} school
  * @returns {number}
  */
 export function academicScholarship(recruit, school) {
-  const acad = recruit.academicRating ?? 60
-  const tuitionScale = school.tuitionPerYear / 30000   // ~1.0 for $30K tuition
-  let base
-  if (acad >= 85) base = 7000 + (acad - 85) * 360            // up to ~$12K at 99
-  else if (acad >= 70) base = 3000 + (acad - 70) * 270        // up to ~$7K at 85
-  else if (acad >= 50) base = 1000 + (acad - 50) * 100        // up to ~$3K at 70
-  else if (acad >= 30) base = 0 + (acad - 30) * 50            // up to ~$1K at 50
-  else base = 0
-  return Math.round(base * tuitionScale)
+  const gpa = academicRatingToGpa(recruit.academicRating)
+  const pct = academicScholarshipPct(gpa)
+  return Math.round(school.tuitionPerYear * pct)
 }
 
 /**

@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier } from '../../gm/engine/playerRating'
 import AttrTooltip from '../../gm/components/AttrTooltip'
+import { prettyLabel } from '../../gm/engine/format'
 
 export default function PlayerDetail() {
   const { user } = useAuth()
@@ -90,7 +91,7 @@ export default function PlayerDetail() {
             {Object.entries(player.hitter).map(([k, v]) => (
               <AttrTooltip key={k} attr={k}>
                 <div className="bg-gray-50 rounded p-2 text-center cursor-help">
-                  <div className="text-[10px] text-gray-500 uppercase">{k.replace('_', ' ')}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
                   <div className={'font-mono font-bold ' + ratingColor(v)}>{v}</div>
                 </div>
               </AttrTooltip>
@@ -106,7 +107,7 @@ export default function PlayerDetail() {
             {Object.entries(player.pitcher).map(([k, v]) => (
               <AttrTooltip key={k} attr={k}>
                 <div className="bg-gray-50 rounded p-2 text-center cursor-help">
-                  <div className="text-[10px] text-gray-500 uppercase">{k.replace('_', ' ')}</div>
+                  <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
                   <div className={'font-mono font-bold ' + ratingColor(v)}>{v}</div>
                 </div>
               </AttrTooltip>

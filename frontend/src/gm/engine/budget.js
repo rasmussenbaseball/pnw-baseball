@@ -23,29 +23,39 @@ export const BUDGET_CATEGORIES = [
 
 /**
  * Default % allocation across the 10 categories. Sums to 1.0.
+ *
+ * Calibrated so the scholarship slice (~57%) matches the program's
+ * scholarship pool — that way the total athletic budget = pool / 0.57 and
+ * the displayed numbers are internally consistent.
  */
 const DEFAULT_ALLOCATION = {
-  scholarships:      0.44,
-  coachingSalaries:  0.16,
-  travel:            0.14,
-  equipment:         0.07,
-  uniforms:          0.03,
-  meals:             0.05,
-  facilities:        0.05,
-  medical:           0.02,
-  recruiting:        0.02,
+  scholarships:      0.57,
+  coachingSalaries:  0.20,
+  travel:            0.08,
+  equipment:         0.03,
+  uniforms:          0.015,
+  meals:             0.025,
+  facilities:        0.035,
+  medical:           0.01,
+  recruiting:        0.015,
   misc:              0.02,
 }
 
 /**
- * Tier-based total annual baseball-program budgets ($).
- * Realistic ranges for NAIA programs (see ../docs/budget.md).
+ * "Friendly guidance" target ranges (% of total) shown to the user as
+ * advice on the Budget page. Anywhere inside the range is a healthy spend.
  */
-const TIER_TOTAL_BUDGET = {
-  D1_LITE:     1000000,
-  WELL_FUNDED: 525000,
-  MID:         275000,
-  SHOESTRING:  140000,
+export const BUDGET_GUIDANCE = {
+  scholarships:     { min: 0.50, max: 0.62, note: 'Biggest lever. Wins recruiting battles.' },
+  coachingSalaries: { min: 0.16, max: 0.24, note: 'Pay for quality coaches.' },
+  travel:           { min: 0.06, max: 0.10, note: 'Weekend bus trips + flights for distant series.' },
+  equipment:        { min: 0.02, max: 0.04, note: 'Bats, helmets, gloves, baseballs.' },
+  uniforms:         { min: 0.01, max: 0.025, note: 'Home/away/alt jerseys, hats.' },
+  meals:            { min: 0.02, max: 0.04, note: 'Game-day meals; nutrition. Affects injury risk.' },
+  facilities:       { min: 0.025, max: 0.05, note: 'Field upkeep, weight room, indoor cages.' },
+  medical:          { min: 0.005, max: 0.02, note: 'Athletic trainer + supplies. Cuts injury recovery time.' },
+  recruiting:       { min: 0.01, max: 0.025, note: 'Travel + camps + visits. Boosts recruiting AP.' },
+  misc:             { min: 0.01, max: 0.03, note: 'Buffer for unexpected costs.' },
 }
 
 /**
@@ -59,12 +69,16 @@ const TIER_TOTAL_BUDGET = {
  * @returns {import('./types.js').BudgetState}
  */
 export function defaultBudgetForSchool(school, actualCoachPayroll = null) {
-  const total = TIER_TOTAL_BUDGET[school.resourceTier] || TIER_TOTAL_BUDGET.MID
+  // Derive total athletic budget from the school's scholarship pool so the
+  // two numbers always agree:  pool == ~57% of total
+  const pool = school.scholarshipPool || 0
+  const total = pool > 0 ? Math.round(pool / DEFAULT_ALLOCATION.scholarships) : 0
   /** @type {Object<string, number>} */
   const allocations = {}
   for (const cat of BUDGET_CATEGORIES) {
     allocations[cat] = Math.round(total * DEFAULT_ALLOCATION[cat])
   }
+  allocations.scholarships = pool   // explicit — overrides any rounding drift
   // If we know the actual coach payroll, override the coachingSalaries slot
   // and steal/give back proportionally from the other categories so the total
   // still matches.
