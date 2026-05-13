@@ -11,6 +11,7 @@
 
 import { makeRng } from './rng'
 import { pickFullName } from './names'
+import { pickCityForState } from './cities'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
 // Recruit pool sizes
@@ -282,7 +283,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     id: `r_${pool}_${year}_${idx}`,
     firstName: first,
     lastName: last,
-    hometown: { city: state + ' area', state },
+    hometown: { city: pickCityForState(state, rng), state },
     pool,
     previousSchoolName,
     previousLeagueId,

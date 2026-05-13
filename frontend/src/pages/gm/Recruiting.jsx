@@ -42,6 +42,7 @@ export default function Recruiting() {
   const userId = user?.id || 'guest'
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
+  const [board, setBoard] = useState('BOARD')        // BOARD | FOLLOWING | OFFERS | SIGNED
   const [poolFilter, setPoolFilter] = useState('ALL')
   const [posFilter, setPosFilter] = useState('ALL')
   const [stateFilter, setStateFilter] = useState('ALL')
@@ -49,6 +50,14 @@ export default function Recruiting() {
   const [showCamp, setShowCamp] = useState(false)
   const [showFundraise, setShowFundraise] = useState(false)
   const [fundraiseAP, setFundraiseAP] = useState(5)
+
+  function toggleFollow(recruitId) {
+    const r = save.recruits[recruitId]
+    if (!r) return
+    r.followed = !r.followed
+    saveDynasty(save)
+    setSave({ ...save })
+  }
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -77,7 +86,20 @@ export default function Recruiting() {
   }, [visible])
   const topStates = stateBreakdown.slice(0, 8)
 
-  const list = visible
+  // Board view filters (Following / Offers / Signed override the regular filters)
+  const boardFiltered = visible.filter(r => {
+    if (board === 'FOLLOWING') return r.followed === true
+    if (board === 'OFFERS') return r.liveOffer?.schoolId === save.userSchoolId
+    return true
+  })
+
+  // Signed tab includes signed recruits (which are not in `visible` since
+  // visibleRecruits excludes status==='signed')
+  const signedList = Object.values(save.recruits || {}).filter(r => r.signedTo === save.userSchoolId)
+
+  const baseList = board === 'SIGNED' ? signedList : boardFiltered
+
+  const list = baseList
     .filter(r => poolFilter === 'ALL' || r.pool === poolFilter)
     .filter(r => posFilter === 'ALL' || r.primaryPosition === posFilter)
     .filter(r => stateFilter === 'ALL' || r.hometown.state === stateFilter)
@@ -87,6 +109,8 @@ export default function Recruiting() {
     })
     .sort((a, b) => b.interest - a.interest)
     .slice(0, 80)
+
+  const followedCount = Object.values(save.recruits || {}).filter(r => r.followed && r.status !== 'signed' && r.status !== 'lost').length
 
   const signedRecruits = Object.values(recruits).filter(r => r.signedTo === save.userSchoolId)
   const liveOffers = Object.values(recruits).filter(r =>
@@ -271,6 +295,27 @@ export default function Recruiting() {
       {/* Scholarship availability — what new $ can actually be offered */}
       <ScholarshipBanner save={save} />
 
+      {/* Board tabs */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200">
+        {[
+          { key: 'BOARD', label: 'Board', count: visible.length },
+          { key: 'FOLLOWING', label: '★ Following', count: followedCount },
+          { key: 'OFFERS', label: 'Offers Out', count: liveOffers.length },
+          { key: 'SIGNED', label: 'Signed', count: signedRecruits.length },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setBoard(t.key)}
+            className={'px-3 py-2 text-sm border-b-2 -mb-px transition ' +
+              (board === t.key
+                ? 'border-pnw-green text-pnw-green font-semibold'
+                : 'border-transparent text-gray-500 hover:text-pnw-slate')
+            }
+          >
+            {t.label} <span className="text-xs text-gray-400">({t.count})</span>
+          </button>
+        ))}
+      </div>
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <span className="text-xs text-gray-500 mr-2">Pool:</span>
@@ -316,7 +361,8 @@ export default function Recruiting() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr className="text-left text-xs text-gray-500 uppercase">
-              <th className="py-2 px-3">Name</th>
+              <th className="py-2 px-3"></th>
+              <th>Name</th>
               <th>Pos</th>
               <th>Pool</th>
               <th>State</th>
@@ -335,7 +381,16 @@ export default function Recruiting() {
               const totalSuit = totalSuitors(recruit)
               return (
                 <tr key={recruit.id} className={'border-t ' + (isSigned ? 'bg-green-50' : 'hover:bg-gray-50')}>
-                  <td className="py-2 px-3 font-medium">
+                  <td className="py-2 px-3 text-center">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleFollow(recruit.id) }}
+                      className={'text-base leading-none transition ' + (recruit.followed ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400')}
+                      title={recruit.followed ? 'Unfollow' : 'Follow / star this recruit'}
+                    >
+                      {recruit.followed ? '★' : '☆'}
+                    </button>
+                  </td>
+                  <td className="font-medium">
                     {isSigned && '🖊️ '}{recruit.firstName} {recruit.lastName}
                   </td>
                   <td>{recruit.primaryPosition}</td>

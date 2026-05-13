@@ -7,6 +7,7 @@ import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
+import { openNonConfWeeks } from '../../gm/engine/schedule'
 import {
   calendarDateLabel, offseasonPhase, offseasonWeekDate, formatShortDate,
   OFFSEASON_WEEKS,
@@ -354,6 +355,35 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, o
 function FocusTasks({ save, inOffseason, onStudyHall }) {
   const studyHallActive = save.studyHall?.active === true
   const weeksActive = save.studyHall?.weeksActive || 0
+  const seasonYear = save.calendar.year + 1
+  const userSchool = save.schools[save.userSchoolId]
+  const openSchedSlots = openNonConfWeeks(save.userSchoolId, userSchool.conferenceId, save.schedule || [], seasonYear)
+
+  // Build a list of priority tasks, ranked by importance
+  const priorities = []
+
+  if (openSchedSlots.length > 0) {
+    priorities.push({
+      text: `⚠ ${openSchedSlots.length} open weekend slot${openSchedSlots.length === 1 ? '' : 's'} on next season's schedule`,
+      to: `/gm/schedule?slot=${save.saveSlot}`,
+      urgent: true,
+    })
+  }
+
+  if (inOffseason) {
+    if (save.calendar.offseasonWeek <= 4) {
+      priorities.push({ text: 'Sign top HS recruits before fall', to: `/gm/recruiting?slot=${save.saveSlot}` })
+    }
+    if (save.calendar.offseasonWeek >= 5 && save.calendar.offseasonWeek <= 13 && !save.prospectCamp?.year) {
+      priorities.push({ text: 'Hold your prospect camp (Aug-Nov window)', to: `/gm/weekly?slot=${save.saveSlot}` })
+    }
+    if (!save.budget || save.budget.allocations?.scholarships === undefined) {
+      priorities.push({ text: 'Review your annual budget', to: `/gm/budget?slot=${save.saveSlot}` })
+    }
+  } else {
+    priorities.push({ text: 'Late-cycle recruiting open', to: `/gm/recruiting?slot=${save.saveSlot}` })
+  }
+
   return (
     <div className="space-y-3">
       {/* Study Hall — weekly */}
@@ -362,7 +392,7 @@ function FocusTasks({ save, inOffseason, onStudyHall }) {
           <div>
             <div className="text-sm font-semibold text-pnw-slate">Mandate Study Hall</div>
             <div className="text-[11px] text-gray-500">
-              Weekly. {weeksActive} {weeksActive === 1 ? 'week' : 'weeks'} active this term — {(Math.min(0.35, weeksActive * 0.025)).toFixed(2)} GPA bonus locked in.
+              Weekly. {weeksActive} {weeksActive === 1 ? 'week' : 'weeks'} active — +{(Math.min(0.35, weeksActive * 0.025)).toFixed(2)} GPA locked in.
             </div>
           </div>
           <button
@@ -375,21 +405,19 @@ function FocusTasks({ save, inOffseason, onStudyHall }) {
         </div>
       </div>
 
-      {inOffseason ? (
-        <div className="text-xs text-gray-600 space-y-1.5">
-          <div className="font-semibold text-gray-700">Recommended this week:</div>
-          <div className="flex justify-between"><span>• Visit recruiting board</span><Link to={`/gm/recruiting?slot=${save.saveSlot}`} className="text-pnw-green hover:underline">Go →</Link></div>
-          <div className="flex justify-between"><span>• Review staff / coaches</span><Link to={`/gm/coaches?slot=${save.saveSlot}`} className="text-pnw-green hover:underline">Go →</Link></div>
-          <div className="flex justify-between"><span>• Check budget</span><Link to={`/gm/budget?slot=${save.saveSlot}`} className="text-pnw-green hover:underline">Go →</Link></div>
-        </div>
-      ) : (
-        <div className="text-xs text-gray-600">
-          <div className="font-semibold text-gray-700 mb-1">In-season focus:</div>
-          <div>• Set rotation + lineup</div>
-          <div>• Watch standings, manage starts</div>
-          <div>• Late-cycle recruiting</div>
-        </div>
-      )}
+      <div className="text-xs text-gray-600 space-y-1.5">
+        <div className="font-semibold text-gray-700">Weekly priorities:</div>
+        {priorities.length === 0 ? (
+          <div className="text-gray-400">Nothing pressing — explore the dashboard.</div>
+        ) : (
+          priorities.map((p, i) => (
+            <div key={i} className="flex justify-between items-center">
+              <span className={p.urgent ? 'text-amber-700 font-semibold' : ''}>{p.text}</span>
+              <Link to={p.to} className="text-pnw-green hover:underline shrink-0 ml-2">Go →</Link>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }

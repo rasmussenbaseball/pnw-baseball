@@ -77,15 +77,20 @@ export default function Roster() {
             <thead className="bg-gray-50">
               <tr className="text-left text-xs text-gray-500 uppercase">
                 <th className="py-2 px-3">Name</th>
-                <th>Pos</th>
-                <th>Class</th>
-                <th>B/T</th>
+                <th title="Primary position">Pos</th>
+                <th title="Class year (FR/SO/JR/SR)">Class</th>
+                <th title="Bats / Throws">Bats/Thr</th>
                 <th>Hometown</th>
-                <th>Schol.</th>
-                <th>Ovr</th>
-                <th>Pot</th>
-                <th colSpan={4} className="text-center">Hit (C/P/D/F)</th>
-                <th colSpan={3} className="text-center">Pitch (Stuff/Ctl/Sta)</th>
+                <th title="Annual athletic scholarship $">Schol</th>
+                <th title="Current overall rating">OVR</th>
+                <th title="Projected future overall rating (potential)">POT</th>
+                <th title="Contact rating (avg of vs LHP / vs RHP)">Contact</th>
+                <th title="Power rating (avg of vs LHP / vs RHP)">Power</th>
+                <th title="Plate discipline — BB rate, K avoidance">Disc</th>
+                <th title="Fielding rating at primary position">Field</th>
+                <th title="Stuff — whiff + contact-quality suppression">Stuff</th>
+                <th title="Control — BB + HBP rate">Ctrl</th>
+                <th title="Stamina — innings per outing">Stam</th>
               </tr>
             </thead>
             <tbody>

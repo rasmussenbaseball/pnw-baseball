@@ -11,7 +11,6 @@ import {
   countScrimmages, scrimmagesRemaining,
   countD1Midweeks, d1MidweeksRemaining,
   getConferenceRules,
-  checkOpponentEligibility,
   NAIA_GAME_CAP, NAIA_SCRIMMAGE_CAP, NAIA_D1_MIDWEEK_CAP,
 } from '../../gm/engine/schedule'
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
@@ -34,42 +33,44 @@ export default function Schedule() {
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [pickingForWeek, setPickingForWeek] = useState(null)
+  const [pickingMidweek, setPickingMidweek] = useState(null)   // numeric: week to add midweek to
   const [pickingScrimmage, setPickingScrimmage] = useState(null)
+  const [showMidweekSection, setShowMidweekSection] = useState(false)
 
   if (!save) return <Navigate to="/gm" replace />
 
   const userSchoolId = save.userSchoolId
   const userSchool = save.schools[userSchoolId]
-  const seasonYear = save.calendar.year + 1     // 2027 if Year 1 starts in 2026 offseason
+  const seasonYear = save.calendar.year + 1
   const confRules = getConferenceRules(userSchool.conferenceId)
   const schedule = save.schedule || []
 
-  // User games only
   const myGames = schedule
     .filter(g => g.homeId === userSchoolId || g.awayId === userSchoolId)
     .sort((a, b) => (a.seasonWeek - b.seasonWeek) || a.date.localeCompare(b.date))
 
-  // Group by week (regular season weeks 1-16)
+  // Group by week
   const byWeek = {}
   myGames.filter(g => g.seasonWeek > 0).forEach(g => {
     if (!byWeek[g.seasonWeek]) byWeek[g.seasonWeek] = []
     byWeek[g.seasonWeek].push(g)
   })
 
-  // Scrimmages (seasonWeek = 0)
   const scrimmages = myGames.filter(g => g.seasonWeek === 0)
-
   const openWeeks = openNonConfWeeks(userSchoolId, userSchool.conferenceId, schedule, seasonYear)
   const countedGames = countRecordGames(userSchoolId, schedule)
   const gameCapRemaining = gamesRemaining(userSchoolId, schedule)
   const scrimCount = countScrimmages(userSchoolId, schedule)
   const scrimRemaining = scrimmagesRemaining(userSchoolId, schedule)
-  const d1Count = countD1Midweeks(userSchoolId, schedule)
   const d1Remaining = d1MidweeksRemaining(userSchoolId, schedule)
   const travelCost = useMemo(
     () => totalAnnualTravelCost(userSchoolId, schedule, save.schools, NON_NAIA_DISPLAY),
     [save],
   )
+
+  const scheduleIncomplete = openWeeks.length > 0
+  const filledWeekends = Object.keys(byWeek).length
+  const totalWeekendSlots = filledWeekends + openWeeks.length
 
   function handleSimNextWeek() {
     if (save.calendar.mode !== 'SEASON') {
@@ -97,6 +98,7 @@ export default function Schedule() {
     saveDynasty(save)
     setSave({ ...save })
     setPickingForWeek(null)
+    setPickingMidweek(null)
     if (result.info) alert(result.info)
   }
 
@@ -118,14 +120,17 @@ export default function Schedule() {
     setPickingScrimmage(null)
   }
 
+  // Sort scheduled weeks chronologically
+  const scheduledWeekNums = Object.keys(byWeek).map(n => parseInt(n, 10)).sort((a, b) => a - b)
+
   return (
-    <div className="max-w-5xl mx-auto py-8">
-      <div className="mb-6 flex justify-between items-start">
+    <div className="max-w-5xl mx-auto py-8 px-4">
+      <div className="mb-4 flex justify-between items-start">
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">{seasonYear} Schedule</h1>
           <p className="text-sm text-gray-600">
-            {save.conferences[userSchool.conferenceId]?.name} • {confRules.seriesLength}-game series •
+            {save.conferences[userSchool.conferenceId]?.name} • {confRules.seriesLength}-game conf weekend series •
             {' '}Conf opens {fmtTarget(confRules.confStartDate)} • Conf ends {fmtTarget(confRules.confEndDate)}
           </p>
         </div>
@@ -137,11 +142,29 @@ export default function Schedule() {
         </button>
       </div>
 
-      {/* Caps + travel widget */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-        <CapCard label="Regular-season" count={countedGames} cap={NAIA_GAME_CAP} unit="games" />
+      {/* INCOMPLETE banner */}
+      {scheduleIncomplete && (
+        <div className="bg-amber-100 border-l-4 border-amber-500 text-amber-900 p-4 rounded mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-bold text-base">⚠ Schedule incomplete</div>
+              <div className="text-sm mt-1">
+                You have <strong>{openWeeks.length} open weekend slot{openWeeks.length === 1 ? '' : 's'}</strong> to fill before opening day.
+                Conference weekends are pre-built — you just need to add non-conference series in Weeks 1-3 (and any post-conference weeks) and decide on byes.
+              </div>
+            </div>
+            <div className="text-right text-xs whitespace-nowrap ml-4">
+              <div>{filledWeekends}/{totalWeekendSlots} weekends set</div>
+              <div className="text-amber-700">{gameCapRemaining} of {NAIA_GAME_CAP} games left</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Caps strip — D1 midweek bar removed */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <CapCard label="Regular-season games" count={countedGames} cap={NAIA_GAME_CAP} unit="games" />
         <CapCard label="Scrimmages" count={scrimCount} cap={NAIA_SCRIMMAGE_CAP} unit="scrim" />
-        <CapCard label="D1 midweeks" count={d1Count} cap={NAIA_D1_MIDWEEK_CAP} unit="games" />
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="text-xs text-gray-500 uppercase tracking-wider">Travel cost (est)</div>
           <div className="text-lg font-bold text-pnw-slate">${(travelCost / 1000).toFixed(1)}K</div>
@@ -149,14 +172,75 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* Scrimmage section */}
+      {/* OPEN WEEKS — at the top, prominent */}
+      {openWeeks.length > 0 && (
+        <div className="bg-amber-50 border-2 border-dashed border-amber-300 rounded-xl p-4 mb-6">
+          <div className="flex justify-between items-baseline mb-3">
+            <div>
+              <h2 className="text-base font-bold text-amber-900">Open weeks — fill these first</h2>
+              <p className="text-xs text-amber-700">Pre-conference (weeks 1-3) and post-conference weekends. Add an opponent or take a bye.</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {openWeeks.map(w => (
+              <div key={w.week} className="bg-white rounded-lg border border-amber-200 p-3 flex items-center justify-between">
+                <div>
+                  <span className="font-semibold text-pnw-slate">Week {w.week}</span>
+                  <span className="text-xs text-gray-500 ml-2">starts {w.date}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleAddBye(w.week)} className="text-xs text-gray-600 hover:text-pnw-slate hover:underline">+ Bye week</button>
+                  <button onClick={() => setPickingForWeek(w.week)} className="text-xs font-semibold bg-pnw-green text-white px-3 py-1.5 rounded hover:opacity-90">
+                    + Add opponent
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SCHEDULED WEEKS (chronological) */}
+      {scheduledWeekNums.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-2">Scheduled weeks</h2>
+          {scheduledWeekNums.map(week => {
+            const games = byWeek[week]
+            const dateLabel = games[0]?.date
+            // Detect type
+            const hasConference = games.some(g => g.type === 'CONFERENCE')
+            const weekType = hasConference ? 'Conference' : games.some(g => g.type === 'BYE') ? 'Bye' : 'Non-conference'
+            return (
+              <div key={week} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-2">
+                <div className="flex justify-between items-baseline mb-2">
+                  <div>
+                    <span className="text-xs uppercase tracking-wider text-gray-500">Week {week}</span>
+                    <span className={'ml-2 text-[10px] px-1.5 py-0.5 rounded ' +
+                      (weekType === 'Conference' ? 'bg-pnw-green/10 text-pnw-green' :
+                       weekType === 'Bye' ? 'bg-gray-100 text-gray-500' :
+                       'bg-blue-50 text-blue-700')
+                    }>{weekType}</span>
+                    <span className="text-xs text-gray-400 ml-2">{dateLabel}</span>
+                  </div>
+                </div>
+                <div className="space-y-1.5 text-sm">
+                  {Object.entries(groupBySeriesId(games)).map(([sid, seriesGames]) => (
+                    <SeriesRow key={sid} games={seriesGames} userSchoolId={userSchoolId} save={save} />
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* SCRIMMAGE section */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
         <div className="flex justify-between items-center mb-2">
           <div>
             <div className="text-sm font-semibold text-amber-900">Fall ball + Pre-season Scrimmages</div>
             <div className="text-xs text-amber-700">
               {scrimRemaining} of {NAIA_SCRIMMAGE_CAP} left. Doubleheaders only. Don't count toward record.
-              Most teams use ~8 in fall (October Fridays).
             </div>
           </div>
           <button
@@ -184,62 +268,67 @@ export default function Schedule() {
         )}
       </div>
 
-      {/* Regular-season schedule */}
-      {Object.keys(byWeek).sort((a, b) => a - b).map(wkStr => {
-        const week = parseInt(wkStr, 10)
-        const games = byWeek[week]
-        const dateLabel = games[0]?.date
-        const isOpen = openWeeks.some(d => d.week === week)
-        return (
-          <div key={week} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-3">
-            <div className="flex justify-between items-center mb-2">
-              <div>
-                <span className="text-xs uppercase tracking-wider text-gray-500">Week {week}</span>
-                <span className="text-xs text-gray-400 ml-2">{dateLabel}</span>
-              </div>
-              {isOpen && (
-                <div className="flex gap-2">
-                  <button onClick={() => handleAddBye(week)} className="text-xs text-gray-500 hover:text-pnw-slate">
-                    + Bye
-                  </button>
-                  <button onClick={() => setPickingForWeek(week)} className="text-xs text-pnw-green hover:underline">
-                    + Add opponent
-                  </button>
-                </div>
-              )}
+      {/* MIDWEEK section — gated until all weekends scheduled */}
+      <div className={'rounded-xl p-4 border ' + (scheduleIncomplete ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200')}>
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <div className={'text-sm font-semibold ' + (scheduleIncomplete ? 'text-gray-500' : 'text-blue-900')}>
+              Midweek games {scheduleIncomplete && '(locked)'}
             </div>
-            <div className="space-y-1.5 text-sm">
-              {Object.entries(groupBySeriesId(games)).map(([sid, seriesGames]) => (
-                <SeriesRow key={sid} games={seriesGames} userSchoolId={userSchoolId} save={save} />
-              ))}
+            <div className={'text-xs ' + (scheduleIncomplete ? 'text-gray-400' : 'text-blue-700')}>
+              {scheduleIncomplete
+                ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tue/Wed) for more reps.'
+                : `Optional. NAIA vs D1 hard cap of ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left). NAIA-vs-NAIA or D2/D3 single games allowed.`
+              }
             </div>
           </div>
-        )
-      })}
-
-      {/* Empty open weeks */}
-      {openWeeks
-        .filter(w => !byWeek[w.week])
-        .map(w => (
-          <div key={w.week} className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-4 mb-3 flex items-center justify-between">
-            <div>
-              <span className="text-xs uppercase tracking-wider text-gray-500">Week {w.week} — open</span>
-              <span className="text-xs text-gray-400 ml-2">{w.date}</span>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => handleAddBye(w.week)} className="text-xs text-gray-500 hover:text-pnw-slate">+ Bye</button>
-              <button onClick={() => setPickingForWeek(w.week)} className="text-xs text-pnw-green hover:underline">+ Add opponent</button>
+          {!scheduleIncomplete && (
+            <button
+              onClick={() => setShowMidweekSection(s => !s)}
+              className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded hover:opacity-90"
+            >
+              {showMidweekSection ? 'Hide' : '+ Add midweek'}
+            </button>
+          )}
+        </div>
+        {!scheduleIncomplete && showMidweekSection && (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[11px] text-blue-800 mb-2">Pick a week (Tue/Wed slot). Midweeks are limited to non-conference opponents.</p>
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
+              {scheduledWeekNums.filter(w => byWeek[w].some(g => g.type === 'CONFERENCE' || g.type === 'BYE' || g.type === 'NON_CONFERENCE'))
+                .map(week => (
+                  <button
+                    key={week}
+                    onClick={() => setPickingMidweek(week)}
+                    className="text-xs border border-blue-300 bg-white text-blue-800 rounded px-2 py-1 hover:bg-blue-100"
+                  >
+                    Wk {week}
+                  </button>
+                ))}
             </div>
           </div>
-        ))}
+        )}
+      </div>
 
       {pickingForWeek != null && (
         <OpponentPicker
           save={save}
           userSchool={userSchool}
-          d1Remaining={d1Remaining}
+          d1Remaining={0}    // D1 opponents are midweek only — exclude from weekend picker
+          midweekMode={false}
           onPick={(opp, options) => handleAddOpponent(pickingForWeek, opp, options)}
           onClose={() => setPickingForWeek(null)}
+        />
+      )}
+
+      {pickingMidweek != null && (
+        <OpponentPicker
+          save={save}
+          userSchool={userSchool}
+          d1Remaining={d1Remaining}
+          midweekMode={true}
+          onPick={(opp, options) => handleAddOpponent(pickingMidweek, opp, options)}
+          onClose={() => setPickingMidweek(null)}
         />
       )}
 
@@ -297,7 +386,7 @@ function SeriesRow({ games, userSchoolId, save }) {
   const isScrim = g0.type === 'FALL_SCRIMMAGE' || g0.type === 'SPRING_SCRIMMAGE'
   const typeLabel = g0.type === 'CONFERENCE' ? 'Conf' :
                     g0.type === 'D1_MIDWEEK' ? 'D1 midweek' :
-                    isScrim ? 'Scrim' : 'NC'
+                    isScrim ? 'Scrim' : 'Non-conf'
   const seriesScore = games.map(g => {
     if (!g.played) return null
     const my = isHome ? g.homeRuns : g.awayRuns
@@ -329,14 +418,14 @@ function SeriesRow({ games, userSchoolId, save }) {
   )
 }
 
-function OpponentPicker({ save, userSchool, d1Remaining, onPick, onClose }) {
+function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, onClose }) {
   const [filter, setFilter] = useState('')
   const [divFilter, setDivFilter] = useState('ALL')
 
   const allCandidates = useMemo(() => {
     const naia = Object.values(save.schools)
       .filter(s => s.id !== save.userSchoolId)
-      .filter(s => s.conferenceId !== userSchool.conferenceId)  // no intra-conf non-conf
+      .filter(s => s.conferenceId !== userSchool.conferenceId)
       .map(s => ({
         id: s.id, name: s.name, city: s.city, state: s.state,
         colors: s.colors, nickname: s.nickname,
@@ -352,16 +441,18 @@ function OpponentPicker({ save, userSchool, d1Remaining, onPick, onClose }) {
   const filtered = allCandidates
     .filter(t => divFilter === 'ALL' || t.division === divFilter)
     .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
-    .filter(t => t.division !== 'JUCO_NWAC')  // NWAC routed via scrimmage picker
-    .filter(t => t.division !== 'D1' || d1Remaining > 0)  // hide D1 if cap full
+    .filter(t => t.division !== 'JUCO_NWAC')
+    .filter(t => {
+      // D1 only allowed in midweek mode
+      if (t.division === 'D1') return midweekMode && d1Remaining > 0
+      return true
+    })
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 60)
 
   function withTravel(opp, userIsHome) {
-    if (userIsHome) return null  // home games — no travel
-    if (opp.division === 'D1') {
-      return estimateMidweekCost(userSchool.state, opp.state)
-    }
+    if (userIsHome) return null
+    if (midweekMode) return estimateMidweekCost(userSchool.state, opp.state)
     return estimateAwaySeriesCost(userSchool.state, opp.state, 4, 3)
   }
 
@@ -369,12 +460,14 @@ function OpponentPicker({ save, userSchool, d1Remaining, onPick, onClose }) {
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[85vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-semibold">Pick opponent</h3>
+          <h3 className="text-lg font-semibold">
+            {midweekMode ? 'Pick midweek opponent' : 'Pick weekend opponent'}
+          </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
 
         <div className="flex gap-1 mb-3 flex-wrap">
-          {['ALL', 'NAIA', 'D1', 'D2', 'D3'].map(d => (
+          {['ALL', 'NAIA', 'D2', 'D3', ...(midweekMode ? ['D1'] : [])].map(d => (
             <button
               key={d}
               onClick={() => setDivFilter(d)}
@@ -395,15 +488,14 @@ function OpponentPicker({ save, userSchool, d1Remaining, onPick, onClose }) {
           className="w-full border rounded px-3 py-2 text-sm mb-3"
         />
 
-        {divFilter === 'D1' && (
+        {midweekMode && (
           <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-3 text-xs text-blue-900">
-            D1 games are midweek-only. Hard cap of 2/year.
+            Midweek single game. D1 opponents are capped at {NAIA_D1_MIDWEEK_CAP}/year.
           </div>
         )}
 
         <div className="space-y-1 max-h-96 overflow-y-auto">
           {filtered.map(s => {
-            const homeTravel = withTravel(s, true)
             const awayTravel = withTravel(s, false)
             return (
               <div key={s.id} className="flex items-center gap-2 p-2 hover:bg-pnw-cream rounded text-sm">
@@ -416,14 +508,13 @@ function OpponentPicker({ save, userSchool, d1Remaining, onPick, onClose }) {
                   <button
                     onClick={() => onPick(s, { userIsHome: true })}
                     className="px-2 py-1 bg-pnw-green text-white rounded"
-                    title={`Home — $0 travel`}
                   >
                     Home
                   </button>
                   <button
                     onClick={() => onPick(s, { userIsHome: false })}
                     className="px-2 py-1 border border-pnw-green text-pnw-green rounded"
-                    title={awayTravel ? `Away — ~$${awayTravel.totalCost.toLocaleString()} travel (${awayTravel.mode}, ${awayTravel.miles}mi)` : 'Away'}
+                    title={awayTravel ? `Away — ~$${awayTravel.totalCost.toLocaleString()}` : 'Away'}
                   >
                     Away {awayTravel && <span className="opacity-60">(${(awayTravel.totalCost / 1000).toFixed(1)}K)</span>}
                   </button>
@@ -468,7 +559,7 @@ function ScrimmagePicker({ save, season, year, onPick, onClose }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <p className="text-xs text-gray-500 mb-3">
-          Pick a doubleheader date and opponent. 2 games = 2 of your 10 scrimmage allotment.
+          Pick a doubleheader date and opponent. 2 games count toward your 10 scrimmage allotment.
         </p>
 
         <div className="mb-3">

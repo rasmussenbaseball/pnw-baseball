@@ -11,6 +11,7 @@
 import { makeRng } from './rng'
 import { pickFullName } from './names'
 import { initialAcademicState } from './academics'
+import { pickCityForState } from './cities'
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Position} Position */
@@ -122,10 +123,6 @@ function generateBirthdate(classYear, currentYear, rng) {
  * with a bias toward the school's region.
  */
 function generateHometown(school, rng) {
-  // For v1 we don't model real city pools — just use the school's city as a placeholder
-  // for "this player is in the program's natural recruiting radius", and otherwise
-  // a generic regional city. This is fine because the hometown is mostly used for
-  // pipeline/region matching, not realism in the UI.
   const regionalStates = {
     NW: ['WA', 'OR', 'ID', 'MT'],
     W:  ['CA', 'NV', 'AZ', 'UT'],
@@ -138,7 +135,7 @@ function generateHometown(school, rng) {
   const state = inState
     ? school.state
     : rng.pick(regionalStates[school.region] || ['IL'])
-  return { city: school.city, state }
+  return { city: pickCityForState(state, rng), state }
 }
 
 // ─── Roster generation ───────────────────────────────────────────────────────
