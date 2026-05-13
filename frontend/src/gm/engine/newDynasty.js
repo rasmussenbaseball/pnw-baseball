@@ -105,11 +105,22 @@ export function newDynasty(input) {
       rosterIds.push(p.id)
     }
 
+    // Year-1 tutorial flow: the USER's program starts with ONLY the head
+    // coach. They hire their three required assistants in Wk 2. Every OTHER
+    // school in the league keeps its full auto-generated staff so league sims
+    // run normally.
+    const isUserSchool = school.id === input.userSchoolId
+    const teamAssistants = isUserSchool ? [] : assistants
+    // Drop the auto-generated assistants from the coaches map for the user
+    // team so they don't appear elsewhere in the UI.
+    if (isUserSchool) {
+      for (const a of assistants) delete coaches[a.id]
+    }
     teams[school.id] = {
       schoolId: school.id,
       rosterPlayerIds: rosterIds,
       headCoachId: headCoach.id,
-      assistantCoachIds: assistants.map(a => a.id),
+      assistantCoachIds: teamAssistants.map(a => a.id),
       wins: 0,
       losses: 0,
       confWins: 0,
@@ -124,7 +135,10 @@ export function newDynasty(input) {
   // around mid/late February.
   /** @type {import('./types.js').Calendar} */
   const calendar = {
-    year: 2027,             // year the spring season ends (Aug 2026 → Jul 2027 cycle)
+    // `year` is the AUGUST year — the year the offseason begins. Aug 2026 →
+    // year=2026; the spring season ending May 2027 is displayed as "2027"
+    // via year+1 in legacy code (calendarDateLabel etc).
+    year: 2026,
     startYear: 2026,        // remembered so date math doesn't drift
     week: 1,                // overall counter (never resets)
     weekOfYear: 1,          // 1-52 within the current year

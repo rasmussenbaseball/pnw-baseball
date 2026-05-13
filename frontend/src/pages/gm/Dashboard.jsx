@@ -274,6 +274,38 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* GAME WEEK BANNER — top-of-page when there are unplayed games */}
+      {thisWeekUnplayed.length > 0 && (
+        <GameWeekBanner
+          games={thisWeekUnplayed}
+          save={save}
+          weekOfYear={weekOfYear}
+          slot={slot}
+          onSimNow={() => {
+            setBusy(true)
+            setTimeout(() => {
+              try {
+                const ratings = seedFromPear(save.schools, save.conferences)
+                const summary = simWeek(save, save.schedule, ratings)
+                advanceWeek(save, save.schedule)
+                saveDynasty(save)
+                setSave({ ...save })
+                setLastWeekRecap({ kind: 'season', results: summary.userResults })
+              } catch (err) {
+                console.error('week sim failed:', err)
+                alert('Sim failed — see console.')
+              }
+              setBusy(false)
+            }, 30)
+          }}
+        />
+      )}
+
+      {/* Camp invite window (Wks 5 & 10) — prominent reminder + count */}
+      {(weekOfYear === 5 || weekOfYear === 10) && (
+        <CampInviteBanner save={save} slot={slot} weekOfYear={weekOfYear} />
+      )}
+
       {/* Phase-gate banner — required action this week */}
       {requiredAction && !requiredAction.isComplete(save) && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-4 flex justify-between items-start">
@@ -343,7 +375,11 @@ export default function Dashboard() {
         <KpiCard label="Record" value={`${team.wins}-${team.losses}`} />
         <KpiCard label="Conference" value={`${team.confWins}-${team.confLosses}`} sub={conf.abbreviation} />
         <KpiCard label="Run Diff" value={(team.runDiff > 0 ? '+' : '') + team.runDiff} />
-        <KpiCard label="Team GPA" value={acad.teamGpa.toFixed(2)} />
+        <KpiCard
+          label="Team GPA"
+          value={acad.teamGpa.toFixed(2)}
+          trend={gpaTrend(save)}
+        />
         <KpiCard label="Job Security" value={save.budget?.jobSecurity ?? 50} suffix="/100" />
       </div>
 
@@ -634,17 +670,33 @@ function ScholarshipBar({ snapshot }) {
   )
 }
 
-function KpiCard({ label, value, suffix = '', sub, accent }) {
+function KpiCard({ label, value, suffix = '', sub, accent, trend }) {
   return (
     <div className={'rounded-lg border p-3 ' + (accent ? 'bg-pnw-green text-white border-pnw-green' : 'bg-white border-gray-200')}>
-      <div className={'text-xl font-bold ' + (accent ? '' : 'text-pnw-slate')}>
-        {value}<span className={'text-xs ' + (accent ? 'opacity-80' : 'text-gray-500')}>{suffix}</span>
+      <div className={'text-xl font-bold flex items-baseline gap-1 ' + (accent ? '' : 'text-pnw-slate')}>
+        <span>{value}</span>
+        <span className={'text-xs ' + (accent ? 'opacity-80' : 'text-gray-500')}>{suffix}</span>
+        {trend === 'up' && <span className="text-xs text-green-600 font-bold leading-none" title="trending up">↑</span>}
+        {trend === 'down' && <span className="text-xs text-red-600 font-bold leading-none" title="trending down">↓</span>}
+        {trend === 'flat' && <span className="text-xs text-gray-400 font-bold leading-none" title="flat">→</span>}
       </div>
       <div className={'text-[10px] uppercase tracking-wider ' + (accent ? 'opacity-80' : 'text-gray-500')}>
         {label}{sub && <span className="ml-1">{sub}</span>}
       </div>
     </div>
   )
+}
+
+// Compare current vs last week's team GPA snapshots. Threshold ±0.01 to
+// avoid showing arrows for noise.
+function gpaTrend(save) {
+  const last = save._lastTeamGpa
+  const curr = save._currentTeamGpa
+  if (last == null || curr == null) return null
+  const delta = curr - last
+  if (delta > 0.01) return 'up'
+  if (delta < -0.01) return 'down'
+  return 'flat'
 }
 
 function Rating({ label, v }) {
@@ -674,6 +726,69 @@ function NavTile({ to, title, sub }) {
       <div className="font-semibold text-sm">{title}</div>
       <div className="text-[11px] opacity-70">{sub}</div>
     </Link>
+  )
+}
+
+function GameWeekBanner({ games, save, weekOfYear, slot, onSimNow }) {
+  const userSchoolId = save.userSchoolId
+  // Summarize: count + first opponent name
+  const first = games[0]
+  const oppId = first.homeId === userSchoolId ? first.awayId : first.homeId
+  const oppName = save.schools[oppId]?.name || 'Opponent'
+  const isHome = first.homeId === userSchoolId
+  return (
+    <div className="bg-pnw-green text-white rounded-xl p-4 mb-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 shadow-lg">
+      <div className="flex-1">
+        <div className="text-[11px] uppercase tracking-wider opacity-90 font-bold">
+          ⚾ Week {weekOfYear} — {games.length} Game{games.length === 1 ? '' : 's'} This Week
+        </div>
+        <div className="text-base font-semibold mt-0.5">
+          {isHome ? 'vs' : '@'} {oppName}
+          {games.length > 1 && <span className="text-sm opacity-80"> · {games.length}-game series</span>}
+        </div>
+        <div className="text-[11px] opacity-80 mt-0.5">
+          Enter live to call subs and watch PA-by-PA, or sim the whole slate in one click.
+        </div>
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <Link
+          to={`/gm/play?slot=${slot}`}
+          className="px-4 py-2.5 bg-white text-pnw-green rounded font-semibold text-sm hover:opacity-90 whitespace-nowrap"
+        >
+          ▶ Enter Game
+        </Link>
+        <button
+          onClick={onSimNow}
+          className="px-4 py-2.5 bg-pnw-slate text-white rounded font-semibold text-sm hover:opacity-90 whitespace-nowrap"
+        >
+          ⏩ Sim Game{games.length === 1 ? '' : 's'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CampInviteBanner({ save, slot, weekOfYear }) {
+  const invited = Object.values(save.recruits || {}).filter(r => r.campInvited).length
+  const MAX = 100
+  const isSecondWindow = weekOfYear === 10
+  return (
+    <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-4 flex justify-between items-start">
+      <div className="flex-1">
+        <div className="text-[11px] uppercase tracking-wider text-blue-700 font-bold mb-1">
+          Week {weekOfYear} — {isSecondWindow ? 'Final' : 'First'} Camp Invite Window
+        </div>
+        <div className="text-sm text-blue-900 leading-snug">
+          You can invite up to <strong>{MAX} HS recruits</strong> to your prospect camp (held Wk 13).
+          Currently invited: <strong>{invited}/{MAX}</strong>. Invitees get a small interest boost
+          immediately; attendees end up ~50% scouted.
+          {isSecondWindow && <span className="block mt-1 text-amber-800 font-semibold">⚠ Last chance to invite or remove before camp.</span>}
+        </div>
+      </div>
+      <Link to={`/gm/recruiting?slot=${slot}&board=INVITES`} className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
+        Manage invites →
+      </Link>
+    </div>
   )
 }
 

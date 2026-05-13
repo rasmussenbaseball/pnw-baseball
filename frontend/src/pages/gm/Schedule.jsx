@@ -170,7 +170,7 @@ export default function Schedule() {
             <div className="font-bold text-base">✓ All weekends scheduled</div>
             <div className="text-sm mt-1">
               Confirm your schedule to clear the Week 1 phase-gate and unlock Wk 2 (assistant coach hiring).
-              Travel budget for Wk 3 will lock in at <strong>${(travelCost.totalCost / 1000).toFixed(1)}K</strong> based on these trips.
+              Travel budget for Wk 3 will lock in at <strong>${(travelCost / 1000).toFixed(1)}K</strong> based on these trips.
             </div>
           </div>
           <button
@@ -186,7 +186,7 @@ export default function Schedule() {
       )}
       {save.scheduleComplete && (
         <div className="bg-green-50 border border-green-200 text-green-800 text-xs p-2 rounded mb-4">
-          ✓ Schedule confirmed. Travel cost: <strong>${(travelCost.totalCost / 1000).toFixed(1)}K</strong> (locks into the budget on Wk 3).
+          ✓ Schedule confirmed. Travel cost: <strong>${(travelCost / 1000).toFixed(1)}K</strong> (locks into the budget on Wk 3).
         </div>
       )}
 
@@ -420,9 +420,9 @@ function TravelBudgetWarning({ save, travelCost }) {
   // baseline. If the user's actual scheduled travel exceeds 1.5x that, throw
   // a clear over-budget warning so they can re-plan before Wk 3 locks them in.
   const total = save.budget?.totalAthleticBudget || 0
-  if (!total || !travelCost?.totalCost) return null
+  if (!total || !travelCost) return null
   const target = total * 0.08
-  const actual = travelCost.totalCost
+  const actual = travelCost
   const ratio = actual / Math.max(1, target)
   if (ratio < 1.3) return null   // within reason — no warning
   const overBy = actual - target

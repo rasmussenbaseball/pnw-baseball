@@ -84,6 +84,50 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
  * @param {Player[]} players
  * @returns {{ teamGpa: number, eligible: number, probation: number, ineligible: number, dismissed: number }}
  */
+/**
+ * Weekly team-GPA dynamics — small per-week drift based on:
+ *   - AP utilization the prior week (using all → +, sitting on it → −)
+ *   - Mean team happiness (happy → +, upset → −)
+ *   - Recent W/L proxy via happiness performance signal
+ *
+ * Skipped during tutorial weeks (1-3) when AP is locked. Stores
+ * state._lastTeamGpa + state._currentTeamGpa so the dashboard can show
+ * an up/down arrow next to the GPA number.
+ *
+ * @param {import('./types.js').SaveState} state
+ */
+export function tickTeamGPAWeekly(state) {
+  const wk = state.calendar?.weekOfYear ?? 0
+  if (wk >= 1 && wk <= 3) return   // tutorial weeks — no drift
+  const team = state.teams?.[state.userSchoolId]
+  if (!team) return
+  const players = team.rosterPlayerIds.map(id => state.players[id]).filter(Boolean)
+  if (players.length === 0) return
+
+  const baseline = state.ap?.baseline ?? 25
+  const spent = state._lastWeekApSpent ?? 0
+  const apFrac = Math.min(1, spent / Math.max(1, baseline))
+  const happyAvg = players.reduce((s, p) => s + (p.happiness?.value ?? 60), 0) / players.length
+
+  // Composite signal — typical range ±0.015 GPA per week
+  const happyZ = (happyAvg - 60) / 100     // ~ -0.6 .. +0.4
+  const apZ = apFrac - 0.7                  // < 70% spent = negative
+
+  // Aggregate delta per player, plus small per-player noise so distributions
+  // breathe without being chaotic.
+  const rng = makeRng('gpaWk', state.userSchoolId, state.calendar.year, wk)
+  for (const p of players) {
+    if (typeof p.gpa !== 'number') continue
+    const delta = happyZ * 0.012 + apZ * 0.010 + rng.gaussian(0, 0.006)
+    p.gpa = Math.max(0.5, Math.min(4.0, Math.round((p.gpa + delta) * 100) / 100))
+  }
+
+  // Snapshot team GPA for arrow display
+  const teamGpa = players.reduce((s, p) => s + (p.gpa || 0), 0) / players.length
+  state._lastTeamGpa = state._currentTeamGpa ?? teamGpa
+  state._currentTeamGpa = Math.round(teamGpa * 100) / 100
+}
+
 export function teamAcademicSummary(players) {
   if (players.length === 0) return { teamGpa: 0, eligible: 0, probation: 0, ineligible: 0, dismissed: 0 }
   let total = 0

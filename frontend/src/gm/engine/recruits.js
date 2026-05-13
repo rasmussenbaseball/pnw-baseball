@@ -463,6 +463,15 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
     }
   }
   const grade = recruit.scoutGrades[userSchoolId]
+
+  // One-shot rule: each scouting action can only be applied ONCE per
+  // recruit. The caller should ideally already prevent the click, but we
+  // re-check here so engine state stays consistent. SCHOLARSHIP_OFFER is
+  // exempt because it's managed via setLiveOffer (live offers can change).
+  if (action.key !== 'SCHOLARSHIP_OFFER' && grade.actionsApplied.includes(action.key)) {
+    return { recruit, interestGain: 0, revealed: null, alreadyApplied: true }
+  }
+
   grade.interest = Math.min(100, grade.interest + action.interestGain)
   grade.noise = Math.max(2, grade.noise - action.fogReduction)
   grade.actionsApplied.push(action.key)
@@ -508,8 +517,15 @@ export function scoutingProgress(recruit, userSchoolId) {
   return Math.min(1, apPart * 0.7 + offerPart * 0.3)
 }
 
-/** True once 10+ AP spent and a live offer exists. */
+/** True once 10+ AP has been spent on the recruit (offer no longer required). */
 export function isFullyScouted(recruit, userSchoolId) {
+  const grade = recruit.scoutGrades?.[userSchoolId]
+  if (!grade) return false
+  return (grade.apSpent || 0) >= 10
+}
+
+// Legacy stub kept for back-compat — older callers may pass extra args.
+function _legacyIsFullyScoutedWithOffer(recruit, userSchoolId) {
   const grade = recruit.scoutGrades?.[userSchoolId]
   if (!grade) return false
   return (grade.apSpent || 0) >= 10 && recruit.liveOffer?.schoolId === userSchoolId
@@ -575,11 +591,11 @@ export function noisyRating(trueRating, noise, rng) {
  * @returns {'PRE_PORTAL' | 'PORTAL_OPEN'}
  */
 export function recruitingPhase(calendar) {
-  // Portal opens after postseason wraps. In our calendar, postseason is week
-  // 17+ of season mode. By the time we re-enter OFFSEASON (next year), portal
-  // is open. The first "PORTAL_OPEN" phase happens after the first season has
-  // completed at least once.
-  if (calendar.mode === 'OFFSEASON' && calendar.year >= 2027) return 'PORTAL_OPEN'
+  // 52-week calendar: portal opens after postseason wraps (Wk 43) and stays
+  // open through the recruiting cycle's final month (Wk 51). Wk 52 finalizes
+  // the class; before Wk 43 and after Wk 51 portal recruits aren't visible.
+  const wk = calendar?.weekOfYear ?? 0
+  if (wk >= 43 && wk <= 51) return 'PORTAL_OPEN'
   return 'PRE_PORTAL'
 }
 
@@ -805,8 +821,12 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
       if (!r.scoutGrades[userSchoolId]) {
         r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
       }
+      // Attending camp = ~50% scouted out of the gate. Bump apSpent to 5 so
+      // the scouting progress bar shows it; drop noise to 7 (full-scout floor
+      // is 2 once they have 10+ AP spent across actions).
       r.scoutGrades[userSchoolId].interest = Math.min(100, r.scoutGrades[userSchoolId].interest + 25)
-      r.scoutGrades[userSchoolId].noise = Math.max(2, r.scoutGrades[userSchoolId].noise - 6)
+      r.scoutGrades[userSchoolId].noise = Math.min(r.scoutGrades[userSchoolId].noise, 7)
+      r.scoutGrades[userSchoolId].apSpent = Math.max(r.scoutGrades[userSchoolId].apSpent || 0, 5)
       r.scoutGrades[userSchoolId].actionsApplied.push('CAMP_ATTEND')
       const undisclosed = Object.keys(r.preferences).filter(
         p => !r.scoutGrades[userSchoolId].revealedPreferences.includes(p),

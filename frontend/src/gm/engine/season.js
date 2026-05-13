@@ -15,6 +15,7 @@ import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
+import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
 import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
@@ -497,10 +498,15 @@ export function advanceOneWeek(state) {
     runPostseason(state)
   }
 
+  // Capture last-week AP spend BEFORE the refresh resets it — used by the
+  // weekly team-GPA dynamic (lower utilization → GPA drifts down).
+  state._lastWeekApSpent = state.ap?.spentThisWeek ?? 0
+
   // Refresh AP and tick boosts. AP is LOCKED (= 0) during weeks 1-3 per the
   // new tutorial flow; refreshWeeklyAP enforces that.
   refreshWeeklyAP(state)
   tickWeeklyBookkeeping(state)
+  tickTeamGPAWeekly(state)
 
   // Fire events for the new week (budget review, draft, portal opens, etc.)
   runEventsForWeek(state, nextWeek)

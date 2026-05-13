@@ -80,6 +80,13 @@ export default function Recruiting() {
         alert(`Camp invite cap reached (${CAMP_MAX_INVITES}). Un-invite someone first.`)
         return
       }
+      // Send the invite + give them a small immediate interest boost — being
+      // contacted at all is a positive signal even if they decline camp.
+      if (!r.scoutGrades[save.userSchoolId]) {
+        r.scoutGrades[save.userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
+      }
+      const g = r.scoutGrades[save.userSchoolId]
+      g.interest = Math.min(100, g.interest + 5)
     }
     r.campInvited = !currentlyInvited
     saveDynasty(save)
@@ -899,26 +906,39 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
 
         <div className="mb-3">
           <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Take an action</div>
+          <p className="text-[11px] text-gray-500 mb-2">
+            One use per action per recruit. ~10 AP total fully scouts them.
+          </p>
           <div className="grid grid-cols-2 gap-2">
-            {Object.values(ACTION_TYPES).filter(a => a.key !== 'SCHOLARSHIP_OFFER').map(action => (
-              <button
-                key={action.key}
-                onClick={() => onAction(recruit, action.key)}
-                disabled={save.ap.currentWeek < action.apCost}
-                className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-sm">{action.label}</span>
-                  <span className="text-xs font-mono bg-pnw-green text-white px-1.5 py-0.5 rounded">{action.apCost} AP</span>
-                </div>
-                <div className="text-[10px] text-gray-500 mt-1">{action.blurb}</div>
-              </button>
-            ))}
+            {Object.values(ACTION_TYPES).filter(a => a.key !== 'SCHOLARSHIP_OFFER').map(action => {
+              const alreadyUsed = (grade.actionsApplied || []).includes(action.key)
+              const cantAfford = save.ap.currentWeek < action.apCost
+              return (
+                <button
+                  key={action.key}
+                  onClick={() => onAction(recruit, action.key)}
+                  disabled={alreadyUsed || cantAfford}
+                  className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-sm">
+                      {action.label} {alreadyUsed && <span className="text-[10px] text-green-700 ml-1">✓</span>}
+                    </span>
+                    <span className={'text-xs font-mono px-1.5 py-0.5 rounded ' +
+                      (alreadyUsed ? 'bg-gray-300 text-gray-600' : 'bg-pnw-green text-white')}>
+                      {alreadyUsed ? 'used' : `${action.apCost} AP`}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-1">{action.blurb}</div>
+                </button>
+              )
+            })}
           </div>
         </div>
 
         <div className="mt-3 text-[10px] text-gray-400">
-          Actions taken: {grade.actionsApplied.length}
+          Actions taken: {grade.actionsApplied.length} · AP spent: {grade.apSpent || 0}
+          {(grade.apSpent || 0) >= 10 && <span className="ml-2 text-green-700 font-semibold">✓ Fully scouted</span>}
         </div>
       </div>
     </div>

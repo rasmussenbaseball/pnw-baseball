@@ -64,6 +64,7 @@ export const EVENT_TYPES = {
   LAST_DAY_RECRUITING:      { label: 'Late recruiting closes', desc: 'Final HS commitments locked for this cycle.' },
   CLASS_FINALIZE:           { label: 'Class finalizes', desc: 'Signed recruits officially join the roster — ratings fully revealed.' },
   LOCK_TRAVEL_BUDGET:       { label: 'Travel budget locks', desc: 'Travel allocation set from your scheduled trips. Adjust other categories from here.' },
+  CAMP_INVITE_WINDOW:       { label: 'Camp invite window', desc: 'Invite up to 100 HS recruits to your prospect camp. Attendees get a +interest boost and end up ~50% scouted.' },
 }
 
 // ─── Event schedule — unified 52-week ──────────────────────────────────────
@@ -79,7 +80,8 @@ export const WEEK_EVENT_SCHEDULE = {
   3: ['LOCK_TRAVEL_BUDGET'],                      // travel cost locked from schedule
   4: [],                                          // scouting opens — AP unlocks, no engine event
   // ── Fall Camp (Sep-Oct, wks 5-12) ──
-  5: ['FALL_CAMP_START'],
+  5: ['FALL_CAMP_START', 'CAMP_INVITE_WINDOW'],
+  10: ['CAMP_INVITE_WINDOW'],
   // Fall scrimmages auto-scheduled into wks 6-12 (8 games over ~4 weekends)
   // ── Prospect Camp (wk 13) ──
   13: ['PROSPECT_CAMP', 'HS_NLI_EARLY'],
