@@ -50,15 +50,37 @@ const TIER_TOTAL_BUDGET = {
 
 /**
  * Given a school + resource tier, build the default budget shape.
+ * If actualCoachPayroll is provided, the coachingSalaries allocation is set
+ * to that value (and the other categories proportionally adjusted) so the
+ * budget reflects what's actually being paid out — not a static 16%.
+ *
  * @param {School} school
+ * @param {number} [actualCoachPayroll]
  * @returns {import('./types.js').BudgetState}
  */
-export function defaultBudgetForSchool(school) {
+export function defaultBudgetForSchool(school, actualCoachPayroll = null) {
   const total = TIER_TOTAL_BUDGET[school.resourceTier] || TIER_TOTAL_BUDGET.MID
   /** @type {Object<string, number>} */
   const allocations = {}
   for (const cat of BUDGET_CATEGORIES) {
     allocations[cat] = Math.round(total * DEFAULT_ALLOCATION[cat])
+  }
+  // If we know the actual coach payroll, override the coachingSalaries slot
+  // and steal/give back proportionally from the other categories so the total
+  // still matches.
+  if (actualCoachPayroll != null && actualCoachPayroll > 0) {
+    const targetCoach = actualCoachPayroll
+    const oldCoach = allocations.coachingSalaries
+    const delta = targetCoach - oldCoach
+    allocations.coachingSalaries = targetCoach
+    const others = BUDGET_CATEGORIES.filter(c => c !== 'coachingSalaries')
+    const otherTotal = others.reduce((s, c) => s + allocations[c], 0)
+    if (otherTotal > 0) {
+      for (const c of others) {
+        const share = allocations[c] / otherTotal
+        allocations[c] = Math.max(0, Math.round(allocations[c] - delta * share))
+      }
+    }
   }
   return {
     totalAthleticBudget: total,

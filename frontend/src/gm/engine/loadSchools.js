@@ -110,11 +110,15 @@ function assignTier(school, pearRating) {
   return 'MID'
 }
 
+// Equivalencies = NAIA scholarship-equivalents the program funds (max 12.0 for
+// baseball). Calibrated so Bushnell (MID) lands ~$250K pool — most of which
+// is committed to the current roster. Only money freed by departing players
+// becomes new recruiting $$$.
 const TIER_DEFAULTS = {
-  D1_LITE:     { tuitionAvg: 25000, rbAvg: 11000, facilityAvg: 88, academicAvg: 72, equivalencies: 12.0 },
-  WELL_FUNDED: { tuitionAvg: 28000, rbAvg: 11000, facilityAvg: 76, academicAvg: 70, equivalencies: 10.5 },
-  MID:         { tuitionAvg: 25000, rbAvg: 10500, facilityAvg: 68, academicAvg: 65, equivalencies: 7.5 },
-  SHOESTRING:  { tuitionAvg: 22000, rbAvg: 10000, facilityAvg: 58, academicAvg: 60, equivalencies: 4.0 },
+  D1_LITE:     { tuitionAvg: 25000, rbAvg: 11000, facilityAvg: 88, academicAvg: 72, equivalencies: 11.0 },
+  WELL_FUNDED: { tuitionAvg: 28000, rbAvg: 11000, facilityAvg: 76, academicAvg: 70, equivalencies: 8.0 },
+  MID:         { tuitionAvg: 25000, rbAvg: 10500, facilityAvg: 68, academicAvg: 65, equivalencies: 5.5 },
+  SHOESTRING:  { tuitionAvg: 22000, rbAvg: 10000, facilityAvg: 58, academicAvg: 60, equivalencies: 3.0 },
 }
 
 // ─── State → region map ──────────────────────────────────────────────────────

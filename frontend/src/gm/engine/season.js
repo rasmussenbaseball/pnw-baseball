@@ -17,6 +17,7 @@ import { playerOverall } from './playerRating'
 import { applyHsAttrition, generatePortalPool } from './recruits'
 import { runOutboundTransfers } from './outboundTransfers'
 import { runEndOfTermAcademics, teamAcademicSummary } from './academics'
+import { OFFSEASON_WEEKS } from './calendar'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 function zeroStats(isPitcher) {
@@ -423,6 +424,77 @@ export function runEndOfYear(state) {
 export const ROSTER_CAP_MAX = 60
 
 /**
+ * Refresh weekly AP — same formula as newDynasty.computeInitialAP, kept in
+ * sync. Called when a week ticks over so the user gets a fresh AP budget.
+ */
+function refreshWeeklyAP(state) {
+  const team = state.teams[state.userSchoolId]
+  if (!team) return
+  const school = state.schools[state.userSchoolId]
+  const hc = state.coaches[team.headCoachId]
+  const assistants = team.assistantCoachIds.map(id => state.coaches[id]).filter(Boolean)
+  const ROLE_MULTIPLIER = {
+    HEAD_COACH: 1.5, PITCHING_COACH: 1.0, HITTING_COACH: 1.0,
+    BENCH_COACH: 0.8, RECRUITING_COORDINATOR: 1.0,
+    STRENGTH_CONDITIONING: 0.7, DIRECTOR_OF_OPERATIONS: 0.6,
+  }
+  const TIER_BONUS = { D1_LITE: 4, WELL_FUNDED: 2, MID: 0, SHOESTRING: -2 }
+  const contribution = (c) => {
+    const avg = (c.developer + c.motivator + c.recruiter + c.tactician) / 4
+    return (avg - 50) * 0.4 * ROLE_MULTIPLIER[c.role]
+  }
+  let total = 20
+  if (hc) total += contribution(hc)
+  for (const a of assistants) total += contribution(a)
+  total += TIER_BONUS[school?.resourceTier] || 0
+  state.ap.currentWeek = Math.max(10, Math.min(80, Math.round(total)))
+  state.ap.spentThisWeek = 0
+  state.ap.spentByCategory = {
+    recruiting: 0, development: 0, team_boost: 0, program: 0, staff: 0,
+  }
+}
+
+/**
+ * Advance one OFFSEASON week. Mutates state.
+ *
+ *   - Bumps offseasonWeek + week
+ *   - Refreshes AP budget for the new week
+ *   - Applies study-hall benefits accumulated this term
+ *   - When we hit OFFSEASON_WEEKS+1 → flip into SEASON mode
+ *
+ * @param {SaveState} state
+ */
+export function advanceOffseasonWeek(state) {
+  if (state.calendar.mode !== 'OFFSEASON') return
+  state.calendar.offseasonWeek++
+  state.calendar.week++
+
+  // Refresh weekly AP
+  refreshWeeklyAP(state)
+
+  // Study hall weekly tally — if active this week, increment counter
+  if (state.studyHall?.active) {
+    state.studyHall.weeksActive = (state.studyHall.weeksActive || 0) + 1
+    state.studyHall.active = false   // user must re-mandate each week
+  }
+
+  // Transition into season once offseason is over
+  if (state.calendar.offseasonWeek > OFFSEASON_WEEKS) {
+    state.calendar.mode = 'SEASON'
+    state.calendar.offseasonWeek = null
+    state.calendar.seasonWeek = 1
+    state.newsfeed.unshift({
+      id: `season_open_${state.calendar.year}`,
+      year: state.calendar.year + 1,
+      week: 1,
+      type: 'AWARD',
+      headline: `${state.calendar.year + 1} season is here. First pitch this week.`,
+      payload: {},
+    })
+  }
+}
+
+/**
  * Advance the calendar to the next week. If we cross past week 16, trigger
  * the postseason + end-of-year flow automatically.
  *
@@ -448,8 +520,12 @@ export function advanceWeek(state, schedule) {
   state.calendar.week++
   if (state.calendar.mode === 'SEASON' && state.calendar.seasonWeek != null) {
     state.calendar.seasonWeek++
+    refreshWeeklyAP(state)
+    if (state.studyHall?.active) {
+      state.studyHall.weeksActive = (state.studyHall.weeksActive || 0) + 1
+      state.studyHall.active = false
+    }
     if (state.calendar.seasonWeek > 16) {
-      // Trigger postseason + end-of-year flow
       state.calendar.mode = 'POSTSEASON'
       state.calendar.seasonWeek = null
       runPostseason(state)

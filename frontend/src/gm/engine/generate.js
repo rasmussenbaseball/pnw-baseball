@@ -239,24 +239,25 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
 }
 
 /**
- * Realistic scholarship $ estimate. Calibration:
- *   - Bushnell (WELL_FUNDED) averages ~$5K/player across 45-50 players → $235K pool
- *   - Top players (avg rating 80+) get $10K-$18K
- *   - Mid-tier (avg 60-75) get $3K-$8K
- *   - Bottom roster (avg <60) get $0-$3K
+ * Realistic scholarship $ estimate. Calibration target (Bushnell, MID tier):
+ *   ~$5K avg across 35-player roster → ~$175K committed.
+ *   Pool is $250K, so ~$75K is left for new recruits each year before
+ *   seniors graduate.
+ *
+ *   - Top players (avg rating 80+) get $9K-$15K
+ *   - Mid-tier (avg 65-75)        $4K-$8K
+ *   - Bottom roster (avg <60)     $0-$3K
  *   - Tier matters: D1_LITE programs offer more, SHOESTRING less
  */
 function estimateScholarship(school, hitter, pitcher, isPitcher) {
   const block = isPitcher ? pitcher : hitter
   const avgRating = Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length
-  // Tier multiplier
-  const tierMult = { D1_LITE: 1.7, WELL_FUNDED: 1.0, MID: 0.65, SHOESTRING: 0.4 }[school.resourceTier] || 1.0
-  // Quality curve — heavy reward for top players
+  const tierMult = { D1_LITE: 1.5, WELL_FUNDED: 1.1, MID: 0.85, SHOESTRING: 0.5 }[school.resourceTier] || 1.0
   let baseAmount
-  if (avgRating >= 80) baseAmount = 12000 + (avgRating - 80) * 600
-  else if (avgRating >= 70) baseAmount = 7000 + (avgRating - 70) * 500
-  else if (avgRating >= 60) baseAmount = 3500 + (avgRating - 60) * 350
-  else if (avgRating >= 50) baseAmount = 1000 + (avgRating - 50) * 250
+  if (avgRating >= 80) baseAmount = 11000 + (avgRating - 80) * 550
+  else if (avgRating >= 70) baseAmount = 6000 + (avgRating - 70) * 500
+  else if (avgRating >= 60) baseAmount = 3000 + (avgRating - 60) * 300
+  else if (avgRating >= 50) baseAmount = 800 + (avgRating - 50) * 220
   else baseAmount = 0
   return Math.round(baseAmount * tierMult)
 }

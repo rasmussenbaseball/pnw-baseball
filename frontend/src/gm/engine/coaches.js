@@ -140,9 +140,8 @@ export function generateCoach(school, role, rng, opts = {}) {
 
   const avg = (ratings.developer + ratings.motivator + ratings.recruiter + ratings.tactician) / 4
 
-  // Salary scales with quality and role
-  const baseSalary = salaryForQuality(avg)
-  const salary = Math.round(baseSalary * (role === 'HEAD_COACH' ? 2.5 : ROLE_MULTIPLIER[role]))
+  // Salary scales with school resource tier + role + quality
+  const salary = computeCoachSalary(school.resourceTier, role, avg)
 
   const id = (opts.idPrefix || 'coach') + '_' + rng.int(100000, 999999)
 
@@ -183,12 +182,64 @@ function pickRecruiterType(school, rng) {
   return rng.weighted(items, weights_arr)
 }
 
-function salaryForQuality(avg) {
-  if (avg >= 80) return 100000
-  if (avg >= 70) return 60000
-  if (avg >= 60) return 35000
-  if (avg >= 50) return 22000
-  return 16000
+/**
+ * Salary table by school tier + role.
+ *
+ *   base    = salary at quality avg 50
+ *   qualBonus = adds linearly up to quality 90 (and slightly past 90)
+ *   floor   = absolute minimum
+ *
+ * Calibration targets (per Nate, May 2026):
+ *   Bushnell (MID) head coach ≈ $50K  + assistant pool ≈ $40K
+ *   D1_LITE   head coach ≈ $130K-$180K
+ *   SHOESTRING head coach ≈ $30K
+ */
+const SALARY_TABLE = {
+  D1_LITE: {
+    HEAD_COACH:             { base: 130000, qualBonus: 70000, floor: 90000 },
+    PITCHING_COACH:         { base: 32000,  qualBonus: 22000, floor: 22000 },
+    HITTING_COACH:          { base: 32000,  qualBonus: 22000, floor: 22000 },
+    BENCH_COACH:            { base: 22000,  qualBonus: 14000, floor: 15000 },
+    RECRUITING_COORDINATOR: { base: 28000,  qualBonus: 18000, floor: 20000 },
+    STRENGTH_CONDITIONING:  { base: 22000,  qualBonus: 12000, floor: 15000 },
+    DIRECTOR_OF_OPERATIONS: { base: 16000,  qualBonus: 9000,  floor: 12000 },
+  },
+  WELL_FUNDED: {
+    HEAD_COACH:             { base: 78000,  qualBonus: 42000, floor: 55000 },
+    PITCHING_COACH:         { base: 18000,  qualBonus: 14000, floor: 12000 },
+    HITTING_COACH:          { base: 18000,  qualBonus: 14000, floor: 12000 },
+    BENCH_COACH:            { base: 12000,  qualBonus: 9000,  floor: 8000 },
+    RECRUITING_COORDINATOR: { base: 15000,  qualBonus: 12000, floor: 10000 },
+    STRENGTH_CONDITIONING:  { base: 12000,  qualBonus: 8000,  floor: 8000 },
+    DIRECTOR_OF_OPERATIONS: { base: 9000,   qualBonus: 6000,  floor: 7000 },
+  },
+  MID: {
+    HEAD_COACH:             { base: 48000,  qualBonus: 22000, floor: 35000 },
+    PITCHING_COACH:         { base: 17000,  qualBonus: 9000,  floor: 12000 },
+    HITTING_COACH:          { base: 17000,  qualBonus: 9000,  floor: 12000 },
+    BENCH_COACH:            { base: 10000,  qualBonus: 6000,  floor: 7000 },
+    RECRUITING_COORDINATOR: { base: 13000,  qualBonus: 8000,  floor: 9000 },
+    STRENGTH_CONDITIONING:  { base: 10000,  qualBonus: 6000,  floor: 8000 },
+    DIRECTOR_OF_OPERATIONS: { base: 8000,   qualBonus: 5000,  floor: 6000 },
+  },
+  SHOESTRING: {
+    HEAD_COACH:             { base: 30000,  qualBonus: 14000, floor: 22000 },
+    PITCHING_COACH:         { base: 7000,   qualBonus: 5000,  floor: 5000 },
+    HITTING_COACH:          { base: 7000,   qualBonus: 5000,  floor: 5000 },
+    BENCH_COACH:            { base: 4000,   qualBonus: 3000,  floor: 3000 },
+    RECRUITING_COORDINATOR: { base: 5000,   qualBonus: 4000,  floor: 4000 },
+    STRENGTH_CONDITIONING:  { base: 4000,   qualBonus: 3000,  floor: 3000 },
+    DIRECTOR_OF_OPERATIONS: { base: 3000,   qualBonus: 2000,  floor: 2500 },
+  },
+}
+
+export function computeCoachSalary(resourceTier, role, qualityAvg) {
+  const tierTable = SALARY_TABLE[resourceTier] || SALARY_TABLE.MID
+  const cell = tierTable[role] || tierTable.BENCH_COACH
+  // Quality 50 → +0, quality 90 → +qualBonus, scales linearly past
+  const qualityFactor = (qualityAvg - 50) / 40
+  const computed = cell.base + cell.qualBonus * qualityFactor
+  return Math.round(Math.max(cell.floor, computed))
 }
 
 function clamp(v, lo, hi) {

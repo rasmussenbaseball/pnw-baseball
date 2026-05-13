@@ -10,7 +10,7 @@
 
 import { loadSchools } from './loadSchools'
 import { generateRoster } from './generate'
-import { generateStaff } from './coaches'
+import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
 import { buildAllConferenceSchedules, autoFillNonConference } from './schedule'
 import { seedFromPear } from './rankings'
@@ -101,10 +101,13 @@ export function newDynasty(input) {
     }
   }
 
-  // 4. Calendar — dynasty starts summer 2026 offseason → fall ball → spring 2027 season
+  // 4. Calendar — dynasty starts first week of August 2026 (offseason) → fall
+  // ball → spring 2027 season. Offseason has 26 weeks; first season game lands
+  // around mid/late February.
   /** @type {import('./types.js').Calendar} */
   const calendar = {
     year: 2026,
+    startYear: 2026,        // remembered so date math doesn't drift
     week: 1,
     mode: 'OFFSEASON',
     seasonWeek: null,
@@ -165,7 +168,11 @@ export function newDynasty(input) {
         staff: 0,
       },
     },
-    budget: defaultBudgetForSchool(userSchool),
+    budget: defaultBudgetForSchool(
+      userSchool,
+      coaches[userTeam.headCoachId].salary +
+      userTeam.assistantCoachIds.reduce((s, id) => s + (coaches[id]?.salary || 0), 0),
+    ),
     rngSeed: seed,
     newsfeed: [{
       id: 'dyn_start',
@@ -183,6 +190,7 @@ export function newDynasty(input) {
  * Build the user's head coach record from input + school context.
  */
 function buildUserHeadCoach(uc, school) {
+  const qualityAvg = (uc.developer + uc.motivator + uc.recruiter + uc.tactician) / 4
   return {
     id: `hc_user_${school.id}`,
     firstName: uc.firstName,
@@ -199,10 +207,10 @@ function buildUserHeadCoach(uc, school) {
     recruiter_type: uc.recruiter_type,
     regions: uc.regions,
     pipelines: uc.pipelines,
-    salary: 80000,
+    salary: computeCoachSalary(school.resourceTier, 'HEAD_COACH', qualityAvg),
     contractYearsRemaining: 4,
     ambition: 50,
-    loyalty: 99,    // the user doesn't get poached unwillingly in v1
+    loyalty: 99,
   }
 }
 

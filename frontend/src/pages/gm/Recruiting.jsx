@@ -11,6 +11,7 @@ import {
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
 import { makeRng } from '../../gm/engine/rng'
+import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
 import TeamLogo from '../../gm/components/TeamLogo'
 
 const POOL_LABELS = {
@@ -214,7 +215,7 @@ export default function Recruiting() {
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">Recruiting Board</h1>
           <p className="text-sm text-gray-600">
-            {visible.length} recruits visible • {phaseLabel}
+            <span className="font-semibold">Class of {save.calendar.year + 1}–{String((save.calendar.year + 2) % 100).padStart(2, '0')}</span> ({save.calendar.year + 1} enrollees, play {save.calendar.year + 2} season) • {visible.length} on board • {phaseLabel}
           </p>
           {(userHC.pipelines?.length > 0 || userHC.regions?.length > 0) && (
             <p className="text-xs text-gray-500 mt-1">
@@ -265,6 +266,10 @@ export default function Recruiting() {
           <div className="text-[10px] text-gray-400">${(totalOffered / 1000).toFixed(0)}K committed</div>
         </div>
       </div>
+
+      {/* Scholarship availability — what new $ can actually be offered */}
+      <ScholarshipBanner save={save} />
+
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <span className="text-xs text-gray-500 mr-2">Pool:</span>
@@ -414,14 +419,34 @@ export default function Recruiting() {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
+function ScholarshipBanner({ save }) {
+  const s = scholarshipSnapshot(save)
+  const pctUsed = Math.min(1, s.percentUsed)
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4 shadow-sm">
+      <div className="flex justify-between items-baseline text-xs mb-2">
+        <div className="text-gray-600">
+          <span className="font-semibold text-pnw-slate">Scholarship budget</span> — pool ${(s.pool / 1000).toFixed(0)}K, committed ${(s.committed / 1000).toFixed(0)}K, offers out ${(s.pendingOffers / 1000).toFixed(0)}K
+        </div>
+        <div className="font-semibold text-pnw-green text-sm">${(s.available / 1000).toFixed(1)}K available</div>
+      </div>
+      <div className="h-2 bg-gray-200 rounded-full overflow-hidden flex">
+        <div className="bg-pnw-slate h-full" style={{ width: `${(s.committedPlayers / Math.max(1, s.pool)) * 100}%` }} title="Current roster" />
+        <div className="bg-pnw-green h-full" style={{ width: `${(s.signedRecruits / Math.max(1, s.pool)) * 100}%` }} title="Signed recruits" />
+        <div className="bg-amber-500 h-full" style={{ width: `${(s.pendingOffers / Math.max(1, s.pool)) * 100}%` }} title="Pending offers" />
+      </div>
+      {s.available < 5000 && (
+        <div className="text-[11px] text-amber-700 mt-1.5">⚠ Low scholarship runway. New $ frees up after seniors graduate or transfer out.</div>
+      )}
+    </div>
+  )
+}
+
 function isCampWindowOpen(calendar) {
-  // Camp window: August through November. In our calendar.year basis, this
-  // means we're in the offseason mode and within the Aug-Nov calendar months.
-  // For simplicity we allow it during the offseason (which spans Sept-Jan in real life).
   if (calendar.mode !== 'OFFSEASON') return false
-  // Check actual calendar month — derive from offseasonWeek (1 = mid-summer)
-  const month = new Date().getMonth() + 1
-  return month >= 8 && month <= 11   // Aug-Nov real-clock window
+  // Use sim-date, not wall clock: offseason week 1 = Aug 1. Camp window is
+  // Aug-Nov of the offseason → roughly offseason weeks 1-17.
+  return calendar.offseasonWeek >= 1 && calendar.offseasonWeek <= 17
 }
 
 function computeProgramMomentum(save) {
