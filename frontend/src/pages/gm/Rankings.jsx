@@ -21,7 +21,6 @@ export default function Rankings() {
 
   const save = useMemo(() => loadDynasty(userId, slot), [userId, slot])
   const [sortPillar, setSortPillar] = useState('overall_rating')
-  const [limit, setLimit] = useState(50)
 
   const ratings = useMemo(() => {
     if (!save) return {}
@@ -44,8 +43,7 @@ export default function Rankings() {
   const sorted = useMemo(() => {
     return Object.values(ratings)
       .sort((a, b) => b[sortPillar] - a[sortPillar])
-      .slice(0, limit)
-  }, [ratings, sortPillar, limit])
+  }, [ratings, sortPillar])
 
   return (
     <div className="max-w-6xl mx-auto py-8">
@@ -69,12 +67,7 @@ export default function Rankings() {
             </button>
           ))}
         </div>
-        <select className="border rounded px-2 py-1 text-sm" value={limit} onChange={e => setLimit(parseInt(e.target.value, 10))}>
-          <option value={25}>Top 25</option>
-          <option value={50}>Top 50</option>
-          <option value={100}>Top 100</option>
-          <option value={250}>All</option>
-        </select>
+        <div className="text-xs text-gray-500">All {sorted.length} programs</div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

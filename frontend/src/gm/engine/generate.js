@@ -26,13 +26,20 @@ import { pickCityForState } from './cities'
 // roster size varies 40-50 (small jitter applied per school).
 const CLASS_TARGETS = { FR: 12, SO: 12, JR: 11, SR: 10 }
 
+// Minimum-roster targets per spec: 4 C, 21 P, 8 IF, 7 OF. We exceed those
+// minimums in the base counts and pad the rest with bench hitters.
 const POSITION_TARGETS = {
-  // Position players (16 total)
-  C: 2, '1B': 2, '2B': 2, SS: 2, '3B': 2, LF: 2, CF: 2, RF: 2, DH: 1,
-  // Pitchers (~22 total, mix of SP slots + RP slots — UI shows all as "P"
-  // but the slot type still drives stamina mean during generation)
-  SP: 10, RP: 12,
-  // remaining slots padded with bench position players later
+  // Catchers — 4 mandatory
+  C: 4,
+  // Infield — 8 total (2 per spot)
+  '1B': 2, '2B': 2, SS: 2, '3B': 2,
+  // Outfield — 7 total
+  LF: 2, CF: 3, RF: 2,
+  // DH
+  DH: 1,
+  // Pitchers — 21 total: 9 SP + 12 RP
+  SP: 9, RP: 12,
+  // Remaining slots padded with bench position players later
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

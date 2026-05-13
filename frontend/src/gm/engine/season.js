@@ -472,11 +472,8 @@ export function advanceOffseasonWeek(state) {
   // Refresh weekly AP
   refreshWeeklyAP(state)
 
-  // Study hall weekly tally — if active this week, increment counter
-  if (state.studyHall?.active) {
-    state.studyHall.weeksActive = (state.studyHall.weeksActive || 0) + 1
-    state.studyHall.active = false   // user must re-mandate each week
-  }
+  // (Study Hall now uses direct cumulativeBonus applied on spend — no
+  // per-week tally to maintain here.)
 
   // Transition into season once offseason is over
   if (state.calendar.offseasonWeek > OFFSEASON_WEEKS) {
@@ -521,12 +518,9 @@ export function advanceWeek(state, schedule) {
   if (state.calendar.mode === 'SEASON' && state.calendar.seasonWeek != null) {
     state.calendar.seasonWeek++
     refreshWeeklyAP(state)
-    if (state.studyHall?.active) {
-      state.studyHall.weeksActive = (state.studyHall.weeksActive || 0) + 1
-      state.studyHall.active = false
-    }
-    if (state.calendar.seasonWeek > 14) {
-      // 14 weeks of regular season; postseason begins thereafter.
+    if (state.calendar.seasonWeek > 13) {
+      // 13 weeks of regular season; postseason begins Week 14 (conference
+      // tournament), Week 15 = Opening Round, Week 16 = NAIA World Series.
       state.calendar.mode = 'POSTSEASON'
       state.calendar.seasonWeek = null
       runPostseason(state)

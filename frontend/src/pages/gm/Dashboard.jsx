@@ -242,6 +242,7 @@ export default function Dashboard() {
           <Panel title="Navigate" actionTo={null}>
             <div className="grid grid-cols-2 gap-2">
               <NavTile to={`/gm/roster?slot=${slot}`} title="Roster" sub={`${team.rosterPlayerIds.length} players`} />
+              <NavTile to={`/gm/depth?slot=${slot}`} title="Depth Chart" sub="Field + pitching staff" />
               <NavTile to={`/gm/schedule?slot=${slot}`} title="Schedule" sub="Games + sim" />
               <NavTile to={`/gm/standings?slot=${slot}`} title="Standings" sub={conf.abbreviation} />
               <NavTile to={`/gm/rankings?slot=${slot}`} title="Rankings" sub="Top 50" />

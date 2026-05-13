@@ -113,10 +113,10 @@ export default function Roster() {
                       </span>
                     </td>
                     <td className={'text-xs ' + ratingColor(pot)}>{pot}</td>
-                    <td className="font-mono text-xs">{Math.round((p.hitter.contact_l + p.hitter.contact_r) / 2)}</td>
-                    <td className="font-mono text-xs">{Math.round((p.hitter.power_l + p.hitter.power_r) / 2)}</td>
-                    <td className="font-mono text-xs">{p.hitter.discipline}</td>
-                    <td className="font-mono text-xs">{p.hitter.fielding}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? Math.round((p.hitter.contact_l + p.hitter.contact_r) / 2) : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? Math.round((p.hitter.power_l + p.hitter.power_r) / 2) : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? p.hitter.discipline : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? p.hitter.fielding : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? p.pitcher.stuff : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? p.pitcher.control : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? p.pitcher.stamina : '—'}</td>

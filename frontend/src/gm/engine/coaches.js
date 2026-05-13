@@ -250,9 +250,11 @@ const SALARY_TABLE = {
   },
   MID: {
     HEAD_COACH:             { base: 48000,  qualBonus: 22000, floor: 35000 },
-    PITCHING_COACH:         { base: 17000,  qualBonus: 9000,  floor: 12000 },
-    HITTING_COACH:          { base: 17000,  qualBonus: 9000,  floor: 12000 },
-    BENCH_COACH:            { base: 10000,  qualBonus: 6000,  floor: 7000 },
+    // Asst pool at MID totals ~$40K: Hitting 20 + Pitching 15 + Bench 5.
+    // Per-role bases land near targets at typical quality (~65 avg).
+    HITTING_COACH:          { base: 19000,  qualBonus: 2500,  floor: 18000 },
+    PITCHING_COACH:         { base: 14000,  qualBonus: 2500,  floor: 13000 },
+    BENCH_COACH:            { base: 4500,   qualBonus: 1200,  floor: 4000 },
     RECRUITING_COORDINATOR: { base: 13000,  qualBonus: 8000,  floor: 9000 },
     STRENGTH_CONDITIONING:  { base: 10000,  qualBonus: 6000,  floor: 8000 },
     DIRECTOR_OF_OPERATIONS: { base: 8000,   qualBonus: 5000,  floor: 6000 },

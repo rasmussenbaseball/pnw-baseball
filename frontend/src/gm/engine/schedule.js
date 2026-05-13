@@ -125,16 +125,20 @@ function conferenceWindow(conferenceId, year) {
 }
 
 /**
- * Season week 1 = first Friday on/after Feb 8 of the season year. The +8
- * anchor (vs. Feb 1 historically) shifts numbering so the CCC's late-Feb
- * conference opener lands at Week 3 with 2 pre-conf weeks before it.
+ * Season week 1 = first Friday on/after Feb 1 of the season year.
+ * Week timeline:
+ *   Wk 1-3   pre-conf non-conference
+ *   Wk 4-13  conference regular season
+ *   Wk 14    conference tournament
+ *   Wk 15    Opening Round (regionals)
+ *   Wk 16    NAIA World Series
  */
 function seasonWeek1Friday(year) {
-  return snapToFriday(ymdDate(year, 2, 8))
+  return snapToFriday(ymdDate(year, 2, 1))
 }
 
 /** Last week of the regular season; postseason starts the following week. */
-export const REGULAR_SEASON_LAST_WEEK = 14
+export const REGULAR_SEASON_LAST_WEEK = 13
 
 /**
  * Compute season week (1-N) from a Date or ISO string. Both sides parsed

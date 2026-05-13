@@ -236,9 +236,11 @@ export default function Schedule() {
       )}
 
       {/* Postseason boundary */}
-      <div className="bg-pnw-slate text-white rounded-xl p-3 mb-6 text-sm font-semibold flex items-center justify-between">
-        <span>🏆 Postseason begins Week {REGULAR_SEASON_LAST_WEEK + 1}</span>
-        <span className="text-xs font-normal opacity-80">Conference tournament → Opening Round → NAIA World Series</span>
+      <div className="bg-pnw-slate text-white rounded-xl p-3 mb-6 text-sm font-semibold">
+        <div className="flex items-center justify-between">
+          <span>🏆 Postseason begins Week {REGULAR_SEASON_LAST_WEEK + 1}</span>
+          <span className="text-xs font-normal opacity-80">Wk 14 Conf Tournament • Wk 15 Opening Round • Wk 16 NAIA World Series</span>
+        </div>
       </div>
 
       {/* SCRIMMAGE section */}

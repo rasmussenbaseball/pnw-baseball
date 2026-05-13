@@ -37,24 +37,21 @@ export function initialAcademicState(player, rng) {
 }
 
 /**
- * End-of-term GPA update. Influenced by:
- *   - Player academic aptitude (baseline)
- *   - Cumulative study hall weeks (each week active = +0.025 GPA, max +0.35)
- *   - Coach motivator (small effect)
- *   - Random per-term variance (±0.4)
+ * End-of-term GPA update.
  *
  * @param {Player} player
- * @param {{ studyHallWeeks: number, coachMotivator: number, budgetEffects: any }} ctx
+ * @param {{ studyHallBonus: number, coachMotivator: number, budgetEffects: any }} ctx
+ *        studyHallBonus — direct cumulative GPA boost applied to every player
+ *        (e.g. +0.30 = the term included 6 weeks of regular study hall).
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @returns {Player}
  */
 export function updateAcademics(player, ctx, rng) {
   const aptitude = player.hidden?.academic_aptitude ?? 60
-  const baseline = 0.5 + (aptitude / 99) * 3.0
-  let newGpa = rng.gaussian(baseline, 0.45)
-  const studyHallWeeks = ctx.studyHallWeeks || 0
-  newGpa += Math.min(0.35, studyHallWeeks * 0.025)
-  if (ctx.coachMotivator) newGpa += (ctx.coachMotivator - 50) / 250    // ±0.2
+  const baseline = 1.0 + (aptitude / 99) * 2.7
+  let newGpa = rng.gaussian(baseline, 0.35)
+  newGpa += Math.min(0.6, ctx.studyHallBonus || 0)
+  if (ctx.coachMotivator) newGpa += (ctx.coachMotivator - 50) / 250
   newGpa = clamp(newGpa, 0.0, 4.0)
 
   const standing = gpaToStanding(newGpa, player.academicStanding)
@@ -113,7 +110,7 @@ export function runEndOfTermAcademics(state) {
   if (!userTeam) return { summary: null, dismissedPlayers: [] }
   const hc = state.coaches[userTeam.headCoachId]
   const coachMotivator = hc?.motivator ?? 50
-  const studyHallWeeks = state.studyHall?.weeksActive ?? 0
+  const studyHallBonus = state.studyHall?.cumulativeBonus ?? 0
   const rng = makeRng('acad', state.userSchoolId, state.calendar.year, state.rngSeed)
 
   const dismissedPlayers = []
@@ -122,7 +119,7 @@ export function runEndOfTermAcademics(state) {
   for (const id of userTeam.rosterPlayerIds) {
     const p = state.players[id]
     if (!p) continue
-    const updated = updateAcademics(p, { studyHallWeeks, coachMotivator }, rng)
+    const updated = updateAcademics(p, { studyHallBonus, coachMotivator }, rng)
     if (updated.academicStanding === 'dismissed') dismissedPlayers.push(updated)
     if (updated.academicStanding === 'ineligible' && p.academicStanding !== 'ineligible') {
       newlyIneligible.push(updated)
@@ -168,7 +165,7 @@ export function runEndOfTermAcademics(state) {
   })
 
   // Reset study hall counters for new term
-  state.studyHall = { active: false, weeksActive: 0 }
+  state.studyHall = { cumulativeBonus: 0 }
 
   return { summary, dismissedPlayers }
 }

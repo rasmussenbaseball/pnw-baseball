@@ -9,7 +9,10 @@ import {
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable } from '../../gm/engine/weeklyActions'
 import { offseasonPhase } from '../../gm/engine/calendar'
 
-const STUDY_HALL_AP = 3
+const STUDY_HALL_AP = 2
+const STUDY_HALL_BONUS = 0.02
+const EXTRA_STUDY_HALL_AP = 6
+const EXTRA_STUDY_HALL_BONUS = 0.05
 const FUNDRAISE_MIN_AP = 1
 const FUNDRAISE_MAX_AP = 15
 const CAMP_MIN_FEE = 25
@@ -32,8 +35,7 @@ export default function WeeklyActions() {
   const userHC = save.coaches[userTeam.headCoachId]
 
   const ap = save.ap.currentWeek
-  const studyHallActive = save.studyHall?.active === true
-  const weeksActive = save.studyHall?.weeksActive || 0
+  const studyHallBonus = save.studyHall?.cumulativeBonus || 0
   const currentPhase = save.calendar.mode === 'OFFSEASON'
     ? offseasonPhase(save.calendar.offseasonWeek)
     : 'In Season'
@@ -69,10 +71,15 @@ export default function WeeklyActions() {
     save.ap.spentByCategory[cat] = (save.ap.spentByCategory[cat] || 0) + n
   }
 
-  function doStudyHall() {
-    if (studyHallActive || ap < STUDY_HALL_AP) return
-    spendAP('program', STUDY_HALL_AP)
-    save.studyHall = { ...save.studyHall, active: true, weeksActive }
+  function doStudyHall(level = 'NORMAL') {
+    const cost = level === 'EXTRA' ? EXTRA_STUDY_HALL_AP : STUDY_HALL_AP
+    const bonus = level === 'EXTRA' ? EXTRA_STUDY_HALL_BONUS : STUDY_HALL_BONUS
+    if (ap < cost) return
+    spendAP('program', cost)
+    save.studyHall = {
+      ...save.studyHall,
+      cumulativeBonus: Math.min(0.6, (save.studyHall?.cumulativeBonus || 0) + bonus),
+    }
     saveDynasty(save); setSave({ ...save })
   }
 
@@ -176,15 +183,31 @@ export default function WeeklyActions() {
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Academics / Fundraising / Camp</h2>
 
-      {/* Study Hall */}
-      <ActionCard
-        title="Mandate Study Hall"
-        subtitle={`Lock in a +0.025 GPA bonus per active week (caps at +0.35). ${weeksActive} week${weeksActive === 1 ? '' : 's'} accrued this term.`}
-        active={studyHallActive}
-        disabled={studyHallActive || ap < STUDY_HALL_AP}
-        actionLabel={studyHallActive ? 'Active' : `Mandate (${STUDY_HALL_AP} AP)`}
-        onClick={doStudyHall}
-      />
+      {/* Study Hall — two levels */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+        <div className="text-sm font-semibold text-pnw-slate mb-1">Study Hall</div>
+        <div className="text-xs text-gray-500 mb-3">
+          Boosts team GPA at term-end. Cumulative this term: <span className="font-semibold text-pnw-green">+{studyHallBonus.toFixed(2)} GPA</span> (cap +0.60).
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => doStudyHall('NORMAL')}
+            disabled={ap < STUDY_HALL_AP || studyHallBonus >= 0.6}
+            className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <div className="flex justify-between"><span className="font-semibold text-sm">Standard</span><span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">{STUDY_HALL_AP} AP</span></div>
+            <div className="text-[11px] text-gray-500 mt-1">+0.02 team GPA this term.</div>
+          </button>
+          <button
+            onClick={() => doStudyHall('EXTRA')}
+            disabled={ap < EXTRA_STUDY_HALL_AP || studyHallBonus >= 0.6}
+            className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <div className="flex justify-between"><span className="font-semibold text-sm">Extra Study Hall</span><span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">{EXTRA_STUDY_HALL_AP} AP</span></div>
+            <div className="text-[11px] text-gray-500 mt-1">+0.05 team GPA this term. Bigger lift, costlier.</div>
+          </button>
+        </div>
+      </div>
 
       {/* Fundraise */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
