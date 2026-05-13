@@ -155,11 +155,7 @@ function HappinessPanel({ player }) {
             Driven mostly by playing time vs. expectations and on-field performance.
             {trendUp && <span className="ml-1 text-green-700 font-semibold">↑ trending up</span>}
             {trendDown && <span className="ml-1 text-red-700 font-semibold">↓ trending down</span>}
-            {h.coachBoost && h.coachBoost.weeksRemaining > 0 && (
-              <span className="ml-1 text-pnw-green font-semibold">
-                · 1-on-1 boost active ({h.coachBoost.weeksRemaining} wk left)
-              </span>
-            )}
+            {/* meeting boosts are now permanent direct bumps — no countdown */}
           </div>
         </div>
       </div>

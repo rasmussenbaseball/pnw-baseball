@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [busy, setBusy] = useState(false)
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
   const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
+  const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -136,18 +137,32 @@ export default function Dashboard() {
         phase: offseasonPhase(save.calendar.offseasonWeek),
       })
     } else if (mode === 'SEASON') {
-      // Either an empty week (no games scheduled) or seasonWeek=13 manual
-      // trigger — both fine to advance directly. Postseason at week 14 is
-      // the heavy path; runEndOfYear may take a few seconds and we yield
-      // first so the busy spinner can paint.
       const crossingIntoPostseason = (save.calendar.seasonWeek ?? 0) >= 13
       if (crossingIntoPostseason) {
-        const ok = window.confirm(
-          'Heads up: advancing past week 13 will run the postseason bracket, MLB draft, ' +
-          'player development, transfers, and end-of-year wrap. This usually takes 5–15 ' +
-          'seconds and the tab will freeze briefly. Continue?'
-        )
-        if (!ok) { setBusy(false); return }
+        // Postseason tick is now lighter than before (the EOY heavy work moved
+        // to deferred offseason events), but conference tournaments + national
+        // tournament still run synchronously. Show a progress modal with the
+        // phase label so users see it working, not "frozen."
+        setProgress({ title: 'Running postseason', step: 'Conference tournaments…', pct: 10 })
+        setTimeout(() => {
+          try {
+            setProgress(p => ({ ...p, step: 'National tournament…', pct: 40 }))
+            const ratings = seedFromPear(save.schools, save.conferences)
+            simWeek(save, save.schedule, ratings)
+            setProgress(p => ({ ...p, step: 'Wrapping up year…', pct: 80 }))
+            advanceWeek(save, save.schedule)
+            setProgress(p => ({ ...p, step: 'Saving…', pct: 95 }))
+            saveDynasty(save)
+            setSave({ ...save })
+            setLastWeekRecap({ kind: 'season', results: [] })
+          } catch (err) {
+            console.error('postseason failed:', err)
+            alert('Postseason sim failed — see console. State was not saved.')
+          }
+          setProgress(null)
+          setBusy(false)
+        }, 30)
+        return
       }
       setTimeout(() => {
         try {
@@ -186,6 +201,7 @@ export default function Dashboard() {
   // ─── UI ────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-7xl mx-auto py-6 px-4">
+      {progress && <ProgressModal {...progress} />}
       {/* Top bar — identity + date + AP */}
       <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white rounded-xl p-5 mb-4 flex justify-between items-center shadow">
         <div className="flex gap-4 items-center">
@@ -363,6 +379,7 @@ export default function Dashboard() {
               <NavTile to={`/gm/depth?slot=${slot}`} title="Depth Chart" sub="Field + pitching staff" />
               <NavTile to={`/gm/schedule?slot=${slot}`} title="Schedule" sub="Games + sim" />
               <NavTile to={`/gm/play?slot=${slot}`} title="Play Games" sub="Set lineups + live sim" />
+              <NavTile to={`/gm/calendar?slot=${slot}`} title="Calendar" sub="Year at a glance" />
               <NavTile to={`/gm/standings?slot=${slot}`} title="Standings" sub={conf.abbreviation} />
               <NavTile to={`/gm/rankings?slot=${slot}`} title="Rankings" sub="Top 50" />
               <NavTile to={`/gm/budget?slot=${slot}`} title="Budget" sub={`$${(save.budget?.totalAthleticBudget / 1000).toFixed(0)}K`} />
@@ -583,6 +600,24 @@ function NavTile({ to, title, sub }) {
       <div className="font-semibold text-sm">{title}</div>
       <div className="text-[11px] opacity-70">{sub}</div>
     </Link>
+  )
+}
+
+function ProgressModal({ title, step, pct }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md">
+        <h3 className="text-lg font-semibold text-pnw-slate mb-1">{title}</h3>
+        <p className="text-sm text-gray-600 mb-4">{step}</p>
+        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+          <div
+            className="bg-pnw-green h-3 transition-all duration-200"
+            style={{ width: `${Math.max(0, Math.min(100, pct ?? 0))}%` }}
+          />
+        </div>
+        <div className="text-[11px] text-gray-400 mt-2 text-right font-mono">{Math.round(pct ?? 0)}%</div>
+      </div>
+    </div>
   )
 }
 

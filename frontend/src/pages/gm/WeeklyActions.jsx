@@ -22,8 +22,7 @@ const CAMP_MAX_FEE = 300
 const MEETING_AP_PER_PLAYER = 2
 const MEETING_MAX_PLAYERS = 5
 const MEETING_MIN_PLAYERS = 1
-const MEETING_BOOST = 15
-const MEETING_WEEKS = 4
+const MEETING_BOOST = 12
 
 export default function WeeklyActions() {
   const { user } = useAuth()
@@ -124,7 +123,7 @@ export default function WeeklyActions() {
     if (wasUsedThisWeek('PLAYER_MEETINGS')) { alert('Already done this week.'); return }
     for (const pid of meetingPicks) {
       const p = save.players[pid]
-      if (p) applyMeetingBoost(p, MEETING_BOOST, MEETING_WEEKS)
+      if (p) applyMeetingBoost(p, MEETING_BOOST)
     }
     spendAP('program', cost)
     markUsedThisWeek('PLAYER_MEETINGS')
@@ -400,7 +399,7 @@ function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek,
         <div>
           <div className="text-sm font-semibold text-pnw-slate">🗣 1-on-1 Meetings</div>
           <div className="text-xs text-gray-500 max-w-xl">
-            Pull aside up to {MEETING_MAX_PLAYERS} players and check in. Each costs {MEETING_AP_PER_PLAYER} AP and bumps their happiness for {MEETING_WEEKS} weeks.
+            Pull aside up to {MEETING_MAX_PLAYERS} players and check in. Each costs {MEETING_AP_PER_PLAYER} AP and immediately bumps their happiness +{MEETING_BOOST}. The lift is permanent in the sense that nothing reverses it — but normal happiness drift still applies, so if their situation doesn't improve they'll drift back down.
             Sorted with the most-unhappy players on top so you don't miss them.
           </div>
         </div>

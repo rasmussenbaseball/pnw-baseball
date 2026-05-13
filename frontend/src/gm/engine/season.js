@@ -10,16 +10,12 @@
 import { simGame, fastSimGame, defaultLineup } from './sim'
 import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups'
 import { computeFromSeason, seedFromPear } from './rankings'
-import { applyScrimmageDev, endOfSeasonDevelopment } from './development'
+import { applyScrimmageDev } from './development'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
-import { annualReview, budgetCategoryEffects } from './budget'
 import { playerOverall } from './playerRating'
-import { applyHsAttrition, generatePortalPool } from './recruits'
-import { runOutboundTransfers } from './outboundTransfers'
-import { runEndOfTermAcademics, teamAcademicSummary } from './academics'
 import { tickHappiness } from './happiness'
-import { simMlbDraft, summarizeDraft } from './draft'
+import { runEventsForOffseasonWeek } from './events'
 import { OFFSEASON_WEEKS } from './calendar'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
@@ -292,175 +288,34 @@ export function runPostseason(state) {
 }
 
 /**
- * Run the end-of-year wrap: development pass on all players, annual budget
- * review, AP reset, calendar advance to next offseason.
+ * Run the minimal end-of-year transition. Heavy work (development, transfers,
+ * draft, portal pool, academics, budget review) is NO LONGER done here —
+ * instead it's queued onto specific offseason weeks via events.js so each
+ * weekly tick stays fast (< 500ms) and the user gets visible progress as
+ * each event fires.
+ *
+ * This function:
+ *   1. Archives last season's W-L + playerStats so deferred events can read them
+ *   2. Flips calendar to OFFSEASON week 1
+ *   3. Resets team W-L
+ *   4. Clears the schedule + active playerStats
+ *
+ * Total work: tiny. Tick should complete in a few ms.
  *
  * @param {SaveState} state
  */
 export function runEndOfYear(state) {
-  // 1. Player development for user's team (other teams handled implicitly)
+  // Archive what the deferred events will need
+  state._archivedPlayerStats = state.playerStats || {}
   const userTeam = state.teams[state.userSchoolId]
-  const hc = state.coaches[userTeam.headCoachId]
-  const coachDeveloper = hc?.developer ?? 55
-  const budgetEffects = budgetCategoryEffects(state.budget)
-
-  // Compute playing time per player (rough — based on if they're top-9 hitter / top-5 pitcher)
-  const playerIds = userTeam.rosterPlayerIds
-  const players = playerIds.map(id => state.players[id]).filter(Boolean)
-  const hitters = players.filter(p => p.isHitter).sort((a, b) => (b.hitter.contact_r || 0) - (a.hitter.contact_r || 0))
-  const pitchers = players.filter(p => p.isPitcher).sort((a, b) => (b.pitcher.stuff || 0) - (a.pitcher.stuff || 0))
-  const top9 = new Set(hitters.slice(0, 9).map(p => p.id))
-  const top5p = new Set(pitchers.slice(0, 5).map(p => p.id))
-
-  // Top dev performers we'll surface in the news
-  const devReport = []
-
-  for (const id of playerIds) {
-    const p = state.players[id]
-    if (!p) continue
-    const paShare = top9.has(id) ? 0.8 : 0.2
-    const ipShare = top5p.has(id) ? 0.8 : 0.2
-    const statsKey = p.isPitcher ? `p_${id}` : `b_${id}`
-    const seasonStats = state.playerStats?.[statsKey]
-    const updated = endOfSeasonDevelopment(p, {
-      coachDeveloper, paShare, ipShare, budgetEffects, seasonStats,
-    }, state.rngSeed + state.calendar.year)
-    const gain = updated._devGain || 0
-    if (gain >= 1.5) devReport.push({ player: updated, gain })
-    delete updated._devGain
-    // Auto-redshirt rule (NAIA / NCAA standard): ≤ 11 games played → free
-    // year of eligibility preserved, athletic class year does NOT advance.
-    // One redshirt per career, and only available while they still have
-    // headroom in the 5-years-for-4-seasons window (so seasonsUsed < 3).
-    const REDSHIRT_GAME_LIMIT = 11
-    const gp = state.playerStats?.[statsKey]?.gamesPlayed || 0
-    const eligibleToRedshirt = !updated.redshirtUsed && (updated.seasonsUsed || 0) < 3
-    const shouldRedshirt = eligibleToRedshirt && gp <= REDSHIRT_GAME_LIMIT
-    const nextClass = { FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[updated.classYear]
-
-    if (nextClass === 'GRAD') {
-      state.players[id] = { ...updated, eligibilityStatus: 'graduated' }
-    } else if (shouldRedshirt) {
-      // Classyear + seasonsUsed stay put; semestersUsed still ticks (academic
-      // clock keeps moving). Player returns as a "RS-XX" next year.
-      state.players[id] = {
-        ...updated,
-        redshirtUsed: true,
-        semestersUsed: (updated.semestersUsed || 0) + 2,
-      }
-      state.newsfeed.unshift({
-        id: `rs_${state.calendar.year}_${id}`,
-        year: state.calendar.year + 1,
-        week: 17,
-        type: 'AWARD',
-        headline: `🎓 ${updated.firstName} ${updated.lastName} (${updated.classYear} ${updated.primaryPosition}) auto-redshirted — only ${gp} games played. Year of eligibility preserved.`,
-        payload: { playerId: id, games: gp },
-      })
-    } else {
-      state.players[id] = { ...updated, classYear: nextClass, seasonsUsed: updated.seasonsUsed + 1, semestersUsed: updated.semestersUsed + 2 }
+  if (userTeam) {
+    userTeam._lastSeason = {
+      wins: userTeam.wins, losses: userTeam.losses,
+      runDiff: userTeam.runDiff,
     }
   }
 
-  // Surface the biggest developments in the news
-  devReport.sort((a, b) => b.gain - a.gain)
-  for (const r of devReport.slice(0, 3)) {
-    state.newsfeed.unshift({
-      id: `dev_${state.calendar.year}_${r.player.id}`,
-      year: state.calendar.year + 1,
-      week: 18,
-      type: 'AWARD',
-      headline: `${r.player.firstName} ${r.player.lastName} (${r.player.classYear}, ${r.player.primaryPosition}) developed +${r.gain.toFixed(1)} OVR over the season.`,
-      payload: { playerId: r.player.id, gain: r.gain },
-    })
-  }
-
-  // Remove graduated players from active roster (but keep their record in players for history)
-  const grads = playerIds.filter(id => state.players[id]?.eligibilityStatus === 'graduated')
-  if (grads.length > 0) {
-    state.teams[state.userSchoolId].rosterPlayerIds = userTeam.rosterPlayerIds.filter(id => !grads.includes(id))
-    state.newsfeed.unshift({
-      id: `grad_${state.calendar.year}`,
-      year: state.calendar.year + 1,
-      week: 18,
-      type: 'AWARD',
-      headline: `${grads.length} senior${grads.length === 1 ? '' : 's'} graduated. Roster down to ${state.teams[state.userSchoolId].rosterPlayerIds.length}.`,
-      payload: {},
-    })
-  }
-
-  // MLB Draft — runs in July (week ~17 of the prior season's calendar).
-  // 5–12 NAIA players picked, ~85% pitchers. User picks (if any) get a
-  // jobSecurity / program-prestige bump.
-  const draftPicks = simMlbDraft(state, state.calendar.year)
-  if (!state.draftResults) state.draftResults = {}
-  state.draftResults[state.calendar.year] = draftPicks
-  const userConfId = state.schools[state.userSchoolId]?.conferenceId
-  state.newsfeed.unshift({
-    id: `draft_${state.calendar.year}`,
-    year: state.calendar.year + 1,
-    week: 17,
-    type: 'AWARD',
-    headline: `⚾ ${summarizeDraft(draftPicks, userConfId)}`,
-    payload: { year: state.calendar.year, picks: draftPicks },
-  })
-  // Individual headlines for user players who got picked — these are big.
-  const userPicks = draftPicks.filter(p => p.teamId === state.userSchoolId)
-  for (const pk of userPicks) {
-    state.newsfeed.unshift({
-      id: `draft_user_${state.calendar.year}_${pk.playerId}`,
-      year: state.calendar.year + 1,
-      week: 17,
-      type: 'AWARD',
-      headline: `🌟 ${pk.name} (${pk.pos}) drafted by MLB in Round ${pk.round}! Big win for the program.`,
-      payload: { playerId: pk.playerId, round: pk.round },
-      big: true,
-    })
-  }
-  if (userPicks.length > 0 && state.budget) {
-    state.budget.jobSecurity = Math.min(100, (state.budget.jobSecurity || 50) + userPicks.length * 3)
-  }
-
-  // Outbound transfers — MID_OFFSEASON (dramatic: stars + disgruntled bench)
-  runOutboundTransfers(state, 'MID_OFFSEASON')
-  // Outbound transfers — LATE_OFFSEASON (cleanup: broader churn)
-  runOutboundTransfers(state, 'LATE_OFFSEASON')
-
-  // Academics — end of spring term GPA update + eligibility/dismissal
-  const academicResult = runEndOfTermAcademics(state)
-  // Low team GPA hurts coach job security
-  if (academicResult.summary && academicResult.summary.teamGpa < 2.5 && state.budget) {
-    const penalty = Math.round((2.5 - academicResult.summary.teamGpa) * 12)
-    state.budget.jobSecurity = Math.max(0, (state.budget.jobSecurity || 50) - penalty)
-    state.newsfeed.unshift({
-      id: `acad_pen_${state.calendar.year}`,
-      year: state.calendar.year + 1, week: 0,
-      type: 'AWARD',
-      headline: `⚠️ Team GPA of ${academicResult.summary.teamGpa.toFixed(2)} is below 2.5 — AD docked your job security ${penalty} pts. Mandate study hall to recover.`,
-      payload: {},
-    })
-  }
-
-  // 2. Annual budget review
-  const seasonResult = {
-    wins: userTeam.wins,
-    losses: userTeam.losses,
-    confChampion: state.postseason?.userChamp || false,
-    postseasonAppearance: state.postseason?.userQualified || false,
-  }
-  const reviewResult = annualReview(state.budget, seasonResult)
-  state.budget = reviewResult.newBudget
-  for (const msg of reviewResult.news) {
-    state.newsfeed.unshift({
-      id: `review_${state.calendar.year}_${Math.random().toString(36).slice(2, 6)}`,
-      year: state.calendar.year + 1,
-      week: 17,
-      type: 'AWARD',
-      headline: msg,
-      payload: {},
-    })
-  }
-
-  // 3. Reset for next year
+  // Calendar transition
   state.calendar.year++
   state.calendar.mode = 'OFFSEASON'
   state.calendar.offseasonWeek = 1
@@ -473,28 +328,19 @@ export function runEndOfYear(state) {
     team.confWins = 0; team.confLosses = 0
     team.runDiff = 0
   }
-  // Clear schedule + per-player stats
   state.schedule = []
   state.playerStats = {}
-
-  // Open the portal — HS attrition + portal pool generation
-  if (state.recruits) {
-    applyHsAttrition(state.recruits, state.rngSeed + state.calendar.year)
-    const userHC = state.coaches[state.teams[state.userSchoolId]?.headCoachId]
-    const portalPool = generatePortalPool(state.calendar.year, state.rngSeed, userHC)
-    Object.assign(state.recruits, portalPool)
-    state.newsfeed.unshift({
-      id: `portal_open_${state.calendar.year}`,
-      year: state.calendar.year,
-      week: 1,
-      type: 'AWARD',
-      headline: `NAIA Portal is now OPEN. ${Object.values(portalPool).length} new transfer prospects available on the recruiting board.`,
-      payload: {},
-    })
-  }
-
-  // Reset prospect camp flag for new year
   state.prospectCamp = null
+
+  // Surface a "season wrapped, here's what's coming" newsfeed entry so the
+  // user sees the calendar is now ticking through deferred events.
+  state.newsfeed.unshift({
+    id: `eoy_${state.calendar.year}`,
+    year: state.calendar.year, week: 0, type: 'AWARD',
+    headline: `📅 Postseason wrapped. Budget review, draft, transfers, and development run over the next few offseason weeks. Watch the calendar.`,
+    payload: {}, big: true,
+  })
+
 }
 
 export const ROSTER_CAP_MAX = 60
@@ -590,6 +436,12 @@ export function advanceOffseasonWeek(state) {
   // Refresh weekly AP and tick per-week bookkeeping
   refreshWeeklyAP(state)
   tickWeeklyBookkeeping(state)
+
+  // Run any scheduled events for this offseason week. This is where the
+  // post-season heavy work gets distributed — development on Wk 2, draft on
+  // Wk 3, transfers on Wk 4/5, etc. Each individual event is fast (< 500ms);
+  // by spreading them across weeks we keep every tick responsive.
+  runEventsForOffseasonWeek(state, state.calendar.offseasonWeek)
 
   // Transition into season once offseason is over
   if (state.calendar.offseasonWeek > OFFSEASON_WEEKS) {

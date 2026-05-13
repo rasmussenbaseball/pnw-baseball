@@ -146,10 +146,6 @@ export function computeHappinessTarget(player, ctx) {
   // Coach motivator: -8 (cold) to +8 (warm)
   if (ctx.coachMotivator != null) target += ((ctx.coachMotivator - 50) / 50) * 8
 
-  // Recent 1-on-1 boost
-  const boost = player.happiness?.coachBoost
-  if (boost && boost.weeksRemaining > 0) target += boost.amount
-
   return Math.max(0, Math.min(100, Math.round(target)))
 }
 
@@ -190,12 +186,6 @@ export function tickHappiness(state) {
     const target = computeHappinessTarget(p, ctx)
     h.value = Math.max(0, Math.min(100, Math.round(h.value + (target - h.value) * SMOOTHING)))
 
-    // Tick down active boost
-    if (h.coachBoost && h.coachBoost.weeksRemaining > 0) {
-      h.coachBoost.weeksRemaining--
-      if (h.coachBoost.weeksRemaining <= 0) h.coachBoost = null
-    }
-
     applyHappinessConsequences(p, h)
   }
 }
@@ -224,12 +214,19 @@ function applyHappinessConsequences(p, h) {
 }
 
 /**
- * Apply a 1-on-1 meeting boost to a player. Immediate small bump + a
- * multi-week target lift that decays.
+ * Apply a 1-on-1 meeting boost to a player. This is a permanent, one-shot
+ * lift to their happiness value — moves them e.g. 50 → 60 right now. The
+ * normal weekly smoothing toward target then takes over, so if their PT /
+ * performance situation hasn't changed they'll drift back down over time.
+ * That's the design: meetings buy you a window, not a free permanent ceiling.
+ *
+ * @param {Player} player
+ * @param {number} amount  how many happiness points to add (default 12).
  */
-export function applyMeetingBoost(player, amount = 15, weeks = 4) {
+export function applyMeetingBoost(player, amount = 12) {
   const h = ensureHappiness(player)
-  h.coachBoost = { amount, weeksRemaining: weeks }
-  // Immediate visible bump so the user sees their action register right away
-  h.value = Math.max(0, Math.min(100, h.value + Math.round(amount * 0.4)))
+  h.value = Math.max(0, Math.min(100, h.value + amount))
+  // Track when the last meeting happened so the UI can show it as a recent
+  // intervention — purely informational, doesn't affect ratings.
+  h.lastMeetingValue = h.value
 }
