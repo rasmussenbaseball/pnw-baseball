@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
@@ -308,7 +308,7 @@ function InterviewModal({ role, candidates, onHire, onClose }) {
           {candidates.map(c => (
             <div key={c.id} className="border border-gray-200 rounded p-3 flex items-start gap-4">
               <div className="flex-1">
-                <CoachCard coach={c} compact />
+                <CoachCard coach={c} compact hideStats />
               </div>
               <button
                 onClick={() => onHire(c)}
@@ -324,39 +324,50 @@ function InterviewModal({ role, candidates, onHire, onClose }) {
   )
 }
 
-function CoachCard({ coach, compact }) {
+function CoachCard({ coach, compact, hideStats }) {
+  // For prospective hires we deliberately blind 2 of the 4 metrics so the
+  // user can't just always pick the best — adds uncertainty to interviews.
+  // Choice is deterministic per coach.id so the same hidden pair shows on
+  // every render.
+  const visibleStats = useMemo(() => {
+    if (!hideStats) return new Set(['developer', 'motivator', 'recruiter', 'tactician'])
+    const all = ['developer', 'motivator', 'recruiter', 'tactician']
+    // Tiny stable hash from coach id
+    let h = 0
+    const s = coach.id || ''
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+    // Pick 2 distinct indices
+    const a = h % 4
+    let b = (h >> 4) % 4
+    if (b === a) b = (b + 1) % 4
+    return new Set([all[a], all[b]])
+  }, [coach.id, hideStats])
+
+  function stat(key, label) {
+    const reveal = visibleStats.has(key)
+    return (
+      <AttrTooltip attr={reveal ? key : null} text={reveal ? null : 'Hidden until hired'}>
+        <div className="bg-gray-50 rounded p-1.5 cursor-help">
+          <div className={'font-bold ' + (reveal ? 'text-pnw-green' : 'text-gray-400')}>
+            {reveal ? coach[key] : '?'}
+          </div>
+          <div className="text-[9px] uppercase text-gray-500">{label}</div>
+        </div>
+      </AttrTooltip>
+    )
+  }
+
   return (
     <div>
       <div className={'font-semibold ' + (compact ? '' : 'text-lg')}>{coach.firstName} {coach.lastName}</div>
       <div className="text-xs text-gray-500 mb-2">
-        Age {coach.age} • {prettyLabel(coach.recruiter_type)} • {(coach.regions || []).join(', ')}
+        Age {coach.age} • Regions: {(coach.regions || []).join(', ') || 'home state'}
       </div>
-      <div className="text-xs text-gray-500 mb-2">Pipelines: {(coach.pipelines || []).map(prettyLabel).join(', ') || 'none'}</div>
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
-        <AttrTooltip attr="developer">
-          <div className="bg-gray-50 rounded p-1.5 cursor-help">
-            <div className="font-bold text-pnw-green">{coach.developer}</div>
-            <div className="text-[9px] uppercase text-gray-500">Dev</div>
-          </div>
-        </AttrTooltip>
-        <AttrTooltip attr="motivator">
-          <div className="bg-gray-50 rounded p-1.5 cursor-help">
-            <div className="font-bold text-pnw-green">{coach.motivator}</div>
-            <div className="text-[9px] uppercase text-gray-500">Mot</div>
-          </div>
-        </AttrTooltip>
-        <AttrTooltip attr="recruiter">
-          <div className="bg-gray-50 rounded p-1.5 cursor-help">
-            <div className="font-bold text-pnw-green">{coach.recruiter}</div>
-            <div className="text-[9px] uppercase text-gray-500">Rec</div>
-          </div>
-        </AttrTooltip>
-        <AttrTooltip attr="tactician">
-          <div className="bg-gray-50 rounded p-1.5 cursor-help">
-            <div className="font-bold text-pnw-green">{coach.tactician}</div>
-            <div className="text-[9px] uppercase text-gray-500">Tac</div>
-          </div>
-        </AttrTooltip>
+        {stat('developer', 'Dev')}
+        {stat('motivator', 'Mot')}
+        {stat('recruiter', 'Rec')}
+        {stat('tactician', 'Tac')}
       </div>
       <div className="text-xs text-gray-500 mt-2">
         {coach.salary > 0

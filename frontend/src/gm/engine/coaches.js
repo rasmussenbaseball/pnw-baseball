@@ -242,15 +242,17 @@ const SALARY_TABLE = {
   },
   MID: {
     HEAD_COACH:             { base: 48000,  qualBonus: 22000, floor: 35000 },
-    // Asst pool at MID totals ~$40K: Hitting 20 + Pitching 15 + Bench 5.
-    // Per-role bases land near targets at typical quality (~65 avg).
-    HITTING_COACH:          { base: 19000,  qualBonus: 2500,  floor: 18000 },
-    PITCHING_COACH:         { base: 14000,  qualBonus: 2500,  floor: 13000 },
-    BENCH_COACH:            { base: 4500,   qualBonus: 1200,  floor: 4000 },
-    RECRUITING_COORDINATOR: { base: 13000,  qualBonus: 8000,  floor: 9000 },
-    STRENGTH_CONDITIONING:  { base: 10000,  qualBonus: 6000,  floor: 8000 },
-    DIRECTOR_OF_OPERATIONS: { base: 8000,   qualBonus: 5000,  floor: 6000 },
-    DATA_ANALYTICS_MANAGER: { base: 9000,   qualBonus: 6000,  floor: 7000 },
+    // Asst pool budget guidance: ~$40K total typical. Bases lowered + qual
+    // bonuses widened so quality 30 cheaps out around $4-8K while quality
+    // 85 pushes $20-25K. Combined with the ±40% salary noise in
+    // generateHiringCandidates this produces a real $$$ spread.
+    HITTING_COACH:          { base: 11000,  qualBonus: 14000, floor: 4500 },
+    PITCHING_COACH:         { base: 11000,  qualBonus: 14000, floor: 4500 },
+    BENCH_COACH:            { base: 5000,   qualBonus: 9000,  floor: 2500 },
+    RECRUITING_COORDINATOR: { base: 12000,  qualBonus: 11000, floor: 6000 },
+    STRENGTH_CONDITIONING:  { base: 9000,   qualBonus: 9000,  floor: 5000 },
+    DIRECTOR_OF_OPERATIONS: { base: 7000,   qualBonus: 7000,  floor: 4000 },
+    DATA_ANALYTICS_MANAGER: { base: 9000,   qualBonus: 8000,  floor: 5000 },
     GRADUATE_ASSISTANT:     { base: 0,      qualBonus: 0,     floor: 0     },
   },
   SHOESTRING: {
@@ -318,21 +320,33 @@ export function generateStaff(school, seed) {
  * @returns {Coach[]}
  */
 export function generateHiringCandidates(school, role, rng) {
-  // Force a spread of quality levels so candidates aren't all clustered
-  const qualityTargets = [40, 55, 68, 78]
+  // WIDE spread of quality levels — sometimes the cheap option is the
+  // diamond in the rough; sometimes the expensive guy is overpaid. Also
+  // applies stochastic salary noise so even same-quality coaches negotiate
+  // differently (ego, agent, market). Range targets 30-90 in ratings,
+  // ~0.5x to ~1.8x base salary.
+  const qualityTargets = [32, 50, 65, 80]
   const candidates = []
   for (let i = 0; i < qualityTargets.length; i++) {
     const target = qualityTargets[i]
+    const stddev = 9     // wide per-rating noise so individual ratings vary
     const ratingOverride = {
-      developer: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
-      motivator: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
-      recruiter: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
-      tactician: Math.max(30, Math.min(99, Math.round(rng.gaussian(target, 4)))),
+      developer: clamp(Math.round(rng.gaussian(target, stddev)), 25, 95),
+      motivator: clamp(Math.round(rng.gaussian(target, stddev)), 25, 95),
+      recruiter: clamp(Math.round(rng.gaussian(target, stddev)), 25, 95),
+      tactician: clamp(Math.round(rng.gaussian(target, stddev)), 25, 95),
     }
-    candidates.push(generateCoach(school, role, rng, {
+    const c = generateCoach(school, role, rng, {
       overrideRatings: ratingOverride,
       idPrefix: `cand_${role}_${i}`,
-    }))
+    })
+    // Salary noise: ±40% so quality alone doesn't dictate price. A bad
+    // coach with a hot agent might demand $20K; a great one might come
+    // cheap because they want the gig. Adds the "have to overpay a
+    // mediocre option" feeling.
+    const noiseMult = clamp(rng.gaussian(1.0, 0.22), 0.45, 1.85)
+    c.salary = Math.max(0, Math.round(c.salary * noiseMult))
+    candidates.push(c)
   }
   return candidates
 }

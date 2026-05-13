@@ -84,19 +84,22 @@ export default function Dashboard() {
       .sort((a, b) => a.seasonWeek - b.seasonWeek)[0]
   }, [save, mode])
 
-  // Unplayed user games in the CURRENT season week — drives whether we route
-  // the user to the Play page (live game experience) or just advance the week.
+  // Unplayed user games in the CURRENT week — includes both regular-season
+  // games (matched by seasonWeek) AND offseason fall scrimmages (matched by
+  // weekOfYear). The dashboard surfaces these via the GameWeekBanner.
   const thisWeekUnplayed = useMemo(() => {
-    if (mode !== 'SEASON') return []
-    const sw = save.calendar.seasonWeek ?? 1
-    return (save.schedule || []).filter(g =>
-      !g.played
-      && g.type !== 'BYE'
-      && g.awayId !== '__BYE__'
-      && g.seasonWeek === sw
-      && (g.homeId === save.userSchoolId || g.awayId === save.userSchoolId)
-    )
-  }, [save, mode])
+    const sw = save.calendar.seasonWeek
+    const wk = save.calendar.weekOfYear
+    const userId = save.userSchoolId
+    return (save.schedule || []).filter(g => {
+      if (g.played) return false
+      if (g.type === 'BYE' || g.awayId === '__BYE__') return false
+      if (g.homeId !== userId && g.awayId !== userId) return false
+      const matchSeason = sw != null && g.seasonWeek === sw
+      const matchWeek = wk != null && g.weekOfYear === wk
+      return matchSeason || matchWeek
+    })
+  }, [save])
 
   // Schedule completeness for the UPCOMING season (the one being scheduled in
   // offseason). If the user has open weekend slots, we hard-block sim until
@@ -135,11 +138,21 @@ export default function Dashboard() {
         return
       }
     }
-    // Season mode + unplayed games this week → pop the game-week modal so
-    // the user explicitly chooses "Enter Game" (live PA-by-PA) or "Sim Games"
-    // (auto). The modal is the popup the spec asks for; both branches route
-    // to Play page or auto-sim respectively.
-    if (mode === 'SEASON' && thisWeekUnplayed.length > 0) {
+    // Soft confirm if AP is unspent in a non-tutorial week. The tutorial
+    // weeks (1-3) have ap=0 by design; wk 4 is its own gate; otherwise
+    // every leftover AP would have boosted recruiting / development.
+    const wk = save.calendar?.weekOfYear ?? 0
+    const ap = save.ap?.currentWeek ?? 0
+    if (ap > 0 && wk >= 5 && wk !== 4) {
+      const ok = window.confirm(
+        `You still have ${ap} AP unspent this week. Advance anyway? (Unused AP is lost — it doesn't carry over.)`
+      )
+      if (!ok) return
+    }
+    // Any unplayed user games this week (season OR fall scrim) → pop the
+    // game-week modal so the user explicitly chooses "Enter Game" (live
+    // PA-by-PA) or "Sim Games" (auto).
+    if (thisWeekUnplayed.length > 0) {
       setGameWeekModal(true)
       return
     }
@@ -231,11 +244,13 @@ export default function Dashboard() {
           onSim={() => {
             setGameWeekModal(false)
             setBusy(true)
+            // Sim THIS week's games but stay on this week so the user can
+            // spend remaining AP. They'll advance via the Sim Next Week
+            // button when they're done.
             setTimeout(() => {
               try {
                 const ratings = seedFromPear(save.schools, save.conferences)
                 const summary = simWeek(save, save.schedule, ratings)
-                advanceWeek(save, save.schedule)
                 saveDynasty(save)
                 setSave({ ...save })
                 setLastWeekRecap({ kind: 'season', results: summary.userResults })
@@ -282,12 +297,14 @@ export default function Dashboard() {
           weekOfYear={weekOfYear}
           slot={slot}
           onSimNow={() => {
+            // Sim the games but DON'T auto-advance the week — let the user
+            // spend remaining AP first. If they have nothing to spend AP on
+            // they can still click Sim Next Week from the main bar.
             setBusy(true)
             setTimeout(() => {
               try {
                 const ratings = seedFromPear(save.schools, save.conferences)
                 const summary = simWeek(save, save.schedule, ratings)
-                advanceWeek(save, save.schedule)
                 saveDynasty(save)
                 setSave({ ...save })
                 setLastWeekRecap({ kind: 'season', results: summary.userResults })
@@ -909,7 +926,19 @@ function SimDiffPanel({ simResult, onDismiss }) {
         <div className="mb-3 bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-900">
           Stopped before the postseason transition. Week 13 (the last regular-season week)
           hasn't been played yet — click <strong>Advance Week →</strong> once more to play it and
-          fire the postseason bracket + end-of-year wrap (development, draft, transfers).
+          fire the postseason bracket + end-of-year wrap.
+        </div>
+      )}
+      {stoppedReason === 'prospect_camp_boundary' && (
+        <div className="mb-3 bg-red-50 border border-red-300 rounded p-2 text-xs text-red-900">
+          <strong>⛔ Stopped before Prospect Camp (Wk 13).</strong> You can't skip this — head to
+          Weekly Actions and run camp before advancing.
+        </div>
+      )}
+      {stoppedReason === 'user_games_pending' && (
+        <div className="mb-3 bg-pnw-cream border border-pnw-green/40 rounded p-2 text-xs text-pnw-slate">
+          ⚾ <strong>Stopped on a game week.</strong> You have games this week — Enter Game live
+          or Sim Game(s) from the top of the dashboard.
         </div>
       )}
 

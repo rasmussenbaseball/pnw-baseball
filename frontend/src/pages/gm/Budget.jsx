@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
@@ -12,8 +12,19 @@ import {
   applyBudgetPreset,
   budgetOverage,
   lockBudgetForYear,
+  lockTravelAllocation,
 } from '../../gm/engine/budget'
+import { totalAnnualTravelCost } from '../../gm/engine/travel'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
+import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
+
+const NON_NAIA_DISPLAY = (() => {
+  const out = {}
+  for (const div of nonNaiaRaw.divisions) {
+    for (const t of div.teams) out[t.id] = { ...t, division: div.id }
+  }
+  return out
+})()
 
 const CATEGORY_LABELS = {
   scholarships:      { label: 'Scholarships',         blurb: 'Athletic aid pool. Drives recruit closing rate.' },
@@ -48,6 +59,20 @@ export default function Budget() {
   const weekOfYear = save.calendar?.weekOfYear ?? 1
   const isWk3Tutorial = weekOfYear === 3
   const isLocked = budget.locked?.year === save.calendar?.year
+
+  // Self-heal: if travel is locked at $0 but the schedule has road trips,
+  // re-lock against the actual cost. Catches saves from the buggy version
+  // of LOCK_TRAVEL_BUDGET where .totalCost was read off a number.
+  const liveTravel = useMemo(
+    () => totalAnnualTravelCost(save.userSchoolId, save.schedule || [], save.schools, NON_NAIA_DISPLAY) || 0,
+    [save.schedule, save.schools, save.userSchoolId],
+  )
+  useEffect(() => {
+    if (travelLocked && (budget.allocations.travel || 0) === 0 && liveTravel > 0) {
+      save.budget = lockTravelAllocation(budget, liveTravel)
+      saveDynasty(save); setSave({ ...save })
+    }
+  }, [travelLocked, liveTravel])    // eslint-disable-line
 
   function setCategory(category, newAmount) {
     if (category === 'travel' && travelLocked) return

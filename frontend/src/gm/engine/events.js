@@ -170,10 +170,10 @@ function runLockTravelBudget(state) {
   if (!state.schedule || state.schedule.length === 0) {
     return { label: 'No schedule yet — travel not locked' }
   }
-  const cost = totalAnnualTravelCost(
+  // totalAnnualTravelCost returns a plain number (not an object)
+  const travelDollars = totalAnnualTravelCost(
     state.userSchoolId, state.schedule, state.schools, NON_NAIA_LOOKUP,
-  )
-  const travelDollars = cost?.totalCost ?? 0
+  ) || 0
   state.budget = lockTravelAllocation(state.budget, travelDollars)
   state.newsfeed.unshift({
     id: `lock_travel_${state.calendar.year}`,

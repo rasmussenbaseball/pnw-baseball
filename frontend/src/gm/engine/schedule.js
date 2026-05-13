@@ -153,6 +153,21 @@ export function dateToSeasonWeek(date, year) {
 }
 
 /**
+ * Convert a date string ("yyyy-mm-dd") + the game-year (the August year that
+ * Wk 1 falls in) to a weekOfYear (1-52). Wk 1 starts Aug 1 of `gameYear`.
+ *
+ * @param {string} date  yyyy-mm-dd
+ * @param {number} gameYear  the August year (state.calendar.year)
+ */
+export function dateToWeekOfYear(date, gameYear) {
+  const start = new Date(Date.UTC(gameYear, 7, 1))  // Aug 1
+  const d = typeof date === 'string' ? new Date(date + 'T00:00:00Z') : new Date(date)
+  const diffMs = d - start
+  const wk = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7)) + 1
+  return Math.max(1, Math.min(52, wk))
+}
+
+/**
  * Get the Friday-of-week-N Date.
  */
 function seasonWeekFriday(week, year) {
@@ -710,15 +725,18 @@ export function autoScheduleFallGames(userSchoolId, schools, nonNaiaTeams, year,
     const homeId = i % 2 === 0 ? userSchoolId : opp.id
     const awayId = i % 2 === 0 ? opp.id : userSchoolId
     const seriesId = `autofall_${year}_${slot.date}_${userSchoolId}_${opp.id}`
+    // Tag with weekOfYear so the offseason sim hook knows which week to fire
+    // each doubleheader on. October Fridays land in wks 9-13 in our calendar.
+    const wkOfYear = dateToWeekOfYear(slot.date, year)
     games.push({
-      id: `${seriesId}_0`, year, seasonWeek: 0, date: slot.date,
+      id: `${seriesId}_0`, year, seasonWeek: 0, weekOfYear: wkOfYear, date: slot.date,
       homeId, awayId, type: 'FALL_SCRIMMAGE', seriesId,
       countsTowardRecord: false, isDoubleheader: true,
       played: false, homeRuns: null, awayRuns: null,
       autoScheduled: true,
     })
     games.push({
-      id: `${seriesId}_1`, year, seasonWeek: 0, date: slot.date,
+      id: `${seriesId}_1`, year, seasonWeek: 0, weekOfYear: wkOfYear, date: slot.date,
       homeId, awayId, type: 'FALL_SCRIMMAGE', seriesId,
       countsTowardRecord: false, isDoubleheader: true,
       played: false, homeRuns: null, awayRuns: null,

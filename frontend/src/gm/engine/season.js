@@ -17,7 +17,7 @@ import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
-import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
+import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar } from './gameYear'
 import nonNaiaRaw from '../data/non_naia_teams.json'
@@ -54,13 +54,26 @@ const NON_NAIA_LOOKUP = (() => {
  */
 export function simWeek(state, schedule, ratings) {
   const targetWeek = state.calendar.seasonWeek
+  const targetWeekOfYear = state.calendar.weekOfYear
   const userSchoolId = state.userSchoolId
   const userResults = []
   let gamesPlayed = 0
 
   for (const g of schedule) {
     if (g.played) continue
-    if (g.seasonWeek !== targetWeek) continue
+    // Match by seasonWeek (regular-season + postseason games) OR by
+    // weekOfYear (fall scrimmages live in offseason wks 9-13 where
+    // seasonWeek is null). Legacy games without weekOfYear fall through to
+    // seasonWeek matching.
+    const matchesSeason = targetWeek != null && g.seasonWeek === targetWeek
+    let gameWeekOfYear = g.weekOfYear
+    if (gameWeekOfYear == null && g.date && g.type === 'FALL_SCRIMMAGE') {
+      // Derive on the fly for old saves
+      gameWeekOfYear = dateToWeekOfYear(g.date, state.calendar.year)
+    }
+    const matchesWeekOfYear = gameWeekOfYear != null && targetWeekOfYear != null
+      && gameWeekOfYear === targetWeekOfYear
+    if (!matchesSeason && !matchesWeekOfYear) continue
     if (g.type === 'BYE') { g.played = true; continue }   // bye weeks just tick through
 
     const isUserGame = g.homeId === userSchoolId || g.awayId === userSchoolId
@@ -510,6 +523,41 @@ export function advanceOneWeek(state) {
 
   // Fire events for the new week (budget review, draft, portal opens, etc.)
   runEventsForWeek(state, nextWeek)
+
+  // Sim any fall scrimmages whose weekOfYear matches the new week. Lets us
+  // unify the scrimmage + game-week paths — they all flow through simWeek
+  // and update boxscores / playerStats the same way. Skip the user's games
+  // (those go through the live-play modal); auto-fall games NOT involving
+  // the user are simulated quickly.
+  simScrimmagesForCurrentWeek(state)
+}
+
+/**
+ * Sim only the offseason FALL_SCRIMMAGE games for the current week that the
+ * user is NOT a participant in. User scrimmages flow through Play / live or
+ * the dashboard "Sim Game(s)" CTA so the user has explicit control.
+ */
+function simScrimmagesForCurrentWeek(state) {
+  if (state.calendar.mode !== 'OFFSEASON') return
+  const wk = state.calendar.weekOfYear
+  const userId = state.userSchoolId
+  const ratings = seedFromPear(state.schools, state.conferences)
+  for (const g of state.schedule || []) {
+    if (g.played) continue
+    if (g.type !== 'FALL_SCRIMMAGE') continue
+    let gw = g.weekOfYear
+    if (gw == null && g.date) gw = dateToWeekOfYear(g.date, state.calendar.year)
+    if (gw !== wk) continue
+    if (g.homeId === userId || g.awayId === userId) continue  // user's slate routes through UI
+    // Fast-sim non-user fall scrimmages — they affect no records but help
+    // populate dev / stats for other programs.
+    const home = ratings[g.homeId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
+    const away = ratings[g.awayId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
+    const result = fastSimGame(home, away, g.id)
+    g.homeRuns = result.homeRuns
+    g.awayRuns = result.awayRuns
+    g.played = true
+  }
 }
 
 // ─── Back-compat wrappers ──────────────────────────────────────────────────

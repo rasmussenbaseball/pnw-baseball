@@ -149,12 +149,29 @@ export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
       stoppedReason = 'postseason_boundary'
       break
     }
+    // HARD STOP before Prospect Camp (Wk 13). The user MUST run their camp
+    // — sim-ahead never silently skips it.
+    if ((save.calendar.weekOfYear ?? 0) === 12) {
+      // We're sitting at wk 12. The NEXT tick would land on wk 13 (camp).
+      // Stop if the user hasn't held this year's camp yet.
+      if (save.prospectCamp?.year !== save.calendar.year) {
+        stoppedReason = 'prospect_camp_boundary'
+        break
+      }
+    }
     const next = tickOneWeek(save)
     weeklyDiffs.push(diffSnapshots(prev, next))
     prev = next
     count++
     if (untilFn && untilFn(next)) break
     if (next.mode === 'POSTSEASON') break
+    // After the tick: stop if the user has unplayed games this week so they
+    // can play them live OR explicitly auto-sim. Avoids the "I just simmed
+    // past 4 unplayed scrim weeks" trap.
+    if (hasUnplayedUserGamesThisWeek(save)) {
+      stoppedReason = 'user_games_pending'
+      break
+    }
   }
   return {
     weeksAdvanced: count,
@@ -203,6 +220,25 @@ export function simPresets(save) {
   }
 
   return presets.filter(p => !p.hideIf)
+}
+
+/**
+ * Does the user have any unplayed games scheduled for the current week-of-
+ * year? Fall scrimmages (offseason wks 9-13) and regular-season games both
+ * count.
+ */
+function hasUnplayedUserGamesThisWeek(save) {
+  const wk = save.calendar.weekOfYear
+  const sw = save.calendar.seasonWeek
+  const userId = save.userSchoolId
+  for (const g of save.schedule || []) {
+    if (g.played) continue
+    if (g.type === 'BYE' || g.awayId === '__BYE__') continue
+    if (g.homeId !== userId && g.awayId !== userId) continue
+    if (g.seasonWeek === sw && sw != null) return true
+    if (g.weekOfYear === wk && wk != null) return true
+  }
+  return false
 }
 
 /** Render-friendly phase label for a snapshot (used in diff cards). */

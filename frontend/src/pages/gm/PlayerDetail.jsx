@@ -93,7 +93,9 @@ export default function PlayerDetail() {
               <AttrTooltip key={k} attr={k}>
                 <div className="bg-gray-50 rounded p-2 text-center cursor-help">
                   <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
-                  <div className={'font-mono font-bold ' + ratingColor(v)}>{v}</div>
+                  <div className={'font-mono font-bold ' + ratingColor(v)}>
+                    {v} <BoostArrow save={save} playerId={player.id} ratingKey={k} side="hitter" />
+                  </div>
                 </div>
               </AttrTooltip>
             ))}
@@ -114,7 +116,9 @@ export default function PlayerDetail() {
                 <AttrTooltip key={k} attr={k}>
                   <div className="bg-gray-50 rounded p-2 text-center cursor-help">
                     <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
-                    <div className={'font-mono font-bold ' + ratingColor(v)}>{v}</div>
+                    <div className={'font-mono font-bold ' + ratingColor(v)}>
+                      {v} <BoostArrow save={save} playerId={player.id} ratingKey={k} side="pitcher" />
+                    </div>
                     {k === 'stuff' && player.pitcher.velocity_avg && (
                       <div className="text-[9px] text-gray-500 mt-0.5">
                         {player.pitcher.velocity_min}–{player.pitcher.velocity_max} mph
@@ -128,6 +132,28 @@ export default function PlayerDetail() {
       )}
     </div>
   )
+}
+
+/**
+ * Small inline arrow for a recently-boosted rating. Reads the same
+ * tempBoosts / permanentBumps arrays the Roster page uses so the source of
+ * truth is consistent.
+ */
+function BoostArrow({ save, playerId, ratingKey, side }) {
+  const temps = (save.tempBoosts || []).filter(b =>
+    b.playerId === playerId && b.side === side && b.ratingKey === ratingKey,
+  )
+  if (temps.length > 0) {
+    return <span className="ml-0.5 text-blue-600" title="Temporary boost active">↑</span>
+  }
+  const perms = (save.permanentBumps || []).filter(b =>
+    b.playerId === playerId && b.side === side && b.ratingKey === ratingKey,
+  )
+  if (perms.length === 0) return null
+  const total = perms.reduce((s, b) => s + b.amount, 0)
+  if (total > 0.1) return <span className="ml-0.5 text-green-600" title="Recently increased">↑</span>
+  if (total < -0.1) return <span className="ml-0.5 text-red-600" title="Recently decreased">↓</span>
+  return null
 }
 
 function HappinessPanel({ player }) {
@@ -173,14 +199,22 @@ function RatingPill({ label, value, tier }) {
 }
 
 function BattingStatsLine({ stats }) {
-  const avg = stats.ab > 0 ? (stats.h / stats.ab).toFixed(3).slice(1) : '.---'
-  const obp = (stats.ab + stats.bb + stats.hbp + stats.sf) > 0
-    ? ((stats.h + stats.bb + stats.hbp) / (stats.ab + stats.bb + stats.hbp + stats.sf)).toFixed(3).slice(1)
-    : '.---'
-  const slg = stats.ab > 0
-    ? ((stats.h - stats.d - stats.t - stats.hr + stats.d * 2 + stats.t * 3 + stats.hr * 4) / stats.ab).toFixed(3).slice(1)
-    : '.---'
-  const ops = obp !== '.---' && slg !== '.---' ? (parseFloat('0' + obp) + parseFloat('0' + slg)).toFixed(3).slice(1) : '.---'
+  // Compute as raw numbers so OPS math is correct; format for display
+  // separately. The old code stringified obp/slg with .slice(1) (baseball
+  // ".464" convention) and then tried parseFloat('0' + str) which yielded
+  // 464, not 0.464 — OPS came out wildly wrong.
+  const pa = stats.ab + stats.bb + stats.hbp + stats.sf
+  const avgNum = stats.ab > 0 ? stats.h / stats.ab : null
+  const obpNum = pa > 0 ? (stats.h + stats.bb + stats.hbp) / pa : null
+  const slgNum = stats.ab > 0
+    ? (stats.h - stats.d - stats.t - stats.hr + stats.d * 2 + stats.t * 3 + stats.hr * 4) / stats.ab
+    : null
+  const opsNum = obpNum != null && slgNum != null ? obpNum + slgNum : null
+  const fmt = n => n == null ? '.---' : n.toFixed(3).replace(/^0\./, '.')
+  const avg = fmt(avgNum)
+  const obp = fmt(obpNum)
+  const slg = fmt(slgNum)
+  const ops = fmt(opsNum)
   return (
     <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
       <Stat label="AVG" value={avg} />

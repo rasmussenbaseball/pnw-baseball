@@ -73,13 +73,30 @@ export default function Recruiting() {
       alert('Prospect camp is HS only.')
       return
     }
+    // Invite windows are ONLY Wk 5 and Wk 10. Outside those weeks, the user
+    // can view the list but not modify it. 50 invites max per window.
+    const wk = save.calendar?.weekOfYear ?? 0
+    const isInviteWindow = wk === 5 || wk === 10
+    if (!isInviteWindow) {
+      alert('Camp invites can only be sent during Wk 5 or Wk 10. Wait for the next window.')
+      return
+    }
+    // Track invites per window so the 50-per-window cap is enforced even
+    // after un-inviting + re-inviting.
+    if (!save.campInvitesByWindow) save.campInvitesByWindow = { 5: 0, 10: 0 }
     const currentlyInvited = !!r.campInvited
     if (!currentlyInvited) {
-      const inviteCount = Object.values(save.recruits || {}).filter(x => x.campInvited).length
-      if (inviteCount >= CAMP_MAX_INVITES) {
+      const totalInvited = Object.values(save.recruits || {}).filter(x => x.campInvited).length
+      if (totalInvited >= CAMP_MAX_INVITES) {
         alert(`Camp invite cap reached (${CAMP_MAX_INVITES}). Un-invite someone first.`)
         return
       }
+      const PER_WINDOW = 50
+      if ((save.campInvitesByWindow[wk] || 0) >= PER_WINDOW) {
+        alert(`Week ${wk} invite cap reached (${PER_WINDOW} per window). Use the Wk ${wk === 5 ? 10 : 5} window for the rest.`)
+        return
+      }
+      save.campInvitesByWindow[wk] = (save.campInvitesByWindow[wk] || 0) + 1
       // Send the invite + give them a small immediate interest boost — being
       // contacted at all is a positive signal even if they decline camp.
       if (!r.scoutGrades[save.userSchoolId]) {
@@ -87,6 +104,12 @@ export default function Recruiting() {
       }
       const g = r.scoutGrades[save.userSchoolId]
       g.interest = Math.min(100, g.interest + 5)
+      r.campInviteWindow = wk
+    } else {
+      // Un-inviting frees a slot in the window it was sent during.
+      const inviteWk = r.campInviteWindow || wk
+      save.campInvitesByWindow[inviteWk] = Math.max(0, (save.campInvitesByWindow[inviteWk] || 0) - 1)
+      r.campInviteWindow = null
     }
     r.campInvited = !currentlyInvited
     saveDynasty(save)

@@ -71,6 +71,33 @@ export default function Play() {
             g.played = true
             // Accumulate stats into save.playerStats
             accumulateBoxscore(save, result.boxscore)
+            // Update team W-L for record-counting games (everything except
+            // scrimmages + BYEs). Mirrors the auto-sim path in season.simWeek.
+            const counts = g.countsTowardRecord !== false
+            if (counts) {
+              const homeTeam = save.teams[g.homeId]
+              const awayTeam = save.teams[g.awayId]
+              if (homeTeam && awayTeam) {
+                if (g.homeRuns > g.awayRuns) {
+                  homeTeam.wins++; awayTeam.losses++
+                  if (g.type === 'CONFERENCE') { homeTeam.confWins++; awayTeam.confLosses++ }
+                } else {
+                  awayTeam.wins++; homeTeam.losses++
+                  if (g.type === 'CONFERENCE') { awayTeam.confWins++; homeTeam.confLosses++ }
+                }
+                homeTeam.runDiff += g.homeRuns - g.awayRuns
+                awayTeam.runDiff += g.awayRuns - g.homeRuns
+              } else if (homeTeam || awayTeam) {
+                // One side is non-NAIA (no team row); still credit the real side.
+                const realTeam = homeTeam || awayTeam
+                const realIsHome = !!homeTeam
+                const realRuns = realIsHome ? g.homeRuns : g.awayRuns
+                const oppRuns = realIsHome ? g.awayRuns : g.homeRuns
+                if (realRuns > oppRuns) realTeam.wins++
+                else realTeam.losses++
+                realTeam.runDiff += realRuns - oppRuns
+              }
+            }
           }
           saveDynasty(save); refresh()
           setView({ kind: 'LIST' })
