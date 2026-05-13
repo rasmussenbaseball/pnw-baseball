@@ -6,6 +6,7 @@
 import { pickFullName } from './names'
 import { makeRng } from './rng'
 import { STATE_TO_REGION, REGIONS } from './regions'
+import { applyArchetypeBias } from './archetypes'
 
 /** @typedef {import('./types.js').Coach} Coach */
 /** @typedef {import('./types.js').School} School */
@@ -79,6 +80,10 @@ const ROLE_MULTIPLIER = {
  * but the program functions best when filled.
  */
 export const STARTING_ROLES = ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
+
+// Re-export archetype helpers so callers can use `import ... from 'coaches'`.
+// Keeps the existing import shape stable while the new module is the source.
+export { ARCHETYPES, ARCHETYPE_KEYS, inferArchetype, applyArchetypeBias, staffRatings } from './archetypes'
 
 /**
  * Roles that MUST be filled in year 1 (the dynasty tutorial year) before
@@ -169,6 +174,14 @@ export function generateCoach(school, role, rng, opts = {}) {
 
   const id = (opts.idPrefix || 'coach') + '_' + rng.int(100000, 999999)
 
+  // Archetype — pick before final ratings so the bias can shape them.
+  // Weighted so generalists are common (40%) and the four specialists
+  // each ~15%.
+  const archetype = pickArchetype(rng)
+  const biased = applyArchetypeBias(ratings, archetype)
+  const avgBiased = (biased.developer + biased.motivator + biased.recruiter + biased.tactician) / 4
+  const salaryBiased = computeCoachSalary(school.resourceTier, role, avgBiased)
+
   /** @type {Coach} */
   const coach = {
     id,
@@ -177,17 +190,25 @@ export function generateCoach(school, role, rng, opts = {}) {
     age: rng.int(30, 64),
     schoolId: school.id,
     role,
+    archetype,
     yearsAtSchool: rng.int(0, 8),
     yearsInRole: rng.int(0, 6),
-    ...ratings,
+    ...biased,
     recruiter_type: pickRecruiterType(school, rng),
     regions: regionsForState(school.state, rng),
-    salary,
+    salary: salaryBiased,
     contractYearsRemaining: rng.int(1, 3),
     ambition: rng.int(20, 90),
     loyalty: rng.int(20, 90),
   }
   return coach
+}
+
+function pickArchetype(rng) {
+  return rng.weighted(
+    ['TEACHER', 'SHOWMAN', 'STRATEGIST', 'PLAYER_COACH', 'GENERALIST'],
+    [15, 15, 15, 15, 40],
+  )
 }
 
 function pickRecruiterType(school, rng) {

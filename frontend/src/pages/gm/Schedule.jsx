@@ -416,15 +416,15 @@ function groupBySeriesId(games) {
 }
 
 function TravelBudgetWarning({ save, travelCost }) {
-  // Use the Wk 3 default-travel target (~8% of total budget) as the "expected"
-  // baseline. If the user's actual scheduled travel exceeds 1.5x that, throw
-  // a clear over-budget warning so they can re-plan before Wk 3 locks them in.
+  // Realistic travel target ~14% of total athletic budget for a MID-tier
+  // NAIA program. Trip the warning only when actual scheduled trips push
+  // 50%+ above that — small overages are normal.
   const total = save.budget?.totalAthleticBudget || 0
   if (!total || !travelCost) return null
-  const target = total * 0.08
+  const target = total * 0.14
   const actual = travelCost
   const ratio = actual / Math.max(1, target)
-  if (ratio < 1.3) return null   // within reason — no warning
+  if (ratio < 1.5) return null   // within reason — no warning
   const overBy = actual - target
   return (
     <div className={'rounded-xl p-3 mb-4 text-sm flex justify-between items-start ' +
@@ -432,7 +432,7 @@ function TravelBudgetWarning({ save, travelCost }) {
                   : 'bg-amber-50 border border-amber-300 text-amber-900')}>
       <div className="flex-1">
         <div className="font-semibold">
-          ⚠ Travel cost is {ratio >= 2 ? 'WAY' : 'somewhat'} over the typical 8% allocation
+          ⚠ Travel cost is {ratio >= 2.5 ? 'WAY' : 'somewhat'} over the typical 14% allocation
         </div>
         <div className="text-xs mt-1">
           Your trips will cost <strong>${(actual / 1000).toFixed(1)}K</strong> — that's
@@ -508,17 +508,22 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
     return [...naia, ...nonNaia]
   }, [save, userSchool])
 
-  const filtered = allCandidates
-    .filter(t => divFilter === 'ALL' || t.division === divFilter)
-    .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
-    .filter(t => t.division !== 'JUCO_NWAC')
-    .filter(t => {
-      // D1 only allowed in midweek mode
-      if (t.division === 'D1') return midweekMode && d1Remaining > 0
-      return true
-    })
-    .sort((a, b) => b.strength - a.strength)
-    .slice(0, 60)
+  // Sort by proximity to the user's home state first — closer teams cost
+  // less to travel to and reflect realistic non-conf scheduling patterns.
+  // Strength is the tiebreaker within the same proximity bucket.
+  const userState = userSchool.state
+  const filtered = sortByProximity(
+    userState,
+    allCandidates
+      .filter(t => divFilter === 'ALL' || t.division === divFilter)
+      .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
+      .filter(t => t.division !== 'JUCO_NWAC')
+      .filter(t => {
+        // D1 only allowed in midweek mode
+        if (t.division === 'D1') return midweekMode && d1Remaining > 0
+        return true
+      }),
+  ).slice(0, 60)
 
   function withTravel(opp, userIsHome) {
     if (userIsHome) return null
@@ -564,9 +569,15 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
           </div>
         )}
 
+        <p className="text-[11px] text-gray-500 mb-2">Sorted by proximity to {userState} — closer opponents first.</p>
         <div className="space-y-1 max-h-96 overflow-y-auto">
           {filtered.map(s => {
             const awayTravel = withTravel(s, false)
+            const px = stateProximity(userState, s.state)
+            const pxColor = px === 0 ? 'bg-green-100 text-green-800'
+              : px === 1 ? 'bg-pnw-cream text-pnw-green'
+              : px === 2 ? 'bg-blue-50 text-blue-700'
+              : 'bg-gray-100 text-gray-500'
             return (
               <div key={s.id} className="flex items-center gap-2 p-2 hover:bg-pnw-cream rounded text-sm">
                 <TeamLogo school={s} size={20} />
@@ -574,6 +585,9 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
                   <div className="font-medium">{s.name}</div>
                   <div className="text-xs text-gray-500">{s.city}, {s.state} • {s.division} • Strength {s.strength.toFixed(2)}</div>
                 </div>
+                <span className={'text-[10px] font-semibold px-1.5 py-0.5 rounded ' + pxColor}>
+                  {proximityLabel(px)}
+                </span>
                 <div className="flex flex-col gap-1 text-xs">
                   <button
                     onClick={() => onPick(s, { userIsHome: true })}

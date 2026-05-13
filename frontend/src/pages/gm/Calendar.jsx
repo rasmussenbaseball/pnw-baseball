@@ -108,11 +108,18 @@ function WeekCard({ save, slot, week, year, currentWeek, userSchoolId }) {
   const isToday = week === currentWeek
   const isPast = week < currentWeek
   const mode = modeForWeek(week)
-  const games = (save.schedule || []).filter(g =>
-    g.seasonWeek === seasonWeekForWeek(week)
-    && g.type !== 'BYE'
-    && (g.homeId === userSchoolId || g.awayId === userSchoolId)
-  )
+  // Match by seasonWeek (regular-season / postseason) OR weekOfYear (fall
+  // scrimmages, which carry the unified-calendar tag). Old saves' fall
+  // games are missing weekOfYear — fall back to the date-derived check.
+  const sw = seasonWeekForWeek(week)
+  const games = (save.schedule || []).filter(g => {
+    if (g.type === 'BYE') return false
+    if (g.awayId === '__BYE__') return false
+    if (g.homeId !== userSchoolId && g.awayId !== userSchoolId) return false
+    if (sw != null && g.seasonWeek === sw) return true
+    if (g.weekOfYear === week) return true
+    return false
+  })
   // Color theme based on phase / state
   const isPortalWeek = week >= 43 && week <= 51
   const isDraftOrFinalize = week === 48 || week === 52

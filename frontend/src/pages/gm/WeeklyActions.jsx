@@ -24,6 +24,11 @@ const MEETING_MAX_PLAYERS = 5
 const MEETING_MIN_PLAYERS = 1
 const MEETING_BOOST = 12
 
+// 1-on-1 development — pick a single player + a single rating; spend AP to
+// bump that stat permanently (within the player's potential ceiling).
+const ONE_ON_ONE_AP = 8
+const ONE_ON_ONE_BUMP = 1   // points of rating per session
+
 export default function WeeklyActions() {
   const { user } = useAuth()
   const [params] = useSearchParams()
@@ -33,6 +38,8 @@ export default function WeeklyActions() {
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [campFee, setCampFee] = useState(125)
   const [meetingPicks, setMeetingPicks] = useState([])
+  const [oneOnOnePlayer, setOneOnOnePlayer] = useState('')
+  const [oneOnOneRating, setOneOnOneRating] = useState('')
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -135,6 +142,51 @@ export default function WeeklyActions() {
       payload: { ids: meetingPicks },
     })
     setMeetingPicks([])
+    saveDynasty(save); setSave({ ...save })
+  }
+
+  function do1on1Dev() {
+    if (!oneOnOnePlayer || !oneOnOneRating) {
+      alert('Pick a player and a rating to develop.')
+      return
+    }
+    if (ap < ONE_ON_ONE_AP) { alert(`Need ${ONE_ON_ONE_AP} AP.`); return }
+    if (wasUsedThisWeek('ONE_ON_ONE_DEV')) { alert('Already done this week.'); return }
+    const p = save.players[oneOnOnePlayer]
+    if (!p) { alert('Player not found.'); return }
+    const isPitcher = p.isPitcher
+    const block = isPitcher ? p.pitcher : p.hitter
+    if (!block || typeof block[oneOnOneRating] !== 'number') {
+      alert('That rating doesn\'t apply to this player.')
+      return
+    }
+    const ceiling = isPitcher
+      ? (p.hidden?.potential_pitcher?.[oneOnOneRating] ?? 99)
+      : (p.hidden?.potential_hitter?.[oneOnOneRating] ?? 99)
+    const before = block[oneOnOneRating]
+    const actualBump = Math.min(ONE_ON_ONE_BUMP, Math.max(0, ceiling - before))
+    if (actualBump <= 0) { alert('Player has already maxed this rating against their potential.'); return }
+    block[oneOnOneRating] = Math.round((before + actualBump) * 10) / 10
+    // Track as a permanent bump so the rating shows ↑ on Roster + PlayerDetail
+    if (!save.permanentBumps) save.permanentBumps = []
+    save.permanentBumps.push({
+      playerId: p.id,
+      ratingKey: oneOnOneRating,
+      side: isPitcher ? 'pitcher' : 'hitter',
+      amount: actualBump,
+      weekApplied: save.calendar.week,
+    })
+    spendAP('development', ONE_ON_ONE_AP)
+    markUsedThisWeek('ONE_ON_ONE_DEV')
+    save.newsfeed.unshift({
+      id: `1on1_${p.id}_${save.calendar.year}_${save.calendar.week}`,
+      year: save.calendar.year, week: save.calendar.week,
+      type: 'AWARD',
+      headline: `📈 1-on-1 dev — ${p.firstName} ${p.lastName} ${prettyLabel(oneOnOneRating)} +${actualBump.toFixed(1)}.`,
+      payload: { playerId: p.id, rating: oneOnOneRating, amount: actualBump },
+    })
+    setOneOnOnePlayer('')
+    setOneOnOneRating('')
     saveDynasty(save); setSave({ ...save })
   }
 
@@ -276,6 +328,20 @@ export default function WeeklyActions() {
         ap={ap}
         usedThisWeek={wasUsedThisWeek('PLAYER_MEETINGS')}
         onRun={doMeetings}
+      />
+
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-6">1-on-1 Development</h2>
+      <OneOnOneDev
+        save={save}
+        ap={ap}
+        playerId={oneOnOnePlayer}
+        rating={oneOnOneRating}
+        setPlayerId={setOneOnOnePlayer}
+        setRating={setOneOnOneRating}
+        cost={ONE_ON_ONE_AP}
+        bump={ONE_ON_ONE_BUMP}
+        usedThisWeek={wasUsedThisWeek('ONE_ON_ONE_DEV')}
+        onRun={do1on1Dev}
       />
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-6">Academics / Fundraising / Camp</h2>
@@ -460,6 +526,90 @@ function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek,
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  )
+}
+
+function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost, bump, usedThisWeek, onRun }) {
+  const team = save.teams[save.userSchoolId]
+  const players = team.rosterPlayerIds.map(id => save.players[id]).filter(Boolean)
+  const sorted = [...players].sort((a, b) => playerOverall(b) - playerOverall(a))
+  const player = playerId ? save.players[playerId] : null
+  const isPitcher = player?.isPitcher
+  // Available ratings depend on the picked player. Pitcher → pitcher block keys;
+  // hitter → hitter block keys (skip velocity_* which aren't user-controlled).
+  const ratingKeys = !player
+    ? []
+    : isPitcher
+      ? Object.keys(player.pitcher || {}).filter(k => !k.startsWith('velocity'))
+      : Object.keys(player.hitter || {})
+  const ceiling = !player ? null
+    : isPitcher
+      ? (player.hidden?.potential_pitcher?.[rating] ?? null)
+      : (player.hidden?.potential_hitter?.[rating] ?? null)
+  const current = !player || !rating ? null
+    : isPitcher ? player.pitcher?.[rating] : player.hitter?.[rating]
+  const headroom = ceiling != null && current != null ? Math.max(0, ceiling - current) : null
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <div className="text-sm font-semibold text-pnw-slate">📈 1-on-1 Development</div>
+          <div className="text-xs text-gray-500 max-w-xl">
+            Pull a player aside and grind on one specific rating. Costs {cost} AP and bumps
+            the selected rating by +{bump} (or up to their potential ceiling, whichever is lower).
+            Once per week.
+          </div>
+        </div>
+        <button
+          onClick={onRun}
+          disabled={usedThisWeek || !playerId || !rating || ap < cost}
+          className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ml-3"
+        >
+          {usedThisWeek ? '✓ done this week' : `Develop (${cost} AP)`}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs uppercase tracking-wider text-gray-500">Player</label>
+          <select
+            value={playerId}
+            onChange={e => { setPlayerId(e.target.value); setRating('') }}
+            className="block w-full mt-1 border rounded px-2 py-1.5 text-sm"
+          >
+            <option value="">— pick a player —</option>
+            {sorted.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName} · {p.isPitcher ? 'P' : p.primaryPosition} · {p.classYear} · OVR {playerOverall(p)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wider text-gray-500">Rating to develop</label>
+          <select
+            value={rating}
+            onChange={e => setRating(e.target.value)}
+            disabled={!player}
+            className="block w-full mt-1 border rounded px-2 py-1.5 text-sm"
+          >
+            <option value="">{player ? '— pick a rating —' : '— pick a player first —'}</option>
+            {ratingKeys.map(k => (
+              <option key={k} value={k}>{prettyLabel(k)}</option>
+            ))}
+          </select>
+          {player && rating && (
+            <div className="text-[11px] text-gray-500 mt-1">
+              Current <strong>{current}</strong> · potential ceiling <strong>{ceiling}</strong>
+              {' · '}
+              {headroom > 0
+                ? <span className="text-green-700">+{Math.min(bump, headroom)} headroom this session</span>
+                : <span className="text-red-700">maxed against potential</span>}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

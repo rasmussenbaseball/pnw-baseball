@@ -365,14 +365,17 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Sim action bar */}
+      {/* Sim action bar — keep `busy` as the literal busy spinner state.
+          Block separately so the button shows "Locked" instead of "Simming…"
+          when the phase-gate is unsatisfied. */}
       <SimActionBar
         mode={mode}
         inOffseason={inOffseason}
         nextGame={nextGame}
         userSchoolId={save.userSchoolId}
         save={save}
-        busy={busy || advanceBlocked}
+        busy={busy}
+        blocked={advanceBlocked}
         onSim={simNextWeek}
         recap={lastWeekRecap}
         offseasonWeek={save.calendar.offseasonWeek}
@@ -543,7 +546,7 @@ export default function Dashboard() {
 // Sub-components
 // ────────────────────────────────────────────────────────────────────────────
 
-function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, onSim, recap, offseasonWeek, startYear, thisWeekUnplayedCount = 0 }) {
+function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, blocked = false, onSim, recap, offseasonWeek, startYear, thisWeekUnplayedCount = 0 }) {
   const date = inOffseason
     ? offseasonWeekDate(startYear, offseasonWeek)
     : null
@@ -579,16 +582,18 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, o
       <div className="flex flex-col items-end gap-2">
         <button
           onClick={onSim}
-          disabled={busy}
+          disabled={busy || blocked}
           className="px-6 py-3 bg-pnw-green rounded font-semibold text-sm hover:opacity-90 disabled:opacity-50"
         >
           {busy
             ? 'Simming…'
-            : inOffseason
-              ? 'Advance Week →'
-              : thisWeekUnplayedCount > 0
-                ? `▶ Play this week (${thisWeekUnplayedCount} game${thisWeekUnplayedCount === 1 ? '' : 's'})`
-                : 'Sim Next Week →'}
+            : blocked
+              ? '🔒 Complete required action'
+              : inOffseason
+                ? 'Advance Week →'
+                : thisWeekUnplayedCount > 0
+                  ? `▶ Play this week (${thisWeekUnplayedCount} game${thisWeekUnplayedCount === 1 ? '' : 's'})`
+                  : 'Sim Next Week →'}
         </button>
         {recap?.kind === 'offseason' && (
           <div className="text-[11px] opacity-70">Advanced to Wk {recap.to} — {recap.phase}</div>

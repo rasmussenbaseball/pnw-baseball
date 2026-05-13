@@ -59,13 +59,16 @@ export function milesBetween(stateA, stateB) {
 
 // ─── Cost model ──────────────────────────────────────────────────────────────
 
-const ROSTER_SIZE_FOR_TRAVEL = 30   // travel squad
-const DAILY_PER_DIEM = 60
-const HOTEL_PER_NIGHT_DOUBLE = 90   // 2 to a room
-const BUS_COST_PER_MILE = 6
-const FLIGHT_BASE = 800
-const FLIGHT_PER_PASSENGER_LONG = 350   // > 1000 mi
-const FLIGHT_PER_PASSENGER_MEDIUM = 200 // 500-1000 mi
+// NAIA travel reality is cheaper than these numbers were suggesting. Calibrated
+// down so a typical CCC schedule (10 series, ~5 away within PNW) comes in
+// around $25-40K — matches what the AD-side accounting tends to look like.
+const ROSTER_SIZE_FOR_TRAVEL = 28   // travel squad — smaller for NAIA budgets
+const DAILY_PER_DIEM = 35           // per diem, not full hotel meals
+const HOTEL_PER_NIGHT_DOUBLE = 75
+const BUS_COST_PER_MILE = 3.25      // charter rate is ~$3-4/mi all-in
+const FLIGHT_BASE = 600
+const FLIGHT_PER_PASSENGER_LONG = 280   // > 1500 mi
+const FLIGHT_PER_PASSENGER_MEDIUM = 160 // 600-1500 mi
 
 /**
  * @param {number} miles

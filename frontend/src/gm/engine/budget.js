@@ -28,17 +28,20 @@ export const BUDGET_CATEGORIES = [
  * scholarship pool — that way the total athletic budget = pool / 0.57 and
  * the displayed numbers are internally consistent.
  */
+// Travel target bumped from 8% → 14% (CCC + non-conf realistically eats
+// 12-18% of a $200K MID-tier budget). Rebalanced the smaller categories
+// down to absorb the difference.
 const DEFAULT_ALLOCATION = {
-  scholarships:      0.57,
-  coachingSalaries:  0.20,
-  travel:            0.08,
-  equipment:         0.03,
-  uniforms:          0.015,
-  meals:             0.025,
-  facilities:        0.035,
-  medical:           0.01,
-  recruiting:        0.015,
-  misc:              0.02,
+  scholarships:      0.54,
+  coachingSalaries:  0.19,
+  travel:            0.14,
+  equipment:         0.025,
+  uniforms:          0.012,
+  meals:             0.022,
+  facilities:        0.030,
+  medical:           0.010,
+  recruiting:        0.013,
+  misc:              0.018,
 }
 
 /**
@@ -48,7 +51,7 @@ const DEFAULT_ALLOCATION = {
 export const BUDGET_GUIDANCE = {
   scholarships:     { min: 0.50, max: 0.62, note: 'Biggest lever. Wins recruiting battles.' },
   coachingSalaries: { min: 0.16, max: 0.24, note: 'Pay for quality coaches.' },
-  travel:           { min: 0.06, max: 0.10, note: 'Weekend bus trips + flights for distant series.' },
+  travel:           { min: 0.10, max: 0.18, note: 'Weekend bus trips + flights for distant series.' },
   equipment:        { min: 0.02, max: 0.04, note: 'Bats, helmets, gloves, baseballs.' },
   uniforms:         { min: 0.01, max: 0.025, note: 'Home/away/alt jerseys, hats.' },
   meals:            { min: 0.02, max: 0.04, note: 'Game-day meals; nutrition. Affects injury risk.' },

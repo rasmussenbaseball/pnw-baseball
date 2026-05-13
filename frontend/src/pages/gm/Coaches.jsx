@@ -6,6 +6,7 @@ import {
   generateHiringCandidates, OPTIONAL_ROLES, STARTING_ROLES, ROLE_DESCRIPTIONS,
   FIRST_YEAR_REQUIRED_ROLES,
 } from '../../gm/engine/coaches'
+import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
@@ -185,6 +186,9 @@ export default function Coaches() {
         </div>
       )}
 
+      {/* Combined staff ratings — synergy panel */}
+      <StaffRatingsPanel headCoach={headCoach} assistants={assistants} />
+
       {!hasAnalyticsMgr && weekOfYear >= 4 && (
         <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900 mb-4">
           💡 Hire a <strong>Data & Analytics Manager</strong> to unlock advanced stats (FIP, wOBA, wRC+, WAR) across the league.
@@ -357,11 +361,16 @@ function CoachCard({ coach, compact, hideStats }) {
     )
   }
 
+  const arcKey = coach.archetype || inferArchetype(coach)
+  const arc = ARCHETYPES[arcKey] || ARCHETYPES.GENERALIST
   return (
     <div>
       <div className={'font-semibold ' + (compact ? '' : 'text-lg')}>{coach.firstName} {coach.lastName}</div>
-      <div className="text-xs text-gray-500 mb-2">
-        Age {coach.age} • Regions: {(coach.regions || []).join(', ') || 'home state'}
+      <div className="text-xs text-gray-500 mb-1">
+        Age {coach.age} • <span className={'font-semibold ' + arc.color}>{arc.label}</span>
+      </div>
+      <div className="text-[11px] text-gray-500 mb-2">
+        Regions: {(coach.regions || []).join(', ') || 'home state'}
       </div>
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
         {stat('developer', 'Dev')}
@@ -374,6 +383,54 @@ function CoachCard({ coach, compact, hideStats }) {
           ? `Salary $${(coach.salary / 1000).toFixed(0)}K/yr • ${coach.contractYearsRemaining || 1} yr${coach.contractYearsRemaining === 1 ? '' : 's'} left`
           : `Unpaid GA position • 1 yr term`}
       </div>
+    </div>
+  )
+}
+
+function StaffRatingsPanel({ headCoach, assistants }) {
+  const r = useMemo(() => staffRatings(headCoach, assistants), [headCoach, assistants])
+  const hcArc = ARCHETYPES[r.hcArchetype] || ARCHETYPES.GENERALIST
+  const synergyColor = r.synergy > 1.03 ? 'text-green-700'
+    : r.synergy > 1.0 ? 'text-pnw-green'
+    : r.synergy < 1.0 ? 'text-red-700' : 'text-gray-700'
+  return (
+    <div className="bg-pnw-cream/60 rounded-xl border border-pnw-green/40 p-4 mb-4">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-pnw-slate font-bold">Coaching Staff Ratings</div>
+          <div className="text-[11px] text-gray-600 mt-0.5">
+            Combined averages across all coaches × synergy. Drives team-wide effects in sim + recruiting.
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-3xl font-bold text-pnw-green leading-none">{r.overall}</div>
+          <div className="text-[10px] uppercase text-gray-500">Staff OVR</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-center mb-3">
+        <RatingTile label="Dev" v={r.developer} />
+        <RatingTile label="Mot" v={r.motivator} />
+        <RatingTile label="Rec" v={r.recruiter} />
+        <RatingTile label="Tac" v={r.tactician} />
+      </div>
+      <div className="bg-white rounded p-2 text-xs">
+        <span className="text-gray-500">HC archetype:</span>{' '}
+        <span className={'font-semibold ' + hcArc.color}>{hcArc.label}</span>
+        <span className="ml-2 text-gray-500">→ Synergy:</span>{' '}
+        <span className={'font-mono font-semibold ' + synergyColor}>
+          {((r.synergy - 1) * 100 > 0 ? '+' : '') + ((r.synergy - 1) * 100).toFixed(0)}%
+        </span>
+        <div className="text-[11px] text-gray-600 mt-0.5">{r.synergyLabel}</div>
+      </div>
+    </div>
+  )
+}
+
+function RatingTile({ label, v }) {
+  return (
+    <div className="bg-white rounded p-2">
+      <div className="text-lg font-bold text-pnw-green leading-none">{v}</div>
+      <div className="text-[9px] uppercase text-gray-500">{label}</div>
     </div>
   )
 }
