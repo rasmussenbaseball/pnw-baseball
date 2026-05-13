@@ -132,8 +132,11 @@ export function endOfSeasonDevelopment(player, ctx, seed) {
   const coachMult = 0.7 + (coachDev / 100) * 0.6
   const ethicMult = 0.7 + (workEthic / 100) * 0.6
 
-  // Budget facilities/medical
-  const budgetMult = 1 + ((ctx.budgetEffects?.facilitiesDrift ?? 0) / 30)
+  // Budget effects: prefer the explicit devMultiplier from extendedBudget-
+  // Effects (facilities-driven), fall back to the legacy facilitiesDrift
+  // computation for older callers.
+  const budgetMult = ctx.budgetEffects?.devMultiplier
+    ?? (1 + ((ctx.budgetEffects?.facilitiesDrift ?? 0) / 30))
 
   // PERFORMANCE multiplier — key new lever per Nate
   // 0.5 = poor stats; 1.0 = average; 1.7 = elite

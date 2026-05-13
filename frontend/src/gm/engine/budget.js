@@ -267,3 +267,165 @@ export function budgetCategoryEffects(budget) {
 }
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+
+// ─── Budget presets (Wk 3 tutorial picker) ─────────────────────────────────
+//
+// Each preset returns a full set of category percentages. Travel is OMITTED
+// from the preset since it's locked from the user's actual schedule travel
+// cost. The remaining non-travel categories rebalance to fill the gap.
+
+/** @typedef {{ key: string, label: string, blurb: string, allocations: Object<string, number> }} BudgetPreset */
+
+/** @type {BudgetPreset[]} */
+export const BUDGET_PRESETS = [
+  {
+    key: 'BALANCED',
+    label: 'Balanced',
+    blurb: 'Even mix — no category neglected. Safe default for a program with no clear weakness.',
+    allocations: {
+      scholarships: 0.57, coachingSalaries: 0.18, equipment: 0.03, uniforms: 0.015,
+      meals: 0.025, facilities: 0.035, medical: 0.015, recruiting: 0.02, misc: 0.02,
+    },
+  },
+  {
+    key: 'DEV_FOCUSED',
+    label: 'Dev-focused',
+    blurb: 'Heavy facilities, S&C, meals. Trade off recruiting for faster player growth — pays off over years.',
+    allocations: {
+      scholarships: 0.52, coachingSalaries: 0.18, equipment: 0.04, uniforms: 0.015,
+      meals: 0.04, facilities: 0.065, medical: 0.025, recruiting: 0.015, misc: 0.02,
+    },
+  },
+  {
+    key: 'RECRUIT_FOCUSED',
+    label: 'Recruiting-focused',
+    blurb: 'Big scholarship + recruiting pools. Aggressive talent acquisition; lighter player-dev infrastructure.',
+    allocations: {
+      scholarships: 0.62, coachingSalaries: 0.17, equipment: 0.025, uniforms: 0.015,
+      meals: 0.02, facilities: 0.025, medical: 0.01, recruiting: 0.04, misc: 0.02,
+    },
+  },
+  {
+    key: 'WIN_NOW',
+    label: 'Win-now',
+    blurb: 'Heavy travel cushion + meals + medical. Senior-laden teams that need to peak THIS year.',
+    allocations: {
+      scholarships: 0.55, coachingSalaries: 0.18, equipment: 0.035, uniforms: 0.02,
+      meals: 0.035, facilities: 0.025, medical: 0.025, recruiting: 0.015, misc: 0.025,
+    },
+  },
+  {
+    key: 'PINCH_PENNIES',
+    label: 'Pinch pennies',
+    blurb: 'Bare minimum on extras, banked $ rolls over to next year. Use when rebuilding or saving up.',
+    allocations: {
+      scholarships: 0.55, coachingSalaries: 0.16, equipment: 0.02, uniforms: 0.01,
+      meals: 0.015, facilities: 0.02, medical: 0.005, recruiting: 0.01, misc: 0.015,
+    },
+  },
+  {
+    key: 'STRONG_COACHING',
+    label: 'Strong coaching',
+    blurb: 'Top-of-market salaries to keep + attract elite assistants. Drives weekly AP and dev quality.',
+    allocations: {
+      scholarships: 0.54, coachingSalaries: 0.24, equipment: 0.025, uniforms: 0.015,
+      meals: 0.025, facilities: 0.03, medical: 0.015, recruiting: 0.02, misc: 0.02,
+    },
+  },
+]
+
+/**
+ * Apply a preset to the user's budget. Travel allocation is preserved (it
+ * comes from the actual schedule and is locked). Other categories are
+ * rebalanced to fit the remaining $.
+ *
+ * @param {import('./types.js').BudgetState} budget
+ * @param {BudgetPreset} preset
+ */
+export function applyBudgetPreset(budget, preset) {
+  const total = budget.totalAthleticBudget
+  const travelAllocation = budget.allocations.travel || 0
+  const remainingTotal = total - travelAllocation
+  if (remainingTotal <= 0) return budget
+  // Preset ratios sum to ~0.92 (without travel). Normalize so the non-travel
+  // categories add up to remainingTotal regardless of preset slop.
+  const ratios = preset.allocations
+  const sumRatios = Object.values(ratios).reduce((s, v) => s + v, 0)
+  const next = { ...budget.allocations, travel: travelAllocation }
+  for (const [cat, ratio] of Object.entries(ratios)) {
+    next[cat] = Math.round(remainingTotal * (ratio / sumRatios))
+  }
+  // Drift cleanup → toss into scholarships
+  const sum = BUDGET_CATEGORIES.reduce((s, c) => s + (next[c] || 0), 0)
+  const drift = total - sum
+  if (drift !== 0) next.scholarships += drift
+  return { ...budget, allocations: next }
+}
+
+/**
+ * Lock the travel allocation onto the budget from the actual scheduled
+ * games' travel costs. Caller passes in the cost (so we avoid circular
+ * imports inside this module).
+ *
+ * @param {import('./types.js').BudgetState} budget
+ * @param {number} travelCost
+ */
+export function lockTravelAllocation(budget, travelCost) {
+  const allocations = { ...budget.allocations, travel: Math.round(travelCost) }
+  return { ...budget, allocations, travelLocked: true }
+}
+
+/**
+ * Mark the budget as locked-in for the current year. After this, the Wk 3
+ * tutorial gate clears and the dashboard "Set budget" requirement resolves.
+ */
+export function lockBudgetForYear(budget, year) {
+  return { ...budget, locked: { year } }
+}
+
+/** Is the user over budget? Returns the amount or 0. */
+export function budgetOverage(budget) {
+  const allocated = BUDGET_CATEGORIES.reduce((s, c) => s + (budget.allocations[c] || 0), 0)
+  return Math.max(0, allocated - budget.totalAthleticBudget)
+}
+
+/**
+ * Extended sim-relevant effects derived from budget allocations. Adds onto
+ * the legacy budgetCategoryEffects (equipment, meals, facilities, medical,
+ * recruiting); also returns the dev / injury / stamina / academic / sports-
+ * med modifiers used by sim.js + development.js.
+ *
+ * Returns multipliers/deltas that downstream code reads. 1.0 = baseline.
+ *
+ * @param {import('./types.js').BudgetState} budget
+ */
+export function extendedBudgetEffects(budget) {
+  const base = budgetCategoryEffects(budget)
+  if (!budget || !budget.allocations) {
+    return { ...base, devMultiplier: 1, injuryMultiplier: 1, staminaBoost: 0, gpaFloor: 0, recoveryMultiplier: 1, recruitPoolMultiplier: 1 }
+  }
+  const total = budget.totalAthleticBudget || 1
+  const def = {
+    facilities: 0.035, equipment: 0.03, meals: 0.025, medical: 0.015, recruiting: 0.02,
+  }
+  const r = {}
+  for (const k of Object.keys(def)) {
+    r[k] = (budget.allocations[k] || 0) / total / def[k]
+  }
+  return {
+    ...base,
+    // Facilities → offseason development rate. ±20% range.
+    devMultiplier: clamp(1 + (r.facilities - 1) * 0.20, 0.80, 1.25),
+    // Equipment → injury risk. Cheaper gear = more nicks. ±25%.
+    injuryMultiplier: clamp(1 - (r.equipment - 1) * 0.25, 0.75, 1.40),
+    // Meals → stamina + day-to-day durability. Adds up to +3 to pitcher stamina.
+    staminaBoost: clamp((r.meals - 1) * 3, -2, 3),
+    // Academic support comes from misc + meals combined — affects team GPA floor.
+    gpaFloor: clamp((r.meals - 1) * 0.10, -0.15, 0.15),
+    // Medical → recovery speed. Already in base.medicalRecovery; surface a
+    // multiplier flavor for downstream code.
+    recoveryMultiplier: clamp(1 + base.medicalRecovery, 0.75, 1.30),
+    // Recruiting → pool size + closing rate.
+    recruitPoolMultiplier: clamp(1 + (r.recruiting - 1) * 0.30, 0.80, 1.40),
+  }
+}

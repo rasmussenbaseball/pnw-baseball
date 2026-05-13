@@ -80,6 +80,14 @@ const ROLE_MULTIPLIER = {
  */
 export const STARTING_ROLES = ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
 
+/**
+ * Roles that MUST be filled in year 1 (the dynasty tutorial year) before
+ * Wk 2 can be advanced past. Year 2+ exposes a "Confirm I'm keeping my
+ * staff" button so the user can skip re-hiring if they're happy with what
+ * they have.
+ */
+export const FIRST_YEAR_REQUIRED_ROLES = ['PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
+
 /** Optional roles the user can choose to hire. */
 export const OPTIONAL_ROLES = [
   'RECRUITING_COORDINATOR',
@@ -88,6 +96,13 @@ export const OPTIONAL_ROLES = [
   'DATA_ANALYTICS_MANAGER',
   'GRADUATE_ASSISTANT',
 ]
+
+/**
+ * Optional roles that only become available to interview / hire starting
+ * Wk 4 (after the tutorial gates clear). Wks 1-3 only show + allow the
+ * three required assistant roles to keep the onboarding tight.
+ */
+export const ROLES_UNLOCKED_AT_WEEK_4 = OPTIONAL_ROLES
 
 export const ROLE_DESCRIPTIONS = {
   HEAD_COACH:             'Sets the program direction. AP, recruiting, in-game tactics.',

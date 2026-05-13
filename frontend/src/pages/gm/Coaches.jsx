@@ -4,13 +4,19 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import {
   generateHiringCandidates, OPTIONAL_ROLES, STARTING_ROLES, ROLE_DESCRIPTIONS,
+  FIRST_YEAR_REQUIRED_ROLES,
 } from '../../gm/engine/coaches'
 import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
+import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import AttrTooltip from '../../gm/components/AttrTooltip'
 
 const INTERVIEW_AP_COST = 20
 const FIRE_AP_COST = 20
+
+// Assistant coach pool the user starts with each year (per spec). Drives the
+// "stay in your means" feel of Wk 2.
+const ASSISTANT_HIRE_POOL = 40_000
 
 export default function Coaches() {
   const { user } = useAuth()
@@ -18,7 +24,11 @@ export default function Coaches() {
   const slot = parseInt(params.get('slot') || '1', 10)
   const userId = user?.id || 'guest'
 
-  const [save, setSave] = useState(() => loadDynasty(userId, slot))
+  const [save, setSave] = useState(() => {
+    const s = loadDynasty(userId, slot)
+    if (s) ensureUnifiedCalendar(s)
+    return s
+  })
   const [interviewing, setInterviewing] = useState(null)
   const [candidates, setCandidates] = useState([])
 
@@ -34,14 +44,40 @@ export default function Coaches() {
   const optionalAvailable = OPTIONAL_ROLES.filter(r => !filledRoles.has(r))
   const hasAnalyticsMgr = filledRoles.has('DATA_ANALYTICS_MANAGER')
 
+  // ── Wk 2 tutorial gating ────────────────────────────────────────────────
+  // In Wk 2 the AP is locked at 0, so interviews must be FREE during the
+  // tutorial. Optional support roles only unlock in Wk 4+.
+  const weekOfYear = save.calendar?.weekOfYear ?? 1
+  const isFirstYear = (save.dynastyYear ?? 1) === 1
+  const isTutorialHireWeek = weekOfYear === 2
+  const optionalLocked = weekOfYear < 4
+  const remainingHirePool = ASSISTANT_HIRE_POOL - assistants.reduce((s, c) => s + (c.salary || 0), 0)
+
+  const missingRequired = FIRST_YEAR_REQUIRED_ROLES.filter(r => !filledRoles.has(r))
+  const allRequiredFilled = missingRequired.length === 0
+  const showConfirmStaff = !isFirstYear && weekOfYear === 2 &&
+    save.hiringConfirmed?.year !== save.calendar?.year
+
+  function confirmStaffForYear() {
+    save.hiringConfirmed = { year: save.calendar?.year }
+    saveDynasty(save); setSave({ ...save })
+  }
+
   function startInterview(role) {
-    if (save.ap.currentWeek < INTERVIEW_AP_COST) {
-      alert(`Interviewing costs ${INTERVIEW_AP_COST} AP — not enough this week.`)
+    // Wk 2 tutorial: hires are FREE (AP is locked at 0 for wks 1-3). After
+    // tutorial, the standard 20 AP / interview cost applies.
+    const cost = isTutorialHireWeek ? 0 : INTERVIEW_AP_COST
+    if (save.ap.currentWeek < cost) {
+      alert(`Interviewing costs ${cost} AP — not enough this week.`)
       return
     }
-    save.ap.currentWeek -= INTERVIEW_AP_COST
-    save.ap.spentThisWeek += INTERVIEW_AP_COST
-    save.ap.spentByCategory.staff = (save.ap.spentByCategory.staff || 0) + INTERVIEW_AP_COST
+    if (optionalLocked && !FIRST_YEAR_REQUIRED_ROLES.includes(role)) {
+      alert('Optional coach roles unlock in Week 4. For now you can only hire your three required assistants.')
+      return
+    }
+    save.ap.currentWeek -= cost
+    save.ap.spentThisWeek += cost
+    save.ap.spentByCategory.staff = (save.ap.spentByCategory.staff || 0) + cost
     const rng = makeRng('interview', save.userSchoolId, role, Date.now())
     const slate = generateHiringCandidates(userSchool, role, rng)
     setCandidates(slate)
@@ -105,7 +141,51 @@ export default function Coaches() {
         </div>
       </div>
 
-      {!hasAnalyticsMgr && (
+      {/* Wk 2 tutorial banner — year 1 forced hire */}
+      {isTutorialHireWeek && isFirstYear && !allRequiredFilled && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-4">
+          <div className="text-[11px] uppercase tracking-wider text-amber-700 font-bold mb-1">
+            Week 2 — Hire Your Assistants
+          </div>
+          <div className="text-sm text-amber-900">
+            <strong>First year of your dynasty.</strong> You must hire all three required assistants
+            (Pitching, Hitting, Bench coach) before advancing to Wk 3 budgeting. Assistant pool:
+            <strong> ${(ASSISTANT_HIRE_POOL / 1000).toFixed(0)}K</strong> annually
+            ({assistants.length === 0
+              ? 'nothing spent yet'
+              : `$${(((ASSISTANT_HIRE_POOL - remainingHirePool) / 1000).toFixed(1))}K committed, $${(remainingHirePool / 1000).toFixed(1)}K left`}).
+            Interviews are <strong>FREE</strong> this week — AP is locked until Wk 4.
+          </div>
+        </div>
+      )}
+      {isTutorialHireWeek && isFirstYear && allRequiredFilled && (
+        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 mb-4 text-sm text-green-900">
+          ✓ All three required assistants hired. Head back to the dashboard to advance to Wk 3 (budget).
+        </div>
+      )}
+
+      {/* Year 2+ "Confirm staff" shortcut */}
+      {showConfirmStaff && (
+        <div className="bg-pnw-cream border-2 border-pnw-green/40 rounded-xl p-4 mb-4 flex justify-between items-center">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-pnw-green font-bold mb-1">
+              Week 2 — Returning Year
+            </div>
+            <div className="text-sm text-pnw-slate">
+              Happy with your current staff? Confirm and skip hiring this year. You can still
+              fire / re-hire individual coaches if needed.
+            </div>
+          </div>
+          <button
+            onClick={confirmStaffForYear}
+            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
+          >
+            Confirm staff ✓
+          </button>
+        </div>
+      )}
+
+      {!hasAnalyticsMgr && weekOfYear >= 4 && (
         <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900 mb-4">
           💡 Hire a <strong>Data & Analytics Manager</strong> to unlock advanced stats (FIP, wOBA, wRC+, WAR) across the league.
         </div>
@@ -136,21 +216,46 @@ export default function Coaches() {
 
       {missingStarting.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-900 mb-2">⚠ Missing standard staff</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-900 mb-2">
+            ⚠ {isTutorialHireWeek && isFirstYear ? 'Required hires' : 'Missing standard staff'}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {missingStarting.map(role => (
-              <HireButton key={role} role={role} apCurrent={save.ap.currentWeek} onClick={() => startInterview(role)} />
+              <HireButton
+                key={role}
+                role={role}
+                apCurrent={save.ap.currentWeek}
+                cost={isTutorialHireWeek ? 0 : INTERVIEW_AP_COST}
+                onClick={() => startInterview(role)}
+              />
             ))}
           </div>
         </div>
       )}
 
       {optionalAvailable.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Optional Hires</h2>
+        <div className={'rounded-xl border p-5 shadow-sm ' +
+          (optionalLocked ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-gray-200')}>
+          <div className="flex justify-between items-baseline mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
+              Optional Hires {optionalLocked && '🔒'}
+            </h2>
+            {optionalLocked && (
+              <span className="text-[10px] text-gray-500 italic">
+                Unlocks Week 4 — focus on required assistants first.
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {optionalAvailable.map(role => (
-              <HireButton key={role} role={role} apCurrent={save.ap.currentWeek} onClick={() => startInterview(role)} />
+              <HireButton
+                key={role}
+                role={role}
+                apCurrent={save.ap.currentWeek}
+                cost={isTutorialHireWeek ? 0 : INTERVIEW_AP_COST}
+                disabled={optionalLocked}
+                onClick={() => startInterview(role)}
+              />
             ))}
           </div>
         </div>
@@ -168,17 +273,20 @@ export default function Coaches() {
   )
 }
 
-function HireButton({ role, apCurrent, onClick }) {
+function HireButton({ role, apCurrent, cost = 20, disabled = false, onClick }) {
   const desc = ROLE_DESCRIPTIONS[role]
+  const cantAfford = apCurrent < cost
   return (
     <button
       onClick={onClick}
-      disabled={apCurrent < INTERVIEW_AP_COST}
+      disabled={disabled || cantAfford}
       className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
     >
       <div className="flex justify-between items-baseline">
         <span className="font-semibold text-sm">{prettyLabel(role)}</span>
-        <span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">{INTERVIEW_AP_COST} AP</span>
+        <span className={'text-xs px-2 py-0.5 rounded ' + (cost === 0 ? 'bg-green-600 text-white' : 'bg-pnw-green text-white')}>
+          {cost === 0 ? 'FREE' : `${cost} AP`}
+        </span>
       </div>
       <div className="text-[11px] text-gray-500 mt-1">{desc}</div>
     </button>

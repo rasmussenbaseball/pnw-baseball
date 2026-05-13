@@ -163,6 +163,33 @@ export default function Schedule() {
         </div>
       )}
 
+      {/* COMPLETE — mark-done button to satisfy Wk 1 phase-gate */}
+      {!scheduleIncomplete && !save.scheduleComplete && (
+        <div className="bg-green-50 border-l-4 border-green-500 text-green-900 p-4 rounded mb-4 flex justify-between items-center">
+          <div>
+            <div className="font-bold text-base">✓ All weekends scheduled</div>
+            <div className="text-sm mt-1">
+              Confirm your schedule to clear the Week 1 phase-gate and unlock Wk 2 (assistant coach hiring).
+              Travel budget for Wk 3 will lock in at <strong>${(travelCost.totalCost / 1000).toFixed(1)}K</strong> based on these trips.
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              save.scheduleComplete = true
+              saveDynasty(save); setSave({ ...save })
+            }}
+            className="px-4 py-2 bg-green-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
+          >
+            Confirm schedule ✓
+          </button>
+        </div>
+      )}
+      {save.scheduleComplete && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-xs p-2 rounded mb-4">
+          ✓ Schedule confirmed. Travel cost: <strong>${(travelCost.totalCost / 1000).toFixed(1)}K</strong> (locks into the budget on Wk 3).
+        </div>
+      )}
+
       {/* Caps strip — D1 midweek bar removed */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <CapCard label="Regular-season games" count={countedGames} cap={NAIA_GAME_CAP} unit="games" />
@@ -244,33 +271,36 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* SCRIMMAGE section */}
+      {/* TRAVEL BUDGET WARNING — Wk 1 user-visible signal */}
+      <TravelBudgetWarning save={save} travelCost={travelCost} />
+
+      {/* AUTO FALL GAMES — read-only display */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="text-sm font-semibold text-amber-900">Fall ball + Pre-season Scrimmages</div>
+            <div className="text-sm font-semibold text-amber-900">
+              🍂 Fall Scrimmages — auto-scheduled
+            </div>
             <div className="text-xs text-amber-700">
-              {scrimRemaining} of {NAIA_SCRIMMAGE_CAP} left. Doubleheaders only. Don't count toward record.
+              8 games (4 doubleheaders) vs nearby D2/D3/JUCO opponents. No NAIA fall opponents allowed. Don't count toward record.
             </div>
           </div>
-          <button
-            onClick={() => setPickingScrimmage('FALL')}
-            disabled={scrimRemaining < 2}
-            className="text-xs bg-amber-900 text-white px-3 py-1.5 rounded disabled:opacity-50"
-          >
-            + Fall DH
-          </button>
+          <div className="text-[11px] text-amber-800 bg-amber-100 px-2 py-1 rounded font-mono">
+            {scrimmages.length} game{scrimmages.length === 1 ? '' : 's'} set
+          </div>
         </div>
         {scrimmages.length > 0 && (
           <div className="space-y-1 mt-2 text-xs text-amber-900">
             {Object.entries(groupBySeriesId(scrimmages)).map(([sid, games]) => {
               const g = games[0]
-              const opp = save.schools[g.awayId] || NON_NAIA_DISPLAY[g.awayId]
+              const oppId = g.homeId === userSchoolId ? g.awayId : g.homeId
+              const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId]
+              const isHome = g.homeId === userSchoolId
               return (
                 <div key={sid} className="flex items-center gap-2">
                   <TeamLogo school={opp} size={16} />
-                  <span>{g.date} — {games.length}-game DH vs {opp?.name}</span>
-                  <span className="text-amber-600">{g.type === 'FALL_SCRIMMAGE' ? '(Fall)' : '(Spring pre-season)'}</span>
+                  <span>{g.date} — {games.length}-game DH {isHome ? 'vs' : '@'} {opp?.name}</span>
+                  <span className="text-amber-600 text-[10px]">({opp?.division || 'opponent'})</span>
                 </div>
               )
             })}
@@ -383,6 +413,36 @@ function groupBySeriesId(games) {
     out[key].push(g)
   }
   return out
+}
+
+function TravelBudgetWarning({ save, travelCost }) {
+  // Use the Wk 3 default-travel target (~8% of total budget) as the "expected"
+  // baseline. If the user's actual scheduled travel exceeds 1.5x that, throw
+  // a clear over-budget warning so they can re-plan before Wk 3 locks them in.
+  const total = save.budget?.totalAthleticBudget || 0
+  if (!total || !travelCost?.totalCost) return null
+  const target = total * 0.08
+  const actual = travelCost.totalCost
+  const ratio = actual / Math.max(1, target)
+  if (ratio < 1.3) return null   // within reason — no warning
+  const overBy = actual - target
+  return (
+    <div className={'rounded-xl p-3 mb-4 text-sm flex justify-between items-start ' +
+      (ratio >= 2 ? 'bg-red-50 border-2 border-red-300 text-red-900'
+                  : 'bg-amber-50 border border-amber-300 text-amber-900')}>
+      <div className="flex-1">
+        <div className="font-semibold">
+          ⚠ Travel cost is {ratio >= 2 ? 'WAY' : 'somewhat'} over the typical 8% allocation
+        </div>
+        <div className="text-xs mt-1">
+          Your trips will cost <strong>${(actual / 1000).toFixed(1)}K</strong> — that's
+          ${(overBy / 1000).toFixed(1)}K over the ${(target / 1000).toFixed(1)}K
+          baseline. Travel locks into the budget at Wk 3 from these games; consider
+          home-heavy weekends or closer non-conference opponents if money is tight.
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function SeriesRow({ games, userSchoolId, save }) {

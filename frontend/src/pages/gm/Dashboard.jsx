@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
   const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
+  const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -134,12 +135,12 @@ export default function Dashboard() {
         return
       }
     }
-    // Season mode + unplayed games this week → push the user into the Play
-    // page so they get the live-game experience (with an "auto-sim week"
-    // escape hatch right there). Stops the dashboard sim button from quietly
-    // burning a week of games behind the user's back.
+    // Season mode + unplayed games this week → pop the game-week modal so
+    // the user explicitly chooses "Enter Game" (live PA-by-PA) or "Sim Games"
+    // (auto). The modal is the popup the spec asks for; both branches route
+    // to Play page or auto-sim respectively.
     if (mode === 'SEASON' && thisWeekUnplayed.length > 0) {
-      navigate(`/gm/play?slot=${slot}`)
+      setGameWeekModal(true)
       return
     }
     setBusy(true)
@@ -221,6 +222,33 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto py-6 px-4">
       {progress && <ProgressModal {...progress} />}
+      {gameWeekModal && (
+        <GameWeekModal
+          games={thisWeekUnplayed}
+          save={save}
+          weekOfYear={weekOfYear}
+          onEnter={() => { setGameWeekModal(false); navigate(`/gm/play?slot=${slot}`) }}
+          onSim={() => {
+            setGameWeekModal(false)
+            setBusy(true)
+            setTimeout(() => {
+              try {
+                const ratings = seedFromPear(save.schools, save.conferences)
+                const summary = simWeek(save, save.schedule, ratings)
+                advanceWeek(save, save.schedule)
+                saveDynasty(save)
+                setSave({ ...save })
+                setLastWeekRecap({ kind: 'season', results: summary.userResults })
+              } catch (err) {
+                console.error('week sim failed:', err)
+                alert('Sim failed — see console.')
+              }
+              setBusy(false)
+            }, 30)
+          }}
+          onCancel={() => setGameWeekModal(false)}
+        />
+      )}
       {/* Top bar — identity + date + AP */}
       <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white rounded-xl p-5 mb-4 flex justify-between items-center shadow">
         <div className="flex gap-4 items-center">
@@ -646,6 +674,56 @@ function NavTile({ to, title, sub }) {
       <div className="font-semibold text-sm">{title}</div>
       <div className="text-[11px] opacity-70">{sub}</div>
     </Link>
+  )
+}
+
+function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
+  const userSchoolId = save.userSchoolId
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-lg">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-pnw-green font-bold">
+              Week {weekOfYear} — Game Week
+            </div>
+            <h3 className="text-xl font-bold text-pnw-slate mt-0.5">
+              {games.length} game{games.length === 1 ? '' : 's'} this week
+            </h3>
+          </div>
+          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+        </div>
+        <div className="space-y-1 mb-4 max-h-40 overflow-y-auto text-sm">
+          {games.map(g => {
+            const isHome = g.homeId === userSchoolId
+            const oppId = isHome ? g.awayId : g.homeId
+            const opp = save.schools[oppId] || { name: oppId }
+            return (
+              <div key={g.id} className="flex justify-between text-xs text-gray-700 py-0.5">
+                <span>{isHome ? 'vs' : '@'} {opp.name}</span>
+                <span className="text-gray-400">{g.date}</span>
+              </div>
+            )
+          })}
+        </div>
+        <p className="text-xs text-gray-500 mb-4 leading-snug">
+          Choose how you want to handle this week's slate. Live games run plate appearance
+          by plate appearance with sub options; sim auto-runs them in one shot and surfaces
+          the results.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button onClick={onEnter} className="px-4 py-3 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+            ▶ Enter Game (live, PA-by-PA)
+          </button>
+          <button onClick={onSim} className="px-4 py-3 bg-pnw-slate text-white rounded text-sm font-semibold hover:opacity-90">
+            ⏩ Sim Game{games.length === 1 ? '' : 's'} (auto)
+          </button>
+          <button onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700 mt-1">
+            Wait, not yet
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

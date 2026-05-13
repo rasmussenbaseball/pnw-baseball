@@ -16,6 +16,7 @@ import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { runEventsForWeek } from './events'
+import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar } from './gameYear'
 import nonNaiaRaw from '../data/non_naia_teams.json'
@@ -332,6 +333,17 @@ export function runEndOfYear(state) {
   state.schedule = []
   state.playerStats = {}
   state.prospectCamp = null
+  // Year-over-year: dynastyYear counter ticks. Year 1 = tutorial; Year 2+
+  // can use the "confirm my staff" shortcut to skip required hiring.
+  state.dynastyYear = (state.dynastyYear || 1) + 1
+  // Clear last-year's locked budget / hiring confirmation so the new year's
+  // tutorial weeks can run cleanly.
+  if (state.budget?.locked) state.budget.locked = null
+  state.hiringConfirmed = null
+
+  // Build the new year's conference schedule + auto-fall games up front so
+  // they appear in the calendar before the user reaches Wk 1.
+  rebuildScheduleForYear(state)
 
   // Surface a "season wrapped, here's what's coming" newsfeed entry so the
   // user sees the calendar is now ticking through deferred events.
@@ -506,4 +518,21 @@ export function advanceOffseasonWeek(state) {
 /** Legacy: advance one season week. Schedule arg ignored (sim is separate). */
 export function advanceWeek(state, _schedule) {
   advanceOneWeek(state)
+}
+
+// ─── Per-year schedule builder ──────────────────────────────────────────────
+// Called on year rollover (runEndOfYear) + can be re-called manually. Builds
+// the conference round-robin AND the auto-scheduled fall games up front; the
+// user fills in non-conference weekends from the Schedule page.
+
+export function rebuildScheduleForYear(state) {
+  const year = state.calendar.year
+  const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
+    div.teams.map(t => ({ ...t, division: div.id }))
+  )
+  const confSchedule = buildAllConferenceSchedules(state.conferences, state.schools, year, state.rngSeed)
+  const fallGames = autoScheduleFallGames(
+    state.userSchoolId, state.schools, flatNonNaia, year - 1, state.rngSeed + year
+  )
+  state.schedule = [...confSchedule, ...fallGames]
 }

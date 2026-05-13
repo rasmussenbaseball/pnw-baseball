@@ -17,12 +17,22 @@
  */
 
 import { runEndOfTermAcademics } from './academics'
-import { annualReview } from './budget'
+import { annualReview, lockTravelAllocation, extendedBudgetEffects } from './budget'
 import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
 import { endOfSeasonDevelopment } from './development'
 import { budgetCategoryEffects } from './budget'
+import { totalAnnualTravelCost } from './travel'
+import nonNaiaRaw from '../data/non_naia_teams.json'
+
+const NON_NAIA_LOOKUP = (() => {
+  const out = {}
+  for (const div of nonNaiaRaw.divisions) {
+    for (const t of div.teams) out[t.id] = { ...t, division: div.id }
+  }
+  return out
+})()
 
 // ─── Event types ───────────────────────────────────────────────────────────
 
@@ -53,6 +63,7 @@ export const EVENT_TYPES = {
   WORLD_SERIES:             { label: 'NAIA World Series', desc: 'Avista NAIA WS in Lewiston, ID.' },
   LAST_DAY_RECRUITING:      { label: 'Late recruiting closes', desc: 'Final HS commitments locked for this cycle.' },
   CLASS_FINALIZE:           { label: 'Class finalizes', desc: 'Signed recruits officially join the roster — ratings fully revealed.' },
+  LOCK_TRAVEL_BUDGET:       { label: 'Travel budget locks', desc: 'Travel allocation set from your scheduled trips. Adjust other categories from here.' },
 }
 
 // ─── Event schedule — unified 52-week ──────────────────────────────────────
@@ -65,7 +76,7 @@ export const WEEK_EVENT_SCHEDULE = {
   // ── Tutorial weeks (Aug 1-29) ──
   1: ['SET_SCHEDULE'],
   2: [],                                          // hiring is a UI requirement, no engine event
-  3: [],                                          // budgeting is a UI requirement
+  3: ['LOCK_TRAVEL_BUDGET'],                      // travel cost locked from schedule
   4: [],                                          // scouting opens — AP unlocks, no engine event
   // ── Fall Camp (Sep-Oct, wks 5-12) ──
   5: ['FALL_CAMP_START'],
@@ -143,8 +154,32 @@ export function runEvent(state, eventKey) {
     case 'OUTBOUND_TRANSFERS_MID':   return runOutbound(state, 'MID_OFFSEASON')
     case 'OUTBOUND_TRANSFERS_LATE':  return runOutbound(state, 'LATE_OFFSEASON')
     case 'CLASS_FINALIZE':           return runClassFinalize(state)
+    case 'LOCK_TRAVEL_BUDGET':       return runLockTravelBudget(state)
     default:                         return null
   }
+}
+
+/**
+ * Wk 3 event — locks the travel budget allocation from the actual scheduled
+ * games' travel costs. After this, the Budget UI shows travel as locked.
+ */
+function runLockTravelBudget(state) {
+  if (!state.budget) return { label: 'No budget' }
+  if (!state.schedule || state.schedule.length === 0) {
+    return { label: 'No schedule yet — travel not locked' }
+  }
+  const cost = totalAnnualTravelCost(
+    state.userSchoolId, state.schedule, state.schools, NON_NAIA_LOOKUP,
+  )
+  const travelDollars = cost?.totalCost ?? 0
+  state.budget = lockTravelAllocation(state.budget, travelDollars)
+  state.newsfeed.unshift({
+    id: `lock_travel_${state.calendar.year}`,
+    year: state.calendar.year, week: 3, type: 'AWARD',
+    headline: `🔒 Travel budget locked at $${(travelDollars / 1000).toFixed(1)}K based on your scheduled trips.`,
+    payload: { travelDollars },
+  })
+  return { label: 'Travel locked', news: { travelDollars } }
 }
 
 /**
@@ -266,7 +301,10 @@ function runDevelopment(state) {
   const userTeam = state.teams[state.userSchoolId]
   const hc = state.coaches[userTeam.headCoachId]
   const coachDeveloper = hc?.developer ?? 55
-  const budgetEffects = budgetCategoryEffects(state.budget)
+  // Use extended effects so facilities → devMultiplier actually drives
+  // per-player gains. Falls back to base effects shape for any code path
+  // that doesn't read the extended fields yet.
+  const budgetEffects = extendedBudgetEffects(state.budget)
   const playerIds = userTeam.rosterPlayerIds
   const players = playerIds.map(id => state.players[id]).filter(Boolean)
   const hitters = players.filter(p => p.isHitter).sort((a, b) => (b.hitter.contact_r || 0) - (a.hitter.contact_r || 0))

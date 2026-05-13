@@ -36,6 +36,7 @@
  */
 
 import { makeRng, hashSeed } from './rng'
+import { sortByProximity } from './proximity'
 import confRulesRaw from '../data/conference_rules.json'
 
 /** @typedef {import('./types.js').Conference} Conference */
@@ -656,6 +657,75 @@ export function tryAddScrimmage(userSchoolId, opponentId, opponentDivision, date
     },
   ]
   return { ok: true, games }
+}
+
+// ─── Auto-scheduled fall games ───────────────────────────────────────────────
+//
+// Teams play 8 fall scrimmages every year against 4 nearby D2/D3/JUCO
+// opponents (2 games each, doubleheader format). No NAIA fall opponents —
+// NAIA-on-NAIA contact in the fall isn't allowed in this game's world.
+// Proximity-sorted so trips stay short.
+
+/**
+ * Build the auto-scheduled fall games for a single team. Returns 8 Game
+ * records spread across 4 October Fridays.
+ *
+ * @param {string} userSchoolId
+ * @param {Object<string,School>} schools  full NAIA school table
+ * @param {Array} nonNaiaTeams              flattened D2/D3/JUCO opponents
+ * @param {number} year                     fall year (the Aug-Jul cycle)
+ * @param {number} seed
+ * @returns {Game[]}
+ */
+export function autoScheduleFallGames(userSchoolId, schools, nonNaiaTeams, year, seed) {
+  const school = schools[userSchoolId]
+  if (!school) return []
+  const userState = school.state
+
+  // Filter to D2/D3/JUCO only — no NAIA fall games per game rules.
+  const eligible = nonNaiaTeams.filter(t =>
+    t.division === 'D2' || t.division === 'D3' || (t.division || '').startsWith('JUCO')
+  )
+  const sorted = sortByProximity(userState, eligible)
+  if (sorted.length === 0) return []
+
+  // Pick 4 opponents — top 8 by proximity, then random 4 with rng so it's
+  // not always the same lineup. Stable per-(school, year) seed.
+  const rng = makeRng('autoFall', userSchoolId, year, seed)
+  const pool = sorted.slice(0, Math.max(8, sorted.length))
+  const picks = []
+  while (picks.length < 4 && pool.length > 0) {
+    const idx = rng.int(0, Math.min(pool.length, 8) - 1)
+    picks.push(pool[idx])
+    pool.splice(idx, 1)
+  }
+
+  // 4 doubleheader Fridays across October. Each DH = 2 games = same date.
+  const slots = fallScrimmageSlots(year)
+  const games = []
+  for (let i = 0; i < Math.min(4, picks.length, slots.length); i++) {
+    const opp = picks[i]
+    const slot = slots[i]
+    // Home/away alternates so the user gets a balanced mix.
+    const homeId = i % 2 === 0 ? userSchoolId : opp.id
+    const awayId = i % 2 === 0 ? opp.id : userSchoolId
+    const seriesId = `autofall_${year}_${slot.date}_${userSchoolId}_${opp.id}`
+    games.push({
+      id: `${seriesId}_0`, year, seasonWeek: 0, date: slot.date,
+      homeId, awayId, type: 'FALL_SCRIMMAGE', seriesId,
+      countsTowardRecord: false, isDoubleheader: true,
+      played: false, homeRuns: null, awayRuns: null,
+      autoScheduled: true,
+    })
+    games.push({
+      id: `${seriesId}_1`, year, seasonWeek: 0, date: slot.date,
+      homeId, awayId, type: 'FALL_SCRIMMAGE', seriesId,
+      countsTowardRecord: false, isDoubleheader: true,
+      played: false, homeRuns: null, awayRuns: null,
+      autoScheduled: true,
+    })
+  }
+  return games
 }
 
 // ─── Auto-fill (default starting schedule) ───────────────────────────────────

@@ -12,8 +12,9 @@ import { loadSchools } from './loadSchools'
 import { generateRoster } from './generate'
 import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
-import { buildAllConferenceSchedules } from './schedule'
+import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { defaultBudgetForSchool } from './budget'
+import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
 
@@ -139,8 +140,15 @@ export function newDynasty(input) {
   // opponents during conference weeks which violated the conf-weekends-only
   // rule; that's gone.
   const confSchedule = buildAllConferenceSchedules(conferences, schools, 2027, seed)
+  // Auto-schedule 8 fall games vs nearby D2/D3/JUCO opponents. The user can't
+  // play NAIA fall games (per league rules) and these are required-by-default
+  // — there's no "+ Fall DH" picker anymore.
+  const nonNaiaTeams = nonNaiaRaw.divisions.flatMap(div =>
+    div.teams.map(t => ({ ...t, division: div.id }))
+  )
+  const fallGames = autoScheduleFallGames(input.userSchoolId, schools, nonNaiaTeams, 2026, seed)
   /** @type {import('./schedule.js').Game[]} */
-  const schedule = [...confSchedule]
+  const schedule = [...confSchedule, ...fallGames]
 
   // 5. AP + budget initial state for the user's team
   const userTeam = teams[input.userSchoolId]

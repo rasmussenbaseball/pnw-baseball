@@ -43,7 +43,15 @@ export default function Recruiting() {
   const slot = parseInt(params.get('slot') || '1', 10)
   const userId = user?.id || 'guest'
 
-  const [save, setSave] = useState(() => loadDynasty(userId, slot))
+  const [save, setSave] = useState(() => {
+    const s = loadDynasty(userId, slot)
+    return s
+  })
+  // Wk 4 tutorial flag — the scouting opens this week and the user must
+  // spend every AP on scouting before they can advance.
+  const weekOfYear = save?.calendar?.weekOfYear ?? 1
+  const isWk4Tutorial = weekOfYear === 4
+  const apBaseline = save?.ap?.baseline ?? 25
   const [board, setBoard] = useState('BOARD')        // BOARD | FOLLOWING | OFFERS | SIGNED
   const [poolFilter, setPoolFilter] = useState('ALL')
   const [posFilter, setPosFilter] = useState('ALL')
@@ -205,6 +213,10 @@ export default function Recruiting() {
 
   return (
     <div className="max-w-6xl mx-auto py-8">
+      {isWk4Tutorial && (
+        <Wk4Tutorial save={save} apBaseline={apBaseline} />
+      )}
+
       <div className="mb-6 flex justify-between items-start">
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
@@ -907,6 +919,44 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
 
         <div className="mt-3 text-[10px] text-gray-400">
           Actions taken: {grade.actionsApplied.length}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Wk4Tutorial({ save, apBaseline }) {
+  const currentAP = save.ap?.currentWeek ?? 0
+  const spent = Math.max(0, apBaseline - currentAP)
+  const pct = Math.min(100, Math.round((spent / Math.max(1, apBaseline)) * 100))
+  const done = currentAP === 0
+  return (
+    <div className={'rounded-xl p-4 mb-4 border-2 ' +
+      (done ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300')}>
+      <div className="text-[11px] uppercase tracking-wider font-bold mb-1"
+           style={{ color: done ? '#166534' : '#92400e' }}>
+        Week 4 — Open Scouting & Build Your Board
+      </div>
+      <div className="text-sm leading-snug mb-2"
+           style={{ color: done ? '#166534' : '#78350f' }}>
+        {done
+          ? <>✓ All AP spent. You\'ve built your initial recruiting board for next year\'s class.
+              Head to the dashboard to advance to Wk 5 (Fall Camp opens).</>
+          : <>This is your <strong>first scouting week</strong>. You must spend every AP on
+              recruiting actions — add recruits to your board, run scouting trips, send introductory
+              outreach. The class you\'re building is for <strong>next year's enrollment</strong>.
+              Action buttons appear on each recruit card; clicking them costs AP.</>}
+      </div>
+      <div className="flex items-center gap-3 text-xs">
+        <div className="flex-1 bg-white rounded-full h-2 overflow-hidden">
+          <div
+            className={done ? 'h-2 bg-green-600' : 'h-2 bg-amber-500'}
+            style={{ width: `${pct}%`, transition: 'width 200ms' }}
+          />
+        </div>
+        <div className="font-mono whitespace-nowrap"
+             style={{ color: done ? '#166534' : '#78350f' }}>
+          {spent} / {apBaseline} AP spent
         </div>
       </div>
     </div>

@@ -178,19 +178,19 @@ function isScheduleComplete(state) {
 }
 
 function isHiringComplete(state) {
-  // First year of a dynasty (year 1, first time at this week): must hire all
-  // three required assistant roles. Subsequent years: skipable if state.
-  // hiringSkipped or hires already present.
+  // First year of a dynasty (dynastyYear === 1): must have all three
+  // required assistant roles filled. Subsequent years: skipable via a
+  // "confirm I'm keeping my staff" button (sets hiringConfirmed.year).
   const team = state.teams?.[state.userSchoolId]
   if (!team) return false
-  const isFirstYear = (state.dynastyYear ?? 1) === 1
   const required = ['PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
   const assistants = (team.assistantCoachIds || []).map(id => state.coaches?.[id]).filter(Boolean)
   const filledRoles = new Set(assistants.map(c => c.role))
+  const isFirstYear = (state.dynastyYear ?? 1) === 1
   if (isFirstYear) {
     return required.every(r => filledRoles.has(r))
   }
-  // Later years — user can confirm they're rolling with the existing staff
+  // Year 2+ — user must explicitly confirm OR have done a new hire this year.
   return state.hiringConfirmed?.year === state.calendar?.year
 }
 
