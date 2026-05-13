@@ -55,7 +55,7 @@ export default function WeeklyActions() {
     spendAP('team_boost', cost)
     markActionUsedThisWeek(save, action.key)
     const variantLabel = variant === 'TEMPORARY' ? 'temp 4-wk' : 'permanent'
-    const bumpedKeys = action.ratingKeys.map(k => k === '__velocity' ? 'velo' : prettyLabel(k)).join(', ')
+    const bumpedKeys = action.ratingKey === '__velocity' ? 'velo' : prettyLabel(action.ratingKey)
     save.newsfeed.unshift({
       id: `act_${action.key}_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
       year: save.calendar.year, week: save.calendar.week,
@@ -197,7 +197,7 @@ export default function WeeklyActions() {
           const usedThisWeek = isActionUsedThisWeek(save, a.key)
           const baseDisabled = !available || usedThisWeek
           const targetLabel = a.target === 'hitters' ? 'hitters' : a.target === 'pitchers' ? 'pitchers' : 'all players'
-          const keysLabel = a.ratingKeys.map(k => k === '__velocity' ? 'Velocity' : prettyLabel(k)).join(' / ')
+          const keysLabel = a.ratingKey === '__velocity' ? 'Velocity' : prettyLabel(a.ratingKey)
           return (
             <div key={a.key} className={'rounded-lg border p-3 ' + (baseDisabled ? 'border-gray-200 bg-gray-50 opacity-70' : 'border-gray-200 bg-white')}>
               <div className="flex justify-between items-baseline mb-1">

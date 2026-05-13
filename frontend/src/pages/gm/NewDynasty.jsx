@@ -9,11 +9,19 @@ import { prettyLabel } from '../../gm/engine/format'
 
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
 
-const ARCHETYPES = ['HS_GRINDER', 'JUCO_HUNTER', 'PORTAL_PRO', 'BALANCED']
-
 const COACH_BUILDER_TOTAL_POINTS = 250
 const COACH_BUILDER_BASE_RATING = 40
 const COACH_BUILDER_MAX = 90
+
+// Plain-English blurbs shown next to each rating slider so the user understands
+// what they're spending points on. Kept short — full descriptions live in
+// AttrTooltip.ATTR_DESCRIPTIONS for hover tooltips elsewhere.
+const RATING_DESCRIPTIONS = {
+  developer: 'How fast your players progress toward their potential. Higher = bigger offseason gains for everyone on the roster.',
+  motivator: 'Drives team chemistry, GPA boost from coaching, clutch/composure in big moments, and fundraising yield.',
+  recruiter: 'Drives weekly AP earned, the program\'s closing rate on verbals, and how many recruits show up to your prospect camp.',
+  tactician: 'In-game AI decisions — lineup construction, pitching changes, defensive positioning, situational calls.',
+}
 
 // v1.5 — Bushnell only. Architecture is school-agnostic, just gate selection.
 const ALLOWED_SCHOOL_IDS = ['bushnell']
@@ -60,7 +68,6 @@ export default function NewDynasty() {
   const [coachFirst, setCoachFirst] = useState('')
   const [coachLast, setCoachLast] = useState('')
   const [regions, setRegions] = useState(['NW'])
-  const [archetype, setArchetype] = useState('BALANCED')
   const [ratings, setRatings] = useState({ developer: 65, motivator: 65, recruiter: 65, tactician: 55 })
 
   const pointsUsed = Object.values(ratings).reduce((s, v) => s + (v - COACH_BUILDER_BASE_RATING), 0)
@@ -105,7 +112,7 @@ export default function NewDynasty() {
         firstName: coachFirst,
         lastName: coachLast,
         regions,
-        recruiter_type: archetype,
+        recruiter_type: 'BALANCED',
         ...ratings,
       },
     })
@@ -239,13 +246,6 @@ export default function NewDynasty() {
           </div>
 
           <div className="mb-4">
-            <label className="text-xs text-gray-500 uppercase tracking-wider">Recruiter Type</label>
-            <select className="block w-full mt-1 border rounded px-3 py-2 text-sm" value={archetype} onChange={e => setArchetype(e.target.value)}>
-              {ARCHETYPES.map(a => <option key={a} value={a}>{prettyLabel(a)}</option>)}
-            </select>
-          </div>
-
-          <div className="mb-4">
             <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 flex justify-between">
               <span>Recruiting Regions</span>
               <span className={'normal-case font-mono ' + (regions.length >= 2 ? 'text-amber-700' : 'text-gray-500')}>
@@ -278,12 +278,15 @@ export default function NewDynasty() {
             <strong>{pointsRemaining}</strong> points remaining to distribute
             <span className="text-gray-500"> (out of {COACH_BUILDER_TOTAL_POINTS - 4 * COACH_BUILDER_BASE_RATING})</span>
           </div>
+          <p className="text-[11px] text-gray-500 mb-3">
+            Four ratings define your head coach. Higher = better in that area. Each starts at {COACH_BUILDER_BASE_RATING}; spend your points where you want to be strongest.
+          </p>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {Object.entries(ratings).map(([key, val]) => (
-              <div key={key}>
+              <div key={key} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
                 <label className="text-xs text-gray-500 uppercase tracking-wider flex justify-between">
-                  <span>{prettyLabel(key)}</span>
+                  <span className="font-semibold text-pnw-slate">{prettyLabel(key)}</span>
                   <span className="font-mono text-pnw-green font-bold">{val}</span>
                 </label>
                 <input
@@ -292,8 +295,11 @@ export default function NewDynasty() {
                   max={COACH_BUILDER_MAX}
                   value={val}
                   onChange={e => setRating(key, parseInt(e.target.value, 10))}
-                  className="w-full"
+                  className="w-full mt-1"
                 />
+                <p className="text-[11px] text-gray-600 mt-1 leading-snug">
+                  {RATING_DESCRIPTIONS[key]}
+                </p>
               </div>
             ))}
           </div>
@@ -318,8 +324,6 @@ export default function NewDynasty() {
             <div><strong>School:</strong> {schools[selectedSchoolId].name} ({conferences[schools[selectedSchoolId].conferenceId].abbreviation})</div>
             <div><strong>Mode:</strong> {GAME_MODE_PRESETS[modeKey].label}</div>
             <div><strong>Coach:</strong> {coachFirst} {coachLast}</div>
-            <div><strong>Archetype:</strong> {archetype}</div>
-            <div><strong>Regions:</strong> {regions.join(', ') || 'home state'}</div>
             <div><strong>Regions of expertise:</strong> {regions.length ? regions.map(r => REGION_LABELS[r]).join(', ') : 'none'}</div>
             <div><strong>Coach ratings:</strong> {Object.entries(ratings).map(([k, v]) => `${k}=${v}`).join(' • ')}</div>
           </div>
