@@ -3,6 +3,7 @@ import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
+import { simAhead, simPresets, phaseLabel, snapshotState } from '../../gm/engine/simAhead'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
@@ -12,7 +13,7 @@ import {
   calendarDateLabel, offseasonPhase, offseasonWeekDate, formatShortDate,
   OFFSEASON_WEEKS,
 } from '../../gm/engine/calendar'
-import { prettyLabel, displayPosition } from '../../gm/engine/format'
+import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -33,6 +34,7 @@ export default function Dashboard() {
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [busy, setBusy] = useState(false)
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
+  const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -92,6 +94,16 @@ export default function Dashboard() {
     setBusy(false)
   }
 
+  function runSimAhead(preset) {
+    setBusy(true)
+    setLastWeekRecap(null)
+    const result = simAhead(save, { weeks: preset.weeks, untilFn: preset.untilFn })
+    saveDynasty(save)
+    setSave({ ...save })
+    setSimResult({ preset: preset.label, ...result })
+    setBusy(false)
+  }
+
 
   // ─── UI ────────────────────────────────────────────────────────────────────
   return (
@@ -130,6 +142,12 @@ export default function Dashboard() {
         offseasonWeek={save.calendar.offseasonWeek}
         startYear={save.calendar.startYear || save.calendar.year}
       />
+
+      {/* Sim-ahead presets */}
+      <SimAheadBar save={save} busy={busy} onRun={runSimAhead} />
+
+      {/* Weekly diff readout — appears after a multi-week sim */}
+      {simResult && <SimDiffPanel simResult={simResult} onDismiss={() => setSimResult(null)} />}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
@@ -396,7 +414,7 @@ function PlayerRow({ p, ovr, slot }) {
         </Link>
       </td>
       <td className="py-1 text-gray-500 w-12">{displayPosition(p.primaryPosition)}</td>
-      <td className="py-1 text-gray-500 w-10">{p.classYear}</td>
+      <td className="py-1 text-gray-500 w-10">{displayClassYear(p)}</td>
       <td className="py-1 text-right font-mono font-bold w-10">{ovr}</td>
     </tr>
   )
@@ -469,4 +487,154 @@ function postseasonSub(ps) {
   if (ps.userInField) return 'Opening Round'
   if (ps.userChamp) return '🏆 Conf Champ'
   return 'Missed'
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sim-ahead UI
+// ────────────────────────────────────────────────────────────────────────────
+
+function SimAheadBar({ save, busy, onRun }) {
+  const presets = simPresets(save)
+  if (presets.length <= 1) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-3 mb-4 shadow-sm flex flex-wrap items-center gap-2">
+      <div className="text-xs uppercase tracking-wider text-gray-500 mr-2">Sim ahead:</div>
+      {presets.map(p => (
+        <button
+          key={p.key}
+          onClick={() => onRun(p)}
+          disabled={busy}
+          className="px-3 py-1.5 bg-pnw-cream text-pnw-slate hover:bg-pnw-green hover:text-white border border-pnw-green/30 rounded text-xs font-semibold disabled:opacity-40"
+          title={p.est ? `~${p.est} weeks` : ''}
+        >
+          {p.label}{p.est ? ` (${p.est}w)` : ''}
+        </button>
+      ))}
+      <div className="text-[11px] text-gray-500 ml-auto">Per-week diffs will appear below.</div>
+    </div>
+  )
+}
+
+function SimDiffPanel({ simResult, onDismiss }) {
+  const { preset, weeksAdvanced, weeklyDiffs, aggregateDiff } = simResult
+  return (
+    <div className="bg-white rounded-xl border border-pnw-green/40 p-4 mb-4 shadow-sm">
+      <div className="flex justify-between items-baseline mb-3">
+        <h2 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider">
+          📊 Sim Recap — {preset} ({weeksAdvanced} week{weeksAdvanced === 1 ? '' : 's'})
+        </h2>
+        <button onClick={onDismiss} className="text-xs text-gray-500 hover:text-pnw-green">Dismiss ✕</button>
+      </div>
+
+      <DiffAggregate diff={aggregateDiff} />
+
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-pnw-slate hover:text-pnw-green">
+          ▾ Week-by-week breakdown
+        </summary>
+        <div className="mt-2 space-y-3">
+          {weeklyDiffs.map((d, i) => (
+            <DiffWeek key={i} diff={d} index={i + 1} />
+          ))}
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function DiffAggregate({ diff }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+      <DiffStat
+        label="Record"
+        before={`${diff.recordDelta.w + diff.recordDelta.l === 0 ? 'no games' : `${diff.recordDelta.w}-${diff.recordDelta.l}`}`}
+        delta={diff.recordDelta.w - diff.recordDelta.l}
+        showSign
+      />
+      <DiffStat
+        label="Budget"
+        before={`$${(diff.budgetDelta / 1000).toFixed(1)}K`}
+        delta={diff.budgetDelta}
+        showSign
+      />
+      <DiffStat
+        label="Job Security"
+        before={`${diff.jobSecurityDelta > 0 ? '+' : ''}${diff.jobSecurityDelta}`}
+        delta={diff.jobSecurityDelta}
+        showSign
+      />
+      <div className="bg-gray-50 rounded p-2 text-center">
+        <div className="text-[10px] text-gray-500 uppercase">Rating moves</div>
+        <div className="font-mono font-bold text-pnw-slate">
+          {diff.ovrChanges.length} player{diff.ovrChanges.length === 1 ? '' : 's'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DiffStat({ label, before, delta }) {
+  const color = delta > 0 ? 'text-green-700' : delta < 0 ? 'text-red-700' : 'text-gray-500'
+  return (
+    <div className="bg-gray-50 rounded p-2 text-center">
+      <div className="text-[10px] text-gray-500 uppercase">{label}</div>
+      <div className={'font-mono font-bold ' + color}>{before}</div>
+    </div>
+  )
+}
+
+function DiffWeek({ diff, index }) {
+  const big = diff.ovrChanges.slice(0, 6)
+  const happyMovers = diff.happinessChanges.slice(0, 4)
+  return (
+    <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/60">
+      <div className="text-xs font-semibold text-pnw-slate mb-1.5">
+        Week {index}: {diff.fromMode === 'OFFSEASON' ? `Offseason Wk ${diff.fromOffseasonWeek} → ${diff.toOffseasonWeek}` : `Season Wk ${diff.fromSeasonWeek} → ${diff.toSeasonWeek}`}
+        {(diff.recordDelta.w + diff.recordDelta.l > 0) && (
+          <span className="ml-2 font-normal text-gray-600">
+            ({diff.recordDelta.w}W-{diff.recordDelta.l}L this week)
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <div className="text-[10px] uppercase text-gray-500 mb-1">Rating changes</div>
+          {big.length === 0 ? <div className="text-[11px] text-gray-400">— no rating moves this week</div> : (
+            <ul className="text-[11px] space-y-0.5">
+              {big.map(c => (
+                <li key={c.id} className="flex justify-between">
+                  <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
+                  <span className={c.delta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
+                    {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-gray-500 mb-1">Happiness shifts</div>
+          {happyMovers.length === 0 ? <div className="text-[11px] text-gray-400">— no happiness moves this week</div> : (
+            <ul className="text-[11px] space-y-0.5">
+              {happyMovers.map(c => (
+                <li key={c.id} className="flex justify-between">
+                  <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
+                  <span className={c.delta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
+                    {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+      {diff.budgetDelta !== 0 && (
+        <div className="text-[11px] mt-2 text-gray-600">
+          Budget: <span className={diff.budgetDelta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
+            {diff.budgetDelta > 0 ? '+' : ''}${(diff.budgetDelta / 1000).toFixed(1)}K
+          </span>
+        </div>
+      )}
+    </div>
+  )
 }

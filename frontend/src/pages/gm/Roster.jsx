@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier, teamOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
-import { displayPosition } from '../../gm/engine/format'
+import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 
 const POSITION_GROUPS = {
@@ -105,7 +105,7 @@ export default function Roster() {
                   <tr key={p.id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/gm/player/${p.id}?slot=${slot}`)}>
                     <td className="py-2 px-3 font-medium">{p.firstName} {p.lastName}</td>
                     <td className="text-gray-700">{displayPosition(p.primaryPosition)}</td>
-                    <td className="text-gray-700">{p.classYear}</td>
+                    <td className="text-gray-700">{displayClassYear(p)}</td>
                     <td className="text-gray-600">{p.bats}/{p.throws}</td>
                     <td className="text-gray-600 text-xs">{p.hometown.city}, {p.hometown.state}</td>
                     <td className="text-gray-600 text-xs">${(p.scholarship.annualAmount / 1000).toFixed(1)}K</td>

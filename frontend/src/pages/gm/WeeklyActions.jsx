@@ -7,7 +7,7 @@ import {
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek } from '../../gm/engine/weeklyActions'
-import { prettyLabel } from '../../gm/engine/format'
+import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
 import { applyMeetingBoost, ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { playerOverall } from '../../gm/engine/playerRating'
@@ -447,7 +447,7 @@ function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek,
                   </td>
                   <td className="px-2 py-1 font-medium">{p.firstName} {p.lastName}</td>
                   <td className="px-2 py-1 text-gray-600">{p.isPitcher ? 'P' : p.primaryPosition}</td>
-                  <td className="px-2 py-1 text-gray-600">{p.classYear}</td>
+                  <td className="px-2 py-1 text-gray-600">{displayClassYear(p)}</td>
                   <td className="px-2 py-1 font-mono text-gray-700">{playerOverall(p)}</td>
                   <td className="px-2 py-1">
                     <span className={'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] ' + d.color + ' ' + d.bg}>

@@ -18,12 +18,13 @@ import { applyHsAttrition, generatePortalPool } from './recruits'
 import { runOutboundTransfers } from './outboundTransfers'
 import { runEndOfTermAcademics, teamAcademicSummary } from './academics'
 import { tickHappiness } from './happiness'
+import { simMlbDraft, summarizeDraft } from './draft'
 import { OFFSEASON_WEEKS } from './calendar'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 function zeroStats(isPitcher) {
-  if (isPitcher) return { ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0 }
-  return { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, k: 0, rbi: 0, pa: 0 }
+  if (isPitcher) return { ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0, gamesPlayed: 0 }
+  return { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, k: 0, rbi: 0, pa: 0, gamesPlayed: 0 }
 }
 
 // Build a one-time lookup table for non-NAIA opponents (D1/D2/D3/JUCO)
@@ -119,6 +120,9 @@ export function simWeek(state, schedule, ratings) {
           if (!state.playerStats[key]) state.playerStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
           const target = state.playerStats[key]
           for (const k of Object.keys(s)) target[k] = (target[k] || 0) + s[k]
+          // gamesPlayed: a single appearance in this game counts as 1, regardless
+          // of how many PAs / outs they recorded. Drives the auto-redshirt rule.
+          target.gamesPlayed = (target.gamesPlayed || 0) + 1
         }
       }
       accumulate(result.boxscore.batterStats, false)
@@ -309,10 +313,34 @@ export function runEndOfYear(state) {
     const gain = updated._devGain || 0
     if (gain >= 1.5) devReport.push({ player: updated, gain })
     delete updated._devGain
-    // Also advance class year
+    // Auto-redshirt rule (NAIA / NCAA standard): ≤ 11 games played → free
+    // year of eligibility preserved, athletic class year does NOT advance.
+    // One redshirt per career, and only available while they still have
+    // headroom in the 5-years-for-4-seasons window (so seasonsUsed < 3).
+    const REDSHIRT_GAME_LIMIT = 11
+    const gp = state.playerStats?.[statsKey]?.gamesPlayed || 0
+    const eligibleToRedshirt = !updated.redshirtUsed && (updated.seasonsUsed || 0) < 3
+    const shouldRedshirt = eligibleToRedshirt && gp <= REDSHIRT_GAME_LIMIT
     const nextClass = { FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[updated.classYear]
+
     if (nextClass === 'GRAD') {
       state.players[id] = { ...updated, eligibilityStatus: 'graduated' }
+    } else if (shouldRedshirt) {
+      // Classyear + seasonsUsed stay put; semestersUsed still ticks (academic
+      // clock keeps moving). Player returns as a "RS-XX" next year.
+      state.players[id] = {
+        ...updated,
+        redshirtUsed: true,
+        semestersUsed: (updated.semestersUsed || 0) + 2,
+      }
+      state.newsfeed.unshift({
+        id: `rs_${state.calendar.year}_${id}`,
+        year: state.calendar.year + 1,
+        week: 17,
+        type: 'AWARD',
+        headline: `🎓 ${updated.firstName} ${updated.lastName} (${updated.classYear} ${updated.primaryPosition}) auto-redshirted — only ${gp} games played. Year of eligibility preserved.`,
+        payload: { playerId: id, games: gp },
+      })
     } else {
       state.players[id] = { ...updated, classYear: nextClass, seasonsUsed: updated.seasonsUsed + 1, semestersUsed: updated.semestersUsed + 2 }
     }
@@ -343,6 +371,38 @@ export function runEndOfYear(state) {
       headline: `${grads.length} senior${grads.length === 1 ? '' : 's'} graduated. Roster down to ${state.teams[state.userSchoolId].rosterPlayerIds.length}.`,
       payload: {},
     })
+  }
+
+  // MLB Draft — runs in July (week ~17 of the prior season's calendar).
+  // 5–12 NAIA players picked, ~85% pitchers. User picks (if any) get a
+  // jobSecurity / program-prestige bump.
+  const draftPicks = simMlbDraft(state, state.calendar.year)
+  if (!state.draftResults) state.draftResults = {}
+  state.draftResults[state.calendar.year] = draftPicks
+  const userConfId = state.schools[state.userSchoolId]?.conferenceId
+  state.newsfeed.unshift({
+    id: `draft_${state.calendar.year}`,
+    year: state.calendar.year + 1,
+    week: 17,
+    type: 'AWARD',
+    headline: `⚾ ${summarizeDraft(draftPicks, userConfId)}`,
+    payload: { year: state.calendar.year, picks: draftPicks },
+  })
+  // Individual headlines for user players who got picked — these are big.
+  const userPicks = draftPicks.filter(p => p.teamId === state.userSchoolId)
+  for (const pk of userPicks) {
+    state.newsfeed.unshift({
+      id: `draft_user_${state.calendar.year}_${pk.playerId}`,
+      year: state.calendar.year + 1,
+      week: 17,
+      type: 'AWARD',
+      headline: `🌟 ${pk.name} (${pk.pos}) drafted by MLB in Round ${pk.round}! Big win for the program.`,
+      payload: { playerId: pk.playerId, round: pk.round },
+      big: true,
+    })
+  }
+  if (userPicks.length > 0 && state.budget) {
+    state.budget.jobSecurity = Math.min(100, (state.budget.jobSecurity || 50) + userPicks.length * 3)
   }
 
   // Outbound transfers — MID_OFFSEASON (dramatic: stars + disgruntled bench)

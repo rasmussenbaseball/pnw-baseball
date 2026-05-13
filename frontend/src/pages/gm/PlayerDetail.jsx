@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier } from '../../gm/engine/playerRating'
 import AttrTooltip from '../../gm/components/AttrTooltip'
-import { prettyLabel, displayPosition } from '../../gm/engine/format'
+import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 
 export default function PlayerDetail() {
@@ -34,7 +34,7 @@ export default function PlayerDetail() {
         <div>
           <h1 className="text-3xl font-bold text-pnw-slate">{player.firstName} {player.lastName}</h1>
           <p className="text-sm text-gray-600">
-            {displayPosition(player.primaryPosition)} • {player.classYear} • {player.bats}/{player.throws} •
+            {displayPosition(player.primaryPosition)} • {displayClassYear(player)} • {player.bats}/{player.throws} •
             {' '}{player.hometown.city}, {player.hometown.state}
           </p>
           {player.previousSchoolName && (

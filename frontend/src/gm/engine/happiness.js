@@ -68,20 +68,53 @@ function actualPTFraction(player, teamMaxPA, teamMaxIP, stats) {
   return Math.min(1, stats.pa / teamMaxPA)
 }
 
-/** Performance vs an average baseline. ±15 cap. */
-function performanceDelta(player, stats) {
+/**
+ * Compute league-average OBP + ERA from the season's accumulated playerStats.
+ * Used as the "performing at NAIA-average" baseline for happiness.
+ *
+ * Falls back to NAIA-typical defaults (OBP ~.380, ERA ~5.50) when there's not
+ * enough sample yet — NAIA averages run noticeably higher than D1 or MLB.
+ *
+ * @param {import('./types.js').SaveState} state
+ */
+export function computeLeagueAverages(state) {
+  let h = 0, bb = 0, hbp = 0, pa = 0
+  let er = 0, outs = 0
+  const stats = state.playerStats || {}
+  for (const k of Object.keys(stats)) {
+    const s = stats[k]
+    if (s.isPitcher) {
+      er += s.er || 0
+      outs += s.outs || 0
+    } else {
+      h += s.h || 0
+      bb += s.bb || 0
+      hbp += s.hbp || 0
+      pa += s.pa || 0
+    }
+  }
+  const NAIA_DEFAULT_OBP = 0.380
+  const NAIA_DEFAULT_ERA = 5.50
+  const ip = outs / 3
+  const obp = pa >= 500 ? (h + bb + hbp) / pa : NAIA_DEFAULT_OBP
+  const era = ip >= 200 ? (er * 9) / ip : NAIA_DEFAULT_ERA
+  return { obp, era }
+}
+
+/** Performance vs league-average baseline (computed per save). ±15 cap. */
+function performanceDelta(player, stats, leagueAvg) {
   if (!stats) return 0
   if (player.isPitcher) {
     const ip = stats.outs / 3
     if (ip < 3) return 0
     const era = (stats.er * 9) / Math.max(1, ip)
-    // 3.50 → 0, 2.00 → +9, 6.00 → -15
-    return Math.max(-15, Math.min(15, (3.5 - era) * 6))
+    // At league avg → 0. 2.00 lower → +15. 2.00 higher → -15.
+    return Math.max(-15, Math.min(15, (leagueAvg.era - era) * 7.5))
   }
   if (stats.pa < 15) return 0
   const obp = (stats.h + stats.bb + (stats.hbp || 0)) / Math.max(1, stats.pa)
-  // .330 → 0, .420 → +15, .240 → -15
-  return Math.max(-15, Math.min(15, (obp - 0.33) * 167))
+  // At league avg → 0. .080 higher → +15. .080 lower → -15.
+  return Math.max(-15, Math.min(15, (obp - leagueAvg.obp) * 188))
 }
 
 /** Compute target happiness for one player given full team context. */
@@ -107,8 +140,8 @@ export function computeHappinessTarget(player, ctx) {
   if (ptDelta < 0 && player.classYear === 'SR') ptDelta *= 1.4
   target += ptDelta
 
-  // Performance
-  target += performanceDelta(player, stats)
+  // Performance (vs current league averages)
+  target += performanceDelta(player, stats, ctx.leagueAvg)
 
   // Coach motivator: -8 (cold) to +8 (warm)
   if (ctx.coachMotivator != null) target += ((ctx.coachMotivator - 50) / 50) * 8
@@ -143,7 +176,8 @@ export function tickHappiness(state) {
     if (p.isPitcher) teamMaxIP = Math.max(teamMaxIP, s.outs / 3)
     else teamMaxPA = Math.max(teamMaxPA, s.pa)
   }
-  const ctx = { teamPlayers, statsByPlayerId, teamMaxPA, teamMaxIP, coachMotivator: userHC?.motivator }
+  const leagueAvg = computeLeagueAverages(state)
+  const ctx = { teamPlayers, statsByPlayerId, teamMaxPA, teamMaxIP, coachMotivator: userHC?.motivator, leagueAvg }
 
   for (const p of teamPlayers) {
     const h = ensureHappiness(p)
