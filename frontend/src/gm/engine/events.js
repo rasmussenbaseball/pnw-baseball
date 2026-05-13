@@ -52,45 +52,69 @@ export const EVENT_TYPES = {
   OPENING_ROUND:            { label: 'NAIA Opening Round', desc: 'Regional brackets — 4-team double-elim.' },
   WORLD_SERIES:             { label: 'NAIA World Series', desc: 'Avista NAIA WS in Lewiston, ID.' },
   LAST_DAY_RECRUITING:      { label: 'Late recruiting closes', desc: 'Final HS commitments locked for this cycle.' },
+  CLASS_FINALIZE:           { label: 'Class finalizes', desc: 'Signed recruits officially join the roster — ratings fully revealed.' },
 }
 
-// ─── Offseason event schedule ──────────────────────────────────────────────
+// ─── Event schedule — unified 52-week ──────────────────────────────────────
 //
-// Map offseasonWeek → which events fire that week. End-of-year heavy work is
-// spread across weeks 1–6 so no single tick is expensive.
+// Map weekOfYear → which events fire that week. Heavy end-of-year work was
+// previously crammed into a single tick; it's now distributed across the
+// post-postseason offseason (wks 43-51).
 
-export const OFFSEASON_EVENT_SCHEDULE = {
-  // ── June / July equivalent (post-postseason transition) ──
-  1: ['BUDGET_REVIEW', 'END_OF_TERM_ACADEMICS'],
-  2: ['PLAYER_DEVELOPMENT'],                              // heaviest single op
-  3: ['MLB_DRAFT', 'HS_ATTRITION'],
-  4: ['OUTBOUND_TRANSFERS_MID', 'PORTAL_OPEN'],
-  5: ['OUTBOUND_TRANSFERS_LATE'],
-  6: ['SET_SCHEDULE'],                                    // user-facing reminder
-  7: ['LAST_DAY_RECRUITING'],
-  // ── Fall (Sept-Oct, weeks 5-13) ──
-  9: ['FALL_CAMP_START'],
-  10: ['FALL_SCRIM_FRIDAY'],
-  11: ['FALL_SCRIM_FRIDAY'],
-  12: ['FALL_SCRIM_FRIDAY'],
-  13: ['FALL_SCRIM_FRIDAY'],
-  // ── November (Training, weeks 14-17) ──
-  14: ['TRAINING_PERIOD', 'PROSPECT_CAMP', 'HS_NLI_EARLY'],
-  // ── December (Dead, weeks 18-21) ──
-  18: ['DEAD_PERIOD'],
-  // ── January (Spring Practice, weeks 22-26) ──
-  22: ['SPRING_PRACTICE'],
+export const WEEK_EVENT_SCHEDULE = {
+  // ── Tutorial weeks (Aug 1-29) ──
+  1: ['SET_SCHEDULE'],
+  2: [],                                          // hiring is a UI requirement, no engine event
+  3: [],                                          // budgeting is a UI requirement
+  4: [],                                          // scouting opens — AP unlocks, no engine event
+  // ── Fall Camp (Sep-Oct, wks 5-12) ──
+  5: ['FALL_CAMP_START'],
+  // Fall scrimmages auto-scheduled into wks 6-12 (8 games over ~4 weekends)
+  // ── Prospect Camp (wk 13) ──
+  13: ['PROSPECT_CAMP', 'HS_NLI_EARLY'],
+  // ── Training Period + Spring Practice (wks 14-26) ──
+  14: ['TRAINING_PERIOD'],
+  23: ['SPRING_PRACTICE'],
+  // ── Season (wks 27-39) ──
+  27: ['SEASON_OPEN'],
+  30: ['CONF_OPEN'],
+  39: ['REG_SEASON_END'],
+  // ── Postseason (wks 40-42) — engine runs from advanceOneWeek hook ──
+  40: ['CONF_TOURNAMENT'],
+  41: ['OPENING_ROUND'],
+  42: ['WORLD_SERIES'],
+  // ── Post-postseason offseason (wks 43-52) — heavy work distributed ──
+  43: ['PORTAL_OPEN', 'OUTBOUND_TRANSFERS_MID', 'END_OF_TERM_ACADEMICS'],
+  44: ['PLAYER_DEVELOPMENT'],
+  45: ['OUTBOUND_TRANSFERS_LATE', 'HS_ATTRITION'],
+  46: ['BUDGET_REVIEW'],
+  48: ['MLB_DRAFT'],                              // early July
+  52: ['LAST_DAY_RECRUITING', 'CLASS_FINALIZE'],  // recruits join roster
 }
 
-// In-season events — fire when seasonWeek hits these numbers.
-export const SEASON_EVENT_SCHEDULE = {
-  1: ['SEASON_OPEN'],
-  4: ['CONF_OPEN'],
-  13: ['REG_SEASON_END'],
-  14: ['CONF_TOURNAMENT'],
-  15: ['OPENING_ROUND'],
-  16: ['WORLD_SERIES'],
-}
+// ─── Back-compat exports (old code reads these) ────────────────────────────
+// Kept as derived views over WEEK_EVENT_SCHEDULE so the calendar page + any
+// stragglers keep working without churn.
+export const OFFSEASON_EVENT_SCHEDULE = (() => {
+  const out = {}
+  for (const [wk, events] of Object.entries(WEEK_EVENT_SCHEDULE)) {
+    const w = Number(wk)
+    if (w >= 27 && w <= 42) continue
+    // Map wk → legacy offseason week (1-26 direct; 43-52 → 27-36)
+    const offWk = w <= 26 ? w : 26 + (w - 42)
+    out[offWk] = events
+  }
+  return out
+})()
+export const SEASON_EVENT_SCHEDULE = (() => {
+  const out = {}
+  for (const [wk, events] of Object.entries(WEEK_EVENT_SCHEDULE)) {
+    const w = Number(wk)
+    if (w < 27 || w > 42) continue
+    out[w - 26] = events
+  }
+  return out
+})()
 
 // Markers — purely calendar-display, no engine action.
 const MARKER_ONLY = new Set([
@@ -118,22 +142,88 @@ export function runEvent(state, eventKey) {
     case 'PORTAL_OPEN':              return runPortalOpen(state)
     case 'OUTBOUND_TRANSFERS_MID':   return runOutbound(state, 'MID_OFFSEASON')
     case 'OUTBOUND_TRANSFERS_LATE':  return runOutbound(state, 'LATE_OFFSEASON')
+    case 'CLASS_FINALIZE':           return runClassFinalize(state)
     default:                         return null
   }
 }
 
 /**
- * Run all events scheduled for the current offseason week. Caller should
- * already have advanced the calendar to the new week.
+ * Class finalization (Wk 52): every recruit marked as "signed" with the
+ * user's program officially joins the active roster as a freshman, with
+ * ratings fully revealed (scout fog cleared).
  */
-export function runEventsForOffseasonWeek(state, offseasonWeek) {
-  const events = OFFSEASON_EVENT_SCHEDULE[offseasonWeek] || []
+function runClassFinalize(state) {
+  if (!state.recruits) return { label: 'No recruits to finalize' }
+  const userId = state.userSchoolId
+  const team = state.teams[userId]
+  if (!team) return { label: 'No user team' }
+  let added = 0
+  for (const r of Object.values(state.recruits)) {
+    if (r.status !== 'signed' || r.signedWith !== userId) continue
+    if (r.joinedAt && r.joinedAt === state.calendar.year) continue   // already joined
+    // Move recruit → player. We mark them on the roster; ratings are already
+    // on the recruit object. A future pass can shape them into the canonical
+    // Player schema with hitter/pitcher blocks.
+    if (!state.players[r.id]) {
+      state.players[r.id] = recruitToPlayer(r)
+    }
+    if (!team.rosterPlayerIds.includes(r.id)) team.rosterPlayerIds.push(r.id)
+    r.joinedAt = state.calendar.year
+    r.scoutFogCleared = true
+    added++
+  }
+  state.newsfeed.unshift({
+    id: `class_finalize_${state.calendar.year}`,
+    year: state.calendar.year, week: 52, type: 'AWARD',
+    headline: `🎓 ${added} signed recruit${added === 1 ? '' : 's'} joined the roster. Full ratings revealed.`,
+    payload: {}, big: added > 0,
+  })
+  return { label: 'Class finalized', news: { added } }
+}
+
+/** Shape a Recruit into a Player. Inherits ratings + bio; resets stats. */
+function recruitToPlayer(r) {
+  return {
+    id: r.id,
+    firstName: r.firstName, lastName: r.lastName,
+    bats: r.bats, throws: r.throws,
+    primaryPosition: r.primaryPosition,
+    positions: r.positions || [r.primaryPosition],
+    classYear: 'FR',
+    seasonsUsed: 0,
+    semestersUsed: 0,
+    redshirtUsed: false,
+    hometown: r.hometown,
+    isHitter: !r.isPitcher,
+    isPitcher: !!r.isPitcher,
+    hitter: r.hitter || null,
+    pitcher: r.pitcher || null,
+    hidden: r.hidden || {},
+    gpa: r.gpa ?? 3.0,
+    academicStanding: 'eligible',
+    eligibilityStatus: 'eligible',
+    scholarship: { annualAmount: r.scholarshipOffered ?? 0 },
+    happiness: { value: 65, lastWeek: 65 },   // fresh recruits start happy
+  }
+}
+
+/**
+ * Run all events scheduled for the given week (1-52). Caller should already
+ * have advanced the calendar.
+ */
+export function runEventsForWeek(state, weekOfYear) {
+  const events = WEEK_EVENT_SCHEDULE[weekOfYear] || []
   const ran = []
   for (const key of events) {
     const result = runEvent(state, key)
     if (result) ran.push({ key, ...result })
   }
   return ran
+}
+
+/** Back-compat — old callers used the offseason-week variant. */
+export function runEventsForOffseasonWeek(state, offseasonWeek) {
+  return runEventsForWeek(state, offseasonWeek)
 }
 
 // ─── Individual event implementations ──────────────────────────────────────

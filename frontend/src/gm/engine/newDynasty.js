@@ -123,12 +123,13 @@ export function newDynasty(input) {
   // around mid/late February.
   /** @type {import('./types.js').Calendar} */
   const calendar = {
-    year: 2026,
+    year: 2027,             // year the spring season ends (Aug 2026 → Jul 2027 cycle)
     startYear: 2026,        // remembered so date math doesn't drift
-    week: 1,
+    week: 1,                // overall counter (never resets)
+    weekOfYear: 1,          // 1-52 within the current year
     mode: 'OFFSEASON',
     seasonWeek: null,
-    offseasonWeek: 1,
+    offseasonWeek: 1,       // legacy, kept in sync by advanceOneWeek
     forcedPauseReason: null,
   }
 
@@ -172,8 +173,14 @@ export function newDynasty(input) {
     teams,
     recruits: {},      // populated when recruiting cycle opens
     schedule,
+    // Year-1 dynasty marker — used by gameYear.requiredActionForWeek to know
+    // we're in the tutorial year (mandatory full assistant hires, etc.).
+    dynastyYear: 1,
     ap: {
-      currentWeek: initialAP,
+      // Wk 1 starts with AP LOCKED (= 0). Unlocks in Wk 4 (scouting tutorial).
+      // initialAP is preserved as a baseline for refreshWeeklyAP after Wk 3.
+      currentWeek: 0,
+      baseline: initialAP,
       spentThisWeek: 0,
       spentByCategory: {
         recruiting: 0,

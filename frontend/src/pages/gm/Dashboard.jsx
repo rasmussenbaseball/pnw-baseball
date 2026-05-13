@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
 import { simAhead, simPresets, phaseLabel, snapshotState } from '../../gm/engine/simAhead'
+import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
@@ -32,7 +33,11 @@ export default function Dashboard() {
   const slot = parseInt(params.get('slot') || '1', 10)
   const userId = user?.id || 'guest'
 
-  const [save, setSave] = useState(() => loadDynasty(userId, slot))
+  const [save, setSave] = useState(() => {
+    const s = loadDynasty(userId, slot)
+    if (s) ensureUnifiedCalendar(s)
+    return s
+  })
   const [busy, setBusy] = useState(false)
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
   const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
@@ -109,11 +114,25 @@ export default function Dashboard() {
   const fallScrimBlocked = inOffseason && (save.calendar.offseasonWeek ?? 0) >= 5 && fallScrimNeeded > 0
   const scheduleBlocked = (inOffseason && openSlots.length > 0) || fallScrimBlocked
 
+  // ── 52-week phase-gate ────────────────────────────────────────────────
+  const weekOfYear = save.calendar.weekOfYear ?? save.calendar.offseasonWeek ?? 1
+  const currentPhase = phaseForWeek(weekOfYear)
+  const requiredAction = requiredActionForWeek(save, weekOfYear)
+  const phaseGate = canAdvanceWeek(save)
+  // Hard-block — phase requirement OR legacy schedule check
+  const advanceBlocked = !phaseGate.ok || scheduleBlocked
+
   // ─── Sim actions ───────────────────────────────────────────────────────────
   function simNextWeek() {
-    if (scheduleBlocked) {
-      alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
-      return
+    if (advanceBlocked) {
+      if (requiredAction && !requiredAction.isComplete(save)) {
+        alert(`Finish "${requiredAction.label}" first — ${requiredAction.blurb}`)
+        return
+      }
+      if (scheduleBlocked) {
+        alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
+        return
+      }
     }
     // Season mode + unplayed games this week → push the user into the Play
     // page so they get the live-game experience (with an "auto-sim week"
@@ -218,13 +237,40 @@ export default function Dashboard() {
         </div>
         <div className="text-right">
           <div className="text-xs uppercase tracking-wider opacity-80">{dateLabel}</div>
-          <div className="text-3xl font-bold mt-1">{save.ap.currentWeek}<span className="text-sm opacity-70"> AP</span></div>
-          <div className="text-[11px] opacity-70">{inOffseason ? offseasonPhase(save.calendar.offseasonWeek) : `Season Week ${save.calendar.seasonWeek}`}</div>
+          <div className="text-3xl font-bold mt-1">
+            {weekOfYear >= 1 && weekOfYear <= 3
+              ? <span className="text-base opacity-70">🔒 AP Locked</span>
+              : <>{save.ap.currentWeek}<span className="text-sm opacity-70"> AP</span></>}
+          </div>
+          <div className="text-[11px] opacity-70">Wk {weekOfYear} · {currentPhase.label}</div>
         </div>
       </div>
 
-      {/* Schedule-blocked banner (hard gate on advancing) */}
-      {scheduleBlocked && (
+      {/* Phase-gate banner — required action this week */}
+      {requiredAction && !requiredAction.isComplete(save) && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-4 flex justify-between items-start">
+          <div className="flex-1">
+            <div className="text-[11px] uppercase tracking-wider text-amber-700 font-bold mb-1">
+              Week {weekOfYear} — {currentPhase.label}
+            </div>
+            <div className="text-sm font-semibold text-amber-900">
+              ⚠ Required: {requiredAction.label}
+            </div>
+            <div className="text-xs text-amber-800 mt-1 leading-snug">{requiredAction.blurb}</div>
+          </div>
+          <Link to={`${requiredAction.route}?slot=${slot}`} className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
+            Take care of it →
+          </Link>
+        </div>
+      )}
+      {requiredAction && requiredAction.isComplete(save) && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-2 mb-4 text-xs text-green-800 flex justify-between items-center">
+          <span><strong>Week {weekOfYear}:</strong> {requiredAction.doneText || requiredAction.label} — ready to advance.</span>
+        </div>
+      )}
+
+      {/* Legacy schedule-incomplete banner (separate concern from phase-gate) */}
+      {scheduleBlocked && !requiredAction && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 flex justify-between items-center">
           <div className="text-sm text-amber-900">
             <strong>Schedule incomplete.</strong>{' '}
@@ -232,7 +278,7 @@ export default function Dashboard() {
               <>You have <strong>{openSlots.length}</strong> open weekend slot{openSlots.length === 1 ? '' : 's'} on the {seasonYear} schedule. </>
             )}
             {fallScrimBlocked && (
-              <>You need to schedule <strong>{fallScrimNeeded}</strong> more fall scrimmage game{fallScrimNeeded === 1 ? '' : 's'} (one doubleheader). </>
+              <>You need to schedule <strong>{fallScrimNeeded}</strong> more fall scrimmage game{fallScrimNeeded === 1 ? '' : 's'}. </>
             )}
             Fix it before you can sim.
           </div>
@@ -249,7 +295,7 @@ export default function Dashboard() {
         nextGame={nextGame}
         userSchoolId={save.userSchoolId}
         save={save}
-        busy={busy || scheduleBlocked}
+        busy={busy || advanceBlocked}
         onSim={simNextWeek}
         recap={lastWeekRecap}
         offseasonWeek={save.calendar.offseasonWeek}
@@ -257,8 +303,8 @@ export default function Dashboard() {
         thisWeekUnplayedCount={thisWeekUnplayed.length}
       />
 
-      {/* Sim-ahead presets (also hard-blocked when schedule incomplete) */}
-      {!scheduleBlocked && <SimAheadBar save={save} busy={busy} onRun={runSimAhead} />}
+      {/* Sim-ahead presets (also hard-blocked when phase-gate or schedule incomplete) */}
+      {!advanceBlocked && <SimAheadBar save={save} busy={busy} onRun={runSimAhead} />}
 
       {/* Weekly diff readout — appears after a multi-week sim */}
       {simResult && <SimDiffPanel simResult={simResult} onDismiss={() => setSimResult(null)} />}

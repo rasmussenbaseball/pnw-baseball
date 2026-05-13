@@ -15,8 +15,9 @@ import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
-import { runEventsForOffseasonWeek } from './events'
+import { runEventsForWeek } from './events'
 import { OFFSEASON_WEEKS } from './calendar'
+import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar } from './gameYear'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 function zeroStats(isPitcher) {
@@ -388,6 +389,20 @@ function tickWeeklyBookkeeping(state) {
 function refreshWeeklyAP(state) {
   const team = state.teams[state.userSchoolId]
   if (!team) return
+
+  // AP is LOCKED during weeks 1-3 of every year (scheduling / hiring /
+  // budgeting tutorial). Unlocks in wk 4 (scouting opens). This is enforced
+  // here so every code path that bumps a week gets the right value.
+  const wk = state.calendar?.weekOfYear ?? 0
+  if (wk >= 1 && wk <= 3) {
+    state.ap.currentWeek = 0
+    state.ap.spentThisWeek = 0
+    state.ap.spentByCategory = {
+      recruiting: 0, development: 0, team_boost: 0, program: 0, staff: 0,
+    }
+    return
+  }
+
   const school = state.schools[state.userSchoolId]
   const hc = state.coaches[team.headCoachId]
   const assistants = team.assistantCoachIds.map(id => state.coaches[id]).filter(Boolean)
@@ -419,81 +434,76 @@ function refreshWeeklyAP(state) {
 }
 
 /**
- * Advance one OFFSEASON week. Mutates state.
+ * Unified weekly tick — handles all 52 weeks of the game year.
  *
- *   - Bumps offseasonWeek + week
- *   - Refreshes AP budget for the new week
- *   - Applies study-hall benefits accumulated this term
- *   - When we hit OFFSEASON_WEEKS+1 → flip into SEASON mode
+ *   - Bumps weekOfYear (wraps 52 → 1, year++)
+ *   - Re-derives mode + offseasonWeek + seasonWeek (back-compat)
+ *   - Refreshes AP (locked = 0 for weeks 1-3)
+ *   - Ticks bookkeeping (boosts, happiness)
+ *   - Fires scheduled events for the new week (events.js)
+ *   - Runs the full postseason bracket on the wk 39 → 40 transition
+ *   - Runs minimal end-of-year on the wk 52 → 1 transition
  *
  * @param {SaveState} state
  */
-export function advanceOffseasonWeek(state) {
-  if (state.calendar.mode !== 'OFFSEASON') return
-  state.calendar.offseasonWeek++
-  state.calendar.week++
+export function advanceOneWeek(state) {
+  ensureUnifiedCalendar(state)
+  const prevWeek = state.calendar.weekOfYear ?? 1
 
-  // Refresh weekly AP and tick per-week bookkeeping
+  // Tick the unified counter
+  let nextWeek = prevWeek + 1
+  let yearRolled = false
+  if (nextWeek > WEEKS_PER_YEAR) {
+    nextWeek = 1
+    state.calendar.year++
+    yearRolled = true
+  }
+  state.calendar.weekOfYear = nextWeek
+  state.calendar.week = (state.calendar.week || 0) + 1   // overall counter (never resets)
+
+  // Re-derive mode + week-of-mode for legacy consumers
+  state.calendar.mode = modeForWeek(nextWeek)
+  state.calendar.seasonWeek = seasonWeekForWeek(nextWeek)
+  if (state.calendar.mode === 'OFFSEASON') {
+    // Offseason "weeks 1-26" run Aug-Jan in the new model; weeks 43-52 are
+    // post-postseason offseason (Jun-Jul). Both map back to a single offseason
+    // counter for the old code, but the canonical source is weekOfYear.
+    state.calendar.offseasonWeek = nextWeek <= 26 ? nextWeek : 26 + (nextWeek - 42)
+  } else {
+    state.calendar.offseasonWeek = null
+  }
+
+  // Year rollover: tiny EOY transition (heavy work was already done by
+  // deferred events earlier in offseason — wks 43-51).
+  if (yearRolled) {
+    runEndOfYear(state)
+  }
+
+  // Postseason: fires once when we enter wk 40 (conference tournament).
+  // The bracket runs all three rounds (conf, opening, WS) in one call.
+  if (nextWeek === 40 && prevWeek === 39) {
+    runPostseason(state)
+  }
+
+  // Refresh AP and tick boosts. AP is LOCKED (= 0) during weeks 1-3 per the
+  // new tutorial flow; refreshWeeklyAP enforces that.
   refreshWeeklyAP(state)
   tickWeeklyBookkeeping(state)
 
-  // Run any scheduled events for this offseason week. This is where the
-  // post-season heavy work gets distributed — development on Wk 2, draft on
-  // Wk 3, transfers on Wk 4/5, etc. Each individual event is fast (< 500ms);
-  // by spreading them across weeks we keep every tick responsive.
-  runEventsForOffseasonWeek(state, state.calendar.offseasonWeek)
-
-  // Transition into season once offseason is over
-  if (state.calendar.offseasonWeek > OFFSEASON_WEEKS) {
-    state.calendar.mode = 'SEASON'
-    state.calendar.offseasonWeek = null
-    state.calendar.seasonWeek = 1
-    state.newsfeed.unshift({
-      id: `season_open_${state.calendar.year}`,
-      year: state.calendar.year + 1,
-      week: 1,
-      type: 'AWARD',
-      headline: `${state.calendar.year + 1} season is here. First pitch this week.`,
-      payload: {},
-    })
-  }
+  // Fire events for the new week (budget review, draft, portal opens, etc.)
+  runEventsForWeek(state, nextWeek)
 }
 
-/**
- * Advance the calendar to the next week. If we cross past week 16, trigger
- * the postseason + end-of-year flow automatically.
- *
- * @param {SaveState} state
- * @param {Game[]} schedule
- */
-export function advanceWeek(state, schedule) {
-  // Recompute ratings from accumulated game results
-  const playedGames = schedule
-    .filter(g => g.played)
-    .map(g => ({
-      homeId: g.homeId,
-      awayId: g.awayId,
-      homeRuns: g.homeRuns,
-      awayRuns: g.awayRuns,
-      homePA: 40,   // approximate; not used in current ratings calc
-      awayPA: 40,
-    }))
-  // If we don't have ratings stored on state yet, this season is starting fresh
-  // — we'll let the next-week tick recompute.
-  // The actual rating store is held by the UI layer.
+// ─── Back-compat wrappers ──────────────────────────────────────────────────
+// Existing callers import these names — they delegate to advanceOneWeek now.
 
-  state.calendar.week++
-  if (state.calendar.mode === 'SEASON' && state.calendar.seasonWeek != null) {
-    state.calendar.seasonWeek++
-    refreshWeeklyAP(state)
-    tickWeeklyBookkeeping(state)
-    if (state.calendar.seasonWeek > 13) {
-      // 13 weeks of regular season; postseason begins Week 14 (conference
-      // tournament), Week 15 = Opening Round, Week 16 = NAIA World Series.
-      state.calendar.mode = 'POSTSEASON'
-      state.calendar.seasonWeek = null
-      runPostseason(state)
-      runEndOfYear(state)
-    }
-  }
+/** Legacy: advance one offseason week. */
+export function advanceOffseasonWeek(state) {
+  if (state.calendar.mode !== 'OFFSEASON') return
+  advanceOneWeek(state)
+}
+
+/** Legacy: advance one season week. Schedule arg ignored (sim is separate). */
+export function advanceWeek(state, _schedule) {
+  advanceOneWeek(state)
 }
