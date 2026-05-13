@@ -5,10 +5,11 @@ import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import {
   generateRecruitPool, ACTION_TYPES, applyRecruitingAction,
   estimateRecruitRatings, recruitingPhase, visibleRecruits,
-  simProspectCamp, predictCampTurnout, fundraise, tryAdvanceRecruit,
+  tryAdvanceRecruit,
   setLiveOffer, withdrawOffer, totalSuitors, visibleSuitors,
   academicScholarship, academicRatingToGpa,
-  CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
+  scoutingProgress, isFullyScouted,
+  predictRecruitAttendance, rsvpLabel, CAMP_MAX_INVITES,
 } from '../../gm/engine/recruits'
 import { makeRng } from '../../gm/engine/rng'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
@@ -47,14 +48,31 @@ export default function Recruiting() {
   const [posFilter, setPosFilter] = useState('ALL')
   const [stateFilter, setStateFilter] = useState('ALL')
   const [openRecruit, setOpenRecruit] = useState(null)
-  const [showCamp, setShowCamp] = useState(false)
-  const [showFundraise, setShowFundraise] = useState(false)
-  const [fundraiseAP, setFundraiseAP] = useState(5)
 
   function toggleFollow(recruitId) {
     const r = save.recruits[recruitId]
     if (!r) return
     r.followed = !r.followed
+    saveDynasty(save)
+    setSave({ ...save })
+  }
+
+  function toggleCampInvite(recruitId) {
+    const r = save.recruits[recruitId]
+    if (!r) return
+    if (r.pool !== 'HS_SR') {
+      alert('Prospect camp is HS only.')
+      return
+    }
+    const currentlyInvited = !!r.campInvited
+    if (!currentlyInvited) {
+      const inviteCount = Object.values(save.recruits || {}).filter(x => x.campInvited).length
+      if (inviteCount >= CAMP_MAX_INVITES) {
+        alert(`Camp invite cap reached (${CAMP_MAX_INVITES}). Un-invite someone first.`)
+        return
+      }
+    }
+    r.campInvited = !currentlyInvited
     saveDynasty(save)
     setSave({ ...save })
   }
@@ -68,7 +86,7 @@ export default function Recruiting() {
   // Lazy-generate recruit pool on first visit, biased by coach
   const recruits = useMemo(() => {
     if (save.recruits && Object.keys(save.recruits).length > 0) return save.recruits
-    const pool = generateRecruitPool(save.calendar.year + 1, save.rngSeed, userHC)
+    const pool = generateRecruitPool(save.calendar.year + 1, save.rngSeed, userHC, save.userSchoolId)
     save.recruits = pool
     saveDynasty(save)
     return pool
@@ -86,10 +104,11 @@ export default function Recruiting() {
   }, [visible])
   const topStates = stateBreakdown.slice(0, 8)
 
-  // Board view filters (Following / Offers / Signed override the regular filters)
+  // Board view filters
   const boardFiltered = visible.filter(r => {
     if (board === 'FOLLOWING') return r.followed === true
     if (board === 'OFFERS') return r.liveOffer?.schoolId === save.userSchoolId
+    if (board === 'INVITES') return r.campInvited === true
     return true
   })
 
@@ -111,6 +130,7 @@ export default function Recruiting() {
     .slice(0, 80)
 
   const followedCount = Object.values(save.recruits || {}).filter(r => r.followed && r.status !== 'signed' && r.status !== 'lost').length
+  const invitedCount = Object.values(save.recruits || {}).filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost').length
 
   const signedRecruits = Object.values(recruits).filter(r => r.signedTo === save.userSchoolId)
   const liveOffers = Object.values(recruits).filter(r =>
@@ -175,57 +195,6 @@ export default function Recruiting() {
     setSave({ ...save })
   }
 
-  function handleCamp(fee, invitedIds) {
-    if (!isCampWindowOpen(save.calendar)) {
-      alert('Prospect camp can only be held in August through November.')
-      return
-    }
-    if (save.prospectCamp?.year === save.calendar.year) {
-      alert('You already held a prospect camp this year.')
-      return
-    }
-    const momentum = computeProgramMomentum(save)
-    const result = simProspectCamp(
-      save.recruits, save.userSchoolId, invitedIds, fee,
-      userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
-    )
-    if (result.cancelled) { alert(result.reason); return }
-    save.recruits = result.recruits
-    save.prospectCamp = { fee, attendees: result.attendeeIds.length, revenue: result.revenue, year: save.calendar.year }
-    save.budget.totalAthleticBudget += result.revenue
-    save.newsfeed.unshift({
-      id: `camp_${save.calendar.year}`,
-      year: save.calendar.year, week: save.calendar.week,
-      type: 'AWARD',
-      headline: `🏟 Prospect camp held — ${result.attendeeIds.length} attendees at $${fee} each → +$${(result.revenue / 1000).toFixed(1)}K to budget.`,
-      payload: {},
-    })
-    saveDynasty(save)
-    setSave({ ...save })
-    setShowCamp(false)
-  }
-
-  function handleFundraise() {
-    if (save.ap.currentWeek < fundraiseAP) {
-      alert(`Not enough AP. Need ${fundraiseAP}, have ${save.ap.currentWeek}.`)
-      return
-    }
-    const raised = fundraise(fundraiseAP, userHC.motivator, userSchool.programHistory)
-    save.budget.totalAthleticBudget += raised
-    save.ap.currentWeek -= fundraiseAP
-    save.ap.spentThisWeek += fundraiseAP
-    save.ap.spentByCategory.program = (save.ap.spentByCategory.program || 0) + fundraiseAP
-    save.newsfeed.unshift({
-      id: `fund_${save.calendar.year}_${save.calendar.week}`,
-      year: save.calendar.year, week: save.calendar.week,
-      type: 'AWARD',
-      headline: `💰 Fundraising: ${fundraiseAP} AP → +$${(raised / 1000).toFixed(1)}K added to budget.`,
-      payload: {},
-    })
-    saveDynasty(save)
-    setSave({ ...save })
-    setShowFundraise(false)
-  }
 
   const phaseLabel = phase === 'PRE_PORTAL'
     ? 'Pre-Portal — HS + JUCO recruits only'
@@ -260,36 +229,28 @@ export default function Recruiting() {
         </div>
       </div>
 
-      {/* Action bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-        <ActionCard
-          title="Prospect Camp"
-          subtitle={
-            campHeldThisYear
-              ? `Held — ${save.prospectCamp.attendees} attendees, +$${(save.prospectCamp.revenue / 1000).toFixed(1)}K`
-              : campWindowOpen
-                ? 'Aug-Nov window. Set fee + invites.'
-                : 'Window: Aug-Nov only.'
-          }
-          onClick={() => setShowCamp(true)}
-          disabled={campHeldThisYear || !campWindowOpen}
-        />
-        <ActionCard
-          title="Fundraise"
-          subtitle="Spend AP for $$$."
-          onClick={() => setShowFundraise(true)}
-          disabled={save.ap.currentWeek < 1}
-        />
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="text-xs text-gray-500 uppercase tracking-wider">Signed Class</div>
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Signed class</div>
           <div className="text-2xl font-bold text-pnw-green">{signedRecruits.length}</div>
           <div className="text-[10px] text-gray-400">recruits bound to you</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="text-xs text-gray-500 uppercase tracking-wider">Live Offers</div>
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Live offers</div>
           <div className="text-2xl font-bold text-pnw-slate">{liveOffers.length}</div>
           <div className="text-[10px] text-gray-400">${(totalOffered / 1000).toFixed(0)}K committed</div>
         </div>
+        <Link to={`/gm/weekly?slot=${slot}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-pnw-green hover:bg-pnw-cream">
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Prospect camp</div>
+          <div className="text-lg font-bold text-pnw-slate">{campHeldThisYear ? `${save.prospectCamp.attendees} att` : campWindowOpen ? 'Open' : 'Closed'}</div>
+          <div className="text-[10px] text-gray-400">Manage on Weekly Actions →</div>
+        </Link>
+        <Link to={`/gm/weekly?slot=${slot}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-pnw-green hover:bg-pnw-cream">
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Fundraise</div>
+          <div className="text-lg font-bold text-pnw-slate">Weekly Actions</div>
+          <div className="text-[10px] text-gray-400">Manage on Weekly Actions →</div>
+        </Link>
       </div>
 
       {/* Scholarship availability — what new $ can actually be offered */}
@@ -301,6 +262,7 @@ export default function Recruiting() {
           { key: 'BOARD', label: 'Board', count: visible.length },
           { key: 'FOLLOWING', label: '★ Following', count: followedCount },
           { key: 'OFFERS', label: 'Offers Out', count: liveOffers.length },
+          { key: 'INVITES', label: `🏟 Camp Invites`, count: `${invitedCount}/${CAMP_MAX_INVITES}` },
           { key: 'SIGNED', label: 'Signed', count: signedRecruits.length },
         ].map(t => (
           <button
@@ -364,9 +326,11 @@ export default function Recruiting() {
               <th className="py-2 px-3"></th>
               <th>Name</th>
               <th>Pos</th>
+              <th title="Estimated overall rating — range narrows as you scout">Est OVR</th>
               <th>Pool</th>
               <th>State</th>
               <th>Interest</th>
+              <th title="Scouting progress — 10+ AP and a live offer = fully scouted">Scout</th>
               <th>Suitors</th>
               <th>Offer</th>
               <th>Priorities</th>
@@ -394,6 +358,16 @@ export default function Recruiting() {
                     {isSigned && '🖊️ '}{recruit.firstName} {recruit.lastName}
                   </td>
                   <td>{recruit.primaryPosition}</td>
+                  <td className="font-mono text-xs">
+                    {(() => {
+                      const block = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
+                      const trueOvr = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
+                      const half = Math.max(1, Math.round(noise / 2))
+                      const lo = Math.max(20, trueOvr - half)
+                      const hi = Math.min(99, trueOvr + half)
+                      return lo === hi ? <span className="font-bold">{trueOvr}</span> : <span>{lo}–{hi}</span>
+                    })()}
+                  </td>
                   <td className="text-xs text-gray-500">{POOL_LABELS[recruit.pool]}</td>
                   <td className="text-xs text-gray-500">{recruit.hometown.state}</td>
                   <td>
@@ -403,6 +377,20 @@ export default function Recruiting() {
                       </div>
                       <span className="text-xs font-mono">{interest}</span>
                     </div>
+                  </td>
+                  <td>
+                    {(() => {
+                      const sp = scoutingProgress(recruit, save.userSchoolId)
+                      const full = isFullyScouted(recruit, save.userSchoolId)
+                      return (
+                        <div className="flex items-center gap-2">
+                          <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={'h-full ' + (full ? 'bg-blue-600' : 'bg-pnw-slate')} style={{ width: `${sp * 100}%` }} />
+                          </div>
+                          {full && <span className="text-[10px] text-blue-700 font-bold">✓</span>}
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="text-xs">
                     <SuitorBadge recruit={recruit} />
@@ -424,9 +412,21 @@ export default function Recruiting() {
                   </td>
                   <td>
                     {!isSigned && (
-                      <button onClick={() => setOpenRecruit(recruit)} className="text-xs text-pnw-green hover:underline">
-                        Recruit →
-                      </button>
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <button onClick={() => setOpenRecruit(recruit)} className="text-xs text-pnw-green hover:underline">
+                          Recruit →
+                        </button>
+                        {recruit.pool === 'HS_SR' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleCampInvite(recruit.id) }}
+                            className={'text-[10px] hover:underline ' +
+                              (recruit.campInvited ? 'text-blue-700 font-semibold' : 'text-gray-400')}
+                            title={recruit.campInvited ? 'Camp invite sent (click to revoke)' : 'Invite to prospect camp (free, 0 AP)'}
+                          >
+                            {recruit.campInvited ? '🏟 Invited' : '+ Invite to camp'}
+                          </button>
+                        )}
+                      </div>
                     )}
                     {isSigned && <span className="text-xs text-green-700 font-bold">SIGNED</span>}
                   </td>
@@ -448,27 +448,6 @@ export default function Recruiting() {
         />
       )}
 
-      {showCamp && (
-        <CampModal
-          save={save}
-          coach={userHC}
-          recruits={recruits}
-          onConfirm={handleCamp}
-          onClose={() => setShowCamp(false)}
-        />
-      )}
-
-      {showFundraise && (
-        <FundraiseModal
-          ap={fundraiseAP}
-          onChangeAP={setFundraiseAP}
-          maxAP={save.ap.currentWeek}
-          coach={userHC}
-          programHistory={userSchool.programHistory}
-          onConfirm={handleFundraise}
-          onClose={() => setShowFundraise(false)}
-        />
-      )}
     </div>
   )
 }
@@ -505,7 +484,7 @@ function isCampWindowOpen(calendar) {
   return calendar.offseasonWeek >= 1 && calendar.offseasonWeek <= 17
 }
 
-function computeProgramMomentum(save) {
+function _unusedComputeProgramMomentum(save) {
   // Use last completed season's win pct + postseason status
   const team = save.teams[save.userSchoolId]
   const totalGames = (team.wins || 0) + (team.losses || 0)

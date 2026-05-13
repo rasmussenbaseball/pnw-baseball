@@ -96,6 +96,52 @@ function sampleHomeState(stateWeights, rng) {
 }
 
 /**
+ * Apply the coach's natural pipeline / region match to a recruit. Recruits
+ * who live in the coach's home regions or fit a coach's pipeline arrive on
+ * the board already aware of the program — small interest seed + one
+ * priority revealed.
+ *
+ * @param {import('./types.js').Recruit} recruit
+ * @param {string} userSchoolId
+ * @param {import('./types.js').Coach} coach
+ * @param {ReturnType<import('./rng.js').makeRng>} rng
+ */
+function seedPipelineInterest(recruit, userSchoolId, coach, rng) {
+  if (!coach) return
+  const inRegion = (coach.regions || []).includes(recruit.hometown.state)
+  // Pipeline-state mapping mirrors pipelineWeightBoosts above
+  const pipelineStates = {
+    TEXAS_JUCO: ['TX', 'OK', 'LA'],
+    CALIFORNIA_JUCO: ['CA', 'AZ'],
+    NWAC: ['WA', 'OR', 'ID', 'BC'],
+    FLORIDA_JUCO: ['FL', 'GA'],
+    MIDWEST_JUCO: ['IL', 'IN', 'IA', 'MO', 'KS'],
+    HBCU: ['GA', 'AL', 'MS'],
+  }
+  let inPipeline = false
+  for (const p of coach.pipelines || []) {
+    if ((pipelineStates[p] || []).includes(recruit.hometown.state)) { inPipeline = true; break }
+  }
+  if (!inRegion && !inPipeline) return
+
+  const seed = inRegion && inPipeline ? 20 : 12
+  recruit.scoutGrades[userSchoolId] = {
+    interest: seed,
+    noise: 13,                        // tiny scouting bonus from existing relationship
+    revealedPreferences: [],
+    actionsApplied: ['PIPELINE_SEED'],
+    apSpent: 0,
+  }
+  // Reveal top preference
+  const allPrefs = Object.keys(recruit.preferences)
+  const top = allPrefs.sort((a, b) => recruit.preferences[b] - recruit.preferences[a])[0]
+  if (top) recruit.scoutGrades[userSchoolId].revealedPreferences.push(top)
+  if (!recruit.interestedSchools.includes(userSchoolId)) {
+    recruit.interestedSchools.push(userSchoolId)
+  }
+}
+
+/**
  * Generate the full recruit pool for one offseason — geography-biased for the user's coach.
  *
  * The pool is generated ONCE per season but the coach's pipelines/regions
@@ -108,7 +154,7 @@ function sampleHomeState(stateWeights, rng) {
  * @param {import('./types.js').Coach | null} coach   user's head coach for pipeline biasing
  * @returns {Object<string, import('./types.js').Recruit>}
  */
-export function generateRecruitPool(year, seed, coach = null) {
+export function generateRecruitPool(year, seed, coach = null, userSchoolId = null) {
   /** @type {Object<string, import('./types.js').Recruit>} */
   const pool = {}
   const rng = makeRng('recruitPool', year, seed)
@@ -116,13 +162,14 @@ export function generateRecruitPool(year, seed, coach = null) {
 
   for (let i = 0; i < HS_POOL_SIZE; i++) {
     const r = makeRecruit('HS_SR', i, year, rng, stateWeights)
+    if (userSchoolId) seedPipelineInterest(r, userSchoolId, coach, rng)
     pool[r.id] = r
   }
   for (let i = 0; i < JUCO_POOL_SIZE; i++) {
     const r = makeRecruit('JUCO', i, year, rng, stateWeights)
+    if (userSchoolId) seedPipelineInterest(r, userSchoolId, coach, rng)
     pool[r.id] = r
   }
-  // Portal pool is generated separately when portal phase opens
   return pool
 }
 
@@ -488,14 +535,15 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
       noise: 15,                  // initial sight = ±15 rating noise
       revealedPreferences: [],
       actionsApplied: [],
+      apSpent: 0,
     }
   }
   const grade = recruit.scoutGrades[userSchoolId]
   grade.interest = Math.min(100, grade.interest + action.interestGain)
   grade.noise = Math.max(2, grade.noise - action.fogReduction)
   grade.actionsApplied.push(action.key)
+  grade.apSpent = (grade.apSpent || 0) + (action.apCost || 0)
 
-  // Add school to interested list if not yet
   if (!recruit.interestedSchools.includes(userSchoolId)) {
     recruit.interestedSchools.push(userSchoolId)
   }
@@ -512,14 +560,50 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
     }
   }
 
-  // Reveal suitors after a meaningful action (scout trip, home visit, camp visit, etc.)
-  // — coaches learn about competition by talking to the player + family + HS coach.
   const REVEALING_ACTIONS = new Set(['SCOUT_TRIP', 'HOME_VISIT', 'CAMPUS_VISIT', 'CAMP_INVITE', 'ASSISTANT_TALK'])
   if (REVEALING_ACTIONS.has(action.key)) {
     recruit.suitorsRevealed = true
   }
 
+  // Full-scout milestone: 10+ AP spent AND a live offer in place → everything
+  // revealed + meaningful interest bump (recruit feels prioritized).
+  applyFullScoutIfEligible(recruit, userSchoolId)
+
   return { recruit, interestGain: action.interestGain, revealed }
+}
+
+/**
+ * Scouting progress (0-1) used for the progress bar on the recruiting list.
+ * Combines AP spent (caps at 10) with whether a live offer exists.
+ */
+export function scoutingProgress(recruit, userSchoolId) {
+  const grade = recruit.scoutGrades?.[userSchoolId]
+  if (!grade) return 0
+  const apPart = Math.min(1, (grade.apSpent || 0) / 10)
+  const offerPart = recruit.liveOffer?.schoolId === userSchoolId ? 1 : 0
+  return Math.min(1, apPart * 0.7 + offerPart * 0.3)
+}
+
+/** True once 10+ AP spent and a live offer exists. */
+export function isFullyScouted(recruit, userSchoolId) {
+  const grade = recruit.scoutGrades?.[userSchoolId]
+  if (!grade) return false
+  return (grade.apSpent || 0) >= 10 && recruit.liveOffer?.schoolId === userSchoolId
+}
+
+function applyFullScoutIfEligible(recruit, userSchoolId) {
+  if (!isFullyScouted(recruit, userSchoolId)) return
+  const grade = recruit.scoutGrades[userSchoolId]
+  if (grade.fullScoutApplied) return
+  grade.fullScoutApplied = true
+  grade.noise = 0
+  // Reveal all preferences
+  const allPrefs = Object.keys(recruit.preferences)
+  grade.revealedPreferences = [...allPrefs]
+  // Reveal suitors too
+  recruit.suitorsRevealed = true
+  // Big interest bump — recruit feels prioritized
+  grade.interest = Math.min(100, grade.interest + 15)
 }
 
 /**
@@ -636,7 +720,41 @@ function avgTrueRating(r) {
 // Camp constants
 export const CAMP_MIN_ATTENDEES = 20
 export const CAMP_MAX_ATTENDEES = 100
-export const CAMP_MAX_WALKONS = 25       // Cap walk-on attendance to keep camp coach-driven
+export const CAMP_MAX_INVITES = 100      // user can invite up to 100 HS recruits
+export const CAMP_MAX_WALKONS = 25
+
+/**
+ * Per-recruit camp attendance probability — exposed so the UI can show
+ * RSVP predictions (Likely / Unsure / Probably not). Mirrors the math
+ * inside simProspectCamp for invited players.
+ *
+ * @param {import('./types.js').Recruit} recruit
+ * @param {string} userSchoolId
+ * @param {number} feePerAttendee
+ * @param {number} coachRecruiterRating
+ * @param {number} programMomentum   0-100
+ */
+export function predictRecruitAttendance(recruit, userSchoolId, feePerAttendee, coachRecruiterRating, programMomentum) {
+  if (recruit.pool !== 'HS_SR') return 0
+  const feeMult = clamp(1.5 - (feePerAttendee - 50) / 200, 0.4, 1.6)
+  const coachMult = 0.7 + (coachRecruiterRating / 100) * 0.7
+  const momentumMult = 0.7 + (programMomentum / 100) * 0.7
+  const avgRating = avgTrueRating(recruit)
+  const existingInterest = recruit.scoutGrades?.[userSchoolId]?.interest ?? 0
+  let prob
+  if (avgRating >= 75) prob = 0.30
+  else if (avgRating >= 65) prob = 0.55
+  else if (avgRating >= 55) prob = 0.75
+  else prob = 0.85
+  prob *= feeMult * coachMult * momentumMult * (1 + existingInterest / 150)
+  return clamp(prob, 0, 0.95)
+}
+
+export function rsvpLabel(prob) {
+  if (prob >= 0.65) return { label: 'Likely', color: 'text-green-700', bg: 'bg-green-50' }
+  if (prob >= 0.35) return { label: 'Unsure', color: 'text-amber-700', bg: 'bg-amber-50' }
+  return { label: 'Probably not', color: 'text-gray-500', bg: 'bg-gray-50' }
+}
 
 /**
  * Predict prospect camp turnout.
@@ -855,6 +973,7 @@ export function setLiveOffer(recruit, userSchoolId, amount) {
   if (!recruit.interestedSchools.includes(userSchoolId)) {
     recruit.interestedSchools.push(userSchoolId)
   }
+  applyFullScoutIfEligible(recruit, userSchoolId)
 }
 
 /**

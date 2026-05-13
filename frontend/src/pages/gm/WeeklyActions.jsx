@@ -71,8 +71,11 @@ export default function WeeklyActions() {
     const momentum = Math.round(
       ((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100
     )
+    const invitedIds = Object.values(save.recruits || {})
+      .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
+      .map(r => r.id)
     const result = simProspectCamp(
-      save.recruits || {}, save.userSchoolId, [], campFee,
+      save.recruits || {}, save.userSchoolId, invitedIds, campFee,
       userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
     )
     if (result.cancelled) { alert(result.reason); return }
@@ -89,8 +92,11 @@ export default function WeeklyActions() {
     saveDynasty(save); setSave({ ...save })
   }
 
+  const invitedIds = Object.values(save.recruits || {})
+    .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
+    .map(r => r.id)
   const campPredict = predictCampTurnout(
-    save.recruits || {}, save.userSchoolId, [],
+    save.recruits || {}, save.userSchoolId, invitedIds,
     campFee, userHC.recruiter,
     Math.round(((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100),
   )
@@ -157,6 +163,10 @@ export default function WeeklyActions() {
             <div className="text-sm font-semibold text-pnw-slate">Prospect Camp</div>
             <div className="text-xs text-gray-500">
               HS-only invite event. Min {CAMP_MIN_ATTENDEES} • max {CAMP_MAX_ATTENDEES} attendees. Aug–Nov window only.
+              <span className="block mt-1">
+                Currently invited: <strong>{invitedIds.length}</strong> recruits — manage via the
+                {' '}<Link to={`/gm/recruiting?slot=${slot}`} className="text-pnw-green hover:underline">Recruiting → Camp Invites</Link> tab.
+              </span>
             </div>
           </div>
           <button

@@ -24,8 +24,6 @@ const NON_NAIA_DISPLAY = (() => {
   return out
 })()
 
-const STUDY_HALL_AP = 3
-
 export default function Dashboard() {
   const { user } = useAuth()
   const [params] = useSearchParams()
@@ -94,21 +92,6 @@ export default function Dashboard() {
     setBusy(false)
   }
 
-  function mandateStudyHall() {
-    if (save.studyHall?.active) return
-    if (save.ap.currentWeek < STUDY_HALL_AP) return
-    save.ap.currentWeek -= STUDY_HALL_AP
-    save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + STUDY_HALL_AP
-    save.ap.spentByCategory = save.ap.spentByCategory || {}
-    save.ap.spentByCategory.program = (save.ap.spentByCategory.program || 0) + STUDY_HALL_AP
-    save.studyHall = {
-      ...save.studyHall,
-      active: true,
-      weeksActive: save.studyHall?.weeksActive || 0,
-    }
-    saveDynasty(save)
-    setSave({ ...save })
-  }
 
   // ─── UI ────────────────────────────────────────────────────────────────────
   return (
@@ -253,7 +236,7 @@ export default function Dashboard() {
         {/* RIGHT column — focus tasks, study hall, navigation */}
         <div className="space-y-4">
           <Panel title="This Week's Focus" actionTo={null}>
-            <FocusTasks save={save} inOffseason={inOffseason} onStudyHall={mandateStudyHall} />
+            <FocusTasks save={save} inOffseason={inOffseason} />
           </Panel>
 
           <Panel title="Navigate" actionTo={null}>
@@ -352,9 +335,7 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, o
   )
 }
 
-function FocusTasks({ save, inOffseason, onStudyHall }) {
-  const studyHallActive = save.studyHall?.active === true
-  const weeksActive = save.studyHall?.weeksActive || 0
+function FocusTasks({ save, inOffseason }) {
   const seasonYear = save.calendar.year + 1
   const userSchool = save.schools[save.userSchoolId]
   const openSchedSlots = openNonConfWeeks(save.userSchoolId, userSchool.conferenceId, save.schedule || [], seasonYear)
@@ -386,25 +367,6 @@ function FocusTasks({ save, inOffseason, onStudyHall }) {
 
   return (
     <div className="space-y-3">
-      {/* Study Hall — weekly */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="text-sm font-semibold text-pnw-slate">Mandate Study Hall</div>
-            <div className="text-[11px] text-gray-500">
-              Weekly. {weeksActive} {weeksActive === 1 ? 'week' : 'weeks'} active — +{(Math.min(0.35, weeksActive * 0.025)).toFixed(2)} GPA locked in.
-            </div>
-          </div>
-          <button
-            disabled={studyHallActive || save.ap.currentWeek < STUDY_HALL_AP}
-            onClick={onStudyHall}
-            className="px-3 py-1.5 text-xs bg-pnw-green text-white rounded font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            {studyHallActive ? 'Active' : `${STUDY_HALL_AP} AP`}
-          </button>
-        </div>
-      </div>
-
       <div className="text-xs text-gray-600 space-y-1.5">
         <div className="font-semibold text-gray-700">Weekly priorities:</div>
         {priorities.length === 0 ? (

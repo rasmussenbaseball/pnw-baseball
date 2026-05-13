@@ -62,10 +62,26 @@ function potentialGapFor(classYear) {
 }
 
 /**
+ * Apply a "star-player" outlier bump to a slot's mean rating. ~8% of starters
+ * across the league are blue-chip prospects with elite ratings regardless of
+ * their program's overall strength. Bushnell may not field a 75+ overall as
+ * its #5, but every team should occasionally produce a stud.
+ */
+function applyStarBump(mean, slotTier, rng) {
+  if (slotTier !== 'starter') return mean
+  // 8% chance of a star (mean 84 → 78-90 range)
+  if (rng.chance(0.08)) return Math.max(mean, 84)
+  // 18% chance of a quality starter (mean 76)
+  if (rng.chance(0.18)) return Math.max(mean, 76)
+  return mean
+}
+
+/**
  * Generate a HitterRatings block.
  */
 function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng) {
-  const mean = meanRatingFor(programHistory, slotTier) - (isPureHitter ? 0 : 10)
+  let mean = meanRatingFor(programHistory, slotTier) - (isPureHitter ? 0 : 10)
+  mean = applyStarBump(mean, slotTier, rng)
   const stddev = slotTier === 'starter' ? 7 : 9
   const r = () => Math.round(clamp(rng.gaussian(mean, stddev), 30, 95))
   return {
@@ -77,7 +93,8 @@ function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier
 }
 
 function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTier, rng) {
-  const mean = meanRatingFor(programHistory, slotTier) - (isPurePitcher ? 0 : 10)
+  let mean = meanRatingFor(programHistory, slotTier) - (isPurePitcher ? 0 : 10)
+  mean = applyStarBump(mean, slotTier, rng)
   const stddev = slotTier === 'starter' ? 7 : 9
   const r = () => Math.round(clamp(rng.gaussian(mean, stddev), 30, 95))
   return {
@@ -163,11 +180,36 @@ function makeRosterPositionList(rng) {
       list.push({ position: pos, isPitcher })
     }
   }
-  // Pad to 35 with bench/redshirt-style position players
   while (list.length < 35) {
     list.push({ position: rng.pick(['1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']), isPitcher: false })
   }
-  return list
+  // CRITICAL: interleave so the first 14 (starter tier) get both hitters
+  // AND pitchers. Was: all hitters first, then pitchers → no pitcher ever
+  // landed in the 'starter' tier and their OVRs were systematically lower.
+  // Now: 9 starting hitters (C/1B/2B/SS/3B/LF/CF/RF/DH) + 5 SP rotation up
+  // front, then the rest.
+  const startingHitters = []
+  const startingPitchers = []
+  const rest = []
+  const startingPitcherTaken = { SP: 0 }
+  const startingHitterPosTaken = {}
+  const STARTING_HITTER_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH']
+  for (const slot of list) {
+    if (slot.position === 'SP' && startingPitchers.length < 5) {
+      startingPitchers.push(slot)
+    } else if (!slot.isPitcher && STARTING_HITTER_POSITIONS.includes(slot.position) &&
+               !startingHitterPosTaken[slot.position]) {
+      startingHitters.push(slot)
+      startingHitterPosTaken[slot.position] = true
+    } else {
+      rest.push(slot)
+    }
+    if (startingHitters.length >= 9 && startingPitchers.length >= 5) {
+      // Already have the starting lineup + rotation; everything else is bench/depth
+      // but we still need to add remaining slots
+    }
+  }
+  return [...startingHitters, ...startingPitchers, ...rest]
 }
 
 /**

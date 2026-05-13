@@ -525,7 +525,8 @@ export function advanceWeek(state, schedule) {
       state.studyHall.weeksActive = (state.studyHall.weeksActive || 0) + 1
       state.studyHall.active = false
     }
-    if (state.calendar.seasonWeek > 16) {
+    if (state.calendar.seasonWeek > 14) {
+      // 14 weeks of regular season; postseason begins thereafter.
       state.calendar.mode = 'POSTSEASON'
       state.calendar.seasonWeek = null
       runPostseason(state)

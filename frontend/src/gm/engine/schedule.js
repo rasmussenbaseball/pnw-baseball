@@ -118,19 +118,29 @@ function conferenceWindow(conferenceId, year) {
 }
 
 /**
- * Season week 1 = Friday of the week containing Feb 1 (or the closest Friday at/after).
- * Season runs 16 weeks. This is what `g.seasonWeek` is computed against.
+ * Season week 1 = first Friday on/after Feb 8 of the season year. The +8
+ * anchor (vs. Feb 1 historically) shifts numbering so the CCC's late-Feb
+ * conference opener lands at Week 3 with 2 pre-conf weeks before it.
  */
 function seasonWeek1Friday(year) {
-  return snapToFriday(ymdDate(year, 2, 1))
+  return snapToFriday(ymdDate(year, 2, 8))
 }
 
+/** Last week of the regular season; postseason starts the following week. */
+export const REGULAR_SEASON_LAST_WEEK = 14
+
 /**
- * Compute season week (1-N) from a Date.
+ * Compute season week (1-N) from a Date or ISO string.
+ *
+ * IMPORTANT: ISO date strings like "2027-02-26" are parsed as UTC midnight
+ * by `new Date()`, but seasonWeek1Friday returns a local-time Date — so a
+ * raw `new Date(isoString)` here would drift Friday games into the previous
+ * week (the cause of the "3+1 split" series bug). We parse ISO as local
+ * by appending a time component.
  */
 export function dateToSeasonWeek(date, year) {
   const w1 = seasonWeek1Friday(year)
-  const d = new Date(date)
+  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : new Date(date)
   const diffMs = d - w1
   return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7)) + 1
 }
@@ -358,7 +368,7 @@ export function openNonConfWeeks(schoolId, conferenceId, schedule, year) {
   for (let w = 1; w < confStartWeek; w++) {
     if (!occupied.has(w)) out.push({ week: w, date: weekToDateApprox(w, year) })
   }
-  for (let w = confEndWeek + 1; w <= 16; w++) {
+  for (let w = confEndWeek + 1; w <= REGULAR_SEASON_LAST_WEEK; w++) {
     if (!occupied.has(w)) out.push({ week: w, date: weekToDateApprox(w, year) })
   }
   return out

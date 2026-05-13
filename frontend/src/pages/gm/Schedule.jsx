@@ -12,6 +12,7 @@ import {
   countD1Midweeks, d1MidweeksRemaining,
   getConferenceRules,
   NAIA_GAME_CAP, NAIA_SCRIMMAGE_CAP, NAIA_D1_MIDWEEK_CAP,
+  REGULAR_SEASON_LAST_WEEK,
 } from '../../gm/engine/schedule'
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
 import TeamLogo from '../../gm/components/TeamLogo'
@@ -204,7 +205,7 @@ export default function Schedule() {
       {scheduledWeekNums.length > 0 && (
         <div className="mb-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-2">Scheduled weeks</h2>
-          {scheduledWeekNums.map(week => {
+          {scheduledWeekNums.filter(w => w <= REGULAR_SEASON_LAST_WEEK).map(week => {
             const games = byWeek[week]
             const dateLabel = games[0]?.date
             // Detect type
@@ -233,6 +234,12 @@ export default function Schedule() {
           })}
         </div>
       )}
+
+      {/* Postseason boundary */}
+      <div className="bg-pnw-slate text-white rounded-xl p-3 mb-6 text-sm font-semibold flex items-center justify-between">
+        <span>🏆 Postseason begins Week {REGULAR_SEASON_LAST_WEEK + 1}</span>
+        <span className="text-xs font-normal opacity-80">Conference tournament → Opening Round → NAIA World Series</span>
+      </div>
 
       {/* SCRIMMAGE section */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
