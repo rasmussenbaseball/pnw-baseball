@@ -12,7 +12,7 @@ import {
   calendarDateLabel, offseasonPhase, offseasonWeekDate, formatShortDate,
   OFFSEASON_WEEKS,
 } from '../../gm/engine/calendar'
-import { prettyLabel } from '../../gm/engine/format'
+import { prettyLabel, displayPosition } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
