@@ -8,6 +8,7 @@
  */
 
 import { simGame, fastSimGame, defaultLineup } from './sim'
+import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups'
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, endOfSeasonDevelopment } from './development'
 import { simAllConferenceTournaments } from './tournament'
@@ -75,9 +76,15 @@ export function simWeek(state, schedule, ratings) {
 
     let result
     if (isUserGame && homeTeam && awayTeam) {
-      // Both sides are real NAIA teams — full sim
-      const homeLineup = defaultLineup(homeTeam, state.players)
-      const awayLineup = defaultLineup(awayTeam, state.players)
+      // Both sides are real NAIA teams — full sim. Use the user's saved
+      // lineup if they set one (fall scrimmages, regular-season games they
+      // micromanaged); otherwise fall back to defaultLineup (top-9 + top-5).
+      const homeLineup = g.homeId === userSchoolId
+        ? resolveLineupForGame(state, userSchoolId, g.id)
+        : defaultLineup(homeTeam, state.players)
+      const awayLineup = g.awayId === userSchoolId
+        ? resolveLineupForGame(state, userSchoolId, g.id)
+        : defaultLineup(awayTeam, state.players)
       const homeHC = state.coaches[homeTeam.headCoachId]
       const awayHC = state.coaches[awayTeam.headCoachId]
       result = simGame(homeLineup, awayLineup, {
@@ -130,13 +137,21 @@ export function simWeek(state, schedule, ratings) {
     }
 
     // Scrimmage dev bonus — players in the user's scrimmage get small bumps.
-    // For v1.5 we apply to the default lineup (top-9 hitters + top-5 pitchers);
-    // a future iteration lets the coach explicitly pick who plays.
+    // If the user set an explicit lineup for this game, ONLY those players
+    // earn the boost (that's how lineup choices drive development). Otherwise
+    // we fall back to defaultLineup so untouched games still develop someone.
     if (isUserGame && (g.type === 'FALL_SCRIMMAGE' || g.type === 'SPRING_SCRIMMAGE')) {
       const userTeam = state.teams[userSchoolId]
       if (userTeam) {
-        const lineup = defaultLineup(userTeam, state.players)
-        const playersIn = [...lineup.batters, ...lineup.pitcherRotation]
+        const saved = getSavedLineup(state, g.id)
+        let playersIn
+        if (saved) {
+          const ids = lineupPlayerIds(state, g.id)
+          playersIn = ids.map(id => state.players[id]).filter(Boolean)
+        } else {
+          const lineup = defaultLineup(userTeam, state.players)
+          playersIn = [...lineup.batters, ...lineup.pitcherRotation]
+        }
         const bumped = applyScrimmageDev(playersIn, g.seriesId || g.id)
         for (const p of bumped) state.players[p.id] = p
       }

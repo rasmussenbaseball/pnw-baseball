@@ -442,6 +442,26 @@ export function scrimmagesRemaining(schoolId, schedule) {
   return Math.max(0, NAIA_SCRIMMAGE_CAP - countScrimmages(schoolId, schedule))
 }
 
+/**
+ * Minimum required fall scrimmage games per year. One doubleheader (2 games)
+ * keeps the floor low while still forcing the user to schedule SOMETHING
+ * during Fall Camp — otherwise the scrimmage dev boost can't fire.
+ */
+export const REQUIRED_FALL_SCRIMMAGE_GAMES = 2
+
+/** Count this school's fall scrimmage games (counts both legs of a DH). */
+export function countFallScrimmages(schoolId, schedule) {
+  return schedule.filter(g =>
+    g.type === 'FALL_SCRIMMAGE' &&
+    (g.homeId === schoolId || g.awayId === schoolId),
+  ).length
+}
+
+/** How many more fall scrimmage games the user is required to schedule. */
+export function fallScrimmagesRequired(schoolId, schedule) {
+  return Math.max(0, REQUIRED_FALL_SCRIMMAGE_GAMES - countFallScrimmages(schoolId, schedule))
+}
+
 export function d1MidweeksRemaining(schoolId, schedule) {
   return Math.max(0, NAIA_D1_MIDWEEK_CAP - countD1Midweeks(schoolId, schedule))
 }

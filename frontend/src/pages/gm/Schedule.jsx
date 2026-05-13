@@ -15,6 +15,7 @@ import {
   REGULAR_SEASON_LAST_WEEK,
 } from '../../gm/engine/schedule'
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
+import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -541,6 +542,7 @@ function ScrimmagePicker({ save, season, year, onPick, onClose }) {
   const slots = season === 'FALL' ? fallScrimmageSlots(year) : springScrimmageSlots(year + 1)
   const [filter, setFilter] = useState('')
   const [selectedDate, setSelectedDate] = useState(slots[0]?.date || '')
+  const userState = save.schools[save.userSchoolId]?.state
 
   const candidates = useMemo(() => {
     const naia = Object.values(save.schools)
@@ -553,8 +555,10 @@ function ScrimmagePicker({ save, season, year, onPick, onClose }) {
     const nonNaia = nonNaiaRaw.divisions.flatMap(div =>
       div.teams.map(t => ({ ...t, division: div.id })),
     )
-    return [...naia, ...nonNaia]
-  }, [save])
+    // Sort by proximity — teams don't travel far for fall scrimmages, so the
+    // closest options should be at the top of the list by default.
+    return sortByProximity(userState, [...naia, ...nonNaia])
+  }, [save, userState])
 
   const filtered = candidates
     .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
@@ -586,20 +590,31 @@ function ScrimmagePicker({ save, season, year, onPick, onClose }) {
           className="w-full border rounded px-3 py-2 text-sm mb-3"
         />
 
+        <p className="text-[11px] text-gray-500 mb-2">Sorted by closest to {userState}. Fall trips are short — keep it nearby.</p>
         <div className="space-y-1 max-h-72 overflow-y-auto">
-          {filtered.map(s => (
-            <button
-              key={s.id}
-              onClick={() => onPick(selectedDate, s)}
-              className="w-full flex items-center gap-2 p-2 hover:bg-amber-50 rounded text-left text-sm"
-            >
-              <TeamLogo school={s} size={20} />
-              <div className="flex-1">
-                <div>{s.name}</div>
-                <div className="text-xs text-gray-500">{s.city}, {s.state} • {s.division}</div>
-              </div>
-            </button>
-          ))}
+          {filtered.map(s => {
+            const px = stateProximity(userState, s.state)
+            const pxColor = px === 0 ? 'bg-green-100 text-green-800'
+              : px === 1 ? 'bg-pnw-cream text-pnw-green'
+              : px === 2 ? 'bg-blue-50 text-blue-700'
+              : 'bg-gray-100 text-gray-500'
+            return (
+              <button
+                key={s.id}
+                onClick={() => onPick(selectedDate, s)}
+                className="w-full flex items-center gap-2 p-2 hover:bg-amber-50 rounded text-left text-sm"
+              >
+                <TeamLogo school={s} size={20} />
+                <div className="flex-1">
+                  <div>{s.name}</div>
+                  <div className="text-xs text-gray-500">{s.city}, {s.state} • {s.division}</div>
+                </div>
+                <span className={'text-[10px] font-semibold px-1.5 py-0.5 rounded ' + pxColor}>
+                  {proximityLabel(px)}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

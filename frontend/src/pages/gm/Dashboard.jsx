@@ -8,7 +8,7 @@ import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
-import { openNonConfWeeks } from '../../gm/engine/schedule'
+import { openNonConfWeeks, fallScrimmagesRequired } from '../../gm/engine/schedule'
 import {
   calendarDateLabel, offseasonPhase, offseasonWeekDate, formatShortDate,
   OFFSEASON_WEEKS,
@@ -80,7 +80,14 @@ export default function Dashboard() {
     () => openNonConfWeeks(save.userSchoolId, school.conferenceId, save.schedule || [], seasonYear),
     [save, seasonYear, school.conferenceId],
   )
-  const scheduleBlocked = inOffseason && openSlots.length > 0
+  // Fall scrimmages: required during the offseason. Block sim once Fall Camp
+  // opens (offseasonWeek >= 5) if the user hasn't scheduled the minimum.
+  const fallScrimNeeded = useMemo(
+    () => fallScrimmagesRequired(save.userSchoolId, save.schedule || []),
+    [save],
+  )
+  const fallScrimBlocked = inOffseason && (save.calendar.offseasonWeek ?? 0) >= 5 && fallScrimNeeded > 0
+  const scheduleBlocked = (inOffseason && openSlots.length > 0) || fallScrimBlocked
 
   // ─── Sim actions ───────────────────────────────────────────────────────────
   function simNextWeek() {
@@ -155,8 +162,14 @@ export default function Dashboard() {
       {scheduleBlocked && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 flex justify-between items-center">
           <div className="text-sm text-amber-900">
-            <strong>Schedule incomplete.</strong> You have <strong>{openSlots.length}</strong> open weekend
-            slot{openSlots.length === 1 ? '' : 's'} on the {seasonYear} schedule. Fill them in before you can sim.
+            <strong>Schedule incomplete.</strong>{' '}
+            {openSlots.length > 0 && (
+              <>You have <strong>{openSlots.length}</strong> open weekend slot{openSlots.length === 1 ? '' : 's'} on the {seasonYear} schedule. </>
+            )}
+            {fallScrimBlocked && (
+              <>You need to schedule <strong>{fallScrimNeeded}</strong> more fall scrimmage game{fallScrimNeeded === 1 ? '' : 's'} (one doubleheader). </>
+            )}
+            Fix it before you can sim.
           </div>
           <Link to={`/gm/schedule?slot=${slot}`} className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs font-semibold hover:opacity-90">
             Go to Schedule →
@@ -299,6 +312,7 @@ export default function Dashboard() {
               <NavTile to={`/gm/roster?slot=${slot}`} title="Roster" sub={`${team.rosterPlayerIds.length} players`} />
               <NavTile to={`/gm/depth?slot=${slot}`} title="Depth Chart" sub="Field + pitching staff" />
               <NavTile to={`/gm/schedule?slot=${slot}`} title="Schedule" sub="Games + sim" />
+              <NavTile to={`/gm/play?slot=${slot}`} title="Play Games" sub="Set lineups + live sim" />
               <NavTile to={`/gm/standings?slot=${slot}`} title="Standings" sub={conf.abbreviation} />
               <NavTile to={`/gm/rankings?slot=${slot}`} title="Rankings" sub="Top 50" />
               <NavTile to={`/gm/budget?slot=${slot}`} title="Budget" sub={`$${(save.budget?.totalAthleticBudget / 1000).toFixed(0)}K`} />
