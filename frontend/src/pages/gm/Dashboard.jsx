@@ -3,7 +3,7 @@ import { Link, useSearchParams, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
-import { simAhead, simPresets, phaseLabel, snapshotState } from '../../gm/engine/simAhead'
+import { simAhead, simPresets, phaseLabel, snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
 import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
@@ -160,14 +160,18 @@ export default function Dashboard() {
     setLastWeekRecap(null)
     if (mode === 'OFFSEASON') {
       const prevWeek = save.calendar.offseasonWeek
+      const beforeSnap = snapshotState(save)
       advanceOffseasonWeek(save)
       saveDynasty(save)
       setSave({ ...save })
+      const afterSnap = snapshotState(save)
+      const diff = diffSnapshots(beforeSnap, afterSnap)
       setLastWeekRecap({
         kind: 'offseason',
         from: prevWeek,
         to: save.calendar.offseasonWeek,
         phase: offseasonPhase(save.calendar.offseasonWeek),
+        diff,
       })
     } else if (mode === 'SEASON') {
       const crossingIntoPostseason = (save.calendar.seasonWeek ?? 0) >= 13
@@ -199,12 +203,15 @@ export default function Dashboard() {
       }
       setTimeout(() => {
         try {
+          const beforeSnap = snapshotState(save)
           const ratings = seedFromPear(save.schools, save.conferences)
           const summary = simWeek(save, save.schedule, ratings)
           advanceWeek(save, save.schedule)
           saveDynasty(save)
           setSave({ ...save })
-          setLastWeekRecap({ kind: 'season', results: summary.userResults })
+          const afterSnap = snapshotState(save)
+          const diff = diffSnapshots(beforeSnap, afterSnap)
+          setLastWeekRecap({ kind: 'season', results: summary.userResults, diff })
         } catch (err) {
           console.error('advanceWeek failed:', err)
           alert('Sim failed — see console for details. State was not saved.')
@@ -235,6 +242,13 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto py-6 px-4">
       {progress && <ProgressModal {...progress} />}
+      {lastWeekRecap?.diff && (
+        <WeekRecapModal
+          recap={lastWeekRecap}
+          save={save}
+          onDismiss={() => setLastWeekRecap(null)}
+        />
+      )}
       {gameWeekModal && (
         <GameWeekModal
           games={thisWeekUnplayed}
@@ -264,28 +278,54 @@ export default function Dashboard() {
           onCancel={() => setGameWeekModal(false)}
         />
       )}
-      {/* Top bar — identity + date + AP */}
-      <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white rounded-xl p-5 mb-4 flex justify-between items-center shadow">
-        <div className="flex gap-4 items-center">
-          <TeamLogo school={school} size={64} />
-          <div>
-            <Link to="/gm" className="text-xs opacity-70 hover:underline">← Dynasties</Link>
-            <div className="text-2xl font-bold leading-tight">{school.name}</div>
-            <div className="text-xs opacity-80">{school.city}, {school.state} • {conf.name}</div>
-            <div className="text-[11px] opacity-70 mt-0.5">
-              {headCoach.firstName} {headCoach.lastName}, head coach
-              {save.gameOptions && ` • ${save.gameOptions.mode}${save.gameOptions.difficulty !== 'NORMAL' ? '/' + save.gameOptions.difficulty : ''}`}
+      {/* HERO — team identity + dynasty year + AP. Two-row layout: top
+          identity row, bottom accent strip with record + phase + dynasty year
+          for at-a-glance status. */}
+      <div className="bg-gradient-to-br from-pnw-slate via-pnw-slate to-pnw-green text-white rounded-xl mb-4 shadow-lg overflow-hidden">
+        <div className="p-5 flex justify-between items-center">
+          <div className="flex gap-4 items-center">
+            <div className="bg-white/10 rounded-lg p-2 backdrop-blur-sm">
+              <TeamLogo school={school} size={72} />
+            </div>
+            <div>
+              <Link to="/gm" className="text-[11px] opacity-70 hover:underline">← Dynasties</Link>
+              <div className="text-3xl font-bold leading-tight tracking-tight">{school.name}</div>
+              <div className="text-xs opacity-80 mt-0.5">{school.city}, {school.state} · {conf.name}</div>
+              <div className="text-[11px] opacity-70 mt-1">
+                {headCoach.firstName} {headCoach.lastName} · head coach · Year {save.dynastyYear || 1}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider opacity-80">{dateLabel}</div>
-          <div className="text-3xl font-bold mt-1">
-            {weekOfYear >= 1 && weekOfYear <= 3
-              ? <span className="text-base opacity-70">🔒 AP Locked</span>
-              : <>{save.ap.currentWeek}<span className="text-sm opacity-70"> AP</span></>}
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wider opacity-80">{dateLabel}</div>
+            <div className="text-4xl font-bold mt-1 leading-none">
+              {weekOfYear >= 1 && weekOfYear <= 3
+                ? <span className="text-xl opacity-70">🔒 AP Locked</span>
+                : <>{save.ap.currentWeek}<span className="text-base opacity-70"> AP</span></>}
+            </div>
+            <div className="text-[11px] opacity-70 mt-1">Wk {weekOfYear} · {currentPhase.label}</div>
           </div>
-          <div className="text-[11px] opacity-70">Wk {weekOfYear} · {currentPhase.label}</div>
+        </div>
+        <div className="bg-black/20 px-5 py-2 flex justify-between items-center text-xs">
+          <div className="flex gap-5">
+            <div>
+              <span className="opacity-70 uppercase tracking-wider">Record</span>{' '}
+              <span className="font-mono font-bold">{team.wins}-{team.losses}</span>
+            </div>
+            <div>
+              <span className="opacity-70 uppercase tracking-wider">{conf.abbreviation}</span>{' '}
+              <span className="font-mono font-bold">{team.confWins}-{team.confLosses}</span>
+            </div>
+            <div>
+              <span className="opacity-70 uppercase tracking-wider">Run Diff</span>{' '}
+              <span className={'font-mono font-bold ' + (team.runDiff > 0 ? 'text-green-300' : team.runDiff < 0 ? 'text-red-300' : '')}>
+                {team.runDiff > 0 ? '+' : ''}{team.runDiff}
+              </span>
+            </div>
+          </div>
+          <div className="opacity-80">
+            {currentPhase.blurb}
+          </div>
         </div>
       </div>
 
@@ -483,15 +523,12 @@ export default function Dashboard() {
           </Panel>
 
           <Panel title="News" actionTo={null}>
-            <div className="space-y-1.5 text-sm">
-              {(save.newsfeed || []).slice(0, 6).map(n => (
-                <div key={n.id} className="leading-tight">
-                  <span className="text-[10px] text-gray-400 mr-1.5 uppercase">Wk {n.week}</span>
-                  <span className="text-gray-700">{n.headline}</span>
-                </div>
+            <div className="space-y-2">
+              {(save.newsfeed || []).slice(0, 8).map(n => (
+                <NewsRow key={n.id} item={n} />
               ))}
               {(save.newsfeed || []).length === 0 && (
-                <div className="text-xs text-gray-400">No news yet. Take an action or sim a week.</div>
+                <div className="text-xs text-gray-400 italic">No news yet. Take an action or sim a week.</div>
               )}
             </div>
           </Panel>
@@ -694,17 +731,22 @@ function ScholarshipBar({ snapshot }) {
 
 function KpiCard({ label, value, suffix = '', sub, accent, trend }) {
   return (
-    <div className={'rounded-lg border p-3 ' + (accent ? 'bg-pnw-green text-white border-pnw-green' : 'bg-white border-gray-200')}>
-      <div className={'text-xl font-bold flex items-baseline gap-1 ' + (accent ? '' : 'text-pnw-slate')}>
+    <div className={'rounded-xl border p-3 transition shadow-sm ' +
+      (accent
+        ? 'bg-gradient-to-br from-pnw-green to-pnw-slate text-white border-pnw-green'
+        : 'bg-white border-gray-200 hover:border-gray-300')}>
+      <div className={'text-[10px] uppercase tracking-wider font-semibold ' + (accent ? 'opacity-80' : 'text-gray-500')}>
+        {label}
+      </div>
+      <div className={'text-2xl font-bold mt-1 flex items-baseline gap-1 leading-none ' + (accent ? '' : 'text-pnw-slate')}>
         <span>{value}</span>
         <span className={'text-xs ' + (accent ? 'opacity-80' : 'text-gray-500')}>{suffix}</span>
-        {trend === 'up' && <span className="text-xs text-green-600 font-bold leading-none" title="trending up">↑</span>}
-        {trend === 'down' && <span className="text-xs text-red-600 font-bold leading-none" title="trending down">↓</span>}
-        {trend === 'flat' && <span className="text-xs text-gray-400 font-bold leading-none" title="flat">→</span>}
+        {trend === 'up' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-green-300' : 'text-green-600')} title="trending up">↑</span>}
+        {trend === 'down' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-red-300' : 'text-red-600')} title="trending down">↓</span>}
       </div>
-      <div className={'text-[10px] uppercase tracking-wider ' + (accent ? 'opacity-80' : 'text-gray-500')}>
-        {label}{sub && <span className="ml-1">{sub}</span>}
-      </div>
+      {sub && (
+        <div className={'text-[10px] mt-0.5 ' + (accent ? 'opacity-80' : 'text-gray-400')}>{sub}</div>
+      )}
     </div>
   )
 }
@@ -744,9 +786,15 @@ function Panel({ title, actionTo, actionLabel, children }) {
 
 function NavTile({ to, title, sub }) {
   return (
-    <Link to={to} className="block bg-gray-50 hover:bg-pnw-green hover:text-white border border-gray-200 rounded-lg p-2.5 transition">
-      <div className="font-semibold text-sm">{title}</div>
-      <div className="text-[11px] opacity-70">{sub}</div>
+    <Link
+      to={to}
+      className="group block bg-gray-50 hover:bg-pnw-green hover:text-white border border-gray-200 hover:border-pnw-green rounded-lg p-3 transition shadow-sm hover:shadow"
+    >
+      <div className="font-semibold text-sm flex justify-between items-center">
+        <span>{title}</span>
+        <span className="text-gray-300 group-hover:text-white opacity-70 group-hover:translate-x-0.5 transition">→</span>
+      </div>
+      <div className="text-[11px] opacity-70 mt-0.5">{sub}</div>
     </Link>
   )
 }
@@ -860,6 +908,169 @@ function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Week Recap — appears after every single-week tick to show what changed.
+ * Pulls from the snapshot diff (player OVR / happiness / GPA + record +
+ * budget) plus the week's userResults if it was an in-season week.
+ */
+function WeekRecapModal({ recap, save, onDismiss }) {
+  if (!recap) return null
+  const diff = recap.diff
+  const results = recap.results || []
+  const ovrTop = (diff?.ovrChanges || []).slice(0, 6)
+  const happyTop = (diff?.happinessChanges || []).slice(0, 5)
+  const gpaTop = (diff?.gpaChanges || []).slice(0, 4)
+  const recordDelta = diff?.recordDelta
+  const isOffseason = recap.kind === 'offseason'
+  const headerLabel = isOffseason
+    ? `Offseason Wk ${recap.from} → ${recap.to} — ${recap.phase}`
+    : `Game Week Recap`
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white p-4 rounded-t-xl flex justify-between items-start">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider opacity-80">Week Recap</div>
+            <h3 className="text-2xl font-bold mt-0.5">{headerLabel}</h3>
+          </div>
+          <button onClick={onDismiss} className="text-white/80 hover:text-white text-xl leading-none">✕</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Game results */}
+          {results.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Game Results</div>
+              <div className="space-y-1">
+                {results.map(r => (
+                  <div key={r.gameId} className={'flex justify-between items-center p-2 rounded ' +
+                    (r.result === 'W' ? 'bg-green-50' : 'bg-red-50')}>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={'inline-block w-6 h-6 flex items-center justify-center rounded font-bold text-white ' +
+                        (r.result === 'W' ? 'bg-green-600' : 'bg-red-600')}>
+                        {r.result}
+                      </span>
+                      <span className="text-gray-700">{r.homeAway === 'home' ? 'vs' : '@'} {r.opponent}</span>
+                    </div>
+                    <span className="font-mono text-sm font-bold">{r.score}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Record + run diff strip */}
+          {recordDelta && (recordDelta.w > 0 || recordDelta.l > 0) && (
+            <div className="grid grid-cols-3 gap-2">
+              <RecapStat label="This Week" value={`${recordDelta.w}-${recordDelta.l}`} accent={recordDelta.w > recordDelta.l ? 'good' : 'bad'} />
+              <RecapStat label="Run Diff" value={`${diff.runDiffDelta > 0 ? '+' : ''}${diff.runDiffDelta}`} accent={diff.runDiffDelta > 0 ? 'good' : diff.runDiffDelta < 0 ? 'bad' : null} />
+              <RecapStat label="Job Sec" value={`${diff.jobSecurityDelta > 0 ? '+' : ''}${diff.jobSecurityDelta || 0}`} accent={diff.jobSecurityDelta > 0 ? 'good' : diff.jobSecurityDelta < 0 ? 'bad' : null} />
+            </div>
+          )}
+
+          {/* Rating changes */}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">
+              Player Ratings {ovrTop.length === 0 && <span className="text-gray-400 normal-case ml-1">— no changes</span>}
+            </div>
+            {ovrTop.length > 0 && (
+              <div className="space-y-1">
+                {ovrTop.map(c => (
+                  <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
+                    <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
+                    <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
+                      OVR {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Happiness shifts */}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">
+              Happiness Shifts {happyTop.length === 0 && <span className="text-gray-400 normal-case ml-1">— stable</span>}
+            </div>
+            {happyTop.length > 0 && (
+              <div className="space-y-1">
+                {happyTop.map(c => (
+                  <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
+                    <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
+                    <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
+                      {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* GPA changes */}
+          {gpaTop.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">GPA Changes</div>
+              <div className="space-y-1">
+                {gpaTop.map(c => (
+                  <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
+                    <span className="text-gray-700">{c.name}</span>
+                    <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
+                      {c.before.toFixed(2)} → {c.after.toFixed(2)} {c.delta > 0 ? '↑' : '↓'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ovrTop.length === 0 && happyTop.length === 0 && gpaTop.length === 0 && results.length === 0 && (
+            <div className="text-center text-sm text-gray-400 py-6">
+              Quiet week. Nothing meaningful changed.
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end">
+          <button onClick={onDismiss} className="px-5 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+            Got it →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NewsRow({ item }) {
+  // Type → accent + icon mapping. The headline emoji is usually enough but
+  // a left-bar accent ties the news visually to the kind of event.
+  const accent = item.big ? 'border-pnw-green bg-pnw-cream/60'
+    : item.type === 'TRANSFER_OUT' ? 'border-red-300 bg-red-50/40'
+    : item.type === 'COACH_HIRED' ? 'border-blue-300 bg-blue-50/40'
+    : item.type === 'AWARD' ? 'border-pnw-green/30 bg-pnw-cream/30'
+    : 'border-gray-200 bg-white'
+  return (
+    <div className={'border-l-2 rounded-r pl-2 py-1 pr-2 text-xs ' + accent}>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[10px] text-gray-400 uppercase font-mono shrink-0">Wk {item.week}</span>
+        <span className="text-gray-700 leading-snug">{item.headline}</span>
+      </div>
+    </div>
+  )
+}
+
+function RecapStat({ label, value, accent }) {
+  const color = accent === 'good' ? 'text-green-700'
+    : accent === 'bad' ? 'text-red-700'
+    : 'text-pnw-slate'
+  return (
+    <div className="bg-gray-50 rounded p-2 text-center">
+      <div className={'text-2xl font-bold ' + color}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
     </div>
   )
 }
