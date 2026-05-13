@@ -303,7 +303,7 @@ export default function Recruiting() {
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <span className="text-xs text-gray-500 mr-2">Pos:</span>
-        {['ALL', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'SP', 'RP'].map(p => (
+        {['ALL', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'P'].map(p => (
           <button
             key={p}
             onClick={() => setPosFilter(p)}

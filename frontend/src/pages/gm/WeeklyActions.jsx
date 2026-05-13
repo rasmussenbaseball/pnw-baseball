@@ -9,6 +9,8 @@ import {
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek } from '../../gm/engine/weeklyActions'
 import { prettyLabel } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
+import { applyMeetingBoost, ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
+import { playerOverall } from '../../gm/engine/playerRating'
 
 const STUDY_HALL_AP = 2
 const STUDY_HALL_BONUS = 0.02
@@ -17,6 +19,11 @@ const EXTRA_STUDY_HALL_BONUS = 0.05
 const FUNDRAISE_AP = 10
 const CAMP_MIN_FEE = 25
 const CAMP_MAX_FEE = 300
+const MEETING_AP_PER_PLAYER = 2
+const MEETING_MAX_PLAYERS = 5
+const MEETING_MIN_PLAYERS = 1
+const MEETING_BOOST = 15
+const MEETING_WEEKS = 4
 
 export default function WeeklyActions() {
   const { user } = useAuth()
@@ -26,6 +33,7 @@ export default function WeeklyActions() {
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [campFee, setCampFee] = useState(125)
+  const [meetingPicks, setMeetingPicks] = useState([])
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -107,6 +115,28 @@ export default function WeeklyActions() {
   }
   function markUsedThisWeek(key) {
     markActionUsedThisWeek(save, key)
+  }
+
+  function doMeetings() {
+    if (meetingPicks.length < MEETING_MIN_PLAYERS) { alert('Pick at least 1 player.'); return }
+    const cost = meetingPicks.length * MEETING_AP_PER_PLAYER
+    if (ap < cost) { alert(`Need ${cost} AP for ${meetingPicks.length} meetings.`); return }
+    if (wasUsedThisWeek('PLAYER_MEETINGS')) { alert('Already done this week.'); return }
+    for (const pid of meetingPicks) {
+      const p = save.players[pid]
+      if (p) applyMeetingBoost(p, MEETING_BOOST, MEETING_WEEKS)
+    }
+    spendAP('program', cost)
+    markUsedThisWeek('PLAYER_MEETINGS')
+    save.newsfeed.unshift({
+      id: `meet_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
+      year: save.calendar.year, week: save.calendar.week,
+      type: 'AWARD',
+      headline: `🗣 1-on-1 meetings — boosted morale for ${meetingPicks.length} player${meetingPicks.length === 1 ? '' : 's'}.`,
+      payload: { ids: meetingPicks },
+    })
+    setMeetingPicks([])
+    saveDynasty(save); setSave({ ...save })
   }
 
   function doFundraise() {
@@ -239,7 +269,17 @@ export default function WeeklyActions() {
         })}
       </div>
 
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Academics / Fundraising / Camp</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Player Morale</h2>
+      <PlayerMeetings
+        save={save}
+        meetingPicks={meetingPicks}
+        setMeetingPicks={setMeetingPicks}
+        ap={ap}
+        usedThisWeek={wasUsedThisWeek('PLAYER_MEETINGS')}
+        onRun={doMeetings}
+      />
+
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-6">Academics / Fundraising / Camp</h2>
 
       {/* Study Hall — two levels */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
@@ -324,6 +364,103 @@ export default function WeeklyActions() {
         {campAlreadyHeld && (
           <CampAttendees save={save} />
         )}
+      </div>
+    </div>
+  )
+}
+
+function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek, onRun }) {
+  const team = save.teams[save.userSchoolId]
+  const players = team.rosterPlayerIds.map(id => save.players[id]).filter(Boolean)
+  // Sort: unhappy first, then by OVR descending — surfaces the players who
+  // need attention without burying the stars.
+  const sorted = [...players].sort((a, b) => {
+    const ha = ensureHappiness(a).value
+    const hb = ensureHappiness(b).value
+    if (ha !== hb) return ha - hb
+    return playerOverall(b) - playerOverall(a)
+  })
+
+  const cost = meetingPicks.length * MEETING_AP_PER_PLAYER
+  const canAfford = ap >= cost
+  const maxedOut = meetingPicks.length >= MEETING_MAX_PLAYERS
+
+  function toggle(id) {
+    if (meetingPicks.includes(id)) {
+      setMeetingPicks(meetingPicks.filter(x => x !== id))
+    } else {
+      if (meetingPicks.length >= MEETING_MAX_PLAYERS) return
+      setMeetingPicks([...meetingPicks, id])
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <div className="text-sm font-semibold text-pnw-slate">🗣 1-on-1 Meetings</div>
+          <div className="text-xs text-gray-500 max-w-xl">
+            Pull aside up to {MEETING_MAX_PLAYERS} players and check in. Each costs {MEETING_AP_PER_PLAYER} AP and bumps their happiness for {MEETING_WEEKS} weeks.
+            Sorted with the most-unhappy players on top so you don't miss them.
+          </div>
+        </div>
+        <button
+          onClick={onRun}
+          disabled={usedThisWeek || meetingPicks.length === 0 || !canAfford}
+          className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {usedThisWeek
+            ? '✓ done this week'
+            : meetingPicks.length === 0
+              ? 'Pick players first'
+              : `Meet (${meetingPicks.length} player${meetingPicks.length === 1 ? '' : 's'} · ${cost} AP)`}
+        </button>
+      </div>
+      <div className="max-h-64 overflow-y-auto border border-gray-100 rounded mt-3">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 text-[10px] uppercase text-gray-500 sticky top-0">
+            <tr>
+              <th className="text-left px-2 py-1">Pick</th>
+              <th className="text-left px-2 py-1">Name</th>
+              <th className="text-left px-2 py-1">Pos</th>
+              <th className="text-left px-2 py-1">Cls</th>
+              <th className="text-left px-2 py-1">OVR</th>
+              <th className="text-left px-2 py-1">Happiness</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(p => {
+              const checked = meetingPicks.includes(p.id)
+              const h = ensureHappiness(p)
+              const level = happinessLevel(h.value)
+              const d = HAPPINESS_DISPLAY[level]
+              const disabled = !checked && (maxedOut || usedThisWeek)
+              return (
+                <tr key={p.id} className={'border-t ' + (checked ? 'bg-pnw-cream' : '')}>
+                  <td className="px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => toggle(p.id)}
+                    />
+                  </td>
+                  <td className="px-2 py-1 font-medium">{p.firstName} {p.lastName}</td>
+                  <td className="px-2 py-1 text-gray-600">{p.isPitcher ? 'P' : p.primaryPosition}</td>
+                  <td className="px-2 py-1 text-gray-600">{p.classYear}</td>
+                  <td className="px-2 py-1 font-mono text-gray-700">{playerOverall(p)}</td>
+                  <td className="px-2 py-1">
+                    <span className={'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] ' + d.color + ' ' + d.bg}>
+                      <span>{d.emoji}</span>
+                      <span className="font-semibold">{d.label}</span>
+                      <span className="text-gray-400 font-mono">{h.value}</span>
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )

@@ -838,10 +838,12 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
  * @returns {number}
  */
 export function fundraise(apSpent, coachMotivator, programHistory) {
-  // Base: $800/AP, scales 0.7×–1.6× by motivator, 0.7×–1.6× by program history
+  // Base: $550/AP, scales 0.7×–1.6× by motivator, 0.7×–1.6× by program history.
+  // At 10 AP, motivator=65, history=50 → ~$8.1K. Top-end (90 / 70) → ~$11K.
+  // Never quite hits $13K to keep the lever from feeling overpowered.
   const motivatorMult = 0.7 + (coachMotivator / 100) * 0.9
   const historyMult = 0.7 + (programHistory / 100) * 0.9
-  return Math.round(apSpent * 800 * motivatorMult * historyMult)
+  return Math.round(apSpent * 550 * motivatorMult * historyMult)
 }
 
 // ─── NLI signing logic ───────────────────────────────────────────────────────

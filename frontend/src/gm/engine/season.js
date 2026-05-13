@@ -17,6 +17,7 @@ import { playerOverall } from './playerRating'
 import { applyHsAttrition, generatePortalPool } from './recruits'
 import { runOutboundTransfers } from './outboundTransfers'
 import { runEndOfTermAcademics, teamAcademicSummary } from './academics'
+import { tickHappiness } from './happiness'
 import { OFFSEASON_WEEKS } from './calendar'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
@@ -458,6 +459,9 @@ function tickWeeklyBookkeeping(state) {
     }
     state.tempBoosts = remaining
   }
+
+  // Happiness — smooth toward target + apply mild GPA/rating drift
+  tickHappiness(state)
 }
 
 function refreshWeeklyAP(state) {

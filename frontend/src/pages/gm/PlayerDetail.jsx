@@ -5,6 +5,7 @@ import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier } from '../../gm/engine/playerRating'
 import AttrTooltip from '../../gm/components/AttrTooltip'
 import { prettyLabel, displayPosition } from '../../gm/engine/format'
+import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 
 export default function PlayerDetail() {
   const { user } = useAuth()
@@ -100,6 +101,9 @@ export default function PlayerDetail() {
         </div>
       )}
 
+      {/* Happiness panel */}
+      <HappinessPanel player={player} />
+
       {player.isPitcher && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Pitcher Ratings</h2>
@@ -122,6 +126,43 @@ export default function PlayerDetail() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function HappinessPanel({ player }) {
+  const h = ensureHappiness(player)
+  const level = happinessLevel(h.value)
+  const d = HAPPINESS_DISPLAY[level]
+  const trendUp = h.lastWeek != null && h.value > h.lastWeek
+  const trendDown = h.lastWeek != null && h.value < h.lastWeek
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Happiness</h2>
+      <div className="flex items-center gap-4">
+        <div className={'rounded-lg p-3 text-center min-w-[110px] ' + d.bg}>
+          <div className="text-3xl">{d.emoji}</div>
+          <div className={'font-bold text-sm ' + d.color}>{d.label}</div>
+          <div className="text-[10px] text-gray-500 font-mono">{h.value}/100</div>
+        </div>
+        <div className="flex-1 text-xs text-gray-600 leading-snug">
+          {level === 'ECSTATIC' && 'Loves it here. Stats and GPA both trend up. Big factor against transferring.'}
+          {level === 'HAPPY' && 'Comfortable in the program. Small positive drift on GPA and ratings.'}
+          {level === 'NEUTRAL' && 'Stable. No drift — happy enough to stay focused, no red flags.'}
+          {level === 'UNSURE' && 'Wavering. GPA and ratings drift slowly downward. Could be a transfer risk.'}
+          {level === 'UPSET' && 'Unhappy and showing it — GPA + ratings drifting down. Real transfer risk; talk to them.'}
+          <div className="mt-2 text-[11px] text-gray-500">
+            Driven mostly by playing time vs. expectations and on-field performance.
+            {trendUp && <span className="ml-1 text-green-700 font-semibold">↑ trending up</span>}
+            {trendDown && <span className="ml-1 text-red-700 font-semibold">↓ trending down</span>}
+            {h.coachBoost && h.coachBoost.weeksRemaining > 0 && (
+              <span className="ml-1 text-pnw-green font-semibold">
+                · 1-on-1 boost active ({h.coachBoost.weeksRemaining} wk left)
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

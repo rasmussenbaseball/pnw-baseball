@@ -5,6 +5,7 @@ import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier, teamOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
 import { displayPosition } from '../../gm/engine/format'
+import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 
 const POSITION_GROUPS = {
   All: () => true,
@@ -92,6 +93,7 @@ export default function Roster() {
                 <th title="Stuff — whiff + contact-quality suppression">Stuff</th>
                 <th title="Control — BB + HBP rate">Ctrl</th>
                 <th title="Stamina — innings per outing">Stam</th>
+                <th title="Player happiness — affects GPA, stats, and transfer risk over time">Mood</th>
               </tr>
             </thead>
             <tbody>
@@ -120,6 +122,7 @@ export default function Roster() {
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stuff} arrow={arrowFor(save, p.id, ['stuff'], 'pitcher')} /> : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.control} arrow={arrowFor(save, p.id, ['control'], 'pitcher')} /> : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stamina} arrow={arrowFor(save, p.id, ['stamina'], 'pitcher')} /> : '—'}</td>
+                    <td className="text-xs"><HappinessPill player={p} /></td>
                   </tr>
                 )
               })}
@@ -164,6 +167,27 @@ function arrowFor(save, playerId, ratingKeys, side) {
   if (total > 0.1) return 'green'
   if (total < -0.1) return 'red'
   return null
+}
+
+function HappinessPill({ player }) {
+  const h = ensureHappiness(player)
+  const level = happinessLevel(h.value)
+  const d = HAPPINESS_DISPLAY[level]
+  const trend = h.lastWeek != null && h.value !== h.lastWeek
+    ? (h.value > h.lastWeek ? '↑' : '↓')
+    : ''
+  const trendColor = h.value > (h.lastWeek ?? h.value) ? 'text-green-600'
+    : h.value < (h.lastWeek ?? h.value) ? 'text-red-600' : ''
+  return (
+    <span
+      className={'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] ' + d.color + ' ' + d.bg}
+      title={`${d.label} (${h.value}/100) — week-over-week ${trend || 'flat'}`}
+    >
+      <span>{d.emoji}</span>
+      <span className="font-semibold">{d.label}</span>
+      {trend && <span className={trendColor}>{trend}</span>}
+    </span>
+  )
 }
 
 function StatCell({ value, arrow }) {
