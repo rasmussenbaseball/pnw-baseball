@@ -1,18 +1,15 @@
 /**
  * Calendar utilities — map offseason/season weeks to real dates and human
- * labels. The dynasty starts the first week of August of the start year
- * (e.g. 2026). Each tick advances 7 days.
+ * labels. The dynasty starts the first week of August. Each tick = 7 days.
  *
- * Offseason structure (Aug → Jan):
- *   Wk 1-5    Aug             Summer wind-down, recruit-board opens, prospect camp planning
- *   Wk 6-9    Sep             Prospect camp window, fall ball begins
- *   Wk 10-13  Oct             Fall ball / fall scrimmages
- *   Wk 14-17  Nov             Late prospect camp, recruiting heat-up
- *   Wk 18-21  Dec             Dead period (limited recruiting), academics term ends
- *   Wk 22-25  Jan             Spring practice begins, season prep
- *   Wk 26     Late Jan/Feb    Spring scrimmages, season opens
+ * Offseason structure (Aug 1 → mid-Feb):
+ *   Wk 1-4    Aug         Summer — coaches free to recruit + plan schedule
+ *   Wk 5-13   Sep + Oct   Fall Camp — practices, scrimmages, prospect camp window
+ *   Wk 14-17  Nov         Training Period — no games, position/skill work
+ *   Wk 18-21  Dec         Dead Period — limited recruiting, academics term ends
+ *   Wk 22-26  Jan         Spring Practice — pre-season ramp, late scrimmages
  *
- * Season runs Feb-May (16 weeks). Postseason runs late May.
+ * Season runs Feb-May (14 weeks). Postseason runs late May → June.
  */
 
 const DYNASTY_START_MONTH = 7   // 0-indexed: August
@@ -34,13 +31,11 @@ export function offseasonWeekDate(startYear, offseasonWeek) {
  * Human label for the offseason phase that contains this offseason week.
  */
 export function offseasonPhase(offseasonWeek) {
-  if (offseasonWeek <= 5)  return 'Summer Workouts'
-  if (offseasonWeek <= 9)  return 'Fall Camp Opens'
-  if (offseasonWeek <= 13) return 'Fall Ball'
-  if (offseasonWeek <= 17) return 'Late Fall'
+  if (offseasonWeek <= 4)  return 'Summer'
+  if (offseasonWeek <= 13) return 'Fall Camp'
+  if (offseasonWeek <= 17) return 'Training Period'
   if (offseasonWeek <= 21) return 'Dead Period'
-  if (offseasonWeek <= 25) return 'Spring Practice'
-  return 'Pre-Season'
+  return 'Spring Practice'
 }
 
 /**

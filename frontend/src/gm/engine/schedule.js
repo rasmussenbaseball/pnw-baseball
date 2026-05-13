@@ -68,12 +68,19 @@ export function getConferenceRules(conferenceId) {
 }
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
+//
+// ALL of the schedule's calendar math uses UTC. Mixing local and UTC was a
+// real bug: across the US daylight-saving boundary (mid-March), a 35-day
+// interval measured as ms drifted from 35 × 86,400,000 ms by 1 hour, which
+// floor-divided by a week falls onto the previous bucket — so a Friday game
+// after DST jumped backwards a week from the rest of its weekend series.
+// Using UTC throughout removes any timezone shift.
 
 /**
- * Build a Date for given (year, month, day). 1-indexed month.
+ * Build a UTC Date for given (year, month, day). 1-indexed month.
  */
 function ymdDate(year, month, day) {
-  return new Date(year, month - 1, day)
+  return new Date(Date.UTC(year, month - 1, day))
 }
 
 /**
@@ -82,7 +89,7 @@ function ymdDate(year, month, day) {
  */
 function snapToFriday(date) {
   const d = new Date(date)
-  while (d.getDay() !== 5) d.setDate(d.getDate() + 1)
+  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1)
   return d
 }
 
@@ -90,9 +97,9 @@ function snapToFriday(date) {
  * ISO yyyy-mm-dd from a Date.
  */
 function isoDate(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
 
@@ -100,8 +107,8 @@ function isoDate(d) {
  * Add N days to an ISO date string.
  */
 function addDays(isoStr, n) {
-  const d = new Date(isoStr + 'T00:00:00')
-  d.setDate(d.getDate() + n)
+  const d = new Date(isoStr + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
   return isoDate(d)
 }
 
@@ -130,17 +137,12 @@ function seasonWeek1Friday(year) {
 export const REGULAR_SEASON_LAST_WEEK = 14
 
 /**
- * Compute season week (1-N) from a Date or ISO string.
- *
- * IMPORTANT: ISO date strings like "2027-02-26" are parsed as UTC midnight
- * by `new Date()`, but seasonWeek1Friday returns a local-time Date — so a
- * raw `new Date(isoString)` here would drift Friday games into the previous
- * week (the cause of the "3+1 split" series bug). We parse ISO as local
- * by appending a time component.
+ * Compute season week (1-N) from a Date or ISO string. Both sides parsed
+ * as UTC so DST shifts don't fold a Friday game into the previous week.
  */
 export function dateToSeasonWeek(date, year) {
   const w1 = seasonWeek1Friday(year)
-  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : new Date(date)
+  const d = typeof date === 'string' ? new Date(date + 'T00:00:00Z') : new Date(date)
   const diffMs = d - w1
   return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7)) + 1
 }
@@ -151,7 +153,7 @@ export function dateToSeasonWeek(date, year) {
 function seasonWeekFriday(week, year) {
   const w1 = seasonWeek1Friday(year)
   const d = new Date(w1)
-  d.setDate(d.getDate() + (week - 1) * 7)
+  d.setUTCDate(d.getUTCDate() + (week - 1) * 7)
   return d
 }
 
@@ -250,7 +252,7 @@ function buildConferenceSchedule(conf, schools, year, seed) {
   const cursor = new Date(startFri)
   while (cursor <= endFri) {
     confWeekFridays.push(new Date(cursor))
-    cursor.setDate(cursor.getDate() + 7)
+    cursor.setUTCDate(cursor.getUTCDate() + 7)
   }
 
   const list = [...teams]
@@ -364,11 +366,13 @@ export function openNonConfWeeks(schoolId, conferenceId, schedule, year) {
       .filter(g => (g.homeId === schoolId || g.awayId === schoolId) && g.type !== 'D1_MIDWEEK')
       .map(g => g.seasonWeek),
   )
+  // ANY week 1..REGULAR_SEASON_LAST_WEEK that doesn't already have a game is
+  // open for non-conf scheduling. The conference series only fill 7-8 weeks
+  // of the conference window; the remaining weeks (mid-week byes inside the
+  // conference window, plus weeks after conference play wraps) can host
+  // non-conf series or byes — same as real-world NAIA midweek byes.
   const out = []
-  for (let w = 1; w < confStartWeek; w++) {
-    if (!occupied.has(w)) out.push({ week: w, date: weekToDateApprox(w, year) })
-  }
-  for (let w = confEndWeek + 1; w <= REGULAR_SEASON_LAST_WEEK; w++) {
+  for (let w = 1; w <= REGULAR_SEASON_LAST_WEEK; w++) {
     if (!occupied.has(w)) out.push({ week: w, date: weekToDateApprox(w, year) })
   }
   return out
@@ -491,7 +495,7 @@ function addD1Midweek(userSchoolId, opponentSchoolId, week, year, userIsHome) {
   const fri = seasonWeekFriday(week, year)
   // Midweek = Wednesday of that week (Fri - 2 days)
   const wed = new Date(fri)
-  wed.setDate(wed.getDate() - 2)
+  wed.setUTCDate(wed.getUTCDate() - 2)
 
   const homeId = userIsHome ? userSchoolId : opponentSchoolId
   const awayId = userIsHome ? opponentSchoolId : userSchoolId
@@ -546,12 +550,12 @@ export function fallScrimmageSlots(year) {
   const firstFri = snapToFriday(oct1)
   const cursor = new Date(firstFri)
   for (let i = 0; i < 5; i++) {   // up to 5 Fridays in October
-    if (cursor.getMonth() !== 9) break
+    if (cursor.getUTCMonth() !== 9) break
     out.push({
       date: isoDate(cursor),
       label: `Oct DH ${i + 1}`,
     })
-    cursor.setDate(cursor.getDate() + 7)
+    cursor.setUTCDate(cursor.getUTCDate() + 7)
   }
   return out
 }
@@ -564,14 +568,14 @@ export function springScrimmageSlots(year) {
   // Find Saturdays in mid-to-late January
   const jan15 = ymdDate(year, 1, 15)
   let cursor = snapToFriday(jan15)
-  cursor.setDate(cursor.getDate() + 1) // Saturday
+  cursor.setUTCDate(cursor.getUTCDate() + 1) // Saturday
   for (let i = 0; i < 3; i++) {
-    if (cursor.getMonth() !== 0) break
+    if (cursor.getUTCMonth() !== 0) break
     out.push({
       date: isoDate(cursor),
       label: `Jan DH ${i + 1}`,
     })
-    cursor.setDate(cursor.getDate() + 7)
+    cursor.setUTCDate(cursor.getUTCDate() + 7)
   }
   return out
 }

@@ -6,6 +6,8 @@ import {
   fundraise, simProspectCamp, predictCampTurnout,
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
+import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable } from '../../gm/engine/weeklyActions'
+import { offseasonPhase } from '../../gm/engine/calendar'
 
 const STUDY_HALL_AP = 3
 const FUNDRAISE_MIN_AP = 1
@@ -32,6 +34,30 @@ export default function WeeklyActions() {
   const ap = save.ap.currentWeek
   const studyHallActive = save.studyHall?.active === true
   const weeksActive = save.studyHall?.weeksActive || 0
+  const currentPhase = save.calendar.mode === 'OFFSEASON'
+    ? offseasonPhase(save.calendar.offseasonWeek)
+    : 'In Season'
+  const [actionReceipt, setActionReceipt] = useState(null)
+
+  function doAction(action) {
+    if (ap < action.apCost) { alert(`Need ${action.apCost} AP`); return }
+    if (!isActionAvailable(action, save.calendar, currentPhase)) {
+      alert(`Not available during ${currentPhase}.`)
+      return
+    }
+    const result = applyWeeklyAction(save, action)
+    spendAP('team_boost', action.apCost)
+    save.newsfeed.unshift({
+      id: `act_${action.key}_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
+      year: save.calendar.year, week: save.calendar.week,
+      type: 'AWARD',
+      headline: `${action.emoji} ${action.label} — ${result.playersAffected} player${result.playersAffected === 1 ? '' : 's'} bumped${result.injuries ? `, ${result.injuries} minor injury` : ''}.`,
+      payload: result,
+    })
+    saveDynasty(save); setSave({ ...save })
+    setActionReceipt(`${action.label}: bumped ${result.playersAffected} players (+${result.totalBumps} total ratings)${result.injuries ? `, ${result.injuries} minor injury` : ''}.`)
+    setTimeout(() => setActionReceipt(null), 4000)
+  }
   const campOpen = save.calendar.mode === 'OFFSEASON' &&
     save.calendar.offseasonWeek >= 1 && save.calendar.offseasonWeek <= 17
   const campAlreadyHeld = save.prospectCamp?.year === save.calendar.year
@@ -115,6 +141,40 @@ export default function WeeklyActions() {
           <div className="text-[10px] uppercase tracking-wider text-gray-500">This week</div>
         </div>
       </div>
+
+      {actionReceipt && (
+        <div className="mb-4 bg-green-50 border border-green-200 rounded p-2 text-xs text-green-800">
+          ✓ {actionReceipt}
+        </div>
+      )}
+
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-3">Team Practice / Development</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        {Object.values(WEEKLY_ACTIONS).map(a => {
+          const available = isActionAvailable(a, save.calendar, currentPhase)
+          const disabled = !available || ap < a.apCost
+          return (
+            <div key={a.key} className={'rounded-lg border p-3 ' + (disabled ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 bg-white hover:border-pnw-green')}>
+              <div className="flex justify-between items-start mb-1">
+                <div className="text-sm font-semibold text-pnw-slate">{a.emoji} {a.label}</div>
+                <button
+                  onClick={() => doAction(a)}
+                  disabled={disabled}
+                  className="px-2 py-1 text-xs rounded font-semibold bg-pnw-green text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {a.apCost} AP
+                </button>
+              </div>
+              <div className="text-[11px] text-gray-600">{a.blurb}</div>
+              {!available && (
+                <div className="text-[10px] text-amber-700 mt-1">Available: {a.availableIn.join(' / ')}</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Academics / Fundraising / Camp</h2>
 
       {/* Study Hall */}
       <ActionCard
