@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier } from '../../gm/engine/playerRating'
 import AttrTooltip from '../../gm/components/AttrTooltip'
-import { prettyLabel } from '../../gm/engine/format'
+import { prettyLabel, displayPosition } from '../../gm/engine/format'
 
 export default function PlayerDetail() {
   const { user } = useAuth()
@@ -33,7 +33,7 @@ export default function PlayerDetail() {
         <div>
           <h1 className="text-3xl font-bold text-pnw-slate">{player.firstName} {player.lastName}</h1>
           <p className="text-sm text-gray-600">
-            {player.primaryPosition} • {player.classYear} • {player.bats}/{player.throws} •
+            {displayPosition(player.primaryPosition)} • {player.classYear} • {player.bats}/{player.throws} •
             {' '}{player.hometown.city}, {player.hometown.state}
           </p>
           {player.previousSchoolName && (
@@ -104,14 +104,21 @@ export default function PlayerDetail() {
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Pitcher Ratings</h2>
           <div className="grid grid-cols-4 gap-3">
-            {Object.entries(player.pitcher).map(([k, v]) => (
-              <AttrTooltip key={k} attr={k}>
-                <div className="bg-gray-50 rounded p-2 text-center cursor-help">
-                  <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
-                  <div className={'font-mono font-bold ' + ratingColor(v)}>{v}</div>
-                </div>
-              </AttrTooltip>
-            ))}
+            {Object.entries(player.pitcher)
+              .filter(([k]) => !k.startsWith('velocity'))
+              .map(([k, v]) => (
+                <AttrTooltip key={k} attr={k}>
+                  <div className="bg-gray-50 rounded p-2 text-center cursor-help">
+                    <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
+                    <div className={'font-mono font-bold ' + ratingColor(v)}>{v}</div>
+                    {k === 'stuff' && player.pitcher.velocity_avg && (
+                      <div className="text-[9px] text-gray-500 mt-0.5">
+                        {player.pitcher.velocity_min}–{player.pitcher.velocity_max} mph
+                      </div>
+                    )}
+                  </div>
+                </AttrTooltip>
+              ))}
           </div>
         </div>
       )}

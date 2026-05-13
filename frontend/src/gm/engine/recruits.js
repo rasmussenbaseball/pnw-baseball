@@ -472,23 +472,23 @@ export const ACTION_TYPES = {
     prefRevealChance: 0.15,
     blurb: 'Send an assistant to build the relationship. Often reveals a priority.',
   },
+  FAMILY_ZOOM: {
+    key: 'FAMILY_ZOOM',
+    label: 'Family Zoom Call',
+    apCost: 3,
+    interestGain: 7,
+    fogReduction: 1,
+    prefRevealChance: 0.25,
+    blurb: 'Group call with the recruit + parents. Wins families over.',
+  },
   SCOUT_TRIP: {
     key: 'SCOUT_TRIP',
     label: 'Scout Trip',
-    apCost: 3,
+    apCost: 4,
     interestGain: 3,
-    fogReduction: 6,
+    fogReduction: 7,
     prefRevealChance: 0.10,
     blurb: 'See them play. Big fog reduction.',
-  },
-  CAMP_INVITE: {
-    key: 'CAMP_INVITE',
-    label: 'Invite to Camp',
-    apCost: 4,
-    interestGain: 8,
-    fogReduction: 8,
-    prefRevealChance: 0.30,
-    blurb: 'Big-time impact. Recruit sees facilities + coaches firsthand.',
   },
   HOME_VISIT: {
     key: 'HOME_VISIT',
@@ -560,7 +560,7 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
     }
   }
 
-  const REVEALING_ACTIONS = new Set(['SCOUT_TRIP', 'HOME_VISIT', 'CAMPUS_VISIT', 'CAMP_INVITE', 'ASSISTANT_TALK'])
+  const REVEALING_ACTIONS = new Set(['SCOUT_TRIP', 'HOME_VISIT', 'CAMPUS_VISIT', 'FAMILY_ZOOM', 'ASSISTANT_TALK'])
   if (REVEALING_ACTIONS.has(action.key)) {
     recruit.suitorsRevealed = true
   }

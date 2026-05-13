@@ -27,9 +27,11 @@ import { makeRng } from './rng'
  */
 export function initialAcademicState(player, rng) {
   const aptitude = player.hidden?.academic_aptitude ?? 60
-  // Baseline: aptitude 30 → ~1.5 GPA, aptitude 60 → ~2.7, aptitude 90 → ~3.7
-  const baseline = 0.5 + (aptitude / 99) * 3.0
-  const gpa = clamp(rng.gaussian(baseline, 0.4), 0.0, 4.0)
+  // Baseline mapping recalibrated so team-mean GPA at game start lands
+  // in the 2.8-3.2 band for typical aptitude distributions:
+  //   aptitude 30 → ~1.8 GPA, 60 → ~2.9, 75 → ~3.3, 90 → ~3.7
+  const baseline = 1.0 + (aptitude / 99) * 2.7
+  const gpa = clamp(rng.gaussian(baseline, 0.35), 0.0, 4.0)
   const academicStanding = gpaToStanding(gpa)
   return { gpa: Math.round(gpa * 100) / 100, academicStanding }
 }

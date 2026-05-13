@@ -392,7 +392,7 @@ function PlayerRow({ p, ovr, slot }) {
           {p.firstName} {p.lastName}
         </Link>
       </td>
-      <td className="py-1 text-gray-500 w-12">{p.primaryPosition}</td>
+      <td className="py-1 text-gray-500 w-12">{displayPosition(p.primaryPosition)}</td>
       <td className="py-1 text-gray-500 w-10">{p.classYear}</td>
       <td className="py-1 text-right font-mono font-bold w-10">{ovr}</td>
     </tr>

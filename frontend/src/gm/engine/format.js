@@ -13,6 +13,15 @@ export function prettyLabel(s) {
   return String(s).toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+/**
+ * Display position — unifies SP/RP to "P" since the coach decides who
+ * starts vs. relieves based on stamina + stuff at sim time.
+ */
+export function displayPosition(pos) {
+  if (pos === 'SP' || pos === 'RP') return 'P'
+  return pos
+}
+
 /** Format dollars with K suffix: 47500 → "$47.5K", 1200000 → "$1.2M". */
 export function moneyShort(n) {
   if (n == null) return '—'

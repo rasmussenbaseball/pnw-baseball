@@ -154,10 +154,19 @@ export function endOfSeasonDevelopment(player, ctx, seed) {
     const before = avgRatings(player.pitcher)
     newPitcher = bumpTowardPotential(player.pitcher, player.hidden.potential_pitcher, magnitude, rng)
     totalGain += avgRatings(newPitcher) - before
+
+    // Stamina also grows from sheer workload — pitchers who throw more
+    // build more stamina. Scales with innings pitched share.
+    if (typeof newPitcher.stamina === 'number') {
+      const workloadStaminaGain = clamp(ctx.ipShare * 4 * ethicMult, 0, 5)
+      newPitcher = { ...newPitcher, stamina: Math.min(99, newPitcher.stamina + workloadStaminaGain) }
+    }
   }
 
   return { ...player, hitter: newHitter, pitcher: newPitcher, _devGain: totalGain }
 }
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
 function avgRatings(block) {
   const vals = Object.values(block)

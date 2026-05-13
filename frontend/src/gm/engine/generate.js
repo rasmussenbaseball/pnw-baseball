@@ -22,15 +22,17 @@ import { pickCityForState } from './cities'
 
 // ─── Class distribution targets ──────────────────────────────────────────────
 
-// Roughly: 25% FR, 28% SO, 25% JR, 22% SR. Sums to 35 below.
-const CLASS_TARGETS = { FR: 9, SO: 10, JR: 9, SR: 7 }
+// Roughly 25% FR / 28% SO / 25% JR / 22% SR — sums to a base of 45. Actual
+// roster size varies 40-50 (small jitter applied per school).
+const CLASS_TARGETS = { FR: 12, SO: 12, JR: 11, SR: 10 }
 
 const POSITION_TARGETS = {
-  // Position players (14 total = 9 starters + 5 bench)
-  C: 2, '1B': 1, '2B': 2, SS: 2, '3B': 2, LF: 1, CF: 2, RF: 1, DH: 1,
-  // Pitchers (16 total = 8 SP + 8 RP)
-  SP: 8, RP: 8,
-  // Redshirts / extras (5 — distributed across positions later)
+  // Position players (16 total)
+  C: 2, '1B': 2, '2B': 2, SS: 2, '3B': 2, LF: 2, CF: 2, RF: 2, DH: 1,
+  // Pitchers (~22 total, mix of SP slots + RP slots — UI shows all as "P"
+  // but the slot type still drives stamina mean during generation)
+  SP: 10, RP: 12,
+  // remaining slots padded with bench position players later
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -97,20 +99,57 @@ function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTi
   mean = applyStarBump(mean, slotTier, rng)
   const stddev = slotTier === 'starter' ? 7 : 9
   const r = () => Math.round(clamp(rng.gaussian(mean, stddev), 30, 95))
+
+  // Stamina: bias upward so most pitchers can throw 4+ innings; pure
+  // 1-inning relievers are rarer. Then apply a velocity-driven penalty
+  // (high velo trades off stamina unless the pitcher is elite).
+  const stuff = r()
+  const control = r()
+  const command = r()
+  const baseStamina = Math.round(clamp(rng.gaussian(mean + 10, stddev - 1), 30, 95))
+
+  // Velocity: 75-96 mph range, mean 84-85, narrow per-pitcher band 4-5 mph.
+  // Heat correlates loosely with stuff; truly elite pitchers can have both
+  // velocity and stamina.
+  const stuffBoost = (stuff - 60) * 0.20      // stuff 60 → 0, stuff 90 → +6
+  const veloMean = clamp(83.5 + stuffBoost + rng.gaussian(0, 1.6), 75, 96)
+  const velocity_avg = Math.round(veloMean * 10) / 10
+  const veloSpread = clamp(rng.gaussian(2, 0.6), 1, 4)
+  const velocity_min = Math.round((veloMean - veloSpread) * 10) / 10
+  const velocity_max = Math.round((veloMean + veloSpread) * 10) / 10
+
+  // Stamina penalty: high velo → cost. Elites (stuff 85+) exempt.
+  let stamina = baseStamina
+  if (stuff < 85) {
+    const veloPenalty = Math.max(0, (velocity_avg - 88) * 3.5)  // velocity 88+ starts costing stamina
+    stamina = clamp(baseStamina - veloPenalty, 25, 95)
+  }
+  stamina = Math.round(stamina)
+
   return {
-    stuff: r(), control: r(), command: r(),
-    stamina: r(), vs_l: r(), vs_r: r(),
+    stuff, control, command,
+    stamina,
+    vs_l: r(), vs_r: r(),
     composure: r(), durability: r(),
+    velocity_avg, velocity_min, velocity_max,
   }
 }
 
 /**
- * Derive potential ratings by bumping each current rating by a class-dependent gap.
+ * Derive potential ratings by bumping each current rating by a class-dependent
+ * gap. Velocity-related fields are not 0-99 ratings; skip them.
+ *
+ * Adds occasional "raw prospect" outliers: ~12% of FR/SO get a much bigger
+ * potential gap (+25 to +40), so the league has low-OVR/high-pot dev
+ * targets. Without this, OVR and potential were too tightly coupled.
  */
 function generatePotential(currentRatings, classYear, rng) {
-  const gap = potentialGapFor(classYear)
+  const baseGap = potentialGapFor(classYear)
+  const isRawProspect = (classYear === 'FR' || classYear === 'SO') && rng.chance(0.12)
+  const gap = isRawProspect ? baseGap + rng.int(15, 25) : baseGap
   const out = {}
   for (const [k, v] of Object.entries(currentRatings)) {
+    if (k.startsWith('velocity')) { out[k] = v; continue }   // not a rating
     const bump = Math.round(rng.gaussian(gap, 5))
     out[k] = clamp(v + Math.max(0, bump), v, 99)
   }
@@ -180,7 +219,7 @@ function makeRosterPositionList(rng) {
       list.push({ position: pos, isPitcher })
     }
   }
-  while (list.length < 35) {
+  while (list.length < 50) {
     list.push({ position: rng.pick(['1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']), isPitcher: false })
   }
   // CRITICAL: interleave so the first 14 (starter tier) get both hitters
@@ -232,6 +271,17 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
   const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng)
   const pitcher = generatePitcherRatings(school.programHistory, slot.classYear, isPitcher, slotTier, rng)
 
+  // Raw-prospect chance: ~12% of FR/SO get an additional current-rating
+  // suppression. This widens the gap between current rating and potential
+  // — so the league has low-OVR/high-pot dev targets you can develop.
+  if ((slot.classYear === 'FR' || slot.classYear === 'SO') && rng.chance(0.12)) {
+    const drop = rng.int(8, 18)
+    for (const k of Object.keys(hitter)) hitter[k] = clamp(hitter[k] - drop, 25, 99)
+    for (const k of Object.keys(pitcher)) {
+      if (!k.startsWith('velocity')) pitcher[k] = clamp(pitcher[k] - drop, 25, 99)
+    }
+  }
+
   const potential_hitter = generatePotential(hitter, slot.classYear, rng)
   const potential_pitcher = generatePotential(pitcher, slot.classYear, rng)
 
@@ -242,7 +292,10 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     clutch: rng.int(30, 90),
     injury_prone: rng.int(20, 80),
     loyalty: rng.int(30, 90),
-    academic_aptitude: rng.int(35, 95),
+    // Aptitude calibrated so team-mean GPA lands ~2.8-3.2: gaussian mean 70,
+    // sd 14, clamped 30-99. With initialAcademicState's 0.5 + (apt/99)*3.0
+    // map, mean ~2.6-3.0 per player; high-side outliers push team avg up.
+    academic_aptitude: Math.round(clamp(rng.gaussian(70, 14), 30, 99)),
   }
   const academic = initialAcademicState({ hidden }, rng)
 
@@ -269,7 +322,7 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     pitcher,
     hidden,
     scholarship: {
-      annualAmount: estimateScholarship(school, hitter, pitcher, isPitcher),
+      annualAmount: estimateScholarship(school, hitter, pitcher, isPitcher, potential_hitter, potential_pitcher, rng),
       yearsCommitted: rng.int(1, 4),
     },
     gpa: academic.gpa,
@@ -278,36 +331,45 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
 }
 
 /**
- * Realistic scholarship $ estimate. Calibration target (Bushnell, MID tier):
- *   ~$5K avg across 35-player roster → ~$175K committed.
- *   Pool is $250K, so ~$75K is left for new recruits each year before
- *   seniors graduate.
+ * Realistic scholarship $ — weighted toward POTENTIAL (what the coach saw
+ * during recruiting) more than current rating. Recruits commit before their
+ * college reps; their scholarship $ reflects projection, not what they
+ * happen to be RIGHT NOW. Imperfect correlation: every roster has some
+ * busts on real money and some bargains.
  *
- *   - Top players (avg rating 80+) get $9K-$15K
- *   - Mid-tier (avg 65-75)        $4K-$8K
- *   - Bottom roster (avg <60)     $0-$3K
- *   - Tier matters: D1_LITE programs offer more, SHOESTRING less
+ * Calibration: Bushnell (MID) mean ~$5K/player; tier multipliers spread
+ * D1_LITE to SHOESTRING.
  */
-function estimateScholarship(school, hitter, pitcher, isPitcher) {
+function estimateScholarship(school, hitter, pitcher, isPitcher, potentialHitter, potentialPitcher, rng) {
   const block = isPitcher ? pitcher : hitter
-  const avgRating = Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length
+  const potBlock = isPitcher ? (potentialPitcher || pitcher) : (potentialHitter || hitter)
+  const avgRatings = (b) => {
+    const vals = Object.values(b).filter(v => typeof v === 'number' && v < 100)
+    return vals.reduce((a, b) => a + b, 0) / vals.length
+  }
+  const cur = avgRatings(block)
+  const pot = avgRatings(potBlock)
+  // 70% potential, 30% current — coach pays for projection
+  const projectedAvg = pot * 0.7 + cur * 0.3
+  // Heavy randomness so the same projection produces a spread of offers
+  const noisy = projectedAvg + rng.gaussian(0, 8)
   const tierMult = { D1_LITE: 1.5, WELL_FUNDED: 1.1, MID: 0.85, SHOESTRING: 0.5 }[school.resourceTier] || 1.0
   let baseAmount
-  if (avgRating >= 80) baseAmount = 11000 + (avgRating - 80) * 550
-  else if (avgRating >= 70) baseAmount = 6000 + (avgRating - 70) * 500
-  else if (avgRating >= 60) baseAmount = 3000 + (avgRating - 60) * 300
-  else if (avgRating >= 50) baseAmount = 800 + (avgRating - 50) * 220
-  else baseAmount = 0
-  return Math.round(baseAmount * tierMult)
+  if (noisy >= 80)      baseAmount = 11000 + (noisy - 80) * 550
+  else if (noisy >= 70) baseAmount = 6000 + (noisy - 70) * 500
+  else if (noisy >= 60) baseAmount = 3000 + (noisy - 60) * 300
+  else if (noisy >= 50) baseAmount = 800 + (noisy - 50) * 220
+  else                  baseAmount = 0
+  return Math.max(0, Math.round(baseAmount * tierMult))
 }
 
 /**
- * Generate a full 35-man roster for a school.
+ * Generate a roster for a school. Total size varies 40–50 (per-school jitter).
  *
  * Slot tiers determine rating distribution:
- *   - First 14 players are STARTERS (~60-90 OVR — the team's everyday guys)
- *   - Next 13 are BENCH (~50-70 OVR — fill-ins, role players)
- *   - Final 8 are DEPTH (~40-60 OVR — redshirts, walk-ons)
+ *   - First 14 players are STARTERS (~60-90 OVR — the everyday lineup + rotation)
+ *   - Next ~15 are BENCH (~50-70 OVR — fill-ins, middle relief)
+ *   - Remainder are DEPTH (~40-60 OVR — redshirts, walk-ons)
  *
  * @param {School} school
  * @param {number} seed   master save seed
@@ -316,14 +378,19 @@ function estimateScholarship(school, hitter, pitcher, isPitcher) {
  */
 export function generateRoster(school, seed, currentYear = 2026) {
   const rng = makeRng('roster', school.id, seed)
+  const rosterSize = rng.int(40, 50)
   const positions = makeRosterPositionList(rng)
   const classYears = makeClassYearList()
   shuffleInPlace(classYears, rng)
+  // makeClassYearList sums to 45; extend with random class years if rosterSize > 45.
+  while (classYears.length < rosterSize) {
+    classYears.push(rng.weighted(['FR', 'SO', 'JR', 'SR'], [12, 12, 11, 10]))
+  }
 
   /** @type {Player[]} */
   const roster = []
-  for (let i = 0; i < 35; i++) {
-    const slotTier = i < 14 ? 'starter' : i < 27 ? 'bench' : 'depth'
+  for (let i = 0; i < rosterSize; i++) {
+    const slotTier = i < 14 ? 'starter' : i < 29 ? 'bench' : 'depth'
     const slot = { ...positions[i], classYear: classYears[i], slotTier }
     roster.push(generatePlayer(school, slot, rng, currentYear, i))
   }
