@@ -7,11 +7,8 @@ import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
 import { prettyLabel } from '../../gm/engine/format'
 
-const REGIONS_LIST = ['NW', 'W', 'SW', 'MW', 'SE', 'NE']
-const PIPELINE_LIST = [
-  'NWAC', 'CALIFORNIA_JUCO', 'TEXAS_JUCO', 'FLORIDA_JUCO', 'MIDWEST_JUCO',
-  'PUERTO_RICO', 'DOMINICAN_REPUBLIC', 'AUSTRALIA', 'D1_PORTAL', 'HBCU',
-]
+import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
+
 const ARCHETYPES = ['HS_GRINDER', 'JUCO_HUNTER', 'PORTAL_PRO', 'BALANCED']
 
 const COACH_BUILDER_TOTAL_POINTS = 250
@@ -63,7 +60,6 @@ export default function NewDynasty() {
   const [coachFirst, setCoachFirst] = useState('')
   const [coachLast, setCoachLast] = useState('')
   const [regions, setRegions] = useState(['NW'])
-  const [pipelines, setPipelines] = useState(['NWAC'])
   const [archetype, setArchetype] = useState('BALANCED')
   const [ratings, setRatings] = useState({ developer: 65, motivator: 65, recruiter: 65, tactician: 55 })
 
@@ -109,7 +105,6 @@ export default function NewDynasty() {
         firstName: coachFirst,
         lastName: coachLast,
         regions,
-        pipelines,
         recruiter_type: archetype,
         ...ratings,
       },
@@ -257,8 +252,8 @@ export default function NewDynasty() {
                 {regions.length}/2 selected
               </span>
             </label>
-            <div className="flex flex-wrap gap-2">
-              {REGIONS_LIST.map(r => {
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {REGIONS.map(r => {
                 const selected = regions.includes(r)
                 const disabled = !selected && regions.length >= 2
                 return (
@@ -266,40 +261,13 @@ export default function NewDynasty() {
                     key={r}
                     disabled={disabled}
                     onClick={() => setRegions(selected ? regions.filter(x => x !== r) : [...regions, r])}
-                    className={'px-3 py-1 rounded text-xs ' +
-                      (selected ? 'bg-pnw-green text-white'
-                        : disabled ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : 'bg-gray-100 text-gray-700')}
+                    className={'text-left p-2 rounded border ' +
+                      (selected ? 'bg-pnw-green text-white border-pnw-green'
+                        : disabled ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                          : 'bg-white text-gray-700 border-gray-200 hover:border-pnw-green')}
                   >
-                    {r}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 flex justify-between">
-              <span>Pipelines</span>
-              <span className={'normal-case font-mono ' + (pipelines.length >= 2 ? 'text-amber-700' : 'text-gray-500')}>
-                {pipelines.length}/2 selected
-              </span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {PIPELINE_LIST.map(p => {
-                const selected = pipelines.includes(p)
-                const disabled = !selected && pipelines.length >= 2
-                return (
-                  <button
-                    key={p}
-                    disabled={disabled}
-                    onClick={() => setPipelines(selected ? pipelines.filter(x => x !== p) : [...pipelines, p])}
-                    className={'px-2 py-1 rounded text-xs ' +
-                      (selected ? 'bg-pnw-green text-white'
-                        : disabled ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : 'bg-gray-100 text-gray-700')}
-                  >
-                    {prettyLabel(p)}
+                    <div className="font-semibold text-sm">{REGION_LABELS[r]}</div>
+                    <div className={'text-[10px] mt-0.5 ' + (selected ? 'text-pnw-cream' : 'text-gray-500')}>{REGION_BLURBS[r]}</div>
                   </button>
                 )
               })}
@@ -352,7 +320,7 @@ export default function NewDynasty() {
             <div><strong>Coach:</strong> {coachFirst} {coachLast}</div>
             <div><strong>Archetype:</strong> {archetype}</div>
             <div><strong>Regions:</strong> {regions.join(', ') || 'home state'}</div>
-            <div><strong>Pipelines:</strong> {pipelines.join(', ') || 'none'}</div>
+            <div><strong>Regions of expertise:</strong> {regions.length ? regions.map(r => REGION_LABELS[r]).join(', ') : 'none'}</div>
             <div><strong>Coach ratings:</strong> {Object.entries(ratings).map(([k, v]) => `${k}=${v}`).join(' • ')}</div>
           </div>
           <p className="text-xs text-gray-500 mb-4">

@@ -467,20 +467,26 @@ function refreshWeeklyAP(state) {
   const hc = state.coaches[team.headCoachId]
   const assistants = team.assistantCoachIds.map(id => state.coaches[id]).filter(Boolean)
   const ROLE_MULTIPLIER = {
-    HEAD_COACH: 1.5, PITCHING_COACH: 1.0, HITTING_COACH: 1.0,
-    BENCH_COACH: 0.8, RECRUITING_COORDINATOR: 1.0,
-    STRENGTH_CONDITIONING: 0.7, DIRECTOR_OF_OPERATIONS: 0.6,
+    HEAD_COACH: 0.8, PITCHING_COACH: 0.4, HITTING_COACH: 0.4,
+    BENCH_COACH: 0.3, RECRUITING_COORDINATOR: 0.6,
+    STRENGTH_CONDITIONING: 0.3, DIRECTOR_OF_OPERATIONS: 0.3,
+    DATA_ANALYTICS_MANAGER: 0.4, GRADUATE_ASSISTANT: 0.2,
   }
-  const TIER_BONUS = { D1_LITE: 4, WELL_FUNDED: 2, MID: 0, SHOESTRING: -2 }
+  const TIER_BONUS = { D1_LITE: 3, WELL_FUNDED: 1, MID: 0, SHOESTRING: -1 }
+  // Experience bonus — every year at school (capped at 8) adds 1 AP, so a
+  // veteran coach can push toward the 50 AP cap.
+  const yearsAtSchool = state.budget?.yearsAtSchool ?? 0
+  const experienceBonus = Math.min(8, yearsAtSchool)
   const contribution = (c) => {
     const avg = (c.developer + c.motivator + c.recruiter + c.tactician) / 4
-    return (avg - 50) * 0.4 * ROLE_MULTIPLIER[c.role]
+    return (avg - 50) * 0.12 * (ROLE_MULTIPLIER[c.role] ?? 0.3)
   }
-  let total = 20
+  let total = 22
   if (hc) total += contribution(hc)
   for (const a of assistants) total += contribution(a)
   total += TIER_BONUS[school?.resourceTier] || 0
-  state.ap.currentWeek = Math.max(10, Math.min(80, Math.round(total)))
+  total += experienceBonus
+  state.ap.currentWeek = Math.max(20, Math.min(50, Math.round(total)))
   state.ap.spentThisWeek = 0
   state.ap.spentByCategory = {
     recruiting: 0, development: 0, team_boost: 0, program: 0, staff: 0,

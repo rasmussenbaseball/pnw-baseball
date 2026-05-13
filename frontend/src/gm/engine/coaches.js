@@ -5,55 +5,33 @@
 
 import { pickFullName } from './names'
 import { makeRng } from './rng'
+import { STATE_TO_REGION, REGIONS } from './regions'
 
 /** @typedef {import('./types.js').Coach} Coach */
 /** @typedef {import('./types.js').School} School */
 /** @typedef {import('./types.js').CoachRole} CoachRole */
 /** @typedef {import('./types.js').PipelineFlag} PipelineFlag */
 
-// ─── Pipeline assignment by geography ────────────────────────────────────────
-
 /**
- * Default pipelines for a coach at the given state.
- * Always adds JUCO_GENERAL as a baseline pipeline.
- */
-function pipelinesForState(state, region, rng) {
-  /** @type {PipelineFlag[]} */
-  const out = ['JUCO_GENERAL']
-
-  // Geography-driven primary pipelines
-  if (['WA', 'OR', 'ID', 'BC', 'AK', 'MT'].includes(state)) {
-    out.push('NWAC')
-  }
-  if (['CA', 'NV', 'AZ', 'HI'].includes(state)) {
-    out.push('CALIFORNIA_JUCO')
-  }
-  if (['TX', 'OK', 'NM', 'LA', 'AR'].includes(state)) {
-    out.push('TEXAS_JUCO')
-    if (rng.chance(0.25)) out.push('DOMINICAN_REPUBLIC')
-  }
-  if (['FL', 'GA', 'SC', 'NC', 'AL', 'MS', 'TN'].includes(state)) {
-    out.push('FLORIDA_JUCO')
-    if (rng.chance(0.2)) out.push('PUERTO_RICO')
-    if (rng.chance(0.15)) out.push('DOMINICAN_REPUBLIC')
-  }
-  if (['IL', 'IN', 'IA', 'MO', 'KS', 'MI', 'OH', 'WI', 'MN', 'NE', 'SD', 'ND'].includes(state)) {
-    out.push('MIDWEST_JUCO')
-  }
-
-  // Small chance of an exotic pipeline regardless of geography
-  if (rng.chance(0.04)) out.push('AUSTRALIA')
-  if (rng.chance(0.02)) out.push('JAPAN')
-  if (rng.chance(0.05)) out.push('D1_PORTAL')
-
-  return [...new Set(out)]  // dedupe
-}
-
-/**
- * Generate a list of 3-5 states for the coach's `regions[]`, anchored on
- * the school's state plus geographically adjacent ones.
+ * Pick up to 2 region codes for an AI coach. Heavily favors the school's
+ * own region plus one adjacent region.
  */
 function regionsForState(state, rng) {
+  const home = STATE_TO_REGION[state] || 'MW'
+  const ADJ = {
+    NW: ['SW', 'MW'],
+    SW: ['NW', 'South', 'MW'],
+    South: ['SW', 'SE', 'MW'],
+    MW: ['South', 'SE', 'NE', 'SW'],
+    SE: ['South', 'NE', 'MW'],
+    NE: ['SE', 'MW'],
+  }
+  const second = rng.pick(ADJ[home] || REGIONS.filter(r => r !== home))
+  return [home, second]
+}
+
+/** Legacy regionsForState retained for backward compatibility (states). */
+function legacyRegionsForState(state, rng) {
   const NEIGHBORS = {
     WA: ['OR', 'ID', 'MT'], OR: ['WA', 'ID', 'CA', 'NV'], ID: ['WA', 'OR', 'MT', 'WY', 'NV', 'UT'],
     CA: ['OR', 'NV', 'AZ'], NV: ['CA', 'OR', 'ID', 'UT', 'AZ'], AZ: ['NV', 'CA', 'UT', 'NM'],
@@ -189,7 +167,6 @@ export function generateCoach(school, role, rng, opts = {}) {
     ...ratings,
     recruiter_type: pickRecruiterType(school, rng),
     regions: regionsForState(school.state, rng),
-    pipelines: pipelinesForState(school.state, school.region, rng),
     salary,
     contractYearsRemaining: rng.int(1, 3),
     ambition: rng.int(20, 90),

@@ -14,8 +14,7 @@ const STUDY_HALL_AP = 2
 const STUDY_HALL_BONUS = 0.02
 const EXTRA_STUDY_HALL_AP = 6
 const EXTRA_STUDY_HALL_BONUS = 0.05
-const FUNDRAISE_MIN_AP = 1
-const FUNDRAISE_MAX_AP = 15
+const FUNDRAISE_AP = 10
 const CAMP_MIN_FEE = 25
 const CAMP_MAX_FEE = 300
 
@@ -26,7 +25,6 @@ export default function WeeklyActions() {
   const userId = user?.id || 'guest'
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
-  const [fundAp, setFundAp] = useState(5)
   const [campFee, setCampFee] = useState(125)
 
   if (!save) return <Navigate to="/gm" replace />
@@ -69,8 +67,10 @@ export default function WeeklyActions() {
     setActionReceipt(`✓ ${action.label} (${variantLabel}) — +${result.perPlayerBump.toFixed(1)} avg ${bumpedKeys} on ${result.playersAffected} players.`)
     setTimeout(() => setActionReceipt(null), 5000)
   }
+  // Prospect Camp is permanently the first week of November = offseasonWeek 14.
+  const CAMP_WEEK = 14
   const campOpen = save.calendar.mode === 'OFFSEASON' &&
-    save.calendar.offseasonWeek >= 1 && save.calendar.offseasonWeek <= 17
+    save.calendar.offseasonWeek === CAMP_WEEK
   const campAlreadyHeld = save.prospectCamp?.year === save.calendar.year
 
   function spendAP(cat, n) {
@@ -110,17 +110,17 @@ export default function WeeklyActions() {
   }
 
   function doFundraise() {
-    if (ap < fundAp) return
+    if (ap < FUNDRAISE_AP) return
     if (wasUsedThisWeek('FUNDRAISE')) { alert('Already done this week.'); return }
-    const raised = fundraise(fundAp, userHC.motivator, userSchool.programHistory)
+    const raised = fundraise(FUNDRAISE_AP, userHC.motivator, userSchool.programHistory)
     save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + raised
-    spendAP('program', fundAp)
+    spendAP('program', FUNDRAISE_AP)
     markUsedThisWeek('FUNDRAISE')
     save.newsfeed.unshift({
       id: `fund_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'AWARD',
-      headline: `💰 Fundraised ${fundAp} AP → +$${(raised / 1000).toFixed(1)}K to budget.`,
+      headline: `💰 Fundraised ${FUNDRAISE_AP} AP → +$${(raised / 1000).toFixed(1)}K to budget.`,
       payload: { raised },
     })
     saveDynasty(save); setSave({ ...save })
@@ -141,7 +141,13 @@ export default function WeeklyActions() {
     )
     if (result.cancelled) { alert(result.reason); return }
     save.recruits = result.recruits
-    save.prospectCamp = { fee: campFee, attendees: result.attendeeIds.length, revenue: result.revenue, year: save.calendar.year }
+    save.prospectCamp = {
+      fee: campFee,
+      year: save.calendar.year,
+      attendeeIds: result.attendeeIds,
+      attendees: result.attendeeIds.length,
+      revenue: result.revenue,
+    }
     save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + result.revenue
     save.newsfeed.unshift({
       id: `camp_${save.calendar.year}`,
@@ -161,7 +167,7 @@ export default function WeeklyActions() {
     campFee, userHC.recruiter,
     Math.round(((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100),
   )
-  const fundEstimate = fundraise(fundAp, userHC.motivator, userSchool.programHistory)
+  const fundEstimate = fundraise(FUNDRAISE_AP, userHC.motivator, userSchool.programHistory)
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -261,43 +267,30 @@ export default function WeeklyActions() {
         </div>
       </div>
 
-      {/* Fundraise */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <div className="text-sm font-semibold text-pnw-slate">Fundraise</div>
-            <div className="text-xs text-gray-500">
-              Donor calls, alumni outreach, community events. Coach motivator + program history drive yield.
-            </div>
+      {/* Fundraise — fixed 10 AP */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4 flex justify-between items-start">
+        <div>
+          <div className="text-sm font-semibold text-pnw-slate">Fundraise</div>
+          <div className="text-xs text-gray-500 max-w-md">
+            Donor calls, alumni outreach, community events. Coach motivator + program history drive the yield. ~${(fundEstimate / 1000).toFixed(1)}K estimated.
           </div>
-          <button
-            onClick={doFundraise}
-            disabled={ap < fundAp}
-            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Raise (${(fundEstimate / 1000).toFixed(1)}K est)
-          </button>
         </div>
-        <div className="flex items-center gap-3 mt-2">
-          <span className="text-xs text-gray-500 w-12">{fundAp} AP</span>
-          <input
-            type="range"
-            min={FUNDRAISE_MIN_AP} max={Math.min(FUNDRAISE_MAX_AP, ap)} step={1}
-            value={fundAp}
-            onChange={e => setFundAp(parseInt(e.target.value, 10))}
-            className="flex-1"
-          />
-          <span className="text-xs font-mono w-20 text-right text-pnw-green">~${(fundEstimate / 1000).toFixed(1)}K</span>
-        </div>
+        <button
+          onClick={doFundraise}
+          disabled={ap < FUNDRAISE_AP || wasUsedThisWeek('FUNDRAISE')}
+          className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {wasUsedThisWeek('FUNDRAISE') ? '✓ done this week' : `Raise (${FUNDRAISE_AP} AP)`}
+        </button>
       </div>
 
-      {/* Prospect Camp */}
+      {/* Prospect Camp — fixed date: first week of November */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
         <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="text-sm font-semibold text-pnw-slate">Prospect Camp</div>
+            <div className="text-sm font-semibold text-pnw-slate">Prospect Camp <span className="text-xs text-gray-500 font-normal">(annual, first week of November)</span></div>
             <div className="text-xs text-gray-500">
-              HS-only invite event. Min {CAMP_MIN_ATTENDEES} • max {CAMP_MAX_ATTENDEES} attendees. Aug–Nov window only.
+              HS-only event. Min {CAMP_MIN_ATTENDEES} • max {CAMP_MAX_ATTENDEES} attendees.
               <span className="block mt-1">
                 Currently invited: <strong>{invitedIds.length}</strong> recruits — manage via the
                 {' '}<Link to={`/gm/recruiting?slot=${slot}`} className="text-pnw-green hover:underline">Recruiting → Camp Invites</Link> tab.
@@ -308,9 +301,9 @@ export default function WeeklyActions() {
             onClick={doCamp}
             disabled={!campOpen || campAlreadyHeld}
             className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-            title={campAlreadyHeld ? 'Already held this year' : !campOpen ? 'Out of window (Aug–Nov)' : ''}
+            title={campAlreadyHeld ? 'Already held this year' : !campOpen ? 'Camp window is the first week of November' : ''}
           >
-            {campAlreadyHeld ? 'Held' : 'Run camp'}
+            {campAlreadyHeld ? 'Held' : campOpen ? 'Run camp' : 'Locked'}
           </button>
         </div>
         <div className="flex items-center gap-3 mt-2">
@@ -329,11 +322,58 @@ export default function WeeklyActions() {
           </span>
         </div>
         {campAlreadyHeld && (
-          <div className="text-[11px] text-gray-500 mt-2">
-            Held this year: {save.prospectCamp.attendees} attended @ ${save.prospectCamp.fee} → ${(save.prospectCamp.revenue / 1000).toFixed(1)}K.
-          </div>
+          <CampAttendees save={save} />
         )}
       </div>
+    </div>
+  )
+}
+
+function CampAttendees({ save }) {
+  const [open, setOpen] = useState(false)
+  const camp = save.prospectCamp
+  if (!camp) return null
+  const ids = camp.attendeeIds || []
+  return (
+    <div className="text-[11px] text-gray-600 mt-3 border-t pt-2">
+      <button onClick={() => setOpen(o => !o)} className="font-semibold text-pnw-slate hover:underline">
+        {open ? '▾' : '▸'} Held this year: {camp.attendees} attended @ ${camp.fee} → ${(camp.revenue / 1000).toFixed(1)}K
+      </button>
+      {open && (
+        <div className="mt-2 max-h-72 overflow-y-auto">
+          {ids.length === 0 ? <div className="text-gray-400">No attendees recorded.</div> :
+            <table className="w-full text-[11px]">
+              <thead className="text-[10px] uppercase text-gray-500">
+                <tr>
+                  <th className="text-left py-0.5">Recruit</th>
+                  <th>Pos</th>
+                  <th>State</th>
+                  <th>Interest</th>
+                  <th>Scout fog</th>
+                  <th>Priorities</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ids.map(id => {
+                  const r = save.recruits?.[id]
+                  if (!r) return null
+                  const g = r.scoutGrades?.[save.userSchoolId] || {}
+                  return (
+                    <tr key={id} className="border-t">
+                      <td className="py-0.5">{r.firstName} {r.lastName}</td>
+                      <td className="text-center">{r.isPitcher ? 'P' : r.primaryPosition}</td>
+                      <td className="text-center">{r.hometown.state}</td>
+                      <td className="text-center font-mono">{g.interest ?? 0}</td>
+                      <td className="text-center font-mono">±{g.noise ?? 15}</td>
+                      <td className="text-center">{(g.revealedPreferences || []).length}/8</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          }
+        </div>
+      )}
     </div>
   )
 }

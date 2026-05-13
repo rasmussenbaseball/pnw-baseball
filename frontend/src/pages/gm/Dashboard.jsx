@@ -173,13 +173,15 @@ export default function Dashboard() {
             </div>
           </Panel>
 
-          <Panel title="Scholarships" actionTo={`/gm/budget?slot=${slot}`} actionLabel="Budget →">
+          <Panel title="Scholarships (Next Year)" actionTo={`/gm/budget?slot=${slot}`} actionLabel="Budget →">
             <ScholarshipBar snapshot={scholarship} />
             <div className="text-xs mt-3 grid grid-cols-2 gap-x-2 gap-y-1">
               <div className="text-gray-500">Total pool</div>
               <div className="text-right font-mono">${(scholarship.pool / 1000).toFixed(1)}K</div>
-              <div className="text-gray-500">Committed (roster)</div>
-              <div className="text-right font-mono">${(scholarship.committedPlayers / 1000).toFixed(1)}K</div>
+              <div className="text-gray-500">Returning roster</div>
+              <div className="text-right font-mono">${(scholarship.returningCommitted / 1000).toFixed(1)}K</div>
+              <div className="text-gray-500">Graduating seniors ({scholarship.graduatingSeniors})</div>
+              <div className="text-right font-mono text-pnw-green">−${(scholarship.graduatingDollars / 1000).toFixed(1)}K freed</div>
               {scholarship.signedRecruits > 0 && (<>
                 <div className="text-gray-500">Signed recruits</div>
                 <div className="text-right font-mono">${(scholarship.signedRecruits / 1000).toFixed(1)}K</div>
@@ -188,11 +190,11 @@ export default function Dashboard() {
                 <div className="text-gray-500">Pending offers</div>
                 <div className="text-right font-mono text-amber-700">${(scholarship.pendingOffers / 1000).toFixed(1)}K</div>
               </>)}
-              <div className="text-gray-500 font-semibold border-t pt-1">Available</div>
-              <div className="text-right font-mono font-bold border-t pt-1 text-pnw-green">${(scholarship.available / 1000).toFixed(1)}K</div>
+              <div className="text-gray-500 font-semibold border-t pt-1">Available next yr</div>
+              <div className="text-right font-mono font-bold border-t pt-1 text-pnw-green">${(scholarship.nextYearAvailable / 1000).toFixed(1)}K</div>
             </div>
             <div className="text-[11px] text-gray-400 mt-2 leading-snug">
-              New scholarship $ comes from departing players (graduation, transfers). The pool tops up automatically each year.
+              New $ comes from departing seniors. Money you offer recruits now is what's available for the FOLLOWING season.
             </div>
           </Panel>
         </div>

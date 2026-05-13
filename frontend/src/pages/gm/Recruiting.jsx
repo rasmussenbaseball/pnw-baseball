@@ -13,6 +13,7 @@ import {
 } from '../../gm/engine/recruits'
 import { makeRng } from '../../gm/engine/rng'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
+import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions'
 import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 
@@ -46,7 +47,7 @@ export default function Recruiting() {
   const [board, setBoard] = useState('BOARD')        // BOARD | FOLLOWING | OFFERS | SIGNED
   const [poolFilter, setPoolFilter] = useState('ALL')
   const [posFilter, setPosFilter] = useState('ALL')
-  const [stateFilter, setStateFilter] = useState('ALL')
+  const [regionFilter, setRegionFilter] = useState('ALL')
   const [openRecruit, setOpenRecruit] = useState(null)
 
   function toggleFollow(recruitId) {
@@ -121,7 +122,7 @@ export default function Recruiting() {
   const list = baseList
     .filter(r => poolFilter === 'ALL' || r.pool === poolFilter)
     .filter(r => posFilter === 'ALL' || r.primaryPosition === posFilter)
-    .filter(r => stateFilter === 'ALL' || r.hometown.state === stateFilter)
+    .filter(r => regionFilter === 'ALL' || STATE_TO_REGION[r.hometown.state] === regionFilter)
     .map(r => {
       const grade = r.scoutGrades[save.userSchoolId]
       return { recruit: r, interest: grade?.interest ?? 0, noise: grade?.noise ?? 15 }
@@ -312,10 +313,10 @@ export default function Recruiting() {
       </div>
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
-        <span className="text-xs text-gray-500 mr-2">State:</span>
-        <button onClick={() => setStateFilter('ALL')} className={'px-2 py-1 rounded text-xs ' + (stateFilter === 'ALL' ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>All</button>
-        {topStates.map(([s]) => (
-          <button key={s} onClick={() => setStateFilter(s)} className={'px-2 py-1 rounded text-xs ' + (stateFilter === s ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>{s}</button>
+        <span className="text-xs text-gray-500 mr-2">Region:</span>
+        <button onClick={() => setRegionFilter('ALL')} className={'px-2 py-1 rounded text-xs ' + (regionFilter === 'ALL' ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>All</button>
+        {REGIONS.map(r => (
+          <button key={r} onClick={() => setRegionFilter(r)} className={'px-2 py-1 rounded text-xs ' + (regionFilter === r ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>{REGION_LABELS[r]}</button>
         ))}
       </div>
 
@@ -357,9 +358,11 @@ export default function Recruiting() {
                   <td className="font-medium">
                     {isSigned && '🖊️ '}{recruit.firstName} {recruit.lastName}
                   </td>
-                  <td>{recruit.primaryPosition}</td>
+                  <td>{recruit.isPitcher ? 'P' : recruit.primaryPosition}</td>
                   <td className="font-mono text-xs">
                     {(() => {
+                      const apSpent = recruit.scoutGrades?.[save.userSchoolId]?.apSpent || 0
+                      if (apSpent < 2) return <span className="text-gray-400">???</span>
                       const block = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
                       const trueOvr = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
                       const half = Math.max(1, Math.round(noise / 2))
@@ -456,23 +459,23 @@ export default function Recruiting() {
 
 function ScholarshipBanner({ save }) {
   const s = scholarshipSnapshot(save)
-  const pctUsed = Math.min(1, s.percentUsed)
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4 shadow-sm">
       <div className="flex justify-between items-baseline text-xs mb-2">
         <div className="text-gray-600">
-          <span className="font-semibold text-pnw-slate">Scholarship budget</span> — pool ${(s.pool / 1000).toFixed(0)}K, committed ${(s.committed / 1000).toFixed(0)}K, offers out ${(s.pendingOffers / 1000).toFixed(0)}K
+          <span className="font-semibold text-pnw-slate">Next year's scholarship budget</span> — pool ${(s.pool / 1000).toFixed(0)}K, returning ${(s.returningCommitted / 1000).toFixed(0)}K, signed ${(s.signedRecruits / 1000).toFixed(0)}K, offers out ${(s.pendingOffers / 1000).toFixed(0)}K
         </div>
-        <div className="font-semibold text-pnw-green text-sm">${(s.available / 1000).toFixed(1)}K available</div>
+        <div className="font-semibold text-pnw-green text-sm">${(s.nextYearAvailable / 1000).toFixed(1)}K available</div>
       </div>
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden flex">
-        <div className="bg-pnw-slate h-full" style={{ width: `${(s.committedPlayers / Math.max(1, s.pool)) * 100}%` }} title="Current roster" />
+        <div className="bg-pnw-slate h-full" style={{ width: `${(s.returningCommitted / Math.max(1, s.pool)) * 100}%` }} title="Returning roster" />
         <div className="bg-pnw-green h-full" style={{ width: `${(s.signedRecruits / Math.max(1, s.pool)) * 100}%` }} title="Signed recruits" />
         <div className="bg-amber-500 h-full" style={{ width: `${(s.pendingOffers / Math.max(1, s.pool)) * 100}%` }} title="Pending offers" />
       </div>
-      {s.available < 5000 && (
-        <div className="text-[11px] text-amber-700 mt-1.5">⚠ Low scholarship runway. New $ frees up after seniors graduate or transfer out.</div>
-      )}
+      <div className="text-[11px] text-gray-500 mt-1.5">
+        <span className="font-semibold">{s.graduatingSeniors}</span> senior{s.graduatingSeniors === 1 ? '' : 's'} graduating — freeing <span className="font-semibold text-pnw-green">${(s.graduatingDollars / 1000).toFixed(1)}K</span> for next year's class.
+        {s.nextYearAvailable < 5000 && <span className="text-amber-700"> ⚠ Low runway.</span>}
+      </div>
     </div>
   )
 }

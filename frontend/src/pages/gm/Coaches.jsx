@@ -9,7 +9,8 @@ import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
 import AttrTooltip from '../../gm/components/AttrTooltip'
 
-const INTERVIEW_AP_COST = 3
+const INTERVIEW_AP_COST = 20
+const FIRE_AP_COST = 20
 
 export default function Coaches() {
   const { user } = useAuth()
@@ -66,8 +67,15 @@ export default function Coaches() {
   }
 
   function fireCoach(coach) {
+    if (save.ap.currentWeek < FIRE_AP_COST) {
+      alert(`Firing costs ${FIRE_AP_COST} AP — not enough this week.`)
+      return
+    }
     const buyout = Math.round(coach.salary * (coach.contractYearsRemaining || 1) * 0.5)
-    if (!confirm(`Fire ${coach.firstName} ${coach.lastName}? Buyout: $${(buyout / 1000).toFixed(0)}K. This will hurt team morale briefly.`)) return
+    if (!confirm(`Fire ${coach.firstName} ${coach.lastName}? Costs ${FIRE_AP_COST} AP + $${(buyout / 1000).toFixed(0)}K buyout. This will hurt team morale briefly.`)) return
+    save.ap.currentWeek -= FIRE_AP_COST
+    save.ap.spentThisWeek += FIRE_AP_COST
+    save.ap.spentByCategory.staff = (save.ap.spentByCategory.staff || 0) + FIRE_AP_COST
     userTeam.assistantCoachIds = userTeam.assistantCoachIds.filter(id => id !== coach.id)
     save.budget.totalAthleticBudget = Math.max(0, (save.budget.totalAthleticBudget || 0) - buyout)
     save.newsfeed.unshift({

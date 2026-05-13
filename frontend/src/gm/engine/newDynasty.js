@@ -230,29 +230,32 @@ function buildUserHeadCoach(uc, school) {
 }
 
 /**
- * Initial AP/week from action_points.md spec.
+ * Initial AP/week. Coaches START at 25 AP per week, scale up with experience
+ * (years at school) toward a cap of 50 AP. Tier still nudges the floor.
  */
 function computeInitialAP(school, headCoach, assistants) {
   const ROLE_MULTIPLIER = {
-    HEAD_COACH: 1.5,
-    PITCHING_COACH: 1.0,
-    HITTING_COACH: 1.0,
-    BENCH_COACH: 0.8,
-    RECRUITING_COORDINATOR: 1.0,
-    STRENGTH_CONDITIONING: 0.7,
-    DIRECTOR_OF_OPERATIONS: 0.6,
+    HEAD_COACH: 0.8,
+    PITCHING_COACH: 0.4,
+    HITTING_COACH: 0.4,
+    BENCH_COACH: 0.3,
+    RECRUITING_COORDINATOR: 0.6,
+    STRENGTH_CONDITIONING: 0.3,
+    DIRECTOR_OF_OPERATIONS: 0.3,
+    DATA_ANALYTICS_MANAGER: 0.4,
+    GRADUATE_ASSISTANT: 0.2,
   }
-  const TIER_BONUS = { D1_LITE: 4, WELL_FUNDED: 2, MID: 0, SHOESTRING: -2 }
+  const TIER_BONUS = { D1_LITE: 3, WELL_FUNDED: 1, MID: 0, SHOESTRING: -1 }
 
   const contribution = (c) => {
     const avg = (c.developer + c.motivator + c.recruiter + c.tactician) / 4
-    return (avg - 50) * 0.4 * ROLE_MULTIPLIER[c.role]
+    return (avg - 50) * 0.12 * (ROLE_MULTIPLIER[c.role] ?? 0.3)
   }
 
-  let total = 20  // base
+  let total = 22  // base — lands a typical Bushnell coach around 25 AP
   total += contribution(headCoach)
   for (const a of assistants) total += contribution(a)
   total += TIER_BONUS[school.resourceTier] || 0
-  return Math.max(10, Math.min(80, Math.round(total)))
+  return Math.max(20, Math.min(50, Math.round(total)))
 }
 

@@ -12,6 +12,7 @@
 import { makeRng } from './rng'
 import { pickFullName } from './names'
 import { pickCityForState } from './cities'
+import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
 // Recruit pool sizes
@@ -24,66 +25,18 @@ const D3_PORTAL_SIZE = 35
 
 const ALL_JUCO_TEAMS = jucoTeamsRaw.leagues.flatMap(l => l.teams.map(t => ({ ...t, leagueId: l.id, pipelineFlag: l.pipelineFlag })))
 
-const POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'SP', 'RP']
+// All pitcher recruits show as "P" — the head coach decides SP vs RP role
+// after they enroll based on stuff + stamina. Internally we still need an
+// is-pitcher flag for sim purposes.
+const POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'P', 'P', 'P']
 
 // ─── Geographic distribution ─────────────────────────────────────────────────
 //
-// Most NAIA recruits to Bushnell come from the PNW + West Coast. Geographic
-// reach extends east only via coach pipelines or for the rare exotic
-// recruit. This map weights the recruit pool's home-state distribution so
-// the user's recruiting board feels regional.
+// Recruit-pool home states are drawn evenly across the country, with a 3×
+// boost on the coach's two chosen regions. No more PNW-overpower.
 
-const HOME_REGION_WEIGHTS_PNW = {
-  // Heavy: PNW + adjacent
-  WA: 18, OR: 18, ID: 10, MT: 4, BC: 4,
-  // Moderate: West Coast
-  CA: 18, NV: 4, AZ: 5, UT: 3,
-  // Light: Mountain West + adjacent
-  WY: 1, CO: 2, NM: 1, TX: 3, OK: 1,
-  // Rare: Midwest + South + East
-  ND: 0.5, SD: 0.5, NE: 0.5, KS: 0.5, MN: 0.5, IA: 0.5, MO: 0.5,
-  IL: 0.5, IN: 0.5, MI: 0.5, OH: 0.5, WI: 0.5,
-  FL: 0.5, GA: 0.5, AL: 0.5, MS: 0.5, TN: 0.5, NC: 0.5, SC: 0.5, KY: 0.5,
-  PA: 0.2, NY: 0.2, NJ: 0.2, MA: 0.2, CT: 0.2,
-  AR: 0.5, LA: 0.5, VA: 0.3, WV: 0.2,
-}
-
-/**
- * Apply coach pipelines to bump up specific regions / states for this coach's recruit board.
- * E.g. coach has TEXAS_JUCO pipeline → TX weight ×8.
- */
-function pipelineWeightBoosts(coach) {
-  if (!coach) return {}
-  const boosts = {}
-  for (const p of coach.pipelines || []) {
-    if (p === 'TEXAS_JUCO') { boosts.TX = 8; boosts.OK = 3; boosts.LA = 3 }
-    if (p === 'CALIFORNIA_JUCO') { boosts.CA = 5; boosts.AZ = 2 }
-    if (p === 'NWAC') { boosts.WA = 3; boosts.OR = 3; boosts.ID = 2; boosts.BC = 2 }
-    if (p === 'FLORIDA_JUCO') { boosts.FL = 8; boosts.GA = 3 }
-    if (p === 'MIDWEST_JUCO') { boosts.IL = 4; boosts.IN = 3; boosts.IA = 3; boosts.MO = 3; boosts.KS = 3 }
-    if (p === 'D1_PORTAL') { /* affects only NAIA_TRANSFER pool with D1_TRANSFER pool */ }
-    if (p === 'HBCU') { boosts.GA = 4; boosts.AL = 4; boosts.MS = 3 }
-    if (p === 'DOMINICAN_REPUBLIC') { /* international not yet modeled in v1.5 */ }
-  }
-  // Also boost coach's explicit regions
-  for (const state of coach.regions || []) {
-    boosts[state] = Math.max(boosts[state] || 0, 4)
-  }
-  return boosts
-}
-
-/**
- * Compose final state weights for a coach. Multiplies pipeline boosts onto the
- * baseline PNW-heavy distribution.
- */
 function stateWeightsForCoach(coach) {
-  const boosts = pipelineWeightBoosts(coach)
-  const out = {}
-  for (const [state, baseWeight] of Object.entries(HOME_REGION_WEIGHTS_PNW)) {
-    const boost = boosts[state] || 1
-    out[state] = baseWeight * boost
-  }
-  return out
+  return stateWeightsForRegions(coach?.regions || [])
 }
 
 /**
@@ -96,46 +49,22 @@ function sampleHomeState(stateWeights, rng) {
 }
 
 /**
- * Apply the coach's natural pipeline / region match to a recruit. Recruits
- * who live in the coach's home regions or fit a coach's pipeline arrive on
- * the board already aware of the program — small interest seed + one
- * priority revealed.
- *
- * @param {import('./types.js').Recruit} recruit
- * @param {string} userSchoolId
- * @param {import('./types.js').Coach} coach
- * @param {ReturnType<import('./rng.js').makeRng>} rng
+ * Recruits from the coach's two priority regions arrive on the board already
+ * aware of the program — small interest seed (12) but NO priorities and NO
+ * scout fog reduction; the coach still has to do the work to learn anything
+ * about the player.
  */
-function seedPipelineInterest(recruit, userSchoolId, coach, rng) {
+function seedRegionInterest(recruit, userSchoolId, coach) {
   if (!coach) return
-  const inRegion = (coach.regions || []).includes(recruit.hometown.state)
-  // Pipeline-state mapping mirrors pipelineWeightBoosts above
-  const pipelineStates = {
-    TEXAS_JUCO: ['TX', 'OK', 'LA'],
-    CALIFORNIA_JUCO: ['CA', 'AZ'],
-    NWAC: ['WA', 'OR', 'ID', 'BC'],
-    FLORIDA_JUCO: ['FL', 'GA'],
-    MIDWEST_JUCO: ['IL', 'IN', 'IA', 'MO', 'KS'],
-    HBCU: ['GA', 'AL', 'MS'],
-  }
-  let inPipeline = false
-  for (const p of coach.pipelines || []) {
-    if ((pipelineStates[p] || []).includes(recruit.hometown.state)) { inPipeline = true; break }
-  }
-  if (!inRegion && !inPipeline) return
-
-  const seed = inRegion && inPipeline ? 20 : 12
+  const inRegion = (coach.regions || []).includes(STATE_TO_REGION[recruit.hometown.state])
+  if (!inRegion) return
   recruit.scoutGrades[userSchoolId] = {
-    interest: seed,
-    noise: 13,                        // tiny scouting bonus from existing relationship
+    interest: 12,
+    noise: 15,                            // full fog — must scout to lift it
     revealedPreferences: [],
-    actionsApplied: ['PIPELINE_SEED'],
+    actionsApplied: ['REGION_SEED'],
     apSpent: 0,
   }
-  // Reveal top preference
-  const allPrefs = Object.keys(recruit.preferences)
-  const top = allPrefs.sort((a, b) => recruit.preferences[b] - recruit.preferences[a])[0]
-  if (top) recruit.scoutGrades[userSchoolId].revealedPreferences.push(top)
   if (!recruit.interestedSchools.includes(userSchoolId)) {
     recruit.interestedSchools.push(userSchoolId)
   }
@@ -162,12 +91,12 @@ export function generateRecruitPool(year, seed, coach = null, userSchoolId = nul
 
   for (let i = 0; i < HS_POOL_SIZE; i++) {
     const r = makeRecruit('HS_SR', i, year, rng, stateWeights)
-    if (userSchoolId) seedPipelineInterest(r, userSchoolId, coach, rng)
+    if (userSchoolId) seedRegionInterest(r, userSchoolId, coach)
     pool[r.id] = r
   }
   for (let i = 0; i < JUCO_POOL_SIZE; i++) {
     const r = makeRecruit('JUCO', i, year, rng, stateWeights)
-    if (userSchoolId) seedPipelineInterest(r, userSchoolId, coach, rng)
+    if (userSchoolId) seedRegionInterest(r, userSchoolId, coach)
     pool[r.id] = r
   }
   return pool
@@ -221,7 +150,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   const { first, last } = pickFullName(rng, region)
 
   const primaryPosition = rng.pick(POSITIONS)
-  const isPitcher = primaryPosition === 'SP' || primaryPosition === 'RP'
+  const isPitcher = primaryPosition === 'P'
 
   // Rating distribution per pool. NAIA reality:
   //   - HS SR: mean 50, capped ~88 (no 92-rated HS kids in NAIA recruiting board —
@@ -415,16 +344,7 @@ export function totalSuitors(recruit) {
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
-const STATE_TO_REGION = {
-  WA: 'NW', OR: 'NW', ID: 'NW', BC: 'NW', MT: 'NW',
-  CA: 'W', NV: 'W', AZ: 'W', UT: 'W', HI: 'W',
-  TX: 'SW', OK: 'SW', NM: 'SW', AR: 'SW', LA: 'SW',
-  FL: 'SE', GA: 'SE', AL: 'SE', MS: 'SE', TN: 'SE', NC: 'SE', SC: 'SE', KY: 'SE', VA: 'SE', WV: 'SE',
-  IL: 'MW', IN: 'MW', IA: 'MW', MO: 'MW', KS: 'MW', NE: 'MW', OH: 'MW', MI: 'MW', WI: 'MW', MN: 'MW',
-  ND: 'MW', SD: 'MW',
-  WY: 'NW', CO: 'W',
-  NY: 'NE', PA: 'NE', NJ: 'NE', MA: 'NE', CT: 'NE',
-}
+// (STATE_TO_REGION lives in regions.js — imported above.)
 
 // ─── Recruiting actions ──────────────────────────────────────────────────────
 

@@ -63,17 +63,39 @@ export function signedRecruitTotal(recruits, userSchoolId) {
 }
 
 /**
- * Full scholarship snapshot for the user's program.
+ * Sum scholarship $ on graduating seniors (classYear === 'SR').
+ * Returns { dollars, count }.
+ */
+export function graduatingSeniorScholarships(team, players) {
+  if (!team) return { dollars: 0, count: 0 }
+  let dollars = 0
+  let count = 0
+  for (const id of team.rosterPlayerIds) {
+    const p = players[id]
+    if (!p) continue
+    if (p.classYear === 'SR') {
+      count++
+      dollars += p.scholarship?.annualAmount || 0
+    }
+  }
+  return { dollars, count }
+}
+
+/**
+ * Full scholarship snapshot for the user's program. NEXT-YEAR-FOCUSED:
+ * scholarships freed by graduating seniors are the actual new $ available
+ * to recruit with. The "available" number reflects next year's reality.
  *
  * @param {import('./types.js').SaveState} save
  * @returns {{
  *   pool: number,
- *   committed: number,
  *   committedPlayers: number,
- *   pendingOffers: number,
+ *   returningCommitted: number,
+ *   graduatingSeniors: number,
+ *   graduatingDollars: number,
  *   signedRecruits: number,
- *   available: number,
- *   percentUsed: number,
+ *   pendingOffers: number,
+ *   nextYearAvailable: number,
  * }}
  */
 export function scholarshipSnapshot(save) {
@@ -81,17 +103,26 @@ export function scholarshipSnapshot(save) {
   const team = save.teams[save.userSchoolId]
   const pool = school?.scholarshipPool || 0
   const committedPlayers = committedScholarships(team, save.players)
-  const pendingOffers = liveOfferTotal(save.recruits || {}, save.userSchoolId)
+  const { dollars: graduatingDollars, count: graduatingSeniors } =
+    graduatingSeniorScholarships(team, save.players)
+  const returningCommitted = committedPlayers - graduatingDollars
   const signedRecruits = signedRecruitTotal(save.recruits || {}, save.userSchoolId)
-  const committed = committedPlayers + signedRecruits
-  const available = Math.max(0, pool - committed - pendingOffers)
+  const pendingOffers = liveOfferTotal(save.recruits || {}, save.userSchoolId)
+  // Next year: pool minus what returning players hold minus what's already
+  // signed for the incoming class minus what's tied up in live offers.
+  const nextYearAvailable = Math.max(0, pool - returningCommitted - signedRecruits - pendingOffers)
   return {
     pool,
-    committed,
     committedPlayers,
-    pendingOffers,
+    returningCommitted,
+    graduatingSeniors,
+    graduatingDollars,
     signedRecruits,
-    available,
-    percentUsed: pool > 0 ? (committed + pendingOffers) / pool : 0,
+    pendingOffers,
+    nextYearAvailable,
+    // Back-compat aliases for older callers
+    committed: committedPlayers + signedRecruits,
+    available: nextYearAvailable,
+    percentUsed: pool > 0 ? (returningCommitted + signedRecruits + pendingOffers) / pool : 0,
   }
 }

@@ -27,10 +27,10 @@ export const ATTR_DESCRIPTIONS = {
   composure: 'Composure: performance in high-leverage / late innings.',
   durability:'Durability: day-to-day recovery, injury odds.',
   // Coach
-  developer: 'Developer: how much player ratings progress under this coach.',
-  motivator: 'Motivator: clutch/composure bumps + team chemistry + GPA boost.',
-  recruiter: 'Recruiter: AP per recruiting week + closing rate on verbals.',
-  tactician: 'Tactician: in-game AI decisions (lineup, pitching changes).',
+  developer: 'Developer (DEV): drives how fast your players progress toward their potential. Higher = faster offseason ratings gains for everyone.',
+  motivator: 'Motivator (MOT): drives team chemistry, GPA boost from coaching, clutch/composure in big moments, and fundraising yield.',
+  recruiter: 'Recruiter (REC): drives weekly AP, the program\'s closing rate on verbals, and how many recruits show up to your prospect camp.',
+  tactician: 'Tactician (TAC): drives in-game AI decisions — lineup construction, pitching changes, defensive positioning.',
 }
 
 export default function AttrTooltip({ attr, text, children }) {
