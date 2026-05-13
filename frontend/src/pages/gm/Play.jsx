@@ -92,6 +92,12 @@ export default function Play() {
         advanceWeek(save, save.schedule)
         saveDynasty(save); refresh()
       }}
+      onAdvanceEmptyWeek={() => {
+        // No games this week — just bump the calendar one week forward and
+        // re-render. Use the same advanceWeek so AP refreshes etc.
+        advanceWeek(save, save.schedule)
+        saveDynasty(save); refresh()
+      }}
     />
   )
 }
@@ -100,21 +106,43 @@ export default function Play() {
 // LIST view
 // ────────────────────────────────────────────────────────────────────────────
 
-function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim }) {
+function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEmptyWeek }) {
   const cal = save.calendar
   const userSchoolId = save.userSchoolId
-  // Determine "this week's user games" — for season mode use seasonWeek; for
-  // offseason, surface upcoming scrimmages (seasonWeek === 0) within ~14 days.
+  // Determine "this week's user games":
+  //   - Season mode: games matching the current seasonWeek (exclude BYE)
+  //   - Offseason: any unplayed scrimmages (seasonWeek === 0)
   const thisWeekGames = useMemo(() => {
-    const all = (save.schedule || []).filter(g => g.homeId === userSchoolId || g.awayId === userSchoolId)
+    const all = (save.schedule || []).filter(g =>
+      (g.homeId === userSchoolId || g.awayId === userSchoolId)
+      && g.type !== 'BYE'
+      && g.awayId !== '__BYE__',
+    )
     if (cal.mode === 'SEASON') return all.filter(g => g.seasonWeek === cal.seasonWeek)
-    // Offseason — show all unplayed scrimmages
     return all.filter(g => g.seasonWeek === 0 && !g.played)
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
   }, [save, cal])
 
-  const unplayed = thisWeekGames.filter(g => !g.played && g.type !== 'BYE')
+  const unplayed = thisWeekGames.filter(g => !g.played)
   const played = thisWeekGames.filter(g => g.played)
+
+  // If there's nothing happening this week, surface the next week that DOES
+  // have games — gives the user a clear "Advance to Wk X" button instead of
+  // a dead-end empty state.
+  const nextWeekWithGames = useMemo(() => {
+    if (cal.mode !== 'SEASON') return null
+    const sw = cal.seasonWeek ?? 1
+    const future = (save.schedule || [])
+      .filter(g =>
+        !g.played
+        && g.type !== 'BYE'
+        && g.awayId !== '__BYE__'
+        && g.seasonWeek > sw
+        && (g.homeId === userSchoolId || g.awayId === userSchoolId)
+      )
+      .map(g => g.seasonWeek)
+    return future.length ? Math.min(...future) : null
+  }, [save, cal])
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
@@ -127,8 +155,23 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim }) {
       </p>
 
       {unplayed.length === 0 && played.length === 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center text-gray-500">
-          No games this week. Use Schedule to add fall scrimmages or advance from the Dashboard.
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+          <div className="text-gray-500 mb-3">
+            No games scheduled for {cal.mode === 'SEASON' ? `Season Week ${cal.seasonWeek}` : 'this offseason week'}.
+          </div>
+          {cal.mode === 'SEASON' && nextWeekWithGames != null && (
+            <button
+              onClick={onAdvanceEmptyWeek}
+              className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
+            >
+              Advance to Week {nextWeekWithGames} →
+            </button>
+          )}
+          {cal.mode === 'OFFSEASON' && (
+            <Link to={`/gm/schedule?slot=${slot}`} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold inline-block hover:opacity-90">
+              Schedule fall games →
+            </Link>
+          )}
         </div>
       )}
 
@@ -161,6 +204,18 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim }) {
             className="px-4 py-2 bg-pnw-slate text-white rounded text-sm font-semibold hover:opacity-90"
           >
             Auto-sim week →
+          </button>
+        </div>
+      )}
+
+      {unplayed.length === 0 && played.length > 0 && cal.mode === 'SEASON' && (
+        <div className="mt-6 bg-white rounded-xl border border-pnw-green/40 p-4 text-sm flex justify-between items-center">
+          <div className="text-gray-700">All week-{cal.seasonWeek} games complete. Advance to the next week.</div>
+          <button
+            onClick={onAdvanceEmptyWeek}
+            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
+          >
+            Advance week →
           </button>
         </div>
       )}

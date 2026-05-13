@@ -15,13 +15,17 @@ import { pickCityForState } from './cities'
 import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
-// Recruit pool sizes
-const HS_POOL_SIZE = 500
-const JUCO_POOL_SIZE = 200
-const PORTAL_POOL_SIZE = 80
-const D1_PORTAL_SIZE = 80          // bumped way up — lots of D1 transfers each year
-const D2_PORTAL_SIZE = 40
-const D3_PORTAL_SIZE = 35
+// Recruit pool sizes. Trimmed in v1.6 — each makeRecruit allocates a fully
+// shaped recruit (ratings + scout grades + offers). Bigger pools = bigger
+// end-of-year tick (this gets called inside runEndOfYear, which runs on the
+// main thread synchronously and was browser-locking the postseason
+// transition at the old sizes).
+const HS_POOL_SIZE = 300
+const JUCO_POOL_SIZE = 120
+const PORTAL_POOL_SIZE = 40
+const D1_PORTAL_SIZE = 40
+const D2_PORTAL_SIZE = 20
+const D3_PORTAL_SIZE = 15
 
 const ALL_JUCO_TEAMS = jucoTeamsRaw.leagues.flatMap(l => l.teams.map(t => ({ ...t, leagueId: l.id, pipelineFlag: l.pipelineFlag })))
 

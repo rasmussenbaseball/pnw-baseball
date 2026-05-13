@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useSearchParams, Navigate } from 'react-router-dom'
+import { Link, useSearchParams, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
@@ -27,6 +27,7 @@ const NON_NAIA_DISPLAY = (() => {
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const slot = parseInt(params.get('slot') || '1', 10)
   const userId = user?.id || 'guest'
@@ -60,16 +61,34 @@ export default function Dashboard() {
   const topHitters = ratedPlayers.filter(x => !x.p.isPitcher).slice(0, 5)
   const topPitchers = ratedPlayers.filter(x => x.p.isPitcher).slice(0, 5)
 
-  // Next game (season mode only). Skip BYE rows — they have awayId === '__BYE__'
-  // and would otherwise render as a "TBD" opponent on the action bar.
+  // Next game (season mode only). Filters:
+  //   - !g.played + actual matchup (not BYE / __BYE__ sentinel)
+  //   - seasonWeek >= current week (avoids past-due scrimmages from the prior
+  //     offseason whose seasonWeek=0 would sort before any in-season game)
   const nextGame = useMemo(() => {
     if (mode !== 'SEASON') return null
+    const sw = save.calendar.seasonWeek ?? 1
     return (save.schedule || [])
       .filter(g => !g.played
         && g.type !== 'BYE'
         && g.awayId !== '__BYE__'
+        && g.seasonWeek >= sw
         && (g.homeId === save.userSchoolId || g.awayId === save.userSchoolId))
       .sort((a, b) => a.seasonWeek - b.seasonWeek)[0]
+  }, [save, mode])
+
+  // Unplayed user games in the CURRENT season week — drives whether we route
+  // the user to the Play page (live game experience) or just advance the week.
+  const thisWeekUnplayed = useMemo(() => {
+    if (mode !== 'SEASON') return []
+    const sw = save.calendar.seasonWeek ?? 1
+    return (save.schedule || []).filter(g =>
+      !g.played
+      && g.type !== 'BYE'
+      && g.awayId !== '__BYE__'
+      && g.seasonWeek === sw
+      && (g.homeId === save.userSchoolId || g.awayId === save.userSchoolId)
+    )
   }, [save, mode])
 
   // Schedule completeness for the UPCOMING season (the one being scheduled in
@@ -95,6 +114,14 @@ export default function Dashboard() {
       alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
       return
     }
+    // Season mode + unplayed games this week → push the user into the Play
+    // page so they get the live-game experience (with an "auto-sim week"
+    // escape hatch right there). Stops the dashboard sim button from quietly
+    // burning a week of games behind the user's back.
+    if (mode === 'SEASON' && thisWeekUnplayed.length > 0) {
+      navigate(`/gm/play?slot=${slot}`)
+      return
+    }
     setBusy(true)
     setLastWeekRecap(null)
     if (mode === 'OFFSEASON') {
@@ -109,12 +136,34 @@ export default function Dashboard() {
         phase: offseasonPhase(save.calendar.offseasonWeek),
       })
     } else if (mode === 'SEASON') {
-      const ratings = seedFromPear(save.schools, save.conferences)
-      const summary = simWeek(save, save.schedule, ratings)
-      advanceWeek(save, save.schedule)
-      saveDynasty(save)
-      setSave({ ...save })
-      setLastWeekRecap({ kind: 'season', results: summary.userResults })
+      // Either an empty week (no games scheduled) or seasonWeek=13 manual
+      // trigger — both fine to advance directly. Postseason at week 14 is
+      // the heavy path; runEndOfYear may take a few seconds and we yield
+      // first so the busy spinner can paint.
+      const crossingIntoPostseason = (save.calendar.seasonWeek ?? 0) >= 13
+      if (crossingIntoPostseason) {
+        const ok = window.confirm(
+          'Heads up: advancing past week 13 will run the postseason bracket, MLB draft, ' +
+          'player development, transfers, and end-of-year wrap. This usually takes 5–15 ' +
+          'seconds and the tab will freeze briefly. Continue?'
+        )
+        if (!ok) { setBusy(false); return }
+      }
+      setTimeout(() => {
+        try {
+          const ratings = seedFromPear(save.schools, save.conferences)
+          const summary = simWeek(save, save.schedule, ratings)
+          advanceWeek(save, save.schedule)
+          saveDynasty(save)
+          setSave({ ...save })
+          setLastWeekRecap({ kind: 'season', results: summary.userResults })
+        } catch (err) {
+          console.error('advanceWeek failed:', err)
+          alert('Sim failed — see console for details. State was not saved.')
+        }
+        setBusy(false)
+      }, 30)
+      return
     }
     setBusy(false)
   }
@@ -189,6 +238,7 @@ export default function Dashboard() {
         recap={lastWeekRecap}
         offseasonWeek={save.calendar.offseasonWeek}
         startYear={save.calendar.startYear || save.calendar.year}
+        thisWeekUnplayedCount={thisWeekUnplayed.length}
       />
 
       {/* Sim-ahead presets (also hard-blocked when schedule incomplete) */}
@@ -349,7 +399,7 @@ export default function Dashboard() {
 // Sub-components
 // ────────────────────────────────────────────────────────────────────────────
 
-function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, onSim, recap, offseasonWeek, startYear }) {
+function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, onSim, recap, offseasonWeek, startYear, thisWeekUnplayedCount = 0 }) {
   const date = inOffseason
     ? offseasonWeekDate(startYear, offseasonWeek)
     : null
@@ -388,7 +438,13 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, o
           disabled={busy}
           className="px-6 py-3 bg-pnw-green rounded font-semibold text-sm hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? 'Simming…' : (inOffseason ? 'Advance Week →' : 'Sim Next Week →')}
+          {busy
+            ? 'Simming…'
+            : inOffseason
+              ? 'Advance Week →'
+              : thisWeekUnplayedCount > 0
+                ? `▶ Play this week (${thisWeekUnplayedCount} game${thisWeekUnplayedCount === 1 ? '' : 's'})`
+                : 'Sim Next Week →'}
         </button>
         {recap?.kind === 'offseason' && (
           <div className="text-[11px] opacity-70">Advanced to Wk {recap.to} — {recap.phase}</div>
