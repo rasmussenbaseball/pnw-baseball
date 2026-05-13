@@ -427,6 +427,39 @@ export const ROSTER_CAP_MAX = 60
  * Refresh weekly AP — same formula as newDynasty.computeInitialAP, kept in
  * sync. Called when a week ticks over so the user gets a fresh AP budget.
  */
+/**
+ * Reset the per-week "used" list and step any temporary boosts toward
+ * expiry. Called from advanceOffseasonWeek + advanceWeek (season).
+ */
+function tickWeeklyBookkeeping(state) {
+  state.weeklyActionsUsed = []
+  // Drop permanent-bump records older than 2 weeks (arrows fade out)
+  if (Array.isArray(state.permanentBumps)) {
+    state.permanentBumps = state.permanentBumps.filter(
+      b => (state.calendar.week - (b.weekApplied || 0)) <= 2,
+    )
+  }
+  // Decrement temporary-boost timers and reverse expired ones
+  if (Array.isArray(state.tempBoosts)) {
+    const expired = []
+    const remaining = []
+    for (const b of state.tempBoosts) {
+      const next = (b.weeksRemaining || 0) - 1
+      if (next <= 0) expired.push(b)
+      else remaining.push({ ...b, weeksRemaining: next })
+    }
+    for (const b of expired) {
+      const p = state.players[b.playerId]
+      if (!p) continue
+      const block = b.side === 'pitcher' ? p.pitcher : p.hitter
+      if (block && typeof block[b.ratingKey] === 'number') {
+        block[b.ratingKey] = Math.max(20, block[b.ratingKey] - b.amount)
+      }
+    }
+    state.tempBoosts = remaining
+  }
+}
+
 function refreshWeeklyAP(state) {
   const team = state.teams[state.userSchoolId]
   if (!team) return
@@ -469,11 +502,9 @@ export function advanceOffseasonWeek(state) {
   state.calendar.offseasonWeek++
   state.calendar.week++
 
-  // Refresh weekly AP
+  // Refresh weekly AP and tick per-week bookkeeping
   refreshWeeklyAP(state)
-
-  // (Study Hall now uses direct cumulativeBonus applied on spend — no
-  // per-week tally to maintain here.)
+  tickWeeklyBookkeeping(state)
 
   // Transition into season once offseason is over
   if (state.calendar.offseasonWeek > OFFSEASON_WEEKS) {
@@ -518,6 +549,7 @@ export function advanceWeek(state, schedule) {
   if (state.calendar.mode === 'SEASON' && state.calendar.seasonWeek != null) {
     state.calendar.seasonWeek++
     refreshWeeklyAP(state)
+    tickWeeklyBookkeeping(state)
     if (state.calendar.seasonWeek > 13) {
       // 13 weeks of regular season; postseason begins Week 14 (conference
       // tournament), Week 15 = Opening Round, Week 16 = NAIA World Series.

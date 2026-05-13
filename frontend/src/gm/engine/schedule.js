@@ -274,12 +274,13 @@ function buildConferenceSchedule(conf, schools, year, seed) {
     arr.splice(0, arr.length, fixed, ...rest)
   }
 
-  // We need possibleRounds + N/2 weeks to fit all base + double-up series.
-  // (Each "double-up week" adds another full round of pairings.)
-  const baseRounds = Math.min(possibleRounds, confWeekFridays.length)
-  const doubleUpRoundsAvailable = Math.max(0, confWeekFridays.length - baseRounds)
-  // Cap double-up to 1 round per pair per year (real-world common pattern)
-  const doubleUpRounds = Math.min(doubleUpRoundsAvailable, 1)
+  // 10 series per team total: 7 base round-robin + 3 double-up rounds.
+  // No bye weeks during conference — every Friday from confStart through
+  // (confStart + 9 weeks) gets a series. confWeekFridays must have ≥10.
+  const TARGET_ROUNDS = 10
+  const baseRounds = Math.min(possibleRounds, confWeekFridays.length, TARGET_ROUNDS)
+  const doubleUpRoundsAvailable = Math.max(0, Math.min(TARGET_ROUNDS, confWeekFridays.length) - baseRounds)
+  const doubleUpRounds = doubleUpRoundsAvailable
 
   const games = []
 
@@ -309,23 +310,19 @@ function buildConferenceSchedule(conf, schools, year, seed) {
     circleArr = [fixed, ...rest]
   }
 
-  // DOUBLE-UP ROUND — each team plays one rotating partner a SECOND time.
-  // We use the rotation that occurs (year + possibleRounds) rounds in, so each
-  // year's double-up matchups shift across the conference's pair list.
-  if (doubleUpRounds > 0) {
-    // After baseRounds of rotation, we've already advanced the circle. Take
-    // the current matchup as the doubled series.
-    const fri = confWeekFridays[baseRounds]
+  // DOUBLE-UP ROUNDS — each team plays a rotating partner a SECOND time.
+  // Continue rotating the circle so each doubleUp round uses a different
+  // pairing (so any given team gets 3 different doubled opponents per year).
+  for (let du = 0; du < doubleUpRounds; du++) {
+    const fri = confWeekFridays[baseRounds + du]
     for (let i = 0; i < n / 2; i++) {
       const a = circleArr[i]
       const b = circleArr[n - 1 - i]
       if (a === '__BYE__' || b === '__BYE__') continue
-      // Home/away flip: opposite of what they did in base round
-      // (so if A hosted B in base, B hosts A in double)
-      const homeFirst = ((baseRounds + year + 1) % 2) === 0
+      const homeFirst = ((baseRounds + du + year + 1) % 2) === 0
       const homeId = homeFirst ? a : b
       const awayId = homeFirst ? b : a
-      const seriesId = `s_${conf.id}_${year}_du_${homeId}_${awayId}`
+      const seriesId = `s_${conf.id}_${year}_du${du}_${homeId}_${awayId}`
       games.push(...buildSeriesGames(
         seriesId, homeId, awayId, fri, year,
         rules.seriesLength,
@@ -333,6 +330,11 @@ function buildConferenceSchedule(conf, schools, year, seed) {
         'CONFERENCE',
       ))
     }
+    // Rotate for next double-up
+    const fixed = circleArr[0]
+    const rest = circleArr.slice(1)
+    rest.unshift(rest.pop())
+    circleArr = [fixed, ...rest]
   }
 
   return games
@@ -475,9 +477,10 @@ export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivisi
     return addD1Midweek(userSchoolId, opponentSchoolId, week, year, opts.userIsHome ?? true)
   }
 
-  // Standard non-conf series (NAIA vs NAIA, NAIA vs D2/D3)
-  // Cap check: don't allow series that pushes over 55
-  const seriesLength = opts.format === 'FRI_SAT_SUN' ? 3 : 4
+  // Standard non-conf series — ALWAYS 3 games (FRI_SAT_SUN). Real NAIA
+  // non-conference series are almost always 3-game sets; 4-game series are
+  // reserved for conference weekends.
+  const seriesLength = 3
   if (countRecordGames(userSchoolId, schedule) + seriesLength > NAIA_GAME_CAP) {
     return { ok: false, error: `Cannot add — would exceed the ${NAIA_GAME_CAP}-game cap.` }
   }
@@ -487,8 +490,7 @@ export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivisi
   const awayId = userIsHome ? opponentSchoolId : userSchoolId
   const fri = seasonWeekFriday(week, year)
   const seriesId = `nc_${year}_${week}_${homeId}_${awayId}_${Math.random().toString(36).slice(2, 8)}`
-  const format = opts.format || (seriesLength === 4 ? 'FRI_SAT_DH_SUN' : 'FRI_SAT_SUN')
-  const games = buildSeriesGames(seriesId, homeId, awayId, fri, year, seriesLength, format, 'NON_CONFERENCE')
+  const games = buildSeriesGames(seriesId, homeId, awayId, fri, year, seriesLength, 'FRI_SAT_SUN', 'NON_CONFERENCE')
   return { ok: true, games }
 }
 

@@ -6,7 +6,8 @@ import {
   fundraise, simProspectCamp, predictCampTurnout,
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
-import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable } from '../../gm/engine/weeklyActions'
+import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek } from '../../gm/engine/weeklyActions'
+import { prettyLabel } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
 
 const STUDY_HALL_AP = 2
@@ -41,24 +42,32 @@ export default function WeeklyActions() {
     : 'In Season'
   const [actionReceipt, setActionReceipt] = useState(null)
 
-  function doAction(action) {
-    if (ap < action.apCost) { alert(`Need ${action.apCost} AP`); return }
-    if (!isActionAvailable(action, save.calendar, currentPhase)) {
+  function doAction(action, variant) {
+    const cost = variant === 'TEMPORARY' ? action.tempAp : action.permAp
+    if (ap < cost) { alert(`Need ${cost} AP`); return }
+    if (!isActionAvailable(action, currentPhase)) {
       alert(`Not available during ${currentPhase}.`)
       return
     }
-    const result = applyWeeklyAction(save, action)
-    spendAP('team_boost', action.apCost)
+    if (isActionUsedThisWeek(save, action.key)) {
+      alert('Already done this week.')
+      return
+    }
+    const result = applyWeeklyAction(save, action, variant)
+    spendAP('team_boost', cost)
+    markActionUsedThisWeek(save, action.key)
+    const variantLabel = variant === 'TEMPORARY' ? 'temp 4-wk' : 'permanent'
+    const bumpedKeys = action.ratingKeys.map(k => k === '__velocity' ? 'velo' : prettyLabel(k)).join(', ')
     save.newsfeed.unshift({
       id: `act_${action.key}_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'AWARD',
-      headline: `${action.emoji} ${action.label} — ${result.playersAffected} player${result.playersAffected === 1 ? '' : 's'} bumped${result.injuries ? `, ${result.injuries} minor injury` : ''}.`,
+      headline: `${action.emoji} ${action.label} (${variantLabel}) — bumped ${bumpedKeys} for ${result.playersAffected} players.`,
       payload: result,
     })
     saveDynasty(save); setSave({ ...save })
-    setActionReceipt(`${action.label}: bumped ${result.playersAffected} players (+${result.totalBumps} total ratings)${result.injuries ? `, ${result.injuries} minor injury` : ''}.`)
-    setTimeout(() => setActionReceipt(null), 4000)
+    setActionReceipt(`✓ ${action.label} (${variantLabel}) — +${result.perPlayerBump.toFixed(1)} avg ${bumpedKeys} on ${result.playersAffected} players.`)
+    setTimeout(() => setActionReceipt(null), 5000)
   }
   const campOpen = save.calendar.mode === 'OFFSEASON' &&
     save.calendar.offseasonWeek >= 1 && save.calendar.offseasonWeek <= 17
@@ -75,19 +84,38 @@ export default function WeeklyActions() {
     const cost = level === 'EXTRA' ? EXTRA_STUDY_HALL_AP : STUDY_HALL_AP
     const bonus = level === 'EXTRA' ? EXTRA_STUDY_HALL_BONUS : STUDY_HALL_BONUS
     if (ap < cost) return
+    if (wasUsedThisWeek('STUDY_HALL')) { alert('Already done this week.'); return }
     spendAP('program', cost)
     save.studyHall = {
       ...save.studyHall,
-      cumulativeBonus: Math.min(0.6, (save.studyHall?.cumulativeBonus || 0) + bonus),
+      cumulativeBonus: (save.studyHall?.cumulativeBonus || 0) + bonus,
     }
+    // Apply the bonus to every player's GPA immediately so the change is
+    // visible right away (was only applied at term-end before).
+    const team = save.teams[save.userSchoolId]
+    for (const id of team.rosterPlayerIds) {
+      const p = save.players[id]
+      if (!p) continue
+      p.gpa = Math.min(4.0, Math.round((p.gpa + bonus) * 100) / 100)
+    }
+    markUsedThisWeek('STUDY_HALL')
     saveDynasty(save); setSave({ ...save })
+  }
+
+  function wasUsedThisWeek(key) {
+    return isActionUsedThisWeek(save, key)
+  }
+  function markUsedThisWeek(key) {
+    markActionUsedThisWeek(save, key)
   }
 
   function doFundraise() {
     if (ap < fundAp) return
+    if (wasUsedThisWeek('FUNDRAISE')) { alert('Already done this week.'); return }
     const raised = fundraise(fundAp, userHC.motivator, userSchool.programHistory)
     save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + raised
     spendAP('program', fundAp)
+    markUsedThisWeek('FUNDRAISE')
     save.newsfeed.unshift({
       id: `fund_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
       year: save.calendar.year, week: save.calendar.week,
@@ -155,24 +183,48 @@ export default function WeeklyActions() {
         </div>
       )}
 
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-3">Team Practice / Development</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-1">Team Practice / Development</h2>
+      <p className="text-[11px] text-gray-500 mb-3">Permanent boosts stick; Temporary boosts give a bigger bump but wear off after 4 weeks. Once per week each.</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
         {Object.values(WEEKLY_ACTIONS).map(a => {
-          const available = isActionAvailable(a, save.calendar, currentPhase)
-          const disabled = !available || ap < a.apCost
+          const available = isActionAvailable(a, currentPhase)
+          const usedThisWeek = isActionUsedThisWeek(save, a.key)
+          const baseDisabled = !available || usedThisWeek
+          const targetLabel = a.target === 'hitters' ? 'hitters' : a.target === 'pitchers' ? 'pitchers' : 'all players'
+          const keysLabel = a.ratingKeys.map(k => k === '__velocity' ? 'Velocity' : prettyLabel(k)).join(' / ')
           return (
-            <div key={a.key} className={'rounded-lg border p-3 ' + (disabled ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 bg-white hover:border-pnw-green')}>
-              <div className="flex justify-between items-start mb-1">
+            <div key={a.key} className={'rounded-lg border p-3 ' + (baseDisabled ? 'border-gray-200 bg-gray-50 opacity-70' : 'border-gray-200 bg-white')}>
+              <div className="flex justify-between items-baseline mb-1">
                 <div className="text-sm font-semibold text-pnw-slate">{a.emoji} {a.label}</div>
+                {usedThisWeek && <span className="text-[10px] text-green-700 font-bold">✓ used this week</span>}
+              </div>
+              <div className="text-[11px] text-gray-600 mb-2">
+                {a.blurb} • Targets <strong>{keysLabel}</strong> ({targetLabel}).
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => doAction(a)}
-                  disabled={disabled}
-                  className="px-2 py-1 text-xs rounded font-semibold bg-pnw-green text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  onClick={() => doAction(a, 'PERMANENT')}
+                  disabled={baseDisabled || ap < a.permAp}
+                  className="text-left p-2 border border-pnw-green/30 bg-pnw-cream rounded hover:bg-pnw-green hover:text-white disabled:opacity-40 disabled:cursor-not-allowed group"
                 >
-                  {a.apCost} AP
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-semibold">Permanent</span>
+                    <span className="text-[10px] bg-pnw-green text-white px-1.5 py-0.5 rounded group-hover:bg-white group-hover:text-pnw-green">{a.permAp} AP</span>
+                  </div>
+                  <div className="text-[10px] text-gray-600 group-hover:text-white">+{a.permAmount.toFixed(1)} per stat, permanent</div>
+                </button>
+                <button
+                  onClick={() => doAction(a, 'TEMPORARY')}
+                  disabled={baseDisabled || ap < a.tempAp}
+                  className="text-left p-2 border border-blue-300 bg-blue-50 rounded hover:bg-blue-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-semibold">Temporary (4 wks)</span>
+                    <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded group-hover:bg-white group-hover:text-blue-700">{a.tempAp} AP</span>
+                  </div>
+                  <div className="text-[10px] text-gray-600 group-hover:text-white">+{a.tempAmount.toFixed(1)} per stat, lasts 4 wk</div>
                 </button>
               </div>
-              <div className="text-[11px] text-gray-600">{a.blurb}</div>
               {!available && (
                 <div className="text-[10px] text-amber-700 mt-1">Available: {a.availableIn.join(' / ')}</div>
               )}

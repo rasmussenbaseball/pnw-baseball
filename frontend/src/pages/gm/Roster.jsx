@@ -113,13 +113,13 @@ export default function Roster() {
                       </span>
                     </td>
                     <td className={'text-xs ' + ratingColor(pot)}>{pot}</td>
-                    <td className="font-mono text-xs">{p.isHitter ? Math.round((p.hitter.contact_l + p.hitter.contact_r) / 2) : '—'}</td>
-                    <td className="font-mono text-xs">{p.isHitter ? Math.round((p.hitter.power_l + p.hitter.power_r) / 2) : '—'}</td>
-                    <td className="font-mono text-xs">{p.isHitter ? p.hitter.discipline : '—'}</td>
-                    <td className="font-mono text-xs">{p.isHitter ? p.hitter.fielding : '—'}</td>
-                    <td className="font-mono text-xs">{p.isPitcher ? p.pitcher.stuff : '—'}</td>
-                    <td className="font-mono text-xs">{p.isPitcher ? p.pitcher.control : '—'}</td>
-                    <td className="font-mono text-xs">{p.isPitcher ? p.pitcher.stamina : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={Math.round((p.hitter.contact_l + p.hitter.contact_r) / 2)} arrow={arrowFor(save, p.id, ['contact_l', 'contact_r'], 'hitter')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={Math.round((p.hitter.power_l + p.hitter.power_r) / 2)} arrow={arrowFor(save, p.id, ['power_l', 'power_r'], 'hitter')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={p.hitter.discipline} arrow={arrowFor(save, p.id, ['discipline'], 'hitter')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={p.hitter.fielding} arrow={arrowFor(save, p.id, ['fielding'], 'hitter')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stuff} arrow={arrowFor(save, p.id, ['stuff'], 'pitcher')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.control} arrow={arrowFor(save, p.id, ['control'], 'pitcher')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stamina} arrow={arrowFor(save, p.id, ['stamina'], 'pitcher')} /> : '—'}</td>
                   </tr>
                 )
               })}
@@ -146,4 +146,38 @@ function ratingColor(r) {
   if (r >= 60) return 'text-pnw-slate'
   if (r >= 50) return 'text-gray-600'
   return 'text-gray-400'
+}
+
+// Returns 'blue' if any of the given ratingKeys has an active temporary boost
+// for this player; otherwise 'green' / 'red' if there's been a recent
+// permanent change in the last 2 weeks; else null (no arrow).
+function arrowFor(save, playerId, ratingKeys, side) {
+  const temps = (save.tempBoosts || []).filter(b =>
+    b.playerId === playerId && b.side === side && ratingKeys.includes(b.ratingKey),
+  )
+  if (temps.length > 0) return 'blue'
+  const perms = (save.permanentBumps || []).filter(b =>
+    b.playerId === playerId && b.side === side && ratingKeys.includes(b.ratingKey),
+  )
+  if (perms.length === 0) return null
+  const total = perms.reduce((s, b) => s + b.amount, 0)
+  if (total > 0.1) return 'green'
+  if (total < -0.1) return 'red'
+  return null
+}
+
+function StatCell({ value, arrow }) {
+  if (!arrow) return <span>{value}</span>
+  const icon = arrow === 'red' ? '↓' : '↑'
+  const color = arrow === 'green' ? 'text-green-600' :
+                arrow === 'red'   ? 'text-red-600' :
+                                    'text-blue-600'
+  const title = arrow === 'blue'  ? 'Temporary boost active' :
+                arrow === 'green' ? 'Increased in last 2 weeks' :
+                                    'Decreased in last 2 weeks'
+  return (
+    <span title={title}>
+      {value}<span className={'ml-0.5 ' + color}>{icon}</span>
+    </span>
+  )
 }

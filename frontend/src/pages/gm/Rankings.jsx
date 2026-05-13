@@ -40,9 +40,22 @@ export default function Rankings() {
 
   if (!save) return <Navigate to="/gm" replace />
 
+  // SOS rank — sort descending by sos_index, then assign rank (1 = hardest).
+  const sosRankById = useMemo(() => {
+    const byHardness = Object.values(ratings)
+      .sort((a, b) => b.sos_index - a.sos_index)
+    const out = {}
+    byHardness.forEach((r, i) => { out[r.schoolId] = i + 1 })
+    return out
+  }, [ratings])
+
   const sorted = useMemo(() => {
     return Object.values(ratings)
-      .sort((a, b) => b[sortPillar] - a[sortPillar])
+      .sort((a, b) => {
+        // For SOS sort, lower rank (1) wins
+        if (sortPillar === 'sos_index') return b.sos_index - a.sos_index
+        return b[sortPillar] - a[sortPillar]
+      })
   }, [ratings, sortPillar])
 
   return (
@@ -50,7 +63,7 @@ export default function Rankings() {
       <div className="mb-6">
         <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
         <h1 className="text-3xl font-bold text-pnw-slate mt-1">National Rankings</h1>
-        <p className="text-sm text-gray-600">Predictive, SOS-adjusted national poll. Recomputes from in-game results.</p>
+        <p className="text-sm text-gray-600">All NAIA programs ranked. SOS rank = 1 means hardest schedule.</p>
       </div>
 
       <div className="flex justify-between items-center mb-3">
@@ -82,7 +95,7 @@ export default function Rankings() {
               <th>Offense</th>
               <th>Pitching</th>
               <th>Defense</th>
-              <th>SOS</th>
+              <th title="Strength of Schedule rank — 1 = hardest schedule in NAIA">SOS Rank</th>
             </tr>
           </thead>
           <tbody>
@@ -99,7 +112,7 @@ export default function Rankings() {
                   <td className={'font-mono ' + ratingColor(r.offense_rating)}>{r.offense_rating.toFixed(2)}</td>
                   <td className={'font-mono ' + ratingColor(r.pitching_rating)}>{r.pitching_rating.toFixed(2)}</td>
                   <td className={'font-mono ' + ratingColor(r.defense_rating)}>{r.defense_rating.toFixed(2)}</td>
-                  <td className="font-mono text-xs">{r.sos_index.toFixed(0)}</td>
+                  <td className="font-mono text-xs">#{sosRankById[r.schoolId]}</td>
                 </tr>
               )
             })}

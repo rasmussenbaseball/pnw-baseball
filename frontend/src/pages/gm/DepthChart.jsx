@@ -192,13 +192,13 @@ function PitchingGroup({ title, sub, players, slot, accent }) {
           <tr>
             <th className="text-left py-1 px-3">#</th>
             <th className="text-left">Pitcher</th>
-            <th>Class</th>
-            <th>Throws</th>
-            <th>Stuff</th>
-            <th>Ctrl</th>
-            <th>Stam</th>
-            <th>Velo</th>
-            <th>OVR</th>
+            <th className="text-center">Class</th>
+            <th className="text-center">Throws</th>
+            <th className="text-center">Stuff</th>
+            <th className="text-center">Ctrl</th>
+            <th className="text-center">Stam</th>
+            <th className="text-center">Velo</th>
+            <th className="text-center">OVR</th>
           </tr>
         </thead>
         <tbody>
@@ -210,15 +210,15 @@ function PitchingGroup({ title, sub, players, slot, accent }) {
                   {entry.p.firstName} {entry.p.lastName}
                 </Link>
               </td>
-              <td className="text-xs text-gray-500">{entry.p.classYear}</td>
-              <td className="text-xs text-gray-500">{entry.p.throws}</td>
-              <td className="text-xs font-mono">{entry.p.pitcher.stuff}</td>
-              <td className="text-xs font-mono">{entry.p.pitcher.control}</td>
-              <td className="text-xs font-mono">{entry.p.pitcher.stamina}</td>
-              <td className="text-xs font-mono text-gray-700">
+              <td className="text-xs text-gray-500 text-center">{entry.p.classYear}</td>
+              <td className="text-xs text-gray-500 text-center">{entry.p.throws}</td>
+              <td className="text-xs font-mono text-center">{entry.p.pitcher.stuff}</td>
+              <td className="text-xs font-mono text-center">{entry.p.pitcher.control}</td>
+              <td className="text-xs font-mono text-center">{entry.p.pitcher.stamina}</td>
+              <td className="text-xs font-mono text-gray-700 text-center">
                 {entry.p.pitcher.velocity_avg ? `${entry.p.pitcher.velocity_min}-${entry.p.pitcher.velocity_max}` : '—'}
               </td>
-              <td className={'text-xs font-mono font-bold ' + ovrColor(entry.ovr)}>{entry.ovr}</td>
+              <td className={'text-xs font-mono font-bold text-center ' + ovrColor(entry.ovr)}>{entry.ovr}</td>
             </tr>
           ))}
         </tbody>
