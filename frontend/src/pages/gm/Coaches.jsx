@@ -5,6 +5,7 @@ import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import {
   generateHiringCandidates, OPTIONAL_ROLES, STARTING_ROLES, ROLE_DESCRIPTIONS,
   FIRST_YEAR_REQUIRED_ROLES,
+  OPTIONAL_HIRE_META, generateOptionalHire, optionalHireBoosts,
 } from '../../gm/engine/coaches'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { makeRng } from '../../gm/engine/rng'
@@ -45,6 +46,7 @@ export default function Coaches() {
   const headCoach = save.coaches[userTeam.headCoachId]
   const assistants = userTeam.assistantCoachIds.map(id => save.coaches[id]).filter(Boolean)
 
+  const realAssistants = assistants.filter(c => !c.isSupportStaff)
   const filledRoles = new Set([headCoach.role, ...assistants.map(c => c.role)])
   const missingStarting = STARTING_ROLES.filter(r => !filledRoles.has(r))
   const optionalAvailable = OPTIONAL_ROLES.filter(r => !filledRoles.has(r))
@@ -57,7 +59,8 @@ export default function Coaches() {
   const isFirstYear = (save.dynastyYear ?? 1) === 1
   const isTutorialHireWeek = weekOfYear === 2
   const optionalLocked = weekOfYear < 4
-  const currentPayroll = assistants.reduce((s, c) => s + (c.salary || 0), 0)
+  // Payroll excludes support staff (their salary is 0 anyway, but be explicit).
+  const currentPayroll = realAssistants.reduce((s, c) => s + (c.salary || 0), 0)
   const overAverage = currentPayroll - AVERAGE_COACHING_PAYROLL
 
   const missingRequired = FIRST_YEAR_REQUIRED_ROLES.filter(r => !filledRoles.has(r))
@@ -99,6 +102,34 @@ export default function Coaches() {
     setSave({ ...save })
   }
 
+  function hireOptionalSupport(role) {
+    // Support-staff hire: 20 AP, no $ cost, no candidate slate. 1-year
+    // contract that auto-expires at year-end (handled elsewhere via
+    // contractYearsRemaining).
+    const cost = INTERVIEW_AP_COST
+    if (optionalLocked) {
+      alert('Optional support-staff hires unlock Week 4.')
+      return
+    }
+    if (save.ap.currentWeek < cost) {
+      alert(`Hiring this support role costs ${cost} AP — not enough this week.`)
+      return
+    }
+    save.ap.currentWeek -= cost
+    save.ap.spentThisWeek += cost
+    save.ap.spentByCategory.staff = (save.ap.spentByCategory.staff || 0) + cost
+    const hire = generateOptionalHire(userSchool, role)
+    save.coaches[hire.id] = hire
+    userTeam.assistantCoachIds = [...userTeam.assistantCoachIds, hire.id]
+    save.newsfeed.unshift({
+      id: `opt_hire_${hire.id}_${save.calendar.year}`,
+      year: save.calendar.year, week: save.calendar.week, type: 'COACH_HIRED',
+      headline: `🧑‍💼 Brought on a ${OPTIONAL_HIRE_META[role]?.label || prettyLabel(role)} (1-yr contract).`,
+      payload: { coachId: hire.id },
+    })
+    saveDynasty(save); setSave({ ...save })
+  }
+
   function hireCoach(candidate) {
     save.coaches[candidate.id] = candidate
     userTeam.assistantCoachIds = [...userTeam.assistantCoachIds, candidate.id]
@@ -138,7 +169,7 @@ export default function Coaches() {
     setSave({ ...save })
   }
 
-  const totalPayroll = (headCoach.salary || 0) + assistants.reduce((s, c) => s + (c.salary || 0), 0)
+  const totalPayroll = (headCoach.salary || 0) + realAssistants.reduce((s, c) => s + (c.salary || 0), 0)
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
@@ -146,7 +177,12 @@ export default function Coaches() {
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">Coaching Staff</h1>
-          <p className="text-sm text-gray-600">{assistants.length + 1} coaches total • Total payroll <span className="font-semibold">${(totalPayroll / 1000).toFixed(0)}K</span> • Interview costs {INTERVIEW_AP_COST} AP</p>
+          <p className="text-sm text-gray-600">
+            {realAssistants.length + 1} coach{realAssistants.length + 1 === 1 ? '' : 'es'}
+            {assistants.length > realAssistants.length && ` · ${assistants.length - realAssistants.length} support staff`}
+            {' '}• Total payroll <span className="font-semibold">${(totalPayroll / 1000).toFixed(0)}K</span>
+            {' '}• Interview costs {INTERVIEW_AP_COST} AP
+          </p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-pnw-green">{save.ap.currentWeek} AP</div>
@@ -203,8 +239,8 @@ export default function Coaches() {
         </div>
       )}
 
-      {/* Minimum-assistants warning */}
-      {weekOfYear >= 2 && assistants.length < MIN_ASSISTANTS && (
+      {/* Minimum-assistants warning — support staff don't count */}
+      {weekOfYear >= 2 && realAssistants.length < MIN_ASSISTANTS && (
         <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-4 text-sm text-red-900">
           <strong>⚠ Below the {MIN_ASSISTANTS}-assistant minimum.</strong> NAIA programs are required to
           carry at least three assistants (Pitching, Hitting, Bench). Hire to fill before sim.
@@ -253,14 +289,11 @@ export default function Coaches() {
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-2">Assistants</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        {assistants.map(c => (
+        {assistants.filter(c => !c.isSupportStaff).map(c => (
           <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <div className="flex justify-between items-start mb-2">
               <div>
                 <div className="text-xs uppercase tracking-wider text-gray-500">{prettyLabel(c.role)}</div>
-                {c.role === 'DATA_ANALYTICS_MANAGER' && (
-                  <div className="text-[10px] text-blue-700">📊 Advanced stats unlocked</div>
-                )}
               </div>
               <button onClick={() => fireCoach(c)} className="text-xs text-red-700 hover:underline">Fire</button>
             </div>
@@ -268,6 +301,34 @@ export default function Coaches() {
           </div>
         ))}
       </div>
+
+      {/* Active support staff — separate row so users see them as boosts, not coaches */}
+      {assistants.some(c => c.isSupportStaff) && (
+        <>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-2">Active Support Staff</h2>
+          <ActiveBoostsPanel team={userTeam} coaches={save.coaches} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            {assistants.filter(c => c.isSupportStaff).map(c => {
+              const meta = OPTIONAL_HIRE_META[c.role]
+              return (
+                <div key={c.id} className="bg-white rounded-xl border border-pnw-green/30 p-3 shadow-sm">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      <div className="text-xl shrink-0">{meta?.icon || '👤'}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs uppercase tracking-wider text-gray-500">{meta?.label || prettyLabel(c.role)}</div>
+                        <div className="text-[11px] font-bold text-pnw-green mt-0.5">{meta?.effectLabel}</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5">{c.contractYearsRemaining || 1} yr left · free</div>
+                      </div>
+                    </div>
+                    <button onClick={() => fireCoach(c)} className="text-xs text-red-700 hover:underline shrink-0">Release</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {missingStarting.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
@@ -292,9 +353,15 @@ export default function Coaches() {
         <div className={'rounded-xl border p-5 shadow-sm ' +
           (optionalLocked ? 'bg-gray-50 border-gray-200 opacity-70' : 'bg-white border-gray-200')}>
           <div className="flex justify-between items-baseline mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-              Optional Hires {optionalLocked && '🔒'}
-            </h2>
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
+                Optional Support Staff {optionalLocked && '🔒'}
+              </h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                One-year contracts. Pay <strong>{INTERVIEW_AP_COST} AP</strong> — no salary, no negotiation.
+                Effects apply while the role is filled.
+              </p>
+            </div>
             {optionalLocked && (
               <span className="text-[10px] text-gray-500 italic">
                 Unlocks Week 4 — focus on required assistants first.
@@ -303,13 +370,13 @@ export default function Coaches() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {optionalAvailable.map(role => (
-              <HireButton
+              <SupportStaffCard
                 key={role}
                 role={role}
                 apCurrent={save.ap.currentWeek}
-                cost={isTutorialHireWeek ? 0 : INTERVIEW_AP_COST}
+                apCost={INTERVIEW_AP_COST}
                 disabled={optionalLocked}
-                onClick={() => startInterview(role)}
+                onHire={() => hireOptionalSupport(role)}
               />
             ))}
           </div>
@@ -324,6 +391,56 @@ export default function Coaches() {
           onClose={() => { setInterviewing(null); setCandidates([]) }}
         />
       )}
+    </div>
+  )
+}
+
+function ActiveBoostsPanel({ team, coaches }) {
+  const boosts = useMemo(() => optionalHireBoosts(team.assistantCoachIds, coaches), [team, coaches])
+  const items = []
+  if (boosts.apBonus > 0) items.push({ label: `+${boosts.apBonus} AP / week`, color: 'text-pnw-green' })
+  if (boosts.injuryMult < 1.0) items.push({ label: `−${Math.round((1 - boosts.injuryMult) * 100)}% injury risk`, color: 'text-green-700' })
+  if (boosts.durabilityBump > 0) items.push({ label: `+${boosts.durabilityBump} durability`, color: 'text-pnw-green' })
+  if (boosts.budgetBonus > 0) items.push({ label: `+$${(boosts.budgetBonus / 1000).toFixed(0)}K budget`, color: 'text-emerald-700' })
+  if (boosts.advancedStats) items.push({ label: 'Advanced stats unlocked', color: 'text-blue-700' })
+  if (items.length === 0) return null
+  return (
+    <div className="bg-pnw-cream/50 border border-pnw-green/30 rounded-lg p-3 mb-3">
+      <div className="text-[10px] uppercase tracking-wider text-pnw-slate font-bold mb-1">Active staff boosts</div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((it, i) => (
+          <span key={i} className={'text-xs font-semibold bg-white px-2 py-1 rounded ' + it.color}>{it.label}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SupportStaffCard({ role, apCurrent, apCost, disabled, onHire }) {
+  const meta = OPTIONAL_HIRE_META[role]
+  const cantAfford = apCurrent < apCost
+  return (
+    <div className={'border rounded-lg p-3 ' +
+      (disabled ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 hover:border-pnw-green hover:bg-pnw-cream/40 transition')}>
+      <div className="flex items-start gap-3">
+        <div className="text-2xl shrink-0">{meta?.icon || '👤'}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-baseline gap-2">
+            <div className="font-semibold text-sm text-pnw-slate">{meta?.label || prettyLabel(role)}</div>
+            <span className="text-[10px] uppercase tracking-wider text-pnw-green font-bold whitespace-nowrap">
+              {meta?.effectLabel}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-600 mt-1 leading-snug">{meta?.blurb}</div>
+          <button
+            onClick={onHire}
+            disabled={disabled || cantAfford}
+            className="mt-2 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold w-full hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Hire — {apCost} AP · 1-yr
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

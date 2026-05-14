@@ -136,6 +136,74 @@ export function overallTier(ovr) {
   return { tier: 'developmental', color: 'text-gray-500', bg: 'bg-gray-50' }
 }
 
+// ─── Position changes ────────────────────────────────────────────────────────
+//
+// Players can be moved to a new primary position. The new position uses its
+// own OVR weights (so a CF moving to RF will weight power more, speed less)
+// AND the player's fielding rating takes a hit because they're learning a
+// new spot. Bigger transitions = bigger fielding drop:
+//
+//   - Same group, similar difficulty (LF ↔ RF, 1B ↔ 3B):  −3 fielding
+//   - Same group, harder spot (1B → SS, LF → CF):         −6 to −8
+//   - OF ↔ IF crossover:                                  −12
+//   - Anything → C (catcher):                             −22 (very hard)
+//   - C → anything else:                                  −16
+//   - Anything → DH (designated hitter):                    0 (no defense)
+//
+// Penalty applies as a permanent bump on the player's fielding rating.
+
+const HITTER_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']
+
+function positionGroup(pos) {
+  if (pos === 'C') return 'C'
+  if (['1B', '2B', '3B', 'SS'].includes(pos)) return 'IF'
+  if (['LF', 'CF', 'RF'].includes(pos)) return 'OF'
+  if (pos === 'DH') return 'DH'
+  return 'P'
+}
+
+function positionDifficulty(pos) {
+  // 0 = easiest, higher = harder defensively
+  switch (pos) {
+    case 'DH': return 0
+    case '1B': return 1
+    case 'LF': return 2
+    case 'RF': return 2
+    case '3B': return 3
+    case '2B': return 4
+    case 'CF': return 5
+    case 'SS': return 6
+    case 'C':  return 9
+    default:   return 3
+  }
+}
+
+/**
+ * Fielding-rating penalty for moving a player's primary position from
+ * `from` → `to`. Positive number = points to subtract from current fielding.
+ * Returns 0 if the move is to DH (or no actual change).
+ *
+ * @param {string} from
+ * @param {string} to
+ * @returns {number}
+ */
+export function positionChangePenalty(from, to) {
+  if (!from || !to || from === to) return 0
+  if (to === 'DH') return 0   // DH has no defense — no learning cost
+  if (to === 'C')  return 22  // huge — catcher is the hardest spot
+  if (from === 'C') return 16 // any catcher learning anywhere else
+  const gA = positionGroup(from)
+  const gB = positionGroup(to)
+  if (gA !== gB) return 12     // OF ↔ IF crossover
+  // Same group — fee depends on whether new spot is harder
+  const diff = positionDifficulty(to) - positionDifficulty(from)
+  if (diff <= 0) return 3      // moving to easier or same spot
+  return Math.min(10, 3 + diff * 2)
+}
+
+/** List of position keys a hitter can be moved to. Excludes pitcher slots. */
+export const HITTER_POSITION_OPTIONS = HITTER_POSITIONS
+
 /**
  * Aggregate team OVR — average top-9 hitter OVR + top-5 pitcher OVR.
  */

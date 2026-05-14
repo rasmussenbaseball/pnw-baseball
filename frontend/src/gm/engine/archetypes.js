@@ -115,7 +115,11 @@ export function applyArchetypeBias(ratings, archetypeKey) {
  * @param {Coach[]} assistants
  */
 export function staffRatings(headCoach, assistants) {
-  const list = [headCoach, ...(assistants || [])].filter(Boolean)
+  // Support-staff hires (DOO, S&C, Recruiting Coord, etc.) carry no ratings —
+  // they pay out via separate boosts, not the dev/mot/rec/tac averages. Drop
+  // them from the rating roll-up so they don't dilute the staff OVR.
+  const realAssistants = (assistants || []).filter(c => c && !c.isSupportStaff)
+  const list = [headCoach, ...realAssistants].filter(Boolean)
   if (list.length === 0) {
     return { developer: 0, motivator: 0, recruiter: 0, tactician: 0, overall: 0, synergy: 1.0, synergyLabel: 'No staff', hcArchetype: 'GENERALIST' }
   }
@@ -135,12 +139,12 @@ export function staffRatings(headCoach, assistants) {
   let dev = avg('developer'), mot = avg('motivator'), rec = avg('recruiter'), tac = avg('tactician')
 
   const hcArc = headCoach?.archetype || inferArchetype(headCoach)
-  const synergy = computeSynergy(hcArc, assistants || [])
+  const synergy = computeSynergy(hcArc, realAssistants)
 
   // Depth bonus: bigger staffs (more eyes, more development reps) get a
   // small additional bump. 3 assistants = baseline (+0%); each extra
   // assistant beyond the minimum adds +1% up to +4% at 7 assistants.
-  const depthBonus = Math.min(0.04, Math.max(0, ((assistants?.length ?? 0) - 3) * 0.01))
+  const depthBonus = Math.min(0.04, Math.max(0, (realAssistants.length - 3) * 0.01))
   const mult = synergy.mult + depthBonus
 
   dev *= mult

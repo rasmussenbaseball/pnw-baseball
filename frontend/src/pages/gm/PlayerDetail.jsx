@@ -1,8 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams, Navigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { loadDynasty } from '../../gm/engine/save'
-import { playerOverall, playerPotentialOverall, overallTier } from '../../gm/engine/playerRating'
+import { loadDynasty, saveDynasty } from '../../gm/engine/save'
+import {
+  playerOverall, playerPotentialOverall, overallTier,
+  positionChangePenalty, HITTER_POSITION_OPTIONS,
+} from '../../gm/engine/playerRating'
 import AttrTooltip from '../../gm/components/AttrTooltip'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
@@ -14,10 +17,47 @@ export default function PlayerDetail() {
   const slot = parseInt(params.get('slot') || '1', 10)
   const userId = user?.id || 'guest'
 
-  const save = useMemo(() => loadDynasty(userId, slot), [userId, slot])
+  const [save, setSave] = useState(() => loadDynasty(userId, slot))
+  const [showMoveModal, setShowMoveModal] = useState(false)
   if (!save) return <Navigate to="/gm" replace />
   const player = save.players[playerId]
   if (!player) return <Navigate to={`/gm/roster?slot=${slot}`} replace />
+
+  function applyPositionChange(newPos) {
+    if (!player.isHitter) return
+    const oldPos = player.primaryPosition
+    if (oldPos === newPos) { setShowMoveModal(false); return }
+    const penalty = positionChangePenalty(oldPos, newPos)
+    // Mutate the player in place + record a permanent fielding bump so the
+    // Roster / Player pages show the arrow indicator. Floor at 20 so we
+    // don't drop someone to single digits — they're still a baseball player.
+    player.primaryPosition = newPos
+    if (penalty > 0) {
+      const before = player.hitter.fielding
+      player.hitter.fielding = Math.max(20, before - penalty)
+      save.permanentBumps = save.permanentBumps || []
+      save.permanentBumps.push({
+        playerId: player.id,
+        side: 'hitter',
+        ratingKey: 'fielding',
+        amount: -(before - player.hitter.fielding),
+        week: save.calendar?.week,
+        year: save.calendar?.year,
+        source: `Position change ${oldPos} → ${newPos}`,
+      })
+    }
+    save.newsfeed = save.newsfeed || []
+    save.newsfeed.unshift({
+      id: `pos_change_${player.id}_${Date.now()}`,
+      year: save.calendar?.year, week: save.calendar?.week, type: 'PLAYER_BOOST',
+      headline: `🔄 ${player.firstName} ${player.lastName} moved from ${displayPosition(oldPos)} to ${displayPosition(newPos)}` +
+        (penalty > 0 ? ` (−${penalty} fielding)` : ''),
+      payload: { playerId: player.id, fromPos: oldPos, toPos: newPos, penalty },
+    })
+    saveDynasty(save)
+    setSave({ ...save })
+    setShowMoveModal(false)
+  }
 
   const ovr = playerOverall(player)
   const pot = playerPotentialOverall(player)
@@ -40,12 +80,28 @@ export default function PlayerDetail() {
           {player.previousSchoolName && (
             <p className="text-xs text-gray-500">From {player.previousSchoolName}</p>
           )}
+          {player.isHitter && (
+            <button
+              onClick={() => setShowMoveModal(true)}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-pnw-green hover:underline"
+            >
+              🔄 Change position
+            </button>
+          )}
         </div>
         <div className="flex gap-2">
           <RatingPill label="OVR" value={ovr} tier={tier} />
           <RatingPill label="POT" value={pot} tier={potTier} />
         </div>
       </div>
+
+      {showMoveModal && player.isHitter && (
+        <PositionChangeModal
+          player={player}
+          onPick={applyPositionChange}
+          onClose={() => setShowMoveModal(false)}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Academic + scholarship card */}
@@ -183,6 +239,62 @@ function HappinessPanel({ player }) {
             {trendDown && <span className="ml-1 text-red-700 font-semibold">↓ trending down</span>}
             {/* meeting boosts are now permanent direct bumps — no countdown */}
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PositionChangeModal({ player, onPick, onClose }) {
+  const current = player.primaryPosition
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="text-lg font-bold text-pnw-slate">Move {player.firstName} {player.lastName}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Currently {displayPosition(current)}. Moving spots costs fielding rating
+              — bigger transitions (especially to/from catcher) cost more.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {HITTER_POSITION_OPTIONS.map(pos => {
+            const penalty = positionChangePenalty(current, pos)
+            const isCurrent = pos === current
+            const color = penalty === 0 ? 'border-green-300 hover:bg-green-50'
+              : penalty <= 5 ? 'border-amber-200 hover:bg-amber-50'
+              : penalty <= 12 ? 'border-orange-300 hover:bg-orange-50'
+              : 'border-red-400 hover:bg-red-50'
+            return (
+              <button
+                key={pos}
+                onClick={() => onPick(pos)}
+                disabled={isCurrent}
+                className={'p-3 rounded-lg border-2 text-center transition disabled:opacity-40 disabled:cursor-not-allowed ' +
+                  (isCurrent ? 'border-pnw-green bg-pnw-cream/40' : 'bg-white ' + color)}
+              >
+                <div className="font-bold text-pnw-slate">{displayPosition(pos)}</div>
+                <div className={'text-[10px] mt-1 font-mono ' +
+                  (penalty === 0 ? 'text-green-700' :
+                   penalty <= 5 ? 'text-amber-700' :
+                   penalty <= 12 ? 'text-orange-700' :
+                   'text-red-700')}>
+                  {isCurrent ? 'current' : penalty === 0 ? 'no penalty' : `−${penalty} field`}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        <div className="mt-4 bg-gray-50 rounded p-3 text-[11px] text-gray-600 leading-snug">
+          <div><strong className="text-pnw-slate">How this works:</strong></div>
+          <div>• <strong>Same area</strong> (LF↔RF, 1B↔3B): small penalty (−3)</div>
+          <div>• <strong>Cross-area</strong> (OF↔IF): moderate (−12)</div>
+          <div>• <strong>Any spot → Catcher</strong>: huge (−22) — toughest spot to learn</div>
+          <div>• <strong>Any spot → DH</strong>: free (no defense)</div>
+          <div className="mt-1">The new position also weights your other ratings differently, so OVR will shift.</div>
         </div>
       </div>
     </div>

@@ -14,6 +14,7 @@ import {
 } from '../../gm/engine/budget'
 import { totalAnnualTravelCost } from '../../gm/engine/travel'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
+import { optionalHireBoosts } from '../../gm/engine/coaches'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -101,7 +102,11 @@ export default function Budget() {
   if (!save) return <Navigate to="/gm" replace />
 
   const budget = save.budget
-  const total = budget.totalAthleticBudget
+  // DOO support staff adds +$50K to the spendable budget. Compute once here
+  // so the usage bar + every category percentage uses the boosted total.
+  const userTeam = save.teams[save.userSchoolId]
+  const boosts = optionalHireBoosts(userTeam?.assistantCoachIds, save.coaches)
+  const total = (budget.totalAthleticBudget || 0) + (boosts.budgetBonus || 0)
   const travelLocked = !!budget.travelLocked
   const weekOfYear = save.calendar?.weekOfYear ?? 1
   const isWk3Tutorial = weekOfYear === 3
@@ -169,7 +174,12 @@ export default function Budget() {
         <h1 className="text-3xl font-bold text-pnw-slate mt-1">Annual Budget</h1>
         <p className="text-sm text-gray-600">
           Distribute <strong>${(total / 1000).toFixed(0)}K</strong> across categories.
-          Job Security: <JobSecurityBadge js={budget.jobSecurity} />
+          {boosts.budgetBonus > 0 && (
+            <span className="text-emerald-700 font-semibold">
+              {' '}(includes +${(boosts.budgetBonus / 1000).toFixed(0)}K from Director of Operations)
+            </span>
+          )}
+          {' '}· Job Security: <JobSecurityBadge js={budget.jobSecurity} />
           {' '}· {budget.yearsAtSchool || 0} year{budget.yearsAtSchool === 1 ? '' : 's'} at school
         </p>
       </div>

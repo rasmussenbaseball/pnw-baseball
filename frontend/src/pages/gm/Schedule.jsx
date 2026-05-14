@@ -11,6 +11,7 @@ import {
   countScrimmages, scrimmagesRemaining,
   countD1Midweeks, d1MidweeksRemaining,
   getConferenceRules,
+  autoCreateSchedule,
   NAIA_GAME_CAP, NAIA_SCRIMMAGE_CAP, NAIA_D1_MIDWEEK_CAP,
   REGULAR_SEASON_LAST_WEEK,
 } from '../../gm/engine/schedule'
@@ -90,6 +91,26 @@ export default function Schedule() {
     }
   }
 
+  function handleAutoCreate() {
+    // Auto-fill open weekend slots + a couple midweek games. Idempotent —
+    // safe to click multiple times; only fills what's currently OPEN.
+    const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
+      div.teams.map(t => ({ ...t, division: div.id })),
+    )
+    const result = autoCreateSchedule(
+      userSchoolId, userSchool.conferenceId, save.schools, flatNonNaia,
+      save.schedule, seasonYear, save.seed || Date.now(),
+    )
+    if (result.games.length === 0) {
+      alert('Nothing to auto-fill — schedule already complete or no eligible opponents found.')
+      return
+    }
+    save.schedule.push(...result.games)
+    saveDynasty(save)
+    setSave({ ...save })
+    alert('✨ ' + result.summary + '\n\nReview the schedule and adjust if you want — every game can be replaced before you confirm.')
+  }
+
   function handleAddOpponent(week, opponent, options) {
     const result = tryAddNonConfGame(
       userSchoolId, opponent.id, opponent.division, week, seasonYear, schedule,
@@ -144,24 +165,112 @@ export default function Schedule() {
         </button>
       </div>
 
-      {/* INCOMPLETE banner */}
+      {/* INCOMPLETE banner — now includes the AUTO-CREATE button */}
       {scheduleIncomplete && (
         <div className="bg-amber-100 border-l-4 border-amber-500 text-amber-900 p-4 rounded mb-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
               <div className="font-bold text-base">⚠ Schedule incomplete</div>
               <div className="text-sm mt-1">
                 You have <strong>{openWeeks.length} open weekend slot{openWeeks.length === 1 ? '' : 's'}</strong> to fill before opening day.
-                Conference weekends are pre-built — you just need to add non-conference series in Weeks 1-3 (and any post-conference weeks) and decide on byes.
+                Click <strong>Auto-create</strong> for a smart starter slate, or pick opponents manually below.
               </div>
             </div>
-            <div className="text-right text-xs whitespace-nowrap ml-4">
+            <div className="text-right text-xs whitespace-nowrap shrink-0">
               <div>{filledWeekends}/{totalWeekendSlots} weekends set</div>
               <div className="text-amber-700">{gameCapRemaining} of {NAIA_GAME_CAP} games left</div>
             </div>
           </div>
+          <div className="mt-3 pt-3 border-t border-amber-300 flex items-center justify-between gap-3">
+            <div className="text-xs text-amber-800 leading-snug">
+              ✨ Picks 2+ in-region NAIA opponents, 1 out-of-region for variety,
+              plus 1-2 midweek home games. Mixes home/away to keep travel cost reasonable.
+            </div>
+            <button
+              onClick={handleAutoCreate}
+              className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0"
+            >
+              ✨ Auto-create schedule
+            </button>
+          </div>
         </div>
       )}
+
+      {/* AUTO FALL GAMES — pinned near the top so the user sees them */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <div className="text-sm font-semibold text-amber-900">
+              🍂 Fall Scrimmages — auto-scheduled
+            </div>
+            <div className="text-xs text-amber-700">
+              8 games (4 doubleheaders) vs nearby D2/D3/JUCO opponents. No NAIA fall opponents allowed. Don't count toward record.
+            </div>
+          </div>
+          <div className="text-[11px] text-amber-800 bg-amber-100 px-2 py-1 rounded font-mono">
+            {scrimmages.length} game{scrimmages.length === 1 ? '' : 's'} set
+          </div>
+        </div>
+        {scrimmages.length > 0 && (
+          <div className="space-y-1 mt-2 text-xs text-amber-900">
+            {Object.entries(groupBySeriesId(scrimmages)).map(([sid, games]) => {
+              const g = games[0]
+              const oppId = g.homeId === userSchoolId ? g.awayId : g.homeId
+              const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId]
+              const isHome = g.homeId === userSchoolId
+              return (
+                <div key={sid} className="flex items-center gap-2">
+                  <TeamLogo school={opp} size={16} />
+                  <span>{g.date} — {games.length}-game DH {isHome ? 'vs' : '@'} {opp?.name}</span>
+                  <span className="text-amber-600 text-[10px]">({opp?.division || 'opponent'})</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* MIDWEEK section — moved up so people actually see it */}
+      <div className={'rounded-xl p-4 border mb-4 ' + (scheduleIncomplete ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200')}>
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <div className={'text-sm font-semibold ' + (scheduleIncomplete ? 'text-gray-500' : 'text-blue-900')}>
+              Midweek games {scheduleIncomplete && '(locked)'}
+            </div>
+            <div className={'text-xs ' + (scheduleIncomplete ? 'text-gray-400' : 'text-blue-700')}>
+              {scheduleIncomplete
+                ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tue/Wed) for more reps.'
+                : `Optional. NAIA vs D1 hard cap of ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left). NAIA-vs-NAIA or D2/D3 single games allowed.`
+              }
+            </div>
+          </div>
+          {!scheduleIncomplete && (
+            <button
+              onClick={() => setShowMidweekSection(s => !s)}
+              className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded hover:opacity-90"
+            >
+              {showMidweekSection ? 'Hide' : '+ Add midweek'}
+            </button>
+          )}
+        </div>
+        {!scheduleIncomplete && showMidweekSection && (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[11px] text-blue-800 mb-2">Pick a week (Tue/Wed slot). Midweeks are limited to non-conference opponents.</p>
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
+              {scheduledWeekNums.filter(w => byWeek[w].some(g => g.type === 'CONFERENCE' || g.type === 'BYE' || g.type === 'NON_CONFERENCE'))
+                .map(week => (
+                  <button
+                    key={week}
+                    onClick={() => setPickingMidweek(week)}
+                    className="text-xs border border-blue-300 bg-white text-blue-800 rounded px-2 py-1 hover:bg-blue-100"
+                  >
+                    Wk {week}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* COMPLETE — mark-done button to satisfy Wk 1 phase-gate */}
       {!scheduleIncomplete && !save.scheduleComplete && (
@@ -279,82 +388,6 @@ export default function Schedule() {
 
       {/* TRAVEL BUDGET WARNING — Wk 1 user-visible signal */}
       <TravelBudgetWarning save={save} travelCost={travelCost} />
-
-      {/* AUTO FALL GAMES — read-only display */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <div className="text-sm font-semibold text-amber-900">
-              🍂 Fall Scrimmages — auto-scheduled
-            </div>
-            <div className="text-xs text-amber-700">
-              8 games (4 doubleheaders) vs nearby D2/D3/JUCO opponents. No NAIA fall opponents allowed. Don't count toward record.
-            </div>
-          </div>
-          <div className="text-[11px] text-amber-800 bg-amber-100 px-2 py-1 rounded font-mono">
-            {scrimmages.length} game{scrimmages.length === 1 ? '' : 's'} set
-          </div>
-        </div>
-        {scrimmages.length > 0 && (
-          <div className="space-y-1 mt-2 text-xs text-amber-900">
-            {Object.entries(groupBySeriesId(scrimmages)).map(([sid, games]) => {
-              const g = games[0]
-              const oppId = g.homeId === userSchoolId ? g.awayId : g.homeId
-              const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId]
-              const isHome = g.homeId === userSchoolId
-              return (
-                <div key={sid} className="flex items-center gap-2">
-                  <TeamLogo school={opp} size={16} />
-                  <span>{g.date} — {games.length}-game DH {isHome ? 'vs' : '@'} {opp?.name}</span>
-                  <span className="text-amber-600 text-[10px]">({opp?.division || 'opponent'})</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* MIDWEEK section — gated until all weekends scheduled */}
-      <div className={'rounded-xl p-4 border ' + (scheduleIncomplete ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200')}>
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <div className={'text-sm font-semibold ' + (scheduleIncomplete ? 'text-gray-500' : 'text-blue-900')}>
-              Midweek games {scheduleIncomplete && '(locked)'}
-            </div>
-            <div className={'text-xs ' + (scheduleIncomplete ? 'text-gray-400' : 'text-blue-700')}>
-              {scheduleIncomplete
-                ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tue/Wed) for more reps.'
-                : `Optional. NAIA vs D1 hard cap of ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left). NAIA-vs-NAIA or D2/D3 single games allowed.`
-              }
-            </div>
-          </div>
-          {!scheduleIncomplete && (
-            <button
-              onClick={() => setShowMidweekSection(s => !s)}
-              className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded hover:opacity-90"
-            >
-              {showMidweekSection ? 'Hide' : '+ Add midweek'}
-            </button>
-          )}
-        </div>
-        {!scheduleIncomplete && showMidweekSection && (
-          <div className="mt-3 space-y-1.5">
-            <p className="text-[11px] text-blue-800 mb-2">Pick a week (Tue/Wed slot). Midweeks are limited to non-conference opponents.</p>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
-              {scheduledWeekNums.filter(w => byWeek[w].some(g => g.type === 'CONFERENCE' || g.type === 'BYE' || g.type === 'NON_CONFERENCE'))
-                .map(week => (
-                  <button
-                    key={week}
-                    onClick={() => setPickingMidweek(week)}
-                    className="text-xs border border-blue-300 bg-white text-blue-800 rounded px-2 py-1 hover:bg-blue-100"
-                  >
-                    Wk {week}
-                  </button>
-                ))}
-            </div>
-          </div>
-        )}
-      </div>
 
       {pickingForWeek != null && (
         <OpponentPicker

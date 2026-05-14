@@ -36,7 +36,7 @@
  */
 
 import { makeRng, hashSeed } from './rng'
-import { sortByProximity } from './proximity'
+import { sortByProximity, stateProximity } from './proximity'
 import confRulesRaw from '../data/conference_rules.json'
 
 /** @typedef {import('./types.js').Conference} Conference */
@@ -744,6 +744,224 @@ export function autoScheduleFallGames(userSchoolId, schools, nonNaiaTeams, year,
     })
   }
   return games
+}
+
+// ─── Auto-create non-conference + midweek schedule (user-facing button) ─────
+//
+// One-click "build me a sensible non-conf slate + a couple midweeks." Picks
+// opponents semi-randomly with these constraints:
+//   - At least 2 in-region (same region as user) NAIA opponents
+//   - At least 1 out-of-region NAIA opponent (variety + RPI quality)
+//   - Mix of home / away so the user isn't on the road for every trip
+//   - Prefer closer states for any away trips (travel cost realism)
+//   - Add 1-2 midweek single games (D2/D3/JUCO or NAIA), home-only to keep
+//     travel cheap. D1 midweeks are NOT auto-picked (high cost + risk).
+//
+// Returns the list of newly-added Game records (caller pushes onto schedule).
+
+/**
+ * @param {string} userSchoolId
+ * @param {string} conferenceId
+ * @param {Object<string,School>} schools           full NAIA schools table
+ * @param {Array} nonNaiaTeams                       flat list of D1/D2/D3/JUCO opponents
+ * @param {Game[]} existingSchedule
+ * @param {number} year                              season year
+ * @param {number} seed
+ * @returns {{ games: Game[], summary: string }}
+ */
+export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaTeams, existingSchedule, year, seed) {
+  const userSchool = schools[userSchoolId]
+  if (!userSchool) return { games: [], summary: 'No user school.' }
+  const userState = userSchool.state
+  const userRegion = userSchool.region
+
+  const rng = makeRng('autoSched', userSchoolId, year, seed)
+
+  // ── Pick non-conf opponents ────────────────────────────────────────────
+  // Pool = NAIA only, not in user's conference. Bucket by in-region vs
+  // out-of-region, then within each bucket order by proximity to user state
+  // (with a small random jitter so it's not always the same picks).
+  const naiaCandidates = Object.values(schools)
+    .filter(s => s.id !== userSchoolId)
+    .filter(s => s.conferenceId !== conferenceId)
+    .map(s => ({
+      id: s.id, name: s.name, state: s.state, region: s.region,
+      proximity: stateProximity(userState, s.state),
+    }))
+
+  // In-region buckets — closer first. CA + PNW states get prioritized for
+  // the user (e.g. Bushnell in OR → CA + WA + ID candidates float up first).
+  const PRIORITY_STATES = new Set(['CA', 'OR', 'WA', 'ID', 'NV', 'MT'])
+  const inRegion = naiaCandidates
+    .filter(c => c.region === userRegion)
+    .sort((a, b) => {
+      const aPri = PRIORITY_STATES.has(a.state) ? -1 : 0
+      const bPri = PRIORITY_STATES.has(b.state) ? -1 : 0
+      if (aPri !== bPri) return aPri - bPri
+      if (a.proximity !== b.proximity) return a.proximity - b.proximity
+      return rng.next() - 0.5
+    })
+  const outRegion = naiaCandidates
+    .filter(c => c.region !== userRegion)
+    .sort((a, b) => {
+      if (a.proximity !== b.proximity) return a.proximity - b.proximity
+      return rng.next() - 0.5
+    })
+
+  // Find which slots are open after conference is built. Auto-fills ONLY
+  // weekend slots; doesn't touch any games already on the schedule.
+  const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year)
+  if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.' }
+
+  // Pick opponents: at least 2 in-region, at least 1 out-of-region. Shuffle
+  // the in-region pool slightly so the user isn't seeing the same matchups
+  // year after year.
+  const targetInRegion = Math.max(2, Math.min(openWeeks.length - 1, openWeeks.length - 1))
+  const wantedOutRegion = 1
+
+  /** Working copy of pools */
+  const inPool = [...inRegion]
+  const outPool = [...outRegion]
+
+  // Build the assignment: alternate home/away so the user has a mix. Half
+  // home / half away by default, leaning home (saves $$ early dynasty).
+  const newGames = []
+  const used = new Set()
+  let placedIn = 0
+  let placedOut = 0
+  let homeCount = 0
+
+  /**
+   * Try to add a non-conf series for a slot+opponent.
+   * @param {number} week
+   * @param {{id:string, state:string}} opp
+   * @param {boolean} userIsHome
+   * @param {string} division
+   */
+  function tryPlace(week, opp, userIsHome, division) {
+    if (used.has(opp.id)) return false
+    const result = tryAddNonConfGame(
+      userSchoolId, opp.id, division, week, year,
+      [...existingSchedule, ...newGames],
+      { userIsHome },
+    )
+    if (!result.ok) return false
+    newGames.push(...result.games)
+    used.add(opp.id)
+    return true
+  }
+
+  // Sort open weeks ascending; pick home/away pattern that lands at least
+  // half home (so we're not on the road for every trip).
+  const sortedOpenWeeks = [...openWeeks].sort((a, b) => a.week - b.week)
+  const totalSlots = sortedOpenWeeks.length
+  const targetHome = Math.ceil(totalSlots / 2)   // at least half home
+
+  for (let i = 0; i < sortedOpenWeeks.length; i++) {
+    const slot = sortedOpenWeeks[i]
+    const homesLeft = targetHome - homeCount
+    const slotsLeft = totalSlots - i
+    // Be home if we're behind on the home quota, else lean away to add
+    // variety. This keeps travel cost in check while not 100% home.
+    const userIsHome = homesLeft >= slotsLeft ? true
+      : homesLeft <= 0 ? false
+      : rng.chance(0.55)   // mild home lean
+
+    // Out-of-region first slot for variety (only if we still need to add one)
+    let placed = false
+    if (placedOut < wantedOutRegion && outPool.length > 0 && i === sortedOpenWeeks.length - 1) {
+      const opp = outPool.shift()
+      placed = tryPlace(slot.week, opp, userIsHome, 'NAIA')
+      if (placed) placedOut++
+    }
+    if (!placed && placedIn < targetInRegion && inPool.length > 0) {
+      // Rotate to bring some variety: peel off a random one from the top 5
+      const topN = Math.min(5, inPool.length)
+      const idx = rng.int(0, topN - 1)
+      const opp = inPool.splice(idx, 1)[0]
+      placed = tryPlace(slot.week, opp, userIsHome, 'NAIA')
+      if (placed) placedIn++
+    }
+    if (!placed && outPool.length > 0) {
+      const opp = outPool.shift()
+      placed = tryPlace(slot.week, opp, userIsHome, 'NAIA')
+      if (placed) placedOut++
+    }
+    if (!placed && inPool.length > 0) {
+      const opp = inPool.shift()
+      placed = tryPlace(slot.week, opp, userIsHome, 'NAIA')
+      if (placed) placedIn++
+    }
+    if (placed && userIsHome) homeCount++
+  }
+
+  // ── Pick 1-2 midweek games (NAIA-vs-NAIA singles) ─────────────────────
+  // Slot them into conference weeks (so the user has at least one mid-week
+  // game). Avoid D1 (cost + cap). Always home for travel sanity.
+  const confWeeks = new Set(
+    [...existingSchedule, ...newGames]
+      .filter(g => (g.homeId === userSchoolId || g.awayId === userSchoolId)
+                 && (g.type === 'CONFERENCE' || g.type === 'NON_CONFERENCE'))
+      .map(g => g.seasonWeek),
+  )
+  const midweekTargets = Array.from(confWeeks).sort((a, b) => a - b).slice(2, 5)   // skip first 2 conf weeks
+  const midweekRng = makeRng('midweek', userSchoolId, year, seed + 7)
+  const midweekPool = [...inRegion.filter(c => !used.has(c.id))]
+  let midweeksAdded = 0
+  for (const week of midweekTargets) {
+    if (midweeksAdded >= 2) break
+    if (midweekPool.length === 0) break
+    if (midweekRng.chance(0.55)) {
+      const idx = midweekRng.int(0, Math.min(midweekPool.length, 4) - 1)
+      const opp = midweekPool.splice(idx, 1)[0]
+      const result = tryAddNonConfGame(
+        userSchoolId, opp.id, 'NAIA', week, year,
+        [...existingSchedule, ...newGames],
+        { userIsHome: true, preferMidweek: true },
+      )
+      if (!result.ok) {
+        // Couldn't add as a weekend series — try midweek-only single instead.
+        const midweekGame = buildMidweekSingle(userSchoolId, opp.id, week, year, true)
+        if (countRecordGames(userSchoolId, [...existingSchedule, ...newGames]) + 1 <= NAIA_GAME_CAP) {
+          newGames.push(midweekGame)
+          used.add(opp.id)
+          midweeksAdded++
+        }
+      }
+    }
+  }
+
+  const summary = `Auto-built ${newGames.filter(g => g.type === 'NON_CONFERENCE').length} non-conf games` +
+    ` (${placedIn} in-region, ${placedOut} out-of-region) and ${midweeksAdded} midweek game${midweeksAdded === 1 ? '' : 's'}.`
+
+  return { games: newGames, summary }
+}
+
+/**
+ * Build a single-game midweek NAIA-vs-NAIA contest (Wednesday of `week`).
+ * Used by auto-create when a regular series can't fit into a conf week.
+ */
+function buildMidweekSingle(userSchoolId, opponentId, week, year, userIsHome) {
+  const fri = seasonWeekFriday(week, year)
+  const wed = new Date(fri)
+  wed.setUTCDate(wed.getUTCDate() - 2)
+  const homeId = userIsHome ? userSchoolId : opponentId
+  const awayId = userIsHome ? opponentId : userSchoolId
+  return {
+    id: `mw_${year}_${week}_${homeId}_${awayId}_${Math.random().toString(36).slice(2, 8)}`,
+    year,
+    seasonWeek: week,
+    date: isoDate(wed),
+    homeId,
+    awayId,
+    type: 'NON_CONFERENCE',
+    seriesId: null,
+    countsTowardRecord: true,
+    isDoubleheader: false,
+    played: false,
+    homeRuns: null,
+    awayRuns: null,
+  }
 }
 
 // ─── Auto-fill (default starting schedule) ───────────────────────────────────

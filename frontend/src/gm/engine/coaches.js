@@ -330,6 +330,130 @@ export function generateStaff(school, seed) {
   return { headCoach, assistants }
 }
 
+// ─── Optional support-role hires (no $$$, no ratings, just boosts) ──────────
+//
+// Optional roles are "support staff" hires. They don't carry archetype or
+// the 4 dev/mot/rec/tac ratings — the role IS the value. User pays 20 AP
+// for a 1-year contract; the boost is applied while the role is filled.
+//
+// Effects are surfaced via `optionalHireBoosts(team, state)` which reads the
+// set of filled optional roles and returns the active boost object. Sim
+// code reads from there.
+
+/** @typedef {{
+ *   label: string,
+ *   blurb: string,
+ *   effectLabel: string,
+ *   icon: string,
+ *   contractYears: number
+ * }} OptionalHireMeta */
+
+/** @type {Object<string, OptionalHireMeta>} */
+export const OPTIONAL_HIRE_META = {
+  RECRUITING_COORDINATOR: {
+    label: 'Recruiting Coordinator',
+    blurb: 'Adds +5 AP to your weekly recruiting AP pool, year-round.',
+    effectLabel: '+5 recruiting AP/wk',
+    icon: '🎯',
+    contractYears: 1,
+  },
+  STRENGTH_CONDITIONING: {
+    label: 'Strength & Conditioning Coach',
+    blurb: 'Reduces injury risk by 20% and bumps player durability by +4.',
+    effectLabel: '−20% injuries · +4 durability',
+    icon: '💪',
+    contractYears: 1,
+  },
+  DIRECTOR_OF_OPERATIONS: {
+    label: 'Director of Operations',
+    blurb: 'Logistics + travel efficiency adds +$50K to your annual athletic budget.',
+    effectLabel: '+$50K to budget',
+    icon: '📋',
+    contractYears: 1,
+  },
+  DATA_ANALYTICS_MANAGER: {
+    label: 'Data & Analytics Manager',
+    blurb: 'Unlocks advanced stats league-wide (FIP, wOBA, wRC+, WAR).',
+    effectLabel: 'Unlocks advanced stats',
+    icon: '📊',
+    contractYears: 1,
+  },
+  GRADUATE_ASSISTANT: {
+    label: 'Graduate Assistant',
+    blurb: 'Extra hands on deck. +3 AP to your weekly pool.',
+    effectLabel: '+3 AP/wk',
+    icon: '🎒',
+    contractYears: 1,
+  },
+}
+
+/**
+ * Generate a stat-less optional support-staff coach. Salary = $0. No
+ * archetype, no developer/motivator/recruiter/tactician — the role IS the
+ * effect. Caller pays 20 AP for the 1-year contract.
+ *
+ * @param {School} school
+ * @param {string} role     One of OPTIONAL_ROLES
+ * @returns {Coach}
+ */
+export function generateOptionalHire(school, role) {
+  const meta = OPTIONAL_HIRE_META[role] || OPTIONAL_HIRE_META.GRADUATE_ASSISTANT
+  const id = `opt_${role}_${school.id}_${Math.floor(Math.random() * 1e9)}`
+  return {
+    id,
+    firstName: meta.label.split(' ')[0],
+    lastName: 'Staff',   // visually identifies as support staff, not a true coach
+    age: 30,
+    schoolId: school.id,
+    role,
+    archetype: null,
+    isSupportStaff: true,
+    yearsAtSchool: 0,
+    yearsInRole: 0,
+    developer: 0,
+    motivator: 0,
+    recruiter: 0,
+    tactician: 0,
+    recruiter_type: 'BALANCED',
+    regions: [],
+    salary: 0,
+    contractYearsRemaining: meta.contractYears,
+    ambition: 50,
+    loyalty: 50,
+  }
+}
+
+/**
+ * Aggregate "active boost" object from the filled support-staff roles on a
+ * team. Returns numeric deltas/multipliers that sim code can apply.
+ *
+ * @param {string[]} coachIds  team.assistantCoachIds
+ * @param {Object<string,Coach>} coaches  save.coaches
+ * @returns {{
+ *   apBonus: number,             // AP added to weekly pool (Recruiting + GA)
+ *   injuryMult: number,          // multiplier on injury risk (1.0 = baseline)
+ *   durabilityBump: number,      // flat add to player durability
+ *   budgetBonus: number,         // $ added to total athletic budget (DOO)
+ *   advancedStats: boolean,      // analytics unlock
+ *   filledRoles: Set<string>,    // for UI display
+ * }}
+ */
+export function optionalHireBoosts(coachIds, coaches) {
+  const filled = new Set()
+  for (const id of coachIds || []) {
+    const c = coaches?.[id]
+    if (c?.isSupportStaff) filled.add(c.role)
+  }
+  return {
+    apBonus: (filled.has('RECRUITING_COORDINATOR') ? 5 : 0) + (filled.has('GRADUATE_ASSISTANT') ? 3 : 0),
+    injuryMult: filled.has('STRENGTH_CONDITIONING') ? 0.80 : 1.0,
+    durabilityBump: filled.has('STRENGTH_CONDITIONING') ? 4 : 0,
+    budgetBonus: filled.has('DIRECTOR_OF_OPERATIONS') ? 50_000 : 0,
+    advancedStats: filled.has('DATA_ANALYTICS_MANAGER'),
+    filledRoles: filled,
+  }
+}
+
 /**
  * Generate N hiring candidates for a given role, spanning a range of quality
  * (and therefore salary). Returns at least 4 candidates with deliberately
