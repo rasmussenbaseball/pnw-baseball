@@ -57,7 +57,7 @@ function RequireAdmin({ children }) {
 }
 
 // GM early-access guard — locks the GM game to a single user during private alpha.
-const GM_EARLY_ACCESS_EMAILS = ['nate.rasmussen26@gmail.com']
+const GM_EARLY_ACCESS_EMAILS = ['nate.rasmussen26@gmail.com', 'jawomack@bushnell.edu']
 function RequireGmEarlyAccess({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
