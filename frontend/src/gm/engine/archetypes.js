@@ -17,6 +17,10 @@ export const ARCHETYPES = {
     blurb: 'Player-development focused. Big offseason gains, weaker on recruiting + tactics.',
     color: 'text-pnw-green',
     bias: { developer: +14, motivator: +4, recruiter: -8, tactician: -2 },
+    // Player-facing fixed profile when chosen as HC archetype — sums to
+    // ~250 across the 4 ratings to stay in line with the previous slider
+    // budget. Stays at NAIA-mid-tier overall.
+    fixedRatings: { developer: 80, motivator: 65, recruiter: 50, tactician: 55 },
     opposite: 'SHOWMAN',
   },
   SHOWMAN: {
@@ -25,6 +29,7 @@ export const ARCHETYPES = {
     blurb: 'Recruiter + motivator. Wins families over, runs flashy programs; less hands-on dev.',
     color: 'text-amber-700',
     bias: { developer: -8, motivator: +6, recruiter: +14, tactician: -4 },
+    fixedRatings: { developer: 50, motivator: 70, recruiter: 80, tactician: 50 },
     opposite: 'TEACHER',
   },
   STRATEGIST: {
@@ -33,6 +38,7 @@ export const ARCHETYPES = {
     blurb: 'Tactician above all. Lineup + bullpen master; less warm with players + recruits.',
     color: 'text-blue-700',
     bias: { developer: 0, motivator: -6, recruiter: -4, tactician: +14 },
+    fixedRatings: { developer: 62, motivator: 50, recruiter: 55, tactician: 83 },
     opposite: 'PLAYER_COACH',
   },
   PLAYER_COACH: {
@@ -41,6 +47,7 @@ export const ARCHETYPES = {
     blurb: 'Builds loyalty + happiness. Players love them; in-game tactics aren\'t their strength.',
     color: 'text-red-700',
     bias: { developer: +4, motivator: +14, recruiter: +2, tactician: -8 },
+    fixedRatings: { developer: 65, motivator: 82, recruiter: 65, tactician: 50 },
     opposite: 'STRATEGIST',
   },
   GENERALIST: {
@@ -49,6 +56,7 @@ export const ARCHETYPES = {
     blurb: 'No-strong-bias. Solid in everything, exceptional in nothing.',
     color: 'text-gray-700',
     bias: { developer: +2, motivator: +2, recruiter: +2, tactician: +2 },
+    fixedRatings: { developer: 65, motivator: 65, recruiter: 65, tactician: 65 },
     opposite: 'GENERALIST',
   },
 }
@@ -109,20 +117,36 @@ export function applyArchetypeBias(ratings, archetypeKey) {
 export function staffRatings(headCoach, assistants) {
   const list = [headCoach, ...(assistants || [])].filter(Boolean)
   if (list.length === 0) {
-    return { developer: 0, motivator: 0, recruiter: 0, tactician: 0, overall: 0, synergy: 1.0, synergyLabel: 'No staff' }
+    return { developer: 0, motivator: 0, recruiter: 0, tactician: 0, overall: 0, synergy: 1.0, synergyLabel: 'No staff', hcArchetype: 'GENERALIST' }
+  }
+  // Soft-floor adjustment: a really bad assistant (rating < 40) gets pulled
+  // up toward 40 in the staff average. The HC + the rest of the staff still
+  // contribute their full quality; one bad hire doesn't fully tank the
+  // overall. Bumps the perceived floor of each rating contribution.
+  function effective(coach, key) {
+    const v = coach[key] ?? 50
+    if (coach.role === 'HEAD_COACH') return v
+    return v < 40 ? 40 - (40 - v) * 0.4 : v   // pull bad ratings up softly
   }
   const avg = (key) => {
-    const sum = list.reduce((s, c) => s + (c[key] ?? 50), 0)
+    const sum = list.reduce((s, c) => s + effective(c, key), 0)
     return sum / list.length
   }
   let dev = avg('developer'), mot = avg('motivator'), rec = avg('recruiter'), tac = avg('tactician')
 
   const hcArc = headCoach?.archetype || inferArchetype(headCoach)
   const synergy = computeSynergy(hcArc, assistants || [])
-  dev *= synergy.mult
-  mot *= synergy.mult
-  rec *= synergy.mult
-  tac *= synergy.mult
+
+  // Depth bonus: bigger staffs (more eyes, more development reps) get a
+  // small additional bump. 3 assistants = baseline (+0%); each extra
+  // assistant beyond the minimum adds +1% up to +4% at 7 assistants.
+  const depthBonus = Math.min(0.04, Math.max(0, ((assistants?.length ?? 0) - 3) * 0.01))
+  const mult = synergy.mult + depthBonus
+
+  dev *= mult
+  mot *= mult
+  rec *= mult
+  tac *= mult
 
   const overall = (dev + mot + rec + tac) / 4
 
@@ -132,8 +156,10 @@ export function staffRatings(headCoach, assistants) {
     recruiter: Math.round(rec),
     tactician: Math.round(tac),
     overall: Math.round(overall),
-    synergy: synergy.mult,
-    synergyLabel: synergy.label,
+    synergy: mult,
+    synergyLabel: depthBonus > 0
+      ? `${synergy.label} + ${(depthBonus * 100).toFixed(0)}% staff depth`
+      : synergy.label,
     hcArchetype: hcArc,
   }
 }

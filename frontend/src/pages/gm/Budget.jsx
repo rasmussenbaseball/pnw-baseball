@@ -4,13 +4,11 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import {
   BUDGET_CATEGORIES,
-  rebalanceAllocations,
   budgetCategoryEffects,
   extendedBudgetEffects,
   BUDGET_GUIDANCE,
   BUDGET_PRESETS,
   applyBudgetPreset,
-  budgetOverage,
   lockBudgetForYear,
   lockTravelAllocation,
 } from '../../gm/engine/budget'
@@ -26,18 +24,67 @@ const NON_NAIA_DISPLAY = (() => {
   return out
 })()
 
-const CATEGORY_LABELS = {
-  scholarships:      { label: 'Scholarships',         blurb: 'Athletic aid pool. Drives recruit closing rate.' },
-  coachingSalaries:  { label: 'Coaching Salaries',    blurb: 'HC + assistants. Affects weekly AP earned.' },
-  travel:            { label: 'Travel',               blurb: 'Bus/flights/hotels. LOCKED from your schedule in Wk 3.' },
-  equipment:         { label: 'Equipment',            blurb: 'Bats, gloves, balls. Cheap gear = more injuries.' },
-  uniforms:          { label: 'Uniforms',             blurb: 'Game jerseys, hats, travel polos.' },
-  meals:             { label: 'Meals',                blurb: 'Training table + travel meals. Pitcher stamina + durability.' },
-  facilities:        { label: 'Facilities',           blurb: 'Field, cage, weight room. Offseason player development rate.' },
-  medical:           { label: 'Medical',              blurb: 'Trainers + rehab. Injury recovery speed.' },
-  recruiting:        { label: 'Recruiting',           blurb: 'Visits + camps. Boosts recruit pool + closing rate.' },
-  misc:              { label: 'Miscellaneous',        blurb: 'Awards, banquets, team building, buffer.' },
+// Per-category metadata: friendly label + plain-English effect text.
+const CATEGORIES = {
+  scholarships: {
+    label: 'Scholarships',
+    blurb: 'Athletic aid pool — your scholarship $ for recruits and roster.',
+    effect: 'More $ = win more recruiting battles + retain stars. Less = roster gets thinner.',
+    icon: '🎓',
+  },
+  coachingSalaries: {
+    label: 'Coaching Salaries',
+    blurb: 'HC + assistants. Pay determines who you can keep + hire.',
+    effect: 'Locked to your actual payroll on the Coaches page.',
+    icon: '🧢',
+    lockedFromHires: true,
+  },
+  travel: {
+    label: 'Travel',
+    blurb: 'Bus, flights, hotels for road games.',
+    effect: 'Locked from your scheduled trips in Wk 3.',
+    icon: '✈️',
+    lockedAlways: true,
+  },
+  equipment: {
+    label: 'Equipment',
+    blurb: 'Bats, gloves, balls, helmets, catcher gear.',
+    effect: 'Cheaper gear = more in-game injuries. ±25% injury risk swing.',
+    icon: '⚾',
+  },
+  uniforms: {
+    label: 'Uniforms',
+    blurb: 'Game jerseys, alts, hats, travel polos.',
+    effect: 'Tiny morale + recruiting-impression effect. Not worth obsessing over.',
+    icon: '👕',
+  },
+  meals: {
+    label: 'Meals & Nutrition',
+    blurb: 'Training table + travel meals.',
+    effect: 'Drives pitcher stamina + day-to-day durability. ±3 stamina pts.',
+    icon: '🍽',
+  },
+  facilities: {
+    label: 'Facilities',
+    blurb: 'Field, indoor cages, weight room maintenance.',
+    effect: 'Offseason player development rate. ±20% on annual gains.',
+    icon: '🏟',
+  },
+  medical: {
+    label: 'Medical / Training',
+    blurb: 'Athletic trainer + recovery + supplies.',
+    effect: 'Faster injury recovery. ±30% recovery speed.',
+    icon: '🏥',
+  },
+  recruiting: {
+    label: 'Recruiting',
+    blurb: 'Travel for visits, camp fees, signing day production.',
+    effect: 'Boosts weekly AP earned + recruit pool size. Up to +5 AP/wk.',
+    icon: '🎯',
+  },
 }
+
+const ADJUST_STEP = 1000
 
 export default function Budget() {
   const { user } = useAuth()
@@ -61,8 +108,7 @@ export default function Budget() {
   const isLocked = budget.locked?.year === save.calendar?.year
 
   // Self-heal: if travel is locked at $0 but the schedule has road trips,
-  // re-lock against the actual cost. Catches saves from the buggy version
-  // of LOCK_TRAVEL_BUDGET where .totalCost was read off a number.
+  // re-lock against the actual cost.
   const liveTravel = useMemo(
     () => totalAnnualTravelCost(save.userSchoolId, save.schedule || [], save.schools, NON_NAIA_DISPLAY) || 0,
     [save.schedule, save.schools, save.userSchoolId],
@@ -74,13 +120,21 @@ export default function Budget() {
     }
   }, [travelLocked, liveTravel])    // eslint-disable-line
 
-  function setCategory(category, newAmount) {
-    if (category === 'travel' && travelLocked) return
+  // ── Allocations + helpers ──────────────────────────────────────────────
+  const allocated = BUDGET_CATEGORIES.reduce((s, c) => s + (budget.allocations[c] || 0), 0)
+  const surplus = total - allocated     // positive = under, negative = over
+  const usagePct = total > 0 ? Math.min(150, (allocated / total) * 100) : 0
+
+  function adjustCategory(category, delta) {
     if (isLocked) return
-    const updated = rebalanceAllocations(
-      budget.allocations, category, newAmount, budget.totalAthleticBudget,
-    )
-    save.budget = { ...budget, allocations: updated }
+    if (category === 'travel' && travelLocked) return
+    if (category === 'coachingSalaries') return    // sourced from actual hires
+    const current = budget.allocations[category] || 0
+    const next = Math.max(0, current + delta)
+    save.budget = {
+      ...budget,
+      allocations: { ...budget.allocations, [category]: next },
+    }
     saveDynasty(save); setSave({ ...save })
   }
 
@@ -92,9 +146,14 @@ export default function Budget() {
 
   function lockBudget() {
     save.budget = lockBudgetForYear(save.budget, save.calendar?.year)
+    save.newsfeed.unshift({
+      id: `budget_lock_${save.calendar?.year}`,
+      year: save.calendar?.year, week: save.calendar?.week, type: 'AWARD',
+      headline: `💰 ${save.calendar?.year} budget locked. $${(total / 1000).toFixed(0)}K allocated across categories.`,
+      payload: {},
+    })
     saveDynasty(save); setSave({ ...save })
   }
-
   function unlockBudget() {
     save.budget = { ...save.budget, locked: null }
     saveDynasty(save); setSave({ ...save })
@@ -102,7 +161,6 @@ export default function Budget() {
 
   const effects = budgetCategoryEffects(budget)
   const ext = extendedBudgetEffects(budget)
-  const overage = budgetOverage(budget)
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
@@ -110,11 +168,14 @@ export default function Budget() {
         <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
         <h1 className="text-3xl font-bold text-pnw-slate mt-1">Annual Budget</h1>
         <p className="text-sm text-gray-600">
-          Total: <span className="font-bold">${(total / 1000).toFixed(0)}K</span>
-          {' '}• Job Security: <JobSecurityBadge js={budget.jobSecurity} />
-          {' '}• {budget.yearsAtSchool || 0} year{budget.yearsAtSchool === 1 ? '' : 's'} at school
+          Distribute <strong>${(total / 1000).toFixed(0)}K</strong> across categories.
+          Job Security: <JobSecurityBadge js={budget.jobSecurity} />
+          {' '}· {budget.yearsAtSchool || 0} year{budget.yearsAtSchool === 1 ? '' : 's'} at school
         </p>
       </div>
+
+      {/* USAGE BAR — at the top, the most important info on the page */}
+      <UsageBar total={total} allocated={allocated} surplus={surplus} usagePct={usagePct} />
 
       {/* Wk 3 tutorial banner */}
       {isWk3Tutorial && !isLocked && (
@@ -122,10 +183,11 @@ export default function Budget() {
           <div className="text-[11px] uppercase tracking-wider text-amber-700 font-bold mb-1">
             Week 3 — Set Your Budget
           </div>
-          <div className="text-sm text-amber-900">
-            Pick a preset or build your own. Travel is locked from your schedule trips.
-            Going over total is allowed but the AD will dock job security at year-end.
-            <strong className="block mt-1">Lock the budget in when you're happy with it to advance to Wk 4.</strong>
+          <div className="text-sm text-amber-900 leading-snug">
+            Pick a preset or use the +/− buttons to fine-tune. Travel + coaching are locked
+            (they come from your schedule + hires). The category effects on the right tell
+            you exactly what each dollar buys. <strong>Lock the budget</strong> when you're
+            happy with it to advance to Wk 4.
           </div>
         </div>
       )}
@@ -133,9 +195,9 @@ export default function Budget() {
       {/* Presets */}
       {!isLocked && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-2">Quick presets</h2>
+          <h2 className="text-xs font-bold text-pnw-slate uppercase tracking-widest mb-2">Quick Presets</h2>
           <p className="text-[11px] text-gray-500 mb-3">
-            Each preset rebalances the non-travel categories. Tweak with sliders below.
+            One-click distributions. Travel + coaching stay locked; everything else rebalances.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {BUDGET_PRESETS.map(p => (
@@ -152,24 +214,12 @@ export default function Budget() {
         </div>
       )}
 
-      {/* Over-budget warning */}
-      {overage > 0 && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3 mb-4 text-sm text-red-900">
-          <strong>⚠ Over budget by ${(overage / 1000).toFixed(1)}K.</strong>{' '}
-          You're allowed to overspend, but the AD will reduce next year's budget AND dock job
-          security at end-of-year. {budget.jobSecurity < 50 && ' You\'re already on thin ice — be careful.'}
-        </div>
-      )}
-
       {/* Lock state */}
       {isLocked ? (
-        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-4 mb-4 flex justify-between items-center">
-          <div>
-            <div className="font-semibold text-green-900">✓ Budget locked for {save.calendar?.year}</div>
-            <div className="text-xs text-green-800 mt-1">
-              You can unlock and tweak, but the AD's review at year-end measures against what's
-              locked here.
-            </div>
+        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 mb-4 flex justify-between items-center">
+          <div className="text-sm text-green-900">
+            <strong>✓ Budget locked for {save.calendar?.year}.</strong>{' '}
+            Year-end review measures against this.
           </div>
           <button onClick={unlockBudget} className="px-3 py-1.5 border border-green-600 text-green-800 rounded text-xs font-semibold hover:bg-green-100">
             Unlock & edit
@@ -178,8 +228,7 @@ export default function Budget() {
       ) : (
         <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-3 mb-4 flex justify-between items-center">
           <div className="text-sm text-blue-900">
-            Once your numbers look right, <strong>lock the budget in</strong> — this is what Wk 3's
-            phase-gate checks for.
+            Looks good? <strong>Lock the budget in</strong> to clear the Wk 3 phase-gate.
           </div>
           <button onClick={lockBudget} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
             Lock budget ✓
@@ -187,87 +236,172 @@ export default function Budget() {
         </div>
       )}
 
-      {/* Categories */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Categories — each with +/- buttons + effect explanation */}
+      <div className="space-y-3">
         {BUDGET_CATEGORIES.map(cat => {
+          const meta = CATEGORIES[cat]
           const value = budget.allocations[cat] || 0
-          const pct = value / total
-          const info = CATEGORY_LABELS[cat]
+          const pct = total > 0 ? value / total : 0
           const guide = BUDGET_GUIDANCE[cat]
           const inRange = guide && pct >= guide.min && pct <= guide.max
-          const guideMin = guide ? Math.round(guide.min * total) : null
-          const guideMax = guide ? Math.round(guide.max * total) : null
-          const catLocked = isLocked || (cat === 'travel' && travelLocked)
+          const catLocked = isLocked || meta.lockedAlways || (cat === 'travel' && travelLocked) || meta.lockedFromHires
           return (
-            <div key={cat} className={'p-4 border-b last:border-b-0 ' + (catLocked ? 'opacity-70' : '')}>
-              <div className="flex justify-between items-baseline mb-1">
-                <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-pnw-slate text-sm">
-                    {info.label} {cat === 'travel' && travelLocked && '🔒'}
-                  </span>
-                  <span className="ml-2 text-xs text-gray-500">{info.blurb}</span>
-                </div>
-                <div className="text-right ml-3 whitespace-nowrap">
-                  <span className="font-bold text-pnw-slate">${(value / 1000).toFixed(0)}K</span>
-                  <span className={'text-xs ml-1 ' + (inRange ? 'text-green-700' : 'text-amber-700')}>
-                    {(pct * 100).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-              {guide && (
-                <div className="text-[10px] text-gray-500 mb-1">
-                  Suggested: ${(guideMin / 1000).toFixed(0)}K–${(guideMax / 1000).toFixed(0)}K ({(guide.min * 100).toFixed(0)}–{(guide.max * 100).toFixed(0)}%) — {guide.note}
-                </div>
-              )}
-              <div className="relative">
-                <input
-                  type="range" min={0} max={total} step={1000} value={value}
-                  onChange={e => setCategory(cat, parseInt(e.target.value, 10))}
-                  disabled={catLocked}
-                  className="w-full relative z-10"
-                />
-                {guide && (
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 h-1 bg-green-300/40 rounded-full pointer-events-none"
-                    style={{ left: `${guide.min * 100}%`, width: `${(guide.max - guide.min) * 100}%` }}
-                  />
-                )}
-              </div>
-            </div>
+            <CategoryRow
+              key={cat}
+              cat={cat}
+              meta={meta}
+              value={value}
+              pct={pct}
+              total={total}
+              guide={guide}
+              inRange={inRange}
+              locked={catLocked}
+              onAdjust={(delta) => adjustCategory(cat, delta)}
+              effectValue={effectsByCat(cat, effects, ext)}
+            />
           )
         })}
       </div>
+    </div>
+  )
+}
 
-      {/* Effects panel */}
-      <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider mb-3">Sim Effects from your allocation</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
-          <EffectRow label="Facilities → offseason dev rate" value={(ext.devMultiplier - 1) * 100} unit="%" positiveGood />
-          <EffectRow label="Equipment → injury risk" value={(ext.injuryMultiplier - 1) * 100} unit="%" positiveGood={false} />
-          <EffectRow label="Meals → pitcher stamina" value={ext.staminaBoost} unit="pts" positiveGood />
-          <EffectRow label="Meals → team GPA floor" value={ext.gpaFloor} unit="GPA" positiveGood />
-          <EffectRow label="Medical → recovery speed" value={(ext.recoveryMultiplier - 1) * 100} unit="%" positiveGood />
-          <EffectRow label="Recruiting → AP per week" value={effects.recruitingAPBoost} unit="AP" positiveGood />
-          <EffectRow label="Recruiting → pool size" value={(ext.recruitPoolMultiplier - 1) * 100} unit="%" positiveGood />
+function UsageBar({ total, allocated, surplus, usagePct }) {
+  const over = surplus < 0
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-4">
+      <div className="flex justify-between items-baseline mb-2">
+        <div>
+          <div className="text-xs uppercase tracking-widest text-gray-500 font-bold">Budget Usage</div>
+          <div className="text-2xl font-bold text-pnw-slate mt-0.5">
+            ${(allocated / 1000).toFixed(1)}K
+            <span className="text-base text-gray-500 font-normal"> / ${(total / 1000).toFixed(1)}K</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className={'text-2xl font-bold ' + (over ? 'text-red-700' : 'text-green-700')}>
+            {over ? '-' : '+'}${(Math.abs(surplus) / 1000).toFixed(1)}K
+          </div>
+          <div className="text-xs uppercase tracking-wider text-gray-500">
+            {over ? 'over budget' : surplus === 0 ? 'on budget' : 'surplus'}
+          </div>
+        </div>
+      </div>
+      {/* Visual progress bar */}
+      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden mt-2 relative">
+        <div
+          className={'h-full transition-all ' + (over ? 'bg-red-500' : usagePct > 95 ? 'bg-amber-500' : 'bg-pnw-green')}
+          style={{ width: `${Math.min(100, usagePct)}%` }}
+        />
+        {over && (
+          <div className="absolute top-0 right-0 h-full w-1 bg-red-700" />
+        )}
+      </div>
+      {/* Effect of surplus / deficit */}
+      <div className="text-[11px] text-gray-600 mt-2 leading-snug">
+        {over
+          ? <>⚠ <strong>${(-surplus / 1000).toFixed(1)}K over.</strong> The AD will cut next year's budget AND hit your job security at year-end. Over-budget is allowed, but expensive.</>
+          : surplus > 0
+            ? <>You have <strong>${(surplus / 1000).toFixed(1)}K unspent.</strong> Up to 25% of total rolls over to next year — the rest goes back to the school.</>
+            : <>Every dollar deployed. AD likes a clean ledger.</>}
+      </div>
+    </div>
+  )
+}
+
+function CategoryRow({ cat, meta, value, pct, total, guide, inRange, locked, onAdjust, effectValue }) {
+  const guideMin = guide ? Math.round(guide.min * total) : null
+  const guideMax = guide ? Math.round(guide.max * total) : null
+  return (
+    <div className={'bg-white rounded-xl border p-4 shadow-sm ' + (locked ? 'border-gray-200' : 'border-gray-200 hover:border-pnw-green/30')}>
+      <div className="flex items-start gap-4">
+        {/* Icon */}
+        <div className="text-2xl shrink-0 mt-0.5">{meta.icon}</div>
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-baseline">
+            <div>
+              <div className="text-sm font-bold text-pnw-slate">
+                {meta.label} {locked && <span className="text-gray-400 text-xs">🔒</span>}
+              </div>
+              <div className="text-[11px] text-gray-500">{meta.blurb}</div>
+            </div>
+            <div className="text-right shrink-0 ml-4">
+              <div className="text-xl font-bold text-pnw-slate font-mono">${(value / 1000).toFixed(1)}K</div>
+              <div className={'text-[11px] ' + (inRange ? 'text-green-700' : 'text-amber-700')}>
+                {(pct * 100).toFixed(1)}%
+                {guide && (
+                  <span className="text-gray-400 ml-1">
+                    (typical {(guide.min * 100).toFixed(0)}-{(guide.max * 100).toFixed(0)}%)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* +/- controls */}
+          {!locked && (
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={() => onAdjust(-ADJUST_STEP)}
+                disabled={value <= 0}
+                className="w-10 h-9 bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-700 rounded-lg font-bold text-lg disabled:opacity-30 transition"
+              >
+                −
+              </button>
+              <button
+                onClick={() => onAdjust(-ADJUST_STEP * 5)}
+                disabled={value <= 0}
+                className="px-3 h-9 bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-700 rounded-lg font-semibold text-xs disabled:opacity-30 transition"
+              >
+                −$5K
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={() => onAdjust(+ADJUST_STEP * 5)}
+                className="px-3 h-9 bg-gray-100 hover:bg-pnw-cream text-gray-700 hover:text-pnw-green rounded-lg font-semibold text-xs transition"
+              >
+                +$5K
+              </button>
+              <button
+                onClick={() => onAdjust(+ADJUST_STEP)}
+                className="w-10 h-9 bg-gray-100 hover:bg-pnw-cream text-gray-700 hover:text-pnw-green rounded-lg font-bold text-lg transition"
+              >
+                +
+              </button>
+            </div>
+          )}
+          {/* Effect explanation */}
+          <div className="bg-gray-50 rounded p-2 mt-3 text-[11px] text-gray-700">
+            <span className="font-semibold text-pnw-slate">Effect:</span> {meta.effect}
+            {effectValue != null && (
+              <span className={'ml-2 font-mono font-bold ' + (effectValue > 0 ? 'text-green-700' : effectValue < 0 ? 'text-red-700' : 'text-gray-500')}>
+                {effectValue > 0 ? '+' : ''}{effectValue}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function EffectRow({ label, value, unit, positiveGood }) {
-  const isPositive = value > 0
-  const isNeutral = Math.abs(value) < 0.1
-  const isGood = isNeutral ? null : (positiveGood ? isPositive : !isPositive)
-  const color = isNeutral ? 'text-gray-400' : (isGood ? 'text-green-700' : 'text-red-700')
-  return (
-    <div className="flex justify-between text-xs">
-      <span className="text-gray-700">{label}</span>
-      <span className={'font-mono ' + color}>
-        {isNeutral ? '0' : `${isPositive ? '+' : ''}${value.toFixed(1)}`} {unit}
-      </span>
-    </div>
-  )
+// Per-category "current effect value" pulled from the combined effects.
+// Returns a small number for display (e.g. +12 for dev%, -3 for stamina).
+function effectsByCat(cat, base, ext) {
+  switch (cat) {
+    case 'facilities':
+      return Math.round((ext.devMultiplier - 1) * 100)      // %
+    case 'equipment':
+      return Math.round((1 - ext.injuryMultiplier) * 100)   // %  inverted
+    case 'meals':
+      return Math.round(ext.staminaBoost * 10) / 10         // pts
+    case 'medical':
+      return Math.round((ext.recoveryMultiplier - 1) * 100) // %
+    case 'recruiting':
+      return base.recruitingAPBoost                          // AP
+    default:
+      return null
+  }
 }
 
 function JobSecurityBadge({ js }) {

@@ -17,9 +17,12 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import {
   WEEKS_PER_YEAR, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar,
-  shortDateLabel, seasonWeekForWeek, modeForWeek,
+  shortDateLabel, seasonWeekForWeek, modeForWeek, dateForWeek,
 } from '../../gm/engine/gameYear'
 import { WEEK_EVENT_SCHEDULE, EVENT_TYPES } from '../../gm/engine/events'
+
+const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December']
 
 export default function Calendar() {
   const { user } = useAuth()
@@ -39,26 +42,37 @@ export default function Calendar() {
   const currentWeek = cal.weekOfYear ?? 1
   const year = cal.year
 
-  // Group weeks into month-ish buckets for visual grouping
+  // Group weeks by the ACTUAL month their start date falls in. Previously
+  // these were hardcoded ranges that drifted off the real calendar (the
+  // World Series was showing under June even though it's May 22).
   const buckets = useMemo(() => {
-    const groups = [
-      { name: 'August — Setup', weeks: [1, 2, 3, 4] },
-      { name: 'August–September — Fall Camp opens', weeks: [5, 6, 7, 8] },
-      { name: 'September–October — Fall Camp + Scrimmages', weeks: [9, 10, 11, 12] },
-      { name: 'November — Training', weeks: [13, 14, 15, 16] },
-      { name: 'November–December — Training', weeks: [17, 18, 19, 20] },
-      { name: 'December–January — Training', weeks: [21, 22, 23] },
-      { name: 'January — Spring Practice', weeks: [24, 25, 26] },
-      { name: 'February — Opening Day', weeks: [27, 28, 29] },
-      { name: 'March — Conference', weeks: [30, 31, 32, 33] },
-      { name: 'April — Conference', weeks: [34, 35, 36, 37] },
-      { name: 'May — Conference + Postseason', weeks: [38, 39, 40] },
-      { name: 'June — Postseason + Portal', weeks: [41, 42, 43, 44] },
-      { name: 'June–July — Portal + Draft', weeks: [45, 46, 47, 48] },
-      { name: 'July — Draft + Class Finalize', weeks: [49, 50, 51, 52] },
-    ]
-    return groups
-  }, [])
+    const byMonth = new Map()    // monthIndex (0-11) → { firstWeek, weeks: [] }
+    for (let w = 1; w <= WEEKS_PER_YEAR; w++) {
+      const d = dateForWeek(year, w)
+      const m = d.getUTCMonth()
+      if (!byMonth.has(m)) byMonth.set(m, { monthIndex: m, weeks: [] })
+      byMonth.get(m).weeks.push(w)
+    }
+    // Preserve calendar order: Aug starts the dynasty year, so begin at month 7
+    // and wrap through to July (month 6).
+    const ordered = []
+    for (let i = 0; i < 12; i++) {
+      const m = (7 + i) % 12
+      if (byMonth.has(m)) ordered.push(byMonth.get(m))
+    }
+    return ordered.map(b => {
+      // Phase label derived from the dominant phase across the bucket
+      const phases = b.weeks.map(w => phaseForWeek(w).label)
+      const distinct = [...new Set(phases)]
+      const title = distinct.length <= 2
+        ? distinct.join(' + ')
+        : `${distinct[0]} → ${distinct[distinct.length - 1]}`
+      return {
+        name: `${MONTH_LONG[b.monthIndex]} — ${title}`,
+        weeks: b.weeks,
+      }
+    })
+  }, [year])
 
   return (
     <div className="max-w-6xl mx-auto py-6 px-4">

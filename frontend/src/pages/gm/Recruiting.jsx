@@ -740,10 +740,16 @@ function FundraiseModal({ ap, onChangeAP, maxAP, coach, programHistory, onConfir
 // ── Recruit modal ───────────────────────────────────────────────────────────
 
 function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose }) {
-  const grade = recruit.scoutGrades[save.userSchoolId] || { noise: 15, interest: 0, revealedPreferences: [], actionsApplied: [] }
+  const grade = recruit.scoutGrades[save.userSchoolId] || { noise: 15, interest: 0, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
   const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
   const [offerAmount, setOfferAmount] = useState(recruit.liveOffer?.amount ?? 5000)
   const totalSuit = totalSuitors(recruit)
+
+  // GATE: no ratings info shown until you've taken ANY scouting action on
+  // this recruit. Identity (name, position, pool, hometown, bats/throws)
+  // is always visible — that's the "scouting report says exists" baseline.
+  // Anything that costs AP gates the data.
+  const hasScoutedAtAll = (grade.apSpent || 0) > 0 || (grade.actionsApplied || []).filter(k => k !== 'REGION_SEED').length > 0
 
   const noisyRatings = useMemo(() => {
     const rng = makeRng('view', recruit.id, save.userSchoolId, save.calendar.year, grade.noise)
@@ -777,32 +783,49 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
 
-        <div className="grid grid-cols-5 gap-2 mb-4">
-          <div className="bg-pnw-cream rounded p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
-            <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
-          </div>
-          <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
-            <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
-          </div>
-          <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
-            <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
-          </div>
-          <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
-            <div className="text-xl font-bold text-gray-700">{academicRatingToGpa(recruit.academicRating).toFixed(1)}</div>
-          </div>
-          <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
-            <div className="text-sm font-bold text-gray-700">
-              {recruit.suitorsRevealed ? totalSuit : '?'}
+        {/* Pre-scout banner — until ANY scouting action is taken, no ratings,
+            no GPA, no suitors. Just identity above + a call to scout. */}
+        {!hasScoutedAtAll && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4 mb-4 text-center">
+            <div className="text-3xl mb-1">🔍</div>
+            <div className="text-sm font-bold text-amber-900">No scouting report yet</div>
+            <div className="text-[11px] text-amber-800 mt-1 max-w-md mx-auto">
+              You know who they are — that's it. Spend AP on a scouting action below
+              (Text, Call, Scout Trip, etc.) to start revealing their ratings, suitors, GPA, and priorities.
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Suitor info: vague pre-scouted, exact after */}
+        {hasScoutedAtAll && (
+          <div className="grid grid-cols-5 gap-2 mb-4">
+            <div className="bg-pnw-cream rounded p-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
+              <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
+            </div>
+            <div className="bg-gray-50 rounded p-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
+              <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
+            </div>
+            <div className="bg-gray-50 rounded p-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
+              <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
+            </div>
+            <div className="bg-gray-50 rounded p-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
+              <div className="text-xl font-bold text-gray-700">{academicRatingToGpa(recruit.academicRating).toFixed(1)}</div>
+            </div>
+            <div className="bg-gray-50 rounded p-2 text-center">
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
+              <div className="text-sm font-bold text-gray-700">
+                {recruit.suitorsRevealed ? totalSuit : '?'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Suitor info: vague pre-scouted, exact after — and hidden entirely
+            until ANY scouting action has been taken. */}
+        {hasScoutedAtAll && (
         <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-4 text-xs text-amber-900">
           {recruit.suitorsRevealed ? (
             <>
@@ -827,9 +850,10 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
             </>
           )}
         </div>
+        )}
 
         {/* Academic scholarship preview */}
-        {(() => {
+        {hasScoutedAtAll && (() => {
           const school = save.schools[save.userSchoolId]
           const gpa = academicRatingToGpa(recruit.academicRating)
           const academic$ = academicScholarship(recruit, school)
@@ -893,23 +917,25 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           </div>
         </div>
 
-        <div className="mb-4">
-          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Estimated ratings <span className="normal-case text-gray-400">— range based on scouting; narrows as you scout more.</span></div>
-          <div className="grid grid-cols-4 gap-1 text-xs">
-            {Object.entries(noisyRatings.ratings).map(([k, v]) => {
-              const r = ratingRange(v)
-              const isPoint = r.lo === r.hi
-              return (
-                <div key={k} className="bg-gray-50 rounded p-2">
-                  <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
-                  <div className="font-mono font-bold text-pnw-slate">
-                    {isPoint ? v : `${r.lo}–${r.hi}`}
+        {hasScoutedAtAll && (
+          <div className="mb-4">
+            <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Estimated ratings <span className="normal-case text-gray-400">— range based on scouting; narrows as you scout more.</span></div>
+            <div className="grid grid-cols-4 gap-1 text-xs">
+              {Object.entries(noisyRatings.ratings).map(([k, v]) => {
+                const r = ratingRange(v)
+                const isPoint = r.lo === r.hi
+                return (
+                  <div key={k} className="bg-gray-50 rounded p-2">
+                    <div className="text-[10px] text-gray-500 uppercase">{prettyLabel(k)}</div>
+                    <div className="font-mono font-bold text-pnw-slate">
+                      {isPoint ? v : `${r.lo}–${r.hi}`}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="mb-4">
           <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Revealed priorities</div>

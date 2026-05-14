@@ -15,9 +15,14 @@ import AttrTooltip from '../../gm/components/AttrTooltip'
 const INTERVIEW_AP_COST = 20
 const FIRE_AP_COST = 20
 
-// Assistant coach pool the user starts with each year (per spec). Drives the
-// "stay in your means" feel of Wk 2.
-const ASSISTANT_HIRE_POOL = 40_000
+// Reference "average" coaching-staff payroll for a MID-tier NAIA program.
+// Used purely as guidance — there's no hard cap. Spending past this means
+// less $ available for facilities, travel, scholarships, etc.
+const AVERAGE_COACHING_PAYROLL = 45_000
+
+// Minimum number of assistants on every staff. The user must always have at
+// least three filled (Pitching, Hitting, Bench).
+const MIN_ASSISTANTS = 3
 
 export default function Coaches() {
   const { user } = useAuth()
@@ -52,7 +57,8 @@ export default function Coaches() {
   const isFirstYear = (save.dynastyYear ?? 1) === 1
   const isTutorialHireWeek = weekOfYear === 2
   const optionalLocked = weekOfYear < 4
-  const remainingHirePool = ASSISTANT_HIRE_POOL - assistants.reduce((s, c) => s + (c.salary || 0), 0)
+  const currentPayroll = assistants.reduce((s, c) => s + (c.salary || 0), 0)
+  const overAverage = currentPayroll - AVERAGE_COACHING_PAYROLL
 
   const missingRequired = FIRST_YEAR_REQUIRED_ROLES.filter(r => !filledRoles.has(r))
   const allRequiredFilled = missingRequired.length === 0
@@ -61,6 +67,12 @@ export default function Coaches() {
 
   function confirmStaffForYear() {
     save.hiringConfirmed = { year: save.calendar?.year }
+    save.newsfeed.unshift({
+      id: `staff_confirm_${save.calendar?.year}`,
+      year: save.calendar?.year, week: save.calendar?.week, type: 'COACH_HIRED',
+      headline: `🧢 Rolled forward your coaching staff for ${save.calendar?.year}.`,
+      payload: {},
+    })
     saveDynasty(save); setSave({ ...save })
   }
 
@@ -148,15 +160,54 @@ export default function Coaches() {
           <div className="text-[11px] uppercase tracking-wider text-amber-700 font-bold mb-1">
             Week 2 — Hire Your Assistants
           </div>
-          <div className="text-sm text-amber-900">
+          <div className="text-sm text-amber-900 leading-snug">
             <strong>First year of your dynasty.</strong> You must hire all three required assistants
-            (Pitching, Hitting, Bench coach) before advancing to Wk 3 budgeting. Assistant pool:
-            <strong> ${(ASSISTANT_HIRE_POOL / 1000).toFixed(0)}K</strong> annually
-            ({assistants.length === 0
-              ? 'nothing spent yet'
-              : `$${(((ASSISTANT_HIRE_POOL - remainingHirePool) / 1000).toFixed(1))}K committed, $${(remainingHirePool / 1000).toFixed(1)}K left`}).
+            (Pitching, Hitting, Bench coach) before advancing to Wk 3 budgeting.
             Interviews are <strong>FREE</strong> this week — AP is locked until Wk 4.
+            <div className="mt-2 text-xs">
+              The more you pay your coaches, the better they are — but every dollar
+              here is a dollar you can't spend on facilities, travel, equipment, or
+              scholarships in Wk 3. A typical NAIA program pays about <strong>${(AVERAGE_COACHING_PAYROLL / 1000).toFixed(0)}K total</strong> for
+              their assistants combined.
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Payroll meter — always visible while hiring is happening */}
+      {(isTutorialHireWeek || weekOfYear >= 2) && (
+        <div className={'rounded-xl p-3 mb-4 border-2 ' +
+          (overAverage > 20_000 ? 'border-red-300 bg-red-50'
+           : overAverage > 0 ? 'border-amber-300 bg-amber-50'
+           : 'border-green-300 bg-green-50')}>
+          <div className="flex justify-between items-baseline text-xs">
+            <span className="text-gray-700">
+              <strong>Assistant payroll:</strong>{' '}
+              <span className="font-mono font-bold text-base">${(currentPayroll / 1000).toFixed(1)}K</span>
+              {' '}<span className="text-gray-500">/ ${(AVERAGE_COACHING_PAYROLL / 1000).toFixed(0)}K avg</span>
+            </span>
+            <span className={overAverage > 20_000 ? 'text-red-700 font-bold'
+              : overAverage > 0 ? 'text-amber-700 font-bold' : 'text-green-700 font-bold'}>
+              {overAverage > 0
+                ? `+$${(overAverage / 1000).toFixed(1)}K over avg`
+                : `$${(-overAverage / 1000).toFixed(1)}K under avg`}
+            </span>
+          </div>
+          <div className="text-[11px] mt-1 text-gray-600">
+            {overAverage > 20_000
+              ? '⚠ Significantly over average — will eat into your Wk 3 budget for everything else.'
+              : overAverage > 0
+                ? 'Slightly over the typical NAIA spend.'
+                : 'Within typical NAIA spend — leaves $ for facilities, travel, scholarships.'}
+          </div>
+        </div>
+      )}
+
+      {/* Minimum-assistants warning */}
+      {weekOfYear >= 2 && assistants.length < MIN_ASSISTANTS && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-4 text-sm text-red-900">
+          <strong>⚠ Below the {MIN_ASSISTANTS}-assistant minimum.</strong> NAIA programs are required to
+          carry at least three assistants (Pitching, Hitting, Bench). Hire to fill before sim.
         </div>
       )}
       {isTutorialHireWeek && isFirstYear && allRequiredFilled && (

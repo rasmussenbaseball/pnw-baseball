@@ -98,6 +98,9 @@ function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier
     power_l:   r(), power_r:   r(),
     discipline: r(), speed:    r(),
     fielding:  r(), arm:       r(),
+    // Mental + physical intangibles — apply to hitters too, not just pitchers.
+    // Composure drives clutch hitting; durability drives injury resistance.
+    composure: r(), durability: r(),
   }
 }
 

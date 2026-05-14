@@ -1117,6 +1117,18 @@ function WeekRecapModal({ recap, save, onDismiss }) {
     ? `Offseason Wk ${recap.from} → ${recap.to} — ${recap.phase}`
     : `Game Week Recap`
 
+  // Surface newsfeed events that fired this week — gives the recap real
+  // "events that happened" content beyond raw stat diffs.
+  const recentEvents = useMemo(() => {
+    const items = save.newsfeed || []
+    // Show items from the current calendar week or the week we just left.
+    const curYear = save.calendar?.year
+    const curWk = save.calendar?.week
+    return items
+      .filter(n => n.year === curYear && (n.week === curWk || n.week === curWk - 1))
+      .slice(0, 8)
+  }, [save])
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1129,6 +1141,21 @@ function WeekRecapModal({ recap, save, onDismiss }) {
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Events fired this week — hires, schedule completion, etc. */}
+          {recentEvents.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">What happened this week</div>
+              <div className="space-y-1">
+                {recentEvents.map(ev => (
+                  <div key={ev.id} className="text-xs flex items-start gap-2 p-2 bg-pnw-cream/40 rounded">
+                    <span className="text-[10px] text-gray-500 uppercase font-mono shrink-0 mt-0.5">Wk {ev.week}</span>
+                    <span className="text-gray-700 leading-snug">{ev.headline}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Game results */}
           {results.length > 0 && (
             <div>

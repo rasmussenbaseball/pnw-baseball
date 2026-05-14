@@ -70,20 +70,11 @@ export default function NewDynasty() {
   const [coachLast, setCoachLast] = useState('')
   const [regions, setRegions] = useState(['NW'])
   const [archetype, setArchetype] = useState('GENERALIST')
-  const [ratings, setRatings] = useState({ developer: 65, motivator: 65, recruiter: 65, tactician: 55 })
 
-  const pointsUsed = Object.values(ratings).reduce((s, v) => s + (v - COACH_BUILDER_BASE_RATING), 0)
-  const pointsRemaining = COACH_BUILDER_TOTAL_POINTS - 4 * COACH_BUILDER_BASE_RATING - pointsUsed
-  const canSubmit = selectedSchoolId && coachFirst && coachLast && pointsRemaining === 0
-
-  function setRating(key, val) {
-    const proposed = Math.max(COACH_BUILDER_BASE_RATING, Math.min(COACH_BUILDER_MAX, val))
-    const current = ratings[key]
-    const delta = proposed - current
-    const spent = pointsUsed + delta
-    if (spent > COACH_BUILDER_TOTAL_POINTS - 4 * COACH_BUILDER_BASE_RATING) return
-    setRatings({ ...ratings, [key]: proposed })
-  }
+  // Ratings are now FULLY determined by the picked archetype — the user
+  // doesn't customize. Identity is the choice; ratings flow from it.
+  const ratings = ARCHETYPES[archetype]?.fixedRatings || ARCHETYPES.GENERALIST.fixedRatings
+  const canSubmit = selectedSchoolId && coachFirst && coachLast && archetype
 
   function getGameOptions() {
     if (modeKey === 'TRADITIONAL') {
@@ -304,30 +295,21 @@ export default function NewDynasty() {
             </div>
           </div>
 
-          <div className="mb-2 text-sm">
-            <strong>{pointsRemaining}</strong> points remaining to distribute
-            <span className="text-gray-500"> (out of {COACH_BUILDER_TOTAL_POINTS - 4 * COACH_BUILDER_BASE_RATING})</span>
+          {/* Read-only ratings preview based on selected archetype */}
+          <div className="mb-2">
+            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Your Ratings</label>
+            <p className="text-[11px] text-gray-500 mb-2">
+              Locked to your archetype. Identity is the choice — ratings flow from it.
+            </p>
           </div>
-          <p className="text-[11px] text-gray-500 mb-3">
-            Four ratings define your head coach. Higher = better in that area. Each starts at {COACH_BUILDER_BASE_RATING}; spend your points where you want to be strongest.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {Object.entries(ratings).map(([key, val]) => (
               <div key={key} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
-                <label className="text-xs text-gray-500 uppercase tracking-wider flex justify-between">
-                  <span className="font-semibold text-pnw-slate">{prettyLabel(key)}</span>
-                  <span className="font-mono text-pnw-green font-bold">{val}</span>
-                </label>
-                <input
-                  type="range"
-                  min={COACH_BUILDER_BASE_RATING}
-                  max={COACH_BUILDER_MAX}
-                  value={val}
-                  onChange={e => setRating(key, parseInt(e.target.value, 10))}
-                  className="w-full mt-1"
-                />
-                <p className="text-[11px] text-gray-600 mt-1 leading-snug">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">{prettyLabel(key)}</span>
+                  <span className="font-mono text-pnw-green font-bold text-xl">{val}</span>
+                </div>
+                <p className="text-[10px] text-gray-600 mt-1 leading-snug">
                   {RATING_DESCRIPTIONS[key]}
                 </p>
               </div>
@@ -337,7 +319,7 @@ export default function NewDynasty() {
           <div className="flex justify-between mt-4">
             <button onClick={() => setStep(2)} className="px-4 py-2 border rounded text-sm">← Back</button>
             <button
-              disabled={!coachFirst || !coachLast || pointsRemaining !== 0}
+              disabled={!coachFirst || !coachLast || !archetype}
               onClick={() => setStep(4)}
               className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300"
             >

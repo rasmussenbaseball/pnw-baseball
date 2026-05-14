@@ -176,6 +176,12 @@ export default function Schedule() {
           <button
             onClick={() => {
               save.scheduleComplete = true
+              save.newsfeed.unshift({
+                id: `sched_done_${save.calendar.year}`,
+                year: save.calendar.year, week: save.calendar.week, type: 'AWARD',
+                headline: `📋 Locked in the ${seasonYear} schedule. Travel forecast: $${(travelCost / 1000).toFixed(1)}K.`,
+                payload: {},
+              })
               saveDynasty(save); setSave({ ...save })
             }}
             className="px-4 py-2 bg-green-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
@@ -508,13 +514,31 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
     return [...naia, ...nonNaia]
   }, [save, userSchool])
 
+  // Compute rank within each division so the user can see "#14 NAIA",
+  // "#48 D3", etc. Drops a `rank` + `divisionSize` onto each candidate.
+  const candidatesByDivisionRanked = useMemo(() => {
+    const byDiv = {}
+    for (const c of allCandidates) {
+      if (!byDiv[c.division]) byDiv[c.division] = []
+      byDiv[c.division].push(c)
+    }
+    for (const div of Object.keys(byDiv)) {
+      byDiv[div].sort((a, b) => b.strength - a.strength)
+      byDiv[div].forEach((t, i) => {
+        t.rank = i + 1
+        t.divisionSize = byDiv[div].length
+      })
+    }
+    return allCandidates
+  }, [allCandidates])
+
   // Sort by proximity to the user's home state first — closer teams cost
   // less to travel to and reflect realistic non-conf scheduling patterns.
   // Strength is the tiebreaker within the same proximity bucket.
   const userState = userSchool.state
   const filtered = sortByProximity(
     userState,
-    allCandidates
+    candidatesByDivisionRanked
       .filter(t => divFilter === 'ALL' || t.division === divFilter)
       .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
       .filter(t => t.division !== 'JUCO_NWAC')
@@ -583,7 +607,12 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
                 <TeamLogo school={s} size={20} />
                 <div className="flex-1">
                   <div className="font-medium">{s.name}</div>
-                  <div className="text-xs text-gray-500">{s.city}, {s.state} • {s.division} • Strength {s.strength.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500">
+                    {s.city}, {s.state} • {s.division}
+                    {s.rank && (
+                      <> • <span className="font-semibold text-pnw-slate">#{s.rank} {s.division === 'NAIA' ? 'NAIA' : s.division}</span></>
+                    )}
+                  </div>
                 </div>
                 <span className={'text-[10px] font-semibold px-1.5 py-0.5 rounded ' + pxColor}>
                   {proximityLabel(px)}

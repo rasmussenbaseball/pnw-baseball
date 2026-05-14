@@ -178,18 +178,18 @@ function isScheduleComplete(state) {
 }
 
 function isHiringComplete(state) {
-  // First year of a dynasty (dynastyYear === 1): must have all three
-  // required assistant roles filled. Subsequent years: skipable via a
-  // "confirm I'm keeping my staff" button (sets hiringConfirmed.year).
+  // ALL years: must have at least 3 assistants. NAIA programs are required
+  // to carry pitching / hitting / bench coaches; the user can pick which
+  // names + archetypes go in those roles each year.
   const team = state.teams?.[state.userSchoolId]
   if (!team) return false
   const required = ['PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
   const assistants = (team.assistantCoachIds || []).map(id => state.coaches?.[id]).filter(Boolean)
   const filledRoles = new Set(assistants.map(c => c.role))
+  const hasMinThree = required.every(r => filledRoles.has(r))
+  if (!hasMinThree) return false
   const isFirstYear = (state.dynastyYear ?? 1) === 1
-  if (isFirstYear) {
-    return required.every(r => filledRoles.has(r))
-  }
+  if (isFirstYear) return true
   // Year 2+ — user must explicitly confirm OR have done a new hire this year.
   return state.hiringConfirmed?.year === state.calendar?.year
 }

@@ -18,7 +18,7 @@ export const BUDGET_CATEGORIES = [
   'facilities',
   'medical',
   'recruiting',
-  'misc',
+  // 'misc' removed — every slider should have a concrete game effect.
 ]
 
 /**
@@ -32,16 +32,16 @@ export const BUDGET_CATEGORIES = [
 // 12-18% of a $200K MID-tier budget). Rebalanced the smaller categories
 // down to absorb the difference.
 const DEFAULT_ALLOCATION = {
-  scholarships:      0.54,
+  scholarships:      0.55,
   coachingSalaries:  0.19,
   travel:            0.14,
-  equipment:         0.025,
-  uniforms:          0.012,
-  meals:             0.022,
-  facilities:        0.030,
-  medical:           0.010,
-  recruiting:        0.013,
-  misc:              0.018,
+  equipment:         0.027,
+  uniforms:          0.014,
+  meals:             0.025,
+  facilities:        0.034,
+  medical:           0.013,
+  recruiting:        0.017,
+  // misc removed; weight redistributed proportionally across other slots.
 }
 
 /**
@@ -58,7 +58,6 @@ export const BUDGET_GUIDANCE = {
   facilities:       { min: 0.025, max: 0.05, note: 'Field upkeep, weight room, indoor cages.' },
   medical:          { min: 0.005, max: 0.02, note: 'Athletic trainer + supplies. Cuts injury recovery time.' },
   recruiting:       { min: 0.01, max: 0.025, note: 'Travel + camps + visits. Boosts recruiting AP.' },
-  misc:             { min: 0.01, max: 0.03, note: 'Buffer for unexpected costs.' },
 }
 
 /**
@@ -287,7 +286,7 @@ export const BUDGET_PRESETS = [
     blurb: 'Even mix — no category neglected. Safe default for a program with no clear weakness.',
     allocations: {
       scholarships: 0.57, coachingSalaries: 0.18, equipment: 0.03, uniforms: 0.015,
-      meals: 0.025, facilities: 0.035, medical: 0.015, recruiting: 0.02, misc: 0.02,
+      meals: 0.025, facilities: 0.035, medical: 0.015, recruiting: 0.02,
     },
   },
   {
@@ -296,7 +295,7 @@ export const BUDGET_PRESETS = [
     blurb: 'Heavy facilities, S&C, meals. Trade off recruiting for faster player growth — pays off over years.',
     allocations: {
       scholarships: 0.52, coachingSalaries: 0.18, equipment: 0.04, uniforms: 0.015,
-      meals: 0.04, facilities: 0.065, medical: 0.025, recruiting: 0.015, misc: 0.02,
+      meals: 0.04, facilities: 0.065, medical: 0.025, recruiting: 0.015,
     },
   },
   {
@@ -305,7 +304,7 @@ export const BUDGET_PRESETS = [
     blurb: 'Big scholarship + recruiting pools. Aggressive talent acquisition; lighter player-dev infrastructure.',
     allocations: {
       scholarships: 0.62, coachingSalaries: 0.17, equipment: 0.025, uniforms: 0.015,
-      meals: 0.02, facilities: 0.025, medical: 0.01, recruiting: 0.04, misc: 0.02,
+      meals: 0.02, facilities: 0.025, medical: 0.01, recruiting: 0.04,
     },
   },
   {
@@ -314,7 +313,7 @@ export const BUDGET_PRESETS = [
     blurb: 'Heavy travel cushion + meals + medical. Senior-laden teams that need to peak THIS year.',
     allocations: {
       scholarships: 0.55, coachingSalaries: 0.18, equipment: 0.035, uniforms: 0.02,
-      meals: 0.035, facilities: 0.025, medical: 0.025, recruiting: 0.015, misc: 0.025,
+      meals: 0.035, facilities: 0.025, medical: 0.025, recruiting: 0.015,
     },
   },
   {
@@ -323,7 +322,7 @@ export const BUDGET_PRESETS = [
     blurb: 'Bare minimum on extras, banked $ rolls over to next year. Use when rebuilding or saving up.',
     allocations: {
       scholarships: 0.55, coachingSalaries: 0.16, equipment: 0.02, uniforms: 0.01,
-      meals: 0.015, facilities: 0.02, medical: 0.005, recruiting: 0.01, misc: 0.015,
+      meals: 0.015, facilities: 0.02, medical: 0.005, recruiting: 0.01,
     },
   },
   {
@@ -332,7 +331,7 @@ export const BUDGET_PRESETS = [
     blurb: 'Top-of-market salaries to keep + attract elite assistants. Drives weekly AP and dev quality.',
     allocations: {
       scholarships: 0.54, coachingSalaries: 0.24, equipment: 0.025, uniforms: 0.015,
-      meals: 0.025, facilities: 0.03, medical: 0.015, recruiting: 0.02, misc: 0.02,
+      meals: 0.025, facilities: 0.03, medical: 0.015, recruiting: 0.02,
     },
   },
 ]
