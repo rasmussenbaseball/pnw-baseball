@@ -15,6 +15,7 @@ import {
   OFFSEASON_WEEKS,
 } from '../../gm/engine/calendar'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
+import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -240,7 +241,7 @@ export default function Dashboard() {
 
   // ─── UI ────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto py-6 px-4">
+    <div className="max-w-7xl mx-auto py-6 px-4 min-h-screen">
       {progress && <ProgressModal {...progress} />}
       {lastWeekRecap?.diff && (
         <WeekRecapModal
@@ -278,54 +279,64 @@ export default function Dashboard() {
           onCancel={() => setGameWeekModal(false)}
         />
       )}
-      {/* HERO — team identity + dynasty year + AP. Two-row layout: top
-          identity row, bottom accent strip with record + phase + dynasty year
-          for at-a-glance status. */}
-      <div className="bg-gradient-to-br from-pnw-slate via-pnw-slate to-pnw-green text-white rounded-xl mb-4 shadow-lg overflow-hidden">
-        <div className="p-5 flex justify-between items-center">
-          <div className="flex gap-4 items-center">
-            <div className="bg-white/10 rounded-lg p-2 backdrop-blur-sm">
-              <TeamLogo school={school} size={72} />
+      {/* HERO — team identity, dynasty year, current phase, AP, and quick
+          stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
+          gradient, glowing accent stripe, big team logo, dense info on the
+          right. */}
+      <div className="relative bg-gradient-to-br from-pnw-slate via-pnw-slate to-pnw-green text-white rounded-2xl mb-4 shadow-2xl overflow-hidden">
+        {/* Decorative diagonal accent stripe */}
+        <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-pnw-green/30 to-transparent pointer-events-none"></div>
+        <div className="absolute top-0 left-0 w-2 h-full bg-pnw-green"></div>
+
+        <div className="relative p-6 flex justify-between items-stretch gap-6">
+          {/* Identity */}
+          <div className="flex gap-5 items-center flex-1 min-w-0">
+            <div className="bg-white/10 rounded-2xl p-3 backdrop-blur-sm shadow-inner ring-1 ring-white/15 shrink-0">
+              <TeamLogo school={school} size={88} />
             </div>
-            <div>
-              <Link to="/gm" className="text-[11px] opacity-70 hover:underline">← Dynasties</Link>
-              <div className="text-3xl font-bold leading-tight tracking-tight">{school.name}</div>
-              <div className="text-xs opacity-80 mt-0.5">{school.city}, {school.state} · {conf.name}</div>
-              <div className="text-[11px] opacity-70 mt-1">
-                {headCoach.firstName} {headCoach.lastName} · head coach · Year {save.dynastyYear || 1}
+            <div className="min-w-0">
+              <Link to="/gm" className="text-[10px] opacity-60 hover:underline tracking-wider uppercase">← Dynasties</Link>
+              <div className="text-4xl font-extrabold leading-none tracking-tight mt-1 truncate">{school.name}</div>
+              <div className="text-xs opacity-80 mt-1.5">{school.city}, {school.state} · {conf.name}</div>
+              <div className="flex items-center gap-3 mt-2.5">
+                <div className="bg-white/15 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold">
+                  Year {save.dynastyYear || 1}
+                </div>
+                <div className="text-[11px] opacity-80">
+                  {headCoach.firstName} {headCoach.lastName} · HC
+                </div>
               </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider opacity-80">{dateLabel}</div>
-            <div className="text-4xl font-bold mt-1 leading-none">
-              {weekOfYear >= 1 && weekOfYear <= 3
-                ? <span className="text-xl opacity-70">🔒 AP Locked</span>
-                : <>{save.ap.currentWeek}<span className="text-base opacity-70"> AP</span></>}
+
+          {/* Right: current week + AP */}
+          <div className="text-right border-l border-white/15 pl-6 flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">{dateLabel}</div>
+              <div className="text-base font-bold mt-0.5">{currentPhase.label}</div>
+              <div className="text-[11px] opacity-70">Wk {weekOfYear} / 52</div>
             </div>
-            <div className="text-[11px] opacity-70 mt-1">Wk {weekOfYear} · {currentPhase.label}</div>
+            <div className="mt-4">
+              <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
+              <div className="text-4xl font-extrabold mt-0.5 leading-none">
+                {weekOfYear >= 1 && weekOfYear <= 3
+                  ? <span className="text-lg font-bold opacity-70">🔒 Locked</span>
+                  : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
+              </div>
+            </div>
           </div>
         </div>
-        <div className="bg-black/20 px-5 py-2 flex justify-between items-center text-xs">
-          <div className="flex gap-5">
-            <div>
-              <span className="opacity-70 uppercase tracking-wider">Record</span>{' '}
-              <span className="font-mono font-bold">{team.wins}-{team.losses}</span>
-            </div>
-            <div>
-              <span className="opacity-70 uppercase tracking-wider">{conf.abbreviation}</span>{' '}
-              <span className="font-mono font-bold">{team.confWins}-{team.confLosses}</span>
-            </div>
-            <div>
-              <span className="opacity-70 uppercase tracking-wider">Run Diff</span>{' '}
-              <span className={'font-mono font-bold ' + (team.runDiff > 0 ? 'text-green-300' : team.runDiff < 0 ? 'text-red-300' : '')}>
-                {team.runDiff > 0 ? '+' : ''}{team.runDiff}
-              </span>
-            </div>
-          </div>
-          <div className="opacity-80">
-            {currentPhase.blurb}
-          </div>
+
+        {/* Status strip — record + conf + run diff + phase blurb */}
+        <div className="relative bg-black/30 backdrop-blur-sm px-6 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs border-t border-white/10">
+          <StatCell label="Overall" value={`${team.wins}-${team.losses}`} />
+          <StatCell label={conf.abbreviation} value={`${team.confWins}-${team.confLosses}`} />
+          <StatCell
+            label="Run Diff"
+            value={`${team.runDiff > 0 ? '+' : ''}${team.runDiff}`}
+            color={team.runDiff > 0 ? 'text-green-300' : team.runDiff < 0 ? 'text-red-300' : ''}
+          />
+          <StatCell label="Team OVR" value={teamOvr.overall} />
         </div>
       </div>
 
@@ -447,33 +458,11 @@ export default function Dashboard() {
         {/* LEFT column — staff + budget */}
         <div className="space-y-4">
           <Panel title="Coaching Staff" actionTo={`/gm/coaches?slot=${slot}`} actionLabel="Manage →">
-            <div className="text-xs text-gray-500 mb-1">Head Coach</div>
-            <div className="flex justify-between items-baseline mb-1">
-              <div className="font-semibold">{headCoach.firstName} {headCoach.lastName}</div>
-              <div className="text-sm font-mono text-gray-700">${(headCoach.salary / 1000).toFixed(0)}K</div>
-            </div>
-            <div className="flex gap-3 mb-2">
-              <Rating label="DEV" v={headCoach.developer} />
-              <Rating label="MOT" v={headCoach.motivator} />
-              <Rating label="REC" v={headCoach.recruiter} />
-              <Rating label="TAC" v={headCoach.tactician} />
-            </div>
-            <div className="text-[11px] text-gray-500 mb-3">{prettyLabel(headCoach.recruiter_type)} • {(headCoach.pipelines || []).slice(0, 3).map(prettyLabel).join(', ') || 'no pipelines'}</div>
-
-            <div className="text-xs text-gray-500 mt-3 mb-1">Assistants ({assistants.length})</div>
-            <div className="space-y-1">
-              {assistants.map(c => (
-                <div key={c.id} className="flex justify-between text-xs">
-                  <span className="text-gray-700">{c.firstName} {c.lastName} <span className="text-gray-400">{prettyLabel(c.role)}</span></span>
-                  <span className="font-mono text-gray-600">${(c.salary / 1000).toFixed(0)}K</span>
-                </div>
-              ))}
-            </div>
-            <div className="border-t mt-2 pt-2 flex justify-between text-xs">
-              <span className="text-gray-600">Total payroll</span>
-              <span className="font-mono font-bold">${(totalCoachPayroll / 1000).toFixed(1)}K</span>
-            </div>
+            <CoachingStaffCard headCoach={headCoach} assistants={assistants} totalPayroll={totalCoachPayroll} />
           </Panel>
+
+          {/* Up Next — next 3 user games visualized as cards */}
+          <UpcomingGames save={save} slot={slot} />
 
           <Panel title="Scholarships (Next Year)" actionTo={`/gm/budget?slot=${slot}`} actionLabel="Budget →">
             <ScholarshipBar snapshot={scholarship} />
@@ -504,22 +493,18 @@ export default function Dashboard() {
         {/* CENTER column — sim recap, top performers, news */}
         <div className="space-y-4">
           <Panel title="Top Players" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Full roster →">
-            <div className="text-xs text-gray-500 mb-1">Top 5 hitters</div>
-            <table className="w-full text-xs mb-3">
-              <tbody>
-                {topHitters.map(({ p, ovr }) => (
-                  <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} />
-                ))}
-              </tbody>
-            </table>
-            <div className="text-xs text-gray-500 mb-1">Top 5 pitchers</div>
-            <table className="w-full text-xs">
-              <tbody>
-                {topPitchers.map(({ p, ovr }) => (
-                  <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} />
-                ))}
-              </tbody>
-            </table>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 mt-0.5">Top Hitters</div>
+            <div className="space-y-0.5 mb-4">
+              {topHitters.map(({ p, ovr }) => (
+                <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} />
+              ))}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 border-t pt-3">Top Pitchers</div>
+            <div className="space-y-0.5">
+              {topPitchers.map(({ p, ovr }) => (
+                <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} />
+              ))}
+            </div>
           </Panel>
 
           <Panel title="News" actionTo={null}>
@@ -591,22 +576,35 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
   let primary
   if (inOffseason) {
     primary = (
-      <div>
-        <div className="text-xs uppercase tracking-wider opacity-80">Offseason Week {offseasonWeek} of {OFFSEASON_WEEKS}</div>
-        <div className="text-lg font-semibold mt-0.5">{offseasonPhase(offseasonWeek)} — {formatShortDate(date)}, {date.getFullYear()}</div>
-        <div className="text-[11px] opacity-70 mt-0.5">Recruit, develop, fundraise, set rotation. Sim when you're done.</div>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-lg">
+          📅
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
+            Offseason Wk {offseasonWeek}/{OFFSEASON_WEEKS} · {formatShortDate(date)}
+          </div>
+          <div className="text-sm font-semibold mt-0.5">{offseasonPhase(offseasonWeek)}</div>
+        </div>
       </div>
     )
   } else if (nextGame) {
     const opp = nextGame.homeId === userSchoolId ? nextGame.awayId : nextGame.homeId
     const oppName = (save.schools[opp] || NON_NAIA_DISPLAY[opp])?.name || 'TBD'
     primary = (
-      <div>
-        <div className="text-xs uppercase tracking-wider opacity-80">Next Game — Season Wk {nextGame.seasonWeek}</div>
-        <div className="text-lg font-semibold mt-0.5">
-          {nextGame.homeId === userSchoolId ? 'vs' : '@'} {oppName}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-pnw-green flex items-center justify-center text-lg">
+          ⚾
         </div>
-        <div className="text-[11px] opacity-70">{nextGame.type === 'CONFERENCE' ? 'Conference' : 'Non-conference'} • {nextGame.date}</div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
+            Next Game · Wk {nextGame.seasonWeek}
+          </div>
+          <div className="text-sm font-semibold mt-0.5">
+            {nextGame.homeId === userSchoolId ? 'vs' : '@'} {oppName}{' '}
+            <span className="text-[10px] opacity-70 ml-1 font-normal">{nextGame.type === 'CONFERENCE' ? 'Conf' : 'Non-conf'} · {nextGame.date}</span>
+          </div>
+        </div>
       </div>
     )
   } else {
@@ -614,13 +612,13 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
   }
 
   return (
-    <div className="bg-pnw-slate text-white rounded-xl p-4 mb-4 flex items-center justify-between shadow">
+    <div className="bg-pnw-slate text-white rounded-xl px-4 py-3 mb-4 flex items-center justify-between shadow">
       {primary}
       <div className="flex flex-col items-end gap-2">
         <button
           onClick={onSim}
           disabled={busy || blocked}
-          className="px-6 py-3 bg-pnw-green rounded font-semibold text-sm hover:opacity-90 disabled:opacity-50"
+          className="px-5 py-2.5 bg-pnw-green rounded-lg font-semibold text-sm hover:opacity-90 disabled:opacity-50 shadow-md"
         >
           {busy
             ? 'Simming…'
@@ -633,11 +631,11 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
                   : 'Sim Next Week →'}
         </button>
         {recap?.kind === 'offseason' && (
-          <div className="text-[11px] opacity-70">Advanced to Wk {recap.to} — {recap.phase}</div>
+          <div className="text-[10px] opacity-70">→ Wk {recap.to} · {recap.phase}</div>
         )}
         {recap?.kind === 'season' && recap.results && recap.results.length > 0 && (
-          <div className="text-[11px] opacity-90 text-right">
-            {recap.results.map(r => (
+          <div className="text-[10px] opacity-90 text-right">
+            {recap.results.slice(0, 3).map(r => (
               <div key={r.gameId}>{r.result} {r.score} {r.homeAway === 'home' ? 'vs' : '@'} {r.opponent}</div>
             ))}
           </div>
@@ -697,18 +695,53 @@ function FocusTasks({ save, inOffseason }) {
 }
 
 function PlayerRow({ p, ovr, slot }) {
+  // Tier badges with real color hierarchy — the game should communicate
+  // "this player is GOOD" at a glance.
+  const tier = ovrTier(ovr)
+  const initials = (p.firstName?.[0] || '') + (p.lastName?.[0] || '')
   return (
-    <tr className="border-b last:border-0 hover:bg-gray-50">
-      <td className="py-1">
-        <Link to={`/gm/player/${p.id}?slot=${slot}`} className="text-pnw-slate hover:text-pnw-green hover:underline">
+    <Link
+      to={`/gm/player/${p.id}?slot=${slot}`}
+      className="flex items-center gap-3 py-1.5 px-1 rounded hover:bg-gray-50 transition group"
+    >
+      <div className={'w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0 ' + avatarColor(p)}>
+        {initials}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-sm text-pnw-slate group-hover:text-pnw-green truncate">
           {p.firstName} {p.lastName}
-        </Link>
-      </td>
-      <td className="py-1 text-gray-500 w-12">{displayPosition(p.primaryPosition)}</td>
-      <td className="py-1 text-gray-500 w-10">{displayClassYear(p)}</td>
-      <td className="py-1 text-right font-mono font-bold w-10">{ovr}</td>
-    </tr>
+        </div>
+        <div className="text-[10px] text-gray-500">
+          {displayPosition(p.primaryPosition)} · {displayClassYear(p)}
+        </div>
+      </div>
+      <span className={'inline-block px-2 py-0.5 rounded font-bold text-sm shrink-0 ' + tier.classes}>
+        {ovr}
+      </span>
+    </Link>
   )
+}
+
+// Tier classification used for OVR badges across the app.
+function ovrTier(ovr) {
+  if (ovr >= 85) return { label: 'Elite',  classes: 'bg-amber-100 text-amber-900 border border-amber-400' }
+  if (ovr >= 75) return { label: 'Strong', classes: 'bg-emerald-100 text-emerald-900 border border-emerald-400' }
+  if (ovr >= 65) return { label: 'Solid',  classes: 'bg-blue-100 text-blue-900 border border-blue-300' }
+  if (ovr >= 55) return { label: 'Avg',    classes: 'bg-gray-100 text-gray-700 border border-gray-300' }
+  return            { label: 'Depth',  classes: 'bg-gray-50 text-gray-500 border border-gray-200' }
+}
+
+// Deterministic avatar color from player id so initials don't all look the
+// same. Picks from a small palette aligned with the site theme.
+function avatarColor(p) {
+  const colors = [
+    'bg-pnw-green', 'bg-pnw-slate', 'bg-blue-600', 'bg-amber-700',
+    'bg-emerald-700', 'bg-indigo-600', 'bg-rose-700', 'bg-cyan-700',
+  ]
+  let h = 0
+  const s = p.id || (p.firstName + p.lastName)
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return colors[h % colors.length]
 }
 
 function ScholarshipBar({ snapshot }) {
@@ -725,6 +758,156 @@ function ScholarshipBar({ snapshot }) {
         <div className="bg-pnw-slate h-full" style={{ width: `${committedPct * 100}%` }} />
         <div className="bg-amber-500 h-full" style={{ width: `${offerPct * 100}%` }} />
       </div>
+    </div>
+  )
+}
+
+function UpcomingGames({ save, slot }) {
+  const userId = save.userSchoolId
+  const games = (save.schedule || [])
+    .filter(g => !g.played && g.type !== 'BYE' && g.awayId !== '__BYE__'
+      && (g.homeId === userId || g.awayId === userId))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .slice(0, 3)
+  if (games.length === 0) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+      <div className="flex justify-between items-baseline mb-2">
+        <h2 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider">Up Next</h2>
+        <Link to={`/gm/schedule?slot=${slot}`} className="text-xs text-pnw-green hover:underline">Full schedule →</Link>
+      </div>
+      <div className="space-y-2">
+        {games.map(g => <UpcomingGameRow key={g.id} game={g} save={save} />)}
+      </div>
+    </div>
+  )
+}
+
+function UpcomingGameRow({ game, save }) {
+  const userId = save.userSchoolId
+  const isHome = game.homeId === userId
+  const oppId = isHome ? game.awayId : game.homeId
+  const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId] || { name: oppId, division: '?' }
+  const typeBadge = {
+    CONFERENCE: { label: 'Conf', bg: 'bg-pnw-green text-white' },
+    NON_CONFERENCE: { label: 'NCAA', bg: 'bg-blue-600 text-white' },
+    D1_MIDWEEK: { label: 'D1 mid', bg: 'bg-purple-600 text-white' },
+    FALL_SCRIMMAGE: { label: 'Fall', bg: 'bg-amber-600 text-white' },
+    SPRING_SCRIMMAGE: { label: 'Spring', bg: 'bg-amber-500 text-white' },
+  }[game.type] || { label: game.type, bg: 'bg-gray-500 text-white' }
+  const dateStr = game.date || ''
+  const month = dateStr.slice(5, 7)
+  const day = dateStr.slice(8, 10)
+  return (
+    <div className="flex items-center gap-3 p-2 rounded-lg border border-gray-100 hover:border-pnw-green/30 hover:bg-pnw-cream/30 transition">
+      {/* Calendar tile */}
+      <div className="w-12 h-12 flex flex-col items-center justify-center rounded-lg bg-pnw-slate text-white shrink-0">
+        <div className="text-[8px] uppercase tracking-wider opacity-70 leading-none mt-1">
+          {month === '01' ? 'Jan' : month === '02' ? 'Feb' : month === '03' ? 'Mar'
+            : month === '04' ? 'Apr' : month === '05' ? 'May' : month === '06' ? 'Jun'
+            : month === '07' ? 'Jul' : month === '08' ? 'Aug' : month === '09' ? 'Sep'
+            : month === '10' ? 'Oct' : month === '11' ? 'Nov' : month === '12' ? 'Dec' : '?'}
+        </div>
+        <div className="text-lg font-bold leading-none">{day || '?'}</div>
+      </div>
+      {/* Matchup */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">{isHome ? 'vs' : '@'}</span>
+          <span className="font-semibold text-pnw-slate text-sm truncate">{opp.name}</span>
+        </div>
+        <div className="text-[10px] text-gray-400 mt-0.5">{opp.city}, {opp.state}</div>
+      </div>
+      {/* Type badge */}
+      <span className={'inline-block text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ' + typeBadge.bg}>
+        {typeBadge.label}
+      </span>
+    </div>
+  )
+}
+
+function CoachingStaffCard({ headCoach, assistants, totalPayroll }) {
+  const staff = useMemo(() => staffRatings(headCoach, assistants), [headCoach, assistants])
+  const hcArc = ARCHETYPES[headCoach.archetype || inferArchetype(headCoach)] || ARCHETYPES.GENERALIST
+  const synergyColor = staff.synergy > 1.03 ? 'text-green-700 bg-green-50'
+    : staff.synergy > 1.0 ? 'text-pnw-green bg-pnw-cream'
+    : staff.synergy < 1.0 ? 'text-red-700 bg-red-50' : 'text-gray-600 bg-gray-50'
+
+  return (
+    <div>
+      {/* HC tile */}
+      <div className="bg-gradient-to-br from-pnw-cream to-white border border-pnw-green/30 rounded-lg p-3 mb-3">
+        <div className="flex items-center gap-3 mb-2">
+          <div className={'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ' + 'bg-pnw-green'}>
+            {(headCoach.firstName?.[0] || '')}{(headCoach.lastName?.[0] || '')}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] uppercase tracking-wider text-pnw-slate font-semibold">Head Coach</div>
+            <div className="font-bold text-pnw-slate text-sm truncate">{headCoach.firstName} {headCoach.lastName}</div>
+          </div>
+          <div className={'text-[10px] font-bold uppercase px-2 py-0.5 rounded ' + hcArc.color + ' bg-white border'}>
+            {hcArc.label}
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-1 text-center">
+          <Rating label="DEV" v={headCoach.developer} />
+          <Rating label="MOT" v={headCoach.motivator} />
+          <Rating label="REC" v={headCoach.recruiter} />
+          <Rating label="TAC" v={headCoach.tactician} />
+        </div>
+      </div>
+
+      {/* Assistants */}
+      {assistants.length > 0 ? (
+        <div className="space-y-1.5 mb-3">
+          {assistants.map(c => {
+            const ac = ARCHETYPES[c.archetype || inferArchetype(c)] || ARCHETYPES.GENERALIST
+            return (
+              <div key={c.id} className="flex items-center gap-2 text-xs py-1">
+                <div className="w-7 h-7 rounded-full bg-pnw-slate text-white flex items-center justify-center font-bold text-[10px]">
+                  {(c.firstName?.[0] || '')}{(c.lastName?.[0] || '')}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-pnw-slate truncate">{c.firstName} {c.lastName}</div>
+                  <div className="text-[10px] text-gray-500">
+                    {prettyLabel(c.role)}
+                    <span className={'ml-1 ' + ac.color}>· {ac.label}</span>
+                  </div>
+                </div>
+                <span className="font-mono text-gray-600 shrink-0">${(c.salary / 1000).toFixed(0)}K</span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded p-2 text-[11px] text-amber-800 mb-3">
+          No assistants yet — hire 3 in Wk 2 to clear the gate.
+        </div>
+      )}
+
+      {/* Combined staff ratings */}
+      <div className="border-t pt-2 mt-1">
+        <div className="flex justify-between items-baseline mb-1.5">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Staff Rating</div>
+          <div className="text-xl font-bold text-pnw-green leading-none">{staff.overall}</div>
+        </div>
+        <div className={'text-[10px] px-2 py-1 rounded ' + synergyColor}>
+          {(staff.synergy - 1) * 100 >= 0 ? '+' : ''}{((staff.synergy - 1) * 100).toFixed(0)}% · {staff.synergyLabel}
+        </div>
+      </div>
+      <div className="border-t mt-2 pt-2 flex justify-between text-xs">
+        <span className="text-gray-600">Total payroll</span>
+        <span className="font-mono font-bold">${(totalPayroll / 1000).toFixed(1)}K</span>
+      </div>
+    </div>
+  )
+}
+
+function StatCell({ label, value, color = '' }) {
+  return (
+    <div className="flex flex-col">
+      <div className="text-[9px] uppercase tracking-widest opacity-60 font-semibold">{label}</div>
+      <div className={'font-mono font-bold text-base mt-0.5 ' + color}>{value}</div>
     </div>
   )
 }
@@ -774,10 +957,14 @@ function Rating({ label, v }) {
 
 function Panel({ title, actionTo, actionLabel, children }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-      <div className="flex justify-between items-baseline mb-2">
-        <h2 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider">{title}</h2>
-        {actionTo && <Link to={actionTo} className="text-xs text-pnw-green hover:underline">{actionLabel || 'View →'}</Link>}
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition">
+      <div className="flex justify-between items-baseline mb-3 pb-2 border-b border-gray-100">
+        <h2 className="text-xs font-bold text-pnw-slate uppercase tracking-widest">{title}</h2>
+        {actionTo && (
+          <Link to={actionTo} className="text-[11px] text-pnw-green hover:underline font-semibold">
+            {actionLabel || 'View →'}
+          </Link>
+        )}
       </div>
       {children}
     </div>

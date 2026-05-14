@@ -8,6 +8,7 @@ import TeamLogo from '../../gm/components/TeamLogo'
 import { prettyLabel } from '../../gm/engine/format'
 
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
+import { ARCHETYPES } from '../../gm/engine/archetypes'
 
 const COACH_BUILDER_TOTAL_POINTS = 250
 const COACH_BUILDER_BASE_RATING = 40
@@ -68,6 +69,7 @@ export default function NewDynasty() {
   const [coachFirst, setCoachFirst] = useState('')
   const [coachLast, setCoachLast] = useState('')
   const [regions, setRegions] = useState(['NW'])
+  const [archetype, setArchetype] = useState('GENERALIST')
   const [ratings, setRatings] = useState({ developer: 65, motivator: 65, recruiter: 65, tactician: 55 })
 
   const pointsUsed = Object.values(ratings).reduce((s, v) => s + (v - COACH_BUILDER_BASE_RATING), 0)
@@ -112,6 +114,7 @@ export default function NewDynasty() {
         firstName: coachFirst,
         lastName: coachLast,
         regions,
+        archetype,
         recruiter_type: 'BALANCED',
         ...ratings,
       },
@@ -268,6 +271,33 @@ export default function NewDynasty() {
                   >
                     <div className="font-semibold text-sm">{REGION_LABELS[r]}</div>
                     <div className={'text-[10px] mt-0.5 ' + (selected ? 'text-pnw-cream' : 'text-gray-500')}>{REGION_BLURBS[r]}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* HC archetype — biases what kind of staff syncs with you */}
+          <div className="mb-5">
+            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 block">Coaching Archetype</label>
+            <p className="text-[11px] text-gray-500 mb-2">
+              Defines your coaching identity. Hiring assistants who share your archetype creates an "echo staff" (+5%);
+              hiring opposites creates a "balanced staff" (+4%).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+              {Object.values(ARCHETYPES).map(a => {
+                const selected = archetype === a.key
+                return (
+                  <button
+                    key={a.key}
+                    onClick={() => setArchetype(a.key)}
+                    className={'text-left p-2.5 rounded-lg border-2 transition ' +
+                      (selected
+                        ? 'border-pnw-green bg-pnw-cream'
+                        : 'border-gray-200 bg-white hover:border-gray-400')}
+                  >
+                    <div className={'font-bold text-sm ' + a.color}>{a.label}</div>
+                    <div className="text-[10px] text-gray-600 mt-1 leading-snug">{a.blurb}</div>
                   </button>
                 )
               })}

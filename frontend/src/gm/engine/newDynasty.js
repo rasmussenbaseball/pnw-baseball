@@ -242,6 +242,7 @@ function buildUserHeadCoach(uc, school) {
     age: 35,
     schoolId: school.id,
     role: 'HEAD_COACH',
+    archetype: uc.archetype || 'GENERALIST',
     yearsAtSchool: 0,
     yearsInRole: 0,
     developer: uc.developer,

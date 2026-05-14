@@ -27,7 +27,7 @@ const MEETING_BOOST = 12
 // 1-on-1 development — pick a single player + a single rating; spend AP to
 // bump that stat permanently (within the player's potential ceiling).
 const ONE_ON_ONE_AP = 8
-const ONE_ON_ONE_BUMP = 1   // points of rating per session
+const ONE_ON_ONE_BUMP = 3   // points of rating per session
 
 export default function WeeklyActions() {
   const { user } = useAuth()
