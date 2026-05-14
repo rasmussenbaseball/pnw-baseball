@@ -16,6 +16,7 @@ import {
 } from '../../gm/engine/calendar'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
+import { cutsWindowOpen, cutTrustTier, ensureCutsState } from '../../gm/engine/cuts'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -374,6 +375,25 @@ export default function Dashboard() {
         <CampInviteBanner save={save} slot={slot} weekOfYear={weekOfYear} />
       )}
 
+      {/* Cuts window — fires the first week after the user's season ends */}
+      <CutsBanner save={save} slot={slot} />
+
+      {/* Summer ball planning prompt — appears Wk 14 */}
+      {weekOfYear === 14 && (
+        <div className="bg-pnw-cream border-l-4 border-pnw-green text-pnw-slate p-4 rounded-r mb-4 flex justify-between items-center">
+          <div>
+            <div className="font-bold">☀️ Summer ball planning is open</div>
+            <div className="text-xs mt-1">
+              Decide which players will play summer ball next summer. Free to add / remove now;
+              once your season ends in spring, you can only REMOVE.
+            </div>
+          </div>
+          <Link to={`/gm/summer?slot=${slot}`} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold shrink-0 ml-3 hover:opacity-90">
+            Plan summer →
+          </Link>
+        </div>
+      )}
+
       {/* Phase-gate banner — required action this week */}
       {requiredAction && !requiredAction.isComplete(save) && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-4 flex justify-between items-start">
@@ -538,6 +558,7 @@ export default function Dashboard() {
               <NavTile to={`/gm/recruiting?slot=${slot}`} title="Recruiting" sub={save.recruits && Object.keys(save.recruits).length > 0 ? `${Object.keys(save.recruits).length} on board` : 'Open board'} />
               <NavTile to={`/gm/weekly?slot=${slot}`} title="Weekly Actions" sub="Study hall, fundraise, camp" />
               <NavTile to={`/gm/coaches?slot=${slot}`} title="Staff" sub={`${1 + assistants.length} coaches`} />
+              <NavTile to={`/gm/summer?slot=${slot}`} title="Summer Ball" sub={summerBallSub(save)} />
               {save.postseason && (
                 <NavTile to={`/gm/postseason?slot=${slot}`} title="Postseason" sub={postseasonSub(save.postseason)} />
               )}
@@ -1313,6 +1334,37 @@ function postseasonSub(ps) {
   if (ps.userInField) return 'Opening Round'
   if (ps.userChamp) return '🏆 Conf Champ'
   return 'Missed'
+}
+
+function CutsBanner({ save, slot }) {
+  // Initialize state lazily so we know the right open week + allowance.
+  ensureCutsState(save)
+  if (!cutsWindowOpen(save)) return null
+  const remaining = (save.cuts?.allowed || 0) - (save.cuts?.used || 0)
+  const tier = cutTrustTier(save)
+  return (
+    <div className="bg-red-50 border-l-4 border-red-500 text-red-900 p-4 rounded-r mb-4 flex justify-between items-center">
+      <div>
+        <div className="font-bold">✂ Roster cuts window OPEN</div>
+        <div className="text-xs mt-1">
+          You have <strong>{remaining}</strong> cut{remaining === 1 ? '' : 's'} remaining this offseason.
+          AD trust tier: <strong>{tier.label}</strong>. {tier.note}
+        </div>
+      </div>
+      <Link to={`/gm/roster?slot=${slot}`} className="px-4 py-2 bg-red-600 text-white rounded text-sm font-semibold shrink-0 ml-3 hover:opacity-90">
+        Manage roster →
+      </Link>
+    </div>
+  )
+}
+
+function summerBallSub(save) {
+  const sb = save.summerBall
+  if (!sb) return 'Plan now (Wk 14+)'
+  const count = Object.values(sb.assignments || {}).filter(a => !a.removed).length
+  if (sb.status === 'RESOLVED') return 'Results in newsfeed'
+  if (sb.status === 'CONFIRMED') return `${count} confirmed`
+  return count > 0 ? `${count} planned` : 'Plan now'
 }
 
 // ────────────────────────────────────────────────────────────────────────────

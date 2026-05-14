@@ -181,6 +181,7 @@ import WeeklyActions from './pages/gm/WeeklyActions'
 import DepthChart from './pages/gm/DepthChart'
 import Play from './pages/gm/Play'
 import GMCalendar from './pages/gm/Calendar'
+import SummerBall from './pages/gm/SummerBall'
 
 export default function App() {
   // Portal routes get their own full-page shell — no main-site Header,
@@ -325,6 +326,7 @@ export default function App() {
           <Route path="/gm/depth" element={<RequireGmEarlyAccess><DepthChart /></RequireGmEarlyAccess>} />
           <Route path="/gm/play" element={<RequireGmEarlyAccess><Play /></RequireGmEarlyAccess>} />
           <Route path="/gm/calendar" element={<RequireGmEarlyAccess><GMCalendar /></RequireGmEarlyAccess>} />
+          <Route path="/gm/summer" element={<RequireGmEarlyAccess><SummerBall /></RequireGmEarlyAccess>} />
           <Route path="/gm/player/:playerId" element={<RequireGmEarlyAccess><GMPlayerDetail /></RequireGmEarlyAccess>} />
 
           {/* About */}

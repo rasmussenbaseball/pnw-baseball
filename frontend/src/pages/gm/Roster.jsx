@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { loadDynasty } from '../../gm/engine/save'
+import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { playerOverall, playerPotentialOverall, overallTier, teamOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
+import { cutsWindowOpen, ensureCutsState, cutPlayer, cutTrustTier } from '../../gm/engine/cuts'
 
 const POSITION_GROUPS = {
   All: () => true,
@@ -22,11 +23,25 @@ export default function Roster() {
   const slot = parseInt(params.get('slot') || '1', 10)
   const userId = user?.id || 'guest'
 
-  const save = useMemo(() => loadDynasty(userId, slot), [userId, slot])
+  const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [group, setGroup] = useState('All')
   const [sortKey, setSortKey] = useState('overall')
+  const [cutMode, setCutMode] = useState(false)
 
   if (!save) return <Navigate to="/gm" replace />
+  ensureCutsState(save)
+  const cutsOpen = cutsWindowOpen(save)
+  const cutsRemaining = (save.cuts?.allowed || 0) - (save.cuts?.used || 0)
+
+  function handleCut(playerId) {
+    const player = save.players[playerId]
+    if (!player) return
+    if (!confirm(`Cut ${player.firstName} ${player.lastName}? This is permanent — they leave the program immediately.`)) return
+    const result = cutPlayer(save, playerId)
+    if (!result.ok) { alert(result.error); return }
+    saveDynasty(save)
+    setSave({ ...save })
+  }
 
   const team = save.teams[save.userSchoolId]
   const school = save.schools[save.userSchoolId]
@@ -58,6 +73,19 @@ export default function Roster() {
           <TeamOvrCard label="Team GPA" value={acadSummary.teamGpa.toFixed(2)} small />
         </div>
       </div>
+
+      {/* Cuts banner — visible only when window open + cuts remaining */}
+      {cutsOpen && cutsRemaining > 0 && (
+        <CutsControlPanel
+          save={save}
+          cutMode={cutMode}
+          setCutMode={setCutMode}
+          remaining={cutsRemaining}
+        />
+      )}
+      {save.cuts && save.cuts.year === save.calendar?.year && save.cuts.allowed === 0 && (
+        <CutsTrustNote save={save} />
+      )}
 
       <div className="flex gap-2 mb-4">
         {Object.keys(POSITION_GROUPS).map(g => (
@@ -94,6 +122,7 @@ export default function Roster() {
                 <th title="Control — BB + HBP rate">Ctrl</th>
                 <th title="Stamina — innings per outing">Stam</th>
                 <th title="Player happiness — affects GPA, stats, and transfer risk over time">Mood</th>
+                {cutMode && <th>Cut</th>}
               </tr>
             </thead>
             <tbody>
@@ -101,8 +130,9 @@ export default function Roster() {
                 const ovr = playerOverall(p)
                 const pot = playerPotentialOverall(p)
                 const tier = overallTier(ovr)
+                const cuttable = cutMode && p.classYear !== 'SR'
                 return (
-                  <tr key={p.id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/gm/player/${p.id}?slot=${slot}`)}>
+                  <tr key={p.id} className={'border-t hover:bg-gray-50 ' + (cutMode ? '' : 'cursor-pointer')} onClick={() => !cutMode && navigate(`/gm/player/${p.id}?slot=${slot}`)}>
                     <td className="py-2 px-3 font-medium">{p.firstName} {p.lastName}</td>
                     <td className="text-gray-700">{displayPosition(p.primaryPosition)}</td>
                     <td className="text-gray-700">{displayClassYear(p)}</td>
@@ -123,6 +153,20 @@ export default function Roster() {
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.control} arrow={arrowFor(save, p.id, ['control'], 'pitcher')} /> : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stamina} arrow={arrowFor(save, p.id, ['stamina'], 'pitcher')} /> : '—'}</td>
                     <td className="text-xs"><HappinessPill player={p} /></td>
+                    {cutMode && (
+                      <td className="text-xs">
+                        {cuttable ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCut(p.id) }}
+                            className="px-2 py-0.5 bg-red-600 text-white rounded text-[10px] hover:opacity-90 font-semibold"
+                          >
+                            ✂ Cut
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 italic">SR</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -187,6 +231,44 @@ function HappinessPill({ player }) {
       <span className="font-semibold">{d.label}</span>
       {trend && <span className={trendColor}>{trend}</span>}
     </span>
+  )
+}
+
+function CutsControlPanel({ save, cutMode, setCutMode, remaining }) {
+  const tier = cutTrustTier(save)
+  return (
+    <div className="bg-red-50 border-l-4 border-red-500 rounded-r p-4 mb-4">
+      <div className="flex justify-between items-start gap-3">
+        <div className="flex-1">
+          <div className="font-bold text-red-900">✂ Roster cuts available — {remaining} left</div>
+          <div className="text-xs text-red-800 mt-1 leading-snug">
+            AD trust tier: <strong>{tier.label}</strong> · {tier.note} Cuts are permanent.
+            Seniors auto-graduate — don\'t waste a cut on them.
+          </div>
+          <div className="text-[11px] text-gray-600 mt-1.5">
+            <strong>How to earn more next year:</strong> win games, hit postseason, keep job security high.
+            The AD pulls cut privileges when programs struggle.
+          </div>
+        </div>
+        <button
+          onClick={() => setCutMode(!cutMode)}
+          className={'px-4 py-2 rounded text-sm font-semibold shrink-0 ' +
+            (cutMode ? 'bg-gray-700 text-white hover:opacity-90' : 'bg-red-600 text-white hover:opacity-90')}
+        >
+          {cutMode ? 'Done cutting' : 'Enter cut mode'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CutsTrustNote({ save }) {
+  const tier = cutTrustTier(save)
+  if (tier.allowed > 0) return null
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded p-3 mb-4 text-xs text-amber-900">
+      <strong>✂ Cuts privileges suspended.</strong> {tier.note}
+    </div>
   )
 }
 

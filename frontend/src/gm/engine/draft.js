@@ -56,12 +56,21 @@ export function simMlbDraft(state, year) {
       const isSenior = p.classYear === 'SR' || p.eligibilityStatus === 'graduated'
       const isJrStandout = p.classYear === 'JR' && ovr >= 78
       if (!isSenior && !isJrStandout) continue
+      // Summer-ball draft buzz — if the player came back from a high-prestige
+      // summer league with positive growth, their effective OVR for the draft
+      // gets a small bump. Set by resolveSummerBall() in the same year, so
+      // we only honor buzz tagged with the current dynasty year.
+      const buzz = (p._summerDraftBuzz && p._summerDraftBuzz.year === year)
+        ? p._summerDraftBuzz : null
+      const effectiveOvr = buzz ? Math.round(ovr * buzz.mult) : ovr
       pool.push({
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
         pos: p.isPitcher ? 'P' : p.primaryPosition,
         isPitcher: !!p.isPitcher,
-        ovr,
+        ovr: effectiveOvr,
+        rawOvr: ovr,
+        summerBuzz: !!buzz,
         teamId,
         teamName: school.name,
         conferenceId: school.conferenceId,

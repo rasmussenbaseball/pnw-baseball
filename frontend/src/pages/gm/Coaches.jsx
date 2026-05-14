@@ -103,10 +103,10 @@ export default function Coaches() {
   }
 
   function hireOptionalSupport(role) {
-    // Support-staff hire: 20 AP, no $ cost, no candidate slate. 1-year
+    // Support-staff hire: AP-only, no $ cost, no candidate slate. 1-year
     // contract that auto-expires at year-end (handled elsewhere via
-    // contractYearsRemaining).
-    const cost = INTERVIEW_AP_COST
+    // contractYearsRemaining). Per-role AP cost (e.g. GA is bargain 1 AP).
+    const cost = OPTIONAL_HIRE_META[role]?.apCost ?? INTERVIEW_AP_COST
     if (optionalLocked) {
       alert('Optional support-staff hires unlock Week 4.')
       return
@@ -374,7 +374,7 @@ export default function Coaches() {
                 key={role}
                 role={role}
                 apCurrent={save.ap.currentWeek}
-                apCost={INTERVIEW_AP_COST}
+                apCost={OPTIONAL_HIRE_META[role]?.apCost ?? INTERVIEW_AP_COST}
                 disabled={optionalLocked}
                 onHire={() => hireOptionalSupport(role)}
               />

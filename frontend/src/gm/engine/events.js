@@ -24,6 +24,8 @@ import { simMlbDraft, summarizeDraft } from './draft'
 import { endOfSeasonDevelopment } from './development'
 import { budgetCategoryEffects } from './budget'
 import { totalAnnualTravelCost } from './travel'
+import { closePlanningWindow, resolveSummerBall, ensureSummerBallState } from './summerBall'
+import { ensureCutsState } from './cuts'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 const NON_NAIA_LOOKUP = (() => {
@@ -65,6 +67,10 @@ export const EVENT_TYPES = {
   CLASS_FINALIZE:           { label: 'Class finalizes', desc: 'Signed recruits officially join the roster — ratings fully revealed.' },
   LOCK_TRAVEL_BUDGET:       { label: 'Travel budget locks', desc: 'Travel allocation set from your scheduled trips. Adjust other categories from here.' },
   CAMP_INVITE_WINDOW:       { label: 'Camp invite window', desc: 'Invite up to 100 HS recruits to your prospect camp. Attendees get a +interest boost and end up ~50% scouted.' },
+  SUMMER_BALL_PLANNING:     { label: 'Summer ball planning', desc: 'Decide who you\'ll send to summer leagues next summer. Final roster confirms after the season.' },
+  SUMMER_BALL_CONFIRM:      { label: 'Summer ball confirm', desc: 'Lock in (or pull) your summer ball roster. You can REMOVE players but cannot add new ones now.' },
+  SUMMER_BALL_RESOLVE:      { label: 'Summer ball wraps', desc: 'Mid-summer recap — dev gains, injuries, poach interest, draft buzz from every league.' },
+  CUTS_WINDOW_OPENS:        { label: 'Cuts window opens', desc: 'Your AD has approved your roster cuts for the year. Use them within the offseason.' },
 }
 
 // ─── Event schedule — unified 52-week ──────────────────────────────────────
@@ -86,7 +92,9 @@ export const WEEK_EVENT_SCHEDULE = {
   // ── Prospect Camp (wk 13) ──
   13: ['PROSPECT_CAMP', 'HS_NLI_EARLY'],
   // ── Training Period + Spring Practice (wks 14-26) ──
-  14: ['TRAINING_PERIOD'],
+  // Summer ball planning opens early November (Wk 14) — user has a few weeks
+  // through the offseason to build their tentative summer roster.
+  14: ['TRAINING_PERIOD', 'SUMMER_BALL_PLANNING'],
   23: ['SPRING_PRACTICE'],
   // ── Season (wks 27-39) ──
   27: ['SEASON_OPEN'],
@@ -97,10 +105,12 @@ export const WEEK_EVENT_SCHEDULE = {
   41: ['OPENING_ROUND'],
   42: ['WORLD_SERIES'],
   // ── Post-postseason offseason (wks 43-52) — heavy work distributed ──
-  43: ['PORTAL_OPEN', 'OUTBOUND_TRANSFERS_MID', 'END_OF_TERM_ACADEMICS'],
+  43: ['PORTAL_OPEN', 'OUTBOUND_TRANSFERS_MID', 'END_OF_TERM_ACADEMICS',
+       'SUMMER_BALL_CONFIRM', 'CUTS_WINDOW_OPENS'],
   44: ['PLAYER_DEVELOPMENT'],
   45: ['OUTBOUND_TRANSFERS_LATE', 'HS_ATTRITION'],
   46: ['BUDGET_REVIEW'],
+  47: ['SUMMER_BALL_RESOLVE'],                    // mid-summer wrap
   48: ['MLB_DRAFT'],                              // early July
   52: ['LAST_DAY_RECRUITING', 'CLASS_FINALIZE'],  // recruits join roster
 }
@@ -135,6 +145,7 @@ const MARKER_ONLY = new Set([
   'PROSPECT_CAMP', 'HS_NLI_EARLY', 'DEAD_PERIOD', 'SPRING_PRACTICE',
   'SEASON_OPEN', 'CONF_OPEN', 'REG_SEASON_END', 'CONF_TOURNAMENT',
   'OPENING_ROUND', 'WORLD_SERIES', 'LAST_DAY_RECRUITING',
+  'SUMMER_BALL_PLANNING',
 ])
 
 // ─── Event runners ─────────────────────────────────────────────────────────
@@ -157,8 +168,57 @@ export function runEvent(state, eventKey) {
     case 'OUTBOUND_TRANSFERS_LATE':  return runOutbound(state, 'LATE_OFFSEASON')
     case 'CLASS_FINALIZE':           return runClassFinalize(state)
     case 'LOCK_TRAVEL_BUDGET':       return runLockTravelBudget(state)
+    case 'SUMMER_BALL_CONFIRM':      return runSummerBallConfirm(state)
+    case 'SUMMER_BALL_RESOLVE':      return runSummerBallResolve(state)
+    case 'CUTS_WINDOW_OPENS':        return runCutsWindowOpens(state)
     default:                         return null
   }
+}
+
+/**
+ * Wk 43 — close planning window for summer ball (no more new sign-ups).
+ * User still has this week + onward to REMOVE players who shouldn't go.
+ */
+function runSummerBallConfirm(state) {
+  closePlanningWindow(state)
+  const confirmed = Object.values(state.summerBall?.assignments || {})
+    .filter(a => a.confirmed && !a.removed).length
+  state.newsfeed.unshift({
+    id: `sb_confirm_${state.calendar.year}`,
+    year: state.calendar.year, week: 43, type: 'AWARD',
+    headline: `📋 Summer ball roster confirmed (${confirmed} player${confirmed === 1 ? '' : 's'}). You can still REMOVE players, but no new signings.`,
+    payload: {},
+  })
+  return { label: 'Summer ball confirmed', news: { confirmed } }
+}
+
+/**
+ * Wk 47 — mid-summer leagues wrap. Apply dev / injury / poach / draft buzz.
+ */
+function runSummerBallResolve(state) {
+  const news = resolveSummerBall(state)
+  for (const n of news) {
+    state.newsfeed.unshift(n)
+  }
+  return { label: 'Summer ball results', news }
+}
+
+/**
+ * Wk 43 (or earlier for non-postseason teams) — cuts window opens. Just sets
+ * up state.cuts so the dashboard / roster page can surface it.
+ */
+function runCutsWindowOpens(state) {
+  ensureCutsState(state)
+  const allowed = state.cuts?.allowed ?? 0
+  state.newsfeed.unshift({
+    id: `cuts_open_${state.calendar.year}`,
+    year: state.calendar.year, week: state.calendar.weekOfYear || 43, type: 'AWARD',
+    headline: allowed > 0
+      ? `✂ Cuts window open — your AD allows ${allowed} roster cut${allowed === 1 ? '' : 's'} this offseason.`
+      : `✂ No cuts this offseason — AD wants to see more wins before approving roster moves.`,
+    payload: { allowed },
+  })
+  return { label: 'Cuts window opens', news: { allowed } }
 }
 
 /**

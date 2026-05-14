@@ -356,6 +356,7 @@ export const OPTIONAL_HIRE_META = {
     effectLabel: '+5 recruiting AP/wk',
     icon: '🎯',
     contractYears: 1,
+    apCost: 20,
   },
   STRENGTH_CONDITIONING: {
     label: 'Strength & Conditioning Coach',
@@ -363,6 +364,7 @@ export const OPTIONAL_HIRE_META = {
     effectLabel: '−20% injuries · +4 durability',
     icon: '💪',
     contractYears: 1,
+    apCost: 20,
   },
   DIRECTOR_OF_OPERATIONS: {
     label: 'Director of Operations',
@@ -370,6 +372,7 @@ export const OPTIONAL_HIRE_META = {
     effectLabel: '+$50K to budget',
     icon: '📋',
     contractYears: 1,
+    apCost: 20,
   },
   DATA_ANALYTICS_MANAGER: {
     label: 'Data & Analytics Manager',
@@ -377,13 +380,15 @@ export const OPTIONAL_HIRE_META = {
     effectLabel: 'Unlocks advanced stats',
     icon: '📊',
     contractYears: 1,
+    apCost: 20,
   },
   GRADUATE_ASSISTANT: {
     label: 'Graduate Assistant',
-    blurb: 'Extra hands on deck. +3 AP to your weekly pool.',
-    effectLabel: '+3 AP/wk',
+    blurb: 'Bargain hire. Just 1 AP to bring on board, adds +1 AP to your weekly pool.',
+    effectLabel: '+1 AP/wk',
     icon: '🎒',
     contractYears: 1,
+    apCost: 1,
   },
 }
 
@@ -445,7 +450,7 @@ export function optionalHireBoosts(coachIds, coaches) {
     if (c?.isSupportStaff) filled.add(c.role)
   }
   return {
-    apBonus: (filled.has('RECRUITING_COORDINATOR') ? 5 : 0) + (filled.has('GRADUATE_ASSISTANT') ? 3 : 0),
+    apBonus: (filled.has('RECRUITING_COORDINATOR') ? 5 : 0) + (filled.has('GRADUATE_ASSISTANT') ? 1 : 0),
     injuryMult: filled.has('STRENGTH_CONDITIONING') ? 0.80 : 1.0,
     durabilityBump: filled.has('STRENGTH_CONDITIONING') ? 4 : 0,
     budgetBonus: filled.has('DIRECTOR_OF_OPERATIONS') ? 50_000 : 0,
