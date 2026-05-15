@@ -6,7 +6,7 @@ import { playerOverall, playerPotentialOverall, overallTier, teamOverall } from 
 import { teamAcademicSummary } from '../../gm/engine/academics'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
-import { cutsWindowOpen, ensureCutsState, cutPlayer, cutTrustTier } from '../../gm/engine/cuts'
+import { cutsWindowOpen, ensureCutsState, cutPlayer, cutTrustTier, isMandatoryCutMode } from '../../gm/engine/cuts'
 
 const POSITION_GROUPS = {
   All: () => true,
@@ -31,7 +31,11 @@ export default function Roster() {
   if (!save) return <Navigate to="/gm" replace />
   ensureCutsState(save)
   const cutsOpen = cutsWindowOpen(save)
-  const cutsRemaining = (save.cuts?.allowed || 0) - (save.cuts?.used || 0)
+  const mandatoryMode = isMandatoryCutMode(save)
+  const mandatoryNeeded = save.mandatoryCuts?.needed ?? 0
+  const cutsRemaining = mandatoryMode
+    ? mandatoryNeeded
+    : (save.cuts?.allowed || 0) - (save.cuts?.used || 0)
 
   function handleCut(playerId) {
     const player = save.players[playerId]
@@ -81,6 +85,7 @@ export default function Roster() {
           cutMode={cutMode}
           setCutMode={setCutMode}
           remaining={cutsRemaining}
+          mandatory={mandatoryMode}
         />
       )}
       {save.cuts && save.cuts.year === save.calendar?.year && save.cuts.allowed === 0 && (
@@ -130,7 +135,10 @@ export default function Roster() {
                 const ovr = playerOverall(p)
                 const pot = playerPotentialOverall(p)
                 const tier = overallTier(ovr)
-                const cuttable = cutMode && p.classYear !== 'SR'
+                // Mandatory cuts allow SR (they still count toward the cap
+                // until graduation). Normal AD-trust cuts hide SR since they
+                // graduate naturally — don't waste a cut.
+                const cuttable = cutMode && (mandatoryMode || p.classYear !== 'SR')
                 return (
                   <tr key={p.id} className={'border-t hover:bg-gray-50 ' + (cutMode ? '' : 'cursor-pointer')} onClick={() => !cutMode && navigate(`/gm/player/${p.id}?slot=${slot}`)}>
                     <td className="py-2 px-3 font-medium">
@@ -244,7 +252,34 @@ function HappinessPill({ player }) {
   )
 }
 
-function CutsControlPanel({ save, cutMode, setCutMode, remaining }) {
+function CutsControlPanel({ save, cutMode, setCutMode, remaining, mandatory }) {
+  if (mandatory) {
+    const overflow = save.mandatoryCuts?.overByAtFlag ?? remaining
+    return (
+      <div className="bg-red-100 border-l-4 border-red-700 rounded-r p-4 mb-4">
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex-1">
+            <div className="font-bold text-red-900">⚠ REQUIRED: Cut {remaining} player{remaining === 1 ? '' : 's'} to reach the 50-cap</div>
+            <div className="text-xs text-red-800 mt-1 leading-snug">
+              You finalized over the cap by <strong>{overflow}</strong>. The AD already docked your job security
+              ({overflow * 3} pts). You must cut down to 50 before you can advance to the new year.
+            </div>
+            <div className="text-[11px] text-gray-700 mt-1.5">
+              In mandatory-cut mode you CAN cut seniors (they still count toward the cap until graduation).
+              Choose wisely — cuts are permanent. Plan your recruiting class size more carefully next year.
+            </div>
+          </div>
+          <button
+            onClick={() => setCutMode(!cutMode)}
+            className={'px-4 py-2 rounded text-sm font-semibold shrink-0 ' +
+              (cutMode ? 'bg-gray-700 text-white hover:opacity-90' : 'bg-red-700 text-white hover:opacity-90')}
+          >
+            {cutMode ? 'Done' : 'Enter cut mode'}
+          </button>
+        </div>
+      </div>
+    )
+  }
   const tier = cutTrustTier(save)
   return (
     <div className="bg-red-50 border-l-4 border-red-500 rounded-r p-4 mb-4">

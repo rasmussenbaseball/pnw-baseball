@@ -16,7 +16,7 @@ import {
 } from '../../gm/engine/calendar'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
-import { cutsWindowOpen, cutTrustTier, ensureCutsState } from '../../gm/engine/cuts'
+import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -1740,6 +1740,27 @@ function FallStatsModal({ save, onClose }) {
 function CutsBanner({ save, slot }) {
   // Initialize state lazily so we know the right open week + allowance.
   ensureCutsState(save)
+  const mandatory = isMandatoryCutMode(save)
+  if (mandatory) {
+    // Mandatory cuts at Wk 52 — this is a hard block, surface it HOT.
+    const needed = save.mandatoryCuts.needed
+    const overflow = save.mandatoryCuts.overByAtFlag
+    return (
+      <div className="bg-red-100 border-2 border-red-700 text-red-900 p-4 rounded mb-4 flex justify-between items-center shadow-lg">
+        <div>
+          <div className="font-bold text-base">⚠ REQUIRED: Cut {needed} player{needed === 1 ? '' : 's'} to advance</div>
+          <div className="text-xs mt-1 leading-snug">
+            You signed a class that put your roster <strong>{overflow}</strong> over the 50-player cap.
+            The AD already docked your job security ({overflow * 3} pts). You can\'t advance to the new year
+            until you cut down to 50. (Mandatory cut mode lets you cut seniors too.)
+          </div>
+        </div>
+        <Link to={`/gm/roster?slot=${slot}`} className="px-4 py-2 bg-red-700 text-white rounded text-sm font-semibold shrink-0 ml-3 hover:opacity-90">
+          Cut down roster →
+        </Link>
+      </div>
+    )
+  }
   if (!cutsWindowOpen(save)) return null
   const remaining = (save.cuts?.allowed || 0) - (save.cuts?.used || 0)
   const tier = cutTrustTier(save)

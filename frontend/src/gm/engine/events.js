@@ -255,21 +255,15 @@ function runClassFinalize(state) {
   const team = state.teams[userId]
   if (!team) return { label: 'No user team' }
   let added = 0
-  // Enforce 50-player roster cap on Wk 52 class finalization. If signing
-  // this recruit would overflow, the AD denies the late add — the player
-  // re-enters the free-agent pool. Sign your most-wanted first.
+  // Every signed recruit joins the active roster, even if doing so puts the
+  // team over the 50-player cap. The user then has to make the cut-down
+  // decisions in a phase-gate before advancing to the new year. This was
+  // changed (May 2026) so coaches choose WHO gets cut — auto-dropping the
+  // user's late signees was bad UX.
   const ROSTER_CAP = 50
-  let overflow = 0
   for (const r of Object.values(state.recruits)) {
     if (r.status !== 'signed' || r.signedWith !== userId) continue
     if (r.joinedAt && r.joinedAt === state.calendar.year) continue
-    if (team.rosterPlayerIds.length >= ROSTER_CAP) {
-      // Roster full — recruit's spot was bumped
-      r.status = 'lost'
-      r.signedWith = null
-      overflow++
-      continue
-    }
     if (!state.players[r.id]) {
       state.players[r.id] = recruitToPlayer(r)
     }
@@ -278,12 +272,28 @@ function runClassFinalize(state) {
     r.scoutFogCleared = true
     added++
   }
+  // If the combined roster (returners + new signees) is over the cap, flag
+  // mandatory cuts AND hit job security. The AD is unhappy you didn't manage
+  // your numbers; the user must cut down before the year rolls.
+  const overflow = Math.max(0, team.rosterPlayerIds.length - ROSTER_CAP)
   if (overflow > 0) {
+    state.mandatoryCuts = {
+      needed: overflow,
+      year: state.calendar.year,
+      rosterAtFlag: team.rosterPlayerIds.length,
+      overByAtFlag: overflow,
+    }
+    // Job security hit: -3 per overage player. Over-recruit by 5 → -15 JS.
+    const jsHit = overflow * 3
+    if (state.budget) {
+      state.budget.jobSecurity = Math.max(0, (state.budget.jobSecurity || 50) - jsHit)
+    }
     state.newsfeed.unshift({
-      id: `class_overflow_${state.calendar.year}`,
+      id: `over_cap_${state.calendar.year}`,
       year: state.calendar.year, week: 52, type: 'AWARD',
-      headline: `⚠ ${overflow} signee${overflow === 1 ? '' : 's'} dropped from your class — over the 50-player roster cap.`,
-      payload: { overflow },
+      headline: `⚠ Over roster cap by ${overflow} player${overflow === 1 ? '' : 's'}. AD has docked you ${jsHit} job security. Cut down to 50 before the season rolls.`,
+      payload: { overflow, jsHit },
+      big: true,
     })
   }
   state.newsfeed.unshift({

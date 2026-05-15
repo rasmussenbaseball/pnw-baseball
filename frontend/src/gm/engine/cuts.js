@@ -96,17 +96,32 @@ export function ensureCutsState(state) {
 }
 
 /**
- * Is the cuts window currently open for the user? Checks the week number
- * against the year's open week, and ensures the user hasn't used all their
- * cuts yet.
+ * Is the cuts window currently open for the user? Two paths:
+ *   1. Normal AD-trust cuts: open Wk (elimination+1) onward, limited by tier.
+ *   2. Mandatory cuts (over 50-player cap at Wk 52): always open, regardless
+ *      of AD trust, until the user gets back down to 50.
+ *
+ * @param {any} state
  */
 export function cutsWindowOpen(state) {
   ensureCutsState(state)
+  if (state.mandatoryCuts?.needed > 0 && state.mandatoryCuts.year === state.calendar?.year) {
+    return true   // forced — must cut to advance
+  }
   const week = state.calendar?.weekOfYear ?? 1
-  // Window opens at openedAtWeek and stays open until end of offseason (52).
   return week >= state.cuts.openedAtWeek
     && week <= 52
     && state.cuts.used < state.cuts.allowed
+}
+
+/**
+ * True if the user is in MANDATORY cut mode (over the 50-cap). The UI
+ * surfaces a different banner + the cut counter behaves differently
+ * (decrements mandatoryCuts.needed instead of the normal trust-tier
+ * allowance).
+ */
+export function isMandatoryCutMode(state) {
+  return !!(state.mandatoryCuts?.needed > 0 && state.mandatoryCuts.year === state.calendar?.year)
 }
 
 /**
@@ -117,6 +132,7 @@ export function cutsWindowOpen(state) {
  */
 export function cutPlayer(state, playerId) {
   ensureCutsState(state)
+  const mandatory = isMandatoryCutMode(state)
   if (!cutsWindowOpen(state)) {
     return { ok: false, error: 'Cuts window is closed or you have no cuts left this year.' }
   }
@@ -126,29 +142,47 @@ export function cutPlayer(state, playerId) {
   }
   const player = state.players[playerId]
   if (!player) return { ok: false, error: 'Player not found.' }
-  if (player.classYear === 'SR') {
-    // Don't waste a cut on a senior — they're already gone.
+  if (player.classYear === 'SR' && !mandatory) {
+    // Don't waste a normal AD-trust cut on a senior — they're already gone.
+    // (Mandatory cuts allow seniors since you might have a 4-yr SR still
+    // counting toward the cap.)
     return { ok: false, error: `${player.firstName} ${player.lastName} is a senior; they\'ll graduate naturally. Save the cut.` }
   }
   team.rosterPlayerIds = team.rosterPlayerIds.filter(id => id !== playerId)
   player.eligibilityStatus = 'cut'
   player.cutAt = { year: state.calendar?.year, week: state.calendar?.weekOfYear }
-  state.cuts.used++
+
+  if (mandatory) {
+    // Mandatory-cut path: decrement the requirement counter, NOT the
+    // trust-tier allowance. Mandatory cuts don't carry the -1 JS penalty
+    // (the JS hit was already applied as a lump sum when the overage was
+    // detected — don't double-charge).
+    state.mandatoryCuts.needed = Math.max(0, state.mandatoryCuts.needed - 1)
+    if (state.mandatoryCuts.needed === 0) {
+      state.newsfeed.unshift({
+        id: `mandatory_cuts_done_${state.calendar?.year}`,
+        year: state.calendar?.year, week: state.calendar?.weekOfYear, type: 'AWARD',
+        headline: `✓ Roster trimmed back to 50. AD is satisfied.`,
+        payload: {},
+      })
+    }
+  } else {
+    state.cuts.used++
+    if (state.budget) {
+      state.budget.jobSecurity = Math.max(0, (state.budget.jobSecurity || 50) - 1)
+    }
+  }
   state.cuts.history.push({
     year: state.calendar?.year,
     week: state.calendar?.weekOfYear,
     playerId,
+    mandatory,
   })
-  // Small job-security cost — the AD is OK with cuts, but each is a small
-  // black mark since you're admitting a recruiting / dev mistake.
-  if (state.budget) {
-    state.budget.jobSecurity = Math.max(0, (state.budget.jobSecurity || 50) - 1)
-  }
   state.newsfeed.unshift({
     id: `cut_${state.calendar?.year}_${playerId}`,
     year: state.calendar?.year, week: state.calendar?.weekOfYear, type: 'AWARD',
     headline: `✂ Cut ${player.firstName} ${player.lastName} (${player.classYear} ${player.primaryPosition}) from the roster.`,
-    payload: { playerId },
+    payload: { playerId, mandatory },
   })
   return { ok: true }
 }

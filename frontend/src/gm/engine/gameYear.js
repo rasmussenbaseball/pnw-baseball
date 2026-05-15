@@ -106,6 +106,11 @@ export function seasonWeekForWeek(week) {
 
 /** @returns {RequiredAction | null} */
 export function requiredActionForWeek(state, week) {
+  // Mandatory cuts (over the 50-player cap) supersede everything — fires
+  // at Wk 52 after class finalize, blocks the year-rollover until resolved.
+  if (state.mandatoryCuts?.needed > 0 && state.mandatoryCuts.year === state.calendar?.year) {
+    return MANDATORY_CUTS_REQUIREMENT
+  }
   switch (week) {
     case 1: return SCHEDULE_REQUIREMENT
     case 2: return HIRE_REQUIREMENT
@@ -114,6 +119,15 @@ export function requiredActionForWeek(state, week) {
     case 13: return PROSPECT_CAMP_REQUIREMENT
     default: return null
   }
+}
+
+const MANDATORY_CUTS_REQUIREMENT = {
+  key: 'MANDATORY_CUTS',
+  label: 'Cut down to 50 players',
+  blurb: 'Your roster is over the 50-player cap after class finalization. Open the Roster page, enter cut mode, and trim the excess. Job security has already taken a hit for over-recruiting — keep your numbers in line next year.',
+  route: '/gm/roster',
+  isComplete: (state) => !(state.mandatoryCuts?.needed > 0 && state.mandatoryCuts.year === state.calendar?.year),
+  doneText: '✓ Roster trimmed to 50',
 }
 
 const SCHEDULE_REQUIREMENT = {
