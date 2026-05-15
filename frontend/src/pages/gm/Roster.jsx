@@ -133,7 +133,17 @@ export default function Roster() {
                 const cuttable = cutMode && p.classYear !== 'SR'
                 return (
                   <tr key={p.id} className={'border-t hover:bg-gray-50 ' + (cutMode ? '' : 'cursor-pointer')} onClick={() => !cutMode && navigate(`/gm/player/${p.id}?slot=${slot}`)}>
-                    <td className="py-2 px-3 font-medium">{p.firstName} {p.lastName}</td>
+                    <td className="py-2 px-3 font-medium">
+                      {p.firstName} {p.lastName}
+                      {p.injury?.weeksRemaining > 0 && (
+                        <span
+                          className="ml-1 inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase align-middle"
+                          title={`${p.injury.label} — ${p.injury.weeksRemaining} wk left`}
+                        >
+                          🩼 IL
+                        </span>
+                      )}
+                    </td>
                     <td className="text-gray-700">{displayPosition(p.primaryPosition)}</td>
                     <td className="text-gray-700">{displayClassYear(p)}</td>
                     <td className="text-gray-600">{p.bats}/{p.throws}</td>

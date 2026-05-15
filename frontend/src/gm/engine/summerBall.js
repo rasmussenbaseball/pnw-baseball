@@ -63,124 +63,129 @@ import { playerOverall } from './playerRating'
 
 /** @type {Object<string,SummerLeague>} */
 export const SUMMER_LEAGUES = {
+  // ── Elite tier: huge upside, real risk. Best players, best leagues. ──
   CAPE_COD: {
     key: 'CAPE_COD',
     label: 'Cape Cod League',
     short: 'CCBL',
-    blurb: 'The premier summer league in the country. Wooden bats, MLB scouts at every game, only invites elite talent. Lowest injury risk because rosters are managed carefully; highest poach risk because every D1 wants your guy after a strong summer.',
-    region: 'Northeast',
+    blurb: 'The premier summer league in the country. Wood bats, MLB scouts at every game, every D1 hovering over your roster. Polish every tool against the best amateur arms + bats in the country — but you have to be willing to risk losing them.',
+    region: 'Cape Cod, MA',
     prestige: 10,
     minOvr: 90,
     maxOvr: null,
     devFocus: 'Polishes elite tools across the board',
-    devBuckets: ['discipline', 'composure', 'command', 'control'],
-    devMagnitude: 1.6,
-    injuryRisk: 0.05,
-    poachChance: 0.35,
-    draftBuzzMult: 1.25,
+    devBuckets: ['discipline', 'composure', 'command', 'control', 'fielding', 'arm'],
+    devMagnitude: 2.4,
+    injuryRisk: 0.08,
+    poachChance: 0.40,
+    draftBuzzMult: 1.35,
     color: 'bg-purple-100 text-purple-800',
   },
   NORTHWOODS: {
     key: 'NORTHWOODS',
     label: 'Northwoods League',
     short: 'NWL',
-    blurb: 'Long bus rides through Wisconsin / Minnesota. 70+ game grind builds toughness and stamina. High-quality opponents — second only to the Cape. Great showcase but the workload can lead to injuries.',
+    blurb: '72-game wood-bat grind across Wisconsin + Minnesota. Closest thing to a pro schedule any amateur sees. Pitchers build real stamina; hitters learn to handle a long season. Workload makes it the highest-injury league among the elite tier.',
     region: 'Upper Midwest',
     prestige: 8,
     minOvr: 82,
     maxOvr: null,
-    devFocus: 'Stamina + durability under load',
-    devBuckets: ['stamina', 'durability', 'contact_l', 'contact_r'],
-    devMagnitude: 1.35,
-    injuryRisk: 0.14,
-    poachChance: 0.22,
-    draftBuzzMult: 1.15,
+    devFocus: 'Stamina + durability under heavy workload',
+    devBuckets: ['stamina', 'durability', 'contact_l', 'contact_r', 'composure'],
+    devMagnitude: 2.0,
+    injuryRisk: 0.18,
+    poachChance: 0.25,
+    draftBuzzMult: 1.18,
     color: 'bg-indigo-100 text-indigo-800',
+  },
+  WEST_COAST: {
+    key: 'WEST_COAST',
+    label: 'West Coast League',
+    short: 'WCL',
+    blurb: 'PNW + California talent stays close to home. Pacific-coast pitcher-friendly parks + a real-deal scout following. Best place for west-coast NAIA arms to get pro looks without flying across the country.',
+    region: 'PNW + N. California',
+    prestige: 7,
+    minOvr: 75,
+    maxOvr: null,
+    devFocus: 'Polished all-around game',
+    devBuckets: ['contact_l', 'contact_r', 'control', 'command', 'fielding'],
+    devMagnitude: 1.7,
+    injuryRisk: 0.10,
+    poachChance: 0.18,
+    draftBuzzMult: 1.12,
+    color: 'bg-blue-100 text-blue-800',
   },
   WESTERN_CANADIAN: {
     key: 'WESTERN_CANADIAN',
     label: 'Western Canadian Baseball League',
     short: 'WCBL',
-    blurb: 'Strong wood-bat league across the prairies. Solid pitching dev environment — pitcher-friendly parks and high-quality coaching staffs. Pro scouts attend regularly.',
+    blurb: 'Strong wood-bat league across the prairies. Pitcher-friendly parks + high-quality coaching make this the best mid-tier home for arms. MLB scouts attend regularly.',
     region: 'Prairie Provinces',
     prestige: 7,
     minOvr: 70,
     maxOvr: 85,
     devFocus: 'Pitcher command + arm health',
     devBuckets: ['command', 'control', 'stuff', 'discipline'],
-    devMagnitude: 1.2,
+    devMagnitude: 1.55,
     injuryRisk: 0.09,
-    poachChance: 0.18,
-    draftBuzzMult: 1.10,
+    poachChance: 0.15,
+    draftBuzzMult: 1.08,
     color: 'bg-rose-100 text-rose-800',
   },
-  WEST_COAST: {
-    key: 'WEST_COAST',
-    label: 'West Coast League',
-    short: 'WCL',
-    blurb: 'PNW + California talent stays close to home. Pacific-coast pitcher-friendly parks. Good showcase for PNW programs without sending players cross-country.',
-    region: 'PNW + N. California',
-    prestige: 7,
-    minOvr: 75,
-    maxOvr: null,
-    devFocus: 'All-around polish',
-    devBuckets: ['contact_l', 'contact_r', 'control', 'fielding'],
-    devMagnitude: 1.15,
-    injuryRisk: 0.10,
-    poachChance: 0.16,
-    draftBuzzMult: 1.08,
-    color: 'bg-blue-100 text-blue-800',
-  },
+
+  // ── Mid / developmental tier — these are where bench players grow.
+  // Higher dev magnitude, LOWER risk. Bad players are supposed to be
+  // safer + bigger growth so they bloom into something usable. ──
   WILD_WEST: {
     key: 'WILD_WEST',
     label: 'Wild Wild West League',
     short: 'WWWL',
-    blurb: 'Mid-tier independent league in the Mountain West. Erratic coaching quality, but real innings against real opponents. Boom-or-bust — strong players can shoot up draft boards, weak ones can pick up bad habits.',
+    blurb: 'Independent league in the Mountain West. Wood + metal hybrid, plenty of innings, plenty of swings. Lots of mid-roster guys turn a summer here into a starting job in the spring. Some injury risk because the schedule is dense.',
     region: 'Mountain West',
     prestige: 5,
     minOvr: 60,
     maxOvr: 75,
-    devFocus: 'High-variance development',
-    devBuckets: ['power_l', 'power_r', 'stuff'],
-    devMagnitude: 1.30,
-    injuryRisk: 0.18,
-    poachChance: 0.10,
-    draftBuzzMult: 1.05,
+    devFocus: 'Power + raw stuff (boom-or-bust)',
+    devBuckets: ['power_l', 'power_r', 'stuff', 'speed'],
+    devMagnitude: 2.1,
+    injuryRisk: 0.10,
+    poachChance: 0.06,
+    draftBuzzMult: 1.04,
     color: 'bg-amber-100 text-amber-800',
-  },
-  CASCADE: {
-    key: 'CASCADE',
-    label: 'Cascade Collegiate League',
-    short: 'CCL',
-    blurb: 'PNW developmental league. Designed for players who need reps more than a showcase. Steady at-bats, plenty of innings, low risk environment. Great for younger players who didn\'t play much in the spring.',
-    region: 'PNW',
-    prestige: 3,
-    minOvr: 45,
-    maxOvr: 70,
-    devFocus: 'Reps for bench players',
-    devBuckets: ['contact_l', 'contact_r', 'control', 'fielding', 'discipline'],
-    devMagnitude: 1.10,
-    injuryRisk: 0.08,
-    poachChance: 0.04,
-    draftBuzzMult: 1.0,
-    color: 'bg-emerald-100 text-emerald-800',
   },
   PACIFIC_INT: {
     key: 'PACIFIC_INT',
     label: 'Pacific International League',
     short: 'PIL',
-    blurb: 'Loose, semi-pro vibe across WA / OR / ID. Mix of college kids and ex-pros. Older competition forces players to grow up fast, but injury risk is higher and dev quality varies by team.',
+    blurb: 'Loose, semi-pro vibe across WA / OR / ID. Mix of college kids and ex-pros. Older competition forces players to grow up fast. Great spot to learn the mental side of the game.',
     region: 'PNW',
     prestige: 4,
     minOvr: 45,
     maxOvr: 70,
     devFocus: 'Plate discipline + game smarts',
-    devBuckets: ['discipline', 'composure', 'tactician'],
-    devMagnitude: 1.05,
-    injuryRisk: 0.16,
-    poachChance: 0.06,
-    draftBuzzMult: 1.02,
+    devBuckets: ['discipline', 'composure', 'control', 'command'],
+    devMagnitude: 1.9,
+    injuryRisk: 0.07,
+    poachChance: 0.03,
+    draftBuzzMult: 1.0,
     color: 'bg-slate-100 text-slate-700'
+  },
+  CASCADE: {
+    key: 'CASCADE',
+    label: 'Cascade Collegiate League',
+    short: 'CCL',
+    blurb: 'PNW developmental league — the safest summer-ball assignment in the game. Designed for younger players who need reps more than a showcase. Steady at-bats, full innings, low injury rate. Bench players blossom here.',
+    region: 'PNW',
+    prestige: 3,
+    minOvr: 45,
+    maxOvr: 70,
+    devFocus: 'Pure reps for bench players',
+    devBuckets: ['contact_l', 'contact_r', 'control', 'fielding', 'discipline', 'arm'],
+    devMagnitude: 2.0,
+    injuryRisk: 0.04,
+    poachChance: 0.02,
+    draftBuzzMult: 1.0,
+    color: 'bg-emerald-100 text-emerald-800',
   },
 }
 
@@ -202,6 +207,9 @@ export function isPlayerEligibleForSummerBall(player) {
   if (!player) return false
   if (player.classYear === 'SR' || player.classYear === 'GRAD') return false
   if (player.eligibilityStatus === 'graduated' || player.eligibilityStatus === 'dismissed') return false
+  // Injured players can't go — they need to rehab. UI hides them; engine
+  // resolution skips them as a safety net.
+  if ((player.injury?.weeksRemaining || 0) > 0) return false
   return true
 }
 
@@ -340,6 +348,8 @@ export function resolveSummerBall(state) {
   if (state.summerBall.status === 'RESOLVED') return []
   state.summerBall.status = 'RESOLVED'
   state.summerBall.lastResolved = state.calendar?.year
+  // Per-player resolution log surfaces in the end-of-summer report UI.
+  state.summerBall.results = []
 
   const news = []
   const year = state.calendar?.year
@@ -357,6 +367,19 @@ export function resolveSummerBall(state) {
 
     const rng = makeRng('summerBall', year, playerId, a.leagueKey, seed)
     const ovrBefore = playerOverall(player)
+    const resultEntry = {
+      playerId,
+      playerName: `${player.firstName} ${player.lastName}`,
+      leagueKey: a.leagueKey,
+      ovrBefore,
+      ovrAfter: ovrBefore,
+      ovrDelta: 0,
+      ratingsApplied: 0,
+      injured: null,
+      poached: false,
+      draftBuzz: false,
+      verdict: 'held own',
+    }
 
     // ── Spring usage → dev modifier ────────────────────────────────────
     // Players who didn't play much in the spring get a bigger boost because
@@ -371,6 +394,7 @@ export function resolveSummerBall(state) {
     // ── League dev magnitude × usage boost → final dev points ──────────
     const devPoints = Math.round(rng.gaussian(lg.devMagnitude * usageBoost * 3, 1))
     const ratingDelta = applySummerDev(player, lg.devBuckets, devPoints, rng)
+    resultEntry.ratingsApplied = ratingDelta
 
     // ── Injury roll — pitcher overuse hits harder ─────────────────────
     let injuryRisk = lg.injuryRisk
@@ -387,6 +411,7 @@ export function resolveSummerBall(state) {
       } else if (player.hitter) {
         player.hitter.durability = Math.max(20, (player.hitter.durability || 60) - durDrop)
       }
+      resultEntry.injured = { severity: injurySeverity, weeks: dur }
       news.push({
         id: `sb_inj_${year}_${playerId}`,
         year, week: 47, type: 'INJURY',
@@ -410,6 +435,7 @@ export function resolveSummerBall(state) {
         headline: `📞 D1 programs calling for ${player.firstName} ${player.lastName} after a hot ${lg.short} summer. Watch the portal.`,
         payload: { playerId, leagueKey: a.leagueKey },
       })
+      resultEntry.poached = true
       poached = true
     }
 
@@ -420,17 +446,19 @@ export function resolveSummerBall(state) {
         mult: lg.draftBuzzMult,
         year,
       }
+      resultEntry.draftBuzz = true
     }
 
     // ── Headline for the player's summer ───────────────────────────────
+    const verdict = moved >= 3 ? 'crushed it'
+      : moved >= 1.5 ? 'had a strong summer'
+      : moved >= 0 ? 'held their own'
+      : 'struggled'
+    resultEntry.ovrAfter = ovrAfter
+    resultEntry.ovrDelta = moved
+    resultEntry.verdict = verdict
+    state.summerBall.results.push(resultEntry)
     if (!injured && !poached) {
-      const verdict = moved >= 3
-        ? `crushed it`
-        : moved >= 1.5
-          ? `had a strong summer`
-          : moved >= 0
-            ? `held their own`
-            : `struggled`
       news.push({
         id: `sb_${year}_${playerId}`,
         year, week: 47, type: 'PLAYER_BOOST',
@@ -439,6 +467,9 @@ export function resolveSummerBall(state) {
       })
     }
   }
+
+  // Mark for the SummerBall page so a recap banner / modal can surface.
+  state.summerBall.reportPending = true
 
   return news
 }

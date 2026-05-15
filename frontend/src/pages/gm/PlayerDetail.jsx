@@ -103,6 +103,31 @@ export default function PlayerDetail() {
         />
       )}
 
+      {/* Injury status — pinned high so coaches see the IL stamp before stats */}
+      {player.injury?.weeksRemaining > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="text-3xl">🩼</div>
+            <div className="flex-1">
+              <div className="text-xs uppercase tracking-wider text-red-700 font-bold">Currently injured</div>
+              <div className="text-lg font-bold text-red-900">{player.injury.label}</div>
+              <div className="text-xs text-red-800 mt-0.5">{player.injury.blurb}</div>
+              <div className="text-[11px] text-gray-700 mt-2">
+                <strong>{player.injury.weeksRemaining}</strong> week{player.injury.weeksRemaining === 1 ? '' : 's'} remaining
+                {' '}of <strong>{player.injury.totalWeeks}</strong> ({player.injury.severity.toLowerCase()}).
+                Out of lineups + can\'t develop until cleared.
+                {player.injury.severity !== 'MINOR' && (
+                  <span className="block text-amber-800 mt-1">
+                    ⚠ {player.injury.severity === 'SEASON' ? 'Season-ending' : 'Serious'} injury — some lingering rating
+                    penalty will apply on return ({Object.entries(player.injury.statPenalty || {}).map(([k, v]) => `${k} ${v}`).join(', ')}).
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Academic + scholarship card */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">

@@ -20,6 +20,8 @@ import { runEventsForWeek } from './events'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar } from './gameYear'
+import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
+import { makeRng } from './rng'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 function zeroStats(isPitcher) {
@@ -130,22 +132,99 @@ export function simWeek(state, schedule, ratings) {
     g.played = true
     gamesPlayed++
 
-    // Accumulate per-player season stats from this game's boxscore
+    // Accumulate per-player season stats from this game's boxscore.
+    // Fall scrimmages go into a separate state.fallStats[year] bucket so
+    // they don't pollute the official spring stat line, but still surface
+    // in the post-fall report.
     if (result.boxscore?.batterStats) {
-      if (!state.playerStats) state.playerStats = {}
+      const isFall = g.type === 'FALL_SCRIMMAGE'
+      const isSpring = g.type === 'SPRING_SCRIMMAGE'
+      if (isFall) {
+        if (!state.fallStats) state.fallStats = {}
+        const yr = state.calendar?.year ?? g.year
+        if (!state.fallStats[yr]) state.fallStats[yr] = {}
+      } else {
+        if (!state.playerStats) state.playerStats = {}
+      }
       const accumulate = (statsObj, isPitcher) => {
         for (const [pid, s] of Object.entries(statsObj)) {
           const key = isPitcher ? `p_${pid}` : `b_${pid}`
-          if (!state.playerStats[key]) state.playerStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
-          const target = state.playerStats[key]
+          let target
+          if (isFall) {
+            const yr = state.calendar?.year ?? g.year
+            if (!state.fallStats[yr][key]) state.fallStats[yr][key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
+            target = state.fallStats[yr][key]
+          } else {
+            if (!state.playerStats[key]) state.playerStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
+            target = state.playerStats[key]
+            // Spring scrimmages still count toward spring playerStats per
+            // existing behavior (only fall is split off).
+          }
           for (const k of Object.keys(s)) target[k] = (target[k] || 0) + s[k]
-          // gamesPlayed: a single appearance in this game counts as 1, regardless
-          // of how many PAs / outs they recorded. Drives the auto-redshirt rule.
+          // gamesPlayed: a single appearance in this game counts as 1.
           target.gamesPlayed = (target.gamesPlayed || 0) + 1
         }
       }
       accumulate(result.boxscore.batterStats, false)
       accumulate(result.boxscore.pitcherStats, true)
+    }
+
+    // ── Injury rolls — only for the user's team players who appeared in
+    // the game. Non-user teams skip injury rolls to keep state small +
+    // perf high. Game injuries are surfaced via state._newInjuriesThisWeek
+    // so the dashboard WeekRecap can highlight them.
+    if (isUserGame && result.boxscore) {
+      const rngInj = makeRng('injury', g.id, state.rngSeed)
+      const userTeamForInj = state.teams[userSchoolId]
+      if (!state._newInjuriesThisWeek) state._newInjuriesThisWeek = []
+      const battersThisGame = result.boxscore.batterStats || {}
+      const pitchersThisGame = result.boxscore.pitcherStats || {}
+      // Hitter rolls
+      for (const pid of Object.keys(battersThisGame)) {
+        if (!userTeamForInj.rosterPlayerIds.includes(pid)) continue
+        const player = state.players[pid]
+        if (!player) continue
+        const s = battersThisGame[pid]
+        const template = rollGameInjury(player, { gamePa: s.pa || 0 }, rngInj)
+        if (template) {
+          const injury = applyInjury(player, template, {
+            context: g.type === 'FALL_SCRIMMAGE' ? 'FALL_SCRIMMAGE' : 'GAME',
+            week: state.calendar?.weekOfYear,
+            year: state.calendar?.year,
+            rng: rngInj,
+          })
+          state._newInjuriesThisWeek.push({ playerId: pid, injury })
+          state.newsfeed.unshift({
+            id: `inj_${pid}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
+            year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
+            headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
+            payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks },
+          })
+        }
+      }
+      // Pitcher rolls
+      for (const pid of Object.keys(pitchersThisGame)) {
+        if (!userTeamForInj.rosterPlayerIds.includes(pid)) continue
+        const player = state.players[pid]
+        if (!player) continue
+        const s = pitchersThisGame[pid]
+        const template = rollGameInjury(player, { gameIp: s.ip || 0 }, rngInj)
+        if (template) {
+          const injury = applyInjury(player, template, {
+            context: g.type === 'FALL_SCRIMMAGE' ? 'FALL_SCRIMMAGE' : 'GAME',
+            week: state.calendar?.weekOfYear,
+            year: state.calendar?.year,
+            rng: rngInj,
+          })
+          state._newInjuriesThisWeek.push({ playerId: pid, injury })
+          state.newsfeed.unshift({
+            id: `inj_${pid}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
+            year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
+            headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
+            payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks },
+          })
+        }
+      }
     }
 
     // Scrimmage dev bonus — players in the user's scrimmage get small bumps.
@@ -347,6 +426,12 @@ export function runEndOfYear(state) {
   state.schedule = []
   state.playerStats = {}
   state.prospectCamp = null
+  // Heal everyone for the new season — SEASON-ending injuries already had
+  // their rating penalty applied; we just clear the active injury flags so
+  // players start fall fresh. (Stat penalty stays.)
+  clearAllInjuriesForNewSeason(state)
+  // Reset the "viewed" flag for fall stats so next year's report fires.
+  state.fallStatsViewed = null
   // Year-over-year: dynastyYear counter ticks. Year 1 = tutorial; Year 2+
   // can use the "confirm my staff" shortcut to skip required hiring.
   state.dynastyYear = (state.dynastyYear || 1) + 1
@@ -520,6 +605,69 @@ export function advanceOneWeek(state) {
   refreshWeeklyAP(state)
   tickWeeklyBookkeeping(state)
   tickTeamGPAWeekly(state)
+
+  // Reset the per-week new-injuries collector that simWeek pushes into. The
+  // WeekRecap reads this BEFORE we clear it — only fully reset on the NEXT
+  // advance. (simWeek runs after advanceOneWeek for week-of-the-game weeks,
+  // so we initialize the bucket here and let simWeek append; the recap reads
+  // and clears at the end of its render cycle.)
+  state._newInjuriesThisWeek = []
+
+  // Decrement injury counters on every player; surfaces newly-healed
+  // players for the WeekRecap.
+  const healResult = tickInjuries(state)
+  if (healResult.newlyHealed.length > 0) {
+    state._newlyHealedThisWeek = healResult.newlyHealed.map(p => ({
+      playerId: p.id,
+      name: `${p.firstName} ${p.lastName}`,
+      severity: p._recentReturn?.severity || 'MINOR',
+    }))
+    for (const p of healResult.newlyHealed) {
+      state.newsfeed.unshift({
+        id: `heal_${p.id}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
+        year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
+        headline: `🟢 ${p.firstName} ${p.lastName} cleared from injury. ${
+          p._recentReturn?.severity && p._recentReturn.severity !== 'MINOR'
+            ? `Some lingering rating impact applied — see player page.`
+            : `Back in action.`
+        }`,
+        payload: { playerId: p.id },
+      })
+    }
+  } else {
+    state._newlyHealedThisWeek = []
+  }
+
+  // Practice / training injuries — low base rate, only in non-game weeks.
+  // Game weeks roll inside simWeek, so we skip those to avoid double-rolling.
+  const mode = state.calendar.mode
+  const isGameWeek = mode === 'SEASON' || mode === 'POSTSEASON'
+    || (nextWeek >= 5 && nextWeek <= 13)   // fall scrimmage weeks
+  if (!isGameWeek && state.teams?.[state.userSchoolId]) {
+    const userTeam = state.teams[state.userSchoolId]
+    const rngPrac = makeRng('practice_inj', state.rngSeed, state.calendar?.year, nextWeek)
+    if (!state._newInjuriesThisWeek) state._newInjuriesThisWeek = []
+    for (const pid of userTeam.rosterPlayerIds) {
+      const player = state.players[pid]
+      if (!player) continue
+      const template = rollPracticeInjury(player, rngPrac)
+      if (template) {
+        const injury = applyInjury(player, template, {
+          context: 'PRACTICE',
+          week: nextWeek,
+          year: state.calendar?.year,
+          rng: rngPrac,
+        })
+        state._newInjuriesThisWeek.push({ playerId: pid, injury })
+        state.newsfeed.unshift({
+          id: `inj_prac_${pid}_${state.calendar?.year}_${nextWeek}`,
+          year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
+          headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). Practice incident.`,
+          payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks, context: 'PRACTICE' },
+        })
+      }
+    }
+  }
 
   // Fire events for the new week (budget review, draft, portal opens, etc.)
   runEventsForWeek(state, nextWeek)

@@ -381,8 +381,16 @@ function runDevelopment(state) {
     const seasonStats = state.playerStats?.[statsKey] ?? state._archivedPlayerStats?.[statsKey]
     const paShare = top9.has(id) ? 0.8 : 0.2
     const ipShare = top5p.has(id) ? 0.8 : 0.2
+    // Injured players still age + advance class year, but don't gain ratings
+    // this offseason. Pass a 0-share ctx so endOfSeasonDevelopment's
+    // multiplier chain zeroes out the bump.
+    const isHurt = (p.injury?.weeksRemaining || 0) > 0
     const updated = endOfSeasonDevelopment(p, {
-      coachDeveloper, paShare, ipShare, budgetEffects, seasonStats,
+      coachDeveloper,
+      paShare: isHurt ? 0 : paShare,
+      ipShare: isHurt ? 0 : ipShare,
+      budgetEffects: isHurt ? { devMultiplier: 0 } : budgetEffects,
+      seasonStats,
     }, state.rngSeed + state.calendar.year)
     const gain = updated._devGain || 0
     if (gain >= 1.5) devReport.push({ player: updated, gain })

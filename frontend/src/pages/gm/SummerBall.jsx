@@ -94,6 +94,11 @@ export default function SummerBall() {
       {/* Status banner */}
       <StatusBanner status={status} week={week} />
 
+      {/* Resolved? Surface the full summer report at the top. */}
+      {resolved && sb.results?.length > 0 && (
+        <SummerReport results={sb.results} year={sb.year} />
+      )}
+
       {/* Leagues overview */}
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-2">League Tiers</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6">
@@ -144,6 +149,103 @@ export default function SummerBall() {
           onClose={() => setPickingForPlayer(null)}
         />
       )}
+    </div>
+  )
+}
+
+function SummerReport({ results, year }) {
+  // Headline aggregates
+  const total = results.length
+  const totalOvrGain = results.reduce((s, r) => s + Math.max(0, r.ovrDelta), 0)
+  const avgGain = total > 0 ? totalOvrGain / total : 0
+  const injuries = results.filter(r => r.injured).length
+  const poached = results.filter(r => r.poached).length
+  const buzzed = results.filter(r => r.draftBuzz).length
+
+  // Sort by impact: biggest gainers first, then by injuries
+  const sorted = [...results].sort((a, b) => {
+    if (!!a.injured !== !!b.injured) return a.injured ? 1 : -1
+    return b.ovrDelta - a.ovrDelta
+  })
+
+  return (
+    <div className="bg-gradient-to-br from-pnw-cream to-amber-50 border-2 border-pnw-green/40 rounded-xl p-5 mb-4 shadow-lg">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-pnw-green font-bold">Summer {year} Report</div>
+          <h2 className="text-2xl font-bold text-pnw-slate">☀️ How your summer played out</h2>
+        </div>
+        <div className="text-right text-xs">
+          <div className="font-mono text-3xl font-bold text-pnw-green leading-none">+{avgGain.toFixed(1)}</div>
+          <div className="uppercase tracking-wider text-gray-500 text-[10px] mt-0.5">Avg OVR gain</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-2 mb-4 text-center text-xs">
+        <ReportTile label="Players sent" value={total} />
+        <ReportTile label="Injuries" value={injuries} color={injuries > 0 ? 'text-red-700' : 'text-gray-500'} />
+        <ReportTile label="D1 poach interest" value={poached} color={poached > 0 ? 'text-amber-700' : 'text-gray-500'} />
+        <ReportTile label="Draft buzz" value={buzzed} color={buzzed > 0 ? 'text-purple-700' : 'text-gray-500'} />
+      </div>
+      <div className="space-y-2">
+        {sorted.map(r => (
+          <SummerResultRow key={r.playerId} result={r} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ReportTile({ label, value, color = 'text-pnw-slate' }) {
+  return (
+    <div className="bg-white rounded p-2">
+      <div className={'text-2xl font-bold leading-none ' + color}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">{label}</div>
+    </div>
+  )
+}
+
+function SummerResultRow({ result }) {
+  const lg = SUMMER_LEAGUES[result.leagueKey]
+  const isHurt = !!result.injured
+  const isPoached = result.poached
+  const delta = result.ovrDelta
+  const deltaColor = isHurt ? 'text-red-700'
+    : delta >= 3 ? 'text-emerald-700'
+    : delta >= 1.5 ? 'text-pnw-green'
+    : delta >= 0 ? 'text-gray-700'
+    : 'text-red-700'
+  return (
+    <div className={'bg-white rounded p-2.5 border ' + (isHurt ? 'border-red-200' : 'border-gray-200')}>
+      <div className="flex items-center gap-2">
+        <span className={'text-[10px] font-bold px-1.5 py-0.5 rounded ' + (lg?.color || 'bg-gray-100')}>
+          {lg?.short || result.leagueKey}
+        </span>
+        <span className="font-medium text-sm text-pnw-slate flex-1 truncate">{result.playerName}</span>
+        <div className="text-right shrink-0">
+          <div className={'font-mono font-bold text-base ' + deltaColor}>
+            {delta >= 0 ? '+' : ''}{delta.toFixed(1)} OVR
+          </div>
+          <div className="text-[10px] text-gray-500">{result.ovrBefore} → {result.ovrAfter}</div>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-1 text-[11px]">
+        <span className="text-gray-600">{result.verdict}</span>
+        {isHurt && (
+          <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 font-semibold">
+            🩼 {result.injured.severity.toLowerCase()} injury ({result.injured.weeks} wk)
+          </span>
+        )}
+        {isPoached && (
+          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
+            📞 D1 interest
+          </span>
+        )}
+        {result.draftBuzz && (
+          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
+            ⭐ Draft buzz
+          </span>
+        )}
+      </div>
     </div>
   )
 }

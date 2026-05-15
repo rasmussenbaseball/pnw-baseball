@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
+  const [fallReportOpen, setFallReportOpen] = useState(false)
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -378,6 +379,12 @@ export default function Dashboard() {
       {/* Cuts window — fires the first week after the user's season ends */}
       <CutsBanner save={save} slot={slot} />
 
+      {/* Fall stats report — fires right after the last fall game (Wk 13+) */}
+      <FallStatsBanner save={save} onOpen={() => setFallReportOpen(true)} />
+      {fallReportOpen && (
+        <FallStatsModal save={save} onClose={() => setFallReportOpen(false)} />
+      )}
+
       {/* Summer ball planning prompt — appears Wk 14 */}
       {weekOfYear === 14 && (
         <div className="bg-pnw-cream border-l-4 border-pnw-green text-pnw-slate p-4 rounded-r mb-4 flex justify-between items-center">
@@ -512,6 +519,10 @@ export default function Dashboard() {
 
         {/* CENTER column — sim recap, top performers, news */}
         <div className="space-y-4">
+          {/* Team stats + per-stat leaders — pulls from playerStats once games
+              have been played. Hidden if there's nothing to show yet. */}
+          <TeamStatsPanel save={save} slot={slot} />
+
           <Panel title="Top Players" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Full roster →">
             <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 mt-0.5">Top Hitters</div>
             <div className="space-y-0.5 mb-4">
@@ -1183,6 +1194,49 @@ function WeekRecapModal({ recap, save, onDismiss }) {
             </div>
           )}
 
+          {/* New injuries this week */}
+          {(save._newInjuriesThisWeek?.length > 0 || save._newlyHealedThisWeek?.length > 0) && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Injuries & returns</div>
+              <div className="space-y-1">
+                {(save._newInjuriesThisWeek || []).map(inj => {
+                  const p = save.players[inj.playerId]
+                  if (!p) return null
+                  const sev = inj.injury.severity
+                  const sevColor = sev === 'SEASON' ? 'bg-red-100 text-red-800'
+                    : sev === 'MAJOR' ? 'bg-orange-100 text-orange-800'
+                    : sev === 'MODERATE' ? 'bg-amber-100 text-amber-800'
+                    : 'bg-yellow-50 text-yellow-800'
+                  return (
+                    <div key={inj.playerId + inj.injury.type} className="flex items-start gap-2 p-2 bg-red-50 rounded">
+                      <span className="text-base shrink-0">🩼</span>
+                      <div className="flex-1 text-sm">
+                        <div className="font-medium text-pnw-slate">
+                          {p.firstName} {p.lastName} — {inj.injury.label}
+                        </div>
+                        <div className="text-[11px] text-gray-600">{inj.injury.blurb}</div>
+                      </div>
+                      <span className={'text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ' + sevColor}>
+                        {sev} · {inj.injury.totalWeeks} wk
+                      </span>
+                    </div>
+                  )
+                })}
+                {(save._newlyHealedThisWeek || []).map(h => (
+                  <div key={'heal_' + h.playerId} className="flex items-start gap-2 p-2 bg-green-50 rounded">
+                    <span className="text-base shrink-0">🟢</span>
+                    <div className="flex-1 text-sm text-pnw-slate">
+                      {h.name} — cleared from injury, back in action
+                      {h.severity && h.severity !== 'MINOR' && (
+                        <span className="text-[11px] text-gray-500 ml-1">(some lingering rating impact)</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Game results */}
           {results.length > 0 && (
             <div>
@@ -1340,6 +1394,270 @@ function postseasonSub(ps) {
   if (ps.userInField) return 'Opening Round'
   if (ps.userChamp) return '🏆 Conf Champ'
   return 'Missed'
+}
+
+function TeamStatsPanel({ save, slot }) {
+  const userId = save.userSchoolId
+  const team = save.teams?.[userId]
+  if (!team) return null
+  const roster = team.rosterPlayerIds || []
+  const playerStats = save.playerStats || {}
+
+  // Aggregate team-level: total ABs, runs, ERA, etc.
+  let teamAb = 0, teamH = 0, teamHr = 0, teamBb = 0, teamK = 0
+  let teamIp = 0, teamErP = 0, teamHp = 0, teamBbP = 0, teamKp = 0
+  // Per-player ranking buckets
+  const battersWithStats = []
+  const pitchersWithStats = []
+  for (const pid of roster) {
+    const p = save.players[pid]
+    if (!p) continue
+    const bs = playerStats[`b_${pid}`]
+    const ps = playerStats[`p_${pid}`]
+    if (bs && bs.ab > 0) {
+      teamAb += bs.ab; teamH += bs.h; teamHr += bs.hr || 0; teamBb += bs.bb || 0; teamK += bs.k || 0
+      const avg = bs.h / Math.max(1, bs.ab)
+      const obp = (bs.h + bs.bb) / Math.max(1, bs.ab + bs.bb)
+      const slg = (bs.h - bs.d - bs.t - bs.hr + bs.d * 2 + bs.t * 3 + bs.hr * 4) / Math.max(1, bs.ab)
+      battersWithStats.push({ p, ab: bs.ab, h: bs.h, hr: bs.hr || 0, rbi: bs.rbi || 0, avg, ops: obp + slg })
+    }
+    if (ps && ps.ip > 0) {
+      teamIp += ps.ip; teamErP += ps.er || 0; teamHp += ps.h || 0; teamBbP += ps.bb || 0; teamKp += ps.k || 0
+      const era = (ps.er || 0) * 9 / Math.max(0.1, ps.ip)
+      const whip = ((ps.h || 0) + (ps.bb || 0)) / Math.max(0.1, ps.ip)
+      pitchersWithStats.push({ p, ip: ps.ip, k: ps.k || 0, era, whip })
+    }
+  }
+
+  // No spring stats yet → hide panel entirely
+  if (battersWithStats.length === 0 && pitchersWithStats.length === 0) return null
+
+  const teamAvg = teamAb > 0 ? teamH / teamAb : 0
+  const teamEra = teamIp > 0 ? teamErP * 9 / teamIp : 0
+  const teamWhip = teamIp > 0 ? (teamHp + teamBbP) / teamIp : 0
+  const fmt3 = n => n.toFixed(3).replace(/^0\./, '.')
+
+  // Per-stat leaders (min thresholds to avoid 1-AB.500 fluke leaders)
+  const sortedByAvg = [...battersWithStats].filter(x => x.ab >= 10).sort((a, b) => b.avg - a.avg)
+  const sortedByHr  = [...battersWithStats].sort((a, b) => b.hr - a.hr)
+  const sortedByOps = [...battersWithStats].filter(x => x.ab >= 10).sort((a, b) => b.ops - a.ops)
+  const sortedByEra = [...pitchersWithStats].filter(x => x.ip >= 5).sort((a, b) => a.era - b.era)
+  const sortedByK   = [...pitchersWithStats].sort((a, b) => b.k - a.k)
+
+  return (
+    <Panel title="Team Stats" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster →">
+      {/* Team-level numbers strip */}
+      <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+        <TeamStatTile label="Team AVG" value={fmt3(teamAvg)} />
+        <TeamStatTile label="Team ERA" value={teamEra.toFixed(2)} good={teamEra < 4.5} />
+        <TeamStatTile label="WHIP" value={teamWhip.toFixed(2)} good={teamWhip < 1.30} />
+      </div>
+      {/* Leader cards — show top 1-2 per category */}
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Hitting Leaders</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+        <LeaderCard label="AVG" leader={sortedByAvg[0]} valueKey="avg" fmt={fmt3} />
+        <LeaderCard label="HR" leader={sortedByHr[0]} valueKey="hr" />
+        <LeaderCard label="OPS" leader={sortedByOps[0]} valueKey="ops" fmt={fmt3} />
+      </div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 border-t pt-2">Pitching Leaders</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <LeaderCard label="ERA" leader={sortedByEra[0]} valueKey="era" fmt={v => v.toFixed(2)} />
+        <LeaderCard label="K" leader={sortedByK[0]} valueKey="k" />
+      </div>
+    </Panel>
+  )
+}
+
+function TeamStatTile({ label, value, good }) {
+  const cls = good === true ? 'text-emerald-700' : good === false ? 'text-red-700' : 'text-pnw-slate'
+  return (
+    <div className="bg-gray-50 rounded p-2">
+      <div className={'text-xl font-bold font-mono leading-none ' + cls}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">{label}</div>
+    </div>
+  )
+}
+
+function LeaderCard({ label, leader, valueKey, fmt }) {
+  if (!leader) {
+    return (
+      <div className="bg-gray-50 rounded p-2 text-center text-xs text-gray-400 italic">
+        No qualifier yet
+      </div>
+    )
+  }
+  const raw = leader[valueKey]
+  const display = fmt ? fmt(raw) : raw
+  return (
+    <div className="bg-pnw-cream/40 rounded p-2">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">{label} leader</div>
+      <div className="text-sm font-bold text-pnw-slate truncate">{leader.p.firstName} {leader.p.lastName}</div>
+      <div className="text-base font-mono font-bold text-pnw-green">{display}</div>
+    </div>
+  )
+}
+
+function FallStatsBanner({ save, onOpen }) {
+  const year = save.calendar?.year
+  const weekOfYear = save.calendar?.weekOfYear ?? 1
+  const userId = save.userSchoolId
+  // Show only between Wks 13 and 26 (after fall ball wraps, before spring practice)
+  if (weekOfYear < 13 || weekOfYear > 26) return null
+  const fallStats = save.fallStats?.[year]
+  if (!fallStats) return null
+  // Confirm there are user players with stats
+  const userRoster = save.teams?.[userId]?.rosterPlayerIds || []
+  const hasUserStats = userRoster.some(pid =>
+    fallStats[`b_${pid}`]?.ab > 0 || fallStats[`p_${pid}`]?.ip > 0
+  )
+  if (!hasUserStats) return null
+  const viewed = save.fallStatsViewed?.year === year
+  return (
+    <div className={'rounded-r p-4 mb-4 border-l-4 flex justify-between items-center ' +
+      (viewed ? 'bg-amber-50/40 border-amber-300 text-amber-800' : 'bg-amber-50 border-amber-500 text-amber-900')}>
+      <div>
+        <div className="font-bold">🍂 Fall stats report ready</div>
+        <div className="text-xs mt-1">
+          Your fall scrimmage stats are in — see who hit best, who pitched best, and who's pushing for the spring lineup.
+          {viewed && <span className="ml-1 text-amber-700 italic">(already viewed)</span>}
+        </div>
+      </div>
+      <button
+        onClick={onOpen}
+        className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
+      >
+        View report →
+      </button>
+    </div>
+  )
+}
+
+function FallStatsModal({ save, onClose }) {
+  const year = save.calendar?.year
+  const fallStats = save.fallStats?.[year] || {}
+  const userId = save.userSchoolId
+  const userRoster = save.teams?.[userId]?.rosterPlayerIds || []
+
+  // Mark as viewed
+  useMemo(() => {
+    if (!save.fallStatsViewed || save.fallStatsViewed.year !== year) {
+      save.fallStatsViewed = { year }
+      saveDynasty(save)
+    }
+  }, [year, save])
+
+  // Build batter + pitcher rows
+  const batterRows = []
+  const pitcherRows = []
+  for (const pid of userRoster) {
+    const player = save.players[pid]
+    if (!player) continue
+    const bs = fallStats[`b_${pid}`]
+    const ps = fallStats[`p_${pid}`]
+    if (bs && bs.ab > 0) {
+      const avg = bs.h / Math.max(1, bs.ab)
+      const ops = avg + ((bs.h + bs.bb) / Math.max(1, bs.ab + bs.bb)) + ((bs.h - bs.d - bs.t - bs.hr + bs.d * 2 + bs.t * 3 + bs.hr * 4) / Math.max(1, bs.ab))
+      batterRows.push({
+        player, ab: bs.ab, h: bs.h, hr: bs.hr || 0, rbi: bs.rbi || 0, bb: bs.bb || 0, k: bs.k || 0,
+        avg, ops,
+      })
+    }
+    if (ps && ps.ip > 0) {
+      const era = ps.er * 9 / Math.max(0.1, ps.ip)
+      pitcherRows.push({
+        player, ip: ps.ip, h: ps.h || 0, bb: ps.bb || 0, k: ps.k || 0, er: ps.er || 0, era,
+      })
+    }
+  }
+  batterRows.sort((a, b) => b.ops - a.ops)
+  pitcherRows.sort((a, b) => a.era - b.era)
+
+  const fmt3 = n => n.toFixed(3).replace(/^0\./, '.')
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 rounded-t-xl flex justify-between items-start">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider opacity-80">Fall {year} Scrimmage Report</div>
+            <h3 className="text-2xl font-bold mt-0.5">🍂 How fall went</h3>
+            <div className="text-xs opacity-90 mt-1">
+              8 fall scrimmage games · stats kept separate from spring · use this to set your spring depth chart
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl leading-none">✕</button>
+        </div>
+        <div className="p-5 space-y-5">
+          {/* Top hitters */}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Top hitters (by OPS)</div>
+            {batterRows.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No hitter ABs logged. (Did you skip fall scrimmages?)</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                    <tr><th className="p-1.5 text-left">Player</th><th>AB</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>K</th><th>AVG</th><th>OPS</th></tr>
+                  </thead>
+                  <tbody>
+                    {batterRows.slice(0, 12).map(r => (
+                      <tr key={r.player.id} className="border-t">
+                        <td className="p-1.5 font-medium text-pnw-slate">
+                          {r.player.firstName} {r.player.lastName}
+                          <span className="text-[10px] text-gray-400 ml-1">{r.player.primaryPosition}</span>
+                        </td>
+                        <td className="text-center font-mono">{r.ab}</td>
+                        <td className="text-center font-mono">{r.h}</td>
+                        <td className="text-center font-mono">{r.hr}</td>
+                        <td className="text-center font-mono">{r.rbi}</td>
+                        <td className="text-center font-mono">{r.bb}</td>
+                        <td className="text-center font-mono">{r.k}</td>
+                        <td className="text-center font-mono font-bold">{fmt3(r.avg)}</td>
+                        <td className="text-center font-mono font-bold text-pnw-green">{fmt3(r.ops)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Top pitchers */}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Top pitchers (by ERA)</div>
+            {pitcherRows.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No pitcher IP logged.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                    <tr><th className="p-1.5 text-left">Player</th><th>IP</th><th>H</th><th>BB</th><th>K</th><th>ER</th><th>ERA</th></tr>
+                  </thead>
+                  <tbody>
+                    {pitcherRows.slice(0, 12).map(r => (
+                      <tr key={r.player.id} className="border-t">
+                        <td className="p-1.5 font-medium text-pnw-slate">{r.player.firstName} {r.player.lastName}</td>
+                        <td className="text-center font-mono">{r.ip.toFixed(1)}</td>
+                        <td className="text-center font-mono">{r.h}</td>
+                        <td className="text-center font-mono">{r.bb}</td>
+                        <td className="text-center font-mono">{r.k}</td>
+                        <td className="text-center font-mono">{r.er}</td>
+                        <td className="text-center font-mono font-bold text-pnw-green">{r.era.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="text-[11px] text-gray-500 italic">
+            Fall stats are kept separate from the spring stat line. They don't appear on the season AVG / ERA — they're just for evaluating who's earned a starting job heading into spring practice.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function CutsBanner({ save, slot }) {

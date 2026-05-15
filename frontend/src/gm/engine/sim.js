@@ -409,7 +409,11 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
  * @returns {{ batters: Player[], pitcherRotation: Player[] }}
  */
 export function defaultLineup(team, players) {
-  const roster = team.rosterPlayerIds.map(id => players[id]).filter(Boolean)
+  // Injured players are filtered out — they can't appear in the boxscore
+  // and any dev hooks should skip them. The lineup builder doesn't import
+  // injuries.js to avoid circular dep; we just check the flag directly.
+  const isInjured = p => (p?.injury?.weeksRemaining || 0) > 0
+  const roster = team.rosterPlayerIds.map(id => players[id]).filter(p => p && !isInjured(p))
   // Hitters: best 9 non-pitchers by avg contact + power
   const hitters = roster
     .filter(p => !p.isPitcher)
