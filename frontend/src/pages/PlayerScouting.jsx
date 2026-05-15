@@ -153,7 +153,7 @@ function ScoutingReport({ playerId }) {
       {!isPitcher && profile?.pitching_stats?.length > 0 && pitcherStats && (
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h2 className="text-sm font-bold text-gray-700 mb-2">
-            Also pitches — secondary scouting
+            Also pitches · secondary scouting
           </h2>
           <PitcherReport
             player={player}
@@ -165,7 +165,7 @@ function ScoutingReport({ playerId }) {
       {isPitcher && profile?.batting_stats?.length > 0 && hitterStats && (
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h2 className="text-sm font-bold text-gray-700 mb-2">
-            Also hits — secondary scouting
+            Also hits · secondary scouting
           </h2>
           <HitterReport
             player={player}
@@ -662,7 +662,7 @@ function generateHitterNarrative(percentiles, discipline, cp, player) {
   if (iso != null && iso >= 80) {
     out.push(`Plus power (${iso}th-percentile ISO). Don't leave anything in the zone.`)
   } else if (iso != null && iso <= 25) {
-    out.push(`Light bat (${iso}th-percentile ISO). Attack the zone — extra-base damage unlikely.`)
+    out.push(`Light bat (${iso}th-percentile ISO). Attack the zone, extra-base damage unlikely.`)
   }
 
   // Contact / discipline
@@ -674,7 +674,7 @@ function generateHitterNarrative(percentiles, discipline, cp, player) {
     out.push(`Strikeout-prone (${k}th-percentile K%). Get to two strikes and finish him.`)
   }
   if (bb != null && bb >= 80) {
-    out.push(`Patient hitter (${bb}th-percentile BB%) — won't chase, throw strikes early.`)
+    out.push(`Patient hitter (${bb}th-percentile BB%). Won't chase, throw strikes early.`)
   }
 
   // Spray + air pull
@@ -682,7 +682,7 @@ function generateHitterNarrative(percentiles, discipline, cp, player) {
     if (cp.pull_pct != null && cp.pull_pct >= 0.50) {
       out.push(`Pull-heavy (${(cp.pull_pct * 100).toFixed(0)}% pull). Shift accordingly.`)
     } else if (cp.oppo_pct != null && cp.oppo_pct >= 0.35) {
-      out.push(`Goes the other way often (${(cp.oppo_pct * 100).toFixed(0)}% oppo) — don't sell out on the pull.`)
+      out.push(`Goes the other way often (${(cp.oppo_pct * 100).toFixed(0)}% oppo). Don't sell out on the pull.`)
     }
     if (cp.fb_pct != null && cp.fb_pct >= 0.40) {
       out.push(`Fly-ball heavy (${(cp.fb_pct * 100).toFixed(0)}% FB). Keep the ball down.`)
@@ -714,10 +714,10 @@ function generatePitcherNarrative(percentiles, discipline, ocp, player) {
   if (k != null && k >= 80) {
     out.push(`Big strikeout arm (${k}th-percentile K%). Two-strike approach matters.`)
   } else if (k != null && k <= 25) {
-    out.push(`Doesn't miss bats (${k}th-percentile K%). Put balls in play — you'll find holes.`)
+    out.push(`Doesn't miss bats (${k}th-percentile K%). Put balls in play, you'll find holes.`)
   }
   if (bb != null && bb >= 75) {
-    out.push(`Wild — ${bb}th-percentile BB%. Be patient, take walks.`)
+    out.push(`Wild (${bb}th-percentile BB%). Be patient, take walks.`)
   }
   if (fps != null && fps >= 75) {
     out.push(`Throws first-pitch strikes consistently (${fps}th-percentile FPS%). Don't take strike one for granted.`)

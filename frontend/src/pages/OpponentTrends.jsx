@@ -26,7 +26,7 @@ export default function OpponentTrends() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
       <h1 className="text-xl font-bold text-gray-900 mb-1">Trends</h1>
-      <p className="text-xs text-gray-500 mb-4">Lineup tendencies, rotation patterns & bullpen usage — weighted toward recent games</p>
+      <p className="text-xs text-gray-500 mb-4">Lineup tendencies, rotation patterns & bullpen usage (weighted toward recent games)</p>
 
       {/* Selectors */}
       <div className="flex flex-wrap gap-2 items-end mb-5">
@@ -771,7 +771,7 @@ function PitcherTendenciesBlock({ tendencies }) {
           <TinyTile key={tile.label} {...tile} />
         ))}
         <div className="bg-white border border-gray-200 rounded p-1.5 text-center"
-             title="Total Win Probability Added — cumulative WP this pitcher has earned for his team">
+             title="Total Win Probability Added: cumulative WP this pitcher has earned for his team">
           <div className="text-[9px] uppercase text-gray-400">WPA</div>
           <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
             {wpa == null ? '—' : `${wpaSign}${wpa.toFixed(2)}`}
@@ -803,7 +803,7 @@ function HitterTendenciesBlock({ tendencies }) {
     { label: 'Oppo%', value: t.oppo_pct, fmt: 'pct',
       tip: 'Balls hit to the opposite field' },
     { label: 'AIRPULL%', value: t.air_pull_pct, fmt: 'pct',
-      tip: 'Pulled fly balls + line drives — power indicator' },
+      tip: 'Pulled fly balls + line drives (power indicator)' },
     { label: 'Whiff%', value: t.whiff_pct, fmt: 'pct',
       tip: 'Swinging strikes / total swings (lower is better for hitter)' },
     { label: 'Putaway%', value: t.putaway_pct, fmt: 'pct',
@@ -817,14 +817,14 @@ function HitterTendenciesBlock({ tendencies }) {
   return (
     <div>
       <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">
-        Tendencies (PBP) {t.bats && <span className="ml-1 text-gray-500">— bats {t.bats}</span>}
+        Tendencies (PBP) {t.bats && <span className="ml-1 text-gray-500">· bats {t.bats}</span>}
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
         {tiles.map(tile => (
           <TinyTile key={tile.label} {...tile} />
         ))}
         <div className="bg-white border border-gray-200 rounded p-1.5 text-center"
-             title="Total Win Probability Added — cumulative WP this hitter has earned">
+             title="Total Win Probability Added: cumulative WP this hitter has earned">
           <div className="text-[9px] uppercase text-gray-400">WPA</div>
           <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
             {wpa == null ? '—' : `${wpaSign}${wpa.toFixed(2)}`}
@@ -887,8 +887,8 @@ function TierPill({ tier }) {
 function PitcherIcons({ p }) {
   if (!p) return null
   const icons = []
-  if (p.flag_hot) icons.push({ key: 'hot', char: '🔥', title: 'Hot — great in last 2 appearances' })
-  if (p.flag_cold) icons.push({ key: 'cold', char: '🧊', title: 'Cold — rough in last 2 appearances' })
+  if (p.flag_hot) icons.push({ key: 'hot', char: '🔥', title: 'Hot: great in last 2 appearances' })
+  if (p.flag_cold) icons.push({ key: 'cold', char: '🧊', title: 'Cold: rough in last 2 appearances' })
   if (p.flag_high_k) icons.push({ key: 'k', char: '🗡️', title: 'High strikeout rate (K/9 >= 10)' })
   if (p.flag_inactive) icons.push({ key: 'inactive', char: '❌', title: 'Has not pitched in 2+ weeks' })
   if (!icons.length) return null

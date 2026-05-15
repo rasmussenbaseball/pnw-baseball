@@ -577,7 +577,7 @@ export default function KeyMatchupGraphic() {
             </div>
             {data?.games?.length > 0 && (
               <select value={selGame || ''} onChange={e => { const v = e.target.value; setSelGame(v); fetchData(date, v) }} className="px-3 py-1.5 rounded border border-gray-300 text-sm flex-1 min-w-[200px]">
-                {data.games.map(g => <option key={g.id} value={g.id}>{g.away_short} @ {g.home_short}{g.is_conference_game ? ' (Conf)' : ''}{g.home_division ? ` — ${g.home_division}` : ''}</option>)}
+                {data.games.map(g => <option key={g.id} value={g.id}>{g.away_short} @ {g.home_short}{g.is_conference_game ? ' (Conf)' : ''}{g.home_division ? ` · ${g.home_division}` : ''}</option>)}
               </select>
             )}
             <button onClick={() => { if (!canvasRef.current) return; const l = document.createElement('a'); l.download = `key-matchup-${date}.png`; l.href = canvasRef.current.toDataURL('image/png'); l.click() }} disabled={!data?.matchup} className="px-4 py-1.5 rounded text-white text-sm font-medium disabled:opacity-50" style={{ backgroundColor: '#00687a' }}>

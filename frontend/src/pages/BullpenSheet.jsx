@@ -166,7 +166,7 @@ export default function BullpenSheet() {
           onChange={(e) => e.target.value && navigate(`/portal/bullpen-sheet/${e.target.value}`)}
           className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 w-full"
         >
-          <option value="">— pick a team —</option>
+          <option value="">Pick a team...</option>
           {Object.keys(grouped).sort().map(g => (
             <optgroup key={g} label={g}>
               {grouped[g]
@@ -198,7 +198,7 @@ export default function BullpenSheet() {
       {/* Toolbar — hidden on print */}
       <div className="flex items-center justify-between gap-3 mb-3 print:hidden">
         <h1 className="text-xl font-bold text-portal-purple-dark">
-          Bullpen Sheet — {team.short_name || team.name}
+          Bullpen Sheet · {team.short_name || team.name}
         </h1>
         <button
           onClick={() => window.print()}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay, useDailyPerformers, useKeyMatchup, useWinProbabilities } from '../hooks/useApi'
-import { divisionBadgeClass } from '../utils/stats'
+import { divisionBadgeClass, formatGameTime } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 
 const SEASON = 2026
@@ -235,9 +235,10 @@ function LiveGamesTicker({ games, hasLive }) {
                     </span>
                   ) : isFinal ? (
                     <span className="text-gray-300">Final</span>
-                  ) : (
-                    <span className="text-gray-300">{g.time || 'TBD'}</span>
-                  )}
+                  ) : (() => {
+                    const t = formatGameTime(g.time)
+                    return t ? <span className="text-gray-300">{t}</span> : null
+                  })()}
                 </div>
               </Link>
             )

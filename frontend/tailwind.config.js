@@ -17,6 +17,7 @@ export default {
         'pnw-forest': '#004d5a',   // darker teal
         'pnw-sky': '#008a9e',      // lighter teal for links/accents
         'pnw-slate': '#00687a',    // header background
+        'pnw-teal': '#008a9e',     // bright teal for values/accents on slate cards
         'pnw-cream': '#faf8f5',
 
         // Coach & Scouting Portal palette — deep indigo / antique gold.

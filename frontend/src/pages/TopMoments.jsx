@@ -26,7 +26,7 @@ export default function TopMoments() {
     <div className="max-w-5xl mx-auto px-4 py-5">
       <h1 className="text-xl font-bold text-gray-900 mb-1">Top Moments of 2026</h1>
       <p className="text-xs text-gray-500 mb-4 max-w-2xl">
-        The most-clutch plays and players of the season — measured by Win
+        The most-clutch plays and players of the season, measured by Win
         Probability Added on every plate appearance with PBP coverage. Hitter
         and pitcher moments come from the same events, surfaced from each
         side's perspective.
@@ -83,7 +83,7 @@ export default function TopMoments() {
 // ── Moments view ───────────────────────────────────────────────
 function MomentsView({ moments, perspective }) {
   if (!moments || moments.length === 0) {
-    return <Empty icon="📭" text="No moments yet — check back as the season builds." />
+    return <Empty icon="📭" text="No moments yet. Check back as the season builds." />
   }
   const [hero, ...rest] = moments
   const headline = perspective === 'batter'

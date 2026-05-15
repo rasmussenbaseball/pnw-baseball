@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveScores, useGamesByDate, useWinProbabilities } from '../hooks/useApi'
+import { formatGameTime } from '../utils/stats'
 
 const DIV_COLORS = {
   D1: 'bg-blue-600', D2: 'bg-emerald-600', D3: 'bg-amber-600',
@@ -375,7 +376,7 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
   const teamWon = isFinal && teamScore != null && oppScore != null && teamScore > oppScore
   const oppWon = isFinal && teamScore != null && oppScore != null && oppScore > teamScore
 
-  const gameTime = game.time || ''
+  const gameTime = formatGameTime(game.time)
   const gameDate = game.date ? formatDateLabel(game.date) : ''
 
   // For live games, try to find matching win prob by DB game ID if available
@@ -546,7 +547,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
   const awayWon = isFinal && game.away_score > game.home_score
   const division = game.home_division || game.away_division
 
-  const gameTime = game.game_time || ''
+  const gameTime = formatGameTime(game.game_time)
 
   // Format win probability as percentage (e.g., 0.723 -> "72%")
   // Prefer inline values from the API response (works for future games too),

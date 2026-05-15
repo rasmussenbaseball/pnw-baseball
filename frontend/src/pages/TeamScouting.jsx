@@ -571,7 +571,7 @@ function PlayerTable({ title, subtitle, kind, rows }) {
       </div>
       {isSplit && (
         <p className="text-[11px] text-gray-400 italic mt-2">
-          Split values are unfiltered conference-pool — color-coding is paused while a split is active.
+          Split values are unfiltered conference-pool. Color-coding is paused while a split is active.
         </p>
       )}
     </Card>

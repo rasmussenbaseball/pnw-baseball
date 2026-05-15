@@ -433,7 +433,7 @@ function QuestionScreen({
                   const v = question.values.find(x => x.id === vid)
                   return (
                     <li key={p.id}>
-                      {p.label} — {v?.label}
+                      {p.label}: {v?.label}
                     </li>
                   )
                 })}

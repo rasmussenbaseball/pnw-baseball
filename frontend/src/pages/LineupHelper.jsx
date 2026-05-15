@@ -20,7 +20,7 @@ const SEASON = 2026
 const SLOT_DESCRIPTIONS = {
   1: 'Leadoff: contact and OBP, low K%',
   2: 'One of your three best hitters; OBP plus pop',
-  3: 'Hits a lot of 2-out RISP — your worst of top 5',
+  3: 'Hits a lot of 2-out RISP, your worst of top 5',
   4: 'Cleanup: best power bat',
   5: 'Second power bat, drives in 3/4 holes',
   6: 'Mid-order continuation',
@@ -200,7 +200,7 @@ function Hero({ team, data, loading }) {
             Optimal {SEASON} batting orders for{' '}
             <span className="font-semibold">{team?.short_name || team?.name}</span>
             {data && !data.error && data.eligible_count
-              ? ` — ${data.eligible_count} eligible hitters`
+              ? ` · ${data.eligible_count} eligible hitters`
               : ''}
           </p>
         </div>
@@ -688,14 +688,14 @@ const STAT_TOOLTIPS = {
   'wOBA': 'Weighted On-Base Average. Composite offensive metric where each event (walk, single, etc.) is weighted by its real run value. League average around .350.',
   'OBP': 'On-Base Percentage. (Hits + Walks + HBP) / (AB + Walks + HBP + SF). Single best predictor of run-scoring at the lineup-construction level.',
   'SLG': 'Slugging Percentage. Total bases per at-bat. Measures power output.',
-  'ISO': 'Isolated Power. SLG minus AVG — extra-base hits per at-bat. Cleanest power signal because it strips out singles.',
+  'ISO': 'Isolated Power. SLG minus AVG (extra-base hits per at-bat). Cleanest power signal because it strips out singles.',
   'K%': 'Strikeout rate as a percentage of plate appearances.',
   'BB%': 'Walk rate as a percentage of plate appearances.',
   'Contact%': 'Bat-to-ball ability. (Fouls + Balls in Play) / Swings. League average around 78%. Captures contact skill independent of how often a hitter swings.',
   'Swing%': 'How often a hitter swings at any pitch. Pitches Swung At / Total Pitches Seen.',
   'Whiff%': 'Swing-and-miss rate. Whiffs / Swings.',
   'HR%': 'Home Run rate as a percentage of plate appearances.',
-  'AIRPULL%': 'Of all line drives and fly balls, the percentage pulled. Strong power proxy — pulled airballs travel further than oppo airballs.',
+  'AIRPULL%': 'Of all line drives and fly balls, the percentage pulled. Strong power proxy: pulled airballs travel further than oppo airballs.',
   'GB%': 'Ground Ball percentage of all batted balls. High GB hitters create more double-play risk at slots 2 and 3.',
   'LD%': 'Line Drive percentage of all batted balls.',
   'FB%': 'Fly Ball percentage of all batted balls.',
@@ -703,9 +703,9 @@ const STAT_TOOLTIPS = {
   'Speed z-score': 'Within-team z-score of speed proxy = (SB - 0.5×CS) / (1B + BB + HBP). +2 means top of the team in baserunning value, -2 means bottom. Used by slots 1, 2, and 9.',
   'SB': 'Stolen bases for the season.',
   'CS': 'Caught stealing for the season.',
-  'Singles': '1B hits — denominator for the speed proxy.',
-  'BB': 'Walks — also a speed-proxy denominator (any time on first counts).',
-  'HBP': 'Hit by pitches — also a speed-proxy denominator.',
+  'Singles': '1B hits (denominator for the speed proxy).',
+  'BB': 'Walks. Also a speed-proxy denominator (any time on first counts).',
+  'HBP': 'Hit by pitches. Also a speed-proxy denominator.',
   'Batted balls': 'Sample size for batted-ball type percentages (GB/LD/FB/PU).',
 }
 
@@ -928,7 +928,7 @@ function BuildView({ teamId, season }) {
 
       {block && (
         <Card
-          title={`Optimal order — ${vsHandLabel(vsHand)}`}
+          title={`Optimal order · ${vsHandLabel(vsHand)}`}
           subtitle={`Total slot score: ${block.total_score?.toFixed(2) ?? '—'}`}
         >
           <LineupTable

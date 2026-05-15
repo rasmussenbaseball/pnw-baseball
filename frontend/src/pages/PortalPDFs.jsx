@@ -29,7 +29,7 @@ export default function PortalPDFs() {
       <div>
         <h1 className="text-2xl font-bold text-portal-purple-dark">Printable PDFs</h1>
         <p className="text-sm text-gray-600">
-          One-page reports built for the dugout — print or save as PDF.
+          One-page reports built for the dugout. Print or save as PDF.
         </p>
       </div>
 
@@ -84,7 +84,7 @@ function ScoutingSheetCard({ onPick }) {
           onChange={(e) => setTeamId(e.target.value)}
           className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 flex-1 min-w-[220px]"
         >
-          <option value="">— pick a team —</option>
+          <option value="">Pick a team...</option>
           {Object.keys(grouped).sort().map(g => (
             <optgroup key={g} label={g}>
               {grouped[g].map(t => (
@@ -127,7 +127,7 @@ function PlayerCardCard({ onPick }) {
         <span className="text-[11px] text-gray-500">1 page · stats + spray + percentiles</span>
       </div>
       <p className="text-xs text-gray-600 mb-3">
-        One-page Statcast-style profile — percentile bars, spray chart, plate discipline,
+        One-page Statcast-style profile: percentile bars, spray chart, plate discipline,
         splits, season stats, and summer ball. For two-way players, pick a side or leave it
         on auto and we'll default to whichever side has more career WAR.
       </p>
@@ -261,7 +261,7 @@ function BullpenSheetCard({ onPick }) {
           onChange={(e) => setTeamId(e.target.value)}
           className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 flex-1 min-w-[220px]"
         >
-          <option value="">— pick a team —</option>
+          <option value="">Pick a team...</option>
           {Object.keys(grouped).sort().map(g => (
             <optgroup key={g} label={g}>
               {grouped[g].map(t => (
@@ -313,7 +313,7 @@ function CatcherCardsCard({ onPick }) {
         <span className="text-[11px] text-gray-500">2 pages · 5″ × 2″ each · pocket-size</span>
       </div>
       <p className="text-xs text-gray-600 mb-3">
-        Pick the opposing team — we generate two strict 5×2-inch cards covering
+        Pick the opposing team. We generate two strict 5×2-inch cards covering
         their top 14 hitters by PA, 7 per card. Each row shows wOBA splits, K%,
         BB%, swing rates, ISO, SB, and a blank notes column. Save as PDF, print at
         100% scale, cut, fit in a wristband.
@@ -324,7 +324,7 @@ function CatcherCardsCard({ onPick }) {
           onChange={(e) => setTeamId(e.target.value)}
           className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 flex-1 min-w-[220px]"
         >
-          <option value="">— pick the opposing team —</option>
+          <option value="">Pick the opposing team...</option>
           {Object.keys(grouped).sort().map(g => (
             <optgroup key={g} label={g}>
               {grouped[g].map(t => (
@@ -482,7 +482,7 @@ function BulkPlayerCardsCard({ onGenerate }) {
       <p className="text-xs text-gray-600 mb-3">
         Pick a team, then check off which players you want cards for. For two-way
         players you can choose hitting, pitching, or both. Hits one big print
-        dialog for the entire batch — one player card per physical page.
+        dialog for the entire batch: one player card per physical page.
       </p>
 
       {/* Team picker */}
@@ -492,7 +492,7 @@ function BulkPlayerCardsCard({ onGenerate }) {
           onChange={(e) => setTeamId(e.target.value)}
           className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 flex-1 min-w-[220px]"
         >
-          <option value="">— pick a team —</option>
+          <option value="">Pick a team...</option>
           {Object.keys(grouped).sort().map(g => (
             <optgroup key={g} label={g}>
               {grouped[g].map(t => (

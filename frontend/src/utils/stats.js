@@ -374,3 +374,35 @@ export const SUMMER_PITCHING_PRESETS = {
   'Advanced': ['innings_pitched', 'era', 'fip', 'whip', 'k_per_9', 'bb_per_9', 'k_bb_ratio', 'k_pct', 'bb_pct', 'babip_against', 'pitching_war'],
   'Strikeouts': ['innings_pitched', 'strikeouts', 'k_per_9', 'k_pct', 'bb_pct', 'k_bb_ratio', 'walks'],
 }
+
+// ════════════════════════════════════════════
+// Game time formatter
+// ════════════════════════════════════════════
+
+/**
+ * Normalize scraped game-time strings to a single display format.
+ * Scrapers pull from several sources so raw values vary: "6 p.m.",
+ * "6:00 p.m. PT", "2:30 PM", "2:30PM", "" / null, "TBD". This collapses
+ * them to "H:MM AM/PM" (e.g. "2:30 PM", "6:00 PM").
+ *
+ * Returns '' for null/empty/TBD/unparseable input so callers can hide
+ * the slot entirely rather than rendering literal "TBD".
+ */
+export function formatGameTime(raw) {
+  if (raw == null) return ''
+  const s = String(raw).trim()
+  if (!s || /^tbd$/i.test(s)) return ''
+
+  // Strip a trailing timezone token (PT, PST, ET, etc.)
+  const stripped = s.replace(/\s+(?:[A-Z]{2,4}T|[A-Z]{2,3})$/, '').trim()
+
+  // Match H, H:MM, with optional period-form am/pm
+  const m = stripped.match(/^(\d{1,2})(?::(\d{2}))?\s*([AaPp])\.?\s*[Mm]\.?$/)
+  if (!m) return s  // Unparseable, render as-is rather than dropping data
+
+  const hour = parseInt(m[1], 10)
+  const minute = m[2] != null ? m[2] : '00'
+  const ampm = m[3].toUpperCase() + 'M'
+  if (hour < 1 || hour > 12) return s
+  return `${hour}:${minute} ${ampm}`
+}

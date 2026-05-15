@@ -229,7 +229,7 @@ function RecentFormPills({ teamId }) {
   if (last10.length === 0) {
     return (
       <div className="text-[10px] text-portal-cream/60 italic">
-        Last 10 — no completed games yet
+        Last 10: no completed games yet
       </div>
     )
   }
@@ -718,7 +718,7 @@ function ClutchPerformers({ teamId }) {
       <Card title="Clutch Performers"
             subtitle="Highest cumulative Win Probability Added">
         <div className="text-xs text-gray-400 text-center py-3">
-          No tracked WPA yet — moments accumulate as the season builds.
+          No tracked WPA yet. Moments accumulate as the season builds.
         </div>
       </Card>
     )
@@ -800,7 +800,7 @@ function TopMomentsForTeam({ teamId }) {
     return (
       <Card title="Top Moments" subtitle="Biggest single-PA WPA swings">
         <div className="text-xs text-gray-400 text-center py-3">
-          No clutch moments yet — they'll appear as the season builds.
+          No clutch moments yet. They'll appear as the season builds.
         </div>
       </Card>
     )

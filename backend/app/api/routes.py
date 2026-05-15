@@ -6578,7 +6578,10 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         batting_list = [dict(r) for r in batting]
         pitching_list = [dict(r) for r in pitching]
 
-        # Determine which season to compute percentiles for
+        # Determine which season to compute percentiles for.
+        # target_season is shared with the position-breakdown query below;
+        # None means "all seasons" (used in career mode).
+        target_season = None
         batting_percentiles = {}
         pitching_percentiles = {}
         percentile_label = None  # Tells frontend what's being shown
@@ -6598,7 +6601,6 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                 )
         else:
             # Single season mode
-            target_season = None
             if percentile_season and percentile_season.isdigit():
                 target_season = int(percentile_season)
 
@@ -6771,15 +6773,27 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         # same real-world game was scraped from both teams' box scores.
         # Include ALL games (even those without position data) so totals
         # match the player's actual game count.
-        cur.execute("""
-            SELECT gb.position, COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games
-            FROM game_batting gb
-            JOIN games g ON g.id = gb.game_id
-            WHERE gb.player_id IN %s
-              AND g.season = 2026
-            GROUP BY gb.position
-            ORDER BY games DESC
-        """, (tuple(all_player_ids),))
+        # Filter to target_season when one is selected (matches the bars/cards
+        # the rest of the page shows); fall through unfiltered for career mode.
+        if target_season is not None:
+            cur.execute("""
+                SELECT gb.position, COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games
+                FROM game_batting gb
+                JOIN games g ON g.id = gb.game_id
+                WHERE gb.player_id IN %s
+                  AND g.season = %s
+                GROUP BY gb.position
+                ORDER BY games DESC
+            """, (tuple(all_player_ids), target_season))
+        else:
+            cur.execute("""
+                SELECT gb.position, COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as games
+                FROM game_batting gb
+                JOIN games g ON g.id = gb.game_id
+                WHERE gb.player_id IN %s
+                GROUP BY gb.position
+                ORDER BY games DESC
+            """, (tuple(all_player_ids),))
         pos_rows = cur.fetchall()
         position_breakdown = []
         total_all_games = sum(r["games"] for r in pos_rows)
@@ -7467,6 +7481,7 @@ def unmatched_game_batting(
 @router.get("/admin/debug-player-games/{player_id}")
 def debug_player_games(
     player_id: int,
+    season: int = Query(2026),
     _admin: str = Depends(require_admin),
 ):
     """Debug: show all game_batting rows for a player + unmatched rows for their team."""
@@ -7487,9 +7502,9 @@ def debug_player_games(
             SELECT gb.player_name, gb.position, g.game_date, g.home_team_name, g.away_team_name
             FROM game_batting gb
             JOIN games g ON g.id = gb.game_id
-            WHERE gb.player_id = %s AND g.season = 2026
+            WHERE gb.player_id = %s AND g.season = %s
             ORDER BY g.game_date
-        """, (player_id,))
+        """, (player_id, season))
         matched = [dict(r) for r in cur.fetchall()]
 
         # Unmatched rows on this team that might be this player
@@ -7499,13 +7514,13 @@ def debug_player_games(
             JOIN games g ON g.id = gb.game_id
             WHERE gb.player_id IS NULL
               AND gb.team_id = %s
-              AND g.season = 2026
+              AND g.season = %s
               AND (
                 LOWER(gb.player_name) LIKE %s
                 OR LOWER(gb.player_name) LIKE %s
               )
             ORDER BY g.game_date
-        """, (team_id, f"%{player['last_name'].lower()}%", f"%{player['first_name'].lower()}%"))
+        """, (team_id, season, f"%{player['last_name'].lower()}%", f"%{player['first_name'].lower()}%"))
         unmatched_maybe = [dict(r) for r in cur.fetchall()]
 
         # Also show ALL distinct player names for this team that are unmatched
@@ -7515,17 +7530,17 @@ def debug_player_games(
             JOIN games g ON g.id = gb.game_id
             WHERE gb.player_id IS NULL
               AND gb.team_id = %s
-              AND g.season = 2026
+              AND g.season = %s
             GROUP BY gb.player_name
             ORDER BY rows DESC
-        """, (team_id,))
+        """, (team_id, season))
         all_unmatched_names = [dict(r) for r in cur.fetchall()]
 
         # How many total games does this team have?
         cur.execute("""
             SELECT COUNT(*) as cnt FROM games
-            WHERE season = 2026 AND (home_team_id = %s OR away_team_id = %s)
-        """, (team_id, team_id))
+            WHERE season = %s AND (home_team_id = %s OR away_team_id = %s)
+        """, (season, team_id, team_id))
         team_games = cur.fetchone()["cnt"]
 
         # How many of those games have ANY game_batting data?
@@ -7533,8 +7548,8 @@ def debug_player_games(
             SELECT COUNT(DISTINCT g.id) as cnt
             FROM games g
             JOIN game_batting gb ON gb.game_id = g.id
-            WHERE g.season = 2026 AND (g.home_team_id = %s OR g.away_team_id = %s)
-        """, (team_id, team_id))
+            WHERE g.season = %s AND (g.home_team_id = %s OR g.away_team_id = %s)
+        """, (season, team_id, team_id))
         games_with_batting = cur.fetchone()["cnt"]
 
         # Distinct game dates with batting data for this team
@@ -7542,8 +7557,8 @@ def debug_player_games(
             SELECT COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) as cnt
             FROM games g
             JOIN game_batting gb ON gb.game_id = g.id
-            WHERE g.season = 2026 AND (g.home_team_id = %s OR g.away_team_id = %s)
-        """, (team_id, team_id))
+            WHERE g.season = %s AND (g.home_team_id = %s OR g.away_team_id = %s)
+        """, (season, team_id, team_id))
         distinct_dates_with_batting = cur.fetchone()["cnt"]
 
         # For each game, show whether this player appears (matched or unmatched)
@@ -7563,12 +7578,12 @@ def debug_player_games(
                    (SELECT COUNT(*) FROM game_batting gb2
                     WHERE gb2.game_id = g.id AND gb2.team_id = %s) as team_batting_rows
             FROM games g
-            WHERE g.season = 2026
+            WHERE g.season = %s
               AND (g.home_team_id = %s OR g.away_team_id = %s)
             ORDER BY g.game_date, g.game_number
         """, (player_id, team_id,
               f"%{player['last_name'].lower()}%", f"%{player['first_name'].lower()}%",
-              team_id, team_id, team_id))
+              team_id, season, team_id, team_id))
         game_coverage = [dict(r) for r in cur.fetchall()]
 
         return {
@@ -7588,6 +7603,7 @@ def debug_player_games(
 @router.get("/admin/team-game-coverage/{team_id}")
 def team_game_coverage(
     team_id: int,
+    season: int = Query(2026),
     _admin: str = Depends(require_admin),
 ):
     """Show which games have box score data and which don't."""
@@ -7598,10 +7614,10 @@ def team_game_coverage(
                    g.home_team_name, g.away_team_name, g.home_score, g.away_score,
                    (SELECT COUNT(*) FROM game_batting gb WHERE gb.game_id = g.id) as batting_rows
             FROM games g
-            WHERE g.season = 2026
+            WHERE g.season = %s
               AND (g.home_team_id = %s OR g.away_team_id = %s)
             ORDER BY g.game_date, g.game_number
-        """, (team_id, team_id))
+        """, (season, team_id, team_id))
         rows = cur.fetchall()
 
         with_data = [dict(r) for r in rows if r["batting_rows"] > 0]

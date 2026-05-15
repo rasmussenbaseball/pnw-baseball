@@ -190,13 +190,13 @@ export default function CatcherCards() {
       <div className="max-w-xl mx-auto px-4 py-8">
         <h1 className="text-xl font-bold text-portal-purple-dark mb-2">Catcher Cards</h1>
         <p className="text-sm text-gray-600 mb-4">
-          Pick the OPPOSING team — the cards will show their top 14 hitters.
+          Pick the OPPOSING team. The cards will show their top 14 hitters.
         </p>
         <select
           onChange={(e) => e.target.value && navigate(`/portal/catcher-cards/${e.target.value}`)}
           className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 w-full"
         >
-          <option value="">— pick the opposing team —</option>
+          <option value="">Pick the opposing team...</option>
           {Object.keys(grouped).sort().map(g => (
             <optgroup key={g} label={g}>
               {grouped[g]
@@ -227,11 +227,11 @@ export default function CatcherCards() {
       <div className="flex items-center justify-between gap-3 mb-3 print:hidden">
         <div>
           <h1 className="text-xl font-bold text-portal-purple-dark">
-            Catcher Cards — {team.short_name || team.name}
+            Catcher Cards · {team.short_name || team.name}
           </h1>
           <p className="text-xs text-gray-500">
             Each card is exactly 5 in wide × 2 in tall. Print on US Letter at 100% scale,
-            then cut along the dashed border — the card itself is exactly 5×2.
+            then cut along the dashed border. The card itself is exactly 5×2.
             7 hitters per card · top 14 by PA.
           </p>
         </div>

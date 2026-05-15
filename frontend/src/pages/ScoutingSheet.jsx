@@ -199,7 +199,7 @@ export default function ScoutingSheet() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3 print:hidden max-w-[820px] mx-auto">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-portal-purple-dark truncate">
-            Scouting Sheet — {team.short_name || team.name}
+            Scouting Sheet · {team.short_name || team.name}
           </h1>
           <p className="text-xs text-gray-500">
             Season {data.season} · {team.conference_abbrev || team.conference_name || 'Unranked'} ·
@@ -277,7 +277,7 @@ function TeamPicker({ teamsByConf, currentId, onPick, compact = false }) {
       className={`rounded border border-gray-300 bg-white text-gray-900
                   ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'}`}
     >
-      {!currentId && <option value="">— pick a team —</option>}
+      {!currentId && <option value="">Pick a team...</option>}
       {groups.map(g => (
         <optgroup key={g} label={g}>
           {teamsByConf[g]
@@ -405,7 +405,7 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
                       className="text-center px-0.5 py-0.5 border border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis"
                       style={{ backgroundColor: bg }}
                       title={isLow
-                        ? 'Below qualifier — not ranked'
+                        ? 'Below qualifier, not ranked'
                         : (pct != null ? `${pct}th percentile` : undefined)}>
                     {c.val(row)}
                   </td>
