@@ -255,12 +255,21 @@ function runClassFinalize(state) {
   const team = state.teams[userId]
   if (!team) return { label: 'No user team' }
   let added = 0
+  // Enforce 50-player roster cap on Wk 52 class finalization. If signing
+  // this recruit would overflow, the AD denies the late add — the player
+  // re-enters the free-agent pool. Sign your most-wanted first.
+  const ROSTER_CAP = 50
+  let overflow = 0
   for (const r of Object.values(state.recruits)) {
     if (r.status !== 'signed' || r.signedWith !== userId) continue
-    if (r.joinedAt && r.joinedAt === state.calendar.year) continue   // already joined
-    // Move recruit → player. We mark them on the roster; ratings are already
-    // on the recruit object. A future pass can shape them into the canonical
-    // Player schema with hitter/pitcher blocks.
+    if (r.joinedAt && r.joinedAt === state.calendar.year) continue
+    if (team.rosterPlayerIds.length >= ROSTER_CAP) {
+      // Roster full — recruit's spot was bumped
+      r.status = 'lost'
+      r.signedWith = null
+      overflow++
+      continue
+    }
     if (!state.players[r.id]) {
       state.players[r.id] = recruitToPlayer(r)
     }
@@ -268,6 +277,14 @@ function runClassFinalize(state) {
     r.joinedAt = state.calendar.year
     r.scoutFogCleared = true
     added++
+  }
+  if (overflow > 0) {
+    state.newsfeed.unshift({
+      id: `class_overflow_${state.calendar.year}`,
+      year: state.calendar.year, week: 52, type: 'AWARD',
+      headline: `⚠ ${overflow} signee${overflow === 1 ? '' : 's'} dropped from your class — over the 50-player roster cap.`,
+      payload: { overflow },
+    })
   }
   state.newsfeed.unshift({
     id: `class_finalize_${state.calendar.year}`,

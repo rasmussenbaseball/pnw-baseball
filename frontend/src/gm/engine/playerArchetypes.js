@@ -45,6 +45,25 @@ export const BODY_FRAMES = [
     bias: { discipline: +3, speed: +2, fielding: +2, power_l: -5, power_r: -5 } },
 ]
 
+/**
+ * Apply a pool-specific physical-maturity adjustment to a frame's weight
+ * range. HS seniors haven't filled out — pull weights down ~20 lb. JUCO
+ * transfers are mid-development — pull down ~8 lb. Everyone else (D1
+ * transfer / NAIA portal / generated college roster) uses the base frame.
+ *
+ * @param {BodyFrame} frame
+ * @param {'HS_SR'|'JUCO'|'COLLEGE'} pool
+ */
+export function frameForPool(frame, pool) {
+  if (pool === 'HS_SR') {
+    return { ...frame, weightLbs: [frame.weightLbs[0] - 22, frame.weightLbs[1] - 18] }
+  }
+  if (pool === 'JUCO') {
+    return { ...frame, weightLbs: [frame.weightLbs[0] - 10, frame.weightLbs[1] - 6] }
+  }
+  return frame
+}
+
 // ─── Hitter archetypes ──────────────────────────────────────────────────────
 
 /** @typedef {{
@@ -231,20 +250,24 @@ export const QUIRKS = [
  *   isLateBloomer: boolean,
  * }}
  */
-export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', rng, forceArchetype }) {
-  const frame = rng.pick(BODY_FRAMES)
+export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', rng, forceArchetype, pool = 'COLLEGE' }) {
+  // Pick frame, then apply pool-specific maturity. HS seniors are 18-19 and
+  // haven't filled out — their weight ranges are pulled DOWN ~20 lb so a
+  // 6'2" HS guy reads ~180 lb, not 215.
+  const baseFrame = rng.pick(BODY_FRAMES)
+  const frame = frameForPool(baseFrame, pool)
   // Pick archetype matching role; starters more likely to get standout templates
-  const pool = isPitcher ? PITCHER_ARCHETYPES : HITTER_ARCHETYPES
+  const archetypePool = isPitcher ? PITCHER_ARCHETYPES : HITTER_ARCHETYPES
   let candidate
   if (forceArchetype) {
-    candidate = pool.find(a => a.key === forceArchetype) || rng.pick(pool)
+    candidate = archetypePool.find(a => a.key === forceArchetype) || rng.pick(archetypePool)
   } else {
     // Filter to compatible positions for hitters; pitchers filter by role
     const compatible = isPitcher
-      ? pool.filter(a => a.role === 'ANY' ||
+      ? archetypePool.filter(a => a.role === 'ANY' ||
           (a.role === 'SP' && position === 'SP') ||
           (a.role === 'RP' && position === 'RP'))
-      : pool.filter(a => a.positions.length === 0 || a.positions.includes(position))
+      : archetypePool.filter(a => a.positions.length === 0 || a.positions.includes(position))
     // Star archetypes (FIVE_TOOL, FLAMETHROWER, etc.) less likely on bench
     const tierFilter = (slotTier === 'depth' || slotTier === 'bench')
       ? compatible.filter(a => !isStarArchetype(a.key))

@@ -455,7 +455,10 @@ export function runEndOfYear(state) {
 
 }
 
-export const ROSTER_CAP_MAX = 60
+// Roster cap. NAIA programs are limited to 50 active scholarship + walk-on
+// players. Lowered from 60 to 50 (May 2026) — previous value let rosters
+// balloon to unrealistic sizes after multiple recruiting classes signed.
+export const ROSTER_CAP_MAX = 50
 
 /**
  * Refresh weekly AP — same formula as newDynasty.computeInitialAP, kept in

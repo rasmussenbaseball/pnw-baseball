@@ -58,9 +58,35 @@ export const REGION_STATES = (() => {
 })()
 
 /**
- * Weighted state pool for recruiting. Default is even across all states
- * (~equal odds nationwide). The coach's chosen `regions[]` get a 3x boost
- * to the states in those regions.
+ * Approximate state population weights for prospect distribution. Big states
+ * produce many more HS / JUCO ballplayers than small ones — CA + TX + FL
+ * combined dwarf the entire Mountain West. Values are relative weights, NOT
+ * actual populations. Tuned so the most-prospect-rich state (CA) sits ~20×
+ * the least-prospect-rich states (WY, ND, etc.).
+ *
+ * Unlisted states default to 1.0. Multiplied onto the coach-region boost.
+ */
+export const STATE_PROSPECT_WEIGHTS = {
+  // Big baseball states
+  CA: 10, TX: 8,  FL: 7,
+  GA: 5,  NY: 4,  IL: 4,  PA: 4,  OH: 4,  NC: 4,
+  AZ: 4,  VA: 3,  TN: 3,  IN: 3,  WA: 3,  MO: 3,
+  // Mid-tier
+  MI: 3,  NJ: 3,  MD: 2,  SC: 2,  AL: 2,  CO: 2,
+  KY: 2,  LA: 2,  MN: 2,  WI: 2,  CT: 1.5, MA: 1.5,
+  OR: 1.5, OK: 1.5, KS: 1.5, AR: 1.5, IA: 1.5,
+  // Small + sparse
+  NV: 1,  NM: 1,  UT: 1,  MS: 1,  NE: 1,  WV: 1,
+  MT: 0.6, ID: 0.8, NH: 0.6, ME: 0.6, RI: 0.5,
+  HI: 0.6, AK: 0.3,
+  // Smallest baseball pools
+  WY: 0.4, ND: 0.5, SD: 0.5, VT: 0.4, DE: 0.5, DC: 0.4,
+}
+
+/**
+ * Weighted state pool for recruiting. Combines:
+ *   1. State population weight (CA way more than WY)
+ *   2. Coach's chosen `regions[]` get a 3x boost
  *
  * @param {string[]} coachRegions  Region codes the coach prioritizes
  * @returns {Record<string, number>}  state -> weight
@@ -69,7 +95,8 @@ export function stateWeightsForRegions(coachRegions = []) {
   const boost = new Set(coachRegions)
   const out = {}
   for (const [state, region] of Object.entries(STATE_TO_REGION)) {
-    out[state] = boost.has(region) ? 3 : 1
+    const popWeight = STATE_PROSPECT_WEIGHTS[state] ?? 1
+    out[state] = popWeight * (boost.has(region) ? 3 : 1)
   }
   return out
 }

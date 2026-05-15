@@ -105,7 +105,49 @@ export function generateRecruitPool(year, seed, coach = null, userSchoolId = nul
     if (userSchoolId) seedRegionInterest(r, userSchoolId, coach)
     pool[r.id] = r
   }
+  // Compute regional rankings for HS recruits. Top 25 per region get a
+  // numeric rank (1-25); rest get null. Rankings loosely correlate with
+  // average of true OVR + POT, but with noise so they're NOT a perfect
+  // OVR sort. These guys will be the toughest to recruit — every program
+  // will be after them.
+  assignRegionalRankings(pool, rng)
   return pool
+}
+
+/**
+ * Compute top-25-per-region rankings for the HS class. Uses a noisy
+ * (OVR + POT)/2 score to order players, so the ranking isn't a perfect
+ * mirror of pure OVR. Mutates each recruit to add `regionalRank` (number)
+ * and `rankedRegion` (region code), or leaves them null if unranked.
+ */
+function assignRegionalRankings(pool, rng) {
+  const byRegion = {}
+  for (const r of Object.values(pool)) {
+    if (r.pool !== 'HS_SR') continue
+    const region = STATE_TO_REGION[r.hometown.state]
+    if (!region) continue
+    if (!byRegion[region]) byRegion[region] = []
+    // Score: weighted true OVR + POT, plus noise. Noise stddev = 4 means
+    // a slightly worse OVR/POT can sneak ahead of a slightly better one —
+    // but elites still dominate the top.
+    const block = r.isPitcher ? r.truePitcher : r.trueHitter
+    const potBlock = r.isPitcher ? r.truePotentialPitcher : r.truePotentialHitter
+    const ovrAvg = Object.values(block).reduce((s, v) => s + v, 0) / Object.keys(block).length
+    const potAvg = potBlock
+      ? Object.values(potBlock).reduce((s, v) => s + v, 0) / Object.keys(potBlock).length
+      : ovrAvg
+    const noise = rng.gaussian(0, 4)
+    const score = ovrAvg * 0.55 + potAvg * 0.45 + noise
+    byRegion[region].push({ recruit: r, score })
+  }
+  for (const region of Object.keys(byRegion)) {
+    byRegion[region].sort((a, b) => b.score - a.score)
+    const top25 = byRegion[region].slice(0, 25)
+    top25.forEach((item, idx) => {
+      item.recruit.regionalRank = idx + 1
+      item.recruit.rankedRegion = region
+    })
+  }
 }
 
 /**
@@ -162,13 +204,16 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
 
   // Compose an archetype profile — drives rating biases + measurables. The
   // tier loosely maps to pool quality so D1 UNDERUSED transfers can pull
-  // from star archetypes more easily.
+  // from star archetypes more easily. Pool tag controls physical maturity
+  // (HS lighter, JUCO mid, transfers full frame).
   const profileTier = (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') ? 'starter'
     : (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG') ? 'bench'
     : (pool === 'JUCO') ? 'bench'
     : 'depth'
+  const profilePool = pool === 'HS_SR' ? 'HS_SR' : pool === 'JUCO' ? 'JUCO' : 'COLLEGE'
   const profile = composePlayerProfile({
     position: primaryPosition, isPitcher, slotTier: profileTier, rng,
+    pool: profilePool,
   })
 
   // Rating distribution per pool. Means + caps preserved from old code.
@@ -246,28 +291,90 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   const potHitter = Object.fromEntries(Object.entries(trueHitter).map(([k, v]) => [k, ceiling(v)]))
   const potPitcher = Object.fromEntries(Object.entries(truePitcher).map(([k, v]) => [k, ceiling(v)]))
 
-  // Measurables — height/weight from the frame, plus derived measurables
+  // ── Measurables ────────────────────────────────────────────────────────
+  // Tuned per Nate (May 2026):
+  //   60-yd: elite 6.4, avg 7.0. HS recruits barely improve in college so
+  //          the floor for elite HS guys is 6.5; only college-aged recruits
+  //          should clock 6.4.
+  //   Max EV: NAIA recruit FLOOR ~90. Power hitters 100+; elites 105+.
+  //   FB velo: HS avg ~83-84, top HS guys 91-92. JUCO slightly elevated
+  //          (avg ~85-86, top 92-93). NAIA portal mid-pool similar to JUCO.
+  //          D1 transfers + flamethrowers can hit 94-97.
+  //   Body size boost: bigger frame → higher velo + higher EV (long levers
+  //          drive bat + arm speed). Use heightInches as the size proxy.
+  const ht = profile.measurables.heightInches
+  const sizeBoost = Math.max(0, (ht - 70) * 0.4)    // 70" → 0, 76" → +2.4, 80" → +4.0
+
   const measurables = {
-    heightInches: profile.measurables.heightInches,
+    heightInches: ht,
     weightLbs: profile.measurables.weightLbs,
   }
   if (!isPitcher) {
     const sp = trueHitter.speed
-    measurables.sixtyYardSec = Math.round((7.7 - (sp - 50) * 0.018 + rng.gaussian(0, 0.08)) * 100) / 100
+    // 60-yard: speed 99 → 6.4, speed 70 → 7.0, speed 50 → 7.4, speed 30 → 7.8.
+    // HS recruits stay around the same time in college (per Nate), so we don't
+    // apply a separate "college bump" here — the recruit's speed rating
+    // already reflects what they'll run at.
+    const sixtyBase = 7.4 - (sp - 50) * 0.020
+    measurables.sixtyYardSec = Math.round((sixtyBase + rng.gaussian(0, 0.06)) * 100) / 100
+
+    // Max EV: power-driven, with size + pool multipliers. Targets:
+    //   - HS power 50 → ~88 mph
+    //   - HS power 80 → ~98 mph
+    //   - HS power 95+ → 102-106 (top end of HS prospect pool)
+    //   - JUCO ~+2 mph at every power tier
+    //   - Portal transfers ~+2 mph
     const pw = Math.max(trueHitter.power_l, trueHitter.power_r)
-    measurables.exitVeloMph = Math.round((86 + (pw - 50) * 0.4 + rng.gaussian(0, 1.2)) * 10) / 10
+    const poolEvBoost = pool === 'JUCO' ? 2.0
+      : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 1.5
+      : (pool === 'D1_TRANSFER') ? 3.0
+      : 0
+    const maxEvBase = 84 + (pw - 50) * 0.40 + sizeBoost + poolEvBoost
+    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.5)) * 10) / 10
+
     if (primaryPosition === 'C') {
       const arm = trueHitter.arm
       measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
     }
   } else {
-    // Pitchers carry an FB velo derived from stuff + archetype.
+    // Pitcher FB velo — pool + archetype + size driven.
     const stuff = truePitcher.stuff
     const isFlame = profile.archetype.key === 'FLAMETHROWER'
     const isSoftToss = profile.archetype.key === 'SOFT_TOSSING_VETERAN'
-    const veloMean = isFlame ? clamp(94 + rng.gaussian(0, 1.5), 90, 99)
-      : isSoftToss ? clamp(82 + rng.gaussian(0, 1.5), 76, 86)
-      : clamp(83.5 + (stuff - 60) * 0.25 + rng.gaussian(0, 1.6), 75, 97)
+
+    // Pool-anchored velocity ceiling. HS guys cap around 91-92 even with
+    // elite stuff — they haven't fully filled out. JUCO 92-93. NAIA portal
+    // 93-94. D1 transfers 94-96. Flamethrowers can push 1-2 mph beyond.
+    let baseMean, baseSpread
+    if (pool === 'HS_SR') {
+      baseMean = 83.5 + (stuff - 60) * 0.18 + sizeBoost
+      baseSpread = isFlame ? 1.2 : 1.6
+    } else if (pool === 'JUCO') {
+      baseMean = 85.0 + (stuff - 60) * 0.20 + sizeBoost
+      baseSpread = 1.5
+    } else if (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') {
+      baseMean = 85.5 + (stuff - 60) * 0.22 + sizeBoost
+      baseSpread = 1.5
+    } else {
+      // D1 transfers and similar
+      baseMean = 87.5 + (stuff - 60) * 0.25 + sizeBoost
+      baseSpread = 1.6
+    }
+
+    let veloMean
+    if (isFlame) {
+      // Flamethrower archetype gets a flat +4-5 mph bump on top of pool base
+      veloMean = clamp(baseMean + 4 + rng.gaussian(0, 1.2), 86, 99)
+    } else if (isSoftToss) {
+      veloMean = clamp(81 + rng.gaussian(0, 1.0), 76, 85)
+    } else {
+      // Cap by pool: HS top 92, JUCO 93, NAIA/D2/D3 portal 94, D1 transfer 97
+      const poolCap = pool === 'HS_SR' ? 92
+        : pool === 'JUCO' ? 93
+        : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 94
+        : 97
+      veloMean = clamp(baseMean + rng.gaussian(0, baseSpread), 75, poolCap)
+    }
     measurables.fbVeloMph = Math.round(veloMean * 10) / 10
     measurables.fbVeloMinMph = Math.round((veloMean - 2) * 10) / 10
     measurables.fbVeloMaxMph = Math.round((veloMean + 2) * 10) / 10

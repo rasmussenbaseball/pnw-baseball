@@ -395,22 +395,23 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     heightInches: profile.measurables.heightInches,
     weightLbs: profile.measurables.weightLbs,
   }
+  // Body-size boost: bigger frame → higher velo + max EV (long levers).
+  const ht = profile.measurables.heightInches
+  const sizeBoost = Math.max(0, (ht - 70) * 0.4)
   if (isHitter) {
-    // 60-yard: elite runners ~6.5, average ~7.2, slow ~8.0+. Speed 50 → 7.4,
-    // speed 80 → 6.8, speed 99 → 6.3. Add tiny jitter.
     const sp = hitter.speed
-    measurables.sixtyYardSec = Math.round((7.7 - (sp - 50) * 0.018 + rng.gaussian(0, 0.08)) * 100) / 100
+    // 60-yard: speed 99 → 6.4, speed 70 → 7.0, speed 50 → 7.4 (elite 6.4, avg 7.0)
+    measurables.sixtyYardSec = Math.round((7.4 - (sp - 50) * 0.020 + rng.gaussian(0, 0.06)) * 100) / 100
     if (slot.position === 'C') {
-      // Pop time: 1.85 elite (D1 caliber), 2.05 average, 2.25 well below.
-      // Tied to arm: arm 50 → 2.15, arm 80 → 1.95, arm 99 → 1.82.
       const arm = hitter.arm
       measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
     }
-    // Exit velo: tied to power. 50 power → 87 mph, 80 → 99, 99 → 108.
+    // Max EV: power 50 → ~86, power 80 → ~98, power 95+ pushes 104-108.
+    // Already-college players sit above HS recruits → +2 baseline.
     const pw = Math.max(hitter.power_l, hitter.power_r)
-    measurables.exitVeloMph = Math.round((86 + (pw - 50) * 0.4 + rng.gaussian(0, 1.2)) * 10) / 10
+    const maxEvBase = 86 + (pw - 50) * 0.40 + sizeBoost
+    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.5)) * 10) / 10
   } else {
-    // Pitcher already has velocity_avg / min / max
     measurables.fbVeloMph = pitcher.velocity_avg
     measurables.fbVeloMinMph = pitcher.velocity_min
     measurables.fbVeloMaxMph = pitcher.velocity_max

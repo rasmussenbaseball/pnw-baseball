@@ -173,7 +173,6 @@ export default function Recruiting() {
   const list = baseList
     .filter(r => {
       if (poolFilter === 'ALL') return true
-      if (poolFilter === 'INCOMING') return r.pool === 'HS_SR' || r.pool === 'JUCO'
       if (poolFilter === 'PORTAL') return ['NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'].includes(r.pool)
       return r.pool === poolFilter
     })
@@ -183,7 +182,16 @@ export default function Recruiting() {
       const grade = r.scoutGrades[save.userSchoolId]
       return { recruit: r, interest: grade?.interest ?? 0, noise: grade?.noise ?? 15 }
     })
-    .sort((a, b) => b.interest - a.interest)
+    // Primary sort: regional rank (lower number = higher ranked). Ranked
+    // players bubble to the top, then unranked players sort by interest.
+    .sort((a, b) => {
+      const ra = a.recruit.regionalRank
+      const rb = b.recruit.regionalRank
+      if (ra != null && rb != null) return ra - rb
+      if (ra != null) return -1
+      if (rb != null) return 1
+      return b.interest - a.interest
+    })
     .slice(0, 80)
 
   const followedCount = Object.values(save.recruits || {}).filter(r => r.followed && r.status !== 'signed' && r.status !== 'lost').length
@@ -317,6 +325,9 @@ export default function Recruiting() {
       {/* Scholarship availability — what new $ can actually be offered */}
       <ScholarshipBanner save={save} />
 
+      {/* Roster snapshot — returning, weaknesses, spots available */}
+      <RosterSnapshotPanel save={save} />
+
       {/* Board tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {[
@@ -343,11 +354,12 @@ export default function Recruiting() {
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <span className="text-xs text-gray-500 mr-2">Source:</span>
         {[
-          { key: 'ALL', label: 'All' },
-          { key: 'INCOMING', label: 'HS + JUCO', members: ['HS_SR', 'JUCO'] },
-          { key: 'PORTAL', label: 'Transfer Portal', members: ['NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'] },
+          { key: 'ALL',           label: 'All' },
+          { key: 'HS_SR',         label: 'HS' },
+          { key: 'JUCO',          label: 'JUCO' },
+          { key: 'PORTAL',        label: 'Transfer Portal', requiresPortal: true },
         ].map(t => {
-          const isLocked = t.key === 'PORTAL' && phase === 'PRE_PORTAL'
+          const isLocked = t.requiresPortal && phase === 'PRE_PORTAL'
           const active = poolFilter === t.key
           return (
             <button
@@ -391,6 +403,7 @@ export default function Recruiting() {
             <tr className="text-left text-xs text-gray-500 uppercase">
               <th className="py-2 px-3 w-8"></th>
               <th className="w-6"></th>
+              <th title="Regional rank (top 25 per region for HS prospects)">Rk</th>
               <th>Player</th>
               <th>Pos</th>
               <th title="Source league — HS, JUCO, NAIA/D1/D2/D3 portal">Src</th>
@@ -437,6 +450,92 @@ export default function Recruiting() {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+function RosterSnapshotPanel({ save }) {
+  const ROSTER_CAP = 50
+  const team = save.teams?.[save.userSchoolId]
+  if (!team) return null
+  const players = (team.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
+  // Returning next year = everyone except graduating seniors. A SR with a
+  // redshirt year used + only 3 seasons played stays (they have eligibility
+  // left); a SR with 4 seasons used is done.
+  function isGraduating(p) {
+    if (p.classYear !== 'SR') return false
+    if (p.redshirtUsed === true && (p.seasonsUsed ?? 0) < 4) return false
+    return true
+  }
+  const returningCount = players.filter(p => !isGraduating(p)).length
+  const graduating = players.filter(isGraduating).length
+  // Already-committed recruits for the upcoming class
+  const committedRecruits = Object.values(save.recruits || {}).filter(r =>
+    r.signedTo === save.userSchoolId && r.status === 'signed',
+  ).length
+  // Spots available for the upcoming cycle = cap - returning - committed
+  const projectedNextYearSize = returningCount + committedRecruits
+  const spotsAvailable = Math.max(0, ROSTER_CAP - projectedNextYearSize)
+
+  // Positional needs — count returning players at each position (non-graduating)
+  function returningAtPosition(targetPos) {
+    return players.filter(p => {
+      if (isGraduating(p)) return false
+      if (targetPos === 'P') return p.isPitcher
+      return p.primaryPosition === targetPos
+    }).length
+  }
+  // Target depth per spot
+  const POS_TARGETS = { C: 3, '1B': 2, '2B': 2, SS: 2, '3B': 2, LF: 2, CF: 2, RF: 2, P: 15 }
+  const weaknesses = []
+  for (const [pos, target] of Object.entries(POS_TARGETS)) {
+    const have = returningAtPosition(pos)
+    if (have < target) weaknesses.push({ pos, have, target, gap: target - have })
+  }
+  weaknesses.sort((a, b) => b.gap - a.gap)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Roster spots */}
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Roster spots available</div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold text-pnw-green leading-none">{spotsAvailable}</div>
+            <div className="text-xs text-gray-500">/ {ROSTER_CAP} cap</div>
+          </div>
+          <div className="text-[11px] text-gray-600 mt-1 leading-snug">
+            <strong>{returningCount}</strong> returning · <strong>{committedRecruits}</strong> already signed ·
+            <strong className="text-amber-700"> {graduating}</strong> graduating after this season.
+          </div>
+        </div>
+        {/* Positional weaknesses */}
+        <div className="md:col-span-2">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Positional needs (returning roster)</div>
+          {weaknesses.length === 0 ? (
+            <div className="text-xs text-green-700 italic">No critical gaps — every position has depth.</div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {weaknesses.map(w => (
+                <div
+                  key={w.pos}
+                  className={'px-2 py-1 rounded text-xs flex items-center gap-1.5 ' +
+                    (w.gap >= 3 ? 'bg-red-100 text-red-800 border border-red-200'
+                      : w.gap === 2 ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                      : 'bg-gray-100 text-gray-700 border border-gray-200')}
+                  title={`${w.have} returning at ${w.pos}, target ${w.target}`}
+                >
+                  <span className="font-bold">{w.pos}</span>
+                  <span className="font-mono">{w.have}/{w.target}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="text-[11px] text-gray-500 italic mt-1.5">
+            Red = critical gap (3+ short), amber = needs 2, gray = needs 1. Focus your recruiting on these spots.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ScholarshipBanner({ save }) {
   const s = scholarshipSnapshot(save)
@@ -555,6 +654,21 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
             {recruit.followed ? '★' : '☆'}
           </button>
         </td>
+        <td className="text-xs">
+          {recruit.regionalRank != null ? (
+            <span
+              className={'inline-block px-1.5 py-0.5 rounded font-bold font-mono ' +
+                (recruit.regionalRank <= 5 ? 'bg-yellow-100 text-yellow-800'
+                  : recruit.regionalRank <= 10 ? 'bg-amber-100 text-amber-800'
+                  : 'bg-gray-100 text-gray-700')}
+              title={`#${recruit.regionalRank} in ${recruit.rankedRegion}`}
+            >
+              #{recruit.regionalRank}
+            </span>
+          ) : (
+            <span className="text-gray-300 text-[10px]">—</span>
+          )}
+        </td>
         <td className="font-medium">
           <div className="flex items-center gap-1.5">
             {isSigned && <span>🖊️</span>}
@@ -619,7 +733,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
       </tr>
       {expanded && (
         <tr className="border-t bg-gray-50">
-          <td colSpan={11} className="p-3">
+          <td colSpan={12} className="p-3">
             <RecruitExpansion
               recruit={recruit}
               save={save}
@@ -649,7 +763,7 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
           {measurables.heightInches && <><span className="text-gray-500">Height</span><span className="font-mono text-right">{formatHeight(measurables.heightInches)}</span></>}
           {measurables.weightLbs && <><span className="text-gray-500">Weight</span><span className="font-mono text-right">{measurables.weightLbs} lb</span></>}
           {measurables.sixtyYardSec && <><span className="text-gray-500">60-yard</span><span className="font-mono text-right">{measurables.sixtyYardSec.toFixed(2)} s</span></>}
-          {measurables.exitVeloMph && <><span className="text-gray-500">Exit velo</span><span className="font-mono text-right">{measurables.exitVeloMph} mph</span></>}
+          {measurables.maxEvMph && <><span className="text-gray-500">Max EV</span><span className="font-mono text-right font-bold">{measurables.maxEvMph} mph</span></>}
           {measurables.popTimeSec && <><span className="text-gray-500">Pop time</span><span className="font-mono text-right">{measurables.popTimeSec.toFixed(2)} s</span></>}
           {measurables.fbVeloMph && <><span className="text-gray-500">FB velo</span><span className="font-mono text-right">{measurables.fbVeloMinMph}–{measurables.fbVeloMaxMph} mph</span></>}
         </div>
@@ -952,7 +1066,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
               {m.fbVeloMph && <span><span className="text-gray-400">FB:</span> <strong>{m.fbVeloMinMph}–{m.fbVeloMaxMph} mph</strong></span>}
               {m.sixtyYardSec && <span><span className="text-gray-400">60:</span> <strong>{m.sixtyYardSec.toFixed(2)}s</strong></span>}
               {m.popTimeSec && <span><span className="text-gray-400">Pop:</span> <strong>{m.popTimeSec.toFixed(2)}s</strong></span>}
-              {m.exitVeloMph && <span><span className="text-gray-400">EV:</span> <strong>{m.exitVeloMph} mph</strong></span>}
+              {m.maxEvMph && <span><span className="text-gray-400">Max EV:</span> <strong>{m.maxEvMph} mph</strong></span>}
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
