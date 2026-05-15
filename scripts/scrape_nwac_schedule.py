@@ -60,17 +60,40 @@ NWAC_TEAMS = {
     "Umpqua", "Walla Walla", "Wenatchee Valley", "Yakima Valley",
 }
 
+# NWAC playoff bracket prefixes: N1-N4, S1-S4, E1-E4, W1-W4 (North/South/East/West seeds 1-4)
+# These appear in front of team names during postseason like "E4 Yakima Valley"
+SEED_PREFIX_RE = re.compile(r"^[NSEW][1-4]\s+", re.IGNORECASE)
+
+
+def strip_seed_prefix(name):
+    """Strip NWAC playoff seed prefix (e.g., "E4 Yakima Valley" → "Yakima Valley")."""
+    if not name:
+        return name
+    return SEED_PREFIX_RE.sub("", name).strip()
+
+
+def is_tbd_opponent(name):
+    """
+    Detect TBD opponent rows like "W4 Clark/S3 Umpqua" — meaning the
+    opponent is the winner of that single-elim game. These appear on the
+    schedule for the #2 seed that hosts the super regional. They aren't
+    real matchups yet and should be skipped until the bracket advances.
+    """
+    return name and "/" in name
+
 
 def resolve_team_name(display_name):
     """Convert schedule page display name to DB short_name."""
-    # Check explicit mapping first
-    if display_name in SCHEDULE_NAME_TO_DB:
-        return SCHEDULE_NAME_TO_DB[display_name]
+    # Strip NWAC playoff seed prefixes first (e.g., "E4 Yakima Valley" → "Yakima Valley")
+    name = strip_seed_prefix(display_name)
+    # Check explicit mapping next
+    if name in SCHEDULE_NAME_TO_DB:
+        return SCHEDULE_NAME_TO_DB[name]
     # Most names match directly
-    if display_name in NWAC_TEAMS:
-        return display_name
+    if name in NWAC_TEAMS:
+        return name
     # Return as-is for non-NWAC teams (opponents)
-    return display_name
+    return name
 
 
 def fetch_schedule(api_key, season_year):
@@ -202,6 +225,12 @@ def parse_schedule_page(html, season_year):
         home_name = home_team_cell.get_text(strip=True).rstrip("*^# ").strip()
 
         if not away_name or not home_name:
+            continue
+
+        # Skip TBD playoff opponents like "W4 Clark/S3 Umpqua"
+        if is_tbd_opponent(away_name) or is_tbd_opponent(home_name):
+            logger.info(f"SKIP(tbd-opp): {away_name} @ {home_name}")
+            games_skipped += 1
             continue
 
         # Check if conference game (has * notation)
@@ -414,6 +443,11 @@ def fetch_composite_today(api_key, season_year):
 
         away, home = team_data[0], team_data[1]
         if not away["name"] or not home["name"]:
+            continue
+
+        # Skip TBD playoff opponents like "W4 Clark/S3 Umpqua"
+        if is_tbd_opponent(away["name"]) or is_tbd_opponent(home["name"]):
+            logger.info(f"SKIP(tbd-opp): {away['name']} @ {home['name']}")
             continue
 
         # Get box score URL and extract date

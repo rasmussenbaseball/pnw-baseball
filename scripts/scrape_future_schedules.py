@@ -124,6 +124,36 @@ def resolve_nwac_name(display_name):
     return display_name
 
 
+# NWAC playoff bracket prefixes: N1-N4, S1-S4, E1-E4, W1-W4 (North/South/East/West seeds 1-4)
+# Appear in front of team names during postseason like "E4 Yakima Valley"
+SEED_PREFIX_RE = re.compile(r"^[NSEW][1-4]\s+", re.IGNORECASE)
+
+
+def clean_opponent_name(name):
+    """
+    Strip prefixes that aren't part of the canonical team name:
+      - "#5 " or "#12 " — national/conference ranking
+      - "E4 ", "N3 ", "W2 ", "S1 " — NWAC playoff seed prefixes
+      - "(DH)" suffix — doubleheader marker
+    Trailing whitespace also normalized.
+    """
+    if not name:
+        return name
+    cleaned = re.sub(r'^#\d+\s+', '', name).strip()
+    cleaned = SEED_PREFIX_RE.sub('', cleaned).strip()
+    cleaned = re.sub(r'\s*\(DH\)\s*', '', cleaned).strip()
+    return cleaned
+
+
+def is_tbd_opponent(name):
+    """
+    Detect TBD opponent rows like "W4 Clark/S3 Umpqua" — these appear on
+    the schedule for the #2 seed hosting a super regional, meaning the
+    opponent is the winner of that single-elim game. Not a real matchup yet.
+    """
+    return bool(name and "/" in name)
+
+
 # ============================================================
 # Team ID Lookup
 # ============================================================
@@ -248,7 +278,11 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
         else:
             opp_name = str(opponent) if opponent else "Unknown"
 
-        opp_clean = re.sub(r'^#\d+\s+', '', opp_name).strip()
+        # Skip TBD bracket placeholders like "W4 Clark/S3 Umpqua" before cleaning
+        if is_tbd_opponent(opp_name):
+            continue
+
+        opp_clean = clean_opponent_name(opp_name)
 
         # Skip postseason placeholder entries
         postseason_keywords = [
@@ -382,8 +416,10 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
                 continue
             opp_link = name_el.find("a")
             opponent = opp_link.get_text(strip=True) if opp_link else name_el.get_text(strip=True)
-            opponent = re.sub(r'\s*\(DH\)\s*', '', opponent).strip()
-            opp_clean = re.sub(r'^#\d+\s+', '', opponent).strip()
+            # Skip TBD bracket placeholders like "W4 Clark/S3 Umpqua"
+            if is_tbd_opponent(opponent):
+                continue
+            opp_clean = clean_opponent_name(opponent)
             if not opp_clean:
                 continue
 
@@ -590,10 +626,13 @@ def parse_presto_future_games(html, team_db_name, season_year, today, team_map,
         elif opponent.lower().startswith("vs "):
             opponent = opponent[3:].strip()
 
-        # Clean opponent name
+        # Skip TBD bracket placeholders like "W4 Clark/S3 Umpqua"
+        if is_tbd_opponent(opponent):
+            continue
+
+        # Clean opponent name (rankings, seed prefixes, DH marker, trailing *)
         opponent = re.sub(r'\s*\*+\s*$', '', opponent)  # trailing asterisks
-        opponent = re.sub(r'^#\d+\s+', '', opponent).strip()  # rankings
-        opponent = re.sub(r'\s*\(DH\)\s*', '', opponent).strip()
+        opponent = clean_opponent_name(opponent)
 
         # Skip postseason placeholders
         postseason_keywords = [
