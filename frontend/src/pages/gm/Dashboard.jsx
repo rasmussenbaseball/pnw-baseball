@@ -687,7 +687,13 @@ function FocusTasks({ save, inOffseason }) {
       priorities.push({ text: 'Sign top HS recruits before fall', to: `/gm/recruiting?slot=${save.saveSlot}` })
     }
     if (save.calendar.offseasonWeek >= 5 && save.calendar.offseasonWeek <= 13 && !save.prospectCamp?.year) {
-      priorities.push({ text: 'Hold your prospect camp (Aug-Nov window)', to: `/gm/weekly?slot=${save.saveSlot}` })
+      const wk = save.calendar.offseasonWeek
+      const text = wk === 13
+        ? '🏟 Run your prospect camp NOW (Wk 13)'
+        : wk === 5 || wk === 10
+          ? `Invite recruits to prospect camp (Wk ${wk} invite window)`
+          : `Prospect camp runs Wk 13 (${13 - wk} wk away)`
+      priorities.push({ text, to: `/gm/weekly?slot=${save.saveSlot}` })
     }
     if (!save.budget || save.budget.allocations?.scholarships === undefined) {
       priorities.push({ text: 'Review your annual budget', to: `/gm/budget?slot=${save.saveSlot}` })

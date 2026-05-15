@@ -81,11 +81,20 @@ export default function WeeklyActions() {
     setActionReceipt(`✓ ${action.label} (${variantLabel}) — +${result.perPlayerBump.toFixed(1)} avg ${bumpedKeys} on ${result.playersAffected} players.`)
     setTimeout(() => setActionReceipt(null), 5000)
   }
-  // Prospect Camp is permanently the first week of November = offseasonWeek 14.
-  const CAMP_WEEK = 14
-  const campOpen = save.calendar.mode === 'OFFSEASON' &&
-    save.calendar.offseasonWeek === CAMP_WEEK
+  // Prospect Camp runs at Week 13 (late October). The phase-gate at Wk 13 in
+  // gameYear.js blocks the user from advancing until the camp has been held,
+  // so this check MUST line up with that. (Old code checked offseasonWeek
+  // === 14 which created a soft-lock — phase-gate said "run camp now," but
+  // the Run Camp button stayed locked until Wk 14, which the user couldn't
+  // reach. Fixed by switching to weekOfYear.)
+  const CAMP_WEEK = 13
+  const weekOfYear = save.calendar?.weekOfYear
+    ?? (save.calendar?.mode === 'OFFSEASON' ? save.calendar?.offseasonWeek : null)
+  const campOpen = weekOfYear === CAMP_WEEK
   const campAlreadyHeld = save.prospectCamp?.year === save.calendar.year
+  const weeksUntilCamp = weekOfYear != null && weekOfYear < CAMP_WEEK
+    ? CAMP_WEEK - weekOfYear
+    : null
 
   function spendAP(cat, n) {
     save.ap.currentWeek -= n
@@ -208,7 +217,7 @@ export default function WeeklyActions() {
   }
 
   function doCamp() {
-    if (!campOpen) { alert('Prospect camp runs Aug–Nov only.'); return }
+    if (!campOpen) { alert(`Prospect camp opens in Week ${CAMP_WEEK} (late October). Wait until then to run it.`); return }
     if (campAlreadyHeld) { alert('You\'ve already held this year\'s camp.'); return }
     const momentum = Math.round(
       ((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100
@@ -268,6 +277,23 @@ export default function WeeklyActions() {
         <div className="mb-4 bg-green-50 border border-green-200 rounded p-2 text-xs text-green-800">
           ✓ {actionReceipt}
         </div>
+      )}
+
+      {/* TOP-OF-PAGE PROSPECT CAMP BANNER — shown only when camp week is active
+          OR camp was already held this year. Pinned high so users who click
+          through from the Dashboard phase-gate land on it immediately. */}
+      {(campOpen || campAlreadyHeld) && (
+        <ProspectCampBanner
+          save={save}
+          slot={slot}
+          campOpen={campOpen}
+          campAlreadyHeld={campAlreadyHeld}
+          invitedCount={invitedIds.length}
+          campFee={campFee}
+          setCampFee={setCampFee}
+          campPredict={campPredict}
+          onRunCamp={doCamp}
+        />
       )}
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-1">Team Practice / Development</h2>
@@ -389,46 +415,134 @@ export default function WeeklyActions() {
         </button>
       </div>
 
-      {/* Prospect Camp — fixed date: first week of November */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <div className="text-sm font-semibold text-pnw-slate">Prospect Camp <span className="text-xs text-gray-500 font-normal">(annual, first week of November)</span></div>
-            <div className="text-xs text-gray-500">
-              HS-only event. Min {CAMP_MIN_ATTENDEES} • max {CAMP_MAX_ATTENDEES} attendees.
-              <span className="block mt-1">
-                Currently invited: <strong>{invitedIds.length}</strong> recruits — manage via the
-                {' '}<Link to={`/gm/recruiting?slot=${slot}`} className="text-pnw-green hover:underline">Recruiting → Camp Invites</Link> tab.
-              </span>
+      {/* Prospect Camp info card — when camp ISN'T this week + hasn't been held.
+          Live banner above handles the "do it now" + "results" states. */}
+      {!campOpen && !campAlreadyHeld && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <div className="text-sm font-semibold text-pnw-slate">
+                🏟 Prospect Camp <span className="text-xs text-gray-500 font-normal">— annual recruiting event (Week 13, late October)</span>
+              </div>
+              <div className="text-xs text-gray-600 mt-1 leading-snug max-w-2xl">
+                Once a year, run a HS-only prospect camp on your campus. Invited recruits attend, you charge a fee
+                ($25-$300 — higher = revenue, lower = bigger turnout), and every attendee leaves <strong>+5 interest</strong>
+                in your program plus they get partially scouted automatically (~50%).
+                Big-revenue swing day for any program.
+              </div>
+              <div className="text-xs text-gray-600 mt-2">
+                <strong>How it works (3 steps):</strong>
+                <ol className="list-decimal ml-4 mt-1 space-y-0.5">
+                  <li><strong>Wks 5 & 10</strong> — invite up to 50 recruits each window from the <Link to={`/gm/recruiting?slot=${slot}`} className="text-pnw-green hover:underline">Recruiting</Link> page</li>
+                  <li><strong>Wk 13</strong> — come back here, pick a fee, click <em>Run camp</em></li>
+                  <li>Results post immediately — revenue is added to your budget, attendees show up partially scouted on your recruit board</li>
+                </ol>
+              </div>
+              <div className="text-[11px] text-gray-500 mt-2">
+                Currently invited: <strong>{invitedIds.length}</strong> recruit{invitedIds.length === 1 ? '' : 's'}.
+                {weeksUntilCamp != null && weeksUntilCamp > 0 && (
+                  <> · Camp runs in <strong>{weeksUntilCamp}</strong> week{weeksUntilCamp === 1 ? '' : 's'}.</>
+                )}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">Status</div>
+              <div className="font-bold text-gray-400">🔒 Locked — Wk {CAMP_WEEK}</div>
             </div>
           </div>
-          <button
-            onClick={doCamp}
-            disabled={!campOpen || campAlreadyHeld}
-            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-            title={campAlreadyHeld ? 'Already held this year' : !campOpen ? 'Camp window is the first week of November' : ''}
-          >
-            {campAlreadyHeld ? 'Held' : campOpen ? 'Run camp' : 'Locked'}
-          </button>
         </div>
-        <div className="flex items-center gap-3 mt-2">
-          <span className="text-xs text-gray-500 w-14">${campFee} fee</span>
-          <input
-            type="range"
-            min={CAMP_MIN_FEE} max={CAMP_MAX_FEE} step={5}
-            value={campFee}
-            onChange={e => setCampFee(parseInt(e.target.value, 10))}
-            className="flex-1"
-            disabled={!campOpen || campAlreadyHeld}
-          />
-          <span className="text-xs font-mono w-32 text-right text-gray-700">
-            ~{campPredict.predictedAttendees} attendees<br/>
-            ~${((campPredict.predictedAttendees * campFee) / 1000).toFixed(1)}K
-          </span>
+      )}
+    </div>
+  )
+}
+
+function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCount, campFee, setCampFee, campPredict, onRunCamp }) {
+  if (campAlreadyHeld) {
+    const camp = save.prospectCamp
+    return (
+      <div className="bg-green-50 border-2 border-green-300 rounded-xl p-4 mb-4 shadow-sm">
+        <div className="flex justify-between items-start gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-green-700 font-bold mb-1">
+              ✓ Prospect Camp — held this year
+            </div>
+            <div className="text-sm text-green-900">
+              <strong>{camp.attendees}</strong> attendees at <strong>${camp.fee}</strong> per head →
+              <strong> +${(camp.revenue / 1000).toFixed(1)}K</strong> revenue added to your budget.
+            </div>
+            <div className="text-[11px] text-green-800 mt-1">
+              Attendees gained +5 interest and ended up ~50% scouted on your board.
+              Camp is done for the year — comes around again next October.
+            </div>
+          </div>
         </div>
-        {campAlreadyHeld && (
-          <CampAttendees save={save} />
-        )}
+        <CampAttendees save={save} />
+      </div>
+    )
+  }
+
+  // campOpen && !held — the live run-camp UI
+  return (
+    <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-5 mb-4 shadow-md">
+      <div className="text-xs uppercase tracking-wider text-amber-700 font-bold mb-1">
+        ⚠ Required Action · Week 13
+      </div>
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1">
+          <h2 className="text-lg font-bold text-amber-900">🏟 Run your Prospect Camp</h2>
+          <p className="text-sm text-amber-900 mt-1 leading-snug">
+            This is the once-a-year recruiting camp on your campus. <strong>You must run it
+            before you can advance to Week 14</strong> — pick a fee below and click <em>Run Camp Now</em>.
+          </p>
+          <div className="bg-white/70 rounded p-2 mt-2 text-xs text-amber-900">
+            <strong className="text-amber-900">What this does:</strong> Every invited recruit ({invitedCount} on the list right now)
+            gets ~50% scouted for free + <strong>+5 interest</strong> in you. Plus the fee × attendees = real revenue into your budget.
+            <span className="block mt-1">
+              <strong>Not enough invites?</strong> Bummer — you can\'t add more now. Invites were the
+              {' '}<Link to={`/gm/recruiting?slot=${slot}`} className="underline font-semibold">Recruiting page</Link>{' '}
+              in Wks 5 & 10. Still run camp at lowest fee for revenue + scouting on who you do have.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 bg-white rounded-lg p-3 border border-amber-300">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="text-xs text-amber-900 font-semibold">Set the camp fee:</div>
+          <span className="text-lg font-bold font-mono text-pnw-green">${campFee}</span>
+          <span className="text-[10px] text-gray-500">per attendee</span>
+        </div>
+        <input
+          type="range"
+          min={CAMP_MIN_FEE} max={CAMP_MAX_FEE} step={5}
+          value={campFee}
+          onChange={e => setCampFee(parseInt(e.target.value, 10))}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-gray-500 mt-0.5">
+          <span>${CAMP_MIN_FEE} — bigger turnout</span>
+          <span>${CAMP_MAX_FEE} — more revenue / smaller turnout</span>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="bg-gray-50 rounded p-2">
+            <div className="text-lg font-bold text-pnw-slate">{invitedCount}</div>
+            <div className="text-[10px] uppercase text-gray-500">Invited</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2">
+            <div className="text-lg font-bold text-pnw-slate">~{campPredict.predictedAttendees}</div>
+            <div className="text-[10px] uppercase text-gray-500">Expected attendees</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2">
+            <div className="text-lg font-bold text-green-700">${((campPredict.predictedAttendees * campFee) / 1000).toFixed(1)}K</div>
+            <div className="text-[10px] uppercase text-gray-500">Est. revenue</div>
+          </div>
+        </div>
+        <button
+          onClick={onRunCamp}
+          className="mt-4 w-full px-4 py-3 bg-pnw-green text-white rounded text-base font-bold hover:opacity-90"
+        >
+          Run Camp Now →
+        </button>
       </div>
     </div>
   )

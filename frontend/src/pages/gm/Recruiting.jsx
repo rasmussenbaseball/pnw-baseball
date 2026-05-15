@@ -606,7 +606,7 @@ function CampModal({ save, coach, recruits, onConfirm, onClose }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <p className="text-sm text-gray-600 mb-4">
-          HS prospects only. One per year, Aug-Nov window. Attendees get +25 interest + scout fog drop + small rating bump. Revenue ($ × attendees) adds to budget immediately. Camp needs <strong>{CAMP_MIN_ATTENDEES} min</strong> attendees or it's cancelled. Max {CAMP_MAX_ATTENDEES}, with walk-ons capped at 25.
+          HS prospects only. Runs once a year in <strong>Week 13 (late October)</strong>. Attendees get +25 interest + scout fog drop + small rating bump. Revenue ($ × attendees) adds to budget immediately. Camp needs <strong>{CAMP_MIN_ATTENDEES} min</strong> attendees or it's cancelled. Max {CAMP_MAX_ATTENDEES}, with walk-ons capped at 25.
         </p>
 
         <div className="mb-4">

@@ -155,7 +155,7 @@ const SCOUT_REQUIREMENT = {
 const PROSPECT_CAMP_REQUIREMENT = {
   key: 'PROSPECT_CAMP',
   label: 'Run your prospect camp',
-  blurb: 'Annual recruiting camp — head to Weekly Actions and run it. You cannot skip this week.',
+  blurb: 'Once-a-year HS recruiting camp on your campus. Click below — there\'s a "Run Camp Now" panel at the top of Weekly Actions. Pick a fee, hit the button. (Invites were taken in Wks 5 & 10; if you missed those, you can still run it at lowest fee for revenue.)',
   route: '/gm/weekly',
   isComplete: (state) => state.prospectCamp?.year === state.calendar?.year,
   doneText: '✓ Camp held',
