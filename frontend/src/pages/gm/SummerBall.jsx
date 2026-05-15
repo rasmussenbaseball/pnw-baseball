@@ -288,6 +288,21 @@ function LeagueCard({ league, assigned, canPlan, canRemove, onRemove, onAddClick
   const ovrLabel = league.maxOvr != null
     ? `${league.minOvr}-${league.maxOvr} OVR`
     : `${league.minOvr}+ OVR`
+  // Dev rate display: convert raw magnitude into a labeled tier
+  const devRate = league.devMagnitude >= 2.0 ? 'ELITE'
+    : league.devMagnitude >= 1.7 ? 'HIGH'
+    : league.devMagnitude >= 1.3 ? 'STRONG'
+    : 'STEADY'
+  const devColor = league.devMagnitude >= 2.0 ? 'text-emerald-700'
+    : league.devMagnitude >= 1.7 ? 'text-pnw-green'
+    : 'text-blue-700'
+  // "Best for" guidance based on prestige tier
+  const bestFor = league.prestige >= 8
+    ? 'Elite players — biggest upside, real poach + injury risk'
+    : league.prestige >= 6
+      ? 'Mid-tier starters — solid showcase + good dev'
+      : 'Bench / developmental — biggest growth for your worst players, lowest risk'
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
       <div className="flex justify-between items-start gap-2 mb-2">
@@ -312,9 +327,13 @@ function LeagueCard({ league, assigned, canPlan, canRemove, onRemove, onAddClick
         )}
       </div>
       <p className="text-[11px] text-gray-700 leading-snug mb-2">{league.blurb}</p>
-      <div className="grid grid-cols-3 gap-2 mb-2 text-[10px]">
+      <div className={'text-[11px] font-semibold mb-2 ' + (league.prestige >= 8 ? 'text-purple-700' : league.prestige >= 6 ? 'text-blue-700' : 'text-emerald-700')}>
+        Best for: {bestFor}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-[10px]">
+        <Stat label="Dev rate" value={devRate} valueClass={devColor + ' font-bold'} />
         <Stat label="Dev focus" value={league.devFocus} />
-        <Stat label="Injury risk" value={`${Math.round(league.injuryRisk * 100)}%`} valueClass={league.injuryRisk < 0.10 ? 'text-green-700' : league.injuryRisk < 0.15 ? 'text-amber-700' : 'text-red-700'} />
+        <Stat label="Injury risk" value={`${Math.round(league.injuryRisk * 100)}%`} valueClass={league.injuryRisk < 0.08 ? 'text-green-700' : league.injuryRisk < 0.15 ? 'text-amber-700' : 'text-red-700'} />
         <Stat label="Poach risk" value={`${Math.round(league.poachChance * 100)}%`} valueClass={league.poachChance < 0.10 ? 'text-green-700' : league.poachChance < 0.20 ? 'text-amber-700' : 'text-red-700'} />
       </div>
       {assigned.length > 0 ? (

@@ -1402,35 +1402,52 @@ function TeamStatsPanel({ save, slot }) {
   if (!team) return null
   const roster = team.rosterPlayerIds || []
   const playerStats = save.playerStats || {}
+  const fallStats = save.fallStats?.[save.calendar?.year] || {}
 
-  // Aggregate team-level: total ABs, runs, ERA, etc.
-  let teamAb = 0, teamH = 0, teamHr = 0, teamBb = 0, teamK = 0
-  let teamIp = 0, teamErP = 0, teamHp = 0, teamBbP = 0, teamKp = 0
-  // Per-player ranking buckets
-  const battersWithStats = []
-  const pitchersWithStats = []
-  for (const pid of roster) {
-    const p = save.players[pid]
-    if (!p) continue
-    const bs = playerStats[`b_${pid}`]
-    const ps = playerStats[`p_${pid}`]
-    if (bs && bs.ab > 0) {
-      teamAb += bs.ab; teamH += bs.h; teamHr += bs.hr || 0; teamBb += bs.bb || 0; teamK += bs.k || 0
-      const avg = bs.h / Math.max(1, bs.ab)
-      const obp = (bs.h + bs.bb) / Math.max(1, bs.ab + bs.bb)
-      const slg = (bs.h - bs.d - bs.t - bs.hr + bs.d * 2 + bs.t * 3 + bs.hr * 4) / Math.max(1, bs.ab)
-      battersWithStats.push({ p, ab: bs.ab, h: bs.h, hr: bs.hr || 0, rbi: bs.rbi || 0, avg, ops: obp + slg })
+  // Aggregate spring stats. If none exist yet, fall back to fall stats so
+  // the dashboard always shows SOMETHING during fall camp / training period.
+  function buildRows(statsBucket) {
+    let tAb = 0, tH = 0, tIp = 0, tErP = 0, tHp = 0, tBbP = 0
+    const batters = []
+    const pitchers = []
+    for (const pid of roster) {
+      const p = save.players[pid]
+      if (!p) continue
+      const bs = statsBucket[`b_${pid}`]
+      const ps = statsBucket[`p_${pid}`]
+      if (bs && bs.ab > 0) {
+        tAb += bs.ab; tH += bs.h
+        const avg = bs.h / Math.max(1, bs.ab)
+        const obp = (bs.h + bs.bb) / Math.max(1, bs.ab + bs.bb)
+        const slg = (bs.h - bs.d - bs.t - bs.hr + bs.d * 2 + bs.t * 3 + bs.hr * 4) / Math.max(1, bs.ab)
+        batters.push({ p, ab: bs.ab, h: bs.h, hr: bs.hr || 0, rbi: bs.rbi || 0, avg, ops: obp + slg })
+      }
+      if (ps && ps.ip > 0) {
+        tIp += ps.ip; tErP += ps.er || 0; tHp += ps.h || 0; tBbP += ps.bb || 0
+        const era = (ps.er || 0) * 9 / Math.max(0.1, ps.ip)
+        const whip = ((ps.h || 0) + (ps.bb || 0)) / Math.max(0.1, ps.ip)
+        pitchers.push({ p, ip: ps.ip, k: ps.k || 0, era, whip })
+      }
     }
-    if (ps && ps.ip > 0) {
-      teamIp += ps.ip; teamErP += ps.er || 0; teamHp += ps.h || 0; teamBbP += ps.bb || 0; teamKp += ps.k || 0
-      const era = (ps.er || 0) * 9 / Math.max(0.1, ps.ip)
-      const whip = ((ps.h || 0) + (ps.bb || 0)) / Math.max(0.1, ps.ip)
-      pitchersWithStats.push({ p, ip: ps.ip, k: ps.k || 0, era, whip })
-    }
+    return { batters, pitchers, tAb, tH, tIp, tErP, tHp, tBbP }
   }
 
-  // No spring stats yet → hide panel entirely
-  if (battersWithStats.length === 0 && pitchersWithStats.length === 0) return null
+  const spring = buildRows(playerStats)
+  const fall = buildRows(fallStats)
+  const hasSpring = spring.batters.length > 0 || spring.pitchers.length > 0
+  const hasFall = fall.batters.length > 0 || fall.pitchers.length > 0
+
+  // Choose which stat bucket to display + label appropriately
+  const showing = hasSpring ? spring : hasFall ? fall : null
+  const statSourceLabel = hasSpring ? 'Spring season' : hasFall ? '🍂 Fall scrimmages (no spring games yet)' : null
+
+  // No stats at all yet → show a "preseason preview" using ratings instead of
+  // hiding the panel. Gives the user something useful on the home page from
+  // day one.
+  if (!showing) {
+    return <PreseasonStatsPanel team={team} players={save.players} slot={slot} />
+  }
+  const { batters: battersWithStats, pitchers: pitchersWithStats, tAb: teamAb, tH: teamH, tIp: teamIp, tErP: teamErP, tHp: teamHp, tBbP: teamBbP } = showing
 
   const teamAvg = teamAb > 0 ? teamH / teamAb : 0
   const teamEra = teamIp > 0 ? teamErP * 9 / teamIp : 0
@@ -1446,6 +1463,7 @@ function TeamStatsPanel({ save, slot }) {
 
   return (
     <Panel title="Team Stats" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster →">
+      <div className="text-[10px] text-gray-500 -mt-2 mb-2 italic">{statSourceLabel}</div>
       {/* Team-level numbers strip */}
       <div className="grid grid-cols-3 gap-2 mb-3 text-center">
         <TeamStatTile label="Team AVG" value={fmt3(teamAvg)} />
@@ -1465,6 +1483,65 @@ function TeamStatsPanel({ save, slot }) {
         <LeaderCard label="K" leader={sortedByK[0]} valueKey="k" />
       </div>
     </Panel>
+  )
+}
+
+function PreseasonStatsPanel({ team, players, slot }) {
+  // No games yet — show a rating-based preview so the user gets value on
+  // their home page before opening day. Top OVR per side + projected team
+  // hitting / pitching strength.
+  const roster = (team.rosterPlayerIds || []).map(id => players[id]).filter(Boolean)
+  const hitters = roster.filter(p => !p.isPitcher)
+    .map(p => ({ p, ovr: playerOverall(p) }))
+    .sort((a, b) => b.ovr - a.ovr)
+  const pitchers = roster.filter(p => p.isPitcher)
+    .map(p => ({ p, ovr: playerOverall(p) }))
+    .sort((a, b) => b.ovr - a.ovr)
+  const avg = arr => arr.length ? Math.round(arr.reduce((s, x) => s + x.ovr, 0) / arr.length) : 0
+  const hittingOvr = avg(hitters.slice(0, 9))
+  const pitchingOvr = avg(pitchers.slice(0, 5))
+  const topContact = [...hitters].sort((a, b) =>
+    ((b.p.hitter?.contact_l || 0) + (b.p.hitter?.contact_r || 0)) -
+    ((a.p.hitter?.contact_l || 0) + (a.p.hitter?.contact_r || 0))
+  )[0]
+  const topPower = [...hitters].sort((a, b) =>
+    ((b.p.hitter?.power_l || 0) + (b.p.hitter?.power_r || 0)) -
+    ((a.p.hitter?.power_l || 0) + (a.p.hitter?.power_r || 0))
+  )[0]
+  const topStuff = [...pitchers].sort((a, b) => (b.p.pitcher?.stuff || 0) - (a.p.pitcher?.stuff || 0))[0]
+  const topControl = [...pitchers].sort((a, b) => (b.p.pitcher?.control || 0) - (a.p.pitcher?.control || 0))[0]
+
+  return (
+    <Panel title="Team Preview" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster →">
+      <div className="text-[10px] text-gray-500 -mt-2 mb-2 italic">
+        Preseason — no game stats yet. Showing projected strength from current ratings.
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-3 text-center">
+        <TeamStatTile label="Hitting OVR" value={hittingOvr} good={hittingOvr >= 70} />
+        <TeamStatTile label="Pitching OVR" value={pitchingOvr} good={pitchingOvr >= 70} />
+      </div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Top tools (preseason)</div>
+      <div className="grid grid-cols-2 gap-2">
+        <PreviewCard label="Contact" leader={topContact} ratingFn={p => Math.round(((p.hitter?.contact_l || 0) + (p.hitter?.contact_r || 0)) / 2)} />
+        <PreviewCard label="Power" leader={topPower} ratingFn={p => Math.round(((p.hitter?.power_l || 0) + (p.hitter?.power_r || 0)) / 2)} />
+        <PreviewCard label="Stuff" leader={topStuff} ratingFn={p => p.pitcher?.stuff || 0} />
+        <PreviewCard label="Control" leader={topControl} ratingFn={p => p.pitcher?.control || 0} />
+      </div>
+      <div className="text-[11px] text-gray-400 italic mt-2">
+        Real stats appear once games start. Fall scrimmages count separately.
+      </div>
+    </Panel>
+  )
+}
+
+function PreviewCard({ label, leader, ratingFn }) {
+  if (!leader) return <div className="bg-gray-50 rounded p-2 text-xs text-gray-400 italic">No qualifier</div>
+  return (
+    <div className="bg-pnw-cream/40 rounded p-2">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">Top {label.toLowerCase()}</div>
+      <div className="text-sm font-bold text-pnw-slate truncate">{leader.p.firstName} {leader.p.lastName}</div>
+      <div className="text-base font-mono font-bold text-pnw-green">{ratingFn(leader.p)}</div>
+    </div>
   )
 }
 
