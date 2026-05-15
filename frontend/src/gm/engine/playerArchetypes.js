@@ -64,6 +64,55 @@ export function frameForPool(frame, pool) {
   return frame
 }
 
+// Frame selection weights — most players are average-sized. TOWERING + LANKY
+// are rare; ATHLETIC / STOCKY / WIRY are the bulk of the pool.
+const FRAME_WEIGHTS = {
+  LANKY:      15,
+  TOWERING:    7,
+  ATHLETIC:   30,
+  STOCKY:     22,
+  WIRY:       16,
+  UNDERSIZED: 10,
+}
+
+function pickFrameWeighted(rng) {
+  const keys = BODY_FRAMES.map(f => f.key)
+  const weights = keys.map(k => FRAME_WEIGHTS[k] || 1)
+  const picked = rng.weighted(keys, weights)
+  return BODY_FRAMES.find(f => f.key === picked)
+}
+
+/**
+ * Hitter and pitcher height caps. Hitters cap at 6'6" (78 in), pitchers at
+ * 6'9" (81 in). Both are rare — most players sit closer to the averages.
+ *
+ * Average heights by position (MLB-ish, used as bias targets):
+ *   C: 6'1   1B: 6'3   2B: 5'11   SS: 6'1   3B: 6'2
+ *   LF: 6'1  CF: 6'0   RF: 6'2    P: 6'3
+ */
+export const HITTER_HEIGHT_CAP = 78
+export const PITCHER_HEIGHT_CAP = 81
+
+const POSITION_HEIGHT_BIAS = {
+  C: -1.5, '1B': +1.5, '2B': -1, SS: 0, '3B': +0.5,
+  LF: 0, CF: -1, RF: +0.5,
+  // Pitchers + DH default to no bias; pitcher max is wider anyway.
+  P: +1, SP: +1, RP: +1, DH: 0,
+}
+
+/**
+ * Apply position-aware height adjustment + the role-specific cap.
+ *
+ * @param {number} rawHeight  height from the frame range
+ * @param {string} position
+ * @param {boolean} isPitcher
+ */
+export function adjustHeightForPosition(rawHeight, position, isPitcher) {
+  const bias = POSITION_HEIGHT_BIAS[position] ?? 0
+  const cap = isPitcher ? PITCHER_HEIGHT_CAP : HITTER_HEIGHT_CAP
+  return Math.min(cap, Math.max(64, Math.round(rawHeight + bias)))
+}
+
 // ─── Hitter archetypes ──────────────────────────────────────────────────────
 
 /** @typedef {{
@@ -251,10 +300,10 @@ export const QUIRKS = [
  * }}
  */
 export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', rng, forceArchetype, pool = 'COLLEGE' }) {
-  // Pick frame, then apply pool-specific maturity. HS seniors are 18-19 and
-  // haven't filled out — their weight ranges are pulled DOWN ~20 lb so a
-  // 6'2" HS guy reads ~180 lb, not 215.
-  const baseFrame = rng.pick(BODY_FRAMES)
+  // Pick frame (weighted — average frames much more common than TOWERING),
+  // then apply pool-specific maturity. HS seniors are 18-19 and haven't
+  // filled out — their weight ranges are pulled DOWN ~20 lb.
+  const baseFrame = pickFrameWeighted(rng)
   const frame = frameForPool(baseFrame, pool)
   // Pick archetype matching role; starters more likely to get standout templates
   const archetypePool = isPitcher ? PITCHER_ARCHETYPES : HITTER_ARCHETYPES
@@ -295,12 +344,30 @@ export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', 
   merge(frame.bias)
   merge(candidate.bias)
   for (const q of picked) merge(q.bias)
-  // Measurables — sample uniformly within frame range
-  const heightInches = rng.int(frame.heightInches[0], frame.heightInches[1])
+  // Measurables — sample uniformly within frame range, then bias height by
+  // position + clamp at the role-specific cap.
+  const rawHeight = rng.int(frame.heightInches[0], frame.heightInches[1])
+  const heightInches = adjustHeightForPosition(rawHeight, position, isPitcher)
   const weightLbs = rng.int(frame.weightLbs[0], frame.weightLbs[1])
+  // Mature target weight — what the player will weigh as a senior after
+  // filling out (or trimming down). Most players GAIN weight as they
+  // mature (toward the base frame range). HS seniors have the most room
+  // to grow; college rosters are mostly stable with small drift.
+  let targetWeightDelta
+  if (pool === 'HS_SR') {
+    // 0 to +28 lb of growth across 4 years, mean ~+18
+    targetWeightDelta = Math.round(Math.max(-5, Math.min(30, rng.gaussian(18, 6))))
+  } else if (pool === 'JUCO') {
+    // 0 to +12 lb growth ahead, mean ~+8
+    targetWeightDelta = Math.round(Math.max(-4, Math.min(16, rng.gaussian(8, 4))))
+  } else {
+    // College roster — mostly stable, some grow, some trim down
+    targetWeightDelta = Math.round(rng.gaussian(2, 6))   // -10 to +14, mean +2
+  }
+  const targetMatureWeightLbs = Math.max(150, weightLbs + targetWeightDelta)
   return {
     frame, archetype: candidate, quirks: picked, biases,
-    measurables: { heightInches, weightLbs },
+    measurables: { heightInches, weightLbs, targetMatureWeightLbs },
     isLateBloomer: candidate.key === 'LATE_BLOOMER_HIT' || candidate.key === 'LATE_BLOOMER_P',
   }
 }

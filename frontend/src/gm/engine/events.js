@@ -21,7 +21,7 @@ import { annualReview, lockTravelAllocation, extendedBudgetEffects } from './bud
 import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
-import { endOfSeasonDevelopment, tickPotentialEOY } from './development'
+import { endOfSeasonDevelopment, tickPotentialEOY, tickWeightFluctuation } from './development'
 import { budgetCategoryEffects } from './budget'
 import { totalAnnualTravelCost } from './travel'
 import { closePlanningWindow, resolveSummerBall, ensureSummerBallState } from './summerBall'
@@ -425,6 +425,9 @@ function runDevelopment(state) {
     // players (low PA/IP) stay flat. Skipped for injured.
     if (!isHurt) {
       tickPotentialEOY(updated, seasonStats, state.rngSeed + state.calendar.year)
+      // Yearly weight fluctuation — most underweight players gain, overweight
+      // lose. Triggers small rating bumps to power/velo or speed/stamina/dur.
+      tickWeightFluctuation(updated, state.rngSeed + state.calendar.year)
     }
     if (gain >= 1.5) devReport.push({ player: updated, gain })
     if (gain <= -1.5) devReport.push({ player: updated, gain })   // include big drops too

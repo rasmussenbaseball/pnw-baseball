@@ -331,6 +331,73 @@ export function tickPotentialEOY(player, seasonStats, seed) {
   }
 }
 
+// ─── Weight fluctuation (yearly drift toward mature target) ────────────────
+
+/**
+ * Drift the player's weight toward their `targetMatureWeightLbs`. Runs once
+ * a year at the Summer Check-In. Most players gain weight in college as
+ * they fill out; some lose weight if they came in over their target.
+ *
+ *   Gain (toward target if underweight)  → +power/velo a bit
+ *   Lose (toward target if overweight)   → +speed / +stamina / +durability
+ *   Already at target                    → no change
+ *
+ * Drift is ~40% of the remaining gap each year, with noise. Some players
+ * don't drift at all (10% chance — they're an outlier who never fills out
+ * or never trims). Height never changes.
+ *
+ * @param {Player} player
+ * @param {number} seed
+ */
+export function tickWeightFluctuation(player, seed) {
+  if (!player?.measurables) return
+  const cur = player.measurables.weightLbs
+  const target = player.measurables.targetMatureWeightLbs
+  if (cur == null || target == null) return
+  const rng = makeRng('weightDrift', player.id, seed)
+  // 10% of players don't drift at all this year
+  if (rng.chance(0.10)) return
+  const gap = target - cur
+  if (Math.abs(gap) < 1.5) return   // already there
+  // Drift ~40% of remaining gap + noise. Per-year delta typically ±2-6 lb.
+  const drift = Math.round(gap * 0.4 + rng.gaussian(0, 1.5))
+  if (Math.abs(drift) < 1) return
+  player.measurables.weightLbs = cur + drift
+  // Apply rating boosts based on direction. Magnitudes are small per year
+  // so they compound over a 4-year career without being overwhelming.
+  const block = player.isPitcher ? player.pitcher : player.hitter
+  if (!block) return
+  if (drift > 0) {
+    // Gained weight — adds power / velo
+    if (player.isPitcher) {
+      if (typeof block.stuff === 'number') block.stuff = clamp(block.stuff + rng.gaussian(0.6, 0.3), 20, 99)
+      // Also tick the velocity numbers if present
+      if (typeof block.velocity_avg === 'number') {
+        block.velocity_avg = Math.round((block.velocity_avg + rng.gaussian(0.5, 0.25)) * 10) / 10
+        block.velocity_min = Math.round((block.velocity_min + rng.gaussian(0.5, 0.25)) * 10) / 10
+        block.velocity_max = Math.round((block.velocity_max + rng.gaussian(0.5, 0.25)) * 10) / 10
+      }
+    } else {
+      if (typeof block.power_l === 'number') block.power_l = clamp(block.power_l + rng.gaussian(0.7, 0.3), 20, 99)
+      if (typeof block.power_r === 'number') block.power_r = clamp(block.power_r + rng.gaussian(0.7, 0.3), 20, 99)
+      // Refresh max EV measurable
+      const pw = Math.max(block.power_l || 0, block.power_r || 0)
+      const ht = player.measurables.heightInches || 70
+      const sizeBoost = Math.max(0, (ht - 70) * 0.4)
+      player.measurables.maxEvMph = Math.round((88 + (pw - 50) * 0.5 + sizeBoost) * 10) / 10
+    }
+  } else {
+    // Lost weight — adds speed, stamina, durability
+    if (typeof block.stamina === 'number') block.stamina = clamp(block.stamina + rng.gaussian(0.5, 0.25), 20, 99)
+    if (typeof block.durability === 'number') block.durability = clamp(block.durability + rng.gaussian(0.5, 0.25), 20, 99)
+    if (!player.isPitcher && typeof block.speed === 'number') {
+      block.speed = clamp(block.speed + rng.gaussian(0.6, 0.3), 20, 99)
+      // Refresh 60-yard measurable
+      player.measurables.sixtyYardSec = Math.round((7.0 - (block.speed - 50) * 0.012) * 100) / 100
+    }
+  }
+}
+
 // ─── Scrimmage dev (small per-scrimmage bump) ──────────────────────────────
 
 /**

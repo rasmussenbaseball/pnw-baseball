@@ -165,16 +165,17 @@ function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTi
     25, 99,
   ))
 
-  // Velocity tied to stuff but with own jitter. High-stuff guys can throw 90+.
-  // Tied to archetype: FLAMETHROWER reaches 95-98, SOFT_TOSSING in low 80s.
+  // Velocity tied to stuff but with own jitter. College players sit ~+2 mph
+  // over HS recruits at every stuff tier. FLAMETHROWER 95-99, SOFT_TOSSING
+  // low 80s. Most NAIA arms touch 90+; mid-rotation guys sit 86-89.
   const isFlame = profile?.archetype?.key === 'FLAMETHROWER'
   const isSoftToss = profile?.archetype?.key === 'SOFT_TOSSING_VETERAN'
-  const stuffBoost = (stuff - 60) * 0.25
+  const stuffBoost = (stuff - 60) * 0.28
   const veloMean = isFlame
-    ? clamp(94 + rng.gaussian(0, 1.5), 90, 99)
+    ? clamp(95 + rng.gaussian(0, 1.5), 91, 99)
     : isSoftToss
       ? clamp(82 + rng.gaussian(0, 1.5), 76, 86)
-      : clamp(83.5 + stuffBoost + rng.gaussian(0, 1.6), 75, 97)
+      : clamp(86 + stuffBoost + rng.gaussian(0, 1.6), 76, 97)
   const velocity_avg = Math.round(veloMean * 10) / 10
   const veloSpread = clamp(rng.gaussian(2, 0.6), 1, 4)
   const velocity_min = Math.round((veloMean - veloSpread) * 10) / 10
@@ -388,29 +389,28 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
   const potential_pitcher = generatePotential(pitcher, slot.classYear, rng, profile)
 
   // ── Measurables ────────────────────────────────────────────────────────
-  // Height + weight live on player.measurables; pitchers also get throw
-  // velo (already in pitcher.velocity_*). Hitters get a 60-yard time derived
-  // from speed, catchers get a pop time derived from arm + speed.
   const measurables = {
     heightInches: profile.measurables.heightInches,
     weightLbs: profile.measurables.weightLbs,
+    targetMatureWeightLbs: profile.measurables.targetMatureWeightLbs,
   }
   // Body-size boost: bigger frame → higher velo + max EV (long levers).
   const ht = profile.measurables.heightInches
   const sizeBoost = Math.max(0, (ht - 70) * 0.4)
   if (isHitter) {
     const sp = hitter.speed
-    // 60-yard: speed 50 → 7.0 (average), speed 99 → 6.41 (elite), speed 30 → 7.24.
+    // 60-yard: speed 50 → 7.0 (avg), speed 99 → 6.41 (elite).
     measurables.sixtyYardSec = Math.round((7.0 - (sp - 50) * 0.012 + rng.gaussian(0, 0.06)) * 100) / 100
     if (slot.position === 'C') {
-      const arm = hitter.arm
-      measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
+      // Pop time uses arm (60%) + fielding (40%).
+      const blended = hitter.arm * 0.6 + hitter.fielding * 0.4
+      measurables.popTimeSec = Math.round((2.10 - (blended - 50) * 0.0075 + rng.gaussian(0, 0.04)) * 100) / 100
     }
-    // Max EV: power 50 → ~86, power 80 → ~98, power 95+ pushes 104-108.
-    // Already-college players sit above HS recruits → +2 baseline.
+    // Max EV: power 50 → ~88 (college baseline +2 vs HS), power 80 → ~103,
+    // power 95+ pushes 108+. College players sit ~+2 mph above HS recruits.
     const pw = Math.max(hitter.power_l, hitter.power_r)
-    const maxEvBase = 86 + (pw - 50) * 0.40 + sizeBoost
-    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.5)) * 10) / 10
+    const maxEvBase = 88 + (pw - 50) * 0.50 + sizeBoost
+    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10
   } else {
     measurables.fbVeloMph = pitcher.velocity_avg
     measurables.fbVeloMinMph = pitcher.velocity_min

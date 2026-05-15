@@ -343,33 +343,39 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   const measurables = {
     heightInches: ht,
     weightLbs: profile.measurables.weightLbs,
+    targetMatureWeightLbs: profile.measurables.targetMatureWeightLbs,
   }
   if (!isPitcher) {
     const sp = trueHitter.speed
-    // 60-yard recalibrated (May 2026): elite 6.4, AVERAGE 7.0, slow 7.3+.
-    // Formula: speed 50 → 7.0 (avg), speed 99 → 6.41 (elite), speed 30 → 7.24.
-    // HS recruits don't gain much in college so the rating reflects the
-    // college time directly.
+    // 60-yard: elite 6.4, average 7.0. Formula: speed 50 → 7.0, speed 99 → 6.41.
     const sixtyBase = 7.0 - (sp - 50) * 0.012
     measurables.sixtyYardSec = Math.round((sixtyBase + rng.gaussian(0, 0.06)) * 100) / 100
 
-    // Max EV: power-driven, with size + pool multipliers. Targets:
-    //   - HS power 50 → ~88 mph
-    //   - HS power 80 → ~98 mph
-    //   - HS power 95+ → 102-106 (top end of HS prospect pool)
-    //   - JUCO ~+2 mph at every power tier
-    //   - Portal transfers ~+2 mph
+    // Max EV (May 2026 tune): power-driven, size + pool boosts. Targets:
+    //   power 50 → ~86 mph (low-end pool)
+    //   power 70 → ~96 mph
+    //   power 80 → ~101 mph (a #1 ranked corner IF lands here)
+    //   power 90 → ~106 mph (elite power, top of D1 / NAIA prospect class)
+    //   power 95+ → 108+ mph
+    // Per Nate: NAIA recruits floor ~90, ranked guys 100+, best power 105+.
     const pw = Math.max(trueHitter.power_l, trueHitter.power_r)
     const poolEvBoost = pool === 'JUCO' ? 2.0
       : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 1.5
       : (pool === 'D1_TRANSFER') ? 3.0
       : 0
-    const maxEvBase = 84 + (pw - 50) * 0.40 + sizeBoost + poolEvBoost
-    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.5)) * 10) / 10
+    const maxEvBase = 86 + (pw - 50) * 0.50 + sizeBoost + poolEvBoost
+    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10
 
     if (primaryPosition === 'C') {
+      // Pop time depends on TRANSFER (fielding/glove work) + ARM (throw velo).
+      // Real-world breakdown: ~40% transfer, ~60% arm. Targets:
+      //   blended 50 → 2.10 (slow)
+      //   blended 70 → 1.95 (above avg)
+      //   blended 90 → 1.80 (elite D1 caliber)
       const arm = trueHitter.arm
-      measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
+      const fielding = trueHitter.fielding
+      const blended = arm * 0.6 + fielding * 0.4
+      measurables.popTimeSec = Math.round((2.10 - (blended - 50) * 0.0075 + rng.gaussian(0, 0.04)) * 100) / 100
     }
   } else {
     // Pitcher FB velo — pool + archetype + size driven.
@@ -377,22 +383,26 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     const isFlame = profile.archetype.key === 'FLAMETHROWER'
     const isSoftToss = profile.archetype.key === 'SOFT_TOSSING_VETERAN'
 
-    // Pool-anchored velocity ceiling. HS guys cap around 91-92 even with
-    // elite stuff — they haven't fully filled out. JUCO 92-93. NAIA portal
-    // 93-94. D1 transfers 94-96. Flamethrowers can push 1-2 mph beyond.
+    // Pool-anchored velocity. Top-ranked HS pitchers should routinely sit at
+    // 89-92 — they're the guys D1 schools are calling. HS avg ~84. Tuned so
+    // a stuff 80+ HS senior at 6'2+ touches 90 regularly.
+    //   HS avg (stuff 50)   → ~84       HS top (stuff 90)   → ~91-92
+    //   JUCO avg            → ~85-86    JUCO top            → ~93
+    //   NAIA portal top                  → ~94
+    //   D1 transfer top                  → ~97
     let baseMean, baseSpread
     if (pool === 'HS_SR') {
-      baseMean = 83.5 + (stuff - 60) * 0.18 + sizeBoost
+      baseMean = 84.0 + (stuff - 60) * 0.22 + sizeBoost
       baseSpread = isFlame ? 1.2 : 1.6
     } else if (pool === 'JUCO') {
-      baseMean = 85.0 + (stuff - 60) * 0.20 + sizeBoost
+      baseMean = 85.5 + (stuff - 60) * 0.24 + sizeBoost
       baseSpread = 1.5
     } else if (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') {
-      baseMean = 85.5 + (stuff - 60) * 0.22 + sizeBoost
+      baseMean = 86.0 + (stuff - 60) * 0.25 + sizeBoost
       baseSpread = 1.5
     } else {
       // D1 transfers and similar
-      baseMean = 87.5 + (stuff - 60) * 0.25 + sizeBoost
+      baseMean = 88.0 + (stuff - 60) * 0.28 + sizeBoost
       baseSpread = 1.6
     }
 
@@ -403,10 +413,10 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     } else if (isSoftToss) {
       veloMean = clamp(81 + rng.gaussian(0, 1.0), 76, 85)
     } else {
-      // Cap by pool: HS top 92, JUCO 93, NAIA/D2/D3 portal 94, D1 transfer 97
+      // Cap by pool: HS top 92, JUCO 94, NAIA/D2/D3 portal 95, D1 transfer 97
       const poolCap = pool === 'HS_SR' ? 92
-        : pool === 'JUCO' ? 93
-        : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 94
+        : pool === 'JUCO' ? 94
+        : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 95
         : 97
       veloMean = clamp(baseMean + rng.gaussian(0, baseSpread), 75, poolCap)
     }
