@@ -16,6 +16,7 @@ import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
 import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions'
 import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
+import { getArchetype, getQuirk, formatHeight } from '../../gm/engine/playerArchetypes'
 
 const POOL_LABELS = {
   HS_SR: 'HS Senior',
@@ -24,6 +25,17 @@ const POOL_LABELS = {
   D1_TRANSFER: 'D1 Portal',
   D2_TRANSFER: 'D2 Portal',
   D3_TRANSFER: 'D3 Portal',
+}
+
+// Compact source-level chip shown on every row in the unified board.
+// Replaces the per-pool tab system — one feed, one label per player.
+const SOURCE_CHIP = {
+  HS_SR:         { short: 'HS',  color: 'bg-blue-100 text-blue-800' },
+  JUCO:          { short: 'JC',  color: 'bg-emerald-100 text-emerald-800' },
+  NAIA_TRANSFER: { short: 'NAIA',color: 'bg-pnw-green/10 text-pnw-green' },
+  D1_TRANSFER:   { short: 'D1',  color: 'bg-purple-100 text-purple-800' },
+  D2_TRANSFER:   { short: 'D2',  color: 'bg-amber-100 text-amber-800' },
+  D3_TRANSFER:   { short: 'D3',  color: 'bg-slate-100 text-slate-700' },
 }
 
 const PREFERENCE_LABELS = {
@@ -54,6 +66,7 @@ export default function Recruiting() {
   const apBaseline = save?.ap?.baseline ?? 25
   const [board, setBoard] = useState('BOARD')        // BOARD | FOLLOWING | OFFERS | SIGNED
   const [poolFilter, setPoolFilter] = useState('ALL')
+  const [expandedRow, setExpandedRow] = useState(null)
   const [posFilter, setPosFilter] = useState('ALL')
   const [regionFilter, setRegionFilter] = useState('ALL')
   const [openRecruit, setOpenRecruit] = useState(null)
@@ -158,7 +171,12 @@ export default function Recruiting() {
   const baseList = board === 'SIGNED' ? signedList : boardFiltered
 
   const list = baseList
-    .filter(r => poolFilter === 'ALL' || r.pool === poolFilter)
+    .filter(r => {
+      if (poolFilter === 'ALL') return true
+      if (poolFilter === 'INCOMING') return r.pool === 'HS_SR' || r.pool === 'JUCO'
+      if (poolFilter === 'PORTAL') return ['NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'].includes(r.pool)
+      return r.pool === poolFilter
+    })
     .filter(r => posFilter === 'ALL' || r.primaryPosition === posFilter)
     .filter(r => regionFilter === 'ALL' || STATE_TO_REGION[r.hometown.state] === regionFilter)
     .map(r => {
@@ -323,21 +341,26 @@ export default function Recruiting() {
       </div>
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
-        <span className="text-xs text-gray-500 mr-2">Pool:</span>
-        {['ALL', 'HS_SR', 'JUCO', 'NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'].map(p => {
-          const isLocked = ['NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'].includes(p) && phase === 'PRE_PORTAL'
+        <span className="text-xs text-gray-500 mr-2">Source:</span>
+        {[
+          { key: 'ALL', label: 'All' },
+          { key: 'INCOMING', label: 'HS + JUCO', members: ['HS_SR', 'JUCO'] },
+          { key: 'PORTAL', label: 'Transfer Portal', members: ['NAIA_TRANSFER', 'D1_TRANSFER', 'D2_TRANSFER', 'D3_TRANSFER'] },
+        ].map(t => {
+          const isLocked = t.key === 'PORTAL' && phase === 'PRE_PORTAL'
+          const active = poolFilter === t.key
           return (
             <button
-              key={p}
-              onClick={() => !isLocked && setPoolFilter(p)}
+              key={t.key}
+              onClick={() => !isLocked && setPoolFilter(t.key)}
               disabled={isLocked}
-              className={'px-2 py-1 rounded text-xs ' +
-                (poolFilter === p ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700') +
+              className={'px-3 py-1.5 rounded-lg text-xs font-semibold transition ' +
+                (active ? 'bg-pnw-green text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200') +
                 (isLocked ? ' opacity-40 cursor-not-allowed' : '')
               }
-              title={isLocked ? 'Portal opens after season ends' : ''}
+              title={isLocked ? 'Portal opens after the regular season ends' : ''}
             >
-              {p === 'ALL' ? 'All' : POOL_LABELS[p]}{isLocked ? ' 🔒' : ''}
+              {t.label}{isLocked ? ' 🔒' : ''}
             </button>
           )
         })}
@@ -366,118 +389,34 @@ export default function Recruiting() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr className="text-left text-xs text-gray-500 uppercase">
-              <th className="py-2 px-3"></th>
-              <th>Name</th>
+              <th className="py-2 px-3 w-8"></th>
+              <th className="w-6"></th>
+              <th>Player</th>
               <th>Pos</th>
-              <th title="Estimated overall rating — range narrows as you scout">Est OVR</th>
-              <th>Pool</th>
-              <th>State</th>
+              <th title="Source league — HS, JUCO, NAIA/D1/D2/D3 portal">Src</th>
+              <th title="Estimated current OVR — band narrows as you scout, never collapses fully">Est OVR</th>
+              <th title="Estimated ceiling — wider band than current; some 42-OVR walk-ons have 95 ceilings">Est POT</th>
               <th>Interest</th>
-              <th title="Scouting progress — 10+ AP and a live offer = fully scouted">Scout</th>
-              <th>Suitors</th>
+              <th title="Scouting progress">Scout</th>
               <th>Offer</th>
-              <th>Priorities</th>
-              <th></th>
+              <th className="w-20"></th>
             </tr>
           </thead>
           <tbody>
-            {list.map(({ recruit, interest, noise }) => {
-              const revealed = recruit.scoutGrades[save.userSchoolId]?.revealedPreferences || []
-              const isSigned = recruit.signedTo === save.userSchoolId
-              const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
-              const totalSuit = totalSuitors(recruit)
-              return (
-                <tr key={recruit.id} className={'border-t ' + (isSigned ? 'bg-green-50' : 'hover:bg-gray-50')}>
-                  <td className="py-2 px-3 text-center">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleFollow(recruit.id) }}
-                      className={'text-base leading-none transition ' + (recruit.followed ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400')}
-                      title={recruit.followed ? 'Unfollow' : 'Follow / star this recruit'}
-                    >
-                      {recruit.followed ? '★' : '☆'}
-                    </button>
-                  </td>
-                  <td className="font-medium">
-                    {isSigned && '🖊️ '}{recruit.firstName} {recruit.lastName}
-                  </td>
-                  <td>{recruit.isPitcher ? 'P' : recruit.primaryPosition}</td>
-                  <td className="font-mono text-xs">
-                    {(() => {
-                      const apSpent = recruit.scoutGrades?.[save.userSchoolId]?.apSpent || 0
-                      if (apSpent < 2) return <span className="text-gray-400">???</span>
-                      const block = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
-                      const trueOvr = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
-                      const half = Math.max(1, Math.round(noise / 2))
-                      const lo = Math.max(20, trueOvr - half)
-                      const hi = Math.min(99, trueOvr + half)
-                      return lo === hi ? <span className="font-bold">{trueOvr}</span> : <span>{lo}–{hi}</span>
-                    })()}
-                  </td>
-                  <td className="text-xs text-gray-500">{POOL_LABELS[recruit.pool]}</td>
-                  <td className="text-xs text-gray-500">{recruit.hometown.state}</td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <div className="w-14 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-pnw-green" style={{ width: `${interest}%` }} />
-                      </div>
-                      <span className="text-xs font-mono">{interest}</span>
-                    </div>
-                  </td>
-                  <td>
-                    {(() => {
-                      const sp = scoutingProgress(recruit, save.userSchoolId)
-                      const full = isFullyScouted(recruit, save.userSchoolId)
-                      return (
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className={'h-full ' + (full ? 'bg-blue-600' : 'bg-pnw-slate')} style={{ width: `${sp * 100}%` }} />
-                          </div>
-                          {full && <span className="text-[10px] text-blue-700 font-bold">✓</span>}
-                        </div>
-                      )
-                    })()}
-                  </td>
-                  <td className="text-xs">
-                    <SuitorBadge recruit={recruit} />
-                  </td>
-                  <td className="text-xs">
-                    {hasLiveOffer ? (
-                      <span className="font-mono font-bold text-pnw-green">${(recruit.liveOffer.amount / 1000).toFixed(1)}K</span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="text-xs">
-                    {revealed.length === 0 ? <span className="text-gray-400">—</span> :
-                      revealed.slice(0, 2).map(p => (
-                        <span key={p} className="inline-block bg-amber-100 text-amber-900 px-1 py-0.5 rounded text-[10px] mr-1">
-                          {PREFERENCE_LABELS[p]}
-                        </span>
-                      ))}
-                  </td>
-                  <td>
-                    {!isSigned && (
-                      <div className="flex flex-col gap-0.5 items-end">
-                        <button onClick={() => setOpenRecruit(recruit)} className="text-xs text-pnw-green hover:underline">
-                          Recruit →
-                        </button>
-                        {recruit.pool === 'HS_SR' && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleCampInvite(recruit.id) }}
-                            className={'text-[10px] hover:underline ' +
-                              (recruit.campInvited ? 'text-blue-700 font-semibold' : 'text-gray-400')}
-                            title={recruit.campInvited ? 'Camp invite sent (click to revoke)' : 'Invite to prospect camp (free, 0 AP)'}
-                          >
-                            {recruit.campInvited ? '🏟 Invited' : '+ Invite to camp'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {isSigned && <span className="text-xs text-green-700 font-bold">SIGNED</span>}
-                  </td>
-                </tr>
-              )
-            })}
+            {list.map(({ recruit, interest, noise }) => (
+              <RecruitRow
+                key={recruit.id}
+                recruit={recruit}
+                save={save}
+                interest={interest}
+                noise={noise}
+                expanded={expandedRow === recruit.id}
+                onToggleExpand={() => setExpandedRow(expandedRow === recruit.id ? null : recruit.id)}
+                onOpenModal={() => setOpenRecruit(recruit)}
+                onToggleFollow={() => toggleFollow(recruit.id)}
+                onToggleCamp={() => toggleCampInvite(recruit.id)}
+              />
+            ))}
           </tbody>
         </table>
       </div>
@@ -555,6 +494,220 @@ function SuitorBadge({ recruit }) {
   if (suitors.d2d3) parts.push(`${suitors.d2d3} D2/D3`)
   const color = vis.total >= 6 ? 'text-red-700' : vis.total >= 3 ? 'text-amber-700' : 'text-gray-600'
   return <span className={'text-[10px] ' + color}>{parts.slice(0, 2).join(' • ') || 'none'}</span>
+}
+
+function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, onOpenModal, onToggleFollow, onToggleCamp }) {
+  const isSigned = recruit.signedTo === save.userSchoolId
+  const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
+  const apSpent = recruit.scoutGrades?.[save.userSchoolId]?.apSpent || 0
+  const scoutedAtAll = apSpent >= 2
+  const fullyScouted = isFullyScouted(recruit, save.userSchoolId)
+  const src = SOURCE_CHIP[recruit.pool] || SOURCE_CHIP.HS_SR
+  const archetype = getArchetype(recruit.archetypeKey)
+  const m = recruit.measurables || {}
+
+  // Compute Est OVR + Est POT ranges (uniform within ±noise — equally likely
+  // anywhere in the band).
+  function ovrRange() {
+    if (!scoutedAtAll) return { lo: null, hi: null }
+    const block = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
+    const trueOvr = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
+    const half = noise
+    return {
+      lo: Math.max(20, trueOvr - half),
+      hi: Math.min(99, trueOvr + half),
+    }
+  }
+  function potRange() {
+    if (!scoutedAtAll) return { lo: null, hi: null }
+    const block = recruit.isPitcher ? recruit.truePotentialPitcher : recruit.truePotentialHitter
+    if (!block) return { lo: null, hi: null }
+    const truePot = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
+    // POT noise is 1.5× current noise — harder to project than current.
+    const half = Math.round(noise * 1.5)
+    return {
+      lo: Math.max(20, truePot - half),
+      hi: Math.min(99, truePot + half),
+    }
+  }
+  const ovr = ovrRange()
+  const pot = potRange()
+  const sp = scoutingProgress(recruit, save.userSchoolId)
+
+  return (
+    <>
+      <tr className={'border-t ' + (isSigned ? 'bg-green-50' : 'hover:bg-gray-50')}>
+        <td className="py-2 px-3 text-center">
+          <button
+            onClick={onToggleExpand}
+            className="text-gray-400 hover:text-pnw-slate transition"
+            title={expanded ? 'Collapse' : 'Expand for details + scout actions'}
+          >
+            {expanded ? '▾' : '▸'}
+          </button>
+        </td>
+        <td className="text-center">
+          <button
+            onClick={onToggleFollow}
+            className={'text-base leading-none transition ' + (recruit.followed ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400')}
+            title={recruit.followed ? 'Unfollow' : 'Follow / star this recruit'}
+          >
+            {recruit.followed ? '★' : '☆'}
+          </button>
+        </td>
+        <td className="font-medium">
+          <div className="flex items-center gap-1.5">
+            {isSigned && <span>🖊️</span>}
+            <span>{recruit.firstName} {recruit.lastName}</span>
+            {scoutedAtAll && archetype && (
+              <span className="text-[10px] text-gray-500 italic hidden lg:inline">· {archetype.label}</span>
+            )}
+          </div>
+          <div className="text-[10px] text-gray-400">{recruit.hometown.city}, {recruit.hometown.state}</div>
+        </td>
+        <td className="text-xs">{recruit.isPitcher ? 'P' : recruit.primaryPosition}</td>
+        <td>
+          <span className={'text-[10px] font-bold px-1.5 py-0.5 rounded ' + src.color}>
+            {src.short}
+          </span>
+        </td>
+        <td className="font-mono text-xs">
+          {ovr.lo == null ? <span className="text-gray-400">???</span>
+            : ovr.lo === ovr.hi ? <span className="font-bold">{ovr.lo}</span>
+            : <span>{ovr.lo}–{ovr.hi}</span>}
+        </td>
+        <td className="font-mono text-xs">
+          {pot.lo == null ? <span className="text-gray-400">???</span>
+            : pot.lo === pot.hi ? <span className="font-bold text-pnw-green">{pot.lo}</span>
+            : <span className="text-pnw-green">{pot.lo}–{pot.hi}</span>}
+        </td>
+        <td>
+          <div className="flex items-center gap-2">
+            <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-pnw-green" style={{ width: `${interest}%` }} />
+            </div>
+            <span className="text-xs font-mono">{interest}</span>
+          </div>
+        </td>
+        <td>
+          <div className="flex items-center gap-2">
+            <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className={'h-full ' + (fullyScouted ? 'bg-blue-600' : 'bg-pnw-slate')} style={{ width: `${sp * 100}%` }} />
+            </div>
+            {fullyScouted && <span className="text-[10px] text-blue-700 font-bold">✓</span>}
+          </div>
+        </td>
+        <td className="text-xs">
+          {hasLiveOffer ? (
+            <span className="font-mono font-bold text-pnw-green">${(recruit.liveOffer.amount / 1000).toFixed(1)}K</span>
+          ) : (
+            <span className="text-gray-400">—</span>
+          )}
+        </td>
+        <td>
+          {isSigned ? (
+            <span className="text-xs text-green-700 font-bold">SIGNED</span>
+          ) : (
+            <button
+              onClick={onOpenModal}
+              className="text-xs bg-pnw-green text-white px-2 py-1 rounded hover:opacity-90"
+            >
+              Recruit →
+            </button>
+          )}
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-t bg-gray-50">
+          <td colSpan={11} className="p-3">
+            <RecruitExpansion
+              recruit={recruit}
+              save={save}
+              hasLiveOffer={hasLiveOffer}
+              onOpenModal={onOpenModal}
+              onToggleCamp={onToggleCamp}
+              archetype={archetype}
+              measurables={m}
+              scoutedAtAll={scoutedAtAll}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables, onOpenModal, onToggleCamp }) {
+  const visibleQuirks = (recruit.visibleQuirks || []).map(getQuirk).filter(Boolean)
+  const isHs = recruit.pool === 'HS_SR'
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+      {/* Measurables */}
+      <div className="bg-white rounded p-3 border border-gray-200">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Measurables</div>
+        <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
+          {measurables.heightInches && <><span className="text-gray-500">Height</span><span className="font-mono text-right">{formatHeight(measurables.heightInches)}</span></>}
+          {measurables.weightLbs && <><span className="text-gray-500">Weight</span><span className="font-mono text-right">{measurables.weightLbs} lb</span></>}
+          {measurables.sixtyYardSec && <><span className="text-gray-500">60-yard</span><span className="font-mono text-right">{measurables.sixtyYardSec.toFixed(2)} s</span></>}
+          {measurables.exitVeloMph && <><span className="text-gray-500">Exit velo</span><span className="font-mono text-right">{measurables.exitVeloMph} mph</span></>}
+          {measurables.popTimeSec && <><span className="text-gray-500">Pop time</span><span className="font-mono text-right">{measurables.popTimeSec.toFixed(2)} s</span></>}
+          {measurables.fbVeloMph && <><span className="text-gray-500">FB velo</span><span className="font-mono text-right">{measurables.fbVeloMinMph}–{measurables.fbVeloMaxMph} mph</span></>}
+        </div>
+        <div className="text-[10px] text-gray-400 italic mt-1">Public-knowledge measurables — always visible.</div>
+      </div>
+
+      {/* Profile (archetype + visible quirks) */}
+      <div className="bg-white rounded p-3 border border-gray-200">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Profile</div>
+        {scoutedAtAll && archetype ? (
+          <>
+            <div className="text-sm font-bold text-pnw-slate">{archetype.label}</div>
+            <div className="text-[11px] text-gray-600 leading-snug mt-0.5">{archetype.blurb}</div>
+            {visibleQuirks.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {visibleQuirks.map(q => (
+                  <span key={q.key} className="text-[10px] font-semibold bg-pnw-cream text-pnw-slate px-1.5 py-0.5 rounded" title={q.label}>
+                    {q.bias && Object.values(q.bias).some(v => v < 0) ? '⚠ ' : '✓ '}{q.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {recruit.hiddenQuirks?.length > 0 && (
+              <div className="mt-2 text-[10px] text-gray-400 italic">
+                + {recruit.hiddenQuirks.length} hidden trait{recruit.hiddenQuirks.length === 1 ? '' : 's'} (scout deeper to reveal)
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-[11px] text-gray-400 italic">
+            Scout the player to reveal their archetype + visible quirks.
+          </div>
+        )}
+      </div>
+
+      {/* Quick actions */}
+      <div className="bg-white rounded p-3 border border-gray-200">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Actions</div>
+        <button
+          onClick={onOpenModal}
+          className="w-full mb-1.5 px-2 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
+        >
+          Open full recruit panel →
+        </button>
+        {isHs && (
+          <button
+            onClick={onToggleCamp}
+            className={'w-full px-2 py-1.5 rounded text-xs font-semibold ' +
+              (recruit.campInvited
+                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                : 'border border-gray-300 text-gray-700 hover:bg-gray-100')}
+          >
+            {recruit.campInvited ? '🏟 Camp invite sent' : '+ Invite to prospect camp (free)'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function ActionCard({ title, subtitle, onClick, disabled }) {
@@ -766,6 +919,19 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
     Object.values(noisyRatings.ratings).reduce((s, n) => s + n, 0) / Object.keys(noisyRatings.ratings).length
   )
   const estOvrRange = ratingRange(estOvrPoint)
+  // Est POT range — wider noise band than current (potential is harder to read)
+  const potBlock = recruit.isPitcher ? recruit.truePotentialPitcher : recruit.truePotentialHitter
+  const truePotAvg = potBlock
+    ? Math.round(Object.values(potBlock).reduce((a, b) => a + b, 0) / Object.keys(potBlock).length)
+    : null
+  const potHalf = Math.max(1, Math.round(grade.noise * 1.5))
+  const estPotRange = truePotAvg == null ? null : {
+    lo: Math.max(20, truePotAvg - potHalf),
+    hi: Math.min(99, truePotAvg + potHalf),
+  }
+  const archetype = getArchetype(recruit.archetypeKey)
+  const visibleQuirks = (recruit.visibleQuirks || []).map(getQuirk).filter(Boolean)
+  const m = recruit.measurables || {}
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -779,6 +945,15 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
             {recruit.previousSchoolName && (
               <p className="text-xs text-gray-500">From {recruit.previousSchoolName}</p>
             )}
+            {/* Measurables strip — always public, no scout gate */}
+            <div className="text-[11px] text-gray-600 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+              {m.heightInches && <span><span className="text-gray-400">Ht:</span> <strong>{formatHeight(m.heightInches)}</strong></span>}
+              {m.weightLbs && <span><span className="text-gray-400">Wt:</span> <strong>{m.weightLbs} lb</strong></span>}
+              {m.fbVeloMph && <span><span className="text-gray-400">FB:</span> <strong>{m.fbVeloMinMph}–{m.fbVeloMaxMph} mph</strong></span>}
+              {m.sixtyYardSec && <span><span className="text-gray-400">60:</span> <strong>{m.sixtyYardSec.toFixed(2)}s</strong></span>}
+              {m.popTimeSec && <span><span className="text-gray-400">Pop:</span> <strong>{m.popTimeSec.toFixed(2)}s</strong></span>}
+              {m.exitVeloMph && <span><span className="text-gray-400">EV:</span> <strong>{m.exitVeloMph} mph</strong></span>}
+            </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
@@ -797,30 +972,62 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
         )}
 
         {hasScoutedAtAll && (
-          <div className="grid grid-cols-5 gap-2 mb-4">
-            <div className="bg-pnw-cream rounded p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
-              <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
-            </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
-              <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
-            </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
-              <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
-            </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
-              <div className="text-xl font-bold text-gray-700">{academicRatingToGpa(recruit.academicRating).toFixed(1)}</div>
-            </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
-              <div className="text-sm font-bold text-gray-700">
-                {recruit.suitorsRevealed ? totalSuit : '?'}
+          <>
+            <div className="grid grid-cols-6 gap-2 mb-3">
+              <div className="bg-pnw-cream rounded p-2 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
+                <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
+              </div>
+              <div className="bg-gray-50 rounded p-2 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
+                <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
+              </div>
+              <div className="bg-gray-50 rounded p-2 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-gray-600">Est POT</div>
+                <div className="text-base font-bold text-pnw-green font-mono">
+                  {estPotRange ? `${estPotRange.lo}–${estPotRange.hi}` : '—'}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded p-2 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
+                <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
+              </div>
+              <div className="bg-gray-50 rounded p-2 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
+                <div className="text-xl font-bold text-gray-700">{academicRatingToGpa(recruit.academicRating).toFixed(1)}</div>
+              </div>
+              <div className="bg-gray-50 rounded p-2 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
+                <div className="text-sm font-bold text-gray-700">
+                  {recruit.suitorsRevealed ? totalSuit : '?'}
+                </div>
               </div>
             </div>
-          </div>
+            {/* Archetype + visible quirks — player's profile, set at generation */}
+            {archetype && (
+              <div className="bg-pnw-cream/40 rounded p-2 mb-3 border border-pnw-green/20">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-[10px] uppercase tracking-wider text-pnw-green font-bold">Profile:</span>
+                  <span className="text-sm font-bold text-pnw-slate">{archetype.label}</span>
+                  <span className="text-[11px] text-gray-600 italic">{archetype.blurb}</span>
+                </div>
+                {visibleQuirks.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {visibleQuirks.map(q => (
+                      <span key={q.key} className="text-[10px] font-semibold bg-white text-pnw-slate px-1.5 py-0.5 rounded border border-gray-200" title={q.label}>
+                        {q.bias && Object.values(q.bias).some(v => v < 0) ? '⚠ ' : '✓ '}{q.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {recruit.hiddenQuirks?.length > 0 && (
+                  <div className="text-[10px] text-gray-500 italic mt-1">
+                    + {recruit.hiddenQuirks.length} hidden trait{recruit.hiddenQuirks.length === 1 ? '' : 's'} not yet revealed.
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {/* Suitor info: vague pre-scouted, exact after — and hidden entirely

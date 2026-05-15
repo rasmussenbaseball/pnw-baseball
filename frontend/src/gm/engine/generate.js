@@ -12,6 +12,7 @@ import { makeRng } from './rng'
 import { pickFullName } from './names'
 import { initialAcademicState } from './academics'
 import { pickCityForState } from './cities'
+import { composePlayerProfile } from './playerArchetypes'
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Position} Position */
@@ -26,17 +27,16 @@ import { pickCityForState } from './cities'
 // roster size varies 40-50 (small jitter applied per school).
 const CLASS_TARGETS = { FR: 12, SO: 12, JR: 11, SR: 10 }
 
-// Minimum-roster targets per spec: 4 C, 21 P, 8 IF, 7 OF. We exceed those
-// minimums in the base counts and pad the rest with bench hitters.
+// Minimum-roster targets per spec: 4 C, 21 P, 8 IF, 8 OF. DH was dropped —
+// every player gets a real defensive position. DH is a lineup-day decision
+// the coach makes, not a generated role. The freed slot now goes to OF.
 const POSITION_TARGETS = {
   // Catchers — 4 mandatory
   C: 4,
   // Infield — 8 total (2 per spot)
   '1B': 2, '2B': 2, SS: 2, '3B': 2,
-  // Outfield — 7 total
-  LF: 2, CF: 3, RF: 2,
-  // DH
-  DH: 1,
+  // Outfield — 8 total (was 7; +1 from removed DH slot)
+  LF: 2, CF: 3, RF: 3,
   // Pitchers — 21 total: 9 SP + 12 RP
   SP: 9, RP: 12,
   // Remaining slots padded with bench position players later
@@ -86,82 +86,167 @@ function applyStarBump(mean, slotTier, rng) {
 }
 
 /**
- * Generate a HitterRatings block.
+ * Pick a "side dominance" for L/R splits — a player is usually noticeably
+ * better against one side. Returns a delta to add to the dominant side and
+ * subtract from the other. Stronger dominance is rarer.
  */
-function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng) {
+function pickSideDominance(rng) {
+  // 0-5 pts toward dominant side (typical); occasional 8-12 (true splits guy)
+  return rng.weighted([2, 4, 6, 9, 13], [25, 30, 25, 15, 5])
+}
+
+/**
+ * Generate a HitterRatings block. Uses an archetype profile to bias the
+ * means by rating key (so a "Power Bat" actually has high power, not just
+ * a high uniform mean). Correlates L/R splits so a player's power_l and
+ * power_r live in the same neighborhood.
+ *
+ * @param {number} programHistory
+ * @param {string} classYear
+ * @param {boolean} isPureHitter
+ * @param {'starter'|'bench'|'depth'} slotTier
+ * @param {ReturnType<import('./rng.js').makeRng>} rng
+ * @param {ReturnType<import('./playerArchetypes.js').composePlayerProfile>} [profile]
+ */
+function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng, profile = null) {
   let mean = meanRatingFor(programHistory, slotTier) - (isPureHitter ? 0 : 10)
   mean = applyStarBump(mean, slotTier, rng)
-  const stddev = slotTier === 'starter' ? 7 : 9
-  const r = () => Math.round(clamp(rng.gaussian(mean, stddev), 30, 95))
+  // Wider stddev means more variance within a player's ratings — important
+  // for "this player has 99 speed but 50 power" feel.
+  const stddev = slotTier === 'starter' ? 9 : 11
+  const biases = profile?.biases || {}
+  // Roll a value for a given rating key. Bias from frame + archetype + quirks
+  // gets ADDED to the mean for THIS key only — so the archetype actually
+  // shapes the profile (power bat → bigger power, smaller contact).
+  const rollKey = (key, extra = 0) => Math.round(clamp(
+    rng.gaussian(mean + (biases[key] || 0) + extra, stddev),
+    25, 99,
+  ))
+
+  // L/R correlation: pick a dominant side once, apply consistent +/- delta
+  // to BOTH contact and power. So a "righty-killer" gets high contact_l AND
+  // high power_l, not opposite extremes.
+  const dominantSide = rng.weighted(['L', 'R'], [40, 60])
+  const dominance = pickSideDominance(rng)
+  const lDelta = dominantSide === 'L' ? dominance : -dominance
+  const rDelta = dominantSide === 'R' ? dominance : -dominance
+
   return {
-    contact_l: r(), contact_r: r(),
-    power_l:   r(), power_r:   r(),
-    discipline: r(), speed:    r(),
-    fielding:  r(), arm:       r(),
-    // Mental + physical intangibles — apply to hitters too, not just pitchers.
-    // Composure drives clutch hitting; durability drives injury resistance.
-    composure: r(), durability: r(),
+    contact_l: rollKey('contact_l', lDelta),
+    contact_r: rollKey('contact_r', rDelta),
+    power_l:   rollKey('power_l',   lDelta),
+    power_r:   rollKey('power_r',   rDelta),
+    discipline: rollKey('discipline'),
+    speed:     rollKey('speed'),
+    fielding:  rollKey('fielding'),
+    arm:       rollKey('arm'),
+    composure: rollKey('composure'),
+    durability: rollKey('durability'),
   }
 }
 
-function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTier, rng) {
+function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTier, rng, profile = null) {
   let mean = meanRatingFor(programHistory, slotTier) - (isPurePitcher ? 0 : 10)
   mean = applyStarBump(mean, slotTier, rng)
-  const stddev = slotTier === 'starter' ? 7 : 9
-  const r = () => Math.round(clamp(rng.gaussian(mean, stddev), 30, 95))
+  const stddev = slotTier === 'starter' ? 9 : 11
+  const biases = profile?.biases || {}
+  const rollKey = (key, extra = 0) => Math.round(clamp(
+    rng.gaussian(mean + (biases[key] || 0) + extra, stddev),
+    25, 99,
+  ))
 
-  // Stamina: bias upward so most pitchers can throw 4+ innings; pure
-  // 1-inning relievers are rarer. Then apply a velocity-driven penalty
-  // (high velo trades off stamina unless the pitcher is elite).
-  const stuff = r()
-  const control = r()
-  const command = r()
-  const baseStamina = Math.round(clamp(rng.gaussian(mean + 10, stddev - 1), 30, 95))
+  const stuff = rollKey('stuff')
+  const control = rollKey('control')
+  const command = rollKey('command')
+  // Stamina: bench gets a +10 bias by default. Archetypes (CLOSER_PROFILE)
+  // already cut stamina via biases; WORKHORSE bumps it.
+  const baseStamina = Math.round(clamp(
+    rng.gaussian(mean + 10 + (biases.stamina || 0), stddev - 1),
+    25, 99,
+  ))
 
-  // Velocity: 75-96 mph range, mean 84-85, narrow per-pitcher band 4-5 mph.
-  // Heat correlates loosely with stuff; truly elite pitchers can have both
-  // velocity and stamina.
-  const stuffBoost = (stuff - 60) * 0.20      // stuff 60 → 0, stuff 90 → +6
-  const veloMean = clamp(83.5 + stuffBoost + rng.gaussian(0, 1.6), 75, 96)
+  // Velocity tied to stuff but with own jitter. High-stuff guys can throw 90+.
+  // Tied to archetype: FLAMETHROWER reaches 95-98, SOFT_TOSSING in low 80s.
+  const isFlame = profile?.archetype?.key === 'FLAMETHROWER'
+  const isSoftToss = profile?.archetype?.key === 'SOFT_TOSSING_VETERAN'
+  const stuffBoost = (stuff - 60) * 0.25
+  const veloMean = isFlame
+    ? clamp(94 + rng.gaussian(0, 1.5), 90, 99)
+    : isSoftToss
+      ? clamp(82 + rng.gaussian(0, 1.5), 76, 86)
+      : clamp(83.5 + stuffBoost + rng.gaussian(0, 1.6), 75, 97)
   const velocity_avg = Math.round(veloMean * 10) / 10
   const veloSpread = clamp(rng.gaussian(2, 0.6), 1, 4)
   const velocity_min = Math.round((veloMean - veloSpread) * 10) / 10
   const velocity_max = Math.round((veloMean + veloSpread) * 10) / 10
 
-  // Stamina penalty: high velo → cost. Elites (stuff 85+) exempt.
+  // Stamina velo penalty (preserved): elites exempt
   let stamina = baseStamina
   if (stuff < 85) {
-    const veloPenalty = Math.max(0, (velocity_avg - 88) * 3.5)  // velocity 88+ starts costing stamina
-    stamina = clamp(baseStamina - veloPenalty, 25, 95)
+    const veloPenalty = Math.max(0, (velocity_avg - 88) * 3.5)
+    stamina = clamp(baseStamina - veloPenalty, 25, 99)
   }
   stamina = Math.round(stamina)
 
   return {
-    stuff, control, command,
-    stamina,
-    vs_l: r(), vs_r: r(),
-    composure: r(), durability: r(),
+    stuff, control, command, stamina,
+    vs_l: rollKey('vs_l'),
+    vs_r: rollKey('vs_r'),
+    composure: rollKey('composure'),
+    durability: rollKey('durability'),
     velocity_avg, velocity_min, velocity_max,
   }
 }
 
 /**
- * Derive potential ratings by bumping each current rating by a class-dependent
- * gap. Velocity-related fields are not 0-99 ratings; skip them.
+ * Derive potential ratings — DECOUPLED from current. Every player gets an
+ * INDEPENDENT ceiling roll, which can be much higher than their current
+ * rating regardless of how good they look right now.
  *
- * Adds occasional "raw prospect" outliers: ~12% of FR/SO get a much bigger
- * potential gap (+25 to +40), so the league has low-OVR/high-pot dev
- * targets. Without this, OVR and potential were too tightly coupled.
+ * This means a 42-OVR walk-on freshman might actually have a 90-OVR ceiling.
+ * The user has no way to know without scouting. That's where the "hidden gem"
+ * scouting reward comes from.
+ *
+ * Process per rating key:
+ *   1. Roll a CEILING from the league-wide potential distribution
+ *      (mean 70, stddev 14 — produces real spread, occasional 95+)
+ *   2. Apply a class-year haircut to seniors (less time to develop)
+ *   3. Apply a late-bloomer bonus from the archetype if set
+ *   4. Floor at current rating (potential can't be BELOW current)
+ *
+ * Velocity-related fields are not 0-99 ratings; pass through.
+ *
+ * @param {Object<string,number>} currentRatings
+ * @param {string} classYear
+ * @param {ReturnType<import('./rng.js').makeRng>} rng
+ * @param {ReturnType<import('./playerArchetypes.js').composePlayerProfile>} [profile]
  */
-function generatePotential(currentRatings, classYear, rng) {
-  const baseGap = potentialGapFor(classYear)
-  const isRawProspect = (classYear === 'FR' || classYear === 'SO') && rng.chance(0.12)
-  const gap = isRawProspect ? baseGap + rng.int(15, 25) : baseGap
+function generatePotential(currentRatings, classYear, rng, profile = null) {
+  // Each player has an overall "ceiling tier" rolled once — controls how
+  // high the average ceiling lands across their ratings. Most players sit in
+  // the 60-80 band, but ~10% are blue-chip (mean 85), ~5% are franchise (90+).
+  const tierRoll = rng.chance(0.05) ? 'FRANCHISE' : rng.chance(0.10) ? 'BLUECHIP' : 'STANDARD'
+  let tierMean
+  if (tierRoll === 'FRANCHISE') tierMean = 90
+  else if (tierRoll === 'BLUECHIP') tierMean = 82
+  else tierMean = rng.gaussian(67, 9)  // most players, with real spread
+
+  // Senior haircut: SR ceilings cap closer to current (limited time left).
+  const seniorHaircut = classYear === 'SR' ? -8 : classYear === 'JR' ? -2 : 0
+  // Late bloomer bonus: archetype tag → +8 ceiling
+  const lateBloom = profile?.isLateBloomer ? 8 : 0
+
   const out = {}
   for (const [k, v] of Object.entries(currentRatings)) {
-    if (k.startsWith('velocity')) { out[k] = v; continue }   // not a rating
-    const bump = Math.round(rng.gaussian(gap, 5))
-    out[k] = clamp(v + Math.max(0, bump), v, 99)
+    if (k.startsWith('velocity')) { out[k] = v; continue }
+    // Per-rating jitter so a player doesn't have IDENTICAL ceilings across
+    // all stats (some skills cap higher than others).
+    const ceiling = clamp(
+      Math.round(rng.gaussian(tierMean + seniorHaircut + lateBloom, 8)),
+      v,    // floor at current
+      99,
+    )
+    out[k] = ceiling
   }
   return out
 }
@@ -242,7 +327,9 @@ function makeRosterPositionList(rng) {
   const rest = []
   const startingPitcherTaken = { SP: 0 }
   const startingHitterPosTaken = {}
-  const STARTING_HITTER_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH']
+  // DH dropped — every player gets a real defensive position. The coach
+  // picks a DH per game from the position-player pool at lineup time.
+  const STARTING_HITTER_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']
   for (const slot of list) {
     if (slot.position === 'SP' && startingPitchers.length < 5) {
       startingPitchers.push(slot)
@@ -278,22 +365,56 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
   const seasonsUsedMap = { FR: 0, SO: 1, JR: 2, SR: 3 }
   const slotTier = slot.slotTier || 'bench'
 
-  const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng)
-  const pitcher = generatePitcherRatings(school.programHistory, slot.classYear, isPitcher, slotTier, rng)
+  // Compose archetype/frame/quirks first — drives rating profile + measurables.
+  const profile = composePlayerProfile({
+    position: slot.position, isPitcher, slotTier, rng,
+  })
 
-  // Raw-prospect chance: ~12% of FR/SO get an additional current-rating
-  // suppression. This widens the gap between current rating and potential
-  // — so the league has low-OVR/high-pot dev targets you can develop.
-  if ((slot.classYear === 'FR' || slot.classYear === 'SO') && rng.chance(0.12)) {
-    const drop = rng.int(8, 18)
+  const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng, profile)
+  const pitcher = generatePitcherRatings(school.programHistory, slot.classYear, isPitcher, slotTier, rng, profile)
+
+  // Late-bloomer current-rating suppression: archetype tag drops current
+  // ratings ~8-14 points. Combined with the +8 potential bonus this gives
+  // late bloomers a real "buy low" feel without burying them.
+  if (profile.isLateBloomer) {
+    const drop = rng.int(8, 14)
     for (const k of Object.keys(hitter)) hitter[k] = clamp(hitter[k] - drop, 25, 99)
     for (const k of Object.keys(pitcher)) {
       if (!k.startsWith('velocity')) pitcher[k] = clamp(pitcher[k] - drop, 25, 99)
     }
   }
 
-  const potential_hitter = generatePotential(hitter, slot.classYear, rng)
-  const potential_pitcher = generatePotential(pitcher, slot.classYear, rng)
+  const potential_hitter = generatePotential(hitter, slot.classYear, rng, profile)
+  const potential_pitcher = generatePotential(pitcher, slot.classYear, rng, profile)
+
+  // ── Measurables ────────────────────────────────────────────────────────
+  // Height + weight live on player.measurables; pitchers also get throw
+  // velo (already in pitcher.velocity_*). Hitters get a 60-yard time derived
+  // from speed, catchers get a pop time derived from arm + speed.
+  const measurables = {
+    heightInches: profile.measurables.heightInches,
+    weightLbs: profile.measurables.weightLbs,
+  }
+  if (isHitter) {
+    // 60-yard: elite runners ~6.5, average ~7.2, slow ~8.0+. Speed 50 → 7.4,
+    // speed 80 → 6.8, speed 99 → 6.3. Add tiny jitter.
+    const sp = hitter.speed
+    measurables.sixtyYardSec = Math.round((7.7 - (sp - 50) * 0.018 + rng.gaussian(0, 0.08)) * 100) / 100
+    if (slot.position === 'C') {
+      // Pop time: 1.85 elite (D1 caliber), 2.05 average, 2.25 well below.
+      // Tied to arm: arm 50 → 2.15, arm 80 → 1.95, arm 99 → 1.82.
+      const arm = hitter.arm
+      measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
+    }
+    // Exit velo: tied to power. 50 power → 87 mph, 80 → 99, 99 → 108.
+    const pw = Math.max(hitter.power_l, hitter.power_r)
+    measurables.exitVeloMph = Math.round((86 + (pw - 50) * 0.4 + rng.gaussian(0, 1.2)) * 10) / 10
+  } else {
+    // Pitcher already has velocity_avg / min / max
+    measurables.fbVeloMph = pitcher.velocity_avg
+    measurables.fbVeloMinMph = pitcher.velocity_min
+    measurables.fbVeloMaxMph = pitcher.velocity_max
+  }
 
   const hidden = {
     potential_hitter,
@@ -302,10 +423,12 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     clutch: rng.int(30, 90),
     injury_prone: rng.int(20, 80),
     loyalty: rng.int(30, 90),
-    // Aptitude calibrated so team-mean GPA lands ~2.8-3.2: gaussian mean 70,
-    // sd 14, clamped 30-99. With initialAcademicState's 0.5 + (apt/99)*3.0
-    // map, mean ~2.6-3.0 per player; high-side outliers push team avg up.
     academic_aptitude: Math.round(clamp(rng.gaussian(70, 14), 30, 99)),
+    // Archetype + quirks are partially hidden by design — only revealed via
+    // extra scouting. Save here so the reveal logic can look them up.
+    archetype: profile.archetype.key,
+    bodyFrame: profile.frame.key,
+    quirks: profile.quirks.map(q => q.key),
   }
   const academic = initialAcademicState({ hidden }, rng)
 
@@ -331,6 +454,9 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     hitter,
     pitcher,
     hidden,
+    measurables,
+    archetypeKey: profile.archetype.key,    // visible label for the role (e.g. "Power bat")
+    bodyFrameKey: profile.frame.key,         // visible body type label
     scholarship: {
       annualAmount: estimateScholarship(school, hitter, pitcher, isPitcher, potential_hitter, potential_pitcher, rng),
       yearsCommitted: rng.int(1, 4),

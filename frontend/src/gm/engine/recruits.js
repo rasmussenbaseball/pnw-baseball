@@ -13,6 +13,7 @@ import { makeRng } from './rng'
 import { pickFullName } from './names'
 import { pickCityForState } from './cities'
 import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
+import { composePlayerProfile } from './playerArchetypes'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
 // Recruit pool sizes. Trimmed in v1.6 — each makeRecruit allocates a fully
@@ -31,7 +32,8 @@ const ALL_JUCO_TEAMS = jucoTeamsRaw.leagues.flatMap(l => l.teams.map(t => ({ ...
 
 // All pitcher recruits show as "P" — the head coach decides SP vs RP role
 // after they enroll based on stuff + stamina. Internally we still need an
-// is-pitcher flag for sim purposes.
+// is-pitcher flag for sim purposes. DH never generated — every recruit has
+// a real position; coach picks the DH at lineup time.
 const POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'P', 'P', 'P']
 
 // ─── Geographic distribution ─────────────────────────────────────────────────
@@ -153,55 +155,123 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   const region = STATE_TO_REGION[state] || 'MW'
   const { first, last } = pickFullName(rng, region)
 
+  // DH dropped — every recruit has a real position. Coach picks the DH at
+  // lineup time from the position-player pool.
   const primaryPosition = rng.pick(POSITIONS)
   const isPitcher = primaryPosition === 'P'
 
-  // Rating distribution per pool. NAIA reality:
-  //   - HS SR: mean 50, capped ~88 (no 92-rated HS kids in NAIA recruiting board —
-  //     those guys go straight to D1)
-  //   - JUCO: proven mid-grade
-  //   - NAIA portal: average; sometimes mid-grade unhappy players
-  //   - D1 portal split: UNDERUSED = good (mean 76), YOUNG = lower current but
-  //     higher potential (mean 56, high pot)
-  //   - D2/D3: middle and lower
-  // CAPS: HS capped at 88, JUCO/NAIA at 88, D1_UNDERUSED at 94, D1_YOUNG at 80
-  let meanRating, stddev, cap
-  if (pool === 'HS_SR')       { meanRating = 50; stddev = 10; cap = 88 }
-  else if (pool === 'JUCO')   { meanRating = 58; stddev = 9;  cap = 88 }
-  else if (pool === 'NAIA_TRANSFER') { meanRating = 56; stddev = 10; cap = 88 }
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 6; cap = 94 }
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 56; stddev = 8; cap = 80 }
-  else if (pool === 'D1_TRANSFER') { meanRating = 68; stddev = 8;  cap = 92 }
-  else if (pool === 'D2_TRANSFER') { meanRating = 60; stddev = 9;  cap = 88 }
-  else if (pool === 'D3_TRANSFER') { meanRating = 52; stddev = 9;  cap = 82 }
-  else                             { meanRating = 55; stddev = 10; cap = 88 }
+  // Compose an archetype profile — drives rating biases + measurables. The
+  // tier loosely maps to pool quality so D1 UNDERUSED transfers can pull
+  // from star archetypes more easily.
+  const profileTier = (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') ? 'starter'
+    : (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG') ? 'bench'
+    : (pool === 'JUCO') ? 'bench'
+    : 'depth'
+  const profile = composePlayerProfile({
+    position: primaryPosition, isPitcher, slotTier: profileTier, rng,
+  })
 
-  const ratingFn = () => Math.round(clamp(rng.gaussian(meanRating, stddev), 30, cap))
+  // Rating distribution per pool. Means + caps preserved from old code.
+  let meanRating, stddev, cap
+  if (pool === 'HS_SR')       { meanRating = 50; stddev = 12; cap = 92 }   // wider stddev → more spread + occasional gems
+  else if (pool === 'JUCO')   { meanRating = 58; stddev = 11; cap = 90 }
+  else if (pool === 'NAIA_TRANSFER') { meanRating = 56; stddev = 12; cap = 90 }
+  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 7; cap = 95 }
+  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 56; stddev = 10; cap = 82 }
+  else if (pool === 'D1_TRANSFER') { meanRating = 68; stddev = 9;  cap = 93 }
+  else if (pool === 'D2_TRANSFER') { meanRating = 60; stddev = 11; cap = 90 }
+  else if (pool === 'D3_TRANSFER') { meanRating = 52; stddev = 11; cap = 85 }
+  else                             { meanRating = 55; stddev = 12; cap = 90 }
+
+  // L/R correlation: pick a dominant side once and apply consistent delta
+  // to BOTH contact AND power for that side. So you never see a
+  // power_l 95 / power_r 30 weirdo unless quirks specifically asked for it.
+  const dominantSide = rng.weighted(['L', 'R'], [40, 60])
+  const sideDom = rng.weighted([2, 4, 6, 9, 13], [25, 30, 25, 15, 5])
+  const lDelta = dominantSide === 'L' ? sideDom : -sideDom
+  const rDelta = dominantSide === 'R' ? sideDom : -sideDom
+  const biases = profile.biases
+  const rollKey = (key, extra = 0) => Math.round(clamp(
+    rng.gaussian(meanRating + (biases[key] || 0) + extra, stddev),
+    25, cap,
+  ))
+
   const trueHitter = {
-    contact_l: ratingFn(), contact_r: ratingFn(),
-    power_l: ratingFn(), power_r: ratingFn(),
-    discipline: ratingFn(), speed: ratingFn(),
-    fielding: ratingFn(), arm: ratingFn(),
+    contact_l: rollKey('contact_l', lDelta),
+    contact_r: rollKey('contact_r', rDelta),
+    power_l:   rollKey('power_l',   lDelta),
+    power_r:   rollKey('power_r',   rDelta),
+    discipline: rollKey('discipline'),
+    speed:     rollKey('speed'),
+    fielding:  rollKey('fielding'),
+    arm:       rollKey('arm'),
+    composure: rollKey('composure'),
+    durability: rollKey('durability'),
   }
   const truePitcher = {
-    stuff: ratingFn(), control: ratingFn(), command: ratingFn(),
-    stamina: ratingFn(), vs_l: ratingFn(), vs_r: ratingFn(),
-    composure: ratingFn(), durability: ratingFn(),
+    stuff: rollKey('stuff'),
+    control: rollKey('control'),
+    command: rollKey('command'),
+    stamina: rollKey('stamina'),
+    vs_l: rollKey('vs_l'),
+    vs_r: rollKey('vs_r'),
+    composure: rollKey('composure'),
+    durability: rollKey('durability'),
   }
-  // Potential — D1 transfers have the HIGHEST potential gaps (especially YOUNG D1s
-  // who entered the portal early after limited reps).
-  let potBump
-  if (pool === 'HS_SR') potBump = 14
-  else if (pool === 'JUCO') potBump = 8
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG') potBump = 18    // huge upside
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') potBump = 8 // already developed
-  else if (pool === 'D1_TRANSFER') potBump = 12
-  else if (pool === 'D2_TRANSFER') potBump = 6
-  else if (pool === 'D3_TRANSFER') potBump = 9
-  else potBump = 5
-  const bump = (r) => Math.min(99, r + Math.round(rng.gaussian(potBump, 4)))
-  const potHitter = Object.fromEntries(Object.entries(trueHitter).map(([k, v]) => [k, bump(v)]))
-  const potPitcher = Object.fromEntries(Object.entries(truePitcher).map(([k, v]) => [k, bump(v)]))
+  // Late-bloomer current-rating suppression — same as roster generation.
+  if (profile.isLateBloomer) {
+    const drop = rng.int(8, 14)
+    for (const k of Object.keys(trueHitter)) trueHitter[k] = clamp(trueHitter[k] - drop, 25, 99)
+    for (const k of Object.keys(truePitcher)) truePitcher[k] = clamp(truePitcher[k] - drop, 25, 99)
+  }
+
+  // Potential — DECOUPLED from current. Each player has a ceiling tier rolled
+  // once that drives all their rating ceilings. Pool source affects tier
+  // distribution (D1 YOUNG more likely to roll FRANCHISE; D3 transfer less so),
+  // but a 42-OVR HS senior can absolutely have a 95 ceiling.
+  // 5% franchise (mean 90), 12% blue-chip (mean 82), rest standard (mean 67±9)
+  const tierRoll = pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG' ? 'BLUECHIP'   // young D1s skew elite ceilings
+    : rng.chance(0.05) ? 'FRANCHISE'
+    : rng.chance(0.12) ? 'BLUECHIP'
+    : 'STANDARD'
+  let tierMean
+  if (tierRoll === 'FRANCHISE') tierMean = 90
+  else if (tierRoll === 'BLUECHIP') tierMean = 82
+  else tierMean = rng.gaussian(67, 9)
+  const lateBloom = profile.isLateBloomer ? 8 : 0
+  const ceiling = (current) => clamp(
+    Math.round(rng.gaussian(tierMean + lateBloom, 8)),
+    current, 99,
+  )
+  const potHitter = Object.fromEntries(Object.entries(trueHitter).map(([k, v]) => [k, ceiling(v)]))
+  const potPitcher = Object.fromEntries(Object.entries(truePitcher).map(([k, v]) => [k, ceiling(v)]))
+
+  // Measurables — height/weight from the frame, plus derived measurables
+  const measurables = {
+    heightInches: profile.measurables.heightInches,
+    weightLbs: profile.measurables.weightLbs,
+  }
+  if (!isPitcher) {
+    const sp = trueHitter.speed
+    measurables.sixtyYardSec = Math.round((7.7 - (sp - 50) * 0.018 + rng.gaussian(0, 0.08)) * 100) / 100
+    const pw = Math.max(trueHitter.power_l, trueHitter.power_r)
+    measurables.exitVeloMph = Math.round((86 + (pw - 50) * 0.4 + rng.gaussian(0, 1.2)) * 10) / 10
+    if (primaryPosition === 'C') {
+      const arm = trueHitter.arm
+      measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
+    }
+  } else {
+    // Pitchers carry an FB velo derived from stuff + archetype.
+    const stuff = truePitcher.stuff
+    const isFlame = profile.archetype.key === 'FLAMETHROWER'
+    const isSoftToss = profile.archetype.key === 'SOFT_TOSSING_VETERAN'
+    const veloMean = isFlame ? clamp(94 + rng.gaussian(0, 1.5), 90, 99)
+      : isSoftToss ? clamp(82 + rng.gaussian(0, 1.5), 76, 86)
+      : clamp(83.5 + (stuff - 60) * 0.25 + rng.gaussian(0, 1.6), 75, 97)
+    measurables.fbVeloMph = Math.round(veloMean * 10) / 10
+    measurables.fbVeloMinMph = Math.round((veloMean - 2) * 10) / 10
+    measurables.fbVeloMaxMph = Math.round((veloMean + 2) * 10) / 10
+  }
 
   // Preferences — sum to ~40 across 8 dimensions (mean weight = 5)
   const preferences = {
@@ -275,6 +345,11 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     truePitcher,
     truePotentialHitter: potHitter,
     truePotentialPitcher: potPitcher,
+    measurables,
+    archetypeKey: profile.archetype.key,    // visible archetype label
+    bodyFrameKey: profile.frame.key,         // visible body frame
+    hiddenQuirks: profile.quirks.filter(q => q.hidden).map(q => q.key),  // revealed via deep-scout
+    visibleQuirks: profile.quirks.filter(q => !q.hidden).map(q => q.key),
     preferences,
     scoutGrades: {},
     status: 'open',
@@ -536,8 +611,12 @@ function applyFullScoutIfEligible(recruit, userSchoolId) {
   const grade = recruit.scoutGrades[userSchoolId]
   if (grade.fullScoutApplied) return
   grade.fullScoutApplied = true
-  grade.noise = 0
-  // Reveal all preferences
+  // Fully scouted leaves a small residual ±3 band. Even with full intel, you
+  // can never be 100% sure of the OVR — that's where surprise hits/busts
+  // come from. (Hidden archetype quirks are also still hidden until you
+  // spend extra "deep scout" AP.)
+  grade.noise = 3
+  // Reveal all visible preferences + visible quirks
   const allPrefs = Object.keys(recruit.preferences)
   grade.revealedPreferences = [...allPrefs]
   // Reveal suitors too
@@ -570,10 +649,41 @@ export function visibleSuitors(recruit) {
 
 /**
  * Apply scouting fog to a recruit's true rating. Returns a noisy estimate.
+ *
+ * Distribution is UNIFORM within ±noise of the true rating — equal chance
+ * of any value in the band. This was the user's explicit request: if a
+ * player's spread is 52-77, each integer in that band should be equally
+ * likely, not gaussian-centered on 64. Surprises stay surprising.
  */
 export function noisyRating(trueRating, noise, rng) {
-  const adj = rng.gaussian(0, noise / 3)   // noise = 3σ band
+  if (!noise || noise <= 0) return Math.max(20, Math.min(99, Math.round(trueRating)))
+  // Uniform integer in [-noise, +noise]
+  const adj = rng.int(-noise, +noise)
   return Math.max(20, Math.min(99, Math.round(trueRating + adj)))
+}
+
+/**
+ * Estimate the noisy potential ratings a coach sees on a recruit. Identical
+ * shape to estimateRecruitRatings but reads from truePotentialHitter /
+ * truePotentialPitcher. The noise band is widened by 1.5× because potential
+ * is harder to read than current — even a great scout misses on ceiling.
+ */
+export function estimateRecruitPotential(recruit, userSchoolId, rng) {
+  const grade = recruit.scoutGrades?.[userSchoolId]
+  const baseNoise = grade?.noise ?? 15
+  const noise = Math.round(baseNoise * 1.5)
+  if (recruit.isPitcher) {
+    const out = {}
+    for (const [k, v] of Object.entries(recruit.truePotentialPitcher || {})) {
+      out[k] = noisyRating(v, noise, rng)
+    }
+    return { type: 'pitcher', ratings: out, noise }
+  }
+  const out = {}
+  for (const [k, v] of Object.entries(recruit.truePotentialHitter || {})) {
+    out[k] = noisyRating(v, noise, rng)
+  }
+  return { type: 'hitter', ratings: out, noise }
 }
 
 // ─── Phase tracking ──────────────────────────────────────────────────────────
