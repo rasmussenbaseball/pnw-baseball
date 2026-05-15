@@ -21,7 +21,7 @@ import { annualReview, lockTravelAllocation, extendedBudgetEffects } from './bud
 import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
-import { endOfSeasonDevelopment } from './development'
+import { endOfSeasonDevelopment, tickPotentialEOY } from './development'
 import { budgetCategoryEffects } from './budget'
 import { totalAnnualTravelCost } from './travel'
 import { closePlanningWindow, resolveSummerBall, ensureSummerBallState } from './summerBall'
@@ -40,7 +40,7 @@ const NON_NAIA_LOOKUP = (() => {
 
 export const EVENT_TYPES = {
   // Deferred end-of-year work
-  PLAYER_DEVELOPMENT:       { label: 'Player development', desc: 'Offseason rating gains for everyone on the roster.' },
+  PLAYER_DEVELOPMENT:       { label: 'Summer Check-In', desc: 'Big EOY dev pass + potential drift. Combines class year, performance, coach, budget. Pairs with the in-season weekly dev that ran during the spring — half of yearly growth comes from each.' },
   BUDGET_REVIEW:            { label: 'Annual budget review', desc: 'AD reviews finances and adjusts your budget.' },
   END_OF_TERM_ACADEMICS:    { label: 'Spring term GPAs', desc: 'Spring semester grades posted, eligibility updated.' },
   MLB_DRAFT:                { label: 'MLB Draft', desc: '5–12 NAIA players selected over 20 rounds.' },
@@ -420,7 +420,14 @@ function runDevelopment(state) {
       seasonStats,
     }, state.rngSeed + state.calendar.year)
     const gain = updated._devGain || 0
+    // Potential drift — based on overperformance / underperformance. Players
+    // who crushed it gain potential; players who flopped lose some. No-play
+    // players (low PA/IP) stay flat. Skipped for injured.
+    if (!isHurt) {
+      tickPotentialEOY(updated, seasonStats, state.rngSeed + state.calendar.year)
+    }
     if (gain >= 1.5) devReport.push({ player: updated, gain })
+    if (gain <= -1.5) devReport.push({ player: updated, gain })   // include big drops too
     delete updated._devGain
     // Class advance + redshirt — pulled from old runEndOfYear path
     const REDSHIRT_GAME_LIMIT = 11
@@ -441,11 +448,17 @@ function runDevelopment(state) {
       state.players[id] = { ...updated, classYear: nextClass, seasonsUsed: updated.seasonsUsed + 1, semestersUsed: updated.semestersUsed + 2 }
     }
   }
-  devReport.sort((a, b) => b.gain - a.gain)
-  for (const r of devReport.slice(0, 3)) {
+  // Sort with biggest gainers AND biggest droppers — surface both ends
+  devReport.sort((a, b) => Math.abs(b.gain) - Math.abs(a.gain))
+  for (const r of devReport.slice(0, 5)) {
+    const isGain = r.gain > 0
     state.newsfeed.unshift({
-      id: `dev_${state.calendar.year}_${r.player.id}`, year: state.calendar.year, week: 2, type: 'AWARD',
-      headline: `${r.player.firstName} ${r.player.lastName} (${r.player.classYear}, ${r.player.primaryPosition}) developed +${r.gain.toFixed(1)} OVR.`,
+      id: `dev_${state.calendar.year}_${r.player.id}`,
+      year: state.calendar.year, week: 2,
+      type: isGain ? 'PLAYER_BOOST' : 'AWARD',
+      headline: `${r.player.firstName} ${r.player.lastName} (${r.player.classYear}, ${r.player.primaryPosition}) ${
+        isGain ? `developed +${r.gain.toFixed(1)} OVR` : `regressed ${r.gain.toFixed(1)} OVR`
+      } over the summer.`,
       payload: { playerId: r.player.id, gain: r.gain },
     })
   }

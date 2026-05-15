@@ -169,12 +169,19 @@ export default function WeeklyActions() {
       alert('That rating doesn\'t apply to this player.')
       return
     }
-    const ceiling = isPitcher
-      ? (p.hidden?.potential_pitcher?.[oneOnOneRating] ?? 99)
-      : (p.hidden?.potential_hitter?.[oneOnOneRating] ?? 99)
+    // Potential is no longer a hard CEILING — it's a SPEED multiplier for
+    // dev. High-potential players get a bigger bump per session; low-potential
+    // players grow slower but can still reach any rating if they keep working.
+    // Hard cap is just the 99 max of the rating scale.
+    const potRating = isPitcher
+      ? (p.hidden?.potential_pitcher?.[oneOnOneRating] ?? 70)
+      : (p.hidden?.potential_hitter?.[oneOnOneRating] ?? 70)
+    // Potential 70 = 1.0× rate, 99 = ~1.4×, 50 = ~0.7×, 30 = ~0.4×
+    const potMult = Math.max(0.35, Math.min(1.5, potRating / 70))
     const before = block[oneOnOneRating]
-    const actualBump = Math.min(ONE_ON_ONE_BUMP, Math.max(0, ceiling - before))
-    if (actualBump <= 0) { alert('Player has already maxed this rating against their potential.'); return }
+    const baseBump = ONE_ON_ONE_BUMP * potMult
+    const actualBump = Math.min(baseBump, Math.max(0, 99 - before))
+    if (actualBump <= 0) { alert('Player is already at 99 in this rating.'); return }
     block[oneOnOneRating] = Math.round((before + actualBump) * 10) / 10
     // Track as a permanent bump so the rating shows ↑ on Roster + PlayerDetail
     if (!save.permanentBumps) save.permanentBumps = []
@@ -658,13 +665,17 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
     : isPitcher
       ? Object.keys(player.pitcher || {}).filter(k => !k.startsWith('velocity'))
       : Object.keys(player.hitter || {})
-  const ceiling = !player ? null
+  const potRating = !player ? null
     : isPitcher
-      ? (player.hidden?.potential_pitcher?.[rating] ?? null)
-      : (player.hidden?.potential_hitter?.[rating] ?? null)
+      ? (player.hidden?.potential_pitcher?.[rating] ?? 70)
+      : (player.hidden?.potential_hitter?.[rating] ?? 70)
   const current = !player || !rating ? null
     : isPitcher ? player.pitcher?.[rating] : player.hitter?.[rating]
-  const headroom = ceiling != null && current != null ? Math.max(0, ceiling - current) : null
+  // Potential as SPEED multiplier (no ceiling). 70 = 1.0×, 99 = 1.4×, 30 = 0.4×.
+  const potMult = potRating != null ? Math.max(0.35, Math.min(1.5, potRating / 70)) : null
+  const expectedBump = potMult != null
+    ? Math.min(bump * potMult, current != null ? Math.max(0, 99 - current) : bump)
+    : null
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
@@ -672,9 +683,10 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
         <div>
           <div className="text-sm font-semibold text-pnw-slate">📈 1-on-1 Development</div>
           <div className="text-xs text-gray-500 max-w-xl">
-            Pull a player aside and grind on one specific rating. Costs {cost} AP and bumps
-            the selected rating by +{bump} (or up to their potential ceiling, whichever is lower).
-            Once per week.
+            Pull a player aside and grind on one specific rating. Costs {cost} AP. The bump
+            scales with the player\'s potential in that rating — high-potential guys grow
+            faster, low-potential guys grow slower. Potential is NOT a ceiling; everyone
+            can eventually reach 99 if you keep developing them.
           </div>
         </div>
         <button
@@ -716,11 +728,12 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
           </select>
           {player && rating && (
             <div className="text-[11px] text-gray-500 mt-1">
-              Current <strong>{current}</strong> · potential ceiling <strong>{ceiling}</strong>
+              Current <strong>{current}</strong> · potential <strong>{potRating}</strong>
+              {' (' + (potMult >= 1.2 ? 'fast grower' : potMult >= 0.9 ? 'normal' : 'slow grower') + ')'}
               {' · '}
-              {headroom > 0
-                ? <span className="text-green-700">+{Math.min(bump, headroom)} headroom this session</span>
-                : <span className="text-red-700">maxed against potential</span>}
+              {current < 99
+                ? <span className="text-green-700">+{expectedBump.toFixed(1)} expected this session</span>
+                : <span className="text-amber-700">already at 99</span>}
             </div>
           )}
         </div>

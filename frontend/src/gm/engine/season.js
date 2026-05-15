@@ -10,7 +10,7 @@
 import { simGame, fastSimGame, defaultLineup } from './sim'
 import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups'
 import { computeFromSeason, seedFromPear } from './rankings'
-import { applyScrimmageDev } from './development'
+import { applyScrimmageDev, applyWeeklyDevelopment } from './development'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
@@ -283,6 +283,34 @@ export function simWeek(state, schedule, ratings) {
         result: userWon ? 'W' : 'L',
         score: `${Math.max(result.homeRuns, result.awayRuns)}-${Math.min(result.homeRuns, result.awayRuns)}`,
       })
+    }
+  }
+
+  // ── In-season weekly development pass ────────────────────────────────
+  // After all games are simmed for the week, run a small dev pass for every
+  // user player whose season stats moved this week. Stats-driven — no
+  // randomness. (See development.js applyWeeklyDevelopment for the rule
+  // book.) Only fires for REGULAR-SEASON + POSTSEASON games, not fall
+  // scrimmages (which have their own scrimmage-dev path).
+  if (gamesPlayed > 0 && state.calendar?.mode !== 'OFFSEASON') {
+    const userTeam = state.teams[userSchoolId]
+    if (userTeam) {
+      for (const pid of userTeam.rosterPlayerIds) {
+        const player = state.players[pid]
+        if (!player) continue
+        // Skip graduating / cut / dismissed
+        if (player.eligibilityStatus === 'graduated'
+          || player.eligibilityStatus === 'cut'
+          || player.eligibilityStatus === 'dismissed') continue
+        // Skip injured (already excluded from lineup)
+        if ((player.injury?.weeksRemaining || 0) > 0) continue
+        const seasonStats = state.playerStats?.[player.isPitcher ? `p_${pid}` : `b_${pid}`]
+        // Only call dev if they actually have stats this season
+        if (!seasonStats) continue
+        if (player.isPitcher && (seasonStats.ip || 0) < 5) continue
+        if (!player.isPitcher && (seasonStats.ab || 0) < 25) continue
+        applyWeeklyDevelopment(player, seasonStats)
+      }
     }
   }
 

@@ -126,18 +126,53 @@ function assignRegionalRankings(pool, rng) {
     if (r.pool !== 'HS_SR') continue
     const region = STATE_TO_REGION[r.hometown.state]
     if (!region) continue
+
+    // Tool-weighted score. Mental stats (composure, durability) only count
+    // HALF as much as visible tools — a 99-composure / 30-power slap hitter
+    // shouldn't outrank a 75 power / 75 contact masher. Also computes the
+    // player's BEST tool, used to gate ranking entirely.
+    let toolScore, potScore, bestToolCurrent, bestToolPot
+    if (r.isPitcher) {
+      const b = r.truePitcher
+      const pb = r.truePotentialPitcher || b
+      // Stuff weighted heavier — it's the headline tool for pitchers
+      toolScore = (b.stuff * 1.6 + b.control + b.command + b.stamina +
+                   b.vs_l + b.vs_r + b.composure * 0.5 + b.durability * 0.5) / 7.6
+      potScore = (pb.stuff * 1.6 + pb.control + pb.command + pb.stamina +
+                  pb.vs_l + pb.vs_r + pb.composure * 0.5 + pb.durability * 0.5) / 7.6
+      bestToolCurrent = Math.max(b.stuff, b.control, b.command, b.stamina, b.vs_l, b.vs_r)
+      bestToolPot = Math.max(pb.stuff, pb.control, pb.command, pb.stamina, pb.vs_l, pb.vs_r)
+    } else {
+      const b = r.trueHitter
+      const pb = r.truePotentialHitter || b
+      // Tools: contact, power, discipline, speed, fielding, arm.
+      // Mental: composure, durability — half weight.
+      toolScore = (b.contact_l + b.contact_r + b.power_l + b.power_r +
+                   b.discipline + b.speed + b.fielding + b.arm +
+                   b.composure * 0.5 + b.durability * 0.5) / 9
+      potScore = (pb.contact_l + pb.contact_r + pb.power_l + pb.power_r +
+                  pb.discipline + pb.speed + pb.fielding + pb.arm +
+                  pb.composure * 0.5 + pb.durability * 0.5) / 9
+      // Best tool — max of contact/power/speed/fielding/arm (not discipline,
+      // which is more of a profile thing than a "wow" tool).
+      bestToolCurrent = Math.max(b.contact_l, b.contact_r, b.power_l, b.power_r,
+                                 b.speed, b.fielding, b.arm)
+      bestToolPot = Math.max(pb.contact_l, pb.contact_r, pb.power_l, pb.power_r,
+                             pb.speed, pb.fielding, pb.arm)
+    }
+
+    // Regional rankings REQUIRE a standout tool — top-25 players should
+    // always have at least ONE plus skill that scouts notice. Otherwise the
+    // #1 PNW recruit could be a 5'6 grinder with no headline trait.
+    const STANDOUT_THRESHOLD = 75
+    if (bestToolCurrent < STANDOUT_THRESHOLD && bestToolPot < STANDOUT_THRESHOLD + 5) {
+      continue   // unranked — solid all-around guy, no standout
+    }
+
     if (!byRegion[region]) byRegion[region] = []
-    // Score: weighted true OVR + POT, plus noise. Noise stddev = 4 means
-    // a slightly worse OVR/POT can sneak ahead of a slightly better one —
-    // but elites still dominate the top.
-    const block = r.isPitcher ? r.truePitcher : r.trueHitter
-    const potBlock = r.isPitcher ? r.truePotentialPitcher : r.truePotentialHitter
-    const ovrAvg = Object.values(block).reduce((s, v) => s + v, 0) / Object.keys(block).length
-    const potAvg = potBlock
-      ? Object.values(potBlock).reduce((s, v) => s + v, 0) / Object.keys(potBlock).length
-      : ovrAvg
-    const noise = rng.gaussian(0, 4)
-    const score = ovrAvg * 0.55 + potAvg * 0.45 + noise
+    const noise = rng.gaussian(0, 3.5)
+    // Final score: 55% current tool score + 45% potential tool score
+    const score = toolScore * 0.55 + potScore * 0.45 + noise
     byRegion[region].push({ recruit: r, score })
   }
   for (const region of Object.keys(byRegion)) {
@@ -311,11 +346,11 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   }
   if (!isPitcher) {
     const sp = trueHitter.speed
-    // 60-yard: speed 99 → 6.4, speed 70 → 7.0, speed 50 → 7.4, speed 30 → 7.8.
-    // HS recruits stay around the same time in college (per Nate), so we don't
-    // apply a separate "college bump" here — the recruit's speed rating
-    // already reflects what they'll run at.
-    const sixtyBase = 7.4 - (sp - 50) * 0.020
+    // 60-yard recalibrated (May 2026): elite 6.4, AVERAGE 7.0, slow 7.3+.
+    // Formula: speed 50 → 7.0 (avg), speed 99 → 6.41 (elite), speed 30 → 7.24.
+    // HS recruits don't gain much in college so the rating reflects the
+    // college time directly.
+    const sixtyBase = 7.0 - (sp - 50) * 0.012
     measurables.sixtyYardSec = Math.round((sixtyBase + rng.gaussian(0, 0.06)) * 100) / 100
 
     // Max EV: power-driven, with size + pool multipliers. Targets:

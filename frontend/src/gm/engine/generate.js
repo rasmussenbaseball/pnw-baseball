@@ -400,8 +400,8 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
   const sizeBoost = Math.max(0, (ht - 70) * 0.4)
   if (isHitter) {
     const sp = hitter.speed
-    // 60-yard: speed 99 → 6.4, speed 70 → 7.0, speed 50 → 7.4 (elite 6.4, avg 7.0)
-    measurables.sixtyYardSec = Math.round((7.4 - (sp - 50) * 0.020 + rng.gaussian(0, 0.06)) * 100) / 100
+    // 60-yard: speed 50 → 7.0 (average), speed 99 → 6.41 (elite), speed 30 → 7.24.
+    measurables.sixtyYardSec = Math.round((7.0 - (sp - 50) * 0.012 + rng.gaussian(0, 0.06)) * 100) / 100
     if (slot.position === 'C') {
       const arm = hitter.arm
       measurables.popTimeSec = Math.round((2.25 - (arm - 50) * 0.009 + rng.gaussian(0, 0.04)) * 100) / 100
