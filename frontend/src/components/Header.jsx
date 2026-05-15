@@ -49,8 +49,6 @@ const NAV = [
         desc: 'Trends, opponent scouting, and PDFs in one workspace' },
       { to: '/juco-tracker', label: 'JUCO Tracker', desc: 'Track JUCO transfer talent' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
-      { to: '/team-scouting', label: 'Team Scouting', desc: 'Team tendencies & reports', locked: true },
-      { to: '/enhanced-scouting', label: 'Enhanced Scouting', desc: 'Advanced scouting tools', locked: true },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
     ],
   },

@@ -134,7 +134,6 @@ import BulkPlayerCards from './pages/BulkPlayerCards'
 import PortalPDFs from './pages/PortalPDFs'
 import BullpenSheet from './pages/BullpenSheet'
 import CatcherCards from './pages/CatcherCards'
-import EnhancedScouting from './pages/EnhancedScouting'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'
@@ -239,9 +238,12 @@ export default function App() {
           {/* Coaching (auth required) */}
           <Route path="/juco-tracker" element={<RequireAuth><JucoTracker /></RequireAuth>} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
-          <Route path="/team-scouting" element={<RequireAuth><TeamScouting /></RequireAuth>} />
-          <Route path="/enhanced-scouting" element={<RequireAuth><EnhancedScouting /></RequireAuth>} />
           <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
+
+          {/* Team Scouting + Enhanced Scouting moved into the portal; redirect
+              old top-level URLs so any external links and bookmarks still work. */}
+          <Route path="/team-scouting" element={<Navigate to="/portal/team-scouting" replace />} />
+          <Route path="/enhanced-scouting" element={<Navigate to="/portal" replace />} />
 
           {/* Old URLs → redirect into the portal so bookmarks still work */}
           <Route path="/opponent-trends"
