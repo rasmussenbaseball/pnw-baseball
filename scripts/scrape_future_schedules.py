@@ -132,6 +132,7 @@ SEED_PREFIX_RE = re.compile(r"^[NSEW][1-4]\s+", re.IGNORECASE)
 def clean_opponent_name(name):
     """
     Strip prefixes that aren't part of the canonical team name:
+      - "vs " / "vs. " / "at " / "at. " — location indicator
       - "#5 " or "#12 " — national/conference ranking
       - "E4 ", "N3 ", "W2 ", "S1 " — NWAC playoff seed prefixes
       - "(DH)" suffix — doubleheader marker
@@ -139,7 +140,8 @@ def clean_opponent_name(name):
     """
     if not name:
         return name
-    cleaned = re.sub(r'^#\d+\s+', '', name).strip()
+    cleaned = re.sub(r'^(vs|at)\.?\s+', '', name, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r'^#\d+\s+', '', cleaned).strip()
     cleaned = SEED_PREFIX_RE.sub('', cleaned).strip()
     cleaned = re.sub(r'\s*\(DH\)\s*', '', cleaned).strip()
     return cleaned
@@ -618,13 +620,13 @@ def parse_presto_future_games(html, team_db_name, season_year, today, team_map,
                                 "january", "exhibition"):
             continue
 
-        # Detect home/away
+        # Detect home/away (handles "at ", "at. ", "vs ", "vs. ")
         location = "home"
-        if opponent.lower().startswith("at "):
-            location = "away"
-            opponent = opponent[3:].strip()
-        elif opponent.lower().startswith("vs "):
-            opponent = opponent[3:].strip()
+        loc_match = re.match(r'^(at|vs)\.?\s+', opponent, re.IGNORECASE)
+        if loc_match:
+            if loc_match.group(1).lower() == "at":
+                location = "away"
+            opponent = opponent[loc_match.end():].strip()
 
         # Skip TBD bracket placeholders like "W4 Clark/S3 Umpqua"
         if is_tbd_opponent(opponent):
