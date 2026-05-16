@@ -15,6 +15,7 @@ import {
 import { totalAnnualTravelCost } from '../../gm/engine/travel'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { optionalHireBoosts } from '../../gm/engine/coaches'
+import GMShell from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -167,11 +168,12 @@ export default function Budget() {
   const effects = budgetCategoryEffects(budget)
   const ext = extendedBudgetEffects(budget)
 
+  const userSchool = save.schools[save.userSchoolId]
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-4">
-        <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-        <h1 className="text-3xl font-bold text-pnw-slate mt-1">Annual Budget</h1>
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">ANNUAL BUDGET</h1>
         <p className="text-sm text-gray-600">
           Distribute <strong>${(total / 1000).toFixed(0)}K</strong> across categories.
           {boosts.budgetBonus > 0 && (
@@ -273,6 +275,7 @@ export default function Budget() {
         })}
       </div>
     </div>
+    </GMShell>
   )
 }
 

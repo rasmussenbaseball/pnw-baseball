@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { seedFromPear, computeFromSeason } from '../../gm/engine/rankings'
 import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell from '../../gm/components/GMShell'
 
 const PILLAR_LABELS = {
   overall_rating: 'Overall',
@@ -58,12 +59,13 @@ export default function Rankings() {
       })
   }, [ratings, sortPillar])
 
+  const userSchool = save.schools[save.userSchoolId]
   return (
-    <div className="max-w-6xl mx-auto py-8">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-6xl mx-auto">
       <div className="mb-6">
-        <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-        <h1 className="text-3xl font-bold text-pnw-slate mt-1">National Rankings</h1>
-        <p className="text-sm text-gray-600">All NAIA programs ranked. SOS rank = 1 means hardest schedule.</p>
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">NATIONAL RANKINGS</h1>
+        <p className="font-pixel text-base text-[#a8a8c8]">All NAIA programs ranked. SOS rank = 1 means hardest schedule.</p>
       </div>
 
       <div className="flex justify-between items-center mb-3">
@@ -120,6 +122,7 @@ export default function Rankings() {
         </table>
       </div>
     </div>
+    </GMShell>
   )
 }
 

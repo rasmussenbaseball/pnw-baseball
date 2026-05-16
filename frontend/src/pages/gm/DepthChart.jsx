@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall } from '../../gm/engine/playerRating'
 import { displayPosition } from '../../gm/engine/format'
+import GMShell from '../../gm/components/GMShell'
 
 const POSITION_ORDER = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']
 
@@ -55,12 +56,12 @@ export default function DepthChart() {
   const pitchingStaff = useMemo(() => buildPitchingStaff(pitchers), [pitchers])
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-4">
+    <GMShell schoolName={school?.name} schoolColors={school?.colors}>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-4 flex justify-between items-start">
         <div>
-          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-          <h1 className="text-3xl font-bold text-pnw-slate mt-1">{school.name} — Depth Chart</h1>
-          <p className="text-sm text-gray-600">Auto-assigned from primary position + ratings.</p>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">DEPTH CHART</h1>
+          <p className="font-pixel text-base text-[#a8a8c8]">Auto-assigned from primary position + ratings.</p>
         </div>
         <div className="flex gap-1 border border-gray-200 rounded-lg overflow-hidden">
           <button
@@ -78,6 +79,7 @@ export default function DepthChart() {
         ? <LineupView hittersByPos={hittersByPos} slot={slot} />
         : <PitchingView staff={pitchingStaff} slot={slot} />}
     </div>
+    </GMShell>
   )
 }
 

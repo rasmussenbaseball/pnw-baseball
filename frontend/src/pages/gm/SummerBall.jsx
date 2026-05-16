@@ -25,6 +25,7 @@ import {
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
+import GMShell from '../../gm/components/GMShell'
 
 export default function SummerBall() {
   const { user } = useAuth()
@@ -83,12 +84,13 @@ export default function SummerBall() {
     saveDynasty(save); setSave({ ...save })
   }
 
+  const userSchool = save.schools[save.userSchoolId]
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
-      <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-      <h1 className="text-3xl font-bold text-pnw-slate mt-1">☀️ Summer Ball</h1>
-      <p className="text-sm text-gray-600">
-        Send players to wood-bat summer leagues. Reps, exposure, draft buzz — but real injury + poach risk too.
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-5xl mx-auto">
+      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">☀️ SUMMER BALL</h1>
+      <p className="font-pixel text-base text-[#a8a8c8] mb-3">
+        Send players to wood-bat summer leagues. Reps, exposure, draft buzz, real injury + poach risk.
       </p>
 
       {/* Status banner */}
@@ -150,6 +152,7 @@ export default function SummerBall() {
         />
       )}
     </div>
+    </GMShell>
   )
 }
 

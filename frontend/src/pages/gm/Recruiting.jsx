@@ -17,6 +17,7 @@ import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions
 import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import { getArchetype, getQuirk, formatHeight } from '../../gm/engine/playerArchetypes'
+import GMShell from '../../gm/components/GMShell'
 
 const POOL_LABELS = {
   HS_SR: 'HS Senior',
@@ -268,7 +269,8 @@ export default function Recruiting() {
   const campHeldThisYear = save.prospectCamp?.year === save.calendar.year
 
   return (
-    <div className="max-w-6xl mx-auto py-8">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-6xl mx-auto">
       {isWk4Tutorial && (
         <Wk4Tutorial save={save} apBaseline={apBaseline} />
       )}
@@ -446,6 +448,7 @@ export default function Recruiting() {
       )}
 
     </div>
+    </GMShell>
   )
 }
 

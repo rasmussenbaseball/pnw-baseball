@@ -19,6 +19,7 @@ import { simWeek, advanceWeek } from '../../gm/engine/season'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -171,14 +172,15 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
     return future.length ? Math.min(...future) : null
   }, [save, cal])
 
+  const userSchool = save.schools[save.userSchoolId]
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
-      <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-      <h1 className="text-3xl font-bold text-pnw-slate mt-1 mb-1">Play</h1>
-      <p className="text-sm text-gray-600 mb-6">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-5xl mx-auto">
+      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">PLAY</h1>
+      <p className="font-pixel text-base text-[#a8a8c8] mb-6">
         {cal.mode === 'SEASON'
-          ? `Season Week ${cal.seasonWeek} — set lineups, enter games, or auto-sim.`
-          : 'Offseason — schedule scrimmages and set fall lineups to drive scrimmage development.'}
+          ? `Season Week ${cal.seasonWeek}, set lineups, enter games, or auto-sim.`
+          : 'Offseason, schedule scrimmages and set fall lineups to drive scrimmage development.'}
       </p>
 
       {unplayed.length === 0 && played.length === 0 && (
@@ -247,6 +249,7 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
         </div>
       )}
     </div>
+    </GMShell>
   )
 }
 

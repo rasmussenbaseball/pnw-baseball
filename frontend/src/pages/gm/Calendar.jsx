@@ -20,6 +20,7 @@ import {
   shortDateLabel, seasonWeekForWeek, modeForWeek, dateForWeek,
 } from '../../gm/engine/gameYear'
 import { WEEK_EVENT_SCHEDULE, EVENT_TYPES } from '../../gm/engine/events'
+import GMShell from '../../gm/components/GMShell'
 
 const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -39,6 +40,7 @@ export default function Calendar() {
 
   const cal = save.calendar
   const userSchoolId = save.userSchoolId
+  const userSchool = save.schools[userSchoolId]
   const currentWeek = cal.weekOfYear ?? 1
   const year = cal.year
 
@@ -75,11 +77,11 @@ export default function Calendar() {
   }, [year])
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4">
-      <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-end mt-1 mb-4">
         <div>
-          <h1 className="text-3xl font-bold text-pnw-slate">Calendar — {year} Cycle</h1>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white">CALENDAR · {year}</h1>
           <p className="text-sm text-gray-600">
             Full 52-week year. Currently at Week {currentWeek} · {phaseForWeek(currentWeek).label}.
           </p>
@@ -112,6 +114,7 @@ export default function Calendar() {
         ))}
       </div>
     </div>
+    </GMShell>
   )
 }
 

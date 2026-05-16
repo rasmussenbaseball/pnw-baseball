@@ -430,6 +430,23 @@ export function runPostseason(state) {
 export function runEndOfYear(state) {
   // Archive what the deferred events will need
   state._archivedPlayerStats = state.playerStats || {}
+  // Multi-year stats archive — powers the Career view on the Stats page.
+  // state.statsArchive[year] holds the full playerStats snapshot for that
+  // year's spring season. Keyed by the YEAR the spring took place in
+  // (state.calendar.year before it ticks).
+  if (!state.statsArchive) state.statsArchive = {}
+  const archivedYear = state.calendar?.year
+  if (archivedYear != null && state.playerStats) {
+    state.statsArchive[archivedYear] = state.playerStats
+    // Also archive team W-L for the year so career views can show context.
+    if (!state.teamRecordArchive) state.teamRecordArchive = {}
+    state.teamRecordArchive[archivedYear] = {}
+    for (const [tid, team] of Object.entries(state.teams)) {
+      state.teamRecordArchive[archivedYear][tid] = {
+        wins: team.wins, losses: team.losses, runDiff: team.runDiff,
+      }
+    }
+  }
   const userTeam = state.teams[state.userSchoolId]
   if (userTeam) {
     userTeam._lastSeason = {

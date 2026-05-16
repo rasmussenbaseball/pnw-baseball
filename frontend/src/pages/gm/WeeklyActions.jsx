@@ -11,6 +11,7 @@ import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
 import { applyMeetingBoost, ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { playerOverall } from '../../gm/engine/playerRating'
+import GMShell from '../../gm/components/GMShell'
 
 const STUDY_HALL_AP = 2
 const STUDY_HALL_BONUS = 0.02
@@ -267,12 +268,12 @@ export default function WeeklyActions() {
   const fundEstimate = fundraise(FUNDRAISE_AP, userHC.motivator, userSchool.programHistory)
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex justify-between items-start">
         <div>
-          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-          <h1 className="text-3xl font-bold text-pnw-slate mt-1">Weekly Actions</h1>
-          <p className="text-sm text-gray-600">Spend your AP on program-wide actions outside of recruiting individual players.</p>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">WEEKLY ACTIONS</h1>
+          <p className="font-pixel text-base text-[#a8a8c8]">Spend your AP on program-wide actions outside of individual recruiting.</p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-pnw-green">{ap} AP</div>
@@ -460,6 +461,7 @@ export default function WeeklyActions() {
         </div>
       )}
     </div>
+    </GMShell>
   )
 }
 

@@ -3,6 +3,7 @@ import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell from '../../gm/components/GMShell'
 
 export default function Standings() {
   const { user } = useAuth()
@@ -29,10 +30,11 @@ export default function Standings() {
     })
 
   return (
-    <div className="max-w-5xl mx-auto py-8">
+    <GMShell schoolName={userSchool.name} schoolColors={userSchool.colors}>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-6">
-        <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-        <h1 className="text-3xl font-bold text-pnw-slate mt-1">{userConf.name} Standings</h1>
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">STANDINGS</h1>
+        <p className="font-pixel text-base text-[#a8a8c8]">{userConf.name}</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -67,5 +69,6 @@ export default function Standings() {
         </table>
       </div>
     </div>
+    </GMShell>
   )
 }

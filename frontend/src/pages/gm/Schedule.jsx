@@ -18,6 +18,7 @@ import {
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
 import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
 import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -147,7 +148,8 @@ export default function Schedule() {
   const scheduledWeekNums = Object.keys(byWeek).map(n => parseInt(n, 10)).sort((a, b) => a - b)
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
+    <GMShell schoolName={userSchool.name} schoolColors={userSchool.colors}>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-4 flex justify-between items-start">
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
@@ -421,6 +423,7 @@ export default function Schedule() {
         />
       )}
     </div>
+    </GMShell>
   )
 }
 

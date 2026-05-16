@@ -12,6 +12,7 @@ import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import AttrTooltip from '../../gm/components/AttrTooltip'
+import GMShell from '../../gm/components/GMShell'
 
 const INTERVIEW_AP_COST = 20
 const FIRE_AP_COST = 20
@@ -172,11 +173,11 @@ export default function Coaches() {
   const totalPayroll = (headCoach.salary || 0) + realAssistants.reduce((s, c) => s + (c.salary || 0), 0)
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-6 flex justify-between items-start">
         <div>
-          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-          <h1 className="text-3xl font-bold text-pnw-slate mt-1">Coaching Staff</h1>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">COACHING STAFF</h1>
           <p className="text-sm text-gray-600">
             {realAssistants.length + 1} coach{realAssistants.length + 1 === 1 ? '' : 'es'}
             {assistants.length > realAssistants.length && ` · ${assistants.length - realAssistants.length} support staff`}
@@ -392,6 +393,7 @@ export default function Coaches() {
         />
       )}
     </div>
+    </GMShell>
   )
 }
 

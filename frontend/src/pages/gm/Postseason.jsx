@@ -3,6 +3,7 @@ import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell from '../../gm/components/GMShell'
 
 export default function Postseason() {
   const { user } = useAuth()
@@ -12,13 +13,15 @@ export default function Postseason() {
 
   const save = useMemo(() => loadDynasty(userId, slot), [userId, slot])
   if (!save) return <Navigate to="/gm" replace />
+  const userSchool = save.schools[save.userSchoolId]
   if (!save.postseason) {
     return (
-      <div className="max-w-3xl mx-auto py-8">
-        <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-        <h1 className="text-3xl font-bold text-pnw-slate mt-1">Postseason</h1>
-        <p className="text-gray-600 mt-3">No postseason results yet. Finish a season to see conference tournaments and the NAIA Opening Round.</p>
+      <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+      <div className="max-w-3xl mx-auto">
+        <h1 className="font-pixel-display text-xl tracking-widest text-white">POSTSEASON</h1>
+        <p className="font-pixel text-base text-[#a8a8c8] mt-3">No postseason results yet. Finish a season to see conference tournaments and the NAIA Opening Round.</p>
       </div>
+      </GMShell>
     )
   }
 
@@ -27,10 +30,10 @@ export default function Postseason() {
   const userTournament = ps.tournaments.find(t => t.conferenceId === userConfId)
 
   return (
-    <div className="max-w-5xl mx-auto py-8">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-6">
-        <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
-        <h1 className="text-3xl font-bold text-pnw-slate mt-1">{ps.year} Postseason</h1>
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} POSTSEASON</h1>
         <p className="text-sm text-gray-600">
           {ps.userChamp ? '🏆 You won your conference!' : ps.userQualified ? '✓ You qualified for your conference tournament.' : '✗ You missed the conference tournament.'}
         </p>
@@ -122,6 +125,7 @@ export default function Postseason() {
         <NationalSection ps={ps} save={save} />
       )}
     </div>
+    </GMShell>
   )
 }
 
