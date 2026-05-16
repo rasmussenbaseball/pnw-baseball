@@ -152,7 +152,7 @@ export default function Dashboard() {
         save.newsfeed.unshift({
           id: `auto_${save.calendar.year}_${save.calendar.weekOfYear}_${Math.random().toString(36).slice(2, 5)}`,
           year: save.calendar.year, week: save.calendar.weekOfYear, type: 'AWARD',
-          headline: `🤖 Auto: ${auto.actionsTaken.join(' · ')}`,
+          headline: `Auto: ${auto.actionsTaken.join(' · ')}`,
         })
       }
       saveDynasty(save)
@@ -180,7 +180,7 @@ export default function Dashboard() {
         if (!ok) return
       }
     }
-    // Any unplayed user games this week (season OR fall scrim) → pop the
+    // Any unplayed user games this week (season OR fall scrim) pop the
     // game-week modal so the user explicitly chooses "Enter Game" (live
     // PA-by-PA) or "Sim Games" (auto).
     if (thisWeekUnplayed.length > 0) {
@@ -326,7 +326,7 @@ export default function Dashboard() {
               <TeamLogo school={school} size={88} />
             </div>
             <div className="min-w-0">
-              <Link to="/gm" className="text-[10px] opacity-60 hover:underline tracking-wider uppercase">← Dynasties</Link>
+              <Link to="/gm" className="text-[10px] opacity-60 hover:underline tracking-wider uppercase">Dynasties</Link>
               <div className="text-4xl font-extrabold leading-none tracking-tight mt-1 truncate">{school.name}</div>
               <div className="text-xs opacity-80 mt-1.5">{school.city}, {school.state} · {conf.name}</div>
               <div className="flex items-center gap-3 mt-2.5">
@@ -352,7 +352,7 @@ export default function Dashboard() {
                 <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
                 <div className="text-4xl font-extrabold mt-0.5 leading-none">
                   {weekOfYear >= 1 && weekOfYear <= 3
-                    ? <span className="text-lg font-bold opacity-70">🔒 Locked</span>
+                    ? <span className="text-lg font-bold opacity-70"> Locked</span>
                     : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
                 </div>
               </div>
@@ -369,7 +369,7 @@ export default function Dashboard() {
                   ? 'Auto mode is ON — required actions, AP, and recruiting are handled for you each week. Click to switch to manual.'
                   : 'Manual mode — you make every weekly decision. Click to enable Auto.'}
               >
-                <span>{autoOn ? '🤖 AUTO' : '👤 MANUAL'}</span>
+                <span>{autoOn ? ' AUTO' : ' MANUAL'}</span>
               </button>
             </div>
           </div>
@@ -421,7 +421,7 @@ export default function Dashboard() {
       {autoOn && (
         <div className="bg-emerald-950/40 border border-emerald-400/40 rounded-xl p-2 mb-4 text-xs text-emerald-200 flex justify-between items-center">
           <span>
-            <strong className="text-emerald-300">🤖 Auto mode is ON.</strong>{' '}
+            <strong className="text-emerald-300"> Auto mode is ON.</strong>{' '}
             Required actions, AP, prospect-camp invites, and recruiting are handled for you each week.
             You can still open any page and override decisions manually.
           </span>
@@ -453,14 +453,14 @@ export default function Dashboard() {
       {weekOfYear === 14 && !autoOn && (
         <div className="bg-pnw-cream border-l-4 border-pnw-green text-pnw-slate p-4 rounded-r mb-4 flex justify-between items-center">
           <div>
-            <div className="font-bold">☀️ Summer ball planning is open</div>
+            <div className="font-bold"> Summer ball planning is open</div>
             <div className="text-xs mt-1">
               Decide which players will play summer ball next summer. Free to add / remove now;
               once your season ends in spring, you can only REMOVE.
             </div>
           </div>
           <Link to={`/gm/summer?slot=${slot}`} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold shrink-0 ml-3 hover:opacity-90">
-            Plan summer →
+            Plan summer 
           </Link>
         </div>
       )}
@@ -473,12 +473,12 @@ export default function Dashboard() {
               Week {weekOfYear} — {currentPhase.label}
             </div>
             <div className="text-sm font-semibold text-amber-900">
-              ⚠ Required: {requiredAction.label}
+               Required: {requiredAction.label}
             </div>
             <div className="text-xs text-amber-800 mt-1 leading-snug">{requiredAction.blurb}</div>
           </div>
           <Link to={`${requiredAction.route}?slot=${slot}`} className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
-            Take care of it →
+            Take care of it 
           </Link>
         </div>
       )}
@@ -502,12 +502,12 @@ export default function Dashboard() {
             Fix it before you can sim.
           </div>
           <Link to={`/gm/schedule?slot=${slot}`} className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs font-semibold hover:opacity-90">
-            Go to Schedule →
+            Go to Schedule 
           </Link>
         </div>
       )}
 
-      {/* Sim action bar — keep `busy` as the literal busy spinner state.
+      {/* Sim action bar — keep `busy`as the literal busy spinner state.
           Block separately so the button shows "Locked" instead of "Simming…"
           when the phase-gate is unsatisfied. */}
       <SimActionBar
@@ -548,14 +548,14 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* LEFT column — staff + budget */}
         <div className="space-y-4">
-          <Panel title="Coaching Staff" actionTo={`/gm/coaches?slot=${slot}`} actionLabel="Manage →">
+          <Panel title="Coaching Staff" actionTo={`/gm/coaches?slot=${slot}`} actionLabel="Manage ">
             <CoachingStaffCard headCoach={headCoach} assistants={assistants} totalPayroll={totalCoachPayroll} />
           </Panel>
 
           {/* Up Next — next 3 user games visualized as cards */}
           <UpcomingGames save={save} slot={slot} />
 
-          <Panel title="Scholarships (Next Year)" actionTo={`/gm/budget?slot=${slot}`} actionLabel="Budget →">
+          <Panel title="Scholarships (Next Year)" actionTo={`/gm/budget?slot=${slot}`} actionLabel="Budget ">
             <ScholarshipBar snapshot={scholarship} />
             <div className="text-xs mt-3 grid grid-cols-2 gap-x-2 gap-y-1">
               <div className="text-gray-500">Total pool</div>
@@ -587,7 +587,7 @@ export default function Dashboard() {
               have been played. Hidden if there's nothing to show yet. */}
           <TeamStatsPanel save={save} slot={slot} />
 
-          <Panel title="Top Players" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Full roster →">
+          <Panel title="Top Players" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Full roster ">
             <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 mt-0.5">Top Hitters</div>
             <div className="space-y-0.5 mb-4">
               {topHitters.map(({ p, ovr }) => (
@@ -647,7 +647,7 @@ function ConferenceStandingsWidget({ save, slot }) {
     <Panel
       title={`${conf.abbreviation || 'Conf'} Standings`}
       actionTo={`/gm/standings?slot=${slot}`}
-      actionLabel="Full →"
+      actionLabel="Full "
     >
       {totalGames === 0 ? (
         <div className="text-xs text-gray-400 italic">Preseason — no conference results yet.</div>
@@ -688,7 +688,7 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
     primary = (
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-lg">
-          📅
+          
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
@@ -704,7 +704,7 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
     primary = (
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-pnw-green flex items-center justify-center text-lg">
-          ⚾
+          
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
@@ -733,15 +733,15 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
           {busy
             ? 'Simming…'
             : blocked
-              ? '🔒 Complete required action'
+              ? ' Complete required action'
               : inOffseason
-                ? 'Advance Week →'
+                ? 'Advance Week '
                 : thisWeekUnplayedCount > 0
                   ? `▶ Play this week (${thisWeekUnplayedCount} game${thisWeekUnplayedCount === 1 ? '' : 's'})`
-                  : 'Sim Next Week →'}
+                  : 'Sim Next Week '}
         </button>
         {recap?.kind === 'offseason' && (
-          <div className="text-[10px] opacity-70">→ Wk {recap.to} · {recap.phase}</div>
+          <div className="text-[10px] opacity-70">Wk {recap.to} · {recap.phase}</div>
         )}
         {recap?.kind === 'season' && recap.results && recap.results.length > 0 && (
           <div className="text-[10px] opacity-90 text-right">
@@ -765,7 +765,7 @@ function FocusTasks({ save, inOffseason }) {
 
   if (openSchedSlots.length > 0) {
     priorities.push({
-      text: `⚠ ${openSchedSlots.length} open weekend slot${openSchedSlots.length === 1 ? '' : 's'} on next season's schedule`,
+      text: `${openSchedSlots.length} open weekend slot${openSchedSlots.length === 1 ? '' : 's'} on next season's schedule`,
       to: `/gm/schedule?slot=${save.saveSlot}`,
       urgent: true,
     })
@@ -778,7 +778,7 @@ function FocusTasks({ save, inOffseason }) {
     if (save.calendar.offseasonWeek >= 5 && save.calendar.offseasonWeek <= 13 && !save.prospectCamp?.year) {
       const wk = save.calendar.offseasonWeek
       const text = wk === 13
-        ? '🏟 Run your prospect camp NOW (Wk 13)'
+        ? 'Run your prospect camp NOW (Wk 13)'
         : wk === 5 || wk === 10
           ? `Invite recruits to prospect camp (Wk ${wk} invite window)`
           : `Prospect camp runs Wk 13 (${13 - wk} wk away)`
@@ -801,7 +801,7 @@ function FocusTasks({ save, inOffseason }) {
           priorities.map((p, i) => (
             <div key={i} className="flex justify-between items-center">
               <span className={p.urgent ? 'text-amber-700 font-semibold' : ''}>{p.text}</span>
-              <Link to={p.to} className="text-pnw-green hover:underline shrink-0 ml-2">Go →</Link>
+              <Link to={p.to} className="text-pnw-green hover:underline shrink-0 ml-2">Go </Link>
             </div>
           ))
         )}
@@ -887,7 +887,7 @@ function UpcomingGames({ save, slot }) {
     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
       <div className="flex justify-between items-baseline mb-2">
         <h2 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider">Up Next</h2>
-        <Link to={`/gm/schedule?slot=${slot}`} className="text-xs text-pnw-green hover:underline">Full schedule →</Link>
+        <Link to={`/gm/schedule?slot=${slot}`} className="text-xs text-pnw-green hover:underline">Full schedule </Link>
       </div>
       <div className="space-y-2">
         {games.map(g => <UpcomingGameRow key={g.id} game={g} save={save} />)}
@@ -1037,8 +1037,8 @@ function KpiCard({ label, value, suffix = '', sub, accent, trend }) {
       <div className={'text-2xl font-bold mt-1 flex items-baseline gap-1 leading-none ' + (accent ? '' : 'text-pnw-slate')}>
         <span>{value}</span>
         <span className={'text-xs ' + (accent ? 'opacity-80' : 'text-gray-500')}>{suffix}</span>
-        {trend === 'up' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-green-300' : 'text-green-600')} title="trending up">↑</span>}
-        {trend === 'down' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-red-300' : 'text-red-600')} title="trending down">↓</span>}
+        {trend === 'up' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-green-300' : 'text-green-600')} title="trending up"></span>}
+        {trend === 'down' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-red-300' : 'text-red-600')} title="trending down"></span>}
       </div>
       {sub && (
         <div className={'text-[10px] mt-0.5 ' + (accent ? 'opacity-80' : 'text-gray-400')}>{sub}</div>
@@ -1075,7 +1075,7 @@ function Panel({ title, actionTo, actionLabel, children }) {
         <h2 className="text-xs font-bold text-pnw-slate uppercase tracking-widest">{title}</h2>
         {actionTo && (
           <Link to={actionTo} className="text-[11px] text-pnw-green hover:underline font-semibold">
-            {actionLabel || 'View →'}
+            {actionLabel || 'View '}
           </Link>
         )}
       </div>
@@ -1092,7 +1092,7 @@ function NavTile({ to, title, sub }) {
     >
       <div className="font-semibold text-sm flex justify-between items-center">
         <span>{title}</span>
-        <span className="text-gray-300 group-hover:text-white opacity-70 group-hover:translate-x-0.5 transition">→</span>
+        <span className="text-gray-300 group-hover:text-white opacity-70 group-hover:translate-x-0.5 transition"></span>
       </div>
       <div className="text-[11px] opacity-70 mt-0.5">{sub}</div>
     </Link>
@@ -1110,7 +1110,7 @@ function GameWeekBanner({ games, save, weekOfYear, slot, onSimNow }) {
     <div className="bg-pnw-green text-white rounded-xl p-4 mb-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 shadow-lg">
       <div className="flex-1">
         <div className="text-[11px] uppercase tracking-wider opacity-90 font-bold">
-          ⚾ Week {weekOfYear} — {games.length} Game{games.length === 1 ? '' : 's'} This Week
+           Week {weekOfYear} — {games.length} Game{games.length === 1 ? '' : 's'} This Week
         </div>
         <div className="text-base font-semibold mt-0.5">
           {isHome ? 'vs' : '@'} {oppName}
@@ -1131,7 +1131,7 @@ function GameWeekBanner({ games, save, weekOfYear, slot, onSimNow }) {
           onClick={onSimNow}
           className="px-4 py-2.5 bg-pnw-slate text-white rounded font-semibold text-sm hover:opacity-90 whitespace-nowrap"
         >
-          ⏩ Sim Game{games.length === 1 ? '' : 's'}
+          Sim Game{games.length === 1 ? '' : 's'}
         </button>
       </div>
     </div>
@@ -1152,11 +1152,11 @@ function CampInviteBanner({ save, slot, weekOfYear }) {
           You can invite up to <strong>{MAX} HS recruits</strong> to your prospect camp (held Wk 13).
           Currently invited: <strong>{invited}/{MAX}</strong>. Invitees get a small interest boost
           immediately; attendees end up ~50% scouted.
-          {isSecondWindow && <span className="block mt-1 text-amber-800 font-semibold">⚠ Last chance to invite or remove before camp.</span>}
+          {isSecondWindow && <span className="block mt-1 text-amber-800 font-semibold"> Last chance to invite or remove before camp.</span>}
         </div>
       </div>
       <Link to={`/gm/recruiting?slot=${slot}&board=INVITES`} className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
-        Manage invites →
+        Manage invites 
       </Link>
     </div>
   )
@@ -1176,7 +1176,7 @@ function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
               {games.length} game{games.length === 1 ? '' : 's'} this week
             </h3>
           </div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl leading-none"></button>
         </div>
         <div className="space-y-1 mb-4 max-h-40 overflow-y-auto text-sm">
           {games.map(g => {
@@ -1201,7 +1201,7 @@ function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
             ▶ Enter Game (live, PA-by-PA)
           </button>
           <button onClick={onSim} className="px-4 py-3 bg-pnw-slate text-white rounded text-sm font-semibold hover:opacity-90">
-            ⏩ Sim Game{games.length === 1 ? '' : 's'} (auto)
+            Sim Game{games.length === 1 ? '' : 's'} (auto)
           </button>
           <button onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700 mt-1">
             Wait, not yet
@@ -1227,7 +1227,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
   const recordDelta = diff?.recordDelta
   const isOffseason = recap.kind === 'offseason'
   const headerLabel = isOffseason
-    ? `Offseason Wk ${recap.from} → ${recap.to} — ${recap.phase}`
+    ? `Offseason Wk ${recap.from} ${recap.to} — ${recap.phase}`
     : `Game Week Recap`
 
   // Surface newsfeed events that fired this week — gives the recap real
@@ -1250,7 +1250,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
             <div className="text-[11px] uppercase tracking-wider opacity-80">Week Recap</div>
             <h3 className="text-2xl font-bold mt-0.5">{headerLabel}</h3>
           </div>
-          <button onClick={onDismiss} className="text-white/80 hover:text-white text-xl leading-none">✕</button>
+          <button onClick={onDismiss} className="text-white/80 hover:text-white text-xl leading-none"></button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -1284,7 +1284,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                     : 'bg-yellow-50 text-yellow-800'
                   return (
                     <div key={inj.playerId + inj.injury.type} className="flex items-start gap-2 p-2 bg-red-50 rounded">
-                      <span className="text-base shrink-0">🩼</span>
+                      <span className="text-base shrink-0"></span>
                       <div className="flex-1 text-sm">
                         <div className="font-medium text-pnw-slate">
                           {p.firstName} {p.lastName} — {inj.injury.label}
@@ -1299,7 +1299,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                 })}
                 {(save._newlyHealedThisWeek || []).map(h => (
                   <div key={'heal_' + h.playerId} className="flex items-start gap-2 p-2 bg-green-50 rounded">
-                    <span className="text-base shrink-0">🟢</span>
+                    <span className="text-base shrink-0"></span>
                     <div className="flex-1 text-sm text-pnw-slate">
                       {h.name} — cleared from injury, back in action
                       {h.severity && h.severity !== 'MINOR' && (
@@ -1354,7 +1354,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                   <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
                     <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
                     <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
-                      OVR {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                      OVR {c.before} {c.after} {c.delta > 0 ? '' : ''}
                     </span>
                   </div>
                 ))}
@@ -1373,7 +1373,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                   <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
                     <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
                     <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
-                      {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                      {c.before} {c.after} {c.delta > 0 ? '' : ''}
                     </span>
                   </div>
                 ))}
@@ -1390,7 +1390,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                   <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
                     <span className="text-gray-700">{c.name}</span>
                     <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
-                      {c.before.toFixed(2)} → {c.after.toFixed(2)} {c.delta > 0 ? '↑' : '↓'}
+                      {c.before.toFixed(2)} {c.after.toFixed(2)} {c.delta > 0 ? '' : ''}
                     </span>
                   </div>
                 ))}
@@ -1407,7 +1407,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
 
         <div className="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end">
           <button onClick={onDismiss} className="px-5 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
-            Got it →
+            Got it 
           </button>
         </div>
       </div>
@@ -1416,7 +1416,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
 }
 
 function NewsRow({ item }) {
-  // Type → accent + icon mapping. The headline emoji is usually enough but
+  // Type accent + icon mapping. The headline emoji is usually enough but
   // a left-bar accent ties the news visually to the kind of event.
   const accent = item.big ? 'border-pnw-green bg-pnw-cream/60'
     : item.type === 'TRANSFER_OUT' ? 'border-red-300 bg-red-50/40'
@@ -1464,10 +1464,10 @@ function ProgressModal({ title, step, pct }) {
 }
 
 function postseasonSub(ps) {
-  if (ps.userWSChamp) return '🏆 National Champ'
+  if (ps.userWSChamp) return ' National Champ'
   if (ps.userInWS) return 'World Series'
   if (ps.userInField) return 'Opening Round'
-  if (ps.userChamp) return '🏆 Conf Champ'
+  if (ps.userChamp) return ' Conf Champ'
   return 'Missed'
 }
 
@@ -1514,9 +1514,9 @@ function TeamStatsPanel({ save, slot }) {
 
   // Choose which stat bucket to display + label appropriately
   const showing = hasSpring ? spring : hasFall ? fall : null
-  const statSourceLabel = hasSpring ? 'Spring season' : hasFall ? '🍂 Fall scrimmages (no spring games yet)' : null
+  const statSourceLabel = hasSpring ? 'Spring season' : hasFall ? ' Fall scrimmages (no spring games yet)' : null
 
-  // No stats at all yet → show a "preseason preview" using ratings instead of
+  // No stats at all yet show a "preseason preview" using ratings instead of
   // hiding the panel. Gives the user something useful on the home page from
   // day one.
   if (!showing) {
@@ -1537,7 +1537,7 @@ function TeamStatsPanel({ save, slot }) {
   const sortedByK   = [...pitchersWithStats].sort((a, b) => b.k - a.k)
 
   return (
-    <Panel title="Team Stats" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster →">
+    <Panel title="Team Stats" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster ">
       <div className="text-[10px] text-gray-500 -mt-2 mb-2 italic">{statSourceLabel}</div>
       {/* Team-level numbers strip */}
       <div className="grid grid-cols-3 gap-2 mb-3 text-center">
@@ -1577,7 +1577,7 @@ function PreseasonStatsPanel({ team, players, slot }) {
   const pitchingOvr = avg(pitchers.slice(0, 5))
 
   return (
-    <Panel title="Team Preview" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster →">
+    <Panel title="Team Preview" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster ">
       <div className="text-[10px] text-gray-500 -mt-2 mb-2 italic">
         Preseason — no game stats yet. Showing projected strength from current ratings.
       </div>
@@ -1651,7 +1651,7 @@ function FallStatsBanner({ save, onOpen }) {
     <div className={'rounded-r p-4 mb-4 border-l-4 flex justify-between items-center ' +
       (viewed ? 'bg-amber-50/40 border-amber-300 text-amber-800' : 'bg-amber-50 border-amber-500 text-amber-900')}>
       <div>
-        <div className="font-bold">🍂 Fall stats report ready</div>
+        <div className="font-bold"> Fall stats report ready</div>
         <div className="text-xs mt-1">
           Your fall scrimmage stats are in — see who hit best, who pitched best, and who's pushing for the spring lineup.
           {viewed && <span className="ml-1 text-amber-700 italic">(already viewed)</span>}
@@ -1661,7 +1661,7 @@ function FallStatsBanner({ save, onOpen }) {
         onClick={onOpen}
         className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
       >
-        View report →
+        View report 
       </button>
     </div>
   )
@@ -1715,12 +1715,12 @@ function FallStatsModal({ save, onClose }) {
         <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 rounded-t-xl flex justify-between items-start">
           <div>
             <div className="text-[11px] uppercase tracking-wider opacity-80">Fall {year} Scrimmage Report</div>
-            <h3 className="text-2xl font-bold mt-0.5">🍂 How fall went</h3>
+            <h3 className="text-2xl font-bold mt-0.5"> How fall went</h3>
             <div className="text-xs opacity-90 mt-1">
               8 fall scrimmage games · stats kept separate from spring · use this to set your spring depth chart
             </div>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl leading-none"></button>
         </div>
         <div className="p-5 space-y-5">
           {/* Top hitters */}
@@ -1806,7 +1806,7 @@ function CutsBanner({ save, slot }) {
     return (
       <div className="bg-red-100 border-2 border-red-700 text-red-900 p-4 rounded mb-4 flex justify-between items-center shadow-lg">
         <div>
-          <div className="font-bold text-base">⚠ REQUIRED: Cut {needed} player{needed === 1 ? '' : 's'} to advance</div>
+          <div className="font-bold text-base"> REQUIRED: Cut {needed} player{needed === 1 ? '' : 's'} to advance</div>
           <div className="text-xs mt-1 leading-snug">
             You signed a class that put your roster <strong>{overflow}</strong> over the 50-player cap.
             The AD already docked your job security ({overflow * 3} pts). You can\'t advance to the new year
@@ -1814,7 +1814,7 @@ function CutsBanner({ save, slot }) {
           </div>
         </div>
         <Link to={`/gm/roster?slot=${slot}`} className="px-4 py-2 bg-red-700 text-white rounded text-sm font-semibold shrink-0 ml-3 hover:opacity-90">
-          Cut down roster →
+          Cut down roster 
         </Link>
       </div>
     )
@@ -1825,14 +1825,14 @@ function CutsBanner({ save, slot }) {
   return (
     <div className="bg-red-50 border-l-4 border-red-500 text-red-900 p-4 rounded-r mb-4 flex justify-between items-center">
       <div>
-        <div className="font-bold">✂ Roster cuts window OPEN</div>
+        <div className="font-bold"> Roster cuts window OPEN</div>
         <div className="text-xs mt-1">
           You have <strong>{remaining}</strong> cut{remaining === 1 ? '' : 's'} remaining this offseason.
           AD trust tier: <strong>{tier.label}</strong>. {tier.note}
         </div>
       </div>
       <Link to={`/gm/roster?slot=${slot}`} className="px-4 py-2 bg-red-600 text-white rounded text-sm font-semibold shrink-0 ml-3 hover:opacity-90">
-        Manage roster →
+        Manage roster 
       </Link>
     </div>
   )
@@ -1879,27 +1879,27 @@ function SimDiffPanel({ simResult, onDismiss }) {
     <div className="bg-white rounded-xl border border-pnw-green/40 p-4 mb-4 shadow-sm">
       <div className="flex justify-between items-baseline mb-3">
         <h2 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider">
-          📊 Sim Recap — {preset} ({weeksAdvanced} week{weeksAdvanced === 1 ? '' : 's'})
+           Sim Recap — {preset} ({weeksAdvanced} week{weeksAdvanced === 1 ? '' : 's'})
         </h2>
-        <button onClick={onDismiss} className="text-xs text-gray-500 hover:text-pnw-green">Dismiss ✕</button>
+        <button onClick={onDismiss} className="text-xs text-gray-500 hover:text-pnw-green">Dismiss </button>
       </div>
 
       {stoppedReason === 'postseason_boundary' && (
         <div className="mb-3 bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-900">
           Stopped before the postseason transition. Week 13 (the last regular-season week)
-          hasn't been played yet — click <strong>Advance Week →</strong> once more to play it and
+          hasn't been played yet — click <strong>Advance Week </strong> once more to play it and
           fire the postseason bracket + end-of-year wrap.
         </div>
       )}
       {stoppedReason === 'prospect_camp_boundary' && (
         <div className="mb-3 bg-red-50 border border-red-300 rounded p-2 text-xs text-red-900">
-          <strong>⛔ Stopped before Prospect Camp (Wk 13).</strong> You can't skip this — head to
+          <strong> Stopped before Prospect Camp (Wk 13).</strong> You can't skip this — head to
           Weekly Actions and run camp before advancing.
         </div>
       )}
       {stoppedReason === 'user_games_pending' && (
         <div className="mb-3 bg-pnw-cream border border-pnw-green/40 rounded p-2 text-xs text-pnw-slate">
-          ⚾ <strong>Stopped on a game week.</strong> You have games this week — Enter Game live
+           <strong>Stopped on a game week.</strong> You have games this week — Enter Game live
           or Sim Game(s) from the top of the dashboard.
         </div>
       )}
@@ -1967,7 +1967,7 @@ function DiffWeek({ diff, index }) {
   return (
     <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/60">
       <div className="text-xs font-semibold text-pnw-slate mb-1.5">
-        Week {index}: {diff.fromMode === 'OFFSEASON' ? `Offseason Wk ${diff.fromOffseasonWeek} → ${diff.toOffseasonWeek}` : `Season Wk ${diff.fromSeasonWeek} → ${diff.toSeasonWeek}`}
+        Week {index}: {diff.fromMode === 'OFFSEASON' ? `Offseason Wk ${diff.fromOffseasonWeek} ${diff.toOffseasonWeek}` : `Season Wk ${diff.fromSeasonWeek} ${diff.toSeasonWeek}`}
         {(diff.recordDelta.w + diff.recordDelta.l > 0) && (
           <span className="ml-2 font-normal text-gray-600">
             ({diff.recordDelta.w}W-{diff.recordDelta.l}L this week)
@@ -1983,7 +1983,7 @@ function DiffWeek({ diff, index }) {
                 <li key={c.id} className="flex justify-between">
                   <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
                   <span className={c.delta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
-                    {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                    {c.before} {c.after} {c.delta > 0 ? '' : ''}
                   </span>
                 </li>
               ))}
@@ -1998,7 +1998,7 @@ function DiffWeek({ diff, index }) {
                 <li key={c.id} className="flex justify-between">
                   <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
                   <span className={c.delta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
-                    {c.before} → {c.after} {c.delta > 0 ? '↑' : '↓'}
+                    {c.before} {c.after} {c.delta > 0 ? '' : ''}
                   </span>
                 </li>
               ))}

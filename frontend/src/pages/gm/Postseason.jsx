@@ -35,7 +35,7 @@ export default function Postseason() {
       <div className="mb-6">
         <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} POSTSEASON</h1>
         <p className="text-sm text-gray-600">
-          {ps.userChamp ? '🏆 You won your conference!' : ps.userQualified ? '✓ You qualified for your conference tournament.' : '✗ You missed the conference tournament.'}
+          {ps.userChamp ? ' You won your conference!' : ps.userQualified ? ' You qualified for your conference tournament.' : ' You missed the conference tournament.'}
         </p>
       </div>
 
@@ -150,7 +150,7 @@ function NationalSection({ ps, save }) {
                   <span className="w-5 text-gray-500">#{t.seed}</span>
                   <TeamLogo school={save.schools[t.id]} size={16} />
                   <span>{save.schools[t.id]?.name}</span>
-                  {userSite.winner === t.id && <span className="text-pnw-green font-bold">→ Advanced</span>}
+                  {userSite.winner === t.id && <span className="text-pnw-green font-bold">Advanced</span>}
                 </div>
               ))}
             </div>
@@ -179,7 +179,7 @@ function NationalSection({ ps, save }) {
 
         {nat.worldSeries?.champion && (
           <div className="mb-4 p-3 bg-gradient-to-r from-yellow-100 to-amber-100 border border-amber-300 rounded">
-            <div className="text-xs uppercase tracking-wider text-amber-900">🏆 {ps.year} National Champion</div>
+            <div className="text-xs uppercase tracking-wider text-amber-900"> {ps.year} National Champion</div>
             <div className="flex items-center gap-2 mt-1">
               <TeamLogo school={save.schools[nat.worldSeries.champion]} size={28} />
               <div className="text-xl font-bold text-pnw-slate">{save.schools[nat.worldSeries.champion]?.name}</div>

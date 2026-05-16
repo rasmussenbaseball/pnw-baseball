@@ -7,17 +7,17 @@
  * get: do well, build trust, get more cuts; struggle and the AD pulls them.
  *
  * Trust tiers (driven by job security + recent wins):
- *   - LIMITED   ≤24 JS or losing-record streak → 0 cuts (the AD won't burn
+ *   - LIMITED   ≤24 JS or losing-record streak 0 cuts (the AD won't burn
  *                more scholarship $ on transition during a rough patch)
- *   - STANDARD  25-64 JS → 1 cut/year
- *   - TRUSTED   65+ JS → 2 cuts/year
- *   - VAULTED   85+ JS AND multi-year postseason streak → 3 cuts (rare)
+ *   - STANDARD  25-64 JS 1 cut/year
+ *   - TRUSTED   65+ JS 2 cuts/year
+ *   - VAULTED   85+ JS AND multi-year postseason streak 3 cuts (rare)
  *
  * The "first week after playoffs end" varies by team:
- *   - User missed conf tournament → window opens Wk 40 (3 extra summer weeks)
- *   - User was in conf tournament but not opening round → Wk 41
- *   - User in opening round, no WS → Wk 42
- *   - User in NAIA WS → Wk 43
+ *   - User missed conf tournament window opens Wk 40 (3 extra summer weeks)
+ *   - User was in conf tournament but not opening round Wk 41
+ *   - User in opening round, no WS Wk 42
+ *   - User in NAIA WS Wk 43
  *
  * State shape:
  *   state.cuts = {
@@ -162,7 +162,7 @@ export function cutPlayer(state, playerId) {
       state.newsfeed.unshift({
         id: `mandatory_cuts_done_${state.calendar?.year}`,
         year: state.calendar?.year, week: state.calendar?.weekOfYear, type: 'AWARD',
-        headline: `✓ Roster trimmed back to 50. AD is satisfied.`,
+        headline: `Roster trimmed back to 50. AD is satisfied.`,
         payload: {},
       })
     }
@@ -181,7 +181,7 @@ export function cutPlayer(state, playerId) {
   state.newsfeed.unshift({
     id: `cut_${state.calendar?.year}_${playerId}`,
     year: state.calendar?.year, week: state.calendar?.weekOfYear, type: 'AWARD',
-    headline: `✂ Cut ${player.firstName} ${player.lastName} (${player.classYear} ${player.primaryPosition}) from the roster.`,
+    headline: `Cut ${player.firstName} ${player.lastName} (${player.classYear} ${player.primaryPosition}) from the roster.`,
     payload: { playerId, mandatory },
   })
   return { ok: true }

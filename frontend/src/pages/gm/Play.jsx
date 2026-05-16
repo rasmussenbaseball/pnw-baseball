@@ -193,12 +193,12 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
               onClick={onAdvanceEmptyWeek}
               className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
             >
-              Advance to Week {nextWeekWithGames} →
+              Advance to Week {nextWeekWithGames} 
             </button>
           )}
           {cal.mode === 'OFFSEASON' && (
             <Link to={`/gm/schedule?slot=${slot}`} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold inline-block hover:opacity-90">
-              Schedule fall games →
+              Schedule fall games 
             </Link>
           )}
         </div>
@@ -232,7 +232,7 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
             onClick={onAutoSim}
             className="px-4 py-2 bg-pnw-slate text-white rounded text-sm font-semibold hover:opacity-90"
           >
-            Auto-sim week →
+            Auto-sim week 
           </button>
         </div>
       )}
@@ -244,7 +244,7 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
             onClick={onAdvanceEmptyWeek}
             className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
           >
-            Advance week →
+            Advance week 
           </button>
         </div>
       )}
@@ -276,7 +276,7 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
         </div>
         <div className="text-right">
           <div className={'text-[11px] font-semibold ' + (saved ? 'text-pnw-green' : 'text-amber-700')}>
-            {saved ? '✓ Lineup set' : 'No lineup set'}
+            {saved ? ' Lineup set' : 'No lineup set'}
           </div>
           {!saved && (
             <div className="text-[10px] text-gray-400">Will use top-9 + top-5 default</div>
@@ -375,7 +375,7 @@ function LineupEditor({ save, game, onSave, onCancel }) {
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
-      <button onClick={onCancel} className="text-sm text-pnw-green hover:underline">← Back to games</button>
+      <button onClick={onCancel} className="text-sm text-pnw-green hover:underline">Back to games</button>
       <h1 className="text-2xl font-bold text-pnw-slate mt-1 mb-1">Set Lineup</h1>
       <p className="text-sm text-gray-600 mb-6">{isHome ? 'vs' : '@'} {opp.name} • {game.date}</p>
 
@@ -398,8 +398,8 @@ function LineupEditor({ save, game, onSave, onCancel }) {
                     </option>
                   ))}
                 </select>
-                <button onClick={() => moveSpot(i, -1)} disabled={i === 0} className="text-xs px-1.5 py-0.5 border rounded disabled:opacity-30">↑</button>
-                <button onClick={() => moveSpot(i, +1)} disabled={i === 8} className="text-xs px-1.5 py-0.5 border rounded disabled:opacity-30">↓</button>
+                <button onClick={() => moveSpot(i, -1)} disabled={i === 0} className="text-xs px-1.5 py-0.5 border rounded disabled:opacity-30"></button>
+                <button onClick={() => moveSpot(i, +1)} disabled={i === 8} className="text-xs px-1.5 py-0.5 border rounded disabled:opacity-30"></button>
               </div>
             ))}
           </div>
@@ -570,7 +570,7 @@ function LiveGameView({ save, game, onExit }) {
             <div className="font-semibold">{nm(live.currentPitcher())}</div>
           </div>
           <div className="flex gap-2">
-            <button onClick={doStep} className="px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold">Next batter →</button>
+            <button onClick={doStep} className="px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold">Next batter </button>
             <button onClick={doHalfInning} className="px-3 py-1.5 border border-pnw-green text-pnw-green rounded text-xs font-semibold">Finish inning</button>
             <button onClick={doRest} className="px-3 py-1.5 border rounded text-xs">Sim to end</button>
             {userIsPitching && (
@@ -656,7 +656,7 @@ function PitchingChangeModal({ live, save, isHome, onPick, onClose }) {
       <div className="bg-white rounded-xl p-5 max-w-md w-full">
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold">Bring in</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
         {bullpen.length === 0 && (
           <div className="text-sm text-gray-500">No pitchers left in the bullpen.</div>

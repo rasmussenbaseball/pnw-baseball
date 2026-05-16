@@ -28,7 +28,7 @@ export const BUDGET_CATEGORIES = [
  * scholarship pool — that way the total athletic budget = pool / 0.57 and
  * the displayed numbers are internally consistent.
  */
-// Travel target bumped from 8% → 14% (CCC + non-conf realistically eats
+// Travel target bumped from 8% 14% (CCC + non-conf realistically eats
 // 12-18% of a $200K MID-tier budget). Rebalanced the smaller categories
 // down to absorb the difference.
 const DEFAULT_ALLOCATION = {
@@ -197,9 +197,9 @@ export function annualReview(budget, seasonResult) {
     newAllocations[c] = Math.round(newTotal * ratio)
   }
   const news = []
-  if (seasonResult.confChampion) news.push('Conference championship → AD approved 8% budget bump for next year.')
-  if (seasonResult.postseasonAppearance) news.push('NAIA postseason appearance → +4% budget next year.')
-  if (overRatio > 0) news.push(`Over budget by $${(over / 1000).toFixed(1)}K (${(overRatio * 100).toFixed(1)}%) — AD displeased. Job security ↓.`)
+  if (seasonResult.confChampion) news.push('Conference championship AD approved 8% budget bump for next year.')
+  if (seasonResult.postseasonAppearance) news.push('NAIA postseason appearance +4% budget next year.')
+  if (overRatio > 0) news.push(`Over budget by $${(over / 1000).toFixed(1)}K (${(overRatio * 100).toFixed(1)}%) — AD displeased. Job security .`)
   if (newJobSecurity < 25) news.push('You are on the hot seat. Next year is critical.')
   if (unused > 0) {
     news.push(`$${(unused / 1000).toFixed(1)}K unused budget rolled over to next year.`)
@@ -357,7 +357,7 @@ export function applyBudgetPreset(budget, preset) {
   for (const [cat, ratio] of Object.entries(ratios)) {
     next[cat] = Math.round(remainingTotal * (ratio / sumRatios))
   }
-  // Drift cleanup → toss into scholarships
+  // Drift cleanup toss into scholarships
   const sum = BUDGET_CATEGORIES.reduce((s, c) => s + (next[c] || 0), 0)
   const drift = total - sum
   if (drift !== 0) next.scholarships += drift
@@ -416,18 +416,18 @@ export function extendedBudgetEffects(budget) {
   }
   return {
     ...base,
-    // Facilities → offseason development rate. ±20% range.
+    // Facilities offseason development rate. ±20% range.
     devMultiplier: clamp(1 + (r.facilities - 1) * 0.20, 0.80, 1.25),
-    // Equipment → injury risk. Cheaper gear = more nicks. ±25%.
+    // Equipment injury risk. Cheaper gear = more nicks. ±25%.
     injuryMultiplier: clamp(1 - (r.equipment - 1) * 0.25, 0.75, 1.40),
-    // Meals → stamina + day-to-day durability. Adds up to +3 to pitcher stamina.
+    // Meals stamina + day-to-day durability. Adds up to +3 to pitcher stamina.
     staminaBoost: clamp((r.meals - 1) * 3, -2, 3),
     // Academic support comes from misc + meals combined — affects team GPA floor.
     gpaFloor: clamp((r.meals - 1) * 0.10, -0.15, 0.15),
-    // Medical → recovery speed. Already in base.medicalRecovery; surface a
+    // Medical recovery speed. Already in base.medicalRecovery; surface a
     // multiplier flavor for downstream code.
     recoveryMultiplier: clamp(1 + base.medicalRecovery, 0.75, 1.30),
-    // Recruiting → pool size + closing rate.
+    // Recruiting pool size + closing rate.
     recruitPoolMultiplier: clamp(1 + (r.recruiting - 1) * 0.30, 0.80, 1.40),
   }
 }

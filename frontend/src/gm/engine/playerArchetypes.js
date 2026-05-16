@@ -378,7 +378,7 @@ export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', 
     picked.push(rng.weighted(remaining, weights))
   }
   // Merge biases: frame + position stereotype + archetype + all quirks.
-  // Same key → sum. Position bias is layered BEFORE archetype + quirks so
+  // Same key sum. Position bias is layered BEFORE archetype + quirks so
   // archetypes that explicitly contradict the position stereotype (e.g.
   // "Power-Hitting Catcher") can override it; the final number is the sum.
   const biases = {}
@@ -434,15 +434,15 @@ export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', 
  * adjusted by frame "build" (LANKY = thinner BMI, STOCKY = thicker), then
  * a small pool adjustment (HS pulls ~12 lb down, JUCO ~5 lb).
  *
- *   heightInches → baseline weight (athletic BMI ~24-26):
- *     66 (5'6) → 165 lb
- *     68 (5'8) → 175
- *     70 (5'10) → 185
- *     72 (6'0)  → 195
- *     74 (6'2)  → 205
- *     76 (6'4)  → 215
- *     78 (6'6)  → 225
- *     80 (6'8)  → 235
+ *   heightInches baseline weight (athletic BMI ~24-26):
+ *     66 (5'6) 165 lb
+ *     68 (5'8) 175
+ *     70 (5'10) 185
+ *     72 (6'0)  195
+ *     74 (6'2)  205
+ *     76 (6'4)  215
+ *     78 (6'6)  225
+ *     80 (6'8)  235
  *
  * Frame build factor (multiplier on baseline):
  *   UNDERSIZED: 0.94    LANKY: 0.92      WIRY: 0.95
@@ -472,7 +472,7 @@ function computeRealisticWeight(heightInches, frameKey, pool, rng) {
  */
 function realisticWeightCeiling(heightInches, frameKey) {
   // Heaviest reasonable athlete weight at a height is roughly BMI 32.
-  // 5'6" → 247, 6'0" → 290, 6'6" → 320 — these are upper bounds, not norms.
+  // 5'6" 247, 6'0" 290, 6'6" 320 — these are upper bounds, not norms.
   // STOCKY / TOWERING can reach higher; LANKY caps lower.
   const baseCeiling = 220 + (heightInches - 66) * 6.5
   const frameMult = {
@@ -486,7 +486,7 @@ const STAR_ARCHETYPES = new Set(['FIVE_TOOL', 'FLAMETHROWER', 'CLOSER_PROFILE'])
 function isStarArchetype(key) { return STAR_ARCHETYPES.has(key) }
 
 /**
- * Format height (in inches) → e.g. "6'2"".
+ * Format height (in inches) e.g. "6'2"".
  */
 export function formatHeight(inches) {
   const ft = Math.floor(inches / 12)

@@ -74,7 +74,7 @@ export default function Coaches() {
     save.newsfeed.unshift({
       id: `staff_confirm_${save.calendar?.year}`,
       year: save.calendar?.year, week: save.calendar?.week, type: 'COACH_HIRED',
-      headline: `🧢 Rolled forward your coaching staff for ${save.calendar?.year}.`,
+      headline: `Rolled forward your coaching staff for ${save.calendar?.year}.`,
       payload: {},
     })
     saveDynasty(save); setSave({ ...save })
@@ -125,7 +125,7 @@ export default function Coaches() {
     save.newsfeed.unshift({
       id: `opt_hire_${hire.id}_${save.calendar.year}`,
       year: save.calendar.year, week: save.calendar.week, type: 'COACH_HIRED',
-      headline: `🧑‍💼 Brought on a ${OPTIONAL_HIRE_META[role]?.label || prettyLabel(role)} (1-yr contract).`,
+      headline: `‍ Brought on a ${OPTIONAL_HIRE_META[role]?.label || prettyLabel(role)} (1-yr contract).`,
       payload: { coachId: hire.id },
     })
     saveDynasty(save); setSave({ ...save })
@@ -138,7 +138,7 @@ export default function Coaches() {
       id: `hire_${candidate.id}_${save.calendar.year}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'COACH_HIRED',
-      headline: `🧢 Hired ${candidate.firstName} ${candidate.lastName} as ${prettyLabel(candidate.role)} ($${(candidate.salary / 1000).toFixed(0)}K/yr).`,
+      headline: `Hired ${candidate.firstName} ${candidate.lastName} as ${prettyLabel(candidate.role)} ($${(candidate.salary / 1000).toFixed(0)}K/yr).`,
       payload: { coachId: candidate.id },
     })
     setInterviewing(null)
@@ -163,7 +163,7 @@ export default function Coaches() {
       id: `fire_${coach.id}_${save.calendar.year}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'COACH_LEFT',
-      headline: `🔥 Fired ${coach.firstName} ${coach.lastName}. $${(buyout / 1000).toFixed(0)}K buyout charged.`,
+      headline: `Fired ${coach.firstName} ${coach.lastName}. $${(buyout / 1000).toFixed(0)}K buyout charged.`,
       payload: { coachId: coach.id, buyout },
     })
     saveDynasty(save)
@@ -232,7 +232,7 @@ export default function Coaches() {
           </div>
           <div className="text-[11px] mt-1 text-gray-600">
             {overAverage > 20_000
-              ? '⚠ Significantly over average — will eat into your Wk 3 budget for everything else.'
+              ? ' Significantly over average — will eat into your Wk 3 budget for everything else.'
               : overAverage > 0
                 ? 'Slightly over the typical NAIA spend.'
                 : 'Within typical NAIA spend — leaves $ for facilities, travel, scholarships.'}
@@ -243,13 +243,13 @@ export default function Coaches() {
       {/* Minimum-assistants warning — support staff don't count */}
       {weekOfYear >= 2 && realAssistants.length < MIN_ASSISTANTS && (
         <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-4 text-sm text-red-900">
-          <strong>⚠ Below the {MIN_ASSISTANTS}-assistant minimum.</strong> NAIA programs are required to
+          <strong> Below the {MIN_ASSISTANTS}-assistant minimum.</strong> NAIA programs are required to
           carry at least three assistants (Pitching, Hitting, Bench). Hire to fill before sim.
         </div>
       )}
       {isTutorialHireWeek && isFirstYear && allRequiredFilled && (
         <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 mb-4 text-sm text-green-900">
-          ✓ All three required assistants hired. Head back to the dashboard to advance to Wk 3 (budget).
+           All three required assistants hired. Head back to the dashboard to advance to Wk 3 (budget).
         </div>
       )}
 
@@ -269,7 +269,7 @@ export default function Coaches() {
             onClick={confirmStaffForYear}
             className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
           >
-            Confirm staff ✓
+            Confirm staff 
           </button>
         </div>
       )}
@@ -279,7 +279,7 @@ export default function Coaches() {
 
       {!hasAnalyticsMgr && weekOfYear >= 4 && (
         <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900 mb-4">
-          💡 Hire a <strong>Data & Analytics Manager</strong> to unlock advanced stats (FIP, wOBA, wRC+, WAR) across the league.
+           Hire a <strong>Data & Analytics Manager</strong> to unlock advanced stats (FIP, wOBA, wRC+, WAR) across the league.
         </div>
       )}
 
@@ -315,7 +315,7 @@ export default function Coaches() {
                 <div key={c.id} className="bg-white rounded-xl border border-pnw-green/30 p-3 shadow-sm">
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex items-start gap-2 flex-1 min-w-0">
-                      <div className="text-xl shrink-0">{meta?.icon || '👤'}</div>
+                      <div className="text-xl shrink-0">{meta?.icon || ''}</div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs uppercase tracking-wider text-gray-500">{meta?.label || prettyLabel(c.role)}</div>
                         <div className="text-[11px] font-bold text-pnw-green mt-0.5">{meta?.effectLabel}</div>
@@ -334,7 +334,7 @@ export default function Coaches() {
       {missingStarting.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-900 mb-2">
-            ⚠ {isTutorialHireWeek && isFirstYear ? 'Required hires' : 'Missing standard staff'}
+             {isTutorialHireWeek && isFirstYear ? 'Required hires' : 'Missing standard staff'}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {missingStarting.map(role => (
@@ -356,7 +356,7 @@ export default function Coaches() {
           <div className="flex justify-between items-baseline mb-3">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-                Optional Support Staff {optionalLocked && '🔒'}
+                Optional Support Staff {optionalLocked && ''}
               </h2>
               <p className="text-[11px] text-gray-500 mt-0.5">
                 One-year contracts. Pay <strong>{INTERVIEW_AP_COST} AP</strong> — no salary, no negotiation.
@@ -425,7 +425,7 @@ function SupportStaffCard({ role, apCurrent, apCost, disabled, onHire }) {
     <div className={'border rounded-lg p-3 ' +
       (disabled ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 hover:border-pnw-green hover:bg-pnw-cream/40 transition')}>
       <div className="flex items-start gap-3">
-        <div className="text-2xl shrink-0">{meta?.icon || '👤'}</div>
+        <div className="text-2xl shrink-0">{meta?.icon || ''}</div>
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-baseline gap-2">
             <div className="font-semibold text-sm text-pnw-slate">{meta?.label || prettyLabel(role)}</div>
@@ -476,7 +476,7 @@ function InterviewModal({ role, candidates, onHire, onClose }) {
             <h3 className="text-xl font-bold text-pnw-slate">Interview — {prettyLabel(role)}</h3>
             <div className="text-xs text-gray-500 mt-1">{ROLE_DESCRIPTIONS[role]}</div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none"></button>
         </div>
         <div className="space-y-3">
           {candidates.map(c => (
@@ -586,7 +586,7 @@ function StaffRatingsPanel({ headCoach, assistants }) {
       <div className="bg-white rounded p-2 text-xs">
         <span className="text-gray-500">HC archetype:</span>{' '}
         <span className={'font-semibold ' + hcArc.color}>{hcArc.label}</span>
-        <span className="ml-2 text-gray-500">→ Synergy:</span>{' '}
+        <span className="ml-2 text-gray-500">Synergy:</span>{' '}
         <span className={'font-mono font-semibold ' + synergyColor}>
           {((r.synergy - 1) * 100 > 0 ? '+' : '') + ((r.synergy - 1) * 100).toFixed(0)}%
         </span>

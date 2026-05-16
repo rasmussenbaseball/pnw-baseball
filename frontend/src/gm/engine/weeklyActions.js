@@ -5,7 +5,7 @@
  *   - Permanent: +1 rating, 15 AP, sticks forever
  *   - Temporary: +5 rating, 10 AP, wears off after 4 weeks
  *
- * Once per week — `state.weeklyActionsUsed` tracks the key.
+ * Once per week — `state.weeklyActionsUsed`tracks the key.
  */
 
 import { makeRng } from './rng'
@@ -28,55 +28,55 @@ function action(key, label, emoji, target, ratingKey, availableIn, blurb, opts =
 /** @type {Record<string, ReturnType<typeof action>>} */
 export const WEEKLY_ACTIONS = {
   // ─── Hitter — Contact ──────────────────────────────────────────────
-  CONTACT_L: action('CONTACT_L', 'Contact Practice (vs LHP)', '🎯', 'hitters', 'contact_l',
+  CONTACT_L: action('CONTACT_L', 'Contact Practice (vs LHP)', '', 'hitters', 'contact_l',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Cage work facing left-handed flips/machines.'),
-  CONTACT_R: action('CONTACT_R', 'Contact Practice (vs RHP)', '🎯', 'hitters', 'contact_r',
+  CONTACT_R: action('CONTACT_R', 'Contact Practice (vs RHP)', '', 'hitters', 'contact_r',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Cage work facing right-handed flips/machines.'),
 
   // ─── Hitter — Power ────────────────────────────────────────────────
-  POWER_L: action('POWER_L', 'Lefty BP Power', '💥', 'hitters', 'power_l',
+  POWER_L: action('POWER_L', 'Lefty BP Power', '', 'hitters', 'power_l',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Heavy power BP vs left-handers.'),
-  POWER_R: action('POWER_R', 'Righty BP Power', '💥', 'hitters', 'power_r',
+  POWER_R: action('POWER_R', 'Righty BP Power', '', 'hitters', 'power_r',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Heavy power BP vs right-handers.'),
 
   // ─── Hitter — Other ────────────────────────────────────────────────
-  PLATE_DISCIPLINE: action('PLATE_DISCIPLINE', 'Plate Discipline', '👁', 'hitters', 'discipline',
+  PLATE_DISCIPLINE: action('PLATE_DISCIPLINE', 'Plate Discipline', '', 'hitters', 'discipline',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Pitch-tracking work to sharpen zone awareness.'),
-  SPEED_CAMP: action('SPEED_CAMP', 'Speed Camp', '⚡', 'hitters', 'speed',
+  SPEED_CAMP: action('SPEED_CAMP', 'Speed Camp', '', 'hitters', 'speed',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Sprint mechanics + base-running.'),
-  FIELDING_DRILLS: action('FIELDING_DRILLS', 'Fielding Drills', '🧤', 'hitters', 'fielding',
+  FIELDING_DRILLS: action('FIELDING_DRILLS', 'Fielding Drills', '', 'hitters', 'fielding',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Ground balls, range, footwork.'),
-  THROWING_DRILLS: action('THROWING_DRILLS', 'Arm Drills', '🎯', 'hitters', 'arm',
+  THROWING_DRILLS: action('THROWING_DRILLS', 'Arm Drills', '', 'hitters', 'arm',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Throwing accuracy + arm strength.'),
 
   // ─── Pitcher ───────────────────────────────────────────────────────
-  STUFF_WORK: action('STUFF_WORK', 'Stuff Bullpen', '⚾', 'pitchers', 'stuff',
+  STUFF_WORK: action('STUFF_WORK', 'Stuff Bullpen', '', 'pitchers', 'stuff',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Pitch design — break, movement, swing-and-miss reps.'),
-  CONTROL_WORK: action('CONTROL_WORK', 'Command Work', '🎯', 'pitchers', 'control',
+  CONTROL_WORK: action('CONTROL_WORK', 'Command Work', '', 'pitchers', 'control',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Throwing to a target consistently.'),
-  STAMINA_WORK: action('STAMINA_WORK', 'Endurance Training', '🏃', 'pitchers', 'stamina',
+  STAMINA_WORK: action('STAMINA_WORK', 'Endurance Training', '', 'pitchers', 'stamina',
     ['Fall Camp', 'Training Period', 'Spring Practice'],
     'Long-tossing + cardio — innings-per-outing capacity.'),
-  VELOCITY_PROGRAM: action('VELOCITY_PROGRAM', 'Velocity Program', '🚀', 'pitchers', '__velocity',
+  VELOCITY_PROGRAM: action('VELOCITY_PROGRAM', 'Velocity Program', '', 'pitchers', '__velocity',
     ['Fall Camp', 'Training Period'],
     'Weighted balls + long-toss — adds avg velocity.',
     { velocity: true }),
 
   // ─── Whole-team ────────────────────────────────────────────────────
-  RECOVERY: action('RECOVERY', 'Recovery Day', '🛌', 'all', 'durability',
+  RECOVERY: action('RECOVERY', 'Recovery Day', '', 'all', 'durability',
     ['any'],
     'Light practice + treatment.'),
-  FILM_STUDY: action('FILM_STUDY', 'Film Study', '🎥', 'all', 'composure',
+  FILM_STUDY: action('FILM_STUDY', 'Film Study', '', 'all', 'composure',
     ['any'],
     'Mental reps — situational awareness, opponent breakdowns.'),
 }

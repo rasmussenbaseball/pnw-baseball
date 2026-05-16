@@ -17,7 +17,7 @@
 // ─── Position weights for HITTER OVR ─────────────────────────────────────────
 //
 // Higher value = "this rating matters more for this position." For example,
-// catcher's `arm` matters a lot, but `power_l/r` matters less than for 1B.
+// catcher's `arm`matters a lot, but `power_l/r`matters less than for 1B.
 
 const HITTER_POSITION_WEIGHTS = {
   C:  { contact: 1.0, power: 0.8, discipline: 1.0, speed: 0.4, fielding: 1.4, arm: 1.6 },
@@ -126,7 +126,7 @@ export function playerPotentialOverall(player) {
 }
 
 /**
- * OVR → color class for UI. Closely matches Madden's color tiers.
+ * OVR color class for UI. Closely matches Madden's color tiers.
  */
 export function overallTier(ovr) {
   if (ovr >= 88) return { tier: 'elite', color: 'text-purple-700', bg: 'bg-purple-100' }
@@ -143,12 +143,12 @@ export function overallTier(ovr) {
 // AND the player's fielding rating takes a hit because they're learning a
 // new spot. Bigger transitions = bigger fielding drop:
 //
-//   - Same group, similar difficulty (LF ↔ RF, 1B ↔ 3B):  −3 fielding
-//   - Same group, harder spot (1B → SS, LF → CF):         −6 to −8
-//   - OF ↔ IF crossover:                                  −12
-//   - Anything → C (catcher):                             −22 (very hard)
-//   - C → anything else:                                  −16
-//   - Anything → DH (designated hitter):                    0 (no defense)
+//   - Same group, similar difficulty (LF RF, 1B 3B):  −3 fielding
+//   - Same group, harder spot (1B SS, LF CF):         −6 to −8
+//   - OF IF crossover:                                  −12
+//   - Anything C (catcher):                             −22 (very hard)
+//   - C anything else:                                  −16
+//   - Anything DH (designated hitter):                    0 (no defense)
 //
 // Penalty applies as a permanent bump on the player's fielding rating.
 
@@ -180,7 +180,7 @@ function positionDifficulty(pos) {
 
 /**
  * Fielding-rating penalty for moving a player's primary position from
- * `from` → `to`. Positive number = points to subtract from current fielding.
+ * `from` `to`. Positive number = points to subtract from current fielding.
  * Returns 0 if the move is to DH (or no actual change).
  *
  * @param {string} from
@@ -194,7 +194,7 @@ export function positionChangePenalty(from, to) {
   if (from === 'C') return 16 // any catcher learning anywhere else
   const gA = positionGroup(from)
   const gB = positionGroup(to)
-  if (gA !== gB) return 12     // OF ↔ IF crossover
+  if (gA !== gB) return 12     // OF IF crossover
   // Same group — fee depends on whether new spot is harder
   const diff = positionDifficulty(to) - positionDifficulty(from)
   if (diff <= 0) return 3      // moving to easier or same spot

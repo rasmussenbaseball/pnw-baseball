@@ -104,9 +104,9 @@ export function applyArchetypeBias(ratings, archetypeKey) {
 /**
  * Compute the combined coaching staff rating. Average of all coach ratings,
  * then applies a synergy multiplier:
- *   - Pure echo: every assistant matches HC archetype → +5% (focused identity)
- *   - Balanced: opposite-archetype assistants → +4% (well-rounded staff)
- *   - Mixed/clashing: no clear identity → no bonus or small penalty (-2%)
+ *   - Pure echo: every assistant matches HC archetype +5% (focused identity)
+ *   - Balanced: opposite-archetype assistants +4% (well-rounded staff)
+ *   - Mixed/clashing: no clear identity no bonus or small penalty (-2%)
  *
  * Returns { developer, motivator, recruiter, tactician, overall, synergy,
  * synergyLabel } so the UI can show the breakdown.
@@ -169,8 +169,8 @@ export function staffRatings(headCoach, assistants) {
 }
 
 /**
- * Synergy bonus calculation. Pure echo OR opposite-pair full → bonus.
- * Anything in between → smaller bonus or neutral.
+ * Synergy bonus calculation. Pure echo OR opposite-pair full bonus.
+ * Anything in between smaller bonus or neutral.
  */
 function computeSynergy(hcArchetype, assistants) {
   if (assistants.length === 0) return { mult: 1.0, label: 'No assistants' }

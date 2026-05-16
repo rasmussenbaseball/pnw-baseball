@@ -165,7 +165,7 @@ export default function Recruiting() {
     return true
   })
 
-  // Signed tab includes signed recruits (which are not in `visible` since
+  // Signed tab includes signed recruits (which are not in `visible`since
   // visibleRecruits excludes status==='signed')
   const signedList = Object.values(save.recruits || {}).filter(r => r.signedTo === save.userSchoolId)
 
@@ -247,7 +247,7 @@ export default function Recruiting() {
         id: `sign_${recruit.id}_${save.calendar.year}`,
         year: save.calendar.year, week: save.calendar.week,
         type: 'AWARD',
-        headline: `🖊️ ${recruit.firstName} ${recruit.lastName} (${recruit.primaryPosition}, ${recruit.hometown.state}) signed with ${userSchool.name}!`,
+        headline: `${recruit.firstName} ${recruit.lastName} (${recruit.primaryPosition}, ${recruit.hometown.state}) signed with ${userSchool.name}!`,
         payload: {},
       })
     }
@@ -277,7 +277,7 @@ export default function Recruiting() {
 
       <div className="mb-6 flex justify-between items-start">
         <div>
-          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
+          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">Recruiting Board</h1>
           <p className="text-sm text-gray-600">
             <span className="font-semibold">Class of {save.calendar.year + 1}–{String((save.calendar.year + 2) % 100).padStart(2, '0')}</span> ({save.calendar.year + 1} enrollees, play {save.calendar.year + 2} season) • {visible.length} on board • {phaseLabel}
@@ -315,12 +315,12 @@ export default function Recruiting() {
         <Link to={`/gm/weekly?slot=${slot}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-pnw-green hover:bg-pnw-cream">
           <div className="text-xs text-gray-500 uppercase tracking-wider">Prospect camp</div>
           <div className="text-lg font-bold text-pnw-slate">{campHeldThisYear ? `${save.prospectCamp.attendees} att` : campWindowOpen ? 'Open' : 'Closed'}</div>
-          <div className="text-[10px] text-gray-400">Manage on Weekly Actions →</div>
+          <div className="text-[10px] text-gray-400">Manage on Weekly Actions </div>
         </Link>
         <Link to={`/gm/weekly?slot=${slot}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-pnw-green hover:bg-pnw-cream">
           <div className="text-xs text-gray-500 uppercase tracking-wider">Fundraise</div>
           <div className="text-lg font-bold text-pnw-slate">Weekly Actions</div>
-          <div className="text-[10px] text-gray-400">Manage on Weekly Actions →</div>
+          <div className="text-[10px] text-gray-400">Manage on Weekly Actions </div>
         </Link>
       </div>
 
@@ -334,9 +334,9 @@ export default function Recruiting() {
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {[
           { key: 'BOARD', label: 'Board', count: visible.length },
-          { key: 'FOLLOWING', label: '★ Following', count: followedCount },
+          { key: 'FOLLOWING', label: ' Following', count: followedCount },
           { key: 'OFFERS', label: 'Offers Out', count: liveOffers.length },
-          { key: 'INVITES', label: `🏟 Camp Invites`, count: `${invitedCount}/${CAMP_MAX_INVITES}` },
+          { key: 'INVITES', label: `Camp Invites`, count: `${invitedCount}/${CAMP_MAX_INVITES}` },
           { key: 'SIGNED', label: 'Signed', count: signedRecruits.length },
         ].map(t => (
           <button
@@ -374,7 +374,7 @@ export default function Recruiting() {
               }
               title={isLocked ? 'Portal opens after the regular season ends' : ''}
             >
-              {t.label}{isLocked ? ' 🔒' : ''}
+              {t.label}{isLocked ? ' ' : ''}
             </button>
           )
         })}
@@ -557,7 +557,7 @@ function ScholarshipBanner({ save }) {
       </div>
       <div className="text-[11px] text-gray-500 mt-1.5">
         <span className="font-semibold">{s.graduatingSeniors}</span> senior{s.graduatingSeniors === 1 ? '' : 's'} graduating — freeing <span className="font-semibold text-pnw-green">${(s.graduatingDollars / 1000).toFixed(1)}K</span> for next year's class.
-        {s.nextYearAvailable < 5000 && <span className="text-amber-700"> ⚠ Low runway.</span>}
+        {s.nextYearAvailable < 5000 && <span className="text-amber-700">  Low runway.</span>}
       </div>
     </div>
   )
@@ -566,7 +566,7 @@ function ScholarshipBanner({ save }) {
 function isCampWindowOpen(calendar) {
   if (calendar.mode !== 'OFFSEASON') return false
   // Use sim-date, not wall clock: offseason week 1 = Aug 1. Camp window is
-  // Aug-Nov of the offseason → roughly offseason weeks 1-17.
+  // Aug-Nov of the offseason roughly offseason weeks 1-17.
   return calendar.offseasonWeek >= 1 && calendar.offseasonWeek <= 17
 }
 
@@ -655,7 +655,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
             className={'text-base leading-none transition ' + (recruit.followed ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400')}
             title={recruit.followed ? 'Unfollow' : 'Follow / star this recruit'}
           >
-            {recruit.followed ? '★' : '☆'}
+            {recruit.followed ? '' : ''}
           </button>
         </td>
         <td className="text-xs">
@@ -675,7 +675,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
         </td>
         <td className="font-medium">
           <div className="flex items-center gap-1.5">
-            {isSigned && <span>🖊️</span>}
+            {isSigned && <span></span>}
             <span>{recruit.firstName} {recruit.lastName}</span>
             {scoutedAtAll && archetype && (
               <span className="text-[10px] text-gray-500 italic hidden lg:inline">· {archetype.label}</span>
@@ -712,7 +712,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
             <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div className={'h-full ' + (fullyScouted ? 'bg-blue-600' : 'bg-pnw-slate')} style={{ width: `${sp * 100}%` }} />
             </div>
-            {fullyScouted && <span className="text-[10px] text-blue-700 font-bold">✓</span>}
+            {fullyScouted && <span className="text-[10px] text-blue-700 font-bold"></span>}
           </div>
         </td>
         <td className="text-xs">
@@ -730,7 +730,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
               onClick={onOpenModal}
               className="text-xs bg-pnw-green text-white px-2 py-1 rounded hover:opacity-90"
             >
-              Recruit →
+              Recruit 
             </button>
           )}
         </td>
@@ -785,7 +785,7 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
               <div className="mt-2 flex flex-wrap gap-1">
                 {visibleQuirks.map(q => (
                   <span key={q.key} className="text-[10px] font-semibold bg-pnw-cream text-pnw-slate px-1.5 py-0.5 rounded" title={q.label}>
-                    {q.bias && Object.values(q.bias).some(v => v < 0) ? '⚠ ' : '✓ '}{q.label}
+                    {q.bias && Object.values(q.bias).some(v => v < 0) ? ' ' : ' '}{q.label}
                   </span>
                 ))}
               </div>
@@ -810,7 +810,7 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
           onClick={onOpenModal}
           className="w-full mb-1.5 px-2 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
         >
-          Open full recruit panel →
+          Open full recruit panel 
         </button>
         {isHs && (
           <button
@@ -820,7 +820,7 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
                 ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
                 : 'border border-gray-300 text-gray-700 hover:bg-gray-100')}
           >
-            {recruit.campInvited ? '🏟 Camp invite sent' : '+ Invite to prospect camp (free)'}
+            {recruit.campInvited ? ' Camp invite sent' : '+ Invite to prospect camp (free)'}
           </button>
         )}
       </div>
@@ -874,7 +874,7 @@ function CampModal({ save, coach, recruits, onConfirm, onClose }) {
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
         <div className="flex justify-between items-start mb-3">
           <h3 className="text-xl font-bold text-pnw-slate">Hold Prospect Camp</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
         <p className="text-sm text-gray-600 mb-4">
           HS prospects only. Runs once a year in <strong>Week 13 (late October)</strong>. Attendees get +25 interest + scout fog drop + small rating bump. Revenue ($ × attendees) adds to budget immediately. Camp needs <strong>{CAMP_MIN_ATTENDEES} min</strong> attendees or it's cancelled. Max {CAMP_MAX_ATTENDEES}, with walk-ons capped at 25.
@@ -912,7 +912,7 @@ function CampModal({ save, coach, recruits, onConfirm, onClose }) {
           </div>
           {isBelowMin && (
             <div className="mt-2 text-xs text-red-700 text-center">
-              ⚠ Below the {CAMP_MIN_ATTENDEES}-attendee minimum. Lower the fee or invite more players, or the camp won't run.
+               Below the {CAMP_MIN_ATTENDEES}-attendee minimum. Lower the fee or invite more players, or the camp won't run.
             </div>
           )}
         </div>
@@ -948,7 +948,7 @@ function CampModal({ save, coach, recruits, onConfirm, onClose }) {
                   }
                 >
                   <span>
-                    {isInvited && '✓ '}
+                    {isInvited && ' '}
                     {r.firstName} {r.lastName} ({r.primaryPosition}, {r.hometown.state})
                   </span>
                   <span className="text-gray-500">Interest {interest}</span>
@@ -984,7 +984,7 @@ function FundraiseModal({ ap, onChangeAP, maxAP, coach, programHistory, onConfir
       <div className="bg-white rounded-xl max-w-md w-full p-6">
         <div className="flex justify-between items-start mb-3">
           <h3 className="text-xl font-bold text-pnw-slate">Fundraise</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
         <p className="text-sm text-gray-600 mb-4">
           Spend AP on donor + alumni outreach. Money goes directly to your budget.
@@ -1028,7 +1028,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
   }, [recruit.id, grade.noise, save.calendar.year])
 
   // Visible stat ranges — noise is the ±3σ band, so half-width = noise / 2
-  // gives a "likely range." As you scout, noise shrinks → range narrows.
+  // gives a "likely range." As you scout, noise shrinks range narrows.
   function ratingRange(v) {
     const half = Math.max(1, Math.round(grade.noise / 2))
     return { lo: Math.max(20, v - half), hi: Math.min(99, v + half) }
@@ -1073,14 +1073,14 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
               {m.maxEvMph && <span><span className="text-gray-400">Max EV:</span> <strong>{m.maxEvMph} mph</strong></span>}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
 
         {/* Pre-scout banner — until ANY scouting action is taken, no ratings,
             no GPA, no suitors. Just identity above + a call to scout. */}
         {!hasScoutedAtAll && (
           <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4 mb-4 text-center">
-            <div className="text-3xl mb-1">🔍</div>
+            <div className="text-3xl mb-1"></div>
             <div className="text-sm font-bold text-amber-900">No scouting report yet</div>
             <div className="text-[11px] text-amber-800 mt-1 max-w-md mx-auto">
               You know who they are — that's it. Spend AP on a scouting action below
@@ -1133,7 +1133,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
                   <div className="flex flex-wrap gap-1 mt-1.5">
                     {visibleQuirks.map(q => (
                       <span key={q.key} className="text-[10px] font-semibold bg-white text-pnw-slate px-1.5 py-0.5 rounded border border-gray-200" title={q.label}>
-                        {q.bias && Object.values(q.bias).some(v => v < 0) ? '⚠ ' : '✓ '}{q.label}
+                        {q.bias && Object.values(q.bias).some(v => v < 0) ? ' ' : ' '}{q.label}
                       </span>
                     ))}
                   </div>
@@ -1186,13 +1186,13 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           if (academic$ <= 0) {
             return (
               <div className="bg-gray-50 border border-gray-200 rounded p-2 mb-4 text-xs text-gray-600">
-                <strong>📚 Academics:</strong> GPA {gpa.toFixed(2)} — doesn't qualify for academic aid at this school (need 2.0+).
+                <strong> Academics:</strong> GPA {gpa.toFixed(2)} — doesn't qualify for academic aid at this school (need 2.0+).
               </div>
             )
           }
           return (
             <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-4 text-xs text-blue-900">
-              <strong>📚 Academic scholarship:</strong> GPA {gpa.toFixed(2)} → {(pct * 100).toFixed(0)}% of tuition = <span className="font-mono font-bold">${(academic$ / 1000).toFixed(1)}K/yr</span>.
+              <strong> Academic scholarship:</strong> GPA {gpa.toFixed(2)} {(pct * 100).toFixed(0)}% of tuition = <span className="font-mono font-bold">${(academic$ / 1000).toFixed(1)}K/yr</span>.
               Funded by the academic department — does NOT come out of your athletic scholarship pool.
             </div>
           )
@@ -1296,7 +1296,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-sm">
-                      {action.label} {alreadyUsed && <span className="text-[10px] text-green-700 ml-1">✓</span>}
+                      {action.label} {alreadyUsed && <span className="text-[10px] text-green-700 ml-1"></span>}
                     </span>
                     <span className={'text-xs font-mono px-1.5 py-0.5 rounded ' +
                       (alreadyUsed ? 'bg-gray-300 text-gray-600' : 'bg-pnw-green text-white')}>
@@ -1312,7 +1312,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
 
         <div className="mt-3 text-[10px] text-gray-400">
           Actions taken: {grade.actionsApplied.length} · AP spent: {grade.apSpent || 0}
-          {(grade.apSpent || 0) >= 10 && <span className="ml-2 text-green-700 font-semibold">✓ Fully scouted</span>}
+          {(grade.apSpent || 0) >= 10 && <span className="ml-2 text-green-700 font-semibold"> Fully scouted</span>}
         </div>
       </div>
     </div>
@@ -1336,7 +1336,7 @@ function Wk4Tutorial({ save, apBaseline }) {
       </div>
       <div className={'text-sm leading-snug mb-2 ' + (done ? 'text-green-800' : 'text-amber-800')}>
         {done
-          ? <>✓ All AP spent. You\'ve built your initial recruiting board for next year\'s class.
+          ? <> All AP spent. You\'ve built your initial recruiting board for next year\'s class.
               Head to the dashboard to advance to Wk 5 (Fall Camp opens).</>
           : <>This is your <strong>first scouting week</strong>. You must spend every AP on
               recruiting actions — add recruits to your board, run scouting trips, send introductory

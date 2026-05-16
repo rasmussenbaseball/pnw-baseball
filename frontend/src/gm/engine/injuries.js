@@ -292,7 +292,7 @@ export function rollGameInjury(player, ctx, rng) {
   const dur = player.isPitcher
     ? (player.pitcher?.durability ?? 60)
     : (player.hitter?.durability ?? 60)
-  // 80 dur → ~0.4× base; 40 dur → ~1.6× base
+  // 80 dur ~0.4× base; 40 dur ~1.6× base
   const durFactor = Math.max(0.3, Math.min(2.0, 1.6 - (dur - 40) * 0.02))
   let baseRisk = 0.007
   if (player.isPitcher && (ctx.gameIp || 0) >= 6) baseRisk *= 1.3

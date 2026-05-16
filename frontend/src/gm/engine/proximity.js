@@ -111,7 +111,7 @@ export function stateProximity(a, b) {
 
 /**
  * Sort an array of opponent records by proximity to the user's home state.
- * Each record must have a `.state` field.
+ * Each record must have a `.state`field.
  */
 export function sortByProximity(userState, opponents) {
   return [...opponents].sort((a, b) => {

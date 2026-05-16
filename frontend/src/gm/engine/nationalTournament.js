@@ -1,7 +1,7 @@
 /**
  * NAIA National Tournament — Opening Round + Avista World Series.
  *
- *   Opening Round: 46-team field → 10 host sites (6 brackets of 5 teams,
+ *   Opening Round: 46-team field 10 host sites (6 brackets of 5 teams,
  *                  4 brackets of 4 teams). Double-elim at each site. 10
  *                  winners advance to the World Series.
  *
@@ -213,7 +213,7 @@ export function simWorldSeries(winners10, save, ratings, userSchoolId) {
     .sort((a, b) => b.rating - a.rating)
     .map((x, i) => ({ ...x, seed: i + 1 }))
 
-  // Split into two pools (odd seeds → A, even seeds → B)
+  // Split into two pools (odd seeds A, even seeds B)
   const poolA = seeded.filter((_, i) => i % 2 === 0)
   const poolB = seeded.filter((_, i) => i % 2 === 1)
 
@@ -266,7 +266,7 @@ export function simWorldSeries(winners10, save, ratings, userSchoolId) {
 }
 
 /**
- * Run the full national tournament: Opening Round → WS.
+ * Run the full national tournament: Opening Round WS.
  * @returns {{ field46: string[], openingRound: any, worldSeries: any, nationalChampion: string }}
  */
 export function runNationalTournament(autoBids, save, ratings, userSchoolId) {

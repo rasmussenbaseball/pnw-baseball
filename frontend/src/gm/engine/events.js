@@ -75,7 +75,7 @@ export const EVENT_TYPES = {
 
 // ─── Event schedule — unified 52-week ──────────────────────────────────────
 //
-// Map weekOfYear → which events fire that week. Heavy end-of-year work was
+// Map weekOfYear which events fire that week. Heavy end-of-year work was
 // previously crammed into a single tick; it's now distributed across the
 // post-postseason offseason (wks 43-51).
 
@@ -123,7 +123,7 @@ export const OFFSEASON_EVENT_SCHEDULE = (() => {
   for (const [wk, events] of Object.entries(WEEK_EVENT_SCHEDULE)) {
     const w = Number(wk)
     if (w >= 27 && w <= 42) continue
-    // Map wk → legacy offseason week (1-26 direct; 43-52 → 27-36)
+    // Map wk legacy offseason week (1-26 direct; 43-52 27-36)
     const offWk = w <= 26 ? w : 26 + (w - 42)
     out[offWk] = events
   }
@@ -186,7 +186,7 @@ function runSummerBallConfirm(state) {
   state.newsfeed.unshift({
     id: `sb_confirm_${state.calendar.year}`,
     year: state.calendar.year, week: 43, type: 'AWARD',
-    headline: `📋 Summer ball roster confirmed (${confirmed} player${confirmed === 1 ? '' : 's'}). You can still REMOVE players, but no new signings.`,
+    headline: `Summer ball roster confirmed (${confirmed} player${confirmed === 1 ? '' : 's'}). You can still REMOVE players, but no new signings.`,
     payload: {},
   })
   return { label: 'Summer ball confirmed', news: { confirmed } }
@@ -214,8 +214,8 @@ function runCutsWindowOpens(state) {
     id: `cuts_open_${state.calendar.year}`,
     year: state.calendar.year, week: state.calendar.weekOfYear || 43, type: 'AWARD',
     headline: allowed > 0
-      ? `✂ Cuts window open — your AD allows ${allowed} roster cut${allowed === 1 ? '' : 's'} this offseason.`
-      : `✂ No cuts this offseason — AD wants to see more wins before approving roster moves.`,
+      ? `Cuts window open — your AD allows ${allowed} roster cut${allowed === 1 ? '' : 's'} this offseason.`
+      : `No cuts this offseason — AD wants to see more wins before approving roster moves.`,
     payload: { allowed },
   })
   return { label: 'Cuts window opens', news: { allowed } }
@@ -238,7 +238,7 @@ function runLockTravelBudget(state) {
   state.newsfeed.unshift({
     id: `lock_travel_${state.calendar.year}`,
     year: state.calendar.year, week: 3, type: 'AWARD',
-    headline: `🔒 Travel budget locked at $${(travelDollars / 1000).toFixed(1)}K based on your scheduled trips.`,
+    headline: `Travel budget locked at $${(travelDollars / 1000).toFixed(1)}K based on your scheduled trips.`,
     payload: { travelDollars },
   })
   return { label: 'Travel locked', news: { travelDollars } }
@@ -283,7 +283,7 @@ function runClassFinalize(state) {
       rosterAtFlag: team.rosterPlayerIds.length,
       overByAtFlag: overflow,
     }
-    // Job security hit: -3 per overage player. Over-recruit by 5 → -15 JS.
+    // Job security hit: -3 per overage player. Over-recruit by 5 -15 JS.
     const jsHit = overflow * 3
     if (state.budget) {
       state.budget.jobSecurity = Math.max(0, (state.budget.jobSecurity || 50) - jsHit)
@@ -291,7 +291,7 @@ function runClassFinalize(state) {
     state.newsfeed.unshift({
       id: `over_cap_${state.calendar.year}`,
       year: state.calendar.year, week: 52, type: 'AWARD',
-      headline: `⚠ Over roster cap by ${overflow} player${overflow === 1 ? '' : 's'}. AD has docked you ${jsHit} job security. Cut down to 50 before the season rolls.`,
+      headline: `Over roster cap by ${overflow} player${overflow === 1 ? '' : 's'}. AD has docked you ${jsHit} job security. Cut down to 50 before the season rolls.`,
       payload: { overflow, jsHit },
       big: true,
     })
@@ -299,7 +299,7 @@ function runClassFinalize(state) {
   state.newsfeed.unshift({
     id: `class_finalize_${state.calendar.year}`,
     year: state.calendar.year, week: 52, type: 'AWARD',
-    headline: `🎓 ${added} signed recruit${added === 1 ? '' : 's'} joined the roster. Full ratings revealed.`,
+    headline: `${added} signed recruit${added === 1 ? '' : 's'} joined the roster. Full ratings revealed.`,
     payload: {}, big: added > 0,
   })
   return { label: 'Class finalized', news: { added } }
@@ -379,7 +379,7 @@ function runAcademics(state) {
     state.newsfeed.unshift({
       id: `acad_pen_${state.calendar.year}`,
       year: state.calendar.year, week: 1, type: 'AWARD',
-      headline: `⚠️ Team GPA of ${result.summary.teamGpa.toFixed(2)} below 2.5 — job security ${penalty} pts.`,
+      headline: `Team GPA of ${result.summary.teamGpa.toFixed(2)} below 2.5 — job security ${penalty} pts.`,
       payload: {},
     })
   }
@@ -390,7 +390,7 @@ function runDevelopment(state) {
   const userTeam = state.teams[state.userSchoolId]
   const hc = state.coaches[userTeam.headCoachId]
   const coachDeveloper = hc?.developer ?? 55
-  // Use extended effects so facilities → devMultiplier actually drives
+  // Use extended effects so facilities devMultiplier actually drives
   // per-player gains. Falls back to base effects shape for any code path
   // that doesn't read the extended fields yet.
   const budgetEffects = extendedBudgetEffects(state.budget)
@@ -444,7 +444,7 @@ function runDevelopment(state) {
       state.players[id] = { ...updated, redshirtUsed: true, semestersUsed: (updated.semestersUsed || 0) + 2 }
       state.newsfeed.unshift({
         id: `rs_${state.calendar.year}_${id}`, year: state.calendar.year, week: 2, type: 'AWARD',
-        headline: `🎓 ${updated.firstName} ${updated.lastName} (${updated.classYear} ${updated.primaryPosition}) auto-redshirted — only ${gp} games played.`,
+        headline: `${updated.firstName} ${updated.lastName} (${updated.classYear} ${updated.primaryPosition}) auto-redshirted — only ${gp} games played.`,
         payload: { playerId: id, games: gp },
       })
     } else {
@@ -486,7 +486,7 @@ function runDraft(state) {
   state.newsfeed.unshift({
     id: `draft_${state.calendar.year}`,
     year: state.calendar.year, week: 3, type: 'AWARD',
-    headline: `⚾ ${summarizeDraft(picks, userConfId)}`,
+    headline: `${summarizeDraft(picks, userConfId)}`,
     payload: { year: state.calendar.year, picks },
   })
   const userPicks = picks.filter(p => p.teamId === state.userSchoolId)
@@ -494,7 +494,7 @@ function runDraft(state) {
     state.newsfeed.unshift({
       id: `draft_user_${state.calendar.year}_${pk.playerId}`,
       year: state.calendar.year, week: 3, type: 'AWARD',
-      headline: `🌟 ${pk.name} (${pk.pos}) drafted by MLB in Round ${pk.round}! Big win for the program.`,
+      headline: `${pk.name} (${pk.pos}) drafted by MLB in Round ${pk.round}! Big win for the program.`,
       payload: { playerId: pk.playerId, round: pk.round }, big: true,
     })
   }
@@ -517,7 +517,7 @@ function runPortalOpen(state) {
   state.newsfeed.unshift({
     id: `portal_open_${state.calendar.year}`,
     year: state.calendar.year, week: 4, type: 'AWARD',
-    headline: `📥 NAIA Portal is OPEN. ${Object.values(portalPool).length} new transfer prospects on the recruiting board.`,
+    headline: `NAIA Portal is OPEN. ${Object.values(portalPool).length} new transfer prospects on the recruiting board.`,
     payload: {},
   })
   return { label: 'Transfer portal opens' }

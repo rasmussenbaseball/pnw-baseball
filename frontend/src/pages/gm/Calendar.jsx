@@ -48,7 +48,7 @@ export default function Calendar() {
   // these were hardcoded ranges that drifted off the real calendar (the
   // World Series was showing under June even though it's May 22).
   const buckets = useMemo(() => {
-    const byMonth = new Map()    // monthIndex (0-11) → { firstWeek, weeks: [] }
+    const byMonth = new Map()    // monthIndex (0-11) { firstWeek, weeks: [] }
     for (let w = 1; w <= WEEKS_PER_YEAR; w++) {
       const d = dateForWeek(year, w)
       const m = d.getUTCMonth()
@@ -68,8 +68,8 @@ export default function Calendar() {
       const distinct = [...new Set(phases)]
       const title = distinct.length <= 2
         ? distinct.join(' + ')
-        : `${distinct[0]} → ${distinct[distinct.length - 1]}`
-      return {
+        : `${distinct[0]} ${distinct[distinct.length - 1]}`
+        return {
         name: `${MONTH_LONG[b.monthIndex]} — ${title}`,
         weeks: b.weeks,
       }
@@ -169,7 +169,7 @@ function WeekCard({ save, slot, week, year, currentWeek, userSchoolId }) {
       </div>
       {req && (
         <div className={'text-[10px] mb-1 ' + (isToday ? 'text-white' : 'text-amber-800 font-semibold')}>
-          ⚠ Required: {req.label}
+           Required: {req.label}
         </div>
       )}
       <div className="flex flex-wrap gap-1">
@@ -193,7 +193,7 @@ function WeekCard({ save, slot, week, year, currentWeek, userSchoolId }) {
             className={'inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold ' +
               (isToday ? 'bg-white text-pnw-green' : 'bg-blue-100 text-blue-900 hover:bg-blue-200')}
           >
-            ⚾ {games.length} game{games.length === 1 ? '' : 's'}
+             {games.length} game{games.length === 1 ? '' : 's'}
           </Link>
         )}
         {events.length === 0 && games.length === 0 && !req && (

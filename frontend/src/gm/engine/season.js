@@ -197,7 +197,7 @@ export function simWeek(state, schedule, ratings) {
           state.newsfeed.unshift({
             id: `inj_${pid}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
             year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
-            headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
+            headline: `${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
             payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks },
           })
         }
@@ -220,7 +220,7 @@ export function simWeek(state, schedule, ratings) {
           state.newsfeed.unshift({
             id: `inj_${pid}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
             year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
-            headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
+            headline: `${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
             payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks },
           })
         }
@@ -370,12 +370,12 @@ export function runPostseason(state) {
 
   // National champion
   if (userWSChamp) {
-    news.push({ type: 'POSTSEASON', headline: `🏆🏆🏆 ${userName} wins the NAIA NATIONAL CHAMPIONSHIP at Avista NAIA World Series, Harris Field, Lewiston ID!`, big: true })
+    news.push({ type: 'POSTSEASON', headline: `${userName} wins the NAIA NATIONAL CHAMPIONSHIP at Avista NAIA World Series, Harris Field, Lewiston ID!`, big: true })
   } else if (userInWS) {
     const wsChamp = state.schools[national.nationalChampion]?.name
     news.push({ type: 'POSTSEASON', headline: `Advanced to Avista NAIA World Series. ${wsChamp} won the national title.`, big: true })
   } else if (userORWon) {
-    news.push({ type: 'POSTSEASON', headline: `✓ Won Opening Round at ${state.schools[userORSite?.host]?.name}! Headed to Lewiston for the NAIA World Series.` })
+    news.push({ type: 'POSTSEASON', headline: `Won Opening Round at ${state.schools[userORSite?.host]?.name}! Headed to Lewiston for the NAIA World Series.` })
   } else if (userInField) {
     const winner = state.schools[userORSite?.winner]?.name
     news.push({ type: 'POSTSEASON', headline: `Opening Round at ${state.schools[userORSite?.host]?.name}: eliminated. ${winner} advanced to the WS.` })
@@ -384,7 +384,7 @@ export function runPostseason(state) {
 
   // Conference tournament
   if (userChamp) {
-    news.push({ type: 'POSTSEASON', headline: `🏆 ${userName} wins the ${state.conferences[userConf].name} Tournament! Auto-bid to NAIA national tournament secured.`, big: true })
+    news.push({ type: 'POSTSEASON', headline: `${userName} wins the ${state.conferences[userConf].name} Tournament! Auto-bid to NAIA national tournament secured.`, big: true })
   } else if (userResult?.qualifiers.find(q => q.schoolId === state.userSchoolId)) {
     news.push({ type: 'POSTSEASON', headline: `Conference tournament: eliminated. ${state.schools[userResult.champion]?.name} won the ${state.conferences[userConf].abbreviation}.` })
   } else {
@@ -494,7 +494,7 @@ export function runEndOfYear(state) {
   state.newsfeed.unshift({
     id: `eoy_${state.calendar.year}`,
     year: state.calendar.year, week: 0, type: 'AWARD',
-    headline: `📅 Postseason wrapped. Budget review, draft, transfers, and development run over the next few offseason weeks. Watch the calendar.`,
+    headline: `Postseason wrapped. Budget review, draft, transfers, and development run over the next few offseason weeks. Watch the calendar.`,
     payload: {}, big: true,
   })
 
@@ -595,13 +595,13 @@ function refreshWeeklyAP(state) {
 /**
  * Unified weekly tick — handles all 52 weeks of the game year.
  *
- *   - Bumps weekOfYear (wraps 52 → 1, year++)
+ *   - Bumps weekOfYear (wraps 52 1, year++)
  *   - Re-derives mode + offseasonWeek + seasonWeek (back-compat)
  *   - Refreshes AP (locked = 0 for weeks 1-3)
  *   - Ticks bookkeeping (boosts, happiness)
  *   - Fires scheduled events for the new week (events.js)
- *   - Runs the full postseason bracket on the wk 39 → 40 transition
- *   - Runs minimal end-of-year on the wk 52 → 1 transition
+ *   - Runs the full postseason bracket on the wk 39 40 transition
+ *   - Runs minimal end-of-year on the wk 52 1 transition
  *
  * @param {SaveState} state
  */
@@ -645,7 +645,7 @@ export function advanceOneWeek(state) {
   }
 
   // Capture last-week AP spend BEFORE the refresh resets it — used by the
-  // weekly team-GPA dynamic (lower utilization → GPA drifts down).
+  // weekly team-GPA dynamic (lower utilization GPA drifts down).
   state._lastWeekApSpent = state.ap?.spentThisWeek ?? 0
 
   // Refresh AP and tick boosts. AP is LOCKED (= 0) during weeks 1-3 per the
@@ -674,7 +674,7 @@ export function advanceOneWeek(state) {
       state.newsfeed.unshift({
         id: `heal_${p.id}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
         year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
-        headline: `🟢 ${p.firstName} ${p.lastName} cleared from injury. ${
+        headline: `${p.firstName} ${p.lastName} cleared from injury. ${
           p._recentReturn?.severity && p._recentReturn.severity !== 'MINOR'
             ? `Some lingering rating impact applied — see player page.`
             : `Back in action.`
@@ -710,7 +710,7 @@ export function advanceOneWeek(state) {
         state.newsfeed.unshift({
           id: `inj_prac_${pid}_${state.calendar?.year}_${nextWeek}`,
           year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
-          headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
+          headline: `${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
           payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks, context: 'PRACTICE' },
         })
       }

@@ -128,7 +128,7 @@ export const ROLE_DESCRIPTIONS = {
  * core 4 stats given a school's programHistory (0-100).
  */
 function meanRatingForProgram(programHistory) {
-  // Programs scoring 80+ → mean ~70; programs at 50 → mean ~55; programs at 20 → mean ~42
+  // Programs scoring 80+ mean ~70; programs at 50 mean ~55; programs at 20 mean ~42
   return 40 + (programHistory * 0.35)
 }
 
@@ -292,7 +292,7 @@ const SALARY_TABLE = {
 export function computeCoachSalary(resourceTier, role, qualityAvg) {
   const tierTable = SALARY_TABLE[resourceTier] || SALARY_TABLE.MID
   const cell = tierTable[role] || tierTable.BENCH_COACH
-  // Quality 50 → +0, quality 90 → +qualBonus, scales linearly past
+  // Quality 50 +0, quality 90 +qualBonus, scales linearly past
   const qualityFactor = (qualityAvg - 50) / 40
   const computed = cell.base + cell.qualBonus * qualityFactor
   return Math.round(Math.max(cell.floor, computed))
@@ -336,7 +336,7 @@ export function generateStaff(school, seed) {
 // the 4 dev/mot/rec/tac ratings — the role IS the value. User pays 20 AP
 // for a 1-year contract; the boost is applied while the role is filled.
 //
-// Effects are surfaced via `optionalHireBoosts(team, state)` which reads the
+// Effects are surfaced via `optionalHireBoosts(team, state)`which reads the
 // set of filled optional roles and returns the active boost object. Sim
 // code reads from there.
 
@@ -354,7 +354,7 @@ export const OPTIONAL_HIRE_META = {
     label: 'Recruiting Coordinator',
     blurb: 'Adds +5 AP to your weekly recruiting AP pool, year-round.',
     effectLabel: '+5 recruiting AP/wk',
-    icon: '🎯',
+    icon: '',
     contractYears: 1,
     apCost: 20,
   },
@@ -362,7 +362,7 @@ export const OPTIONAL_HIRE_META = {
     label: 'Strength & Conditioning Coach',
     blurb: 'Reduces injury risk by 20% and bumps player durability by +4.',
     effectLabel: '−20% injuries · +4 durability',
-    icon: '💪',
+    icon: '',
     contractYears: 1,
     apCost: 20,
   },
@@ -370,7 +370,7 @@ export const OPTIONAL_HIRE_META = {
     label: 'Director of Operations',
     blurb: 'Logistics + travel efficiency adds +$50K to your annual athletic budget.',
     effectLabel: '+$50K to budget',
-    icon: '📋',
+    icon: '',
     contractYears: 1,
     apCost: 20,
   },
@@ -378,7 +378,7 @@ export const OPTIONAL_HIRE_META = {
     label: 'Data & Analytics Manager',
     blurb: 'Unlocks advanced stats league-wide (FIP, wOBA, wRC+, WAR).',
     effectLabel: 'Unlocks advanced stats',
-    icon: '📊',
+    icon: '',
     contractYears: 1,
     apCost: 20,
   },
@@ -386,7 +386,7 @@ export const OPTIONAL_HIRE_META = {
     label: 'Graduate Assistant',
     blurb: 'Bargain hire. Just 1 AP to bring on board, adds +1 AP to your weekly pool.',
     effectLabel: '+1 AP/wk',
-    icon: '🎒',
+    icon: '',
     contractYears: 1,
     apCost: 1,
   },

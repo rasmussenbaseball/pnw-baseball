@@ -106,7 +106,7 @@ export function simMlbDraft(state, year) {
     const c = pool[idx]
     usedIds.add(c.playerId)
 
-    // Distribute picks across 20 rounds: pick #1 → round 1, last pick → round 20.
+    // Distribute picks across 20 rounds: pick #1 round 1, last pick round 20.
     const round = Math.max(1, Math.min(20, Math.round(1 + (i / Math.max(1, totalPicks - 1)) * 19)))
     picks.push({
       ...c,
@@ -131,6 +131,6 @@ export function summarizeDraft(picks, userConferenceId) {
     ? picks.filter(p => p.conferenceId === userConferenceId).length
     : 0
   let s = `MLB Draft: ${picks.length} NAIA player${picks.length === 1 ? '' : 's'} picked — ${pitchers} P, ${hitters} hitter${hitters === 1 ? '' : 's'}.`
-  if (confCount > 0) s += ` ${confCount} from your conference.`
+  if (confCount > 0) s += `${confCount} from your conference.`
   return s
 }

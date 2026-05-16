@@ -151,7 +151,7 @@ export function totalAnnualTravelCost(schoolId, schedule, schools, nonNaiaLookup
     } else if (g.seriesId) {
       if (seriesSeen.has(g.seriesId)) continue
       seriesSeen.add(g.seriesId)
-      // 4-game series → typically 3 days; 3-game → 3 days
+      // 4-game series typically 3 days; 3-game 3 days
       const seriesGames = schedule.filter(x => x.seriesId === g.seriesId).length
       const daysAway = Math.min(4, Math.max(2, seriesGames))
       total += estimateAwaySeriesCost(homeState, oppState, seriesGames, daysAway).totalCost

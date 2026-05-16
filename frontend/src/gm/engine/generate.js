@@ -78,7 +78,7 @@ function potentialGapFor(classYear) {
  */
 function applyStarBump(mean, slotTier, rng) {
   if (slotTier !== 'starter') return mean
-  // 8% chance of a star (mean 84 → 78-90 range)
+  // 8% chance of a star (mean 84 78-90 range)
   if (rng.chance(0.08)) return Math.max(mean, 84)
   // 18% chance of a quality starter (mean 76)
   if (rng.chance(0.18)) return Math.max(mean, 76)
@@ -265,7 +265,7 @@ function generatePotential(currentRatings, classYear, rng, profile = null) {
 
   // Senior haircut: SR ceilings cap closer to current (limited time left).
   const seniorHaircut = classYear === 'SR' ? -8 : classYear === 'JR' ? -2 : 0
-  // Late bloomer bonus: archetype tag → +8 ceiling
+  // Late bloomer bonus: archetype tag +8 ceiling
   const lateBloom = profile?.isLateBloomer ? 8 : 0
 
   const out = {}
@@ -350,7 +350,7 @@ function makeRosterPositionList(rng) {
     list.push({ position: rng.pick(['1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']), isPitcher: false })
   }
   // CRITICAL: interleave so the first 14 (starter tier) get both hitters
-  // AND pitchers. Was: all hitters first, then pitchers → no pitcher ever
+  // AND pitchers. Was: all hitters first, then pitchers no pitcher ever
   // landed in the 'starter' tier and their OVRs were systematically lower.
   // Now: 9 starting hitters (C/1B/2B/SS/3B/LF/CF/RF/DH) + 5 SP rotation up
   // front, then the rest.
@@ -436,19 +436,19 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     weightLbs: profile.measurables.weightLbs,
     targetMatureWeightLbs: profile.measurables.targetMatureWeightLbs,
   }
-  // Body-size boost: bigger frame → higher velo + max EV (long levers).
+  // Body-size boost: bigger frame higher velo + max EV (long levers).
   const ht = profile.measurables.heightInches
   const sizeBoost = Math.max(0, (ht - 70) * 0.4)
   if (isHitter) {
     const sp = hitter.speed
-    // 60-yard: speed 50 → 7.0 (avg), speed 99 → 6.41 (elite).
+    // 60-yard: speed 50 7.0 (avg), speed 99 6.41 (elite).
     measurables.sixtyYardSec = Math.round((7.0 - (sp - 50) * 0.012 + rng.gaussian(0, 0.06)) * 100) / 100
     if (slot.position === 'C') {
       // Pop time uses arm (60%) + fielding (40%).
       const blended = hitter.arm * 0.6 + hitter.fielding * 0.4
       measurables.popTimeSec = Math.round((2.10 - (blended - 50) * 0.0075 + rng.gaussian(0, 0.04)) * 100) / 100
     }
-    // Max EV: power 30 → ~90, power 50 → ~96 (avg college), power 70 → ~102,
+    // Max EV: power 30 ~90, power 50 ~96 (avg college), power 70 ~102,
     // power 95+ pushes 110+. College players sit ~+2 mph above HS recruits.
     // Floor at 88 mph — even bench D-tier players cleared NAIA recruiting.
     const pw = Math.max(hitter.power_l, hitter.power_r)

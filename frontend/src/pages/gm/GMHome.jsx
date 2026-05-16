@@ -93,7 +93,7 @@ export default function GMHome() {
         <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
           <li>Recruiting board (HS + JUCO + transfer portal)</li>
           <li>D1/D2/D3 non-conference scheduling</li>
-          <li>NAIA postseason (Opening Round → Avista NAIA World Series)</li>
+          <li>NAIA postseason (Opening Round Avista NAIA World Series)</li>
           <li>Practice / lift / meals (Action Points spent on team development)</li>
         </ul>
       </div>

@@ -32,57 +32,57 @@ const CATEGORIES = {
     label: 'Scholarships',
     blurb: 'Athletic aid pool — your scholarship $ for recruits and roster.',
     effect: 'More $ = win more recruiting battles + retain stars. Less = roster gets thinner.',
-    icon: '🎓',
+    icon: '',
   },
   coachingSalaries: {
     label: 'Coaching Salaries',
     blurb: 'HC + assistants. Pay determines who you can keep + hire.',
     effect: 'Locked to your actual payroll on the Coaches page.',
-    icon: '🧢',
+    icon: '',
     lockedFromHires: true,
   },
   travel: {
     label: 'Travel',
     blurb: 'Bus, flights, hotels for road games.',
     effect: 'Locked from your scheduled trips in Wk 3.',
-    icon: '✈️',
+    icon: '',
     lockedAlways: true,
   },
   equipment: {
     label: 'Equipment',
     blurb: 'Bats, gloves, balls, helmets, catcher gear.',
     effect: 'Cheaper gear = more in-game injuries. ±25% injury risk swing.',
-    icon: '⚾',
+    icon: '',
   },
   uniforms: {
     label: 'Uniforms',
     blurb: 'Game jerseys, alts, hats, travel polos.',
     effect: 'Tiny morale + recruiting-impression effect. Not worth obsessing over.',
-    icon: '👕',
+    icon: '',
   },
   meals: {
     label: 'Meals & Nutrition',
     blurb: 'Training table + travel meals.',
     effect: 'Drives pitcher stamina + day-to-day durability. ±3 stamina pts.',
-    icon: '🍽',
+    icon: '',
   },
   facilities: {
     label: 'Facilities',
     blurb: 'Field, indoor cages, weight room maintenance.',
     effect: 'Offseason player development rate. ±20% on annual gains.',
-    icon: '🏟',
+    icon: '',
   },
   medical: {
     label: 'Medical / Training',
     blurb: 'Athletic trainer + recovery + supplies.',
     effect: 'Faster injury recovery. ±30% recovery speed.',
-    icon: '🏥',
+    icon: '',
   },
   recruiting: {
     label: 'Recruiting',
     blurb: 'Travel for visits, camp fees, signing day production.',
     effect: 'Boosts weekly AP earned + recruit pool size. Up to +5 AP/wk.',
-    icon: '🎯',
+    icon: '',
   },
 }
 
@@ -155,7 +155,7 @@ export default function Budget() {
     save.newsfeed.unshift({
       id: `budget_lock_${save.calendar?.year}`,
       year: save.calendar?.year, week: save.calendar?.week, type: 'AWARD',
-      headline: `💰 ${save.calendar?.year} budget locked. $${(total / 1000).toFixed(0)}K allocated across categories.`,
+      headline: `${save.calendar?.year} budget locked. $${(total / 1000).toFixed(0)}K allocated across categories.`,
       payload: {},
     })
     saveDynasty(save); setSave({ ...save })
@@ -230,7 +230,7 @@ export default function Budget() {
       {isLocked ? (
         <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 mb-4 flex justify-between items-center">
           <div className="text-sm text-green-900">
-            <strong>✓ Budget locked for {save.calendar?.year}.</strong>{' '}
+            <strong> Budget locked for {save.calendar?.year}.</strong>{' '}
             Year-end review measures against this.
           </div>
           <button onClick={unlockBudget} className="px-3 py-1.5 border border-green-600 text-green-800 rounded text-xs font-semibold hover:bg-green-100">
@@ -243,7 +243,7 @@ export default function Budget() {
             Looks good? <strong>Lock the budget in</strong> to clear the Wk 3 phase-gate.
           </div>
           <button onClick={lockBudget} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
-            Lock budget ✓
+            Lock budget 
           </button>
         </div>
       )}
@@ -313,7 +313,7 @@ function UsageBar({ total, allocated, surplus, usagePct }) {
       {/* Effect of surplus / deficit */}
       <div className="text-[11px] text-gray-600 mt-2 leading-snug">
         {over
-          ? <>⚠ <strong>${(-surplus / 1000).toFixed(1)}K over.</strong> The AD will cut next year's budget AND hit your job security at year-end. Over-budget is allowed, but expensive.</>
+          ? <> <strong>${(-surplus / 1000).toFixed(1)}K over.</strong> The AD will cut next year's budget AND hit your job security at year-end. Over-budget is allowed, but expensive.</>
           : surplus > 0
             ? <>You have <strong>${(surplus / 1000).toFixed(1)}K unspent.</strong> Up to 25% of total rolls over to next year — the rest goes back to the school.</>
             : <>Every dollar deployed. AD likes a clean ledger.</>}
@@ -335,7 +335,7 @@ function CategoryRow({ cat, meta, value, pct, total, guide, inRange, locked, onA
           <div className="flex justify-between items-baseline">
             <div>
               <div className="text-sm font-bold text-pnw-slate">
-                {meta.label} {locked && <span className="text-gray-400 text-xs">🔒</span>}
+                {meta.label} {locked && <span className="text-gray-400 text-xs"></span>}
               </div>
               <div className="text-[11px] text-gray-500">{meta.blurb}</div>
             </div>

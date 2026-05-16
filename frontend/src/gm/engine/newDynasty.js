@@ -130,12 +130,12 @@ export function newDynasty(input) {
     normalizeRosterScholarships(teams[school.id], school, players)
   }
 
-  // 4. Calendar — dynasty starts first week of August 2026 (offseason) → fall
-  // ball → spring 2027 season. Offseason has 26 weeks; first season game lands
+  // 4. Calendar — dynasty starts first week of August 2026 (offseason) fall
+  // ball spring 2027 season. Offseason has 26 weeks; first season game lands
   // around mid/late February.
   /** @type {import('./types.js').Calendar} */
   const calendar = {
-    // `year` is the AUGUST year — the year the offseason begins. Aug 2026 →
+    // `year`is the AUGUST year — the year the offseason begins. Aug 2026 
     // year=2026; the spring season ending May 2027 is displayed as "2027"
     // via year+1 in legacy code (calendarDateLabel etc).
     year: 2026,

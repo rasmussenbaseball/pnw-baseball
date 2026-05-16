@@ -3,10 +3,10 @@
  */
 
 /**
- * Convert snake_case / SCREAMING_SNAKE_CASE → Title Case With Spaces.
- *   "power_l"     → "Power L"
- *   "HEAD_COACH"  → "Head Coach"
- *   "vs_r"        → "Vs R"
+ * Convert snake_case / SCREAMING_SNAKE_CASE Title Case With Spaces.
+ *   "power_l"     "Power L"
+ *   "HEAD_COACH"  "Head Coach"
+ *   "vs_r"        "Vs R"
  */
 export function prettyLabel(s) {
   if (!s) return ''
@@ -24,14 +24,14 @@ export function displayPosition(pos) {
 
 /**
  * Display class year — prefixes "RS-" if the player has used a redshirt year.
- *   FR + redshirtUsed → "RS-FR"
+ *   FR + redshirtUsed "RS-FR"
  */
 export function displayClassYear(player) {
   if (!player) return ''
   return (player.redshirtUsed ? 'RS-' : '') + player.classYear
 }
 
-/** Format dollars with K suffix: 47500 → "$47.5K", 1200000 → "$1.2M". */
+/** Format dollars with K suffix: 47500 "$47.5K", 1200000 "$1.2M". */
 export function moneyShort(n) {
   if (n == null) return '—'
   if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M'

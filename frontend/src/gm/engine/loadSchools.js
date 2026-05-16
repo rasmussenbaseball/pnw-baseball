@@ -2,9 +2,9 @@
  * Load and hydrate schools data.
  *
  * Combines:
- *   - schools.json  → canonical NAIA program list (199 schools, 21 conferences)
- *   - pear_ratings_2026.json → real-world strength rating per program
- *   - Tier heuristics → tuition, room+board, scholarship pool, facility rating
+ *   - schools.json  canonical NAIA program list (199 schools, 21 conferences)
+ *   - pear_ratings_2026.json real-world strength rating per program
+ *   - Tier heuristics tuition, room+board, scholarship pool, facility rating
  *
  * Output: a Map of School records ready for the engine.
  *
@@ -14,14 +14,14 @@
 import schoolsRaw from '../data/schools.json'
 import pearRaw from '../data/pear_ratings_2026.json'
 
-// ─── PEAR ↔ schools.json name reconciliation ─────────────────────────────────
+// ─── PEAR schools.json name reconciliation ─────────────────────────────────
 //
 // PEAR names schools slightly differently than our schools.json. Examples:
-//   schools.json: "Lewis-Clark State"   ↔  PEAR: "Lewis-Clark (ID)"
-//   schools.json: "Tennessee Wesleyan"  ↔  PEAR: "Tennessee Wesleyan"
-//   schools.json: "Saint Mary (KS)"     ↔  PEAR: "St. Mary (KS)"
+//   schools.json: "Lewis-Clark State"    PEAR: "Lewis-Clark (ID)"
+//   schools.json: "Tennessee Wesleyan"   PEAR: "Tennessee Wesleyan"
+//   schools.json: "Saint Mary (KS)"      PEAR: "St. Mary (KS)"
 //
-// We do (1) exact match, then (2) normalized match (strip parens, "St."→"Saint", lowercase).
+// We do (1) exact match, then (2) normalized match (strip parens, "St.""Saint", lowercase).
 // Anything still unmatched gets a default "average" rating with a console.warn.
 
 const PEAR_RATINGS = (pearRaw.stats || []).reduce((acc, row) => {
@@ -90,7 +90,7 @@ const HAND_CODED_TIERS = {
 // ─── Tier heuristic (for everything not hand-coded) ──────────────────────────
 
 function assignTier(school, pearRating) {
-  // Strong PEAR rating → at least WELL_FUNDED
+  // Strong PEAR rating at least WELL_FUNDED
   if (pearRating != null && pearRating >= 4.0) return 'WELL_FUNDED'
   if (pearRating != null && pearRating >= 6.0) return 'D1_LITE'
 
@@ -121,7 +121,7 @@ const TIER_DEFAULTS = {
   SHOESTRING:  { tuitionAvg: 22000, rbAvg: 10000, facilityAvg: 58, academicAvg: 60, equivalencies: 3.0 },
 }
 
-// ─── State → region map ──────────────────────────────────────────────────────
+// ─── State region map ──────────────────────────────────────────────────────
 
 const STATE_TO_REGION = {
   WA: 'NW', OR: 'NW', ID: 'NW', BC: 'NW', AK: 'NW',
@@ -136,7 +136,7 @@ const STATE_TO_REGION = {
 // ─── Hydration ───────────────────────────────────────────────────────────────
 
 /**
- * Convert PEAR rating (range ~-15 to +8, mean ~0) → programHistory (0-100).
+ * Convert PEAR rating (range ~-15 to +8, mean ~0) programHistory (0-100).
  * We center on 50, with stddev mapping such that elite programs hit 85-95
  * and bottom programs hit 10-25.
  */

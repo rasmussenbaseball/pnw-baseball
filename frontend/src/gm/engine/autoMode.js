@@ -10,13 +10,13 @@
  *      prospect camp, mandatory cuts) — picked sensibly so the user can
  *      still beat sim into Wk 5 even if they haven't touched the menus.
  *   2. Leftover weekly AP spent on the highest-priority lever:
- *        - GPA dropping → study hall
- *        - Recruiting class still open + AP available → work the board
- *        - Otherwise → fundraise + team boost
+ *        - GPA dropping study hall
+ *        - Recruiting class still open + AP available work the board
+ *        - Otherwise fundraise + team boost
  *   3. Prospect camp invites in Wks 5 & 10.
  *   4. Mandatory cuts when over the 50-player cap.
  *
- * Architecture: a single entry point `runAutoActions(save)` is called from
+ * Architecture: a single entry point `runAutoActions(save)`is called from
  * Dashboard right before sim advances. It mutates save in place — same
  * pattern the rest of the engine uses.
  */
@@ -152,7 +152,7 @@ function autoFulfillProspectCamp(save, summary) {
   const programMomentum = save.teams?.[userSchoolId]?.programMomentum ?? 50
   const fee = 100   // mid-tier — caps revenue but maxes turnout
 
-  // Need to pass a working `recruits` set even if there's nothing here yet
+  // Need to pass a working `recruits`set even if there's nothing here yet
   const result = simProspectCamp(
     recruits, userSchoolId, invitedIds, fee,
     coachRecruiter, programMomentum,
@@ -324,12 +324,12 @@ function spendRecruiting(save, ap) {
     const fog = grade?.noise ?? 15
     const ovr = avgEstOvr(r)
     // Pick the action. The dollar cost is in AP only.
-    //   high fog (≥10) + AP ≥ 4 → SCOUT_TRIP
-    //   high fog (≥10) + AP < 4 → CALL
-    //   low fog + interest < 50 + AP ≥ 2 → ASSISTANT_TALK
-    //   low fog + interest 50-80 + AP ≥ 5 → HOME_VISIT
-    //   low fog + interest 80+ + AP ≥ 6 → CAMPUS_VISIT (the closer)
-    //   default → TEXT (1 AP)
+    //   high fog (≥10) + AP ≥ 4 SCOUT_TRIP
+    //   high fog (≥10) + AP < 4 CALL
+    //   low fog + interest < 50 + AP ≥ 2 ASSISTANT_TALK
+    //   low fog + interest 50-80 + AP ≥ 5 HOME_VISIT
+    //   low fog + interest 80+ + AP ≥ 6 CAMPUS_VISIT (the closer)
+    //   default TEXT (1 AP)
     let action
     if (fog >= 10 && ap - spent >= ACTION_TYPES.SCOUT_TRIP.apCost) action = ACTION_TYPES.SCOUT_TRIP
     else if (interest >= 80 && ap - spent >= ACTION_TYPES.CAMPUS_VISIT.apCost) action = ACTION_TYPES.CAMPUS_VISIT
@@ -370,7 +370,7 @@ function spendRecruiting(save, ap) {
 }
 
 function computeAutoOffer(save, recruit, ovr) {
-  // Simple offer scale: higher OVR + better academic rating → more $
+  // Simple offer scale: higher OVR + better academic rating more $
   // Capped to leave room for the rest of the class.
   const userSchoolId = save.userSchoolId
   const team = save.teams[userSchoolId]

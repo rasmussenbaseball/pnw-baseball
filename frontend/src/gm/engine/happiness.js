@@ -26,11 +26,11 @@ export function happinessLevel(value) {
 }
 
 export const HAPPINESS_DISPLAY = {
-  ECSTATIC: { label: 'Ecstatic', emoji: '😄', color: 'text-green-700',  bg: 'bg-green-100' },
-  HAPPY:    { label: 'Happy',    emoji: '🙂', color: 'text-pnw-green',  bg: 'bg-pnw-cream' },
-  NEUTRAL:  { label: 'Neutral',  emoji: '😐', color: 'text-gray-700',   bg: 'bg-gray-100' },
-  UNSURE:   { label: 'Unsure',   emoji: '😕', color: 'text-amber-700',  bg: 'bg-amber-100' },
-  UPSET:    { label: 'Upset',    emoji: '😠', color: 'text-red-700',    bg: 'bg-red-100' },
+  ECSTATIC: { label: 'Ecstatic', emoji: '', color: 'text-green-700',  bg: 'bg-green-100' },
+  HAPPY:    { label: 'Happy',    emoji: '', color: 'text-pnw-green',  bg: 'bg-pnw-cream' },
+  NEUTRAL:  { label: 'Neutral',  emoji: '', color: 'text-gray-700',   bg: 'bg-gray-100' },
+  UNSURE:   { label: 'Unsure',   emoji: '', color: 'text-amber-700',  bg: 'bg-amber-100' },
+  UPSET:    { label: 'Upset',    emoji: '', color: 'text-red-700',    bg: 'bg-red-100' },
 }
 
 const SMOOTHING = 0.30        // 30% toward target each week
@@ -108,12 +108,12 @@ function performanceDelta(player, stats, leagueAvg) {
     const ip = stats.outs / 3
     if (ip < 3) return 0
     const era = (stats.er * 9) / Math.max(1, ip)
-    // At league avg → 0. 2.00 lower → +15. 2.00 higher → -15.
+    // At league avg 0. 2.00 lower +15. 2.00 higher -15.
     return Math.max(-15, Math.min(15, (leagueAvg.era - era) * 7.5))
   }
   if (stats.pa < 15) return 0
   const obp = (stats.h + stats.bb + (stats.hbp || 0)) / Math.max(1, stats.pa)
-  // At league avg → 0. .080 higher → +15. .080 lower → -15.
+  // At league avg 0. .080 higher +15. .080 lower -15.
   return Math.max(-15, Math.min(15, (obp - leagueAvg.obp) * 188))
 }
 
@@ -136,7 +136,7 @@ export function computeHappinessTarget(player, ctx) {
   // Cap their downside at -3 instead of full delta.
   const ovr = playerOverall(player)
   if (ptDelta < 0 && ovr < 55) ptDelta = Math.max(-3, ptDelta * 0.25)
-  // Seniors not playing → last shot → feel it harder.
+  // Seniors not playing last shot feel it harder.
   if (ptDelta < 0 && player.classYear === 'SR') ptDelta *= 1.4
   target += ptDelta
 
@@ -215,7 +215,7 @@ function applyHappinessConsequences(p, h) {
 
 /**
  * Apply a 1-on-1 meeting boost to a player. This is a permanent, one-shot
- * lift to their happiness value — moves them e.g. 50 → 60 right now. The
+ * lift to their happiness value — moves them e.g. 50 60 right now. The
  * normal weekly smoothing toward target then takes over, so if their PT /
  * performance situation hasn't changed they'll drift back down over time.
  * That's the design: meetings buy you a window, not a free permanent ceiling.

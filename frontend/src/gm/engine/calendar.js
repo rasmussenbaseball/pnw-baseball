@@ -5,7 +5,7 @@
  * See gameYear.js for the canonical phase/event mapping. This module
  * retains the date-math primitives and a few legacy labels still in use.
  *
- * 52-week cycle (Aug 1 → late July):
+ * 52-week cycle (Aug 1 late July):
  *   Wk 1     Aug 1         Schedule (tutorial)
  *   Wk 2     Aug 8         Hire assistants (tutorial)
  *   Wk 3     Aug 15        Budget (tutorial)

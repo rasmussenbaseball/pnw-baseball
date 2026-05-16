@@ -69,7 +69,7 @@ export default function Roster() {
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-start mb-6">
         <div>
-          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
+          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">{school.name} — Roster</h1>
           <p className="text-sm text-gray-600">{players.length} players</p>
         </div>
@@ -154,7 +154,7 @@ export default function Roster() {
                               className="ml-1 inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase align-middle"
                               title={`${p.injury.label} — ${p.injury.weeksRemaining} wk left`}
                             >
-                              🩼 IL
+                               IL
                             </span>
                           )}
                         </span>
@@ -186,7 +186,7 @@ export default function Roster() {
                             onClick={(e) => { e.stopPropagation(); handleCut(p.id) }}
                             className="px-2 py-0.5 bg-red-600 text-white rounded text-[10px] hover:opacity-90 font-semibold"
                           >
-                            ✂ Cut
+                             Cut
                           </button>
                         ) : (
                           <span className="text-[10px] text-gray-400 italic">SR</span>
@@ -245,7 +245,7 @@ function HappinessPill({ player }) {
   const level = happinessLevel(h.value)
   const d = HAPPINESS_DISPLAY[level]
   const trend = h.lastWeek != null && h.value !== h.lastWeek
-    ? (h.value > h.lastWeek ? '↑' : '↓')
+    ? (h.value > h.lastWeek ? '' : '')
     : ''
   const trendColor = h.value > (h.lastWeek ?? h.value) ? 'text-green-600'
     : h.value < (h.lastWeek ?? h.value) ? 'text-red-600' : ''
@@ -268,7 +268,7 @@ function CutsControlPanel({ save, cutMode, setCutMode, remaining, mandatory }) {
       <div className="bg-red-100 border-l-4 border-red-700 rounded-r p-4 mb-4">
         <div className="flex justify-between items-start gap-3">
           <div className="flex-1">
-            <div className="font-bold text-red-900">⚠ REQUIRED: Cut {remaining} player{remaining === 1 ? '' : 's'} to reach the 50-cap</div>
+            <div className="font-bold text-red-900"> REQUIRED: Cut {remaining} player{remaining === 1 ? '' : 's'} to reach the 50-cap</div>
             <div className="text-xs text-red-800 mt-1 leading-snug">
               You finalized over the cap by <strong>{overflow}</strong>. The AD already docked your job security
               ({overflow * 3} pts). You must cut down to 50 before you can advance to the new year.
@@ -294,7 +294,7 @@ function CutsControlPanel({ save, cutMode, setCutMode, remaining, mandatory }) {
     <div className="bg-red-50 border-l-4 border-red-500 rounded-r p-4 mb-4">
       <div className="flex justify-between items-start gap-3">
         <div className="flex-1">
-          <div className="font-bold text-red-900">✂ Roster cuts available — {remaining} left</div>
+          <div className="font-bold text-red-900"> Roster cuts available — {remaining} left</div>
           <div className="text-xs text-red-800 mt-1 leading-snug">
             AD trust tier: <strong>{tier.label}</strong> · {tier.note} Cuts are permanent.
             Seniors auto-graduate — don\'t waste a cut on them.
@@ -321,14 +321,14 @@ function CutsTrustNote({ save }) {
   if (tier.allowed > 0) return null
   return (
     <div className="bg-amber-50 border border-amber-200 rounded p-3 mb-4 text-xs text-amber-900">
-      <strong>✂ Cuts privileges suspended.</strong> {tier.note}
+      <strong> Cuts privileges suspended.</strong> {tier.note}
     </div>
   )
 }
 
 function StatCell({ value, arrow }) {
   if (!arrow) return <span>{value}</span>
-  const icon = arrow === 'red' ? '↓' : '↑'
+  const icon = arrow === 'red' ? '' : ''
   const color = arrow === 'green' ? 'text-green-600' :
                 arrow === 'red'   ? 'text-red-600' :
                                     'text-blue-600'

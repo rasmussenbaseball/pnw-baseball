@@ -8,7 +8,7 @@
  *   - Test reproducibly
  *
  * Convention: keys are constructed with `makeRng(saveId, season, day, gameId, paIndex)`
- * via the `hashSeed` helper so each game/PA gets its own deterministic stream.
+ * via the `hashSeed`helper so each game/PA gets its own deterministic stream.
  */
 
 /**

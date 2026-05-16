@@ -45,14 +45,14 @@ export default function PlayerDetail() {
         amount: -(before - player.hitter.fielding),
         week: save.calendar?.week,
         year: save.calendar?.year,
-        source: `Position change ${oldPos} → ${newPos}`,
+        source: `Position change ${oldPos} ${newPos}`,
       })
     }
     save.newsfeed = save.newsfeed || []
     save.newsfeed.unshift({
       id: `pos_change_${player.id}_${Date.now()}`,
       year: save.calendar?.year, week: save.calendar?.week, type: 'PLAYER_BOOST',
-      headline: `🔄 ${player.firstName} ${player.lastName} moved from ${displayPosition(oldPos)} to ${displayPosition(newPos)}` +
+      headline: `${player.firstName} ${player.lastName} moved from ${displayPosition(oldPos)} to ${displayPosition(newPos)}` +
         (penalty > 0 ? ` (−${penalty} fielding)` : ''),
       payload: { playerId: player.id, fromPos: oldPos, toPos: newPos, penalty },
     })
@@ -74,7 +74,7 @@ export default function PlayerDetail() {
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-4xl mx-auto">
-      <Link to={`/gm/roster?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Roster</Link>
+      <Link to={`/gm/roster?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Roster</Link>
 
       <div className="flex justify-between items-start mt-2 mb-6 gap-4">
         <div className="flex items-start gap-3">
@@ -93,7 +93,7 @@ export default function PlayerDetail() {
               onClick={() => setShowMoveModal(true)}
               className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-pnw-green hover:underline"
             >
-              🔄 Change position
+               Change position
             </button>
           )}
           </div>
@@ -116,7 +116,7 @@ export default function PlayerDetail() {
       {player.injury?.weeksRemaining > 0 && (
         <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 mb-4">
           <div className="flex items-start gap-3">
-            <div className="text-3xl">🩼</div>
+            <div className="text-3xl"></div>
             <div className="flex-1">
               <div className="text-xs uppercase tracking-wider text-red-700 font-bold">Currently injured</div>
               <div className="text-lg font-bold text-red-900">{player.injury.label}</div>
@@ -127,7 +127,7 @@ export default function PlayerDetail() {
                 Out of lineups + can\'t develop until cleared.
                 {player.injury.severity !== 'MINOR' && (
                   <span className="block text-amber-800 mt-1">
-                    ⚠ {player.injury.severity === 'SEASON' ? 'Season-ending' : 'Serious'} injury — some lingering rating
+                     {player.injury.severity === 'SEASON' ? 'Season-ending' : 'Serious'} injury — some lingering rating
                     penalty will apply on return ({Object.entries(player.injury.statPenalty || {}).map(([k, v]) => `${k} ${v}`).join(', ')}).
                   </span>
                 )}
@@ -235,15 +235,15 @@ function BoostArrow({ save, playerId, ratingKey, side }) {
     b.playerId === playerId && b.side === side && b.ratingKey === ratingKey,
   )
   if (temps.length > 0) {
-    return <span className="ml-0.5 text-blue-600" title="Temporary boost active">↑</span>
+    return <span className="ml-0.5 text-blue-600" title="Temporary boost active"></span>
   }
   const perms = (save.permanentBumps || []).filter(b =>
     b.playerId === playerId && b.side === side && b.ratingKey === ratingKey,
   )
   if (perms.length === 0) return null
   const total = perms.reduce((s, b) => s + b.amount, 0)
-  if (total > 0.1) return <span className="ml-0.5 text-green-600" title="Recently increased">↑</span>
-  if (total < -0.1) return <span className="ml-0.5 text-red-600" title="Recently decreased">↓</span>
+  if (total > 0.1) return <span className="ml-0.5 text-green-600" title="Recently increased"></span>
+  if (total < -0.1) return <span className="ml-0.5 text-red-600" title="Recently decreased"></span>
   return null
 }
 
@@ -270,8 +270,8 @@ function HappinessPanel({ player }) {
           {level === 'UPSET' && 'Unhappy and showing it — GPA + ratings drifting down. Real transfer risk; talk to them.'}
           <div className="mt-2 text-[11px] text-gray-500">
             Driven mostly by playing time vs. expectations and on-field performance.
-            {trendUp && <span className="ml-1 text-green-700 font-semibold">↑ trending up</span>}
-            {trendDown && <span className="ml-1 text-red-700 font-semibold">↓ trending down</span>}
+            {trendUp && <span className="ml-1 text-green-700 font-semibold">trending up</span>}
+            {trendDown && <span className="ml-1 text-red-700 font-semibold">trending down</span>}
             {/* meeting boosts are now permanent direct bumps — no countdown */}
           </div>
         </div>
@@ -293,7 +293,7 @@ function PositionChangeModal({ player, onPick, onClose }) {
               — bigger transitions (especially to/from catcher) cost more.
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none"></button>
         </div>
         <div className="grid grid-cols-3 gap-2">
           {HITTER_POSITION_OPTIONS.map(pos => {
@@ -325,10 +325,10 @@ function PositionChangeModal({ player, onPick, onClose }) {
         </div>
         <div className="mt-4 bg-gray-50 rounded p-3 text-[11px] text-gray-600 leading-snug">
           <div><strong className="text-pnw-slate">How this works:</strong></div>
-          <div>• <strong>Same area</strong> (LF↔RF, 1B↔3B): small penalty (−3)</div>
-          <div>• <strong>Cross-area</strong> (OF↔IF): moderate (−12)</div>
-          <div>• <strong>Any spot → Catcher</strong>: huge (−22) — toughest spot to learn</div>
-          <div>• <strong>Any spot → DH</strong>: free (no defense)</div>
+          <div>• <strong>Same area</strong> (LFRF, 1B3B): small penalty (−3)</div>
+          <div>• <strong>Cross-area</strong> (OFIF): moderate (−12)</div>
+          <div>• <strong>Any spot Catcher</strong>: huge (−22) — toughest spot to learn</div>
+          <div>• <strong>Any spot DH</strong>: free (no defense)</div>
           <div className="mt-1">The new position also weights your other ratings differently, so OVR will shift.</div>
         </div>
       </div>

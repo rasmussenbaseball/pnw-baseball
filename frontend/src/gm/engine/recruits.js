@@ -253,7 +253,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
 
   // Rating distribution per pool. Means + caps preserved from old code.
   let meanRating, stddev, cap
-  if (pool === 'HS_SR')       { meanRating = 50; stddev = 12; cap = 92 }   // wider stddev → more spread + occasional gems
+  if (pool === 'HS_SR')       { meanRating = 50; stddev = 12; cap = 92 }   // wider stddev more spread + occasional gems
   else if (pool === 'JUCO')   { meanRating = 58; stddev = 11; cap = 90 }
   else if (pool === 'NAIA_TRANSFER') { meanRating = 56; stddev = 12; cap = 90 }
   else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 7; cap = 95 }
@@ -356,10 +356,10 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   //   FB velo: HS avg ~83-84, top HS guys 91-92. JUCO slightly elevated
   //          (avg ~85-86, top 92-93). NAIA portal mid-pool similar to JUCO.
   //          D1 transfers + flamethrowers can hit 94-97.
-  //   Body size boost: bigger frame → higher velo + higher EV (long levers
+  //   Body size boost: bigger frame higher velo + higher EV (long levers
   //          drive bat + arm speed). Use heightInches as the size proxy.
   const ht = profile.measurables.heightInches
-  const sizeBoost = Math.max(0, (ht - 70) * 0.4)    // 70" → 0, 76" → +2.4, 80" → +4.0
+  const sizeBoost = Math.max(0, (ht - 70) * 0.4)    // 70" 0, 76" +2.4, 80" +4.0
 
   const measurables = {
     heightInches: ht,
@@ -368,7 +368,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   }
   if (!isPitcher) {
     const sp = trueHitter.speed
-    // 60-yard: elite 6.4, average 7.0. Formula: speed 50 → 7.0, speed 99 → 6.41.
+    // 60-yard: elite 6.4, average 7.0. Formula: speed 50 7.0, speed 99 6.41.
     const sixtyBase = 7.0 - (sp - 50) * 0.012
     measurables.sixtyYardSec = Math.round((sixtyBase + rng.gaussian(0, 0.06)) * 100) / 100
 
@@ -376,11 +376,11 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     //   Average board player ~93-95 mph, hard floor ~88 mph (anything below
     //   wouldn't be recruited). Top hitters 100+. Best power bats 105+.
     // Formula targets:
-    //   power 30 → ~88 mph (recruiting floor — rarely below this on a board)
-    //   power 50 → ~94 mph (avg)
-    //   power 70 → ~100 mph (above-avg power)
-    //   power 85 → ~104 mph (#1 corner IF type)
-    //   power 95+ → 108+ mph (elite, top of D1 prospect class)
+    //   power 30 ~88 mph (recruiting floor — rarely below this on a board)
+    //   power 50 ~94 mph (avg)
+    //   power 70 ~100 mph (above-avg power)
+    //   power 85 ~104 mph (#1 corner IF type)
+    //   power 95+ 108+ mph (elite, top of D1 prospect class)
     const pw = Math.max(trueHitter.power_l, trueHitter.power_r)
     const poolEvBoost = pool === 'JUCO' ? 2.0
       : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 1.5
@@ -396,9 +396,9 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     if (primaryPosition === 'C') {
       // Pop time depends on TRANSFER (fielding/glove work) + ARM (throw velo).
       // Real-world breakdown: ~40% transfer, ~60% arm. Targets:
-      //   blended 50 → 2.10 (slow)
-      //   blended 70 → 1.95 (above avg)
-      //   blended 90 → 1.80 (elite D1 caliber)
+      //   blended 50 2.10 (slow)
+      //   blended 70 1.95 (above avg)
+      //   blended 90 1.80 (elite D1 caliber)
       const arm = trueHitter.arm
       const fielding = trueHitter.fielding
       const blended = arm * 0.6 + fielding * 0.4
@@ -407,7 +407,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   } else {
     // ── Pitcher FB velo — DECOUPLED FROM STUFF (May 2026 per Nate) ─────
     // Velocity is now driven by:
-    //   1. Pool baseline (HS 83 → D1 transfer 89)
+    //   1. Pool baseline (HS 83 D1 transfer 89)
     //   2. Archetype velocityBias (FLAMETHROWER +5, SOFT_TOSS -8, etc.)
     //   3. Body-size boost (6'4+ arms play up — long levers)
     //   4. A small stuff correlation (+0.05 mph/pt) — kept weak so
@@ -538,7 +538,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
 
 /**
  * Convert a 30-99 academicRating to a believable GPA.
- *   30 → 1.5,  50 → 2.5,  60 → 2.9,  75 → 3.5,  90 → 3.9,  99 → 4.0
+ *   30 1.5,  50 2.5,  60 2.9,  75 3.5,  90 3.9,  99 4.0
  */
 export function academicRatingToGpa(rating) {
   const r = rating ?? 60
@@ -555,13 +555,13 @@ export function academicRatingToGpa(rating) {
  * them for at this school. Comes from the school's academic department, NOT
  * the athletic budget.
  *
- *   4.0       → 50% of tuition
- *   3.8-3.99  → 45%
- *   3.5-3.79  → 40%
- *   3.0-3.49  → 30%
- *   2.5-2.99  → 20%
- *   2.0-2.49  → 10%
- *   < 2.0     → 0%
+ *   4.0       50% of tuition
+ *   3.8-3.99  45%
+ *   3.5-3.79  40%
+ *   3.0-3.49  30%
+ *   2.5-2.99  20%
+ *   2.0-2.49  10%
+ *   < 2.0     0%
  */
 export function academicScholarshipPct(gpa) {
   if (gpa >= 4.0)  return 0.50
@@ -744,7 +744,7 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
     recruit.suitorsRevealed = true
   }
 
-  // Full-scout milestone: 10+ AP spent AND a live offer in place → everything
+  // Full-scout milestone: 10+ AP spent AND a live offer in place everything
   // revealed + meaningful interest bump (recruit feels prioritized).
   applyFullScoutIfEligible(recruit, userSchoolId)
 
@@ -932,7 +932,7 @@ function avgTrueRating(r) {
 // ─── Prospect Camp ───────────────────────────────────────────────────────────
 //
 // Every program holds one prospect camp in the fall. The user sets a $ fee
-// per attendee. Higher fees → fewer attendees. Better-rated recruits are
+// per attendee. Higher fees fewer attendees. Better-rated recruits are
 // harder to lure to camp; they're already getting attention from D1.
 //
 // Attendees:
@@ -984,7 +984,7 @@ export function rsvpLabel(prob) {
  * Predict prospect camp turnout.
  *
  * Calibration target: Bushnell at $125 fee with average coach + neutral
- * program → 30-40 attendees. Hard cap at 100, floor at 20 (otherwise camp
+ * program 30-40 attendees. Hard cap at 100, floor at 20 (otherwise camp
  * doesn't run).
  *
  * Attendance sources:
@@ -1134,7 +1134,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
   return { attendeeIds, revenue, recruits }
 }
 
-// ─── Fundraising (AP → $) ────────────────────────────────────────────────────
+// ─── Fundraising (AP $) ────────────────────────────────────────────────────
 
 /**
  * Spend AP on fundraising — donor calls, alumni outreach, community events.
@@ -1147,7 +1147,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
  */
 export function fundraise(apSpent, coachMotivator, programHistory) {
   // Base: $550/AP, scales 0.7×–1.6× by motivator, 0.7×–1.6× by program history.
-  // At 10 AP, motivator=65, history=50 → ~$8.1K. Top-end (90 / 70) → ~$11K.
+  // At 10 AP, motivator=65, history=50 ~$8.1K. Top-end (90 / 70) ~$11K.
   // Never quite hits $13K to keep the lever from feeling overpowered.
   const motivatorMult = 0.7 + (coachMotivator / 100) * 0.9
   const historyMult = 0.7 + (programHistory / 100) * 0.9
@@ -1220,8 +1220,8 @@ export function withdrawOffer(recruit, userSchoolId) {
 
 /**
  * Decide if a recruit signs this tick. Suitor-count aware:
- *   - Few suitors (0-1) → sign fast (high % per week)
- *   - Many suitors (5+) → take time (low % per week, more shopping around)
+ *   - Few suitors (0-1) sign fast (high % per week)
+ *   - Many suitors (5+) take time (low % per week, more shopping around)
  *
  * @param {import('./types.js').Recruit} recruit
  * @param {string} userSchoolId
@@ -1259,7 +1259,7 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
         .filter(p => p && !p.isPitcher === !recruit.isPitcher
           && (recruit.isPitcher ? p.isPitcher : p.primaryPosition === pos))
         .length
-      // 0 returners → 1.0 wide open, 4+ → 0.1 jammed
+      // 0 returners 1.0 wide open, 4+ 0.1 jammed
       ctx.ptAvailability = clamp(1 - sameSpot * 0.22, 0.1, 1.0)
     }
     // Pipeline match: coach's regions include the recruit's home region

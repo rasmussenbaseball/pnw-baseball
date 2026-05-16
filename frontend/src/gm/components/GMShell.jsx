@@ -87,7 +87,7 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
               imageRendering: 'pixelated',
             }}
           >
-            ⚾
+            
           </div>
           <div className="hidden md:block leading-none">
             <div

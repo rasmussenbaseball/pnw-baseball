@@ -7,8 +7,8 @@
  * with outs, runners, and score updated after each PA. Between batters you
  * can make pitching changes or pinch-hits.
  *
- * Mutates its internal `state` object as PAs are simmed. Once the game ends,
- * `isOver()` returns true and the final result is in `getResult()`.
+ * Mutates its internal `state`object as PAs are simmed. Once the game ends,
+ * `isOver()`returns true and the final result is in `getResult()`.
  */
 
 import { makeRng } from './rng'
@@ -357,7 +357,7 @@ const OUTCOME_PHRASES = {
   SINGLE:  (b)    => `${nm(b)} singles to the outfield.`,
   DOUBLE:  (b)    => `${nm(b)} doubles into the gap.`,
   TRIPLE:  (b)    => `${nm(b)} laces a triple to the corner.`,
-  HR:      (b)    => `🚀 ${nm(b)} HOMERS!`,
+  HR:      (b)    => `${nm(b)} HOMERS!`,
   SAC_FLY: (b)    => `${nm(b)} hits a sac fly. Run scores.`,
   SAC_BUNT:(b)    => `${nm(b)} lays down a sacrifice bunt.`,
   GIDP:    (b)    => `${nm(b)} grounds into a double play.`,
@@ -376,7 +376,7 @@ function nm(p) { return p ? `${p.firstName} ${p.lastName}` : '???' }
 function describePA(state, batter, pitcher, result, runsScored) {
   const phrase = (OUTCOME_PHRASES[result.outcome] || ((b) => `${nm(b)}: ${result.outcome}`))(batter, pitcher, result.type)
   const runsSuffix = runsScored > 0 && result.outcome !== 'HR' && result.outcome !== 'SAC_FLY'
-    ? ` ${runsScored} run${runsScored === 1 ? '' : 's'} score.`
+    ? `${runsScored} run${runsScored === 1 ? '' : 's'} score.`
     : ''
   return {
     kind: 'PA',

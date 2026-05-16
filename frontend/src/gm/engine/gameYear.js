@@ -13,7 +13,7 @@
  *   - Optional EVENT(s) (engine work that fires when the week starts)
  *
  * The required-action system gives Wks 1–4 their tutorial feel: the user is
- * walked through scheduling → hiring → budgeting → scouting, and physically
+ * walked through scheduling hiring budgeting scouting, and physically
  * cannot advance past a week until that week's task is done.
  */
 
@@ -101,7 +101,7 @@ export function seasonWeekForWeek(week) {
  * @property {string} blurb      one-line description for the dashboard banner
  * @property {string} route      where to send the user to complete it
  * @property {(state: any) => boolean} isComplete  has the task been done?
- * @property {string} [doneText] optional "✓ done" text to show when complete
+ * @property {string} [doneText] optional " done" text to show when complete
  */
 
 /** @returns {RequiredAction | null} */
@@ -127,7 +127,7 @@ const MANDATORY_CUTS_REQUIREMENT = {
   blurb: 'Your roster is over the 50-player cap after class finalization. Open the Roster page, enter cut mode, and trim the excess. Job security has already taken a hit for over-recruiting — keep your numbers in line next year.',
   route: '/gm/roster',
   isComplete: (state) => !(state.mandatoryCuts?.needed > 0 && state.mandatoryCuts.year === state.calendar?.year),
-  doneText: '✓ Roster trimmed to 50',
+  doneText: ' Roster trimmed to 50',
 }
 
 const SCHEDULE_REQUIREMENT = {
@@ -136,7 +136,7 @@ const SCHEDULE_REQUIREMENT = {
   blurb: 'Lock in non-conference weekends for the coming spring. Fall games auto-fill against nearby D2/D3/JUCO opponents.',
   route: '/gm/schedule',
   isComplete: (state) => isScheduleComplete(state),
-  doneText: '✓ Schedule complete',
+  doneText: ' Schedule complete',
 }
 
 const HIRE_REQUIREMENT = {
@@ -145,7 +145,7 @@ const HIRE_REQUIREMENT = {
   blurb: 'Pitching / Hitting / Bench coach. First year of a dynasty requires all three; later years let you keep your staff in place.',
   route: '/gm/coaches',
   isComplete: (state) => isHiringComplete(state),
-  doneText: '✓ Staff in place',
+  doneText: ' Staff in place',
 }
 
 const BUDGET_REQUIREMENT = {
@@ -154,7 +154,7 @@ const BUDGET_REQUIREMENT = {
   blurb: 'Allocate program $ across travel (locked from your schedule), facilities, S&C, recruiting, etc. Pick a preset or build your own.',
   route: '/gm/budget',
   isComplete: (state) => isBudgetSet(state),
-  doneText: '✓ Budget set',
+  doneText: ' Budget set',
 }
 
 const SCOUT_REQUIREMENT = {
@@ -163,7 +163,7 @@ const SCOUT_REQUIREMENT = {
   blurb: 'AP unlocks this week. Spend every point on scouting recruits for next year\'s class. Add them to your board, run trips, sign-of-interest visits.',
   route: '/gm/recruiting',
   isComplete: (state) => (state.ap?.currentWeek ?? 0) === 0,
-  doneText: '✓ AP spent on scouting',
+  doneText: ' AP spent on scouting',
 }
 
 const PROSPECT_CAMP_REQUIREMENT = {
@@ -172,7 +172,7 @@ const PROSPECT_CAMP_REQUIREMENT = {
   blurb: 'Once-a-year HS recruiting camp on your campus. Click below — there\'s a "Run Camp Now" panel at the top of Weekly Actions. Pick a fee, hit the button. (Invites were taken in Wks 5 & 10; if you missed those, you can still run it at lowest fee for revenue.)',
   route: '/gm/weekly',
   isComplete: (state) => state.prospectCamp?.year === state.calendar?.year,
-  doneText: '✓ Camp held',
+  doneText: ' Camp held',
 }
 
 // ─── Per-week completion checks (kept here so gameYear.js owns the spine) ──
@@ -227,10 +227,10 @@ export function canAdvanceWeek(state) {
 // ─── Date math ─────────────────────────────────────────────────────────────
 
 /**
- * Convert a (dynasty year, weekOfYear) pair → real-world Date.
+ * Convert a (dynasty year, weekOfYear) pair real-world Date.
  *
- * Year semantics: `year` is the year ending the spring season. So year=2027
- * means Aug 2026 → July 2027. Wk 1 starts Aug 1 of (year - 1).
+ * Year semantics: `year`is the year ending the spring season. So year=2027
+ * means Aug 2026 July 2027. Wk 1 starts Aug 1 of (year - 1).
  */
 export function dateForWeek(year, weekOfYear) {
   // Wk 1 = Aug 1 of (year - 1). Wk 27 = ~Feb 1 of year.

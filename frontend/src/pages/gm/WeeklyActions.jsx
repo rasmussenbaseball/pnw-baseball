@@ -79,7 +79,7 @@ export default function WeeklyActions() {
       payload: result,
     })
     saveDynasty(save); setSave({ ...save })
-    setActionReceipt(`✓ ${action.label} (${variantLabel}) — +${result.perPlayerBump.toFixed(1)} avg ${bumpedKeys} on ${result.playersAffected} players.`)
+    setActionReceipt(`${action.label} (${variantLabel}) — +${result.perPlayerBump.toFixed(1)} avg ${bumpedKeys} on ${result.playersAffected} players.`)
     setTimeout(() => setActionReceipt(null), 5000)
   }
   // Prospect Camp runs at Week 13 (late October). The phase-gate at Wk 13 in
@@ -158,7 +158,7 @@ export default function WeeklyActions() {
       id: `meet_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'AWARD',
-      headline: `🗣 1-on-1 meetings — boosted morale for ${meetingPicks.length} player${meetingPicks.length === 1 ? '' : 's'}.`,
+      headline: `1-on-1 meetings — boosted morale for ${meetingPicks.length} player${meetingPicks.length === 1 ? '' : 's'}.`,
       payload: { ids: meetingPicks },
     })
     setMeetingPicks([])
@@ -194,7 +194,7 @@ export default function WeeklyActions() {
     const actualBump = Math.min(baseBump, Math.max(0, 99 - before))
     if (actualBump <= 0) { alert('Player is already at 99 in this rating.'); return }
     block[oneOnOneRating] = Math.round((before + actualBump) * 10) / 10
-    // Track as a permanent bump so the rating shows ↑ on Roster + PlayerDetail
+    // Track as a permanent bump so the rating shows on Roster + PlayerDetail
     if (!save.permanentBumps) save.permanentBumps = []
     save.permanentBumps.push({
       playerId: p.id,
@@ -209,7 +209,7 @@ export default function WeeklyActions() {
       id: `1on1_${p.id}_${save.calendar.year}_${save.calendar.week}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'AWARD',
-      headline: `📈 1-on-1 dev — ${p.firstName} ${p.lastName} ${prettyLabel(oneOnOneRating)} +${actualBump.toFixed(1)}.`,
+      headline: `1-on-1 dev — ${p.firstName} ${p.lastName} ${prettyLabel(oneOnOneRating)} +${actualBump.toFixed(1)}.`,
       payload: { playerId: p.id, rating: oneOnOneRating, amount: actualBump },
     })
     setOneOnOnePlayer('')
@@ -228,7 +228,7 @@ export default function WeeklyActions() {
       id: `fund_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'AWARD',
-      headline: `💰 Fundraised ${FUNDRAISE_AP} AP → +$${(raised / 1000).toFixed(1)}K to budget.`,
+      headline: `Fundraised ${FUNDRAISE_AP} AP +$${(raised / 1000).toFixed(1)}K to budget.`,
       payload: { raised },
     })
     saveDynasty(save); setSave({ ...save })
@@ -261,7 +261,7 @@ export default function WeeklyActions() {
       id: `camp_${save.calendar.year}`,
       year: save.calendar.year, week: save.calendar.week,
       type: 'AWARD',
-      headline: `🏟 Prospect camp — ${result.attendeeIds.length} attendees at $${campFee} → +$${(result.revenue / 1000).toFixed(1)}K.`,
+      headline: `Prospect camp — ${result.attendeeIds.length} attendees at $${campFee} +$${(result.revenue / 1000).toFixed(1)}K.`,
       payload: { fee: campFee, attendees: result.attendeeIds.length },
     })
     saveDynasty(save); setSave({ ...save })
@@ -293,7 +293,7 @@ export default function WeeklyActions() {
 
       {actionReceipt && (
         <div className="mb-4 bg-green-50 border border-green-200 rounded p-2 text-xs text-green-800">
-          ✓ {actionReceipt}
+           {actionReceipt}
         </div>
       )}
 
@@ -327,7 +327,7 @@ export default function WeeklyActions() {
             <div key={a.key} className={'rounded-lg border p-3 ' + (baseDisabled ? 'border-gray-200 bg-gray-50 opacity-70' : 'border-gray-200 bg-white')}>
               <div className="flex justify-between items-baseline mb-1">
                 <div className="text-sm font-semibold text-pnw-slate">{a.emoji} {a.label}</div>
-                {usedThisWeek && <span className="text-[10px] text-green-700 font-bold">✓ used this week</span>}
+                {usedThisWeek && <span className="text-[10px] text-green-700 font-bold"> used this week</span>}
               </div>
               <div className="text-[11px] text-gray-600 mb-2">
                 {a.blurb} • Targets <strong>{keysLabel}</strong> ({targetLabel}).
@@ -429,7 +429,7 @@ export default function WeeklyActions() {
           disabled={ap < FUNDRAISE_AP || wasUsedThisWeek('FUNDRAISE')}
           className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {wasUsedThisWeek('FUNDRAISE') ? '✓ done this week' : `Raise (${FUNDRAISE_AP} AP)`}
+          {wasUsedThisWeek('FUNDRAISE') ? ' done this week' : `Raise (${FUNDRAISE_AP} AP)`}
         </button>
       </div>
 
@@ -440,7 +440,7 @@ export default function WeeklyActions() {
           <div className="flex justify-between items-start gap-3">
             <div>
               <div className="text-sm font-semibold text-pnw-slate">
-                🏟 Prospect Camp <span className="text-xs text-gray-500 font-normal">— annual recruiting event (Week 13, late October)</span>
+                 Prospect Camp <span className="text-xs text-gray-500 font-normal">— annual recruiting event (Week 13, late October)</span>
               </div>
               <div className="text-xs text-gray-600 mt-1 leading-snug max-w-2xl">
                 Once a year, run a HS-only prospect camp on your campus. Invited recruits attend, you charge a fee
@@ -465,7 +465,7 @@ export default function WeeklyActions() {
             </div>
             <div className="text-right shrink-0">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">Status</div>
-              <div className="font-bold text-gray-400">🔒 Locked — Wk {CAMP_WEEK}</div>
+              <div className="font-bold text-gray-400"> Locked — Wk {CAMP_WEEK}</div>
             </div>
           </div>
         </div>
@@ -483,10 +483,10 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
         <div className="flex justify-between items-start gap-3">
           <div>
             <div className="text-xs uppercase tracking-wider text-green-700 font-bold mb-1">
-              ✓ Prospect Camp — held this year
+               Prospect Camp — held this year
             </div>
             <div className="text-sm text-green-900">
-              <strong>{camp.attendees}</strong> attendees at <strong>${camp.fee}</strong> per head →
+              <strong>{camp.attendees}</strong> attendees at <strong>${camp.fee}</strong> per head 
               <strong> +${(camp.revenue / 1000).toFixed(1)}K</strong> revenue added to your budget.
             </div>
             <div className="text-[11px] text-green-800 mt-1">
@@ -504,11 +504,11 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
   return (
     <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-5 mb-4 shadow-md">
       <div className="text-xs uppercase tracking-wider text-amber-700 font-bold mb-1">
-        ⚠ Required Action · Week 13
+         Required Action · Week 13
       </div>
       <div className="flex justify-between items-start gap-4">
         <div className="flex-1">
-          <h2 className="text-lg font-bold text-amber-900">🏟 Run your Prospect Camp</h2>
+          <h2 className="text-lg font-bold text-amber-900"> Run your Prospect Camp</h2>
           <p className="text-sm text-amber-900 mt-1 leading-snug">
             This is the once-a-year recruiting camp on your campus. <strong>You must run it
             before you can advance to Week 14</strong> — pick a fee below and click <em>Run Camp Now</em>.
@@ -560,7 +560,7 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
           onClick={onRunCamp}
           className="mt-4 w-full px-4 py-3 bg-pnw-green text-white rounded text-base font-bold hover:opacity-90"
         >
-          Run Camp Now →
+          Run Camp Now 
         </button>
       </div>
     </div>
@@ -596,7 +596,7 @@ function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek,
     <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
       <div className="flex justify-between items-start mb-2">
         <div>
-          <div className="text-sm font-semibold text-pnw-slate">🗣 1-on-1 Meetings</div>
+          <div className="text-sm font-semibold text-pnw-slate"> 1-on-1 Meetings</div>
           <div className="text-xs text-gray-500 max-w-xl">
             Pull aside up to {MEETING_MAX_PLAYERS} players and check in. Each costs {MEETING_AP_PER_PLAYER} AP and immediately bumps their happiness +{MEETING_BOOST}. The lift is permanent in the sense that nothing reverses it — but normal happiness drift still applies, so if their situation doesn't improve they'll drift back down.
             Sorted with the most-unhappy players on top so you don't miss them.
@@ -608,7 +608,7 @@ function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek,
           className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {usedThisWeek
-            ? '✓ done this week'
+            ? ' done this week'
             : meetingPicks.length === 0
               ? 'Pick players first'
               : `Meet (${meetingPicks.length} player${meetingPicks.length === 1 ? '' : 's'} · ${cost} AP)`}
@@ -670,8 +670,8 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
   const sorted = [...players].sort((a, b) => playerOverall(b) - playerOverall(a))
   const player = playerId ? save.players[playerId] : null
   const isPitcher = player?.isPitcher
-  // Available ratings depend on the picked player. Pitcher → pitcher block keys;
-  // hitter → hitter block keys (skip velocity_* which aren't user-controlled).
+  // Available ratings depend on the picked player. Pitcher pitcher block keys;
+  // hitter hitter block keys (skip velocity_* which aren't user-controlled).
   const ratingKeys = !player
     ? []
     : isPitcher
@@ -693,7 +693,7 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
     <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <div className="text-sm font-semibold text-pnw-slate">📈 1-on-1 Development</div>
+          <div className="text-sm font-semibold text-pnw-slate"> 1-on-1 Development</div>
           <div className="text-xs text-gray-500 max-w-xl">
             Pull a player aside and grind on one specific rating. Costs {cost} AP. The bump
             scales with the player\'s potential in that rating — high-potential guys grow
@@ -706,7 +706,7 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
           disabled={usedThisWeek || !playerId || !rating || ap < cost}
           className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ml-3"
         >
-          {usedThisWeek ? '✓ done this week' : `Develop (${cost} AP)`}
+          {usedThisWeek ? ' done this week' : `Develop (${cost} AP)`}
         </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -762,7 +762,7 @@ function CampAttendees({ save }) {
   return (
     <div className="text-[11px] text-gray-600 mt-3 border-t pt-2">
       <button onClick={() => setOpen(o => !o)} className="font-semibold text-pnw-slate hover:underline">
-        {open ? '▾' : '▸'} Held this year: {camp.attendees} attended @ ${camp.fee} → ${(camp.revenue / 1000).toFixed(1)}K
+        {open ? '▾' : '▸'} Held this year: {camp.attendees} attended @ ${camp.fee} ${(camp.revenue / 1000).toFixed(1)}K
       </button>
       {open && (
         <div className="mt-2 max-h-72 overflow-y-auto">

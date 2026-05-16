@@ -7,10 +7,10 @@
  *   - academicStanding: 'eligible' | 'probation' | 'ineligible' | 'dismissed'
  *
  * Eligibility rules (NAIA Article V — simplified):
- *   GPA ≥ 2.0      → eligible
- *   GPA 1.5-1.99   → academic probation (eligible but flagged)
- *   GPA < 1.5      → ineligible for the next term
- *   GPA < 1.0 OR 2nd consecutive ineligible term → dismissed (fails out of school,
+ *   GPA ≥ 2.0      eligible
+ *   GPA 1.5-1.99   academic probation (eligible but flagged)
+ *   GPA < 1.5      ineligible for the next term
+ *   GPA < 1.0 OR 2nd consecutive ineligible term dismissed (fails out of school,
  *                                                              transfers, sits out)
  *
  * Study hall mandate: coach AP action that boosts entire roster's GPA next term.
@@ -23,13 +23,13 @@ import { makeRng } from './rng'
 
 /**
  * Initialize a player's academic state at generation time.
- * GPA biased by academic_aptitude (0.5 + aptitude/40 → 0.5-2.97 baseline) + noise.
+ * GPA biased by academic_aptitude (0.5 + aptitude/40 0.5-2.97 baseline) + noise.
  */
 export function initialAcademicState(player, rng) {
   const aptitude = player.hidden?.academic_aptitude ?? 60
   // Baseline mapping recalibrated so team-mean GPA at game start lands
   // in the 2.8-3.2 band for typical aptitude distributions:
-  //   aptitude 30 → ~1.8 GPA, 60 → ~2.9, 75 → ~3.3, 90 → ~3.7
+  //   aptitude 30 ~1.8 GPA, 60 ~2.9, 75 ~3.3, 90 ~3.7
   const baseline = 1.0 + (aptitude / 99) * 2.7
   const gpa = clamp(rng.gaussian(baseline, 0.35), 0.0, 4.0)
   const academicStanding = gpaToStanding(gpa)
@@ -68,7 +68,7 @@ export function updateAcademics(player, ctx, rng) {
 function gpaToStanding(gpa, prev) {
   if (gpa < 1.0) return 'dismissed'
   if (gpa < 1.5) {
-    // 2nd consecutive ineligible term → dismissed
+    // 2nd consecutive ineligible term dismissed
     if (prev === 'ineligible') return 'dismissed'
     return 'ineligible'
   }
@@ -86,8 +86,8 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
  */
 /**
  * Weekly team-GPA dynamics — small per-week drift based on:
- *   - AP utilization the prior week (using all → +, sitting on it → −)
- *   - Mean team happiness (happy → +, upset → −)
+ *   - AP utilization the prior week (using all +, sitting on it −)
+ *   - Mean team happiness (happy +, upset −)
  *   - Recent W/L proxy via happiness performance signal
  *
  * Skipped during tutorial weeks (1-3) when AP is locked. Stores
@@ -99,7 +99,7 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 export function tickTeamGPAWeekly(state) {
   const wk = state.calendar?.weekOfYear ?? 0
   // GPA only moves during academic semesters. Per Nate (May 2026):
-  //   Wks 1-4   summer / preseason → no school in session, no GPA change
+  //   Wks 1-4   summer / preseason no school in session, no GPA change
   //   Wks 5-18  Fall semester (fall camp through first week of Dec)
   //   Wks 19-22 winter break (no classes)
   //   Wks 23-42 Spring semester (January practice through end of season)
@@ -191,7 +191,7 @@ export function runEndOfTermAcademics(state) {
       id: `acad_dismiss_${d.id}_${state.calendar.year}`,
       year: state.calendar.year + 1, week: 0,
       type: 'AWARD',
-      headline: `📚❌ ${d.firstName} ${d.lastName} (${d.classYear}, ${d.primaryPosition}) failed out — academically dismissed.`,
+      headline: `${d.firstName} ${d.lastName} (${d.classYear}, ${d.primaryPosition}) failed out — academically dismissed.`,
       payload: { playerId: d.id, gpa: d.gpa },
     })
   }
@@ -200,7 +200,7 @@ export function runEndOfTermAcademics(state) {
       id: `acad_inelig_${n.id}_${state.calendar.year}`,
       year: state.calendar.year + 1, week: 0,
       type: 'AWARD',
-      headline: `⚠️ ${n.firstName} ${n.lastName} (${n.classYear}, ${n.primaryPosition}) is academically INELIGIBLE for next semester (GPA ${n.gpa.toFixed(2)}). Mandate study hall to help recover.`,
+      headline: `${n.firstName} ${n.lastName} (${n.classYear}, ${n.primaryPosition}) is academically INELIGIBLE for next semester (GPA ${n.gpa.toFixed(2)}). Mandate study hall to help recover.`,
       payload: { playerId: n.id, gpa: n.gpa },
     })
   }
@@ -212,7 +212,7 @@ export function runEndOfTermAcademics(state) {
     id: `acad_summary_${state.calendar.year}`,
     year: state.calendar.year + 1, week: 0,
     type: 'AWARD',
-    headline: `📚 Team GPA: ${summary.teamGpa.toFixed(2)}. ${summary.eligible} eligible, ${summary.probation} probation, ${summary.ineligible} ineligible, ${summary.dismissed} dismissed.`,
+    headline: `Team GPA: ${summary.teamGpa.toFixed(2)}. ${summary.eligible} eligible, ${summary.probation} probation, ${summary.ineligible} ineligible, ${summary.dismissed} dismissed.`,
     payload: summary,
   })
 

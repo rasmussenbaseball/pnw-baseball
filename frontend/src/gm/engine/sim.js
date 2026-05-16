@@ -279,7 +279,7 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     }
   }
 
-  // Finalize: convert outs → innings pitched (IP = outs/3)
+  // Finalize: convert outs innings pitched (IP = outs/3)
   for (const id of Object.keys(pitcherStats)) {
     pitcherStats[id].ip = pitcherStats[id].outs / 3
   }

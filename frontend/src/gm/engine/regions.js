@@ -27,7 +27,7 @@ export const REGION_BLURBS = {
   NE: 'NY PA NJ MA CT ME NH VT RI DC',
 }
 
-/** state-code → region. Covers all 50 states + DC. */
+/** state-code region. Covers all 50 states + DC. */
 export const STATE_TO_REGION = {
   // Northwest
   WA: 'NW', OR: 'NW', ID: 'NW', MT: 'NW', AK: 'NW', HI: 'NW',
@@ -48,7 +48,7 @@ export const STATE_TO_REGION = {
   BC: 'NW',
 }
 
-/** region → array of state codes (inverse of STATE_TO_REGION). */
+/** region array of state codes (inverse of STATE_TO_REGION). */
 export const REGION_STATES = (() => {
   const out = { NW: [], SW: [], South: [], MW: [], SE: [], NE: [] }
   for (const [state, region] of Object.entries(STATE_TO_REGION)) {
@@ -86,7 +86,7 @@ export const STATE_PROSPECT_WEIGHTS = {
 /**
  * Weighted state pool for recruiting. Combines:
  *   1. State population weight (CA way more than WY)
- *   2. Coach's chosen `regions[]` get a 3x boost
+ *   2. Coach's chosen `regions[]`get a 3x boost
  *
  * @param {string[]} coachRegions  Region codes the coach prioritizes
  * @returns {Record<string, number>}  state -> weight

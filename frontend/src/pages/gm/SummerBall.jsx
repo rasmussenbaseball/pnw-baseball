@@ -56,7 +56,7 @@ export default function SummerBall() {
   const removeOnly = status === 'CONFIRMED'
   const resolved = status === 'RESOLVED'
 
-  // Build league → assigned-players map
+  // Build league assigned-players map
   const byLeague = useMemo(() => {
     const out = {}
     for (const k of SUMMER_LEAGUE_KEYS) out[k] = []
@@ -88,7 +88,7 @@ export default function SummerBall() {
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-5xl mx-auto">
-      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">☀️ SUMMER BALL</h1>
+      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1"> SUMMER BALL</h1>
       <p className="font-pixel text-base text-[#a8a8c8] mb-3">
         Send players to wood-bat summer leagues. Reps, exposure, draft buzz, real injury + poach risk.
       </p>
@@ -176,7 +176,7 @@ function SummerReport({ results, year }) {
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="text-[11px] uppercase tracking-wider text-pnw-green font-bold">Summer {year} Report</div>
-          <h2 className="text-2xl font-bold text-pnw-slate">☀️ How your summer played out</h2>
+          <h2 className="text-2xl font-bold text-pnw-slate"> How your summer played out</h2>
         </div>
         <div className="text-right text-xs">
           <div className="font-mono text-3xl font-bold text-pnw-green leading-none">+{avgGain.toFixed(1)}</div>
@@ -228,24 +228,24 @@ function SummerResultRow({ result }) {
           <div className={'font-mono font-bold text-base ' + deltaColor}>
             {delta >= 0 ? '+' : ''}{delta.toFixed(1)} OVR
           </div>
-          <div className="text-[10px] text-gray-500">{result.ovrBefore} → {result.ovrAfter}</div>
+          <div className="text-[10px] text-gray-500">{result.ovrBefore} {result.ovrAfter}</div>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-1 text-[11px]">
         <span className="text-gray-600">{result.verdict}</span>
         {isHurt && (
           <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 font-semibold">
-            🩼 {result.injured.severity.toLowerCase()} injury ({result.injured.weeks} wk)
+             {result.injured.severity.toLowerCase()} injury ({result.injured.weeks} wk)
           </span>
         )}
         {isPoached && (
           <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
-            📞 D1 interest
+             D1 interest
           </span>
         )}
         {result.draftBuzz && (
           <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
-            ⭐ Draft buzz
+            Draft buzz
           </span>
         )}
       </div>
@@ -257,7 +257,7 @@ function StatusBanner({ status, week }) {
   if (status === 'PLANNING') {
     return (
       <div className="bg-pnw-cream border-l-4 border-pnw-green text-pnw-slate rounded-r p-4 mb-4 mt-4">
-        <div className="font-bold">📋 Planning window OPEN — Week {week}</div>
+        <div className="font-bold"> Planning window OPEN — Week {week}</div>
         <div className="text-sm mt-1">
           Build your tentative summer-ball roster. Free to add / remove anyone right now.
           After your season ends, you\'ll get one last chance to REMOVE players, but you can\'t add new ones.
@@ -268,7 +268,7 @@ function StatusBanner({ status, week }) {
   if (status === 'CONFIRMED') {
     return (
       <div className="bg-amber-50 border-l-4 border-amber-400 text-amber-900 rounded-r p-4 mb-4 mt-4">
-        <div className="font-bold">🔒 Final confirmation — Week {week}</div>
+        <div className="font-bold"> Final confirmation — Week {week}</div>
         <div className="text-sm mt-1">
           Sign-ups are closed for the year. Review your summer roster below — REMOVE any player who shouldn\'t go
           (overuse, injury concerns, transfer rumors). You can\'t add new players now.
@@ -278,7 +278,7 @@ function StatusBanner({ status, week }) {
   }
   return (
     <div className="bg-blue-50 border-l-4 border-blue-400 text-blue-900 rounded-r p-4 mb-4 mt-4">
-      <div className="font-bold">📊 Summer wrapped — Week {week}</div>
+      <div className="font-bold"> Summer wrapped — Week {week}</div>
       <div className="text-sm mt-1">
         The leagues are done. Check the newsfeed / individual player pages for development gains, injuries,
         and any D1 poach interest from a hot summer.
@@ -399,7 +399,7 @@ function UnassignedRow({ player, onAssign }) {
         disabled={leagues.length === 0}
         className="text-xs bg-pnw-green text-white px-2 py-1 rounded disabled:opacity-30"
       >
-        Send →
+        Send 
       </button>
     </div>
   )
@@ -480,7 +480,7 @@ function Modal({ title, children, onClose }) {
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-3">
           <h3 className="text-lg font-bold text-pnw-slate">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none"></button>
         </div>
         {children}
       </div>

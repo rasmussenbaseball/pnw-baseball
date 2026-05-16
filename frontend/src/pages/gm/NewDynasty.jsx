@@ -123,7 +123,7 @@ export default function NewDynasty() {
     <div className="max-w-5xl mx-auto py-8">
       <div className="mb-6">
         <button onClick={() => navigate('/gm')} className="text-sm text-pnw-green hover:underline mb-2">
-          ← Back to GM home
+          Back to GM home
         </button>
         <h1 className="text-3xl font-bold text-pnw-slate">New Dynasty</h1>
         <p className="text-sm text-gray-600 mt-1">Pick your school, choose your mode, build your coach.</p>
@@ -173,7 +173,7 @@ export default function NewDynasty() {
               onClick={() => setStep(2)}
               className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300"
             >
-              Next: Mode →
+              Next: Mode 
             </button>
           </div>
         </div>
@@ -216,9 +216,9 @@ export default function NewDynasty() {
           )}
 
           <div className="flex justify-between mt-4">
-            <button onClick={() => setStep(1)} className="px-4 py-2 border rounded text-sm">← Back</button>
+            <button onClick={() => setStep(1)} className="px-4 py-2 border rounded text-sm">Back</button>
             <button onClick={() => setStep(3)} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold">
-              Next: Coach →
+              Next: Coach 
             </button>
           </div>
         </div>
@@ -317,13 +317,13 @@ export default function NewDynasty() {
           </div>
 
           <div className="flex justify-between mt-4">
-            <button onClick={() => setStep(2)} className="px-4 py-2 border rounded text-sm">← Back</button>
+            <button onClick={() => setStep(2)} className="px-4 py-2 border rounded text-sm">Back</button>
             <button
               disabled={!coachFirst || !coachLast || !archetype}
               onClick={() => setStep(4)}
               className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300"
             >
-              Next: Confirm →
+              Next: Confirm 
             </button>
           </div>
         </div>
@@ -343,7 +343,7 @@ export default function NewDynasty() {
             Generating the world: 199 schools, ~7,000 players, ~1,000 coaches, full 2027 schedule. Should take less than a second.
           </p>
           <div className="flex justify-between">
-            <button onClick={() => setStep(3)} className="px-4 py-2 border rounded text-sm">← Back</button>
+            <button onClick={() => setStep(3)} className="px-4 py-2 border rounded text-sm">Back</button>
             <button
               disabled={!canSubmit}
               onClick={handleCreate}

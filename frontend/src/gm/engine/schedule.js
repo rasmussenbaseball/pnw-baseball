@@ -4,10 +4,10 @@
  * Big concepts:
  *
  *   1. Date-anchored calendar. Conference rules specify `confStartDate` /
- *      `confEndDate` as (month, day) targets. The engine snaps to the
+ *      `confEndDate`as (month, day) targets. The engine snaps to the
  *      nearest Friday >= that date for the given season year. This means
- *      Feb 20, 2027 (a Saturday) → opens conf on Feb 26 (the following Friday),
- *      while Feb 20, 2028 (a Sunday) → opens Feb 25. Real calendar drift.
+ *      Feb 20, 2027 (a Saturday) opens conf on Feb 26 (the following Friday),
+ *      while Feb 20, 2028 (a Sunday) opens Feb 25. Real calendar drift.
  *
  *   2. Year-rotating conference round-robin. Every team plays every other
  *      team in a `seriesLength`-game series (3 or 4 games) once a year.
@@ -25,11 +25,11 @@
  *      Against any opponent. Don't count toward record.
  *
  *   5. Cross-division rules:
- *       NAIA vs D1   → midweek only, hard cap of 2/year
- *       NAIA vs D2   → series allowed
- *       NAIA vs D3   → series allowed
- *       NAIA vs NWAC → fall/spring scrimmages ONLY (doesn't count)
- *       NAIA vs JUCO → fall/spring scrimmages ONLY
+ *       NAIA vs D1   midweek only, hard cap of 2/year
+ *       NAIA vs D2   series allowed
+ *       NAIA vs D3   series allowed
+ *       NAIA vs NWAC fall/spring scrimmages ONLY (doesn't count)
+ *       NAIA vs JUCO fall/spring scrimmages ONLY
  *
  *   6. NAIA season cap = 55 record-counting games. Bye weeks and scrimmages
  *      don't count.
@@ -790,7 +790,7 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
     }))
 
   // In-region buckets — closer first. CA + PNW states get prioritized for
-  // the user (e.g. Bushnell in OR → CA + WA + ID candidates float up first).
+  // the user (e.g. Bushnell in OR CA + WA + ID candidates float up first).
   const PRIORITY_STATES = new Set(['CA', 'OR', 'WA', 'ID', 'NV', 'MT'])
   const inRegion = naiaCandidates
     .filter(c => c.region === userRegion)
@@ -933,8 +933,7 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
 
   const summary = `Auto-built ${newGames.filter(g => g.type === 'NON_CONFERENCE').length} non-conf games` +
     ` (${placedIn} in-region, ${placedOut} out-of-region) and ${midweeksAdded} midweek game${midweeksAdded === 1 ? '' : 's'}.`
-
-  return { games: newGames, summary }
+    return { games: newGames, summary }
 }
 
 /**

@@ -190,7 +190,7 @@ export const SUMMER_LEAGUES = {
 }
 
 export const SUMMER_LEAGUE_KEYS = Object.keys(SUMMER_LEAGUES)
-  // Ordered roughly best → developmental for UI display.
+  // Ordered roughly best developmental for UI display.
   .sort((a, b) => SUMMER_LEAGUES[b].prestige - SUMMER_LEAGUES[a].prestige)
 
 // ─── Eligibility ────────────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ export function ensureSummerBallState(state) {
     }
   }
   if (state.summerBall.year !== state.calendar?.year && state.calendar?.year != null) {
-    // New dynasty year → reset assignments to PLANNING. Old year's results
+    // New dynasty year reset assignments to PLANNING. Old year's results
     // are already realized; we throw away the old record. Caller should
     // archive if it wants history.
     state.summerBall = {
@@ -381,7 +381,7 @@ export function resolveSummerBall(state) {
       verdict: 'held own',
     }
 
-    // ── Spring usage → dev modifier ────────────────────────────────────
+    // ── Spring usage dev modifier ────────────────────────────────────
     // Players who didn't play much in the spring get a bigger boost because
     // they're hungry for reps. Heavy-usage starters get less boost (they
     // need rest more than reps).
@@ -391,7 +391,7 @@ export function resolveSummerBall(state) {
       ? (stats.ip || 0) / 60        // 60 IP ≈ full SP workload
       : (stats.pa || stats.ab || 0) / 200    // 200 PA ≈ everyday starter
     const usageBoost = Math.max(0.6, Math.min(1.6, 1.4 - springUsage * 0.8))
-    // ── League dev magnitude × usage boost → final dev points ──────────
+    // ── League dev magnitude × usage boost final dev points ──────────
     const devPoints = Math.round(rng.gaussian(lg.devMagnitude * usageBoost * 3, 1))
     const ratingDelta = applySummerDev(player, lg.devBuckets, devPoints, rng)
     resultEntry.ratingsApplied = ratingDelta
@@ -415,7 +415,7 @@ export function resolveSummerBall(state) {
       news.push({
         id: `sb_inj_${year}_${playerId}`,
         year, week: 47, type: 'INJURY',
-        headline: `🩼 ${player.firstName} ${player.lastName} suffered a ${injurySeverity.toLowerCase()} injury at the ${lg.short}. Recovery ~${dur} wk${dur === 1 ? '' : 's'}.`,
+        headline: `${player.firstName} ${player.lastName} suffered a ${injurySeverity.toLowerCase()} injury at the ${lg.short}. Recovery ~${dur} wk${dur === 1 ? '' : 's'}.`,
         payload: { playerId, leagueKey: a.leagueKey, severity: injurySeverity },
       })
     }
@@ -432,7 +432,7 @@ export function resolveSummerBall(state) {
       news.push({
         id: `sb_poach_${year}_${playerId}`,
         year, week: 47, type: 'TRANSFER_RUMOR',
-        headline: `📞 D1 programs calling for ${player.firstName} ${player.lastName} after a hot ${lg.short} summer. Watch the portal.`,
+        headline: `D1 programs calling for ${player.firstName} ${player.lastName} after a hot ${lg.short} summer. Watch the portal.`,
         payload: { playerId, leagueKey: a.leagueKey },
       })
       resultEntry.poached = true
@@ -462,7 +462,7 @@ export function resolveSummerBall(state) {
       news.push({
         id: `sb_${year}_${playerId}`,
         year, week: 47, type: 'PLAYER_BOOST',
-        headline: `☀️ ${player.firstName} ${player.lastName} ${verdict} in the ${lg.short} (+${Math.max(0, moved).toFixed(1)} OVR).`,
+        headline: `${player.firstName} ${player.lastName} ${verdict} in the ${lg.short} (+${Math.max(0, moved).toFixed(1)} OVR).`,
         payload: { playerId, leagueKey: a.leagueKey, ovrDelta: moved },
       })
     }

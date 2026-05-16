@@ -109,7 +109,7 @@ export default function Schedule() {
     save.schedule.push(...result.games)
     saveDynasty(save)
     setSave({ ...save })
-    alert('✨ ' + result.summary + '\n\nReview the schedule and adjust if you want — every game can be replaced before you confirm.')
+    alert(' ' + result.summary + '\n\nReview the schedule and adjust if you want — every game can be replaced before you confirm.')
   }
 
   function handleAddOpponent(week, opponent, options) {
@@ -152,7 +152,7 @@ export default function Schedule() {
     <div className="max-w-5xl mx-auto">
       <div className="mb-4 flex justify-between items-start">
         <div>
-          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
+          <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Dashboard</Link>
           <h1 className="text-3xl font-bold text-pnw-slate mt-1">{seasonYear} Schedule</h1>
           <p className="text-sm text-gray-600">
             {save.conferences[userSchool.conferenceId]?.name} • {confRules.seriesLength}-game conf weekend series •
@@ -163,7 +163,7 @@ export default function Schedule() {
           onClick={handleSimNextWeek}
           className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
         >
-          Sim next week →
+          Sim next week 
         </button>
       </div>
 
@@ -172,7 +172,7 @@ export default function Schedule() {
         <div className="bg-amber-100 border-l-4 border-amber-500 text-amber-900 p-4 rounded mb-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1">
-              <div className="font-bold text-base">⚠ Schedule incomplete</div>
+              <div className="font-bold text-base"> Schedule incomplete</div>
               <div className="text-sm mt-1">
                 You have <strong>{openWeeks.length} open weekend slot{openWeeks.length === 1 ? '' : 's'}</strong> to fill before opening day.
                 Click <strong>Auto-create</strong> for a smart starter slate, or pick opponents manually below.
@@ -185,14 +185,14 @@ export default function Schedule() {
           </div>
           <div className="mt-3 pt-3 border-t border-amber-300 flex items-center justify-between gap-3">
             <div className="text-xs text-amber-800 leading-snug">
-              ✨ Picks 2+ in-region NAIA opponents, 1 out-of-region for variety,
+               Picks 2+ in-region NAIA opponents, 1 out-of-region for variety,
               plus 1-2 midweek home games. Mixes home/away to keep travel cost reasonable.
             </div>
             <button
               onClick={handleAutoCreate}
               className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0"
             >
-              ✨ Auto-create schedule
+               Auto-create schedule
             </button>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function Schedule() {
         <div className="flex justify-between items-start mb-2">
           <div>
             <div className="text-sm font-semibold text-amber-900">
-              🍂 Fall Scrimmages — auto-scheduled
+               Fall Scrimmages — auto-scheduled
             </div>
             <div className="text-xs text-amber-700">
               8 games (4 doubleheaders) vs nearby D2/D3/JUCO opponents. No NAIA fall opponents allowed. Don't count toward record.
@@ -278,7 +278,7 @@ export default function Schedule() {
       {!scheduleIncomplete && !save.scheduleComplete && (
         <div className="bg-green-50 border-l-4 border-green-500 text-green-900 p-4 rounded mb-4 flex justify-between items-center">
           <div>
-            <div className="font-bold text-base">✓ All weekends scheduled</div>
+            <div className="font-bold text-base"> All weekends scheduled</div>
             <div className="text-sm mt-1">
               Confirm your schedule to clear the Week 1 phase-gate and unlock Wk 2 (assistant coach hiring).
               Travel budget for Wk 3 will lock in at <strong>${(travelCost / 1000).toFixed(1)}K</strong> based on these trips.
@@ -290,20 +290,20 @@ export default function Schedule() {
               save.newsfeed.unshift({
                 id: `sched_done_${save.calendar.year}`,
                 year: save.calendar.year, week: save.calendar.week, type: 'AWARD',
-                headline: `📋 Locked in the ${seasonYear} schedule. Travel forecast: $${(travelCost / 1000).toFixed(1)}K.`,
+                headline: `Locked in the ${seasonYear} schedule. Travel forecast: $${(travelCost / 1000).toFixed(1)}K.`,
                 payload: {},
               })
               saveDynasty(save); setSave({ ...save })
             }}
             className="px-4 py-2 bg-green-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
           >
-            Confirm schedule ✓
+            Confirm schedule 
           </button>
         </div>
       )}
       {save.scheduleComplete && (
         <div className="bg-green-50 border border-green-200 text-green-800 text-xs p-2 rounded mb-4">
-          ✓ Schedule confirmed. Travel cost: <strong>${(travelCost / 1000).toFixed(1)}K</strong> (locks into the budget on Wk 3).
+           Schedule confirmed. Travel cost: <strong>${(travelCost / 1000).toFixed(1)}K</strong> (locks into the budget on Wk 3).
         </div>
       )}
 
@@ -383,7 +383,7 @@ export default function Schedule() {
       {/* Postseason boundary */}
       <div className="bg-pnw-slate text-white rounded-xl p-3 mb-6 text-sm font-semibold">
         <div className="flex items-center justify-between">
-          <span>🏆 Postseason begins Week {REGULAR_SEASON_LAST_WEEK + 1}</span>
+          <span> Postseason begins Week {REGULAR_SEASON_LAST_WEEK + 1}</span>
           <span className="text-xs font-normal opacity-80">Wk 14 Conf Tournament • Wk 15 Opening Round • Wk 16 NAIA World Series</span>
         </div>
       </div>
@@ -474,7 +474,7 @@ function TravelBudgetWarning({ save, travelCost }) {
                   : 'bg-amber-50 border border-amber-300 text-amber-900')}>
       <div className="flex-1">
         <div className="font-semibold">
-          ⚠ Travel cost is {ratio >= 2.5 ? 'WAY' : 'somewhat'} over the typical 14% allocation
+           Travel cost is {ratio >= 2.5 ? 'WAY' : 'somewhat'} over the typical 14% allocation
         </div>
         <div className="text-xs mt-1">
           Your trips will cost <strong>${(actual / 1000).toFixed(1)}K</strong> — that's
@@ -551,7 +551,7 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
   }, [save, userSchool])
 
   // Compute rank within each division so the user can see "#14 NAIA",
-  // "#48 D3", etc. Drops a `rank` + `divisionSize` onto each candidate.
+  // "#48 D3", etc. Drops a `rank` + `divisionSize`onto each candidate.
   const candidatesByDivisionRanked = useMemo(() => {
     const byDiv = {}
     for (const c of allCandidates) {
@@ -598,7 +598,7 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
           <h3 className="text-lg font-semibold">
             {midweekMode ? 'Pick midweek opponent' : 'Pick weekend opponent'}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
 
         <div className="flex gap-1 mb-3 flex-wrap">
@@ -708,7 +708,7 @@ function ScrimmagePicker({ save, season, year, onPick, onClose }) {
       <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold">{season} Scrimmage Doubleheader</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
         <p className="text-xs text-gray-500 mb-3">
           Pick a doubleheader date and opponent. 2 games count toward your 10 scrimmage allotment.

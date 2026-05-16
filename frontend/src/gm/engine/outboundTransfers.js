@@ -166,7 +166,7 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     } else {
       destText = 'entered the portal'
     }
-    const prefix = t.isStar ? '🌟📤' : '📤'
+    const prefix = t.isStar ? '' : ''
     state.newsfeed.unshift({
       id: `out_${t.player.id}_${state.calendar.year}_${phase}`,
       year: state.calendar.year + 1,

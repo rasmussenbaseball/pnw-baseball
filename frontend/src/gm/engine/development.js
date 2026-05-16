@@ -79,10 +79,10 @@ export function performanceScore(player, stats) {
 
 /**
  * Potential acts as a growth SPEED coefficient — not a ceiling.
- *   Potential 99 → ~1.45× growth
- *   Potential 70 → 1.0×
- *   Potential 50 → ~0.7×
- *   Potential 30 → ~0.4×
+ *   Potential 99 ~1.45× growth
+ *   Potential 70 1.0×
+ *   Potential 50 ~0.7×
+ *   Potential 30 ~0.4×
  *
  * @param {number} potRating
  */
@@ -99,23 +99,23 @@ function potSpeedMult(potRating) {
  * week.
  *
  * Hitters — read AVG, K%, BB%, ISO against NAIA averages:
- *   AVG > .330 → contact + 0.4 (good bat-to-ball)
- *   AVG < .230 → contact - 0.3
- *   K%  < .15  → discipline + 0.3
- *   K%  > .30  → discipline - 0.2
- *   BB% > .12  → discipline + 0.3
- *   ISO > .180 → power     + 0.3
- *   ISO < .080 → power     - 0.2 (no extra-base hits)
+ *   AVG > .330 contact + 0.4 (good bat-to-ball)
+ *   AVG < .230 contact - 0.3
+ *   K%  < .15  discipline + 0.3
+ *   K%  > .30  discipline - 0.2
+ *   BB% > .12  discipline + 0.3
+ *   ISO > .180 power     + 0.3
+ *   ISO < .080 power     - 0.2 (no extra-base hits)
  *
  * Pitchers — read BB/9, K/9, HR/9, ERA, IP:
- *   BB/9 < 3   → control + 0.4 (filling up zone)
- *   BB/9 > 5   → control - 0.3
- *   K/9  > 10  → stuff   + 0.3
- *   HR/9 < .5  → command + 0.3
- *   HR/9 > 2   → command - 0.3
- *   ERA  < 3   → composure + 0.2
- *   ERA  > 7   → composure - 0.2
- *   IP > 5 in week → stamina + 0.1, durability + 0.1
+ *   BB/9 < 3   control + 0.4 (filling up zone)
+ *   BB/9 > 5   control - 0.3
+ *   K/9  > 10  stuff   + 0.3
+ *   HR/9 < .5  command + 0.3
+ *   HR/9 > 2   command - 0.3
+ *   ERA  < 3   composure + 0.2
+ *   ERA  > 7   composure - 0.2
+ *   IP > 5 in week stamina + 0.1, durability + 0.1
  *
  * Magnitude modulated by:
  *   - potential rating (potSpeedMult — high pot grows faster)
@@ -338,9 +338,9 @@ export function tickPotentialEOY(player, seasonStats, seed) {
  * a year at the Summer Check-In. Most players gain weight in college as
  * they fill out; some lose weight if they came in over their target.
  *
- *   Gain (toward target if underweight)  → +power/velo a bit
- *   Lose (toward target if overweight)   → +speed / +stamina / +durability
- *   Already at target                    → no change
+ *   Gain (toward target if underweight)  +power/velo a bit
+ *   Lose (toward target if overweight)   +speed / +stamina / +durability
+ *   Already at target                    no change
  *
  * Drift is ~40% of the remaining gap each year, with noise. Some players
  * don't drift at all (10% chance — they're an outlier who never fills out
