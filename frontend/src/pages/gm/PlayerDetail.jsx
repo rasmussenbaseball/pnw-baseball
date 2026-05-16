@@ -9,6 +9,7 @@ import {
 import AttrTooltip from '../../gm/components/AttrTooltip'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
+import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtPct, fmtWar } from '../../gm/engine/advancedStats'
 import GMShell from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
@@ -167,9 +168,9 @@ export default function PlayerDetail() {
           {!stats ? (
             <p className="text-sm text-gray-400">No games played yet this season.</p>
           ) : player.isPitcher ? (
-            <PitchingStatsLine stats={stats} />
+            <PitchingStatsLine stats={stats} save={save} />
           ) : (
-            <BattingStatsLine stats={stats} />
+            <BattingStatsLine stats={stats} save={save} />
           )}
         </div>
       </div>
@@ -345,64 +346,81 @@ function RatingPill({ label, value, tier }) {
   )
 }
 
-function BattingStatsLine({ stats }) {
-  // Compute as raw numbers so OPS math is correct; format for display
-  // separately. The old code stringified obp/slg with .slice(1) (baseball
-  // ".464" convention) and then tried parseFloat('0' + str) which yielded
-  // 464, not 0.464 — OPS came out wildly wrong.
-  const pa = stats.ab + stats.bb + stats.hbp + stats.sf
-  const avgNum = stats.ab > 0 ? stats.h / stats.ab : null
-  const obpNum = pa > 0 ? (stats.h + stats.bb + stats.hbp) / pa : null
-  const slgNum = stats.ab > 0
-    ? (stats.h - stats.d - stats.t - stats.hr + stats.d * 2 + stats.t * 3 + stats.hr * 4) / stats.ab
-    : null
-  const opsNum = obpNum != null && slgNum != null ? obpNum + slgNum : null
-  const fmt = n => n == null ? '.---' : n.toFixed(3).replace(/^0\./, '.')
-  const avg = fmt(avgNum)
-  const obp = fmt(obpNum)
-  const slg = fmt(slgNum)
-  const ops = fmt(opsNum)
+function BattingStatsLine({ stats, save }) {
+  const lg = useMemo(() => leagueAverages(save), [save])
+  const adv = useMemo(() => computeBatting(stats, lg), [stats, lg])
   return (
-    <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
-      <Stat label="AVG" value={avg} />
-      <Stat label="OBP" value={obp} />
-      <Stat label="SLG" value={slg} />
-      <Stat label="OPS" value={ops} />
-      <Stat label="AB" value={stats.ab} />
-      <Stat label="H" value={stats.h} />
-      <Stat label="2B" value={stats.d} />
-      <Stat label="3B" value={stats.t} />
-      <Stat label="HR" value={stats.hr} />
-      <Stat label="RBI" value={stats.rbi} />
-      <Stat label="BB" value={stats.bb} />
-      <Stat label="K" value={stats.k} />
-      <Stat label="HBP" value={stats.hbp || 0} />
-      <Stat label="SF" value={stats.sf || 0} />
-      <Stat label="SAC" value={stats.sac || 0} />
-      <Stat label="GIDP" value={stats.gidp || 0} />
-      <Stat label="ROE" value={stats.roe || 0} />
+    <div className="space-y-3">
+      {/* Slash line + counting stats */}
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
+        <Stat label="AVG" value={fmtRate(adv.avg)} />
+        <Stat label="OBP" value={fmtRate(adv.obp)} />
+        <Stat label="SLG" value={fmtRate(adv.slg)} />
+        <Stat label="OPS" value={fmtRate(adv.ops)} />
+        <Stat label="ISO" value={fmtRate(adv.iso)} />
+        <Stat label="BABIP" value={fmtRate(adv.babip)} />
+        <Stat label="AB" value={stats.ab} />
+        <Stat label="H" value={stats.h} />
+        <Stat label="2B" value={stats.d} />
+        <Stat label="3B" value={stats.t} />
+        <Stat label="HR" value={stats.hr} />
+        <Stat label="RBI" value={stats.rbi} />
+        <Stat label="BB" value={stats.bb} />
+        <Stat label="K" value={stats.k} />
+        <Stat label="HBP" value={stats.hbp || 0} />
+        <Stat label="SF" value={stats.sf || 0} />
+        <Stat label="SAC" value={stats.sac || 0} />
+        <Stat label="GIDP" value={stats.gidp || 0} />
+      </div>
+      {/* Advanced — sabermetric */}
+      <div className="border-t pt-2">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Advanced</div>
+        <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
+          <Stat label="wOBA" value={fmtRate(adv.wOBA)} />
+          <Stat label="wRC+" value={adv.pa > 0 ? adv.wRCplus : '—'} />
+          <Stat label="wRAA" value={adv.pa > 0 ? fmt2(adv.wRAA) : '—'} />
+          <Stat label="BB%" value={fmtPct(adv.bbPct)} />
+          <Stat label="K%" value={fmtPct(adv.kPct)} />
+          <Stat label="oWAR" value={fmtWar(adv.oWAR)} />
+        </div>
+      </div>
     </div>
   )
 }
 
-function PitchingStatsLine({ stats }) {
-  const era = stats.ip > 0 ? (stats.er * 9 / stats.ip).toFixed(2) : '—'
-  const whip = stats.ip > 0 ? ((stats.h + stats.bb) / stats.ip).toFixed(2) : '—'
-  const k9 = stats.ip > 0 ? (stats.k * 9 / stats.ip).toFixed(1) : '—'
-  const bb9 = stats.ip > 0 ? (stats.bb * 9 / stats.ip).toFixed(1) : '—'
+function PitchingStatsLine({ stats, save }) {
+  const lg = useMemo(() => leagueAverages(save), [save])
+  const adv = useMemo(() => computePitching(stats, lg), [stats, lg])
   return (
-    <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
-      <Stat label="IP" value={stats.ip.toFixed(1)} />
-      <Stat label="ERA" value={era} />
-      <Stat label="WHIP" value={whip} />
-      <Stat label="H" value={stats.h} />
-      <Stat label="BB" value={stats.bb} />
-      <Stat label="K" value={stats.k} />
-      <Stat label="HR" value={stats.hr || 0} />
-      <Stat label="HBP" value={stats.hbp || 0} />
-      <Stat label="ER" value={stats.er} />
-      <Stat label="K/9" value={k9} />
-      <Stat label="BB/9" value={bb9} />
+    <div className="space-y-3">
+      {/* Traditional */}
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
+        <Stat label="IP" value={stats.ip ? stats.ip.toFixed(1) : '—'} />
+        <Stat label="ERA" value={fmt2(adv.era)} />
+        <Stat label="WHIP" value={fmt2(adv.whip)} />
+        <Stat label="H" value={stats.h} />
+        <Stat label="BB" value={stats.bb} />
+        <Stat label="K" value={stats.k} />
+        <Stat label="HR" value={stats.hr || 0} />
+        <Stat label="HBP" value={stats.hbp || 0} />
+        <Stat label="ER" value={stats.er} />
+        <Stat label="K/9" value={adv.ip > 0 ? adv.kPer9.toFixed(1) : '—'} />
+        <Stat label="BB/9" value={adv.ip > 0 ? adv.bbPer9.toFixed(1) : '—'} />
+        <Stat label="HR/9" value={adv.ip > 0 ? adv.hr9.toFixed(1) : '—'} />
+      </div>
+      {/* Advanced — sabermetric */}
+      <div className="border-t pt-2">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Advanced</div>
+        <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
+          <Stat label="FIP" value={fmt2(adv.fip)} />
+          <Stat label="xFIP" value={fmt2(adv.xfip)} />
+          <Stat label="K%" value={fmtPct(adv.kPct)} />
+          <Stat label="BB%" value={fmtPct(adv.bbPct)} />
+          <Stat label="K/BB" value={adv.kbb === Infinity ? '∞' : fmt2(adv.kbb)} />
+          <Stat label="BABIP" value={fmtRate(adv.babip)} />
+          <Stat label="pWAR" value={fmtWar(adv.pWAR)} />
+        </div>
+      </div>
     </div>
   )
 }

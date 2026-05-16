@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
+import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtWar } from '../../gm/engine/advancedStats'
 import GMShell, { PixelCard } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
@@ -164,8 +165,8 @@ function SpringView({ save, team, year, allYears, onYearChange, accent, slot }) 
             : `${batters.length} batters · ${pitchers.length} pitchers`}
         </span>
       </div>
-      <BatterTable rows={batters} accent={accent} slot={slot} />
-      <PitcherTable rows={pitchers} accent={accent} slot={slot} />
+      <BatterTable rows={batters} save={save} accent={accent} slot={slot} />
+      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} />
     </>
   )
 }
@@ -202,8 +203,8 @@ function FallView({ save, team, year, allYears, onYearChange, accent, slot }) {
       <p className="text-xs text-[#a8a8c8] italic mb-3 font-pixel">
         Fall scrimmage stats — kept separate from spring. Use these to evaluate who has earned a starting job heading into spring.
       </p>
-      <BatterTable rows={batters} accent={accent} slot={slot} emptyMsg="No fall hitting yet." />
-      <PitcherTable rows={pitchers} accent={accent} slot={slot} emptyMsg="No fall pitching yet." />
+      <BatterTable rows={batters} save={save} accent={accent} slot={slot} emptyMsg="No fall hitting yet." />
+      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} emptyMsg="No fall pitching yet." />
     </>
   )
 }
@@ -255,15 +256,15 @@ function CareerView({ save, team, accent, slot }) {
         Totals across {yearBlocks.length} season{yearBlocks.length === 1 ? '' : 's'} of play.
         New dynasty? Career totals build up as you sim through seasons.
       </p>
-      <BatterTable rows={batters} accent={accent} slot={slot} careerMode emptyMsg="No career hitting yet." />
-      <PitcherTable rows={pitchers} accent={accent} slot={slot} careerMode emptyMsg="No career pitching yet." />
+      <BatterTable rows={batters} save={save} accent={accent} slot={slot} careerMode emptyMsg="No career hitting yet." />
+      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} careerMode emptyMsg="No career pitching yet." />
     </>
   )
 }
 
 // ─── Tables ───────────────────────────────────────────────────────────────
 
-function BatterTable({ rows, accent, slot, careerMode, emptyMsg }) {
+function BatterTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="HITTING">
@@ -271,8 +272,9 @@ function BatterTable({ rows, accent, slot, careerMode, emptyMsg }) {
       </PixelCard>
     )
   }
-  const sorted = [...rows].sort((a, b) => b.h / Math.max(1, b.ab) - a.h / Math.max(1, a.ab))
-  const fmt3 = n => (n == null || isNaN(n)) ? '.---' : n.toFixed(3).replace(/^0\./, '.')
+  const lg = useMemo(() => leagueAverages(save), [save])
+  const enriched = rows.map(r => ({ r, adv: computeBatting(r, lg) }))
+  const sorted = [...enriched].sort((a, b) => b.adv.wOBA - a.adv.wOBA)
   return (
     <PixelCard accent={accent} title="HITTING">
       <div className="overflow-x-auto">
@@ -284,37 +286,32 @@ function BatterTable({ rows, accent, slot, careerMode, emptyMsg }) {
               {careerMode && <th>YRS</th>}
               <th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>K</th>
               <th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th>
+              <th>wOBA</th><th>wRC+</th><th>oWAR</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map(r => {
-              const ab = r.ab || 0
-              const bb = r.bb || 0
-              const pa = ab + bb + (r.hbp || 0) + (r.sf || 0)
-              const avg = ab > 0 ? r.h / ab : 0
-              const obp = pa > 0 ? (r.h + bb) / pa : 0
-              const tb = (r.h - r.d - r.t - r.hr) + r.d * 2 + r.t * 3 + r.hr * 4
-              const slg = ab > 0 ? tb / ab : 0
-              return (
-                <tr key={r.playerId} className="border-t border-[#3a3a5e]">
-                  <td className="py-1 pr-2">
-                    <Link to={`/gm/player/${r.playerId}?slot=${slot}`} className="flex items-center gap-2 hover:text-white">
-                      <PixelHeadshot playerId={r.playerId} size={20} />
-                      <span>{r.player.firstName} {r.player.lastName}</span>
-                    </Link>
-                  </td>
-                  <td>{displayPosition(r.player.primaryPosition)}</td>
-                  <td>{displayClassYear(r.player)}</td>
-                  {careerMode && <td>{r.years}</td>}
-                  <td>{ab}</td><td>{r.h}</td><td>{r.d}</td><td>{r.t}</td><td>{r.hr}</td>
-                  <td>{r.rbi}</td><td>{bb}</td><td>{r.k}</td>
-                  <td className="font-bold">{fmt3(avg)}</td>
-                  <td>{fmt3(obp)}</td>
-                  <td>{fmt3(slg)}</td>
-                  <td className="font-bold">{fmt3(obp + slg)}</td>
-                </tr>
-              )
-            })}
+            {sorted.map(({ r, adv }) => (
+              <tr key={r.playerId} className="border-t border-[#3a3a5e]">
+                <td className="py-1 pr-2">
+                  <Link to={`/gm/player/${r.playerId}?slot=${slot}`} className="flex items-center gap-2 hover:text-white">
+                    <PixelHeadshot playerId={r.playerId} size={20} />
+                    <span>{r.player.firstName} {r.player.lastName}</span>
+                  </Link>
+                </td>
+                <td>{displayPosition(r.player.primaryPosition)}</td>
+                <td>{displayClassYear(r.player)}</td>
+                {careerMode && <td>{r.years}</td>}
+                <td>{r.ab || 0}</td><td>{r.h}</td><td>{r.d}</td><td>{r.t}</td><td>{r.hr}</td>
+                <td>{r.rbi}</td><td>{r.bb}</td><td>{r.k}</td>
+                <td className="font-bold">{fmtRate(adv.avg)}</td>
+                <td>{fmtRate(adv.obp)}</td>
+                <td>{fmtRate(adv.slg)}</td>
+                <td className="font-bold">{fmtRate(adv.ops)}</td>
+                <td>{fmtRate(adv.wOBA)}</td>
+                <td className="font-bold">{adv.pa > 0 ? adv.wRCplus : '—'}</td>
+                <td>{fmtWar(adv.oWAR)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -322,7 +319,7 @@ function BatterTable({ rows, accent, slot, careerMode, emptyMsg }) {
   )
 }
 
-function PitcherTable({ rows, accent, slot, careerMode, emptyMsg }) {
+function PitcherTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="PITCHING">
@@ -330,9 +327,9 @@ function PitcherTable({ rows, accent, slot, careerMode, emptyMsg }) {
       </PixelCard>
     )
   }
-  const sorted = [...rows].sort((a, b) =>
-    (a.er * 9 / Math.max(0.1, a.ip)) - (b.er * 9 / Math.max(0.1, b.ip))
-  )
+  const lg = useMemo(() => leagueAverages(save), [save])
+  const enriched = rows.map(r => ({ r, adv: computePitching(r, lg) }))
+  const sorted = [...enriched].sort((a, b) => a.adv.fip - b.adv.fip)
   return (
     <PixelCard accent={accent} title="PITCHING">
       <div className="overflow-x-auto">
@@ -344,31 +341,30 @@ function PitcherTable({ rows, accent, slot, careerMode, emptyMsg }) {
               {careerMode && <th>YRS</th>}
               <th>IP</th><th>H</th><th>BB</th><th>K</th><th>ER</th>
               <th>ERA</th><th>WHIP</th><th>K/9</th>
+              <th>FIP</th><th>xFIP</th><th>pWAR</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map(r => {
-              const era = r.er * 9 / Math.max(0.1, r.ip)
-              const whip = (r.h + r.bb) / Math.max(0.1, r.ip)
-              const k9 = r.k * 9 / Math.max(0.1, r.ip)
-              return (
-                <tr key={r.playerId} className="border-t border-[#3a3a5e]">
-                  <td className="py-1 pr-2">
-                    <Link to={`/gm/player/${r.playerId}?slot=${slot}`} className="flex items-center gap-2 hover:text-white">
-                      <PixelHeadshot playerId={r.playerId} size={20} />
-                      <span>{r.player.firstName} {r.player.lastName}</span>
-                    </Link>
-                  </td>
-                  <td>{displayClassYear(r.player)}</td>
-                  {careerMode && <td>{r.years}</td>}
-                  <td>{r.ip.toFixed(1)}</td>
-                  <td>{r.h}</td><td>{r.bb}</td><td>{r.k}</td><td>{r.er}</td>
-                  <td className="font-bold">{era.toFixed(2)}</td>
-                  <td>{whip.toFixed(2)}</td>
-                  <td>{k9.toFixed(1)}</td>
-                </tr>
-              )
-            })}
+            {sorted.map(({ r, adv }) => (
+              <tr key={r.playerId} className="border-t border-[#3a3a5e]">
+                <td className="py-1 pr-2">
+                  <Link to={`/gm/player/${r.playerId}?slot=${slot}`} className="flex items-center gap-2 hover:text-white">
+                    <PixelHeadshot playerId={r.playerId} size={20} />
+                    <span>{r.player.firstName} {r.player.lastName}</span>
+                  </Link>
+                </td>
+                <td>{displayClassYear(r.player)}</td>
+                {careerMode && <td>{r.years}</td>}
+                <td>{r.ip ? r.ip.toFixed(1) : '—'}</td>
+                <td>{r.h}</td><td>{r.bb}</td><td>{r.k}</td><td>{r.er}</td>
+                <td className="font-bold">{fmt2(adv.era)}</td>
+                <td>{fmt2(adv.whip)}</td>
+                <td>{adv.ip > 0 ? adv.kPer9.toFixed(1) : '—'}</td>
+                <td className="font-bold">{fmt2(adv.fip)}</td>
+                <td>{fmt2(adv.xfip)}</td>
+                <td>{fmtWar(adv.pWAR)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
