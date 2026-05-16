@@ -306,3 +306,228 @@ tr:hover td.sticky-col {
     print-color-adjust: exact;
   }
 }
+
+/* ─────────────────────────────────────────────────────────
+   GM DYNASTY GAME — PIXEL THEME OVERRIDES
+   ─────────────────────────────────────────────────────────
+   The GM shell wraps every GM page in `.gm-pixel-shell`. Inside this
+   scope we remap the pre-existing Tailwind utility classes (white cards,
+   light gray text, etc.) to dark-theme equivalents that read well on the
+   #1a1a2e background. This lets us migrate every page without manually
+   touching every Tailwind class on every panel.
+
+   Pixel palette:
+     #1a1a2e — page background
+     #23233d — card surface
+     #2f2f4f — card surface (hover / nested)
+     #3a3a5e — borders / muted lines
+     #e8e8e8 — primary text
+     #c8c8d8 — secondary text
+     #a8a8c8 — tertiary text / labels
+     #fbbf24 — accent (gold default; team color usually overrides)
+     #00d4a8 — success
+     #f87171 — warn / danger
+     #60a5fa — info
+   ───────────────────────────────────────────────────────── */
+
+.gm-pixel-shell {
+  /* Bump base font size — VT323 is a smaller-feeling pixel font so we
+     compensate up so body copy is comfortable to read. */
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+/* Card / surface mappings — three shades so cards, tiles-inside-cards,
+   and depth rows all stay visually distinct. Light Tailwind grays map to
+   progressively-lighter dark surfaces. */
+.gm-pixel-shell .bg-white {
+  background-color: #23233d !important;
+}
+.gm-pixel-shell .bg-gray-50 {
+  background-color: #1f1f33 !important;
+}
+.gm-pixel-shell .bg-gray-100 {
+  background-color: #2f2f4f !important;
+}
+.gm-pixel-shell .bg-gray-200 {
+  background-color: #383859 !important;
+}
+.gm-pixel-shell .bg-pnw-cream,
+.gm-pixel-shell .bg-pnw-cream\/40,
+.gm-pixel-shell .bg-pnw-cream\/60,
+.gm-pixel-shell .bg-pnw-cream\/50,
+.gm-pixel-shell [class*='bg-pnw-cream'] {
+  background-color: #3a3a5e !important;
+}
+
+/* Status banners — keep the accent tint but darken to fit the theme */
+.gm-pixel-shell .bg-amber-50,
+.gm-pixel-shell .bg-amber-100 {
+  background-color: #3d3520 !important;
+}
+.gm-pixel-shell .bg-amber-50 *,
+.gm-pixel-shell .bg-amber-100 * {
+  color: #fbbf24;
+}
+.gm-pixel-shell .bg-green-50,
+.gm-pixel-shell .bg-green-100,
+.gm-pixel-shell .bg-emerald-50,
+.gm-pixel-shell .bg-emerald-100 {
+  background-color: #1f3a2d !important;
+}
+.gm-pixel-shell .bg-green-50 *,
+.gm-pixel-shell .bg-green-100 *,
+.gm-pixel-shell .bg-emerald-50 *,
+.gm-pixel-shell .bg-emerald-100 * {
+  color: #6ee7b7;
+}
+.gm-pixel-shell .bg-red-50,
+.gm-pixel-shell .bg-red-100 {
+  background-color: #3a1f24 !important;
+}
+.gm-pixel-shell .bg-red-50 *,
+.gm-pixel-shell .bg-red-100 * {
+  color: #fca5a5;
+}
+.gm-pixel-shell .bg-blue-50,
+.gm-pixel-shell .bg-blue-100 {
+  background-color: #1f2a3d !important;
+}
+.gm-pixel-shell .bg-blue-50 *,
+.gm-pixel-shell .bg-blue-100 * {
+  color: #93c5fd;
+}
+.gm-pixel-shell .bg-purple-50,
+.gm-pixel-shell .bg-purple-100 {
+  background-color: #2c1f3d !important;
+}
+.gm-pixel-shell .bg-purple-50 *,
+.gm-pixel-shell .bg-purple-100 * {
+  color: #c4b5fd;
+}
+
+/* Borders — gray-tone borders get replaced with the muted pixel border */
+.gm-pixel-shell .border-gray-100,
+.gm-pixel-shell .border-gray-200,
+.gm-pixel-shell .border-gray-300 {
+  border-color: #3a3a5e !important;
+}
+
+/* Text mappings — pull all the dark grays / slates up to the pixel palette */
+.gm-pixel-shell .text-gray-900,
+.gm-pixel-shell .text-gray-800,
+.gm-pixel-shell .text-pnw-slate,
+.gm-pixel-shell .text-pnw-green {
+  color: #e8e8e8;
+}
+.gm-pixel-shell .text-gray-700,
+.gm-pixel-shell .text-gray-600 {
+  color: #c8c8d8;
+}
+.gm-pixel-shell .text-gray-500,
+.gm-pixel-shell .text-gray-400 {
+  color: #a8a8c8;
+}
+.gm-pixel-shell .text-gray-300 {
+  color: #6a6a8a;
+}
+
+/* Action / success / danger colors get nudged to be readable on dark */
+.gm-pixel-shell .text-pnw-green,
+.gm-pixel-shell .text-green-700,
+.gm-pixel-shell .text-green-800,
+.gm-pixel-shell .text-emerald-700,
+.gm-pixel-shell .text-emerald-800 {
+  color: #6ee7b7;
+}
+.gm-pixel-shell .text-amber-700,
+.gm-pixel-shell .text-amber-800,
+.gm-pixel-shell .text-amber-900,
+.gm-pixel-shell .text-yellow-700,
+.gm-pixel-shell .text-yellow-800 {
+  color: #fbbf24;
+}
+.gm-pixel-shell .text-red-700,
+.gm-pixel-shell .text-red-800,
+.gm-pixel-shell .text-red-900 {
+  color: #fca5a5;
+}
+.gm-pixel-shell .text-blue-700,
+.gm-pixel-shell .text-blue-800,
+.gm-pixel-shell .text-blue-900 {
+  color: #93c5fd;
+}
+
+/* Cards round-off → squared (more pixel) but keep a tiny radius for hit-area
+   comfort. Drop shadows are replaced by hard 4px offset shadows. */
+.gm-pixel-shell .rounded,
+.gm-pixel-shell .rounded-md,
+.gm-pixel-shell .rounded-lg,
+.gm-pixel-shell .rounded-xl,
+.gm-pixel-shell .rounded-2xl {
+  border-radius: 2px !important;
+}
+.gm-pixel-shell .shadow,
+.gm-pixel-shell .shadow-sm,
+.gm-pixel-shell .shadow-md,
+.gm-pixel-shell .shadow-lg,
+.gm-pixel-shell .shadow-xl {
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Tables — striping for legibility on dense rows */
+.gm-pixel-shell table tbody tr {
+  border-color: #3a3a5e !important;
+}
+.gm-pixel-shell table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.025);
+}
+.gm-pixel-shell table tbody tr:hover {
+  background-color: rgba(251, 191, 36, 0.10) !important;
+}
+.gm-pixel-shell thead th {
+  background-color: #1a1a2e;
+  color: #a8a8c8;
+}
+
+/* Inputs / selects / textareas */
+.gm-pixel-shell input[type="text"],
+.gm-pixel-shell input[type="number"],
+.gm-pixel-shell input[type="search"],
+.gm-pixel-shell input[type="range"],
+.gm-pixel-shell select,
+.gm-pixel-shell textarea {
+  background-color: #1a1a2e !important;
+  color: #e8e8e8 !important;
+  border: 2px solid #3a3a5e !important;
+  border-radius: 2px !important;
+}
+.gm-pixel-shell input:focus,
+.gm-pixel-shell select:focus,
+.gm-pixel-shell textarea:focus {
+  outline: none;
+  border-color: #fbbf24 !important;
+}
+
+/* Make sure the dropdown menu items in the GMShell nav don't accidentally
+   pick up the .bg-white override (they need to stay #0f0f1e). The nav
+   menu uses its own inline styles so this is mostly a guard against
+   future regressions. */
+.gm-pixel-shell header * {
+  /* no-op — anchor for future header-specific overrides */
+}
+
+/* Increase the inline font-size used by VT323 in stats tables so the
+   per-stat numbers don't shrink into a blur. */
+.gm-pixel-shell .text-xs   { font-size: 14px; }
+.gm-pixel-shell .text-\[10px\],
+.gm-pixel-shell .text-\[11px\] { font-size: 13px; }
+.gm-pixel-shell .text-\[9px\]  { font-size: 12px; }
+.gm-pixel-shell .text-sm   { font-size: 16px; }
+.gm-pixel-shell .text-base { font-size: 17px; }
+
+/* Press Start 2P stays at its tiny declared sizes since it's only used
+   for short labels — don't blow it up. */
+.gm-pixel-shell .font-pixel-display {
+  font-size: revert;
+}

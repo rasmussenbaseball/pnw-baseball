@@ -53,7 +53,7 @@ export default function GMShell({ children, schoolName, schoolColors }) {
   const [params] = useSearchParams()
   const slot = params.get('slot') || '1'
   return (
-    <div className="font-pixel min-h-screen bg-[#1a1a2e] text-[#e8e8e8]">
+    <div className="gm-pixel-shell font-pixel min-h-screen bg-[#1a1a2e] text-[#e8e8e8]">
       {/* Subtle CRT scanlines for the retro feel */}
       <Scanlines />
       <PixelHeader slot={slot} schoolName={schoolName} schoolColors={schoolColors} />

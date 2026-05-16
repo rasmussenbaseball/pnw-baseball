@@ -106,11 +106,19 @@ export default function PixelHeadshot({
       className={className}
       style={{ imageRendering: 'pixelated' }}
     >
-      {/* Subtle dark frame for definition */}
-      <rect x="0" y="0" width="16" height="16" fill="#23233d" />
+      {/* Background fill — slightly lighter than the shell card so the
+          face sits on its own surface even at small sizes. */}
+      <rect x="0" y="0" width="16" height="16" fill="#2f2f4f" />
       {pixels.map((p, i) => (
         <rect key={i} x={p.x} y={p.y} width="1" height="1" fill={p.c} />
       ))}
+      {/* Inner 1-px ring drawn as 4 edge rects so the headshot pops on
+          BOTH the dark pixel shell AND any legacy light surface (Recruiting
+          modal, Roster table, etc.). Uses crisp pixel borders. */}
+      <rect x="0" y="0" width="16" height="1" fill="#3a3a5e" />
+      <rect x="0" y="15" width="16" height="1" fill="#3a3a5e" />
+      <rect x="0" y="0" width="1" height="16" fill="#3a3a5e" />
+      <rect x="15" y="0" width="1" height="16" fill="#3a3a5e" />
     </svg>
   )
 }
