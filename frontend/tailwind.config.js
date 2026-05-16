@@ -38,6 +38,11 @@ export default {
         // Inter without feeling weird. Applied via PortalLayout to
         // every page inside the Coach & Scouting Portal.
         'portal': ['Outfit', 'system-ui', '-apple-system', 'sans-serif'],
+        // GM dynasty game — pixelated retro aesthetic. VT323 is the body
+        // font (readable monospaced pixel), Press Start 2P is the chunky
+        // 8-bit display font for headers + nav.
+        'pixel': ['"VT323"', '"Courier New"', 'monospace'],
+        'pixel-display': ['"Press Start 2P"', '"Courier New"', 'monospace'],
       },
     },
   },

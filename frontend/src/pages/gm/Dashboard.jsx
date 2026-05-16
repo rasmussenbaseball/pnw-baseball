@@ -17,6 +17,8 @@ import {
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
+import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
+import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -243,7 +245,8 @@ export default function Dashboard() {
 
   // ─── UI ────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto py-6 px-4 min-h-screen">
+    <GMShell schoolName={school.name} schoolColors={school.colors}>
+    <div className="min-h-screen">
       {progress && <ProgressModal {...progress} />}
       {lastWeekRecap?.diff && (
         <WeekRecapModal
@@ -556,43 +559,12 @@ export default function Dashboard() {
             <FocusTasks save={save} inOffseason={inOffseason} />
           </Panel>
 
-          <Panel title="Navigate" actionTo={null}>
-            <div className="grid grid-cols-2 gap-2">
-              <NavTile to={`/gm/roster?slot=${slot}`} title="Roster" sub={`${team.rosterPlayerIds.length} players`} />
-              <NavTile to={`/gm/depth?slot=${slot}`} title="Depth Chart" sub="Field + pitching staff" />
-              <NavTile to={`/gm/schedule?slot=${slot}`} title="Schedule" sub="Games + sim" />
-              <NavTile to={`/gm/play?slot=${slot}`} title="Play Games" sub="Set lineups + live sim" />
-              <NavTile to={`/gm/calendar?slot=${slot}`} title="Calendar" sub="Year at a glance" />
-              <NavTile to={`/gm/standings?slot=${slot}`} title="Standings" sub={conf.abbreviation} />
-              <NavTile to={`/gm/rankings?slot=${slot}`} title="Rankings" sub="Top 50" />
-              <NavTile to={`/gm/budget?slot=${slot}`} title="Budget" sub={`$${(save.budget?.totalAthleticBudget / 1000).toFixed(0)}K`} />
-              <NavTile to={`/gm/recruiting?slot=${slot}`} title="Recruiting" sub={save.recruits && Object.keys(save.recruits).length > 0 ? `${Object.keys(save.recruits).length} on board` : 'Open board'} />
-              <NavTile to={`/gm/weekly?slot=${slot}`} title="Weekly Actions" sub="Study hall, fundraise, camp" />
-              <NavTile to={`/gm/coaches?slot=${slot}`} title="Staff" sub={`${1 + assistants.length} coaches`} />
-              <NavTile to={`/gm/summer?slot=${slot}`} title="Summer Ball" sub={summerBallSub(save)} />
-              {save.postseason && (
-                <NavTile to={`/gm/postseason?slot=${slot}`} title="Postseason" sub={postseasonSub(save.postseason)} />
-              )}
-            </div>
-          </Panel>
-
-          <Panel title="Program Profile" actionTo={null}>
-            <div className="text-xs grid grid-cols-2 gap-y-1.5">
-              <div className="text-gray-500">Resource Tier</div>
-              <div className="text-right">{prettyLabel(school.resourceTier)}</div>
-              <div className="text-gray-500">Program History</div>
-              <div className="text-right">{school.programHistory}/100</div>
-              <div className="text-gray-500">Facilities</div>
-              <div className="text-right">{school.facilityRating}/100</div>
-              <div className="text-gray-500">Academics</div>
-              <div className="text-right">{school.academicReputation}/100</div>
-              <div className="text-gray-500">Tuition + R&B</div>
-              <div className="text-right font-mono">${((school.tuitionPerYear + school.roomAndBoardPerYear) / 1000).toFixed(0)}K/yr</div>
-            </div>
-          </Panel>
+          {/* Navigation moved to the pixel header dropdown nav. Program Profile
+              moved to the future Extras → About page. Removes redundancy. */}
         </div>
       </div>
     </div>
+    </GMShell>
   )
 }
 
@@ -733,18 +705,15 @@ function FocusTasks({ save, inOffseason }) {
 }
 
 function PlayerRow({ p, ovr, slot }) {
-  // Tier badges with real color hierarchy — the game should communicate
-  // "this player is GOOD" at a glance.
+  // Pixel headshot replaces the initials avatar. Tier badge still
+  // communicates "this player is GOOD" at a glance.
   const tier = ovrTier(ovr)
-  const initials = (p.firstName?.[0] || '') + (p.lastName?.[0] || '')
   return (
     <Link
       to={`/gm/player/${p.id}?slot=${slot}`}
       className="flex items-center gap-3 py-1.5 px-1 rounded hover:bg-gray-50 transition group"
     >
-      <div className={'w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0 ' + avatarColor(p)}>
-        {initials}
-      </div>
+      <PixelHeadshot playerId={p.id} size={36} />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm text-pnw-slate group-hover:text-pnw-green truncate">
           {p.firstName} {p.lastName}

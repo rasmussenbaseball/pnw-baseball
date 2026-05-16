@@ -9,6 +9,8 @@ import {
 import AttrTooltip from '../../gm/components/AttrTooltip'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
+import GMShell from '../../gm/components/GMShell'
+import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
 export default function PlayerDetail() {
   const { user } = useAuth()
@@ -66,12 +68,18 @@ export default function PlayerDetail() {
   const statsKey = player.isPitcher ? `p_${player.id}` : `b_${player.id}`
   const stats = save.playerStats?.[statsKey]
 
+  // Pull school colors for the shell. The PlayerDetail doesn't always know
+  // the user's school context, so fall back to a default amber if we can't.
+  const userSchool = save.schools?.[save.userSchoolId]
   return (
-    <div className="max-w-4xl mx-auto py-8">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-4xl mx-auto">
       <Link to={`/gm/roster?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Roster</Link>
 
-      <div className="flex justify-between items-start mt-2 mb-6">
-        <div>
+      <div className="flex justify-between items-start mt-2 mb-6 gap-4">
+        <div className="flex items-start gap-3">
+          <PixelHeadshot playerId={player.id} size={64} className="shrink-0" />
+          <div>
           <h1 className="text-3xl font-bold text-pnw-slate">{player.firstName} {player.lastName}</h1>
           <p className="text-sm text-gray-600">
             {displayPosition(player.primaryPosition)} • {displayClassYear(player)} • {player.bats}/{player.throws} •
@@ -88,6 +96,7 @@ export default function PlayerDetail() {
               🔄 Change position
             </button>
           )}
+          </div>
         </div>
         <div className="flex gap-2">
           <RatingPill label="OVR" value={ovr} tier={tier} />
@@ -212,6 +221,7 @@ export default function PlayerDetail() {
         </div>
       )}
     </div>
+    </GMShell>
   )
 }
 

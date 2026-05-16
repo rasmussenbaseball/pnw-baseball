@@ -7,6 +7,8 @@ import { teamAcademicSummary } from '../../gm/engine/academics'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { cutsWindowOpen, ensureCutsState, cutPlayer, cutTrustTier, isMandatoryCutMode } from '../../gm/engine/cuts'
+import GMShell from '../../gm/components/GMShell'
+import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
 const POSITION_GROUPS = {
   All: () => true,
@@ -63,7 +65,8 @@ export default function Roster() {
   const acadSummary = teamAcademicSummary(players)
 
   return (
-    <div className="max-w-6xl mx-auto py-8">
+    <GMShell schoolName={school.name} schoolColors={school.colors}>
+    <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-start mb-6">
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">← Dashboard</Link>
@@ -142,15 +145,20 @@ export default function Roster() {
                 return (
                   <tr key={p.id} className={'border-t hover:bg-gray-50 ' + (cutMode ? '' : 'cursor-pointer')} onClick={() => !cutMode && navigate(`/gm/player/${p.id}?slot=${slot}`)}>
                     <td className="py-2 px-3 font-medium">
-                      {p.firstName} {p.lastName}
-                      {p.injury?.weeksRemaining > 0 && (
-                        <span
-                          className="ml-1 inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase align-middle"
-                          title={`${p.injury.label} — ${p.injury.weeksRemaining} wk left`}
-                        >
-                          🩼 IL
+                      <div className="flex items-center gap-2">
+                        <PixelHeadshot playerId={p.id} size={28} className="shrink-0" />
+                        <span className="truncate">
+                          {p.firstName} {p.lastName}
+                          {p.injury?.weeksRemaining > 0 && (
+                            <span
+                              className="ml-1 inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase align-middle"
+                              title={`${p.injury.label} — ${p.injury.weeksRemaining} wk left`}
+                            >
+                              🩼 IL
+                            </span>
+                          )}
                         </span>
-                      )}
+                      </div>
                     </td>
                     <td className="text-gray-700">{displayPosition(p.primaryPosition)}</td>
                     <td className="text-gray-700">{displayClassYear(p)}</td>
@@ -193,6 +201,7 @@ export default function Roster() {
         </div>
       </div>
     </div>
+    </GMShell>
   )
 }
 
