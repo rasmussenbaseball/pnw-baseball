@@ -12,7 +12,7 @@ import { makeRng } from './rng'
 import { pickFullName } from './names'
 import { initialAcademicState } from './academics'
 import { pickCityForState } from './cities'
-import { composePlayerProfile } from './playerArchetypes'
+import { composePlayerProfile, enforceArchetypeFloors } from './playerArchetypes'
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Position} Position */
@@ -86,13 +86,28 @@ function applyStarBump(mean, slotTier, rng) {
 }
 
 /**
- * Pick a "side dominance" for L/R splits — a player is usually noticeably
- * better against one side. Returns a delta to add to the dominant side and
- * subtract from the other. Stronger dominance is rarer.
+ * Pick a "side dominance" for L/R splits. Tightened May 2026 — old code
+ * could spit out power_L 90 / power_R 30 monsters that were basically
+ * unplayable. Realistic spread: most hitters within 6 pts side-to-side;
+ * a few true platoon guys at 8-10.
  */
 function pickSideDominance(rng) {
-  // 0-5 pts toward dominant side (typical); occasional 8-12 (true splits guy)
-  return rng.weighted([2, 4, 6, 9, 13], [25, 30, 25, 15, 5])
+  return rng.weighted([1, 2, 3, 5, 8], [25, 30, 25, 15, 5])
+}
+
+/**
+ * Pick which side a hitter is BETTER against based on handedness. Real
+ * platoon norms (May 2026 per Nate):
+ *   - Right-handed hitters do slightly better vs LHP (~70% of the time)
+ *   - Left-handed hitters do better vs RHP (~75% — more pronounced)
+ *   - Switch hitters: even split
+ * Returns 'L' or 'R' (the side they HIT BETTER AGAINST, i.e. their
+ * dominant rating side).
+ */
+function pickPlatoonDominantSide(bats, rng) {
+  if (bats === 'R') return rng.chance(0.7) ? 'L' : 'R'
+  if (bats === 'L') return rng.chance(0.75) ? 'R' : 'L'
+  return rng.chance(0.5) ? 'L' : 'R'   // switch
 }
 
 /**
@@ -108,25 +123,21 @@ function pickSideDominance(rng) {
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @param {ReturnType<import('./playerArchetypes.js').composePlayerProfile>} [profile]
  */
-function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng, profile = null) {
+function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng, profile = null, bats = 'R') {
   let mean = meanRatingFor(programHistory, slotTier) - (isPureHitter ? 0 : 10)
   mean = applyStarBump(mean, slotTier, rng)
-  // Wider stddev means more variance within a player's ratings — important
-  // for "this player has 99 speed but 50 power" feel.
   const stddev = slotTier === 'starter' ? 9 : 11
   const biases = profile?.biases || {}
-  // Roll a value for a given rating key. Bias from frame + archetype + quirks
-  // gets ADDED to the mean for THIS key only — so the archetype actually
-  // shapes the profile (power bat → bigger power, smaller contact).
   const rollKey = (key, extra = 0) => Math.round(clamp(
     rng.gaussian(mean + (biases[key] || 0) + extra, stddev),
     25, 99,
   ))
 
-  // L/R correlation: pick a dominant side once, apply consistent +/- delta
-  // to BOTH contact and power. So a "righty-killer" gets high contact_l AND
-  // high power_l, not opposite extremes.
-  const dominantSide = rng.weighted(['L', 'R'], [40, 60])
+  // L/R correlation tied to PLATOON HANDEDNESS — most RHH hit slightly
+  // better vs LHP, most LHH hit better vs RHP. Dominance amount is small
+  // (avg ~3 pts, max ~8). Same delta applied to BOTH contact AND power
+  // for that side so a "righty crusher" reads consistently across stats.
+  const dominantSide = pickPlatoonDominantSide(bats, rng)
   const dominance = pickSideDominance(rng)
   const lDelta = dominantSide === 'L' ? dominance : -dominance
   const rDelta = dominantSide === 'R' ? dominance : -dominance
@@ -371,7 +382,12 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     position: slot.position, isPitcher, slotTier, rng,
   })
 
-  const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng, profile)
+  // Decide handedness FIRST so the rating generator can apply platoon-aware
+  // L/R splits (most RHH hit better vs LHP, LHH better vs RHP).
+  const bats = rng.weighted(['R', 'L', 'S'], [70, 22, 8])
+  const throws = rng.weighted(['R', 'L'], [80, 20])
+
+  const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng, profile, bats)
   const pitcher = generatePitcherRatings(school.programHistory, slot.classYear, isPitcher, slotTier, rng, profile)
 
   // Late-bloomer current-rating suppression: archetype tag drops current
@@ -384,6 +400,12 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
       if (!k.startsWith('velocity')) pitcher[k] = clamp(pitcher[k] - drop, 25, 99)
     }
   }
+
+  // Enforce archetype signature-rating floors. A "Defensive Wizard" can't
+  // have 55 fielding; a "Power Bat" can't have 50 power. After the random
+  // roll, bring weak signature stats up to a believable floor that matches
+  // the label the player carries.
+  enforceArchetypeFloors(profile.archetype.key, hitter, pitcher)
 
   const potential_hitter = generatePotential(hitter, slot.classYear, rng, profile)
   const potential_pitcher = generatePotential(pitcher, slot.classYear, rng, profile)
@@ -449,8 +471,8 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     eligibilityStatus: 'eligible',
     primaryPosition: slot.position,
     positions: [slot.position],
-    bats: rng.weighted(['R', 'L', 'S'], [70, 22, 8]),
-    throws: rng.weighted(['R', 'L'], [80, 20]),
+    bats,
+    throws,
     isPitcher,
     isHitter,
     hitter,

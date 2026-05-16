@@ -241,7 +241,7 @@ export default function Recruiting() {
     // First offer is free; modifications charged above
     setLiveOffer(save.recruits[recruit.id], save.userSchoolId, amount)
     const signRng = makeRng('sign', recruit.id, save.userSchoolId, save.calendar.week)
-    const signed = tryAdvanceRecruit(save.recruits[recruit.id], save.userSchoolId, userSchool, signRng)
+    const signed = tryAdvanceRecruit(save.recruits[recruit.id], save.userSchoolId, userSchool, signRng, save)
     if (signed) {
       save.newsfeed.unshift({
         id: `sign_${recruit.id}_${save.calendar.year}`,
@@ -625,8 +625,9 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
     const block = recruit.isPitcher ? recruit.truePotentialPitcher : recruit.truePotentialHitter
     if (!block) return { lo: null, hi: null }
     const truePot = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
-    // POT noise is 1.5× current noise — harder to project than current.
-    const half = Math.round(noise * 1.5)
+    // POT noise: 1.2× current noise (tightened from 1.5× — old bands were
+    // basically useless "60-99" reads on initial board view).
+    const half = Math.round(noise * 1.2)
     return {
       lo: Math.max(20, truePot - half),
       hi: Math.min(99, truePot + half),
@@ -1041,7 +1042,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
   const truePotAvg = potBlock
     ? Math.round(Object.values(potBlock).reduce((a, b) => a + b, 0) / Object.keys(potBlock).length)
     : null
-  const potHalf = Math.max(1, Math.round(grade.noise * 1.5))
+  const potHalf = Math.max(1, Math.round(grade.noise * 1.2))
   const estPotRange = truePotAvg == null ? null : {
     lo: Math.max(20, truePotAvg - potHalf),
     hi: Math.min(99, truePotAvg + potHalf),
@@ -1323,15 +1324,17 @@ function Wk4Tutorial({ save, apBaseline }) {
   const spent = Math.max(0, apBaseline - currentAP)
   const pct = Math.min(100, Math.round((spent / Math.max(1, apBaseline)) * 100))
   const done = currentAP === 0
+  // Use Tailwind classes (which my pixel-shell CSS remaps to bright
+  // pastels on the dark theme) instead of hard-coded HEX inline styles
+  // designed for cream backgrounds.
   return (
     <div className={'rounded-xl p-4 mb-4 border-2 ' +
       (done ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300')}>
-      <div className="text-[11px] uppercase tracking-wider font-bold mb-1"
-           style={{ color: done ? '#166534' : '#92400e' }}>
+      <div className={'text-[11px] uppercase tracking-wider font-bold mb-1 ' +
+        (done ? 'text-green-700' : 'text-amber-700')}>
         Week 4 — Open Scouting & Build Your Board
       </div>
-      <div className="text-sm leading-snug mb-2"
-           style={{ color: done ? '#166534' : '#78350f' }}>
+      <div className={'text-sm leading-snug mb-2 ' + (done ? 'text-green-800' : 'text-amber-800')}>
         {done
           ? <>✓ All AP spent. You\'ve built your initial recruiting board for next year\'s class.
               Head to the dashboard to advance to Wk 5 (Fall Camp opens).</>
@@ -1347,8 +1350,7 @@ function Wk4Tutorial({ save, apBaseline }) {
             style={{ width: `${pct}%`, transition: 'width 200ms' }}
           />
         </div>
-        <div className="font-mono whitespace-nowrap"
-             style={{ color: done ? '#166534' : '#78350f' }}>
+        <div className={'font-mono whitespace-nowrap ' + (done ? 'text-green-700' : 'text-amber-700')}>
           {spent} / {apBaseline} AP spent
         </div>
       </div>

@@ -13,7 +13,7 @@ import { makeRng } from './rng'
 import { pickFullName } from './names'
 import { pickCityForState } from './cities'
 import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
-import { composePlayerProfile } from './playerArchetypes'
+import { composePlayerProfile, enforceArchetypeFloors } from './playerArchetypes'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
 // Recruit pool sizes. Trimmed in v1.6 — each makeRecruit allocates a fully
@@ -66,7 +66,7 @@ function seedRegionInterest(recruit, userSchoolId, coach) {
   if (!inRegion) return
   recruit.scoutGrades[userSchoolId] = {
     interest: 12,
-    noise: 15,                            // full fog — must scout to lift it
+    noise: 10,                            // initial board fog (tightened from 15)
     revealedPreferences: [],
     actionsApplied: ['REGION_SEED'],
     apSpent: 0,
@@ -263,11 +263,18 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   else if (pool === 'D3_TRANSFER') { meanRating = 52; stddev = 11; cap = 85 }
   else                             { meanRating = 55; stddev = 12; cap = 90 }
 
-  // L/R correlation: pick a dominant side once and apply consistent delta
-  // to BOTH contact AND power for that side. So you never see a
-  // power_l 95 / power_r 30 weirdo unless quirks specifically asked for it.
-  const dominantSide = rng.weighted(['L', 'R'], [40, 60])
-  const sideDom = rng.weighted([2, 4, 6, 9, 13], [25, 30, 25, 15, 5])
+  // L/R correlation TIED TO PLATOON HANDEDNESS. Real baseball: RHH hit
+  // slightly better vs LHP (~70% of the time), LHH hit better vs RHP
+  // (~75%). Switch hitters are balanced. Dominance amount itself is
+  // smaller than before — max ~8 pts (was 13) — so we never produce
+  // power_L 95 / power_R 30 monsters.
+  const bats = rng.weighted(['R', 'L', 'S'], [70, 22, 8])
+  const dominantSide = bats === 'R'
+    ? (rng.chance(0.70) ? 'L' : 'R')
+    : bats === 'L'
+      ? (rng.chance(0.75) ? 'R' : 'L')
+      : (rng.chance(0.5) ? 'L' : 'R')
+  const sideDom = rng.weighted([1, 2, 3, 5, 8], [25, 30, 25, 15, 5])
   const lDelta = dominantSide === 'L' ? sideDom : -sideDom
   const rDelta = dominantSide === 'R' ? sideDom : -sideDom
   const biases = profile.biases
@@ -304,6 +311,10 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     for (const k of Object.keys(trueHitter)) trueHitter[k] = clamp(trueHitter[k] - drop, 25, 99)
     for (const k of Object.keys(truePitcher)) truePitcher[k] = clamp(truePitcher[k] - drop, 25, 99)
   }
+
+  // Enforce archetype signature-rating floors so labels are believable
+  // (Defensive Wizard always has plus fielding, etc.).
+  enforceArchetypeFloors(profile.archetype.key, trueHitter, truePitcher)
 
   // Potential — DECOUPLED from current. Each player has a ceiling tier rolled
   // once that drives all their rating ceilings. Pool source affects tier
@@ -497,7 +508,7 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     previousLeagueId,
     primaryPosition,
     positions: [primaryPosition],
-    bats: rng.weighted(['R', 'L', 'S'], [70, 22, 8]),
+    bats,
     throws: rng.weighted(['R', 'L'], [80, 20]),
     trueHitter,
     truePitcher,
@@ -689,7 +700,7 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
   if (!recruit.scoutGrades[userSchoolId]) {
     recruit.scoutGrades[userSchoolId] = {
       interest: 0,
-      noise: 15,                  // initial sight = ±15 rating noise
+      noise: 10,                  // initial sight = ±10 rating noise (tightened)
       revealedPreferences: [],
       actionsApplied: [],
       apSpent: 0,
@@ -828,8 +839,11 @@ export function noisyRating(trueRating, noise, rng) {
  */
 export function estimateRecruitPotential(recruit, userSchoolId, rng) {
   const grade = recruit.scoutGrades?.[userSchoolId]
-  const baseNoise = grade?.noise ?? 15
-  const noise = Math.round(baseNoise * 1.5)
+  const baseNoise = grade?.noise ?? 10
+  // POT is harder to project than current — but the old 1.5× multiplier
+  // produced visible bands of "60-99" on initial scouting which were
+  // basically useless. Tightened to 1.2× per Nate (May 2026).
+  const noise = Math.round(baseNoise * 1.2)
   if (recruit.isPitcher) {
     const out = {}
     for (const [k, v] of Object.entries(recruit.truePotentialPitcher || {})) {
@@ -1213,19 +1227,46 @@ export function withdrawOffer(recruit, userSchoolId) {
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @returns {string | null}   the school they signed with, or null
  */
-export function tryAdvanceRecruit(recruit, userSchoolId, school, rng) {
+export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = null) {
   if (recruit.status === 'signed' || recruit.status === 'lost') return null
   const grade = recruit.scoutGrades[userSchoolId]
   if (!grade) return null
   if (grade.interest < 45) return null
   if (!recruit.liveOffer || recruit.liveOffer.schoolId !== userSchoolId) return null
 
-  const fitScore = computeFitScore(recruit, school, grade.interest)
   const suitorCount = totalSuitors(recruit)
 
   // Offer competitiveness — average rival offer is ~$8K-$15K; if our offer is meaningfully above that, helps
   const avgRivalOffer = 8000 + suitorCount * 1500
   const offerAdvantage = (recruit.liveOffer.amount - avgRivalOffer) / 5000   // -2 to +3 typically
+
+  // Build per-preference context for the full 8-preference fit calculation.
+  // state is optional — when missing, the missing-context prefs just don't
+  // contribute (which preserves backwards-compat for callers that don't
+  // pass state).
+  const ctx = { offerAdvantage }
+  if (state) {
+    const team = state.teams?.[userSchoolId]
+    const userHC = team ? state.coaches?.[team.headCoachId] : null
+    if (userHC) ctx.coachDeveloper = userHC.developer ?? 55
+    // Playing-time proxy: how thin are we at the recruit's position?
+    if (team && state.players) {
+      const pos = recruit.primaryPosition
+      const sameSpot = team.rosterPlayerIds
+        .map(id => state.players[id])
+        .filter(p => p && !p.isPitcher === !recruit.isPitcher
+          && (recruit.isPitcher ? p.isPitcher : p.primaryPosition === pos))
+        .length
+      // 0 returners → 1.0 wide open, 4+ → 0.1 jammed
+      ctx.ptAvailability = clamp(1 - sameSpot * 0.22, 0.1, 1.0)
+    }
+    // Pipeline match: coach's regions include the recruit's home region
+    if (userHC?.regions && Array.isArray(userHC.regions)) {
+      const recruitRegion = STATE_TO_REGION[recruit.hometown.state]
+      ctx.pipelineMatch = userHC.regions.includes(recruitRegion)
+    }
+  }
+  const fitScore = computeFitScore(recruit, school, grade.interest, ctx)
 
   // Base sign probability scales with fit + offer; suitor count divides it
   const baseProb = (fitScore / 200 + grade.interest / 400 + offerAdvantage * 0.15)
@@ -1261,24 +1302,51 @@ export function rollSignedSteal(recruit, rng) {
 }
 
 /**
- * Compute a fit score for a (recruit, school) pair using their revealed +
- * hidden preferences. v1.5 uses all preferences (game owner has visibility);
- * future v could limit to revealed only.
+ * Compute a fit score for a (recruit, school) pair using all 8 preference
+ * weights. Higher fit = higher signing probability. Each preference scores
+ * the school's standing in that area times the recruit's individual weight,
+ * so a recruit who deeply cares about $ responds more to a generous offer,
+ * a recruit who values playing time responds more to a thin depth chart,
+ * etc.
+ *
+ * @param {*} recruit
+ * @param {*} school
+ * @param {number} interest
+ * @param {{ offerAdvantage?: number, ptAvailability?: number, coachDeveloper?: number, pipelineMatch?: boolean }} [ctx]
  */
-function computeFitScore(recruit, school, interest) {
+function computeFitScore(recruit, school, interest, ctx = {}) {
   const prefs = recruit.preferences
   let score = 0
-  // Interest is a direct multiplier
+  // Interest is a direct multiplier — base 50% of total
   score += interest * 0.5
   // Proximity: same region = good
   const recruitRegion = STATE_TO_REGION[recruit.hometown.state]
   if (recruitRegion === school.region) score += prefs.proximity * 4
-  // Program history
+  // Program history (wins, reputation)
   score += (school.programHistory / 100) * prefs.program_history * 4
   // Facilities
   score += (school.facilityRating / 100) * prefs.facilities * 4
   // Academics
   score += (school.academicReputation / 100) * prefs.academics * 4
+  // Financial — offerAdvantage is the offer minus avg rival offer / 5000
+  // (range roughly -3 to +3). Weighted by the recruit's $$$ priority.
+  if (typeof ctx.offerAdvantage === 'number') {
+    score += clamp(ctx.offerAdvantage, -3, 3) * prefs.financial * 2.5
+  }
+  // Playing time — ptAvailability 0-1 (0 = no spots open at position,
+  // 1 = wide open). Weighted by recruit's playing-time priority.
+  if (typeof ctx.ptAvailability === 'number') {
+    score += ctx.ptAvailability * prefs.playing_time * 4
+  }
+  // Coaching — head coach's developer rating drives this. Recruit's
+  // coaching priority weight applies.
+  if (typeof ctx.coachDeveloper === 'number') {
+    score += (ctx.coachDeveloper / 100) * prefs.coaching * 4
+  }
+  // Pipeline fit — coach has the recruit's region in their pipelines
+  if (ctx.pipelineMatch) {
+    score += prefs.pipeline_fit * 5
+  }
   return score
 }
 

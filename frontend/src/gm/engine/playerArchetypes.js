@@ -83,34 +83,45 @@ function pickFrameWeighted(rng) {
 }
 
 /**
- * Hitter and pitcher height caps. Hitters cap at 6'6" (78 in), pitchers at
- * 6'9" (81 in). Both are rare — most players sit closer to the averages.
- *
- * Average heights by position (MLB-ish, used as bias targets):
- *   C: 6'1   1B: 6'3   2B: 5'11   SS: 6'1   3B: 6'2
- *   LF: 6'1  CF: 6'0   RF: 6'2    P: 6'3
+ * Position-specific height windows. Real-world baseball ranges:
+ *   C: 5'9-6'3      1B: 6'0-6'6     2B: 5'8-6'1
+ *   SS: 5'8-6'3     3B: 5'10-6'4    LF: 5'10-6'4
+ *   CF: 5'9-6'2     RF: 5'10-6'5    P: 5'11-6'9
+ * No 6'6 shortstops, no 5'6 first basemen. Cap + floor enforced after
+ * frame-roll + position bias, so a TOWERING frame still produces a
+ * realistic catcher (caps at 6'3 even if the frame rolled higher).
  */
-export const HITTER_HEIGHT_CAP = 78
-export const PITCHER_HEIGHT_CAP = 81
-
-const POSITION_HEIGHT_BIAS = {
-  C: -1.5, '1B': +1.5, '2B': -1, SS: 0, '3B': +0.5,
-  LF: 0, CF: -1, RF: +0.5,
-  // Pitchers + DH default to no bias; pitcher max is wider anyway.
-  P: +1, SP: +1, RP: +1, DH: 0,
+const POSITION_HEIGHT_WINDOW = {
+  C:  { min: 69, max: 75, bias: -1.5 },   // 5'9-6'3
+  '1B': { min: 72, max: 78, bias: +1.5 }, // 6'0-6'6
+  '2B': { min: 68, max: 73, bias: -1.0 }, // 5'8-6'1
+  SS:  { min: 68, max: 75, bias:  0 },    // 5'8-6'3
+  '3B': { min: 70, max: 76, bias: +0.5 }, // 5'10-6'4
+  LF:  { min: 70, max: 76, bias:  0 },    // 5'10-6'4
+  CF:  { min: 69, max: 74, bias: -1.0 },  // 5'9-6'2
+  RF:  { min: 70, max: 77, bias: +0.5 },  // 5'10-6'5
+  P:   { min: 71, max: 81, bias: +1.0 },  // 5'11-6'9 (TJ-arm pool)
+  SP:  { min: 71, max: 81, bias: +1.0 },
+  RP:  { min: 71, max: 81, bias: +1.0 },
+  DH:  { min: 70, max: 78, bias:  0 },
 }
 
+export const HITTER_HEIGHT_CAP = 78   // retained for back-compat
+export const PITCHER_HEIGHT_CAP = 81
+
 /**
- * Apply position-aware height adjustment + the role-specific cap.
+ * Apply position-aware height adjustment + position-specific cap/floor.
+ * If a frame's raw roll falls outside the window for the position, clamp
+ * to the window so we never produce 6'6 shortstops or 5'6 first basemen.
  *
  * @param {number} rawHeight  height from the frame range
  * @param {string} position
  * @param {boolean} isPitcher
  */
 export function adjustHeightForPosition(rawHeight, position, isPitcher) {
-  const bias = POSITION_HEIGHT_BIAS[position] ?? 0
-  const cap = isPitcher ? PITCHER_HEIGHT_CAP : HITTER_HEIGHT_CAP
-  return Math.min(cap, Math.max(64, Math.round(rawHeight + bias)))
+  const w = POSITION_HEIGHT_WINDOW[position] ?? { min: 66, max: 81, bias: 0 }
+  const shifted = rawHeight + w.bias
+  return Math.min(w.max, Math.max(w.min, Math.round(shifted)))
 }
 
 // ─── Hitter archetypes ──────────────────────────────────────────────────────
@@ -449,6 +460,69 @@ export function formatHeight(inches) {
 export function getArchetype(key) {
   return [...HITTER_ARCHETYPES, ...PITCHER_ARCHETYPES].find(a => a.key === key)
 }
+
+/**
+ * Star archetypes promise a signature tool — a "Defensive Wizard" with 55
+ * fielding is a contradiction. After ratings roll, enforce minimum values
+ * on the archetype's signature stats so the visible profile matches the
+ * label. Applied INSIDE the role-specific cap (still 99) so we never
+ * generate absurdly high ratings; we just bring weak rolls UP to a
+ * believable floor for that archetype.
+ *
+ * @param {string} archetypeKey
+ * @param {object} hitterBlock   mutated in place if hitter archetype
+ * @param {object} pitcherBlock  mutated in place if pitcher archetype
+ */
+export function enforceArchetypeFloors(archetypeKey, hitterBlock, pitcherBlock) {
+  const floors = ARCHETYPE_FLOORS[archetypeKey]
+  if (!floors) return
+  const block = (archetypeKey in PITCHER_FLOOR_KEYS) ? pitcherBlock : hitterBlock
+  if (!block) return
+  for (const [stat, min] of Object.entries(floors)) {
+    if (typeof block[stat] === 'number' && block[stat] < min) {
+      block[stat] = min
+    }
+  }
+}
+
+// Per-archetype minimum signature ratings. Tuned so a labeled "Defensive
+// Wizard" always has plus defense, a "Power Bat" always has plus power, etc.
+const ARCHETYPE_FLOORS = {
+  // Hitter archetypes
+  FIVE_TOOL:         { contact_l: 70, contact_r: 70, power_l: 65, power_r: 65, speed: 70, fielding: 70, arm: 68 },
+  POWER_BAT:         { power_l: 78, power_r: 78 },
+  CONTACT_WIZARD:    { contact_l: 80, contact_r: 80, discipline: 70 },
+  SPEED_DEMON:       { speed: 85, fielding: 65 },
+  LEADOFF:           { contact_l: 70, contact_r: 70, discipline: 75, speed: 72 },
+  DEFENSIVE_WIZARD:  { fielding: 82, arm: 72 },
+  GLOVE_FIRST_IF:    { fielding: 75, arm: 68 },
+  CANNON_OF:         { arm: 85, fielding: 65 },
+  POWER_C:           { power_l: 70, power_r: 70 },
+  DEFENSIVE_C:       { fielding: 78, arm: 80 },
+  CLEANUP:           { power_l: 72, power_r: 72 },
+  GAP_POWER:         { power_l: 68, power_r: 68, contact_l: 68, contact_r: 68 },
+  SLAP_HITTER:       { contact_l: 75, contact_r: 75, speed: 70 },
+  TOOLS_RAW:         { speed: 70, power_l: 65, power_r: 65 },
+  // Pitcher archetypes
+  FLAMETHROWER:      { stuff: 85 },
+  POWER_ARM:         { stuff: 78 },
+  CONTROL_ARTIST:    { control: 80, command: 78 },
+  CRAFTY_LEFTY:      { command: 78, control: 75, vs_l: 80 },
+  WORKHORSE:         { stamina: 78, durability: 72 },
+  CLOSER_PROFILE:    { stuff: 78, composure: 75 },
+  GROUND_BALL:       { command: 78, control: 75 },
+  STRIKEOUT_ARTIST:  { stuff: 78, command: 70 },
+  TWO_PITCH_RP:      { stuff: 75 },
+  DECEPTIVE:         { stuff: 70, vs_l: 70, vs_r: 70 },
+  SOFT_TOSSING_VETERAN: { command: 80, composure: 75, control: 75 },
+}
+
+// Quick lookup so enforceArchetypeFloors knows which block to mutate.
+const PITCHER_FLOOR_KEYS = Object.fromEntries(
+  Object.keys(ARCHETYPE_FLOORS)
+    .filter(k => PITCHER_ARCHETYPES.some(a => a.key === k))
+    .map(k => [k, true])
+)
 
 /** Lookup quirk by key for UI display. */
 export function getQuirk(key) {
