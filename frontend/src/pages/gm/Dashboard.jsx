@@ -570,6 +570,7 @@ export default function Dashboard() {
           label="Team GPA"
           value={acad.teamGpa.toFixed(2)}
           trend={gpaTrend(save)}
+          to={`/gm/academics?slot=${slot}`}
         />
         <KpiCard label="Job Security" value={save.budget?.jobSecurity ?? 50} suffix="/100" />
       </div>
@@ -1137,12 +1138,9 @@ function StatCell({ label, value, color = '' }) {
   )
 }
 
-function KpiCard({ label, value, suffix = '', sub, accent, trend }) {
-  return (
-    <div className={'rounded-xl border p-3 transition shadow-sm ' +
-      (accent
-        ? 'bg-gradient-to-br from-pnw-green to-pnw-slate text-white border-pnw-green'
-        : 'bg-white border-gray-200 hover:border-gray-300')}>
+function KpiCard({ label, value, suffix = '', sub, accent, trend, to }) {
+  const body = (
+    <>
       <div className={'text-[10px] uppercase tracking-wider font-semibold ' + (accent ? 'opacity-80' : 'text-gray-500')}>
         {label}
       </div>
@@ -1155,8 +1153,16 @@ function KpiCard({ label, value, suffix = '', sub, accent, trend }) {
       {sub && (
         <div className={'text-[10px] mt-0.5 ' + (accent ? 'opacity-80' : 'text-gray-400')}>{sub}</div>
       )}
-    </div>
+    </>
   )
+  const className = 'rounded-xl border p-3 transition shadow-sm block ' +
+    (accent
+      ? 'bg-gradient-to-br from-pnw-green to-pnw-slate text-white border-pnw-green'
+      : 'bg-white border-gray-200 hover:border-gray-300')
+  if (to) {
+    return <Link to={to} className={className + ' cursor-pointer hover:shadow-md'}>{body}</Link>
+  }
+  return <div className={className}>{body}</div>
 }
 
 // Compare current vs last week's team GPA snapshots. Threshold ±0.01 to

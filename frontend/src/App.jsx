@@ -183,6 +183,7 @@ import GMCalendar from './pages/gm/Calendar'
 import SummerBall from './pages/gm/SummerBall'
 import GMStats from './pages/gm/Stats'
 import Records from './pages/gm/Records'
+import Academics from './pages/gm/Academics'
 
 export default function App() {
   // Portal routes get their own full-page shell — no main-site Header,
@@ -333,6 +334,7 @@ export default function App() {
           <Route path="/gm/summer" element={<RequireGmEarlyAccess><SummerBall /></RequireGmEarlyAccess>} />
           <Route path="/gm/stats" element={<RequireGmEarlyAccess><GMStats /></RequireGmEarlyAccess>} />
           <Route path="/gm/records" element={<RequireGmEarlyAccess><Records /></RequireGmEarlyAccess>} />
+          <Route path="/gm/academics" element={<RequireGmEarlyAccess><Academics /></RequireGmEarlyAccess>} />
           <Route path="/gm/player/:playerId" element={<RequireGmEarlyAccess><GMPlayerDetail /></RequireGmEarlyAccess>} />
 
           {/* About */}

@@ -54,26 +54,44 @@ export function updateAcademics(player, ctx, rng) {
   if (ctx.coachMotivator) newGpa += (ctx.coachMotivator - 50) / 250
   newGpa = clamp(newGpa, 0.0, 4.0)
 
-  const standing = gpaToStanding(newGpa, player.academicStanding)
+  // Track consecutive sub-2.0 semesters. Two in a row triggers dismissal.
+  const prevStreak = player.belowTwoStreak || 0
+  const newStreak = newGpa < 2.0 ? prevStreak + 1 : 0
+  const standing = gpaToStanding(newGpa, newStreak)
   return {
     ...player,
     gpa: Math.round(newGpa * 100) / 100,
     academicStanding: standing,
+    belowTwoStreak: newStreak,
   }
 }
 
 /**
- * Determine new standing from a GPA, considering previous standing.
+ * Determine new standing from a GPA, considering the consecutive-sub-2.0
+ * streak. Rules (May 2026 per Nate):
+ *   - GPA >= 2.25       eligible
+ *   - GPA 2.00 - 2.249  probation  (eligible but on warning)
+ *   - GPA < 2.00        ineligible (can't play the next semester)
+ *   - 2nd consecutive   dismissed  (failed out — auto-cut from roster)
+ *     sub-2.0 semester
+ *
+ * @param {number} gpa
+ * @param {number} streak  consecutive sub-2.0 semesters INCLUDING this one
+ *                         if gpa < 2.0
  */
-function gpaToStanding(gpa, prev) {
-  if (gpa < 1.0) return 'dismissed'
-  if (gpa < 1.5) {
-    // 2nd consecutive ineligible term dismissed
-    if (prev === 'ineligible') return 'dismissed'
-    return 'ineligible'
-  }
-  if (gpa < 2.0) return 'probation'
+function gpaToStanding(gpa, streak = 0) {
+  if (gpa < 2.0 && streak >= 2) return 'dismissed'
+  if (gpa < 2.0) return 'ineligible'
+  if (gpa < 2.25) return 'probation'
   return 'eligible'
+}
+
+// Exported for the GPA Tracker UI so the rules display matches the engine
+export const GPA_THRESHOLDS = {
+  eligible: 2.25,
+  probation: 2.0,
+  ineligible: 0.0,
+  dismissAt: 2,    // consecutive sub-2.0 semesters that trigger dismissal
 }
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
