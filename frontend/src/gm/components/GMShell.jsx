@@ -9,7 +9,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Link, useSearchParams, useLocation } from 'react-router-dom'
+import { Link, useSearchParams, useLocation, matchPath } from 'react-router-dom'
 
 const NAV = [
   {
@@ -104,14 +104,37 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
 
         <div className="flex-1" />
 
-        {/* Nav dropdowns */}
+        {/* Nav: explicit Home button first, then dropdown groups */}
         <nav className="flex items-center gap-1">
+          <HomeNavButton slot={slot} accent={accent} />
           {NAV.map(group => (
             <NavDropdown key={group.key} group={group} slot={slot} accent={accent} />
           ))}
         </nav>
       </div>
     </header>
+  )
+}
+
+function HomeNavButton({ slot, accent }) {
+  const location = useLocation()
+  const isActive = location.pathname.startsWith('/gm/dashboard')
+  return (
+    <Link
+      to={`/gm/dashboard?slot=${slot}`}
+      className={
+        'font-pixel-display text-[10px] tracking-widest px-3 py-2 border-2 transition ' +
+        (isActive
+          ? 'text-[#1a1a2e]'
+          : 'border-transparent text-[#e8e8e8] hover:text-white hover:border-[#3a3a5e]')
+      }
+      style={isActive
+        ? { backgroundColor: accent, borderColor: accent }
+        : {}}
+      title="Back to dashboard"
+    >
+      Home
+    </Link>
   )
 }
 

@@ -405,6 +405,72 @@ tr:hover td.sticky-col {
 .gm-pixel-shell .bg-purple-100 * {
   color: #c4b5fd;
 }
+/* Yellow banner / chip (Cape Cod elite tier, top-5 rank badges, awards) */
+.gm-pixel-shell .bg-yellow-50,
+.gm-pixel-shell .bg-yellow-100,
+.gm-pixel-shell .bg-yellow-200 {
+  background-color: #3d3520 !important;
+}
+.gm-pixel-shell .bg-yellow-50 *,
+.gm-pixel-shell .bg-yellow-100 *,
+.gm-pixel-shell .bg-yellow-200 * {
+  color: #fde047;
+}
+/* Orange (major injuries, mid-tier alerts) */
+.gm-pixel-shell .bg-orange-50,
+.gm-pixel-shell .bg-orange-100,
+.gm-pixel-shell .bg-orange-200 {
+  background-color: #3d2a18 !important;
+}
+.gm-pixel-shell .bg-orange-50 *,
+.gm-pixel-shell .bg-orange-100 *,
+.gm-pixel-shell .bg-orange-200 * {
+  color: #fdba74;
+}
+/* Rose (WCBL summer league chip, rare callouts) */
+.gm-pixel-shell .bg-rose-50,
+.gm-pixel-shell .bg-rose-100,
+.gm-pixel-shell .bg-rose-200 {
+  background-color: #3d1f28 !important;
+}
+.gm-pixel-shell .bg-rose-50 *,
+.gm-pixel-shell .bg-rose-100 *,
+.gm-pixel-shell .bg-rose-200 * {
+  color: #fda4af;
+}
+/* Indigo (Northwoods league chip) */
+.gm-pixel-shell .bg-indigo-50,
+.gm-pixel-shell .bg-indigo-100,
+.gm-pixel-shell .bg-indigo-200 {
+  background-color: #1f203d !important;
+}
+.gm-pixel-shell .bg-indigo-50 *,
+.gm-pixel-shell .bg-indigo-100 *,
+.gm-pixel-shell .bg-indigo-200 * {
+  color: #a5b4fc;
+}
+/* Slate (Pacific Intl league chip, neutral callouts) */
+.gm-pixel-shell .bg-slate-50,
+.gm-pixel-shell .bg-slate-100,
+.gm-pixel-shell .bg-slate-200 {
+  background-color: #1f2335 !important;
+}
+.gm-pixel-shell .bg-slate-50 *,
+.gm-pixel-shell .bg-slate-100 *,
+.gm-pixel-shell .bg-slate-200 * {
+  color: #cbd5e1;
+}
+/* Emerald (Cascade dev league chip, OVR-tier "Strong" badge) */
+.gm-pixel-shell .bg-emerald-50,
+.gm-pixel-shell .bg-emerald-100,
+.gm-pixel-shell .bg-emerald-200 {
+  background-color: #1f3a2d !important;
+}
+.gm-pixel-shell .bg-emerald-50 *,
+.gm-pixel-shell .bg-emerald-100 *,
+.gm-pixel-shell .bg-emerald-200 * {
+  color: #6ee7b7;
+}
 
 /* Borders — gray-tone borders get replaced with the muted pixel border */
 .gm-pixel-shell .border-gray-100,
@@ -456,6 +522,44 @@ tr:hover td.sticky-col {
 .gm-pixel-shell .text-blue-800,
 .gm-pixel-shell .text-blue-900 {
   color: #93c5fd;
+}
+/* Additional text-color mappings for variants used across the GM */
+.gm-pixel-shell .text-yellow-700,
+.gm-pixel-shell .text-yellow-800,
+.gm-pixel-shell .text-yellow-900 {
+  color: #fde047;
+}
+.gm-pixel-shell .text-orange-700,
+.gm-pixel-shell .text-orange-800,
+.gm-pixel-shell .text-orange-900 {
+  color: #fdba74;
+}
+.gm-pixel-shell .text-rose-700,
+.gm-pixel-shell .text-rose-800,
+.gm-pixel-shell .text-rose-900 {
+  color: #fda4af;
+}
+.gm-pixel-shell .text-indigo-700,
+.gm-pixel-shell .text-indigo-800,
+.gm-pixel-shell .text-indigo-900 {
+  color: #a5b4fc;
+}
+.gm-pixel-shell .text-slate-600,
+.gm-pixel-shell .text-slate-700,
+.gm-pixel-shell .text-slate-800 {
+  color: #cbd5e1;
+}
+.gm-pixel-shell .text-purple-700,
+.gm-pixel-shell .text-purple-800,
+.gm-pixel-shell .text-purple-900 {
+  color: #c4b5fd;
+}
+.gm-pixel-shell .text-pnw-cream {
+  color: #e8e8e8;
+}
+/* `text-black` would render invisibly on the dark shell — pull up to white */
+.gm-pixel-shell .text-black {
+  color: #e8e8e8;
 }
 
 /* Cards round-off → squared (more pixel) but keep a tiny radius for hit-area
@@ -518,16 +622,66 @@ tr:hover td.sticky-col {
 }
 
 /* Increase the inline font-size used by VT323 in stats tables so the
-   per-stat numbers don't shrink into a blur. */
-.gm-pixel-shell .text-xs   { font-size: 14px; }
+   per-stat numbers don't shrink into a blur. Includes the smallest size
+   (text-[8px]) which was originally used for chip labels — bumped up
+   even further so they're still readable in pixel font. */
+.gm-pixel-shell .text-\[8px\]   { font-size: 12px; }
+.gm-pixel-shell .text-\[9px\]   { font-size: 12px; }
 .gm-pixel-shell .text-\[10px\],
-.gm-pixel-shell .text-\[11px\] { font-size: 13px; }
-.gm-pixel-shell .text-\[9px\]  { font-size: 12px; }
-.gm-pixel-shell .text-sm   { font-size: 16px; }
-.gm-pixel-shell .text-base { font-size: 17px; }
+.gm-pixel-shell .text-\[11px\]  { font-size: 13px; }
+.gm-pixel-shell .text-\[14px\]  { font-size: 16px; }
+.gm-pixel-shell .text-xs        { font-size: 14px; }
+.gm-pixel-shell .text-sm        { font-size: 16px; }
+.gm-pixel-shell .text-base      { font-size: 17px; }
+.gm-pixel-shell .text-lg        { font-size: 19px; }
+.gm-pixel-shell .text-xl        { font-size: 22px; }
+.gm-pixel-shell .text-2xl       { font-size: 26px; }
+.gm-pixel-shell .text-3xl       { font-size: 30px; }
 
-/* Press Start 2P stays at its tiny declared sizes since it's only used
-   for short labels — don't blow it up. */
-.gm-pixel-shell .font-pixel-display {
-  font-size: revert;
+/* Border color mappings — light Tailwind borders disappear on dark.
+   Map them to mid-tones in the same hue family so they still
+   communicate the colored-banner intent. */
+.gm-pixel-shell .border-amber-200,
+.gm-pixel-shell .border-amber-300,
+.gm-pixel-shell .border-yellow-200,
+.gm-pixel-shell .border-yellow-300 { border-color: #b48a26 !important; }
+.gm-pixel-shell .border-amber-400,
+.gm-pixel-shell .border-amber-500,
+.gm-pixel-shell .border-yellow-400 { border-color: #fbbf24 !important; }
+.gm-pixel-shell .border-green-200,
+.gm-pixel-shell .border-green-300,
+.gm-pixel-shell .border-emerald-200,
+.gm-pixel-shell .border-emerald-300 { border-color: #2f6b4e !important; }
+.gm-pixel-shell .border-green-400,
+.gm-pixel-shell .border-green-500,
+.gm-pixel-shell .border-green-600,
+.gm-pixel-shell .border-emerald-400,
+.gm-pixel-shell .border-emerald-500 { border-color: #6ee7b7 !important; }
+.gm-pixel-shell .border-red-200,
+.gm-pixel-shell .border-red-300 { border-color: #6b2f33 !important; }
+.gm-pixel-shell .border-red-400,
+.gm-pixel-shell .border-red-500,
+.gm-pixel-shell .border-red-600,
+.gm-pixel-shell .border-red-700 { border-color: #fca5a5 !important; }
+.gm-pixel-shell .border-blue-200,
+.gm-pixel-shell .border-blue-300 { border-color: #2f4a6b !important; }
+.gm-pixel-shell .border-blue-400,
+.gm-pixel-shell .border-blue-500 { border-color: #93c5fd !important; }
+.gm-pixel-shell .border-orange-200,
+.gm-pixel-shell .border-orange-300 { border-color: #6b4a2f !important; }
+.gm-pixel-shell .border-pnw-green,
+.gm-pixel-shell [class*='border-pnw-green'] { border-color: #6ee7b7 !important; }
+
+/* `font-mono` would fall back to Courier and clash against VT323. Inside
+   the shell, map it to the same pixel font — VT323 is already monospace
+   so stat numbers still align correctly in tables. */
+.gm-pixel-shell .font-mono {
+  font-family: 'VT323', 'Courier New', monospace !important;
 }
+
+/* Press Start 2P (font-pixel-display) declarations win even when paired
+   with a text-[Xpx] class, since they explicitly use the pixel-display
+   font and should keep their compact original sizing. */
+.gm-pixel-shell .font-pixel-display.text-\[10px\] { font-size: 10px !important; }
+.gm-pixel-shell .font-pixel-display.text-\[11px\] { font-size: 11px !important; }
+.gm-pixel-shell .font-pixel-display.text-xs       { font-size: 11px !important; }
