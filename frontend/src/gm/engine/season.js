@@ -11,6 +11,7 @@ import { simGame, fastSimGame, defaultLineup } from './sim'
 import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups'
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
+import { runEndOfRegularSeasonAwards } from './awards'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
@@ -661,6 +662,10 @@ export function advanceOneWeek(state) {
   // Postseason: fires once when we enter wk 40 (conference tournament).
   // The bracket runs all three rounds (conf, opening, WS) in one call.
   if (nextWeek === 40 && prevWeek === 39) {
+    // All-Conference + Gold Glove awards based on regular-season stats.
+    // Fires BEFORE runPostseason so the awards are tied to the season
+    // that just ended, not the postseason that's about to.
+    runEndOfRegularSeasonAwards(state)
     runPostseason(state)
   }
 

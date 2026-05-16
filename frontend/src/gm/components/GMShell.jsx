@@ -24,11 +24,12 @@ const NAV = [
   {
     key: 'stats', label: 'Stats',
     items: [
-      { label: 'Spring stats',  path: '/gm/stats?view=spring' },
-      { label: 'Fall stats',    path: '/gm/stats?view=fall' },
-      { label: 'Career stats',  path: '/gm/stats?view=career' },
-      { label: 'Records',       path: '/gm/records' },
-      { label: 'Academics',     path: '/gm/academics' },
+      { label: 'Spring stats',   path: '/gm/stats?view=spring' },
+      { label: 'Fall stats',     path: '/gm/stats?view=fall' },
+      { label: 'Career stats',   path: '/gm/stats?view=career' },
+      { label: 'Team stats',     path: '/gm/teamstats' },
+      { label: 'Records',        path: '/gm/records' },
+      { label: 'Academics',      path: '/gm/academics' },
     ],
   },
   {

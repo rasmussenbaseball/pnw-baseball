@@ -21,6 +21,7 @@ const TABS = [
   { key: 'single', label: 'Single Season' },
   { key: 'career', label: 'Career' },
   { key: 'draft',  label: 'MLB Draft' },
+  { key: 'awards', label: 'Awards' },
 ]
 
 export default function Records() {
@@ -77,6 +78,7 @@ export default function Records() {
       {tab === 'single' && <SingleSeasonView save={save} team={team} accent={accent} slot={slot} />}
       {tab === 'career' && <CareerView save={save} team={team} accent={accent} slot={slot} />}
       {tab === 'draft'  && <DraftView  save={save} team={team} accent={accent} slot={slot} />}
+      {tab === 'awards' && <AwardsView save={save} team={team} accent={accent} slot={slot} school={school} />}
     </GMShell>
   )
 }
@@ -336,6 +338,109 @@ function DraftView({ save, team, accent, slot }) {
         Rounds 1–5 highlighted as premium picks.
       </div>
     </PixelCard>
+  )
+}
+
+// ─── Awards view ────────────────────────────────────────────────────────────
+
+function AwardsView({ save, team, accent, slot, school }) {
+  const awards = save.awardsHistory || {}
+  const userConfId = school.conferenceId
+  const conf = save.conferences[userConfId]
+  const years = Object.keys(awards).map(Number).sort((a, b) => b - a)
+  if (years.length === 0) {
+    return (
+      <PixelCard accent={accent} title="NO AWARDS YET">
+        <div className="text-[#a8a8c8] text-base">
+          All-Conference and Gold Glove teams are announced after the regular season ends (Wk 40).
+          Once your first full season wraps, conference honorees will appear here.
+        </div>
+      </PixelCard>
+    )
+  }
+  return (
+    <div className="space-y-6">
+      {years.map(year => {
+        const confAwards = awards[year]?.[userConfId]
+        if (!confAwards) return null
+        return (
+          <YearAwardsPanel
+            key={year}
+            year={year}
+            confAbbr={conf?.abbreviation || 'Conf'}
+            confAwards={confAwards}
+            userTeamId={save.userSchoolId}
+            accent={accent}
+            slot={slot}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function YearAwardsPanel({ year, confAbbr, confAwards, userTeamId, accent, slot }) {
+  const { firstTeam, secondTeam, goldGlove } = confAwards
+  const userOnFirst = firstTeam.filter(p => p.teamId === userTeamId).length
+  const userOnSecond = secondTeam.filter(p => p.teamId === userTeamId).length
+  const userOnGG = goldGlove.filter(p => p.teamId === userTeamId).length
+  const totalUser = userOnFirst + userOnSecond + userOnGG
+
+  return (
+    <PixelCard accent={accent} title={`${year} ALL-${confAbbr.toUpperCase()} HONORS`}>
+      <div className="text-[#a8a8c8] text-sm mb-3">
+        {totalUser > 0
+          ? `Your program had ${totalUser} player${totalUser === 1 ? '' : 's'} honored: ${userOnFirst} first-team · ${userOnSecond} second-team · ${userOnGG} gold glove.`
+          : `No players from your program were honored this season.`}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <AwardTeamColumn title="FIRST TEAM" players={firstTeam} userTeamId={userTeamId} slot={slot} accent="#fbbf24" />
+        <AwardTeamColumn title="SECOND TEAM" players={secondTeam} userTeamId={userTeamId} slot={slot} accent="#94a3b8" />
+        <AwardTeamColumn title="GOLD GLOVE" players={goldGlove} userTeamId={userTeamId} slot={slot} accent="#eab308" showFielding />
+      </div>
+    </PixelCard>
+  )
+}
+
+function AwardTeamColumn({ title, players, userTeamId, slot, accent, showFielding = false }) {
+  if (!players || players.length === 0) {
+    return (
+      <div className="bg-[#23233d] rounded p-3">
+        <div className="text-[10px] uppercase tracking-widest mb-2" style={{ color: accent }}>{title}</div>
+        <div className="text-[#a8a8c8] text-xs italic">No qualifying players.</div>
+      </div>
+    )
+  }
+  return (
+    <div className="bg-[#23233d] rounded p-3">
+      <div className="text-[10px] uppercase tracking-widest mb-2 font-bold" style={{ color: accent }}>{title}</div>
+      <div className="space-y-1">
+        {players.map((p, i) => {
+          const isUser = p.teamId === userTeamId
+          const pos = p._ggPos || p.position
+          return (
+            <div
+              key={p.playerId + '_' + i}
+              className={'flex justify-between items-center text-xs py-1 px-2 rounded ' + (isUser ? 'bg-emerald-900/50 font-semibold' : '')}
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] text-[#a8a8c8] w-6 shrink-0 tabular-nums font-mono">{pos}</span>
+                <Link
+                  to={`/gm/player/${p.playerId}?slot=${slot}`}
+                  className="text-white hover:text-emerald-300 truncate"
+                >
+                  {p.playerName}
+                </Link>
+              </div>
+              <div className="text-[10px] text-[#a8a8c8] shrink-0 ml-2 truncate max-w-[100px]">
+                {p.schoolName}
+                {showFielding ? '' : ` · WAR ${(p.war ?? 0).toFixed(1)}`}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
