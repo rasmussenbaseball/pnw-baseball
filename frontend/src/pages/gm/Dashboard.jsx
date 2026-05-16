@@ -17,6 +17,7 @@ import {
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
+import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TeamLogo from '../../gm/components/TeamLogo'
@@ -128,31 +129,56 @@ export default function Dashboard() {
   const currentPhase = phaseForWeek(weekOfYear)
   const requiredAction = requiredActionForWeek(save, weekOfYear)
   const phaseGate = canAdvanceWeek(save)
-  // Hard-block — phase requirement OR legacy schedule check
-  const advanceBlocked = !phaseGate.ok || scheduleBlocked
+  // Auto-mode lifts the phase-gate. The AI co-GM (autoMode.js) will fill in
+  // any required action before sim runs, so we don't block the user.
+  const autoOn = isAutoMode(save)
+  // Hard-block — phase requirement OR legacy schedule check (auto skips both)
+  const advanceBlocked = !autoOn && (!phaseGate.ok || scheduleBlocked)
+
+  function toggleAutoMode() {
+    setAutoMode(save, !autoOn)
+    saveDynasty(save)
+    setSave({ ...save })
+  }
 
   // ─── Sim actions ───────────────────────────────────────────────────────────
   function simNextWeek() {
-    if (advanceBlocked) {
-      if (requiredAction && !requiredAction.isComplete(save)) {
-        alert(`Finish "${requiredAction.label}" first — ${requiredAction.blurb}`)
-        return
+    // Auto mode short-circuits the gate checks — runAutoActions resolves any
+    // open required action before we get here.
+    if (autoOn) {
+      const auto = runAutoActions(save)
+      if (auto.actionsTaken.length > 0) {
+        save.newsfeed = save.newsfeed || []
+        save.newsfeed.unshift({
+          id: `auto_${save.calendar.year}_${save.calendar.weekOfYear}_${Math.random().toString(36).slice(2, 5)}`,
+          year: save.calendar.year, week: save.calendar.weekOfYear, type: 'AWARD',
+          headline: `🤖 Auto: ${auto.actionsTaken.join(' · ')}`,
+        })
       }
-      if (scheduleBlocked) {
-        alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
-        return
+      saveDynasty(save)
+      setSave({ ...save })
+    } else {
+      if (advanceBlocked) {
+        if (requiredAction && !requiredAction.isComplete(save)) {
+          alert(`Finish "${requiredAction.label}" first — ${requiredAction.blurb}`)
+          return
+        }
+        if (scheduleBlocked) {
+          alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
+          return
+        }
       }
-    }
-    // Soft confirm if AP is unspent in a non-tutorial week. The tutorial
-    // weeks (1-3) have ap=0 by design; wk 4 is its own gate; otherwise
-    // every leftover AP would have boosted recruiting / development.
-    const wk = save.calendar?.weekOfYear ?? 0
-    const ap = save.ap?.currentWeek ?? 0
-    if (ap > 0 && wk >= 5 && wk !== 4) {
-      const ok = window.confirm(
-        `You still have ${ap} AP unspent this week. Advance anyway? (Unused AP is lost — it doesn't carry over.)`
-      )
-      if (!ok) return
+      // Soft confirm if AP is unspent in a non-tutorial week. Tutorial weeks
+      // (1-3) have ap=0 by design; Wk 4 is its own gate; otherwise leftover
+      // AP would have boosted recruiting / development.
+      const wk = save.calendar?.weekOfYear ?? 0
+      const ap = save.ap?.currentWeek ?? 0
+      if (ap > 0 && wk >= 5 && wk !== 4) {
+        const ok = window.confirm(
+          `You still have ${ap} AP unspent this week. Advance anyway? (Unused AP is lost — it doesn't carry over.)`
+        )
+        if (!ok) return
+      }
     }
     // Any unplayed user games this week (season OR fall scrim) → pop the
     // game-week modal so the user explicitly chooses "Enter Game" (live
@@ -314,20 +340,37 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right: current week + AP */}
+          {/* Right: current week + AP + Auto toggle */}
           <div className="text-right border-l border-white/15 pl-6 flex flex-col justify-between">
             <div>
               <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">{dateLabel}</div>
               <div className="text-base font-bold mt-0.5">{currentPhase.label}</div>
               <div className="text-[11px] opacity-70">Wk {weekOfYear} / 52</div>
             </div>
-            <div className="mt-4">
-              <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
-              <div className="text-4xl font-extrabold mt-0.5 leading-none">
-                {weekOfYear >= 1 && weekOfYear <= 3
-                  ? <span className="text-lg font-bold opacity-70">🔒 Locked</span>
-                  : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
+            <div className="mt-4 flex flex-col items-end gap-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
+                <div className="text-4xl font-extrabold mt-0.5 leading-none">
+                  {weekOfYear >= 1 && weekOfYear <= 3
+                    ? <span className="text-lg font-bold opacity-70">🔒 Locked</span>
+                    : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={toggleAutoMode}
+                className={
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition ' +
+                  (autoOn
+                    ? 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300 ring-1 ring-emerald-200'
+                    : 'bg-white/10 text-white/80 hover:bg-white/20 ring-1 ring-white/15')
+                }
+                title={autoOn
+                  ? 'Auto mode is ON — required actions, AP, and recruiting are handled for you each week. Click to switch to manual.'
+                  : 'Manual mode — you make every weekly decision. Click to enable Auto.'}
+              >
+                <span>{autoOn ? '🤖 AUTO' : '👤 MANUAL'}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -374,8 +417,26 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Auto-mode hint banner — quick reassurance that AI is in charge */}
+      {autoOn && (
+        <div className="bg-emerald-950/40 border border-emerald-400/40 rounded-xl p-2 mb-4 text-xs text-emerald-200 flex justify-between items-center">
+          <span>
+            <strong className="text-emerald-300">🤖 Auto mode is ON.</strong>{' '}
+            Required actions, AP, prospect-camp invites, and recruiting are handled for you each week.
+            You can still open any page and override decisions manually.
+          </span>
+          <button
+            type="button"
+            onClick={toggleAutoMode}
+            className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded bg-white/10 text-white hover:bg-white/20"
+          >
+            Switch to Manual
+          </button>
+        </div>
+      )}
+
       {/* Camp invite window (Wks 5 & 10) — prominent reminder + count */}
-      {(weekOfYear === 5 || weekOfYear === 10) && (
+      {(weekOfYear === 5 || weekOfYear === 10) && !autoOn && (
         <CampInviteBanner save={save} slot={slot} weekOfYear={weekOfYear} />
       )}
 
@@ -388,8 +449,8 @@ export default function Dashboard() {
         <FallStatsModal save={save} onClose={() => setFallReportOpen(false)} />
       )}
 
-      {/* Summer ball planning prompt — appears Wk 14 */}
-      {weekOfYear === 14 && (
+      {/* Summer ball planning prompt — appears Wk 14 (hidden in auto mode) */}
+      {weekOfYear === 14 && !autoOn && (
         <div className="bg-pnw-cream border-l-4 border-pnw-green text-pnw-slate p-4 rounded-r mb-4 flex justify-between items-center">
           <div>
             <div className="font-bold">☀️ Summer ball planning is open</div>
@@ -404,8 +465,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Phase-gate banner — required action this week */}
-      {requiredAction && !requiredAction.isComplete(save) && (
+      {/* Phase-gate banner — required action this week (hidden in auto mode) */}
+      {!autoOn && requiredAction && !requiredAction.isComplete(save) && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-4 flex justify-between items-start">
           <div className="flex-1">
             <div className="text-[11px] uppercase tracking-wider text-amber-700 font-bold mb-1">
@@ -421,7 +482,7 @@ export default function Dashboard() {
           </Link>
         </div>
       )}
-      {requiredAction && requiredAction.isComplete(save) && (
+      {!autoOn && requiredAction && requiredAction.isComplete(save) && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-2 mb-4 text-xs text-green-800 flex justify-between items-center">
           <span><strong>Week {weekOfYear}:</strong> {requiredAction.doneText || requiredAction.label} — ready to advance.</span>
         </div>
@@ -553,18 +614,63 @@ export default function Dashboard() {
           </Panel>
         </div>
 
-        {/* RIGHT column — focus tasks, study hall, navigation */}
+        {/* RIGHT column — focus tasks + conference standings widget */}
         <div className="space-y-4">
           <Panel title="This Week's Focus" actionTo={null}>
             <FocusTasks save={save} inOffseason={inOffseason} />
           </Panel>
 
-          {/* Navigation moved to the pixel header dropdown nav. Program Profile
-              moved to the future Extras → About page. Removes redundancy. */}
+          <ConferenceStandingsWidget save={save} slot={slot} />
         </div>
       </div>
     </div>
     </GMShell>
+  )
+}
+
+function ConferenceStandingsWidget({ save, slot }) {
+  const userSchool = save.schools[save.userSchoolId]
+  const conf = save.conferences[userSchool.conferenceId]
+  if (!conf) return null
+  const rows = (conf.schoolIds || [])
+    .map(id => ({ school: save.schools[id], team: save.teams[id] }))
+    .filter(x => x.school && x.team)
+    .sort((a, b) => {
+      if (a.team.confWins !== b.team.confWins) return b.team.confWins - a.team.confWins
+      if (a.team.confLosses !== b.team.confLosses) return a.team.confLosses - b.team.confLosses
+      if (a.team.wins !== b.team.wins) return b.team.wins - a.team.wins
+      return b.team.runDiff - a.team.runDiff
+    })
+  // Preseason / no-games yet — show a friendly note instead of all 0-0s
+  const totalGames = rows.reduce((s, r) => s + r.team.wins + r.team.losses, 0)
+  return (
+    <Panel
+      title={`${conf.abbreviation || 'Conf'} Standings`}
+      actionTo={`/gm/standings?slot=${slot}`}
+      actionLabel="Full →"
+    >
+      {totalGames === 0 ? (
+        <div className="text-xs text-gray-400 italic">Preseason — no conference results yet.</div>
+      ) : (
+        <div className="space-y-0.5">
+          {rows.map((row, i) => {
+            const isUser = row.school.id === save.userSchoolId
+            return (
+              <div
+                key={row.school.id}
+                className={'flex items-center gap-2 py-1 px-1.5 rounded text-xs ' + (isUser ? 'bg-pnw-cream/60 font-semibold' : 'hover:bg-gray-50')}
+              >
+                <div className="w-4 text-gray-500 text-[10px] tabular-nums text-right">{i + 1}.</div>
+                <div className="flex-1 truncate">{row.school.name}</div>
+                <div className="font-mono text-[11px] tabular-nums text-pnw-slate">
+                  {row.team.confWins}-{row.team.confLosses}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Panel>
   )
 }
 
@@ -1469,32 +1575,15 @@ function PreseasonStatsPanel({ team, players, slot }) {
   const avg = arr => arr.length ? Math.round(arr.reduce((s, x) => s + x.ovr, 0) / arr.length) : 0
   const hittingOvr = avg(hitters.slice(0, 9))
   const pitchingOvr = avg(pitchers.slice(0, 5))
-  const topContact = [...hitters].sort((a, b) =>
-    ((b.p.hitter?.contact_l || 0) + (b.p.hitter?.contact_r || 0)) -
-    ((a.p.hitter?.contact_l || 0) + (a.p.hitter?.contact_r || 0))
-  )[0]
-  const topPower = [...hitters].sort((a, b) =>
-    ((b.p.hitter?.power_l || 0) + (b.p.hitter?.power_r || 0)) -
-    ((a.p.hitter?.power_l || 0) + (a.p.hitter?.power_r || 0))
-  )[0]
-  const topStuff = [...pitchers].sort((a, b) => (b.p.pitcher?.stuff || 0) - (a.p.pitcher?.stuff || 0))[0]
-  const topControl = [...pitchers].sort((a, b) => (b.p.pitcher?.control || 0) - (a.p.pitcher?.control || 0))[0]
 
   return (
     <Panel title="Team Preview" actionTo={`/gm/roster?slot=${slot}`} actionLabel="Roster →">
       <div className="text-[10px] text-gray-500 -mt-2 mb-2 italic">
         Preseason — no game stats yet. Showing projected strength from current ratings.
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-3 text-center">
+      <div className="grid grid-cols-2 gap-2 text-center">
         <TeamStatTile label="Hitting OVR" value={hittingOvr} good={hittingOvr >= 70} />
         <TeamStatTile label="Pitching OVR" value={pitchingOvr} good={pitchingOvr >= 70} />
-      </div>
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Top tools (preseason)</div>
-      <div className="grid grid-cols-2 gap-2">
-        <PreviewCard label="Contact" leader={topContact} ratingFn={p => Math.round(((p.hitter?.contact_l || 0) + (p.hitter?.contact_r || 0)) / 2)} />
-        <PreviewCard label="Power" leader={topPower} ratingFn={p => Math.round(((p.hitter?.power_l || 0) + (p.hitter?.power_r || 0)) / 2)} />
-        <PreviewCard label="Stuff" leader={topStuff} ratingFn={p => p.pitcher?.stuff || 0} />
-        <PreviewCard label="Control" leader={topControl} ratingFn={p => p.pitcher?.control || 0} />
       </div>
       <div className="text-[11px] text-gray-400 italic mt-2">
         Real stats appear once games start. Fall scrimmages count separately.
