@@ -38,7 +38,21 @@ const BASE_RATES = {
   OUT:     0.387,   // includes potential sacrifices, GIDP, regular outs
 }
 
-const ALPHA = 0.6   // ratings dominance vs random variance
+// ALPHA = dispersion of rating effects around the league baseline. Lowered
+// May 2026 (0.6 → 0.45) to keep elite hitter slash lines REALISTIC for NAIA:
+// a 95-rating contact + power + discipline triple-stack was producing .500+
+// AVGs because every dimension was getting multiplicatively boosted at once.
+// At 0.45 elite hitters cap around .395-.420 AVG, which matches real NAIA
+// leaderboards (Cordova led NAIA 2024 at .445 — the single tip of the curve,
+// not the routine outcome we were producing).
+const ALPHA = 0.45
+
+// Hit-outcome slope dampener — applied ONLY to SINGLE / DOUBLE / TRIPLE / HR
+// adj values. K / BB / HBP keep their full slope so elite plate discipline +
+// great stuff still drive realistic K%/BB% spreads. This separates the two
+// concerns: rate-stat dispersion (K%/BB%, kept wide) vs hit-quality dispersion
+// (BABIP/SLG, compressed so we don't get .500 hitters).
+const HIT_SLOPE = 0.7
 
 // ─── Fast sim (team-strength based) ──────────────────────────────────────────
 
@@ -108,14 +122,16 @@ export function simPA(batter, pitcher, ctx, rng) {
   // Pitcher command separately drives HR rate suppression.
   // Velocity layers on top of stuff for K + HR suppression but is a SEPARATE
   // dimension — a 92mph guy with average stuff still misses bats.
+  // Hit-outcome adj is dampened by HIT_SLOPE so elite hitter slash lines
+  // stay realistic for NAIA (.400 elite ceiling, not .500+).
   const adj = {
     K:    (-(discipline - 50) + (contact - 50) * -0.3 - (stuff - 50) - (vsBatter - 50)) / 50 - veloEdge * 0.6,
     BB:   ((discipline - 50) - (control - 50) * 1.2) / 50,
-    HBP:  (-(control - 50) * 0.9) / 50,                                 // bumped — control matters a lot for HBP
-    HR:   ((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.5,
-    SINGLE: ((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.3,
-    DOUBLE: ((power - 50) * 0.4 + (speed - 50) * 0.3) / 50 - veloEdge * 0.4,
-    TRIPLE: ((speed - 50) * 0.5 + (power - 50) * 0.2) / 50,
+    HBP:  (-(control - 50) * 0.9) / 50,
+    HR:     HIT_SLOPE * (((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.5),
+    SINGLE: HIT_SLOPE * (((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.3),
+    DOUBLE: HIT_SLOPE * (((power - 50) * 0.4 + (speed - 50) * 0.3) / 50 - veloEdge * 0.4),
+    TRIPLE: HIT_SLOPE * (((speed - 50) * 0.5 + (power - 50) * 0.2) / 50),
     ERROR: 0,    // not rating-driven — uses defender fielding (handled at runner-advance time)
     OUT: 0,
   }
@@ -156,7 +172,10 @@ export function simPA(batter, pitcher, ctx, rng) {
 
 function outcomeFor(key, rng) {
   if (key === 'OUT') {
-    const t = rng.weighted(['groundout', 'flyout', 'lineout', 'popout'], [45, 35, 15, 5])
+    // Real NAIA out distribution (per the few public BIP datasets — small
+    // school baseball trends slightly more GB than D1 because of aluminum
+    // bats + lower velo): ~48% GB, 30% FB, 16% LD, 6% PU.
+    const t = rng.weighted(['groundout', 'flyout', 'lineout', 'popout'], [48, 30, 16, 6])
     return { outcome: 'OUT', type: t }
   }
   return { outcome: key }

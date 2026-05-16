@@ -70,6 +70,15 @@ export default function Play() {
             g.homeRuns = result.homeRuns
             g.awayRuns = result.awayRuns
             g.played = true
+            // Persist the per-game boxscore so the user can review it from
+            // the Completed-this-week list.
+            if (result.boxscore?.batterStats) {
+              g.boxscore = {
+                batterStats: result.boxscore.batterStats,
+                pitcherStats: result.boxscore.pitcherStats || {},
+                innings: result.boxscore.innings || null,
+              }
+            }
             // Accumulate stats into save.playerStats
             accumulateBoxscore(save, result.boxscore)
             // Update team W-L for record-counting games (everything except
@@ -137,17 +146,28 @@ export default function Play() {
 function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEmptyWeek }) {
   const cal = save.calendar
   const userSchoolId = save.userSchoolId
-  // Determine "this week's user games":
-  //   - Season mode: games matching the current seasonWeek (exclude BYE)
-  //   - Offseason: any unplayed scrimmages (seasonWeek === 0)
+  // Determine "this week's user games" — ONLY games actually scheduled
+  // for the current week. Previously, offseason mode returned every fall
+  // scrimmage at once (all of them have seasonWeek=0), which let the user
+  // see "Enter game" buttons for games weeks in advance. Now we match on
+  // the unified weekOfYear field so each week only surfaces its own games.
   const thisWeekGames = useMemo(() => {
+    const wk = cal.weekOfYear
+    const sw = cal.seasonWeek
     const all = (save.schedule || []).filter(g =>
       (g.homeId === userSchoolId || g.awayId === userSchoolId)
       && g.type !== 'BYE'
       && g.awayId !== '__BYE__',
     )
-    if (cal.mode === 'SEASON') return all.filter(g => g.seasonWeek === cal.seasonWeek)
-    return all.filter(g => g.seasonWeek === 0 && !g.played)
+    return all
+      .filter(g => {
+        // Season mode: in-season games match by seasonWeek
+        if (cal.mode === 'SEASON' && sw != null && g.seasonWeek === sw) return true
+        // Offseason: scrimmages match by weekOfYear (each scrim has a specific
+        // week — see scheduleFallGames). Don't return ALL scrimmages.
+        if (wk != null && g.weekOfYear === wk) return true
+        return false
+      })
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
   }, [save, cal])
 
@@ -315,12 +335,180 @@ function PlayedRow({ save, game }) {
   const my = isHome ? game.homeRuns : game.awayRuns
   const them = isHome ? game.awayRuns : game.homeRuns
   const won = my > them
+  const [open, setOpen] = useState(false)
+  const hasBoxscore = !!game.boxscore?.batterStats
   return (
-    <div className="flex justify-between items-center text-sm py-1 px-3 bg-gray-50 rounded">
-      <span className="text-gray-700">{isHome ? 'vs' : '@'} {opp.name}</span>
-      <span className={'font-mono font-bold ' + (won ? 'text-green-700' : 'text-red-700')}>
-        {won ? 'W' : 'L'} {my}-{them}
-      </span>
+    <>
+      <div className="flex justify-between items-center text-sm py-1 px-3 bg-gray-50 rounded">
+        <span className="text-gray-700">{isHome ? 'vs' : '@'} {opp.name}</span>
+        <div className="flex items-center gap-2">
+          {hasBoxscore && (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="text-[11px] text-pnw-green hover:underline font-semibold"
+            >
+              Box score
+            </button>
+          )}
+          <span className={'font-mono font-bold ' + (won ? 'text-green-700' : 'text-red-700')}>
+            {won ? 'W' : 'L'} {my}-{them}
+          </span>
+        </div>
+      </div>
+      {open && (
+        <BoxScoreModal
+          save={save}
+          game={game}
+          oppName={opp.name}
+          isHome={isHome}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function BoxScoreModal({ save, game, oppName, isHome, onClose }) {
+  const bs = game.boxscore
+  if (!bs) return null
+  const userSchoolId = save.userSchoolId
+  const userTeam = save.teams[userSchoolId]
+  const isMyRoster = pid => userTeam.rosterPlayerIds.includes(pid)
+  const myBatters = []
+  const oppBatters = []
+  for (const [pid, s] of Object.entries(bs.batterStats || {})) {
+    const player = save.players[pid] || { firstName: pid, lastName: '' }
+    const row = { pid, name: `${player.firstName} ${player.lastName}`.trim(), ...s }
+    if (isMyRoster(pid)) myBatters.push(row); else oppBatters.push(row)
+  }
+  const myPitchers = []
+  const oppPitchers = []
+  for (const [pid, s] of Object.entries(bs.pitcherStats || {})) {
+    const player = save.players[pid] || { firstName: pid, lastName: '' }
+    const row = { pid, name: `${player.firstName} ${player.lastName}`.trim(), ...s }
+    if (isMyRoster(pid)) myPitchers.push(row); else oppPitchers.push(row)
+  }
+  myBatters.sort((a, b) => (b.h || 0) - (a.h || 0))
+  oppBatters.sort((a, b) => (b.h || 0) - (a.h || 0))
+  myPitchers.sort((a, b) => (b.outs || 0) - (a.outs || 0))
+  oppPitchers.sort((a, b) => (b.outs || 0) - (a.outs || 0))
+  const userSchool = save.schools[userSchoolId]
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-pnw-slate text-white px-6 py-3 flex justify-between items-center sticky top-0">
+          <div>
+            <div className="text-xs opacity-80 uppercase tracking-wider">Box Score</div>
+            <div className="text-lg font-bold">
+              {isHome ? `${oppName} @ ${userSchool.name}` : `${userSchool.name} @ ${oppName}`}
+            </div>
+            <div className="text-xs opacity-80">
+              Final: {isHome ? `${game.awayRuns} - ${game.homeRuns}` : `${game.awayRuns} - ${game.homeRuns}`} · {game.date}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl">×</button>
+        </div>
+        <div className="p-4 space-y-4">
+          <BoxScoreTable title={`${userSchool.name} — Hitting`} rows={myBatters} type="batter" />
+          <BoxScoreTable title={`${oppName} — Hitting`} rows={oppBatters} type="batter" />
+          <BoxScoreTable title={`${userSchool.name} — Pitching`} rows={myPitchers} type="pitcher" />
+          <BoxScoreTable title={`${oppName} — Pitching`} rows={oppPitchers} type="pitcher" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BoxScoreTable({ title, rows, type }) {
+  if (rows.length === 0) {
+    return (
+      <div>
+        <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-1">{title}</div>
+        <div className="text-xs text-gray-400 italic px-2 py-1">No players logged.</div>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-1">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 text-gray-500 uppercase text-[10px]">
+            {type === 'batter' ? (
+              <tr>
+                <th className="text-left py-1 px-2">Player</th>
+                <th className="text-center">AB</th>
+                <th className="text-center">R</th>
+                <th className="text-center">H</th>
+                <th className="text-center">2B</th>
+                <th className="text-center">3B</th>
+                <th className="text-center">HR</th>
+                <th className="text-center">RBI</th>
+                <th className="text-center">BB</th>
+                <th className="text-center">K</th>
+                <th className="text-center">HBP</th>
+                <th className="text-center">AVG</th>
+              </tr>
+            ) : (
+              <tr>
+                <th className="text-left py-1 px-2">Pitcher</th>
+                <th className="text-center">IP</th>
+                <th className="text-center">H</th>
+                <th className="text-center">R</th>
+                <th className="text-center">ER</th>
+                <th className="text-center">BB</th>
+                <th className="text-center">K</th>
+                <th className="text-center">HR</th>
+                <th className="text-center">HBP</th>
+                <th className="text-center">BF</th>
+                <th className="text-center">ERA</th>
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              if (type === 'batter') {
+                const avg = r.ab > 0 ? (r.h / r.ab) : null
+                return (
+                  <tr key={r.pid} className="border-t">
+                    <td className="py-1 px-2 font-medium">{r.name}</td>
+                    <td className="text-center font-mono">{r.ab || 0}</td>
+                    <td className="text-center font-mono">{r.r || 0}</td>
+                    <td className="text-center font-mono font-semibold">{r.h || 0}</td>
+                    <td className="text-center font-mono">{r.d || 0}</td>
+                    <td className="text-center font-mono">{r.t || 0}</td>
+                    <td className="text-center font-mono">{r.hr || 0}</td>
+                    <td className="text-center font-mono">{r.rbi || 0}</td>
+                    <td className="text-center font-mono">{r.bb || 0}</td>
+                    <td className="text-center font-mono">{r.k || 0}</td>
+                    <td className="text-center font-mono">{r.hbp || 0}</td>
+                    <td className="text-center font-mono">{avg != null ? avg.toFixed(3).replace(/^0\./, '.') : '—'}</td>
+                  </tr>
+                )
+              }
+              const ipDec = (r.outs || 0) / 3
+              const ipDisplay = r.ip != null ? r.ip.toFixed(1) : (Math.floor(ipDec) + '.' + ((r.outs || 0) % 3))
+              const era = ipDec > 0 ? (r.er * 9 / ipDec).toFixed(2) : '—'
+              return (
+                <tr key={r.pid} className="border-t">
+                  <td className="py-1 px-2 font-medium">{r.name}</td>
+                  <td className="text-center font-mono font-semibold">{ipDisplay}</td>
+                  <td className="text-center font-mono">{r.h || 0}</td>
+                  <td className="text-center font-mono">{(r.er || 0) /* R approximation */}</td>
+                  <td className="text-center font-mono">{r.er || 0}</td>
+                  <td className="text-center font-mono">{r.bb || 0}</td>
+                  <td className="text-center font-mono">{r.k || 0}</td>
+                  <td className="text-center font-mono">{r.hr || 0}</td>
+                  <td className="text-center font-mono">{r.hbp || 0}</td>
+                  <td className="text-center font-mono">{r.pa || 0}</td>
+                  <td className="text-center font-mono">{era}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

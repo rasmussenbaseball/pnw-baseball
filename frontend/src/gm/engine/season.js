@@ -131,6 +131,17 @@ export function simWeek(state, schedule, ratings) {
     g.homeRuns = result.homeRuns
     g.awayRuns = result.awayRuns
     g.played = true
+    // Persist the per-game boxscore on the user's games so the Play page
+    // can surface a Box Score button on completed games. Only user games
+    // get the full PA-level boxscore — non-user games are fast-sim'd and
+    // wouldn't have one anyway. We strip empty rows + cap save size.
+    if (isUserGame && result.boxscore?.batterStats) {
+      g.boxscore = {
+        batterStats: result.boxscore.batterStats,
+        pitcherStats: result.boxscore.pitcherStats || {},
+        innings: result.boxscore.innings || null,
+      }
+    }
     gamesPlayed++
 
     // Accumulate per-player season stats from this game's boxscore.
