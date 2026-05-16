@@ -406,11 +406,12 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
       const blended = hitter.arm * 0.6 + hitter.fielding * 0.4
       measurables.popTimeSec = Math.round((2.10 - (blended - 50) * 0.0075 + rng.gaussian(0, 0.04)) * 100) / 100
     }
-    // Max EV: power 50 → ~88 (college baseline +2 vs HS), power 80 → ~103,
-    // power 95+ pushes 108+. College players sit ~+2 mph above HS recruits.
+    // Max EV: power 30 → ~90, power 50 → ~96 (avg college), power 70 → ~102,
+    // power 95+ pushes 110+. College players sit ~+2 mph above HS recruits.
+    // Floor at 88 mph — even bench D-tier players cleared NAIA recruiting.
     const pw = Math.max(hitter.power_l, hitter.power_r)
-    const maxEvBase = 88 + (pw - 50) * 0.50 + sizeBoost
-    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10
+    const maxEvBase = 91 + (pw - 50) * 0.30 + sizeBoost
+    measurables.maxEvMph = Math.max(88, Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10)
   } else {
     measurables.fbVeloMph = pitcher.velocity_avg
     measurables.fbVeloMinMph = pitcher.velocity_min

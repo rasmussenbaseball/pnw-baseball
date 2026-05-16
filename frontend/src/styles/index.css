@@ -360,6 +360,33 @@ tr:hover td.sticky-col {
   background-color: #3a3a5e !important;
 }
 
+/* Tailwind gradients (bg-gradient-to-X) set CSS variables — overriding
+   the underlying background-color doesn't reach them, so light gradient
+   stops stay cream / white and text-on-gradient becomes unreadable on
+   the pixel theme. Nuke the gradient image so the bg-X class's solid
+   color wins, AND remap common from-X / to-X / via-X stops to dark
+   colors in case anything still uses them with a non-bg fallback. */
+.gm-pixel-shell [class*='bg-gradient-to-'] {
+  background-image: none !important;
+}
+.gm-pixel-shell [class*='bg-gradient-to-'].from-pnw-cream,
+.gm-pixel-shell [class*='bg-gradient-to-'].to-pnw-cream,
+.gm-pixel-shell [class*='bg-gradient-to-'].via-pnw-cream {
+  background-color: #2f2f4f !important;
+}
+.gm-pixel-shell [class*='bg-gradient-to-'].from-white,
+.gm-pixel-shell [class*='bg-gradient-to-'].to-white,
+.gm-pixel-shell [class*='bg-gradient-to-'].via-white {
+  background-color: #23233d !important;
+}
+/* CoachingStaffCard + similar "premium tile" gradients — give them a
+   slightly elevated surface so they stand apart from the surrounding card. */
+.gm-pixel-shell .from-pnw-cream.to-white,
+.gm-pixel-shell .from-pnw-slate,
+.gm-pixel-shell .from-pnw-green {
+  background-color: #2f2f4f !important;
+}
+
 /* Status banners — keep the accent tint but darken to fit the theme */
 .gm-pixel-shell .bg-amber-50,
 .gm-pixel-shell .bg-amber-100 {

@@ -351,20 +351,26 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     const sixtyBase = 7.0 - (sp - 50) * 0.012
     measurables.sixtyYardSec = Math.round((sixtyBase + rng.gaussian(0, 0.06)) * 100) / 100
 
-    // Max EV (May 2026 tune): power-driven, size + pool boosts. Targets:
-    //   power 50 → ~86 mph (low-end pool)
-    //   power 70 → ~96 mph
-    //   power 80 → ~101 mph (a #1 ranked corner IF lands here)
-    //   power 90 → ~106 mph (elite power, top of D1 / NAIA prospect class)
-    //   power 95+ → 108+ mph
-    // Per Nate: NAIA recruits floor ~90, ranked guys 100+, best power 105+.
+    // Max EV (re-tune May 2026 per Nate):
+    //   Average board player ~93-95 mph, hard floor ~88 mph (anything below
+    //   wouldn't be recruited). Top hitters 100+. Best power bats 105+.
+    // Formula targets:
+    //   power 30 → ~88 mph (recruiting floor — rarely below this on a board)
+    //   power 50 → ~94 mph (avg)
+    //   power 70 → ~100 mph (above-avg power)
+    //   power 85 → ~104 mph (#1 corner IF type)
+    //   power 95+ → 108+ mph (elite, top of D1 prospect class)
     const pw = Math.max(trueHitter.power_l, trueHitter.power_r)
     const poolEvBoost = pool === 'JUCO' ? 2.0
       : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 1.5
       : (pool === 'D1_TRANSFER') ? 3.0
       : 0
-    const maxEvBase = 86 + (pw - 50) * 0.50 + sizeBoost + poolEvBoost
-    measurables.maxEvMph = Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10
+    // Baseline 89 (was 86) + per-power-pt 0.30 (was 0.50). This compresses
+    // the spread upward — even pw 30 lands ~88, and pw 50 (avg) hits 93-94.
+    // Stronger power retains the same top-end (pw 85 ≈ 104, pw 95 ≈ 107).
+    const maxEvBase = 89 + (pw - 50) * 0.30 + sizeBoost + poolEvBoost
+    // Floor at 88 — boards never show sub-88 max EV.
+    measurables.maxEvMph = Math.max(88, Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10)
 
     if (primaryPosition === 'C') {
       // Pop time depends on TRANSFER (fielding/glove work) + ARM (throw velo).

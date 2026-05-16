@@ -344,32 +344,93 @@ export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', 
   merge(frame.bias)
   merge(candidate.bias)
   for (const q of picked) merge(q.bias)
-  // Measurables — sample uniformly within frame range, then bias height by
-  // position + clamp at the role-specific cap.
+  // Height first (sample frame range, position bias, role cap).
   const rawHeight = rng.int(frame.heightInches[0], frame.heightInches[1])
   const heightInches = adjustHeightForPosition(rawHeight, position, isPitcher)
-  const weightLbs = rng.int(frame.weightLbs[0], frame.weightLbs[1])
-  // Mature target weight — what the player will weigh as a senior after
-  // filling out (or trimming down). Most players GAIN weight as they
-  // mature (toward the base frame range). HS seniors have the most room
-  // to grow; college rosters are mostly stable with small drift.
+  // Weight DERIVED FROM HEIGHT (not from frame weight range). Real young
+  // athletes scale weight with height — a 6'6" player isn't 150 lb. Each
+  // frame has a different BMI-like "build factor" so LANKY guys land
+  // toward the bottom of the realistic range for their height and STOCKY
+  // guys toward the top, but no frame can produce an unrealistic combo.
+  const weightLbs = computeRealisticWeight(heightInches, frame.key, pool, rng)
+  // Mature target weight — the weight the player will reach by SR after
+  // filling out (or trimming down). HS guys have the most room to grow.
   let targetWeightDelta
   if (pool === 'HS_SR') {
-    // 0 to +28 lb of growth across 4 years, mean ~+18
     targetWeightDelta = Math.round(Math.max(-5, Math.min(30, rng.gaussian(18, 6))))
   } else if (pool === 'JUCO') {
-    // 0 to +12 lb growth ahead, mean ~+8
     targetWeightDelta = Math.round(Math.max(-4, Math.min(16, rng.gaussian(8, 4))))
   } else {
-    // College roster — mostly stable, some grow, some trim down
-    targetWeightDelta = Math.round(rng.gaussian(2, 6))   // -10 to +14, mean +2
+    targetWeightDelta = Math.round(rng.gaussian(2, 6))
   }
-  const targetMatureWeightLbs = Math.max(150, weightLbs + targetWeightDelta)
+  // Target weight also clamped to a realistic ceiling for the player's height
+  const maxRealistic = realisticWeightCeiling(heightInches, frame.key)
+  const targetMatureWeightLbs = Math.min(
+    maxRealistic,
+    Math.max(150, weightLbs + targetWeightDelta),
+  )
   return {
     frame, archetype: candidate, quirks: picked, biases,
     measurables: { heightInches, weightLbs, targetMatureWeightLbs },
     isLateBloomer: candidate.key === 'LATE_BLOOMER_HIT' || candidate.key === 'LATE_BLOOMER_P',
   }
+}
+
+/**
+ * Real young-adult athletes scale weight with height. A 6'2" lanky kid is
+ * ~180-200; a 6'2" stocky kid is ~220-240. A 5'8" stocky kid is ~190-210;
+ * a 5'8" lanky kid is ~155-170. NEVER produces 6'6"/150 lb absurdities.
+ *
+ * Strategy: per-inch baseline derived from BMI ranges typical for athletes,
+ * adjusted by frame "build" (LANKY = thinner BMI, STOCKY = thicker), then
+ * a small pool adjustment (HS pulls ~12 lb down, JUCO ~5 lb).
+ *
+ *   heightInches → baseline weight (athletic BMI ~24-26):
+ *     66 (5'6) → 165 lb
+ *     68 (5'8) → 175
+ *     70 (5'10) → 185
+ *     72 (6'0)  → 195
+ *     74 (6'2)  → 205
+ *     76 (6'4)  → 215
+ *     78 (6'6)  → 225
+ *     80 (6'8)  → 235
+ *
+ * Frame build factor (multiplier on baseline):
+ *   UNDERSIZED: 0.94    LANKY: 0.92      WIRY: 0.95
+ *   ATHLETIC: 1.00      STOCKY: 1.10     TOWERING: 1.08
+ */
+function computeRealisticWeight(heightInches, frameKey, pool, rng) {
+  // Baseline: starts at 165 lb at 5'6" (66 in), +5 lb per inch up to ~80 in
+  const baseline = 165 + (heightInches - 66) * 5
+  const buildFactor = {
+    UNDERSIZED: 0.94, LANKY: 0.92, WIRY: 0.95,
+    ATHLETIC: 1.00, STOCKY: 1.10, TOWERING: 1.08,
+  }[frameKey] || 1.0
+  // Pool maturity: HS pulled down ~12 lb, JUCO ~5 lb (still filling out)
+  const poolShift = pool === 'HS_SR' ? -12 : pool === 'JUCO' ? -5 : 0
+  // Small natural variance (±6 lb)
+  const noise = rng.gaussian(0, 5)
+  const weight = baseline * buildFactor + poolShift + noise
+  // Hard floors so we never produce an absurd combo
+  const floor = Math.max(145, baseline * 0.85)
+  const ceiling = realisticWeightCeiling(heightInches, frameKey)
+  return Math.round(Math.max(floor, Math.min(ceiling, weight)))
+}
+
+/**
+ * Upper bound on realistic weight for a given height + frame. Used both to
+ * clamp the initial roll AND to cap targetMatureWeightLbs after growth.
+ */
+function realisticWeightCeiling(heightInches, frameKey) {
+  // Heaviest reasonable athlete weight at a height is roughly BMI 32.
+  // 5'6" → 247, 6'0" → 290, 6'6" → 320 — these are upper bounds, not norms.
+  // STOCKY / TOWERING can reach higher; LANKY caps lower.
+  const baseCeiling = 220 + (heightInches - 66) * 6.5
+  const frameMult = {
+    UNDERSIZED: 0.92, LANKY: 0.95, WIRY: 0.95,
+    ATHLETIC: 1.00, STOCKY: 1.12, TOWERING: 1.10,
+  }[frameKey] || 1.0
+  return Math.round(baseCeiling * frameMult)
 }
 
 const STAR_ARCHETYPES = new Set(['FIVE_TOOL', 'FLAMETHROWER', 'CLOSER_PROFILE'])
