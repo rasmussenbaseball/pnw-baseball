@@ -255,26 +255,30 @@ function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTi
  */
 function generatePotential(currentRatings, classYear, rng, profile = null) {
   // Each player has an overall "ceiling tier" rolled once — controls how
-  // high the average ceiling lands across their ratings. Most players sit in
-  // the 60-80 band, but ~10% are blue-chip (mean 85), ~5% are franchise (90+).
-  const tierRoll = rng.chance(0.05) ? 'FRANCHISE' : rng.chance(0.10) ? 'BLUECHIP' : 'STANDARD'
+  // high the average ceiling lands across their ratings.
+  //   FRANCHISE  (8%):  mean ~90 ceiling — future stars
+  //   BLUECHIP  (16%):  mean ~82 ceiling — solid pros
+  //   STANDARD  (76%):  mean ~67 ±10 — most players
+  // Tuned May 2026 per Nate — more high-potential hidden gems in the pool.
+  const tierRoll = rng.chance(0.08) ? 'FRANCHISE' : rng.chance(0.16) ? 'BLUECHIP' : 'STANDARD'
   let tierMean
   if (tierRoll === 'FRANCHISE') tierMean = 90
   else if (tierRoll === 'BLUECHIP') tierMean = 82
-  else tierMean = rng.gaussian(67, 9)  // most players, with real spread
+  else tierMean = rng.gaussian(67, 10)
 
   // Senior haircut: SR ceilings cap closer to current (limited time left).
   const seniorHaircut = classYear === 'SR' ? -8 : classYear === 'JR' ? -2 : 0
-  // Late bloomer bonus: archetype tag +8 ceiling
-  const lateBloom = profile?.isLateBloomer ? 8 : 0
+  // Late bloomer bonus: archetype tag +10 ceiling (was +8)
+  const lateBloom = profile?.isLateBloomer ? 10 : 0
 
   const out = {}
   for (const [k, v] of Object.entries(currentRatings)) {
     if (k.startsWith('velocity')) { out[k] = v; continue }
-    // Per-rating jitter so a player doesn't have IDENTICAL ceilings across
-    // all stats (some skills cap higher than others).
+    // Per-rating jitter widened to 12 (was 8) so a single elite tool is more
+    // common — a 70-OVR ceiling guy might have 92 power but 55 contact,
+    // making hidden gems easier to spot if you scout for the right stat.
     const ceiling = clamp(
-      Math.round(rng.gaussian(tierMean + seniorHaircut + lateBloom, 8)),
+      Math.round(rng.gaussian(tierMean + seniorHaircut + lateBloom, 12)),
       v,    // floor at current
       99,
     )

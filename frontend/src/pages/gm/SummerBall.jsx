@@ -56,6 +56,39 @@ export default function SummerBall() {
   const removeOnly = status === 'CONFIRMED'
   const resolved = status === 'RESOLVED'
 
+  // Page-level access gate. Summer Ball ONLY opens at Wk 14 (planning) and
+  // stays open through Wk 47 (resolve). Outside that window, show a closed
+  // placeholder — keeps the user from prematurely poking at it Wks 1-13
+  // (before season) or Wks 48-52 (after summer is over). After RESOLVED,
+  // the page stays accessible as read-only so users can see the summer
+  // report from the just-finished summer.
+  const isOpenForBusiness = (week >= 14 && week <= 47) || resolved
+  const userSchoolBeforeGate = save.schools[save.userSchoolId]
+  if (!isOpenForBusiness) {
+    return (
+      <GMShell schoolName={userSchoolBeforeGate?.name} schoolColors={userSchoolBeforeGate?.colors}>
+        <div className="max-w-3xl mx-auto">
+          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">SUMMER BALL</h1>
+          <p className="font-pixel text-base text-[#a8a8c8] mb-6">
+            The summer-ball planning window isn't open yet.
+          </p>
+          <div className="bg-[#23233d] border-l-4 border-amber-400 rounded-r p-4 text-base font-pixel">
+            <div className="text-amber-300 font-bold mb-2 uppercase tracking-widest text-[11px]">Closed</div>
+            <p className="text-[#e8e8e8] mb-3">
+              Summer ball runs on a tight calendar — you can't open it any time:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-[#e8e8e8]">
+              <li><strong>Wk 14</strong> — planning opens. Pick which players will go to which league.</li>
+              <li><strong>Wk 43</strong> — roster confirms. You can REMOVE players but not add new ones.</li>
+              <li><strong>Wk 47</strong> — summer resolves. Stats + rating gains posted, page goes read-only.</li>
+            </ul>
+            <p className="mt-3 text-[#a8a8c8]">Current week: <strong>{week} / 52</strong>. Sim through to Wk 14 to start planning.</p>
+          </div>
+        </div>
+      </GMShell>
+    )
+  }
+
   // Build league assigned-players map
   const byLeague = useMemo(() => {
     const out = {}

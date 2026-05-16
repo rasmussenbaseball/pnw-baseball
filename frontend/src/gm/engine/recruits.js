@@ -331,17 +331,24 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   // distribution (D1 YOUNG more likely to roll FRANCHISE; D3 transfer less so),
   // but a 42-OVR HS senior can absolutely have a 95 ceiling.
   // 5% franchise (mean 90), 12% blue-chip (mean 82), rest standard (mean 67±9)
+  // Tier distribution (May 2026 per Nate — more high-potential gems):
+  //   FRANCHISE  (8%):  mean 90  — future-star ceiling
+  //   BLUECHIP  (16%):  mean 82  — solid pro
+  //   STANDARD  (76%):  mean 67 ±10
   const tierRoll = pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG' ? 'BLUECHIP'   // young D1s skew elite ceilings
-    : rng.chance(0.05) ? 'FRANCHISE'
-    : rng.chance(0.12) ? 'BLUECHIP'
+    : rng.chance(0.08) ? 'FRANCHISE'
+    : rng.chance(0.16) ? 'BLUECHIP'
     : 'STANDARD'
   let tierMean
   if (tierRoll === 'FRANCHISE') tierMean = 90
   else if (tierRoll === 'BLUECHIP') tierMean = 82
-  else tierMean = rng.gaussian(67, 9)
-  const lateBloom = profile.isLateBloomer ? 8 : 0
+  else tierMean = rng.gaussian(67, 10)
+  const lateBloom = profile.isLateBloomer ? 10 : 0
+  // Per-stat jitter widened to 12 (was 8) so a single elite tool is more
+  // common — a low-OVR recruit might have 92 power with everything else
+  // average, becoming a recognizable hidden gem.
   const ceiling = (current) => clamp(
-    Math.round(rng.gaussian(tierMean + lateBloom, 8)),
+    Math.round(rng.gaussian(tierMean + lateBloom, 12)),
     current, 99,
   )
   const potHitter = Object.fromEntries(Object.entries(trueHitter).map(([k, v]) => [k, ceiling(v)]))
@@ -1126,8 +1133,33 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
     }
   }
 
+  // Per Nate (May 2026): camp ALWAYS runs. If natural turnout falls short of
+  // CAMP_MIN_ATTENDEES, we top up with additional walk-ons (any remaining HS
+  // recruit not already an attendee) until we hit the floor. The walk-on cap
+  // is relaxed for this fill since the alternative is cancellation (worse
+  // outcome than "the camp had some random extra kids show up").
   if (attendeeIds.length < CAMP_MIN_ATTENDEES) {
-    return { attendeeIds: [], revenue: 0, recruits, cancelled: true, reason: `Only ${attendeeIds.length} would attend. Camp needs ${CAMP_MIN_ATTENDEES} minimum — cancelled. Try lowering the fee or inviting more players.` }
+    const eligible = Object.values(recruits)
+      .filter(r => r.pool === 'HS_SR' && r.status !== 'signed' && r.status !== 'lost')
+      .filter(r => !attendeeIds.includes(r.id))
+    // Prefer recruits with at least SOME existing interest, then by avg rating
+    eligible.sort((a, b) => {
+      const ai = a.scoutGrades?.[userSchoolId]?.interest ?? 0
+      const bi = b.scoutGrades?.[userSchoolId]?.interest ?? 0
+      if (ai !== bi) return bi - ai
+      return avgTrueRating(b) - avgTrueRating(a)
+    })
+    for (const r of eligible) {
+      if (attendeeIds.length >= CAMP_MIN_ATTENDEES) break
+      attendeeIds.push(r.id)
+      if (!r.scoutGrades[userSchoolId]) {
+        r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
+      }
+      r.scoutGrades[userSchoolId].interest = Math.min(100, r.scoutGrades[userSchoolId].interest + 15)
+      r.scoutGrades[userSchoolId].noise = Math.min(r.scoutGrades[userSchoolId].noise, 9)
+      r.scoutGrades[userSchoolId].apSpent = Math.max(r.scoutGrades[userSchoolId].apSpent || 0, 3)
+      r.scoutGrades[userSchoolId].actionsApplied.push('CAMP_ATTEND')
+    }
   }
 
   const revenue = attendeeIds.length * feePerAttendee
