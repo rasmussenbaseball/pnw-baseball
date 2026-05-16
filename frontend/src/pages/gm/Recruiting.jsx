@@ -71,6 +71,9 @@ export default function Recruiting() {
   const [posFilter, setPosFilter] = useState('ALL')
   const [regionFilter, setRegionFilter] = useState('ALL')
   const [openRecruit, setOpenRecruit] = useState(null)
+  // Sort order — applies to the BOARD view. Defaults to regional rank
+  // which is the original behavior; user can pick any of these.
+  const [sortBy, setSortBy] = useState('RANK')   // RANK | INTEREST | SCOUTED | EST_OVR | EST_POT | NAME
 
   function toggleFollow(recruitId) {
     const r = save.recruits[recruitId]
@@ -181,17 +184,37 @@ export default function Recruiting() {
     .filter(r => regionFilter === 'ALL' || STATE_TO_REGION[r.hometown.state] === regionFilter)
     .map(r => {
       const grade = r.scoutGrades[save.userSchoolId]
-      return { recruit: r, interest: grade?.interest ?? 0, noise: grade?.noise ?? 15 }
+      const interest = grade?.interest ?? 0
+      const noise = grade?.noise ?? 15
+      // "Scouted %" = inverse of noise. Max initial noise is 15, full-scout
+      // floor is 2. Maps to 0-100 so users see a familiar percent.
+      const scoutedPct = Math.max(0, Math.min(100, Math.round((15 - noise) / 13 * 100)))
+      // Rough est OVR / POT from the current (noisy) rating block. Used
+      // only for sorting so a small approximation is fine.
+      const block = r.isPitcher ? r.truePitcher : r.trueHitter
+      const potBlock = r.isPitcher ? r.truePotentialPitcher : r.truePotentialHitter
+      const vals = block ? Object.values(block).filter(v => typeof v === 'number' && v < 100) : []
+      const potVals = potBlock ? Object.values(potBlock).filter(v => typeof v === 'number' && v < 100) : []
+      const estOvr = vals.length > 0 ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : 0
+      const estPot = potVals.length > 0 ? Math.round(potVals.reduce((s, v) => s + v, 0) / potVals.length) : 0
+      return { recruit: r, interest, noise, scoutedPct, estOvr, estPot }
     })
-    // Primary sort: regional rank (lower number = higher ranked). Ranked
-    // players bubble to the top, then unranked players sort by interest.
     .sort((a, b) => {
-      const ra = a.recruit.regionalRank
-      const rb = b.recruit.regionalRank
-      if (ra != null && rb != null) return ra - rb
-      if (ra != null) return -1
-      if (rb != null) return 1
-      return b.interest - a.interest
+      // RANK is the default — ranked players bubble to the top, then by interest
+      if (sortBy === 'RANK') {
+        const ra = a.recruit.regionalRank
+        const rb = b.recruit.regionalRank
+        if (ra != null && rb != null) return ra - rb
+        if (ra != null) return -1
+        if (rb != null) return 1
+        return b.interest - a.interest
+      }
+      if (sortBy === 'INTEREST') return b.interest - a.interest
+      if (sortBy === 'SCOUTED')  return b.scoutedPct - a.scoutedPct
+      if (sortBy === 'EST_OVR')  return b.estOvr - a.estOvr
+      if (sortBy === 'EST_POT')  return b.estPot - a.estPot
+      if (sortBy === 'NAME')     return a.recruit.lastName.localeCompare(b.recruit.lastName)
+      return 0
     })
     .slice(0, 80)
 
@@ -408,6 +431,26 @@ export default function Recruiting() {
         <button onClick={() => setRegionFilter('ALL')} className={'px-2 py-1 rounded text-xs ' + (regionFilter === 'ALL' ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>All</button>
         {REGIONS.map(r => (
           <button key={r} onClick={() => setRegionFilter(r)} className={'px-2 py-1 rounded text-xs ' + (regionFilter === r ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}>{REGION_LABELS[r]}</button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <span className="text-xs text-gray-500 mr-2">Sort by:</span>
+        {[
+          ['RANK', 'Regional rank'],
+          ['INTEREST', 'Most interest'],
+          ['SCOUTED', 'Most scouted'],
+          ['EST_OVR', 'Highest est OVR'],
+          ['EST_POT', 'Highest est POT'],
+          ['NAME', 'Last name (A-Z)'],
+        ].map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setSortBy(k)}
+            className={'px-2 py-1 rounded text-xs ' + (sortBy === k ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')}
+          >
+            {label}
+          </button>
         ))}
       </div>
 

@@ -28,6 +28,7 @@ import { makeRng } from './rng'
 import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
 import { playerOverall } from './playerRating'
+import { generateCoach } from './coaches'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 // ─── Toggle helpers ─────────────────────────────────────────────────────────
@@ -115,13 +116,40 @@ function autoFulfillSchedule(save, summary) {
 }
 
 function autoFulfillHire(save, summary) {
-  // Wk 2: just confirm whatever assistants the engine already seeded (or
-  // are already in place from prior years). Don't try to do real coach
-  // shopping — leave that to manual mode. We mark hiringConfirmed for the
-  // current year so the gate clears.
+  // Wk 2: actually HIRE missing required assistants (Pitching / Hitting /
+  // Bench). Year 1 the user starts with NO assistants — autoCoaches existed
+  // before but were stripped at dynasty creation so the user could pick
+  // theirs. Auto mode rebuilds a baseline staff so the user can advance.
+  const userSchoolId = save.userSchoolId
+  const team = save.teams?.[userSchoolId]
+  const school = save.schools?.[userSchoolId]
+  if (!team || !school) return
+  if (!save.coaches) save.coaches = {}
+  const REQUIRED = ['PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH']
+  const currentAssistants = (team.assistantCoachIds || [])
+    .map(id => save.coaches[id])
+    .filter(Boolean)
+  const filledRoles = new Set(currentAssistants.map(c => c.role))
+  let hired = 0
+  const rng = makeRng('autoHire', userSchoolId, save.calendar?.year, save.seed || 1)
+  for (const role of REQUIRED) {
+    if (filledRoles.has(role)) continue
+    // Generate a competent mid-tier coach for the missing role
+    const coach = generateCoach(school, role, rng, {
+      idPrefix: `ast_auto_${userSchoolId}_${role}_${save.calendar?.year}`,
+    })
+    save.coaches[coach.id] = coach
+    if (!team.assistantCoachIds) team.assistantCoachIds = []
+    team.assistantCoachIds.push(coach.id)
+    hired++
+  }
   if (!save.hiringConfirmed) save.hiringConfirmed = {}
   save.hiringConfirmed.year = save.calendar?.year
-  summary.actionsTaken.push('Confirmed current assistant staff')
+  if (hired > 0) {
+    summary.actionsTaken.push(`Hired ${hired} assistant coach${hired === 1 ? '' : 'es'} (pitching / hitting / bench as needed)`)
+  } else {
+    summary.actionsTaken.push('Confirmed current assistant staff')
+  }
 }
 
 function autoFulfillBudget(save, summary) {
@@ -233,35 +261,39 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
   const team = save.teams?.[userSchoolId]
   if (!team) return
 
-  // Priority ladder. We loop, peeling off the highest-priority lever each
-  // pass until either AP is gone or no lever wants more AP.
-  let safety = 25   // hard safety against infinite loops
-  while (ap > 0 && safety-- > 0) {
-    // 1) Study hall if team GPA is dropping below 2.5
-    if (!forceAllOnRecruiting && shouldSpendOnStudyHall(save, ap)) {
-      const spent = spendStudyHall(save)
-      if (spent <= 0) break
+  // Each weekly action is ONE-PER-WEEK. Track which we've done this turn so
+  // we don't double up (the old loop happily ran study hall 8 times in a
+  // row until the cumulative-bonus cap clamped it).
+  const usedThisWeek = new Set()
+
+  // First pass: study hall (1× this week, if appropriate)
+  if (!forceAllOnRecruiting && !usedThisWeek.has('STUDY_HALL') && shouldSpendOnStudyHall(save, ap)) {
+    const spent = spendStudyHall(save)
+    if (spent > 0) {
       ap -= spent
+      usedThisWeek.add('STUDY_HALL')
       summary.actionsTaken.push(`Spent ${spent} AP on study hall`)
-      continue
     }
-    // 2) Recruiting — always the highest leverage when class is open
-    if (ap >= 1 && hasRecruitingNeeds(save)) {
-      const spent = spendRecruiting(save, ap)
-      if (spent <= 0) break
+  }
+
+  // Second pass: recruiting board (can run repeatedly across multiple
+  // recruits within the same call — that's intentional, each recruit is
+  // a separate action)
+  if (ap > 0 && hasRecruitingNeeds(save)) {
+    const spent = spendRecruiting(save, ap)
+    if (spent > 0) {
       ap -= spent
       summary.actionsTaken.push(`Spent ${spent} AP on recruiting board`)
-      continue
     }
-    // 3) Fundraise if there's nothing else productive
-    if (!forceAllOnRecruiting && ap >= 10) {
-      const spent = spendFundraise(save)
-      if (spent <= 0) break
+  }
+
+  // Third pass: fundraise if there's still meaningful AP and nothing else
+  if (!forceAllOnRecruiting && ap >= 10) {
+    const spent = spendFundraise(save)
+    if (spent > 0) {
       ap -= spent
       summary.actionsTaken.push(`Fundraised with ${spent} AP`)
-      continue
     }
-    break
   }
 }
 

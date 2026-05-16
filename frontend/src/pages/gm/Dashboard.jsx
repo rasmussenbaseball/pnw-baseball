@@ -1358,6 +1358,80 @@ function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
 }
 
 /**
+ * One row of the Player Ratings diff. Clickable to reveal per-stat changes
+ * (so the user can see WHICH attributes drove the OVR move, not just the
+ * net number).
+ */
+function RatingChangeRow({ c }) {
+  const [open, setOpen] = useState(false)
+  const hasDiff = (c.statDiffs || []).length > 0
+  const arrow = c.delta > 0 ? '▲' : '▼'
+  return (
+    <div className="bg-gray-50 rounded text-xs">
+      <button
+        type="button"
+        onClick={() => hasDiff && setOpen(o => !o)}
+        className={
+          'w-full flex justify-between items-center p-2 text-left ' +
+          (hasDiff ? 'hover:bg-gray-100 cursor-pointer' : 'cursor-default')
+        }
+        disabled={!hasDiff}
+      >
+        <span className="text-gray-700 flex items-center gap-2">
+          {hasDiff && (
+            <span className="text-[9px] text-gray-400">{open ? '▾' : '▸'}</span>
+          )}
+          {c.name} <span className="text-gray-400">({c.pos})</span>
+        </span>
+        <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
+          OVR {c.before} → {c.after} <span className="ml-1">{arrow} {c.delta > 0 ? '+' : ''}{c.delta}</span>
+        </span>
+      </button>
+      {open && hasDiff && (
+        <div className="border-t border-gray-200 px-3 py-2 bg-white">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Attributes changed</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            {c.statDiffs.map(d => {
+              const sign = d.delta > 0 ? '+' : ''
+              const color = d.delta > 0 ? 'text-green-700' : 'text-red-700'
+              return (
+                <div key={d.stat} className="flex justify-between text-[11px]">
+                  <span className="text-gray-600">{prettyStat(d.stat)}</span>
+                  <span className={'font-mono ' + color}>
+                    {d.before.toFixed(1)} → {d.after.toFixed(1)} ({sign}{d.delta.toFixed(1)})
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function prettyStat(key) {
+  return {
+    contact_l: 'Contact (vs LHP)',
+    contact_r: 'Contact (vs RHP)',
+    power_l: 'Power (vs LHP)',
+    power_r: 'Power (vs RHP)',
+    discipline: 'Discipline',
+    speed: 'Speed',
+    fielding: 'Fielding',
+    arm: 'Arm',
+    composure: 'Composure',
+    durability: 'Durability',
+    stuff: 'Stuff',
+    control: 'Control',
+    command: 'Command',
+    stamina: 'Stamina',
+    vs_l: 'vs LHB',
+    vs_r: 'vs RHB',
+  }[key] || key
+}
+
+/**
  * Week Recap — appears after every single-week tick to show what changed.
  * Pulls from the snapshot diff (player OVR / happiness / GPA + record +
  * budget) plus the week's userResults if it was an in-season week.
@@ -1488,21 +1562,14 @@ function WeekRecapModal({ recap, save, onDismiss }) {
             </div>
           )}
 
-          {/* Rating changes */}
+          {/* Rating changes — clickable to reveal per-stat diff */}
           <div>
             <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">
               Player Ratings {ovrTop.length === 0 && <span className="text-gray-400 normal-case ml-1">— no changes</span>}
             </div>
             {ovrTop.length > 0 && (
               <div className="space-y-1">
-                {ovrTop.map(c => (
-                  <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
-                    <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
-                    <span className={'font-mono ' + (c.delta > 0 ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold')}>
-                      OVR {c.before} {c.after} {c.delta > 0 ? '' : ''}
-                    </span>
-                  </div>
-                ))}
+                {ovrTop.map(c => <RatingChangeRow key={c.id} c={c} />)}
               </div>
             )}
           </div>

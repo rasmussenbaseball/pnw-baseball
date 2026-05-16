@@ -11,15 +11,17 @@
  *   - Quick-link to Weekly Actions for study hall
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams, Navigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { teamAcademicSummary, GPA_THRESHOLDS } from '../../gm/engine/academics'
+import { playerOverall } from '../../gm/engine/playerRating'
 import GMShell, { PixelCard } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
+import SortableHeader, { useTableSort } from '../../gm/components/SortableHeader'
 
 export default function Academics() {
   const { user } = useAuth()
@@ -38,10 +40,10 @@ export default function Academics() {
   const team = save.teams[save.userSchoolId]
   const accent = school.colors?.[0] || '#fbbf24'
 
-  const players = (team.rosterPlayerIds || [])
+  const players = useMemo(() => (team.rosterPlayerIds || [])
     .map(id => save.players[id])
     .filter(Boolean)
-    .sort((a, b) => (a.gpa ?? 4.0) - (b.gpa ?? 4.0))   // worst GPA first
+    .map(p => ({ ...p, _ovr: playerOverall(p) })), [team.rosterPlayerIds, save.players])
 
   const summary = teamAcademicSummary(players)
   const atRisk = players.filter(p => p.academicStanding === 'ineligible' || p.academicStanding === 'probation')
@@ -87,25 +89,7 @@ export default function Academics() {
             )}
             Mandate study hall in Weekly Actions to lift the team.
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-base font-pixel">
-              <thead>
-                <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
-                  <th className="py-1 pr-2">PLAYER</th>
-                  <th className="pr-2">POS</th>
-                  <th className="pr-2">CL</th>
-                  <th className="pr-2">GPA</th>
-                  <th className="pr-2">STREAK</th>
-                  <th className="pr-2">STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {atRisk.map(p => (
-                  <PlayerRow key={p.id} player={p} slot={slot} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <AcademicsTable rows={atRisk} slot={slot} defaultSort="gpa" defaultDir="asc" />
         </PixelCard>
       )}
 
@@ -114,27 +98,9 @@ export default function Academics() {
         <div className="lg:col-span-2">
           <PixelCard accent={accent} title="FULL ROSTER">
             <div className="text-[#a8a8c8] text-sm mb-2">
-              Sorted by lowest GPA first. Click a player to view their full card.
+              Click any column header to sort. Click a player name to view their full card.
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-base font-pixel">
-                <thead>
-                  <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
-                    <th className="py-1 pr-2">PLAYER</th>
-                    <th className="pr-2">POS</th>
-                    <th className="pr-2">CL</th>
-                    <th className="pr-2">GPA</th>
-                    <th className="pr-2">STREAK</th>
-                    <th className="pr-2">STATUS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {players.map(p => (
-                    <PlayerRow key={p.id} player={p} slot={slot} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <AcademicsTable rows={players} slot={slot} defaultSort="gpa" defaultDir="asc" />
           </PixelCard>
         </div>
 
@@ -211,10 +177,46 @@ function SummaryTile({ label, value, accent, trend }) {
   )
 }
 
+function AcademicsTable({ rows, slot, defaultSort = 'gpa', defaultDir = 'asc' }) {
+  const STANDING_RANK = { dismissed: 4, ineligible: 3, probation: 2, eligible: 1 }
+  const extractors = useMemo(() => ({
+    name:     r => r.lastName.toLowerCase(),
+    pos:      r => r.primaryPosition || '',
+    cl:       r => ({ FR: 1, SO: 2, JR: 3, SR: 4 })[r.classYear] || 0,
+    ovr:      r => r._ovr,
+    gpa:      r => r.gpa ?? 4.0,
+    streak:   r => r.belowTwoStreak || 0,
+    standing: r => STANDING_RANK[r.academicStanding || 'eligible'] || 0,
+  }), [])
+  const { sortKey, sortDir, toggleSort, sortRows } = useTableSort(defaultSort, defaultDir, extractors)
+  const sorted = sortRows(rows)
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-base font-pixel">
+        <thead>
+          <tr className="text-left font-pixel-display text-[10px] tracking-widest">
+            <SortableHeader k="name"     sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="PLAYER" className="py-1 pr-2" />
+            <SortableHeader k="pos"      sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="POS"    className="pr-2" />
+            <SortableHeader k="cl"       sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="CL"     className="pr-2" />
+            <SortableHeader k="ovr"      sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="OVR"    className="pr-2" />
+            <SortableHeader k="gpa"      sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="GPA"    className="pr-2" />
+            <SortableHeader k="streak"   sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="STREAK" className="pr-2" />
+            <SortableHeader k="standing" sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="STATUS" className="pr-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(p => <PlayerRow key={p.id} player={p} slot={slot} />)}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function PlayerRow({ player, slot }) {
   const gpa = player.gpa ?? null
   const standing = player.academicStanding || 'eligible'
   const streak = player.belowTwoStreak || 0
+  const ovr = player._ovr ?? playerOverall(player)
   const gpaColor = gpa == null ? 'text-gray-400'
     : gpa < 2.0 ? 'text-red-400 font-bold'
     : gpa < 2.25 ? 'text-amber-300 font-bold'
@@ -230,6 +232,7 @@ function PlayerRow({ player, slot }) {
       </td>
       <td className="pr-2">{displayPosition(player.primaryPosition)}</td>
       <td className="pr-2">{displayClassYear(player)}</td>
+      <td className="pr-2 font-mono tabular-nums">{ovr}</td>
       <td className={'pr-2 font-mono tabular-nums ' + gpaColor}>
         {gpa != null ? gpa.toFixed(2) : '—'}
       </td>

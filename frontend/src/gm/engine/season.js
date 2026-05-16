@@ -620,11 +620,23 @@ export function advanceOneWeek(state) {
   }
   state.calendar.weekOfYear = nextWeek
 
-  // Stamp the phase-transition marker if we crossed a boundary. Dashboard
-  // reads + clears this to fire a one-time "Entering X" popup.
-  const newPhaseKey = phaseForWeek(nextWeek)?.key
-  if (newPhaseKey && newPhaseKey !== prevPhaseKey) {
-    state._phaseTransition = { from: prevPhaseKey, to: newPhaseKey, year: state.calendar.year }
+  // Stamp the phase-transition marker if we crossed a SEASON-umbrella
+  // boundary (e.g. Fall Camp → November, Spring Season → Postseason). We
+  // intentionally DON'T fire for within-season phase changes (PORTAL →
+  // MLB_DRAFT_WEEK → PORTAL inside Summer Recruiting, for example) — those
+  // would spam the user with popups for the same period.
+  const prevPhase = phaseForWeek(prevWeek)
+  const newPhase = phaseForWeek(nextWeek)
+  const prevSeason = prevPhase?.season
+  const newSeason = newPhase?.season
+  if (newSeason && newSeason !== prevSeason) {
+    state._phaseTransition = {
+      from: prevPhaseKey,
+      to: newPhase?.key,
+      fromSeason: prevSeason,
+      toSeason: newSeason,
+      year: state.calendar.year,
+    }
   }
   state.calendar.week = (state.calendar.week || 0) + 1   // overall counter (never resets)
 
@@ -666,8 +678,8 @@ export function advanceOneWeek(state) {
   // roster during Fall Camp / Winter Practice (full rate) and Fall
   // Conditioning (half rate). December Break + Late Summer + Summer
   // Recruiting are dead periods — no bump. The phase definition itself
-  // controls this via `phase.devAllowed` + `phase.devRateMult`.
-  const newPhase = phaseForWeek(nextWeek)
+  // controls this via `phase.devAllowed` + `phase.devRateMult`. Reuses
+  // newPhase already computed above for the phase-transition stamp.
   if (newPhase?.devAllowed && !newPhase.inSeason) {
     const rateMult = newPhase.devRateMult ?? 1.0
     const userTeam = state.teams?.[state.userSchoolId]
