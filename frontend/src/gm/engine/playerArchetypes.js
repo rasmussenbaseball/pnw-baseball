@@ -83,27 +83,49 @@ function pickFrameWeighted(rng) {
 }
 
 /**
- * Position-specific height windows. Real-world baseball ranges:
- *   C: 5'9-6'3      1B: 6'0-6'6     2B: 5'8-6'1
- *   SS: 5'8-6'3     3B: 5'10-6'4    LF: 5'10-6'4
- *   CF: 5'9-6'2     RF: 5'10-6'5    P: 5'11-6'9
- * No 6'6 shortstops, no 5'6 first basemen. Cap + floor enforced after
- * frame-roll + position bias, so a TOWERING frame still produces a
- * realistic catcher (caps at 6'3 even if the frame rolled higher).
+ * Position-specific height windows. Looser than rigid stereotypes — real
+ * rosters have undersized 2Bs, taller-than-expected CFs, and short pitchers
+ * who play up via deception. Tuned May 2026 per Nate: lowered floors for
+ * P / 2B / 3B; raised CF ceiling.
+ *   C: 5'9-6'4      1B: 6'0-6'6     2B: 5'6-6'1
+ *   SS: 5'8-6'3     3B: 5'8-6'4     LF: 5'10-6'4
+ *   CF: 5'9-6'6     RF: 5'10-6'5    P: 5'9-6'9
  */
 const POSITION_HEIGHT_WINDOW = {
-  C:  { min: 69, max: 75, bias: -1.5 },   // 5'9-6'3
+  C:  { min: 69, max: 76, bias: -1.5 },   // 5'9-6'4
   '1B': { min: 72, max: 78, bias: +1.5 }, // 6'0-6'6
-  '2B': { min: 68, max: 73, bias: -1.0 }, // 5'8-6'1
+  '2B': { min: 66, max: 73, bias: -1.5 }, // 5'6-6'1 (Altuve types allowed)
   SS:  { min: 68, max: 75, bias:  0 },    // 5'8-6'3
-  '3B': { min: 70, max: 76, bias: +0.5 }, // 5'10-6'4
+  '3B': { min: 68, max: 76, bias: +0.5 }, // 5'8-6'4 (shorter 3Bs allowed)
   LF:  { min: 70, max: 76, bias:  0 },    // 5'10-6'4
-  CF:  { min: 69, max: 74, bias: -1.0 },  // 5'9-6'2
+  CF:  { min: 69, max: 78, bias: -0.5 },  // 5'9-6'6 (taller CFs allowed)
   RF:  { min: 70, max: 77, bias: +0.5 },  // 5'10-6'5
-  P:   { min: 71, max: 81, bias: +1.0 },  // 5'11-6'9 (TJ-arm pool)
-  SP:  { min: 71, max: 81, bias: +1.0 },
-  RP:  { min: 71, max: 81, bias: +1.0 },
+  P:   { min: 69, max: 81, bias: +1.0 },  // 5'9-6'9 (Stroman types allowed)
+  SP:  { min: 69, max: 81, bias: +1.0 },
+  RP:  { min: 69, max: 81, bias: +1.0 },
   DH:  { min: 70, max: 78, bias:  0 },
+}
+
+/**
+ * Position stereotype biases. Layered on top of the archetype's rating biases
+ * so each position leans toward its real-world type — CFs run, RFs throw,
+ * SSs glove + arm, 2Bs contact-y and smaller, 1Bs power + slow, 3Bs hot
+ * corner with an arm. Catchers nudged toward fielding + arm + composure.
+ *
+ * SMALLER deltas than archetype biases (max ±6) so they shade the roll
+ * without overpowering it. A Power-Bat CF (archetype +12 power) still
+ * reads as a power hitter — just with above-avg wheels from the CF nudge.
+ */
+const POSITION_BIAS = {
+  C:   { fielding: +4, arm: +5, composure: +3, speed: -4, durability: +2 },
+  '1B': { power_l: +4, power_r: +4, durability: +2, speed: -6, fielding: -1 },
+  '2B': { fielding: +2, contact_l: +3, contact_r: +3, speed: +1, arm: -3, power_l: -2, power_r: -2 },
+  SS:  { fielding: +6, arm: +5, contact_l: +1, contact_r: +1 },
+  '3B': { arm: +5, power_l: +3, power_r: +3, fielding: +1, speed: -3 },
+  LF:  { power_l: +2, power_r: +2, fielding: -1, arm: -2 },
+  CF:  { speed: +5, fielding: +5, arm: +1 },
+  RF:  { arm: +6, power_l: +3, power_r: +3, speed: -1 },
+  DH:  { power_l: +3, power_r: +3, speed: -3, fielding: -5, arm: -3 },
 }
 
 export const HITTER_HEIGHT_CAP = 78   // retained for back-compat
@@ -200,48 +222,58 @@ export const HITTER_ARCHETYPES = [
  *   blurb: string,
  *   role: 'SP'|'RP'|'ANY',
  *   bias: Object<string, number>,
+ *   velocityBias?: number,   // mph delta applied to base velocity — DECOUPLED from stuff
  * }} PitcherArchetype */
 
+// Stuff rating = pitch SHAPE / MOVEMENT / quality (independent of velo).
+// velocityBias = mph delta — DECOUPLED from stuff. A flamethrower throws hard
+// but can have average stuff; a crafty lefty throws slow but can have plus
+// movement. Same idea in real baseball: Lance McCullers had filthy stuff at
+// 92, Jacob deGrom had filthy stuff at 100. Velo and stuff aren't the same
+// metric — both contribute, neither implies the other.
 /** @type {PitcherArchetype[]} */
 export const PITCHER_ARCHETYPES = [
-  { key: 'FLAMETHROWER', label: 'Flamethrower', blurb: '95+ heat, see-it-and-believe-it stuff. Spotty control.',
-    role: 'ANY',
-    bias: { stuff: +18, vs_r: +6, vs_l: +6, control: -10, command: -6, stamina: -3 } },
-  { key: 'POWER_ARM', label: 'Power arm', blurb: 'Big stuff, average command. Strikes guys out.',
-    role: 'ANY',
-    bias: { stuff: +12, vs_l: +4, vs_r: +4, control: -5, command: -4 } },
+  { key: 'FLAMETHROWER', label: 'Flamethrower', blurb: '95+ heat. Velo plays. Spotty control.',
+    role: 'ANY', velocityBias: +5,
+    bias: { vs_r: +5, vs_l: +5, control: -10, command: -6, stamina: -3 } },
+  { key: 'POWER_ARM', label: 'Power arm', blurb: 'Big stuff + plus velo. Strikes guys out.',
+    role: 'ANY', velocityBias: +2.5,
+    bias: { stuff: +10, vs_l: +4, vs_r: +4, control: -5, command: -4 } },
   { key: 'CONTROL_ARTIST', label: 'Control artist', blurb: 'Paints corners. Lives off command.',
-    role: 'ANY',
-    bias: { control: +12, command: +12, stuff: -5, vs_l: +3, vs_r: +3 } },
-  { key: 'CRAFTY_LEFTY', label: 'Crafty lefty', blurb: 'No velo, all guile. Murders lefties.',
-    role: 'ANY',
-    bias: { command: +10, control: +8, stuff: -8, vs_l: +14, vs_r: -3, composure: +5 } },
+    role: 'ANY', velocityBias: -1,
+    bias: { control: +12, command: +12, stuff: -3, vs_l: +3, vs_r: +3 } },
+  { key: 'CRAFTY_LEFTY', label: 'Crafty lefty', blurb: 'No velo, plus movement. Murders lefties.',
+    role: 'ANY', velocityBias: -3,
+    bias: { command: +10, control: +8, stuff: +4, vs_l: +14, vs_r: -3, composure: +5 } },
   { key: 'WORKHORSE', label: 'Workhorse SP', blurb: 'Eats innings. 6+ every start.',
-    role: 'SP',
+    role: 'SP', velocityBias: 0,
     bias: { stamina: +12, durability: +10, command: +5, stuff: -2 } },
   { key: 'CLOSER_PROFILE', label: 'Closer profile', blurb: 'Lights-out 1-inning guy. Filthy stuff + nerves of steel.',
-    role: 'RP',
+    role: 'RP', velocityBias: +1.5,
     bias: { stuff: +10, composure: +12, stamina: -10, control: +3 } },
   { key: 'GROUND_BALL', label: 'Ground-ball machine', blurb: 'Sinker-slider. Survives on contact management.',
-    role: 'ANY',
-    bias: { command: +10, control: +8, stuff: -4 } },
+    role: 'ANY', velocityBias: -1,
+    bias: { command: +10, control: +8, stuff: -2 } },
   { key: 'STRIKEOUT_ARTIST', label: 'Strikeout artist', blurb: 'Wipeout secondary. Misses bats by the dozen.',
-    role: 'ANY',
-    bias: { stuff: +10, command: +6, vs_l: +5, vs_r: +5, control: -2 } },
+    role: 'ANY', velocityBias: +1,
+    bias: { stuff: +12, command: +6, vs_l: +5, vs_r: +5, control: -2 } },
   { key: 'TWO_PITCH_RP', label: 'Two-pitch reliever', blurb: 'FB-slider. Plays up in short bursts.',
-    role: 'RP',
+    role: 'RP', velocityBias: +1.5,
     bias: { stuff: +8, vs_r: +5, stamina: -12, control: +2 } },
   { key: 'DECEPTIVE', label: 'Deceptive arm', blurb: 'Funky delivery. Ball gets on hitters quick.',
-    role: 'ANY',
-    bias: { stuff: +5, vs_l: +5, vs_r: +5, composure: +4 } },
+    role: 'ANY', velocityBias: -0.5,
+    bias: { stuff: +8, vs_l: +5, vs_r: +5, composure: +4 } },
+  { key: 'PITCH_SHAPER', label: 'Pitch shaper', blurb: 'Plus movement, average velo. Lets the ball move.',
+    role: 'ANY', velocityBias: -1,
+    bias: { stuff: +14, command: +5, vs_l: +4, vs_r: +4 } },
   { key: 'SOFT_TOSSING_VETERAN', label: 'Soft-tossing veteran', blurb: 'Mid-80s heater, advanced feel. Outsmarts hitters.',
-    role: 'ANY',
-    bias: { command: +12, composure: +8, control: +6, stuff: -10, stamina: +2 } },
+    role: 'ANY', velocityBias: -8,
+    bias: { command: +12, composure: +8, control: +6, stuff: -6, stamina: +2 } },
   { key: 'LATE_BLOOMER_P', label: 'Late bloomer (P)', blurb: 'Stuff in development. Potential to break out.',
-    role: 'ANY',
+    role: 'ANY', velocityBias: -1,
     bias: { stuff: -3, control: -2, command: -2 } },
   { key: 'GRINDER_P', label: 'Grinder', blurb: 'No standout tool. Throws strikes, eats innings.',
-    role: 'ANY',
+    role: 'ANY', velocityBias: 0,
     bias: { control: +3, command: +3, durability: +3 } },
 ]
 
@@ -345,7 +377,10 @@ export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', 
     const weights = remaining.map(q => q.rarity)
     picked.push(rng.weighted(remaining, weights))
   }
-  // Merge biases: frame + archetype + all quirks. Same key → sum.
+  // Merge biases: frame + position stereotype + archetype + all quirks.
+  // Same key → sum. Position bias is layered BEFORE archetype + quirks so
+  // archetypes that explicitly contradict the position stereotype (e.g.
+  // "Power-Hitting Catcher") can override it; the final number is the sum.
   const biases = {}
   function merge(src) {
     for (const [k, v] of Object.entries(src || {})) {
@@ -353,6 +388,9 @@ export function composePlayerProfile({ position, isPitcher, slotTier = 'bench', 
     }
   }
   merge(frame.bias)
+  // Hitter position bias only — pitchers use the same set of pitcher-rating
+  // keys regardless of SP/RP, so position-specific stereotypes don't apply.
+  if (!isPitcher) merge(POSITION_BIAS[position])
   merge(candidate.bias)
   for (const q of picked) merge(q.bias)
   // Height first (sample frame range, position bias, role cap).
@@ -503,9 +541,13 @@ const ARCHETYPE_FLOORS = {
   GAP_POWER:         { power_l: 68, power_r: 68, contact_l: 68, contact_r: 68 },
   SLAP_HITTER:       { contact_l: 75, contact_r: 75, speed: 70 },
   TOOLS_RAW:         { speed: 70, power_l: 65, power_r: 65 },
-  // Pitcher archetypes
-  FLAMETHROWER:      { stuff: 85 },
+  // Pitcher archetypes — FLAMETHROWER no longer requires high stuff
+  // (its signature is velocity, not movement). The velocityBias on the
+  // archetype handles the "throws hard" guarantee. Keep a small stuff
+  // floor so they're not absurdly bad shape on top of being wild.
+  FLAMETHROWER:      { stuff: 55 },
   POWER_ARM:         { stuff: 78 },
+  PITCH_SHAPER:      { stuff: 82, command: 70 },
   CONTROL_ARTIST:    { control: 80, command: 78 },
   CRAFTY_LEFTY:      { command: 78, control: 75, vs_l: 80 },
   WORKHORSE:         { stamina: 78, durability: 72 },

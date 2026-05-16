@@ -263,17 +263,27 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   else if (pool === 'D3_TRANSFER') { meanRating = 52; stddev = 11; cap = 85 }
   else                             { meanRating = 55; stddev = 12; cap = 90 }
 
-  // L/R correlation TIED TO PLATOON HANDEDNESS. Real baseball: RHH hit
-  // slightly better vs LHP (~70% of the time), LHH hit better vs RHP
-  // (~75%). Switch hitters are balanced. Dominance amount itself is
-  // smaller than before — max ~8 pts (was 13) — so we never produce
-  // power_L 95 / power_R 30 monsters.
+  // L/R correlation TIED TO PLATOON HANDEDNESS + REVERSE SPLITS. Real
+  // baseball: RHH hit slightly better vs LHP (~70%), LHH hit better vs
+  // RHP (~75%). Switch hitters balanced. ~12% of one-side hitters are
+  // reverse-split (LHH crushes LHP, RHH crushes RHP) — real-world thing,
+  // makes scouting more interesting. Dominance max ~8 pts.
   const bats = rng.weighted(['R', 'L', 'S'], [70, 22, 8])
-  const dominantSide = bats === 'R'
-    ? (rng.chance(0.70) ? 'L' : 'R')
-    : bats === 'L'
-      ? (rng.chance(0.75) ? 'R' : 'L')
-      : (rng.chance(0.5) ? 'L' : 'R')
+  let dominantSide, reverseSplit
+  if (bats === 'S') {
+    dominantSide = rng.chance(0.5) ? 'L' : 'R'
+    reverseSplit = false
+  } else if (rng.chance(0.12)) {
+    // Reverse split
+    dominantSide = bats === 'L' ? 'L' : 'R'
+    reverseSplit = true
+  } else if (bats === 'R') {
+    dominantSide = rng.chance(0.7) ? 'L' : 'R'
+    reverseSplit = false
+  } else {
+    dominantSide = rng.chance(0.75) ? 'R' : 'L'
+    reverseSplit = false
+  }
   const sideDom = rng.weighted([1, 2, 3, 5, 8], [25, 30, 25, 15, 5])
   const lDelta = dominantSide === 'L' ? sideDom : -sideDom
   const rDelta = dominantSide === 'R' ? sideDom : -sideDom
@@ -395,48 +405,38 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
       measurables.popTimeSec = Math.round((2.10 - (blended - 50) * 0.0075 + rng.gaussian(0, 0.04)) * 100) / 100
     }
   } else {
-    // Pitcher FB velo — pool + archetype + size driven.
+    // ── Pitcher FB velo — DECOUPLED FROM STUFF (May 2026 per Nate) ─────
+    // Velocity is now driven by:
+    //   1. Pool baseline (HS 83 → D1 transfer 89)
+    //   2. Archetype velocityBias (FLAMETHROWER +5, SOFT_TOSS -8, etc.)
+    //   3. Body-size boost (6'4+ arms play up — long levers)
+    //   4. A small stuff correlation (+0.05 mph/pt) — kept weak so
+    //      Crafty Lefties can still have plus movement at 84 mph.
+    //
+    // This means a 5'10" HS senior with FLAMETHROWER archetype can sit
+    // 89-90, and a 6'4" college transfer with SOFT_TOSSING_VETERAN sits
+    // 80-82. Stuff and velo are now their own metrics.
     const stuff = truePitcher.stuff
-    const isFlame = profile.archetype.key === 'FLAMETHROWER'
-    const isSoftToss = profile.archetype.key === 'SOFT_TOSSING_VETERAN'
+    const velocityBias = profile.archetype.velocityBias ?? 0
+    const stuffCorrelation = (stuff - 50) * 0.05
 
-    // Pool-anchored velocity. Top-ranked HS pitchers should routinely sit at
-    // 89-92 — they're the guys D1 schools are calling. HS avg ~84. Tuned so
-    // a stuff 80+ HS senior at 6'2+ touches 90 regularly.
-    //   HS avg (stuff 50)   → ~84       HS top (stuff 90)   → ~91-92
-    //   JUCO avg            → ~85-86    JUCO top            → ~93
-    //   NAIA portal top                  → ~94
-    //   D1 transfer top                  → ~97
-    let baseMean, baseSpread
-    if (pool === 'HS_SR') {
-      baseMean = 84.0 + (stuff - 60) * 0.22 + sizeBoost
-      baseSpread = isFlame ? 1.2 : 1.6
-    } else if (pool === 'JUCO') {
-      baseMean = 85.5 + (stuff - 60) * 0.24 + sizeBoost
-      baseSpread = 1.5
-    } else if (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') {
-      baseMean = 86.0 + (stuff - 60) * 0.25 + sizeBoost
-      baseSpread = 1.5
-    } else {
-      // D1 transfers and similar
-      baseMean = 88.0 + (stuff - 60) * 0.28 + sizeBoost
-      baseSpread = 1.6
-    }
+    let poolBase
+    if (pool === 'HS_SR') poolBase = 83.0
+    else if (pool === 'JUCO') poolBase = 85.0
+    else if (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') poolBase = 86.0
+    else poolBase = 89.0   // D1 transfer
 
-    let veloMean
-    if (isFlame) {
-      // Flamethrower archetype gets a flat +4-5 mph bump on top of pool base
-      veloMean = clamp(baseMean + 4 + rng.gaussian(0, 1.2), 86, 99)
-    } else if (isSoftToss) {
-      veloMean = clamp(81 + rng.gaussian(0, 1.0), 76, 85)
-    } else {
-      // Cap by pool: HS top 92, JUCO 94, NAIA/D2/D3 portal 95, D1 transfer 97
-      const poolCap = pool === 'HS_SR' ? 92
-        : pool === 'JUCO' ? 94
-        : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 95
-        : 97
-      veloMean = clamp(baseMean + rng.gaussian(0, baseSpread), 75, poolCap)
-    }
+    const baseMean = poolBase + velocityBias + stuffCorrelation + sizeBoost
+    const baseSpread = 1.6
+
+    // Pool caps — applied after archetype bias so FLAMETHROWER can blow
+    // through them slightly. HS top 93 (was 92), JUCO 95, NAIA/D2/D3 96,
+    // D1 transfer 99. SOFT_TOSSING_VETERAN has its own floor at ~78.
+    const poolCap = pool === 'HS_SR' ? 93
+      : pool === 'JUCO' ? 95
+      : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 96
+      : 99
+    const veloMean = clamp(baseMean + rng.gaussian(0, baseSpread), 75, poolCap)
     measurables.fbVeloMph = Math.round(veloMean * 10) / 10
     measurables.fbVeloMinMph = Math.round((veloMean - 2) * 10) / 10
     measurables.fbVeloMaxMph = Math.round((veloMean + 2) * 10) / 10
@@ -519,6 +519,8 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     bodyFrameKey: profile.frame.key,         // visible body frame
     hiddenQuirks: profile.quirks.filter(q => q.hidden).map(q => q.key),  // revealed via deep-scout
     visibleQuirks: profile.quirks.filter(q => !q.hidden).map(q => q.key),
+    reverseSplit,                            // ~12% of one-side hitters defy traditional platoon norms
+
     preferences,
     scoutGrades: {},
     status: 'open',

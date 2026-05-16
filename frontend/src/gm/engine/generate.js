@@ -101,13 +101,23 @@ function pickSideDominance(rng) {
  *   - Right-handed hitters do slightly better vs LHP (~70% of the time)
  *   - Left-handed hitters do better vs RHP (~75% — more pronounced)
  *   - Switch hitters: even split
- * Returns 'L' or 'R' (the side they HIT BETTER AGAINST, i.e. their
- * dominant rating side).
+ *   - REVERSE SPLITS: ~12% of hitters defy the norm (LHH crushes LHP,
+ *     RHH crushes RHP). Real-world examples exist for both sides — flag
+ *     it on the player so scouting can surface it.
+ * Returns { dominantSide, reverseSplit }.
  */
 function pickPlatoonDominantSide(bats, rng) {
-  if (bats === 'R') return rng.chance(0.7) ? 'L' : 'R'
-  if (bats === 'L') return rng.chance(0.75) ? 'R' : 'L'
-  return rng.chance(0.5) ? 'L' : 'R'   // switch
+  // Switch hitters always balanced — no reverse-split concept for them.
+  if (bats === 'S') return { dominantSide: rng.chance(0.5) ? 'L' : 'R', reverseSplit: false }
+  // 12% of one-side hitters are reverse-split guys.
+  const reverseSplit = rng.chance(0.12)
+  if (reverseSplit) {
+    // Reverse: LHH hits L better, RHH hits R better.
+    return { dominantSide: bats === 'L' ? 'L' : 'R', reverseSplit: true }
+  }
+  // Traditional split.
+  if (bats === 'R') return { dominantSide: rng.chance(0.7) ? 'L' : 'R', reverseSplit: false }
+  return { dominantSide: rng.chance(0.75) ? 'R' : 'L', reverseSplit: false }
 }
 
 /**
@@ -134,15 +144,16 @@ function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier
   ))
 
   // L/R correlation tied to PLATOON HANDEDNESS — most RHH hit slightly
-  // better vs LHP, most LHH hit better vs RHP. Dominance amount is small
-  // (avg ~3 pts, max ~8). Same delta applied to BOTH contact AND power
-  // for that side so a "righty crusher" reads consistently across stats.
-  const dominantSide = pickPlatoonDominantSide(bats, rng)
+  // better vs LHP, most LHH hit better vs RHP. ~12% of hitters are reverse
+  // split (LHH crushes LHP, RHH crushes RHP) — real-world thing, makes
+  // scouting more interesting. Dominance avg ~3 pts, max ~8. Caller reads
+  // .__reverseSplit__ off the return then deletes it before persisting.
+  const { dominantSide, reverseSplit } = pickPlatoonDominantSide(bats, rng)
   const dominance = pickSideDominance(rng)
   const lDelta = dominantSide === 'L' ? dominance : -dominance
   const rDelta = dominantSide === 'R' ? dominance : -dominance
 
-  return {
+  const block = {
     contact_l: rollKey('contact_l', lDelta),
     contact_r: rollKey('contact_r', rDelta),
     power_l:   rollKey('power_l',   lDelta),
@@ -154,6 +165,11 @@ function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier
     composure: rollKey('composure'),
     durability: rollKey('durability'),
   }
+  // Non-enumerable so generatePotential / enforceArchetypeFloors don't see it
+  Object.defineProperty(block, '__reverseSplit__', {
+    value: reverseSplit, enumerable: false, configurable: true, writable: true,
+  })
+  return block
 }
 
 function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTier, rng, profile = null) {
@@ -176,28 +192,32 @@ function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTi
     25, 99,
   ))
 
-  // Velocity tied to stuff but with own jitter. College players sit ~+2 mph
-  // over HS recruits at every stuff tier. FLAMETHROWER 95-99, SOFT_TOSSING
-  // low 80s. Most NAIA arms touch 90+; mid-rotation guys sit 86-89.
-  const isFlame = profile?.archetype?.key === 'FLAMETHROWER'
-  const isSoftToss = profile?.archetype?.key === 'SOFT_TOSSING_VETERAN'
-  const stuffBoost = (stuff - 60) * 0.28
-  const veloMean = isFlame
-    ? clamp(95 + rng.gaussian(0, 1.5), 91, 99)
-    : isSoftToss
-      ? clamp(82 + rng.gaussian(0, 1.5), 76, 86)
-      : clamp(86 + stuffBoost + rng.gaussian(0, 1.6), 76, 97)
+  // VELOCITY DECOUPLED FROM STUFF (May 2026 per Nate).
+  //   - Stuff = pitch shape / movement / whiff quality (0-99 rating)
+  //   - Velo  = raw mph spread (separate measurable)
+  // They were previously linked (high stuff implied high velo, FLAMETHROWER
+  // bumped stuff +18). Now an archetype carries an explicit `velocityBias`
+  // (mph delta) and stuff is its own rating. A "Crafty Lefty" can throw 84
+  // with plus stuff; a "Flamethrower" can throw 96 with average stuff.
+  //
+  // College baseline velo: 87 mph. Archetype bias shifts that (FLAMETHROWER
+  // +5, SOFT_TOSS -8). Body size adds a small additional boost so 6'4+ arms
+  // play up. Small stuff correlation kept (+0.05/pt) since high-stuff guys
+  // do trend faster in real life, but the link is much weaker than before.
+  const velocityBias = profile?.archetype?.velocityBias ?? 0
+  const stuffCorrelation = (stuff - 50) * 0.05   // ~+2 mph for stuff 90 vs avg
+  const baseVelo = 87 + velocityBias + stuffCorrelation
+  const veloMean = clamp(baseVelo + rng.gaussian(0, 1.7), 76, 99)
   const velocity_avg = Math.round(veloMean * 10) / 10
   const veloSpread = clamp(rng.gaussian(2, 0.6), 1, 4)
   const velocity_min = Math.round((veloMean - veloSpread) * 10) / 10
   const velocity_max = Math.round((veloMean + veloSpread) * 10) / 10
 
-  // Stamina velo penalty (preserved): elites exempt
+  // Stamina velo penalty: hard throwers wear down faster. Velo-only check
+  // now (was: gated on stuff <85, but stuff and velo are decoupled).
   let stamina = baseStamina
-  if (stuff < 85) {
-    const veloPenalty = Math.max(0, (velocity_avg - 88) * 3.5)
-    stamina = clamp(baseStamina - veloPenalty, 25, 99)
-  }
+  const veloPenalty = Math.max(0, (velocity_avg - 91) * 3.0)
+  stamina = clamp(baseStamina - veloPenalty, 25, 99)
   stamina = Math.round(stamina)
 
   return {
@@ -453,6 +473,9 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
     archetype: profile.archetype.key,
     bodyFrame: profile.frame.key,
     quirks: profile.quirks.map(q => q.key),
+    // ~12% of one-side hitters defy the standard platoon norm (LHH crushes
+    // LHP, RHH crushes RHP). Hidden so scouting AP can surface it.
+    reverseSplit: !!hitter.__reverseSplit__,
   }
   const academic = initialAcademicState({ hidden }, rng)
 
