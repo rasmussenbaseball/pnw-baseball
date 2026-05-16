@@ -18,7 +18,7 @@ import {
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
 import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
 import TeamLogo from '../../gm/components/TeamLogo'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { ContextBox } from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -166,6 +166,17 @@ export default function Schedule() {
           Sim next week 
         </button>
       </div>
+
+      <ContextBox storageKey="scheduleHelp" title="How the schedule works">
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Conference games are auto-generated</strong> — 3-4 game weekend series against every other team in your conference, alternating home/away year-over-year.</li>
+          <li><strong>You fill the non-conference weekends</strong>. Pre-conference (Wks 27-29) usually has 2-3 open weekends. Use Auto-create for a smart starter slate, or pick opponents manually.</li>
+          <li><strong>Fall scrimmages</strong> are required and auto-fill — 8 games vs nearby D2/D3/JUCO opponents in October. <strong className="text-emerald-300">Players in your fall lineup get a small rating bump per scrimmage</strong> — set fall lineups to develop the right guys.</li>
+          <li><strong>Midweek games</strong> — you can add up to 2/year vs D1 opponents (single-game format). Big tests, but they don't count toward your conf record.</li>
+          <li><strong>NAIA cap is 55 record-counting games</strong>. Scrimmages and byes don't count.</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-300">Travel costs come straight from your schedule and lock the travel allocation in your budget. Bigger trips = less $ for other categories.</p>
+      </ContextBox>
 
       {/* INCOMPLETE banner — now includes the AUTO-CREATE button */}
       {scheduleIncomplete && (

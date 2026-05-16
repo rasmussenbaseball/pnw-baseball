@@ -177,11 +177,17 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-5xl mx-auto">
       <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">PLAY</h1>
-      <p className="font-pixel text-base text-[#a8a8c8] mb-6">
+      <p className="font-pixel text-base text-[#a8a8c8] mb-3">
         {cal.mode === 'SEASON'
           ? `Season Week ${cal.seasonWeek}, set lineups, enter games, or auto-sim.`
-          : 'Offseason, schedule scrimmages and set fall lineups to drive scrimmage development.'}
+          : 'Offseason — set fall lineups to drive scrimmage development.'}
       </p>
+
+      {cal.mode !== 'SEASON' && unplayed.some(g => g.type === 'FALL_SCRIMMAGE') && (
+        <div className="bg-emerald-900/30 border-l-4 border-emerald-400 text-emerald-100 rounded-r p-3 mb-4 text-sm">
+          <strong className="text-emerald-300">Fall scrimmages develop your players.</strong> Anyone you put in the lineup gets a small permanent rating bump per scrimmage (some larger, some smaller — scaled by their potential). This is your biggest non-recruiting offseason dev lever. Play your underclassmen, projects, and anyone you're trying to grow.
+        </div>
+      )}
 
       {unplayed.length === 0 && played.length === 0 && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
@@ -259,13 +265,14 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
   const oppId = isHome ? game.awayId : game.homeId
   const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId] || { name: oppId }
   const saved = getSavedLineup(save, game.id)
+  const isFallScrim = game.type === 'FALL_SCRIMMAGE'
   const typeLabel = game.type === 'CONFERENCE' ? 'Conference'
     : game.type === 'D1_MIDWEEK' ? 'D1 Midweek'
-    : game.type === 'FALL_SCRIMMAGE' ? 'Fall Scrimmage'
+    : isFallScrim ? 'Fall Scrimmage'
     : game.type === 'SPRING_SCRIMMAGE' ? 'Spring Scrimmage'
     : 'Non-conference'
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+    <div className={'rounded-xl border p-4 shadow-sm ' + (isFallScrim ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-200')}>
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-3">
           <TeamLogo school={opp} size={36} />
@@ -276,19 +283,24 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
         </div>
         <div className="text-right">
           <div className={'text-[11px] font-semibold ' + (saved ? 'text-pnw-green' : 'text-amber-700')}>
-            {saved ? ' Lineup set' : 'No lineup set'}
+            {saved ? 'Lineup set' : 'No lineup set'}
           </div>
           {!saved && (
             <div className="text-[10px] text-gray-400">Will use top-9 + top-5 default</div>
           )}
         </div>
       </div>
+      {isFallScrim && (
+        <div className="mt-1 mb-2 bg-emerald-100 border border-emerald-300 rounded px-2 py-1.5 text-[11px] text-emerald-900 leading-snug">
+          <strong>Development boost:</strong> every player you start in this scrimmage gets a chance at a small rating bump. Play your young guys + projects — they'll grow more here than they will in spring.
+        </div>
+      )}
       <div className="flex gap-2 mt-3">
         <button onClick={onSetLineup} className="flex-1 px-3 py-1.5 border border-pnw-green text-pnw-green hover:bg-pnw-cream rounded text-xs font-semibold">
           {saved ? 'Edit lineup' : 'Set lineup'}
         </button>
         <button onClick={onEnterGame} className="flex-1 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90">
-          ▶ Enter game (live)
+          Enter game (live)
         </button>
       </div>
     </div>

@@ -20,6 +20,7 @@ import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } fro
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
+import TutorialOverlay from '../../gm/components/TutorialOverlay'
 import TeamLogo from '../../gm/components/TeamLogo'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -53,6 +54,29 @@ export default function Dashboard() {
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
   const [phaseTransitionModal, setPhaseTransitionModal] = useState(null)
+  // Tutorial overlay — auto-opens on first load (no flags.tutorialSeen).
+  // Reopenable from the URL ?tutorial=1 query param so the nav menu can
+  // surface it on demand.
+  const [tutorialOpen, setTutorialOpen] = useState(() => {
+    if (params.get('tutorial') === '1') return true
+    if (!save) return false
+    return !save.flags?.tutorialSeen
+  })
+  function dismissTutorial() {
+    if (save) {
+      if (!save.flags) save.flags = {}
+      save.flags.tutorialSeen = true
+      saveDynasty(save)
+      setSave({ ...save })
+    }
+    setTutorialOpen(false)
+    // Drop the ?tutorial=1 param if it was set
+    if (params.get('tutorial')) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('tutorial')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }
   useEffect(() => {
     const t = save?._phaseTransition
     if (!t) return
@@ -290,6 +314,9 @@ export default function Dashboard() {
     <GMShell schoolName={school.name} schoolColors={school.colors}>
     <div className="min-h-screen">
       {progress && <ProgressModal {...progress} />}
+      {tutorialOpen && (
+        <TutorialOverlay school={school} onClose={dismissTutorial} />
+      )}
       {phaseTransitionModal && (
         <PhaseTransitionModal
           from={phaseTransitionModal.from}

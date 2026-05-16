@@ -17,7 +17,7 @@ import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions
 import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import { getArchetype, getQuirk, formatHeight } from '../../gm/engine/playerArchetypes'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { ContextBox } from '../../gm/components/GMShell'
 
 const POOL_LABELS = {
   HS_SR: 'HS Senior',
@@ -299,6 +299,18 @@ export default function Recruiting() {
           <div className="text-[10px] uppercase tracking-wider text-gray-500">This week</div>
         </div>
       </div>
+
+      <ContextBox storageKey="recruitingHelp" title="How recruiting works">
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Three pools</strong>: HS seniors (Aug-Wk52), JUCO transfers, and 4-year transfer portal (D1/D2/D3 + NAIA). Use the source filter at the top to focus.</li>
+          <li><strong>Scout first</strong>. New recruits show ±10-15 pt fog on ratings. Spend AP on Text, Call, Scout Trip, Home Visit, Campus Visit to narrow the fog AND build their interest in you.</li>
+          <li><strong>Each action is one-shot per recruit.</strong> You can't run two Scout Trips on the same kid. Pick the right tool for where they are: Scout Trip when fog is high, Campus Visit when interest is already 80+.</li>
+          <li><strong>Extend an offer</strong> when you're confident. Offers use $ from your scholarship pool (not AP). Bigger offers = more interest. You can revise or withdraw later.</li>
+          <li><strong>The recruit decides</strong>. They score every interested school on 8 preferences (financial, playing time, proximity, coaching, pipeline fit, facilities, academics, program history). High fit + plus offer = sign.</li>
+          <li><strong>Prospect Camp Wk 13</strong> is huge — invitees show up, get partially scouted, and bump interest in you. Invite top targets in Wks 5 and 10.</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-300">Visible quirks + archetype are shown for free. Hidden quirks (clutch, injury history, work ethic) require deeper scouting to surface.</p>
+      </ContextBox>
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

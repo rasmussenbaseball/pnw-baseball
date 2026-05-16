@@ -47,6 +47,7 @@ const NAV = [
       { label: 'Rankings',     path: '/gm/rankings' },
       { label: 'Summer Ball',  path: '/gm/summer' },
       { label: 'Postseason',   path: '/gm/postseason' },
+      { label: 'Tutorial',     path: '/gm/dashboard?tutorial=1' },
     ],
   },
 ]
@@ -237,6 +238,53 @@ export function PixelCard({ children, title, accent = '#fbbf24', className = '' 
       <div className="p-3 text-[#e8e8e8] font-pixel text-lg">
         {children}
       </div>
+    </div>
+  )
+}
+
+/**
+ * ContextBox — an explainer panel meant to teach the user how the page they
+ * just landed on works. Collapsible (closed state remembered per-key in
+ * localStorage so users who have read it once aren't pestered every visit).
+ * Pop the tutorial slideshow to see them again.
+ *
+ * @param {object} props
+ * @param {string} props.storageKey  unique key like 'recruitingHelp'
+ * @param {string} props.title       "How recruiting works"
+ * @param {React.ReactNode} props.children
+ */
+export function ContextBox({ storageKey, title, children }) {
+  const lsKey = `gmHelp:${storageKey || 'box'}:open`
+  const [open, setOpen] = useState(() => {
+    // Default open — but once user collapses, remember
+    if (typeof window === 'undefined') return true
+    const v = window.localStorage.getItem(lsKey)
+    return v === null ? true : v === '1'
+  })
+  function toggle() {
+    const next = !open
+    setOpen(next)
+    try { window.localStorage.setItem(lsKey, next ? '1' : '0') } catch (e) {}
+  }
+  return (
+    <div className="mb-4 bg-[#23233d] border-l-4 border-[#3a3a5e] rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#2a2a4a] transition"
+      >
+        <span className="font-pixel-display text-[11px] tracking-widest text-amber-300">
+          {open ? '▾' : '▸'}  {title}
+        </span>
+        <span className="text-[10px] uppercase tracking-wider text-[#a8a8c8]">
+          {open ? 'Hide' : 'Show'}
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 py-3 text-sm text-[#e8e8e8] font-pixel leading-relaxed border-t border-[#3a3a5e]">
+          {children}
+        </div>
+      )}
     </div>
   )
 }

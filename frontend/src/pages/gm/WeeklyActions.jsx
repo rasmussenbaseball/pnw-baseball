@@ -11,7 +11,7 @@ import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
 import { applyMeetingBoost, ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { playerOverall } from '../../gm/engine/playerRating'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { ContextBox } from '../../gm/components/GMShell'
 
 const STUDY_HALL_AP = 2
 const STUDY_HALL_BONUS = 0.02
@@ -296,6 +296,20 @@ export default function WeeklyActions() {
            {actionReceipt}
         </div>
       )}
+
+      {/* HOW WEEKLY ACTIONS WORK — context box. Hidden after first read via
+          flags.weeklyActionsHelp, but always reopenable from the tutorial. */}
+      <ContextBox storageKey="weeklyActionsHelp" title="How weekly actions work">
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Practice drills</strong> bump a chosen rating (contact, power, stuff, etc.) on every eligible player. <em>Temporary</em> variants cost less AP and last 4 weeks; <em>permanent</em> costs more and adds a +1 rating that sticks.</li>
+          <li><strong>Velocity Program</strong> targets pitchers' FB velo — small permanent mph gain at the cost of 1-2 stamina pts.</li>
+          <li><strong>1-on-1 Development</strong> picks a single player + single rating for a +3 bump. Expensive (8 AP) but precise — use it on a player who's close to a breakthrough.</li>
+          <li><strong>Study Hall</strong> (2 AP) stacks a small permanent boost on every player's end-of-term GPA. Run it 6-8 weeks in a row to lift a struggling team out of probation.</li>
+          <li><strong>Team Meeting</strong> rebuilds happiness on selected players. Costs 2 AP per player, +12 happiness each.</li>
+          <li><strong>Fundraising</strong> (10 AP) raises ~$8K-$11K added straight to your annual budget. Best when you have AP to spare and need scholarship $.</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-300">Each action is one-per-week unless noted. Unspent AP at week's end is <strong>lost</strong> — it does not carry over.</p>
+      </ContextBox>
 
       {/* TOP-OF-PAGE PROSPECT CAMP BANNER — shown only when camp week is active
           OR camp was already held this year. Pinned high so users who click

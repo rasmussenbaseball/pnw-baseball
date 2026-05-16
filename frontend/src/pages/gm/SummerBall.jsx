@@ -25,7 +25,7 @@ import {
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { ContextBox } from '../../gm/components/GMShell'
 
 export default function SummerBall() {
   const { user } = useAuth()
@@ -88,10 +88,22 @@ export default function SummerBall() {
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-5xl mx-auto">
-      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1"> SUMMER BALL</h1>
+      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">SUMMER BALL</h1>
       <p className="font-pixel text-base text-[#a8a8c8] mb-3">
         Send players to wood-bat summer leagues. Reps, exposure, draft buzz, real injury + poach risk.
       </p>
+
+      <ContextBox storageKey="summerBallHelp" title="How summer ball works">
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Plan in Wk 14</strong> — open the planning window after the spring season starts winding down. You can add/remove players freely until Wk 43.</li>
+          <li><strong>Confirm in Wk 43</strong> — at this point the roster locks. You can still REMOVE players (injury / wedding / life), but no new signings.</li>
+          <li><strong>Resolve in Wk 47</strong> — the summer is sim'd. Players get rating gains scaled by league prestige + the player's potential.</li>
+          <li><strong className="text-emerald-300">Top leagues develop faster but are harder to get into</strong>. Cape Cod is elite (+OVR boost), MLB scouts watching = draft buzz. Lower-prestige leagues are easier signings but smaller gains.</li>
+          <li><strong>Injury + poach risk</strong> exists. Players can get hurt in summer ball (lingering effects rare but possible), or another program can poach them via transfer chatter.</li>
+          <li><strong>Class year matters</strong>. Underclassmen benefit most. Juniors with draft potential get the biggest draft-stock bump from elite-league performance.</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-300">Players who go to summer ball miss out on the small offseason passive dev your other players get during summer recruiting (Jun-Jul). The summer-league gain is much larger though.</p>
+      </ContextBox>
 
       {/* Status banner */}
       <StatusBanner status={status} week={week} />

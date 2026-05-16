@@ -12,7 +12,7 @@ import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import AttrTooltip from '../../gm/components/AttrTooltip'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { ContextBox } from '../../gm/components/GMShell'
 
 const INTERVIEW_AP_COST = 20
 const FIRE_AP_COST = 20
@@ -190,6 +190,18 @@ export default function Coaches() {
           <div className="text-[10px] uppercase tracking-wider text-gray-500">This week</div>
         </div>
       </div>
+
+      <ContextBox storageKey="coachesHelp" title="How your coaching staff drives the program">
+        <p>Your staff is the engine behind weekly Action Points + player development. Build it right and you stay near the 50 AP cap; build it wrong and you're scraping by at 20.</p>
+        <ul className="list-disc list-inside space-y-1 mt-2">
+          <li><strong>Required roles</strong> — Pitching Coach, Hitting Coach, Bench Coach. NAIA programs must carry all three.</li>
+          <li><strong>Optional support staff</strong> — DOO, S&C, GA, Data Analytics, Recruiting Coordinator. Each unlocks a small program-wide effect (extra budget, fewer injuries, +1 AP/wk, etc).</li>
+          <li><strong>Four ratings</strong> per coach: <strong>Developer</strong> (drives player skill growth), <strong>Motivator</strong> (drives happiness + end-of-term GPA bumps), <strong>Recruiter</strong> (drives prospect-camp turnout + AI recruit interest), <strong>Tactician</strong> (in-game decisions).</li>
+          <li><strong>Salary matters</strong>. Top-of-market coaches won't sign for league-minimum money. Use the Strong Coaching budget preset if you want the best.</li>
+          <li><strong>Each interview costs 20 AP.</strong> Pick interviews carefully — Wk 2 is your hire window each year.</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-300">Your head coach's pipelines + regions also bias the recruit pool — recruits flow to schools with matching coach backgrounds.</p>
+      </ContextBox>
 
       {/* Wk 2 tutorial banner — year 1 forced hire */}
       {isTutorialHireWeek && isFirstYear && !allRequiredFilled && (
