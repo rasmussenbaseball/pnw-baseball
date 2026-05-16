@@ -28,23 +28,56 @@ export const WEEKS_PER_YEAR = 52
 
 /** @typedef {{ key: string, label: string, blurb: string }} Phase */
 
+// Phase flags drive cross-cutting behavior:
+//   - practice:     full team practice happens this week (drives skill dev)
+//   - conditioning: strength + speed work happens (slower skill dev)
+//   - devAllowed:   weekly stats-driven development can fire
+//   - devRateMult:  optional multiplier on weekly dev rate (1.0 default)
+//   - inSeason:     games are played this week
+//   - season:       human-readable umbrella period (shown as a banner)
 export const PHASES = {
-  TUTORIAL_SCHEDULE: { key: 'TUTORIAL_SCHEDULE', label: 'Set Schedule',   blurb: 'Lock in your non-conf weekends. Fall scrimmages auto-fill.' },
-  TUTORIAL_HIRE:     { key: 'TUTORIAL_HIRE',     label: 'Hire Assistants', blurb: '$40K assistant pool. Pitching / hitting / bench coach.' },
-  TUTORIAL_BUDGET:   { key: 'TUTORIAL_BUDGET',   label: 'Set Budget',     blurb: 'Travel is locked from your schedule. Allocate the rest.' },
-  TUTORIAL_SCOUT:    { key: 'TUTORIAL_SCOUT',    label: 'Open Scouting',  blurb: 'AP unlocks. Spend it all on next year\'s recruits.' },
-  FALL_CAMP:         { key: 'FALL_CAMP',         label: 'Fall Camp',      blurb: 'Practice + 8 fall scrimmages vs nearby D2/D3/JUCO opponents.' },
-  PROSPECT_CAMP:     { key: 'PROSPECT_CAMP',     label: 'Prospect Camp',  blurb: 'Annual recruiting camp. Run it from Weekly Actions.' },
-  TRAINING:          { key: 'TRAINING',          label: 'Training Period', blurb: 'Skill + position work. AP available; no games.' },
-  SPRING_PRACTICE:   { key: 'SPRING_PRACTICE',   label: 'Spring Practice', blurb: 'Pre-season ramp-up. Final roster prep.' },
-  NON_CONFERENCE:    { key: 'NON_CONFERENCE',    label: 'Non-Conf',        blurb: 'Opening weekends — Friday/Saturday/Sunday series.' },
-  CONFERENCE:        { key: 'CONFERENCE',        label: 'Conference',      blurb: 'CCC play. 10 series across 10 weeks, no byes.' },
-  CONF_TOURNAMENT:   { key: 'CONF_TOURNAMENT',   label: 'Conf Tournament', blurb: 'Double-elim bracket. Winner gets the auto-bid.' },
-  OPENING_ROUND:     { key: 'OPENING_ROUND',     label: 'Opening Round',   blurb: 'NAIA regional brackets — 4-team double-elim.' },
-  WORLD_SERIES:      { key: 'WORLD_SERIES',      label: 'World Series',    blurb: 'Avista NAIA WS in Lewiston, ID.' },
-  PORTAL:            { key: 'PORTAL',            label: 'Portal Open',     blurb: 'Inbound + outbound transfers. Recruit from the portal.' },
-  MLB_DRAFT_WEEK:    { key: 'MLB_DRAFT_WEEK',    label: 'MLB Draft Week',  blurb: '5–12 NAIA players selected over 20 rounds.' },
-  RECRUIT_FINALIZE:  { key: 'RECRUIT_FINALIZE',  label: 'Class Finalize',  blurb: 'Signees join the roster. Full ratings revealed.' },
+  // ── August: late-summer setup (Wks 1-4) ─────────────────────────────────
+  TUTORIAL_SCHEDULE: { key: 'TUTORIAL_SCHEDULE', label: 'Set Schedule',     blurb: 'Lock in your non-conf weekends. Fall scrimmages auto-fill.',
+    season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
+  TUTORIAL_HIRE:     { key: 'TUTORIAL_HIRE',     label: 'Hire Assistants',  blurb: '$40K assistant pool. Pitching / hitting / bench coach.',
+    season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
+  TUTORIAL_BUDGET:   { key: 'TUTORIAL_BUDGET',   label: 'Set Budget',       blurb: 'Travel is locked from your schedule. Allocate the rest.',
+    season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
+  TUTORIAL_SCOUT:    { key: 'TUTORIAL_SCOUT',    label: 'Open Scouting',    blurb: "AP unlocks. Spend it all on next year's recruits.",
+    season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
+  // ── September-October: fall camp (Wks 5-13) ─────────────────────────────
+  FALL_CAMP:         { key: 'FALL_CAMP',         label: 'Fall Camp',        blurb: 'Full team practice + scrimmages vs nearby D2/D3/JUCO opponents. Skills develop normally.',
+    season: 'Fall Camp', practice: true, conditioning: true, devAllowed: true },
+  PROSPECT_CAMP:     { key: 'PROSPECT_CAMP',     label: 'Prospect Camp',    blurb: 'Annual recruiting camp on your campus. Run it from Weekly Actions.',
+    season: 'Fall Camp', practice: true, conditioning: true, devAllowed: true },
+  // ── November: conditioning-only (Wks 14-17) ─────────────────────────────
+  FALL_CONDITIONING: { key: 'FALL_CONDITIONING', label: 'Fall Conditioning', blurb: 'No team practice — strength + speed work only. Players can still improve, but at half the rate of fall camp.',
+    season: 'November', practice: false, conditioning: true, devAllowed: true, devRateMult: 0.5 },
+  // ── December: dead period (Wks 18-22) ───────────────────────────────────
+  DECEMBER_BREAK:    { key: 'DECEMBER_BREAK',    label: 'December Break',   blurb: 'Players are off — no practice, no conditioning. Players cannot improve. Use this time to scout your recruiting class.',
+    season: 'December', practice: false, conditioning: false, devAllowed: false },
+  // ── January: pre-season practice (Wks 23-26) ────────────────────────────
+  WINTER_PRACTICE:   { key: 'WINTER_PRACTICE',   label: 'Winter Practice',  blurb: 'Pre-season ramp-up. Final roster prep. Last chance to dial in lineups before opening day.',
+    season: 'January', practice: true, conditioning: true, devAllowed: true },
+  // ── February-April: spring season (Wks 27-39) ───────────────────────────
+  NON_CONFERENCE:    { key: 'NON_CONFERENCE',    label: 'Non-Conf Season',  blurb: 'Opening weekends — Friday/Saturday/Sunday series.',
+    season: 'Spring Season', practice: true, conditioning: false, devAllowed: true, inSeason: true },
+  CONFERENCE:        { key: 'CONFERENCE',        label: 'Conference Play',  blurb: 'Conference play — 10 series across 10 weeks, no byes.',
+    season: 'Spring Season', practice: true, conditioning: false, devAllowed: true, inSeason: true },
+  // ── May: postseason (Wks 40-42) ─────────────────────────────────────────
+  CONF_TOURNAMENT:   { key: 'CONF_TOURNAMENT',   label: 'Conf Tournament',  blurb: 'Double-elim bracket. Winner gets the NAIA auto-bid.',
+    season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
+  OPENING_ROUND:     { key: 'OPENING_ROUND',     label: 'Opening Round',    blurb: 'NAIA regional brackets — 4-team double-elim.',
+    season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
+  WORLD_SERIES:      { key: 'WORLD_SERIES',      label: 'World Series',     blurb: 'Avista NAIA WS in Lewiston, ID.',
+    season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
+  // ── June-July: portal + draft (Wks 43-52) ───────────────────────────────
+  PORTAL:            { key: 'PORTAL',            label: 'Summer Recruiting', blurb: 'Inbound + outbound transfers. Recruit from the portal. Summer ball runs in the background.',
+    season: 'Summer Recruiting', practice: false, conditioning: false, devAllowed: false },
+  MLB_DRAFT_WEEK:    { key: 'MLB_DRAFT_WEEK',    label: 'MLB Draft Week',   blurb: '5-12 NAIA players selected over 20 rounds.',
+    season: 'Summer Recruiting', practice: false, conditioning: false, devAllowed: false },
+  RECRUIT_FINALIZE:  { key: 'RECRUIT_FINALIZE',  label: 'Class Finalize',   blurb: 'Signees join the roster. Full ratings revealed.',
+    season: 'Summer Recruiting', practice: false, conditioning: false, devAllowed: false },
 }
 
 /**
@@ -58,8 +91,9 @@ export function phaseForWeek(week) {
   if (week === 4) return PHASES.TUTORIAL_SCOUT
   if (week >= 5 && week <= 12) return PHASES.FALL_CAMP
   if (week === 13) return PHASES.PROSPECT_CAMP
-  if (week >= 14 && week <= 22) return PHASES.TRAINING
-  if (week >= 23 && week <= 26) return PHASES.SPRING_PRACTICE
+  if (week >= 14 && week <= 17) return PHASES.FALL_CONDITIONING   // November
+  if (week >= 18 && week <= 22) return PHASES.DECEMBER_BREAK      // December
+  if (week >= 23 && week <= 26) return PHASES.WINTER_PRACTICE     // January
   if (week >= 27 && week <= 29) return PHASES.NON_CONFERENCE
   if (week >= 30 && week <= 39) return PHASES.CONFERENCE
   if (week === 40) return PHASES.CONF_TOURNAMENT
@@ -69,6 +103,25 @@ export function phaseForWeek(week) {
   if (week === 52) return PHASES.RECRUIT_FINALIZE
   if (week >= 43 && week <= 51) return PHASES.PORTAL
   return PHASES.PORTAL   // safety fallback
+}
+
+/**
+ * Season-level umbrella for a week — used as the prominent banner label on
+ * the dashboard. Multiple phases roll up into one season ("Fall Camp",
+ * "November", "Postseason", etc.).
+ */
+export function seasonForWeek(week) {
+  return phaseForWeek(week)?.season || 'Offseason'
+}
+
+/**
+ * Has the phase changed compared to a prior week? Used by Dashboard to fire
+ * a one-time popup when the user crosses a phase boundary.
+ */
+export function isPhaseTransition(prevWeek, nextWeek) {
+  if (prevWeek == null || nextWeek == null) return false
+  if (prevWeek === nextWeek) return false
+  return phaseForWeek(prevWeek)?.key !== phaseForWeek(nextWeek)?.key
 }
 
 /**

@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
 import { simAhead, simPresets, phaseLabel, snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
-import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar } from '../../gm/engine/gameYear'
+import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
@@ -49,6 +49,22 @@ export default function Dashboard() {
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
   const [fallReportOpen, setFallReportOpen] = useState(false)
+  // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
+  // when the user crosses a phase boundary. Dashboard reads it here, opens
+  // the modal, then clears the marker so the popup only fires once.
+  const [phaseTransitionModal, setPhaseTransitionModal] = useState(null)
+  useEffect(() => {
+    const t = save?._phaseTransition
+    if (!t) return
+    const toPhase = PHASES[t.to]
+    if (!toPhase || t.from === t.to) {
+      delete save._phaseTransition
+      return
+    }
+    setPhaseTransitionModal({ from: PHASES[t.from], to: toPhase })
+    delete save._phaseTransition
+    saveDynasty(save)
+  }, [save])
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -274,6 +290,13 @@ export default function Dashboard() {
     <GMShell schoolName={school.name} schoolColors={school.colors}>
     <div className="min-h-screen">
       {progress && <ProgressModal {...progress} />}
+      {phaseTransitionModal && (
+        <PhaseTransitionModal
+          from={phaseTransitionModal.from}
+          to={phaseTransitionModal.to}
+          onClose={() => setPhaseTransitionModal(null)}
+        />
+      )}
       {lastWeekRecap?.diff && (
         <WeekRecapModal
           recap={lastWeekRecap}
@@ -387,6 +410,12 @@ export default function Dashboard() {
           <StatCell label="Team OVR" value={teamOvr.overall} />
         </div>
       </div>
+
+      {/* SEASON PERIOD BANNER — prominent, color-coded indicator of which
+          umbrella period we're in (Fall Camp / November / December / etc).
+          Always visible directly below the hero so the user knows what
+          rules govern this week at a glance. */}
+      <SeasonPeriodBanner phase={currentPhase} weekOfYear={weekOfYear} />
 
       {/* GAME WEEK BANNER — top-of-page when there are unplayed games */}
       {thisWeekUnplayed.length > 0 && (
@@ -625,6 +654,89 @@ export default function Dashboard() {
       </div>
     </div>
     </GMShell>
+  )
+}
+
+// ─── Season period banner (always visible below the hero) ─────────────────
+
+const SEASON_PALETTE = {
+  'Late Summer':       { bg: 'bg-amber-700/90',   text: 'text-amber-50',    accent: 'border-amber-400' },
+  'Fall Camp':         { bg: 'bg-orange-700/90',  text: 'text-orange-50',   accent: 'border-orange-400' },
+  'November':          { bg: 'bg-amber-900/90',   text: 'text-amber-100',   accent: 'border-amber-600' },
+  'December':          { bg: 'bg-slate-800/90',   text: 'text-slate-100',   accent: 'border-slate-500' },
+  'January':           { bg: 'bg-sky-800/90',     text: 'text-sky-50',      accent: 'border-sky-400' },
+  'Spring Season':     { bg: 'bg-emerald-700/90', text: 'text-emerald-50',  accent: 'border-emerald-400' },
+  'Postseason':        { bg: 'bg-rose-700/90',    text: 'text-rose-50',     accent: 'border-rose-400' },
+  'Summer Recruiting': { bg: 'bg-yellow-700/90',  text: 'text-yellow-50',   accent: 'border-yellow-400' },
+}
+
+function SeasonPeriodBanner({ phase, weekOfYear }) {
+  if (!phase) return null
+  const season = phase.season || 'Offseason'
+  const palette = SEASON_PALETTE[season] || SEASON_PALETTE['Late Summer']
+  // Build a compact chip row showing what's active this period
+  const chips = []
+  if (phase.inSeason) chips.push('Games this week')
+  if (phase.practice) chips.push('Practice')
+  if (phase.conditioning && !phase.practice) chips.push('Conditioning only')
+  if (phase.devAllowed) chips.push('Players can improve')
+  else chips.push('No improvement')
+  return (
+    <div className={`${palette.bg} ${palette.text} rounded-xl mb-4 px-4 py-3 border-l-4 ${palette.accent} shadow-md`}>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-widest opacity-75 font-bold">Current period</div>
+          <div className="text-lg font-extrabold leading-tight">{season} — {phase.label}</div>
+          <div className="text-xs opacity-90 mt-1">{phase.blurb}</div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map(c => (
+            <span key={c} className="bg-black/30 text-[10px] uppercase tracking-wider font-bold rounded px-2 py-1">
+              {c}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PhaseTransitionModal({ from, to, onClose }) {
+  const palette = SEASON_PALETTE[to.season] || SEASON_PALETTE['Late Summer']
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4" onClick={onClose}>
+      <div
+        className={`max-w-lg w-full ${palette.bg} ${palette.text} rounded-2xl shadow-2xl border-2 ${palette.accent} p-6`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-[10px] uppercase tracking-widest opacity-70 font-bold">Now entering</div>
+        <div className="text-3xl font-extrabold leading-tight mt-1">{to.season || to.label}</div>
+        <div className="text-base font-semibold opacity-90 mt-0.5">{to.label}</div>
+        <div className="mt-4 text-sm leading-relaxed">{to.blurb}</div>
+        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <PhaseFlag label="Practice"     active={!!to.practice} />
+          <PhaseFlag label="Conditioning" active={!!to.conditioning} />
+          <PhaseFlag label="Player dev"   active={!!to.devAllowed} muted={to.devRateMult ? `(${Math.round((to.devRateMult || 1) * 100)}% rate)` : null} />
+          <PhaseFlag label="In season"    active={!!to.inSeason} />
+        </div>
+        <button
+          onClick={onClose}
+          className="mt-5 w-full bg-black/30 hover:bg-black/40 transition rounded-lg py-2 text-sm font-bold uppercase tracking-wider"
+        >
+          Got it
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PhaseFlag({ label, active, muted }) {
+  return (
+    <div className={'flex items-center gap-2 ' + (active ? '' : 'opacity-50')}>
+      <span className={'inline-block w-2 h-2 rounded-full ' + (active ? 'bg-emerald-300' : 'bg-red-300')}></span>
+      <span className="font-semibold">{label}</span>
+      {muted && <span className="text-[10px] opacity-75">{muted}</span>}
+    </div>
   )
 }
 

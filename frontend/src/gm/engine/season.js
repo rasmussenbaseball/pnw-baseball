@@ -10,7 +10,7 @@
 import { simGame, fastSimGame, defaultLineup } from './sim'
 import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups'
 import { computeFromSeason, seedFromPear } from './rankings'
-import { applyScrimmageDev, applyWeeklyDevelopment } from './development'
+import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
@@ -19,7 +19,7 @@ import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
-import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar } from './gameYear'
+import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
 import { makeRng } from './rng'
 import nonNaiaRaw from '../data/non_naia_teams.json'
@@ -608,6 +608,7 @@ function refreshWeeklyAP(state) {
 export function advanceOneWeek(state) {
   ensureUnifiedCalendar(state)
   const prevWeek = state.calendar.weekOfYear ?? 1
+  const prevPhaseKey = phaseForWeek(prevWeek)?.key
 
   // Tick the unified counter
   let nextWeek = prevWeek + 1
@@ -618,6 +619,13 @@ export function advanceOneWeek(state) {
     yearRolled = true
   }
   state.calendar.weekOfYear = nextWeek
+
+  // Stamp the phase-transition marker if we crossed a boundary. Dashboard
+  // reads + clears this to fire a one-time "Entering X" popup.
+  const newPhaseKey = phaseForWeek(nextWeek)?.key
+  if (newPhaseKey && newPhaseKey !== prevPhaseKey) {
+    state._phaseTransition = { from: prevPhaseKey, to: newPhaseKey, year: state.calendar.year }
+  }
   state.calendar.week = (state.calendar.week || 0) + 1   // overall counter (never resets)
 
   // Re-derive mode + week-of-mode for legacy consumers
@@ -653,6 +661,23 @@ export function advanceOneWeek(state) {
   refreshWeeklyAP(state)
   tickWeeklyBookkeeping(state)
   tickTeamGPAWeekly(state)
+
+  // Passive offseason practice / conditioning dev. Fires for the user's
+  // roster during Fall Camp / Winter Practice (full rate) and Fall
+  // Conditioning (half rate). December Break + Late Summer + Summer
+  // Recruiting are dead periods — no bump. The phase definition itself
+  // controls this via `phase.devAllowed` + `phase.devRateMult`.
+  const newPhase = phaseForWeek(nextWeek)
+  if (newPhase?.devAllowed && !newPhase.inSeason) {
+    const rateMult = newPhase.devRateMult ?? 1.0
+    const userTeam = state.teams?.[state.userSchoolId]
+    if (userTeam) {
+      const roster = (userTeam.rosterPlayerIds || [])
+        .map(id => state.players[id])
+        .filter(Boolean)
+      applyOffseasonPracticeDev(roster, rateMult, `${state.calendar.year}_${nextWeek}`)
+    }
+  }
 
   // Reset the per-week new-injuries collector that simWeek pushes into. The
   // WeekRecap reads this BEFORE we clear it — only fully reset on the NEXT

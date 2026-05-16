@@ -93,16 +93,28 @@ export function simPA(batter, pitcher, ctx, rng) {
   const command = pitcher.pitcher.command ?? 50
   const vsBatter = pitcher.pitcher[`vs_${oppHand}`] ?? 50
 
+  // Velocity (mph spread) — separate from stuff. Higher velo:
+  //   - drives K rate up (hard to catch up to a heater)
+  //   - suppresses hard contact (HR + DOUBLE)
+  //   - doesn't help with command/control issues — flamethrowers still walk guys
+  // NAIA-calibrated: 87 mph is league-average, 92+ is plus, 95+ is elite.
+  // Treated as a separate (mph - 87) signal worth ~30% as much per mph as a
+  // rating point on the 0-99 scale.
+  const velo = pitcher.pitcher.velocity_avg ?? pitcher.measurables?.fbVeloMph ?? 87
+  const veloEdge = (velo - 87) / 50   // +0.10 at 92mph, +0.16 at 95mph
+
   // Adjustments (each logit-style). All centered around 50, normalized.
   // Pitcher control drives BB AND HBP — bad control = more free bases.
   // Pitcher command separately drives HR rate suppression.
+  // Velocity layers on top of stuff for K + HR suppression but is a SEPARATE
+  // dimension — a 92mph guy with average stuff still misses bats.
   const adj = {
-    K:    (-(discipline - 50) + (contact - 50) * -0.3 - (stuff - 50) - (vsBatter - 50)) / 50,
+    K:    (-(discipline - 50) + (contact - 50) * -0.3 - (stuff - 50) - (vsBatter - 50)) / 50 - veloEdge * 0.6,
     BB:   ((discipline - 50) - (control - 50) * 1.2) / 50,
     HBP:  (-(control - 50) * 0.9) / 50,                                 // bumped — control matters a lot for HBP
-    HR:   ((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50,
-    SINGLE: ((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50,
-    DOUBLE: ((power - 50) * 0.4 + (speed - 50) * 0.3) / 50,
+    HR:   ((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.5,
+    SINGLE: ((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.3,
+    DOUBLE: ((power - 50) * 0.4 + (speed - 50) * 0.3) / 50 - veloEdge * 0.4,
     TRIPLE: ((speed - 50) * 0.5 + (power - 50) * 0.2) / 50,
     ERROR: 0,    // not rating-driven — uses defender fielding (handled at runner-advance time)
     OUT: 0,

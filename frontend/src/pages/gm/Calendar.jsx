@@ -63,13 +63,13 @@ export default function Calendar() {
       if (byMonth.has(m)) ordered.push(byMonth.get(m))
     }
     return ordered.map(b => {
-      // Phase label derived from the dominant phase across the bucket
-      const phases = b.weeks.map(w => phaseForWeek(w).label)
-      const distinct = [...new Set(phases)]
-      const title = distinct.length <= 2
-        ? distinct.join(' + ')
-        : `${distinct[0]} ${distinct[distinct.length - 1]}`
-        return {
+      // Title = month + the most common SEASON umbrella across the bucket
+      // (Fall Camp, November, December, Spring Season, etc). Falls back to
+      // phase labels if seasons aren't set.
+      const seasons = b.weeks.map(w => phaseForWeek(w)?.season || phaseForWeek(w)?.label || '')
+      const distinct = [...new Set(seasons)].filter(Boolean)
+      const title = distinct.length <= 2 ? distinct.join(' / ') : distinct[0]
+      return {
         name: `${MONTH_LONG[b.monthIndex]} — ${title}`,
         weeks: b.weeks,
       }
@@ -83,7 +83,7 @@ export default function Calendar() {
         <div>
           <h1 className="font-pixel-display text-xl tracking-widest text-white">CALENDAR · {year}</h1>
           <p className="text-sm text-gray-600">
-            Full 52-week year. Currently at Week {currentWeek} · {phaseForWeek(currentWeek).label}.
+            Full 52-week year. Currently at Week {currentWeek} · {phaseForWeek(currentWeek).season} ({phaseForWeek(currentWeek).label}).
           </p>
         </div>
         <div className="text-right text-xs text-gray-500">

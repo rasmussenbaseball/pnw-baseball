@@ -428,6 +428,54 @@ export function applyScrimmageDev(playersInScrimmage, scrimmageSeriesId) {
   })
 }
 
+/**
+ * Passive offseason practice / conditioning dev. Fires once per offseason
+ * week from advanceOneWeek for players on the user's roster. Magnitude is
+ * scaled by `rateMult` so we can have:
+ *   - Fall Camp / Winter Practice: 1.0  (full practice)
+ *   - Fall Conditioning (Nov):     0.5  (conditioning only — half rate)
+ *   - December Break / Late Summer / Summer Recruiting: skipped at the call site
+ *
+ * Per-player magnitude is intentionally TINY (smaller than scrimmage dev
+ * and far smaller than in-season weekly dev). It represents the small,
+ * incremental gains that come from being in the gym + cage between games.
+ *
+ * @param {Player[]} players
+ * @param {number} rateMult         multiplier on bump rate + magnitude
+ * @param {string|number} seed      deterministic seed for the week
+ */
+export function applyOffseasonPracticeDev(players, rateMult, seed) {
+  if (!players || players.length === 0 || rateMult <= 0) return 0
+  let bumped = 0
+  for (const p of players) {
+    if (p.eligibilityStatus === 'graduated' || p.eligibilityStatus === 'cut' ||
+        p.eligibilityStatus === 'dismissed') continue
+    if ((p.injury?.weeksRemaining || 0) > 0) continue
+    const rng = makeRng('offDev', p.id, seed)
+    const block = p.isPitcher ? p.pitcher : p.hitter
+    if (!block) continue
+    const potBlock = p.isPitcher ? p.hidden?.potential_pitcher : p.hidden?.potential_hitter
+    let anyBump = false
+    for (const k of Object.keys(block)) {
+      if (k.startsWith('velocity')) continue
+      const cur = block[k]
+      const pot = potBlock?.[k] ?? 70
+      if (cur >= pot) continue   // already capped at potential
+      const speed = potSpeedMult(pot)
+      // ~20% chance per stat per week at full rate (so a player typically
+      // gets 1-2 small bumps per offseason week). Conditioning-only halves
+      // both rate and magnitude.
+      if (!rng.chance(0.2 * rateMult)) continue
+      const bump = Math.round(rng.gaussian(0.4, 0.15) * speed * rateMult * 10) / 10
+      if (bump <= 0) continue
+      block[k] = clamp(Math.round((cur + bump) * 10) / 10, 20, pot)
+      anyBump = true
+    }
+    if (anyBump) bumped++
+  }
+  return bumped
+}
+
 // ─── Back-compat exports ───────────────────────────────────────────────────
 
 // The performanceScore helper is needed externally by events.js
