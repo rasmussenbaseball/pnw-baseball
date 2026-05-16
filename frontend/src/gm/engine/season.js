@@ -710,7 +710,7 @@ export function advanceOneWeek(state) {
         state.newsfeed.unshift({
           id: `inj_prac_${pid}_${state.calendar?.year}_${nextWeek}`,
           year: state.calendar?.year, week: state.calendar?.week, type: 'INJURY',
-          headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). Practice incident.`,
+          headline: `🩼 ${player.firstName} ${player.lastName} — ${injury.label} (${injury.totalWeeks} wk${injury.totalWeeks === 1 ? '' : 's'}). ${injury.blurb}`,
           payload: { playerId: pid, injuryType: injury.type, weeks: injury.totalWeeks, context: 'PRACTICE' },
         })
       }

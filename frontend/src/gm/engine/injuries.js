@@ -213,11 +213,18 @@ export function pickInjury(player, severity, rng) {
  */
 export function applyInjury(player, template, ctx) {
   const weeks = ctx.rng.int(template.weeks[0], template.weeks[1])
+  // Many injury templates have game-flavored blurbs ("Dead arm after a
+  // heavy outing", "Jammed wrist on a check-swing"). When the context is
+  // PRACTICE, those references to in-game moments are nonsense — swap to
+  // a practice-flavored blurb instead.
+  const blurb = ctx.context === 'PRACTICE'
+    ? practiceBlurb(template.key, player.isPitcher)
+    : template.blurb
   const injury = {
     type: template.key,
     label: template.label,
     severity: template.severity,
-    blurb: template.blurb,
+    blurb,
     weeksRemaining: weeks,
     totalWeeks: weeks,
     weekIncurred: ctx.week,
@@ -227,6 +234,35 @@ export function applyInjury(player, template, ctx) {
   }
   player.injury = injury
   return injury
+}
+
+/**
+ * Return a practice-flavored blurb for an injury. Falls back to a generic
+ * "tweaked in practice" line if the template doesn't have a custom one.
+ */
+function practiceBlurb(templateKey, isPitcher) {
+  const lib = {
+    HAMSTRING_STRAIN:    'Pulled up running drills.',
+    ANKLE_SPRAIN:        'Rolled an ankle in fielding work.',
+    BACK_TIGHTNESS:      'Back locked up during BP.',
+    WRIST_INJURY:        'Tweaked the wrist taking swings.',
+    OBLIQUE_STRAIN:      'Felt a pop in the oblique during BP.',
+    BROKEN_FINGER:       'Jammed a finger fielding grounders.',
+    CONCUSSION:          'Hit by a foul ball in the cage.',
+    KNEE_SPRAIN:         'Sprained the knee in agility drills.',
+    ACL_TEAR:            'Non-contact knee injury in practice.',
+    LABRUM_TEAR_HITTER:  'Shoulder gave out during a swing.',
+    SHOULDER_FATIGUE:    'Arm felt dead after a bullpen session.',
+    BLISTER_P:           'Blister formed during a long pen.',
+    BACK_TIGHTNESS_P:    'Lower back locked up in long toss.',
+    FOREARM_STRAIN:      'Forearm tightness after a heavy pen.',
+    ELBOW_INFLAMMATION:  'Elbow flared up during throwing.',
+    ROTATOR_CUFF_STRAIN: 'Shoulder cuff strained in a pen.',
+    LABRUM_TEAR_PITCHER: 'Shoulder gave out during a long toss.',
+    TOMMY_JOHN:          'UCL tear during a bullpen.',
+  }
+  if (lib[templateKey]) return lib[templateKey]
+  return isPitcher ? 'Tweaked it in a bullpen session.' : 'Tweaked it during practice.'
 }
 
 /**

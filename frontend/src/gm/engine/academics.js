@@ -98,7 +98,15 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
  */
 export function tickTeamGPAWeekly(state) {
   const wk = state.calendar?.weekOfYear ?? 0
-  if (wk >= 1 && wk <= 3) return   // tutorial weeks — no drift
+  // GPA only moves during academic semesters. Per Nate (May 2026):
+  //   Wks 1-4   summer / preseason → no school in session, no GPA change
+  //   Wks 5-18  Fall semester (fall camp through first week of Dec)
+  //   Wks 19-22 winter break (no classes)
+  //   Wks 23-42 Spring semester (January practice through end of season)
+  //   Wks 43-52 summer break (no classes)
+  const inFallSemester = wk >= 5 && wk <= 18
+  const inSpringSemester = wk >= 23 && wk <= 42
+  if (!inFallSemester && !inSpringSemester) return
   const team = state.teams?.[state.userSchoolId]
   if (!team) return
   const players = team.rosterPlayerIds.map(id => state.players[id]).filter(Boolean)

@@ -525,62 +525,63 @@ tr:hover td.sticky-col {
   color: #6a6a8a;
 }
 
-/* Action / success / danger colors get nudged to be readable on dark */
+/* Action / success / danger colors. -700 stays at a mid pastel; -800/-900
+   (used heavily by OVR tier pills) goes brighter so the number contrasts
+   strongly against the dark-mapped chip background. */
 .gm-pixel-shell .text-pnw-green,
 .gm-pixel-shell .text-green-700,
-.gm-pixel-shell .text-green-800,
-.gm-pixel-shell .text-emerald-700,
-.gm-pixel-shell .text-emerald-800 {
+.gm-pixel-shell .text-emerald-700 {
   color: #6ee7b7;
 }
-.gm-pixel-shell .text-amber-700,
-.gm-pixel-shell .text-amber-800,
-.gm-pixel-shell .text-amber-900,
-.gm-pixel-shell .text-yellow-700,
-.gm-pixel-shell .text-yellow-800 {
+.gm-pixel-shell .text-green-800,
+.gm-pixel-shell .text-green-900,
+.gm-pixel-shell .text-emerald-800,
+.gm-pixel-shell .text-emerald-900 {
+  color: #a7f3d0;
+}
+.gm-pixel-shell .text-amber-700 {
   color: #fbbf24;
 }
-.gm-pixel-shell .text-red-700,
-.gm-pixel-shell .text-red-800,
-.gm-pixel-shell .text-red-900 {
+.gm-pixel-shell .text-amber-800,
+.gm-pixel-shell .text-amber-900 {
+  color: #fde68a;
+}
+.gm-pixel-shell .text-red-700 {
   color: #fca5a5;
 }
-.gm-pixel-shell .text-blue-700,
-.gm-pixel-shell .text-blue-800,
-.gm-pixel-shell .text-blue-900 {
+.gm-pixel-shell .text-red-800,
+.gm-pixel-shell .text-red-900 {
+  color: #fecaca;
+}
+.gm-pixel-shell .text-blue-700 {
   color: #93c5fd;
 }
-/* Additional text-color mappings for variants used across the GM */
-.gm-pixel-shell .text-yellow-700,
+.gm-pixel-shell .text-blue-800,
+.gm-pixel-shell .text-blue-900 {
+  color: #bfdbfe;
+}
+/* Text-color mappings for tier badges. The "-700" tones (e.g. body
+   callouts) stay at a brighter pastel; "-800/900" tones (OVR pill text,
+   tier badges) go EVEN BRIGHTER so the chip-on-chip contrast passes WCAG
+   AA against the dark-mapped pale backgrounds. */
+.gm-pixel-shell .text-yellow-700  { color: #fde047; }
 .gm-pixel-shell .text-yellow-800,
-.gm-pixel-shell .text-yellow-900 {
-  color: #fde047;
-}
-.gm-pixel-shell .text-orange-700,
+.gm-pixel-shell .text-yellow-900  { color: #fef08a; }
+.gm-pixel-shell .text-orange-700  { color: #fdba74; }
 .gm-pixel-shell .text-orange-800,
-.gm-pixel-shell .text-orange-900 {
-  color: #fdba74;
-}
-.gm-pixel-shell .text-rose-700,
+.gm-pixel-shell .text-orange-900  { color: #fed7aa; }
+.gm-pixel-shell .text-rose-700    { color: #fda4af; }
 .gm-pixel-shell .text-rose-800,
-.gm-pixel-shell .text-rose-900 {
-  color: #fda4af;
-}
-.gm-pixel-shell .text-indigo-700,
+.gm-pixel-shell .text-rose-900    { color: #fecdd3; }
+.gm-pixel-shell .text-indigo-700  { color: #a5b4fc; }
 .gm-pixel-shell .text-indigo-800,
-.gm-pixel-shell .text-indigo-900 {
-  color: #a5b4fc;
-}
+.gm-pixel-shell .text-indigo-900  { color: #c7d2fe; }
 .gm-pixel-shell .text-slate-600,
 .gm-pixel-shell .text-slate-700,
-.gm-pixel-shell .text-slate-800 {
-  color: #cbd5e1;
-}
-.gm-pixel-shell .text-purple-700,
+.gm-pixel-shell .text-slate-800   { color: #cbd5e1; }
+.gm-pixel-shell .text-purple-700  { color: #c4b5fd; }
 .gm-pixel-shell .text-purple-800,
-.gm-pixel-shell .text-purple-900 {
-  color: #c4b5fd;
-}
+.gm-pixel-shell .text-purple-900  { color: #ddd6fe; }
 .gm-pixel-shell .text-pnw-cream {
   color: #e8e8e8;
 }

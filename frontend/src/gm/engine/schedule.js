@@ -896,39 +896,39 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   }
 
   // ── Pick 1-2 midweek games (NAIA-vs-NAIA singles) ─────────────────────
-  // Slot them into conference weeks (so the user has at least one mid-week
-  // game). Avoid D1 (cost + cap). Always home for travel sanity.
+  // Slot them into conference weeks so the user has midweek action between
+  // weekend series. Avoid D1 (cost + cap). Always home for travel sanity.
+  // BUG FIX: the old path called tryAddNonConfGame (which adds 3-game
+  // weekend SERIES) and only fell through to a midweek single on error,
+  // so successful calls overlapped a series onto a conf week instead of
+  // producing the intended single midweek game. Now we go straight to
+  // buildMidweekSingle.
   const confWeeks = new Set(
     [...existingSchedule, ...newGames]
       .filter(g => (g.homeId === userSchoolId || g.awayId === userSchoolId)
                  && (g.type === 'CONFERENCE' || g.type === 'NON_CONFERENCE'))
       .map(g => g.seasonWeek),
   )
-  const midweekTargets = Array.from(confWeeks).sort((a, b) => a - b).slice(2, 5)   // skip first 2 conf weeks
+  // Spread the midweek picks across more conference weeks so we reliably
+  // hit 1-2 even with chance-based skips.
+  const midweekTargets = Array.from(confWeeks).sort((a, b) => a - b).slice(2, 7)
   const midweekRng = makeRng('midweek', userSchoolId, year, seed + 7)
   const midweekPool = [...inRegion.filter(c => !used.has(c.id))]
   let midweeksAdded = 0
+  // Target ~1.5 midweek games. 70% chance per eligible week, capped at 2.
   for (const week of midweekTargets) {
     if (midweeksAdded >= 2) break
     if (midweekPool.length === 0) break
-    if (midweekRng.chance(0.55)) {
-      const idx = midweekRng.int(0, Math.min(midweekPool.length, 4) - 1)
-      const opp = midweekPool.splice(idx, 1)[0]
-      const result = tryAddNonConfGame(
-        userSchoolId, opp.id, 'NAIA', week, year,
-        [...existingSchedule, ...newGames],
-        { userIsHome: true, preferMidweek: true },
-      )
-      if (!result.ok) {
-        // Couldn't add as a weekend series — try midweek-only single instead.
-        const midweekGame = buildMidweekSingle(userSchoolId, opp.id, week, year, true)
-        if (countRecordGames(userSchoolId, [...existingSchedule, ...newGames]) + 1 <= NAIA_GAME_CAP) {
-          newGames.push(midweekGame)
-          used.add(opp.id)
-          midweeksAdded++
-        }
-      }
+    if (!midweekRng.chance(0.7)) continue
+    const idx = midweekRng.int(0, Math.min(midweekPool.length, 4) - 1)
+    const opp = midweekPool.splice(idx, 1)[0]
+    const midweekGame = buildMidweekSingle(userSchoolId, opp.id, week, year, true)
+    if (countRecordGames(userSchoolId, [...existingSchedule, ...newGames]) + 1 > NAIA_GAME_CAP) {
+      continue
     }
+    newGames.push(midweekGame)
+    used.add(opp.id)
+    midweeksAdded++
   }
 
   const summary = `Auto-built ${newGames.filter(g => g.type === 'NON_CONFERENCE').length} non-conf games` +

@@ -107,6 +107,16 @@ export default function WeeklyActions() {
   function doStudyHall(level = 'NORMAL') {
     const cost = level === 'EXTRA' ? EXTRA_STUDY_HALL_AP : STUDY_HALL_AP
     const bonus = level === 'EXTRA' ? EXTRA_STUDY_HALL_BONUS : STUDY_HALL_BONUS
+    // GPA only moves during academic semesters (fall Wks 5-18, spring 23-42).
+    // Outside those windows school isn't in session, so study hall has no
+    // effect — surface that explicitly instead of silently bumping GPAs in
+    // the summer / preseason / winter break.
+    const wkOfYear = save.calendar?.weekOfYear ?? 0
+    const inSemester = (wkOfYear >= 5 && wkOfYear <= 18) || (wkOfYear >= 23 && wkOfYear <= 42)
+    if (!inSemester) {
+      alert('School\'s not in session. Study Hall only works during the fall semester (Wks 5-18) or spring semester (Wks 23-42).')
+      return
+    }
     if (ap < cost) return
     if (wasUsedThisWeek('STUDY_HALL')) { alert('Already done this week.'); return }
     spendAP('program', cost)
