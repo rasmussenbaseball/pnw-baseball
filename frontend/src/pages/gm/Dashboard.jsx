@@ -621,55 +621,10 @@ export default function Dashboard() {
           </Panel>
 
           <ConferenceStandingsWidget save={save} slot={slot} />
-
-          <ProgramHistoryWidget save={save} />
         </div>
       </div>
     </div>
     </GMShell>
-  )
-}
-
-function ProgramHistoryWidget({ save }) {
-  const team = save.teams[save.userSchoolId]
-  const past = team?.pastSeasons || []
-  const alumni = team?.alumni || []
-  if (past.length === 0 && alumni.length === 0) return null
-  return (
-    <Panel title="Program History" actionTo={null}>
-      {past.length > 0 && (
-        <>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Last 3 seasons</div>
-          <div className="space-y-1 mb-3">
-            {past.map(p => (
-              <div key={p.year} className="flex items-center justify-between text-xs">
-                <span className="text-gray-500 tabular-nums">{p.year}</span>
-                <span className="font-mono tabular-nums">{p.wins}-{p.losses}</span>
-                <span className="text-gray-500 text-[11px]">{p.confFinish}</span>
-                <span className={'text-[11px] truncate ml-1 ' + (p.postseason ? 'text-pnw-green font-semibold' : 'text-gray-400')}>
-                  {p.postseason || '—'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-      {alumni.length > 0 && (
-        <>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 border-t pt-2">Notable alumni</div>
-          <div className="space-y-1">
-            {alumni.slice(0, 5).map((a, i) => (
-              <div key={i} className="text-xs leading-tight">
-                <div className="font-semibold">{a.first} {a.last}</div>
-                <div className="text-[10px] text-gray-500">
-                  {a.position} · '{String(a.gradYear).slice(-2)} · {a.achievement}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </Panel>
   )
 }
 

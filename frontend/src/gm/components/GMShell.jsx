@@ -27,6 +27,7 @@ const NAV = [
       { label: 'Spring stats',  path: '/gm/stats?view=spring' },
       { label: 'Fall stats',    path: '/gm/stats?view=fall' },
       { label: 'Career stats',  path: '/gm/stats?view=career' },
+      { label: 'Records',       path: '/gm/records' },
     ],
   },
   {

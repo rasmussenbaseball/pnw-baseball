@@ -14,7 +14,6 @@ import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
 import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { defaultBudgetForSchool } from './budget'
-import { pickFullName } from './names'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
@@ -127,14 +126,6 @@ export function newDynasty(input) {
       confWins: 0,
       confLosses: 0,
       runDiff: 0,
-      // Seeded fictional past — gives the user context when they take over
-      // ("Bushnell went 22-30 last year"). Generated from programHistory so
-      // strong programs have winning seasons in the past, weaker programs
-      // hover at .500 or below. See seedPastSeasons() at bottom of file.
-      pastSeasons: seedPastSeasons(school, seed),
-      // Notable alumni — 4-6 generated names with positions and a single
-      // standout achievement. Pure flavor, surfaced in the program profile.
-      alumni: seedAlumni(school, seed),
     }
     normalizeRosterScholarships(teams[school.id], school, players)
   }
@@ -297,100 +288,3 @@ function computeInitialAP(school, headCoach, assistants) {
   total += TIER_BONUS[school.resourceTier] || 0
   return Math.max(20, Math.min(50, Math.round(total)))
 }
-
-
-
-// ─── Historical context seeders ─────────────────────────────────────────────
-//
-// When a new dynasty is created, every team gets a small fictional past so
-// the user has context for the program they took over. These are NOT real
-// simulations — just deterministic flavor seeded from programHistory.
-
-/**
- * Last 3 seasons of W-L records. Strong programs (programHistory 70+) average
- * winning seasons; weaker programs hover at or below .500. Variance is
- * intentional — every program had a bad year or a hot streak. Conf finish is
- * computed as a 1-N placement based on how the record compares to .500.
- *
- * @returns {Array<{ year: number, wins: number, losses: number, confFinish: string, postseason: string|null }>}
- */
-function seedPastSeasons(school, seed) {
-  const rng = makeRng("pastSeasons", school.id, seed)
-  const ph = school.programHistory ?? 50
-  // Baseline win rate: programHistory 50 -> .500, 80 -> .620, 30 -> .380
-  const baseWinPct = 0.50 + (ph - 50) * 0.004
-  const out = []
-  // Years are relative to the dynasty start — Wk 1 starts Aug 2026, so the
-  // first played season is "2027" (spring). Past seasons are 2026, 2025, 2024.
-  for (let yearsAgo = 3; yearsAgo >= 1; yearsAgo--) {
-    const noise = rng.gaussian(0, 0.06)  // year-to-year wobble
-    const winPct = Math.max(0.20, Math.min(0.80, baseWinPct + noise))
-    const totalGames = rng.int(48, 55)
-    const wins = Math.round(totalGames * winPct)
-    const losses = totalGames - wins
-    // Conference finish — programHistory + win rate determines slot in 8-team conf
-    let confFinish
-    if (winPct >= 0.70) confFinish = rng.pick(["1st", "2nd"])
-    else if (winPct >= 0.58) confFinish = rng.pick(["2nd", "3rd", "4th"])
-    else if (winPct >= 0.48) confFinish = rng.pick(["4th", "5th", "6th"])
-    else if (winPct >= 0.38) confFinish = rng.pick(["6th", "7th"])
-    else confFinish = "8th"
-    // Postseason result for top-3 finishers
-    let postseason = null
-    if (winPct >= 0.65 && rng.chance(0.55)) {
-      postseason = rng.chance(0.20) ? "Opening Round" : "Conf Tournament"
-    } else if (winPct >= 0.72 && rng.chance(0.20)) {
-      postseason = "Lost World Series"
-    }
-    out.push({
-      year: 2027 - yearsAgo,   // 2024, 2025, 2026
-      wins, losses, confFinish, postseason,
-    })
-  }
-  return out
-}
-
-/**
- * Notable alumni — 4-6 generated names with a single standout achievement.
- * Pure flavor; surfaced in a small panel and (optionally) in school profile
- * pages. Names use the same regional-name generator the rest of the engine
- * already uses so they read plausibly.
- */
-function seedAlumni(school, seed) {
-  const rng = makeRng("alumni", school.id, seed)
-  const ph = school.programHistory ?? 50
-  // Strong programs produce more alumni; cap at 6
-  const count = 3 + (ph >= 65 ? 1 : 0) + (ph >= 80 ? 1 : 0) + (rng.chance(0.4) ? 1 : 0)
-  const positions = ["C", "1B", "2B", "SS", "3B", "LF", "CF", "RF", "P", "P", "P"]
-  const out = []
-  for (let i = 0; i < count; i++) {
-    const { first, last } = pickFullName(rng, school.region || "NW")
-    const pos = rng.pick(positions)
-    const yearsAgo = rng.int(5, 30)
-    const gradYear = 2027 - yearsAgo
-    // Pick a believable achievement based on programHistory tier
-    const achievements = ph >= 75
-      ? [
-          "MLB Draft pick (later rounds)", "All-American honors",
-          "Conference Player of the Year", "Drafted, brief MiLB career",
-          "All-Conference 1st team (3x)", "Conference Pitcher of the Year",
-        ]
-      : ph >= 55
-      ? [
-          "All-Conference 1st team", "Team captain",
-          "Conference Newcomer of the Year", "Holds program HR record",
-          "Holds program SO record", "Played indy ball after grad",
-        ]
-      : [
-          "Team captain", "All-Conference 2nd team",
-          "Holds program SB record", "Coached HS ball after grad",
-          "Came back as volunteer asst.", "Hall of Fame inductee",
-        ]
-    out.push({
-      first, last, position: pos, gradYear,
-      achievement: rng.pick(achievements),
-    })
-  }
-  return out
-}
-
