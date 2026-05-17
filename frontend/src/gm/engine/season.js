@@ -23,6 +23,7 @@ import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
 import { computeWeeklyAwards } from './weeklyAwards'
 import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf } from './pnwPlayoffs'
+import { runNationalChampionsTracking } from './nationalChampions'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
@@ -503,6 +504,7 @@ export function runPostseason(state) {
 
   state.postseason = {
     year: state.calendar.year + 1,
+    level: 'NAIA',
     tournaments,
     autoBids,
     userChamp,
@@ -513,6 +515,11 @@ export function runPostseason(state) {
     userInWS,
     userWSChamp,
   }
+
+  // National-conf-champion tracking — sims every NAIA conference's
+  // champion + builds the 46-team national field. Cached on
+  // state.nationalChamps[year].NAIA for the Postseason page.
+  runNationalChampionsTracking(state, 'NAIA')
 
   // Headline news — ordered most recent first; multiple events
   const news = []
@@ -736,6 +743,11 @@ function runPostseasonMultiLevel(state) {
     userInWS: national?.userInWS ?? false,
     userWSChamp: national?.userWSChamp ?? false,
   }
+
+  // National-conf-champion tracking — sims every level-relevant conference's
+  // champion + builds the full national field. Cached on
+  // state.nationalChamps[year][level] for the Postseason page.
+  runNationalChampionsTracking(state, level)
 
   // Newsfeed lines
   const userName = state.schools[state.userSchoolId].name

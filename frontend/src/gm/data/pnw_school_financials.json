@@ -1,0 +1,123 @@
+{
+  "_meta": {
+    "purpose": "Real-world tuition, room/board, and athletic budget data for every PNW school the GM game tracks. Used by newDynasty + newDynastyMultiLevel to seed accurate school financials.",
+    "scope": "PNW programs only (per Nate's PNW-only direction). Numbers are 2024-25 published rates from school COA pages + EADA-disclosed athletic expense reports.",
+    "tuitionNotes": "Public schools list out-of-state tuition because that's the realistic baseball-recruiting figure (most rosters have ~30-50% non-resident kids). Resident savings are reflected via the 'inStateDiscount' multiplier.",
+    "budgetNotes": "Budgets are TOTAL annual baseball-program expense. Allocations split it across coaching/scholarships/travel/recruiting/equipment/facilities/operations. Real EADA breakdown is roughly: D1 P5 35% coaching / 30% schol / 10% travel / 5% recruiting / 5% equip / 8% facilities / 7% ops; mid-D1 + D2 redistribute lower scholarship dollars to coaching.",
+    "lastUpdated": "2026-05-17"
+  },
+
+  "tuitionAndBudget": {
+    "_template": {
+      "tuition": "annual undergrad tuition (out-of-state for publics)",
+      "inStateDiscount": "if public, multiplier vs out-of-state (e.g. 0.35 = in-state is 35% of out-of-state)",
+      "roomAndBoard": "annual on-campus housing + meals",
+      "totalBudget": "total annual baseball program expense ($)",
+      "allocations": "% of totalBudget per category (must sum ~100)"
+    },
+
+    "D1": {
+      "oregon-d1":           { "tuition": 39200, "inStateDiscount": 0.36, "roomAndBoard": 16500, "totalBudget": 2400000, "scholarshipPool": 750000 },
+      "oregon-st-d1":        { "tuition": 35100, "inStateDiscount": 0.35, "roomAndBoard": 15400, "totalBudget": 2900000, "scholarshipPool": 900000 },
+      "washington-d1":       { "tuition": 41100, "inStateDiscount": 0.31, "roomAndBoard": 17800, "totalBudget": 2100000, "scholarshipPool": 700000 },
+      "washington-state-d1": { "tuition": 28800, "inStateDiscount": 0.40, "roomAndBoard": 14600, "totalBudget": 1600000, "scholarshipPool": 550000 },
+      "gonzaga-d1":          { "tuition": 53780, "inStateDiscount": 1.0,  "roomAndBoard": 15800, "totalBudget": 1700000, "scholarshipPool": 620000 },
+      "portland-d1":         { "tuition": 57250, "inStateDiscount": 1.0,  "roomAndBoard": 18400, "totalBudget": 1300000, "scholarshipPool": 540000 },
+      "seattle-u-d1":        { "tuition": 53700, "inStateDiscount": 1.0,  "roomAndBoard": 16800, "totalBudget": 950000,  "scholarshipPool": 450000 }
+    },
+
+    "D2": {
+      "central-washington-d2": { "tuition": 25000, "inStateDiscount": 0.31, "roomAndBoard": 13500, "totalBudget": 480000, "scholarshipPool": 220000 },
+      "saint-martins-d2":      { "tuition": 45800, "inStateDiscount": 1.0,  "roomAndBoard": 14100, "totalBudget": 380000, "scholarshipPool": 200000 },
+      "western-oregon-d2":     { "tuition": 32200, "inStateDiscount": 0.35, "roomAndBoard": 13800, "totalBudget": 420000, "scholarshipPool": 200000 },
+      "msu-billings-d2":       { "tuition": 25600, "inStateDiscount": 0.33, "roomAndBoard": 9800,  "totalBudget": 340000, "scholarshipPool": 165000 },
+      "northwest-nazarene-d2": { "tuition": 36200, "inStateDiscount": 1.0,  "roomAndBoard": 9500,  "totalBudget": 360000, "scholarshipPool": 180000 },
+      "concordia-or-d2":       { "tuition": 39800, "inStateDiscount": 1.0,  "roomAndBoard": 13200, "totalBudget": 280000, "scholarshipPool": 140000 }
+    },
+
+    "D3": {
+      "puget-sound-d3":     { "tuition": 60000, "inStateDiscount": 1.0, "roomAndBoard": 14600, "totalBudget": 280000, "scholarshipPool": 0 },
+      "pacific-lutheran-d3": { "tuition": 51900, "inStateDiscount": 1.0, "roomAndBoard": 13800, "totalBudget": 240000, "scholarshipPool": 0 },
+      "whitman-d3":         { "tuition": 65300, "inStateDiscount": 1.0, "roomAndBoard": 15600, "totalBudget": 260000, "scholarshipPool": 0 },
+      "whitworth-d3":       { "tuition": 51400, "inStateDiscount": 1.0, "roomAndBoard": 14200, "totalBudget": 220000, "scholarshipPool": 0 },
+      "linfield-d3":        { "tuition": 52600, "inStateDiscount": 1.0, "roomAndBoard": 14800, "totalBudget": 280000, "scholarshipPool": 0 },
+      "lewis-and-clark-d3": { "tuition": 60500, "inStateDiscount": 1.0, "roomAndBoard": 15400, "totalBudget": 200000, "scholarshipPool": 0 },
+      "willamette-d3":      { "tuition": 60100, "inStateDiscount": 1.0, "roomAndBoard": 15200, "totalBudget": 230000, "scholarshipPool": 0 },
+      "pacific-or-d3":      { "tuition": 53500, "inStateDiscount": 1.0, "roomAndBoard": 13500, "totalBudget": 180000, "scholarshipPool": 0 },
+      "george-fox-d3":      { "tuition": 42400, "inStateDiscount": 1.0, "roomAndBoard": 13100, "totalBudget": 210000, "scholarshipPool": 0 }
+    },
+
+    "NAIA": {
+      "lewis-clark-state": { "tuition": 22000, "inStateDiscount": 0.39, "roomAndBoard": 9800,  "totalBudget": 340000, "scholarshipPool": 220000 },
+      "bushnell":          { "tuition": 32400, "inStateDiscount": 1.0,  "roomAndBoard": 11800, "totalBudget": 180000, "scholarshipPool": 120000 },
+      "college-of-idaho":  { "tuition": 39800, "inStateDiscount": 1.0,  "roomAndBoard": 12400, "totalBudget": 220000, "scholarshipPool": 145000 },
+      "corban":            { "tuition": 34200, "inStateDiscount": 1.0,  "roomAndBoard": 11900, "totalBudget": 170000, "scholarshipPool": 115000 },
+      "eastern-oregon":    { "tuition": 25800, "inStateDiscount": 0.35, "roomAndBoard": 11200, "totalBudget": 160000, "scholarshipPool": 100000 },
+      "oregon-tech":       { "tuition": 28100, "inStateDiscount": 0.39, "roomAndBoard": 11600, "totalBudget": 175000, "scholarshipPool": 110000 },
+      "warner-pacific":    { "tuition": 26800, "inStateDiscount": 1.0,  "roomAndBoard": 11400, "totalBudget": 130000, "scholarshipPool": 85000 },
+      "british-columbia":  { "tuition": 45200, "inStateDiscount": 0.19, "roomAndBoard": 12800, "totalBudget": 230000, "scholarshipPool": 140000 },
+      "northwest":         { "tuition": 36300, "inStateDiscount": 1.0,  "roomAndBoard": 11200, "totalBudget": 150000, "scholarshipPool": 95000 },
+      "southern-oregon":   { "tuition": 26500, "inStateDiscount": 0.40, "roomAndBoard": 12200, "totalBudget": 195000, "scholarshipPool": 125000 },
+      "walla-walla":       { "tuition": 32800, "inStateDiscount": 1.0,  "roomAndBoard": 9800,  "totalBudget": 140000, "scholarshipPool": 90000 }
+    },
+
+    "NWAC_TUITION": {
+      "_note": "NWAC = community college 2-yr. All ~$4-5K in-state tuition + minimal fees. No room/board most places (commuter campuses).",
+      "default": { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 55000, "scholarshipPool": 0 }
+    }
+  },
+
+  "budgetAllocations": {
+    "_note": "Standard percentage split for each level's totalBudget. Real EADA reports show these distributions are remarkably consistent within tier.",
+    "D1": {
+      "coaching":      0.36,
+      "scholarships":  0.30,
+      "travel":        0.10,
+      "recruiting":    0.05,
+      "equipment":     0.04,
+      "facilities":    0.08,
+      "operations":    0.05,
+      "other":         0.02
+    },
+    "D2": {
+      "coaching":      0.30,
+      "scholarships":  0.40,
+      "travel":        0.10,
+      "recruiting":    0.04,
+      "equipment":     0.05,
+      "facilities":    0.05,
+      "operations":    0.04,
+      "other":         0.02
+    },
+    "D3": {
+      "coaching":      0.45,
+      "scholarships":  0.00,
+      "travel":        0.20,
+      "recruiting":    0.05,
+      "equipment":     0.10,
+      "facilities":    0.08,
+      "operations":    0.10,
+      "other":         0.02
+    },
+    "NAIA": {
+      "coaching":      0.32,
+      "scholarships":  0.48,
+      "travel":        0.08,
+      "recruiting":    0.03,
+      "equipment":     0.04,
+      "facilities":    0.03,
+      "operations":    0.02,
+      "other":         0.00
+    },
+    "NWAC": {
+      "coaching":      0.48,
+      "scholarships":  0.00,
+      "travel":        0.25,
+      "recruiting":    0.02,
+      "equipment":     0.10,
+      "facilities":    0.05,
+      "operations":    0.10,
+      "other":         0.00
+    }
+  }
+}

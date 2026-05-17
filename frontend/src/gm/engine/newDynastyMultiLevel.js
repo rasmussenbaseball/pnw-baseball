@@ -29,6 +29,7 @@ import {
   CONF_CONFIG, LEVEL_CONFIG, findNonNaia,
   classYearsForLevel, rosterCapForLevel, seasonGamesForLevel,
 } from './levelHelpers'
+import { applyRealFinancials } from './schoolFinancials'
 
 /**
  * Build a fresh save state for a non-NAIA dynasty.
@@ -52,7 +53,7 @@ export function newDynastyMultiLevel(input) {
   const schools = {}
   for (const m of (conf.pnwMembers || [])) {
     const fromPool = findNonNaia(m.id)
-    schools[m.id] = buildSyntheticSchool({
+    const synthetic = buildSyntheticSchool({
       id: m.id,
       name: m.name,
       city: m.city,
@@ -63,6 +64,10 @@ export function newDynastyMultiLevel(input) {
       level,
       colors: fromPool?.colors || null,
     })
+    // Layer in researched real-world financials for PNW programs we have
+    // data for (every D1/D2/D3/NAIA member of these confs is in the file).
+    applyRealFinancials(synthetic)
+    schools[m.id] = synthetic
   }
 
   // 2. Build the conferences map — single conference for now (user's).

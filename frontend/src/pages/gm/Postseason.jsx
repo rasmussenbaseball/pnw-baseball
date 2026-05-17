@@ -128,6 +128,9 @@ export default function Postseason() {
         </div>
       )}
 
+      {/* National-bracket field — every level. Reads state.nationalChamps */}
+      <NationalFieldSection ps={ps} save={save} />
+
       {/* Multi-level national bracket — stub-sim'd run when user wins conf */}
       {ps.level && ps.level !== 'NAIA' && ps.national && (
         <MultiLevelNationalSection ps={ps} save={save} />
@@ -153,6 +156,97 @@ export default function Postseason() {
  * Multi-level national bracket display — used for D1/D2/D3/NWAC dynasties
  * who won their conference. Shows each round with a win/lose pill.
  */
+/**
+ * Full national-tournament field — every conference champion + at-large
+ * bids. Reads state.nationalChamps[year][level] which is populated by
+ * runNationalChampionsTracking after the user's postseason runs.
+ */
+function NationalFieldSection({ ps, save }) {
+  const level = ps.level
+  const year = (ps.year - 1)
+    || save.calendar?.year - 1
+    || save.calendar?.year
+  const data = save.nationalChamps?.[year]?.[level]
+    || save.nationalChamps?.[year - 1]?.[level]
+    || save.nationalChamps?.[ps.year]?.[level]
+  if (!data || !data.field) return null
+  const userInField = data.field.some(t => t.id === save.userSchoolId)
+
+  // Group by conferenceName for the champions, then show at-large pool
+  const champions = data.field.filter(t => t.viaAutoBid)
+  const atLarge   = data.field.filter(t => !t.viaAutoBid)
+
+  const levelLabels = {
+    D1: 'NCAA D1 Tournament', D2: 'NCAA D2 Tournament',
+    D3: 'NCAA D3 Tournament', NAIA: 'NAIA National Tournament',
+  }
+
+  return (
+    <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+      <div className="flex justify-between items-baseline mb-1 flex-wrap gap-2">
+        <h2 className="text-lg font-semibold">{levelLabels[level] || 'National Field'} — {data.fieldSize}-team field</h2>
+        {userInField
+          ? <span className="text-xs font-bold text-pnw-green">[YOU'RE IN]</span>
+          : <span className="text-xs text-gray-500 italic">your program missed the field</span>}
+      </div>
+      <p className="text-xs text-gray-500 mb-4">
+        {champions.length} conference auto-bids + {atLarge.length} at-large bids. Conference champs from every {level} league nationally; at-larges selected by PEAR strength.
+      </p>
+
+      {/* Conference champion auto-bids */}
+      <div className="mb-4">
+        <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">
+          Conference Auto-Bids ({champions.length})
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5 text-xs">
+          {champions.slice(0, 60).map((t, i) => {
+            const isUser = t.id === save.userSchoolId
+            return (
+              <div
+                key={i}
+                className={'flex items-center justify-between gap-2 p-1.5 rounded border ' +
+                  (isUser ? 'border-pnw-green bg-pnw-cream/40 font-bold' : 'border-gray-200')
+                }
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-pnw-slate truncate">{t.name}</div>
+                  <div className="text-[10px] text-gray-500 truncate">{t.conferenceName}</div>
+                </div>
+                {t.state && <span className="text-[10px] text-gray-500 shrink-0">{t.state}</span>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* At-large bids */}
+      {atLarge.length > 0 && (
+        <div>
+          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">
+            At-Large Bids ({atLarge.length})
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5 text-xs">
+            {atLarge.slice(0, 30).map((t, i) => {
+              const isUser = t.id === save.userSchoolId
+              return (
+                <div
+                  key={i}
+                  className={'flex items-center justify-between gap-2 p-1.5 rounded border ' +
+                    (isUser ? 'border-pnw-green bg-pnw-cream/40 font-bold' : 'border-gray-200')
+                  }
+                >
+                  <div className="text-pnw-slate truncate flex-1 min-w-0">{t.name}</div>
+                  {t.state && <span className="text-[10px] text-gray-500 shrink-0">{t.state}</span>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MultiLevelNationalSection({ ps, save }) {
   const nat = ps.national
   if (!nat) return null

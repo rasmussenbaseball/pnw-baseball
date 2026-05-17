@@ -14,6 +14,7 @@ import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
 import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { defaultBudgetForSchool } from './budget'
+import { applyRealFinancials } from './schoolFinancials'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
@@ -50,6 +51,14 @@ export function newDynasty(input) {
 
   // 1. Load schools + conferences (already hydrated with PEAR / tier data)
   const { schools, conferences } = loadSchools()
+
+  // Apply researched real-world financials to every PNW NAIA school we
+  // track. Non-PNW NAIA schools keep their synthetic defaults — they're
+  // only used as opponents in stat sims, not user dynasties.
+  for (const school of Object.values(schools)) {
+    school.level = 'NAIA'   // tag for downstream helpers
+    applyRealFinancials(school)
+  }
 
   // 2. Generate the user's coach
   const userSchool = schools[input.userSchoolId]
