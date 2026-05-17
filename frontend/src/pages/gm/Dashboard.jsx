@@ -1040,7 +1040,7 @@ function WeeklyAwardsWidget({ save }) {
         })}
         {filtered.some(a => userRoster.includes(a.playerId)) && (
           <div className="text-[10px] text-amber-700 italic">
-            Your player won — +1 rating bump applied, coach earned upgrade point.
+            Your player won — Conf POTW = +1 all stats / NAIA POTW = +3 all stats. Coach earned upgrade points.
           </div>
         )}
       </div>

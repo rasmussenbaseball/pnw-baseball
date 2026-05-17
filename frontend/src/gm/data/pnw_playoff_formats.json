@@ -1,0 +1,396 @@
+{
+  "_meta": {
+    "purpose": "Playoff formats + conference rosters for every level of PNW college baseball. Used as the design reference + data source when the GM game expands beyond NAIA to support D1/D2/D3/JUCO PNW programs.",
+    "scope": "PNW = Washington, Oregon, Idaho, Montana + British Columbia. Per Nate's May 2026 decision the GM game stays PNW-only, so we only need playoff structure for conferences that contain PNW programs.",
+    "lastUpdated": "2026-05-17",
+    "sources": "NCAA published bracket formats, conference championship history, and pearatings.com for member lists. Bracket structures reflect 2024-25 season conventions."
+  },
+
+  "divisions": {
+    "D1": {
+      "name": "NCAA Division I",
+      "pnwConferences": ["BIG_TEN_WEST", "ACC", "WCC", "WAC"],
+      "national": {
+        "name": "NCAA D1 Tournament + College World Series",
+        "fieldSize": 64,
+        "rounds": [
+          {
+            "name": "Regionals",
+            "format": "DOUBLE_ELIM",
+            "sites": 16,
+            "teamsPerSite": 4,
+            "details": "Top-16 national seeds host. Each site is 4 teams seeded 1-4. Double-elim — first to 4 wins (each team gets 2 lives). Winners (16) advance to Super Regionals."
+          },
+          {
+            "name": "Super Regionals",
+            "format": "BEST_OF_3",
+            "sites": 8,
+            "teamsPerSite": 2,
+            "details": "Top-8 national seeds host. Best-of-3 series. 8 winners advance to Omaha."
+          },
+          {
+            "name": "College World Series",
+            "location": "Charles Schwab Field, Omaha NE",
+            "format": "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL",
+            "fieldSize": 8,
+            "details": "8 teams split into two double-elim brackets of 4. Bracket winners meet in a best-of-3 final."
+          }
+        ]
+      }
+    },
+
+    "D2": {
+      "name": "NCAA Division II",
+      "pnwConferences": ["GNAC"],
+      "national": {
+        "name": "NCAA D2 Tournament + D2 World Series",
+        "fieldSize": 56,
+        "rounds": [
+          {
+            "name": "Regionals",
+            "format": "DOUBLE_ELIM",
+            "sites": 8,
+            "teamsPerSite": 7,
+            "details": "8 regional sites, 7 teams each (mod). Double-elim. Winner advances to D2 WS."
+          },
+          {
+            "name": "D2 World Series",
+            "location": "USA Baseball NTC, Cary NC",
+            "format": "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL",
+            "fieldSize": 8,
+            "details": "8 regional winners. Double-elim brackets of 4, then best-of-3 final."
+          }
+        ]
+      }
+    },
+
+    "D3": {
+      "name": "NCAA Division III",
+      "pnwConferences": ["NWC"],
+      "national": {
+        "name": "NCAA D3 Tournament + D3 World Series",
+        "fieldSize": 60,
+        "rounds": [
+          {
+            "name": "Regionals",
+            "format": "DOUBLE_ELIM",
+            "sites": 7,
+            "teamsPerSite": 8,
+            "details": "7 regional sites, 8 teams each (modified pool/double-elim). Winners advance."
+          },
+          {
+            "name": "Super Regionals",
+            "format": "BEST_OF_3",
+            "sites": 8,
+            "teamsPerSite": 2,
+            "details": "Best-of-3. 8 winners advance to D3 WS."
+          },
+          {
+            "name": "D3 World Series",
+            "location": "Veterans Memorial Stadium, Cedar Rapids IA",
+            "format": "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL",
+            "fieldSize": 8,
+            "details": "Same finals format as D1/D2 — double-elim into best-of-3 championship."
+          }
+        ]
+      }
+    },
+
+    "NAIA": {
+      "name": "NAIA",
+      "pnwConferences": ["CCC", "FRONTIER"],
+      "national": {
+        "name": "NAIA Tournament + Avista NAIA World Series",
+        "fieldSize": 46,
+        "rounds": [
+          {
+            "name": "Opening Round",
+            "format": "DOUBLE_ELIM",
+            "sites": 10,
+            "teamsPerSite": 5,
+            "details": "10 host sites of 5 teams (one site has 4 — math works out). Double-elim. 10 winners advance."
+          },
+          {
+            "name": "Avista NAIA World Series",
+            "location": "Harris Field, Lewiston ID",
+            "format": "POOL_PLAY_SEMIS_CHAMPIONSHIP",
+            "fieldSize": 10,
+            "details": "10 teams split into two pools of 5. Round-robin within pool. Top 2 from each pool advance to semis (A1 v B2 / B1 v A2). Single-elim semis + championship game."
+          }
+        ]
+      }
+    },
+
+    "NWAC": {
+      "name": "Northwest Athletic Conference (JUCO)",
+      "pnwConferences": ["NWAC_NORTH", "NWAC_SOUTH", "NWAC_EAST", "NWAC_WEST"],
+      "national": {
+        "name": "NWAC Championship",
+        "fieldSize": 8,
+        "rounds": [
+          {
+            "name": "Super Regionals",
+            "format": "PLAY_IN_PLUS_BEST_OF_3",
+            "sites": 4,
+            "teamsPerSite": 4,
+            "details": "Top 4 from each of 4 conferences (16 teams). Per CLAUDE.md: North hosts has N2 + cross-conference play-in (W4 vs S3) winner faces N2 in best-of-3. Similar at East (E2 + N4/W3), West (W2 + S4/E3), South (S2 + E4/N3). Each conference's #1 seed gets a bye direct to championship."
+          },
+          {
+            "name": "NWAC Championship",
+            "location": "Longview, WA",
+            "format": "DOUBLE_ELIM",
+            "fieldSize": 8,
+            "details": "8 teams (4 conference #1 seeds + 4 super-regional winners). Double-elim tournament."
+          }
+        ]
+      }
+    }
+  },
+
+  "conferences": {
+    "BIG_TEN_WEST": {
+      "id": "BIG_TEN_WEST",
+      "name": "Big Ten (West Division)",
+      "level": "D1",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 8,
+        "location": "Charles Schwab Field, Omaha NE",
+        "details": "Top 8 from full Big Ten standings qualify. Double-elim. Conference champion gets auto-bid to NCAA Tournament."
+      },
+      "pnwMembers": [
+        { "id": "oregon-d1", "name": "Oregon", "city": "Eugene", "state": "OR" },
+        { "id": "oregon-st-d1", "name": "Oregon State", "city": "Corvallis", "state": "OR", "note": "joins Big Ten 2025-26 (some sources still list Pac-12; treat as Big Ten)" },
+        { "id": "washington-d1", "name": "Washington", "city": "Seattle", "state": "WA" },
+        { "id": "ucla-d1", "name": "UCLA", "city": "Los Angeles", "state": "CA" },
+        { "id": "usc-d1", "name": "USC", "city": "Los Angeles", "state": "CA" }
+      ]
+    },
+
+    "ACC": {
+      "id": "ACC",
+      "name": "ACC",
+      "level": "D1",
+      "tournament": {
+        "format": "POOL_PLAY_SEMIS_CHAMPIONSHIP",
+        "fieldSize": 12,
+        "location": "Truist Field, Charlotte NC",
+        "details": "Top 12 from regular season. 4 pools of 3 — round-robin. Pool winners go to single-elim semis + final. Conference champion gets auto-bid."
+      },
+      "pnwMembers": [
+        { "id": "stanford-d1", "name": "Stanford", "city": "Stanford", "state": "CA" },
+        { "id": "california-d1", "name": "Cal", "city": "Berkeley", "state": "CA" }
+      ]
+    },
+
+    "WCC": {
+      "id": "WCC",
+      "name": "West Coast Conference",
+      "level": "D1",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 6,
+        "location": "Banner Island Ballpark, Stockton CA",
+        "details": "Top 6 from regular season. Double-elim. Top 2 seeds get a first-round bye. Conf champ gets auto-bid."
+      },
+      "pnwMembers": [
+        { "id": "gonzaga-d1", "name": "Gonzaga", "city": "Spokane", "state": "WA" },
+        { "id": "portland-d1", "name": "Portland", "city": "Portland", "state": "OR" }
+      ]
+    },
+
+    "WAC": {
+      "id": "WAC",
+      "name": "Western Athletic Conference",
+      "level": "D1",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 8,
+        "location": "Mesa, AZ (neutral)",
+        "details": "Top 8. Double-elim. Champion gets auto-bid."
+      },
+      "pnwMembers": [
+        { "id": "seattle-u-d1", "name": "Seattle U", "city": "Seattle", "state": "WA" }
+      ]
+    },
+
+    "GNAC": {
+      "id": "GNAC",
+      "name": "Great Northwest Athletic Conference",
+      "level": "D2",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 4,
+        "location": "rotating (current: Bricks Stadium, Lewiston ID, or higher seed hosts)",
+        "details": "Top 4 from GNAC regular season qualify. Double-elim. Champion gets auto-bid to NCAA D2 Tournament (West Region)."
+      },
+      "pnwMembers": [
+        { "id": "central-washington-d2", "name": "Central Washington", "city": "Ellensburg", "state": "WA" },
+        { "id": "saint-martins-d2", "name": "Saint Martin's", "city": "Lacey", "state": "WA" },
+        { "id": "western-oregon-d2", "name": "Western Oregon", "city": "Monmouth", "state": "OR" },
+        { "id": "northwest-nazarene-d2", "name": "Northwest Nazarene", "city": "Nampa", "state": "ID" },
+        { "id": "montana-state-billings-d2", "name": "Montana State Billings", "city": "Billings", "state": "MT" },
+        { "id": "concordia-or-d2", "name": "Concordia (OR)", "city": "Portland", "state": "OR" }
+      ]
+    },
+
+    "NWC": {
+      "id": "NWC",
+      "name": "Northwest Conference",
+      "level": "D3",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 4,
+        "location": "higher seed hosts",
+        "details": "Top 4 from NWC regular season. Double-elim. Champion gets NCAA D3 Tournament auto-bid (West Region)."
+      },
+      "pnwMembers": [
+        { "id": "puget-sound-d3", "name": "Puget Sound", "city": "Tacoma", "state": "WA" },
+        { "id": "pacific-lutheran-d3", "name": "Pacific Lutheran", "city": "Tacoma", "state": "WA" },
+        { "id": "whitman-d3", "name": "Whitman", "city": "Walla Walla", "state": "WA" },
+        { "id": "whitworth-d3", "name": "Whitworth", "city": "Spokane", "state": "WA" },
+        { "id": "linfield-d3", "name": "Linfield", "city": "McMinnville", "state": "OR" },
+        { "id": "lewis-and-clark-d3", "name": "Lewis & Clark", "city": "Portland", "state": "OR" },
+        { "id": "willamette-d3", "name": "Willamette", "city": "Salem", "state": "OR" },
+        { "id": "pacific-or-d3", "name": "Pacific (OR)", "city": "Forest Grove", "state": "OR" },
+        { "id": "george-fox-d3", "name": "George Fox", "city": "Newberg", "state": "OR" }
+      ]
+    },
+
+    "CCC": {
+      "id": "CCC",
+      "name": "Cascade Collegiate Conference",
+      "level": "NAIA",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 8,
+        "location": "higher seed hosts",
+        "details": "Top 8 from CCC regular season. Double-elim. Champion gets NAIA Opening Round auto-bid."
+      },
+      "pnwMembers": [
+        { "id": "lewis-clark-state-naia", "name": "Lewis-Clark State", "city": "Lewiston", "state": "ID" },
+        { "id": "bushnell-naia", "name": "Bushnell", "city": "Eugene", "state": "OR" },
+        { "id": "college-of-idaho-naia", "name": "College of Idaho", "city": "Caldwell", "state": "ID" },
+        { "id": "corban-naia", "name": "Corban", "city": "Salem", "state": "OR" },
+        { "id": "eastern-oregon-naia", "name": "Eastern Oregon", "city": "La Grande", "state": "OR" },
+        { "id": "oregon-tech-naia", "name": "Oregon Tech", "city": "Klamath Falls", "state": "OR" },
+        { "id": "warner-pacific-naia", "name": "Warner Pacific", "city": "Portland", "state": "OR" },
+        { "id": "ubc-naia", "name": "British Columbia", "city": "Vancouver", "state": "BC" },
+        { "id": "multnomah-naia", "name": "Multnomah", "city": "Portland", "state": "OR" },
+        { "id": "northwest-naia", "name": "Northwest", "city": "Kirkland", "state": "WA" }
+      ]
+    },
+
+    "FRONTIER": {
+      "id": "FRONTIER",
+      "name": "Frontier Conference",
+      "level": "NAIA",
+      "tournament": {
+        "format": "DOUBLE_ELIM",
+        "fieldSize": 6,
+        "location": "rotating host",
+        "details": "Top 6 from Frontier regular season qualify. Double-elim. Champion gets NAIA Opening Round auto-bid. Note: Frontier is primarily a Montana/MT-region conference but contains some PNW-adjacent programs."
+      },
+      "pnwMembers": [
+        { "id": "carroll-montana-naia", "name": "Carroll (MT)", "city": "Helena", "state": "MT" },
+        { "id": "providence-naia", "name": "Providence (MT)", "city": "Great Falls", "state": "MT" },
+        { "id": "rocky-mountain-naia", "name": "Rocky Mountain", "city": "Billings", "state": "MT" },
+        { "id": "montana-tech-naia", "name": "Montana Tech", "city": "Butte", "state": "MT" },
+        { "id": "montana-western-naia", "name": "Montana Western", "city": "Dillon", "state": "MT" }
+      ]
+    },
+
+    "NWAC_NORTH": {
+      "id": "NWAC_NORTH",
+      "name": "NWAC North",
+      "level": "NWAC",
+      "tournament": {
+        "format": "BUILT_INTO_NWAC_PLAYOFFS",
+        "details": "Top 4 of regular-season standings advance to NWAC super regional structure (see NWAC division above). #1 seed gets bye to 8-team championship at Longview WA."
+      },
+      "pnwMembers": [
+        { "id": "nwac-bellevue", "name": "Bellevue CC", "city": "Bellevue", "state": "WA" },
+        { "id": "nwac-edmonds", "name": "Edmonds", "city": "Lynnwood", "state": "WA" },
+        { "id": "nwac-everett", "name": "Everett", "city": "Everett", "state": "WA" },
+        { "id": "nwac-olympic", "name": "Olympic", "city": "Bremerton", "state": "WA" },
+        { "id": "nwac-shoreline", "name": "Shoreline", "city": "Shoreline", "state": "WA" },
+        { "id": "nwac-skagit-valley", "name": "Skagit Valley", "city": "Mount Vernon", "state": "WA" },
+        { "id": "nwac-douglas", "name": "Douglas", "city": "New Westminster", "state": "BC" }
+      ]
+    },
+    "NWAC_SOUTH": {
+      "id": "NWAC_SOUTH",
+      "name": "NWAC South",
+      "level": "NWAC",
+      "tournament": {
+        "format": "BUILT_INTO_NWAC_PLAYOFFS",
+        "details": "Top 4 of regular-season standings advance to NWAC super regionals."
+      },
+      "pnwMembers": [
+        { "id": "nwac-linn-benton", "name": "Linn-Benton", "city": "Albany", "state": "OR" },
+        { "id": "nwac-mt-hood", "name": "Mt. Hood", "city": "Gresham", "state": "OR" },
+        { "id": "nwac-umpqua", "name": "Umpqua", "city": "Roseburg", "state": "OR" },
+        { "id": "nwac-treasure-valley", "name": "Treasure Valley", "city": "Ontario", "state": "OR" },
+        { "id": "nwac-lower-columbia", "name": "Lower Columbia", "city": "Longview", "state": "WA" },
+        { "id": "nwac-clackamas", "name": "Clackamas", "city": "Oregon City", "state": "OR" }
+      ]
+    },
+    "NWAC_EAST": {
+      "id": "NWAC_EAST",
+      "name": "NWAC East",
+      "level": "NWAC",
+      "tournament": {
+        "format": "BUILT_INTO_NWAC_PLAYOFFS",
+        "details": "Top 4 advance to NWAC super regionals."
+      },
+      "pnwMembers": [
+        { "id": "nwac-spokane", "name": "Spokane", "city": "Spokane", "state": "WA" },
+        { "id": "nwac-walla-walla", "name": "Walla Walla", "city": "Walla Walla", "state": "WA" },
+        { "id": "nwac-wenatchee-valley", "name": "Wenatchee Valley", "city": "Wenatchee", "state": "WA" },
+        { "id": "nwac-yakima-valley", "name": "Yakima Valley", "city": "Yakima", "state": "WA" },
+        { "id": "nwac-big-bend", "name": "Big Bend", "city": "Moses Lake", "state": "WA" },
+        { "id": "nwac-blue-mountain", "name": "Blue Mountain", "city": "Pendleton", "state": "OR" },
+        { "id": "nwac-columbia-basin", "name": "Columbia Basin", "city": "Pasco", "state": "WA" }
+      ]
+    },
+    "NWAC_WEST": {
+      "id": "NWAC_WEST",
+      "name": "NWAC West",
+      "level": "NWAC",
+      "tournament": {
+        "format": "BUILT_INTO_NWAC_PLAYOFFS",
+        "details": "Top 4 advance to NWAC super regionals."
+      },
+      "pnwMembers": [
+        { "id": "nwac-centralia", "name": "Centralia", "city": "Centralia", "state": "WA" },
+        { "id": "nwac-grays-harbor", "name": "Grays Harbor", "city": "Aberdeen", "state": "WA" },
+        { "id": "nwac-pierce", "name": "Pierce", "city": "Lakewood", "state": "WA" },
+        { "id": "nwac-south-puget-sound", "name": "South Puget Sound", "city": "Olympia", "state": "WA" },
+        { "id": "nwac-tacoma", "name": "Tacoma", "city": "Tacoma", "state": "WA" }
+      ]
+    }
+  },
+
+  "bracketFormats": {
+    "DOUBLE_ELIM": {
+      "name": "Double Elimination",
+      "explanation": "Each team gets two lives. Lose twice → out. Bracket has a winner's side and a loser's side; the loser's side champion has to beat the winner's side champion TWICE to win (since they have to give them their first loss). Standard for NCAA regionals, NAIA Opening Round."
+    },
+    "BEST_OF_3": {
+      "name": "Best-of-3 Series",
+      "explanation": "First team to 2 wins. Standard for NCAA Super Regionals + WS finals. Higher seed hosts typically."
+    },
+    "POOL_PLAY_SEMIS_CHAMPIONSHIP": {
+      "name": "Pool Play → Semis → Championship",
+      "explanation": "Teams split into pools, round-robin within pool, top X from each pool advance to single-elim bracket. NAIA WS uses this; ACC tournament uses a variant."
+    },
+    "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL": {
+      "name": "Bracket Double-Elim + Best-of-3 Final",
+      "explanation": "Two parallel 4-team double-elim brackets. Each bracket winner advances to a best-of-3 championship series. Used for the College World Series + D2/D3 WS."
+    },
+    "PLAY_IN_PLUS_BEST_OF_3": {
+      "name": "Single-Elim Play-In + Best-of-3",
+      "explanation": "Lower seeds play a single-elim play-in game. Winner advances to a best-of-3 vs the higher seed (typically the host). NWAC super regionals use this."
+    }
+  }
+}

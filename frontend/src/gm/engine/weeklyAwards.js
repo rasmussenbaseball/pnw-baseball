@@ -65,25 +65,38 @@ function pickBest(weeklyStats, predicate, scoreFn) {
 /**
  * Apply award rewards to a user's player + coach.
  *
- * Hitter awards bump contact_l + contact_r (each +0.5). Pitcher awards
- * bump stuff + control (each +0.5). Awards stack across the season so
- * a perennial player-of-the-week winner sees real growth.
+ * Magnitude per Nate (May 2026):
+ *   - Conference POTW: +1 to EVERY rating in the relevant block
+ *   - NAIA national POTW: +3 to EVERY rating in the relevant block
  *
- * Coach gets +1 upgrade point for conf, +1 more for NAIA national.
+ * Hitters bump every hitter stat (contact_l/r, power_l/r, discipline,
+ * speed, fielding, arm, composure, durability). Pitchers bump every
+ * pitcher stat (stuff, control, command, stamina, vs_l, vs_r,
+ * composure, durability). Awards stack across the season so a perennial
+ * player-of-the-week winner sees big growth.
+ *
+ * Coach upgrade points: +1 for conf, +2 more for NAIA national.
  */
 function rewardUserPlayer(state, playerId, kind, scope) {
   const p = state.players?.[playerId]
   if (!p) return
   const isUser = state.teams?.[state.userSchoolId]?.rosterPlayerIds?.includes(playerId)
   if (!isUser) return
+  const bump = scope === 'NAIA' ? 3 : 1
   if (kind === 'HITTER' && p.hitter) {
-    p.hitter.contact_l = Math.min(99, (p.hitter.contact_l || 50) + 0.5)
-    p.hitter.contact_r = Math.min(99, (p.hitter.contact_r || 50) + 0.5)
+    for (const key of Object.keys(p.hitter)) {
+      if (typeof p.hitter[key] === 'number') {
+        p.hitter[key] = Math.min(99, p.hitter[key] + bump)
+      }
+    }
   } else if (kind === 'PITCHER' && p.pitcher) {
-    p.pitcher.stuff = Math.min(99, (p.pitcher.stuff || 50) + 0.5)
-    p.pitcher.control = Math.min(99, (p.pitcher.control || 50) + 0.5)
+    for (const key of Object.keys(p.pitcher)) {
+      if (typeof p.pitcher[key] === 'number') {
+        p.pitcher[key] = Math.min(99, p.pitcher[key] + bump)
+      }
+    }
   }
-  // Coach upgrade point
+  // Coach upgrade points
   awardCoachUpgradePoints(state, scope === 'NAIA' ? 2 : 1,
     `${scope === 'NAIA' ? 'NAIA' : 'Conf'} ${kind === 'HITTER' ? 'Hitter' : 'Pitcher'} of the Week (${p.firstName} ${p.lastName})`,
   )
