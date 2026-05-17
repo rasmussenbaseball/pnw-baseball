@@ -18,6 +18,7 @@ import {
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
 import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
 import TeamLogo from '../../gm/components/TeamLogo'
+import TeamRankChip from '../../gm/components/TeamRankChip'
 import GMShell, { ContextBox } from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -521,9 +522,12 @@ function SeriesRow({ games, userSchoolId, save }) {
   return (
     <div className="border-b last:border-b-0 py-1">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <TeamLogo school={opp} size={20} />
-          <span className="text-gray-700">{isHome ? 'vs' : '@'} {opp?.name}</span>
+          <span className="text-gray-700">
+            {isHome ? 'vs' : '@'} {opp?.name}
+            <TeamRankChip save={save} schoolId={isHome ? g0.awayId : g0.homeId} />
+          </span>
           <span className={'text-xs ' + (isScrim ? 'text-amber-600' : g0.type === 'D1_MIDWEEK' ? 'text-blue-600' : 'text-gray-400')}>{typeLabel}</span>
           {games.length > 1 && <span className="text-[10px] text-gray-400">({games.length}-game series)</span>}
         </div>

@@ -25,6 +25,7 @@ import {
 } from '../../gm/engine/energy'
 import { findBlockingPriorGame } from '../../gm/engine/schedule'
 import TeamLogo from '../../gm/components/TeamLogo'
+import TeamRankChip from '../../gm/components/TeamRankChip'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import PixelSelect from '../../gm/components/PixelSelect'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
@@ -365,7 +366,10 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
         <div className="flex items-center gap-3">
           <TeamLogo school={opp} size={36} />
           <div>
-            <div className="font-semibold text-pnw-slate">{isHome ? 'vs' : '@'} {opp.name}</div>
+            <div className="font-semibold text-pnw-slate flex items-center flex-wrap gap-x-1">
+              {isHome ? 'vs' : '@'} {opp.name}
+              <TeamRankChip save={save} schoolId={oppId} />
+            </div>
             <div className="text-xs text-gray-500">
               {typeLabel} • {game.date}{dhLabel ? ` • ${dhLabel}` : ''}
             </div>
@@ -423,7 +427,7 @@ function PlayedRow({ save, game }) {
   return (
     <>
       <div className="flex justify-between items-center text-sm py-1 px-3 bg-gray-50 rounded">
-        <span className="text-gray-700">{isHome ? 'vs' : '@'} {opp.name}</span>
+        <span className="text-gray-700">{isHome ? 'vs' : '@'} {opp.name}<TeamRankChip save={save} schoolId={oppId} /></span>
         <div className="flex items-center gap-2">
           {hasBoxscore && (
             <button
@@ -695,8 +699,8 @@ function LineupEditor({ save, game, onSave, onCancel }) {
         ← Back to games
       </button>
       <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">SET LINEUP</h1>
-      <p className="font-pixel text-base text-[#a8a8c8] mb-4">
-        {isHome ? 'vs' : '@'} {opp.name} · {game.date}
+      <p className="font-pixel text-base text-[#a8a8c8] mb-4 flex items-center flex-wrap gap-x-1">
+        {isHome ? 'vs' : '@'} {opp.name}<TeamRankChip save={save} schoolId={oppId} /> · {game.date}
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1040,7 +1044,11 @@ function LiveGameView({ save, game, onExit }) {
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="font-pixel text-[10px] uppercase tracking-widest text-amber-300">Live Game</div>
-          <h1 className="font-pixel-display text-xl tracking-widest text-white">{awayName} @ {homeName}</h1>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white flex items-center flex-wrap gap-x-1">
+            <span>{awayName}<TeamRankChip save={save} schoolId={isHome ? oppId : userSchoolId} /></span>
+            <span className="text-[#a8a8c8] mx-1">@</span>
+            <span>{homeName}<TeamRankChip save={save} schoolId={isHome ? userSchoolId : oppId} /></span>
+          </h1>
           <div className="font-pixel text-[11px] text-[#a8a8c8]">{game.type === 'FALL_SCRIMMAGE' ? 'Fall Scrimmage' : game.type === 'CONFERENCE' ? 'Conference' : 'Non-conference'} · {game.date}</div>
         </div>
         <PixelButton onClick={handleFinish}>

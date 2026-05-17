@@ -20,6 +20,7 @@ import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
+import { recomputeNwbbRatings } from './nwbbRating'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
@@ -893,6 +894,11 @@ export function advanceOneWeek(state) {
   // and check whether any recruit decides to commit this week. Without this
   // the user's offers sit forever and nobody signs until Wk 52 finalization.
   tickRecruitingDecisions(state)
+
+  // Recompute NWBB Ratings + SOS now that this week's games are in the
+  // books. Cached on state.nwbbRatings so display code can render rank
+  // chips next to team names without recomputing every render.
+  state.nwbbRatings = recomputeNwbbRatings(state)
 
   // Sim any fall scrimmages whose weekOfYear matches the new week. Lets us
   // unify the scrimmage + game-week paths — they all flow through simWeek

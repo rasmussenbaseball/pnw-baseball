@@ -3,7 +3,9 @@ import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
+import TeamRankChip from '../../gm/components/TeamRankChip'
 import GMShell from '../../gm/components/GMShell'
+import { ensureNwbbRatings } from '../../gm/engine/nwbbRating'
 
 export default function Standings() {
   const { user } = useAuth()
@@ -13,6 +15,9 @@ export default function Standings() {
   const save = useMemo(() => loadDynasty(userId, slot), [userId, slot])
 
   if (!save) return <Navigate to="/gm" replace />
+
+  // Make sure NWBB ratings are computed so the rank/SOS columns render
+  const ratings = ensureNwbbRatings(save)
 
   const userSchool = save.schools[save.userSchoolId]
   const userConfId = userSchool.conferenceId
@@ -44,23 +49,36 @@ export default function Standings() {
               <th className="py-2 px-3">#</th>
               <th></th>
               <th>Team</th>
+              <th title="National rank from the NWBB Rating engine">Nat</th>
               <th>Conf W-L</th>
               <th>Overall</th>
               <th>Run Diff</th>
+              <th title="Strength of Schedule rank — 1 = hardest schedule">SOS</th>
             </tr>
           </thead>
           <tbody>
             {confTeams.map(({ school, team }, i) => {
               const isUser = school.id === save.userSchoolId
+              const r = ratings[school.id]
               return (
                 <tr key={school.id} className={'border-t ' + (isUser ? 'bg-pnw-cream font-medium' : 'hover:bg-gray-50')}>
                   <td className="py-2 px-3 text-gray-600">{i + 1}</td>
                   <td><TeamLogo school={school} size={24} /></td>
-                  <td className="font-medium">{school.name}</td>
+                  <td className="font-medium">
+                    {school.name}
+                    <TeamRankChip save={save} schoolId={school.id} />
+                  </td>
+                  <td className="font-mono text-xs text-gray-600">
+                    {r ? `#${r.nationalRank}` : '—'}
+                    {r && <span className="text-[10px] text-gray-400 ml-1">({r.rating.toFixed(1)})</span>}
+                  </td>
                   <td className="font-mono">{team.confWins}-{team.confLosses}</td>
                   <td className="font-mono">{team.wins}-{team.losses}</td>
                   <td className={'font-mono ' + (team.runDiff > 0 ? 'text-green-700' : team.runDiff < 0 ? 'text-red-700' : 'text-gray-500')}>
                     {team.runDiff > 0 ? '+' : ''}{team.runDiff}
+                  </td>
+                  <td className="font-mono text-xs text-gray-600">
+                    {r ? `#${r.sosRank}` : '—'}
                   </td>
                 </tr>
               )

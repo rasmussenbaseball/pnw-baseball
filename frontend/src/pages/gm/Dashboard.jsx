@@ -23,6 +23,8 @@ import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TutorialOverlay from '../../gm/components/TutorialOverlay'
 import TeamLogo from '../../gm/components/TeamLogo'
+import TeamRankChip from '../../gm/components/TeamRankChip'
+import { ensureNwbbRatings } from '../../gm/engine/nwbbRating'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -92,6 +94,10 @@ export default function Dashboard() {
   }, [save])
 
   if (!save) return <Navigate to="/gm" replace />
+
+  // Make sure NWBB ratings are cached so rank chips render anywhere
+  const nwbbRatings = ensureNwbbRatings(save)
+  const userNwbb = nwbbRatings[save.userSchoolId]
 
   const school = save.schools[save.userSchoolId]
   const conf = save.conferences[school.conferenceId]
@@ -378,7 +384,17 @@ export default function Dashboard() {
             </div>
             <div className="min-w-0">
               <Link to="/gm" className="text-[10px] opacity-60 hover:underline tracking-wider uppercase">Dynasties</Link>
-              <div className="text-4xl font-extrabold leading-none tracking-tight mt-1 truncate">{school.name}</div>
+              <div className="text-4xl font-extrabold leading-none tracking-tight mt-1 truncate flex items-baseline gap-2 flex-wrap">
+                <span>{school.name}</span>
+                {userNwbb && (
+                  <span
+                    className="text-base font-bold tracking-normal bg-amber-400 text-[#1a1a2e] px-2 py-0.5 rounded leading-none"
+                    title={`NWBB Rating ${userNwbb.rating.toFixed(1)} · SOS #${userNwbb.sosRank}`}
+                  >
+                    #{userNwbb.nationalRank}
+                  </span>
+                )}
+              </div>
               <div className="text-xs opacity-80 mt-1.5">{school.city}, {school.state} · {conf.name}</div>
               <div className="flex items-center gap-3 mt-2.5">
                 <div className="bg-white/15 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold">
@@ -877,7 +893,10 @@ function ConferenceStandingsWidget({ save, slot }) {
                 className={'flex items-center gap-2 py-1 px-1.5 rounded text-xs ' + (isUser ? 'bg-pnw-cream/60 font-semibold' : 'hover:bg-gray-50')}
               >
                 <div className="w-4 text-gray-500 text-[10px] tabular-nums text-right">{i + 1}.</div>
-                <div className="flex-1 truncate">{row.school.name}</div>
+                <div className="flex-1 truncate flex items-center gap-x-0.5">
+                  <span className="truncate">{row.school.name}</span>
+                  <TeamRankChip save={save} schoolId={row.school.id} />
+                </div>
                 <div className="font-mono text-[11px] tabular-nums text-pnw-slate">
                   {row.team.confWins}-{row.team.confLosses}
                 </div>
@@ -926,8 +945,9 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
             Next Game · Wk {nextGame.seasonWeek}
           </div>
-          <div className="text-sm font-semibold mt-0.5">
-            {nextGame.homeId === userSchoolId ? 'vs' : '@'} {oppName}{' '}
+          <div className="text-sm font-semibold mt-0.5 flex items-center flex-wrap gap-x-1">
+            {nextGame.homeId === userSchoolId ? 'vs' : '@'} {oppName}
+            <TeamRankChip save={save} schoolId={opp} />
             <span className="text-[10px] opacity-70 ml-1 font-normal">{nextGame.type === 'CONFERENCE' ? 'Conf' : 'Non-conf'} · {nextGame.date}</span>
           </div>
         </div>
