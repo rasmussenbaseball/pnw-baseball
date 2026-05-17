@@ -36,8 +36,11 @@ export function saveLineup(state, gameId, lineup) {
  */
 export function resolveLineupForGame(state, teamId, gameId) {
   const team = state.teams[teamId]
-  if (!team) return { batters: [], pitcherRotation: [], wasSaved: false }
-  const players = team.rosterPlayerIds.map(id => state.players[id]).filter(Boolean)
+  if (!team) return { batters: [], pitcherRotation: [], bench: [], wasSaved: false }
+  const players = team.rosterPlayerIds
+    .map(id => state.players[id])
+    .filter(p => p && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed'
+                   && (p.injury?.weeksRemaining || 0) === 0)
 
   const saved = getSavedLineup(state, gameId)
   if (saved) {
@@ -46,19 +49,25 @@ export function resolveLineupForGame(state, teamId, gameId) {
     const starter = saved.starterPitcherId ? byId[saved.starterPitcherId] : null
     const pen = (saved.bullpenIds || []).map(id => byId[id]).filter(Boolean)
     if (batters.length === 9 && starter) {
-      // Bullpen fills out the rotation behind the starter; if user didn't set
-      // a bullpen, fall back to next-best pitchers.
       const explicit = [starter, ...pen]
       const explicitIds = new Set(explicit.map(p => p.id))
       const fallbackPen = defaultLineup(team, state.players).pitcherRotation
         .filter(p => !explicitIds.has(p.id))
         .slice(0, Math.max(0, 5 - explicit.length))
-      return { batters, pitcherRotation: [...explicit, ...fallbackPen], wasSaved: true }
+      const rotation = [...explicit, ...fallbackPen]
+      const activeIds = new Set([...batters.map(b => b.id), ...rotation.map(p => p.id)])
+      const bench = players.filter(p => !activeIds.has(p.id))
+      return { batters, pitcherRotation: rotation, bench, wasSaved: true }
     }
   }
-  // Fall back to default
+  // Fall back to default — add bench (roster minus starting + bullpen)
   const def = defaultLineup(team, state.players)
-  return { ...def, wasSaved: false }
+  const activeIds = new Set([
+    ...(def.batters || []).map(b => b.id),
+    ...(def.pitcherRotation || []).map(p => p.id),
+  ])
+  const bench = players.filter(p => !activeIds.has(p.id))
+  return { ...def, bench, wasSaved: false }
 }
 
 /** List the IDs of players who appeared in this game's saved lineup. */

@@ -24,31 +24,71 @@ import { simPA } from './sim'
  */
 export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   const rng = makeRng('live', seedKey)
+  // Field-position assignment: derived from each batter's primaryPosition.
+  // First match wins per slot — duplicates fall through (the lineup builder
+  // is supposed to deduplicate but we're defensive about it).
+  function deriveFielders(lineup, pitcher) {
+    const out = {}
+    for (const b of lineup.batters) {
+      const pos = b.primaryPosition
+      if (!pos || pos === 'DH') continue
+      if (!out[pos]) out[pos] = b
+    }
+    if (pitcher) out['P'] = pitcher
+    return out
+  }
+  // Per-side bench = roster players not in starting lineup or bullpen.
+  // Filled later by Play.jsx when we know the full roster; default empty.
   const state = {
     inning: 1,
     top: true,
     outs: 0,
-    bases: [null, null, null],  // each base holds either null or the batter who reached
+    bases: [null, null, null],
+    balls: 0,            // pitch count this PA (running ball count for the batter)
+    strikes: 0,
     homeRuns: 0,
     awayRuns: 0,
+    homeHits: 0,
+    awayHits: 0,
+    homeErrors: 0,
+    awayErrors: 0,
     homePAIndex: 0,
     awayPAIndex: 0,
     homePAs: 0,
     awayPAs: 0,
-    // Active lineup snapshots (mutable — pinch hits / pitching changes swap entries)
+    // Per-inning linescore — accumulates as we play
+    linescore: { home: [0], away: [0] },
+    // Active lineup snapshots (mutable — subs swap entries)
     homeBatters: [...homeLineup.batters],
     awayBatters: [...awayLineup.batters],
     homePitcher: homeLineup.pitcherRotation[0],
     awayPitcher: awayLineup.pitcherRotation[0],
     homeBullpen: homeLineup.pitcherRotation.slice(1),
     awayBullpen: awayLineup.pitcherRotation.slice(1),
-    homePitcherBF: 0,   // batters faced by current home pitcher
+    homeBench: [...(homeLineup.bench || [])],
+    awayBench: [...(awayLineup.bench || [])],
+    homeFielders: deriveFielders(homeLineup, homeLineup.pitcherRotation[0]),
+    awayFielders: deriveFielders(awayLineup, awayLineup.pitcherRotation[0]),
+    // Per-pitcher live state. Pitch count, fatigue, confidence track the
+    // CURRENT pitcher only — when a pitching change happens these reset.
+    homePitcherBF: 0,
     awayPitcherBF: 0,
-    // Event log — every PA + every inning boundary + every sub appears here
+    homePitches: 0,       // estimated pitch count for current home pitcher
+    awayPitches: 0,
+    homeFatigue: 0,       // 0..100. Higher = more tired. 100 = gassed.
+    awayFatigue: 0,
+    homeConfidence: 50,   // 0..100. Anchored to composure; ±10-15 from events.
+    awayConfidence: 50,
+    // Per-pitcher line so far (in-game): IP, H, R, ER, BB, K, HR, HBP, BF
+    homePitcherLine: zeroPitcherLine(),
+    awayPitcherLine: zeroPitcherLine(),
     events: [],
     isOver: false,
     final: null,
   }
+  // Composure-anchored confidence baseline
+  state.homeConfidence = state.homePitcher?.pitcher?.composure ?? 50
+  state.awayConfidence = state.awayPitcher?.pitcher?.composure ?? 50
 
   // Per-player accumulators (mirror simGame's structure)
   const batterStats = {}
@@ -113,25 +153,35 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   function flipHalfInning() {
     state.outs = 0
     state.bases = [null, null, null]
+    // Reset the per-PA pitch count tracker (we keep cumulative pitches on the
+    // current pitcher, but the balls/strikes display resets each PA naturally)
+    state.balls = 0
+    state.strikes = 0
+    // Partial fatigue recovery between innings — a tired pitcher gets a
+    // breather sitting in the dugout. Composure & stamina determine the
+    // bounce-back; we just give a small flat recovery here.
+    const sideKey = state.top ? 'home' : 'away'   // the side that just finished pitching
+    state[`${sideKey}Fatigue`] = Math.max(0, state[`${sideKey}Fatigue`] - 6)
     const wasTop = state.top
     if (wasTop) {
-      // End of top — flip to bottom. If after 9 and home already leads, game's over.
       if (state.inning >= 9 && state.homeRuns > state.awayRuns) {
         finalize('Home wins — bottom of 9 not required.')
         return
       }
       state.top = false
+      // Start a new home-half inning bucket in the linescore
+      state.linescore.home.push(0)
       pushEvent({ kind: 'HALF_END', inning: state.inning, top: true, text: `End of top ${state.inning}. ${ctx.awayTeamName || 'Away'} ${state.awayRuns}, ${ctx.homeTeamName || 'Home'} ${state.homeRuns}.` })
     } else {
-      // End of bottom — advance inning. If 9+ and someone leads, game's over.
       if (state.inning >= 9 && state.homeRuns !== state.awayRuns) {
         finalize('')
         return
       }
       state.top = true
       state.inning++
+      // Start a new away-half inning bucket
+      state.linescore.away.push(0)
       pushEvent({ kind: 'HALF_END', inning: state.inning - 1, top: false, text: `End of ${state.inning - 1}. ${ctx.awayTeamName || 'Away'} ${state.awayRuns}, ${ctx.homeTeamName || 'Home'} ${state.homeRuns}.` })
-      // Hard cap: 12 innings
       if (state.inning > 12) {
         finalize('Game called after 12 innings.')
       }
@@ -159,24 +209,50 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     b.pa++; p.pa++
     state[state.top ? 'awayPAs' : 'homePAs']++
     if (state.top) state.homePitcherBF++; else state.awayPitcherBF++
-    if (result.outcome === 'K') { b.ab++; b.k++; p.k++; p.outs++ }
-    else if (result.outcome === 'OUT') { b.ab++; p.outs++ }
-    else if (result.outcome === 'BB') { b.bb++; p.bb++ }
-    else if (result.outcome === 'HBP') { b.hbp++; p.hbp++ }
-    else if (result.outcome === 'SINGLE') { b.ab++; b.h++; p.h++ }
-    else if (result.outcome === 'DOUBLE') { b.ab++; b.h++; b.d++; p.h++ }
-    else if (result.outcome === 'TRIPLE') { b.ab++; b.h++; b.t++; p.h++ }
-    else if (result.outcome === 'HR') { b.ab++; b.h++; b.hr++; p.h++; p.hr++ }
-    else if (result.outcome === 'SAC_FLY') { b.sf++; p.outs++ }
-    else if (result.outcome === 'SAC_BUNT') { b.sac++; p.outs++ }
-    else if (result.outcome === 'GIDP') { b.ab++; b.gidp++; p.outs += 2 }
-    else if (result.outcome === 'ERROR') { b.ab++; b.roe++ }
+    // Pitch count, fatigue, confidence — applied to the CURRENT pitcher on
+    // the defensive side. estimatePitchesForPA gives a believable count from
+    // the outcome (Ks are longer ABs, BBs longer still, BIP shorter).
+    const pitchesThisPA = estimatePitchesForPA(result.outcome, rng)
+    const fatigueDelta = computeFatigueDelta(pitcher, pitchesThisPA)
+    const confidenceShift = computeConfidenceShift(result.outcome)
+    const sideKey = state.top ? 'home' : 'away'
+    state[`${sideKey}Pitches`] += pitchesThisPA
+    state[`${sideKey}Fatigue`] = Math.max(0, Math.min(100, state[`${sideKey}Fatigue`] + fatigueDelta))
+    state[`${sideKey}Confidence`] = Math.max(0, Math.min(100, state[`${sideKey}Confidence`] + confidenceShift))
+    // Pitcher in-game line
+    const pLine = state[`${sideKey}PitcherLine`]
+    pLine.bf++
+    pLine.pitches = state[`${sideKey}Pitches`]
+    if (result.outcome === 'K') { b.ab++; b.k++; p.k++; p.outs++; pLine.k++; pLine.outs++ }
+    else if (result.outcome === 'OUT') { b.ab++; p.outs++; pLine.outs++ }
+    else if (result.outcome === 'BB') { b.bb++; p.bb++; pLine.bb++ }
+    else if (result.outcome === 'HBP') { b.hbp++; p.hbp++; pLine.hbp++ }
+    else if (result.outcome === 'SINGLE') { b.ab++; b.h++; p.h++; pLine.h++; bumpHits(state) }
+    else if (result.outcome === 'DOUBLE') { b.ab++; b.h++; b.d++; p.h++; pLine.h++; bumpHits(state) }
+    else if (result.outcome === 'TRIPLE') { b.ab++; b.h++; b.t++; p.h++; pLine.h++; bumpHits(state) }
+    else if (result.outcome === 'HR') { b.ab++; b.h++; b.hr++; p.h++; p.hr++; pLine.h++; pLine.hr++; bumpHits(state) }
+    else if (result.outcome === 'SAC_FLY') { b.sf++; p.outs++; pLine.outs++ }
+    else if (result.outcome === 'SAC_BUNT') { b.sac++; p.outs++; pLine.outs++ }
+    else if (result.outcome === 'GIDP') { b.ab++; b.gidp++; p.outs += 2; pLine.outs += 2 }
+    else if (result.outcome === 'ERROR') {
+      b.ab++; b.roe++
+      // Charge an error to the FIELDING side
+      state[state.top ? 'homeErrors' : 'awayErrors']++
+    }
 
     applyOutcome(state, result, batter)
     const postRuns = state.top ? state.awayRuns : state.homeRuns
     if (postRuns > preRuns) {
       b.rbi += (postRuns - preRuns)
       p.er += (postRuns - preRuns)
+      // In-game pitcher line tracks earned + total runs against
+      const pLine = state[state.top ? 'homePitcherLine' : 'awayPitcherLine']
+      pLine.er += (postRuns - preRuns)
+      pLine.r += (postRuns - preRuns)
+      // Also tick the per-inning linescore for the batting side
+      const battingSide = state.top ? 'away' : 'home'
+      const curIdx = state.linescore[battingSide].length - 1
+      state.linescore[battingSide][curIdx] += (postRuns - preRuns)
     }
     if (state.top) state.awayPAIndex++; else state.homePAIndex++
 
@@ -223,10 +299,68 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   function pinchHit(side, spotIdx, newPlayer) {
     if (state.isOver) return
     const arr = side === 'home' ? state.homeBatters : state.awayBatters
+    const bench = side === 'home' ? state.homeBench : state.awayBench
     if (spotIdx < 0 || spotIdx > 8) return
     const prev = arr[spotIdx]
     arr[spotIdx] = newPlayer
-    pushEvent({ kind: 'SUB', inning: state.inning, top: state.top, text: `${pitchingTeamName()} change: ${newPlayer.firstName} ${newPlayer.lastName} pinch-hits for ${prev.firstName} ${prev.lastName}.` })
+    // Remove the new player from the bench (they're now active)
+    const benchIdx = bench.findIndex(p => p.id === newPlayer.id)
+    if (benchIdx >= 0) bench.splice(benchIdx, 1)
+    pushEvent({ kind: 'SUB', inning: state.inning, top: state.top, text: `${side === 'home' ? (ctx.homeTeamName || 'Home') : (ctx.awayTeamName || 'Away')} change: ${newPlayer.firstName} ${newPlayer.lastName} pinch-hits for ${prev.firstName} ${prev.lastName}.` })
+  }
+
+  /**
+   * Pinch-run: swap the runner on a given base (0=1B, 1=2B, 2=3B) for a
+   * bench player. The pinch runner inherits the runner-on-base flag (so they
+   * score / advance normally) and becomes the active batter at that lineup
+   * spot for future PAs.
+   */
+  function pinchRun(side, baseIdx, newPlayer) {
+    if (state.isOver) return
+    if (baseIdx < 0 || baseIdx > 2) return
+    const runner = state.bases[baseIdx]
+    if (!runner) return
+    // Replace the runner on base
+    state.bases[baseIdx] = newPlayer
+    // Replace at the lineup spot too — pinch runner inherits the bat
+    const arr = side === 'home' ? state.homeBatters : state.awayBatters
+    const bench = side === 'home' ? state.homeBench : state.awayBench
+    const spotIdx = arr.findIndex(b => b.id === runner.id)
+    if (spotIdx >= 0) arr[spotIdx] = newPlayer
+    const benchIdx = bench.findIndex(p => p.id === newPlayer.id)
+    if (benchIdx >= 0) bench.splice(benchIdx, 1)
+    const baseLabel = baseIdx === 0 ? '1B' : baseIdx === 1 ? '2B' : '3B'
+    pushEvent({ kind: 'SUB', inning: state.inning, top: state.top, text: `${side === 'home' ? (ctx.homeTeamName || 'Home') : (ctx.awayTeamName || 'Away')} pinch-runner: ${newPlayer.firstName} ${newPlayer.lastName} for ${runner.firstName} ${runner.lastName} at ${baseLabel}.` })
+  }
+
+  /**
+   * Defensive sub — swap a fielder at a given position. If the displaced
+   * fielder is still on the batting roster, they're moved to the bench;
+   * if the incoming player was in the batting order, their lineup spot
+   * is updated to the new fielder.
+   */
+  function defensiveSub(side, position, newPlayer) {
+    if (state.isOver) return
+    const fieldersKey = side === 'home' ? 'homeFielders' : 'awayFielders'
+    const battersKey = side === 'home' ? 'homeBatters' : 'awayBatters'
+    const benchKey = side === 'home' ? 'homeBench' : 'awayBench'
+    const prev = state[fieldersKey][position]
+    state[fieldersKey][position] = newPlayer
+    // Swap the lineup spot if the displaced fielder was in the batting order
+    if (prev) {
+      const spotIdx = state[battersKey].findIndex(b => b.id === prev.id)
+      if (spotIdx >= 0) state[battersKey][spotIdx] = newPlayer
+      // The displaced player heads to the bench
+      state[benchKey].push(prev)
+    }
+    // Remove the incoming player from the bench
+    const benchIdx = state[benchKey].findIndex(p => p.id === newPlayer.id)
+    if (benchIdx >= 0) state[benchKey].splice(benchIdx, 1)
+    pushEvent({
+      kind: 'SUB',
+      inning: state.inning, top: state.top,
+      text: `${side === 'home' ? (ctx.homeTeamName || 'Home') : (ctx.awayTeamName || 'Away')} defensive sub: ${newPlayer.firstName} ${newPlayer.lastName} in at ${position}${prev ? ` for ${prev.firstName} ${prev.lastName}` : ''}.`,
+    })
   }
 
   /** Pitching change for the team currently pitching (defense). */
@@ -237,10 +371,20 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     if (defendingSide === 'home') {
       state.homePitcher = newPitcher
       state.homePitcherBF = 0
+      state.homePitches = 0
+      state.homeFatigue = 0
+      state.homeConfidence = newPitcher?.pitcher?.composure ?? 50
+      state.homePitcherLine = zeroPitcherLine()
+      state.homeFielders['P'] = newPitcher
       state.homeBullpen = state.homeBullpen.filter(p => p.id !== newPitcher.id)
     } else {
       state.awayPitcher = newPitcher
       state.awayPitcherBF = 0
+      state.awayPitches = 0
+      state.awayFatigue = 0
+      state.awayConfidence = newPitcher?.pitcher?.composure ?? 50
+      state.awayPitcherLine = zeroPitcherLine()
+      state.awayFielders['P'] = newPitcher
       state.awayBullpen = state.awayBullpen.filter(p => p.id !== newPitcher.id)
     }
     pushEvent({
@@ -250,18 +394,102 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     })
   }
 
+  /** Live mini-line for a batter — returns AB / H / 2B / 3B / HR / RBI / BB / K from in-game stats. */
+  function batterTodayLine(playerId) {
+    return batterStats[playerId] || { ab: 0, h: 0, d: 0, t: 0, hr: 0, rbi: 0, bb: 0, k: 0 }
+  }
+
   return {
     state,
     step,
     simHalfInning,
     simRest,
     pinchHit,
+    pinchRun,
+    defensiveSub,
     pitchingChange,
     isOver: () => state.isOver,
     getResult: () => state.final,
     currentBatter,
     currentPitcher,
+    batterTodayLine,
     getBoxscore: () => ({ batterStats, pitcherStats }),
+  }
+}
+
+// ─── In-game pitcher/fatigue helpers ───────────────────────────────────────
+
+function zeroPitcherLine() {
+  return { bf: 0, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, hbp: 0, pitches: 0 }
+}
+
+function bumpHits(state) {
+  state[state.top ? 'awayHits' : 'homeHits']++
+}
+
+/**
+ * Estimate the number of pitches in a PA from the outcome. Real-world avg
+ * is ~3.9 pitches per PA. Ks tend to take longer (5-6), BBs longest (4-5),
+ * BIP shortest (2-3). Adds small noise so successive PAs don't read
+ * identical pitch counts.
+ */
+function estimatePitchesForPA(outcome, rng) {
+  const r = rng.next()
+  switch (outcome) {
+    case 'K':       return 4 + Math.floor(r * 4)        // 4-7
+    case 'BB':      return 4 + Math.floor(r * 3)        // 4-6
+    case 'HBP':     return 2 + Math.floor(r * 3)        // 2-4
+    case 'HR':      return 2 + Math.floor(r * 4)        // 2-5
+    case 'SINGLE':  return 2 + Math.floor(r * 4)
+    case 'DOUBLE':  return 2 + Math.floor(r * 4)
+    case 'TRIPLE':  return 2 + Math.floor(r * 4)
+    case 'GIDP':    return 1 + Math.floor(r * 3)        // first pitch swinging often
+    case 'SAC_FLY': return 2 + Math.floor(r * 3)
+    case 'SAC_BUNT': return 1 + Math.floor(r * 3)
+    case 'ERROR':   return 2 + Math.floor(r * 3)
+    case 'OUT':     return 2 + Math.floor(r * 4)
+    default:        return 4
+  }
+}
+
+/**
+ * How much fatigue does this PA add to the current pitcher? Driven by:
+ *  - pitches thrown
+ *  - inverse stamina (60-stamina arm tires twice as fast as 85-stamina)
+ *  - inverse durability (small contribution)
+ *
+ * Returns a non-negative delta to apply to fatigue (0..100 scale).
+ */
+function computeFatigueDelta(pitcher, pitchesThisPA) {
+  const stamina = pitcher?.pitcher?.stamina ?? 50
+  const durability = pitcher?.pitcher?.durability ?? 50
+  // staminaMult: stamina 50 → 1.0×, stamina 80 → 0.6×, stamina 30 → 1.4×
+  const staminaMult = Math.max(0.55, 1.5 - (stamina / 100))
+  const durabilityMult = Math.max(0.85, 1.15 - (durability / 200))
+  // ~1.0 fatigue per pitch at stamina 50. Closer to 0.55 at stamina 80.
+  return pitchesThisPA * 0.45 * staminaMult * durabilityMult
+}
+
+/**
+ * Confidence drifts based on outcomes. K +3, BB -2, HR allowed -8, hit -2,
+ * out +1. Capped 0..100. Anchored to the pitcher's composure rating in the
+ * createLiveGame init.
+ */
+function computeConfidenceShift(outcome) {
+  switch (outcome) {
+    case 'K':       return +3
+    case 'OUT':     return +1
+    case 'SAC_FLY': return +0       // they got out but moved a runner
+    case 'SAC_BUNT': return +0
+    case 'GIDP':    return +4       // two outs on one pitch
+    case 'HR':      return -8
+    case 'TRIPLE':  return -3
+    case 'DOUBLE':  return -2
+    case 'SINGLE':  return -2
+    case 'BB':      return -2
+    case 'HBP':     return -1
+    case 'ERROR':   return -1
+    default:        return 0
   }
 }
 
