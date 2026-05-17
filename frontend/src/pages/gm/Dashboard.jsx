@@ -708,6 +708,7 @@ export default function Dashboard() {
           <ConferenceStandingsWidget save={save} slot={slot} />
           <PostseasonBracketWidget save={save} slot={slot} />
           <WeeklyAwardsWidget save={save} />
+          <NwacAlumniWidget save={save} />
         </div>
       </div>
     </div>
@@ -1008,6 +1009,64 @@ function BracketLine({ save, game, userId }) {
  * Weekly Awards widget — surfaces this week's POTW winners.
  * Hidden when no awards this week (offseason / no games).
  */
+/**
+ * NWAC Alumni — surfaces where this year's sophomores transferred to.
+ * Only visible on NWAC dynasties + after a year rollover that produced
+ * actual transfers. Sorted by player OVR (best transfers first).
+ */
+function NwacAlumniWidget({ save }) {
+  if (save.level !== 'NWAC') return null
+  const hist = save.nwacAlumni || {}
+  // Show the most recent year that has any entries
+  const years = Object.keys(hist).map(Number).sort((a, b) => b - a)
+  const year = years.find(y => (hist[y] || []).length > 0)
+  if (!year) return null
+  const list = [...hist[year]].sort((a, b) => (b.ovr || 0) - (a.ovr || 0))
+
+  // Tier badge styling
+  const tierStyles = {
+    ELITE: 'bg-amber-400 text-[#1a1a2e] font-bold',
+    HIGH:  'bg-emerald-500/80 text-white',
+    MID:   'bg-blue-500/80 text-white',
+    AVG:   'bg-gray-500/80 text-white',
+    LOW:   'bg-gray-400/60 text-gray-900',
+    WALKON:'bg-gray-300 text-gray-700',
+  }
+
+  return (
+    <Panel title={`${year} NWAC → 4-Yr Transfers`} actionTo={null}>
+      <div className="text-[10px] text-gray-500 mb-2">
+        {list.length} sophomore{list.length === 1 ? '' : 's'} signed with 4-year programs this offseason.
+      </div>
+      <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+        {list.map((row, i) => {
+          const tier = row.destination?.tier || 'WALKON'
+          const div = row.destination?.division
+          const cls = tierStyles[tier] || tierStyles.WALKON
+          return (
+            <div key={i} className="flex items-center justify-between gap-2 p-1.5 rounded bg-gray-50">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-pnw-slate truncate">{row.playerName}</div>
+                <div className="text-[10px] text-gray-600">
+                  {row.position} · {row.ovr} OVR
+                  {row.hometown?.state && <span> · {row.hometown.city}, {row.hometown.state}</span>}
+                </div>
+                <div className="text-[11px] text-pnw-green truncate font-medium">
+                  → {row.destination?.name || 'No 4-yr offer'}
+                  {row.destination?.state && <span className="text-gray-500"> ({row.destination.state})</span>}
+                </div>
+              </div>
+              <span className={'text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ' + cls}>
+                {div || 'none'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+}
+
 function WeeklyAwardsWidget({ save }) {
   const yr = save.calendar?.year
   const wk = save.calendar?.weekOfYear

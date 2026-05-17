@@ -96,36 +96,119 @@ export default function Postseason() {
           {userTournament.champion && (
             <div className="mt-4 pt-3 border-t text-sm">
               <strong>Champion:</strong> {save.schools[userTournament.champion]?.name}
-              {' '}<span className="text-xs text-gray-500">(auto-bid to NAIA Opening Round)</span>
+              {' '}<span className="text-xs text-gray-500">
+                (auto-bid to {ps.level === 'NAIA' ? 'NAIA Opening Round' : (ps.nationalSpec?.name || 'national tournament')})
+              </span>
             </div>
           )}
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-        <h2 className="text-lg font-semibold mb-3">All 21 Conference Champions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-          {ps.tournaments.map(t => {
-            const conf = save.conferences[t.conferenceId]
-            const champ = save.schools[t.champion]
-            return (
-              <div key={t.conferenceId} className="border border-gray-200 rounded p-2">
-                <div className="text-[10px] uppercase tracking-wider text-gray-500">{conf?.abbreviation}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <TeamLogo school={champ} size={16} />
-                  <span className="font-medium">{champ?.name || '—'}</span>
+      {/* All-conference-champions block — only meaningful for NAIA where we
+          sim every conference. Non-NAIA dynasties show their own conference
+          only (we don't track 30 D1 conferences). */}
+      {ps.level === 'NAIA' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h2 className="text-lg font-semibold mb-3">All 21 Conference Champions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+            {ps.tournaments.map(t => {
+              const conf = save.conferences[t.conferenceId]
+              const champ = save.schools[t.champion]
+              return (
+                <div key={t.conferenceId} className="border border-gray-200 rounded p-2">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">{conf?.abbreviation}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <TeamLogo school={champ} size={16} />
+                    <span className="font-medium">{champ?.name || '—'}</span>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
-      {ps.national && (
+      {/* Multi-level national bracket — stub-sim'd run when user wins conf */}
+      {ps.level && ps.level !== 'NAIA' && ps.national && (
+        <MultiLevelNationalSection ps={ps} save={save} />
+      )}
+      {ps.level && ps.level !== 'NAIA' && !ps.national && (
+        <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h2 className="text-lg font-semibold mb-2">{ps.nationalSpec?.name || 'National Tournament'}</h2>
+          <p className="text-xs text-gray-600">
+            Conference champions advance to the national bracket. {save.schools[save.userSchoolId]?.name} did{ps.userChamp ? '' : "n't"} win the conference this year.
+          </p>
+        </div>
+      )}
+
+      {ps.level === 'NAIA' && ps.national && (
         <NationalSection ps={ps} save={save} />
       )}
     </div>
     </GMShell>
+  )
+}
+
+/**
+ * Multi-level national bracket display — used for D1/D2/D3/NWAC dynasties
+ * who won their conference. Shows each round with a win/lose pill.
+ */
+function MultiLevelNationalSection({ ps, save }) {
+  const nat = ps.national
+  if (!nat) return null
+  const schoolName = save.schools[save.userSchoolId]?.name
+  return (
+    <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+      <h2 className="text-lg font-semibold mb-1">{ps.nationalSpec?.name || 'National Tournament'}</h2>
+      <p className="text-xs text-gray-500 mb-4">
+        Auto-bid earned by winning the {save.conferences[save.schools[save.userSchoolId]?.conferenceId]?.name} championship.
+      </p>
+
+      {nat.userWSChamp && (
+        <div className="mb-4 p-3 bg-gradient-to-r from-yellow-100 to-amber-100 border border-amber-300 rounded">
+          <div className="text-xs uppercase tracking-wider text-amber-900">{ps.year} National Champion</div>
+          <div className="text-xl font-bold text-pnw-slate mt-1">{schoolName}</div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {nat.games.map((g, i) => {
+          const isLast = i === nat.games.length - 1
+          const finalRoundLoss = isLast && !g.userWon
+          return (
+            <div
+              key={i}
+              className={'flex items-center justify-between p-3 rounded border ' +
+                (g.userWon ? 'border-pnw-green bg-pnw-cream/30' : finalRoundLoss ? 'border-red-300 bg-red-50' : 'border-gray-200')
+              }
+            >
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">{g.round}</div>
+                <div className="text-sm font-semibold text-pnw-slate mt-0.5">{g.location || '—'}</div>
+              </div>
+              <div className="text-right">
+                <div className={'text-sm font-bold ' + (g.userWon ? 'text-pnw-green' : 'text-red-700')}>
+                  {g.userWon ? 'Advanced' : 'Eliminated'}
+                </div>
+                <div className="text-[10px] text-gray-500">({g.winProb}% win prob)</div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {!nat.userWSChamp && nat.lastRoundWon && (
+        <div className="mt-3 text-xs text-gray-600">
+          Final result: eliminated after the {nat.lastRoundWon}.
+        </div>
+      )}
+
+      <div className="mt-4 text-[10px] text-gray-500 italic">
+        Note: non-NAIA national brackets use a high-level "stub" sim — your run is computed
+        per-round vs synthetic opponents tuned to your NWBB Rating. A full PA-level WS sim
+        (with the other 7-15 bracket teams) is a future engine task.
+      </div>
+    </div>
   )
 }
 

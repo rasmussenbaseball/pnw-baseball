@@ -27,6 +27,7 @@ import { totalAnnualTravelCost } from './travel'
 import { closePlanningWindow, resolveSummerBall, ensureSummerBallState } from './summerBall'
 import { ensureCutsState } from './cuts'
 import { awardForEndOfYearHonors } from './coachProgression'
+import { assignNwacTransferDestinations } from './nwacTransfers'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 const NON_NAIA_LOOKUP = (() => {
@@ -478,6 +479,13 @@ function runDevelopment(state) {
       payload: { playerId: r.player.id, gain: r.gain },
     })
   }
+  // For NWAC: assign 4-year destinations to every sophomore who just
+  // got marked as transferred. Fires BEFORE the roster exit pass so
+  // the destination is recorded on the player + state.nwacAlumni.
+  if (state.level === 'NWAC') {
+    assignNwacTransferDestinations(state)
+  }
+
   // Remove graduated + transferred players from roster
   const exits = playerIds.filter(id => {
     const s = state.players[id]?.eligibilityStatus

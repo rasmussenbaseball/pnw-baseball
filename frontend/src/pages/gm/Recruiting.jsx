@@ -409,29 +409,44 @@ export default function Recruiting() {
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <span className="text-xs text-gray-500 mr-2">Source:</span>
-        {[
-          { key: 'ALL',           label: 'All' },
-          { key: 'HS_SR',         label: 'HS' },
-          { key: 'JUCO',          label: 'JUCO' },
-          { key: 'PORTAL',        label: 'Transfer Portal', requiresPortal: true },
-        ].map(t => {
-          const isLocked = t.requiresPortal && phase === 'PRE_PORTAL'
-          const active = poolFilter === t.key
-          return (
-            <button
-              key={t.key}
-              onClick={() => !isLocked && setPoolFilter(t.key)}
-              disabled={isLocked}
-              className={'px-3 py-1.5 rounded-lg text-xs font-semibold transition ' +
-                (active ? 'bg-pnw-green text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200') +
-                (isLocked ? ' opacity-40 cursor-not-allowed' : '')
-              }
-              title={isLocked ? 'Portal opens after the regular season ends' : ''}
-            >
-              {t.label}{isLocked ? ' ' : ''}
-            </button>
-          )
-        })}
+        {(() => {
+          // NWAC + D3 = HS-only recruiting (no JUCO/portal inflow). Hide
+          // those source pills entirely so the user isn't searching for a
+          // JUCO tab that doesn't apply.
+          const level = save.level || 'NAIA'
+          const hsOnly = level === 'NWAC' || level === 'D3'
+          const tabs = hsOnly
+            ? [{ key: 'ALL', label: 'All' }, { key: 'HS_SR', label: 'HS' }]
+            : [
+                { key: 'ALL',    label: 'All' },
+                { key: 'HS_SR',  label: 'HS' },
+                { key: 'JUCO',   label: 'JUCO' },
+                { key: 'PORTAL', label: 'Transfer Portal', requiresPortal: true },
+              ]
+          return tabs.map(t => {
+            const isLocked = t.requiresPortal && phase === 'PRE_PORTAL'
+            const active = poolFilter === t.key
+            return (
+              <button
+                key={t.key}
+                onClick={() => !isLocked && setPoolFilter(t.key)}
+                disabled={isLocked}
+                className={'px-3 py-1.5 rounded-lg text-xs font-semibold transition ' +
+                  (active ? 'bg-pnw-green text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200') +
+                  (isLocked ? ' opacity-40 cursor-not-allowed' : '')
+                }
+                title={isLocked ? 'Portal opens after the regular season ends' : ''}
+              >
+                {t.label}{isLocked ? ' ' : ''}
+              </button>
+            )
+          })
+        })()}
+        {(save.level === 'NWAC' || save.level === 'D3') && (
+          <span className="text-[10px] text-amber-700 ml-2 italic">
+            {save.level === 'NWAC' ? 'NWAC = JUCO. HS recruits only.' : 'D3 = no athletic scholarships. HS recruits only.'}
+          </span>
+        )}
       </div>
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
