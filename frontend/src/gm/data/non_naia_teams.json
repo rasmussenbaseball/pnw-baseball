@@ -1,129 +1,5476 @@
 {
   "_meta": {
     "purpose": "Non-NAIA programs (D1/D2/D3 + JUCOs) that NAIA teams can schedule for non-conference games. Strength values feed nonNaiaToUniversal() in nwbbRating.js for cross-division ratings.",
-    "scope": "PNW focus + national powers. Full national database is a future data lift.",
-    "fields": "Strength rating (-15 to +15 scale) determines sim outcomes + universal-strength rating. Tier-aware: a D1 at strength 10 outranks a D2 at strength 10."
+    "scope": "Comprehensive D1/D2/D3 + PNW JUCO. Generated via scripts/gm/generate_non_naia_teams.js — edit the script to add/tune teams.",
+    "fields": "Strength rating (-15 to +15 scale) determines sim outcomes + universal-strength rating. Tier-aware: a D1 at strength 10 outranks a D2 at strength 10.",
+    "sourceNotes": "D1/D2/D3 strength values are best-effort estimates from widely-known program reputation, NOT actual PEAR data (PEAR publishes for those divisions but our local data file only has NAIA). Swap in real PEAR values when available.",
+    "generated": "2026-05-17"
   },
   "divisions": [
     {
       "id": "D1",
       "name": "NCAA Division I",
       "teams": [
-        { "id": "oregon-d1",        "name": "Oregon",          "city": "Eugene",     "state": "OR", "nickname": "Ducks",      "strength": 9.5, "colors": { "primary": "#154733", "secondary": "#FEE123" } },
-        { "id": "oregon-state-d1",  "name": "Oregon State",    "city": "Corvallis",  "state": "OR", "nickname": "Beavers",    "strength": 10.5, "colors": { "primary": "#DC4405", "secondary": "#000000" } },
-        { "id": "washington-d1",    "name": "Washington",      "city": "Seattle",    "state": "WA", "nickname": "Huskies",    "strength": 8.0, "colors": { "primary": "#4B2E83", "secondary": "#B7A57A" } },
-        { "id": "washington-state-d1", "name": "Washington State", "city": "Pullman", "state": "WA", "nickname": "Cougars", "strength": 7.5, "colors": { "primary": "#981E32", "secondary": "#5E6A71" } },
-        { "id": "gonzaga-d1",       "name": "Gonzaga",         "city": "Spokane",    "state": "WA", "nickname": "Bulldogs",   "strength": 7.0, "colors": { "primary": "#041E42", "secondary": "#C8102E" } },
-        { "id": "portland-d1",      "name": "Portland",        "city": "Portland",   "state": "OR", "nickname": "Pilots",     "strength": 6.5, "colors": { "primary": "#502D7F", "secondary": "#FFFFFF" } },
-        { "id": "seattle-d1",       "name": "Seattle U",       "city": "Seattle",    "state": "WA", "nickname": "Redhawks",   "strength": 5.5, "colors": { "primary": "#AA0000", "secondary": "#000000" } },
-        { "id": "lsu-d1",           "name": "LSU",             "city": "Baton Rouge","state": "LA", "nickname": "Tigers",     "strength": 13.0, "colors": { "primary": "#461D7C", "secondary": "#FDD023" } },
-        { "id": "vanderbilt-d1",    "name": "Vanderbilt",      "city": "Nashville",  "state": "TN", "nickname": "Commodores", "strength": 12.0, "colors": { "primary": "#000000", "secondary": "#866D4B" } },
-        { "id": "tennessee-d1",     "name": "Tennessee",       "city": "Knoxville",  "state": "TN", "nickname": "Volunteers", "strength": 12.5, "colors": { "primary": "#FF8200", "secondary": "#FFFFFF" } },
-        { "id": "texas-d1",         "name": "Texas",           "city": "Austin",     "state": "TX", "nickname": "Longhorns",  "strength": 11.5, "colors": { "primary": "#BF5700", "secondary": "#FFFFFF" } },
-        { "id": "texas-am-d1",      "name": "Texas A&M",       "city": "College Station", "state": "TX", "nickname": "Aggies", "strength": 11.0, "colors": { "primary": "#500000", "secondary": "#FFFFFF" } },
-        { "id": "arkansas-d1",      "name": "Arkansas",        "city": "Fayetteville","state": "AR", "nickname": "Razorbacks","strength": 12.0, "colors": { "primary": "#9D2235", "secondary": "#FFFFFF" } },
-        { "id": "florida-d1",       "name": "Florida",         "city": "Gainesville","state": "FL", "nickname": "Gators",     "strength": 11.5, "colors": { "primary": "#0021A5", "secondary": "#FA4616" } },
-        { "id": "florida-state-d1", "name": "Florida State",   "city": "Tallahassee","state": "FL", "nickname": "Seminoles",  "strength": 10.5, "colors": { "primary": "#782F40", "secondary": "#CEB888" } },
-        { "id": "wake-forest-d1",   "name": "Wake Forest",     "city": "Winston-Salem","state": "NC","nickname": "Demon Deacons","strength": 11.0, "colors": { "primary": "#9E7E38", "secondary": "#000000" } },
-        { "id": "virginia-d1",      "name": "Virginia",        "city": "Charlottesville","state": "VA","nickname": "Cavaliers","strength": 10.5, "colors": { "primary": "#232D4B", "secondary": "#F84C1E" } },
-        { "id": "nc-state-d1",      "name": "NC State",        "city": "Raleigh",    "state": "NC", "nickname": "Wolfpack",   "strength": 10.0, "colors": { "primary": "#CC0000", "secondary": "#000000" } },
-        { "id": "miss-state-d1",    "name": "Mississippi State","city": "Starkville","state": "MS", "nickname": "Bulldogs",   "strength": 10.5, "colors": { "primary": "#660000", "secondary": "#FFFFFF" } },
-        { "id": "ole-miss-d1",      "name": "Ole Miss",        "city": "Oxford",     "state": "MS", "nickname": "Rebels",     "strength": 10.0, "colors": { "primary": "#CE1126", "secondary": "#14213D" } },
-        { "id": "tcu-d1",           "name": "TCU",             "city": "Fort Worth", "state": "TX", "nickname": "Horned Frogs","strength": 10.5, "colors": { "primary": "#4D1979", "secondary": "#A3A9AC" } },
-        { "id": "stanford-d1",      "name": "Stanford",        "city": "Stanford",   "state": "CA", "nickname": "Cardinal",   "strength": 11.0, "colors": { "primary": "#8C1515", "secondary": "#FFFFFF" } },
-        { "id": "ucla-d1",          "name": "UCLA",            "city": "Los Angeles","state": "CA", "nickname": "Bruins",     "strength": 10.0, "colors": { "primary": "#2774AE", "secondary": "#FFD100" } },
-        { "id": "usc-d1",           "name": "USC",             "city": "Los Angeles","state": "CA", "nickname": "Trojans",    "strength": 9.0,  "colors": { "primary": "#990000", "secondary": "#FFCC00" } },
-        { "id": "arizona-d1",       "name": "Arizona",         "city": "Tucson",     "state": "AZ", "nickname": "Wildcats",   "strength": 9.5,  "colors": { "primary": "#CC0033", "secondary": "#003366" } },
-        { "id": "asu-d1",           "name": "Arizona State",   "city": "Tempe",      "state": "AZ", "nickname": "Sun Devils", "strength": 8.5,  "colors": { "primary": "#8C1D40", "secondary": "#FFC627" } },
-        { "id": "cal-d1",           "name": "Cal",             "city": "Berkeley",   "state": "CA", "nickname": "Golden Bears","strength": 7.5, "colors": { "primary": "#003262", "secondary": "#FDB515" } },
-        { "id": "coastal-carolina-d1","name": "Coastal Carolina","city": "Conway",   "state": "SC", "nickname": "Chanticleers","strength": 9.0, "colors": { "primary": "#006F71", "secondary": "#A27752" } },
-        { "id": "east-carolina-d1", "name": "East Carolina",   "city": "Greenville", "state": "NC", "nickname": "Pirates",    "strength": 9.5,  "colors": { "primary": "#592A8A", "secondary": "#FFD428" } },
-        { "id": "louisville-d1",    "name": "Louisville",      "city": "Louisville", "state": "KY", "nickname": "Cardinals",  "strength": 10.0, "colors": { "primary": "#AD0000", "secondary": "#000000" } },
-        { "id": "oklahoma-state-d1","name": "Oklahoma State",  "city": "Stillwater", "state": "OK", "nickname": "Cowboys",    "strength": 9.5,  "colors": { "primary": "#FF7300", "secondary": "#000000" } }
+        {
+          "id": "lsu-d1",
+          "name": "LSU",
+          "city": "Baton Rouge",
+          "state": "LA",
+          "nickname": "Tigers",
+          "strength": 13,
+          "colors": {
+            "primary": "#461D7C",
+            "secondary": "#FDD023"
+          }
+        },
+        {
+          "id": "tennessee-d1",
+          "name": "Tennessee",
+          "city": "Knoxville",
+          "state": "TN",
+          "nickname": "Volunteers",
+          "strength": 12.5,
+          "colors": {
+            "primary": "#FF8200",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "vanderbilt-d1",
+          "name": "Vanderbilt",
+          "city": "Nashville",
+          "state": "TN",
+          "nickname": "Commodores",
+          "strength": 12,
+          "colors": {
+            "primary": "#000000",
+            "secondary": "#866D4B"
+          }
+        },
+        {
+          "id": "arkansas-d1",
+          "name": "Arkansas",
+          "city": "Fayetteville",
+          "state": "AR",
+          "nickname": "Razorbacks",
+          "strength": 12,
+          "colors": {
+            "primary": "#9D2235",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "florida-d1",
+          "name": "Florida",
+          "city": "Gainesville",
+          "state": "FL",
+          "nickname": "Gators",
+          "strength": 11.5,
+          "colors": {
+            "primary": "#0021A5",
+            "secondary": "#FA4616"
+          }
+        },
+        {
+          "id": "texas-d1",
+          "name": "Texas",
+          "city": "Austin",
+          "state": "TX",
+          "nickname": "Longhorns",
+          "strength": 11.5,
+          "colors": {
+            "primary": "#BF5700",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "texas-aandm-d1",
+          "name": "Texas A&M",
+          "city": "College Station",
+          "state": "TX",
+          "nickname": "Aggies",
+          "strength": 11,
+          "colors": null
+        },
+        {
+          "id": "mississippi-state-d1",
+          "name": "Mississippi State",
+          "city": "Starkville",
+          "state": "MS",
+          "nickname": "Bulldogs",
+          "strength": 10.5,
+          "colors": null
+        },
+        {
+          "id": "ole-miss-d1",
+          "name": "Ole Miss",
+          "city": "Oxford",
+          "state": "MS",
+          "nickname": "Rebels",
+          "strength": 10,
+          "colors": {
+            "primary": "#CE1126",
+            "secondary": "#14213D"
+          }
+        },
+        {
+          "id": "auburn-d1",
+          "name": "Auburn",
+          "city": "Auburn",
+          "state": "AL",
+          "nickname": "Tigers",
+          "strength": 10.5,
+          "colors": null
+        },
+        {
+          "id": "georgia-d1",
+          "name": "Georgia",
+          "city": "Athens",
+          "state": "GA",
+          "nickname": "Bulldogs",
+          "strength": 9.5,
+          "colors": null
+        },
+        {
+          "id": "kentucky-d1",
+          "name": "Kentucky",
+          "city": "Lexington",
+          "state": "KY",
+          "nickname": "Wildcats",
+          "strength": 9.5,
+          "colors": null
+        },
+        {
+          "id": "south-carolina-d1",
+          "name": "South Carolina",
+          "city": "Columbia",
+          "state": "SC",
+          "nickname": "Gamecocks",
+          "strength": 9,
+          "colors": null
+        },
+        {
+          "id": "alabama-d1",
+          "name": "Alabama",
+          "city": "Tuscaloosa",
+          "state": "AL",
+          "nickname": "Crimson Tide",
+          "strength": 8.5,
+          "colors": null
+        },
+        {
+          "id": "oklahoma-d1",
+          "name": "Oklahoma",
+          "city": "Norman",
+          "state": "OK",
+          "nickname": "Sooners",
+          "strength": 8,
+          "colors": null
+        },
+        {
+          "id": "missouri-d1",
+          "name": "Missouri",
+          "city": "Columbia",
+          "state": "MO",
+          "nickname": "Tigers",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "florida-state-d1",
+          "name": "Florida State",
+          "city": "Tallahassee",
+          "state": "FL",
+          "nickname": "Seminoles",
+          "strength": 10.5,
+          "colors": {
+            "primary": "#782F40",
+            "secondary": "#CEB888"
+          }
+        },
+        {
+          "id": "wake-forest-d1",
+          "name": "Wake Forest",
+          "city": "Winston-Salem",
+          "state": "NC",
+          "nickname": "Demon Deacons",
+          "strength": 11,
+          "colors": {
+            "primary": "#9E7E38",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "virginia-d1",
+          "name": "Virginia",
+          "city": "Charlottesville",
+          "state": "VA",
+          "nickname": "Cavaliers",
+          "strength": 10.5,
+          "colors": {
+            "primary": "#232D4B",
+            "secondary": "#F84C1E"
+          }
+        },
+        {
+          "id": "nc-state-d1",
+          "name": "NC State",
+          "city": "Raleigh",
+          "state": "NC",
+          "nickname": "Wolfpack",
+          "strength": 10,
+          "colors": {
+            "primary": "#CC0000",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "stanford-d1",
+          "name": "Stanford",
+          "city": "Stanford",
+          "state": "CA",
+          "nickname": "Cardinal",
+          "strength": 11,
+          "colors": {
+            "primary": "#8C1515",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "clemson-d1",
+          "name": "Clemson",
+          "city": "Clemson",
+          "state": "SC",
+          "nickname": "Tigers",
+          "strength": 10,
+          "colors": null
+        },
+        {
+          "id": "miami-d1",
+          "name": "Miami",
+          "city": "Coral Gables",
+          "state": "FL",
+          "nickname": "Hurricanes",
+          "strength": 9.5,
+          "colors": null
+        },
+        {
+          "id": "north-carolina-d1",
+          "name": "North Carolina",
+          "city": "Chapel Hill",
+          "state": "NC",
+          "nickname": "Tar Heels",
+          "strength": 10,
+          "colors": null
+        },
+        {
+          "id": "duke-d1",
+          "name": "Duke",
+          "city": "Durham",
+          "state": "NC",
+          "nickname": "Blue Devils",
+          "strength": 9,
+          "colors": null
+        },
+        {
+          "id": "louisville-d1",
+          "name": "Louisville",
+          "city": "Louisville",
+          "state": "KY",
+          "nickname": "Cardinals",
+          "strength": 10,
+          "colors": {
+            "primary": "#AD0000",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "virginia-tech-d1",
+          "name": "Virginia Tech",
+          "city": "Blacksburg",
+          "state": "VA",
+          "nickname": "Hokies",
+          "strength": 7.5,
+          "colors": null
+        },
+        {
+          "id": "georgia-tech-d1",
+          "name": "Georgia Tech",
+          "city": "Atlanta",
+          "state": "GA",
+          "nickname": "Yellow Jackets",
+          "strength": 7.5,
+          "colors": null
+        },
+        {
+          "id": "notre-dame-d1",
+          "name": "Notre Dame",
+          "city": "Notre Dame",
+          "state": "IN",
+          "nickname": "Fighting Irish",
+          "strength": 7,
+          "colors": null
+        },
+        {
+          "id": "pitt-d1",
+          "name": "Pitt",
+          "city": "Pittsburgh",
+          "state": "PA",
+          "nickname": "Panthers",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "boston-college-d1",
+          "name": "Boston College",
+          "city": "Chestnut Hill",
+          "state": "MA",
+          "nickname": "Eagles",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "cal-d1",
+          "name": "Cal",
+          "city": "Berkeley",
+          "state": "CA",
+          "nickname": "Golden Bears",
+          "strength": 7.5,
+          "colors": {
+            "primary": "#003262",
+            "secondary": "#FDB515"
+          }
+        },
+        {
+          "id": "smu-d1",
+          "name": "SMU",
+          "city": "University Park",
+          "state": "TX",
+          "nickname": "Mustangs",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "oklahoma-state-d1",
+          "name": "Oklahoma State",
+          "city": "Stillwater",
+          "state": "OK",
+          "nickname": "Cowboys",
+          "strength": 9.5,
+          "colors": {
+            "primary": "#FF7300",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "tcu-d1",
+          "name": "TCU",
+          "city": "Fort Worth",
+          "state": "TX",
+          "nickname": "Horned Frogs",
+          "strength": 10.5,
+          "colors": {
+            "primary": "#4D1979",
+            "secondary": "#A3A9AC"
+          }
+        },
+        {
+          "id": "arizona-d1",
+          "name": "Arizona",
+          "city": "Tucson",
+          "state": "AZ",
+          "nickname": "Wildcats",
+          "strength": 9.5,
+          "colors": {
+            "primary": "#CC0033",
+            "secondary": "#003366"
+          }
+        },
+        {
+          "id": "arizona-state-d1",
+          "name": "Arizona State",
+          "city": "Tempe",
+          "state": "AZ",
+          "nickname": "Sun Devils",
+          "strength": 8.5,
+          "colors": null
+        },
+        {
+          "id": "baylor-d1",
+          "name": "Baylor",
+          "city": "Waco",
+          "state": "TX",
+          "nickname": "Bears",
+          "strength": 7,
+          "colors": null
+        },
+        {
+          "id": "byu-d1",
+          "name": "BYU",
+          "city": "Provo",
+          "state": "UT",
+          "nickname": "Cougars",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "texas-tech-d1",
+          "name": "Texas Tech",
+          "city": "Lubbock",
+          "state": "TX",
+          "nickname": "Red Raiders",
+          "strength": 9,
+          "colors": null
+        },
+        {
+          "id": "houston-d1",
+          "name": "Houston",
+          "city": "Houston",
+          "state": "TX",
+          "nickname": "Cougars",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "cincinnati-d1",
+          "name": "Cincinnati",
+          "city": "Cincinnati",
+          "state": "OH",
+          "nickname": "Bearcats",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "ucf-d1",
+          "name": "UCF",
+          "city": "Orlando",
+          "state": "FL",
+          "nickname": "Knights",
+          "strength": 7,
+          "colors": null
+        },
+        {
+          "id": "west-virginia-d1",
+          "name": "West Virginia",
+          "city": "Morgantown",
+          "state": "WV",
+          "nickname": "Mountaineers",
+          "strength": 7.5,
+          "colors": null
+        },
+        {
+          "id": "kansas-d1",
+          "name": "Kansas",
+          "city": "Lawrence",
+          "state": "KS",
+          "nickname": "Jayhawks",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "kansas-state-d1",
+          "name": "Kansas State",
+          "city": "Manhattan",
+          "state": "KS",
+          "nickname": "Wildcats",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "utah-d1",
+          "name": "Utah",
+          "city": "Salt Lake City",
+          "state": "UT",
+          "nickname": "Utes",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "oregon-d1",
+          "name": "Oregon",
+          "city": "Eugene",
+          "state": "OR",
+          "nickname": "Ducks",
+          "strength": 9.5,
+          "colors": {
+            "primary": "#154733",
+            "secondary": "#FEE123"
+          }
+        },
+        {
+          "id": "oregon-state-d1",
+          "name": "Oregon State",
+          "city": "Corvallis",
+          "state": "OR",
+          "nickname": "Beavers",
+          "strength": 10.5,
+          "colors": {
+            "primary": "#DC4405",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "ucla-d1",
+          "name": "UCLA",
+          "city": "Los Angeles",
+          "state": "CA",
+          "nickname": "Bruins",
+          "strength": 10,
+          "colors": {
+            "primary": "#2774AE",
+            "secondary": "#FFD100"
+          }
+        },
+        {
+          "id": "usc-d1",
+          "name": "USC",
+          "city": "Los Angeles",
+          "state": "CA",
+          "nickname": "Trojans",
+          "strength": 9,
+          "colors": {
+            "primary": "#990000",
+            "secondary": "#FFCC00"
+          }
+        },
+        {
+          "id": "washington-d1",
+          "name": "Washington",
+          "city": "Seattle",
+          "state": "WA",
+          "nickname": "Huskies",
+          "strength": 8,
+          "colors": {
+            "primary": "#4B2E83",
+            "secondary": "#B7A57A"
+          }
+        },
+        {
+          "id": "indiana-d1",
+          "name": "Indiana",
+          "city": "Bloomington",
+          "state": "IN",
+          "nickname": "Hoosiers",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "maryland-d1",
+          "name": "Maryland",
+          "city": "College Park",
+          "state": "MD",
+          "nickname": "Terrapins",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "michigan-d1",
+          "name": "Michigan",
+          "city": "Ann Arbor",
+          "state": "MI",
+          "nickname": "Wolverines",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "michigan-state-d1",
+          "name": "Michigan State",
+          "city": "East Lansing",
+          "state": "MI",
+          "nickname": "Spartans",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "illinois-d1",
+          "name": "Illinois",
+          "city": "Champaign",
+          "state": "IL",
+          "nickname": "Fighting Illini",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "iowa-d1",
+          "name": "Iowa",
+          "city": "Iowa City",
+          "state": "IA",
+          "nickname": "Hawkeyes",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "minnesota-d1",
+          "name": "Minnesota",
+          "city": "Minneapolis",
+          "state": "MN",
+          "nickname": "Golden Gophers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "nebraska-d1",
+          "name": "Nebraska",
+          "city": "Lincoln",
+          "state": "NE",
+          "nickname": "Cornhuskers",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "ohio-state-d1",
+          "name": "Ohio State",
+          "city": "Columbus",
+          "state": "OH",
+          "nickname": "Buckeyes",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "penn-state-d1",
+          "name": "Penn State",
+          "city": "University Park",
+          "state": "PA",
+          "nickname": "Nittany Lions",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "purdue-d1",
+          "name": "Purdue",
+          "city": "West Lafayette",
+          "state": "IN",
+          "nickname": "Boilermakers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "rutgers-d1",
+          "name": "Rutgers",
+          "city": "Piscataway",
+          "state": "NJ",
+          "nickname": "Scarlet Knights",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "gonzaga-d1",
+          "name": "Gonzaga",
+          "city": "Spokane",
+          "state": "WA",
+          "nickname": "Bulldogs",
+          "strength": 7,
+          "colors": {
+            "primary": "#041E42",
+            "secondary": "#C8102E"
+          }
+        },
+        {
+          "id": "portland-d1",
+          "name": "Portland",
+          "city": "Portland",
+          "state": "OR",
+          "nickname": "Pilots",
+          "strength": 6.5,
+          "colors": {
+            "primary": "#502D7F",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "loyola-marymount-d1",
+          "name": "Loyola Marymount",
+          "city": "Los Angeles",
+          "state": "CA",
+          "nickname": "Lions",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "pepperdine-d1",
+          "name": "Pepperdine",
+          "city": "Malibu",
+          "state": "CA",
+          "nickname": "Waves",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "san-diego-d1",
+          "name": "San Diego",
+          "city": "San Diego",
+          "state": "CA",
+          "nickname": "Toreros",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "santa-clara-d1",
+          "name": "Santa Clara",
+          "city": "Santa Clara",
+          "state": "CA",
+          "nickname": "Broncos",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "saint-marys-d1",
+          "name": "Saint Marys",
+          "city": "Moraga",
+          "state": "CA",
+          "nickname": "Gaels",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "san-francisco-d1",
+          "name": "San Francisco",
+          "city": "San Francisco",
+          "state": "CA",
+          "nickname": "Dons",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "pacific-d1",
+          "name": "Pacific",
+          "city": "Stockton",
+          "state": "CA",
+          "nickname": "Tigers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "uc-irvine-d1",
+          "name": "UC Irvine",
+          "city": "Irvine",
+          "state": "CA",
+          "nickname": "Anteaters",
+          "strength": 7.5,
+          "colors": null
+        },
+        {
+          "id": "uc-santa-barbara-d1",
+          "name": "UC Santa Barbara",
+          "city": "Santa Barbara",
+          "state": "CA",
+          "nickname": "Gauchos",
+          "strength": 7,
+          "colors": null
+        },
+        {
+          "id": "cal-state-fullerton-d1",
+          "name": "Cal State Fullerton",
+          "city": "Fullerton",
+          "state": "CA",
+          "nickname": "Titans",
+          "strength": 7,
+          "colors": null
+        },
+        {
+          "id": "long-beach-state-d1",
+          "name": "Long Beach State",
+          "city": "Long Beach",
+          "state": "CA",
+          "nickname": "Beach",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "uc-davis-d1",
+          "name": "UC Davis",
+          "city": "Davis",
+          "state": "CA",
+          "nickname": "Aggies",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "uc-riverside-d1",
+          "name": "UC Riverside",
+          "city": "Riverside",
+          "state": "CA",
+          "nickname": "Highlanders",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "uc-san-diego-d1",
+          "name": "UC San Diego",
+          "city": "La Jolla",
+          "state": "CA",
+          "nickname": "Tritons",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "csu-bakersfield-d1",
+          "name": "CSU Bakersfield",
+          "city": "Bakersfield",
+          "state": "CA",
+          "nickname": "Roadrunners",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "csu-northridge-d1",
+          "name": "CSU Northridge",
+          "city": "Northridge",
+          "state": "CA",
+          "nickname": "Matadors",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "hawaii-d1",
+          "name": "Hawaii",
+          "city": "Honolulu",
+          "state": "HI",
+          "nickname": "Rainbow Warriors",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "coastal-carolina-d1",
+          "name": "Coastal Carolina",
+          "city": "Conway",
+          "state": "SC",
+          "nickname": "Chanticleers",
+          "strength": 9,
+          "colors": {
+            "primary": "#006F71",
+            "secondary": "#A27752"
+          }
+        },
+        {
+          "id": "east-carolina-d1",
+          "name": "East Carolina",
+          "city": "Greenville",
+          "state": "NC",
+          "nickname": "Pirates",
+          "strength": 9.5,
+          "colors": {
+            "primary": "#592A8A",
+            "secondary": "#FFD428"
+          }
+        },
+        {
+          "id": "troy-d1",
+          "name": "Troy",
+          "city": "Troy",
+          "state": "AL",
+          "nickname": "Trojans",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "south-alabama-d1",
+          "name": "South Alabama",
+          "city": "Mobile",
+          "state": "AL",
+          "nickname": "Jaguars",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "louisiana-d1",
+          "name": "Louisiana",
+          "city": "Lafayette",
+          "state": "LA",
+          "nickname": "Ragin' Cajuns",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "louisiana-monroe-d1",
+          "name": "Louisiana-Monroe",
+          "city": "Monroe",
+          "state": "LA",
+          "nickname": "Warhawks",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "texas-state-d1",
+          "name": "Texas State",
+          "city": "San Marcos",
+          "state": "TX",
+          "nickname": "Bobcats",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "arkansas-state-d1",
+          "name": "Arkansas State",
+          "city": "Jonesboro",
+          "state": "AR",
+          "nickname": "Red Wolves",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "georgia-southern-d1",
+          "name": "Georgia Southern",
+          "city": "Statesboro",
+          "state": "GA",
+          "nickname": "Eagles",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "georgia-state-d1",
+          "name": "Georgia State",
+          "city": "Atlanta",
+          "state": "GA",
+          "nickname": "Panthers",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "app-state-d1",
+          "name": "App State",
+          "city": "Boone",
+          "state": "NC",
+          "nickname": "Mountaineers",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "marshall-d1",
+          "name": "Marshall",
+          "city": "Huntington",
+          "state": "WV",
+          "nickname": "Thundering Herd",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "old-dominion-d1",
+          "name": "Old Dominion",
+          "city": "Norfolk",
+          "state": "VA",
+          "nickname": "Monarchs",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "james-madison-d1",
+          "name": "James Madison",
+          "city": "Harrisonburg",
+          "state": "VA",
+          "nickname": "Dukes",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "southern-miss-d1",
+          "name": "Southern Miss",
+          "city": "Hattiesburg",
+          "state": "MS",
+          "nickname": "Golden Eagles",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "dallas-baptist-d1",
+          "name": "Dallas Baptist",
+          "city": "Dallas",
+          "state": "TX",
+          "nickname": "Patriots",
+          "strength": 7.5,
+          "colors": null
+        },
+        {
+          "id": "utsa-d1",
+          "name": "UTSA",
+          "city": "San Antonio",
+          "state": "TX",
+          "nickname": "Roadrunners",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "florida-atlantic-d1",
+          "name": "Florida Atlantic",
+          "city": "Boca Raton",
+          "state": "FL",
+          "nickname": "Owls",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "florida-international-d1",
+          "name": "Florida International",
+          "city": "Miami",
+          "state": "FL",
+          "nickname": "Panthers",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "liberty-d1",
+          "name": "Liberty",
+          "city": "Lynchburg",
+          "state": "VA",
+          "nickname": "Flames",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "louisiana-tech-d1",
+          "name": "Louisiana Tech",
+          "city": "Ruston",
+          "state": "LA",
+          "nickname": "Bulldogs",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "middle-tennessee-d1",
+          "name": "Middle Tennessee",
+          "city": "Murfreesboro",
+          "state": "TN",
+          "nickname": "Blue Raiders",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "new-mexico-state-d1",
+          "name": "New Mexico State",
+          "city": "Las Cruces",
+          "state": "NM",
+          "nickname": "Aggies",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "utep-d1",
+          "name": "UTEP",
+          "city": "El Paso",
+          "state": "TX",
+          "nickname": "Miners",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "western-kentucky-d1",
+          "name": "Western Kentucky",
+          "city": "Bowling Green",
+          "state": "KY",
+          "nickname": "Hilltoppers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "kennesaw-state-d1",
+          "name": "Kennesaw State",
+          "city": "Kennesaw",
+          "state": "GA",
+          "nickname": "Owls",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "sam-houston-d1",
+          "name": "Sam Houston",
+          "city": "Huntsville",
+          "state": "TX",
+          "nickname": "Bearkats",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "jacksonville-state-d1",
+          "name": "Jacksonville State",
+          "city": "Jacksonville",
+          "state": "AL",
+          "nickname": "Gamecocks",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "tulane-d1",
+          "name": "Tulane",
+          "city": "New Orleans",
+          "state": "LA",
+          "nickname": "Green Wave",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "memphis-d1",
+          "name": "Memphis",
+          "city": "Memphis",
+          "state": "TN",
+          "nickname": "Tigers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "south-florida-d1",
+          "name": "South Florida",
+          "city": "Tampa",
+          "state": "FL",
+          "nickname": "Bulls",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "north-texas-d1",
+          "name": "North Texas",
+          "city": "Denton",
+          "state": "TX",
+          "nickname": "Mean Green",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "uab-d1",
+          "name": "UAB",
+          "city": "Birmingham",
+          "state": "AL",
+          "nickname": "Blazers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "wichita-state-d1",
+          "name": "Wichita State",
+          "city": "Wichita",
+          "state": "KS",
+          "nickname": "Shockers",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "charlotte-d1",
+          "name": "Charlotte",
+          "city": "Charlotte",
+          "state": "NC",
+          "nickname": "49ers",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "rice-d1",
+          "name": "Rice",
+          "city": "Houston",
+          "state": "TX",
+          "nickname": "Owls",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "temple-d1",
+          "name": "Temple",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Owls",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "tulsa-d1",
+          "name": "Tulsa",
+          "city": "Tulsa",
+          "state": "OK",
+          "nickname": "Golden Hurricane",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "lipscomb-d1",
+          "name": "Lipscomb",
+          "city": "Nashville",
+          "state": "TN",
+          "nickname": "Bisons",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "florida-gulf-coast-d1",
+          "name": "Florida Gulf Coast",
+          "city": "Fort Myers",
+          "state": "FL",
+          "nickname": "Eagles",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "jacksonville-d1",
+          "name": "Jacksonville",
+          "city": "Jacksonville",
+          "state": "FL",
+          "nickname": "Dolphins",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "north-alabama-d1",
+          "name": "North Alabama",
+          "city": "Florence",
+          "state": "AL",
+          "nickname": "Lions",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "stetson-d1",
+          "name": "Stetson",
+          "city": "DeLand",
+          "state": "FL",
+          "nickname": "Hatters",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "north-florida-d1",
+          "name": "North Florida",
+          "city": "Jacksonville",
+          "state": "FL",
+          "nickname": "Ospreys",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "bellarmine-d1",
+          "name": "Bellarmine",
+          "city": "Louisville",
+          "state": "KY",
+          "nickname": "Knights",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "central-arkansas-d1",
+          "name": "Central Arkansas",
+          "city": "Conway",
+          "state": "AR",
+          "nickname": "Bears",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "eastern-kentucky-d1",
+          "name": "Eastern Kentucky",
+          "city": "Richmond",
+          "state": "KY",
+          "nickname": "Colonels",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "west-georgia-d1",
+          "name": "West Georgia",
+          "city": "Carrollton",
+          "state": "GA",
+          "nickname": "Wolves",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "queens-d1",
+          "name": "Queens",
+          "city": "Charlotte",
+          "state": "NC",
+          "nickname": "Royals",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "austin-peay-d1",
+          "name": "Austin Peay",
+          "city": "Clarksville",
+          "state": "TN",
+          "nickname": "Governors",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "high-point-d1",
+          "name": "High Point",
+          "city": "High Point",
+          "state": "NC",
+          "nickname": "Panthers",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "charleston-southern-d1",
+          "name": "Charleston Southern",
+          "city": "Charleston",
+          "state": "SC",
+          "nickname": "Buccaneers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "gardner-webb-d1",
+          "name": "Gardner-Webb",
+          "city": "Boiling Springs",
+          "state": "NC",
+          "nickname": "Runnin' Bulldogs",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "longwood-d1",
+          "name": "Longwood",
+          "city": "Farmville",
+          "state": "VA",
+          "nickname": "Lancers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "presbyterian-d1",
+          "name": "Presbyterian",
+          "city": "Clinton",
+          "state": "SC",
+          "nickname": "Blue Hose",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "radford-d1",
+          "name": "Radford",
+          "city": "Radford",
+          "state": "VA",
+          "nickname": "Highlanders",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "winthrop-d1",
+          "name": "Winthrop",
+          "city": "Rock Hill",
+          "state": "SC",
+          "nickname": "Eagles",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "unc-asheville-d1",
+          "name": "UNC Asheville",
+          "city": "Asheville",
+          "state": "NC",
+          "nickname": "Bulldogs",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "usc-upstate-d1",
+          "name": "USC Upstate",
+          "city": "Spartanburg",
+          "state": "SC",
+          "nickname": "Spartans",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "mercer-d1",
+          "name": "Mercer",
+          "city": "Macon",
+          "state": "GA",
+          "nickname": "Bears",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "wofford-d1",
+          "name": "Wofford",
+          "city": "Spartanburg",
+          "state": "SC",
+          "nickname": "Terriers",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "furman-d1",
+          "name": "Furman",
+          "city": "Greenville",
+          "state": "SC",
+          "nickname": "Paladins",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "samford-d1",
+          "name": "Samford",
+          "city": "Birmingham",
+          "state": "AL",
+          "nickname": "Bulldogs",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "citadel-d1",
+          "name": "Citadel",
+          "city": "Charleston",
+          "state": "SC",
+          "nickname": "Bulldogs",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "unc-greensboro-d1",
+          "name": "UNC Greensboro",
+          "city": "Greensboro",
+          "state": "NC",
+          "nickname": "Spartans",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "western-carolina-d1",
+          "name": "Western Carolina",
+          "city": "Cullowhee",
+          "state": "NC",
+          "nickname": "Catamounts",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "etsu-d1",
+          "name": "ETSU",
+          "city": "Johnson City",
+          "state": "TN",
+          "nickname": "Buccaneers",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "vmi-d1",
+          "name": "VMI",
+          "city": "Lexington",
+          "state": "VA",
+          "nickname": "Keydets",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "uconn-d1",
+          "name": "UConn",
+          "city": "Storrs",
+          "state": "CT",
+          "nickname": "Huskies",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "creighton-d1",
+          "name": "Creighton",
+          "city": "Omaha",
+          "state": "NE",
+          "nickname": "Bluejays",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "xavier-d1",
+          "name": "Xavier",
+          "city": "Cincinnati",
+          "state": "OH",
+          "nickname": "Musketeers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "villanova-d1",
+          "name": "Villanova",
+          "city": "Villanova",
+          "state": "PA",
+          "nickname": "Wildcats",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "seton-hall-d1",
+          "name": "Seton Hall",
+          "city": "South Orange",
+          "state": "NJ",
+          "nickname": "Pirates",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "georgetown-d1",
+          "name": "Georgetown",
+          "city": "Washington",
+          "state": "DC",
+          "nickname": "Hoyas",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "butler-d1",
+          "name": "Butler",
+          "city": "Indianapolis",
+          "state": "IN",
+          "nickname": "Bulldogs",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "depaul-d1",
+          "name": "DePaul",
+          "city": "Chicago",
+          "state": "IL",
+          "nickname": "Blue Demons",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "providence-d1",
+          "name": "Providence",
+          "city": "Providence",
+          "state": "RI",
+          "nickname": "Friars",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "st-johns-d1",
+          "name": "St. John's",
+          "city": "Queens",
+          "state": "NY",
+          "nickname": "Red Storm",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "air-force-d1",
+          "name": "Air Force",
+          "city": "USAF Academy",
+          "state": "CO",
+          "nickname": "Falcons",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "fresno-state-d1",
+          "name": "Fresno State",
+          "city": "Fresno",
+          "state": "CA",
+          "nickname": "Bulldogs",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "nevada-d1",
+          "name": "Nevada",
+          "city": "Reno",
+          "state": "NV",
+          "nickname": "Wolf Pack",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "new-mexico-d1",
+          "name": "New Mexico",
+          "city": "Albuquerque",
+          "state": "NM",
+          "nickname": "Lobos",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "san-diego-state-d1",
+          "name": "San Diego State",
+          "city": "San Diego",
+          "state": "CA",
+          "nickname": "Aztecs",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "san-jose-state-d1",
+          "name": "San Jose State",
+          "city": "San Jose",
+          "state": "CA",
+          "nickname": "Spartans",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "unlv-d1",
+          "name": "UNLV",
+          "city": "Las Vegas",
+          "state": "NV",
+          "nickname": "Rebels",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "grand-canyon-d1",
+          "name": "Grand Canyon",
+          "city": "Phoenix",
+          "state": "AZ",
+          "nickname": "Lopes",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "utah-valley-d1",
+          "name": "Utah Valley",
+          "city": "Orem",
+          "state": "UT",
+          "nickname": "Wolverines",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "tarleton-state-d1",
+          "name": "Tarleton State",
+          "city": "Stephenville",
+          "state": "TX",
+          "nickname": "Texans",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "abilene-christian-d1",
+          "name": "Abilene Christian",
+          "city": "Abilene",
+          "state": "TX",
+          "nickname": "Wildcats",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "stephen-f-austin-d1",
+          "name": "Stephen F. Austin",
+          "city": "Nacogdoches",
+          "state": "TX",
+          "nickname": "Lumberjacks",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "southern-utah-d1",
+          "name": "Southern Utah",
+          "city": "Cedar City",
+          "state": "UT",
+          "nickname": "Thunderbirds",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "seattle-u-d1",
+          "name": "Seattle U",
+          "city": "Seattle",
+          "state": "WA",
+          "nickname": "Redhawks",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "saint-josephs-d1",
+          "name": "Saint Joseph's",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Hawks",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "dayton-d1",
+          "name": "Dayton",
+          "city": "Dayton",
+          "state": "OH",
+          "nickname": "Flyers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "vcu-d1",
+          "name": "VCU",
+          "city": "Richmond",
+          "state": "VA",
+          "nickname": "Rams",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "davidson-d1",
+          "name": "Davidson",
+          "city": "Davidson",
+          "state": "NC",
+          "nickname": "Wildcats",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "fordham-d1",
+          "name": "Fordham",
+          "city": "Bronx",
+          "state": "NY",
+          "nickname": "Rams",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "george-mason-d1",
+          "name": "George Mason",
+          "city": "Fairfax",
+          "state": "VA",
+          "nickname": "Patriots",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "george-washington-d1",
+          "name": "George Washington",
+          "city": "Washington",
+          "state": "DC",
+          "nickname": "Revolutionaries",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "la-salle-d1",
+          "name": "La Salle",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Explorers",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "loyola-chicago-d1",
+          "name": "Loyola Chicago",
+          "city": "Chicago",
+          "state": "IL",
+          "nickname": "Ramblers",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "massachusetts-d1",
+          "name": "Massachusetts",
+          "city": "Amherst",
+          "state": "MA",
+          "nickname": "Minutemen",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "rhode-island-d1",
+          "name": "Rhode Island",
+          "city": "Kingston",
+          "state": "RI",
+          "nickname": "Rams",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "richmond-d1",
+          "name": "Richmond",
+          "city": "Richmond",
+          "state": "VA",
+          "nickname": "Spiders",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "saint-louis-d1",
+          "name": "Saint Louis",
+          "city": "St. Louis",
+          "state": "MO",
+          "nickname": "Billikens",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "st-bonaventure-d1",
+          "name": "St. Bonaventure",
+          "city": "Allegany",
+          "state": "NY",
+          "nickname": "Bonnies",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "umaine-d1",
+          "name": "UMaine",
+          "city": "Orono",
+          "state": "ME",
+          "nickname": "Black Bears",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "umbc-d1",
+          "name": "UMBC",
+          "city": "Catonsville",
+          "state": "MD",
+          "nickname": "Retrievers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "binghamton-d1",
+          "name": "Binghamton",
+          "city": "Vestal",
+          "state": "NY",
+          "nickname": "Bearcats",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "bryant-d1",
+          "name": "Bryant",
+          "city": "Smithfield",
+          "state": "RI",
+          "nickname": "Bulldogs",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "albany-d1",
+          "name": "Albany",
+          "city": "Albany",
+          "state": "NY",
+          "nickname": "Great Danes",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "hartford-d1",
+          "name": "Hartford",
+          "city": "West Hartford",
+          "state": "CT",
+          "nickname": "Hawks",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "new-hampshire-d1",
+          "name": "New Hampshire",
+          "city": "Durham",
+          "state": "NH",
+          "nickname": "Wildcats",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "umass-lowell-d1",
+          "name": "UMass Lowell",
+          "city": "Lowell",
+          "state": "MA",
+          "nickname": "River Hawks",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "charleston-d1",
+          "name": "Charleston",
+          "city": "Charleston",
+          "state": "SC",
+          "nickname": "Cougars",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "uncw-d1",
+          "name": "UNCW",
+          "city": "Wilmington",
+          "state": "NC",
+          "nickname": "Seahawks",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "northeastern-d1",
+          "name": "Northeastern",
+          "city": "Boston",
+          "state": "MA",
+          "nickname": "Huskies",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "william-and-mary-d1",
+          "name": "William & Mary",
+          "city": "Williamsburg",
+          "state": "VA",
+          "nickname": "Tribe",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "towson-d1",
+          "name": "Towson",
+          "city": "Towson",
+          "state": "MD",
+          "nickname": "Tigers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "hofstra-d1",
+          "name": "Hofstra",
+          "city": "Hempstead",
+          "state": "NY",
+          "nickname": "Pride",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "delaware-d1",
+          "name": "Delaware",
+          "city": "Newark",
+          "state": "DE",
+          "nickname": "Blue Hens",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "elon-d1",
+          "name": "Elon",
+          "city": "Elon",
+          "state": "NC",
+          "nickname": "Phoenix",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "stony-brook-d1",
+          "name": "Stony Brook",
+          "city": "Stony Brook",
+          "state": "NY",
+          "nickname": "Seawolves",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "hampton-d1",
+          "name": "Hampton",
+          "city": "Hampton",
+          "state": "VA",
+          "nickname": "Pirates",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "monmouth-d1",
+          "name": "Monmouth",
+          "city": "West Long Branch",
+          "state": "NJ",
+          "nickname": "Hawks",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "north-carolina-aandt-d1",
+          "name": "North Carolina A&T",
+          "city": "Greensboro",
+          "state": "NC",
+          "nickname": "Aggies",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "army-d1",
+          "name": "Army",
+          "city": "West Point",
+          "state": "NY",
+          "nickname": "Black Knights",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "navy-d1",
+          "name": "Navy",
+          "city": "Annapolis",
+          "state": "MD",
+          "nickname": "Midshipmen",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "lehigh-d1",
+          "name": "Lehigh",
+          "city": "Bethlehem",
+          "state": "PA",
+          "nickname": "Mountain Hawks",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "bucknell-d1",
+          "name": "Bucknell",
+          "city": "Lewisburg",
+          "state": "PA",
+          "nickname": "Bison",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "holy-cross-d1",
+          "name": "Holy Cross",
+          "city": "Worcester",
+          "state": "MA",
+          "nickname": "Crusaders",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "lafayette-d1",
+          "name": "Lafayette",
+          "city": "Easton",
+          "state": "PA",
+          "nickname": "Leopards",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "loyola-maryland-d1",
+          "name": "Loyola Maryland",
+          "city": "Baltimore",
+          "state": "MD",
+          "nickname": "Greyhounds",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "boston-u-d1",
+          "name": "Boston U",
+          "city": "Boston",
+          "state": "MA",
+          "nickname": "Terriers",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "harvard-d1",
+          "name": "Harvard",
+          "city": "Cambridge",
+          "state": "MA",
+          "nickname": "Crimson",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "yale-d1",
+          "name": "Yale",
+          "city": "New Haven",
+          "state": "CT",
+          "nickname": "Bulldogs",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "princeton-d1",
+          "name": "Princeton",
+          "city": "Princeton",
+          "state": "NJ",
+          "nickname": "Tigers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "columbia-d1",
+          "name": "Columbia",
+          "city": "New York",
+          "state": "NY",
+          "nickname": "Lions",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "penn-d1",
+          "name": "Penn",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Quakers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "cornell-d1",
+          "name": "Cornell",
+          "city": "Ithaca",
+          "state": "NY",
+          "nickname": "Big Red",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "dartmouth-d1",
+          "name": "Dartmouth",
+          "city": "Hanover",
+          "state": "NH",
+          "nickname": "Big Green",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "brown-d1",
+          "name": "Brown",
+          "city": "Providence",
+          "state": "RI",
+          "nickname": "Bears",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "wright-state-d1",
+          "name": "Wright State",
+          "city": "Dayton",
+          "state": "OH",
+          "nickname": "Raiders",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "oakland-d1",
+          "name": "Oakland",
+          "city": "Rochester",
+          "state": "MI",
+          "nickname": "Golden Grizzlies",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "youngstown-state-d1",
+          "name": "Youngstown State",
+          "city": "Youngstown",
+          "state": "OH",
+          "nickname": "Penguins",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "northern-kentucky-d1",
+          "name": "Northern Kentucky",
+          "city": "Highland Heights",
+          "state": "KY",
+          "nickname": "Norse",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "milwaukee-d1",
+          "name": "Milwaukee",
+          "city": "Milwaukee",
+          "state": "WI",
+          "nickname": "Panthers",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "purdue-fort-wayne-d1",
+          "name": "Purdue Fort Wayne",
+          "city": "Fort Wayne",
+          "state": "IN",
+          "nickname": "Mastodons",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "uic-d1",
+          "name": "UIC",
+          "city": "Chicago",
+          "state": "IL",
+          "nickname": "Flames",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "cleveland-state-d1",
+          "name": "Cleveland State",
+          "city": "Cleveland",
+          "state": "OH",
+          "nickname": "Vikings",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "robert-morris-d1",
+          "name": "Robert Morris",
+          "city": "Moon Township",
+          "state": "PA",
+          "nickname": "Colonials",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "fairfield-d1",
+          "name": "Fairfield",
+          "city": "Fairfield",
+          "state": "CT",
+          "nickname": "Stags",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "canisius-d1",
+          "name": "Canisius",
+          "city": "Buffalo",
+          "state": "NY",
+          "nickname": "Golden Griffins",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "iona-d1",
+          "name": "Iona",
+          "city": "New Rochelle",
+          "state": "NY",
+          "nickname": "Gaels",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "manhattan-d1",
+          "name": "Manhattan",
+          "city": "Riverdale",
+          "state": "NY",
+          "nickname": "Jaspers",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "marist-d1",
+          "name": "Marist",
+          "city": "Poughkeepsie",
+          "state": "NY",
+          "nickname": "Red Foxes",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "mount-st-marys-d1",
+          "name": "Mount St. Mary's",
+          "city": "Emmitsburg",
+          "state": "MD",
+          "nickname": "Mountaineers",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "niagara-d1",
+          "name": "Niagara",
+          "city": "Lewiston",
+          "state": "NY",
+          "nickname": "Purple Eagles",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "quinnipiac-d1",
+          "name": "Quinnipiac",
+          "city": "Hamden",
+          "state": "CT",
+          "nickname": "Bobcats",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "rider-d1",
+          "name": "Rider",
+          "city": "Lawrenceville",
+          "state": "NJ",
+          "nickname": "Broncs",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "saint-peters-d1",
+          "name": "Saint Peter's",
+          "city": "Jersey City",
+          "state": "NJ",
+          "nickname": "Peacocks",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "siena-d1",
+          "name": "Siena",
+          "city": "Loudonville",
+          "state": "NY",
+          "nickname": "Saints",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "central-michigan-d1",
+          "name": "Central Michigan",
+          "city": "Mount Pleasant",
+          "state": "MI",
+          "nickname": "Chippewas",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "eastern-michigan-d1",
+          "name": "Eastern Michigan",
+          "city": "Ypsilanti",
+          "state": "MI",
+          "nickname": "Eagles",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "western-michigan-d1",
+          "name": "Western Michigan",
+          "city": "Kalamazoo",
+          "state": "MI",
+          "nickname": "Broncos",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "northern-illinois-d1",
+          "name": "Northern Illinois",
+          "city": "DeKalb",
+          "state": "IL",
+          "nickname": "Huskies",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "ball-state-d1",
+          "name": "Ball State",
+          "city": "Muncie",
+          "state": "IN",
+          "nickname": "Cardinals",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "bowling-green-d1",
+          "name": "Bowling Green",
+          "city": "Bowling Green",
+          "state": "OH",
+          "nickname": "Falcons",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "kent-state-d1",
+          "name": "Kent State",
+          "city": "Kent",
+          "state": "OH",
+          "nickname": "Golden Flashes",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "miami-oh-d1",
+          "name": "Miami (OH)",
+          "city": "Oxford",
+          "state": "OH",
+          "nickname": "RedHawks",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "ohio-d1",
+          "name": "Ohio",
+          "city": "Athens",
+          "state": "OH",
+          "nickname": "Bobcats",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "toledo-d1",
+          "name": "Toledo",
+          "city": "Toledo",
+          "state": "OH",
+          "nickname": "Rockets",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "le-moyne-d1",
+          "name": "Le Moyne",
+          "city": "Syracuse",
+          "state": "NY",
+          "nickname": "Dolphins",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "sacred-heart-d1",
+          "name": "Sacred Heart",
+          "city": "Fairfield",
+          "state": "CT",
+          "nickname": "Pioneers",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "wagner-d1",
+          "name": "Wagner",
+          "city": "Staten Island",
+          "state": "NY",
+          "nickname": "Seahawks",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "long-island-u-d1",
+          "name": "Long Island U",
+          "city": "Brooklyn",
+          "state": "NY",
+          "nickname": "Sharks",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "stonehill-d1",
+          "name": "Stonehill",
+          "city": "Easton",
+          "state": "MA",
+          "nickname": "Skyhawks",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "central-connecticut-d1",
+          "name": "Central Connecticut",
+          "city": "New Britain",
+          "state": "CT",
+          "nickname": "Blue Devils",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "fairleigh-dickinson-d1",
+          "name": "Fairleigh Dickinson",
+          "city": "Teaneck",
+          "state": "NJ",
+          "nickname": "Knights",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "tennessee-tech-d1",
+          "name": "Tennessee Tech",
+          "city": "Cookeville",
+          "state": "TN",
+          "nickname": "Golden Eagles",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "belmont-d1",
+          "name": "Belmont",
+          "city": "Nashville",
+          "state": "TN",
+          "nickname": "Bruins",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "morehead-state-d1",
+          "name": "Morehead State",
+          "city": "Morehead",
+          "state": "KY",
+          "nickname": "Eagles",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "se-missouri-state-d1",
+          "name": "SE Missouri State",
+          "city": "Cape Girardeau",
+          "state": "MO",
+          "nickname": "Redhawks",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "murray-state-d1",
+          "name": "Murray State",
+          "city": "Murray",
+          "state": "KY",
+          "nickname": "Racers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "siu-edwardsville-d1",
+          "name": "SIU Edwardsville",
+          "city": "Edwardsville",
+          "state": "IL",
+          "nickname": "Cougars",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "tennessee-state-d1",
+          "name": "Tennessee State",
+          "city": "Nashville",
+          "state": "TN",
+          "nickname": "Tigers",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "ut-martin-d1",
+          "name": "UT Martin",
+          "city": "Martin",
+          "state": "TN",
+          "nickname": "Skyhawks",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "western-illinois-d1",
+          "name": "Western Illinois",
+          "city": "Macomb",
+          "state": "IL",
+          "nickname": "Leathernecks",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "lindenwood-d1",
+          "name": "Lindenwood",
+          "city": "St. Charles",
+          "state": "MO",
+          "nickname": "Lions",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "mcneese-d1",
+          "name": "McNeese",
+          "city": "Lake Charles",
+          "state": "LA",
+          "nickname": "Cowboys",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "nicholls-d1",
+          "name": "Nicholls",
+          "city": "Thibodaux",
+          "state": "LA",
+          "nickname": "Colonels",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "northwestern-state-d1",
+          "name": "Northwestern State",
+          "city": "Natchitoches",
+          "state": "LA",
+          "nickname": "Demons",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "southeastern-louisiana-d1",
+          "name": "Southeastern Louisiana",
+          "city": "Hammond",
+          "state": "LA",
+          "nickname": "Lions",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "hcu-d1",
+          "name": "HCU",
+          "city": "Houston",
+          "state": "TX",
+          "nickname": "Huskies",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "incarnate-word-d1",
+          "name": "Incarnate Word",
+          "city": "San Antonio",
+          "state": "TX",
+          "nickname": "Cardinals",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "lamar-d1",
+          "name": "Lamar",
+          "city": "Beaumont",
+          "state": "TX",
+          "nickname": "Cardinals",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "new-orleans-d1",
+          "name": "New Orleans",
+          "city": "New Orleans",
+          "state": "LA",
+          "nickname": "Privateers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "texas-aandm-corpus-christi-d1",
+          "name": "Texas A&M-Corpus Christi",
+          "city": "Corpus Christi",
+          "state": "TX",
+          "nickname": "Islanders",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "east-texas-aandm-d1",
+          "name": "East Texas A&M",
+          "city": "Commerce",
+          "state": "TX",
+          "nickname": "Lions",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "north-dakota-state-d1",
+          "name": "North Dakota State",
+          "city": "Fargo",
+          "state": "ND",
+          "nickname": "Bison",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "south-dakota-state-d1",
+          "name": "South Dakota State",
+          "city": "Brookings",
+          "state": "SD",
+          "nickname": "Jackrabbits",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "oral-roberts-d1",
+          "name": "Oral Roberts",
+          "city": "Tulsa",
+          "state": "OK",
+          "nickname": "Golden Eagles",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "omaha-d1",
+          "name": "Omaha",
+          "city": "Omaha",
+          "state": "NE",
+          "nickname": "Mavericks",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "st-thomas-d1",
+          "name": "St. Thomas",
+          "city": "St. Paul",
+          "state": "MN",
+          "nickname": "Tommies",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "alabama-state-d1",
+          "name": "Alabama State",
+          "city": "Montgomery",
+          "state": "AL",
+          "nickname": "Hornets",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "bethune-cookman-d1",
+          "name": "Bethune-Cookman",
+          "city": "Daytona Beach",
+          "state": "FL",
+          "nickname": "Wildcats",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "florida-aandm-d1",
+          "name": "Florida A&M",
+          "city": "Tallahassee",
+          "state": "FL",
+          "nickname": "Rattlers",
+          "strength": 0.5,
+          "colors": null
+        },
+        {
+          "id": "grambling-d1",
+          "name": "Grambling",
+          "city": "Grambling",
+          "state": "LA",
+          "nickname": "Tigers",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "jackson-state-d1",
+          "name": "Jackson State",
+          "city": "Jackson",
+          "state": "MS",
+          "nickname": "Tigers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "mississippi-valley-d1",
+          "name": "Mississippi Valley",
+          "city": "Itta Bena",
+          "state": "MS",
+          "nickname": "Delta Devils",
+          "strength": -2.5,
+          "colors": null
+        },
+        {
+          "id": "prairie-view-aandm-d1",
+          "name": "Prairie View A&M",
+          "city": "Prairie View",
+          "state": "TX",
+          "nickname": "Panthers",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "southern-d1",
+          "name": "Southern",
+          "city": "Baton Rouge",
+          "state": "LA",
+          "nickname": "Jaguars",
+          "strength": 0,
+          "colors": null
+        },
+        {
+          "id": "texas-southern-d1",
+          "name": "Texas Southern",
+          "city": "Houston",
+          "state": "TX",
+          "nickname": "Tigers",
+          "strength": -1,
+          "colors": null
+        },
+        {
+          "id": "alabama-aandm-d1",
+          "name": "Alabama A&M",
+          "city": "Normal",
+          "state": "AL",
+          "nickname": "Bulldogs",
+          "strength": -0.5,
+          "colors": null
+        },
+        {
+          "id": "alcorn-state-d1",
+          "name": "Alcorn State",
+          "city": "Lorman",
+          "state": "MS",
+          "nickname": "Braves",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "arkansas-pine-bluff-d1",
+          "name": "Arkansas-Pine Bluff",
+          "city": "Pine Bluff",
+          "state": "AR",
+          "nickname": "Golden Lions",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "coppin-state-d1",
+          "name": "Coppin State",
+          "city": "Baltimore",
+          "state": "MD",
+          "nickname": "Eagles",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "delaware-state-d1",
+          "name": "Delaware State",
+          "city": "Dover",
+          "state": "DE",
+          "nickname": "Hornets",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "howard-d1",
+          "name": "Howard",
+          "city": "Washington",
+          "state": "DC",
+          "nickname": "Bison",
+          "strength": -1,
+          "colors": null
+        },
+        {
+          "id": "norfolk-state-d1",
+          "name": "Norfolk State",
+          "city": "Norfolk",
+          "state": "VA",
+          "nickname": "Spartans",
+          "strength": -1,
+          "colors": null
+        },
+        {
+          "id": "maryland-eastern-shore-d1",
+          "name": "Maryland Eastern Shore",
+          "city": "Princess Anne",
+          "state": "MD",
+          "nickname": "Hawks",
+          "strength": -2.5,
+          "colors": null
+        }
       ]
     },
     {
       "id": "D2",
       "name": "NCAA Division II",
       "teams": [
-        { "id": "central-washington-d2", "name": "Central Washington", "city": "Ellensburg", "state": "WA", "nickname": "Wildcats", "strength": 4.0, "colors": { "primary": "#A50E25", "secondary": "#000000" } },
-        { "id": "saint-martins-d2",      "name": "Saint Martin's",     "city": "Lacey",      "state": "WA", "nickname": "Saints",   "strength": 2.5, "colors": { "primary": "#A50034", "secondary": "#000000" } },
-        { "id": "msu-billings-d2",       "name": "Montana State-Billings", "city": "Billings", "state": "MT", "nickname": "Yellowjackets", "strength": 2.0, "colors": { "primary": "#FFB81C", "secondary": "#000000" } },
-        { "id": "western-oregon-d2",     "name": "Western Oregon",     "city": "Monmouth",   "state": "OR", "nickname": "Wolves",   "strength": 3.0, "colors": { "primary": "#B61E2E", "secondary": "#FFFFFF" } },
-        { "id": "northwest-nazarene-d2", "name": "Northwest Nazarene", "city": "Nampa",      "state": "ID", "nickname": "Nighthawks", "strength": 3.5, "colors": { "primary": "#001E62", "secondary": "#A6192E" } },
-        { "id": "tampa-d2",           "name": "Tampa",             "city": "Tampa",        "state": "FL", "nickname": "Spartans",     "strength": 9.0, "colors": { "primary": "#9F1B32", "secondary": "#000000" } },
-        { "id": "north-greenville-d2","name": "North Greenville",  "city": "Tigerville",   "state": "SC", "nickname": "Trailblazers", "strength": 8.0, "colors": { "primary": "#73000A", "secondary": "#000000" } },
-        { "id": "angelo-state-d2",    "name": "Angelo State",      "city": "San Angelo",   "state": "TX", "nickname": "Rams",         "strength": 8.0, "colors": { "primary": "#003C71", "secondary": "#F1B300" } },
-        { "id": "west-florida-d2",    "name": "West Florida",      "city": "Pensacola",    "state": "FL", "nickname": "Argonauts",    "strength": 7.0, "colors": { "primary": "#0A2240", "secondary": "#0E76BD" } },
-        { "id": "augustana-sd-d2",    "name": "Augustana (SD)",    "city": "Sioux Falls",  "state": "SD", "nickname": "Vikings",      "strength": 7.5, "colors": { "primary": "#003E7E", "secondary": "#FFC627" } },
-        { "id": "central-missouri-d2","name": "Central Missouri",  "city": "Warrensburg",  "state": "MO", "nickname": "Mules",        "strength": 7.0, "colors": { "primary": "#CF102D", "secondary": "#000000" } },
-        { "id": "mount-olive-d2",     "name": "Mount Olive",       "city": "Mount Olive",  "state": "NC", "nickname": "Trojans",      "strength": 6.5, "colors": { "primary": "#003F2B", "secondary": "#FFFFFF" } },
-        { "id": "west-texas-am-d2",   "name": "West Texas A&M",    "city": "Canyon",       "state": "TX", "nickname": "Buffaloes",    "strength": 6.5, "colors": { "primary": "#572D38", "secondary": "#FFFFFF" } },
-        { "id": "colorado-mesa-d2",   "name": "Colorado Mesa",     "city": "Grand Junction","state": "CO","nickname": "Mavericks",    "strength": 6.0, "colors": { "primary": "#680800", "secondary": "#FAA21B" } },
-        { "id": "cal-poly-pomona-d2", "name": "Cal Poly Pomona",   "city": "Pomona",       "state": "CA", "nickname": "Broncos",      "strength": 6.0, "colors": { "primary": "#1E5C2F", "secondary": "#F4AA00" } },
-        { "id": "nova-southeastern-d2","name": "Nova Southeastern","city": "Davie",        "state": "FL", "nickname": "Sharks",       "strength": 7.5, "colors": { "primary": "#003366", "secondary": "#A1A1A4" } },
-        { "id": "lynn-d2",            "name": "Lynn",              "city": "Boca Raton",   "state": "FL", "nickname": "Fighting Knights","strength": 6.5, "colors": { "primary": "#0046AD", "secondary": "#FFFFFF" } },
-        { "id": "wingate-d2",         "name": "Wingate",           "city": "Wingate",      "state": "NC", "nickname": "Bulldogs",     "strength": 6.0, "colors": { "primary": "#003366", "secondary": "#FFD700" } },
-        { "id": "concordia-ca-d2",    "name": "Concordia (CA)",    "city": "Irvine",       "state": "CA", "nickname": "Eagles",       "strength": 5.5, "colors": { "primary": "#15397F", "secondary": "#FFCD00" } },
-        { "id": "ucsd-d2",            "name": "UC San Diego",      "city": "La Jolla",     "state": "CA", "nickname": "Tritons",      "strength": 6.5, "colors": { "primary": "#003C6C", "secondary": "#FFCD00" } }
+        {
+          "id": "north-greenville-d2",
+          "name": "North Greenville",
+          "city": "Tigerville",
+          "state": "SC",
+          "nickname": "Trailblazers",
+          "strength": 8,
+          "colors": {
+            "primary": "#73000A",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "auburn-montgomery-d2",
+          "name": "Auburn-Montgomery",
+          "city": "Montgomery",
+          "state": "AL",
+          "nickname": "Warhawks",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "west-alabama-d2",
+          "name": "West Alabama",
+          "city": "Livingston",
+          "state": "AL",
+          "nickname": "Tigers",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "delta-state-d2",
+          "name": "Delta State",
+          "city": "Cleveland",
+          "state": "MS",
+          "nickname": "Statesmen",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "west-florida-d2",
+          "name": "West Florida",
+          "city": "Pensacola",
+          "state": "FL",
+          "nickname": "Argonauts",
+          "strength": 7,
+          "colors": {
+            "primary": "#0A2240",
+            "secondary": "#0E76BD"
+          }
+        },
+        {
+          "id": "mississippi-college-d2",
+          "name": "Mississippi College",
+          "city": "Clinton",
+          "state": "MS",
+          "nickname": "Choctaws",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "lee-d2",
+          "name": "Lee",
+          "city": "Cleveland",
+          "state": "TN",
+          "nickname": "Flames",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "union-tn-d2",
+          "name": "Union (TN)",
+          "city": "Jackson",
+          "state": "TN",
+          "nickname": "Bulldogs",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "christian-brothers-d2",
+          "name": "Christian Brothers",
+          "city": "Memphis",
+          "state": "TN",
+          "nickname": "Buccaneers",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "trevecca-nazarene-d2",
+          "name": "Trevecca Nazarene",
+          "city": "Nashville",
+          "state": "TN",
+          "nickname": "Trojans",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "valdosta-state-d2",
+          "name": "Valdosta State",
+          "city": "Valdosta",
+          "state": "GA",
+          "nickname": "Blazers",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "tampa-d2",
+          "name": "Tampa",
+          "city": "Tampa",
+          "state": "FL",
+          "nickname": "Spartans",
+          "strength": 9,
+          "colors": {
+            "primary": "#9F1B32",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "nova-southeastern-d2",
+          "name": "Nova Southeastern",
+          "city": "Davie",
+          "state": "FL",
+          "nickname": "Sharks",
+          "strength": 7.5,
+          "colors": {
+            "primary": "#003366",
+            "secondary": "#A1A1A4"
+          }
+        },
+        {
+          "id": "lynn-d2",
+          "name": "Lynn",
+          "city": "Boca Raton",
+          "state": "FL",
+          "nickname": "Fighting Knights",
+          "strength": 6.5,
+          "colors": {
+            "primary": "#0046AD",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "saint-leo-d2",
+          "name": "Saint Leo",
+          "city": "Saint Leo",
+          "state": "FL",
+          "nickname": "Lions",
+          "strength": 6,
+          "colors": null
+        },
+        {
+          "id": "eckerd-d2",
+          "name": "Eckerd",
+          "city": "St. Petersburg",
+          "state": "FL",
+          "nickname": "Tritons",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "embry-riddle-d2",
+          "name": "Embry-Riddle",
+          "city": "Daytona Beach",
+          "state": "FL",
+          "nickname": "Eagles",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "barry-d2",
+          "name": "Barry",
+          "city": "Miami Shores",
+          "state": "FL",
+          "nickname": "Buccaneers",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "florida-southern-d2",
+          "name": "Florida Southern",
+          "city": "Lakeland",
+          "state": "FL",
+          "nickname": "Moccasins",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "palm-beach-atlantic-d2",
+          "name": "Palm Beach Atlantic",
+          "city": "West Palm Beach",
+          "state": "FL",
+          "nickname": "Sailfish",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "florida-tech-d2",
+          "name": "Florida Tech",
+          "city": "Melbourne",
+          "state": "FL",
+          "nickname": "Panthers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "angelo-state-d2",
+          "name": "Angelo State",
+          "city": "San Angelo",
+          "state": "TX",
+          "nickname": "Rams",
+          "strength": 8,
+          "colors": {
+            "primary": "#003C71",
+            "secondary": "#F1B300"
+          }
+        },
+        {
+          "id": "west-texas-aandm-d2",
+          "name": "West Texas A&M",
+          "city": "Canyon",
+          "state": "TX",
+          "nickname": "Buffaloes",
+          "strength": 6.5,
+          "colors": null
+        },
+        {
+          "id": "texas-aandm-kingsville-d2",
+          "name": "Texas A&M-Kingsville",
+          "city": "Kingsville",
+          "state": "TX",
+          "nickname": "Javelinas",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "cameron-d2",
+          "name": "Cameron",
+          "city": "Lawton",
+          "state": "OK",
+          "nickname": "Aggies",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "ut-tyler-d2",
+          "name": "UT Tyler",
+          "city": "Tyler",
+          "state": "TX",
+          "nickname": "Patriots",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "ut-permian-basin-d2",
+          "name": "UT Permian Basin",
+          "city": "Odessa",
+          "state": "TX",
+          "nickname": "Falcons",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "lubbock-christian-d2",
+          "name": "Lubbock Christian",
+          "city": "Lubbock",
+          "state": "TX",
+          "nickname": "Chaparrals",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "eastern-new-mexico-d2",
+          "name": "Eastern New Mexico",
+          "city": "Portales",
+          "state": "NM",
+          "nickname": "Greyhounds",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "central-missouri-d2",
+          "name": "Central Missouri",
+          "city": "Warrensburg",
+          "state": "MO",
+          "nickname": "Mules",
+          "strength": 7,
+          "colors": {
+            "primary": "#CF102D",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "pittsburg-state-d2",
+          "name": "Pittsburg State",
+          "city": "Pittsburg",
+          "state": "KS",
+          "nickname": "Gorillas",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "missouri-southern-d2",
+          "name": "Missouri Southern",
+          "city": "Joplin",
+          "state": "MO",
+          "nickname": "Lions",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "missouri-western-d2",
+          "name": "Missouri Western",
+          "city": "St. Joseph",
+          "state": "MO",
+          "nickname": "Griffons",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "washburn-d2",
+          "name": "Washburn",
+          "city": "Topeka",
+          "state": "KS",
+          "nickname": "Ichabods",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "emporia-state-d2",
+          "name": "Emporia State",
+          "city": "Emporia",
+          "state": "KS",
+          "nickname": "Hornets",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "fort-hays-state-d2",
+          "name": "Fort Hays State",
+          "city": "Hays",
+          "state": "KS",
+          "nickname": "Tigers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "newman-d2",
+          "name": "Newman",
+          "city": "Wichita",
+          "state": "KS",
+          "nickname": "Jets",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "northwest-missouri-d2",
+          "name": "Northwest Missouri",
+          "city": "Maryville",
+          "state": "MO",
+          "nickname": "Bearcats",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "nebraska-kearney-d2",
+          "name": "Nebraska-Kearney",
+          "city": "Kearney",
+          "state": "NE",
+          "nickname": "Lopers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "lincoln-d2",
+          "name": "Lincoln",
+          "city": "Jefferson City",
+          "state": "MO",
+          "nickname": "Blue Tigers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "augusta-d2",
+          "name": "Augusta",
+          "city": "Augusta",
+          "state": "GA",
+          "nickname": "Jaguars",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "columbus-state-d2",
+          "name": "Columbus State",
+          "city": "Columbus",
+          "state": "GA",
+          "nickname": "Cougars",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "flagler-d2",
+          "name": "Flagler",
+          "city": "St. Augustine",
+          "state": "FL",
+          "nickname": "Saints",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "georgia-college-d2",
+          "name": "Georgia College",
+          "city": "Milledgeville",
+          "state": "GA",
+          "nickname": "Bobcats",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "georgia-southwestern-d2",
+          "name": "Georgia Southwestern",
+          "city": "Americus",
+          "state": "GA",
+          "nickname": "Hurricanes",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "lander-d2",
+          "name": "Lander",
+          "city": "Greenwood",
+          "state": "SC",
+          "nickname": "Bearcats",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "unc-pembroke-d2",
+          "name": "UNC Pembroke",
+          "city": "Pembroke",
+          "state": "NC",
+          "nickname": "Braves",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "usc-aiken-d2",
+          "name": "USC Aiken",
+          "city": "Aiken",
+          "state": "SC",
+          "nickname": "Pacers",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "usc-beaufort-d2",
+          "name": "USC Beaufort",
+          "city": "Bluffton",
+          "state": "SC",
+          "nickname": "Sand Sharks",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "young-harris-d2",
+          "name": "Young Harris",
+          "city": "Young Harris",
+          "state": "GA",
+          "nickname": "Mountain Lions",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "cal-poly-pomona-d2",
+          "name": "Cal Poly Pomona",
+          "city": "Pomona",
+          "state": "CA",
+          "nickname": "Broncos",
+          "strength": 6,
+          "colors": {
+            "primary": "#1E5C2F",
+            "secondary": "#F4AA00"
+          }
+        },
+        {
+          "id": "chico-state-d2",
+          "name": "Chico State",
+          "city": "Chico",
+          "state": "CA",
+          "nickname": "Wildcats",
+          "strength": 5.5,
+          "colors": null
+        },
+        {
+          "id": "csu-stanislaus-d2",
+          "name": "CSU Stanislaus",
+          "city": "Turlock",
+          "state": "CA",
+          "nickname": "Warriors",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "csu-dominguez-hills-d2",
+          "name": "CSU Dominguez Hills",
+          "city": "Carson",
+          "state": "CA",
+          "nickname": "Toros",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "csu-los-angeles-d2",
+          "name": "CSU Los Angeles",
+          "city": "Los Angeles",
+          "state": "CA",
+          "nickname": "Golden Eagles",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "csu-east-bay-d2",
+          "name": "CSU East Bay",
+          "city": "Hayward",
+          "state": "CA",
+          "nickname": "Pioneers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "cal-state-monterey-bay-d2",
+          "name": "Cal State Monterey Bay",
+          "city": "Seaside",
+          "state": "CA",
+          "nickname": "Otters",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "cal-state-san-marcos-d2",
+          "name": "Cal State San Marcos",
+          "city": "San Marcos",
+          "state": "CA",
+          "nickname": "Cougars",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "point-loma-d2",
+          "name": "Point Loma",
+          "city": "San Diego",
+          "state": "CA",
+          "nickname": "Sea Lions",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "san-francisco-state-d2",
+          "name": "San Francisco State",
+          "city": "San Francisco",
+          "state": "CA",
+          "nickname": "Gators",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "sonoma-state-d2",
+          "name": "Sonoma State",
+          "city": "Rohnert Park",
+          "state": "CA",
+          "nickname": "Seawolves",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "new-haven-d2",
+          "name": "New Haven",
+          "city": "West Haven",
+          "state": "CT",
+          "nickname": "Chargers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "southern-connecticut-d2",
+          "name": "Southern Connecticut",
+          "city": "New Haven",
+          "state": "CT",
+          "nickname": "Owls",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "saint-anselm-d2",
+          "name": "Saint Anselm",
+          "city": "Manchester",
+          "state": "NH",
+          "nickname": "Hawks",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "franklin-pierce-d2",
+          "name": "Franklin Pierce",
+          "city": "Rindge",
+          "state": "NH",
+          "nickname": "Ravens",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "saint-michaels-d2",
+          "name": "Saint Michael's",
+          "city": "Colchester",
+          "state": "VT",
+          "nickname": "Purple Knights",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "bentley-d2",
+          "name": "Bentley",
+          "city": "Waltham",
+          "state": "MA",
+          "nickname": "Falcons",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "pace-d2",
+          "name": "Pace",
+          "city": "Pleasantville",
+          "state": "NY",
+          "nickname": "Setters",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "american-international-d2",
+          "name": "American International",
+          "city": "Springfield",
+          "state": "MA",
+          "nickname": "Yellow Jackets",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "adelphi-d2",
+          "name": "Adelphi",
+          "city": "Garden City",
+          "state": "NY",
+          "nickname": "Panthers",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "augustana-sd-d2",
+          "name": "Augustana (SD)",
+          "city": "Sioux Falls",
+          "state": "SD",
+          "nickname": "Vikings",
+          "strength": 7.5,
+          "colors": {
+            "primary": "#003E7E",
+            "secondary": "#FFC627"
+          }
+        },
+        {
+          "id": "msu-mankato-d2",
+          "name": "MSU Mankato",
+          "city": "Mankato",
+          "state": "MN",
+          "nickname": "Mavericks",
+          "strength": 5,
+          "colors": null
+        },
+        {
+          "id": "wayne-state-ne-d2",
+          "name": "Wayne State (NE)",
+          "city": "Wayne",
+          "state": "NE",
+          "nickname": "Wildcats",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "minnesota-duluth-d2",
+          "name": "Minnesota Duluth",
+          "city": "Duluth",
+          "state": "MN",
+          "nickname": "Bulldogs",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "bemidji-state-d2",
+          "name": "Bemidji State",
+          "city": "Bemidji",
+          "state": "MN",
+          "nickname": "Beavers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "minnesota-state-moorhead-d2",
+          "name": "Minnesota State Moorhead",
+          "city": "Moorhead",
+          "state": "MN",
+          "nickname": "Dragons",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "northern-state-d2",
+          "name": "Northern State",
+          "city": "Aberdeen",
+          "state": "SD",
+          "nickname": "Wolves",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "sioux-falls-d2",
+          "name": "Sioux Falls",
+          "city": "Sioux Falls",
+          "state": "SD",
+          "nickname": "Cougars",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "concordia-st-paul-d2",
+          "name": "Concordia-St. Paul",
+          "city": "St. Paul",
+          "state": "MN",
+          "nickname": "Golden Bears",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "southwest-minnesota-d2",
+          "name": "Southwest Minnesota",
+          "city": "Marshall",
+          "state": "MN",
+          "nickname": "Mustangs",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "cedarville-d2",
+          "name": "Cedarville",
+          "city": "Cedarville",
+          "state": "OH",
+          "nickname": "Yellow Jackets",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "findlay-d2",
+          "name": "Findlay",
+          "city": "Findlay",
+          "state": "OH",
+          "nickname": "Oilers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "hillsdale-d2",
+          "name": "Hillsdale",
+          "city": "Hillsdale",
+          "state": "MI",
+          "nickname": "Chargers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "northwood-d2",
+          "name": "Northwood",
+          "city": "Midland",
+          "state": "MI",
+          "nickname": "Timberwolves",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "ashland-d2",
+          "name": "Ashland",
+          "city": "Ashland",
+          "state": "OH",
+          "nickname": "Eagles",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "walsh-d2",
+          "name": "Walsh",
+          "city": "North Canton",
+          "state": "OH",
+          "nickname": "Cavaliers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "ohio-dominican-d2",
+          "name": "Ohio Dominican",
+          "city": "Columbus",
+          "state": "OH",
+          "nickname": "Panthers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "tiffin-d2",
+          "name": "Tiffin",
+          "city": "Tiffin",
+          "state": "OH",
+          "nickname": "Dragons",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "henderson-state-d2",
+          "name": "Henderson State",
+          "city": "Arkadelphia",
+          "state": "AR",
+          "nickname": "Reddies",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "southern-arkansas-d2",
+          "name": "Southern Arkansas",
+          "city": "Magnolia",
+          "state": "AR",
+          "nickname": "Muleriders",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "arkansas-tech-d2",
+          "name": "Arkansas Tech",
+          "city": "Russellville",
+          "state": "AR",
+          "nickname": "Wonder Boys",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "harding-d2",
+          "name": "Harding",
+          "city": "Searcy",
+          "state": "AR",
+          "nickname": "Bisons",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "ouachita-baptist-d2",
+          "name": "Ouachita Baptist",
+          "city": "Arkadelphia",
+          "state": "AR",
+          "nickname": "Tigers",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "southeastern-oklahoma-d2",
+          "name": "Southeastern Oklahoma",
+          "city": "Durant",
+          "state": "OK",
+          "nickname": "Savage Storm",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "east-central-d2",
+          "name": "East Central",
+          "city": "Ada",
+          "state": "OK",
+          "nickname": "Tigers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "northwestern-oklahoma-d2",
+          "name": "Northwestern Oklahoma",
+          "city": "Alva",
+          "state": "OK",
+          "nickname": "Rangers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "oklahoma-baptist-d2",
+          "name": "Oklahoma Baptist",
+          "city": "Shawnee",
+          "state": "OK",
+          "nickname": "Bison",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "central-washington-d2",
+          "name": "Central Washington",
+          "city": "Ellensburg",
+          "state": "WA",
+          "nickname": "Wildcats",
+          "strength": 4,
+          "colors": {
+            "primary": "#A50E25",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "saint-martins-d2",
+          "name": "Saint Martin's",
+          "city": "Lacey",
+          "state": "WA",
+          "nickname": "Saints",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "montana-state-billings-d2",
+          "name": "Montana State-Billings",
+          "city": "Billings",
+          "state": "MT",
+          "nickname": "Yellowjackets",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "western-oregon-d2",
+          "name": "Western Oregon",
+          "city": "Monmouth",
+          "state": "OR",
+          "nickname": "Wolves",
+          "strength": 3,
+          "colors": {
+            "primary": "#B61E2E",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "northwest-nazarene-d2",
+          "name": "Northwest Nazarene",
+          "city": "Nampa",
+          "state": "ID",
+          "nickname": "Nighthawks",
+          "strength": 3.5,
+          "colors": {
+            "primary": "#001E62",
+            "secondary": "#A6192E"
+          }
+        },
+        {
+          "id": "concordia-or-d2",
+          "name": "Concordia (OR)",
+          "city": "Portland",
+          "state": "OR",
+          "nickname": "Cavaliers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "mercyhurst-d2",
+          "name": "Mercyhurst",
+          "city": "Erie",
+          "state": "PA",
+          "nickname": "Lakers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "seton-hill-d2",
+          "name": "Seton Hill",
+          "city": "Greensburg",
+          "state": "PA",
+          "nickname": "Griffins",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "slippery-rock-d2",
+          "name": "Slippery Rock",
+          "city": "Slippery Rock",
+          "state": "PA",
+          "nickname": "Rock",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "west-chester-d2",
+          "name": "West Chester",
+          "city": "West Chester",
+          "state": "PA",
+          "nickname": "Golden Rams",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "millersville-d2",
+          "name": "Millersville",
+          "city": "Millersville",
+          "state": "PA",
+          "nickname": "Marauders",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "kutztown-d2",
+          "name": "Kutztown",
+          "city": "Kutztown",
+          "state": "PA",
+          "nickname": "Golden Bears",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "pitt-johnstown-d2",
+          "name": "Pitt-Johnstown",
+          "city": "Johnstown",
+          "state": "PA",
+          "nickname": "Mountain Cats",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "iup-d2",
+          "name": "IUP",
+          "city": "Indiana",
+          "state": "PA",
+          "nickname": "Crimson Hawks",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "mansfield-d2",
+          "name": "Mansfield",
+          "city": "Mansfield",
+          "state": "PA",
+          "nickname": "Mountaineers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "edinboro-d2",
+          "name": "Edinboro",
+          "city": "Edinboro",
+          "state": "PA",
+          "nickname": "Fighting Scots",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "shippensburg-d2",
+          "name": "Shippensburg",
+          "city": "Shippensburg",
+          "state": "PA",
+          "nickname": "Raiders",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "saginaw-valley-d2",
+          "name": "Saginaw Valley",
+          "city": "University Center",
+          "state": "MI",
+          "nickname": "Cardinals",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "davenport-d2",
+          "name": "Davenport",
+          "city": "Grand Rapids",
+          "state": "MI",
+          "nickname": "Panthers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "ferris-state-d2",
+          "name": "Ferris State",
+          "city": "Big Rapids",
+          "state": "MI",
+          "nickname": "Bulldogs",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "grand-valley-state-d2",
+          "name": "Grand Valley State",
+          "city": "Allendale",
+          "state": "MI",
+          "nickname": "Lakers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "wayne-state-mi-d2",
+          "name": "Wayne State (MI)",
+          "city": "Detroit",
+          "state": "MI",
+          "nickname": "Warriors",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "purdue-northwest-d2",
+          "name": "Purdue Northwest",
+          "city": "Hammond",
+          "state": "IN",
+          "nickname": "Pride",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "parkside-d2",
+          "name": "Parkside",
+          "city": "Kenosha",
+          "state": "WI",
+          "nickname": "Rangers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "lake-superior-state-d2",
+          "name": "Lake Superior State",
+          "city": "Sault Ste. Marie",
+          "state": "MI",
+          "nickname": "Lakers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "wilmington-d2",
+          "name": "Wilmington",
+          "city": "New Castle",
+          "state": "DE",
+          "nickname": "Wildcats",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "goldey-beacom-d2",
+          "name": "Goldey-Beacom",
+          "city": "Wilmington",
+          "state": "DE",
+          "nickname": "Lightning",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "bloomfield-d2",
+          "name": "Bloomfield",
+          "city": "Bloomfield",
+          "state": "NJ",
+          "nickname": "Bears",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "caldwell-d2",
+          "name": "Caldwell",
+          "city": "Caldwell",
+          "state": "NJ",
+          "nickname": "Cougars",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "chestnut-hill-d2",
+          "name": "Chestnut Hill",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Griffins",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "felician-d2",
+          "name": "Felician",
+          "city": "Lodi",
+          "state": "NJ",
+          "nickname": "Golden Falcons",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "holy-family-d2",
+          "name": "Holy Family",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Tigers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "jefferson-d2",
+          "name": "Jefferson",
+          "city": "Philadelphia",
+          "state": "PA",
+          "nickname": "Rams",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "dominican-ny-d2",
+          "name": "Dominican (NY)",
+          "city": "Orangeburg",
+          "state": "NY",
+          "nickname": "Chargers",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "post-d2",
+          "name": "Post",
+          "city": "Waterbury",
+          "state": "CT",
+          "nickname": "Eagles",
+          "strength": 1,
+          "colors": null
+        }
       ]
     },
     {
       "id": "D3",
       "name": "NCAA Division III",
       "teams": [
-        { "id": "puget-sound-d3",     "name": "Puget Sound",     "city": "Tacoma",     "state": "WA", "nickname": "Loggers",   "strength": -1.0, "colors": { "primary": "#760023", "secondary": "#000000" } },
-        { "id": "plu-d3",             "name": "Pacific Lutheran", "city": "Tacoma",    "state": "WA", "nickname": "Lutes",     "strength": -2.0, "colors": { "primary": "#000000", "secondary": "#FFB81C" } },
-        { "id": "whitman-d3",         "name": "Whitman",         "city": "Walla Walla","state": "WA", "nickname": "Blues",     "strength": -2.5, "colors": { "primary": "#FFD200", "secondary": "#003B5C" } },
-        { "id": "whitworth-d3",       "name": "Whitworth",       "city": "Spokane",    "state": "WA", "nickname": "Pirates",   "strength": -1.5, "colors": { "primary": "#C20430", "secondary": "#000000" } },
-        { "id": "linfield-d3",        "name": "Linfield",        "city": "McMinnville","state": "OR", "nickname": "Wildcats",  "strength": 0.5,  "colors": { "primary": "#5B0F1C", "secondary": "#7C7E80" } },
-        { "id": "lewis-clark-d3",     "name": "Lewis & Clark",   "city": "Portland",   "state": "OR", "nickname": "Pioneers",  "strength": -3.0, "colors": { "primary": "#FE5000", "secondary": "#000000" } },
-        { "id": "willamette-d3",      "name": "Willamette",      "city": "Salem",      "state": "OR", "nickname": "Bearcats",  "strength": -1.5, "colors": { "primary": "#9D2235", "secondary": "#FFC72C" } },
-        { "id": "pacific-d3",         "name": "Pacific (OR)",    "city": "Forest Grove","state": "OR", "nickname": "Boxers",   "strength": -3.5, "colors": { "primary": "#A6192E", "secondary": "#000000" } },
-        { "id": "george-fox-d3",      "name": "George Fox",      "city": "Newberg",    "state": "OR", "nickname": "Bruins",    "strength": -1.0, "colors": { "primary": "#003366", "secondary": "#FFD700" } },
-        { "id": "salisbury-d3",       "name": "Salisbury",       "city": "Salisbury",  "state": "MD", "nickname": "Sea Gulls", "strength": 5.0,  "colors": { "primary": "#7C2230", "secondary": "#FFB81C" } },
-        { "id": "cortland-d3",        "name": "SUNY Cortland",   "city": "Cortland",   "state": "NY", "nickname": "Red Dragons","strength": 4.5, "colors": { "primary": "#B30000", "secondary": "#FFFFFF" } },
-        { "id": "wpi-d3",             "name": "WPI",             "city": "Worcester",  "state": "MA", "nickname": "Engineers", "strength": 4.0,  "colors": { "primary": "#A6192E", "secondary": "#A2AAAD" } },
-        { "id": "johns-hopkins-d3",   "name": "Johns Hopkins",   "city": "Baltimore",  "state": "MD", "nickname": "Blue Jays", "strength": 4.5,  "colors": { "primary": "#002D72", "secondary": "#000000" } },
-        { "id": "uw-whitewater-d3",   "name": "Wisconsin-Whitewater","city": "Whitewater","state": "WI","nickname": "Warhawks","strength": 4.5, "colors": { "primary": "#56158E", "secondary": "#FFFFFF" } },
-        { "id": "trinity-tx-d3",      "name": "Trinity (TX)",    "city": "San Antonio","state": "TX", "nickname": "Tigers",    "strength": 4.0,  "colors": { "primary": "#86714A", "secondary": "#820000" } },
-        { "id": "lynchburg-d3",       "name": "Lynchburg",       "city": "Lynchburg",  "state": "VA", "nickname": "Hornets",   "strength": 3.5,  "colors": { "primary": "#990000", "secondary": "#FFC72C" } },
-        { "id": "christopher-newport-d3","name": "Christopher Newport","city": "Newport News","state": "VA","nickname": "Captains","strength": 4.0, "colors": { "primary": "#003F87", "secondary": "#A6192E" } },
-        { "id": "wash-jeff-d3",       "name": "Washington & Jefferson","city": "Washington","state": "PA","nickname": "Presidents","strength": 3.5, "colors": { "primary": "#C81E2E", "secondary": "#000000" } },
-        { "id": "misericordia-d3",    "name": "Misericordia",    "city": "Dallas",     "state": "PA", "nickname": "Cougars",   "strength": 3.0,  "colors": { "primary": "#003F2D", "secondary": "#B68E26" } },
-        { "id": "north-central-il-d3","name": "North Central (IL)","city": "Naperville","state": "IL","nickname": "Cardinals", "strength": 3.5,  "colors": { "primary": "#C8102E", "secondary": "#000000" } },
-        { "id": "cal-lutheran-d3",    "name": "Cal Lutheran",    "city": "Thousand Oaks","state": "CA","nickname": "Kingsmen","strength": 2.5,  "colors": { "primary": "#582D40", "secondary": "#DDB12E" } },
-        { "id": "redlands-d3",        "name": "Redlands",        "city": "Redlands",   "state": "CA", "nickname": "Bulldogs",  "strength": 2.0,  "colors": { "primary": "#770521", "secondary": "#A2AAAD" } },
-        { "id": "chapman-d3",         "name": "Chapman",         "city": "Orange",     "state": "CA", "nickname": "Panthers",  "strength": 3.0,  "colors": { "primary": "#A50034", "secondary": "#000000" } },
-        { "id": "claremont-d3",       "name": "Claremont-Mudd-Scripps","city": "Claremont","state": "CA","nickname": "Stags","strength": 2.5,    "colors": { "primary": "#7E0019", "secondary": "#FFD200" } }
+        {
+          "id": "tufts-d3",
+          "name": "Tufts",
+          "city": "Medford",
+          "state": "MA",
+          "nickname": "Jumbos",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "amherst-d3",
+          "name": "Amherst",
+          "city": "Amherst",
+          "state": "MA",
+          "nickname": "Mammoths",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "bates-d3",
+          "name": "Bates",
+          "city": "Lewiston",
+          "state": "ME",
+          "nickname": "Bobcats",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "bowdoin-d3",
+          "name": "Bowdoin",
+          "city": "Brunswick",
+          "state": "ME",
+          "nickname": "Polar Bears",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "colby-d3",
+          "name": "Colby",
+          "city": "Waterville",
+          "state": "ME",
+          "nickname": "Mules",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "connecticut-college-d3",
+          "name": "Connecticut College",
+          "city": "New London",
+          "state": "CT",
+          "nickname": "Camels",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "hamilton-d3",
+          "name": "Hamilton",
+          "city": "Clinton",
+          "state": "NY",
+          "nickname": "Continentals",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "middlebury-d3",
+          "name": "Middlebury",
+          "city": "Middlebury",
+          "state": "VT",
+          "nickname": "Panthers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "trinity-ct-d3",
+          "name": "Trinity (CT)",
+          "city": "Hartford",
+          "state": "CT",
+          "nickname": "Bantams",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "wesleyan-d3",
+          "name": "Wesleyan",
+          "city": "Middletown",
+          "state": "CT",
+          "nickname": "Cardinals",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "williams-d3",
+          "name": "Williams",
+          "city": "Williamstown",
+          "state": "MA",
+          "nickname": "Ephs",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "north-central-il-d3",
+          "name": "North Central (IL)",
+          "city": "Naperville",
+          "state": "IL",
+          "nickname": "Cardinals",
+          "strength": 3.5,
+          "colors": {
+            "primary": "#C8102E",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "wheaton-il-d3",
+          "name": "Wheaton (IL)",
+          "city": "Wheaton",
+          "state": "IL",
+          "nickname": "Thunder",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "augustana-il-d3",
+          "name": "Augustana (IL)",
+          "city": "Rock Island",
+          "state": "IL",
+          "nickname": "Vikings",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "carthage-d3",
+          "name": "Carthage",
+          "city": "Kenosha",
+          "state": "WI",
+          "nickname": "Firebirds",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "elmhurst-d3",
+          "name": "Elmhurst",
+          "city": "Elmhurst",
+          "state": "IL",
+          "nickname": "Bluejays",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "illinois-wesleyan-d3",
+          "name": "Illinois Wesleyan",
+          "city": "Bloomington",
+          "state": "IL",
+          "nickname": "Titans",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "millikin-d3",
+          "name": "Millikin",
+          "city": "Decatur",
+          "state": "IL",
+          "nickname": "Big Blue",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "north-park-d3",
+          "name": "North Park",
+          "city": "Chicago",
+          "state": "IL",
+          "nickname": "Vikings",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "lynchburg-d3",
+          "name": "Lynchburg",
+          "city": "Lynchburg",
+          "state": "VA",
+          "nickname": "Hornets",
+          "strength": 3.5,
+          "colors": {
+            "primary": "#990000",
+            "secondary": "#FFC72C"
+          }
+        },
+        {
+          "id": "randolph-macon-d3",
+          "name": "Randolph-Macon",
+          "city": "Ashland",
+          "state": "VA",
+          "nickname": "Yellow Jackets",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "roanoke-d3",
+          "name": "Roanoke",
+          "city": "Salem",
+          "state": "VA",
+          "nickname": "Maroons",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "bridgewater-d3",
+          "name": "Bridgewater",
+          "city": "Bridgewater",
+          "state": "VA",
+          "nickname": "Eagles",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "eastern-mennonite-d3",
+          "name": "Eastern Mennonite",
+          "city": "Harrisonburg",
+          "state": "VA",
+          "nickname": "Royals",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "emory-and-henry-d3",
+          "name": "Emory & Henry",
+          "city": "Emory",
+          "state": "VA",
+          "nickname": "Wasps",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "ferrum-d3",
+          "name": "Ferrum",
+          "city": "Ferrum",
+          "state": "VA",
+          "nickname": "Panthers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "guilford-d3",
+          "name": "Guilford",
+          "city": "Greensboro",
+          "state": "NC",
+          "nickname": "Quakers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "hampden-sydney-d3",
+          "name": "Hampden-Sydney",
+          "city": "Hampden-Sydney",
+          "state": "VA",
+          "nickname": "Tigers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "shenandoah-d3",
+          "name": "Shenandoah",
+          "city": "Winchester",
+          "state": "VA",
+          "nickname": "Hornets",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "washington-and-lee-d3",
+          "name": "Washington and Lee",
+          "city": "Lexington",
+          "state": "VA",
+          "nickname": "Generals",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "chapman-d3",
+          "name": "Chapman",
+          "city": "Orange",
+          "state": "CA",
+          "nickname": "Panthers",
+          "strength": 3,
+          "colors": {
+            "primary": "#A50034",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "cal-lutheran-d3",
+          "name": "Cal Lutheran",
+          "city": "Thousand Oaks",
+          "state": "CA",
+          "nickname": "Kingsmen",
+          "strength": 2.5,
+          "colors": {
+            "primary": "#582D40",
+            "secondary": "#DDB12E"
+          }
+        },
+        {
+          "id": "claremont-mudd-scripps-d3",
+          "name": "Claremont-Mudd-Scripps",
+          "city": "Claremont",
+          "state": "CA",
+          "nickname": "Stags",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "la-verne-d3",
+          "name": "La Verne",
+          "city": "La Verne",
+          "state": "CA",
+          "nickname": "Leopards",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "pomona-pitzer-d3",
+          "name": "Pomona-Pitzer",
+          "city": "Claremont",
+          "state": "CA",
+          "nickname": "Sagehens",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "redlands-d3",
+          "name": "Redlands",
+          "city": "Redlands",
+          "state": "CA",
+          "nickname": "Bulldogs",
+          "strength": 2,
+          "colors": {
+            "primary": "#770521",
+            "secondary": "#A2AAAD"
+          }
+        },
+        {
+          "id": "whittier-d3",
+          "name": "Whittier",
+          "city": "Whittier",
+          "state": "CA",
+          "nickname": "Poets",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "caltech-d3",
+          "name": "Caltech",
+          "city": "Pasadena",
+          "state": "CA",
+          "nickname": "Beavers",
+          "strength": -3,
+          "colors": null
+        },
+        {
+          "id": "occidental-d3",
+          "name": "Occidental",
+          "city": "Los Angeles",
+          "state": "CA",
+          "nickname": "Tigers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "puget-sound-d3",
+          "name": "Puget Sound",
+          "city": "Tacoma",
+          "state": "WA",
+          "nickname": "Loggers",
+          "strength": -1,
+          "colors": {
+            "primary": "#760023",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "pacific-lutheran-d3",
+          "name": "Pacific Lutheran",
+          "city": "Tacoma",
+          "state": "WA",
+          "nickname": "Lutes",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "whitman-d3",
+          "name": "Whitman",
+          "city": "Walla Walla",
+          "state": "WA",
+          "nickname": "Blues",
+          "strength": -2.5,
+          "colors": {
+            "primary": "#FFD200",
+            "secondary": "#003B5C"
+          }
+        },
+        {
+          "id": "whitworth-d3",
+          "name": "Whitworth",
+          "city": "Spokane",
+          "state": "WA",
+          "nickname": "Pirates",
+          "strength": -1.5,
+          "colors": {
+            "primary": "#C20430",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "linfield-d3",
+          "name": "Linfield",
+          "city": "McMinnville",
+          "state": "OR",
+          "nickname": "Wildcats",
+          "strength": 0.5,
+          "colors": {
+            "primary": "#5B0F1C",
+            "secondary": "#7C7E80"
+          }
+        },
+        {
+          "id": "lewis-and-clark-d3",
+          "name": "Lewis & Clark",
+          "city": "Portland",
+          "state": "OR",
+          "nickname": "Pioneers",
+          "strength": -3,
+          "colors": null
+        },
+        {
+          "id": "willamette-d3",
+          "name": "Willamette",
+          "city": "Salem",
+          "state": "OR",
+          "nickname": "Bearcats",
+          "strength": -1.5,
+          "colors": {
+            "primary": "#9D2235",
+            "secondary": "#FFC72C"
+          }
+        },
+        {
+          "id": "pacific-or-d3",
+          "name": "Pacific (OR)",
+          "city": "Forest Grove",
+          "state": "OR",
+          "nickname": "Boxers",
+          "strength": -3.5,
+          "colors": null
+        },
+        {
+          "id": "george-fox-d3",
+          "name": "George Fox",
+          "city": "Newberg",
+          "state": "OR",
+          "nickname": "Bruins",
+          "strength": -1,
+          "colors": {
+            "primary": "#003366",
+            "secondary": "#FFD700"
+          }
+        },
+        {
+          "id": "emory-d3",
+          "name": "Emory",
+          "city": "Atlanta",
+          "state": "GA",
+          "nickname": "Eagles",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "washington-u-d3",
+          "name": "Washington U",
+          "city": "St. Louis",
+          "state": "MO",
+          "nickname": "Bears",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "chicago-d3",
+          "name": "Chicago",
+          "city": "Chicago",
+          "state": "IL",
+          "nickname": "Maroons",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "brandeis-d3",
+          "name": "Brandeis",
+          "city": "Waltham",
+          "state": "MA",
+          "nickname": "Judges",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "case-western-d3",
+          "name": "Case Western",
+          "city": "Cleveland",
+          "state": "OH",
+          "nickname": "Spartans",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "nyu-d3",
+          "name": "NYU",
+          "city": "New York",
+          "state": "NY",
+          "nickname": "Violets",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "rochester-d3",
+          "name": "Rochester",
+          "city": "Rochester",
+          "state": "NY",
+          "nickname": "Yellowjackets",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "carnegie-mellon-d3",
+          "name": "Carnegie Mellon",
+          "city": "Pittsburgh",
+          "state": "PA",
+          "nickname": "Tartans",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "trinity-tx-d3",
+          "name": "Trinity (TX)",
+          "city": "San Antonio",
+          "state": "TX",
+          "nickname": "Tigers",
+          "strength": 4,
+          "colors": {
+            "primary": "#86714A",
+            "secondary": "#820000"
+          }
+        },
+        {
+          "id": "texas-lutheran-d3",
+          "name": "Texas Lutheran",
+          "city": "Seguin",
+          "state": "TX",
+          "nickname": "Bulldogs",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "schreiner-d3",
+          "name": "Schreiner",
+          "city": "Kerrville",
+          "state": "TX",
+          "nickname": "Mountaineers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "centenary-d3",
+          "name": "Centenary",
+          "city": "Shreveport",
+          "state": "LA",
+          "nickname": "Gents",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "concordia-tx-d3",
+          "name": "Concordia (TX)",
+          "city": "Austin",
+          "state": "TX",
+          "nickname": "Tornados",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "southwestern-tx-d3",
+          "name": "Southwestern (TX)",
+          "city": "Georgetown",
+          "state": "TX",
+          "nickname": "Pirates",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "sewanee-d3",
+          "name": "Sewanee",
+          "city": "Sewanee",
+          "state": "TN",
+          "nickname": "Tigers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "berry-d3",
+          "name": "Berry",
+          "city": "Mount Berry",
+          "state": "GA",
+          "nickname": "Vikings",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "birmingham-southern-d3",
+          "name": "Birmingham-Southern",
+          "city": "Birmingham",
+          "state": "AL",
+          "nickname": "Panthers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "christopher-newport-d3",
+          "name": "Christopher Newport",
+          "city": "Newport News",
+          "state": "VA",
+          "nickname": "Captains",
+          "strength": 4,
+          "colors": {
+            "primary": "#003F87",
+            "secondary": "#A6192E"
+          }
+        },
+        {
+          "id": "wesley-d3",
+          "name": "Wesley",
+          "city": "Dover",
+          "state": "DE",
+          "nickname": "Wolverines",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "salisbury-d3",
+          "name": "Salisbury",
+          "city": "Salisbury",
+          "state": "MD",
+          "nickname": "Sea Gulls",
+          "strength": 5,
+          "colors": {
+            "primary": "#7C2230",
+            "secondary": "#FFB81C"
+          }
+        },
+        {
+          "id": "greensboro-d3",
+          "name": "Greensboro",
+          "city": "Greensboro",
+          "state": "NC",
+          "nickname": "Pride",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "mary-washington-d3",
+          "name": "Mary Washington",
+          "city": "Fredericksburg",
+          "state": "VA",
+          "nickname": "Eagles",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "william-peace-d3",
+          "name": "William Peace",
+          "city": "Raleigh",
+          "state": "NC",
+          "nickname": "Pacers",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "methodist-d3",
+          "name": "Methodist",
+          "city": "Fayetteville",
+          "state": "NC",
+          "nickname": "Monarchs",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "north-carolina-wesleyan-d3",
+          "name": "North Carolina Wesleyan",
+          "city": "Rocky Mount",
+          "state": "NC",
+          "nickname": "Battling Bishops",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "wpi-d3",
+          "name": "WPI",
+          "city": "Worcester",
+          "state": "MA",
+          "nickname": "Engineers",
+          "strength": 4,
+          "colors": {
+            "primary": "#A6192E",
+            "secondary": "#A2AAAD"
+          }
+        },
+        {
+          "id": "mit-d3",
+          "name": "MIT",
+          "city": "Cambridge",
+          "state": "MA",
+          "nickname": "Engineers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "coast-guard-d3",
+          "name": "Coast Guard",
+          "city": "New London",
+          "state": "CT",
+          "nickname": "Bears",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "springfield-d3",
+          "name": "Springfield",
+          "city": "Springfield",
+          "state": "MA",
+          "nickname": "Pride",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "babson-d3",
+          "name": "Babson",
+          "city": "Wellesley",
+          "state": "MA",
+          "nickname": "Beavers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "clark-ma-d3",
+          "name": "Clark (MA)",
+          "city": "Worcester",
+          "state": "MA",
+          "nickname": "Cougars",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "ut-dallas-d3",
+          "name": "UT Dallas",
+          "city": "Richardson",
+          "state": "TX",
+          "nickname": "Comets",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "east-texas-baptist-d3",
+          "name": "East Texas Baptist",
+          "city": "Marshall",
+          "state": "TX",
+          "nickname": "Tigers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "hardin-simmons-d3",
+          "name": "Hardin-Simmons",
+          "city": "Abilene",
+          "state": "TX",
+          "nickname": "Cowboys",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "howard-payne-d3",
+          "name": "Howard Payne",
+          "city": "Brownwood",
+          "state": "TX",
+          "nickname": "Yellow Jackets",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "mary-hardin-baylor-d3",
+          "name": "Mary Hardin-Baylor",
+          "city": "Belton",
+          "state": "TX",
+          "nickname": "Crusaders",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "mcmurry-d3",
+          "name": "McMurry",
+          "city": "Abilene",
+          "state": "TX",
+          "nickname": "War Hawks",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "ozarks-ar-d3",
+          "name": "Ozarks (AR)",
+          "city": "Clarksville",
+          "state": "AR",
+          "nickname": "Eagles",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "letourneau-d3",
+          "name": "LeTourneau",
+          "city": "Longview",
+          "state": "TX",
+          "nickname": "YellowJackets",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "endicott-d3",
+          "name": "Endicott",
+          "city": "Beverly",
+          "state": "MA",
+          "nickname": "Gulls",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "eastern-nazarene-d3",
+          "name": "Eastern Nazarene",
+          "city": "Quincy",
+          "state": "MA",
+          "nickname": "Lions",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "gordon-d3",
+          "name": "Gordon",
+          "city": "Wenham",
+          "state": "MA",
+          "nickname": "Fighting Scots",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "new-england-d3",
+          "name": "New England",
+          "city": "Henniker",
+          "state": "NH",
+          "nickname": "Pilgrims",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "nichols-d3",
+          "name": "Nichols",
+          "city": "Dudley",
+          "state": "MA",
+          "nickname": "Bison",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "roger-williams-d3",
+          "name": "Roger Williams",
+          "city": "Bristol",
+          "state": "RI",
+          "nickname": "Hawks",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "salve-regina-d3",
+          "name": "Salve Regina",
+          "city": "Newport",
+          "state": "RI",
+          "nickname": "Seahawks",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "suffolk-d3",
+          "name": "Suffolk",
+          "city": "Boston",
+          "state": "MA",
+          "nickname": "Rams",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "western-new-england-d3",
+          "name": "Western New England",
+          "city": "Springfield",
+          "state": "MA",
+          "nickname": "Golden Bears",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "vassar-d3",
+          "name": "Vassar",
+          "city": "Poughkeepsie",
+          "state": "NY",
+          "nickname": "Brewers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "rit-d3",
+          "name": "RIT",
+          "city": "Rochester",
+          "state": "NY",
+          "nickname": "Tigers",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "skidmore-d3",
+          "name": "Skidmore",
+          "city": "Saratoga Springs",
+          "state": "NY",
+          "nickname": "Thoroughbreds",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "union-ny-d3",
+          "name": "Union (NY)",
+          "city": "Schenectady",
+          "state": "NY",
+          "nickname": "Garnet Chargers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "bard-d3",
+          "name": "Bard",
+          "city": "Annandale-on-Hudson",
+          "state": "NY",
+          "nickname": "Raptors",
+          "strength": 1,
+          "colors": null
+        },
+        {
+          "id": "clarkson-d3",
+          "name": "Clarkson",
+          "city": "Potsdam",
+          "state": "NY",
+          "nickname": "Golden Knights",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "hobart-d3",
+          "name": "Hobart",
+          "city": "Geneva",
+          "state": "NY",
+          "nickname": "Statesmen",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "rpi-d3",
+          "name": "RPI",
+          "city": "Troy",
+          "state": "NY",
+          "nickname": "Engineers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "ithaca-d3",
+          "name": "Ithaca",
+          "city": "Ithaca",
+          "state": "NY",
+          "nickname": "Bombers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "marietta-d3",
+          "name": "Marietta",
+          "city": "Marietta",
+          "state": "OH",
+          "nickname": "Pioneers",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "capital-d3",
+          "name": "Capital",
+          "city": "Bexley",
+          "state": "OH",
+          "nickname": "Comets",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "heidelberg-d3",
+          "name": "Heidelberg",
+          "city": "Tiffin",
+          "state": "OH",
+          "nickname": "Student Princes",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "baldwin-wallace-d3",
+          "name": "Baldwin Wallace",
+          "city": "Berea",
+          "state": "OH",
+          "nickname": "Yellow Jackets",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "john-carroll-d3",
+          "name": "John Carroll",
+          "city": "University Heights",
+          "state": "OH",
+          "nickname": "Blue Streaks",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "mount-union-d3",
+          "name": "Mount Union",
+          "city": "Alliance",
+          "state": "OH",
+          "nickname": "Purple Raiders",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "otterbein-d3",
+          "name": "Otterbein",
+          "city": "Westerville",
+          "state": "OH",
+          "nickname": "Cardinals",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "wilmington-oh-d3",
+          "name": "Wilmington (OH)",
+          "city": "Wilmington",
+          "state": "OH",
+          "nickname": "Quakers",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "muskingum-d3",
+          "name": "Muskingum",
+          "city": "New Concord",
+          "state": "OH",
+          "nickname": "Fighting Muskies",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "rowan-d3",
+          "name": "Rowan",
+          "city": "Glassboro",
+          "state": "NJ",
+          "nickname": "Profs",
+          "strength": 4,
+          "colors": null
+        },
+        {
+          "id": "montclair-state-d3",
+          "name": "Montclair State",
+          "city": "Montclair",
+          "state": "NJ",
+          "nickname": "Red Hawks",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "william-paterson-d3",
+          "name": "William Paterson",
+          "city": "Wayne",
+          "state": "NJ",
+          "nickname": "Pioneers",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "kean-d3",
+          "name": "Kean",
+          "city": "Union",
+          "state": "NJ",
+          "nickname": "Cougars",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "rutgers-camden-d3",
+          "name": "Rutgers-Camden",
+          "city": "Camden",
+          "state": "NJ",
+          "nickname": "Scarlet Raptors",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "rutgers-newark-d3",
+          "name": "Rutgers-Newark",
+          "city": "Newark",
+          "state": "NJ",
+          "nickname": "Scarlet Raiders",
+          "strength": 2,
+          "colors": null
+        },
+        {
+          "id": "nj-city-d3",
+          "name": "NJ City",
+          "city": "Jersey City",
+          "state": "NJ",
+          "nickname": "Gothic Knights",
+          "strength": 1.5,
+          "colors": null
+        },
+        {
+          "id": "tcnj-d3",
+          "name": "TCNJ",
+          "city": "Ewing",
+          "state": "NJ",
+          "nickname": "Lions",
+          "strength": 3,
+          "colors": null
+        },
+        {
+          "id": "stockton-d3",
+          "name": "Stockton",
+          "city": "Galloway",
+          "state": "NJ",
+          "nickname": "Ospreys",
+          "strength": 2.5,
+          "colors": null
+        },
+        {
+          "id": "cortland-d3",
+          "name": "Cortland",
+          "city": "Cortland",
+          "state": "NY",
+          "nickname": "Red Dragons",
+          "strength": 4.5,
+          "colors": {
+            "primary": "#B30000",
+            "secondary": "#FFFFFF"
+          }
+        },
+        {
+          "id": "johns-hopkins-d3",
+          "name": "Johns Hopkins",
+          "city": "Baltimore",
+          "state": "MD",
+          "nickname": "Blue Jays",
+          "strength": 4.5,
+          "colors": {
+            "primary": "#002D72",
+            "secondary": "#000000"
+          }
+        },
+        {
+          "id": "wisconsin-whitewater-d3",
+          "name": "Wisconsin-Whitewater",
+          "city": "Whitewater",
+          "state": "WI",
+          "nickname": "Warhawks",
+          "strength": 4.5,
+          "colors": null
+        },
+        {
+          "id": "washington-and-jefferson-d3",
+          "name": "Washington & Jefferson",
+          "city": "Washington",
+          "state": "PA",
+          "nickname": "Presidents",
+          "strength": 3.5,
+          "colors": null
+        },
+        {
+          "id": "misericordia-d3",
+          "name": "Misericordia",
+          "city": "Dallas",
+          "state": "PA",
+          "nickname": "Cougars",
+          "strength": 3,
+          "colors": {
+            "primary": "#003F2D",
+            "secondary": "#B68E26"
+          }
+        }
       ]
     },
     {
       "id": "JUCO_NWAC",
       "name": "Northwest Athletic Conference (JUCO)",
       "teams": [
-        { "id": "nwac-bellevue",         "name": "Bellevue CC",         "city": "Bellevue",      "state": "WA", "nickname": "Bulldogs", "strength": -2.0, "colors": null },
-        { "id": "nwac-big-bend",         "name": "Big Bend",             "city": "Moses Lake",   "state": "WA", "nickname": "Vikings",  "strength": -3.5, "colors": null },
-        { "id": "nwac-centralia",        "name": "Centralia",            "city": "Centralia",    "state": "WA", "nickname": "Trailblazers", "strength": -3.0, "colors": null },
-        { "id": "nwac-douglas",          "name": "Douglas",              "city": "New Westminster","state": "BC","nickname": "Royals",  "strength": -1.5, "colors": null },
-        { "id": "nwac-edmonds",          "name": "Edmonds",              "city": "Lynnwood",     "state": "WA", "nickname": "Tritons",  "strength": -2.5, "colors": null },
-        { "id": "nwac-everett",          "name": "Everett",              "city": "Everett",      "state": "WA", "nickname": "Trojans",  "strength": -1.0, "colors": null },
-        { "id": "nwac-grays-harbor",     "name": "Grays Harbor",         "city": "Aberdeen",     "state": "WA", "nickname": "Chokers",  "strength": -3.0, "colors": null },
-        { "id": "nwac-linn-benton",      "name": "Linn-Benton",          "city": "Albany",       "state": "OR", "nickname": "Roadrunners","strength": -1.5, "colors": null },
-        { "id": "nwac-lower-columbia",   "name": "Lower Columbia",       "city": "Longview",     "state": "WA", "nickname": "Red Devils","strength": -2.0, "colors": null },
-        { "id": "nwac-mt-hood",          "name": "Mt. Hood",             "city": "Gresham",      "state": "OR", "nickname": "Saints",   "strength": -2.0, "colors": null },
-        { "id": "nwac-olympic",          "name": "Olympic",              "city": "Bremerton",    "state": "WA", "nickname": "Rangers",  "strength": -2.5, "colors": null },
-        { "id": "nwac-pierce",           "name": "Pierce",               "city": "Lakewood",     "state": "WA", "nickname": "Raiders",  "strength": -2.0, "colors": null },
-        { "id": "nwac-shoreline",        "name": "Shoreline",            "city": "Shoreline",    "state": "WA", "nickname": "Dolphins", "strength": -3.5, "colors": null },
-        { "id": "nwac-skagit-valley",    "name": "Skagit Valley",        "city": "Mount Vernon", "state": "WA", "nickname": "Cardinals","strength": -2.5, "colors": null },
-        { "id": "nwac-south-puget-sound","name": "South Puget Sound",    "city": "Olympia",      "state": "WA", "nickname": "Clippers", "strength": -3.0, "colors": null },
-        { "id": "nwac-spokane",          "name": "Spokane",              "city": "Spokane",      "state": "WA", "nickname": "Sasquatch","strength": -1.0, "colors": null },
-        { "id": "nwac-tacoma",           "name": "Tacoma",               "city": "Tacoma",       "state": "WA", "nickname": "Titans",   "strength": -2.0, "colors": null },
-        { "id": "nwac-treasure-valley",  "name": "Treasure Valley",      "city": "Ontario",      "state": "OR", "nickname": "Chukars",  "strength": -2.5, "colors": null },
-        { "id": "nwac-umpqua",           "name": "Umpqua",               "city": "Roseburg",     "state": "OR", "nickname": "Riverhawks","strength": -2.5, "colors": null },
-        { "id": "nwac-walla-walla",      "name": "Walla Walla",          "city": "Walla Walla",  "state": "WA", "nickname": "Warriors", "strength": -1.5, "colors": null },
-        { "id": "nwac-wenatchee-valley", "name": "Wenatchee Valley",     "city": "Wenatchee",    "state": "WA", "nickname": "Knights",  "strength": -2.0, "colors": null },
-        { "id": "nwac-yakima-valley",    "name": "Yakima Valley",        "city": "Yakima",       "state": "WA", "nickname": "Yaks",     "strength": -1.5, "colors": null }
+        {
+          "id": "nwac-bellevue",
+          "name": "Bellevue CC",
+          "city": "Bellevue",
+          "state": "WA",
+          "nickname": "Bulldogs",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "nwac-big-bend",
+          "name": "Big Bend",
+          "city": "Moses Lake",
+          "state": "WA",
+          "nickname": "Vikings",
+          "strength": -3.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-centralia",
+          "name": "Centralia",
+          "city": "Centralia",
+          "state": "WA",
+          "nickname": "Trailblazers",
+          "strength": -3,
+          "colors": null
+        },
+        {
+          "id": "nwac-douglas",
+          "name": "Douglas",
+          "city": "New Westminster",
+          "state": "BC",
+          "nickname": "Royals",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-edmonds",
+          "name": "Edmonds",
+          "city": "Lynnwood",
+          "state": "WA",
+          "nickname": "Tritons",
+          "strength": -2.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-everett",
+          "name": "Everett",
+          "city": "Everett",
+          "state": "WA",
+          "nickname": "Trojans",
+          "strength": -1,
+          "colors": null
+        },
+        {
+          "id": "nwac-grays-harbor",
+          "name": "Grays Harbor",
+          "city": "Aberdeen",
+          "state": "WA",
+          "nickname": "Chokers",
+          "strength": -3,
+          "colors": null
+        },
+        {
+          "id": "nwac-linn-benton",
+          "name": "Linn-Benton",
+          "city": "Albany",
+          "state": "OR",
+          "nickname": "Roadrunners",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-lower-columbia",
+          "name": "Lower Columbia",
+          "city": "Longview",
+          "state": "WA",
+          "nickname": "Red Devils",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "nwac-mt-hood",
+          "name": "Mt. Hood",
+          "city": "Gresham",
+          "state": "OR",
+          "nickname": "Saints",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "nwac-olympic",
+          "name": "Olympic",
+          "city": "Bremerton",
+          "state": "WA",
+          "nickname": "Rangers",
+          "strength": -2.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-pierce",
+          "name": "Pierce",
+          "city": "Lakewood",
+          "state": "WA",
+          "nickname": "Raiders",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "nwac-shoreline",
+          "name": "Shoreline",
+          "city": "Shoreline",
+          "state": "WA",
+          "nickname": "Dolphins",
+          "strength": -3.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-skagit-valley",
+          "name": "Skagit Valley",
+          "city": "Mount Vernon",
+          "state": "WA",
+          "nickname": "Cardinals",
+          "strength": -2.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-south-puget-sound",
+          "name": "South Puget Sound",
+          "city": "Olympia",
+          "state": "WA",
+          "nickname": "Clippers",
+          "strength": -3,
+          "colors": null
+        },
+        {
+          "id": "nwac-spokane",
+          "name": "Spokane",
+          "city": "Spokane",
+          "state": "WA",
+          "nickname": "Sasquatch",
+          "strength": -1,
+          "colors": null
+        },
+        {
+          "id": "nwac-tacoma",
+          "name": "Tacoma",
+          "city": "Tacoma",
+          "state": "WA",
+          "nickname": "Titans",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "nwac-treasure-valley",
+          "name": "Treasure Valley",
+          "city": "Ontario",
+          "state": "OR",
+          "nickname": "Chukars",
+          "strength": -2.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-umpqua",
+          "name": "Umpqua",
+          "city": "Roseburg",
+          "state": "OR",
+          "nickname": "Riverhawks",
+          "strength": -2.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-walla-walla",
+          "name": "Walla Walla",
+          "city": "Walla Walla",
+          "state": "WA",
+          "nickname": "Warriors",
+          "strength": -1.5,
+          "colors": null
+        },
+        {
+          "id": "nwac-wenatchee-valley",
+          "name": "Wenatchee Valley",
+          "city": "Wenatchee",
+          "state": "WA",
+          "nickname": "Knights",
+          "strength": -2,
+          "colors": null
+        },
+        {
+          "id": "nwac-yakima-valley",
+          "name": "Yakima Valley",
+          "city": "Yakima",
+          "state": "WA",
+          "nickname": "Yaks",
+          "strength": -1.5,
+          "colors": null
+        }
       ]
     }
   ]
