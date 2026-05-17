@@ -22,6 +22,7 @@ import { runEventsForWeek } from './events'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
 import { computeWeeklyAwards } from './weeklyAwards'
+import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf } from './pnwPlayoffs'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
@@ -470,6 +471,12 @@ export function simWeek(state, schedule, ratings) {
  * @returns {{ tournaments: any[], autoBids: string[], userResult: any }}
  */
 export function runPostseason(state) {
+  // Multi-level branch: non-NAIA dynasties route through the generic
+  // pnwPlayoffs runner. They get a conference tournament + a stubbed
+  // national bracket (placeholder until full per-level WS sims ship).
+  if (state.level && state.level !== 'NAIA') {
+    return runPostseasonMultiLevel(state)
+  }
   const ratings = seedFromPear(state.schools, state.conferences)
 
   // 1. Conference tournaments
@@ -647,6 +654,106 @@ export function runEndOfYear(state) {
 // Roster cap. NAIA programs are limited to 50 active scholarship + walk-on
 // players. Lowered from 60 to 50 (May 2026) — previous value let rosters
 // balloon to unrealistic sizes after multiple recruiting classes signed.
+/**
+ * Multi-level postseason — used for D1/D2/D3/NWAC dynasties.
+ *
+ * Phase 1 (this session): run the conference tournament through the
+ * generic pnwPlayoffs runner. Field is the top N from the user's
+ * conference (by conf W-L). National bracket is STUBBED — surfaces
+ * an info headline instead of simming, until per-level WS code ships.
+ */
+function runPostseasonMultiLevel(state) {
+  const userConfId = state.schools[state.userSchoolId]?.conferenceId
+  const conf = state.conferences[userConfId]
+  if (!conf) return null
+  const level = state.level
+
+  // Seed conference qualifiers by conf W-L → run diff
+  const standings = (conf.schoolIds || [])
+    .map(id => ({ schoolId: id, team: state.teams[id] }))
+    .filter(x => x.team)
+    .sort((a, b) => {
+      if (a.team.confWins !== b.team.confWins) return b.team.confWins - a.team.confWins
+      return b.team.runDiff - a.team.runDiff
+    })
+  const fieldSize = qualifierCountForConf(userConfId)
+  const seeded = standings.slice(0, fieldSize).map(x => x.schoolId)
+
+  // simGame callback — use fast monte-carlo against the universal rating
+  const ratingFor = (sid) => {
+    const team = state.teams[sid]
+    if (!team) return { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
+    const winPct = (team.wins + team.losses) > 0
+      ? team.wins / (team.wins + team.losses) : 0.5
+    return {
+      overall_rating: (winPct - 0.5) * 10,
+      offense_rating: (winPct - 0.5) * 5,
+      pitching_rating: (winPct - 0.5) * 5,
+    }
+  }
+  const simGame = (h, a, key) => fastSimGame(ratingFor(h), ratingFor(a), key)
+
+  const tourney = runConferenceTournament(userConfId, seeded, simGame, `pml_${state.calendar.year}_${userConfId}`)
+  const userChamp = tourney.champion === state.userSchoolId
+
+  // Apply W/L from tourney games to the user team only
+  for (const g of (tourney.games || [])) {
+    if (g.homeId !== state.userSchoolId && g.awayId !== state.userSchoolId) continue
+    const userHome = g.homeId === state.userSchoolId
+    const userRuns = userHome ? g.homeRuns : g.awayRuns
+    const oppRuns = userHome ? g.awayRuns : g.homeRuns
+    state.teams[state.userSchoolId].runDiff += userRuns - oppRuns
+  }
+
+  const natSpec = nationalSpecForLevel(level)
+  state.postseason = {
+    year: state.calendar.year + 1,
+    level,
+    tournaments: [{
+      conferenceId: userConfId,
+      qualifiers: seeded.map((sid, i) => ({ schoolId: sid, seed: i + 1 })),
+      games: tourney.games,
+      champion: tourney.champion,
+      autoBids: userChamp ? [tourney.champion] : [],
+    }],
+    autoBids: userChamp ? [tourney.champion] : [],
+    userChamp,
+    userQualified: seeded.includes(state.userSchoolId),
+    // National bracket stubbed
+    national: null,
+    nationalStubMessage: natSpec
+      ? `${natSpec.name} bracket sim is a future engine task — until then your run ends at the ${conf.name} championship.`
+      : null,
+    userInField: false, userORWon: false, userInWS: false, userWSChamp: false,
+  }
+
+  // Newsfeed lines
+  const userName = state.schools[state.userSchoolId].name
+  if (userChamp) {
+    state.newsfeed.unshift({
+      id: `confchamp_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 17, type: 'POSTSEASON',
+      headline: `${userName} wins the ${conf.name}! Auto-bid earned (national bracket sim coming in a future engine update).`,
+      payload: {}, big: true,
+    })
+  } else if (state.postseason.userQualified) {
+    state.newsfeed.unshift({
+      id: `confelim_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 17, type: 'POSTSEASON',
+      headline: `Eliminated in the ${conf.name} tournament. ${state.schools[tourney.champion]?.name || ''} took the title.`,
+      payload: {},
+    })
+  } else {
+    state.newsfeed.unshift({
+      id: `confmiss_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 17, type: 'POSTSEASON',
+      headline: `Missed the ${conf.name} tournament.`,
+      payload: {},
+    })
+  }
+  return { tournaments: state.postseason.tournaments, autoBids: state.postseason.autoBids }
+}
+
 export const ROSTER_CAP_MAX = 50
 
 /**

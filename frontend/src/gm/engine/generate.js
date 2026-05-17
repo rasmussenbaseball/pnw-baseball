@@ -571,15 +571,34 @@ function estimateScholarship(school, hitter, pitcher, isPitcher, potentialHitter
  * @param {number} [currentYear=2026]
  * @returns {Player[]}
  */
-export function generateRoster(school, seed, currentYear = 2026) {
+export function generateRoster(school, seed, currentYear = 2026, opts = {}) {
   const rng = makeRng('roster', school.id, seed)
-  const rosterSize = rng.int(40, 50)
+  const allowedClassYears = opts.allowedClassYears || ['FR', 'SO', 'JR', 'SR']
+  // NWAC + level-aware: when only FR/SO are eligible (JUCO), rosters are
+  // smaller (~25-30) and split evenly between the two class years.
+  const isJuco = allowedClassYears.length === 2 && !allowedClassYears.includes('JR')
+  const rosterSize = isJuco ? rng.int(24, 30) : rng.int(40, 50)
   const positions = makeRosterPositionList(rng)
-  const classYears = makeClassYearList()
-  shuffleInPlace(classYears, rng)
-  // makeClassYearList sums to 45; extend with random class years if rosterSize > 45.
-  while (classYears.length < rosterSize) {
-    classYears.push(rng.weighted(['FR', 'SO', 'JR', 'SR'], [12, 12, 11, 10]))
+  let classYears
+  if (isJuco) {
+    // Roughly 50/50 FR/SO
+    classYears = []
+    for (let i = 0; i < rosterSize; i++) {
+      classYears.push(i < rosterSize / 2 ? 'FR' : 'SO')
+    }
+    shuffleInPlace(classYears, rng)
+  } else {
+    classYears = makeClassYearList()
+    shuffleInPlace(classYears, rng)
+    while (classYears.length < rosterSize) {
+      classYears.push(rng.weighted(['FR', 'SO', 'JR', 'SR'], [12, 12, 11, 10]))
+    }
+    // Filter to allowed (no-op for default 4-year levels)
+    if (allowedClassYears.length < 4) {
+      classYears = classYears.map(cy =>
+        allowedClassYears.includes(cy) ? cy : allowedClassYears[rng.int(0, allowedClassYears.length - 1)],
+      )
+    }
   }
 
   /** @type {Player[]} */

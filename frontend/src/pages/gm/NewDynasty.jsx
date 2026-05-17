@@ -14,11 +14,14 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
+import { newDynastyMultiLevel } from '../../gm/engine/newDynastyMultiLevel'
+import { getLevelForSchool, isPreviewLevel } from '../../gm/engine/levelHelpers'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import { buildProgramRatings, starsToBar } from '../../gm/engine/programRating'
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
 import { ARCHETYPES } from '../../gm/engine/archetypes'
 import { PNW_DIVISIONS, PNW_CONFERENCES, pnwProgramsAtLevel } from '../../gm/engine/pnwPlayoffs'
+const PNW_CONFERENCES_FOR_CONFIRM = PNW_CONFERENCES
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import CoachHeadshot, { COACH_LOOKS } from '../../gm/components/CoachHeadshot'
@@ -96,12 +99,14 @@ export default function NewDynasty() {
   const [archetype, setArchetype] = useState('GENERALIST')
 
   const ratings = ARCHETYPES[archetype]?.fixedRatings || ARCHETYPES.GENERALIST.fixedRatings
-  // Block dynasty creation when the selected program isn't NAIA — the
-  // engine plumbing for non-NAIA levels (schedule generation, recruiting
-  // pools, postseason routing) isn't wired up yet. Picker still surfaces
-  // them so the user can preview formats / rosters.
-  const selectedIsNaia = !!schools[selectedSchoolId]
-  const canSubmit = selectedSchoolId && selectedIsNaia
+  // Multi-level routing: NAIA goes through the original newDynasty path;
+  // D1/D2/D3/NWAC goes through newDynastyMultiLevel (preview engine).
+  // Look up the chosen school in BOTH datasets to figure out which one.
+  const levelInfo = useMemo(
+    () => selectedSchoolId ? getLevelForSchool(selectedSchoolId, schools) : null,
+    [selectedSchoolId, schools],
+  )
+  const canSubmit = selectedSchoolId && levelInfo
     && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
 
   function getGameOptions() {
@@ -119,11 +124,12 @@ export default function NewDynasty() {
       alert('All 3 save slots are used. Delete one to start a new dynasty.')
       return
     }
-    const school = schools[selectedSchoolId]
-    const state = newDynasty({
+    if (!levelInfo) { alert('Could not resolve the selected program.'); return }
+    const schoolName = levelInfo.school.name
+    const baseInput = {
       userSupabaseId: userId,
       saveSlot: slot,
-      dynastyName: `${coachFirst} ${coachLast}'s ${school.name}`,
+      dynastyName: `${coachFirst} ${coachLast}'s ${schoolName}`,
       userSchoolId: selectedSchoolId,
       gameOptions: getGameOptions(),
       userCoach: {
@@ -137,7 +143,23 @@ export default function NewDynasty() {
         recruiter_type: 'BALANCED',
         ...ratings,
       },
-    })
+    }
+    let state
+    try {
+      if (levelInfo.level === 'NAIA') {
+        state = newDynasty(baseInput)
+      } else {
+        state = newDynastyMultiLevel({
+          ...baseInput,
+          level: levelInfo.level,
+          conferenceId: levelInfo.conferenceId,
+        })
+      }
+    } catch (err) {
+      console.error('Dynasty creation failed:', err)
+      alert('Dynasty creation failed: ' + (err.message || 'unknown error'))
+      return
+    }
     const result = saveDynasty(state)
     if (!result.ok) { alert('Failed to save: ' + result.error); return }
     navigate(`/gm/dashboard?slot=${slot}`)
@@ -196,10 +218,15 @@ export default function NewDynasty() {
             canNext={!!(coachFirst && coachLast && primaryRegion && secondaryRegion && archetype)}
           />
         )}
-        {step === 4 && selectedSchoolId && schools[selectedSchoolId] && (
+        {step === 4 && selectedSchoolId && levelInfo && (
           <ConfirmStep
-            school={schools[selectedSchoolId]}
-            conf={conferences[schools[selectedSchoolId].conferenceId]}
+            school={levelInfo.school}
+            conf={
+              levelInfo.level === 'NAIA'
+                ? conferences[levelInfo.school.conferenceId]
+                : { name: (PNW_CONFERENCES_FOR_CONFIRM[levelInfo.conferenceId]?.name || levelInfo.conferenceId), abbreviation: levelInfo.conferenceId }
+            }
+            level={levelInfo.level}
             mode={GAME_MODE_PRESETS[modeKey].label}
             coachFirst={coachFirst}
             coachLast={coachLast}
@@ -212,26 +239,6 @@ export default function NewDynasty() {
             onBack={() => setStep(3)}
             onSubmit={handleCreate}
           />
-        )}
-        {step === 4 && selectedSchoolId && !schools[selectedSchoolId] && (
-          <PixelCard accent="#fbbf24" title="STEP 4 · PREVIEW LEVEL — NOT PLAYABLE YET">
-            <div className="text-amber-200 bg-amber-900/30 border-2 border-amber-400/40 rounded p-4 mb-4">
-              <div className="font-pixel uppercase tracking-widest text-amber-300 text-xs mb-2">Engine integration incomplete</div>
-              <p className="text-sm text-[#e8e8e8] mb-2">
-                The non-NAIA program you selected isn't dynasty-playable yet. The schedule
-                generator, recruiting pools, and postseason routing for D1/D2/D3/NWAC are
-                still being wired into the engine.
-              </p>
-              <p className="text-sm text-[#e8e8e8]">
-                For now, head back to <strong className="text-amber-300">Step 1</strong> and pick a
-                NAIA program — those are fully playable. We'll surface non-NAIA paths as
-                each one's engine integration ships.
-              </p>
-            </div>
-            <div className="flex justify-between">
-              <PixelButton onClick={() => setStep(1)} accent="#3a3a5e">← Back to Step 1</PixelButton>
-            </div>
-          </PixelCard>
         )}
       </div>
     </GMShell>
@@ -672,9 +679,22 @@ function RegionPicker({ label, value, setValue, excludeValue, disabled = false, 
 
 // ─── Step 4: Confirm ────────────────────────────────────────────────────────
 
-function ConfirmStep({ school, conf, mode, coachFirst, coachLast, coachLookId, primaryRegion, secondaryRegion, ratings, archetype, canSubmit, onBack, onSubmit }) {
+function ConfirmStep({ school, conf, level, mode, coachFirst, coachLast, coachLookId, primaryRegion, secondaryRegion, ratings, archetype, canSubmit, onBack, onSubmit }) {
+  const isPreview = level && level !== 'NAIA'
   return (
     <PixelCard accent="#fbbf24" title="STEP 4 · CONFIRM AND START">
+      {isPreview && (
+        <div className="bg-amber-900/30 border-2 border-amber-400/40 rounded p-3 mb-4">
+          <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1">
+            {level} preview dynasty
+          </div>
+          <p className="text-xs text-[#e8e8e8]">
+            Non-NAIA engine integration is partial. Dynasty will create + you can advance weeks +
+            sim conference games + view stats. Recruiting + national postseason routing are stubbed
+            (NAIA-equivalent) for now and will be replaced as the per-level paths ship.
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-[120px_1fr] gap-4 mb-6">
         <div className="bg-[#1a1a2e] border-4 border-[#3a3a5e] rounded-lg p-2 flex items-center justify-center">
           <CoachHeadshot lookId={coachLookId} size={96} />
@@ -683,7 +703,10 @@ function ConfirmStep({ school, conf, mode, coachFirst, coachLast, coachLookId, p
           <div className="flex items-center gap-2">
             <TeamLogo school={school} size={28} />
             <div className="font-bold text-base">{school.name}</div>
-            <span className="text-[#a8a8c8] text-xs">({conf.abbreviation})</span>
+            <span className="text-[#a8a8c8] text-xs">({conf?.abbreviation || ''})</span>
+            {level && level !== 'NAIA' && (
+              <span className="text-[10px] bg-amber-400 text-[#1a1a2e] font-bold px-1.5 py-0.5 rounded">{level}</span>
+            )}
           </div>
           <div><span className="text-[#a8a8c8]">Mode:</span> <strong>{mode}</strong></div>
           <div><span className="text-[#a8a8c8]">Coach:</span> <strong>{coachFirst} {coachLast}</strong></div>
