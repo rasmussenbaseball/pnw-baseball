@@ -10,6 +10,7 @@ import {
   academicScholarship, academicRatingToGpa,
   scoutingProgress, isFullyScouted,
   predictRecruitAttendance, rsvpLabel, CAMP_MAX_INVITES,
+  getTopPriorities, priorityFitScores, buildRecruitFeedback,
 } from '../../gm/engine/recruits'
 import { makeRng } from '../../gm/engine/rng'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
@@ -257,7 +258,12 @@ export default function Recruiting() {
     setSave({ ...save })
     if (result.revealed) {
       const label = PREFERENCE_LABELS[result.revealed]
-      alert(`${recruit.firstName} ${recruit.lastName} revealed a priority: "${label}" (weight: ${recruit.preferences[result.revealed]}/10)`)
+      const top3 = getTopPriorities(recruit)
+      const inTop3 = top3.includes(result.revealed)
+      alert(
+        `${recruit.firstName} ${recruit.lastName} opened up about what matters to him: "${label}"` +
+        (inTop3 ? ` — one of his top 3 priorities.` : ` — not one of his top priorities, but still on his mind.`)
+      )
     }
   }
 
@@ -342,7 +348,7 @@ export default function Recruiting() {
           <li><strong>Scout first</strong>. New recruits show ±10-15 pt fog on ratings. Spend AP on Text, Call, Scout Trip, Home Visit, Campus Visit to narrow the fog AND build their interest in you.</li>
           <li><strong>Each action is one-shot per recruit.</strong> You can't run two Scout Trips on the same kid. Pick the right tool for where they are: Scout Trip when fog is high, Campus Visit when interest is already 80+.</li>
           <li><strong>Extend an offer</strong> when you're confident. Offers use $ from your scholarship pool (not AP). Bigger offers = more interest. You can revise or withdraw later.</li>
-          <li><strong>The recruit decides</strong>. They score every interested school on 8 preferences (financial, playing time, proximity, coaching, pipeline fit, facilities, academics, program history). High fit + plus offer = sign.</li>
+          <li><strong>The recruit decides</strong>. Each recruit has 3 main priorities (revealed via Home Visit / Campus Visit). If your school satisfies their top 3 + the offer is fair, they commit fast. Miss their priorities and they shop around.</li>
           <li><strong>Prospect Camp Wk 13</strong> is huge — invitees show up, get partially scouted, and bump interest in you. Invite top targets in Wks 5 and 10.</li>
         </ul>
         <p className="mt-2 text-xs text-gray-300">Visible quirks + archetype are shown for free. Hidden quirks (clutch, injury history, work ethic) require deeper scouting to surface.</p>
@@ -527,6 +533,90 @@ export default function Recruiting() {
  * this column is the current sort, so the user knows the buttons up top and
  * the header row are wired to the same state.
  */
+/**
+ * "What the recruit is thinking" panel. Renders the offer reaction quote +
+ * the commit-proximity progress bar + the commit-price reveal (if fully
+ * scouted). Powered by `buildRecruitFeedback` in engine/recruits.js.
+ */
+function RecruitFeedbackPanel({ feedback: fb }) {
+  if (!fb || !fb.hasOffer) return null
+
+  // Offer reaction styling
+  const reactionStyle = {
+    INSULTED:    { color: 'bg-red-100 border-red-300 text-red-900', label: 'Insulted' },
+    LOWBALL:     { color: 'bg-orange-100 border-orange-300 text-orange-900', label: 'Underwhelmed' },
+    FAIR:        { color: 'bg-amber-100 border-amber-300 text-amber-900', label: 'Fair' },
+    STRONG:      { color: 'bg-emerald-100 border-emerald-300 text-emerald-900', label: 'Impressed' },
+    BLOWN_AWAY:  { color: 'bg-emerald-200 border-emerald-400 text-emerald-900', label: 'Blown away' },
+  }[fb.offerReaction] || { color: 'bg-gray-100 border-gray-300 text-gray-900', label: '—' }
+
+  // Commit proximity bar — 5 buckets, 20% each
+  const PROX_ORDER = ['COLD', 'WARMING', 'WARM', 'LEANING_YOU', 'READY_TO_SIGN']
+  const PROX_LABELS = {
+    COLD: 'Cold',
+    WARMING: 'Warming up',
+    WARM: 'In the mix',
+    LEANING_YOU: 'Leaning you',
+    READY_TO_SIGN: 'Ready to commit',
+  }
+  const proxIdx = PROX_ORDER.indexOf(fb.commitProximity)
+  const proxPct = ((proxIdx + 1) / PROX_ORDER.length) * 100
+  const proxColor = proxIdx >= 4 ? 'bg-emerald-500'
+    : proxIdx >= 3 ? 'bg-lime-500'
+    : proxIdx >= 2 ? 'bg-amber-400'
+    : proxIdx >= 1 ? 'bg-orange-400'
+    : 'bg-red-400'
+
+  return (
+    <div className="bg-pnw-cream/30 border border-pnw-green/30 rounded-lg p-3 mb-4">
+      <div className="text-[10px] uppercase tracking-wider text-pnw-green font-bold mb-2">
+        What the recruit is thinking
+      </div>
+
+      {/* Offer reaction */}
+      <div className={'rounded border-2 p-2 mb-2 ' + reactionStyle.color}>
+        <div className="flex justify-between items-baseline">
+          <span className="font-semibold text-xs uppercase tracking-wider">Offer reaction</span>
+          <span className="text-[10px] font-bold uppercase">{reactionStyle.label}</span>
+        </div>
+        <div className="italic text-sm mt-0.5">{fb.offerReactionLine}</div>
+      </div>
+
+      {/* Commit proximity */}
+      <div className="mb-2">
+        <div className="flex justify-between items-baseline">
+          <span className="font-semibold text-xs uppercase tracking-wider text-pnw-slate">Commit proximity</span>
+          <span className="text-[11px] font-semibold text-pnw-slate">{PROX_LABELS[fb.commitProximity]}</span>
+        </div>
+        <div className="h-2.5 bg-gray-200 rounded-full mt-1 overflow-hidden">
+          <div className={'h-full ' + proxColor} style={{ width: `${proxPct}%` }} />
+        </div>
+        <div className="italic text-xs text-gray-700 mt-1">{fb.commitLine}</div>
+      </div>
+
+      {/* Commit price */}
+      {(fb.commitPrice != null || fb.commitPriceNote) && (
+        <div className="bg-white rounded border border-pnw-green/30 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-pnw-green font-bold">
+            Commit price (scout-revealed)
+          </div>
+          {fb.commitPrice != null && (
+            <div className="text-base font-mono font-bold text-pnw-green mt-0.5">
+              ${(fb.commitPrice / 1000).toFixed(1)}K/yr
+              {fb.commitPriceNote && (
+                <span className="text-[11px] text-gray-600 font-normal ml-2">{fb.commitPriceNote}</span>
+              )}
+            </div>
+          )}
+          {fb.commitPrice == null && fb.commitPriceNote && (
+            <div className="text-[11px] text-gray-700 mt-0.5 italic">{fb.commitPriceNote}</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SortableTh({ sortKey, sortBy, setSortBy, children, title }) {
   const active = sortBy === sortKey
   return (
@@ -1349,20 +1439,69 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           </div>
         )}
 
+        {/* Recruit reaction + commit proximity + commit price — only shown
+            after a live offer is in. This is the headline panel: it tells
+            the user how the player feels about THEIR offer and how close
+            they are to a decision. */}
+        {hasLiveOffer && (() => {
+          const fb = buildRecruitFeedback(recruit, save.userSchoolId, save)
+          return <RecruitFeedbackPanel feedback={fb} />
+        })()}
+
+        {/* Top 3 priorities — replaces the 0/10 weighted list. We show
+            ONLY the three things the recruit actually cares about and how
+            well your school satisfies each. Gated behind scouting actions:
+            you have to reveal at least one priority via Home Visit or
+            Campus Visit before any are shown. */}
         <div className="mb-4">
-          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Revealed priorities</div>
+          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Top 3 priorities</div>
           {grade.revealedPreferences.length === 0 ? (
-            <p className="text-xs text-gray-400">No priorities revealed yet. Try a Home Visit or Campus Visit.</p>
-          ) : (
-            <div className="space-y-1">
-              {grade.revealedPreferences.map(p => (
-                <div key={p} className="flex items-center gap-2 text-xs">
-                  <span className="inline-block bg-amber-100 text-amber-900 px-2 py-0.5 rounded">{PREFERENCE_LABELS[p]}</span>
-                  <span className="text-gray-500">weight: {recruit.preferences[p]}/10</span>
+            <p className="text-xs text-gray-400">
+              Hidden. Take a Home Visit or Campus Visit to find out what this player cares about most.
+            </p>
+          ) : (() => {
+            const top3 = getTopPriorities(recruit)
+            const fb = buildRecruitFeedback(recruit, save.userSchoolId, save)
+            return (
+              <div className="space-y-1.5">
+                {top3.map(key => {
+                  const isRevealed = grade.revealedPreferences.includes(key)
+                  const fit = fb.priorityScores[key] ?? 50
+                  const fitColor = fit >= 70 ? 'bg-emerald-500' : fit >= 50 ? 'bg-amber-400' : 'bg-red-500'
+                  const fitLabel = fit >= 70 ? 'Strong' : fit >= 50 ? 'OK' : 'Weak'
+                  return (
+                    <div key={key} className="flex items-center gap-2 text-xs">
+                      <div className="w-44">
+                        {isRevealed ? (
+                          <span className="inline-block bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-semibold">
+                            {PREFERENCE_LABELS[key]}
+                          </span>
+                        ) : (
+                          <span className="inline-block bg-gray-100 text-gray-500 px-2 py-0.5 rounded italic">
+                            (hidden priority)
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={'h-full ' + fitColor} style={{ width: `${fit}%` }} />
+                      </div>
+                      <div className="w-12 text-right font-mono text-[11px] text-gray-600">
+                        {fitLabel}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="text-[10px] text-gray-500 mt-1.5">
+                  Composite fit on the player's top 3 priorities:{' '}
+                  <span className={'font-bold ' + (fb.topPriorityFit >= 70 ? 'text-emerald-600' : fb.topPriorityFit >= 50 ? 'text-amber-600' : 'text-red-600')}>
+                    {fb.topPriorityFit}/100
+                  </span>
+                  {fb.topPriorityFit >= 70 && <span className="text-emerald-700"> — they'll commit much faster.</span>}
+                  {fb.topPriorityFit < 35 && <span className="text-red-700"> — they're not seeing what they want here.</span>}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )
+          })()}
         </div>
 
         <div className="mb-3">

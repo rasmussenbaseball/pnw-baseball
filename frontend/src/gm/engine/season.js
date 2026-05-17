@@ -19,6 +19,7 @@ import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
+import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
@@ -888,12 +889,72 @@ export function advanceOneWeek(state) {
   // Fire events for the new week (budget review, draft, portal opens, etc.)
   runEventsForWeek(state, nextWeek)
 
+  // Weekly recruiting decisions — tick weeksOutstanding on every live offer
+  // and check whether any recruit decides to commit this week. Without this
+  // the user's offers sit forever and nobody signs until Wk 52 finalization.
+  tickRecruitingDecisions(state)
+
   // Sim any fall scrimmages whose weekOfYear matches the new week. Lets us
   // unify the scrimmage + game-week paths — they all flow through simWeek
   // and update boxscores / playerStats the same way. Skip the user's games
   // (those go through the live-play modal); auto-fall games NOT involving
   // the user are simulated quickly.
   simScrimmagesForCurrentWeek(state)
+}
+
+/**
+ * Per-week recruiting decision tick:
+ *   1. Bump weeksOutstanding on every live offer.
+ *   2. For every open recruit who has an offer from the user, roll a sign
+ *      probability via tryAdvanceRecruit. High-fit recruits commit fast,
+ *      low-fit ones stay open (or eventually go elsewhere).
+ *   3. For every previously-signed recruit, roll the rare D1/D2 "steal".
+ *
+ * Posts a newsfeed line every time a recruit commits so the user has a
+ * narrative trail rather than discovering it on the Signed tab cold.
+ */
+function tickRecruitingDecisions(state) {
+  if (!state.recruits) return
+  const userId = state.userSchoolId
+  const userSchool = state.schools?.[userId]
+  if (!userSchool) return
+  const rng = makeRng('recruit_decisions', state.rngSeed, state.calendar?.year, state.calendar?.weekOfYear)
+  let newSigns = 0
+  let newSteals = 0
+  for (const r of Object.values(state.recruits)) {
+    // 1. Tick weeksOutstanding on user's live offers
+    if (r.liveOffer?.schoolId === userId) {
+      r.liveOffer.weeksOutstanding = (r.liveOffer.weeksOutstanding || 0) + 1
+    }
+    // 2. Sign roll on open recruits with a user offer
+    if (r.status === 'open' && r.liveOffer?.schoolId === userId) {
+      const signed = tryAdvanceRecruit(r, userId, userSchool, rng, state)
+      if (signed) {
+        newSigns++
+        state.newsfeed.unshift({
+          id: `sign_${r.id}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
+          year: state.calendar?.year, week: state.calendar?.week, type: 'RECRUIT_VERBAL',
+          headline: `${r.firstName} ${r.lastName} (${r.primaryPosition}, ${r.hometown.city}, ${r.hometown.state}) committed!`,
+          payload: { recruitId: r.id, pool: r.pool },
+        })
+      }
+    }
+    // 3. Signed-steal roll — rare D1/D2 swoop on already-committed players
+    if (r.status === 'signed' && r.signedTo === userId) {
+      const stolen = rollSignedSteal(r, rng)
+      if (stolen) {
+        newSteals++
+        state.newsfeed.unshift({
+          id: `steal_${r.id}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
+          year: state.calendar?.year, week: state.calendar?.week, type: 'RECRUIT_FLIPPED',
+          headline: `${r.firstName} ${r.lastName} flipped — a ${r.stolenBy || 'higher-division'} program landed him after he committed to you.`,
+          payload: { recruitId: r.id },
+        })
+      }
+    }
+  }
+  if (newSigns > 0) state._newCommitsThisWeek = newSigns
+  if (newSteals > 0) state._stealsThisWeek = newSteals
 }
 
 /**

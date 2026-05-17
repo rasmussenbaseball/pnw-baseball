@@ -263,7 +263,7 @@ function runClassFinalize(state) {
   // user's late signees was bad UX.
   const ROSTER_CAP = 50
   for (const r of Object.values(state.recruits)) {
-    if (r.status !== 'signed' || r.signedWith !== userId) continue
+    if (r.status !== 'signed' || r.signedTo !== userId) continue
     if (r.joinedAt && r.joinedAt === state.calendar.year) continue
     if (!state.players[r.id]) {
       state.players[r.id] = recruitToPlayer(r)

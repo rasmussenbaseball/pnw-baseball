@@ -1331,10 +1331,27 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   const fitScore = computeFitScore(recruit, school, grade.interest, ctx)
 
   // Base sign probability scales with fit + offer; suitor count divides it
-  const baseProb = (fitScore / 200 + grade.interest / 400 + offerAdvantage * 0.15)
+  let baseProb = (fitScore / 200 + grade.interest / 400 + offerAdvantage * 0.15)
+
+  // TOP-3 PRIORITIES BOOST — when your school nails the recruit's three
+  // main priorities, they decide faster. Real-world parallel: a kid who
+  // wants playing time + close to home + a good development coach makes
+  // up his mind in weeks if a school checks all three boxes, even if a
+  // bigger program is sniffing around.
+  const fit3 = topPriorityFit(recruit, school, ctx)
+  if (fit3 >= 75) baseProb *= 1.6        // hitting their top 3 → 60% faster decisions
+  else if (fit3 >= 60) baseProb *= 1.25  // good fit → 25% faster
+  else if (fit3 < 35) baseProb *= 0.55   // missing their priorities → much slower
+
+  // Offer freshness bonus — recruits don't sit on offers forever; the longer
+  // an offer's been out + relationship's been built, the more decisive they
+  // get. After 4 weeks of consideration, +25% per the next 4 weeks.
+  const weeksOut = recruit.liveOffer.weeksOutstanding || 0
+  if (weeksOut >= 4) baseProb *= 1 + Math.min(0.4, (weeksOut - 4) * 0.07)
+
   const suitorDivisor = 1 + suitorCount * 0.7   // 1 suitor: ÷1.7; 5 suitors: ÷4.5
 
-  const signProb = clamp(baseProb / suitorDivisor, 0.02, 0.85)
+  const signProb = clamp(baseProb / suitorDivisor, 0.02, 0.92)
   if (rng.chance(signProb)) {
     recruit.status = 'signed'
     recruit.signedTo = userSchoolId
@@ -1410,6 +1427,231 @@ function computeFitScore(recruit, school, interest, ctx = {}) {
     score += prefs.pipeline_fit * 5
   }
   return score
+}
+
+// ─── Top-3 priorities + offer-reaction model ────────────────────────────────
+//
+// Recruits really only think about 3 things when picking a school. The 8
+// preference weights still drive the underlying fit-score math (so we don't
+// have to retune the engine), but the user-facing model is the top-3 list:
+//
+//   - We surface only the 3 highest-weight prefs as "priorities" in UI.
+//   - The user gets a school-fit % across just those 3.
+//   - When you make an offer, the recruit "reacts" based on (a) how the $
+//     compares to market, and (b) how well your school satisfies their top
+//     3 priorities.
+//   - Once a recruit is fully scouted + you've made at least one offer,
+//     we reveal the "commit price" — the $ that gets you to a 70%+ chance
+//     of locking them up THIS week (or "Not realistic" when fit is broken).
+
+/**
+ * Top 3 priority keys for a recruit, highest weight first. Ties broken by
+ * the canonical key order so the same recruit always shows the same 3.
+ */
+export function getTopPriorities(recruit) {
+  if (!recruit?.preferences) return []
+  const PREF_ORDER = ['financial', 'proximity', 'playing_time', 'program_history',
+    'facilities', 'academics', 'coaching', 'pipeline_fit']
+  return [...PREF_ORDER]
+    .map(k => ({ key: k, weight: recruit.preferences[k] ?? 0 }))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3)
+    .map(x => x.key)
+}
+
+/**
+ * Per-priority "how good is YOUR school at this" score, returned as 0..100
+ * so the UI can render a colored bar per priority.
+ *
+ * Each priority key reads the corresponding school dimension and clamps
+ * to a 0-100 fit. `ctx` lets us account for live, per-pair signals like the
+ * current offer amount or playing-time availability — same hooks the fit
+ * score uses for sign probability.
+ *
+ * @returns {Object<string, number>}   priorityKey → 0..100 fit score
+ */
+export function priorityFitScores(recruit, school, ctx = {}) {
+  if (!recruit || !school) return {}
+  const recruitRegion = STATE_TO_REGION[recruit.hometown?.state]
+  // Financial: how does the live offer compare to "market" ($8-15K typical)
+  let financial = 50
+  if (typeof ctx.offerAdvantage === 'number') {
+    // offerAdvantage ranges roughly -3..+3
+    financial = clamp(50 + ctx.offerAdvantage * 18, 0, 100)
+  }
+  return {
+    financial,
+    proximity: recruitRegion === school.region ? 90 : 35,
+    playing_time: typeof ctx.ptAvailability === 'number'
+      ? clamp(ctx.ptAvailability * 100, 0, 100)
+      : 50,
+    program_history: clamp(school.programHistory || 50, 0, 100),
+    facilities: clamp(school.facilityRating || 50, 0, 100),
+    academics: clamp(school.academicReputation || 50, 0, 100),
+    coaching: typeof ctx.coachDeveloper === 'number'
+      ? clamp(ctx.coachDeveloper, 0, 100)
+      : 50,
+    pipeline_fit: ctx.pipelineMatch ? 90 : 35,
+  }
+}
+
+/**
+ * 0-100 composite fit on a recruit's TOP 3 priorities only — the number
+ * that drives offer reactions + commit proximity surfacing.
+ */
+export function topPriorityFit(recruit, school, ctx = {}) {
+  const top = getTopPriorities(recruit)
+  if (top.length === 0) return 50
+  const scores = priorityFitScores(recruit, school, ctx)
+  let total = 0
+  let totalWeight = 0
+  for (const key of top) {
+    const w = recruit.preferences?.[key] ?? 5
+    total += (scores[key] ?? 50) * w
+    totalWeight += w
+  }
+  return totalWeight > 0 ? Math.round(total / totalWeight) : 50
+}
+
+/**
+ * Build the recruit's reaction to the current live offer + how close to a
+ * commit they are. Returns a struct the UI can render directly.
+ *
+ * Pass full `state` so we can read coach pipelines + roster depth.
+ *
+ * @returns {{
+ *   hasOffer: boolean,
+ *   offerReaction: 'INSULTED'|'LOWBALL'|'FAIR'|'STRONG'|'BLOWN_AWAY'|null,
+ *   offerReactionLine: string,
+ *   commitProximity: 'COLD'|'WARMING'|'WARM'|'LEANING_YOU'|'READY_TO_SIGN',
+ *   commitLine: string,
+ *   topPriorityFit: number,        // 0..100 on the user's top 3
+ *   priorityScores: object,
+ *   commitPrice: number|null,      // $ that would push to ~70% sign this week, or null
+ *   commitPriceNote: string|null,  // helper text when no realistic price exists
+ * }}
+ */
+export function buildRecruitFeedback(recruit, userSchoolId, state) {
+  const school = state?.schools?.[userSchoolId]
+  if (!recruit || !school) {
+    return {
+      hasOffer: false, offerReaction: null, offerReactionLine: '',
+      commitProximity: 'COLD', commitLine: '',
+      topPriorityFit: 50, priorityScores: {},
+      commitPrice: null, commitPriceNote: null,
+    }
+  }
+  const grade = recruit.scoutGrades?.[userSchoolId] || { interest: 0 }
+  const hasOffer = recruit.liveOffer?.schoolId === userSchoolId
+
+  // Build the same ctx the sign-probability path uses
+  const team = state?.teams?.[userSchoolId]
+  const userHC = team ? state?.coaches?.[team.headCoachId] : null
+  const ctx = {}
+  if (userHC) ctx.coachDeveloper = userHC.developer ?? 55
+  if (team && state.players) {
+    const pos = recruit.primaryPosition
+    const sameSpot = team.rosterPlayerIds
+      .map(id => state.players[id])
+      .filter(p => p && !p.isPitcher === !recruit.isPitcher
+        && (recruit.isPitcher ? p.isPitcher : p.primaryPosition === pos))
+      .length
+    ctx.ptAvailability = clamp(1 - sameSpot * 0.22, 0.1, 1.0)
+  }
+  if (userHC) {
+    const recruitRegion = STATE_TO_REGION[recruit.hometown?.state]
+    ctx.pipelineMatch = coachRegionList(userHC).includes(recruitRegion)
+  }
+
+  // Offer reaction — depends on $ vs market AND how generous the recruit
+  // perceives it relative to peers
+  const suitorCount = totalSuitors(recruit)
+  const avgRivalOffer = 8000 + suitorCount * 1500
+  let offerAdvantage = 0
+  if (hasOffer) {
+    offerAdvantage = (recruit.liveOffer.amount - avgRivalOffer) / 5000
+    ctx.offerAdvantage = offerAdvantage
+  }
+  const priorityScores = priorityFitScores(recruit, school, ctx)
+  const fit3 = topPriorityFit(recruit, school, ctx)
+
+  let offerReaction = null
+  let offerReactionLine = ''
+  if (hasOffer) {
+    if (offerAdvantage < -1.4) {
+      offerReaction = 'INSULTED'
+      offerReactionLine = '"Not even close. I expected more."'
+    } else if (offerAdvantage < -0.4) {
+      offerReaction = 'LOWBALL'
+      offerReactionLine = '"It\'s a little light. Other schools are higher."'
+    } else if (offerAdvantage < 0.6) {
+      offerReaction = 'FAIR'
+      offerReactionLine = '"Fair offer. About what I expected from a program like yours."'
+    } else if (offerAdvantage < 1.6) {
+      offerReaction = 'STRONG'
+      offerReactionLine = '"Strong number. You\'re showing me you really want me."'
+    } else {
+      offerReaction = 'BLOWN_AWAY'
+      offerReactionLine = '"Wow — that\'s a lot to leave on the table."'
+    }
+  }
+
+  // Commit proximity — uses fit on top 3 + interest + offer + suitor count.
+  // Mirrors tryAdvanceRecruit but as a discrete bucket.
+  // signProb math (approximation): baseProb / (1 + suitors*0.7)
+  const baseProb = (fit3 / 200) + (grade.interest / 400) + (offerAdvantage * 0.15)
+  const proximityProb = clamp(baseProb / (1 + suitorCount * 0.7), 0, 0.95)
+  let commitProximity = 'COLD'
+  let commitLine = '"Just hearing you out for now."'
+  if (proximityProb >= 0.55) {
+    commitProximity = 'READY_TO_SIGN'
+    commitLine = '"I\'m ready. If you call my name, I sign."'
+  } else if (proximityProb >= 0.35) {
+    commitProximity = 'LEANING_YOU'
+    commitLine = '"You\'re my front-runner. Couple more conversations and I think we\'re there."'
+  } else if (proximityProb >= 0.20) {
+    commitProximity = 'WARM'
+    commitLine = '"You\'re in the mix. Still seeing what else comes in."'
+  } else if (proximityProb >= 0.08) {
+    commitProximity = 'WARMING'
+    commitLine = '"Getting more interested. Keep showing me you care."'
+  }
+
+  // Commit price reveal — only once recruit is fully scouted + we've made
+  // at least one offer (so we have grounding in their reaction).
+  let commitPrice = null
+  let commitPriceNote = null
+  if (hasOffer && isFullyScouted(recruit, userSchoolId)) {
+    // Find the $ where signProb hits 0.70 — invert the baseProb formula.
+    // Target: baseProb >= 0.70 * (1 + suitorCount * 0.7)
+    const target = 0.70 * (1 + suitorCount * 0.7)
+    // baseProb = fit3/200 + interest/400 + offerAdvantage*0.15
+    // Solve for offerAdvantage:
+    const headroom = target - (fit3 / 200) - (grade.interest / 400)
+    if (headroom <= 0) {
+      // Already enough fit + interest for current offer — quote the floor
+      commitPrice = Math.max(0, recruit.liveOffer.amount)
+      commitPriceNote = 'Current offer is already enough — sign window open.'
+    } else {
+      const requiredOfferAdv = headroom / 0.15
+      const required$ = Math.round(avgRivalOffer + requiredOfferAdv * 5000)
+      if (required$ > avgRivalOffer * 6) {
+        // No realistic price — fit too low or too many suitors
+        commitPrice = null
+        commitPriceNote = 'No realistic price closes this — fit + interest are too low. Spend more on relationship-building (visits, calls) first.'
+      } else {
+        commitPrice = required$
+        commitPriceNote = null
+      }
+    }
+  }
+
+  return {
+    hasOffer, offerReaction, offerReactionLine,
+    commitProximity, commitLine,
+    topPriorityFit: fit3, priorityScores,
+    commitPrice, commitPriceNote,
+  }
 }
 
 /**
