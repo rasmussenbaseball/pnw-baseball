@@ -26,8 +26,8 @@ import { makeRng } from './rng'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 function zeroStats(isPitcher) {
-  if (isPitcher) return { ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0, gamesPlayed: 0 }
-  return { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, k: 0, rbi: 0, pa: 0, gamesPlayed: 0 }
+  if (isPitcher) return { ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0, hbp: 0, hr: 0, gamesPlayed: 0 }
+  return { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, k: 0, rbi: 0, pa: 0, hbp: 0, sf: 0, sac: 0, gidp: 0, roe: 0, sb: 0, cs: 0, gamesPlayed: 0 }
 }
 
 // Build a one-time lookup table for non-NAIA opponents (D1/D2/D3/JUCO)

@@ -94,7 +94,7 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   const batterStats = {}
   const pitcherStats = {}
   function bStat(id) {
-    if (!batterStats[id]) batterStats[id] = { ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0 }
+    if (!batterStats[id]) batterStats[id] = { ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0,sb:0,cs:0 }
     return batterStats[id]
   }
   function pStat(id) {
@@ -188,6 +188,71 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     }
   }
 
+  /**
+   * Attempt a steal of 2nd if there's a runner on 1B with 2B empty and
+   * fewer than 2 outs. Probability:
+   *   - 1B runner's speed: high speed = more likely to GO
+   *   - Catcher's arm + fielding: drives the throwout rate
+   * NAIA SB averages: ~1.2 attempts/game, ~72% success rate.
+   * Calibration: at speed=50 / catcher arm=50 / fielding=50:
+   *   ~10% per-PA chance of an attempt, ~70% success rate.
+   */
+  function maybeAttemptSteal() {
+    if (state.outs >= 2) return            // not stealing with 2 outs (high downside)
+    const r1 = state.bases[0]
+    if (!r1) return
+    if (state.bases[1]) return             // 2B occupied, can't steal into it
+    const runnerSpeed = r1.hitter?.speed ?? 50
+    // Attempt probability scales with speed: 50 → 10%, 75 → 22%, 90 → 32%
+    const attemptProb = Math.max(0, Math.min(0.40, 0.10 + (runnerSpeed - 50) * 0.005))
+    if (!rng.chance(attemptProb)) return
+
+    // Defending catcher
+    const defendingFielders = state.top ? state.homeFielders : state.awayFielders
+    const catcher = defendingFielders?.['C']
+    const catcherArm = catcher?.hitter?.arm ?? 50
+    const catcherFld = catcher?.hitter?.fielding ?? 50
+    // Catcher's pop time proxy: weighted blend of arm (60%) + fielding (40%)
+    const catcherPop = catcherArm * 0.6 + catcherFld * 0.4
+    // Pitcher hold — small contribution from pitcher's command + composure
+    const stealPitcher = currentPitcher()
+    const pitchHold = ((stealPitcher?.pitcher?.command ?? 50) * 0.5 + (stealPitcher?.pitcher?.composure ?? 50) * 0.5)
+    // Success probability: anchored at 70% for neutral matchup, swings with
+    // (runnerSpeed - catcherPop). 1 rating pt ≈ 0.5% swing.
+    const successBase = 0.70 + (runnerSpeed - catcherPop) * 0.005 - (pitchHold - 50) * 0.001
+    const successProb = Math.max(0.30, Math.min(0.92, successBase))
+    const successful = rng.chance(successProb)
+    const runnerName = nm(r1)
+    if (successful) {
+      state.bases[1] = r1
+      state.bases[0] = null
+      // Stat: stolen base for runner
+      const bsObj = bStat(r1.id)
+      bsObj.sb = (bsObj.sb || 0) + 1
+      pushEvent({
+        kind: 'STEAL',
+        inning: state.inning, top: state.top,
+        text: `${runnerName} steals 2B!`,
+        outs: state.outs, score: { home: state.homeRuns, away: state.awayRuns },
+      })
+    } else {
+      state.bases[0] = null
+      state.outs++
+      const bsObj = bStat(r1.id)
+      bsObj.cs = (bsObj.cs || 0) + 1
+      pushEvent({
+        kind: 'STEAL',
+        inning: state.inning, top: state.top,
+        text: `${runnerName} caught stealing — ${nm(catcher) || 'C'} throws him out.`,
+        outs: state.outs, score: { home: state.homeRuns, away: state.awayRuns },
+      })
+      // Inning end?
+      if (state.outs >= 3) {
+        flipHalfInning()
+      }
+    }
+  }
+
   /** Step a single plate appearance. Returns the event pushed. */
   function step() {
     if (state.isOver) return null
@@ -197,10 +262,26 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
       finalize('Lineup exhausted.')
       return null
     }
+
+    // STEAL ATTEMPTS — happen BEFORE the PA when a runner on 1B + 2B
+    // empty + outs < 2 + speedy runner. Multiple steals can chain (a
+    // double-steal from R1+R3 would be modeled separately; for now we
+    // only attempt the lead runner). One steal attempt per PA max.
+    maybeAttemptSteal()
+    if (state.outs >= 3) {
+      flipHalfInning()
+      return null
+    }
+
     const motivator = state.top ? ctx.awayMotivator : ctx.homeMotivator
     const leverage = computeLeverage(state)
     const preRuns = state.top ? state.awayRuns : state.homeRuns
-    let result = simPA(batter, pitcher, { leverage, coachMotivator: motivator }, rng)
+    // Defenders = the fielding side's 9 starters (used by simPA for BABIP/
+    // error rate). Falls back to the batting lineup if fielders map empty.
+    const defenders = state.top
+      ? Object.values(state.homeFielders).filter(Boolean)
+      : Object.values(state.awayFielders).filter(Boolean)
+    let result = simPA(batter, pitcher, { leverage, coachMotivator: motivator, defenders }, rng)
     if (result.outcome === 'OUT') result = resolveOutSubtype(result, state, batter, rng)
 
     // Stats

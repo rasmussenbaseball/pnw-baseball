@@ -448,6 +448,8 @@ function BoxScoreTable({ title, rows, type }) {
                 <th className="text-center">BB</th>
                 <th className="text-center">K</th>
                 <th className="text-center">HBP</th>
+                <th className="text-center">SB</th>
+                <th className="text-center">CS</th>
                 <th className="text-center">AVG</th>
               </tr>
             ) : (
@@ -483,6 +485,8 @@ function BoxScoreTable({ title, rows, type }) {
                     <td className="text-center font-mono">{r.bb || 0}</td>
                     <td className="text-center font-mono">{r.k || 0}</td>
                     <td className="text-center font-mono">{r.hbp || 0}</td>
+                    <td className="text-center font-mono">{r.sb || 0}</td>
+                    <td className="text-center font-mono">{r.cs || 0}</td>
                     <td className="text-center font-mono">{avg != null ? avg.toFixed(3).replace(/^0\./, '.') : '—'}</td>
                   </tr>
                 )

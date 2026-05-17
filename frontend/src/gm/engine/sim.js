@@ -47,6 +47,20 @@ const BASE_RATES = {
 // not the routine outcome we were producing).
 const ALPHA = 0.45
 
+/**
+ * Average fielding rating across an array of defenders. The catcher counts
+ * full weight; infielders + OF count full; pitcher excluded (their fielding
+ * doesn't really track on this scale for PA outcomes — they affect plays
+ * via stuff/movement). Treats missing fielding values as 50 (neutral).
+ */
+function averageFielding(defenders) {
+  if (!defenders || defenders.length === 0) return 50
+  const eligible = defenders.filter(d => d && !d.isPitcher)
+  if (eligible.length === 0) return 50
+  const sum = eligible.reduce((s, d) => s + (d.hitter?.fielding ?? 50), 0)
+  return sum / eligible.length
+}
+
 // Hit-outcome slope dampener — applied ONLY to SINGLE / DOUBLE / TRIPLE / HR
 // adj values. K / BB / HBP keep their full slope so elite plate discipline +
 // great stuff still drive realistic K%/BB% spreads. This separates the two
@@ -117,11 +131,18 @@ export function simPA(batter, pitcher, ctx, rng) {
   const velo = pitcher.pitcher.velocity_avg ?? pitcher.measurables?.fbVeloMph ?? 87
   const veloEdge = (velo - 87) / 50   // +0.10 at 92mph, +0.16 at 95mph
 
+  // Defense — average fielding rating of the defending side (computed from
+  // ctx.defenders if passed; else neutral 50). Drives:
+  //   - ERROR rate (better defense = fewer errors)
+  //   - BABIP suppression (better defense = more BIP outs, fewer hits)
+  // NAIA fielding %: ~.965-.970 league avg → ~1-1.5 errors/game. We anchor
+  // the engine at the 50-rating defense producing ~1.0% PA-error rate.
+  const defenseAvg = ctx.defenders && ctx.defenders.length > 0
+    ? averageFielding(ctx.defenders)
+    : 50
+  const defenseEdge = (defenseAvg - 50) / 50    // -1 .. +1 around league avg
+
   // Adjustments (each logit-style). All centered around 50, normalized.
-  // Pitcher control drives BB AND HBP — bad control = more free bases.
-  // Pitcher command separately drives HR rate suppression.
-  // Velocity layers on top of stuff for K + HR suppression but is a SEPARATE
-  // dimension — a 92mph guy with average stuff still misses bats.
   // Hit-outcome adj is dampened by HIT_SLOPE so elite hitter slash lines
   // stay realistic for NAIA (.400 elite ceiling, not .500+).
   const adj = {
@@ -129,10 +150,12 @@ export function simPA(batter, pitcher, ctx, rng) {
     BB:   ((discipline - 50) - (control - 50) * 1.2) / 50,
     HBP:  (-(control - 50) * 0.9) / 50,
     HR:     HIT_SLOPE * (((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.5),
-    SINGLE: HIT_SLOPE * (((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.3),
-    DOUBLE: HIT_SLOPE * (((power - 50) * 0.4 + (speed - 50) * 0.3) / 50 - veloEdge * 0.4),
-    TRIPLE: HIT_SLOPE * (((speed - 50) * 0.5 + (power - 50) * 0.2) / 50),
-    ERROR: 0,    // not rating-driven — uses defender fielding (handled at runner-advance time)
+    // BIP hits suppressed by defense edge (better defense = fewer BABIP hits)
+    SINGLE: HIT_SLOPE * (((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.3 - defenseEdge * 0.30),
+    DOUBLE: HIT_SLOPE * (((power - 50) * 0.4 + (speed - 50) * 0.3) / 50 - veloEdge * 0.4 - defenseEdge * 0.35),
+    TRIPLE: HIT_SLOPE * (((speed - 50) * 0.5 + (power - 50) * 0.2) / 50 - defenseEdge * 0.40),
+    // Error rate flips with defense — elite defense commits ~40% fewer errors
+    ERROR: -defenseEdge * 0.7,
     OUT: 0,
   }
 
@@ -238,7 +261,7 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
   const batterStats = {}
   /** @type {Object<string, {ip:number,h:number,bb:number,k:number,er:number,outs:number,pa:number}>} */
   const pitcherStats = {}
-  function bStat(id) { if (!batterStats[id]) batterStats[id] = {ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0}; return batterStats[id] }
+  function bStat(id) { if (!batterStats[id]) batterStats[id] = {ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0,sb:0,cs:0}; return batterStats[id] }
   function pStat(id) { if (!pitcherStats[id]) pitcherStats[id] = {ip:0,h:0,bb:0,k:0,er:0,outs:0,pa:0,hbp:0,hr:0}; return pitcherStats[id] }
 
   while (state.inning <= 9 || state.homeRuns === state.awayRuns) {
@@ -257,7 +280,7 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     const leverage = computeLeverage(state)
 
     const preRuns = state.top ? state.awayRuns : state.homeRuns
-    let result = simPA(batter, pitcher, { leverage, coachMotivator: motivator }, rng)
+    let result = simPA(batter, pitcher, { leverage, coachMotivator: motivator, defenders: defending.batters }, rng)
     // Apply sub-outcome resolution (SAC_FLY, SAC_BUNT, GIDP) for OUTs
     if (result.outcome === 'OUT') result = resolveOutSubtype(result, state, batter, rng)
     state[state.top ? 'awayPAs' : 'homePAs']++
