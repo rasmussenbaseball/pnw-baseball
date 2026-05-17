@@ -18,13 +18,25 @@ import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import { buildProgramRatings, starsToBar } from '../../gm/engine/programRating'
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
 import { ARCHETYPES } from '../../gm/engine/archetypes'
+import { PNW_DIVISIONS, PNW_CONFERENCES, pnwProgramsAtLevel } from '../../gm/engine/pnwPlayoffs'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import CoachHeadshot, { COACH_LOOKS } from '../../gm/components/CoachHeadshot'
 import { prettyLabel } from '../../gm/engine/format'
 
-// v1.5 alpha — all Cascade Collegiate Conference programs are playable.
-// National expansion later.
+// Level pickers — NAIA is the fully-shipped path; others are PREVIEW (engine
+// integration is still partial; expect rough edges on schedule generation
+// and recruiting flows for non-NAIA).
+const LEVEL_TABS = [
+  { key: 'NAIA', label: 'NAIA',  status: 'PLAYABLE',   blurb: 'Full alpha experience. 4-year programs, deep recruiting, full sim.' },
+  { key: 'D1',   label: 'D1',    status: 'PREVIEW',    blurb: 'NCAA Division I — 4-year. Engine support partial; schedule + national-bracket integration coming.' },
+  { key: 'D2',   label: 'D2',    status: 'PREVIEW',    blurb: 'NCAA Division II — 4-year. Engine support partial.' },
+  { key: 'D3',   label: 'D3',    status: 'PREVIEW',    blurb: 'NCAA Division III — 4-year, no athletic scholarships. Engine support partial.' },
+  { key: 'NWAC', label: 'NWAC',  status: 'PREVIEW',    blurb: 'JUCO — 2-year. Only FR/SO eligible. Players transfer out after SO year. Engine support partial.' },
+]
+
+// Legacy — Year-1 alpha only allowed CCC. Now we surface all NAIA programs
+// in the PNW + every PNW conference at every level.
 const ALLOWED_CONFERENCE_ID = 'cascade-collegiate'
 
 const RATING_DESCRIPTIONS = {
@@ -84,7 +96,13 @@ export default function NewDynasty() {
   const [archetype, setArchetype] = useState('GENERALIST')
 
   const ratings = ARCHETYPES[archetype]?.fixedRatings || ARCHETYPES.GENERALIST.fixedRatings
-  const canSubmit = selectedSchoolId && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
+  // Block dynasty creation when the selected program isn't NAIA — the
+  // engine plumbing for non-NAIA levels (schedule generation, recruiting
+  // pools, postseason routing) isn't wired up yet. Picker still surfaces
+  // them so the user can preview formats / rosters.
+  const selectedIsNaia = !!schools[selectedSchoolId]
+  const canSubmit = selectedSchoolId && selectedIsNaia
+    && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
 
   function getGameOptions() {
     if (modeKey === 'TRADITIONAL') return { mode: 'TRADITIONAL', ...GAME_MODE_PRESETS.TRADITIONAL }
@@ -178,7 +196,7 @@ export default function NewDynasty() {
             canNext={!!(coachFirst && coachLast && primaryRegion && secondaryRegion && archetype)}
           />
         )}
-        {step === 4 && selectedSchoolId && (
+        {step === 4 && selectedSchoolId && schools[selectedSchoolId] && (
           <ConfirmStep
             school={schools[selectedSchoolId]}
             conf={conferences[schools[selectedSchoolId].conferenceId]}
@@ -195,6 +213,26 @@ export default function NewDynasty() {
             onSubmit={handleCreate}
           />
         )}
+        {step === 4 && selectedSchoolId && !schools[selectedSchoolId] && (
+          <PixelCard accent="#fbbf24" title="STEP 4 · PREVIEW LEVEL — NOT PLAYABLE YET">
+            <div className="text-amber-200 bg-amber-900/30 border-2 border-amber-400/40 rounded p-4 mb-4">
+              <div className="font-pixel uppercase tracking-widest text-amber-300 text-xs mb-2">Engine integration incomplete</div>
+              <p className="text-sm text-[#e8e8e8] mb-2">
+                The non-NAIA program you selected isn't dynasty-playable yet. The schedule
+                generator, recruiting pools, and postseason routing for D1/D2/D3/NWAC are
+                still being wired into the engine.
+              </p>
+              <p className="text-sm text-[#e8e8e8]">
+                For now, head back to <strong className="text-amber-300">Step 1</strong> and pick a
+                NAIA program — those are fully playable. We'll surface non-NAIA paths as
+                each one's engine integration ships.
+              </p>
+            </div>
+            <div className="flex justify-between">
+              <PixelButton onClick={() => setStep(1)} accent="#3a3a5e">← Back to Step 1</PixelButton>
+            </div>
+          </PixelCard>
+        )}
       </div>
     </GMShell>
   )
@@ -203,43 +241,119 @@ export default function NewDynasty() {
 // ─── Step 1: Program ────────────────────────────────────────────────────────
 
 function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchoolId, onNext }) {
+  const [activeLevel, setActiveLevel] = useState('NAIA')
+
+  // NAIA list: the Cascade Collegiate Conference (the only NAIA conference
+  // with full PNW representation in our schools dataset). Frontier-conf
+  // member rosters need a separate data fix before they're playable.
+  const naiaPnwSchools = useMemo(() => {
+    return Object.values(schools)
+      .filter(s => s.conferenceId === 'cascade-collegiate')
+      .map(s => ({
+        id: s.id, name: s.name, nickname: s.nickname,
+        city: s.city, state: s.state,
+        conference: conferences[s.conferenceId]?.abbreviation || 'NAIA',
+        confId: s.conferenceId,
+        colors: s.colors,
+        level: 'NAIA',
+      }))
+  }, [schools, conferences])
+
+  const programsForLevel = useMemo(() => {
+    if (activeLevel === 'NAIA') return naiaPnwSchools
+    // D1/D2/D3/NWAC come from the playoff-formats dataset
+    return pnwProgramsAtLevel(activeLevel).map(p => ({
+      ...p,
+      conference: PNW_CONFERENCES[p.conferenceId]?.name || '',
+    }))
+  }, [activeLevel, naiaPnwSchools])
+
+  const currentTab = LEVEL_TABS.find(t => t.key === activeLevel)
+  const isPreviewLevel = currentTab?.status === 'PREVIEW'
+  const selectedProgram = programsForLevel.find(p => p.id === selectedSchoolId)
+
   return (
     <PixelCard accent="#fbbf24" title="STEP 1 · CHOOSE YOUR PROGRAM">
-      <p className="text-[#a8a8c8] text-sm mb-4 font-pixel">
-        Alpha launch is the <strong className="text-amber-300">Cascade Collegiate Conference</strong> — 8 PNW + ID programs.
-        National expansion comes next.
+      <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
+        Pick any <strong className="text-amber-300">PNW program</strong> at any level. NAIA is the fully shipped path;
+        other levels are PREVIEW while engine integration finishes.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        {schools.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setSelectedSchoolId(s.id)}
-            className={
-              'flex items-center gap-3 p-3 rounded-xl border-4 text-left transition ' +
-              (selectedSchoolId === s.id
-                ? 'border-amber-300 bg-[#3a3a5e]'
-                : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
-            }
-          >
-            <TeamLogo school={s} size={48} />
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-bold truncate">{s.name} {s.nickname}</div>
-              <div className="text-[10px] text-[#a8a8c8] mt-0.5">
-                {s.city}, {s.state} · {conferences[s.conferenceId]?.abbreviation}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5">
-                <StarRow stars={s._rating.stars} />
-                <span className="text-[10px] text-[#a8a8c8] tabular-nums">
-                  #{s._rating.nationalRank} nat'l
-                </span>
-              </div>
-            </div>
-          </button>
-        ))}
+
+      {/* Level tabs */}
+      <div className="flex gap-1 mb-3 flex-wrap">
+        {LEVEL_TABS.map(tab => {
+          const isActive = activeLevel === tab.key
+          return (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveLevel(tab.key); setSelectedSchoolId(null) }}
+              className={
+                'px-3 py-1.5 rounded text-xs font-pixel uppercase tracking-widest border-2 transition ' +
+                (isActive
+                  ? 'bg-amber-400 text-[#1a1a2e] border-amber-300 font-bold'
+                  : 'bg-[#23233d] text-[#e8e8e8] border-[#3a3a5e] hover:border-amber-300')
+              }
+            >
+              {tab.label}
+              {tab.status === 'PREVIEW' && (
+                <span className="ml-1.5 text-[8px] font-bold tracking-wider opacity-75">PREVIEW</span>
+              )}
+            </button>
+          )
+        })}
       </div>
-      <div className="text-[10px] text-[#a8a8c8] mb-3">
-        <strong className="text-amber-300">Locked:</strong> 191 other NAIA programs across the country. Available in coming releases.
+
+      {/* Per-level blurb */}
+      <div className={
+        'text-[11px] mb-3 p-2 rounded border ' +
+        (isPreviewLevel ? 'bg-amber-900/30 border-amber-400/40 text-amber-200' : 'bg-[#23233d] border-[#3a3a5e] text-[#a8a8c8]')
+      }>
+        {isPreviewLevel && <strong>PREVIEW: </strong>}
+        {currentTab?.blurb}
       </div>
+
+      {/* Programs grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 max-h-[440px] overflow-y-auto pr-1">
+        {programsForLevel.length === 0 && (
+          <div className="col-span-2 text-center text-[#a8a8c8] py-6 italic text-xs">
+            No PNW programs at this level in the dataset.
+          </div>
+        )}
+        {programsForLevel.map(p => {
+          const isSelected = selectedSchoolId === p.id
+          return (
+            <button
+              key={p.id}
+              onClick={() => setSelectedSchoolId(p.id)}
+              className={
+                'flex items-center gap-3 p-2.5 rounded-lg border-2 text-left transition ' +
+                (isSelected
+                  ? 'border-amber-300 bg-[#3a3a5e]'
+                  : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+              }
+            >
+              <TeamLogo school={p} size={36} />
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-bold text-sm truncate">{p.name}</div>
+                <div className="text-[10px] text-[#a8a8c8] mt-0.5">
+                  {p.city || '—'}{p.city && p.state ? ', ' : ''}{p.state} · {p.conference}
+                </div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Selected-program detail (shows playoff path + roster info for non-NAIA) */}
+      {selectedProgram && isPreviewLevel && (
+        <div className="bg-[#0f0f1e] border-2 border-amber-400/40 rounded p-3 mb-3 text-[11px]">
+          <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1.5">
+            {selectedProgram.name} — {activeLevel} preview
+          </div>
+          <PreviewBlurb level={activeLevel} program={selectedProgram} />
+        </div>
+      )}
+
       <div className="flex justify-end">
         <PixelButton
           disabled={!selectedSchoolId}
@@ -249,6 +363,38 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
         </PixelButton>
       </div>
     </PixelCard>
+  )
+}
+
+/**
+ * Shows what to expect when picking a non-NAIA preview program — playoff
+ * format, roster eligibility, current engine integration status.
+ */
+function PreviewBlurb({ level, program }) {
+  const division = PNW_DIVISIONS[level]
+  const conf = PNW_CONFERENCES[program.conferenceId]
+  const elig = division?.eligibility
+  const cap = division?.rosterCap
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[#e8e8e8]">
+        <strong className="text-amber-200">Conference:</strong> {conf?.name || '—'} ({conf?.tournament?.fieldSize}-team {conf?.tournament?.format?.toLowerCase()})
+      </div>
+      <div className="text-[#e8e8e8]">
+        <strong className="text-amber-200">Eligibility:</strong> {elig?.classYears?.join(', ') || '—'} ({elig?.maxSeasonsPerPlayer} yrs max)
+      </div>
+      <div className="text-[#e8e8e8]">
+        <strong className="text-amber-200">Roster cap:</strong> {cap || '—'} players
+      </div>
+      <div className="text-[#e8e8e8]">
+        <strong className="text-amber-200">Postseason:</strong> {conf?.tournament?.details}
+      </div>
+      <div className="text-amber-300/80 italic mt-2 text-[10px]">
+        Engine integration in progress: schedule generation, recruiting pools, and
+        national-bracket routing for non-NAIA levels are still being wired in. Selection works;
+        season flow may have gaps until full integration ships.
+      </div>
+    </div>
   )
 }
 

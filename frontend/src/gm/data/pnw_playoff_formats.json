@@ -9,7 +9,14 @@
   "divisions": {
     "D1": {
       "name": "NCAA Division I",
-      "pnwConferences": ["BIG_TEN_WEST", "ACC", "WCC", "WAC"],
+      "pnwConferences": ["BIG_TEN", "ACC", "WCC", "WAC"],
+      "eligibility": {
+        "classYears": ["FR", "SO", "JR", "SR"],
+        "maxSeasonsPerPlayer": 4,
+        "details": "NCAA D1 — 4 years of eligibility. Highest level of college baseball. Best players get drafted after JR year."
+      },
+      "rosterCap": 40,
+      "seasonGames": 56,
       "national": {
         "name": "NCAA D1 Tournament + College World Series",
         "fieldSize": 64,
@@ -42,6 +49,13 @@
     "D2": {
       "name": "NCAA Division II",
       "pnwConferences": ["GNAC"],
+      "eligibility": {
+        "classYears": ["FR", "SO", "JR", "SR"],
+        "maxSeasonsPerPlayer": 4,
+        "details": "NCAA D2 — 4 years of eligibility. Tier below D1 but still elite collegiate level. Some draft pipeline, mostly from upper-class players."
+      },
+      "rosterCap": 40,
+      "seasonGames": 50,
       "national": {
         "name": "NCAA D2 Tournament + D2 World Series",
         "fieldSize": 56,
@@ -67,6 +81,13 @@
     "D3": {
       "name": "NCAA Division III",
       "pnwConferences": ["NWC"],
+      "eligibility": {
+        "classYears": ["FR", "SO", "JR", "SR"],
+        "maxSeasonsPerPlayer": 4,
+        "details": "NCAA D3 — 4 years of eligibility. No athletic scholarships allowed. Skill tier roughly equivalent to NWAC + low NAIA. Rare draft picks."
+      },
+      "rosterCap": 40,
+      "seasonGames": 40,
       "national": {
         "name": "NCAA D3 Tournament + D3 World Series",
         "fieldSize": 60,
@@ -99,6 +120,13 @@
     "NAIA": {
       "name": "NAIA",
       "pnwConferences": ["CCC", "FRONTIER"],
+      "eligibility": {
+        "classYears": ["FR", "SO", "JR", "SR"],
+        "maxSeasonsPerPlayer": 4,
+        "details": "NAIA is a 4-year college conference. Players have 4 years of eligibility. Recruit pool: HS + JUCO transfers + 4-yr portal."
+      },
+      "rosterCap": 50,
+      "seasonGames": 55,
       "national": {
         "name": "NAIA Tournament + Avista NAIA World Series",
         "fieldSize": 46,
@@ -124,6 +152,15 @@
     "NWAC": {
       "name": "Northwest Athletic Conference (JUCO)",
       "pnwConferences": ["NWAC_NORTH", "NWAC_SOUTH", "NWAC_EAST", "NWAC_WEST"],
+      "eligibility": {
+        "classYears": ["FR", "SO"],
+        "maxSeasonsPerPlayer": 2,
+        "details": "NWAC is a junior college conference. Players are only eligible for 2 seasons (FR + SO). Sophomores typically transfer to 4-year programs (D1/D2/D3/NAIA) after their NWAC career. Recruit pool is HS-only — no JUCO or 4-yr transfers in.",
+        "transferOutAtEnd": true,
+        "recruitPools": ["HS_SR"]
+      },
+      "rosterCap": 30,
+      "seasonGames": 36,
       "national": {
         "name": "NWAC Championship",
         "fieldSize": 8,
@@ -148,9 +185,9 @@
   },
 
   "conferences": {
-    "BIG_TEN_WEST": {
-      "id": "BIG_TEN_WEST",
-      "name": "Big Ten (West Division)",
+    "BIG_TEN": {
+      "id": "BIG_TEN",
+      "name": "Big Ten",
       "level": "D1",
       "tournament": {
         "format": "DOUBLE_ELIM",
@@ -160,7 +197,6 @@
       },
       "pnwMembers": [
         { "id": "oregon-d1", "name": "Oregon", "city": "Eugene", "state": "OR" },
-        { "id": "oregon-st-d1", "name": "Oregon State", "city": "Corvallis", "state": "OR", "note": "joins Big Ten 2025-26 (some sources still list Pac-12; treat as Big Ten)" },
         { "id": "washington-d1", "name": "Washington", "city": "Seattle", "state": "WA" },
         { "id": "ucla-d1", "name": "UCLA", "city": "Los Angeles", "state": "CA" },
         { "id": "usc-d1", "name": "USC", "city": "Los Angeles", "state": "CA" }
@@ -191,11 +227,13 @@
         "format": "DOUBLE_ELIM",
         "fieldSize": 6,
         "location": "Banner Island Ballpark, Stockton CA",
-        "details": "Top 6 from regular season. Double-elim. Top 2 seeds get a first-round bye. Conf champ gets auto-bid."
+        "details": "Top 6 from regular season. Double-elim. Top 2 seeds get a first-round bye. Conf champ gets auto-bid. Oregon State + Washington State joined for baseball 2025-26 after the Pac-12 collapse."
       },
       "pnwMembers": [
         { "id": "gonzaga-d1", "name": "Gonzaga", "city": "Spokane", "state": "WA" },
-        { "id": "portland-d1", "name": "Portland", "city": "Portland", "state": "OR" }
+        { "id": "portland-d1", "name": "Portland", "city": "Portland", "state": "OR" },
+        { "id": "oregon-st-d1", "name": "Oregon State", "city": "Corvallis", "state": "OR", "note": "joined WCC for baseball 2025-26 (Pac-12 holdover)" },
+        { "id": "washington-state-d1", "name": "Washington State", "city": "Pullman", "state": "WA", "note": "joined WCC for baseball 2025-26 (Pac-12 holdover)" }
       ]
     },
 
@@ -268,16 +306,17 @@
         "details": "Top 8 from CCC regular season. Double-elim. Champion gets NAIA Opening Round auto-bid."
       },
       "pnwMembers": [
-        { "id": "lewis-clark-state-naia", "name": "Lewis-Clark State", "city": "Lewiston", "state": "ID" },
-        { "id": "bushnell-naia", "name": "Bushnell", "city": "Eugene", "state": "OR" },
-        { "id": "college-of-idaho-naia", "name": "College of Idaho", "city": "Caldwell", "state": "ID" },
-        { "id": "corban-naia", "name": "Corban", "city": "Salem", "state": "OR" },
-        { "id": "eastern-oregon-naia", "name": "Eastern Oregon", "city": "La Grande", "state": "OR" },
-        { "id": "oregon-tech-naia", "name": "Oregon Tech", "city": "Klamath Falls", "state": "OR" },
-        { "id": "warner-pacific-naia", "name": "Warner Pacific", "city": "Portland", "state": "OR" },
-        { "id": "ubc-naia", "name": "British Columbia", "city": "Vancouver", "state": "BC" },
-        { "id": "multnomah-naia", "name": "Multnomah", "city": "Portland", "state": "OR" },
-        { "id": "northwest-naia", "name": "Northwest", "city": "Kirkland", "state": "WA" }
+        { "id": "lewis-clark-state", "name": "Lewis-Clark State", "city": "Lewiston", "state": "ID" },
+        { "id": "bushnell", "name": "Bushnell", "city": "Eugene", "state": "OR" },
+        { "id": "college-of-idaho", "name": "College of Idaho", "city": "Caldwell", "state": "ID" },
+        { "id": "corban", "name": "Corban", "city": "Salem", "state": "OR" },
+        { "id": "eastern-oregon", "name": "Eastern Oregon", "city": "La Grande", "state": "OR" },
+        { "id": "oregon-tech", "name": "Oregon Tech", "city": "Klamath Falls", "state": "OR" },
+        { "id": "warner-pacific", "name": "Warner Pacific", "city": "Portland", "state": "OR" },
+        { "id": "ubc", "name": "British Columbia", "city": "Vancouver", "state": "BC" },
+        { "id": "northwest", "name": "Northwest", "city": "Kirkland", "state": "WA" },
+        { "id": "southern-oregon", "name": "Southern Oregon", "city": "Ashland", "state": "OR" },
+        { "id": "walla-walla", "name": "Walla Walla", "city": "College Place", "state": "WA" }
       ]
     },
 
