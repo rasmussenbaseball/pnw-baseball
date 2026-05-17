@@ -59,17 +59,24 @@ export function pearToUniversal(pearRating) {
 }
 
 /**
- * Map a non-NAIA team's `strength` field (currently 0-15 scale) to the
- * universal 0-100 scale. Tier-aware: a D1 with strength 10 is more imposing
- * than a D2 with strength 10. Calibrated so:
- *   D1   strength 10 → 88   (top-tier D1 — Oregon St kind of team)
- *   D1   strength 5  → 75   (mid D1)
- *   D2   strength 10 → 80   (top D2)
- *   D2   strength 5  → 67
- *   D3   strength 10 → 70
- *   D3   strength 5  → 57
- *   NWAC strength 10 → 72   (top JUCO — Wenatchee Valley etc.)
- *   NWAC strength 5  → 60
+ * Map a non-NAIA team's PEAR power_rating to the universal 0-100 scale.
+ *
+ * PEAR power_rating is per-division — Georgia Tech (D1 #1) sits at 7.4 and
+ * Denison (D3 #1) sits at 10.3, but Georgia Tech is FAR better in absolute
+ * terms. Tier base handles the cross-division translation:
+ *   D1   PEAR  7.4 → 92.8  (elite D1)
+ *   D1   PEAR  0   → 78    (median D1)
+ *   D1   PEAR -5  → 68    (bottom D1)
+ *   D2   PEAR  7   → 79    (elite D2)
+ *   D2   PEAR  0   → 65    (median D2)
+ *   D3   PEAR 10   → 75    (elite D3 — Denison, Salisbury territory)
+ *   D3   PEAR  0   → 55    (median D3)
+ *   NWAC strength fed through as before (no PEAR data)
+ *
+ * Real PEAR ranges observed:
+ *   D1  top  7.37,  median  0.16,  bottom -11.36
+ *   D2  top  6.77,  median  0.34,  bottom -11.33
+ *   D3  top 10.31,  median  0.47,  bottom -18.06
  */
 export function nonNaiaToUniversal(team) {
   if (!team) return 50
@@ -82,7 +89,7 @@ export function nonNaiaToUniversal(team) {
     NWAC:      60,
     JUCO:      58,
   }[team.division] ?? 55
-  return Math.max(25, Math.min(99, tierBase + s * 2.0))
+  return Math.max(20, Math.min(99, tierBase + s * 2.0))
 }
 
 // ─── Build preseason universal-strength seeds for everyone ────────────────
