@@ -26,6 +26,7 @@ import { budgetCategoryEffects } from './budget'
 import { totalAnnualTravelCost } from './travel'
 import { closePlanningWindow, resolveSummerBall, ensureSummerBallState } from './summerBall'
 import { ensureCutsState } from './cuts'
+import { awardForEndOfYearHonors } from './coachProgression'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 const NON_NAIA_LOOKUP = (() => {
@@ -500,6 +501,10 @@ function runDraft(state) {
   }
   if (userPicks.length > 0 && state.budget) {
     state.budget.jobSecurity = Math.min(100, (state.budget.jobSecurity || 50) + userPicks.length * 3)
+  }
+  // HC progression — points for every program draft pick
+  if (userPicks.length > 0) {
+    awardForEndOfYearHonors(state, { firstTeam: 0, secondTeam: 0, goldGlove: 0, draftPicks: userPicks.length })
   }
   return { label: 'MLB Draft', news: picks }
 }

@@ -49,18 +49,26 @@ function clamp(v, lo, hi) {
 }
 
 /**
- * Mean rating per "slot tier" — most NAIA STARTERS sit in 60-90 OVR;
- * depth/bench guys can range 45-65; redshirts/bottom-of-roster around 40-55.
+ * Mean rating per "slot tier", scaled so team OVR (top 9 hitters + top 5
+ * pitchers averaged) lands at the user's intuitive expectations:
+ *   #1 nationally  (programHistory ~86) → team OVR ~83-85
+ *   Bushnell rank ~30 (PH ~63)           → team OVR ~78-80
+ *   Mid-pack rank ~100 (PH ~50)          → team OVR ~73
+ *   Worst program (PH ~15)               → team OVR ~62-64
  *
- * @param {number} programHistory   0-100
+ * Star bumps (applyStarBump) layer on top of these means for the 'starter'
+ * tier only — about 26% of starters land at a mean of 76+ which pulls the
+ * top-9 average up another 2-3 pts above the slot-tier mean.
+ *
+ * @param {number} programHistory   0-100 (15 worst, 86 top)
  * @param {'starter'|'bench'|'depth'} slotTier
  */
 function meanRatingFor(programHistory, slotTier = 'bench') {
-  // Program strength shifts by ±8 (elite vs SHOESTRING)
-  const programShift = (programHistory - 50) * 0.16   // -8 to +8
-  if (slotTier === 'starter') return 70 + programShift   // 62-78 for typical bushnell starter
-  if (slotTier === 'bench')   return 60 + programShift
-  return 52 + programShift                                // depth
+  // Slope tuned so PH 15 → 60 starter mean, PH 86 → 79 starter mean.
+  const ph = Math.max(15, Math.min(99, programHistory))
+  if (slotTier === 'starter') return 60 + (ph - 15) * 0.27   // 60..81
+  if (slotTier === 'bench')   return 52 + (ph - 15) * 0.18   // 52..67
+  return 44 + (ph - 15) * 0.12                                // 44..54
 }
 
 /**

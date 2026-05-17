@@ -18,6 +18,7 @@ import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
+import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TutorialOverlay from '../../gm/components/TutorialOverlay'
@@ -406,21 +407,30 @@ export default function Dashboard() {
                     : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={toggleAutoMode}
-                className={
-                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition ' +
-                  (autoOn
-                    ? 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300 ring-1 ring-emerald-200'
-                    : 'bg-white/10 text-white/80 hover:bg-white/20 ring-1 ring-white/15')
-                }
-                title={autoOn
-                  ? 'Auto mode is ON — required actions, AP, and recruiting are handled for you each week. Click to switch to manual.'
-                  : 'Manual mode — you make every weekly decision. Click to enable Auto.'}
-              >
-                <span>{autoOn ? ' AUTO' : ' MANUAL'}</span>
-              </button>
+              <div className="flex flex-col items-end">
+                <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold mb-1">Weekly tasks</div>
+                <button
+                  type="button"
+                  onClick={toggleAutoMode}
+                  className={
+                    'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition border-2 ' +
+                    (autoOn
+                      ? 'bg-emerald-400 text-emerald-950 border-emerald-200 hover:bg-emerald-300'
+                      : 'bg-white/10 text-white border-white/30 hover:bg-white/20')
+                  }
+                  title={autoOn
+                    ? 'AI co-GM is handling required actions, AP, and recruiting each week. Click to switch back to managing it yourself.'
+                    : 'You are picking every weekly action. Click to let the AI co-GM handle it for you.'}
+                >
+                  <span className={'w-2 h-2 rounded-full ' + (autoOn ? 'bg-emerald-900' : 'bg-white/60')}></span>
+                  <span>{autoOn ? 'Auto: ON' : 'Auto: OFF'}</span>
+                </button>
+                <div className="text-[10px] opacity-70 mt-1 text-right max-w-[160px]">
+                  {autoOn
+                    ? 'AI is handling required actions + AP'
+                    : 'Click to let AI handle weekly tasks'}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -677,6 +687,7 @@ export default function Dashboard() {
             <FocusTasks save={save} inOffseason={inOffseason} />
           </Panel>
 
+          <CoachUpgradeWidget save={save} onChange={() => { saveDynasty(save); setSave({ ...save }) }} />
           <ConferenceStandingsWidget save={save} slot={slot} />
         </div>
       </div>
@@ -765,6 +776,70 @@ function PhaseFlag({ label, active, muted }) {
       <span className="font-semibold">{label}</span>
       {muted && <span className="text-[10px] opacity-75">{muted}</span>}
     </div>
+  )
+}
+
+function CoachUpgradeWidget({ save, onChange }) {
+  const team = save.teams[save.userSchoolId]
+  const coach = save.coaches[team?.headCoachId]
+  if (!coach) return null
+  const points = coach.upgradePoints || 0
+  const earned = coach.upgradePointsEarned || 0
+  function spend(ratingKey) {
+    const result = spendCoachUpgradePoints(save, ratingKey, 1)
+    if (!result.ok) { alert(result.error); return }
+    onChange?.()
+  }
+  // Show even if 0 points — surfaces the mechanic + lifetime earned so users
+  // know what the system tracks. Hide entirely if never earned a point yet.
+  if (earned === 0 && points === 0) return null
+  return (
+    <Panel title="Coach Development" actionTo={null}>
+      <div className="text-xs text-gray-500 mb-2">
+        You've earned <strong className="text-pnw-green">{earned}</strong> upgrade
+        point{earned === 1 ? '' : 's'} this dynasty by winning games + producing
+        award-winning players. Spend them to permanently bump your ratings.
+      </div>
+      <div className="bg-pnw-cream/40 rounded p-2 mb-2 text-center">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Available to spend</div>
+        <div className="text-2xl font-bold font-mono text-pnw-green">{points}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {[
+          ['developer', 'Developer'],
+          ['motivator', 'Motivator'],
+          ['recruiter', 'Recruiter'],
+          ['tactician', 'Tactician'],
+        ].map(([key, label]) => {
+          const cur = coach[key] ?? 50
+          const canSpend = points > 0 && cur < 99
+          return (
+            <button
+              key={key}
+              onClick={() => canSpend && spend(key)}
+              disabled={!canSpend}
+              className={
+                'text-left p-2 rounded border-2 transition ' +
+                (canSpend
+                  ? 'border-pnw-green text-pnw-slate bg-white hover:bg-pnw-cream cursor-pointer'
+                  : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed')
+              }
+            >
+              <div className="flex justify-between items-baseline">
+                <span className="text-[10px] uppercase tracking-wider font-bold">{label}</span>
+                <span className="font-mono font-bold text-lg">{cur}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 mt-0.5">
+                {canSpend ? '+1 for 1 pt' : cur >= 99 ? 'Maxed' : 'No pts'}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <div className="text-[10px] text-gray-400 italic mt-2">
+        Earn points by: wins (+2-5), conference / postseason runs (+8 to +30), MLB draft picks (+5 each), All-Conference + Gold Glove honors (+2-3 each).
+      </div>
+    </Panel>
   )
 }
 

@@ -256,13 +256,21 @@ function StarRow({ stars }) {
   const bar = starsToBar(stars)
   return (
     <div className="flex gap-0.5">
-      {bar.map((kind, i) => (
-        <span key={i} className={
-          kind === 'full' ? 'text-amber-300' :
-          kind === 'half' ? 'text-amber-300/60' :
-          'text-[#3a3a5e]'
-        }>★</span>
-      ))}
+      {bar.map((kind, i) => {
+        if (kind === 'full') return <span key={i} className="text-amber-300">★</span>
+        if (kind === 'empty') return <span key={i} className="text-[#3a3a5e]">★</span>
+        // Half — overlay an amber clipped star on top of an empty gray star
+        return (
+          <span key={i} className="relative inline-block">
+            <span className="text-[#3a3a5e]">★</span>
+            <span
+              className="absolute inset-0 text-amber-300 overflow-hidden"
+              style={{ width: '50%' }}
+            >★</span>
+          </span>
+        )
+      })}
+      <span className="ml-1 text-[10px] text-[#a8a8c8] tabular-nums font-mono">{stars.toFixed(1)}</span>
     </div>
   )
 }

@@ -21,6 +21,7 @@
 
 import { synthesizeConferenceStats, buildTeamSynthesisContext, synthesizeSeasonStats } from './leagueStats'
 import { leagueAverages, computeBatting, computePitching } from './advancedStats'
+import { awardForEndOfYearHonors } from './coachProgression'
 
 const HITTER_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH']
 const MIN_PA = 80
@@ -76,6 +77,13 @@ export function runEndOfRegularSeasonAwards(state) {
           payload: { playerId: p.playerId, year, kind: 'first' },
         })
       }
+      // HC progression — earn upgrade points for each honoree
+      awardForEndOfYearHonors(state, {
+        firstTeam: userOnFirst.length,
+        secondTeam: userOnSecond.length,
+        goldGlove: userOnGG.length,
+        draftPicks: 0,    // tallied separately in runDraft
+      })
     }
   }
 }

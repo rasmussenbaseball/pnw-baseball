@@ -12,6 +12,7 @@ import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
+import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
@@ -275,6 +276,17 @@ export function simWeek(state, schedule, ratings) {
       }
       homeTeam.runDiff += result.homeRuns - result.awayRuns
       awayTeam.runDiff += result.awayRuns - result.homeRuns
+      // Coach upgrade points for user wins. Opponent's national rank
+      // boosts the grant (beating a top-25 team is worth more).
+      if (isUserGame) {
+        const userWon = (g.homeId === userSchoolId && result.homeRuns > result.awayRuns)
+          || (g.awayId === userSchoolId && result.awayRuns > result.homeRuns)
+        if (userWon) {
+          const oppId = g.homeId === userSchoolId ? g.awayId : g.homeId
+          const oppRank = ratings?.[oppId]?.nationalRank
+          awardForGameResult(state, true, oppRank, g.type === 'CONFERENCE')
+        }
+      }
     } else if (counts && (homeTeam || awayTeam)) {
       // One side is user (or another NAIA in user game), other side is non-NAIA
       const realTeam = homeTeam || awayTeam
@@ -284,6 +296,10 @@ export function simWeek(state, schedule, ratings) {
       if (realRuns > oppRuns) realTeam.wins++
       else realTeam.losses++
       realTeam.runDiff += realRuns - oppRuns
+      // Non-NAIA wins also award (smaller — no national rank context)
+      if (realRuns > oppRuns && realTeam.schoolId === userSchoolId) {
+        awardForGameResult(state, true, null, false)
+      }
     }
 
     if (isUserGame) {

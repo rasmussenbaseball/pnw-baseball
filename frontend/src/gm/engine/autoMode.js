@@ -23,7 +23,7 @@
 
 import { autoCreateSchedule } from './schedule'
 import { applyBudgetPreset, lockBudgetForYear, BUDGET_PRESETS } from './budget'
-import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, simProspectCamp, fundraise } from './recruits'
+import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, simProspectCamp, fundraise, generateRecruitPool } from './recruits'
 import { makeRng } from './rng'
 import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
@@ -163,10 +163,28 @@ function autoFulfillBudget(save, summary) {
 }
 
 function autoFulfillScouting(save, summary) {
-  // Wk 4 — must spend AP. The full algorithm runs in autoSpendAP, but the
-  // gate is "(state.ap?.currentWeek ?? 0) === 0". We hand off to the same
-  // recruiting code path so it counts as scouting AP.
+  // Wk 4 — must spend AP on recruiting. The pool is normally lazy-generated
+  // when the user first visits the Recruiting page; auto mode never does
+  // that, so we have to generate it here BEFORE trying to spend.
+  ensureRecruitPool(save)
   autoSpendAP(save, summary, /* forceAllOnRecruiting */ true)
+}
+
+/**
+ * Lazy-generate the upcoming recruit class if it doesn't exist yet. Mirrors
+ * the lazy init in Recruiting.jsx so auto mode can spend AP on recruits
+ * without the user ever opening the page.
+ */
+function ensureRecruitPool(save) {
+  if (save.recruits && Object.keys(save.recruits).length > 0) return
+  const userHC = save.coaches?.[save.teams?.[save.userSchoolId]?.headCoachId]
+  const pool = generateRecruitPool(
+    (save.calendar?.year ?? 2026) + 1,
+    save.rngSeed || save.seed || 1,
+    userHC,
+    save.userSchoolId,
+  )
+  save.recruits = pool
 }
 
 function autoFulfillProspectCamp(save, summary) {
@@ -261,24 +279,19 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
   const team = save.teams?.[userSchoolId]
   if (!team) return
 
-  // Each weekly action is ONE-PER-WEEK. Track which we've done this turn so
-  // we don't double up (the old loop happily ran study hall 8 times in a
-  // row until the cumulative-bonus cap clamped it).
-  const usedThisWeek = new Set()
+  // Make sure the recruit pool exists — auto mode can't otherwise spend AP
+  // on recruits (the pool is lazy-generated when the user opens Recruiting).
+  ensureRecruitPool(save)
 
-  // First pass: study hall (1× this week, if appropriate)
-  if (!forceAllOnRecruiting && !usedThisWeek.has('STUDY_HALL') && shouldSpendOnStudyHall(save, ap)) {
-    const spent = spendStudyHall(save)
-    if (spent > 0) {
-      ap -= spent
-      usedThisWeek.add('STUDY_HALL')
-      summary.actionsTaken.push(`Spent ${spent} AP on study hall`)
-    }
-  }
+  // PRIORITY ORDER (May 2026 per Nate's feedback):
+  //   1. Recruiting — biggest single lever in the game; always take it first
+  //   2. Study hall — small, one-per-week, only during semesters
+  //   3. Fundraising — last resort, only when nothing else productive remains
+  // Fundraising should NEVER beat recruiting. Old order had study hall first
+  // which was harmless, but fundraising was kicking in even when recruiting
+  // could have absorbed the AP.
 
-  // Second pass: recruiting board (can run repeatedly across multiple
-  // recruits within the same call — that's intentional, each recruit is
-  // a separate action)
+  // 1. Recruiting — eats up most of the AP via multiple per-recruit actions
   if (ap > 0 && hasRecruitingNeeds(save)) {
     const spent = spendRecruiting(save, ap)
     if (spent > 0) {
@@ -287,8 +300,30 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
     }
   }
 
-  // Third pass: fundraise if there's still meaningful AP and nothing else
-  if (!forceAllOnRecruiting && ap >= 10) {
+  // 2. Study hall (1× this week, if appropriate). Skipped in forced mode.
+  if (!forceAllOnRecruiting && shouldSpendOnStudyHall(save, ap)) {
+    const spent = spendStudyHall(save)
+    if (spent > 0) {
+      ap -= spent
+      summary.actionsTaken.push(`Spent ${spent} AP on study hall`)
+    }
+  }
+
+  // 3. More recruiting if anything was left untouched — second pass.
+  // Common when first pass exhausted the top-30 list but cheaper TEXT
+  // actions are still available on the broader board.
+  if (ap >= 1 && hasRecruitingNeeds(save)) {
+    const spent = spendRecruiting(save, ap)
+    if (spent > 0) {
+      ap -= spent
+      summary.actionsTaken.push(`Spent ${spent} AP on additional recruiting`)
+    }
+  }
+
+  // 4. Fundraise — ONLY if there's a meaningful chunk left AND we're not
+  //    in scouting-required mode AND scholarship $ is genuinely needed.
+  //    Default: skip if remaining AP is < 15 (fundraise costs 10).
+  if (!forceAllOnRecruiting && ap >= 15) {
     const spent = spendFundraise(save)
     if (spent > 0) {
       ap -= spent

@@ -85,23 +85,14 @@ export default function GMHome() {
           </div>
         </div>
 
-        <PixelCard accent="#fbbf24" title="WHAT'S IN THE ALPHA">
-          <ul className="text-[#e8e8e8] text-base font-pixel space-y-1 list-disc list-inside">
-            <li><strong className="text-amber-300">Cascade Collegiate Conference</strong> — pick any of the 8 CCC programs. National expansion later.</li>
-            <li><strong>199 real NAIA programs</strong> simulated in the background, rated 1-5 stars by projected national rank.</li>
-            <li><strong>~7,000 fictional players + ~1,000 coaches</strong> generated across the league.</li>
-            <li>Game modes: <em>Traditional</em> (hard sim, injuries on) or <em>Custom</em> with full toggles.</li>
-            <li>PA-level live-game engine for your games; fast sim for the rest of the league.</li>
-            <li>End-of-year MLB Draft + All-Conference + Gold Glove awards.</li>
-            <li>Auto Mode if you want to step back and let the AI co-GM handle weeks for you.</li>
-          </ul>
-          <h3 className="font-pixel-display text-[11px] tracking-widest text-amber-300 mt-4 mb-2">COMING NEXT</h3>
-          <ul className="text-[#a8a8c8] text-sm font-pixel space-y-1 list-disc list-inside">
-            <li>Full PNW NAIA expansion (NWAC partner schools, GNAC additions)</li>
-            <li>Multi-year recruit memory + the JUCO transfer-portal heat map</li>
-            <li>D1/D2/D3 non-conference scheduling improvements</li>
-            <li>Spring-training South trips + travel calendar optimizer</li>
-          </ul>
+        <PixelCard accent="#fbbf24" title="THE GAME">
+          <p className="text-[#e8e8e8] text-base font-pixel leading-relaxed">
+            NAIA Baseball GM is a turn-based dynasty simulator. You take over a real
+            Cascade Collegiate Conference program as the head coach, hire your staff,
+            recruit your roster, sim games week-by-week, and try to build a national
+            contender. Run it like a real coach with the live-game engine, or hand the
+            week-to-week to Auto Mode and watch your dynasty unfold.
+          </p>
         </PixelCard>
       </div>
     </GMShell>
