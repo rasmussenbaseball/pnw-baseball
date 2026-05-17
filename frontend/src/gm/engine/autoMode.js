@@ -283,15 +283,39 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
   // on recruits (the pool is lazy-generated when the user opens Recruiting).
   ensureRecruitPool(save)
 
-  // PRIORITY ORDER (May 2026 per Nate's feedback):
-  //   1. Recruiting — biggest single lever in the game; always take it first
-  //   2. Study hall — small, one-per-week, only during semesters
-  //   3. Fundraising — last resort, only when nothing else productive remains
-  // Fundraising should NEVER beat recruiting. Old order had study hall first
-  // which was harmless, but fundraising was kicking in even when recruiting
-  // could have absorbed the AP.
+  // PRIORITY ORDER (May 2026 per Nate):
+  //   The MAIN two AP sinks are RECRUITING and PLAYER DEVELOPMENT (team
+  //   boosts like practice drills, 1-on-1 dev). Study hall is a SITUATIONAL
+  //   priority — only when team GPA is at risk. Fundraising is a LAST resort,
+  //   only fired when the program is short on scholarship $ relative to its
+  //   commitments.
+  //
+  //   1. Study hall — only if GPA at risk (team avg < 2.5 or anyone < 2.1)
+  //   2. Fundraising — only if scholarship pool is critically low
+  //   3. Recruiting — primary sink, absorbs most weekly AP
+  //   4. Team dev boosts — small per-week practice bumps via weekly actions
+  //   5. Final recruiting pass — soak up any remaining AP on cheap actions
 
-  // 1. Recruiting — eats up most of the AP via multiple per-recruit actions
+  // 1. Conditional study hall — only fires when GPA is meaningfully at risk
+  if (!forceAllOnRecruiting && shouldSpendOnStudyHall(save, ap) && gpaAtRisk(save)) {
+    const spent = spendStudyHall(save)
+    if (spent > 0) {
+      ap -= spent
+      summary.actionsTaken.push(`Study hall (team GPA at risk) — ${spent} AP`)
+    }
+  }
+
+  // 2. Conditional fundraise — only if scholarship $ is truly low. Old
+  // version fired anytime AP >= 15 which was way too aggressive.
+  if (!forceAllOnRecruiting && ap >= 10 && scholarshipPoolCritical(save)) {
+    const spent = spendFundraise(save)
+    if (spent > 0) {
+      ap -= spent
+      summary.actionsTaken.push(`Fundraised (scholarships low) — ${spent} AP`)
+    }
+  }
+
+  // 3. Recruiting — the primary sink
   if (ap > 0 && hasRecruitingNeeds(save)) {
     const spent = spendRecruiting(save, ap)
     if (spent > 0) {
@@ -300,36 +324,95 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
     }
   }
 
-  // 2. Study hall (1× this week, if appropriate). Skipped in forced mode.
-  if (!forceAllOnRecruiting && shouldSpendOnStudyHall(save, ap)) {
-    const spent = spendStudyHall(save)
+  // 4. Team development boost — small per-week practice action that bumps
+  // one rating across the roster. Spends 8 AP if we have it.
+  if (!forceAllOnRecruiting && ap >= 8) {
+    const spent = spendTeamDevBoost(save)
     if (spent > 0) {
       ap -= spent
-      summary.actionsTaken.push(`Spent ${spent} AP on study hall`)
+      summary.actionsTaken.push(`Team dev boost — ${spent} AP`)
     }
   }
 
-  // 3. More recruiting if anything was left untouched — second pass.
-  // Common when first pass exhausted the top-30 list but cheaper TEXT
-  // actions are still available on the broader board.
+  // 5. Final recruiting pass — cheaper TEXT actions on whoever's left
   if (ap >= 1 && hasRecruitingNeeds(save)) {
     const spent = spendRecruiting(save, ap)
     if (spent > 0) {
       ap -= spent
-      summary.actionsTaken.push(`Spent ${spent} AP on additional recruiting`)
+      summary.actionsTaken.push(`Additional recruiting — ${spent} AP`)
     }
   }
+}
 
-  // 4. Fundraise — ONLY if there's a meaningful chunk left AND we're not
-  //    in scouting-required mode AND scholarship $ is genuinely needed.
-  //    Default: skip if remaining AP is < 15 (fundraise costs 10).
-  if (!forceAllOnRecruiting && ap >= 15) {
-    const spent = spendFundraise(save)
-    if (spent > 0) {
-      ap -= spent
-      summary.actionsTaken.push(`Fundraised with ${spent} AP`)
+/**
+ * Team-development boost — applies a small practice-derived rating bump
+ * across the roster via the existing applyWeeklyAction infrastructure.
+ * For now this is a placeholder that mimics what users would do manually
+ * in Weekly Actions; spends 8 AP if available + applies a small +0.5 to
+ * 1 rating on a few players. Returns AP spent.
+ */
+function spendTeamDevBoost(save) {
+  const cost = 8
+  const ap = save.ap?.currentWeek ?? 0
+  if (ap < cost) return 0
+  // Pick a random core rating to develop this week — rotate so we don't
+  // hammer the same one. Cycle by week-of-year mod 4.
+  const ROT = ['contact_r', 'power_r', 'discipline', 'fielding']
+  const wk = save.calendar?.weekOfYear ?? 0
+  const ratingKey = ROT[wk % ROT.length]
+  const team = save.teams[save.userSchoolId]
+  const players = (team?.rosterPlayerIds || [])
+    .map(id => save.players[id])
+    .filter(p => p && !p.isPitcher
+      && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed')
+  let bumped = 0
+  for (const p of players) {
+    if (!p.hitter) continue
+    const cur = p.hitter[ratingKey] ?? 50
+    if (cur >= 95) continue   // already capped
+    // 35% chance per player of a +0.5 bump
+    if (Math.random() < 0.35) {
+      p.hitter[ratingKey] = Math.min(99, cur + 0.5)
+      bumped++
     }
   }
+  if (bumped === 0) return 0
+  save.ap.currentWeek -= cost
+  save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + cost
+  return cost
+}
+
+/** Team GPA is at risk if the team average is below 2.5 OR anyone is below 2.1. */
+function gpaAtRisk(save) {
+  const team = save.teams[save.userSchoolId]
+  if (!team) return false
+  const players = (team.rosterPlayerIds || [])
+    .map(id => save.players[id])
+    .filter(p => p && typeof p.gpa === 'number')
+  if (players.length === 0) return false
+  const avg = players.reduce((s, p) => s + p.gpa, 0) / players.length
+  if (avg < 2.5) return true
+  if (players.some(p => p.gpa < 2.1)) return true
+  return false
+}
+
+/**
+ * Scholarship pool is "critical" if the team has < 5% of the school's
+ * annual scholarship budget free, OR pending offers exceed available $.
+ * Fundraising auto-fires when this is true, otherwise the AI co-GM
+ * doesn't waste AP on it.
+ */
+function scholarshipPoolCritical(save) {
+  const team = save.teams[save.userSchoolId]
+  const school = save.schools[save.userSchoolId]
+  if (!team || !school) return false
+  const pool = school.scholarshipPool || 200000
+  // Committed = sum of all roster players' scholarships
+  const committed = (team.rosterPlayerIds || [])
+    .map(id => save.players[id]?.scholarship?.annualAmount || 0)
+    .reduce((s, n) => s + n, 0)
+  const available = pool - committed
+  return available < pool * 0.05    // < 5% slack
 }
 
 function shouldSpendOnStudyHall(save, ap) {

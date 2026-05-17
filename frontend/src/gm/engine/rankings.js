@@ -87,6 +87,7 @@ export function seedFromPear(schools, conferences) {
       overall_rating: overall,
       sos_index,
       nationalRank: 0,   // filled in after sort
+      _prr: pear?.PRR ?? null,    // PEAR Rank straight from the data file
       confName: conferences[school.conferenceId]?.name || '',
     }
   }
@@ -96,9 +97,20 @@ export function seedFromPear(schools, conferences) {
 
 /**
  * After every team has a rating, sort by overall and assign nationalRank.
+ * For PEAR-seeded year 1, we prefer the PRR field (PEAR Rank, the same
+ * number shown on pearatings.com) so our rankings match the website
+ * exactly. Falls back to Rating-sort for schools missing PRR.
  */
 function assignRanks(ratings) {
-  const sorted = Object.values(ratings).sort((a, b) => b.overall_rating - a.overall_rating)
+  const sorted = Object.values(ratings).sort((a, b) => {
+    // Use PRR (preserved on the rating via pearForSchool) if both have it
+    const aprr = a._prr ?? null
+    const bprr = b._prr ?? null
+    if (aprr != null && bprr != null) return aprr - bprr   // 1 = best
+    if (aprr != null) return -1
+    if (bprr != null) return 1
+    return b.overall_rating - a.overall_rating
+  })
   sorted.forEach((r, i) => { r.nationalRank = i + 1 })
   return ratings
 }

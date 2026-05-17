@@ -19,7 +19,7 @@ import { simWeek, advanceWeek } from '../../gm/engine/season'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -524,141 +524,211 @@ function BoxScoreTable({ title, rows, type }) {
 function LineupEditor({ save, game, onSave, onCancel }) {
   const userSchoolId = save.userSchoolId
   const team = save.teams[userSchoolId]
-  const players = team.rosterPlayerIds.map(id => save.players[id]).filter(Boolean)
+  const players = team.rosterPlayerIds
+    .map(id => save.players[id])
+    .filter(p => p && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed' && (p.injury?.weeksRemaining || 0) === 0)
 
-  // Initial state: saved lineup, otherwise default
+  // Initial state from saved lineup or default
   const saved = getSavedLineup(save, game.id)
   const def = defaultLineup(team, save.players)
-  const [batters, setBatters] = useState(() =>
-    saved ? saved.batters.map(id => save.players[id]).filter(Boolean) : def.batters,
-  )
+  // Each batting slot is { playerId, position } — position is the FIELDING
+  // slot they play. DH is allowed and means "no field position, bat only".
+  const [slots, setSlots] = useState(() => initialSlots(saved, def, save.players, players))
   const [starterId, setStarterId] = useState(() =>
     saved?.starterPitcherId ?? def.pitcherRotation[0]?.id ?? null,
-  )
-  const [bullpenIds, setBullpenIds] = useState(() =>
-    saved?.bullpenIds ?? def.pitcherRotation.slice(1, 5).map(p => p.id),
   )
 
   const hitters = players.filter(p => !p.isPitcher)
   const pitchers = players.filter(p => p.isPitcher)
-  const batterIds = new Set(batters.map(b => b.id))
+  const POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']
 
-  function setBatterSpot(spotIdx, player) {
-    const next = [...batters]
-    next[spotIdx] = player
-    setBatters(next)
+  function setSlotPlayer(slotIdx, playerId) {
+    const next = [...slots]
+    next[slotIdx] = { ...next[slotIdx], playerId }
+    setSlots(next)
   }
-
+  function setSlotPosition(slotIdx, position) {
+    const next = [...slots]
+    // Enforce unique field positions (DH excluded — only one DH but you'd
+    // expect that anyway). If another slot already has this position, swap.
+    if (position !== 'DH') {
+      const dupIdx = next.findIndex((s, i) => i !== slotIdx && s.position === position)
+      if (dupIdx >= 0) next[dupIdx] = { ...next[dupIdx], position: next[slotIdx].position }
+    }
+    next[slotIdx] = { ...next[slotIdx], position }
+    setSlots(next)
+  }
   function moveSpot(idx, dir) {
     const swap = idx + dir
     if (swap < 0 || swap > 8) return
-    const next = [...batters]
+    const next = [...slots]
     ;[next[idx], next[swap]] = [next[swap], next[idx]]
-    setBatters(next)
+    setSlots(next)
   }
 
-  const canSave = batters.length === 9 && batters.every(b => b) && starterId
+  const usedIds = new Set(slots.map(s => s.playerId).filter(Boolean))
+  const allPositionsCovered =
+    ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
+      .every(pos => slots.some(s => s.position === pos))
+  const canSave = slots.every(s => s.playerId) && starterId && allPositionsCovered
 
   function handleSave() {
     if (!canSave) return
     onSave({
-      batters: batters.map(b => b.id),
+      batters: slots.map(s => s.playerId),
+      batterPositions: slots.map(s => s.position),
       starterPitcherId: starterId,
-      bullpenIds,
+      // bullpenIds dropped — every pitcher is available
+      bullpenIds: pitchers.filter(p => p.id !== starterId).map(p => p.id),
     })
-  }
-
-  function toggleBullpen(id) {
-    if (bullpenIds.includes(id)) setBullpenIds(bullpenIds.filter(x => x !== id))
-    else if (bullpenIds.length < 6) setBullpenIds([...bullpenIds, id])
   }
 
   const isHome = game.homeId === userSchoolId
   const oppId = isHome ? game.awayId : game.homeId
   const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId] || { name: oppId }
+  const school = save.schools[userSchoolId]
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
-      <button onClick={onCancel} className="text-sm text-pnw-green hover:underline">Back to games</button>
-      <h1 className="text-2xl font-bold text-pnw-slate mt-1 mb-1">Set Lineup</h1>
-      <p className="text-sm text-gray-600 mb-6">{isHome ? 'vs' : '@'} {opp.name} • {game.date}</p>
+    <GMShell schoolName={school?.name} schoolColors={school?.colors}>
+    <div className="max-w-5xl mx-auto">
+      <button onClick={onCancel} className="text-xs text-amber-300 hover:underline mb-2 font-pixel uppercase tracking-widest">
+        ← Back to games
+      </button>
+      <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">SET LINEUP</h1>
+      <p className="font-pixel text-base text-[#a8a8c8] mb-4">
+        {isHome ? 'vs' : '@'} {opp.name} · {game.date}
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Batting order */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-pnw-slate mb-3">Batting Order</h2>
-          <div className="space-y-1.5">
-            {batters.map((b, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs w-5 text-gray-400 font-mono">{i + 1}.</span>
-                <select
-                  value={b?.id || ''}
-                  onChange={e => setBatterSpot(i, hitters.find(h => h.id === e.target.value))}
-                  className="flex-1 border rounded px-2 py-1 text-sm"
-                >
-                  {hitters.map(h => (
-                    <option key={h.id} value={h.id} disabled={batterIds.has(h.id) && h.id !== b?.id}>
-                      {h.firstName} {h.lastName} ({displayPosition(h.primaryPosition)} · {displayClassYear(h)} · OVR {playerOverall(h)})
-                    </option>
-                  ))}
-                </select>
-                <button onClick={() => moveSpot(i, -1)} disabled={i === 0} className="text-xs px-1.5 py-0.5 border rounded disabled:opacity-30"></button>
-                <button onClick={() => moveSpot(i, +1)} disabled={i === 8} className="text-xs px-1.5 py-0.5 border rounded disabled:opacity-30"></button>
-              </div>
-            ))}
+        <PixelCard accent="#fbbf24" title="BATTING ORDER">
+          <div className="text-[10px] text-[#a8a8c8] mb-2 leading-snug">
+            Pick a player + their field position for each spot. The DH can
+            be your best bat regardless of natural position. Every field
+            position (C, 1B, 2B, SS, 3B, LF, CF, RF) must be filled exactly once.
           </div>
-        </div>
+          <div className="space-y-1.5">
+            {slots.map((slot, i) => {
+              const p = save.players[slot.playerId]
+              const ovr = p ? playerOverall(p) : 0
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="font-mono text-amber-300 font-bold w-6">{i + 1}.</span>
+                  <select
+                    value={slot.playerId || ''}
+                    onChange={e => setSlotPlayer(i, e.target.value)}
+                    className="flex-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-sm text-white"
+                  >
+                    <option value="">— pick player —</option>
+                    {hitters.map(h => (
+                      <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
+                        {h.firstName} {h.lastName} ({displayPosition(h.primaryPosition)} · {displayClassYear(h)} · OVR {playerOverall(h)})
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={slot.position}
+                    onChange={e => setSlotPosition(i, e.target.value)}
+                    className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-xs text-white w-16"
+                    title="Field position"
+                  >
+                    {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                  </select>
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => moveSpot(i, -1)}
+                      disabled={i === 0}
+                      className="text-[10px] px-1 bg-[#3a3a5e] text-white rounded disabled:opacity-30"
+                    >▲</button>
+                    <button
+                      onClick={() => moveSpot(i, +1)}
+                      disabled={i === 8}
+                      className="text-[10px] px-1 bg-[#3a3a5e] text-white rounded disabled:opacity-30"
+                    >▼</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {!allPositionsCovered && (
+            <div className="mt-2 text-[10px] text-red-400">
+              Missing position: every field position (C, 1B, 2B, SS, 3B, LF, CF, RF) must appear exactly once. The 9th slot can be DH or duplicate a field position.
+            </div>
+          )}
+        </PixelCard>
 
         {/* Pitching */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-pnw-slate mb-3">Pitching</h2>
-          <div className="mb-3">
-            <label className="text-xs uppercase tracking-wider text-gray-500">Starting Pitcher</label>
-            <select
-              value={starterId || ''}
-              onChange={e => setStarterId(e.target.value)}
-              className="block w-full mt-1 border rounded px-2 py-1.5 text-sm"
-            >
-              <option value="">— pick one —</option>
-              {pitchers.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName} ({displayClassYear(p)} · Stuff {p.pitcher.stuff} · Stam {p.pitcher.stamina})
-                </option>
-              ))}
-            </select>
+        <PixelCard accent="#fbbf24" title="STARTING PITCHER">
+          <div className="text-[10px] text-[#a8a8c8] mb-2 leading-snug">
+            Pick your starter — anyone else on the staff is available to
+            come in from the bullpen during the game via the live-game sub
+            menu. No need to pre-select a bullpen.
           </div>
-          <div>
-            <label className="text-xs uppercase tracking-wider text-gray-500">Bullpen (up to 6)</label>
-            <div className="mt-1 max-h-72 overflow-y-auto border border-gray-100 rounded p-2">
-              {pitchers.filter(p => p.id !== starterId).map(p => (
-                <label key={p.id} className="flex items-center gap-2 text-xs py-0.5 hover:bg-gray-50 rounded px-1">
-                  <input
-                    type="checkbox"
-                    checked={bullpenIds.includes(p.id)}
-                    onChange={() => toggleBullpen(p.id)}
-                    disabled={!bullpenIds.includes(p.id) && bullpenIds.length >= 6}
-                  />
-                  <span className="flex-1">{p.firstName} {p.lastName}</span>
-                  <span className="text-gray-500 font-mono">{p.pitcher.stuff}/{p.pitcher.control}/{p.pitcher.stamina}</span>
-                </label>
-              ))}
-            </div>
+          <select
+            value={starterId || ''}
+            onChange={e => setStarterId(e.target.value)}
+            className="block w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-2 text-sm text-white"
+          >
+            <option value="">— pick a starter —</option>
+            {pitchers.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName} ({displayClassYear(p)} · Stuff {p.pitcher.stuff} · Stam {p.pitcher.stamina} · Velo {p.pitcher.velocity_avg ? p.pitcher.velocity_avg.toFixed(0) : '—'})
+              </option>
+            ))}
+          </select>
+          <div className="mt-4 text-[10px] uppercase tracking-widest text-amber-300 font-bold">
+            Available bullpen ({pitchers.length - (starterId ? 1 : 0)})
           </div>
-        </div>
+          <div className="text-[10px] text-[#a8a8c8] mb-1">All non-starter pitchers are ready to come in.</div>
+          <div className="max-h-60 overflow-y-auto bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded p-2">
+            {pitchers
+              .filter(p => p.id !== starterId)
+              .sort((a, b) => playerOverall(b) - playerOverall(a))
+              .map(p => (
+                <div key={p.id} className="flex justify-between items-center text-[11px] py-0.5 text-[#e8e8e8]">
+                  <span>{p.firstName} {p.lastName}</span>
+                  <span className="text-[10px] text-[#a8a8c8] font-mono">
+                    {p.pitcher.stuff}/{p.pitcher.control}/{p.pitcher.stamina} · OVR {playerOverall(p)}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </PixelCard>
       </div>
 
       <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onCancel} className="px-4 py-2 border rounded text-sm">Cancel</button>
-        <button
-          onClick={handleSave}
-          disabled={!canSave}
-          className="px-6 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40"
-        >
+        <PixelButton onClick={onCancel} accent="#3a3a5e">Cancel</PixelButton>
+        <PixelButton onClick={handleSave} disabled={!canSave}>
           Save lineup
-        </button>
+        </PixelButton>
       </div>
     </div>
+    </GMShell>
   )
+}
+
+/**
+ * Build initial 9-slot batting lineup from saved-state or default. Each slot
+ * has { playerId, position }. If saved data lacks per-slot positions
+ * (older saves), fall back to the player's primaryPosition.
+ */
+function initialSlots(saved, def, allPlayers, eligiblePlayers) {
+  if (saved && saved.batters && saved.batters.length === 9) {
+    return saved.batters.map((pid, i) => {
+      const player = allPlayers[pid]
+      const pos = saved.batterPositions?.[i] || player?.primaryPosition || 'DH'
+      return { playerId: pid, position: pos }
+    })
+  }
+  // From default lineup — populate positions from each batter's primaryPosition.
+  // Then dedupe so every field position is unique. Duplicate slots become DH.
+  const used = new Set()
+  return (def.batters || []).slice(0, 9).map((b, i) => {
+    let pos = b.primaryPosition || 'DH'
+    if (pos !== 'DH' && used.has(pos)) pos = 'DH'
+    if (pos !== 'DH') used.add(pos)
+    return { playerId: b.id, position: pos }
+  })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -771,22 +841,7 @@ function LiveGameView({ save, game, onExit }) {
       {/* SCOREBOARD — broadcast style with linescore by inning */}
       <Scoreboard state={s} homeName={homeName} awayName={awayName} />
 
-      {/* MATCHUP — current batter + pitcher, with rich detail */}
-      {!s.isOver && batter && pitcher && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-          <BatterCard batter={batter} todayLine={batterToday} onDeck={onDeck} inTheHole={inTheHole} side={battingSide} />
-          <PitcherCard
-            pitcher={pitcher}
-            line={s.top ? s.homePitcherLine : s.awayPitcherLine}
-            pitches={s.top ? s.homePitches : s.awayPitches}
-            fatigue={s.top ? s.homeFatigue : s.awayFatigue}
-            confidence={s.top ? s.homeConfidence : s.awayConfidence}
-            bf={s.top ? s.homePitcherBF : s.awayPitcherBF}
-          />
-        </div>
-      )}
-
-      {/* CONTROL BAR — advance + subs */}
+      {/* CONTROL BAR — advance + subs (pinned high, right under scoreboard) */}
       {!s.isOver && (
         <div className="bg-white rounded-xl border border-gray-200 p-3 mb-3 flex flex-wrap items-center gap-2">
           <div className="flex gap-2 flex-1 flex-wrap">
@@ -818,6 +873,32 @@ function LiveGameView({ save, game, onExit }) {
         </div>
       )}
 
+      {/* PLAY-BY-PLAY — pinned high so the latest action is always above the
+          fold. Scrollable list, newest first. */}
+      <div className="bg-white rounded-xl border border-gray-200 p-3 mb-3 max-h-[35vh] overflow-y-auto">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Play-by-play</h2>
+        <div className="space-y-1">
+          {[...s.events].reverse().map((ev, i) => (
+            <EventLine key={s.events.length - 1 - i} ev={ev} />
+          ))}
+        </div>
+      </div>
+
+      {/* MATCHUP — current batter + pitcher, with rich detail */}
+      {!s.isOver && batter && pitcher && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <BatterCard batter={batter} todayLine={batterToday} onDeck={onDeck} inTheHole={inTheHole} side={battingSide} />
+          <PitcherCard
+            pitcher={pitcher}
+            line={s.top ? s.homePitcherLine : s.awayPitcherLine}
+            pitches={s.top ? s.homePitches : s.awayPitches}
+            fatigue={s.top ? s.homeFatigue : s.awayFatigue}
+            confidence={s.top ? s.homeConfidence : s.awayConfidence}
+            bf={s.top ? s.homePitcherBF : s.awayPitcherBF}
+          />
+        </div>
+      )}
+
       {/* Sub menu modal */}
       {subMenuOpen && (
         <SubMenu
@@ -840,16 +921,6 @@ function LiveGameView({ save, game, onExit }) {
           battingIdx={battingIdx}
           userSchool={userSchool}
         />
-      </div>
-
-      {/* Event log */}
-      <div className="bg-white rounded-xl border border-gray-200 p-3 max-h-[40vh] overflow-y-auto">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Play-by-play</h2>
-        <div className="space-y-1">
-          {[...s.events].reverse().map((ev, i) => (
-            <EventLine key={s.events.length - 1 - i} ev={ev} />
-          ))}
-        </div>
       </div>
     </div>
   )
@@ -1329,47 +1400,134 @@ function SubModal({ title, children, onClose }) {
   )
 }
 
-// Synthetic opponent (non-NAIA) — just enough player-shaped objects to feed simPA.
+// Synthetic opponent (non-NAIA) — generates real-looking players for non-NAIA
+// opponents (D1/D2/D3 / NWAC schools) so the live-game UI shows actual names
+// and varied ratings instead of identical "OppBatter1, OppBatter2..." placeholders.
 function makeSyntheticLineup(school, strength) {
-  // strength is roughly -3..+10; map to a ratings mean.
-  const base = 50 + strength * 2
-  function fakeHitter(i) {
+  // strength is roughly -3..+10; map to a ratings MEAN. Each player gets
+  // gaussian noise around it so they're all different.
+  const ratingMean = 50 + strength * 2
+  // Deterministic per-school seed so the same opponent looks the same
+  // across page loads (no headshot-flicker between visits).
+  const seedKey = school?.id || 'synthOpp'
+  const seedNum = stableHash(seedKey)
+  let rngIdx = 0
+  function nextRand() {
+    // Cheap linear-congruential — not crypto, just enough variety
+    rngIdx++
+    const x = Math.sin(seedNum + rngIdx) * 10000
+    return x - Math.floor(x)
+  }
+  function gauss(mean, std) {
+    // Box-Muller
+    const u = Math.max(1e-6, nextRand())
+    const v = nextRand()
+    return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
+  }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+  function name() {
+    const fn = SYNTH_FIRST_NAMES[Math.floor(nextRand() * SYNTH_FIRST_NAMES.length)]
+    const ln = SYNTH_LAST_NAMES[Math.floor(nextRand() * SYNTH_LAST_NAMES.length)]
+    return { firstName: fn, lastName: ln }
+  }
+  function pickClass() {
+    const r = nextRand()
+    if (r < 0.20) return 'FR'
+    if (r < 0.55) return 'SO'
+    if (r < 0.85) return 'JR'
+    return 'SR'
+  }
+  function fakeHitter(i, position) {
+    const { firstName, lastName } = name()
     return {
-      id: `synth_${school?.id || 'opp'}_h${i}`,
-      firstName: 'Opp',
-      lastName: `Batter${i + 1}`,
-      bats: i % 3 === 0 ? 'L' : 'R',
-      throws: 'R',
-      primaryPosition: ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH'][i],
+      id: `synth_${seedKey}_h${i}`,
+      firstName, lastName,
+      bats: nextRand() < 0.28 ? 'L' : (nextRand() < 0.05 ? 'S' : 'R'),
+      throws: nextRand() < 0.20 ? 'L' : 'R',
+      primaryPosition: position,
       isHitter: true, isPitcher: false,
       hitter: {
-        contact_l: base, contact_r: base, power_l: base, power_r: base,
-        discipline: base, speed: base, fielding: base, arm: base,
+        contact_l: Math.round(clamp(gauss(ratingMean, 9), 25, 99)),
+        contact_r: Math.round(clamp(gauss(ratingMean, 9), 25, 99)),
+        power_l:   Math.round(clamp(gauss(ratingMean - 2, 10), 25, 99)),
+        power_r:   Math.round(clamp(gauss(ratingMean - 2, 10), 25, 99)),
+        discipline: Math.round(clamp(gauss(ratingMean, 8), 25, 99)),
+        speed:     Math.round(clamp(gauss(ratingMean, 10), 25, 99)),
+        fielding:  Math.round(clamp(gauss(ratingMean, 9), 25, 99)),
+        arm:       Math.round(clamp(gauss(ratingMean, 10), 25, 99)),
+        composure: Math.round(clamp(gauss(ratingMean, 8), 25, 99)),
+        durability: Math.round(clamp(gauss(ratingMean, 8), 25, 99)),
       },
-      classYear: 'JR',
+      classYear: pickClass(),
     }
   }
-  function fakePitcher(i) {
+  function fakePitcher(i, isStarter) {
+    const { firstName, lastName } = name()
+    const stuffMean = isStarter ? ratingMean + 4 : ratingMean
+    const velo = Math.round(clamp(gauss(85 + strength * 0.5, 2), 75, 99) * 10) / 10
     return {
-      id: `synth_${school?.id || 'opp'}_p${i}`,
-      firstName: 'Opp',
-      lastName: `Pitcher${i + 1}`,
-      bats: 'R', throws: i === 0 ? 'L' : 'R',
+      id: `synth_${seedKey}_p${i}`,
+      firstName, lastName,
+      bats: 'R', throws: nextRand() < 0.30 ? 'L' : 'R',
       primaryPosition: 'P',
       isHitter: false, isPitcher: true,
       pitcher: {
-        stuff: base, control: base, command: base, stamina: base + 5,
-        vs_l: base, vs_r: base, composure: base, durability: base,
-        velocity_avg: 85, velocity_min: 83, velocity_max: 87,
+        stuff: Math.round(clamp(gauss(stuffMean, 10), 25, 99)),
+        control: Math.round(clamp(gauss(ratingMean, 9), 25, 99)),
+        command: Math.round(clamp(gauss(ratingMean, 9), 25, 99)),
+        stamina: Math.round(clamp(gauss(ratingMean + 5, 8), 25, 99)),
+        vs_l: Math.round(clamp(gauss(ratingMean, 10), 25, 99)),
+        vs_r: Math.round(clamp(gauss(ratingMean, 10), 25, 99)),
+        composure: Math.round(clamp(gauss(ratingMean, 8), 25, 99)),
+        durability: Math.round(clamp(gauss(ratingMean, 8), 25, 99)),
+        velocity_avg: velo,
+        velocity_min: Math.round((velo - 2) * 10) / 10,
+        velocity_max: Math.round((velo + 2) * 10) / 10,
       },
-      classYear: 'JR',
+      classYear: pickClass(),
     }
   }
+  const positions = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH']
   return {
-    batters: Array.from({ length: 9 }, (_, i) => fakeHitter(i)),
-    pitcherRotation: Array.from({ length: 5 }, (_, i) => fakePitcher(i)),
+    batters: positions.map((pos, i) => fakeHitter(i, pos)),
+    pitcherRotation: Array.from({ length: 5 }, (_, i) => fakePitcher(i, i === 0)),
+    bench: [],
   }
 }
+
+function stableHash(str) {
+  let h = 5381
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
+// Tiny pool of plausible college-baseball names — used only for non-NAIA
+// opponents (D1/D2/D3/NWAC) where we don't generate real player records.
+const SYNTH_FIRST_NAMES = [
+  'Alex', 'Andrew', 'Anthony', 'Austin', 'Ben', 'Blake', 'Brady', 'Brendan',
+  'Caleb', 'Cameron', 'Carter', 'Chase', 'Chris', 'Cody', 'Connor', 'Cooper',
+  'Cole', 'Dalton', 'Daniel', 'David', 'Derek', 'Dominic', 'Dylan', 'Eli',
+  'Elijah', 'Ethan', 'Evan', 'Garrett', 'Gavin', 'Hayden', 'Hunter', 'Isaac',
+  'Jack', 'Jackson', 'Jacob', 'Jake', 'James', 'Jared', 'Jason', 'Jaxon',
+  'Joey', 'Jordan', 'Joshua', 'Josiah', 'Justin', 'Kade', 'Kaiden', 'Kobe',
+  'Kyle', 'Landon', 'Logan', 'Lucas', 'Luke', 'Mason', 'Matt', 'Max',
+  'Michael', 'Nathan', 'Nick', 'Noah', 'Owen', 'Parker', 'Peyton', 'Preston',
+  'Reese', 'Ryan', 'Sam', 'Sean', 'Seth', 'Shane', 'Spencer', 'Tanner',
+  'Tate', 'Trevor', 'Tyler', 'Wyatt', 'Xavier', 'Zach', 'Brock', 'Trey',
+]
+const SYNTH_LAST_NAMES = [
+  'Adams', 'Allen', 'Anderson', 'Bailey', 'Baker', 'Barnes', 'Bell', 'Bennett',
+  'Brown', 'Bryant', 'Campbell', 'Carter', 'Clark', 'Cole', 'Collins', 'Cook',
+  'Cooper', 'Cox', 'Davis', 'Edwards', 'Evans', 'Fisher', 'Foster', 'Garcia',
+  'Gonzalez', 'Gray', 'Green', 'Hall', 'Hamilton', 'Harris', 'Hayes', 'Henderson',
+  'Hill', 'Howard', 'Hughes', 'Jackson', 'Johnson', 'Jones', 'Kelly', 'King',
+  'Lee', 'Lewis', 'Long', 'Martin', 'Martinez', 'Miller', 'Mitchell', 'Moore',
+  'Morgan', 'Murphy', 'Nelson', 'Owens', 'Parker', 'Patterson', 'Perez', 'Perry',
+  'Peterson', 'Phillips', 'Powell', 'Reed', 'Reyes', 'Rivera', 'Roberts', 'Robinson',
+  'Rodriguez', 'Rogers', 'Russell', 'Sanchez', 'Sanders', 'Scott', 'Smith', 'Stewart',
+  'Sullivan', 'Taylor', 'Thomas', 'Thompson', 'Torres', 'Turner', 'Walker', 'Ward',
+  'Watson', 'White', 'Williams', 'Wilson', 'Wood', 'Wright', 'Young', 'Bishop',
+]
 
 // Accumulate a finished game's box score into save.playerStats. Same shape as
 // season.js does for auto-simmed games. We mirror it here so live games update
