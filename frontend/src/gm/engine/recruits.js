@@ -14,6 +14,7 @@ import { pickFullName } from './names'
 import { pickCityForState } from './cities'
 import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
 import { composePlayerProfile, enforceArchetypeFloors } from './playerArchetypes'
+import { nilAdvantage } from './nil'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
 // Recruit pool sizes. Trimmed in v1.6 — each makeRecruit allocates a fully
@@ -119,14 +120,17 @@ export function generateRecruitPool(year, seed, coach = null, userSchoolId = nul
   const rng = makeRng('recruitPool', year, seed)
   const stateWeights = stateWeightsForCoach(coach)
 
-  // Level-aware pool gating + sizing. NWAC = HS only (no JUCO, no
-  // transfers — players who pick a JUCO are coming from HS). D3 = HS only
-  // because no athletic scholarships → no portal traffic flowing in.
-  // D1/D2/NAIA get the full HS + JUCO pool.
+  // Level-aware pool gating + sizing.
+  //   NWAC: HS only — JUCO players ARE the kids entering NWAC.
+  //   D3:   HS heavy + smaller JUCO + small portal. D3 CAN get JUCO/portal
+  //         guys but it's rarer (no athletic $) — kids choose D3 for the
+  //         academic / "love of the game" reasons, not for the money.
+  //   D1/D2/NAIA: full pools.
   const level = opts.level || 'NAIA'
-  const allowJuco = !['NWAC', 'D3'].includes(level)
-  const hsSize = level === 'NWAC' ? 220 : HS_POOL_SIZE   // NWAC pulls smaller HS pool
-  const jucoSize = allowJuco ? JUCO_POOL_SIZE : 0
+  const hsSize = level === 'NWAC' ? 220 : HS_POOL_SIZE
+  let jucoSize = JUCO_POOL_SIZE
+  if (level === 'NWAC') jucoSize = 0
+  else if (level === 'D3') jucoSize = Math.round(JUCO_POOL_SIZE * 0.4)   // ~40% normal JUCO size
 
   for (let i = 0; i < hsSize; i++) {
     const r = makeRecruit('HS_SR', i, year, rng, stateWeights, null, { level })
@@ -235,29 +239,31 @@ export function generatePortalPool(year, seed, coach = null, opts = {}) {
   const stateWeights = stateWeightsForCoach(coach)
   const level = opts.level || 'NAIA'
 
-  // NWAC + D3 don't receive transfer-in traffic. Return empty portal pool.
-  // NWAC kids are 2-year max and head to 4-yr schools after; D3 has no
-  // athletic $ to attract transfers.
-  if (level === 'NWAC' || level === 'D3') return pool
+  // NWAC has no transfer-in pool (only 2-yr eligibility window).
+  // D3 gets a SMALLER portal pool (no athletic $ → rare transfer
+  // destination, but still attracts a few academic/love-of-game kids).
+  if (level === 'NWAC') return pool
+  // D3 scale factor: ~25% of normal portal sizes
+  const scale = level === 'D3' ? 0.25 : 1.0
+  const naiaSize = Math.round(PORTAL_POOL_SIZE * scale)
+  const d1Size = Math.round(D1_PORTAL_SIZE * scale)
+  const d2Size = Math.round(D2_PORTAL_SIZE * scale)
+  const d3Size = Math.round(D3_PORTAL_SIZE * scale)
 
-  for (let i = 0; i < PORTAL_POOL_SIZE; i++) {
+  for (let i = 0; i < naiaSize; i++) {
     const r = makeRecruit('NAIA_TRANSFER', i, year, rng, stateWeights, null, { level })
     pool[r.id] = r
   }
-  // D1 portal — large pool with two sub-types
-  for (let i = 0; i < D1_PORTAL_SIZE; i++) {
+  for (let i = 0; i < d1Size; i++) {
     const subtype = rng.chance(0.4) ? 'D1_UNDERUSED' : 'D1_YOUNG'
     const r = makeRecruit('D1_TRANSFER', i, year, rng, stateWeights, subtype, { level })
     pool[r.id] = r
   }
-  // D2 portal
-  for (let i = 0; i < D2_PORTAL_SIZE; i++) {
+  for (let i = 0; i < d2Size; i++) {
     const r = makeRecruit('D2_TRANSFER', i, year, rng, stateWeights, null, { level })
     pool[r.id] = r
   }
-  // D3 portal — leaving D3 is more common than entering, so D3 transfers
-  // still appear for D1/D2/NAIA schools to pick from.
-  for (let i = 0; i < D3_PORTAL_SIZE; i++) {
+  for (let i = 0; i < d3Size; i++) {
     const r = makeRecruit('D3_TRANSFER', i, year, rng, stateWeights, null, { level })
     pool[r.id] = r
   }
@@ -1270,7 +1276,7 @@ export function fundraise(apSpent, coachMotivator, programHistory) {
  * @param {string} userSchoolId
  * @param {number} amount   $ per year of scholarship
  */
-export function setLiveOffer(recruit, userSchoolId, amount) {
+export function setLiveOffer(recruit, userSchoolId, amount, nilAmount = 0) {
   if (!recruit.scoutGrades[userSchoolId]) {
     recruit.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
   }
@@ -1280,23 +1286,37 @@ export function setLiveOffer(recruit, userSchoolId, amount) {
     recruit.liveOffer = {
       schoolId: userSchoolId,
       amount,
+      nilAmount: nilAmount || 0,
       weeksOutstanding: 0,
       changes: 1,
     }
-    // Initial interest bump for first offer
-    recruit.scoutGrades[userSchoolId].interest = Math.min(100, recruit.scoutGrades[userSchoolId].interest + 12)
+    // Initial interest bump — bigger when NIL is meaningful
+    let bump = 12
+    if (nilAmount >= 10000) bump += 6
+    if (nilAmount >= 100000) bump += 6
+    recruit.scoutGrades[userSchoolId].interest = Math.min(100, recruit.scoutGrades[userSchoolId].interest + bump)
     recruit.scoutGrades[userSchoolId].actionsApplied.push('SCHOLARSHIP_OFFER')
   } else {
-    // Modification — bigger offer is a positive signal; smaller is negative
-    const delta = amount - existing.amount
-    if (delta > 0) {
-      const bumpPct = Math.min(20, Math.round(delta / 1000))
+    // Modification — bigger offer (scholarship OR NIL) is a positive signal
+    const scholarshipDelta = amount - existing.amount
+    const nilDelta = (nilAmount || 0) - (existing.nilAmount || 0)
+    if (scholarshipDelta > 0) {
+      const bumpPct = Math.min(20, Math.round(scholarshipDelta / 1000))
       recruit.scoutGrades[userSchoolId].interest = Math.min(100, recruit.scoutGrades[userSchoolId].interest + bumpPct)
-    } else if (delta < 0) {
-      const dropPct = Math.min(15, Math.round(-delta / 1000))
+    } else if (scholarshipDelta < 0) {
+      const dropPct = Math.min(15, Math.round(-scholarshipDelta / 1000))
       recruit.scoutGrades[userSchoolId].interest = Math.max(0, recruit.scoutGrades[userSchoolId].interest - dropPct)
     }
+    // NIL bumps on a 10x scale (each +$10K = +1 interest, capped at +30)
+    if (nilDelta > 0) {
+      recruit.scoutGrades[userSchoolId].interest = Math.min(100,
+        recruit.scoutGrades[userSchoolId].interest + Math.min(30, Math.round(nilDelta / 10000)))
+    } else if (nilDelta < 0) {
+      recruit.scoutGrades[userSchoolId].interest = Math.max(0,
+        recruit.scoutGrades[userSchoolId].interest - Math.min(25, Math.round(-nilDelta / 10000)))
+    }
     existing.amount = amount
+    existing.nilAmount = nilAmount || 0
     existing.changes++
   }
   if (!recruit.interestedSchools.includes(userSchoolId)) {
@@ -1339,7 +1359,17 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
 
   // Offer competitiveness — average rival offer is ~$8K-$15K; if our offer is meaningfully above that, helps
   const avgRivalOffer = 8000 + suitorCount * 1500
-  const offerAdvantage = (recruit.liveOffer.amount - avgRivalOffer) / 5000   // -2 to +3 typically
+  let offerAdvantage = (recruit.liveOffer.amount - avgRivalOffer) / 5000   // -2 to +3 typically
+
+  // NIL boost — if the user offered NIL on top of scholarship, that
+  // stacks into offerAdvantage. NIL counts MORE for recruits whose top-3
+  // includes 'financial'. See engine/nil.js for the formula.
+  const nilAmount = recruit.liveOffer.nilAmount || 0
+  if (nilAmount > 0) {
+    const top3 = getTopPriorities(recruit)
+    const caresAboutMoney = top3.includes('financial')
+    offerAdvantage += nilAdvantage(nilAmount, caresAboutMoney)
+  }
 
   // Build per-preference context for the full 8-preference fit calculation.
   // state is optional — when missing, the missing-context prefs just don't
@@ -1388,6 +1418,24 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   // get. After 4 weeks of consideration, +25% per the next 4 weeks.
   const weeksOut = recruit.liveOffer.weeksOutstanding || 0
   if (weeksOut >= 4) baseProb *= 1 + Math.min(0.4, (weeksOut - 4) * 0.07)
+
+  // Financial-priority recruits cool on no-athletic-$ programs (D3, NWAC).
+  // Real-world parallel: a kid whose top priority is "wants $$$" won't
+  // sign at a D3 (no scholarships at all) or NWAC (low tuition but no
+  // recruiting $). If 'financial' is in the recruit's top 3 AND the school
+  // has zero athletic scholarships AND there's no NIL offer, kill the
+  // sign probability hard.
+  const schoolLevel = school.level || 'NAIA'
+  const noAthleticDollars = schoolLevel === 'D3' || schoolLevel === 'NWAC'
+                            || (school.scholarshipPool || 0) === 0
+  if (noAthleticDollars) {
+    const top3 = getTopPriorities(recruit)
+    const wantsMoney = top3.includes('financial') || (recruit.preferences?.financial ?? 0) >= 8
+    const hasNilOffer = (recruit.liveOffer.nilAmount || 0) > 0
+    if (wantsMoney && !hasNilOffer) {
+      baseProb *= 0.25   // financially-motivated kid won't pick a broke school
+    }
+  }
 
   const suitorDivisor = 1 + suitorCount * 0.7   // 1 suitor: ÷1.7; 5 suitors: ÷4.5
 
@@ -1608,8 +1656,18 @@ export function buildRecruitFeedback(recruit, userSchoolId, state) {
   const suitorCount = totalSuitors(recruit)
   const avgRivalOffer = 8000 + suitorCount * 1500
   let offerAdvantage = 0
+  let nilBoost = 0
   if (hasOffer) {
     offerAdvantage = (recruit.liveOffer.amount - avgRivalOffer) / 5000
+    // NIL stacks on top of scholarship advantage. Top-3-financial recruits
+    // weight NIL extra.
+    const nilAmount = recruit.liveOffer.nilAmount || 0
+    if (nilAmount > 0) {
+      const top3 = getTopPriorities(recruit)
+      const caresAboutMoney = top3.includes('financial')
+      nilBoost = nilAdvantage(nilAmount, caresAboutMoney)
+      offerAdvantage += nilBoost
+    }
     ctx.offerAdvantage = offerAdvantage
   }
   const priorityScores = priorityFitScores(recruit, school, ctx)

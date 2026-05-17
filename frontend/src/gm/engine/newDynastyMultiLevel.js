@@ -242,18 +242,64 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
   // Universal-strength projection per the same mapping nwbbRating uses
   const tierBase = { D1: 78, D2: 55, D3: 40, NWAC: 50 }[level] ?? 50
   const programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * 2.0)))
+
   // Resource tier per level (rough budget proxy)
   const resourceTier = level === 'D1' ? 'D1_LITE'
     : level === 'D2' ? 'WELL_FUNDED'
     : level === 'D3' ? 'MID'
     : level === 'NWAC' ? 'SHOESTRING'
     : 'MID'
-  // D3 has NO athletic scholarships — set pool to 0. NWAC = JUCO, no athletic
-  // scholarships either (a few small academic awards).
-  const scholarshipPool = level === 'D3' || level === 'NWAC' ? 0
-    : level === 'D1' ? 800000
-    : level === 'D2' ? 350000
-    : 150000
+
+  // === Tuition realistically varies per level ===
+  // D1 (private + state):  $30K-$60K
+  // D1 publics in-state:   $15K-$30K  (Big Ten state schools, in-state rate)
+  // D2:                    $20K-$40K
+  // D3:                    $45K-$70K  (private LACs are expensive)
+  // NAIA:                  $25K-$45K
+  // NWAC:                  $4K-$8K    (JUCO — way cheaper)
+  // Plus jitter by program prestige (top D1s are more expensive — Stanford
+  // vs Wichita State pricing reality).
+  const tuitionJitter = (programHistory - 50) * 80   // +/- $3K typical
+  let tuition
+  if (level === 'D1')      tuition = 38000 + tuitionJitter
+  else if (level === 'D2') tuition = 28000 + tuitionJitter * 0.5
+  else if (level === 'D3') tuition = 55000 + tuitionJitter * 0.6   // D3 LACs are expensive
+  else if (level === 'NWAC') tuition = 5500 + tuitionJitter * 0.1
+  else tuition = 32000 + tuitionJitter * 0.4   // NAIA
+
+  // === Scholarship pool — per-level realism ===
+  //   D1 baseball gets 11.7 NCAA scholarships split across ~30 players.
+  //     At top-tier programs that's ~$700K-$1.2M in tuition equivalency.
+  //     Bottom D1 maybe $200K-$400K.
+  //   D2: 9 NCAA scholarships → ~$200K-$500K.
+  //   D3: ZERO athletic scholarships. Some academic aid through normal
+  //     admissions; pool is $0 for athletic recruiting purposes.
+  //   NAIA: 12 scholarships per roster → ~$120K-$280K.
+  //   NWAC (JUCO): no formal athletic scholarships, occasional tuition
+  //     waiver. Pool $0 for our model (tuition cost is so low it doesn't
+  //     dominate decisions anyway).
+  let scholarshipPool
+  if (level === 'D1') {
+    scholarshipPool = programHistory >= 75 ? 1_000_000
+      : programHistory >= 60 ? 550_000
+      : 280_000
+  } else if (level === 'D2') {
+    scholarshipPool = programHistory >= 65 ? 480_000 : 220_000
+  } else if (level === 'D3' || level === 'NWAC') {
+    scholarshipPool = 0
+  } else {
+    // NAIA
+    scholarshipPool = programHistory >= 65 ? 280_000 : 140_000
+  }
+
+  // === Coaching budget per level ===
+  let coachingBudget
+  if (level === 'D1') coachingBudget = programHistory >= 75 ? 2_500_000 : 800_000
+  else if (level === 'D2') coachingBudget = 350_000
+  else if (level === 'D3') coachingBudget = 200_000
+  else if (level === 'NWAC') coachingBudget = 80_000
+  else coachingBudget = 150_000   // NAIA
+
   return {
     id,
     name,
@@ -263,10 +309,10 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
     colors,
     conferenceId,
     resourceTier,
-    tuitionPerYear: level === 'D1' ? 55000 : level === 'D2' ? 35000 : level === 'D3' ? 50000 : 12000,
-    roomAndBoardPerYear: 14000,
+    tuitionPerYear: Math.round(tuition),
+    roomAndBoardPerYear: level === 'NWAC' ? 0 : 14000,   // JUCOs are commuter heavy
     scholarshipPool,
-    coachingBudget: level === 'D1' ? 1200000 : level === 'D2' ? 350000 : level === 'D3' ? 200000 : 100000,
+    coachingBudget,
     facilityRating: clamp(50 + (strength || 0) * 1.5, 30, 95),
     programHistory,
     academicReputation: 60,

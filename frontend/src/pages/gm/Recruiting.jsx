@@ -12,6 +12,7 @@ import {
   predictRecruitAttendance, rsvpLabel, CAMP_MAX_INVITES,
   getTopPriorities, priorityFitScores, buildRecruitFeedback,
 } from '../../gm/engine/recruits'
+import { annualNilPoolForSchool, nilOfferCapForSchool, totalNilCommitted, formatNil } from '../../gm/engine/nil'
 import { makeRng } from '../../gm/engine/rng'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
 import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions'
@@ -267,7 +268,7 @@ export default function Recruiting() {
     }
   }
 
-  function handleOffer(recruit, amount) {
+  function handleOffer(recruit, amount, nilAmount = 0) {
     const existing = save.recruits[recruit.id].liveOffer
     const isModification = existing && existing.schoolId === save.userSchoolId
     if (isModification) {
@@ -281,7 +282,7 @@ export default function Recruiting() {
       save.ap.spentByCategory.recruiting = (save.ap.spentByCategory.recruiting || 0) + 1
     }
     // First offer is free; modifications charged above
-    setLiveOffer(save.recruits[recruit.id], save.userSchoolId, amount)
+    setLiveOffer(save.recruits[recruit.id], save.userSchoolId, amount, nilAmount)
     const signRng = makeRng('sign', recruit.id, save.userSchoolId, save.calendar.week)
     const signed = tryAdvanceRecruit(save.recruits[recruit.id], save.userSchoolId, userSchool, signRng, save)
     if (signed) {
@@ -410,11 +411,11 @@ export default function Recruiting() {
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <span className="text-xs text-gray-500 mr-2">Source:</span>
         {(() => {
-          // NWAC + D3 = HS-only recruiting (no JUCO/portal inflow). Hide
-          // those source pills entirely so the user isn't searching for a
-          // JUCO tab that doesn't apply.
+          // NWAC is the only true HS-only level. D3 gets the full slate
+          // of pools but each is smaller (no athletic $ → fewer JUCO/portal
+          // kids ever land at a D3).
           const level = save.level || 'NAIA'
-          const hsOnly = level === 'NWAC' || level === 'D3'
+          const hsOnly = level === 'NWAC'
           const tabs = hsOnly
             ? [{ key: 'ALL', label: 'All' }, { key: 'HS_SR', label: 'HS' }]
             : [
@@ -442,9 +443,14 @@ export default function Recruiting() {
             )
           })
         })()}
-        {(save.level === 'NWAC' || save.level === 'D3') && (
+        {save.level === 'NWAC' && (
           <span className="text-[10px] text-amber-700 ml-2 italic">
-            {save.level === 'NWAC' ? 'NWAC = JUCO. HS recruits only.' : 'D3 = no athletic scholarships. HS recruits only.'}
+            NWAC = JUCO. HS recruits only.
+          </span>
+        )}
+        {save.level === 'D3' && (
+          <span className="text-[10px] text-amber-700 ml-2 italic">
+            D3 = no athletic $. JUCO/portal kids RARE — most want a paid offer elsewhere.
           </span>
         )}
       </div>
@@ -1206,6 +1212,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
   const grade = recruit.scoutGrades[save.userSchoolId] || { noise: 15, interest: 0, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
   const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
   const [offerAmount, setOfferAmount] = useState(recruit.liveOffer?.amount ?? 5000)
+  const [nilOffer, setNilOffer] = useState(recruit.liveOffer?.nilAmount ?? 0)
   const totalSuit = totalSuitors(recruit)
 
   // GATE: no ratings info shown until you've taken ANY scouting action on
@@ -1398,28 +1405,89 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           </div>
           {hasLiveOffer && (
             <div className="text-sm text-gray-700 mb-2">
-              Current offer: <span className="font-bold font-mono text-pnw-green">${(recruit.liveOffer.amount / 1000).toFixed(1)}K</span>
+              Current: <span className="font-bold font-mono text-pnw-green">${(recruit.liveOffer.amount / 1000).toFixed(1)}K scholarship</span>
+              {recruit.liveOffer.nilAmount > 0 && (
+                <span className="ml-2 font-bold font-mono text-amber-700">+ {formatNil(recruit.liveOffer.nilAmount)} NIL</span>
+              )}
               {' '}• {recruit.liveOffer.changes} change{recruit.liveOffer.changes === 1 ? '' : 's'}
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">$</span>
-            <input
-              type="range"
-              min={1000} max={25000} step={500}
-              value={offerAmount}
-              onChange={e => setOfferAmount(parseInt(e.target.value, 10))}
-              className="flex-1"
-            />
-            <span className="font-mono font-bold text-pnw-green w-16 text-right">${(offerAmount / 1000).toFixed(1)}K</span>
-          </div>
-          <div className="text-[10px] text-gray-500 mt-1">
-            Bushnell avg scholarship: <strong>$5K/player</strong>. Anything above $5K is above-average for the program. First offer is free; modifications cost 1 AP.
-          </div>
-          <div className="flex gap-2 mt-2">
+          {/* Scholarship slider — gated by level. D3 + NWAC = no athletic $ */}
+          {(() => {
+            const school = save.schools[save.userSchoolId]
+            const pool = school?.scholarshipPool || 0
+            const noScholarships = pool === 0
+            if (noScholarships) {
+              return (
+                <div className="bg-gray-50 border border-gray-200 rounded p-2 text-[11px] text-gray-700">
+                  <strong>No athletic scholarships</strong> at this level.{' '}
+                  {save.level === 'D3'
+                    ? 'D3 schools can\'t offer athletic aid — focus on academic fit + playing time.'
+                    : save.level === 'NWAC'
+                    ? 'NWAC tuition is low ($5-8K). Cost rarely drives commits at this level.'
+                    : 'Athletic $ unavailable.'}
+                </div>
+              )
+            }
+            return (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">$</span>
+                  <input
+                    type="range"
+                    min={1000} max={Math.max(25000, Math.round((school?.tuitionPerYear || 25000) / 1000) * 1000)} step={500}
+                    value={offerAmount}
+                    onChange={e => setOfferAmount(parseInt(e.target.value, 10))}
+                    className="flex-1"
+                  />
+                  <span className="font-mono font-bold text-pnw-green w-16 text-right">${(offerAmount / 1000).toFixed(1)}K</span>
+                </div>
+                <div className="text-[10px] text-gray-500 mt-1">
+                  School scholarship pool: <strong>${(pool / 1000).toFixed(0)}K/yr</strong>.
+                  First offer is free; modifications cost 1 AP.
+                </div>
+              </>
+            )
+          })()}
+
+          {/* NIL slider — D1 only */}
+          {save.level === 'D1' && (() => {
+            const school = save.schools[save.userSchoolId]
+            const nilPool = annualNilPoolForSchool(school)
+            const nilCap = nilOfferCapForSchool(school)
+            const committed = totalNilCommitted(save) - (recruit.liveOffer?.nilAmount || 0)
+            const remaining = Math.max(0, nilPool - committed)
+            const maxThisOffer = Math.min(nilCap, remaining + (recruit.liveOffer?.nilAmount || 0))
+            return (
+              <div className="mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+                <div className="flex justify-between items-center mb-1">
+                  <div className="text-xs uppercase tracking-wider text-amber-800 font-bold">NIL Offer (D1)</div>
+                  <div className="text-[10px] text-amber-800">
+                    Pool: <strong>{formatNil(nilPool)}</strong> · Remaining: <strong>{formatNil(remaining + (recruit.liveOffer?.nilAmount || 0))}</strong>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0} max={maxThisOffer} step={Math.max(500, Math.round(maxThisOffer / 100))}
+                    value={Math.min(nilOffer, maxThisOffer)}
+                    onChange={e => setNilOffer(parseInt(e.target.value, 10))}
+                    className="flex-1"
+                  />
+                  <span className="font-mono font-bold text-amber-800 w-20 text-right">{formatNil(nilOffer)}</span>
+                </div>
+                <div className="text-[10px] text-amber-900 mt-1">
+                  NIL is cash on top of scholarship — counts 1.5x for $-priority recruits. Per-recruit cap at this program: <strong>{formatNil(nilCap)}</strong>.
+                </div>
+              </div>
+            )
+          })()}
+
+          <div className="flex gap-2 mt-3">
             <button
-              onClick={() => onOffer(recruit, offerAmount)}
+              onClick={() => onOffer(recruit, offerAmount, save.level === 'D1' ? nilOffer : 0)}
               className="flex-1 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
+              disabled={(save.schools[save.userSchoolId]?.scholarshipPool || 0) === 0 && nilOffer === 0}
             >
               {hasLiveOffer ? 'Update Offer (1 AP)' : 'Submit Offer'}
             </button>
