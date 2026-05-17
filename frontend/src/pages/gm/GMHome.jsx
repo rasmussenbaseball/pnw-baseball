@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { listDynasties, deleteDynasty } from '../../gm/engine/save'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell, { PixelCard } from '../../gm/components/GMShell'
 
 export default function GMHome() {
   const { user } = useAuth()
@@ -19,84 +20,90 @@ export default function GMHome() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-pnw-slate">NAIA Baseball GM</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Build a dynasty. Recruit, manage rosters, set lineups, sim seasons.
-        </p>
-        <span className="inline-flex items-center px-2 py-0.5 mt-2 rounded text-[10px] font-bold bg-nw-teal text-white uppercase tracking-wider">
-          Alpha — v1 in progress
-        </span>
-      </div>
-
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold mb-3">Your Dynasties</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[1, 2, 3].map(slot => {
-            const d = dynasties.find(x => x.slot === slot)
-            if (d) {
-              const school = schools[d.userSchoolId]
-              const conf = school ? conferences[school.conferenceId] : null
-              return (
-                <div key={slot} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Slot {slot}</div>
-                  <div className="flex items-center gap-2 mb-1">
-                    {school && <TeamLogo school={school} size={28} />}
-                    <div className="font-semibold text-pnw-slate">{school?.name || 'Unknown school'}</div>
-                  </div>
-                  <div className="text-xs text-gray-500 mb-3">{conf?.abbreviation} • Year {d.year}, Week {d.week}</div>
-                  <div className="flex gap-2">
-                    <Link
-                      to={`/gm/dashboard?slot=${slot}`}
-                      className="flex-1 text-center px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
-                    >
-                      Continue
-                    </Link>
-                    <button
-                      onClick={() => handleDelete(slot)}
-                      className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded text-xs hover:bg-red-50 hover:text-red-700 hover:border-red-200"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              )
-            }
-            return (
-              <Link
-                key={slot}
-                to="/gm/new"
-                className="block bg-white rounded-xl border-2 border-dashed border-gray-200 p-4 hover:border-pnw-green hover:bg-pnw-cream transition"
-              >
-                <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Slot {slot}</div>
-                <div className="font-semibold text-pnw-slate">+ New Dynasty</div>
-                <div className="text-xs text-gray-500 mt-1">Pick a school, build a coach, start the story</div>
-              </Link>
-            )
-          })}
+    <GMShell>
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <h1 className="font-pixel-display text-2xl tracking-widest text-white mb-2">NAIA BASEBALL GM</h1>
+          <p className="font-pixel text-base text-[#a8a8c8]">
+            Build a dynasty. Recruit, manage rosters, set lineups, sim seasons.
+          </p>
+          <span className="inline-block mt-3 px-2 py-1 bg-amber-400 text-[#1a1a2e] font-pixel-display text-[9px] tracking-widest">
+            ALPHA · V1 IN PROGRESS
+          </span>
         </div>
-      </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider mb-2">What's playable in v1.5 (alpha)</h3>
-        <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
-          <li><strong>Bushnell University only</strong> — full national expansion later</li>
-          <li>199 real NAIA programs simulated in the background (PEAR-seeded strength)</li>
-          <li>~7,000 fictional players, ~1,000 coaches across the world</li>
-          <li>Mode select: <em>Traditional</em> (hard sim, injuries on) or <em>Custom</em></li>
-          <li>2027 conference schedule generated; user fills in non-conference</li>
-          <li>PA-level sim engine for your games; fast sim for the rest of the league</li>
-          <li>Custom predictive rankings (replaces NAIA RPI/BoChip)</li>
-        </ul>
-        <h3 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider mt-4 mb-2">Coming next</h3>
-        <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
-          <li>Recruiting board (HS + JUCO + transfer portal)</li>
-          <li>D1/D2/D3 non-conference scheduling</li>
-          <li>NAIA postseason (Opening Round Avista NAIA World Series)</li>
-          <li>Practice / lift / meals (Action Points spent on team development)</li>
-        </ul>
+        <div className="mb-6">
+          <h2 className="font-pixel-display text-sm tracking-widest text-white mb-3">YOUR DYNASTIES</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[1, 2, 3].map(slot => {
+              const d = dynasties.find(x => x.slot === slot)
+              if (d) {
+                const school = schools[d.userSchoolId]
+                const conf = school ? conferences[school.conferenceId] : null
+                return (
+                  <PixelCard
+                    key={slot}
+                    accent={school?.colors?.[0] || '#fbbf24'}
+                    title={`SLOT ${slot}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      {school && <TeamLogo school={school} size={32} />}
+                      <div className="text-white text-base font-bold">{school?.name || 'Unknown school'}</div>
+                    </div>
+                    <div className="text-[#a8a8c8] text-xs mb-3">
+                      {conf?.abbreviation} · Year {d.year}, Week {d.week}
+                    </div>
+                    <div className="flex gap-2">
+                      <Link
+                        to={`/gm/dashboard?slot=${slot}`}
+                        className="flex-1 text-center px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-bold uppercase tracking-wider hover:opacity-90"
+                      >
+                        Continue
+                      </Link>
+                      <button
+                        onClick={() => handleDelete(slot)}
+                        className="px-3 py-1.5 border border-[#3a3a5e] text-[#a8a8c8] rounded text-xs hover:bg-red-900/40 hover:text-red-300 hover:border-red-500/40"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </PixelCard>
+                )
+              }
+              return (
+                <Link
+                  key={slot}
+                  to="/gm/new"
+                  className="block bg-[#23233d] rounded-xl border-4 border-dashed border-[#3a3a5e] p-4 hover:border-amber-300 hover:bg-[#2a2a48] transition"
+                >
+                  <div className="text-[10px] uppercase tracking-widest text-[#a8a8c8] mb-2 font-bold">Slot {slot}</div>
+                  <div className="text-base font-bold text-amber-300">+ New Dynasty</div>
+                  <div className="text-xs text-[#a8a8c8] mt-1">Pick a school, build a coach, start the story.</div>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+
+        <PixelCard accent="#fbbf24" title="WHAT'S IN THE ALPHA">
+          <ul className="text-[#e8e8e8] text-base font-pixel space-y-1 list-disc list-inside">
+            <li><strong className="text-amber-300">Cascade Collegiate Conference</strong> — pick any of the 8 CCC programs. National expansion later.</li>
+            <li><strong>199 real NAIA programs</strong> simulated in the background, rated 1-5 stars by projected national rank.</li>
+            <li><strong>~7,000 fictional players + ~1,000 coaches</strong> generated across the league.</li>
+            <li>Game modes: <em>Traditional</em> (hard sim, injuries on) or <em>Custom</em> with full toggles.</li>
+            <li>PA-level live-game engine for your games; fast sim for the rest of the league.</li>
+            <li>End-of-year MLB Draft + All-Conference + Gold Glove awards.</li>
+            <li>Auto Mode if you want to step back and let the AI co-GM handle weeks for you.</li>
+          </ul>
+          <h3 className="font-pixel-display text-[11px] tracking-widest text-amber-300 mt-4 mb-2">COMING NEXT</h3>
+          <ul className="text-[#a8a8c8] text-sm font-pixel space-y-1 list-disc list-inside">
+            <li>Full PNW NAIA expansion (NWAC partner schools, GNAC additions)</li>
+            <li>Multi-year recruit memory + the JUCO transfer-portal heat map</li>
+            <li>D1/D2/D3 non-conference scheduling improvements</li>
+            <li>Spring-training South trips + travel calendar optimizer</li>
+          </ul>
+        </PixelCard>
       </div>
-    </div>
+    </GMShell>
   )
 }

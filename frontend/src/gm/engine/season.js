@@ -185,7 +185,10 @@ export function simWeek(state, schedule, ratings) {
     // the game. Non-user teams skip injury rolls to keep state small +
     // perf high. Game injuries are surfaced via state._newInjuriesThisWeek
     // so the dashboard WeekRecap can highlight them.
-    if (isUserGame && result.boxscore) {
+    // Custom-mode toggle: skip ALL game-injury rolls when injuriesEnabled
+    // is explicitly false. Traditional mode + default Custom keep them on.
+    const injuriesOn = state.gameOptions?.injuriesEnabled !== false
+    if (isUserGame && result.boxscore && injuriesOn) {
       const rngInj = makeRng('injury', g.id, state.rngSeed)
       const userTeamForInj = state.teams[userSchoolId]
       if (!state._newInjuriesThisWeek) state._newInjuriesThisWeek = []
@@ -744,7 +747,8 @@ export function advanceOneWeek(state) {
   const mode = state.calendar.mode
   const isGameWeek = mode === 'SEASON' || mode === 'POSTSEASON'
     || (nextWeek >= 5 && nextWeek <= 13)   // fall scrimmage weeks
-  if (!isGameWeek && state.teams?.[state.userSchoolId]) {
+  const injuriesOn = state.gameOptions?.injuriesEnabled !== false
+  if (!isGameWeek && state.teams?.[state.userSchoolId] && injuriesOn) {
     const userTeam = state.teams[state.userSchoolId]
     const rngPrac = makeRng('practice_inj', state.rngSeed, state.calendar?.year, nextWeek)
     if (!state._newInjuriesThisWeek) state._newInjuriesThisWeek = []

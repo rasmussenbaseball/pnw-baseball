@@ -42,7 +42,24 @@ const POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'P', 'P', 'P']
 // boost on the coach's two chosen regions. No more PNW-overpower.
 
 function stateWeightsForCoach(coach) {
-  return stateWeightsForRegions(coach?.regions || [])
+  if (!coach) return stateWeightsForRegions([])
+  // Prefer the new tiered form (primary + secondary). Fall back to legacy
+  // regions[] for older saves.
+  if (coach.primaryRegion || coach.secondaryRegion) {
+    return stateWeightsForRegions({
+      primaryRegion: coach.primaryRegion,
+      secondaryRegion: coach.secondaryRegion,
+    })
+  }
+  return stateWeightsForRegions(coach.regions || [])
+}
+
+function coachRegionList(coach) {
+  if (!coach) return []
+  if (coach.primaryRegion || coach.secondaryRegion) {
+    return [coach.primaryRegion, coach.secondaryRegion].filter(Boolean)
+  }
+  return coach.regions || []
 }
 
 /**
@@ -62,11 +79,18 @@ function sampleHomeState(stateWeights, rng) {
  */
 function seedRegionInterest(recruit, userSchoolId, coach) {
   if (!coach) return
-  const inRegion = (coach.regions || []).includes(STATE_TO_REGION[recruit.hometown.state])
-  if (!inRegion) return
+  const recruitRegion = STATE_TO_REGION[recruit.hometown.state]
+  // Primary region recruits get a bigger initial interest seed than
+  // secondary. Falls back to legacy flat region list with the old seed.
+  const isPrimary = coach.primaryRegion === recruitRegion
+  const isSecondary = coach.secondaryRegion === recruitRegion
+  const inLegacyRegion = !coach.primaryRegion && !coach.secondaryRegion &&
+    (coach.regions || []).includes(recruitRegion)
+  if (!isPrimary && !isSecondary && !inLegacyRegion) return
+  const interest = isPrimary ? 12 : (isSecondary ? 7 : 12)
   recruit.scoutGrades[userSchoolId] = {
-    interest: 12,
-    noise: 10,                            // initial board fog (tightened from 15)
+    interest,
+    noise: 10,
     revealedPreferences: [],
     actionsApplied: ['REGION_SEED'],
     apSpent: 0,
@@ -1294,10 +1318,11 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
       // 0 returners 1.0 wide open, 4+ 0.1 jammed
       ctx.ptAvailability = clamp(1 - sameSpot * 0.22, 0.1, 1.0)
     }
-    // Pipeline match: coach's regions include the recruit's home region
-    if (userHC?.regions && Array.isArray(userHC.regions)) {
+    // Pipeline match: recruit's home region matches coach's primary or
+    // secondary region (or legacy regions[] for older saves).
+    if (userHC) {
       const recruitRegion = STATE_TO_REGION[recruit.hometown.state]
-      ctx.pipelineMatch = userHC.regions.includes(recruitRegion)
+      ctx.pipelineMatch = coachRegionList(userHC).includes(recruitRegion)
     }
   }
   const fitScore = computeFitScore(recruit, school, grade.interest, ctx)

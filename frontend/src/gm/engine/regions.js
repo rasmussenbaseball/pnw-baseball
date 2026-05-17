@@ -86,17 +86,32 @@ export const STATE_PROSPECT_WEIGHTS = {
 /**
  * Weighted state pool for recruiting. Combines:
  *   1. State population weight (CA way more than WY)
- *   2. Coach's chosen `regions[]`get a 3x boost
+ *   2. Coach's primary region: 3× boost — your dominant recruiting pipeline
+ *   3. Coach's secondary region: 1.7× boost — a meaningful but smaller pull
  *
- * @param {string[]} coachRegions  Region codes the coach prioritizes
- * @returns {Record<string, number>}  state -> weight
+ * Accepts both legacy array form (coachRegions = ['NW', 'W']) where both
+ * entries get the same 3× boost, AND the new tiered form (coach object with
+ * primaryRegion + secondaryRegion fields).
+ *
+ * @param {string[]|{primaryRegion?: string, secondaryRegion?: string}} regions
  */
-export function stateWeightsForRegions(coachRegions = []) {
-  const boost = new Set(coachRegions)
+export function stateWeightsForRegions(regions = []) {
+  let primary = null
+  let secondary = null
+  if (Array.isArray(regions)) {
+    primary = regions[0] || null
+    secondary = regions[1] || null
+  } else if (regions && typeof regions === 'object') {
+    primary = regions.primaryRegion || null
+    secondary = regions.secondaryRegion || null
+  }
   const out = {}
   for (const [state, region] of Object.entries(STATE_TO_REGION)) {
     const popWeight = STATE_PROSPECT_WEIGHTS[state] ?? 1
-    out[state] = popWeight * (boost.has(region) ? 3 : 1)
+    let mult = 1
+    if (region === primary) mult = 3.0
+    else if (region === secondary) mult = 1.7
+    out[state] = popWeight * mult
   }
   return out
 }

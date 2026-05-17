@@ -10,6 +10,9 @@
  * Staff ratings = average of all coach ratings × synergy multiplier, capped.
  */
 
+// Archetype fixedRatings sum to 200 across (developer, motivator, recruiter,
+// tactician). Generalist is the 50/50/50/50 baseline; specialists trade
+// ~25 points from their weak areas into their headline trait.
 export const ARCHETYPES = {
   TEACHER: {
     key: 'TEACHER',
@@ -17,10 +20,7 @@ export const ARCHETYPES = {
     blurb: 'Player-development focused. Big offseason gains, weaker on recruiting + tactics.',
     color: 'text-pnw-green',
     bias: { developer: +14, motivator: +4, recruiter: -8, tactician: -2 },
-    // Player-facing fixed profile when chosen as HC archetype — sums to
-    // ~250 across the 4 ratings to stay in line with the previous slider
-    // budget. Stays at NAIA-mid-tier overall.
-    fixedRatings: { developer: 80, motivator: 65, recruiter: 50, tactician: 55 },
+    fixedRatings: { developer: 80, motivator: 55, recruiter: 30, tactician: 35 },   // 200
     opposite: 'SHOWMAN',
   },
   SHOWMAN: {
@@ -29,7 +29,7 @@ export const ARCHETYPES = {
     blurb: 'Recruiter + motivator. Wins families over, runs flashy programs; less hands-on dev.',
     color: 'text-amber-700',
     bias: { developer: -8, motivator: +6, recruiter: +14, tactician: -4 },
-    fixedRatings: { developer: 50, motivator: 70, recruiter: 80, tactician: 50 },
+    fixedRatings: { developer: 35, motivator: 55, recruiter: 80, tactician: 30 },   // 200
     opposite: 'TEACHER',
   },
   STRATEGIST: {
@@ -38,7 +38,7 @@ export const ARCHETYPES = {
     blurb: 'Tactician above all. Lineup + bullpen master; less warm with players + recruits.',
     color: 'text-blue-700',
     bias: { developer: 0, motivator: -6, recruiter: -4, tactician: +14 },
-    fixedRatings: { developer: 62, motivator: 50, recruiter: 55, tactician: 83 },
+    fixedRatings: { developer: 45, motivator: 35, recruiter: 40, tactician: 80 },   // 200
     opposite: 'PLAYER_COACH',
   },
   PLAYER_COACH: {
@@ -47,7 +47,7 @@ export const ARCHETYPES = {
     blurb: 'Builds loyalty + happiness. Players love them; in-game tactics aren\'t their strength.',
     color: 'text-red-700',
     bias: { developer: +4, motivator: +14, recruiter: +2, tactician: -8 },
-    fixedRatings: { developer: 65, motivator: 82, recruiter: 65, tactician: 50 },
+    fixedRatings: { developer: 50, motivator: 80, recruiter: 40, tactician: 30 },   // 200
     opposite: 'STRATEGIST',
   },
   GENERALIST: {
@@ -56,7 +56,7 @@ export const ARCHETYPES = {
     blurb: 'No-strong-bias. Solid in everything, exceptional in nothing.',
     color: 'text-gray-700',
     bias: { developer: +2, motivator: +2, recruiter: +2, tactician: +2 },
-    fixedRatings: { developer: 65, motivator: 65, recruiter: 65, tactician: 65 },
+    fixedRatings: { developer: 50, motivator: 50, recruiter: 50, tactician: 50 },   // 200
     opposite: 'GENERALIST',
   },
 }

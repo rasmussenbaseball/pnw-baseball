@@ -1,31 +1,38 @@
+/**
+ * NewDynasty — four-step builder for starting a new dynasty.
+ *   1. Program — pick from any Cascade Collegiate Conference school
+ *   2. Mode    — Traditional (locked) or Custom (game-option toggles)
+ *   3. Coach   — name, headshot, primary + secondary recruiting regions, archetype
+ *   4. Confirm — review + start
+ *
+ * Pixel theme matches the rest of the GM shell. Star-rated school cards
+ * replace the old "MID tier · PEAR 1.23" copy.
+ */
+
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
-import TeamLogo from '../../gm/components/TeamLogo'
-import { prettyLabel } from '../../gm/engine/format'
-
+import { buildProgramRatings, starsToBar } from '../../gm/engine/programRating'
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
 import { ARCHETYPES } from '../../gm/engine/archetypes'
+import TeamLogo from '../../gm/components/TeamLogo'
+import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
+import CoachHeadshot, { COACH_LOOKS } from '../../gm/components/CoachHeadshot'
+import { prettyLabel } from '../../gm/engine/format'
 
-const COACH_BUILDER_TOTAL_POINTS = 250
-const COACH_BUILDER_BASE_RATING = 40
-const COACH_BUILDER_MAX = 90
+// v1.5 alpha — all Cascade Collegiate Conference programs are playable.
+// National expansion later.
+const ALLOWED_CONFERENCE_ID = 'cascade-collegiate'
 
-// Plain-English blurbs shown next to each rating slider so the user understands
-// what they're spending points on. Kept short — full descriptions live in
-// AttrTooltip.ATTR_DESCRIPTIONS for hover tooltips elsewhere.
 const RATING_DESCRIPTIONS = {
-  developer: 'How fast your players progress toward their potential. Higher = bigger offseason gains for everyone on the roster.',
-  motivator: 'Drives team chemistry, GPA boost from coaching, clutch/composure in big moments, and fundraising yield.',
-  recruiter: 'Drives weekly AP earned, the program\'s closing rate on verbals, and how many recruits show up to your prospect camp.',
-  tactician: 'In-game AI decisions — lineup construction, pitching changes, defensive positioning, situational calls.',
+  developer: 'Drives offseason player progression — bigger gains for everyone on the roster.',
+  motivator: 'Team chemistry + GPA boost + clutch/composure in big moments + fundraising yield.',
+  recruiter: 'Weekly AP earned + closing rate on verbals + prospect-camp turnout.',
+  tactician: 'In-game AI calls — lineup, pitching changes, defensive positioning.',
 }
-
-// v1.5 — Bushnell only. Architecture is school-agnostic, just gate selection.
-const ALLOWED_SCHOOL_IDS = ['bushnell']
 
 const GAME_MODE_PRESETS = {
   TRADITIONAL: {
@@ -39,7 +46,7 @@ const GAME_MODE_PRESETS = {
   },
   CUSTOM: {
     label: 'Custom',
-    blurb: 'Pick your own difficulty + feature toggles.',
+    blurb: 'Tweak the sim — turn injuries off, run a low-difficulty starter dynasty, etc.',
     difficulty: 'NORMAL',
     injuriesEnabled: true,
     coachFiringEnabled: false,
@@ -52,34 +59,35 @@ export default function NewDynasty() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { schools, conferences } = useMemo(() => loadSchools(), [])
+  const programRatings = useMemo(() => buildProgramRatings(schools, conferences), [schools, conferences])
 
-  const allowedSchools = useMemo(
-    () => ALLOWED_SCHOOL_IDS.map(id => schools[id]).filter(Boolean),
-    [schools],
-  )
+  // All 8 Cascade Conference schools, sorted by star rating descending
+  const allowedSchools = useMemo(() => {
+    const list = Object.values(schools)
+      .filter(s => s.conferenceId === ALLOWED_CONFERENCE_ID)
+      .map(s => ({ ...s, _rating: programRatings[s.id] || { stars: 2.5, nationalRank: null } }))
+      .sort((a, b) => b._rating.stars - a._rating.stars)
+    return list
+  }, [schools, programRatings])
 
   const [step, setStep] = useState(1)
-  const [selectedSchoolId, setSelectedSchoolId] = useState(allowedSchools[0]?.id || null)
+  const [selectedSchoolId, setSelectedSchoolId] = useState(null)
 
-  // Game mode
   const [modeKey, setModeKey] = useState('TRADITIONAL')
   const [customOptions, setCustomOptions] = useState(GAME_MODE_PRESETS.CUSTOM)
 
-  // Coach
   const [coachFirst, setCoachFirst] = useState('')
   const [coachLast, setCoachLast] = useState('')
-  const [regions, setRegions] = useState(['NW'])
+  const [coachLookId, setCoachLookId] = useState(0)
+  const [primaryRegion, setPrimaryRegion] = useState(null)
+  const [secondaryRegion, setSecondaryRegion] = useState(null)
   const [archetype, setArchetype] = useState('GENERALIST')
 
-  // Ratings are now FULLY determined by the picked archetype — the user
-  // doesn't customize. Identity is the choice; ratings flow from it.
   const ratings = ARCHETYPES[archetype]?.fixedRatings || ARCHETYPES.GENERALIST.fixedRatings
-  const canSubmit = selectedSchoolId && coachFirst && coachLast && archetype
+  const canSubmit = selectedSchoolId && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
 
   function getGameOptions() {
-    if (modeKey === 'TRADITIONAL') {
-      return { mode: 'TRADITIONAL', ...GAME_MODE_PRESETS.TRADITIONAL }
-    }
+    if (modeKey === 'TRADITIONAL') return { mode: 'TRADITIONAL', ...GAME_MODE_PRESETS.TRADITIONAL }
     return { mode: 'CUSTOM', ...customOptions }
   }
 
@@ -93,7 +101,6 @@ export default function NewDynasty() {
       alert('All 3 save slots are used. Delete one to start a new dynasty.')
       return
     }
-
     const school = schools[selectedSchoolId]
     const state = newDynasty({
       userSupabaseId: userId,
@@ -104,280 +111,492 @@ export default function NewDynasty() {
       userCoach: {
         firstName: coachFirst,
         lastName: coachLast,
-        regions,
+        lookId: coachLookId,
+        primaryRegion,
+        secondaryRegion,
+        regions: [primaryRegion, secondaryRegion].filter(Boolean),
         archetype,
         recruiter_type: 'BALANCED',
         ...ratings,
       },
     })
-
     const result = saveDynasty(state)
-    if (!result.ok) {
-      alert('Failed to save: ' + result.error)
-      return
-    }
+    if (!result.ok) { alert('Failed to save: ' + result.error); return }
     navigate(`/gm/dashboard?slot=${slot}`)
   }
 
+  // ── Render ───────────────────────────────────────────────────────────
+
   return (
-    <div className="max-w-5xl mx-auto py-8">
-      <div className="mb-6">
-        <button onClick={() => navigate('/gm')} className="text-sm text-pnw-green hover:underline mb-2">
-          Back to GM home
-        </button>
-        <h1 className="text-3xl font-bold text-pnw-slate">New Dynasty</h1>
-        <p className="text-sm text-gray-600 mt-1">Pick your school, choose your mode, build your coach.</p>
+    <GMShell>
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <button onClick={() => navigate('/gm')} className="text-xs text-amber-300 hover:underline mb-2 font-pixel uppercase tracking-widest">
+            ← Back to GM home
+          </button>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">NEW DYNASTY</h1>
+          <p className="font-pixel text-base text-[#a8a8c8]">Pick your school, choose your mode, build your coach.</p>
+        </div>
+
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <StepDot active={step === 1} done={step > 1} num={1} label="Program" onClick={() => setStep(1)} />
+          <StepDot active={step === 2} done={step > 2} num={2} label="Mode" onClick={() => setStep(2)} />
+          <StepDot active={step === 3} done={step > 3} num={3} label="Coach" onClick={() => setStep(3)} />
+          <StepDot active={step === 4} done={step > 4} num={4} label="Confirm" onClick={() => setStep(4)} />
+        </div>
+
+        {step === 1 && (
+          <ProgramStep
+            schools={allowedSchools}
+            conferences={conferences}
+            selectedSchoolId={selectedSchoolId}
+            setSelectedSchoolId={setSelectedSchoolId}
+            onNext={() => setStep(2)}
+          />
+        )}
+        {step === 2 && (
+          <ModeStep
+            modeKey={modeKey}
+            setModeKey={setModeKey}
+            customOptions={customOptions}
+            setCustomOptions={setCustomOptions}
+            onBack={() => setStep(1)}
+            onNext={() => setStep(3)}
+          />
+        )}
+        {step === 3 && (
+          <CoachStep
+            coachFirst={coachFirst} setCoachFirst={setCoachFirst}
+            coachLast={coachLast} setCoachLast={setCoachLast}
+            coachLookId={coachLookId} setCoachLookId={setCoachLookId}
+            primaryRegion={primaryRegion} setPrimaryRegion={setPrimaryRegion}
+            secondaryRegion={secondaryRegion} setSecondaryRegion={setSecondaryRegion}
+            archetype={archetype} setArchetype={setArchetype}
+            ratings={ratings}
+            onBack={() => setStep(2)}
+            onNext={() => setStep(4)}
+            canNext={!!(coachFirst && coachLast && primaryRegion && secondaryRegion && archetype)}
+          />
+        )}
+        {step === 4 && selectedSchoolId && (
+          <ConfirmStep
+            school={schools[selectedSchoolId]}
+            conf={conferences[schools[selectedSchoolId].conferenceId]}
+            mode={GAME_MODE_PRESETS[modeKey].label}
+            coachFirst={coachFirst}
+            coachLast={coachLast}
+            coachLookId={coachLookId}
+            primaryRegion={primaryRegion}
+            secondaryRegion={secondaryRegion}
+            ratings={ratings}
+            archetype={archetype}
+            canSubmit={canSubmit}
+            onBack={() => setStep(3)}
+            onSubmit={handleCreate}
+          />
+        )}
       </div>
+    </GMShell>
+  )
+}
 
-      <div className="flex gap-2 mb-6">
-        <StepDot active={step === 1} done={step > 1} label="1. Program" onClick={() => setStep(1)} />
-        <StepDot active={step === 2} done={step > 2} label="2. Mode" onClick={() => setStep(2)} />
-        <StepDot active={step === 3} done={step > 3} label="3. Coach" onClick={() => setStep(3)} />
-        <StepDot active={step === 4} done={step > 4} label="4. Confirm" onClick={() => setStep(4)} />
+// ─── Step 1: Program ────────────────────────────────────────────────────────
+
+function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchoolId, onNext }) {
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 1 · CHOOSE YOUR PROGRAM">
+      <p className="text-[#a8a8c8] text-sm mb-4 font-pixel">
+        Alpha launch is the <strong className="text-amber-300">Cascade Collegiate Conference</strong> — 8 PNW + ID programs.
+        National expansion comes next.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        {schools.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSelectedSchoolId(s.id)}
+            className={
+              'flex items-center gap-3 p-3 rounded-xl border-4 text-left transition ' +
+              (selectedSchoolId === s.id
+                ? 'border-amber-300 bg-[#3a3a5e]'
+                : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+            }
+          >
+            <TeamLogo school={s} size={48} />
+            <div className="flex-1 min-w-0">
+              <div className="text-white font-bold truncate">{s.name} {s.nickname}</div>
+              <div className="text-[10px] text-[#a8a8c8] mt-0.5">
+                {s.city}, {s.state} · {conferences[s.conferenceId]?.abbreviation}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5">
+                <StarRow stars={s._rating.stars} />
+                <span className="text-[10px] text-[#a8a8c8] tabular-nums">
+                  #{s._rating.nationalRank} nat'l
+                </span>
+              </div>
+            </div>
+          </button>
+        ))}
       </div>
+      <div className="text-[10px] text-[#a8a8c8] mb-3">
+        <strong className="text-amber-300">Locked:</strong> 191 other NAIA programs across the country. Available in coming releases.
+      </div>
+      <div className="flex justify-end">
+        <PixelButton
+          disabled={!selectedSchoolId}
+          onClick={onNext}
+        >
+          Next: Mode →
+        </PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
 
-      {step === 1 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-3">Choose your program</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            <strong>v1.5 alpha:</strong> the game launches with Bushnell as the only playable program.
-            Coming weeks will add the rest of the PNW NAIA + the full country.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            {allowedSchools.map(s => (
-              <button
-                key={s.id}
-                onClick={() => setSelectedSchoolId(s.id)}
-                className={'flex items-center gap-3 p-4 rounded-xl border-2 text-left transition ' +
-                  (selectedSchoolId === s.id ? 'border-pnw-green bg-pnw-cream' : 'border-gray-200 hover:border-gray-300')
-                }
-              >
-                <TeamLogo school={s} size={48} />
-                <div>
-                  <div className="font-semibold">{s.name} {s.nickname}</div>
-                  <div className="text-xs text-gray-500">{s.city}, {s.state} • {conferences[s.conferenceId]?.abbreviation}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{s.resourceTier} tier • PEAR rating: {s.pearRating.toFixed(2)}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div className="text-xs text-gray-500 mb-4">
-            <strong>Locked:</strong> 198 other NAIA schools, all D1/D2/D3 PNW programs, full national expansion. Available in coming releases.
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              disabled={!selectedSchoolId}
-              onClick={() => setStep(2)}
-              className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300"
-            >
-              Next: Mode 
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-3">Pick your mode</h2>
-
-          {Object.entries(GAME_MODE_PRESETS).map(([key, preset]) => (
-            <button
-              key={key}
-              onClick={() => setModeKey(key)}
-              className={'w-full text-left p-4 rounded-xl border-2 mb-3 transition ' +
-                (modeKey === key ? 'border-pnw-green bg-pnw-cream' : 'border-gray-200 hover:border-gray-300')
-              }
-            >
-              <div className="font-semibold text-pnw-slate">{preset.label}</div>
-              <div className="text-xs text-gray-600 mt-1">{preset.blurb}</div>
-            </button>
-          ))}
-
-          {modeKey === 'CUSTOM' && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-xl space-y-3">
-              <div>
-                <label className="text-xs uppercase tracking-wider text-gray-500">Difficulty</label>
-                <select
-                  className="block w-full mt-1 border rounded px-3 py-2 text-sm"
-                  value={customOptions.difficulty}
-                  onChange={e => setCustomOptions({ ...customOptions, difficulty: e.target.value })}
-                >
-                  {['EASY', 'NORMAL', 'HARD', 'BRUTAL'].map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <Toggle label="Injuries" value={customOptions.injuriesEnabled} onChange={v => setCustomOptions({ ...customOptions, injuriesEnabled: v })} />
-              <Toggle label="Head coach can be fired" value={customOptions.coachFiringEnabled} onChange={v => setCustomOptions({ ...customOptions, coachFiringEnabled: v })} />
-              <Toggle label="Transfer portal" value={customOptions.transferPortalEnabled} onChange={v => setCustomOptions({ ...customOptions, transferPortalEnabled: v })} />
-              <Toggle label="Budget constraints" value={customOptions.budgetConstraintsEnabled} onChange={v => setCustomOptions({ ...customOptions, budgetConstraintsEnabled: v })} />
-            </div>
-          )}
-
-          <div className="flex justify-between mt-4">
-            <button onClick={() => setStep(1)} className="px-4 py-2 border rounded text-sm">Back</button>
-            <button onClick={() => setStep(3)} className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold">
-              Next: Coach 
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-3">Build your coach</h2>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider">First Name</label>
-              <input className="block w-full mt-1 border rounded px-3 py-2 text-sm" value={coachFirst} onChange={e => setCoachFirst(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 uppercase tracking-wider">Last Name</label>
-              <input className="block w-full mt-1 border rounded px-3 py-2 text-sm" value={coachLast} onChange={e => setCoachLast(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 flex justify-between">
-              <span>Recruiting Regions</span>
-              <span className={'normal-case font-mono ' + (regions.length >= 2 ? 'text-amber-700' : 'text-gray-500')}>
-                {regions.length}/2 selected
-              </span>
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {REGIONS.map(r => {
-                const selected = regions.includes(r)
-                const disabled = !selected && regions.length >= 2
-                return (
-                  <button
-                    key={r}
-                    disabled={disabled}
-                    onClick={() => setRegions(selected ? regions.filter(x => x !== r) : [...regions, r])}
-                    className={'text-left p-2 rounded border ' +
-                      (selected ? 'bg-pnw-green text-white border-pnw-green'
-                        : disabled ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-pnw-green')}
-                  >
-                    <div className="font-semibold text-sm">{REGION_LABELS[r]}</div>
-                    <div className={'text-[10px] mt-0.5 ' + (selected ? 'text-pnw-cream' : 'text-gray-500')}>{REGION_BLURBS[r]}</div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* HC archetype — biases what kind of staff syncs with you */}
-          <div className="mb-5">
-            <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 block">Coaching Archetype</label>
-            <p className="text-[11px] text-gray-500 mb-2">
-              Defines your coaching identity. Hiring assistants who share your archetype creates an "echo staff" (+5%);
-              hiring opposites creates a "balanced staff" (+4%).
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-              {Object.values(ARCHETYPES).map(a => {
-                const selected = archetype === a.key
-                return (
-                  <button
-                    key={a.key}
-                    onClick={() => setArchetype(a.key)}
-                    className={'text-left p-2.5 rounded-lg border-2 transition ' +
-                      (selected
-                        ? 'border-pnw-green bg-pnw-cream'
-                        : 'border-gray-200 bg-white hover:border-gray-400')}
-                  >
-                    <div className={'font-bold text-sm ' + a.color}>{a.label}</div>
-                    <div className="text-[10px] text-gray-600 mt-1 leading-snug">{a.blurb}</div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Read-only ratings preview based on selected archetype */}
-          <div className="mb-2">
-            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Your Ratings</label>
-            <p className="text-[11px] text-gray-500 mb-2">
-              Locked to your archetype. Identity is the choice — ratings flow from it.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {Object.entries(ratings).map(([key, val]) => (
-              <div key={key} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
-                <div className="flex justify-between items-baseline">
-                  <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">{prettyLabel(key)}</span>
-                  <span className="font-mono text-pnw-green font-bold text-xl">{val}</span>
-                </div>
-                <p className="text-[10px] text-gray-600 mt-1 leading-snug">
-                  {RATING_DESCRIPTIONS[key]}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex justify-between mt-4">
-            <button onClick={() => setStep(2)} className="px-4 py-2 border rounded text-sm">Back</button>
-            <button
-              disabled={!coachFirst || !coachLast || !archetype}
-              onClick={() => setStep(4)}
-              className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300"
-            >
-              Next: Confirm 
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 4 && selectedSchoolId && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-3">Confirm and start dynasty</h2>
-          <div className="text-sm space-y-2 mb-6">
-            <div><strong>School:</strong> {schools[selectedSchoolId].name} ({conferences[schools[selectedSchoolId].conferenceId].abbreviation})</div>
-            <div><strong>Mode:</strong> {GAME_MODE_PRESETS[modeKey].label}</div>
-            <div><strong>Coach:</strong> {coachFirst} {coachLast}</div>
-            <div><strong>Regions of expertise:</strong> {regions.length ? regions.map(r => REGION_LABELS[r]).join(', ') : 'none'}</div>
-            <div><strong>Coach ratings:</strong> {Object.entries(ratings).map(([k, v]) => `${k}=${v}`).join(' • ')}</div>
-          </div>
-          <p className="text-xs text-gray-500 mb-4">
-            Generating the world: 199 schools, ~7,000 players, ~1,000 coaches, full 2027 schedule. Should take less than a second.
-          </p>
-          <div className="flex justify-between">
-            <button onClick={() => setStep(3)} className="px-4 py-2 border rounded text-sm">Back</button>
-            <button
-              disabled={!canSubmit}
-              onClick={handleCreate}
-              className="px-6 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300"
-            >
-              Start Dynasty
-            </button>
-          </div>
-        </div>
-      )}
+function StarRow({ stars }) {
+  const bar = starsToBar(stars)
+  return (
+    <div className="flex gap-0.5">
+      {bar.map((kind, i) => (
+        <span key={i} className={
+          kind === 'full' ? 'text-amber-300' :
+          kind === 'half' ? 'text-amber-300/60' :
+          'text-[#3a3a5e]'
+        }>★</span>
+      ))}
     </div>
   )
 }
 
-function StepDot({ active, done, label, onClick }) {
+// ─── Step 2: Mode ───────────────────────────────────────────────────────────
+
+function ModeStep({ modeKey, setModeKey, customOptions, setCustomOptions, onBack, onNext }) {
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 2 · PICK YOUR MODE">
+      {Object.entries(GAME_MODE_PRESETS).map(([key, preset]) => (
+        <button
+          key={key}
+          onClick={() => setModeKey(key)}
+          className={
+            'w-full text-left p-4 rounded-xl border-4 mb-3 transition ' +
+            (modeKey === key ? 'border-amber-300 bg-[#3a3a5e]' : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+          }
+        >
+          <div className="font-bold text-white text-base">{preset.label}</div>
+          <div className="text-xs text-[#a8a8c8] mt-1">{preset.blurb}</div>
+        </button>
+      ))}
+
+      {modeKey === 'CUSTOM' && (
+        <div className="mt-4 p-4 bg-[#23233d] rounded-xl space-y-3 border-4 border-[#3a3a5e]">
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold">Difficulty</label>
+            <p className="text-[10px] text-[#a8a8c8] mb-1">Affects AI rival strength and overall challenge.</p>
+            <select
+              className="block w-full mt-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-sm text-white"
+              value={customOptions.difficulty}
+              onChange={e => setCustomOptions({ ...customOptions, difficulty: e.target.value })}
+            >
+              {['EASY', 'NORMAL', 'HARD', 'BRUTAL'].map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <Toggle
+            label="Injuries"
+            sub="Players can get hurt in games + practice. Recommended on for realism."
+            value={customOptions.injuriesEnabled}
+            onChange={v => setCustomOptions({ ...customOptions, injuriesEnabled: v })}
+          />
+          <Toggle
+            label="Transfer portal"
+            sub="Inbound + outbound transfers each offseason."
+            value={customOptions.transferPortalEnabled}
+            onChange={v => setCustomOptions({ ...customOptions, transferPortalEnabled: v })}
+          />
+          <Toggle
+            label="Budget constraints"
+            sub="Hard cap on annual athletic budget. Off = unlimited spending."
+            value={customOptions.budgetConstraintsEnabled}
+            onChange={v => setCustomOptions({ ...customOptions, budgetConstraintsEnabled: v })}
+          />
+          <Toggle
+            label="Head coach can be fired"
+            sub="Job security can drop to zero and end your dynasty."
+            value={customOptions.coachFiringEnabled}
+            onChange={v => setCustomOptions({ ...customOptions, coachFiringEnabled: v })}
+          />
+          <div className="text-[10px] text-amber-300 italic">
+            Some Custom toggles are wired (injuries, difficulty); others are scaffolded for upcoming releases.
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-between mt-4">
+        <PixelButton onClick={onBack} accent="#3a3a5e">← Back</PixelButton>
+        <PixelButton onClick={onNext}>Next: Coach →</PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+// ─── Step 3: Coach ──────────────────────────────────────────────────────────
+
+function CoachStep({
+  coachFirst, setCoachFirst, coachLast, setCoachLast,
+  coachLookId, setCoachLookId,
+  primaryRegion, setPrimaryRegion,
+  secondaryRegion, setSecondaryRegion,
+  archetype, setArchetype, ratings,
+  onBack, onNext, canNext,
+}) {
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 3 · BUILD YOUR COACH">
+      {/* Name + headshot */}
+      <div className="grid grid-cols-1 md:grid-cols-[120px_1fr] gap-4 mb-5">
+        <div>
+          <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold block mb-2">Portrait</label>
+          <div className="bg-[#1a1a2e] border-4 border-[#3a3a5e] rounded-lg p-2 flex items-center justify-center">
+            <CoachHeadshot lookId={coachLookId} size={96} />
+          </div>
+        </div>
+        <div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold">First Name</label>
+              <input
+                className="block w-full mt-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-sm text-white"
+                value={coachFirst} onChange={e => setCoachFirst(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold">Last Name</label>
+              <input
+                className="block w-full mt-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-sm text-white"
+                value={coachLast} onChange={e => setCoachLast(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="text-[10px] text-[#a8a8c8] uppercase tracking-widest mb-1">Pick a look</div>
+          <div className="grid grid-cols-10 gap-1">
+            {COACH_LOOKS.map(look => (
+              <button
+                key={look.id}
+                onClick={() => setCoachLookId(look.id)}
+                className={
+                  'p-0.5 rounded transition ' +
+                  (coachLookId === look.id ? 'bg-amber-300' : 'bg-[#3a3a5e] hover:bg-[#5a5a8e]')
+                }
+              >
+                <CoachHeadshot lookId={look.id} size={28} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Regions */}
+      <div className="mb-5">
+        <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold mb-1 block">
+          Recruiting Regions
+        </label>
+        <p className="text-[10px] text-[#a8a8c8] mb-2">
+          Pick a <strong className="text-amber-300">primary region (3× boost)</strong> and a
+          <strong className="text-amber-300"> secondary region (1.7× boost)</strong>. Recruits from
+          these regions flow to you more often and arrive on the board with some interest already.
+        </p>
+        <RegionPicker
+          label="Primary"
+          value={primaryRegion}
+          setValue={(r) => {
+            setPrimaryRegion(r)
+            if (secondaryRegion === r) setSecondaryRegion(null)
+          }}
+          excludeValue={secondaryRegion}
+          accent="#fbbf24"
+        />
+        <div className="mt-3">
+          <RegionPicker
+            label="Secondary"
+            value={secondaryRegion}
+            setValue={setSecondaryRegion}
+            excludeValue={primaryRegion}
+            disabled={!primaryRegion}
+            accent="#94a3b8"
+          />
+        </div>
+      </div>
+
+      {/* Archetype */}
+      <div className="mb-5">
+        <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold mb-1 block">
+          Coaching Archetype
+        </label>
+        <p className="text-[10px] text-[#a8a8c8] mb-2">
+          Your coaching identity. Ratings always sum to 200 — specialists trade their weak areas for a headline strength.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          {Object.values(ARCHETYPES).map(a => {
+            const selected = archetype === a.key
+            return (
+              <button
+                key={a.key}
+                onClick={() => setArchetype(a.key)}
+                className={
+                  'text-left p-2.5 rounded-lg border-4 transition bg-[#23233d] ' +
+                  (selected ? 'border-amber-300' : 'border-[#3a3a5e] hover:border-[#5a5a8e]')
+                }
+              >
+                <div className={'font-bold text-sm ' + (selected ? 'text-amber-300' : 'text-white')}>{a.label}</div>
+                <div className="text-[10px] text-[#a8a8c8] mt-1 leading-snug">{a.blurb}</div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Ratings */}
+      <div className="mb-3">
+        <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold block mb-1">
+          Your Ratings · Total {Object.values(ratings).reduce((s, v) => s + v, 0)}
+        </label>
+        <p className="text-[10px] text-[#a8a8c8] mb-2">
+          Locked to your archetype. The four numbers always add up to 200.
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(ratings).map(([key, val]) => (
+            <div key={key} className="border-2 border-[#3a3a5e] rounded-lg p-3 bg-[#23233d]">
+              <div className="flex justify-between items-baseline">
+                <span className="text-[10px] text-[#a8a8c8] uppercase tracking-widest font-bold">{prettyLabel(key)}</span>
+                <span className="font-mono text-amber-300 font-bold text-xl">{val}</span>
+              </div>
+              <p className="text-[10px] text-[#a8a8c8] mt-1 leading-snug">{RATING_DESCRIPTIONS[key]}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex justify-between mt-5">
+        <PixelButton onClick={onBack} accent="#3a3a5e">← Back</PixelButton>
+        <PixelButton disabled={!canNext} onClick={onNext}>Next: Confirm →</PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+function RegionPicker({ label, value, setValue, excludeValue, disabled = false, accent }) {
+  return (
+    <div className={disabled ? 'opacity-50 pointer-events-none' : ''}>
+      <div className="text-[10px] uppercase tracking-widest font-bold mb-1" style={{ color: accent }}>
+        {label} region {value ? '· ' + REGION_LABELS[value] : '· (select one)'}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {REGIONS.map(r => {
+          const selected = value === r
+          const isExcluded = excludeValue === r
+          return (
+            <button
+              key={r}
+              disabled={isExcluded}
+              onClick={() => setValue(r)}
+              className={
+                'text-left p-2 rounded border-2 transition ' +
+                (selected
+                  ? 'border-current text-[#1a1a2e]'
+                  : isExcluded
+                  ? 'bg-[#1a1a2e] text-[#3a3a5e] border-[#3a3a5e] cursor-not-allowed'
+                  : 'bg-[#23233d] text-white border-[#3a3a5e] hover:border-[#5a5a8e]')
+              }
+              style={selected ? { backgroundColor: accent, borderColor: accent } : {}}
+            >
+              <div className="font-bold text-sm">{REGION_LABELS[r]}</div>
+              <div className={'text-[10px] mt-0.5 ' + (selected ? 'text-[#1a1a2e]/70' : 'text-[#a8a8c8]')}>{REGION_BLURBS[r]}</div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Step 4: Confirm ────────────────────────────────────────────────────────
+
+function ConfirmStep({ school, conf, mode, coachFirst, coachLast, coachLookId, primaryRegion, secondaryRegion, ratings, archetype, canSubmit, onBack, onSubmit }) {
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 4 · CONFIRM AND START">
+      <div className="grid grid-cols-1 md:grid-cols-[120px_1fr] gap-4 mb-6">
+        <div className="bg-[#1a1a2e] border-4 border-[#3a3a5e] rounded-lg p-2 flex items-center justify-center">
+          <CoachHeadshot lookId={coachLookId} size={96} />
+        </div>
+        <div className="space-y-1.5 text-sm font-pixel text-[#e8e8e8]">
+          <div className="flex items-center gap-2">
+            <TeamLogo school={school} size={28} />
+            <div className="font-bold text-base">{school.name}</div>
+            <span className="text-[#a8a8c8] text-xs">({conf.abbreviation})</span>
+          </div>
+          <div><span className="text-[#a8a8c8]">Mode:</span> <strong>{mode}</strong></div>
+          <div><span className="text-[#a8a8c8]">Coach:</span> <strong>{coachFirst} {coachLast}</strong></div>
+          <div>
+            <span className="text-[#a8a8c8]">Regions:</span>{' '}
+            <strong>{primaryRegion && REGION_LABELS[primaryRegion]}</strong>
+            {' '}(primary, 3× boost) ·{' '}
+            <strong>{secondaryRegion && REGION_LABELS[secondaryRegion]}</strong>
+            {' '}(secondary, 1.7×)
+          </div>
+          <div>
+            <span className="text-[#a8a8c8]">Archetype:</span>{' '}
+            <strong>{ARCHETYPES[archetype]?.label}</strong>
+          </div>
+          <div className="grid grid-cols-4 gap-2 mt-2">
+            {Object.entries(ratings).map(([k, v]) => (
+              <div key={k} className="bg-[#23233d] rounded p-1.5 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-[#a8a8c8]">{prettyLabel(k)}</div>
+                <div className="font-mono font-bold text-amber-300">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] text-[#a8a8c8] mb-4 italic">
+        Generating the world: 199 NAIA programs, ~7,000 players, ~1,000 coaches, full {school?.region || 'PNW'} schedule. Should take less than a second.
+      </p>
+      <div className="flex justify-between">
+        <PixelButton onClick={onBack} accent="#3a3a5e">← Back</PixelButton>
+        <PixelButton disabled={!canSubmit} onClick={onSubmit}>Start Dynasty →</PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function StepDot({ active, done, num, label, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={'flex-1 px-3 py-2 rounded text-xs font-semibold ' +
-        (active ? 'bg-pnw-green text-white' : done ? 'bg-pnw-cream text-pnw-slate' : 'bg-gray-100 text-gray-500')
+      className={
+        'flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition flex items-center gap-2 ' +
+        (active
+          ? 'bg-amber-300 text-[#1a1a2e]'
+          : done
+          ? 'bg-[#3a3a5e] text-amber-300'
+          : 'bg-[#23233d] text-[#a8a8c8]')
       }
     >
-      {label}
+      <span className="w-5 h-5 rounded-full bg-black/30 flex items-center justify-center text-[10px] font-mono">{num}</span>
+      <span>{label}</span>
     </button>
   )
 }
 
-function Toggle({ label, value, onChange }) {
+function Toggle({ label, sub, value, onChange }) {
   return (
-    <label className="flex items-center justify-between cursor-pointer">
-      <span className="text-sm text-gray-700">{label}</span>
+    <label className="flex items-start justify-between cursor-pointer gap-3 py-1">
+      <div className="flex-1">
+        <div className="text-sm text-white font-semibold">{label}</div>
+        {sub && <div className="text-[10px] text-[#a8a8c8] mt-0.5">{sub}</div>}
+      </div>
       <button
+        type="button"
         onClick={() => onChange(!value)}
-        className={'w-10 h-6 rounded-full relative transition ' + (value ? 'bg-pnw-green' : 'bg-gray-300')}
+        className={'w-10 h-6 rounded-full relative transition shrink-0 mt-0.5 ' + (value ? 'bg-amber-300' : 'bg-[#3a3a5e]')}
       >
         <span
           className={'absolute top-0.5 w-5 h-5 bg-white rounded-full transition ' + (value ? 'left-[18px]' : 'left-0.5')}
