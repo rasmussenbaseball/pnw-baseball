@@ -26,6 +26,7 @@ import {
 import { findBlockingPriorGame } from '../../gm/engine/schedule'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
+import PixelSelect from '../../gm/components/PixelSelect'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 // Was the user's prior game on the same date already played? Used by the
@@ -706,75 +707,68 @@ function LineupEditor({ save, game, onSave, onCancel }) {
             be your best bat regardless of natural position. Every field
             position (C, 1B, 2B, SS, 3B, LF, CF, RF) must be filled exactly once.
           </div>
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={() => setSlots(buildBestLineup(players))}
+              className="text-[10px] font-pixel uppercase tracking-widest px-2 py-1 border-2 border-amber-400 text-amber-300 rounded hover:bg-amber-400/10"
+              title="Auto-fill every slot with the best available player at each position; DH = best remaining bat."
+            >
+              Create best lineup
+            </button>
+          </div>
           <div className="space-y-1.5">
             {slots.map((slot, i) => {
               const p = save.players[slot.playerId]
               const slotPos = slot.position
               const sorted = hittersByPos[slotPos] || hitters
-              // Find the first index per-fit-bucket so we can insert dividers
-              // in the select via an OPTGROUP per bucket.
               const buckets = { NATIVE: [], NEIGHBOR: [], STRETCH: [], OUT: [] }
-              for (const h of sorted) {
-                buckets[positionFit(h, slotPos)].push(h)
-              }
+              for (const h of sorted) buckets[positionFit(h, slotPos)].push(h)
               const fitOfSelected = p ? positionFit(p, slotPos) : 'NATIVE'
               const warning = positionFitLabel(p, slotPos)
               const energy = getEnergy(save, slot.playerId)
+              // Build PixelSelect groups w/ energy + OVR + fit indicators
+              const playerGroups = []
+              const BUCKET_LABELS = {
+                NATIVE: `Plays ${slotPos}`,
+                NEIGHBOR: 'Off-position (-6 DEF)',
+                STRETCH: 'Stretch (-12 DEF)',
+                OUT: 'Out of position (-22 DEF)',
+              }
+              for (const tier of ['NATIVE', 'NEIGHBOR', 'STRETCH', 'OUT']) {
+                if (buckets[tier].length === 0) continue
+                playerGroups.push({
+                  label: BUCKET_LABELS[tier],
+                  items: buckets[tier].map(h => {
+                    const e = getEnergy(save, h.id)
+                    const taken = usedIds.has(h.id) && h.id !== slot.playerId
+                    const ovr = playerOverall(h)
+                    return {
+                      value: h.id,
+                      label: `${h.firstName} ${h.lastName}`,
+                      sub: `${displayPosition(h.primaryPosition)} · OVR ${ovr} · NRG ${Math.round(e)}${taken ? ' · IN LINEUP' : ''}`,
+                      disabled: taken,
+                    }
+                  }),
+                })
+              }
               return (
                 <div key={i}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-amber-300 font-bold w-6">{i + 1}.</span>
-                    <select
+                    <PixelSelect
                       value={slot.playerId || ''}
-                      onChange={e => setSlotPlayer(i, e.target.value)}
-                      className="flex-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-sm text-white"
-                    >
-                      <option value="">— pick player —</option>
-                      {buckets.NATIVE.length > 0 && (
-                        <optgroup label={`Plays ${slotPos}`}>
-                          {buckets.NATIVE.map(h => (
-                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
-                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {buckets.NEIGHBOR.length > 0 && (
-                        <optgroup label="Off-position (small DEF drop)">
-                          {buckets.NEIGHBOR.map(h => (
-                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
-                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {buckets.STRETCH.length > 0 && (
-                        <optgroup label="Stretch (big DEF drop)">
-                          {buckets.STRETCH.map(h => (
-                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
-                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {buckets.OUT.length > 0 && (
-                        <optgroup label="Out of position (DEF trainwreck)">
-                          {buckets.OUT.map(h => (
-                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
-                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                    <select
+                      onChange={(v) => setSlotPlayer(i, v)}
+                      placeholder="— pick player —"
+                      groups={playerGroups}
+                    />
+                    <PixelSelect
                       value={slot.position}
-                      onChange={e => setSlotPosition(i, e.target.value)}
-                      className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-xs text-white w-16"
-                      title="Field position"
-                    >
-                      {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
-                    </select>
+                      onChange={(v) => setSlotPosition(i, v)}
+                      width="68px"
+                      align="end"
+                      options={POSITIONS.map(pos => ({ value: pos, label: pos }))}
+                    />
                     <div className="flex flex-col gap-0.5">
                       <button
                         onClick={() => moveSpot(i, -1)}
@@ -788,11 +782,11 @@ function LineupEditor({ save, game, onSave, onCancel }) {
                       >▼</button>
                     </div>
                   </div>
-                  {(warning || energy < 85) && (
+                  {(warning || (p && energy < 85)) && (
                     <div className="pl-8 mt-0.5 flex items-center gap-3 text-[10px]">
                       {warning && (
                         <span className={fitOfSelected === 'OUT' ? 'text-red-400 font-bold' : fitOfSelected === 'STRETCH' ? 'text-orange-300' : 'text-amber-200'}>
-                          ⚠ {warning}
+                          [!] {warning}
                         </span>
                       )}
                       {p && energy < 85 && (
@@ -820,18 +814,21 @@ function LineupEditor({ save, game, onSave, onCancel }) {
             come in from the bullpen during the game via the live-game sub
             menu. No need to pre-select a bullpen.
           </div>
-          <select
+          <PixelSelect
             value={starterId || ''}
-            onChange={e => setStarterId(e.target.value)}
-            className="block w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-2 text-sm text-white"
-          >
-            <option value="">— pick a starter —</option>
-            {pitchers.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName} ({displayClassYear(p)} · Stuff {p.pitcher.stuff} · Stam {p.pitcher.stamina} · Velo {p.pitcher.velocity_avg ? p.pitcher.velocity_avg.toFixed(0) : '—'})
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setStarterId(v)}
+            placeholder="— pick a starter —"
+            options={[...pitchers]
+              .sort((a, b) => playerOverall(b) - playerOverall(a))
+              .map(p => {
+                const e = getEnergy(save, p.id)
+                return {
+                  value: p.id,
+                  label: `${p.firstName} ${p.lastName}`,
+                  sub: `${displayClassYear(p)} · Stuff ${p.pitcher.stuff} · Stam ${p.pitcher.stamina} · Velo ${p.pitcher.velocity_avg ? p.pitcher.velocity_avg.toFixed(0) : '—'} · NRG ${Math.round(e)}`,
+                }
+              })}
+          />
           <div className="mt-4 text-[10px] uppercase tracking-widest text-amber-300 font-bold">
             Available bullpen ({pitchers.length - (starterId ? 1 : 0)})
           </div>
@@ -864,9 +861,10 @@ function LineupEditor({ save, game, onSave, onCancel }) {
 }
 
 /**
- * Build initial 9-slot batting lineup from saved-state or default. Each slot
- * has { playerId, position }. If saved data lacks per-slot positions
- * (older saves), fall back to the player's primaryPosition.
+ * Build initial 9-slot batting lineup from saved-state or — when no save
+ * exists — from buildBestLineup. The old version naively took top-9 by
+ * OVR and tried to dedupe positions, which gave the user weird "3 DH"
+ * lineups when multiple top bats shared a primary position.
  */
 function initialSlots(saved, def, allPlayers, eligiblePlayers) {
   if (saved && saved.batters && saved.batters.length === 9) {
@@ -876,15 +874,66 @@ function initialSlots(saved, def, allPlayers, eligiblePlayers) {
       return { playerId: pid, position: pos }
     })
   }
-  // From default lineup — populate positions from each batter's primaryPosition.
-  // Then dedupe so every field position is unique. Duplicate slots become DH.
-  const used = new Set()
-  return (def.batters || []).slice(0, 9).map((b, i) => {
-    let pos = b.primaryPosition || 'DH'
-    if (pos !== 'DH' && used.has(pos)) pos = 'DH'
-    if (pos !== 'DH') used.add(pos)
-    return { playerId: b.id, position: pos }
-  })
+  return buildBestLineup(eligiblePlayers)
+}
+
+/**
+ * Construct a balanced 9-slot lineup: every field position (C/1B/2B/3B/SS/
+ * LF/CF/RF) filled by the best available player at that position; DH is the
+ * best remaining bat regardless of position.
+ *
+ * Algorithm:
+ *   1. List of hitters, sorted by playerOverall descending.
+ *   2. For each FIELD position (C first — hardest to backfill — then IF
+ *      corners, then middle IF, then OF), assign the best UNASSIGNED player
+ *      with the best position fit. Ties broken by overall.
+ *   3. DH = best remaining hitter.
+ *
+ * Returns 9 slot objects `{ playerId, position }` in default batting-order
+ * shape (best OVR leads off, second-best 3rd hole, then descending — a
+ * generic baseball ordering that's a reasonable starting point).
+ */
+function buildBestLineup(eligiblePlayers) {
+  const hitters = (eligiblePlayers || []).filter(p => !p.isPitcher)
+  const byOvr = [...hitters].sort((a, b) => playerOverall(b) - playerOverall(a))
+  const assigned = new Set()
+  const slotByPos = {}
+
+  // Assign each fielding position with fit-aware greedy. C first because
+  // a non-C playing C is the worst penalty in the engine.
+  const FIELD_ORDER = ['C', 'SS', '3B', '2B', '1B', 'CF', 'RF', 'LF']
+  for (const pos of FIELD_ORDER) {
+    let pick = null
+    // Pass 1: NATIVE only. Pass 2: NEIGHBOR. Pass 3: STRETCH. Pass 4: OUT.
+    for (const tier of ['NATIVE', 'NEIGHBOR', 'STRETCH', 'OUT']) {
+      pick = byOvr.find(p => !assigned.has(p.id) && positionFit(p, pos) === tier)
+      if (pick) break
+    }
+    if (pick) {
+      assigned.add(pick.id)
+      slotByPos[pos] = pick
+    }
+  }
+  // DH = best remaining bat
+  const dh = byOvr.find(p => !assigned.has(p.id))
+  if (dh) {
+    assigned.add(dh.id)
+    slotByPos['DH'] = dh
+  }
+
+  // Build batting order: 1-2-3 = top three OVRs (regardless of position),
+  // then 4-5-6 = next three, then 7-8-9 = rest. This produces a balanced
+  // top-of-order without the user having to rearrange.
+  const ordered = Object.entries(slotByPos)
+    .map(([pos, p]) => ({ pos, p }))
+    .sort((a, b) => playerOverall(b.p) - playerOverall(a.p))
+  // Ensure DH appears somewhere in the lineup; ordering above is by OVR
+  // which is fine. Pad to 9 with empties if the team is short on hitters.
+  while (ordered.length < 9) ordered.push({ pos: 'DH', p: null })
+  return ordered.slice(0, 9).map(({ pos, p }) => ({
+    playerId: p?.id || '',
+    position: pos,
+  }))
 }
 
 // ────────────────────────────────────────────────────────────────────────────

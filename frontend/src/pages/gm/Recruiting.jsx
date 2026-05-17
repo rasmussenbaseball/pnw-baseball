@@ -211,8 +211,21 @@ export default function Recruiting() {
       }
       if (sortBy === 'INTEREST') return b.interest - a.interest
       if (sortBy === 'SCOUTED')  return b.scoutedPct - a.scoutedPct
-      if (sortBy === 'EST_OVR')  return b.estOvr - a.estOvr
-      if (sortBy === 'EST_POT')  return b.estPot - a.estPot
+      // OVR/POT sorts: unscouted recruits (scoutedPct < 25) must NOT bubble
+      // to the top — that would give away ratings the user paid AP to learn.
+      // Sort them to the BOTTOM, then by est OVR/POT inside each bucket.
+      if (sortBy === 'EST_OVR') {
+        const aHidden = a.scoutedPct < 25
+        const bHidden = b.scoutedPct < 25
+        if (aHidden !== bHidden) return aHidden ? 1 : -1
+        return b.estOvr - a.estOvr
+      }
+      if (sortBy === 'EST_POT') {
+        const aHidden = a.scoutedPct < 25
+        const bHidden = b.scoutedPct < 25
+        if (aHidden !== bHidden) return aHidden ? 1 : -1
+        return b.estPot - a.estPot
+      }
       if (sortBy === 'NAME')     return a.recruit.lastName.localeCompare(b.recruit.lastName)
       return 0
     })
@@ -460,14 +473,14 @@ export default function Recruiting() {
             <tr className="text-left text-xs text-gray-500 uppercase">
               <th className="py-2 px-3 w-8"></th>
               <th className="w-6"></th>
-              <th title="Regional rank (top 25 per region for HS prospects)">Rk</th>
-              <th>Player</th>
+              <SortableTh sortKey="RANK" sortBy={sortBy} setSortBy={setSortBy} title="Regional rank (top 25 per region for HS prospects)">Rk</SortableTh>
+              <SortableTh sortKey="NAME" sortBy={sortBy} setSortBy={setSortBy}>Player</SortableTh>
               <th>Pos</th>
               <th title="Source league — HS, JUCO, NAIA/D1/D2/D3 portal">Src</th>
-              <th title="Estimated current OVR — band narrows as you scout, never collapses fully">Est OVR</th>
-              <th title="Estimated ceiling — wider band than current; some 42-OVR walk-ons have 95 ceilings">Est POT</th>
-              <th>Interest</th>
-              <th title="Scouting progress">Scout</th>
+              <SortableTh sortKey="EST_OVR" sortBy={sortBy} setSortBy={setSortBy} title="Estimated current OVR — band narrows as you scout, never collapses fully. Unscouted recruits sort to the bottom so ratings aren't leaked.">Est OVR</SortableTh>
+              <SortableTh sortKey="EST_POT" sortBy={sortBy} setSortBy={setSortBy} title="Estimated ceiling — wider band than current. Unscouted recruits sort to the bottom.">Est POT</SortableTh>
+              <SortableTh sortKey="INTEREST" sortBy={sortBy} setSortBy={setSortBy}>Interest</SortableTh>
+              <SortableTh sortKey="SCOUTED" sortBy={sortBy} setSortBy={setSortBy} title="Scouting progress">Scout</SortableTh>
               <th>Offer</th>
               <th className="w-20"></th>
             </tr>
@@ -508,6 +521,25 @@ export default function Recruiting() {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Clickable table header. Adds the standard "active" highlight + arrow when
+ * this column is the current sort, so the user knows the buttons up top and
+ * the header row are wired to the same state.
+ */
+function SortableTh({ sortKey, sortBy, setSortBy, children, title }) {
+  const active = sortBy === sortKey
+  return (
+    <th
+      title={title}
+      onClick={() => setSortBy(sortKey)}
+      className={'select-none cursor-pointer hover:text-pnw-slate transition ' + (active ? 'text-pnw-green font-bold' : '')}
+    >
+      {children}
+      {active && <span className="ml-0.5">↓</span>}
+    </th>
+  )
+}
 
 function RosterSnapshotPanel({ save }) {
   const ROSTER_CAP = 50
@@ -730,7 +762,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
         </td>
         <td className="font-medium">
           <div className="flex items-center gap-1.5">
-            {isSigned && <span></span>}
+            {isSigned && <span className="text-[9px] font-bold uppercase text-pnw-green bg-pnw-green/10 border border-pnw-green/30 rounded px-1 py-0.5">Signed</span>}
             <span>{recruit.firstName} {recruit.lastName}</span>
             {scoutedAtAll && archetype && (
               <span className="text-[10px] text-gray-500 italic hidden lg:inline">· {archetype.label}</span>
@@ -767,7 +799,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
             <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div className={'h-full ' + (fullyScouted ? 'bg-blue-600' : 'bg-pnw-slate')} style={{ width: `${sp * 100}%` }} />
             </div>
-            {fullyScouted && <span className="text-[10px] text-blue-700 font-bold"></span>}
+            {fullyScouted && <span className="text-[10px] text-blue-700 font-bold">FULL</span>}
           </div>
         </td>
         <td className="text-xs">
@@ -1351,7 +1383,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-sm">
-                      {action.label} {alreadyUsed && <span className="text-[10px] text-green-700 ml-1"></span>}
+                      {action.label} {alreadyUsed && <span className="text-[10px] text-green-700 ml-1">(done)</span>}
                     </span>
                     <span className={'text-xs font-mono px-1.5 py-0.5 rounded ' +
                       (alreadyUsed ? 'bg-gray-300 text-gray-600' : 'bg-pnw-green text-white')}>

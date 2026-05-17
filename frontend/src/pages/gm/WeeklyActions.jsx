@@ -17,6 +17,12 @@ const STUDY_HALL_AP = 2
 const STUDY_HALL_BONUS = 0.02
 const EXTRA_STUDY_HALL_AP = 6
 const EXTRA_STUDY_HALL_BONUS = 0.05
+// Targeted tutoring: pick exactly 3 players, spend a big chunk of AP, get a
+// per-player GPA boost much larger than blanket study hall. Use this when
+// you have a couple specific guys hovering near 2.0 / ineligibility.
+const TUTORING_AP = 5
+const TUTORING_PICKS = 3
+const TUTORING_BOOST = 0.20    // +0.20 GPA per player picked
 const FUNDRAISE_AP = 10
 const CAMP_MIN_FEE = 25
 const CAMP_MAX_FEE = 300
@@ -39,6 +45,7 @@ export default function WeeklyActions() {
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [campFee, setCampFee] = useState(125)
   const [meetingPicks, setMeetingPicks] = useState([])
+  const [tutoringPicks, setTutoringPicks] = useState([])
   const [oneOnOnePlayer, setOneOnOnePlayer] = useState('')
   const [oneOnOneRating, setOneOnOneRating] = useState('')
 
@@ -133,6 +140,36 @@ export default function WeeklyActions() {
       p.gpa = Math.min(4.0, Math.round((p.gpa + bonus) * 100) / 100)
     }
     markUsedThisWeek('STUDY_HALL')
+    saveDynasty(save); setSave({ ...save })
+  }
+
+  function doTutoring() {
+    if (tutoringPicks.length !== TUTORING_PICKS) {
+      alert(`Pick exactly ${TUTORING_PICKS} players to send to the tutoring group.`)
+      return
+    }
+    if (ap < TUTORING_AP) return
+    if (wasUsedThisWeek('TUTORING_GROUP')) { alert('Tutoring group already ran this week.'); return }
+    const wkOfYear = save.calendar?.weekOfYear ?? 0
+    const inSemester = (wkOfYear >= 5 && wkOfYear <= 18) || (wkOfYear >= 23 && wkOfYear <= 42)
+    if (!inSemester) {
+      alert('School\'s not in session. Tutoring only works during the fall semester (Wks 5-18) or spring semester (Wks 23-42).')
+      return
+    }
+    spendAP('program', TUTORING_AP)
+    for (const pid of tutoringPicks) {
+      const p = save.players[pid]
+      if (!p) continue
+      p.gpa = Math.min(4.0, Math.round((p.gpa + TUTORING_BOOST) * 100) / 100)
+    }
+    markUsedThisWeek('TUTORING_GROUP')
+    save.newsfeed.unshift({
+      id: `tutor_${save.calendar.year}_${save.calendar.week}_${Math.random().toString(36).slice(2, 5)}`,
+      year: save.calendar.year, week: save.calendar.week, type: 'ACADEMIC',
+      headline: `Tutoring group — ${tutoringPicks.length} players each got a +${TUTORING_BOOST.toFixed(2)} GPA boost.`,
+      payload: { ids: [...tutoringPicks] },
+    })
+    setTutoringPicks([])
     saveDynasty(save); setSave({ ...save })
   }
 
@@ -430,6 +467,33 @@ export default function WeeklyActions() {
         </div>
       </div>
 
+      {/* Tutoring Group — pick exactly 3 players, big targeted boost */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+        <div className="flex justify-between items-start mb-1">
+          <div>
+            <div className="text-sm font-semibold text-pnw-slate">Tutoring Group ({TUTORING_AP} AP)</div>
+            <div className="text-xs text-gray-500">
+              Pick exactly {TUTORING_PICKS} players. Each gets <span className="font-semibold text-pnw-green">+{TUTORING_BOOST.toFixed(2)} GPA</span> immediately — much bigger lift than blanket study hall, for the guys you're actually worried about. Once per week.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={doTutoring}
+            disabled={ap < TUTORING_AP || tutoringPicks.length !== TUTORING_PICKS || wasUsedThisWeek('TUTORING_GROUP')}
+            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            {wasUsedThisWeek('TUTORING_GROUP') ? 'Done this week' : `Run (${TUTORING_AP} AP)`}
+          </button>
+        </div>
+        <TutoringPicker
+          save={save}
+          picks={tutoringPicks}
+          setPicks={setTutoringPicks}
+          max={TUTORING_PICKS}
+          disabled={wasUsedThisWeek('TUTORING_GROUP')}
+        />
+      </div>
+
       {/* Fundraise — fixed 10 AP */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4 flex justify-between items-start">
         <div>
@@ -576,6 +640,60 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
         >
           Run Camp Now 
         </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 3-player picker for the targeted tutoring action. Pre-sorts by lowest
+ * GPA so the at-risk guys float to the top — that's almost always who
+ * the user wants to send.
+ */
+function TutoringPicker({ save, picks, setPicks, max, disabled }) {
+  const team = save.teams[save.userSchoolId]
+  const players = (team?.rosterPlayerIds || [])
+    .map(id => save.players[id])
+    .filter(p => p && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed')
+    .sort((a, b) => (a.gpa ?? 4) - (b.gpa ?? 4))
+  function toggle(id) {
+    if (disabled) return
+    if (picks.includes(id)) setPicks(picks.filter(x => x !== id))
+    else if (picks.length < max) setPicks([...picks, id])
+  }
+  return (
+    <div className="mt-3">
+      <div className="text-[11px] text-gray-500 mb-1.5">
+        {picks.length}/{max} selected · Lowest-GPA players listed first.
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-1">
+        {players.slice(0, 30).map(p => {
+          const on = picks.includes(p.id)
+          const atRisk = (p.gpa ?? 4) < 2.5
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => toggle(p.id)}
+              disabled={disabled || (!on && picks.length >= max)}
+              className={
+                'text-left text-xs px-2 py-1.5 rounded border transition ' +
+                (on
+                  ? 'border-pnw-green bg-pnw-green/10 text-pnw-slate'
+                  : atRisk
+                    ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+                    : 'border-gray-200 hover:bg-gray-50') +
+                (disabled || (!on && picks.length >= max) ? ' opacity-50 cursor-not-allowed' : '')
+              }
+            >
+              <div className="font-medium truncate">{p.firstName} {p.lastName}</div>
+              <div className="text-[10px] text-gray-500 font-mono">
+                GPA {p.gpa?.toFixed(2) ?? '—'} · {displayClassYear(p)}
+                {atRisk && <span className="ml-1 text-amber-700 font-bold">AT RISK</span>}
+              </div>
+            </button>
+          )
+        })}
       </div>
     </div>
   )

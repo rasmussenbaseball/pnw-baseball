@@ -296,13 +296,25 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
   //   4. Team dev boosts — small per-week practice bumps via weekly actions
   //   5. Final recruiting pass — soak up any remaining AP on cheap actions
 
-  // 1. Conditional study hall — only fires when GPA is meaningfully at risk
+  // 1. Conditional study hall — only fires when GPA is meaningfully at risk.
+  // Tiering:
+  //   - team avg < 2.3 OR any player < 1.9: TUTORING GROUP (pinpoint 3 worst)
+  //   - team avg < 2.5 OR any player < 2.1: EXTRA study hall (bigger bonus)
+  //   - else default standard study hall once per week
   if (!forceAllOnRecruiting && shouldSpendOnStudyHall(save, ap) && gpaAtRisk(save)) {
-    const spent = spendStudyHall(save)
-    if (spent > 0) {
-      ap -= spent
-      summary.actionsTaken.push(`Study hall (team GPA at risk) — ${spent} AP`)
+    const tier = academicSeverity(save)
+    let spent = 0
+    if (tier === 'CRITICAL') {
+      spent = spendTutoringGroup(save) || spendExtraStudyHall(save) || spendStudyHall(save)
+      if (spent > 0) summary.actionsTaken.push(`Tutoring group (critical GPA) — ${spent} AP`)
+    } else if (tier === 'SEVERE') {
+      spent = spendExtraStudyHall(save) || spendStudyHall(save)
+      if (spent > 0) summary.actionsTaken.push(`Extra study hall (GPA bad) — ${spent} AP`)
+    } else {
+      spent = spendStudyHall(save)
+      if (spent > 0) summary.actionsTaken.push(`Study hall (team GPA at risk) — ${spent} AP`)
     }
+    if (spent > 0) ap -= spent
   }
 
   // 2. Conditional fundraise — only if scholarship $ is truly low. Old
@@ -435,8 +447,98 @@ function spendStudyHall(save) {
   save.ap.currentWeek -= STUDY_HALL_AP
   save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + STUDY_HALL_AP
   if (!save.studyHall) save.studyHall = { cumulativeBonus: 0 }
-  save.studyHall.cumulativeBonus = Math.min(0.20, (save.studyHall.cumulativeBonus || 0) + STUDY_HALL_BONUS)
+  save.studyHall.cumulativeBonus = Math.min(0.60, (save.studyHall.cumulativeBonus || 0) + STUDY_HALL_BONUS)
   return STUDY_HALL_AP
+}
+
+/**
+ * Extra study hall — 6 AP for 0.05 GPA. The auto co-GM fires this when team
+ * GPA is "severe" (below 2.5 OR anyone below 2.1). Costs more but moves the
+ * needle 2.5x as fast.
+ */
+function spendExtraStudyHall(save) {
+  const COST = 6
+  const BONUS = 0.05
+  const ap = save.ap?.currentWeek ?? 0
+  if (ap < COST) return 0
+  // Mirror the user-facing UI: only fires if there's still cumulative
+  // headroom under the +0.60 term cap.
+  const stacked = save.studyHall?.cumulativeBonus ?? 0
+  if (stacked >= 0.55) return 0
+  save.ap.currentWeek -= COST
+  save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + COST
+  if (!save.studyHall) save.studyHall = { cumulativeBonus: 0 }
+  save.studyHall.cumulativeBonus = Math.min(0.60, stacked + BONUS)
+  // Apply immediately to every player's GPA for parity with the UI button
+  const team = save.teams[save.userSchoolId]
+  if (team) {
+    for (const id of team.rosterPlayerIds) {
+      const p = save.players[id]
+      if (!p) continue
+      p.gpa = Math.min(4.0, Math.round((p.gpa + BONUS) * 100) / 100)
+    }
+  }
+  return COST
+}
+
+/**
+ * Tutoring group — 5 AP, pinpoint +0.20 GPA bump for the 3 worst-GPA
+ * players. Auto-fires when team GPA is "critical" (any player < 1.9 OR
+ * team avg < 2.3). Cheaper than extra study hall and HUGE per-player
+ * lift; ideal for pulling guys back off ineligibility.
+ */
+function spendTutoringGroup(save) {
+  const COST = 5
+  const BOOST = 0.20
+  const ap = save.ap?.currentWeek ?? 0
+  if (ap < COST) return 0
+  if (isTutoringUsedThisWeek(save)) return 0
+  const team = save.teams[save.userSchoolId]
+  if (!team) return 0
+  const candidates = (team.rosterPlayerIds || [])
+    .map(id => save.players[id])
+    .filter(p => p && typeof p.gpa === 'number'
+      && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed')
+    .sort((a, b) => a.gpa - b.gpa)
+    .slice(0, 3)
+  if (candidates.length < 3) return 0
+  for (const p of candidates) {
+    p.gpa = Math.min(4.0, Math.round((p.gpa + BOOST) * 100) / 100)
+  }
+  save.ap.currentWeek -= COST
+  save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + COST
+  markTutoringUsedThisWeek(save)
+  return COST
+}
+
+function isTutoringUsedThisWeek(save) {
+  const list = save.weeklyActionsUsed || []
+  return list.some(x => x === 'TUTORING_GROUP' || x?.key === 'TUTORING_GROUP')
+}
+function markTutoringUsedThisWeek(save) {
+  if (!save.weeklyActionsUsed) save.weeklyActionsUsed = []
+  save.weeklyActionsUsed.push('TUTORING_GROUP')
+}
+
+/**
+ * 3-tier severity check used to choose between standard study hall,
+ * extra study hall, and tutoring group.
+ *   CRITICAL  — anyone GPA < 1.9 OR team avg < 2.3 (use tutoring)
+ *   SEVERE    — anyone GPA < 2.1 OR team avg < 2.5 (use extra study hall)
+ *   AT_RISK   — anyone GPA < 2.3 OR team avg < 2.7 (use standard)
+ */
+function academicSeverity(save) {
+  const team = save.teams[save.userSchoolId]
+  if (!team) return 'AT_RISK'
+  const players = (team.rosterPlayerIds || [])
+    .map(id => save.players[id])
+    .filter(p => p && typeof p.gpa === 'number')
+  if (players.length === 0) return 'AT_RISK'
+  const avg = players.reduce((s, p) => s + p.gpa, 0) / players.length
+  const lowest = Math.min(...players.map(p => p.gpa))
+  if (avg < 2.3 || lowest < 1.9) return 'CRITICAL'
+  if (avg < 2.5 || lowest < 2.1) return 'SEVERE'
+  return 'AT_RISK'
 }
 
 function hasRecruitingNeeds(save) {

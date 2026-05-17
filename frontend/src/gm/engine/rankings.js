@@ -26,13 +26,36 @@ import pearRaw from '../data/pear_ratings_2026.json'
 
 // ─── Match PEAR teams to our schoolIds ───────────────────────────────────────
 
+/**
+ * Normalize a team name down to "core letters + digits" so two names that
+ * are conceptually the same (e.g. "Lewis-Clark State" and "Lewis-Clark (ID)")
+ * collapse to the same key.
+ *
+ * Steps:
+ *  1. lowercase
+ *  2. Saint ↔ St
+ *  3. drop parenthetical suffix "(ID)" / "(MO)" / "(St. Louis)" etc.
+ *  4. & → and
+ *  5. drop common collegiate suffix words (state, university, college)
+ *     so PEAR's truncated "Bismarck St" matches our "Bismarck State"
+ *  6. strip everything else to letters/digits
+ */
 function normalize(name) {
-  return name
-    .toLowerCase()
-    .replace(/\bsaint\b/g, 'st.')
-    .replace(/\s*\([^)]*\)/g, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim()
+  if (!name) return ''
+  let s = name.toLowerCase()
+    .replace(/\bsaint\b/g, 'st')
+    .replace(/\bst\.\b/g, 'st')         // "St." → "st"
+    .replace(/\s*\([^)]*\)/g, '')       // strip parenthetical
+    .replace(/&/g, 'and')
+    .replace(/\bstate\b/g, '')          // "Bismarck State" → "Bismarck"
+    .replace(/\buniversity\b/g, '')
+    .replace(/\bcollege\b/g, '')
+    .replace(/\bchristian\b/g, '')      // "Blue Mountain Christian" → "Blue Mountain"
+    .replace(/\binternational\b/g, '')
+  // Trailing " st" (State abbreviation) — drop it AFTER state was stripped.
+  // Catches PEAR's "Bismarck St" / "Panhandle St" variant.
+  s = s.replace(/\s+st\b/, '')
+  return s.replace(/[^a-z0-9]/g, '').trim()
 }
 
 const PEAR_BY_NORMALIZED = (pearRaw.stats || []).reduce((acc, row) => {
@@ -40,7 +63,36 @@ const PEAR_BY_NORMALIZED = (pearRaw.stats || []).reduce((acc, row) => {
   return acc
 }, {})
 
+/**
+ * Hand-curated aliases for the few teams whose normalized name still doesn't
+ * match PEAR's representation (acronyms, "Nazarene" suffixes, etc.).
+ */
+const PEAR_ALIASES = {
+  'mount-vernon-nazarene': 'Mount Vernon (OH)',
+  'iu-east': 'Indiana East',
+  'iu-southeast': 'Indiana Southeast',
+  'iu-south-bend': 'IU South Bend',
+  'loyola-no': 'Loyola (LA)',
+  'oklahoma-panhandle': 'Panhandle State',
+  'unoh': 'Northwestern (OH)',
+  'columbia-international': 'CIU (SC)',
+  'rochester-christian': 'Rochester (MI)',
+  'hesston': 'Hesston College',
+  'new-college-fl': 'New College (FL)',
+  'webber-international': 'Webber (FL)',
+  'blue-mountain-christian': 'Blue Mountain (MS)',
+  'bismarck-state': 'Bismarck St',
+  'calumet-st-joseph': 'Calumet (IN)',
+  'our-lady-lake': 'Our Lady Lake',
+  'voorhees': 'Voorhees University',
+}
+
 function pearForSchool(school) {
+  if (!school) return null
+  if (PEAR_ALIASES[school.id]) {
+    const key = normalize(PEAR_ALIASES[school.id])
+    if (PEAR_BY_NORMALIZED[key]) return PEAR_BY_NORMALIZED[key]
+  }
   const tries = [
     school.name,
     school.name.replace(/\bSaint\b/g, 'St.'),

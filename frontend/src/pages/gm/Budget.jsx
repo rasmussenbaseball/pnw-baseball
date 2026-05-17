@@ -335,7 +335,7 @@ function CategoryRow({ cat, meta, value, pct, total, guide, inRange, locked, onA
           <div className="flex justify-between items-baseline">
             <div>
               <div className="text-sm font-bold text-pnw-slate">
-                {meta.label} {locked && <span className="text-gray-400 text-xs"></span>}
+                {meta.label} {locked && <span className="text-gray-400 text-xs">(locked)</span>}
               </div>
               <div className="text-[11px] text-gray-500">{meta.blurb}</div>
             </div>

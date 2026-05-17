@@ -399,13 +399,14 @@ export default function Dashboard() {
               <div className="text-[11px] opacity-70">Wk {weekOfYear} / 52</div>
             </div>
             <div className="mt-4 flex flex-col items-end gap-2">
-              <div>
+              <div title="Weekly AP = 22 base + coaching bonus (avg of each coach's developer/motivator/recruiter/tactician — every point above 50 adds AP, scaled by role) + tier bonus (D1_LITE +3, WELL_FUNDED +1, MID 0, SHOESTRING -1) + tenure (+1 per year at school, capped at 8). Clamped to 20-50. Hire/develop better assistants to raise the cap.">
                 <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
                 <div className="text-4xl font-extrabold mt-0.5 leading-none">
                   {weekOfYear >= 1 && weekOfYear <= 3
                     ? <span className="text-lg font-bold opacity-70"> Locked</span>
                     : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
                 </div>
+                <div className="text-[9px] opacity-60 mt-0.5">Hover for formula</div>
               </div>
               <div className="flex flex-col items-end">
                 <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold mb-1">Weekly tasks</div>
@@ -1249,8 +1250,8 @@ function KpiCard({ label, value, suffix = '', sub, accent, trend, to }) {
       <div className={'text-2xl font-bold mt-1 flex items-baseline gap-1 leading-none ' + (accent ? '' : 'text-pnw-slate')}>
         <span>{value}</span>
         <span className={'text-xs ' + (accent ? 'opacity-80' : 'text-gray-500')}>{suffix}</span>
-        {trend === 'up' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-green-300' : 'text-green-600')} title="trending up"></span>}
-        {trend === 'down' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-red-300' : 'text-red-600')} title="trending down"></span>}
+        {trend === 'up' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-green-300' : 'text-green-600')} title="trending up">↑</span>}
+        {trend === 'down' && <span className={'text-xs font-bold leading-none ' + (accent ? 'text-red-300' : 'text-red-600')} title="trending down">↓</span>}
       </div>
       {sub && (
         <div className={'text-[10px] mt-0.5 ' + (accent ? 'opacity-80' : 'text-gray-400')}>{sub}</div>
@@ -1312,7 +1313,7 @@ function NavTile({ to, title, sub }) {
     >
       <div className="font-semibold text-sm flex justify-between items-center">
         <span>{title}</span>
-        <span className="text-gray-300 group-hover:text-white opacity-70 group-hover:translate-x-0.5 transition"></span>
+        <span className="text-gray-300 group-hover:text-white opacity-70 group-hover:translate-x-0.5 transition">→</span>
       </div>
       <div className="text-[11px] opacity-70 mt-0.5">{sub}</div>
     </Link>
@@ -1578,7 +1579,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                     : 'bg-yellow-50 text-yellow-800'
                   return (
                     <div key={inj.playerId + inj.injury.type} className="flex items-start gap-2 p-2 bg-red-50 rounded">
-                      <span className="text-base shrink-0"></span>
+                      <span className="text-red-700 font-bold text-xs shrink-0 mt-0.5">IL</span>
                       <div className="flex-1 text-sm">
                         <div className="font-medium text-pnw-slate">
                           {p.firstName} {p.lastName} — {inj.injury.label}
@@ -1593,7 +1594,7 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                 })}
                 {(save._newlyHealedThisWeek || []).map(h => (
                   <div key={'heal_' + h.playerId} className="flex items-start gap-2 p-2 bg-green-50 rounded">
-                    <span className="text-base shrink-0"></span>
+                    <span className="text-green-700 font-bold text-xs shrink-0 mt-0.5">OK</span>
                     <div className="flex-1 text-sm text-pnw-slate">
                       {h.name} — cleared from injury, back in action
                       {h.severity && h.severity !== 'MINOR' && (

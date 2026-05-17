@@ -236,15 +236,15 @@ function BoostArrow({ save, playerId, ratingKey, side }) {
     b.playerId === playerId && b.side === side && b.ratingKey === ratingKey,
   )
   if (temps.length > 0) {
-    return <span className="ml-0.5 text-blue-600" title="Temporary boost active"></span>
+    return <span className="ml-0.5 text-blue-600" title="Temporary boost active">↑*</span>
   }
   const perms = (save.permanentBumps || []).filter(b =>
     b.playerId === playerId && b.side === side && b.ratingKey === ratingKey,
   )
   if (perms.length === 0) return null
   const total = perms.reduce((s, b) => s + b.amount, 0)
-  if (total > 0.1) return <span className="ml-0.5 text-green-600" title="Recently increased"></span>
-  if (total < -0.1) return <span className="ml-0.5 text-red-600" title="Recently decreased"></span>
+  if (total > 0.1) return <span className="ml-0.5 text-green-600" title="Recently increased">↑</span>
+  if (total < -0.1) return <span className="ml-0.5 text-red-600" title="Recently decreased">↓</span>
   return null
 }
 

@@ -275,17 +275,20 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     pool: profilePool,
   })
 
-  // Rating distribution per pool. Means + caps preserved from old code.
+  // Rating distribution per pool. Means + caps raised May 2026 so the GM
+  // game's recruit pools match the user's mental model: mid-tier players
+  // live in the 60s, real impact guys hit 70+, and rare gems can top 85.
+  // JUCO especially is bumped — those are seasoned college bats, not raw HS.
   let meanRating, stddev, cap
-  if (pool === 'HS_SR')       { meanRating = 50; stddev = 12; cap = 92 }   // wider stddev more spread + occasional gems
-  else if (pool === 'JUCO')   { meanRating = 58; stddev = 11; cap = 90 }
-  else if (pool === 'NAIA_TRANSFER') { meanRating = 56; stddev = 12; cap = 90 }
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 7; cap = 95 }
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 56; stddev = 10; cap = 82 }
-  else if (pool === 'D1_TRANSFER') { meanRating = 68; stddev = 9;  cap = 93 }
-  else if (pool === 'D2_TRANSFER') { meanRating = 60; stddev = 11; cap = 90 }
-  else if (pool === 'D3_TRANSFER') { meanRating = 52; stddev = 11; cap = 85 }
-  else                             { meanRating = 55; stddev = 12; cap = 90 }
+  if (pool === 'HS_SR')       { meanRating = 58; stddev = 12; cap = 92 }   // most HS land 45-70; top 1% hit 85
+  else if (pool === 'JUCO')   { meanRating = 64; stddev = 11; cap = 95 }   // seasoned college bats, can produce a 90 OVR
+  else if (pool === 'NAIA_TRANSFER') { meanRating = 60; stddev = 12; cap = 92 }
+  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 7; cap = 97 }
+  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 60; stddev = 10; cap = 85 }
+  else if (pool === 'D1_TRANSFER') { meanRating = 70; stddev = 9;  cap = 95 }
+  else if (pool === 'D2_TRANSFER') { meanRating = 62; stddev = 11; cap = 92 }
+  else if (pool === 'D3_TRANSFER') { meanRating = 56; stddev = 11; cap = 88 }
+  else                             { meanRating = 58; stddev = 12; cap = 92 }
 
   // L/R correlation TIED TO PLATOON HANDEDNESS + REVERSE SPLITS. Real
   // baseball: RHH hit slightly better vs LHP (~70%), LHH hit better vs
@@ -360,8 +363,8 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   //   BLUECHIP  (16%):  mean 82  — solid pro
   //   STANDARD  (76%):  mean 67 ±10
   const tierRoll = pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG' ? 'BLUECHIP'   // young D1s skew elite ceilings
-    : rng.chance(0.08) ? 'FRANCHISE'
-    : rng.chance(0.16) ? 'BLUECHIP'
+    : rng.chance(0.12) ? 'FRANCHISE'                                                // 90+ ceilings shouldn't be ultra-rare
+    : rng.chance(0.22) ? 'BLUECHIP'
     : 'STANDARD'
   let tierMean
   if (tierRoll === 'FRANCHISE') tierMean = 90
