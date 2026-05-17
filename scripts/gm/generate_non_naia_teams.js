@@ -134,6 +134,169 @@ const META = {
   'george-fox':       { city: 'Newberg',         state: 'OR', nickname: 'Bruins',       colors: { primary: '#003366', secondary: '#FFD700' } },
 }
 
+// ─── Bulk state lookup (slugified PEAR name → 2-letter state) ────────────
+// Covers most D1 + a chunk of D2/D3 so travel cost calculations can use
+// real distances. Teams not in this table fall back to a flat travel cost
+// in travel.js. Easy to extend — just add more `'slug': 'XX'` entries.
+
+const TEAM_STATE = {
+  // ===== D1 SEC =====
+  'lsu': 'LA', 'tennessee': 'TN', 'vanderbilt': 'TN', 'arkansas': 'AR',
+  'florida': 'FL', 'texas': 'TX', 'texas-aandm': 'TX', 'mississippi-st': 'MS',
+  'ole-miss': 'MS', 'auburn': 'AL', 'georgia': 'GA', 'kentucky': 'KY',
+  'south-carolina': 'SC', 'alabama': 'AL', 'oklahoma': 'OK', 'missouri': 'MO',
+  // ===== D1 ACC =====
+  'florida-st': 'FL', 'wake-forest': 'NC', 'virginia': 'VA', 'nc-state': 'NC',
+  'stanford': 'CA', 'clemson': 'SC', 'miami-fl': 'FL', 'north-carolina': 'NC',
+  'duke': 'NC', 'louisville': 'KY', 'virginia-tech': 'VA', 'georgia-tech': 'GA',
+  'notre-dame': 'IN', 'pittsburgh': 'PA', 'pitt': 'PA', 'boston-college': 'MA',
+  'california': 'CA', 'smu': 'TX',
+  // ===== D1 Big 12 =====
+  'oklahoma-st': 'OK', 'tcu': 'TX', 'arizona': 'AZ', 'arizona-st': 'AZ',
+  'baylor': 'TX', 'byu': 'UT', 'texas-tech': 'TX', 'houston': 'TX',
+  'cincinnati': 'OH', 'ucf': 'FL', 'west-virginia': 'WV', 'kansas': 'KS',
+  'kansas-st': 'KS', 'utah': 'UT', 'colorado': 'CO',
+  // ===== D1 Big Ten =====
+  'oregon': 'OR', 'oregon-st': 'OR', 'ucla': 'CA', 'usc': 'CA',
+  'southern-california': 'CA', 'washington': 'WA', 'indiana': 'IN',
+  'maryland': 'MD', 'michigan': 'MI', 'michigan-st': 'MI', 'illinois': 'IL',
+  'iowa': 'IA', 'minnesota': 'MN', 'nebraska': 'NE', 'ohio-st': 'OH',
+  'penn-st': 'PA', 'purdue': 'IN', 'rutgers': 'NJ', 'northwestern': 'IL',
+  // ===== D1 WCC =====
+  'gonzaga': 'WA', 'portland': 'OR', 'lmu-ca': 'CA', 'pepperdine': 'CA',
+  'san-diego': 'CA', 'santa-clara': 'CA', 'saint-marys-ca': 'CA',
+  'san-francisco': 'CA', 'pacific': 'CA',
+  // ===== D1 Big West =====
+  'uc-irvine': 'CA', 'uc-santa-barbara': 'CA', 'cal-st-fullerton': 'CA',
+  'long-beach-st': 'CA', 'uc-davis': 'CA', 'uc-riverside': 'CA',
+  'uc-san-diego': 'CA', 'csu-bakersfield': 'CA', 'csun': 'CA', 'hawaii': 'HI',
+  'cal-poly': 'CA',
+  // ===== D1 Sun Belt =====
+  'coastal-carolina': 'SC', 'east-carolina': 'NC', 'troy': 'AL',
+  'south-alabama': 'AL', 'louisiana': 'LA', 'ulm': 'LA', 'texas-st': 'TX',
+  'arkansas-st': 'AR', 'ga-southern': 'GA', 'georgia-st': 'GA',
+  'app-state': 'NC', 'marshall': 'WV', 'old-dominion': 'VA',
+  'james-madison': 'VA', 'southern-miss': 'MS',
+  // ===== D1 C-USA =====
+  'dbu': 'TX', 'utsa': 'TX', 'fla-atlantic': 'FL', 'fiu': 'FL',
+  'liberty': 'VA', 'louisiana-tech': 'LA', 'middle-tenn': 'TN',
+  'new-mexico-st': 'NM', 'utep': 'TX', 'western-ky': 'KY',
+  'kennesaw-st': 'GA', 'sam-houston': 'TX', 'jacksonville-st': 'AL',
+  // ===== D1 AAC =====
+  'tulane': 'LA', 'memphis': 'TN', 'south-fla': 'FL', 'north-texas': 'TX',
+  'uab': 'AL', 'wichita-st': 'KS', 'charlotte': 'NC', 'rice': 'TX',
+  'temple': 'PA', 'tulsa': 'OK',
+  // ===== D1 ASUN =====
+  'lipscomb': 'TN', 'fgcu': 'FL', 'jacksonville': 'FL', 'north-ala': 'AL',
+  'stetson': 'FL', 'north-florida': 'FL', 'bellarmine': 'KY',
+  'central-ark': 'AR', 'eastern-ky': 'KY', 'west-ga': 'GA', 'queens-nc': 'NC',
+  'austin-peay': 'TN',
+  // ===== D1 Big South =====
+  'high-point': 'NC', 'charleston-so': 'SC', 'gardner-webb': 'NC',
+  'longwood': 'VA', 'presbyterian': 'SC', 'radford': 'VA', 'winthrop': 'SC',
+  'unc-asheville': 'NC', 'usc-upstate': 'SC',
+  // ===== D1 SoCon =====
+  'mercer': 'GA', 'wofford': 'SC', 'furman': 'SC', 'samford': 'AL',
+  'the-citadel': 'SC', 'unc-greensboro': 'NC', 'western-caro': 'NC',
+  'etsu': 'TN', 'vmi': 'VA',
+  // ===== D1 Big East =====
+  'uconn': 'CT', 'creighton': 'NE', 'xavier': 'OH', 'villanova': 'PA',
+  'seton-hall': 'NJ', 'georgetown': 'DC', 'butler': 'IN', 'depaul': 'IL',
+  'providence': 'RI', 'st-johns-ny': 'NY',
+  // ===== D1 MWC =====
+  'air-force': 'CO', 'fresno-st': 'CA', 'nevada': 'NV', 'new-mexico': 'NM',
+  'san-diego-st': 'CA', 'san-jose-st': 'CA', 'unlv': 'NV',
+  // ===== D1 WAC =====
+  'grand-canyon': 'AZ', 'utah-valley': 'UT', 'tarleton-st': 'TX',
+  'abilene-christian': 'TX', 'sfa': 'TX', 'southern-utah': 'UT', 'seattle-u': 'WA',
+  'utah-tech': 'UT', 'uiw': 'TX', 'utrgv': 'TX',
+  // ===== D1 Atlantic 10 =====
+  'saint-josephs': 'PA', 'dayton': 'OH', 'vcu': 'VA', 'davidson': 'NC',
+  'fordham': 'NY', 'george-mason': 'VA', 'george-washington': 'DC',
+  'la-salle': 'PA', 'loyola-chicago': 'IL', 'massachusetts': 'MA',
+  'rhode-island': 'RI', 'richmond': 'VA', 'saint-louis': 'MO',
+  'st-bonaventure': 'NY',
+  // ===== D1 America East =====
+  'maine': 'ME', 'umbc': 'MD', 'binghamton': 'NY', 'bryant': 'RI',
+  'ualbany': 'NY', 'umass-lowell': 'MA',
+  // ===== D1 CAA =====
+  'col-of-charleston': 'SC', 'uncw': 'NC', 'northeastern': 'MA',
+  'william-and-mary': 'VA', 'towson': 'MD', 'hofstra': 'NY', 'delaware': 'DE',
+  'elon': 'NC', 'stony-brook': 'NY', 'monmouth': 'NJ', 'nc-aandt': 'NC',
+  // ===== D1 Patriot =====
+  'army-west-point': 'NY', 'navy': 'MD', 'lehigh': 'PA', 'bucknell': 'PA',
+  'holy-cross': 'MA', 'lafayette': 'PA',
+  // ===== D1 Ivy =====
+  'harvard': 'MA', 'yale': 'CT', 'princeton': 'NJ', 'columbia': 'NY',
+  'penn': 'PA', 'cornell': 'NY', 'dartmouth': 'NH', 'brown': 'RI',
+  // ===== D1 Horizon =====
+  'wright-st': 'OH', 'oakland': 'MI', 'youngstown-st': 'OH',
+  'northern-ky': 'KY', 'milwaukee': 'WI', 'uic': 'IL',
+  // ===== D1 MAAC =====
+  'fairfield': 'CT', 'canisius': 'NY', 'iona': 'NY', 'manhattan': 'NY',
+  'marist': 'NY', 'mount-st-marys': 'MD', 'niagara': 'NY', 'quinnipiac': 'CT',
+  'rider': 'NJ', 'saint-peters': 'NJ', 'siena': 'NY',
+  // ===== D1 MAC =====
+  'central-mich': 'MI', 'eastern-mich': 'MI', 'western-mich': 'MI',
+  'niu': 'IL', 'ball-st': 'IN', 'bowling-green': 'OH', 'kent-st': 'OH',
+  'miami-oh': 'OH', 'ohio': 'OH', 'toledo': 'OH',
+  // ===== D1 NEC =====
+  'le-moyne': 'NY', 'sacred-heart': 'CT', 'wagner': 'NY', 'liu': 'NY',
+  'stonehill': 'MA', 'central-conn-st': 'CT', 'fdu': 'NJ', 'merrimack': 'MA',
+  // ===== D1 OVC =====
+  'tennessee-tech': 'TN', 'belmont': 'TN', 'morehead-st': 'KY',
+  'southeast-mo-st': 'MO', 'murray-st': 'KY', 'siue': 'IL',
+  'ut-martin': 'TN', 'western-ill': 'IL', 'lindenwood': 'MO',
+  'eastern-ill': 'IL', 'tennessee-st': 'TN',
+  // ===== D1 Southland =====
+  'mcneese': 'LA', 'nicholls': 'LA', 'northwestern-st': 'LA',
+  'southeastern-la': 'LA', 'houston-christian': 'TX', 'lamar-university': 'TX',
+  'new-orleans': 'LA', 'aandm-corpus-christi': 'TX', 'ut-arlington': 'TX',
+  // ===== D1 Summit =====
+  'north-dakota-st': 'ND', 'south-dakota-st': 'SD', 'oral-roberts': 'OK',
+  'omaha': 'NE', 'st-thomas-mn': 'MN', 'northern-colo': 'CO',
+  // ===== D1 SWAC =====
+  'alabama-st': 'AL', 'bethune-cookman': 'FL', 'florida-aandm': 'FL',
+  'grambling': 'LA', 'jackson-st': 'MS', 'mississippi-val': 'MS',
+  'prairie-view': 'TX', 'southern-u': 'LA', 'texas-southern': 'TX',
+  'alabama-aandm': 'AL', 'alcorn': 'MS', 'ark-pine-bluff': 'AR',
+  // ===== D1 MEAC =====
+  'coppin-st': 'MD', 'delaware-st': 'DE', 'howard': 'DC', 'norfolk-st': 'VA',
+  'umes': 'MD',
+  // ===== Misc D1 =====
+  'akron': 'OH', 'bradley': 'IL', 'indiana-st': 'IN', 'evansville': 'IN',
+  'illinois-st': 'IL', 'missouri-st': 'MO', 'southern-ill': 'IL',
+  'southern-ind': 'IN', 'sacramento-st': 'CA', 'valparaiso': 'IN',
+  'campbell': 'NC', 'njit': 'NJ', 'little-rock': 'AR',
+  // ===== D2 highlights (PNW + national powers) =====
+  'central-washington': 'WA', 'saint-martins': 'WA', 'msu-billings': 'MT',
+  'western-oregon': 'OR', 'northwest-nazarene': 'ID', 'tampa': 'FL',
+  'north-greenville': 'SC', 'angelo-st': 'TX', 'west-florida': 'FL',
+  'augustana-sd': 'SD', 'central-missouri': 'MO', 'pittsburg-st': 'KS',
+  'mount-olive': 'NC', 'west-texas-aandm': 'TX', 'colorado-mesa': 'CO',
+  'cal-poly-pomona': 'CA', 'nova-southeastern': 'FL', 'lynn': 'FL',
+  'wingate': 'NC', 'concordia-ca': 'CA', 'francis-marion': 'SC',
+  'embry-riddle': 'FL', 'saint-leo': 'FL', 'eckerd': 'FL', 'barry': 'FL',
+  'florida-southern': 'FL', 'palm-beach-atlantic': 'FL', 'florida-tech': 'FL',
+  'chico-st': 'CA', 'csu-stanislaus': 'CA', 'csu-dominguez-hills': 'CA',
+  'csu-los-angeles': 'CA', 'csu-east-bay': 'CA',
+  'cal-st-monterey-bay': 'CA', 'cal-st-san-marcos': 'CA', 'point-loma': 'CA',
+  'san-francisco-st': 'CA', 'sonoma-st': 'CA',
+  // ===== D3 highlights (PNW + national powers) =====
+  'puget-sound': 'WA', 'pacific-lutheran': 'WA', 'whitman': 'WA',
+  'whitworth': 'WA', 'linfield': 'OR', 'lewis-and-clark': 'OR',
+  'willamette': 'OR', 'pacific-or': 'OR', 'george-fox': 'OR',
+  'salisbury': 'MD', 'cortland': 'NY', 'wpi': 'MA', 'johns-hopkins': 'MD',
+  'wis-whitewater': 'WI', 'trinity-tx': 'TX', 'lynchburg': 'VA',
+  'christopher-newport': 'VA', 'washington-and-jefferson': 'PA',
+  'misericordia': 'PA', 'north-central-il': 'IL', 'cal-lutheran': 'CA',
+  'redlands': 'CA', 'chapman': 'CA', 'claremont-mudd-scripps': 'CA',
+  'denison': 'OH', 'amherst': 'MA', 'tufts': 'MA', 'williams': 'MA',
+  'bowdoin': 'ME', 'bates': 'ME', 'colby': 'ME', 'middlebury': 'VT',
+  'wesleyan': 'CT', 'trinity-ct': 'CT', 'hamilton': 'NY',
+  'connecticut-college': 'CT',
+}
+
 // PEAR uses some name variants ("Mississippi St." instead of "Mississippi State")
 // — normalize to a slug for META lookup. CRITICAL: parenthetical-named teams
 // like "California (PA)" must NOT match the non-parenthetical "California"
@@ -169,16 +332,21 @@ function mkTeam(pearRow, divisionCode) {
   const name = pearRow.Team
   const meta = lookupMeta(name) || {}
   const id = slugify(name) + '-' + divisionCode.toLowerCase()
+  // State resolution priority:
+  //   1. Full META entry (which carries city/nickname/colors too)
+  //   2. Bulk TEAM_STATE table (state-only, covers ~250 more programs)
+  //   3. Empty — falls back to flat travel cost in travel.js
+  const slug = slugify(name)
+  const state = meta.state || TEAM_STATE[slug] || ''
   return {
     id,
     name,
     city: meta.city || '',
-    state: meta.state || '',
+    state,
     nickname: meta.nickname || '',
     // PEAR's power_rating is per-division. nwbbRating.nonNaiaToUniversal
     // adds the division's tier base when computing the universal 0-100 rating.
     strength: typeof pearRow.power_rating === 'number' ? pearRow.power_rating : 0,
-    // Preserve a few useful PEAR fields so future improvements can use them
     pearRank: pearRow.PRR ?? null,
     pearConference: pearRow.Conference ?? null,
     colors: meta.colors || null,

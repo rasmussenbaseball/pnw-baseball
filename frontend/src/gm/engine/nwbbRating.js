@@ -43,19 +43,22 @@ import { pearForSchoolWith, makePearLookup } from './pearLookup'
 // ─── Cross-division universal strength seed ─────────────────────────────────
 
 /**
- * Map a PEAR Rating (raw, roughly -10..+10 observed) to the universal 0-100
- * scale used by NWBB ratings. Calibrated so:
- *   PEAR  7.87 (LC State, NAIA #2)  →  ~83.6
- *   PEAR  0    (median NAIA)        →  60
- *   PEAR -5    (low NAIA)           →  45
- *   PEAR -10   (NAIA dregs)         →  30
+ * Map a PEAR Rating (raw, roughly -15..+10 observed) to the universal 0-100
+ * scale used by NWBB ratings. Calibrated so a TOP NAIA program sits in the
+ * "competitive with bad-to-mid D1" band — not above median D1:
+ *   PEAR  8.19 (Lewis-Clark, NAIA #1) →  74.6   (between mid + low D1)
+ *   PEAR  4    (top-25 NAIA)          →  62
+ *   PEAR  0    (median NAIA)          →  50
+ *   PEAR -5    (low NAIA)             →  35
+ *   PEAR -15   (NAIA dregs)           →  20 (clamped)
  *
- * NAIA's top teams are roughly equivalent to mid-D1; they don't reach the
- * top-D1 ceiling (95+).
+ * Tuned May 2026 per Nate — previously top NAIA was reaching 84.6, which
+ * implied LC State would beat a median D1 most of the time. That's not
+ * realistic; in practice a top NAIA team wins maybe 30-40% vs median D1.
  */
 export function pearToUniversal(pearRating) {
   if (pearRating == null) return 50
-  return Math.max(20, Math.min(92, 60 + pearRating * 3.0))
+  return Math.max(20, Math.min(92, 50 + pearRating * 3.0))
 }
 
 /**
@@ -63,32 +66,39 @@ export function pearToUniversal(pearRating) {
  *
  * PEAR power_rating is per-division — Georgia Tech (D1 #1) sits at 7.4 and
  * Denison (D3 #1) sits at 10.3, but Georgia Tech is FAR better in absolute
- * terms. Tier base handles the cross-division translation:
- *   D1   PEAR  7.4 → 92.8  (elite D1)
- *   D1   PEAR  0   → 78    (median D1)
- *   D1   PEAR -5  → 68    (bottom D1)
- *   D2   PEAR  7   → 79    (elite D2)
- *   D2   PEAR  0   → 65    (median D2)
- *   D3   PEAR 10   → 75    (elite D3 — Denison, Salisbury territory)
- *   D3   PEAR  0   → 55    (median D3)
- *   NWAC strength fed through as before (no PEAR data)
+ * terms. Tier bases handle the cross-division translation so the rating
+ * spread matches real-world matchup expectations:
+ *
+ *   D1   PEAR  7.4  → 92.8   (elite D1)
+ *   D1   PEAR  0    → 78     (median D1 — solid power-conference team)
+ *   D1   PEAR -3    → 72     (bad-mid D1, where top NAIA + top D2 compete)
+ *   D1   PEAR -11   → 56     (D1 cellar dweller, loses to top NAIA)
+ *   D2   PEAR  6.77 → 68.5   (top D2 — competitive with bad-mid D1)
+ *   D2   PEAR  0    → 55     (median D2 — top NWAC range)
+ *   D3   PEAR 10.3  → 60.6   (top D3 — strong NWAC level)
+ *   D3   PEAR  0    → 40     (median D3 — bottom NWAC)
+ *
+ * Tuned May 2026 per Nate — previous calibration had top D2 and top D3
+ * sitting at 79 and 76, which implied they could beat a median D1 most of
+ * the time. Lowered D2 base from 65 → 55 and D3 base from 55 → 40 so the
+ * spread reflects what actually happens when a D2 team plays a D1 midweek.
  *
  * Real PEAR ranges observed:
- *   D1  top  7.37,  median  0.16,  bottom -11.36
- *   D2  top  6.77,  median  0.34,  bottom -11.33
- *   D3  top 10.31,  median  0.47,  bottom -18.06
+ *   D1  top  7.37,  median  0.16,  bottom -11.36   (308 teams)
+ *   D2  top  6.77,  median  0.34,  bottom -11.33   (256 teams)
+ *   D3  top 10.31,  median  0.47,  bottom -18.06   (384 teams)
  */
 export function nonNaiaToUniversal(team) {
   if (!team) return 50
   const s = team.strength ?? 0
   const tierBase = {
     D1:        78,
-    D2:        65,
-    D3:        55,
-    JUCO_NWAC: 60,
-    NWAC:      60,
-    JUCO:      58,
-  }[team.division] ?? 55
+    D2:        55,
+    D3:        40,
+    JUCO_NWAC: 50,
+    NWAC:      50,
+    JUCO:      48,
+  }[team.division] ?? 50
   return Math.max(20, Math.min(99, tierBase + s * 2.0))
 }
 

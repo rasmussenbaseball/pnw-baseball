@@ -48,13 +48,29 @@ function haversine([lat1, lon1], [lat2, lon2]) {
 
 /**
  * Approximate miles between two schools by state centroid.
+ *
+ * If EITHER state is missing or unknown (which is the case for most of the
+ * PEAR-imported D1/D2/D3 teams — PEAR's API doesn't expose locations), we
+ * return a fixed "average road trip" distance so every unknown-location
+ * opponent costs the same to travel to. 1100 mi ≈ a typical multi-region
+ * flight trip; produces ~$7-9K series / ~$4K midweek costs.
  */
+const UNKNOWN_LOCATION_MILES = 1100
+
 export function milesBetween(stateA, stateB) {
   const a = STATE_CENTROIDS[stateA]
   const b = STATE_CENTROIDS[stateB]
-  if (!a || !b) return 800   // unknown — assume mid-range
+  if (!a || !b) return UNKNOWN_LOCATION_MILES
   if (stateA === stateB) return 100   // in-state, ~100mi nominal
   return Math.round(haversine(a, b))
+}
+
+/**
+ * Was this miles value generated from the unknown-location fallback?
+ * Useful for the UI to show "estimated" labels.
+ */
+export function isUnknownLocation(stateA, stateB) {
+  return !STATE_CENTROIDS[stateA] || !STATE_CENTROIDS[stateB]
 }
 
 // ─── Cost model ──────────────────────────────────────────────────────────────
