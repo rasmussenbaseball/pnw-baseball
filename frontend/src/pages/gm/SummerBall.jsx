@@ -21,6 +21,7 @@ import {
   isPlayerEligibleForSummerBall,
   planSummerAssignment, removeSummerAssignment,
   confirmOrRemoveAssignment, ensureSummerBallState,
+  describeDevBuckets, RATING_LABEL, computePoachProbability,
 } from '../../gm/engine/summerBall'
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
@@ -130,10 +131,11 @@ export default function SummerBall() {
         <ul className="list-disc list-inside space-y-1">
           <li><strong>Plan in Wk 14</strong> — open the planning window after the spring season starts winding down. You can add/remove players freely until Wk 43.</li>
           <li><strong>Confirm in Wk 43</strong> — at this point the roster locks. You can still REMOVE players (injury / wedding / life), but no new signings.</li>
-          <li><strong>Resolve in Wk 47</strong> — the summer is sim'd. Players get rating gains scaled by league prestige + the player's potential.</li>
-          <li><strong className="text-emerald-300">Top leagues develop faster but are harder to get into</strong>. Cape Cod is elite (+OVR boost), MLB scouts watching = draft buzz. Lower-prestige leagues are easier signings but smaller gains.</li>
-          <li><strong>Injury + poach risk</strong> exists. Players can get hurt in summer ball (lingering effects rare but possible), or another program can poach them via transfer chatter.</li>
-          <li><strong>Class year matters</strong>. Underclassmen benefit most. Juniors with draft potential get the biggest draft-stock bump from elite-league performance.</li>
+          <li><strong>Resolve in Wk 47</strong> — the summer is sim'd. Each player gets development on the league's boosted attributes — primary boosts (★) get DOUBLE share.</li>
+          <li><strong className="text-amber-300">One player per league</strong>. Each summer league has a single slot for your program. Choose carefully — sending your star to Cape Cod means giving up that slot for everyone else.</li>
+          <li><strong className="text-emerald-300">Elite leagues = showcase tools</strong>. Cape Cod / Northwoods / WCL train POWER, CONTACT, STUFF, COMMAND — the things scouts pay for. Developmental leagues (Cascade, PIL) train durability + stamina + fielding fundamentals.</li>
+          <li><strong>Poach risk is dynamic.</strong> Base poach is the league number. Effective poach is reduced by (a) player scholarship $ — up to 70% retention at $30K+ and (b) your team's national rating — up to 50% retention at rating 80+. A star on a top-25 program with a big scholarship is virtually unpoachable. A breakout walk-on at a bad D3 is wide-open.</li>
+          <li><strong>Class year matters.</strong> Underclassmen benefit most. Juniors with draft potential get the biggest draft-stock bump from elite-league performance.</li>
         </ul>
         <p className="mt-2 text-xs text-gray-300">Players who go to summer ball miss out on the small offseason passive dev your other players get during summer recruiting (Jun-Jul). The summer-league gain is much larger though.</p>
       </ContextBox>
@@ -336,14 +338,19 @@ function LeagueCard({ league, assigned, canPlan, canRemove, onRemove, onAddClick
   const ovrLabel = league.maxOvr != null
     ? `${league.minOvr}-${league.maxOvr} OVR`
     : `${league.minOvr}+ OVR`
-  // Dev rate display: convert raw magnitude into a labeled tier
-  const devRate = league.devMagnitude >= 2.0 ? 'ELITE'
-    : league.devMagnitude >= 1.7 ? 'HIGH'
-    : league.devMagnitude >= 1.3 ? 'STRONG'
-    : 'STEADY'
-  const devColor = league.devMagnitude >= 2.0 ? 'text-emerald-700'
-    : league.devMagnitude >= 1.7 ? 'text-pnw-green'
-    : 'text-blue-700'
+  // Dev rate display: use the explicit devTier from the league spec.
+  const devRate = league.devTier || 'STEADY'
+  const devColor = devRate === 'ELITE' ? 'text-emerald-700'
+    : devRate === 'HIGH' ? 'text-pnw-green'
+    : devRate === 'STRONG' ? 'text-blue-700'
+    : 'text-gray-700'
+  const devRateBg = devRate === 'ELITE' ? 'bg-emerald-50 border-emerald-300'
+    : devRate === 'HIGH' ? 'bg-green-50 border-green-300'
+    : devRate === 'STRONG' ? 'bg-blue-50 border-blue-300'
+    : 'bg-gray-50 border-gray-300'
+  // Approx avg dev-point delta per attribute: devMagnitude × 3 × (1.0 usage) / buckets.
+  // Hitters/pitchers will only get bumps on attributes that exist on their block.
+  const approxDevPoints = Math.round(league.devMagnitude * 3)
   // "Best for" guidance based on prestige tier
   const bestFor = league.prestige >= 8
     ? 'Elite players — biggest upside, real poach + injury risk'
@@ -351,14 +358,21 @@ function LeagueCard({ league, assigned, canPlan, canRemove, onRemove, onAddClick
       ? 'Mid-tier starters — solid showcase + good dev'
       : 'Bench / developmental — biggest growth for your worst players, lowest risk'
 
+  const slotCap = league.slotsPerProgram ?? 1
+  const slotsFilled = assigned.length
+  const slotFull = slotsFilled >= slotCap
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
       <div className="flex justify-between items-start gap-2 mb-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-bold text-pnw-slate">{league.label}</h3>
             <span className={'text-[10px] font-bold px-1.5 py-0.5 rounded ' + league.color}>
               {league.short}
+            </span>
+            <span className={'text-[10px] font-bold px-1.5 py-0.5 rounded border ' + (slotFull ? 'bg-gray-100 text-gray-500 border-gray-300' : 'bg-pnw-cream text-pnw-slate border-pnw-green/40')}>
+              {slotsFilled}/{slotCap} slot{slotCap === 1 ? '' : 's'}
             </span>
           </div>
           <div className="text-[11px] text-gray-500">
@@ -368,21 +382,55 @@ function LeagueCard({ league, assigned, canPlan, canRemove, onRemove, onAddClick
         {canPlan && (
           <button
             onClick={onAddClick}
-            className="text-xs bg-pnw-green text-white px-2 py-1 rounded shrink-0 hover:opacity-90"
+            disabled={slotFull}
+            className="text-xs bg-pnw-green text-white px-2 py-1 rounded shrink-0 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={slotFull ? `Slot full — remove the existing player to swap` : 'Assign a player to this league'}
           >
-            + Assign
+            {slotFull ? 'Slot full' : '+ Assign'}
           </button>
         )}
       </div>
       <p className="text-[11px] text-gray-700 leading-snug mb-2">{league.blurb}</p>
+
+      {/* DEV BOOSTS — the headline of what this league actually does. */}
+      <div className={'rounded border p-2 mb-2 ' + devRateBg}>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-gray-600 font-bold">Dev rate</span>
+            <span className={'text-[12px] font-bold ' + devColor}>{devRate}</span>
+            <span className="text-[10px] text-gray-500 font-mono">~+{approxDevPoints} pts/yr</span>
+          </div>
+        </div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-600 font-bold mb-1">Boosts</div>
+        <div className="flex flex-wrap gap-1">
+          {(league.devBuckets || []).map(k => {
+            const isPrimary = (league.primaryBuckets || []).includes(k)
+            return (
+              <span
+                key={k}
+                className={
+                  'text-[10px] px-1.5 py-0.5 rounded font-semibold ' +
+                  (isPrimary ? 'bg-pnw-green text-white' : 'bg-white border border-gray-300 text-pnw-slate')
+                }
+                title={isPrimary ? 'Primary focus — 2× dev share' : 'Secondary boost'}
+              >
+                {RATING_LABEL[k] || k}{isPrimary ? ' ★' : ''}
+              </span>
+            )
+          })}
+        </div>
+        <div className="text-[10px] text-gray-500 mt-1.5 italic">{league.devFocusLong || league.devFocusLabel}</div>
+      </div>
+
       <div className={'text-[11px] font-semibold mb-2 ' + (league.prestige >= 8 ? 'text-purple-700' : league.prestige >= 6 ? 'text-blue-700' : 'text-emerald-700')}>
         Best for: {bestFor}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-[10px]">
-        <Stat label="Dev rate" value={devRate} valueClass={devColor + ' font-bold'} />
-        <Stat label="Dev focus" value={league.devFocus} />
+      <div className="grid grid-cols-2 gap-2 mb-2 text-[10px]">
         <Stat label="Injury risk" value={`${Math.round(league.injuryRisk * 100)}%`} valueClass={league.injuryRisk < 0.08 ? 'text-green-700' : league.injuryRisk < 0.15 ? 'text-amber-700' : 'text-red-700'} />
-        <Stat label="Poach risk" value={`${Math.round(league.poachChance * 100)}%`} valueClass={league.poachChance < 0.10 ? 'text-green-700' : league.poachChance < 0.20 ? 'text-amber-700' : 'text-red-700'} />
+        <Stat label="Base poach" value={`${Math.round(league.poachChance * 100)}%`} valueClass={league.poachChance < 0.10 ? 'text-green-700' : league.poachChance < 0.25 ? 'text-amber-700' : 'text-red-700'} />
+      </div>
+      <div className="text-[10px] text-gray-500 mb-2 italic">
+        Effective poach is REDUCED by player scholarship + team national rating. Bad team + low-$ player = high real risk.
       </div>
       {assigned.length > 0 ? (
         <div className="space-y-1">
@@ -391,7 +439,7 @@ function LeagueCard({ league, assigned, canPlan, canRemove, onRemove, onAddClick
           ))}
         </div>
       ) : (
-        <div className="text-[11px] text-gray-400 italic mt-1">No players assigned</div>
+        <div className="text-[11px] text-gray-400 italic mt-1">No player assigned</div>
       )}
     </div>
   )
@@ -488,9 +536,11 @@ function PickerModal({ save, eligiblePlayers, assignments, context, onPick, onCl
     )
   }
 
-  // isPlayerPreset
+  // isPlayerPreset — show per-league effective poach + slot availability for THIS player.
   const p = save.players[context.playerId]
   const leagues = leaguesForPlayer(p)
+  const userSchool = save.schools?.[save.userSchoolId]
+  const teamRating = save.nwbbRatings?.[save.userSchoolId]?.rating ?? 60
   return (
     <Modal onClose={onClose} title={`Pick a league for ${p.firstName} ${p.lastName}`}>
       {leagues.length === 0 ? (
@@ -499,17 +549,35 @@ function PickerModal({ save, eligiblePlayers, assignments, context, onPick, onCl
         <div className="space-y-2">
           {leagues.map(k => {
             const lg = SUMMER_LEAGUES[k]
+            // Estimate effective poach assuming a typical +2.5 OVR breakout.
+            const effPoach = computePoachProbability({
+              league: lg, moved: 2.5, player: p, school: userSchool, teamRating,
+            })
+            const effPct = Math.round(effPoach * 100)
+            const slotsTaken = Object.values(assignments || {}).filter(a => !a.removed && a.leagueKey === k).length
+            const slotCap = lg.slotsPerProgram ?? 1
+            const slotFull = slotsTaken >= slotCap
+            const poachClass = effPct < 10 ? 'text-green-700' : effPct < 25 ? 'text-amber-700' : 'text-red-700'
             return (
               <button
                 key={k}
-                onClick={() => onPick(p.id, k)}
-                className="w-full text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream"
+                onClick={() => !slotFull && onPick(p.id, k)}
+                disabled={slotFull}
+                className={'w-full text-left p-3 border rounded ' + (slotFull ? 'border-gray-200 opacity-50 cursor-not-allowed' : 'border-gray-200 hover:border-pnw-green hover:bg-pnw-cream')}
               >
-                <div className="flex justify-between items-start">
-                  <div className="font-semibold text-pnw-slate">{lg.label}</div>
+                <div className="flex justify-between items-start gap-2">
+                  <div className="font-semibold text-pnw-slate flex-1 min-w-0">{lg.label}</div>
                   <span className={'text-[10px] font-bold px-1.5 py-0.5 rounded ' + lg.color}>{lg.short}</span>
+                  {slotFull && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">Slot full</span>}
                 </div>
                 <div className="text-[11px] text-gray-600 mt-1">{lg.blurb}</div>
+                <div className="flex flex-wrap gap-1.5 mt-2 text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">{lg.devTier} dev</span>
+                  <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">{lg.devFocusLabel}</span>
+                  <span className={'px-1.5 py-0.5 rounded font-semibold bg-white border ' + poachClass}>
+                    Eff. poach for this player: {effPct}%
+                  </span>
+                </div>
               </button>
             )
           })}

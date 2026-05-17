@@ -49,35 +49,78 @@ import { playerOverall } from './playerRating'
  *   short: string,
  *   blurb: string,
  *   region: string,
- *   prestige: number,         // 1-10, drives draft buzz + poach + recruit reputation
+ *   prestige: number,             // 1-10, drives draft buzz + poach + recruit reputation
  *   minOvr: number,
- *   maxOvr: number|null,      // null = no upper bound
- *   devFocus: string,         // free-text 'contact + speed' etc
- *   devBuckets: string[],     // rating keys this league develops faster
- *   devMagnitude: number,     // 0.5 (low) - 1.8 (high) multiplier on dev points
- *   injuryRisk: number,       // 0..1 base chance of an injury event
- *   poachChance: number,      // 0..1 base chance D1 poaches if player thrives
- *   draftBuzzMult: number,    // multiplier on effective OVR for next year's draft
- *   color: string,            // tailwind class for badges
+ *   maxOvr: number|null,          // null = no upper bound
+ *   slotsPerProgram: number,      // hard cap of YOUR players in this league
+ *   devFocusLabel: string,        // SHORT label of attribute buckets, e.g. "Power · Contact · Stuff"
+ *   devFocusLong: string,         // 1-sentence narrative blurb on what improves
+ *   devBuckets: string[],         // rating keys this league develops faster
+ *   primaryBuckets: string[],     // top 2-3 high-leverage stats. Get double share.
+ *   devMagnitude: number,         // raw dev-points multiplier on Gaussian(devMagnitude * 3, 1)
+ *   devTier: 'ELITE'|'HIGH'|'STRONG'|'STEADY',  // display bucket
+ *   injuryRisk: number,           // 0..1 base chance of an injury event
+ *   poachChance: number,          // 0..1 BASE poach rate before retention factors
+ *   draftBuzzMult: number,        // multiplier on effective OVR for next year's draft
+ *   color: string,                // tailwind class for badges
  * }} SummerLeague */
+
+// Human-readable labels for rating buckets we use in summer ball — used on the
+// UI to clearly show what attributes get boosted instead of hiding behind a
+// vague "devFocus" string.
+export const RATING_LABEL = {
+  power_l: 'Power vs LHP',
+  power_r: 'Power vs RHP',
+  contact_l: 'Contact vs LHP',
+  contact_r: 'Contact vs RHP',
+  speed: 'Speed',
+  fielding: 'Fielding',
+  arm: 'Arm',
+  discipline: 'Plate Discipline',
+  composure: 'Composure',
+  durability: 'Durability',
+  stamina: 'Stamina',
+  // Pitchers
+  stuff: 'Stuff',
+  command: 'Command',
+  control: 'Control',
+  velocity: 'Velocity',
+  slider: 'Slider',
+  curveball: 'Curveball',
+  changeup: 'Changeup',
+  cutter: 'Cutter',
+}
+
+/** Format a list of attribute keys into a UI-friendly comma-joined label. */
+export function describeDevBuckets(keys) {
+  if (!keys || keys.length === 0) return '—'
+  return keys.map(k => RATING_LABEL[k] || k).join(' · ')
+}
 
 /** @type {Object<string,SummerLeague>} */
 export const SUMMER_LEAGUES = {
-  // ── Elite tier: huge upside, real risk. Best players, best leagues. ──
+  // ── Elite tier: huge upside, real risk. Best players, best leagues.
+  // Elite leagues develop SHOWCASE TOOLS — power, contact, stuff. They do NOT
+  // boost durability or stamina; that growth lives in the developmental tier
+  // where the long-grind workload actually trains those attributes. ──
   CAPE_COD: {
     key: 'CAPE_COD',
     label: 'Cape Cod League',
     short: 'CCBL',
-    blurb: 'The premier summer league in the country. Wood bats, MLB scouts at every game, every D1 hovering over your roster. Polish every tool against the best amateur arms + bats in the country — but you have to be willing to risk losing them.',
+    blurb: 'The premier summer league in the country. Wood bats, MLB scouts at every game, every D1 hovering over your roster. Polish every showcase tool against the best amateur arms + bats — but you have to be willing to risk losing them.',
     region: 'Cape Cod, MA',
     prestige: 10,
     minOvr: 90,
     maxOvr: null,
-    devFocus: 'Polishes elite tools across the board',
-    devBuckets: ['discipline', 'composure', 'command', 'control', 'fielding', 'arm'],
+    slotsPerProgram: 1,
+    devFocusLabel: 'Showcase tools (power · contact · stuff)',
+    devFocusLong: 'Trains the big-five scout tools — power, contact, stuff, command, and velocity — against pro-quality competition.',
+    devBuckets: ['power_l', 'power_r', 'contact_l', 'contact_r', 'stuff', 'command', 'velocity'],
+    primaryBuckets: ['power_l', 'power_r', 'stuff'],
     devMagnitude: 2.4,
-    injuryRisk: 0.08,
-    poachChance: 0.40,
+    devTier: 'ELITE',
+    injuryRisk: 0.07,
+    poachChance: 0.45,
     draftBuzzMult: 1.35,
     color: 'bg-purple-100 text-purple-800',
   },
@@ -85,16 +128,20 @@ export const SUMMER_LEAGUES = {
     key: 'NORTHWOODS',
     label: 'Northwoods League',
     short: 'NWL',
-    blurb: '72-game wood-bat grind across Wisconsin + Minnesota. Closest thing to a pro schedule any amateur sees. Pitchers build real stamina; hitters learn to handle a long season. Workload makes it the highest-injury league among the elite tier.',
+    blurb: '72-game wood-bat grind across Wisconsin + Minnesota. Closest thing to a pro schedule any amateur sees. Big tools polished against high-end opposition — pitchers add velo, hitters add power-contact balance.',
     region: 'Upper Midwest',
     prestige: 8,
     minOvr: 82,
     maxOvr: null,
-    devFocus: 'Stamina + durability under heavy workload',
-    devBuckets: ['stamina', 'durability', 'contact_l', 'contact_r', 'composure'],
+    slotsPerProgram: 1,
+    devFocusLabel: 'Power · Contact · Velocity',
+    devFocusLong: 'Big-stage at-bats and innings polish power, contact, and pitcher velocity. Long schedule means real injury exposure.',
+    devBuckets: ['power_l', 'power_r', 'contact_l', 'contact_r', 'velocity', 'stuff', 'speed'],
+    primaryBuckets: ['power_l', 'power_r', 'velocity'],
     devMagnitude: 2.0,
-    injuryRisk: 0.18,
-    poachChance: 0.25,
+    devTier: 'HIGH',
+    injuryRisk: 0.16,
+    poachChance: 0.30,
     draftBuzzMult: 1.18,
     color: 'bg-indigo-100 text-indigo-800',
   },
@@ -107,11 +154,15 @@ export const SUMMER_LEAGUES = {
     prestige: 7,
     minOvr: 75,
     maxOvr: null,
-    devFocus: 'Polished all-around game',
-    devBuckets: ['contact_l', 'contact_r', 'control', 'command', 'fielding'],
-    devMagnitude: 1.7,
-    injuryRisk: 0.10,
-    poachChance: 0.18,
+    slotsPerProgram: 1,
+    devFocusLabel: 'Contact · Command · Power',
+    devFocusLong: 'Polished all-around game in front of west-coast scouts. Hitters refine contact + power; pitchers refine command + control.',
+    devBuckets: ['contact_l', 'contact_r', 'power_l', 'power_r', 'command', 'control', 'speed'],
+    primaryBuckets: ['contact_l', 'contact_r', 'command'],
+    devMagnitude: 1.85,
+    devTier: 'HIGH',
+    injuryRisk: 0.09,
+    poachChance: 0.22,
     draftBuzzMult: 1.12,
     color: 'bg-blue-100 text-blue-800',
   },
@@ -124,32 +175,41 @@ export const SUMMER_LEAGUES = {
     prestige: 7,
     minOvr: 70,
     maxOvr: 85,
-    devFocus: 'Pitcher command + arm health',
-    devBuckets: ['command', 'control', 'stuff', 'discipline'],
-    devMagnitude: 1.55,
+    slotsPerProgram: 1,
+    devFocusLabel: 'Stuff · Command · Secondary pitches',
+    devFocusLong: 'Pitcher-friendly league. Sharpens stuff, command, control, slider, and curveball. Hitters get fewer reps here.',
+    devBuckets: ['stuff', 'command', 'control', 'slider', 'curveball', 'velocity'],
+    primaryBuckets: ['stuff', 'command'],
+    devMagnitude: 1.65,
+    devTier: 'STRONG',
     injuryRisk: 0.09,
-    poachChance: 0.15,
+    poachChance: 0.17,
     draftBuzzMult: 1.08,
     color: 'bg-rose-100 text-rose-800',
   },
 
   // ── Mid / developmental tier — these are where bench players grow.
-  // Higher dev magnitude, LOWER risk. Bad players are supposed to be
-  // safer + bigger growth so they bloom into something usable. ──
+  // Higher dev magnitude on a smaller-profile player. Durability + stamina
+  // training lives here, because grinding long innings with sub-par
+  // opposition trains your body more than your skills. ──
   WILD_WEST: {
     key: 'WILD_WEST',
     label: 'Wild Wild West League',
     short: 'WWWL',
-    blurb: 'Independent league in the Mountain West. Wood + metal hybrid, plenty of innings, plenty of swings. Lots of mid-roster guys turn a summer here into a starting job in the spring. Some injury risk because the schedule is dense.',
+    blurb: 'Independent league in the Mountain West. Wood + metal hybrid, plenty of innings, plenty of swings. Mid-roster guys turn a summer here into a starting job. Boom-or-bust upside on power + speed.',
     region: 'Mountain West',
     prestige: 5,
     minOvr: 60,
     maxOvr: 75,
-    devFocus: 'Power + raw stuff (boom-or-bust)',
-    devBuckets: ['power_l', 'power_r', 'stuff', 'speed'],
-    devMagnitude: 2.1,
-    injuryRisk: 0.10,
-    poachChance: 0.06,
+    slotsPerProgram: 1,
+    devFocusLabel: 'Power · Speed · Stuff (boom-or-bust)',
+    devFocusLong: 'Boom-or-bust upside. Power, speed, and raw stuff get pushed, but discipline does NOT — wild league for wild players.',
+    devBuckets: ['power_l', 'power_r', 'stuff', 'speed', 'velocity'],
+    primaryBuckets: ['power_l', 'power_r', 'speed'],
+    devMagnitude: 2.0,
+    devTier: 'HIGH',
+    injuryRisk: 0.11,
+    poachChance: 0.08,
     draftBuzzMult: 1.04,
     color: 'bg-amber-100 text-amber-800',
   },
@@ -157,16 +217,20 @@ export const SUMMER_LEAGUES = {
     key: 'PACIFIC_INT',
     label: 'Pacific International League',
     short: 'PIL',
-    blurb: 'Loose, semi-pro vibe across WA / OR / ID. Mix of college kids and ex-pros. Older competition forces players to grow up fast. Great spot to learn the mental side of the game.',
+    blurb: 'Loose, semi-pro vibe across WA / OR / ID. Mix of college kids and ex-pros. Older competition forces players to grow up fast. Best for mental side + fielding work.',
     region: 'PNW',
     prestige: 4,
     minOvr: 45,
     maxOvr: 70,
-    devFocus: 'Plate discipline + game smarts',
-    devBuckets: ['discipline', 'composure', 'control', 'command'],
-    devMagnitude: 1.9,
-    injuryRisk: 0.07,
-    poachChance: 0.03,
+    slotsPerProgram: 1,
+    devFocusLabel: 'Discipline · Composure · Fielding · Durability',
+    devFocusLong: 'Game-smarts league. Plate discipline, composure, fielding, and durability get bumped — the mental + body fundamentals.',
+    devBuckets: ['discipline', 'composure', 'fielding', 'control', 'durability'],
+    primaryBuckets: ['discipline', 'composure'],
+    devMagnitude: 1.7,
+    devTier: 'STRONG',
+    injuryRisk: 0.06,
+    poachChance: 0.04,
     draftBuzzMult: 1.0,
     color: 'bg-slate-100 text-slate-700'
   },
@@ -179,10 +243,14 @@ export const SUMMER_LEAGUES = {
     prestige: 3,
     minOvr: 45,
     maxOvr: 70,
-    devFocus: 'Pure reps for bench players',
-    devBuckets: ['contact_l', 'contact_r', 'control', 'fielding', 'discipline', 'arm'],
-    devMagnitude: 2.0,
-    injuryRisk: 0.04,
+    slotsPerProgram: 1,
+    devFocusLabel: 'Contact · Fielding · Durability · Stamina',
+    devFocusLong: 'Pure reps. Builds contact, fielding, durability, and stamina through volume. Where bench players turn into starters.',
+    devBuckets: ['contact_l', 'contact_r', 'fielding', 'control', 'discipline', 'durability', 'stamina', 'arm'],
+    primaryBuckets: ['contact_l', 'contact_r', 'durability'],
+    devMagnitude: 1.9,
+    devTier: 'HIGH',
+    injuryRisk: 0.03,
     poachChance: 0.02,
     draftBuzzMult: 1.0,
     color: 'bg-emerald-100 text-emerald-800',
@@ -282,6 +350,25 @@ export function planSummerAssignment(state, playerId, leagueKey) {
   if (!eligible.includes(leagueKey)) {
     const lg = SUMMER_LEAGUES[leagueKey]
     return { ok: false, error: `${player.firstName} ${player.lastName} doesn't qualify for the ${lg.label}.` }
+  }
+  // ── ONE-PER-LEAGUE LIMIT ───────────────────────────────────────────
+  // Each league has a hard cap (slotsPerProgram, default 1) on how many of
+  // YOUR players can be sent. This forces real choices — you can't dump
+  // your whole roster into Cape Cod. If a slot is taken, point the user at
+  // the existing assignment so they know who to remove first.
+  const lg = SUMMER_LEAGUES[leagueKey]
+  const cap = lg?.slotsPerProgram ?? 1
+  const occupants = Object.entries(state.summerBall.assignments)
+    .filter(([pid, a]) => !a.removed && a.leagueKey === leagueKey && pid !== playerId)
+  if (occupants.length >= cap) {
+    const heldBy = occupants.map(([pid]) => {
+      const p = state.players[pid]
+      return p ? `${p.firstName} ${p.lastName}` : 'another player'
+    }).join(', ')
+    return {
+      ok: false,
+      error: `${lg.label} only allows ${cap} player per program — ${heldBy} is currently holding the slot. Remove them first to swap.`,
+    }
   }
   state.summerBall.assignments[playerId] = {
     leagueKey,
@@ -393,7 +480,7 @@ export function resolveSummerBall(state) {
     const usageBoost = Math.max(0.6, Math.min(1.6, 1.4 - springUsage * 0.8))
     // ── League dev magnitude × usage boost final dev points ──────────
     const devPoints = Math.round(rng.gaussian(lg.devMagnitude * usageBoost * 3, 1))
-    const ratingDelta = applySummerDev(player, lg.devBuckets, devPoints, rng)
+    const ratingDelta = applySummerDev(player, lg.devBuckets, lg.primaryBuckets || [], devPoints, rng)
     resultEntry.ratingsApplied = ratingDelta
 
     // ── Injury roll — pitcher overuse hits harder ─────────────────────
@@ -422,10 +509,24 @@ export function resolveSummerBall(state) {
 
     // ── Poach roll — D1 sniffing around a hot player ──────────────────
     // Only triggers if the player developed nicely AND the league has scouts.
+    // The effective chance is base × movement × (1 − scholarship retention)
+    // × (1 − team-quality retention) × level-vulnerability multiplier.
+    // Big-money players on top programs almost never get poached; a star
+    // on a bad D3 with no scholarship is the easiest target on the planet.
     const ovrAfter = playerOverall(player)
     const moved = ovrAfter - ovrBefore
     let poached = false
-    if (!injured && moved >= 2 && rng.chance(lg.poachChance * (moved / 3))) {
+    const userSchool = state.schools?.[state.userSchoolId]
+    const userTeamRating = state.nwbbRatings?.[state.userSchoolId]?.rating ?? 60
+    const poachP = computePoachProbability({
+      league: lg,
+      moved,
+      player,
+      school: userSchool,
+      teamRating: userTeamRating,
+    })
+    resultEntry.poachProb = poachP
+    if (!injured && moved >= 2 && rng.chance(poachP)) {
       // Don't actually remove them — flag as "interest" for now. A future
       // pass can wire this into outboundTransfers.
       player._summerPoachInterest = { league: a.leagueKey, year }
@@ -475,24 +576,30 @@ export function resolveSummerBall(state) {
 }
 
 /**
- * Apply per-rating development bumps to a player's hitter / pitcher block
- * focused on the league's emphasis buckets. Each bucket gets ~1/(n) of the
- * total dev points, capped so a single summer can't 99 anyone.
+ * Apply per-rating development bumps to a player's hitter / pitcher block.
+ * Primary buckets (league.primaryBuckets) get DOUBLE share — that's how a
+ * league with focus "Power · Contact · Stuff" actually pushes power & stuff
+ * harder than the secondary tools.
  *
  * @param {import('./types.js').Player} player
- * @param {string[]} buckets
+ * @param {string[]} buckets       all dev-eligible rating keys
+ * @param {string[]} primary       subset that gets weight 2 instead of 1
  * @param {number} totalPoints
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  */
-function applySummerDev(player, buckets, totalPoints, rng) {
+function applySummerDev(player, buckets, primary, totalPoints, rng) {
   if (totalPoints <= 0) return 0
   const block = player.isPitcher ? player.pitcher : player.hitter
   if (!block) return 0
   const applicable = buckets.filter(k => k in block)
   if (applicable.length === 0) return 0
+  // Compute weighted total: primary buckets count 2x.
+  const primarySet = new Set(primary || [])
+  const totalWeight = applicable.reduce((s, k) => s + (primarySet.has(k) ? 2 : 1), 0)
   let applied = 0
   for (const k of applicable) {
-    const share = totalPoints / applicable.length
+    const weight = primarySet.has(k) ? 2 : 1
+    const share = totalPoints * (weight / totalWeight)
     const jitter = rng.gaussian(0, 0.5)
     const bump = Math.max(0, Math.round(share + jitter))
     if (bump > 0) {
@@ -502,4 +609,54 @@ function applySummerDev(player, buckets, totalPoints, rng) {
     }
   }
   return applied
+}
+
+// ─── Poach probability ──────────────────────────────────────────────────────
+
+/**
+ * Compute the effective chance a player gets poached after a summer breakout.
+ *
+ * Factors:
+ *   - base = league.poachChance (drives by league prestige — Cape Cod 45%)
+ *   - movement = max(0.3, moved/3) — bigger OVR jump = more interest
+ *   - scholRetention = up to 70% retention from $30K+ scholarship
+ *   - qualityRetention = up to 50% retention if your team's NWBB rating
+ *     is 80+. A top-25 program holds players.
+ *   - levelVuln = level vulnerability multiplier (D1 1.0, D3 1.20, NWAC 1.25)
+ *
+ * Returns a probability in [0, 0.70]. Clamped so it never feels unfair —
+ * even the worst case caps out at ~70% poach.
+ *
+ * @param {{ league: any, moved: number, player: any, school: any, teamRating: number }} args
+ * @returns {number}
+ */
+export function computePoachProbability({ league, moved, player, school, teamRating }) {
+  if (!league) return 0
+  const base = league.poachChance || 0
+  const movement = Math.max(0.3, Math.min(2.5, moved / 3))
+
+  // Scholarship retention: bigger $ → harder to pry the player loose.
+  // Scales linearly to 70% retention at $30K. Capped so this single factor
+  // can't fully eliminate poach risk on its own.
+  const schol = player?.scholarship?.annualAmount || 0
+  const scholRetention = Math.min(0.70, (schol / 30000) * 0.70)
+
+  // Team-quality retention: a player on a top-25-rated program is less
+  // likely to leave for a slight upgrade. Scales 0 → 50% between rating
+  // 60 and 80.
+  const tr = teamRating ?? 60
+  const qualityRetention = Math.max(0, Math.min(0.50, ((tr - 60) / 20) * 0.50))
+
+  // Level vulnerability — being on a D3 or NWAC team makes the player more
+  // exposed (no athletic schol at D3 + JUCO is by design a stepping stone).
+  const levelVuln = {
+    D1: 0.95,
+    D2: 1.00,
+    NAIA: 1.10,
+    D3: 1.20,
+    NWAC: 1.25,
+  }[school?.level || 'NAIA'] || 1.10
+
+  const p = base * movement * (1 - scholRetention) * (1 - qualityRetention) * levelVuln
+  return Math.max(0, Math.min(0.70, p))
 }
