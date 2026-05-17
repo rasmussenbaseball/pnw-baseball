@@ -18,9 +18,29 @@ import { createLiveGame } from '../../gm/engine/liveGame'
 import { simWeek, advanceWeek } from '../../gm/engine/season'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
+import { positionFit, positionFitRank, positionFitLabel } from '../../gm/engine/positions'
+import {
+  ensureEnergyState, getEnergy, applyGameEnergyCosts, tickIntraDayRecovery,
+  energyLabel, energyColorClass,
+} from '../../gm/engine/energy'
+import { findBlockingPriorGame } from '../../gm/engine/schedule'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
+
+// Was the user's prior game on the same date already played? Used by the
+// live-game exit handler to flag the second game of a doubleheader for
+// the energy surcharge.
+function isSecondGameOfDayUI(schedule, game, userSchoolId) {
+  if (!game?.isDoubleheader || !game.date) return false
+  for (const g of schedule) {
+    if (g.id === game.id) continue
+    if (g.date !== game.date) continue
+    if (!(g.homeId === userSchoolId || g.awayId === userSchoolId)) continue
+    if (g.id < game.id && g.played) return true
+  }
+  return false
+}
 
 const NON_NAIA_DISPLAY = (() => {
   const out = {}
@@ -81,6 +101,37 @@ export default function Play() {
             }
             // Accumulate stats into save.playerStats
             accumulateBoxscore(save, result.boxscore)
+            // Energy: deduct costs for the user's appearing players. Build the
+            // appearance list from the user-side lineup + pitchers who threw.
+            ensureEnergyState(save)
+            const userTeam = save.teams[save.userSchoolId]
+            if (userTeam) {
+              const userSide = save.userSchoolId === g.homeId ? 'home' : 'away'
+              const userLineup = resolveLineupForGame(save, save.userSchoolId, g.id)
+              const isSecond = isSecondGameOfDayUI(save.schedule || [], g, save.userSchoolId)
+              const apps = []
+              ;(userLineup.batters || []).forEach((b, i) => {
+                if (!b) return
+                // Only charge cost if the player actually appeared (PA > 0)
+                const stats = result.boxscore?.batterStats?.[b.id]
+                if (!stats || (stats.pa || 0) <= 0) return
+                apps.push({
+                  playerId: b.id,
+                  position: userLineup.batterPositions?.[i] || b.primaryPosition,
+                  isSecondGameOfDay: isSecond,
+                })
+              })
+              // Pitchers — use real pitch count from the live engine if available
+              for (const [pid, ps] of Object.entries(result.boxscore?.pitcherStats || {})) {
+                if (!userTeam.rosterPlayerIds.includes(pid)) continue
+                // Live game tracks per-pitcher pitches via state.{home,away}Pitches
+                // but that's just the CURRENT pitcher; for relievers the per-PA
+                // total is the best proxy.
+                const pitches = Math.round((ps.pa || 0) * 3.9)
+                apps.push({ playerId: pid, pitchesThrown: pitches, isPitcher: true, isSecondGameOfDay: isSecond })
+              }
+              applyGameEnergyCosts(save, apps)
+            }
             // Update team W-L for record-counting games (everything except
             // scrimmages + BYEs). Mirrors the auto-sim path in season.simWeek.
             const counts = g.countsTowardRecord !== false
@@ -286,19 +337,37 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
   const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId] || { name: oppId }
   const saved = getSavedLineup(save, game.id)
   const isFallScrim = game.type === 'FALL_SCRIMMAGE'
+  // Doubleheader gate: if there's an earlier-in-day game vs the same team
+  // that hasn't been played yet, this game is locked.
+  const blockingPrior = findBlockingPriorGame(save.schedule || [], game)
+  const isLocked = !!blockingPrior
   const typeLabel = game.type === 'CONFERENCE' ? 'Conference'
     : game.type === 'D1_MIDWEEK' ? 'D1 Midweek'
     : isFallScrim ? 'Fall Scrimmage'
     : game.type === 'SPRING_SCRIMMAGE' ? 'Spring Scrimmage'
     : 'Non-conference'
+  // Game-of-day label for doubleheaders ("Game 1 of 2" / "Game 2 of 2")
+  const dhLabel = (() => {
+    if (!game.isDoubleheader) return null
+    const sameDay = (save.schedule || []).filter(g =>
+      g.date === game.date
+      && ((g.homeId === game.homeId && g.awayId === game.awayId) || (g.homeId === game.awayId && g.awayId === game.homeId))
+    )
+    if (sameDay.length < 2) return null
+    sameDay.sort((a, b) => a.id.localeCompare(b.id))
+    const idx = sameDay.findIndex(g => g.id === game.id)
+    return idx >= 0 ? `Game ${idx + 1} of ${sameDay.length}` : null
+  })()
   return (
-    <div className={'rounded-xl border p-4 shadow-sm ' + (isFallScrim ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-200')}>
+    <div className={'rounded-xl border p-4 shadow-sm ' + (isFallScrim ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-200') + (isLocked ? ' opacity-60' : '')}>
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-3">
           <TeamLogo school={opp} size={36} />
           <div>
             <div className="font-semibold text-pnw-slate">{isHome ? 'vs' : '@'} {opp.name}</div>
-            <div className="text-xs text-gray-500">{typeLabel} • {game.date}</div>
+            <div className="text-xs text-gray-500">
+              {typeLabel} • {game.date}{dhLabel ? ` • ${dhLabel}` : ''}
+            </div>
           </div>
         </div>
         <div className="text-right">
@@ -315,11 +384,24 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
           <strong>Development boost:</strong> every player you start in this scrimmage gets a chance at a small rating bump. Play your young guys + projects — they'll grow more here than they will in spring.
         </div>
       )}
+      {isLocked && (
+        <div className="mt-1 mb-2 bg-amber-100 border border-amber-400 rounded px-2 py-1.5 text-[11px] text-amber-900 leading-snug">
+          🔒 <strong>Locked:</strong> finish the earlier game today before setting a lineup for this one. Players who played in Game 1 will be tired for this game (especially catchers + starting pitcher).
+        </div>
+      )}
       <div className="flex gap-2 mt-3">
-        <button onClick={onSetLineup} className="flex-1 px-3 py-1.5 border border-pnw-green text-pnw-green hover:bg-pnw-cream rounded text-xs font-semibold">
+        <button
+          onClick={onSetLineup}
+          disabled={isLocked}
+          className="flex-1 px-3 py-1.5 border border-pnw-green text-pnw-green hover:bg-amber-400/10 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           {saved ? 'Edit lineup' : 'Set lineup'}
         </button>
-        <button onClick={onEnterGame} className="flex-1 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90">
+        <button
+          onClick={onEnterGame}
+          disabled={isLocked}
+          className="flex-1 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           Enter game (live)
         </button>
       </div>
@@ -542,6 +624,23 @@ function LineupEditor({ save, game, onSave, onCancel }) {
   const pitchers = players.filter(p => p.isPitcher)
   const POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']
 
+  // Build sorted hitter lists per position — natives first, then neighbors,
+  // then stretches, then everyone else. Memoize so the select doesn't
+  // re-sort 9× on every render.
+  const hittersByPos = useMemo(() => {
+    const out = {}
+    for (const pos of POSITIONS) {
+      out[pos] = [...hitters].sort((a, b) => {
+        const ra = positionFitRank(a, pos)
+        const rb = positionFitRank(b, pos)
+        if (ra !== rb) return ra - rb
+        return playerOverall(b) - playerOverall(a)
+      })
+    }
+    return out
+  }, [hitters.map(h => h.id).join('|')])  // stable key
+
+
   function setSlotPlayer(slotIdx, playerId) {
     const next = [...slots]
     next[slotIdx] = { ...next[slotIdx], playerId }
@@ -610,42 +709,99 @@ function LineupEditor({ save, game, onSave, onCancel }) {
           <div className="space-y-1.5">
             {slots.map((slot, i) => {
               const p = save.players[slot.playerId]
-              const ovr = p ? playerOverall(p) : 0
+              const slotPos = slot.position
+              const sorted = hittersByPos[slotPos] || hitters
+              // Find the first index per-fit-bucket so we can insert dividers
+              // in the select via an OPTGROUP per bucket.
+              const buckets = { NATIVE: [], NEIGHBOR: [], STRETCH: [], OUT: [] }
+              for (const h of sorted) {
+                buckets[positionFit(h, slotPos)].push(h)
+              }
+              const fitOfSelected = p ? positionFit(p, slotPos) : 'NATIVE'
+              const warning = positionFitLabel(p, slotPos)
+              const energy = getEnergy(save, slot.playerId)
               return (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="font-mono text-amber-300 font-bold w-6">{i + 1}.</span>
-                  <select
-                    value={slot.playerId || ''}
-                    onChange={e => setSlotPlayer(i, e.target.value)}
-                    className="flex-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-sm text-white"
-                  >
-                    <option value="">— pick player —</option>
-                    {hitters.map(h => (
-                      <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
-                        {h.firstName} {h.lastName} ({displayPosition(h.primaryPosition)} · {displayClassYear(h)} · OVR {playerOverall(h)})
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={slot.position}
-                    onChange={e => setSlotPosition(i, e.target.value)}
-                    className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-xs text-white w-16"
-                    title="Field position"
-                  >
-                    {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
-                  </select>
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      onClick={() => moveSpot(i, -1)}
-                      disabled={i === 0}
-                      className="text-[10px] px-1 bg-[#3a3a5e] text-white rounded disabled:opacity-30"
-                    >▲</button>
-                    <button
-                      onClick={() => moveSpot(i, +1)}
-                      disabled={i === 8}
-                      className="text-[10px] px-1 bg-[#3a3a5e] text-white rounded disabled:opacity-30"
-                    >▼</button>
+                <div key={i}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-amber-300 font-bold w-6">{i + 1}.</span>
+                    <select
+                      value={slot.playerId || ''}
+                      onChange={e => setSlotPlayer(i, e.target.value)}
+                      className="flex-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-sm text-white"
+                    >
+                      <option value="">— pick player —</option>
+                      {buckets.NATIVE.length > 0 && (
+                        <optgroup label={`Plays ${slotPos}`}>
+                          {buckets.NATIVE.map(h => (
+                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
+                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {buckets.NEIGHBOR.length > 0 && (
+                        <optgroup label="Off-position (small DEF drop)">
+                          {buckets.NEIGHBOR.map(h => (
+                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
+                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {buckets.STRETCH.length > 0 && (
+                        <optgroup label="Stretch (big DEF drop)">
+                          {buckets.STRETCH.map(h => (
+                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
+                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {buckets.OUT.length > 0 && (
+                        <optgroup label="Out of position (DEF trainwreck)">
+                          {buckets.OUT.map(h => (
+                            <option key={h.id} value={h.id} disabled={usedIds.has(h.id) && h.id !== slot.playerId}>
+                              {h.firstName} {h.lastName} · {displayPosition(h.primaryPosition)} · OVR {playerOverall(h)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <select
+                      value={slot.position}
+                      onChange={e => setSlotPosition(i, e.target.value)}
+                      className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-2 py-1 text-xs text-white w-16"
+                      title="Field position"
+                    >
+                      {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                    </select>
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        onClick={() => moveSpot(i, -1)}
+                        disabled={i === 0}
+                        className="text-[10px] px-1 bg-[#3a3a5e] text-white rounded disabled:opacity-30"
+                      >▲</button>
+                      <button
+                        onClick={() => moveSpot(i, +1)}
+                        disabled={i === 8}
+                        className="text-[10px] px-1 bg-[#3a3a5e] text-white rounded disabled:opacity-30"
+                      >▼</button>
+                    </div>
                   </div>
+                  {(warning || energy < 85) && (
+                    <div className="pl-8 mt-0.5 flex items-center gap-3 text-[10px]">
+                      {warning && (
+                        <span className={fitOfSelected === 'OUT' ? 'text-red-400 font-bold' : fitOfSelected === 'STRETCH' ? 'text-orange-300' : 'text-amber-200'}>
+                          ⚠ {warning}
+                        </span>
+                      )}
+                      {p && energy < 85 && (
+                        <span className={energyColorClass(energy)}>
+                          {energyLabel(energy)} ({Math.round(energy)}/100)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -772,6 +928,10 @@ function LiveGameView({ save, game, onExit }) {
       awayMotivator: (isHome ? oppHC?.motivator : userHC?.motivator) ?? 50,
       homeTeamName: (isHome ? userSchool : oppSchool)?.name || 'Home',
       awayTeamName: (isHome ? oppSchool : userSchool)?.name || 'Away',
+      // Energy lookup — used by simPA to dampen ratings for tired players.
+      // Wrapped (not snapshotted) so back-to-back doubleheader games read
+      // the latest energy after the prior game's cost was applied.
+      getEnergy: (pid) => getEnergy(save, pid),
     }, game.id)
   }
   const live = liveRef.current
@@ -826,16 +986,17 @@ function LiveGameView({ save, game, onExit }) {
   const userPitches = isHome ? s.homePitches : s.awayPitches
 
   return (
-    <div className="max-w-6xl mx-auto py-4 px-3">
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <div className="text-xs text-gray-500">Live Game</div>
-          <div className="text-xl font-bold text-pnw-slate">{awayName} @ {homeName}</div>
-          <div className="text-[11px] text-gray-500">{game.type === 'FALL_SCRIMMAGE' ? 'Fall Scrimmage' : game.type === 'CONFERENCE' ? 'Conference' : 'Non-conference'} · {game.date}</div>
+          <div className="font-pixel text-[10px] uppercase tracking-widest text-amber-300">Live Game</div>
+          <h1 className="font-pixel-display text-xl tracking-widest text-white">{awayName} @ {homeName}</h1>
+          <div className="font-pixel text-[11px] text-[#a8a8c8]">{game.type === 'FALL_SCRIMMAGE' ? 'Fall Scrimmage' : game.type === 'CONFERENCE' ? 'Conference' : 'Non-conference'} · {game.date}</div>
         </div>
-        <button onClick={handleFinish} className="px-3 py-1.5 bg-pnw-slate text-white rounded text-xs font-semibold">
+        <PixelButton onClick={handleFinish}>
           {live.isOver() ? 'Save & exit' : 'Auto-finish & exit'}
-        </button>
+        </PixelButton>
       </div>
 
       {/* SCOREBOARD — broadcast style with linescore by inning */}
@@ -843,30 +1004,30 @@ function LiveGameView({ save, game, onExit }) {
 
       {/* CONTROL BAR — advance + subs (pinned high, right under scoreboard) */}
       {!s.isOver && (
-        <div className="bg-white rounded-xl border border-gray-200 p-3 mb-3 flex flex-wrap items-center gap-2">
+        <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded-lg p-3 mb-3 flex flex-wrap items-center gap-2">
           <div className="flex gap-2 flex-1 flex-wrap">
-            <button onClick={doStep} className="px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold">Next batter →</button>
-            <button onClick={doHalfInning} className="px-3 py-1.5 border border-pnw-green text-pnw-green rounded text-xs font-semibold">Finish inning</button>
-            <button onClick={doRest} className="px-3 py-1.5 border rounded text-xs">Sim to end</button>
+            <button onClick={doStep} className="px-3 py-1.5 bg-amber-500 text-[#1a1a2e] rounded text-xs font-pixel font-bold uppercase tracking-widest hover:bg-amber-400">Next batter →</button>
+            <button onClick={doHalfInning} className="px-3 py-1.5 border-2 border-amber-400 text-amber-300 rounded text-xs font-pixel font-bold uppercase tracking-widest hover:bg-amber-400/10">Finish inning</button>
+            <button onClick={doRest} className="px-3 py-1.5 border-2 border-[#3a3a5e] text-[#a8a8c8] rounded text-xs font-pixel uppercase tracking-widest hover:bg-[#3a3a5e]/30">Sim to end</button>
           </div>
           <div className="flex gap-1 flex-wrap">
-            <span className="text-[10px] text-gray-500 self-center uppercase tracking-wider mr-1">Subs:</span>
+            <span className="text-[10px] text-[#a8a8c8] self-center uppercase tracking-widest font-pixel mr-1">Subs:</span>
             {userIsPitching && (
-              <button onClick={() => setSubMenuOpen('PITCH')} className="px-2.5 py-1 border border-amber-400 text-amber-700 rounded text-[11px] font-semibold hover:bg-amber-50">
+              <button onClick={() => setSubMenuOpen('PITCH')} className="px-2.5 py-1 border border-amber-400 text-amber-300 rounded text-[11px] font-pixel uppercase tracking-wider hover:bg-amber-400/10">
                 Pitching
               </button>
             )}
             {userIsBatting && (
-              <button onClick={() => setSubMenuOpen('HIT')} className="px-2.5 py-1 border border-blue-400 text-blue-700 rounded text-[11px] font-semibold hover:bg-blue-50">
+              <button onClick={() => setSubMenuOpen('HIT')} className="px-2.5 py-1 border border-blue-400 text-blue-300 rounded text-[11px] font-pixel uppercase tracking-wider hover:bg-blue-400/10">
                 Pinch hitter
               </button>
             )}
             {userIsBatting && s.bases.some(b => b) && (
-              <button onClick={() => setSubMenuOpen('RUN')} className="px-2.5 py-1 border border-purple-400 text-purple-700 rounded text-[11px] font-semibold hover:bg-purple-50">
+              <button onClick={() => setSubMenuOpen('RUN')} className="px-2.5 py-1 border border-purple-400 text-purple-300 rounded text-[11px] font-pixel uppercase tracking-wider hover:bg-purple-400/10">
                 Pinch runner
               </button>
             )}
-            <button onClick={() => setSubMenuOpen('FIELD')} className="px-2.5 py-1 border border-gray-400 text-gray-700 rounded text-[11px] font-semibold hover:bg-gray-50">
+            <button onClick={() => setSubMenuOpen('FIELD')} className="px-2.5 py-1 border border-[#3a3a5e] text-[#a8a8c8] rounded text-[11px] font-pixel uppercase tracking-wider hover:bg-[#3a3a5e]/30">
               Defensive sub
             </button>
           </div>
@@ -875,8 +1036,8 @@ function LiveGameView({ save, game, onExit }) {
 
       {/* PLAY-BY-PLAY — pinned high so the latest action is always above the
           fold. Scrollable list, newest first. */}
-      <div className="bg-white rounded-xl border border-gray-200 p-3 mb-3 max-h-[35vh] overflow-y-auto">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Play-by-play</h2>
+      <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded-lg p-3 mb-3 max-h-[35vh] overflow-y-auto">
+        <h2 className="text-[10px] font-pixel font-bold uppercase tracking-widest text-amber-300 mb-2">Play-by-play</h2>
         <div className="space-y-1">
           {[...s.events].reverse().map((ev, i) => (
             <EventLine key={s.events.length - 1 - i} ev={ev} />
@@ -920,9 +1081,11 @@ function LiveGameView({ save, game, onExit }) {
           isUserBatting={userIsBatting}
           battingIdx={battingIdx}
           userSchool={userSchool}
+          save={save}
         />
       </div>
     </div>
+    </GMShell>
   )
 }
 
@@ -930,8 +1093,8 @@ function EventLine({ ev }) {
   const tag = ev.top ? `T${ev.inning}` : `B${ev.inning}`
   if (ev.kind === 'GAME_END' || ev.kind === 'HALF_END' || ev.kind === 'SUB' || ev.kind === 'PITCHING_CHANGE') {
     return (
-      <div className="text-xs text-pnw-slate border-l-2 border-pnw-green pl-2 py-0.5 bg-pnw-cream/40">
-        <span className="font-mono text-[10px] text-gray-400 mr-2">{tag}</span>
+      <div className="text-xs text-amber-200 border-l-2 border-amber-400 pl-2 py-0.5 bg-amber-400/10">
+        <span className="font-mono text-[10px] text-[#a8a8c8] mr-2">{tag}</span>
         {ev.text}
       </div>
     )
@@ -939,9 +1102,9 @@ function EventLine({ ev }) {
   // PA event
   return (
     <div className="text-sm py-0.5">
-      <span className="font-mono text-[10px] text-gray-400 mr-2">{tag}</span>
-      <span className="text-gray-700">{ev.text}</span>
-      <span className="ml-2 text-[10px] text-gray-400">({ev.outs} out · {ev.score.away}-{ev.score.home})</span>
+      <span className="font-mono text-[10px] text-[#a8a8c8] mr-2">{tag}</span>
+      <span className="text-[#e8e8e8]">{ev.text}</span>
+      <span className="ml-2 text-[10px] text-[#a8a8c8]">({ev.outs} out · {ev.score.away}-{ev.score.home})</span>
     </div>
   )
 }
@@ -968,7 +1131,7 @@ function Scoreboard({ state: s, homeName, awayName }) {
   const inningCols = []
   for (let i = 1; i <= Math.max(9, innings); i++) inningCols.push(i)
   return (
-    <div className="bg-pnw-slate text-white rounded-xl p-3 mb-3 shadow-lg">
+    <div className="bg-[#0f0f1e] border-2 border-amber-400 text-white rounded-lg p-3 mb-3 shadow-lg">
       {/* Top strip: team rows with linescore + R/H/E + current count */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -1053,31 +1216,31 @@ function BatterCard({ batter, todayLine, onDeck, inTheHole, side }) {
   const powerL = batter?.hitter?.power_l ?? 50
   const powerR = batter?.hitter?.power_r ?? 50
   return (
-    <div className="bg-white rounded-xl border-2 border-blue-400/40 p-3 shadow-sm">
+    <div className="bg-[#1a1a2e] rounded-lg border-2 border-blue-400/60 p-3 shadow-sm">
       <div className="flex justify-between items-start">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-blue-700 font-bold">At the plate</div>
-          <div className="text-lg font-bold text-pnw-slate leading-tight">
+          <div className="text-[10px] font-pixel uppercase tracking-widest text-blue-300 font-bold">At the plate</div>
+          <div className="text-lg font-pixel-display text-white leading-tight tracking-wider">
             {nm(batter)}
           </div>
-          <div className="text-[11px] text-gray-500 mt-0.5">
+          <div className="text-[11px] text-[#a8a8c8] mt-0.5 font-pixel">
             {batter?.primaryPosition} · {batter?.bats}HB · {batter?.classYear}
           </div>
         </div>
         <div className="text-right text-[11px]">
-          <div className="text-gray-400 uppercase tracking-wider text-[9px]">Today</div>
-          <div className="font-mono font-semibold text-pnw-slate">{summary}</div>
+          <div className="text-[#a8a8c8] uppercase tracking-widest text-[9px] font-pixel">Today</div>
+          <div className="font-mono font-semibold text-amber-200">{summary}</div>
         </div>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-1 text-[10px] text-center">
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Con vL</div><div className="font-mono font-semibold">{contactL}</div></div>
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Con vR</div><div className="font-mono font-semibold">{contactR}</div></div>
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Pow vL</div><div className="font-mono font-semibold">{powerL}</div></div>
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Pow vR</div><div className="font-mono font-semibold">{powerR}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Con vL</div><div className="font-mono font-semibold text-white">{contactL}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Con vR</div><div className="font-mono font-semibold text-white">{contactR}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Pow vL</div><div className="font-mono font-semibold text-white">{powerL}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Pow vR</div><div className="font-mono font-semibold text-white">{powerR}</div></div>
       </div>
-      <div className="mt-2 text-[10px] text-gray-500 border-t pt-2 flex gap-3">
-        <span><strong>On deck:</strong> {nm(onDeck)}</span>
-        <span><strong>In the hole:</strong> {nm(inTheHole)}</span>
+      <div className="mt-2 text-[10px] text-[#a8a8c8] border-t border-[#3a3a5e] pt-2 flex gap-3 font-pixel">
+        <span><strong className="text-amber-200">On deck:</strong> {nm(onDeck)}</span>
+        <span><strong className="text-amber-200">In the hole:</strong> {nm(inTheHole)}</span>
       </div>
     </div>
   )
@@ -1085,52 +1248,51 @@ function BatterCard({ batter, todayLine, onDeck, inTheHole, side }) {
 
 function PitcherCard({ pitcher, line, pitches, fatigue, confidence, bf }) {
   const ip = Math.floor((line?.outs || 0) / 3) + '.' + ((line?.outs || 0) % 3)
-  const era = (line?.outs || 0) > 0 ? (line.er * 9 / (line.outs / 3)).toFixed(2) : '—'
   const fatiguePct = Math.min(100, fatigue)
   const fatigueLabel = fatigue < 25 ? 'Fresh' : fatigue < 50 ? 'OK' : fatigue < 75 ? 'Tiring' : 'Gassed'
   const fatigueColor = fatigue < 25 ? 'bg-emerald-500' : fatigue < 50 ? 'bg-lime-500' : fatigue < 75 ? 'bg-amber-500' : 'bg-red-500'
-  const confidenceColor = confidence >= 65 ? 'text-emerald-600' : confidence >= 45 ? 'text-pnw-slate' : 'text-red-600'
+  const confidenceColor = confidence >= 65 ? 'text-emerald-300' : confidence >= 45 ? 'text-white' : 'text-red-400'
   return (
-    <div className="bg-white rounded-xl border-2 border-amber-400/40 p-3 shadow-sm">
+    <div className="bg-[#1a1a2e] rounded-lg border-2 border-amber-400/60 p-3 shadow-sm">
       <div className="flex justify-between items-start">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-amber-700 font-bold">On the mound</div>
-          <div className="text-lg font-bold text-pnw-slate leading-tight">{nm(pitcher)}</div>
-          <div className="text-[11px] text-gray-500 mt-0.5">
-            {pitcher?.throws}HP · {pitcher?.classYear} · {pitcher?.measurables?.fbVeloMph ? `${pitcher.measurables.fbVeloMinMph}-${pitcher.measurables.fbVeloMaxMph} mph` : ''}
+          <div className="text-[10px] font-pixel uppercase tracking-widest text-amber-300 font-bold">On the mound</div>
+          <div className="text-lg font-pixel-display text-white leading-tight tracking-wider">{nm(pitcher)}</div>
+          <div className="text-[11px] text-[#a8a8c8] mt-0.5 font-pixel">
+            {pitcher?.throws}HP · {pitcher?.classYear} · {pitcher?.pitcher?.velocity_avg ? `${pitcher.pitcher.velocity_avg.toFixed(0)} mph` : ''}
           </div>
         </div>
         <div className="text-right text-[11px]">
-          <div className="text-gray-400 uppercase tracking-wider text-[9px]">Today</div>
-          <div className="font-mono font-semibold text-pnw-slate">
+          <div className="text-[#a8a8c8] uppercase tracking-widest text-[9px] font-pixel">Today</div>
+          <div className="font-mono font-semibold text-amber-200">
             {ip} IP, {line?.h || 0}H {line?.er || 0}ER {line?.k || 0}K {line?.bb || 0}BB
           </div>
         </div>
       </div>
       {/* Pitch count + fatigue + confidence row */}
       <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-        <div className="bg-gray-50 rounded p-1.5">
-          <div className="text-[9px] uppercase tracking-wider text-gray-400">Pitch count</div>
-          <div className="text-base font-bold font-mono">{pitches}</div>
+        <div className="bg-[#0f0f1e] rounded p-1.5 border border-[#3a3a5e]">
+          <div className="text-[9px] font-pixel uppercase tracking-widest text-[#a8a8c8]">Pitch count</div>
+          <div className="text-base font-bold font-mono text-white">{pitches}</div>
         </div>
-        <div className="bg-gray-50 rounded p-1.5">
-          <div className="text-[9px] uppercase tracking-wider text-gray-400">Fatigue</div>
-          <div className="h-2.5 bg-gray-200 rounded-full mt-1 overflow-hidden">
+        <div className="bg-[#0f0f1e] rounded p-1.5 border border-[#3a3a5e]">
+          <div className="text-[9px] font-pixel uppercase tracking-widest text-[#a8a8c8]">Fatigue</div>
+          <div className="h-2.5 bg-[#3a3a5e] rounded-full mt-1 overflow-hidden">
             <div className={'h-full ' + fatigueColor} style={{ width: `${fatiguePct}%` }} />
           </div>
-          <div className="text-[10px] text-gray-600 mt-0.5">{fatigueLabel} · {Math.round(fatigue)}</div>
+          <div className="text-[10px] text-[#e8e8e8] mt-0.5">{fatigueLabel} · {Math.round(fatigue)}</div>
         </div>
-        <div className="bg-gray-50 rounded p-1.5">
-          <div className="text-[9px] uppercase tracking-wider text-gray-400">Confidence</div>
+        <div className="bg-[#0f0f1e] rounded p-1.5 border border-[#3a3a5e]">
+          <div className="text-[9px] font-pixel uppercase tracking-widest text-[#a8a8c8]">Confidence</div>
           <div className={'text-base font-bold font-mono ' + confidenceColor}>{Math.round(confidence)}</div>
-          <div className="text-[10px] text-gray-500">{confidence >= 65 ? 'Locked in' : confidence >= 45 ? 'Steady' : 'Shaky'}</div>
+          <div className="text-[10px] text-[#a8a8c8]">{confidence >= 65 ? 'Locked in' : confidence >= 45 ? 'Steady' : 'Shaky'}</div>
         </div>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-1 text-[10px] text-center">
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Stuff</div><div className="font-mono font-semibold">{pitcher?.pitcher?.stuff ?? '—'}</div></div>
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Ctrl</div><div className="font-mono font-semibold">{pitcher?.pitcher?.control ?? '—'}</div></div>
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Cmd</div><div className="font-mono font-semibold">{pitcher?.pitcher?.command ?? '—'}</div></div>
-        <div className="bg-gray-50 rounded p-1"><div className="text-gray-400">Stam</div><div className="font-mono font-semibold">{pitcher?.pitcher?.stamina ?? '—'}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Stuff</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.stuff ?? '—'}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Ctrl</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.control ?? '—'}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Cmd</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.command ?? '—'}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Stam</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.stamina ?? '—'}</div></div>
       </div>
     </div>
   )
@@ -1184,19 +1346,20 @@ function UserFieldDiagram({ fielders, pitcher, bases, userIsPitching }) {
   )
 }
 
-function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool }) {
-  const accent = userSchool?.colors?.[0] || '#fbbf24'
+function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool, save }) {
+  const accent = userSchool?.colors?.primary || '#fbbf24'
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="text-white px-3 py-1.5 text-xs font-bold uppercase tracking-wider" style={{ backgroundColor: accent, color: '#1a1a2e' }}>
+    <div className="bg-[#1a1a2e] rounded-lg border-2 border-[#3a3a5e] shadow-sm overflow-hidden">
+      <div className="px-3 py-1.5 text-xs font-pixel font-bold uppercase tracking-widest" style={{ backgroundColor: accent, color: '#1a1a2e' }}>
         Your Lineup
       </div>
       <table className="w-full text-xs">
-        <thead className="bg-gray-50 text-[9px] uppercase text-gray-500">
+        <thead className="bg-[#0f0f1e] text-[9px] font-pixel uppercase tracking-widest text-amber-300">
           <tr>
             <th className="text-left py-1 pl-2 w-6">#</th>
             <th className="text-left">Player</th>
             <th className="text-center w-6">Pos</th>
+            <th className="text-center w-10">NRG</th>
             <th className="text-center w-8">AB</th>
             <th className="text-center w-8">H</th>
             <th className="text-center w-8">RBI</th>
@@ -1207,14 +1370,16 @@ function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool }
           {batters.map((b, i) => {
             const today = live.batterTodayLine(b.id)
             const isUp = isUserBatting && (battingIdx % 9) === i
+            const energy = save ? getEnergy(save, b.id) : 100
             return (
-              <tr key={b.id} className={'border-t ' + (isUp ? 'bg-blue-50 font-semibold' : '')}>
-                <td className="py-1 pl-2 text-gray-500">{i + 1}</td>
+              <tr key={b.id} className={'border-t border-[#3a3a5e] ' + (isUp ? 'bg-amber-400/15 font-semibold text-white' : 'text-[#e8e8e8]')}>
+                <td className="py-1 pl-2 text-[#a8a8c8]">{i + 1}</td>
                 <td>
-                  {isUp && <span className="text-blue-600 mr-0.5">▶</span>}
+                  {isUp && <span className="text-amber-300 mr-0.5">▶</span>}
                   {b.firstName} {b.lastName}
                 </td>
-                <td className="text-center text-gray-500">{b.primaryPosition}</td>
+                <td className="text-center text-[#a8a8c8]">{b.primaryPosition}</td>
+                <td className={'text-center font-mono ' + energyColorClass(energy)}>{Math.round(energy)}</td>
                 <td className="text-center font-mono">{today.ab || 0}</td>
                 <td className="text-center font-mono">{today.h || 0}</td>
                 <td className="text-center font-mono">{today.rbi || 0}</td>
@@ -1239,21 +1404,25 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
     return (
       <SubModal title="Pitching change" onClose={onClose}>
         {bullpen.length === 0 ? (
-          <div className="text-sm text-gray-500">No pitchers left in the bullpen.</div>
+          <div className="text-sm text-[#a8a8c8]">No pitchers left in the bullpen.</div>
         ) : (
           <div className="space-y-1 max-h-80 overflow-y-auto">
-            {bullpen.map(p => (
-              <button
-                key={p.id}
-                onClick={() => onSubmit('PITCH', { player: p })}
-                className="w-full text-left p-2 hover:bg-pnw-cream rounded text-sm flex justify-between items-center"
-              >
-                <span className="font-medium">{p.firstName} {p.lastName}</span>
-                <span className="text-[11px] text-gray-500 font-mono">
-                  Stuff {p.pitcher?.stuff} · Stam {p.pitcher?.stamina} · Velo {p.measurables?.fbVeloMph || '—'}
-                </span>
-              </button>
-            ))}
+            {bullpen.map(p => {
+              const energy = save ? getEnergy(save, p.id) : 100
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => onSubmit('PITCH', { player: p })}
+                  className="w-full text-left p-2 hover:bg-amber-400/10 rounded text-sm flex justify-between items-center border border-[#3a3a5e]"
+                >
+                  <span className="font-medium text-white">{p.firstName} {p.lastName}</span>
+                  <span className="text-[11px] text-[#a8a8c8] font-mono flex items-center gap-2">
+                    <span className={energyColorClass(energy)}>NRG {Math.round(energy)}</span>
+                    <span>Stuff {p.pitcher?.stuff} · Stam {p.pitcher?.stamina} · Velo {p.pitcher?.velocity_avg?.toFixed(0) || '—'}</span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
         )}
       </SubModal>
@@ -1264,8 +1433,8 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
     // Pick which lineup spot to pinch-hit FOR, then pick the player
     return (
       <SubModal title="Pinch hitter" onClose={onClose}>
-        <div className="text-xs text-gray-500 mb-2">Pick a lineup spot — the on-deck or in-the-hole batter is usually the safest swap. The current AB-in-progress can't be swapped mid-PA.</div>
-        <PickPlayerForSpot batters={batters} bench={bench} onPick={(spotIdx, player) => onSubmit('HIT', { side: userSide, spotIdx, player })} />
+        <div className="text-xs text-[#a8a8c8] mb-2">Pick a lineup spot — the on-deck or in-the-hole batter is usually the safest swap. The current AB-in-progress can't be swapped mid-PA.</div>
+        <PickPlayerForSpot batters={batters} bench={bench} save={save} onPick={(spotIdx, player) => onSubmit('HIT', { side: userSide, spotIdx, player })} />
       </SubModal>
     )
   }
@@ -1274,29 +1443,35 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
     const baseNames = ['1B', '2B', '3B']
     return (
       <SubModal title="Pinch runner" onClose={onClose}>
-        <div className="text-xs text-gray-500 mb-2">Pick a base + a bench player to swap in. Pinch runner takes over the lineup spot.</div>
-        {state.bases.every(b => !b) && <div className="text-sm text-gray-500">No runners on base.</div>}
+        <div className="text-xs text-[#a8a8c8] mb-2">Pick a base + a bench player to swap in. Pinch runner takes over the lineup spot.</div>
+        {state.bases.every(b => !b) && <div className="text-sm text-[#a8a8c8]">No runners on base.</div>}
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {state.bases.map((runner, i) => {
             if (!runner) return null
             return (
-              <div key={i} className="border rounded p-2">
-                <div className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">
+              <div key={i} className="border border-[#3a3a5e] rounded p-2">
+                <div className="text-[11px] uppercase tracking-widest text-amber-300 font-pixel font-bold mb-1">
                   {baseNames[i]} — {runner.firstName} {runner.lastName}
                 </div>
                 <div className="grid grid-cols-2 gap-1">
-                  {bench.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => onSubmit('RUN', { side: userSide, baseIdx: i, player: p })}
-                      className="text-left p-1.5 hover:bg-purple-50 rounded text-xs flex justify-between"
-                    >
-                      <span>{p.firstName} {p.lastName}</span>
-                      <span className="text-gray-500 font-mono">SPD {p.hitter?.speed ?? '—'}</span>
-                    </button>
-                  ))}
+                  {bench.map(p => {
+                    const energy = save ? getEnergy(save, p.id) : 100
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => onSubmit('RUN', { side: userSide, baseIdx: i, player: p })}
+                        className="text-left p-1.5 hover:bg-purple-400/10 rounded text-xs flex justify-between text-[#e8e8e8] border border-[#3a3a5e]"
+                      >
+                        <span>{p.firstName} {p.lastName}</span>
+                        <span className="font-mono flex gap-2">
+                          <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
+                          <span className="text-[#a8a8c8]">SPD {p.hitter?.speed ?? '—'}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
-                {bench.length === 0 && <div className="text-xs text-gray-400 italic">Bench is empty.</div>}
+                {bench.length === 0 && <div className="text-xs text-[#a8a8c8] italic">Bench is empty.</div>}
               </div>
             )
           })}
@@ -1308,28 +1483,41 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
   if (kind === 'FIELD') {
     return (
       <SubModal title="Defensive substitution" onClose={onClose}>
-        <div className="text-xs text-gray-500 mb-2">Pick a position to upgrade. The previous fielder moves to the bench; the new player joins the lineup at the same batting spot.</div>
+        <div className="text-xs text-[#a8a8c8] mb-2">Pick a position to upgrade. The previous fielder moves to the bench; the new player joins the lineup at the same batting spot. Watch for position fit — out-of-position fielders take a temporary defensive penalty.</div>
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'].map(pos => {
             const f = fielders[pos]
+            const benchSorted = [...bench].sort((a, b) => positionFitRank(a, pos) - positionFitRank(b, pos))
             return (
-              <div key={pos} className="border rounded p-2">
-                <div className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">
+              <div key={pos} className="border border-[#3a3a5e] rounded p-2">
+                <div className="text-[11px] uppercase tracking-widest text-amber-300 font-pixel font-bold mb-1">
                   {pos} — currently {f ? `${f.firstName} ${f.lastName}` : 'empty'}
                 </div>
                 <div className="grid grid-cols-2 gap-1">
-                  {bench.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => onSubmit('FIELD', { side: userSide, position: pos, player: p })}
-                      className="text-left p-1.5 hover:bg-gray-100 rounded text-xs flex justify-between"
-                    >
-                      <span>{p.firstName} {p.lastName}</span>
-                      <span className="text-gray-500 font-mono">FLD {p.hitter?.fielding ?? '—'}/ARM {p.hitter?.arm ?? '—'}</span>
-                    </button>
-                  ))}
+                  {benchSorted.map(p => {
+                    const energy = save ? getEnergy(save, p.id) : 100
+                    const fit = positionFit(p, pos)
+                    const fitTag = fit === 'NATIVE' ? '✓' : fit === 'NEIGHBOR' ? '-6' : fit === 'STRETCH' ? '-12' : '-22'
+                    const fitColor = fit === 'NATIVE' ? 'text-emerald-300' : fit === 'NEIGHBOR' ? 'text-amber-200' : fit === 'STRETCH' ? 'text-orange-300' : 'text-red-400'
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => onSubmit('FIELD', { side: userSide, position: pos, player: p })}
+                        className="text-left p-1.5 hover:bg-amber-400/10 rounded text-xs flex justify-between text-[#e8e8e8] border border-[#3a3a5e]"
+                      >
+                        <span>
+                          <span className={fitColor + ' font-bold mr-1'}>{fitTag}</span>
+                          {p.firstName} {p.lastName}
+                        </span>
+                        <span className="font-mono flex gap-2">
+                          <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
+                          <span className="text-[#a8a8c8]">FLD {p.hitter?.fielding ?? '—'}/ARM {p.hitter?.arm ?? '—'}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
-                {bench.length === 0 && <div className="text-xs text-gray-400 italic">Bench is empty.</div>}
+                {bench.length === 0 && <div className="text-xs text-[#a8a8c8] italic">Bench is empty.</div>}
               </div>
             )
           })}
@@ -1340,7 +1528,7 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
   return null
 }
 
-function PickPlayerForSpot({ batters, bench, onPick }) {
+function PickPlayerForSpot({ batters, bench, save, onPick }) {
   const [spotIdx, setSpotIdx] = useState(null)
   if (spotIdx == null) {
     return (
@@ -1349,38 +1537,42 @@ function PickPlayerForSpot({ batters, bench, onPick }) {
           <button
             key={b.id + '_' + i}
             onClick={() => setSpotIdx(i)}
-            className="w-full text-left p-2 hover:bg-blue-50 rounded text-sm flex justify-between"
+            className="w-full text-left p-2 hover:bg-blue-400/10 rounded text-sm flex justify-between border border-[#3a3a5e] text-[#e8e8e8]"
           >
-            <span><span className="text-gray-500 mr-2">#{i + 1}</span>{b.firstName} {b.lastName}</span>
-            <span className="text-[11px] text-gray-500">{b.primaryPosition}</span>
+            <span><span className="text-amber-300 mr-2">#{i + 1}</span>{b.firstName} {b.lastName}</span>
+            <span className="text-[11px] text-[#a8a8c8]">{b.primaryPosition}</span>
           </button>
         ))}
       </div>
     )
   }
   if (bench.length === 0) {
-    return <div className="text-sm text-gray-500">Bench is empty — no pinch hitters available.</div>
+    return <div className="text-sm text-[#a8a8c8]">Bench is empty — no pinch hitters available.</div>
   }
   return (
     <div>
-      <div className="text-[11px] text-gray-500 mb-2">Choose a pinch hitter for #{spotIdx + 1} {batters[spotIdx].lastName}:</div>
+      <div className="text-[11px] text-[#a8a8c8] mb-2">Choose a pinch hitter for #{spotIdx + 1} {batters[spotIdx].lastName}:</div>
       <div className="grid grid-cols-1 gap-1 max-h-72 overflow-y-auto">
-        {bench.map(p => (
-          <button
-            key={p.id}
-            onClick={() => onPick(spotIdx, p)}
-            className="text-left p-1.5 hover:bg-blue-50 rounded text-xs flex justify-between"
-          >
-            <span>{p.firstName} {p.lastName}</span>
-            <span className="text-gray-500 font-mono">
-              C {p.hitter?.contact_r ?? '—'}/P {p.hitter?.power_r ?? '—'} · {p.bats}HB
-            </span>
-          </button>
-        ))}
+        {bench.map(p => {
+          const energy = save ? getEnergy(save, p.id) : 100
+          return (
+            <button
+              key={p.id}
+              onClick={() => onPick(spotIdx, p)}
+              className="text-left p-1.5 hover:bg-blue-400/10 rounded text-xs flex justify-between text-[#e8e8e8] border border-[#3a3a5e]"
+            >
+              <span>{p.firstName} {p.lastName}</span>
+              <span className="font-mono flex gap-2">
+                <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
+                <span className="text-[#a8a8c8]">C {p.hitter?.contact_r ?? '—'}/P {p.hitter?.power_r ?? '—'} · {p.bats}HB</span>
+              </span>
+            </button>
+          )
+        })}
       </div>
       <button
         onClick={() => setSpotIdx(null)}
-        className="mt-2 text-xs text-gray-500 hover:underline"
+        className="mt-2 text-xs text-amber-300 hover:underline"
       >← Pick a different spot</button>
     </div>
   )
@@ -1388,11 +1580,11 @@ function PickPlayerForSpot({ batters, bench, onPick }) {
 
 function SubModal({ title, children, onClose }) {
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl p-4 max-w-xl w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#1a1a2e] border-2 border-amber-400 rounded-lg p-4 max-w-xl w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">×</button>
+          <h3 className="text-base font-pixel-display tracking-widest text-amber-300 uppercase">{title}</h3>
+          <button onClick={onClose} className="text-[#a8a8c8] hover:text-white text-xl">×</button>
         </div>
         {children}
       </div>

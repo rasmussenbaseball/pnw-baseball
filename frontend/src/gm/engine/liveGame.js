@@ -24,14 +24,17 @@ import { simPA } from './sim'
  */
 export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   const rng = makeRng('live', seedKey)
-  // Field-position assignment: derived from each batter's primaryPosition.
-  // First match wins per slot — duplicates fall through (the lineup builder
-  // is supposed to deduplicate but we're defensive about it).
+  // Field-position assignment: prefer the lineup's per-slot batterPositions
+  // (set by the LineupEditor — players may be playing OUT OF position) and
+  // fall back to each batter's primaryPosition for legacy/default lineups.
+  // First-match-wins per slot.
   function deriveFielders(lineup, pitcher) {
     const out = {}
-    for (const b of lineup.batters) {
-      const pos = b.primaryPosition
-      if (!pos || pos === 'DH') continue
+    const positions = lineup.batterPositions || lineup.batters.map(b => b?.primaryPosition)
+    for (let i = 0; i < lineup.batters.length; i++) {
+      const b = lineup.batters[i]
+      const pos = positions[i] || b?.primaryPosition
+      if (!b || !pos || pos === 'DH') continue
       if (!out[pos]) out[pos] = b
     }
     if (pitcher) out['P'] = pitcher
@@ -276,12 +279,27 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     const motivator = state.top ? ctx.awayMotivator : ctx.homeMotivator
     const leverage = computeLeverage(state)
     const preRuns = state.top ? state.awayRuns : state.homeRuns
-    // Defenders = the fielding side's 9 starters (used by simPA for BABIP/
-    // error rate). Falls back to the batting lineup if fielders map empty.
-    const defenders = state.top
-      ? Object.values(state.homeFielders).filter(Boolean)
-      : Object.values(state.awayFielders).filter(Boolean)
-    let result = simPA(batter, pitcher, { leverage, coachMotivator: motivator, defenders }, rng)
+    // Defenders = the fielding side's 9 starters + their played positions
+    // (so the sim can apply the out-of-position fielding penalty). Build the
+    // parallel arrays from the fielders map.
+    const fielderMap = state.top ? state.homeFielders : state.awayFielders
+    const defenders = []
+    const defenderPositions = []
+    for (const [pos, p] of Object.entries(fielderMap)) {
+      if (!p || pos === 'P') continue
+      defenders.push(p)
+      defenderPositions.push(pos)
+    }
+    const batterEnergy = ctx.getEnergy ? ctx.getEnergy(batter.id) : 100
+    const pitcherEnergy = ctx.getEnergy ? ctx.getEnergy(pitcher.id) : 100
+    let result = simPA(batter, pitcher, {
+      leverage,
+      coachMotivator: motivator,
+      defenders,
+      defenderPositions,
+      batterEnergy,
+      pitcherEnergy,
+    }, rng)
     if (result.outcome === 'OUT') result = resolveOutSubtype(result, state, batter, rng)
 
     // Stats

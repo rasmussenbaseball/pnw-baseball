@@ -1017,3 +1017,33 @@ export function autoFillNonConference(schoolId, schools, conferences, confGames,
   }
   return out
 }
+
+/**
+ * Doubleheader gate — given a game G in `schedule`, return any earlier-in-day
+ * game between the same two teams that is still UNPLAYED. If one exists,
+ * G is the "second game of the day" and the user should be blocked from
+ * setting a lineup / entering the game until the prior is resolved.
+ *
+ * Pairing logic: same date + same matchup (homeId/awayId either way) + game
+ * id sorts earlier (suffix _0 / _1 / _2 / _3 on doubleheader series tells
+ * us order on the day).
+ *
+ * @param {Game[]} schedule
+ * @param {Game} game
+ * @returns {Game | null}
+ */
+export function findBlockingPriorGame(schedule, game) {
+  if (!schedule || !game) return null
+  if (!game.isDoubleheader) return null
+  const sameDay = schedule.filter(g => {
+    if (g.id === game.id) return false
+    if (g.date !== game.date) return false
+    const sameMatchup = (g.homeId === game.homeId && g.awayId === game.awayId)
+      || (g.homeId === game.awayId && g.awayId === game.homeId)
+    return sameMatchup
+  })
+  for (const g of sameDay) {
+    if (!g.played && g.id < game.id) return g
+  }
+  return null
+}

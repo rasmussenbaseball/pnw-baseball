@@ -299,6 +299,9 @@ export function rollGameInjury(player, ctx, rng) {
   if (!player.isPitcher && (ctx.gamePa || 0) >= 5) baseRisk *= 1.1
   // Recently-returned players are slightly more fragile for 2 weeks
   if (player._recentReturn && player._recentReturn.weeksAgo <= 2) baseRisk *= 1.25
+  // Energy multiplier — tired players are more breakable. At 0 energy
+  // baseRisk doubles+; at 100 energy it's a no-op.
+  if (ctx.energyMult && ctx.energyMult > 0) baseRisk *= ctx.energyMult
   const finalRisk = baseRisk * durFactor
   if (!rng.chance(finalRisk)) return null
   // If we hit, decide severity. Heavily skewed minor.

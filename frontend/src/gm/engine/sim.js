@@ -9,6 +9,8 @@
  */
 
 import { makeRng } from './rng'
+import { effectiveFielding } from './positions'
+import { energyMultiplier } from './energy'
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Team} Team */
@@ -52,13 +54,28 @@ const ALPHA = 0.45
  * full weight; infielders + OF count full; pitcher excluded (their fielding
  * doesn't really track on this scale for PA outcomes — they affect plays
  * via stuff/movement). Treats missing fielding values as 50 (neutral).
+ *
+ * If `playedPositions` is provided (parallel array of position strings),
+ * each defender's fielding is dropped per the out-of-position penalty —
+ * a SS playing 1B keeps NEAR-natural fielding, a 1B playing C tanks.
+ * See engine/positions.js for the penalty model.
  */
-function averageFielding(defenders) {
+function averageFielding(defenders, playedPositions) {
   if (!defenders || defenders.length === 0) return 50
-  const eligible = defenders.filter(d => d && !d.isPitcher)
-  if (eligible.length === 0) return 50
-  const sum = eligible.reduce((s, d) => s + (d.hitter?.fielding ?? 50), 0)
-  return sum / eligible.length
+  let sum = 0
+  let count = 0
+  for (let i = 0; i < defenders.length; i++) {
+    const d = defenders[i]
+    if (!d || d.isPitcher) continue
+    const pos = playedPositions ? playedPositions[i] : null
+    // effectiveFielding clamps and falls back to 50 for missing data; if no
+    // position was provided we use the raw fielding (back-compat).
+    const fld = pos ? effectiveFielding(d, pos) : (d.hitter?.fielding ?? 50)
+    sum += fld
+    count++
+  }
+  if (count === 0) return 50
+  return sum / count
 }
 
 // Hit-outcome slope dampener — applied ONLY to SINGLE / DOUBLE / TRIPLE / HR
@@ -103,23 +120,30 @@ export function fastSimGame(home, away, seedKey) {
  * Sim a single PA. Returns an outcome.
  * @param {Player} batter
  * @param {Player} pitcher
- * @param {{ leverage: number, defenders?: Player[], coachMotivator?: number }} ctx
+ * @param {{ leverage: number, defenders?: Player[], defenderPositions?: string[], coachMotivator?: number, batterEnergy?: number, pitcherEnergy?: number }} ctx
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @returns {{ outcome: string, type?: string }}
  */
 export function simPA(batter, pitcher, ctx, rng) {
   const hand = pitcher.throws === 'L' ? 'l' : 'r'
   const oppHand = batter.bats === 'L' ? 'l' : batter.bats === 'S' ? (hand === 'l' ? 'r' : 'l') : 'r'
-  // Pull ratings — fallback to neutral 50 if missing
-  const contact = batter.hitter[`contact_${oppHand}`] ?? 50
-  const power = batter.hitter[`power_${oppHand}`] ?? 50
-  const discipline = batter.hitter.discipline ?? 50
-  const speed = batter.hitter.speed ?? 50
+  // Energy regression — tired stars play closer to 50. Applied as a
+  // dampener on the (rating - 50) deviation. See energy.js.
+  const batMult = energyMultiplier(ctx.batterEnergy ?? 100)
+  const pitMult = energyMultiplier(ctx.pitcherEnergy ?? 100)
+  // Energy regression: tired stars' (rating - 50) deviation shrinks
+  // toward 50. At 100 energy reg = identity, at 0 energy ~28% compressed.
+  const reg = (raw, mult) => 50 + (raw - 50) * mult
+  // Pull ratings — fallback to neutral 50 if missing. Apply energy dampener.
+  const contact = reg(batter.hitter[`contact_${oppHand}`] ?? 50, batMult)
+  const power = reg(batter.hitter[`power_${oppHand}`] ?? 50, batMult)
+  const discipline = reg(batter.hitter.discipline ?? 50, batMult)
+  const speed = reg(batter.hitter.speed ?? 50, batMult)
 
-  const stuff = pitcher.pitcher.stuff ?? 50
-  const control = pitcher.pitcher.control ?? 50
-  const command = pitcher.pitcher.command ?? 50
-  const vsBatter = pitcher.pitcher[`vs_${oppHand}`] ?? 50
+  const stuff = reg(pitcher.pitcher.stuff ?? 50, pitMult)
+  const control = reg(pitcher.pitcher.control ?? 50, pitMult)
+  const command = reg(pitcher.pitcher.command ?? 50, pitMult)
+  const vsBatter = reg(pitcher.pitcher[`vs_${oppHand}`] ?? 50, pitMult)
 
   // Velocity (mph spread) — separate from stuff. Higher velo:
   //   - drives K rate up (hard to catch up to a heater)
@@ -138,7 +162,7 @@ export function simPA(batter, pitcher, ctx, rng) {
   // NAIA fielding %: ~.965-.970 league avg → ~1-1.5 errors/game. We anchor
   // the engine at the 50-rating defense producing ~1.0% PA-error rate.
   const defenseAvg = ctx.defenders && ctx.defenders.length > 0
-    ? averageFielding(ctx.defenders)
+    ? averageFielding(ctx.defenders, ctx.defenderPositions)
     : 50
   const defenseEdge = (defenseAvg - 50) / 50    // -1 .. +1 around league avg
 
@@ -232,9 +256,9 @@ function resolveOutSubtype(result, state, batter, rng) {
 /**
  * Sim a full game with PA-level fidelity.
  *
- * @param {Object} homeLineup   {batters: Player[9], pitcherRotation: Player[]}
+ * @param {Object} homeLineup   {batters: Player[9], batterPositions?: string[9], pitcherRotation: Player[]}
  * @param {Object} awayLineup
- * @param {{ homeMotivator?: number, awayMotivator?: number }} ctx
+ * @param {{ homeMotivator?: number, awayMotivator?: number, getEnergy?: (id:string)=>number }} ctx
  * @param {string} seedKey
  * @returns {{ homeRuns: number, awayRuns: number, innings: number, log: string[], boxscore: object }}
  */
@@ -280,7 +304,16 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     const leverage = computeLeverage(state)
 
     const preRuns = state.top ? state.awayRuns : state.homeRuns
-    let result = simPA(batter, pitcher, { leverage, coachMotivator: motivator, defenders: defending.batters }, rng)
+    const batterEnergy = ctx.getEnergy ? ctx.getEnergy(batter.id) : 100
+    const pitcherEnergy = ctx.getEnergy ? ctx.getEnergy(pitcher.id) : 100
+    let result = simPA(batter, pitcher, {
+      leverage,
+      coachMotivator: motivator,
+      defenders: defending.batters,
+      defenderPositions: defending.batterPositions,
+      batterEnergy,
+      pitcherEnergy,
+    }, rng)
     // Apply sub-outcome resolution (SAC_FLY, SAC_BUNT, GIDP) for OUTs
     if (result.outcome === 'OUT') result = resolveOutSubtype(result, state, batter, rng)
     state[state.top ? 'awayPAs' : 'homePAs']++
@@ -338,11 +371,43 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     pitcherStats[id].ip = pitcherStats[id].outs / 3
   }
 
+  // Build per-game appearance list so the caller can deduct energy. Each
+  // hitter who saw a PA + each pitcher who threw counts. Pitchers carry
+  // pitchesThrown (estimated ~3.9 per BF) for the energy calc.
+  const appearances = []
+  for (let i = 0; i < 9; i++) {
+    const b = homeLineup.batters[i]
+    if (b && batterStats[b.id]) {
+      appearances.push({
+        playerId: b.id,
+        position: homeLineup.batterPositions?.[i] || b.primaryPosition,
+        teamId: 'home',
+      })
+    }
+  }
+  for (let i = 0; i < 9; i++) {
+    const b = awayLineup.batters[i]
+    if (b && batterStats[b.id]) {
+      appearances.push({
+        playerId: b.id,
+        position: awayLineup.batterPositions?.[i] || b.primaryPosition,
+        teamId: 'away',
+      })
+    }
+  }
+  for (const id of Object.keys(pitcherStats)) {
+    const ps = pitcherStats[id]
+    // ~3.9 pitches per BF as a rough proxy
+    const pitchesThrown = Math.round((ps.pa || 0) * 3.9)
+    appearances.push({ playerId: id, pitchesThrown, isPitcher: true })
+  }
+
   return {
     homeRuns: state.homeRuns,
     awayRuns: state.awayRuns,
     innings: state.inning,
     log: state.log,
+    appearances,
     boxscore: {
       homePAs: state.homePAs,
       awayPAs: state.awayPAs,

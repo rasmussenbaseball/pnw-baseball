@@ -21,6 +21,9 @@ export function saveLineup(state, gameId, lineup) {
   if (!state.lineups) state.lineups = {}
   state.lineups[gameId] = {
     batters: [...lineup.batters],
+    // Per-slot field positions ('C','1B',...,'DH'). Used by the sim to apply
+    // the temporary out-of-position fielding penalty for one game only.
+    batterPositions: lineup.batterPositions ? [...lineup.batterPositions] : null,
     starterPitcherId: lineup.starterPitcherId,
     bullpenIds: [...(lineup.bullpenIds || [])],
   }
@@ -57,7 +60,13 @@ export function resolveLineupForGame(state, teamId, gameId) {
       const rotation = [...explicit, ...fallbackPen]
       const activeIds = new Set([...batters.map(b => b.id), ...rotation.map(p => p.id)])
       const bench = players.filter(p => !activeIds.has(p.id))
-      return { batters, pitcherRotation: rotation, bench, wasSaved: true }
+      // Pass through batterPositions so the sim can apply out-of-position
+      // fielding penalties. Falls back to each batter's primaryPosition if
+      // the saved lineup predates the per-slot position field.
+      const batterPositions = saved.batterPositions && saved.batterPositions.length === 9
+        ? [...saved.batterPositions]
+        : batters.map(b => b.primaryPosition)
+      return { batters, batterPositions, pitcherRotation: rotation, bench, wasSaved: true }
     }
   }
   // Fall back to default — add bench (roster minus starting + bullpen)
@@ -67,7 +76,9 @@ export function resolveLineupForGame(state, teamId, gameId) {
     ...(def.pitcherRotation || []).map(p => p.id),
   ])
   const bench = players.filter(p => !activeIds.has(p.id))
-  return { ...def, bench, wasSaved: false }
+  // Default positions = each batter's primaryPosition (no out-of-position penalty)
+  const batterPositions = (def.batters || []).map(b => b.primaryPosition)
+  return { ...def, batterPositions, bench, wasSaved: false }
 }
 
 /** List the IDs of players who appeared in this game's saved lineup. */

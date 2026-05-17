@@ -24,7 +24,30 @@ import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
 import { makeRng } from './rng'
+import {
+  ensureEnergyState, getEnergy, applyGameEnergyCosts, tickWeeklyRecovery,
+  tickIntraDayRecovery, energyInjuryMultiplier,
+} from './energy'
 import nonNaiaRaw from '../data/non_naia_teams.json'
+
+/**
+ * Is `game` the second (or later) game of a doubleheader for the user team?
+ * Used by the energy system to charge an extra cost on back-to-back games.
+ */
+function isSecondGameOfDay(schedule, game, userSchoolId) {
+  if (!game?.isDoubleheader || !game.date) return false
+  const sameDay = (schedule || []).filter(g =>
+    g.date === game.date
+    && (g.homeId === userSchoolId || g.awayId === userSchoolId)
+    && g.id !== game.id
+  )
+  // We're the second-game-of-day if any user game on the same date sorts
+  // earlier (g.id suffix _0 < _1) AND was already played.
+  for (const g of sameDay) {
+    if (g.id < game.id && g.played) return true
+  }
+  return false
+}
 
 function zeroStats(isPitcher) {
   if (isPitcher) return { ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0, hbp: 0, hr: 0, gamesPlayed: 0 }
@@ -63,7 +86,21 @@ export function simWeek(state, schedule, ratings) {
   const userResults = []
   let gamesPlayed = 0
 
-  for (const g of schedule) {
+  ensureEnergyState(state)
+  // Energy lookup passed to simGame so PA-level outcomes reflect tired
+  // bats / arms. Wrapped as a function (not a snapshot) because energy
+  // can change between same-day games (intra-day recovery + game costs).
+  const energyAccessor = (pid) => getEnergy(state, pid)
+  // Sort the week's games by date so the energy + intra-day recovery
+  // accounting runs in chronological order. Date string format is YYYY-MM-DD
+  // so localeCompare gives the right order. Same-date games preserve their
+  // insertion order (Game 1 before Game 2 in the doubleheader bucket).
+  const sortedSchedule = [...schedule].sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id),
+  )
+  let lastUserDate = null   // for overnight-rest recovery between non-DH days
+
+  for (const g of sortedSchedule) {
     if (g.played) continue
     // Match by seasonWeek (regular-season + postseason games) OR by
     // weekOfYear (fall scrimmages live in offseason wks 9-13 where
@@ -83,6 +120,16 @@ export function simWeek(state, schedule, ratings) {
     const isUserGame = g.homeId === userSchoolId || g.awayId === userSchoolId
     const homeTeam = state.teams[g.homeId]
     const awayTeam = state.teams[g.awayId]
+
+    // Overnight rest: if this user game is on a different date than the
+    // previous user game in this same week, apply intra-day recovery to
+    // the user roster so a Friday-Sat-Sun series doesn't have everyone
+    // play Sunday at 0 energy. ~18 pts back for hitters, ~5 for pitchers.
+    if (isUserGame && lastUserDate && g.date && g.date !== lastUserDate) {
+      const userT = state.teams[userSchoolId]
+      if (userT) tickIntraDayRecovery(state, userT.rosterPlayerIds || [])
+    }
+    if (isUserGame && g.date) lastUserDate = g.date
 
     // If neither side is the user and either team is missing (e.g. a non-NAIA
     // opponent we don't simulate), skip — only user games can involve non-NAIA.
@@ -106,6 +153,7 @@ export function simWeek(state, schedule, ratings) {
       result = simGame(homeLineup, awayLineup, {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
+        getEnergy: energyAccessor,
       }, g.id)
     } else if (isUserGame) {
       // User vs. non-NAIA opponent — fast sim against static strength
@@ -132,6 +180,44 @@ export function simWeek(state, schedule, ratings) {
     g.homeRuns = result.homeRuns
     g.awayRuns = result.awayRuns
     g.played = true
+
+    // Energy costs for the user's side after every user game. Doubleheaders
+    // flag the second-game-of-day surcharge so the same catcher / starter
+    // who appeared in game 1 takes an extra hit in game 2.
+    if (isUserGame && result.appearances) {
+      const isSecond = isSecondGameOfDay(schedule, g, userSchoolId)
+      const userSide = g.homeId === userSchoolId ? 'home' : 'away'
+      const userTeam = state.teams[userSchoolId]
+      const userAppearances = result.appearances
+        .filter(a => {
+          if (a.isPitcher) return userTeam?.rosterPlayerIds.includes(a.playerId)
+          return a.teamId === userSide
+        })
+        .map(a => ({ ...a, isSecondGameOfDay: isSecond }))
+      applyGameEnergyCosts(state, userAppearances)
+    } else if (isUserGame) {
+      // Fast-sim user game (vs non-NAIA) — deduct a baseline cost for the
+      // starting 9 + starter so doubleheader energy still drains.
+      const userTeam = state.teams[userSchoolId]
+      if (userTeam) {
+        const lineup = resolveLineupForGame(state, userSchoolId, g.id)
+        const isSecond = isSecondGameOfDay(schedule, g, userSchoolId)
+        const apps = []
+        ;(lineup.batters || []).forEach((b, i) => {
+          if (!b) return
+          apps.push({
+            playerId: b.id,
+            position: lineup.batterPositions?.[i] || b.primaryPosition,
+            isSecondGameOfDay: isSecond,
+          })
+        })
+        const starter = lineup.pitcherRotation?.[0]
+        if (starter) {
+          apps.push({ playerId: starter.id, pitchesThrown: 85, isPitcher: true, isSecondGameOfDay: isSecond })
+        }
+        applyGameEnergyCosts(state, apps)
+      }
+    }
     // Persist the per-game boxscore on the user's games so the Play page
     // can surface a Box Score button on completed games. Only user games
     // get the full PA-level boxscore — non-user games are fast-sim'd and
@@ -201,7 +287,8 @@ export function simWeek(state, schedule, ratings) {
         const player = state.players[pid]
         if (!player) continue
         const s = battersThisGame[pid]
-        const template = rollGameInjury(player, { gamePa: s.pa || 0 }, rngInj)
+        const energy = getEnergy(state, pid)
+        const template = rollGameInjury(player, { gamePa: s.pa || 0, energyMult: energyInjuryMultiplier(energy) }, rngInj)
         if (template) {
           const injury = applyInjury(player, template, {
             context: g.type === 'FALL_SCRIMMAGE' ? 'FALL_SCRIMMAGE' : 'GAME',
@@ -224,7 +311,8 @@ export function simWeek(state, schedule, ratings) {
         const player = state.players[pid]
         if (!player) continue
         const s = pitchersThisGame[pid]
-        const template = rollGameInjury(player, { gameIp: s.ip || 0 }, rngInj)
+        const energy = getEnergy(state, pid)
+        const template = rollGameInjury(player, { gameIp: s.ip || 0, energyMult: energyInjuryMultiplier(energy) }, rngInj)
         if (template) {
           const injury = applyInjury(player, template, {
             context: g.type === 'FALL_SCRIMMAGE' ? 'FALL_SCRIMMAGE' : 'GAME',
@@ -708,6 +796,13 @@ export function advanceOneWeek(state) {
   refreshWeeklyAP(state)
   tickWeeklyBookkeeping(state)
   tickTeamGPAWeekly(state)
+
+  // Energy recovery — every player on the user's roster bounces back some
+  // each week. Pitchers recover slower than position players. See energy.js.
+  const userTeamForRecovery = state.teams?.[state.userSchoolId]
+  if (userTeamForRecovery) {
+    tickWeeklyRecovery(state, userTeamForRecovery.rosterPlayerIds || [])
+  }
 
   // Passive offseason practice / conditioning dev. Fires for the user's
   // roster during Fall Camp / Winter Practice (full rate) and Fall

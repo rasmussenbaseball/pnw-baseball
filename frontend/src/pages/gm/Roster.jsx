@@ -7,6 +7,7 @@ import { teamAcademicSummary } from '../../gm/engine/academics'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { cutsWindowOpen, ensureCutsState, cutPlayer, cutTrustTier, isMandatoryCutMode } from '../../gm/engine/cuts'
+import { getEnergy, energyLabel, energyColorClass } from '../../gm/engine/energy'
 import GMShell from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
@@ -130,6 +131,7 @@ export default function Roster() {
                 <th title="Control — BB + HBP rate">Ctrl</th>
                 <th title="Stamina — innings per outing">Stam</th>
                 <th title="Player happiness — affects GPA, stats, and transfer risk over time">Mood</th>
+                <th title="Energy — 100 = fresh, 0 = gassed. Recovers each week. Game costs scale by role (C heaviest, pitcher by pitch count).">Energy</th>
                 {cutMode && <th>Cut</th>}
               </tr>
             </thead>
@@ -179,6 +181,9 @@ export default function Roster() {
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.control} arrow={arrowFor(save, p.id, ['control'], 'pitcher')} /> : '—'}</td>
                     <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stamina} arrow={arrowFor(save, p.id, ['stamina'], 'pitcher')} /> : '—'}</td>
                     <td className="text-xs"><HappinessPill player={p} /></td>
+                    <td className="text-xs">
+                      <EnergyPill save={save} playerId={p.id} />
+                    </td>
                     {cutMode && (
                       <td className="text-xs">
                         {cuttable ? (
@@ -257,6 +262,28 @@ function HappinessPill({ player }) {
       <span>{d.emoji}</span>
       <span className="font-semibold">{d.label}</span>
       {trend && <span className={trendColor}>{trend}</span>}
+    </span>
+  )
+}
+
+function EnergyPill({ save, playerId }) {
+  const e = getEnergy(save, playerId)
+  const colorCls = energyColorClass(e)
+  // Tiny inline bar so the eye can scan the column without reading the number
+  const widthPct = Math.max(4, Math.min(100, Math.round(e)))
+  const barBg = e >= 75 ? 'bg-emerald-400'
+    : e >= 50 ? 'bg-amber-300'
+    : e >= 25 ? 'bg-orange-400'
+    : 'bg-red-500'
+  return (
+    <span
+      className="inline-flex items-center gap-1.5"
+      title={`${energyLabel(e)} — ${Math.round(e)}/100. Recovers each week.`}
+    >
+      <span className="inline-block w-10 h-1.5 bg-gray-200 rounded overflow-hidden">
+        <span className={'block h-full ' + barBg} style={{ width: `${widthPct}%` }} />
+      </span>
+      <span className={'font-mono font-semibold ' + colorCls}>{Math.round(e)}</span>
     </span>
   )
 }
