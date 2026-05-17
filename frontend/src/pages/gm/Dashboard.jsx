@@ -706,6 +706,8 @@ export default function Dashboard() {
 
           <CoachUpgradeWidget save={save} onChange={() => { saveDynasty(save); setSave({ ...save }) }} />
           <ConferenceStandingsWidget save={save} slot={slot} />
+          <PostseasonBracketWidget save={save} slot={slot} />
+          <WeeklyAwardsWidget save={save} />
         </div>
       </div>
     </div>
@@ -855,6 +857,192 @@ function CoachUpgradeWidget({ save, onChange }) {
       </div>
       <div className="text-[10px] text-gray-400 italic mt-2">
         Earn points by: wins (+2-5), conference / postseason runs (+8 to +30), MLB draft picks (+5 each), All-Conference + Gold Glove honors (+2-3 each).
+      </div>
+    </Panel>
+  )
+}
+
+/**
+ * Postseason bracket widget — visible on the Dashboard once the postseason
+ * has been simulated (Wk 40+). Shows three tiers of bracket info in order:
+ *   1. Your conference tournament (qualifiers + bracket + champion)
+ *   2. NAIA Opening Round (your site's 5-team double-elim — or "missed field")
+ *   3. Avista NAIA World Series (pool play + semis + champion)
+ *
+ * Pre-postseason: widget hides itself entirely.
+ */
+function PostseasonBracketWidget({ save, slot }) {
+  const ps = save.postseason
+  if (!ps) return null
+  const userId = save.userSchoolId
+  const userConfId = save.schools?.[userId]?.conferenceId
+  const conf = save.conferences?.[userConfId]
+  const userTour = ps.tournaments?.find(t => t.conferenceId === userConfId)
+  const nat = ps.national
+  const userSite = ps.userInField
+    ? nat?.openingRound?.sites?.find(s => s.teams.some(t => t.id === userId))
+    : null
+  const ws = nat?.worldSeries
+
+  return (
+    <Panel
+      title={`${ps.year} Postseason`}
+      actionTo={`/gm/postseason?slot=${slot}`}
+      actionLabel="Full bracket"
+    >
+      {/* === ROUND 1: Conference tournament === */}
+      {userTour && (
+        <div className="mb-3">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1.5">
+            Round 1 — {conf?.abbreviation || 'Conf'} Tournament
+          </div>
+          <div className="space-y-1">
+            {userTour.games.slice(-3).map((g, i) => (
+              <BracketLine
+                key={i}
+                save={save}
+                game={g}
+                userId={userId}
+              />
+            ))}
+          </div>
+          <div className="mt-1.5 text-[11px]">
+            <span className="text-gray-500">Champion: </span>
+            <strong className={userTour.champion === userId ? 'text-pnw-green' : 'text-pnw-slate'}>
+              {save.schools[userTour.champion]?.name || '—'}
+            </strong>
+            {userTour.champion === userId && <span className="text-pnw-green ml-1.5">[YOU]</span>}
+          </div>
+        </div>
+      )}
+
+      {/* === ROUND 2: NAIA Opening Round (your site only) === */}
+      {nat && (
+        <div className="mb-3 border-t pt-3">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1.5">
+            Round 2 — NAIA Opening Round (5-team site)
+          </div>
+          {!ps.userInField ? (
+            <div className="text-[11px] text-gray-500 italic">Missed the 46-team national field.</div>
+          ) : userSite ? (
+            <div>
+              <div className="text-[11px] text-gray-600 mb-1">
+                Site host: <strong>{save.schools[userSite.host]?.name}</strong>
+              </div>
+              <div className="space-y-0.5">
+                {userSite.teams.map(t => {
+                  const isUser = t.id === userId
+                  const advanced = userSite.winner === t.id
+                  return (
+                    <div
+                      key={t.id}
+                      className={'flex items-center gap-1.5 text-[11px] py-0.5 px-1.5 rounded ' + (isUser ? 'bg-pnw-cream font-bold' : '')}
+                    >
+                      <span className="w-4 text-gray-500 tabular-nums">#{t.seed}</span>
+                      <span className="flex-1 truncate">{save.schools[t.id]?.name}</span>
+                      {advanced && <span className="text-pnw-green text-[10px] font-semibold">→ WS</span>}
+                      {isUser && !advanced && <span className="text-gray-500 text-[10px]">eliminated</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* === ROUND 3: World Series === */}
+      {ws && (
+        <div className="border-t pt-3">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1.5">
+            Round 3 — Avista NAIA World Series
+          </div>
+          {!ps.userInWS ? (
+            <div className="text-[11px] text-gray-500 italic mb-1">
+              {ps.userORWon ? 'Tracking your bracket below.' : "Didn't advance — Opening Round eliminated."}
+            </div>
+          ) : (
+            <div className="text-[11px] mb-1">
+              <span className="text-gray-600">Your run: </span>
+              <strong className={ps.userWSChamp ? 'text-amber-700' : 'text-pnw-slate'}>
+                {ps.userWSChamp ? 'NATIONAL CHAMPION!' : 'Advanced to WS'}
+              </strong>
+            </div>
+          )}
+          <div className="text-[11px]">
+            <span className="text-gray-500">Champion: </span>
+            <strong className={ws.champion === userId ? 'text-amber-700' : 'text-pnw-slate'}>
+              {save.schools[ws.champion]?.name || '—'}
+            </strong>
+          </div>
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function BracketLine({ save, game, userId }) {
+  const home = save.schools[game.homeId]
+  const away = save.schools[game.awayId]
+  const homeWon = game.winner === game.homeId
+  const userIn = game.homeId === userId || game.awayId === userId
+  return (
+    <div className={'border rounded p-1.5 text-[11px] ' + (userIn ? 'border-pnw-green bg-pnw-cream/40' : 'border-gray-200')}>
+      <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">{game.label}</div>
+      <div className="flex justify-between items-center">
+        <span className={'truncate flex-1 ' + (homeWon ? 'font-bold' : 'text-gray-500')}>
+          {home?.name || '—'}
+        </span>
+        <span className="font-mono text-[10px] mx-1.5 tabular-nums">
+          {game.homeRuns}–{game.awayRuns}
+        </span>
+        <span className={'truncate flex-1 text-right ' + (!homeWon ? 'font-bold' : 'text-gray-500')}>
+          {away?.name || '—'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Weekly Awards widget — surfaces this week's POTW winners.
+ * Hidden when no awards this week (offseason / no games).
+ */
+function WeeklyAwardsWidget({ save }) {
+  const yr = save.calendar?.year
+  const wk = save.calendar?.weekOfYear
+  const list = save.weeklyAwardsHistory?.[yr]?.[wk] || []
+  if (list.length === 0) return null
+  // Surface user-conf + NAIA winners (skip other-conference noise)
+  const userConfName = save.conferences?.[save.schools?.[save.userSchoolId]?.conferenceId]?.name
+  const filtered = list.filter(a => a.scope === 'NAIA' || a.conferenceName === userConfName)
+  if (filtered.length === 0) return null
+  const userRoster = save.teams?.[save.userSchoolId]?.rosterPlayerIds || []
+  return (
+    <Panel title={`Wk ${wk} Awards`} actionTo={null}>
+      <div className="space-y-1.5">
+        {filtered.map((a, i) => {
+          const isYours = userRoster.includes(a.playerId)
+          const scopeLabel = a.scope === 'NAIA' ? 'NAIA' : 'Conf'
+          const kindLabel = a.kind === 'HITTER' ? 'Hitter' : 'Pitcher'
+          return (
+            <div
+              key={i}
+              className={'p-1.5 rounded border ' + (isYours ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200')}
+            >
+              <div className="text-[9px] uppercase tracking-wider font-bold text-amber-700">
+                {scopeLabel} {kindLabel} of the Week {isYours && '· YOUR PLAYER'}
+              </div>
+              <div className="text-xs font-medium text-pnw-slate truncate">{a.playerName}</div>
+              <div className="text-[10px] text-gray-600">{a.schoolName} · {a.statsLine}</div>
+            </div>
+          )
+        })}
+        {filtered.some(a => userRoster.includes(a.playerId)) && (
+          <div className="text-[10px] text-amber-700 italic">
+            Your player won — +1 rating bump applied, coach earned upgrade point.
+          </div>
+        )}
       </div>
     </Panel>
   )

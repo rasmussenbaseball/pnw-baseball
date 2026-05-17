@@ -87,7 +87,11 @@ export default function Rankings() {
               <span className="font-pixel uppercase tracking-widest text-amber-300 text-xs mr-3">Your program:</span>
               <span className="text-white font-bold">#{userR.nationalRank} {userSchool?.name}</span>
               <span className="text-[#a8a8c8] ml-3">Rating: <span className="text-white font-mono">{userR.rating.toFixed(1)}</span></span>
-              <span className="text-[#a8a8c8] ml-3">SOS: <span className="text-white font-mono">{userR.sos.toFixed(1)}</span> (#{userR.sosRank})</span>
+              <span className="text-[#a8a8c8] ml-3">
+                SOS: <span className="text-white font-mono">
+                  {userR.sos != null && userR.gamesPlayed > 0 ? `${userR.sos.toFixed(1)} (#${userR.sosRank})` : 'not yet played'}
+                </span>
+              </span>
               <span className="text-[#a8a8c8] ml-3">QW: <span className="text-white font-mono">{userR.qualityWins}</span></span>
               {totalGamesPlayed < 10 && (
                 <div className="text-[10px] text-amber-300 mt-1">
@@ -146,8 +150,8 @@ export default function Rankings() {
                       <td className="text-[10px] text-[#a8a8c8]">{r.conferenceAbbr}</td>
                       <td className={'font-mono text-right pr-3 ' + ratingColor(r.rating)}>{r.rating.toFixed(1)}</td>
                       <td className="font-mono">{r.wins}-{r.losses}</td>
-                      <td className="font-mono text-right pr-3">{r.sos.toFixed(1)}</td>
-                      <td className="font-mono text-[10px] text-[#a8a8c8]">#{r.sosRank}</td>
+                      <td className="font-mono text-right pr-3">{r.sos != null && r.gamesPlayed > 0 ? r.sos.toFixed(1) : '—'}</td>
+                      <td className="font-mono text-[10px] text-[#a8a8c8]">{r.gamesPlayed > 0 && r.sosRank > 0 ? `#${r.sosRank}` : '—'}</td>
                       <td className="font-mono text-right pr-3">{r.pythagWinPct ? r.pythagWinPct.toFixed(3).replace(/^0\./, '.') : '—'}</td>
                       <td className="font-mono text-right pr-3">{r.qualityWins}</td>
                       <td className="font-mono text-right pr-3">{r.roadWinPct != null ? (r.roadWinPct * 100).toFixed(0) + '%' : '—'}</td>

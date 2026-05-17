@@ -56,13 +56,43 @@ export default function TeamStats() {
     setParams(next, { replace: true })
   }
 
+  // Stats only make sense once the season has started + games are on the
+  // books. Pre-season we'd be showing synthesized "what we'd expect" stats
+  // which confuses the user (numbers that look real but aren't).
+  const totalRegularGamesPlayed = (save.schedule || [])
+    .filter(g => g.played && (g.type === 'CONFERENCE' || g.type === 'NON_CONFERENCE' || g.type === 'D1_MIDWEEK'))
+    .length
+  const seasonStarted = totalRegularGamesPlayed > 0
+
   // Synthesize league-wide stats once per render. Memoized off the player
   // count so we re-synthesize when rosters change but not on every keystroke.
+  // Skip the expensive synth pass entirely when the season hasn't started.
   const seed = save.seed || save.rngSeed || 1
   const leagueStats = useMemo(
-    () => synthesizeLeagueStats(save, year, seed),
-    [save, year, seed],
+    () => seasonStarted ? synthesizeLeagueStats(save, year, seed) : {},
+    [save, year, seed, seasonStarted],
   )
+
+  if (!seasonStarted) {
+    return (
+      <GMShell schoolName={school.name} schoolColors={school.colors}>
+        <div className="mb-4">
+          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">TEAM STATS</h1>
+          <p className="font-pixel text-base text-[#a8a8c8]">{school.name} · {year} season</p>
+        </div>
+        <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded-lg p-8 text-center">
+          <div className="text-amber-300 font-pixel-display text-base tracking-widest mb-2 uppercase">
+            Season hasn't started yet
+          </div>
+          <div className="text-[#a8a8c8] text-sm max-w-md mx-auto font-pixel leading-relaxed">
+            Team / national / conference stats populate once you start playing
+            regular-season games (Spring, Wk 27+). Fall scrimmages don't count
+            toward stats — they're development reps only.
+          </div>
+        </div>
+      </GMShell>
+    )
+  }
 
   return (
     <GMShell schoolName={school.name} schoolColors={school.colors}>

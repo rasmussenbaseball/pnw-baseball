@@ -243,9 +243,12 @@ export function recomputeNwbbRatings(state) {
   for (const tid of Object.keys(ratings)) {
     const list = teamGames[tid] || []
     const oppRatings = list.map(g => ratings[g.oppId] ?? 50)
-    const sos = oppRatings.length > 0
+    // SOS only makes sense once games have actually been played. Pre-season
+    // there's no "schedule strength so far" to report. UI code reads sos
+    // alongside gamesPlayed and renders "—" when gamesPlayed === 0.
+    const sos = list.length > 0
       ? oppRatings.reduce((a, b) => a + b, 0) / oppRatings.length
-      : (seeds[tid]?.rating ?? 50)   // preseason proxy
+      : null
 
     // RS / RA + Pythagorean
     let rs = 0, ra = 0, roadGames = 0, roadWins = 0, qualityWins = 0
@@ -292,9 +295,11 @@ export function recomputeNwbbRatings(state) {
     .sort((a, b) => b.rating - a.rating)
   naiaSorted.forEach((r, i) => { r.nationalRank = i + 1 })
 
-  // Assign sosRank (NAIA only, lower rank = harder schedule)
+  // Assign sosRank (NAIA only, lower rank = harder schedule). Only ranked
+  // among teams that have actually played games — pre-season teams have
+  // sosRank=0 (unranked) so the UI shows "—" instead of "#1 of nothing".
   const sosSorted = Object.values(out)
-    .filter(r => !r.isNonNaia)
+    .filter(r => !r.isNonNaia && r.sos != null && r.gamesPlayed > 0)
     .sort((a, b) => b.sos - a.sos)
   sosSorted.forEach((r, i) => { r.sosRank = i + 1 })
 

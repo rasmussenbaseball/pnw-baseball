@@ -21,6 +21,7 @@ import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
+import { computeWeeklyAwards } from './weeklyAwards'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
@@ -89,6 +90,9 @@ export function simWeek(state, schedule, ratings) {
   let gamesPlayed = 0
 
   ensureEnergyState(state)
+  // Reset the weekly-stats accumulator at the start of every simWeek so
+  // weeklyAwards has just THIS week's box scores to choose from.
+  state.weeklyStats = {}
   // Energy lookup passed to simGame so PA-level outcomes reflect tired
   // bats / arms. Wrapped as a function (not a snapshot) because energy
   // can change between same-day games (intra-day recovery + game costs).
@@ -264,6 +268,17 @@ export function simWeek(state, schedule, ratings) {
           for (const k of Object.keys(s)) target[k] = (target[k] || 0) + s[k]
           // gamesPlayed: a single appearance in this game counts as 1.
           target.gamesPlayed = (target.gamesPlayed || 0) + 1
+          // Mirror into weeklyStats — only for non-fall, non-scrim games
+          // (regular-season + postseason). Cleared at the top of simWeek;
+          // read by weeklyAwards.computeWeeklyAwards at the end.
+          if (!isFall && g.type !== 'SPRING_SCRIMMAGE') {
+            if (!state.weeklyStats[key]) {
+              state.weeklyStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
+            }
+            const wkTarget = state.weeklyStats[key]
+            for (const k of Object.keys(s)) wkTarget[k] = (wkTarget[k] || 0) + s[k]
+            wkTarget.gamesPlayed = (wkTarget.gamesPlayed || 0) + 1
+          }
         }
       }
       accumulate(result.boxscore.batterStats, false)
@@ -405,6 +420,14 @@ export function simWeek(state, schedule, ratings) {
         score: `${Math.max(result.homeRuns, result.awayRuns)}-${Math.min(result.homeRuns, result.awayRuns)}`,
       })
     }
+  }
+
+  // ── Weekly awards (Conf + NAIA Hitter / Pitcher of the Week) ──────────
+  // Computed from state.weeklyStats (populated above during simWeek). Posts
+  // to newsfeed and bumps the user's player stats + coach upgrade points
+  // when the user's roster wins one.
+  if (gamesPlayed > 0 && state.calendar?.mode !== 'OFFSEASON') {
+    computeWeeklyAwards(state)
   }
 
   // ── In-season weekly development pass ────────────────────────────────

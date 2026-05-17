@@ -68,17 +68,21 @@ export default function Standings() {
                     {school.name}
                     <TeamRankChip save={save} schoolId={school.id} />
                   </td>
-                  <td className="font-mono text-xs text-gray-600">
+                  <td className="font-mono text-xs text-gray-600" title="National rank (NWBB Rating)">
                     {r ? `#${r.nationalRank}` : '—'}
-                    {r && <span className="text-[10px] text-gray-400 ml-1">({r.rating.toFixed(1)})</span>}
+                    {r && (
+                      <span className="text-[10px] text-gray-400 ml-1" title="NWBB Rating — predictive 0-100 universal scale">
+                        ({r.rating.toFixed(1)})
+                      </span>
+                    )}
                   </td>
                   <td className="font-mono">{team.confWins}-{team.confLosses}</td>
                   <td className="font-mono">{team.wins}-{team.losses}</td>
                   <td className={'font-mono ' + (team.runDiff > 0 ? 'text-green-700' : team.runDiff < 0 ? 'text-red-700' : 'text-gray-500')}>
                     {team.runDiff > 0 ? '+' : ''}{team.runDiff}
                   </td>
-                  <td className="font-mono text-xs text-gray-600">
-                    {r ? `#${r.sosRank}` : '—'}
+                  <td className="font-mono text-xs text-gray-600" title="SOS — strength of schedule rank, 1 = hardest. Empty until games are played.">
+                    {r && r.gamesPlayed > 0 ? `#${r.sosRank}` : '—'}
                   </td>
                 </tr>
               )
