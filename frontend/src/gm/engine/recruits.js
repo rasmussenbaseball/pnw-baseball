@@ -113,19 +113,28 @@ function seedRegionInterest(recruit, userSchoolId, coach) {
  * @param {import('./types.js').Coach | null} coach   user's head coach for pipeline biasing
  * @returns {Object<string, import('./types.js').Recruit>}
  */
-export function generateRecruitPool(year, seed, coach = null, userSchoolId = null) {
+export function generateRecruitPool(year, seed, coach = null, userSchoolId = null, opts = {}) {
   /** @type {Object<string, import('./types.js').Recruit>} */
   const pool = {}
   const rng = makeRng('recruitPool', year, seed)
   const stateWeights = stateWeightsForCoach(coach)
 
-  for (let i = 0; i < HS_POOL_SIZE; i++) {
-    const r = makeRecruit('HS_SR', i, year, rng, stateWeights)
+  // Level-aware pool gating + sizing. NWAC = HS only (no JUCO, no
+  // transfers — players who pick a JUCO are coming from HS). D3 = HS only
+  // because no athletic scholarships → no portal traffic flowing in.
+  // D1/D2/NAIA get the full HS + JUCO pool.
+  const level = opts.level || 'NAIA'
+  const allowJuco = !['NWAC', 'D3'].includes(level)
+  const hsSize = level === 'NWAC' ? 220 : HS_POOL_SIZE   // NWAC pulls smaller HS pool
+  const jucoSize = allowJuco ? JUCO_POOL_SIZE : 0
+
+  for (let i = 0; i < hsSize; i++) {
+    const r = makeRecruit('HS_SR', i, year, rng, stateWeights, null, { level })
     if (userSchoolId) seedRegionInterest(r, userSchoolId, coach)
     pool[r.id] = r
   }
-  for (let i = 0; i < JUCO_POOL_SIZE; i++) {
-    const r = makeRecruit('JUCO', i, year, rng, stateWeights)
+  for (let i = 0; i < jucoSize; i++) {
+    const r = makeRecruit('JUCO', i, year, rng, stateWeights, null, { level })
     if (userSchoolId) seedRegionInterest(r, userSchoolId, coach)
     pool[r.id] = r
   }
@@ -219,38 +228,44 @@ function assignRegionalRankings(pool, rng) {
  *
  * @returns {Object<string, import('./types.js').Recruit>}
  */
-export function generatePortalPool(year, seed, coach = null) {
+export function generatePortalPool(year, seed, coach = null, opts = {}) {
   /** @type {Object<string, import('./types.js').Recruit>} */
   const pool = {}
   const rng = makeRng('portalPool', year, seed)
   const stateWeights = stateWeightsForCoach(coach)
+  const level = opts.level || 'NAIA'
+
+  // NWAC + D3 don't receive transfer-in traffic. Return empty portal pool.
+  // NWAC kids are 2-year max and head to 4-yr schools after; D3 has no
+  // athletic $ to attract transfers.
+  if (level === 'NWAC' || level === 'D3') return pool
 
   for (let i = 0; i < PORTAL_POOL_SIZE; i++) {
-    const r = makeRecruit('NAIA_TRANSFER', i, year, rng, stateWeights)
+    const r = makeRecruit('NAIA_TRANSFER', i, year, rng, stateWeights, null, { level })
     pool[r.id] = r
   }
   // D1 portal — large pool with two sub-types
   for (let i = 0; i < D1_PORTAL_SIZE; i++) {
-    // ~40% "underused good D1s" (high OVR, didn't play enough)
-    // ~60% "young bad D1s" (lower OVR but high potential — they need development)
     const subtype = rng.chance(0.4) ? 'D1_UNDERUSED' : 'D1_YOUNG'
-    const r = makeRecruit('D1_TRANSFER', i, year, rng, stateWeights, subtype)
+    const r = makeRecruit('D1_TRANSFER', i, year, rng, stateWeights, subtype, { level })
     pool[r.id] = r
   }
   // D2 portal
   for (let i = 0; i < D2_PORTAL_SIZE; i++) {
-    const r = makeRecruit('D2_TRANSFER', i, year, rng, stateWeights)
+    const r = makeRecruit('D2_TRANSFER', i, year, rng, stateWeights, null, { level })
     pool[r.id] = r
   }
-  // D3 portal
+  // D3 portal — leaving D3 is more common than entering, so D3 transfers
+  // still appear for D1/D2/NAIA schools to pick from.
   for (let i = 0; i < D3_PORTAL_SIZE; i++) {
-    const r = makeRecruit('D3_TRANSFER', i, year, rng, stateWeights)
+    const r = makeRecruit('D3_TRANSFER', i, year, rng, stateWeights, null, { level })
     pool[r.id] = r
   }
   return pool
 }
 
-function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
+function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = {}) {
+  const userLevel = opts.level || 'NAIA'
   // Hometown — sample from weighted state distribution (PNW-biased + coach pipelines)
   const state = sampleHomeState(stateWeights || HOME_REGION_WEIGHTS_PNW, rng)
   const region = STATE_TO_REGION[state] || 'MW'
@@ -275,13 +290,10 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
     pool: profilePool,
   })
 
-  // Rating distribution per pool. Means + caps raised May 2026 so the GM
-  // game's recruit pools match the user's mental model: mid-tier players
-  // live in the 60s, real impact guys hit 70+, and rare gems can top 85.
-  // JUCO especially is bumped — those are seasoned college bats, not raw HS.
+  // Rating distribution per pool. Means + caps tuned May 2026.
   let meanRating, stddev, cap
-  if (pool === 'HS_SR')       { meanRating = 58; stddev = 12; cap = 92 }   // most HS land 45-70; top 1% hit 85
-  else if (pool === 'JUCO')   { meanRating = 64; stddev = 11; cap = 95 }   // seasoned college bats, can produce a 90 OVR
+  if (pool === 'HS_SR')       { meanRating = 58; stddev = 12; cap = 92 }
+  else if (pool === 'JUCO')   { meanRating = 64; stddev = 11; cap = 95 }
   else if (pool === 'NAIA_TRANSFER') { meanRating = 60; stddev = 12; cap = 92 }
   else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 7; cap = 97 }
   else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 60; stddev = 10; cap = 85 }
@@ -289,6 +301,34 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null) {
   else if (pool === 'D2_TRANSFER') { meanRating = 62; stddev = 11; cap = 92 }
   else if (pool === 'D3_TRANSFER') { meanRating = 56; stddev = 11; cap = 88 }
   else                             { meanRating = 58; stddev = 12; cap = 92 }
+
+  // LEVEL SCALING — the recruit pool a user sees depends on the level
+  // they're coaching at. Top D1 talent doesn't show up on a D3 board;
+  // D3-quality kids show up plentifully but the user can't out-recruit
+  // the program tier.
+  //
+  // Mean shift (added to baseline pool mean):
+  //   D1   +12   recruits the top talent
+  //   D2   + 5
+  //   NAIA   0   (baseline)
+  //   D3   - 6   no athletic $ → only walk-on-quality + the rare gem
+  //   NWAC - 3   wide spread; mostly lower than NAIA HS but with star outliers
+  // Cap shift:
+  //   D1   +5    can find 95+ ceilings
+  //   D3   -5    cap at 86
+  //   NWAC handled below — wider stddev for the spread
+  const LEVEL_MEAN_SHIFT = { D1: 12, D2: 5, NAIA: 0, D3: -6, NWAC: -3 }
+  const LEVEL_CAP_SHIFT  = { D1: 5,  D2: 2, NAIA: 0, D3: -5, NWAC: -2 }
+  meanRating += LEVEL_MEAN_SHIFT[userLevel] ?? 0
+  cap = Math.min(99, Math.max(50, cap + (LEVEL_CAP_SHIFT[userLevel] ?? 0)))
+  // NWAC unique: WIDE spread. Top JUCO programs (per NWBB PPI) attract
+  // D1-walk-on talent + low-end D3 kids in the same recruiting class. Bump
+  // stddev to 16 to produce the wider distribution Nate's looking for.
+  if (userLevel === 'NWAC') {
+    stddev = 16
+    // Floor stays roughly 30 (anyone can play JUCO); ceiling rises to 88.
+    cap = 88
+  }
 
   // L/R correlation TIED TO PLATOON HANDEDNESS + REVERSE SPLITS. Real
   // baseball: RHH hit slightly better vs LHP (~70%), LHH hit better vs

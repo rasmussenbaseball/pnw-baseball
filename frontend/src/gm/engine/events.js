@@ -438,9 +438,21 @@ function runDevelopment(state) {
     const gp = (state.playerStats?.[statsKey] ?? state._archivedPlayerStats?.[statsKey])?.gamesPlayed || 0
     const eligibleToRedshirt = !updated.redshirtUsed && (updated.seasonsUsed || 0) < 3
     const shouldRedshirt = eligibleToRedshirt && gp <= REDSHIRT_GAME_LIMIT
-    const nextClass = { FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[updated.classYear]
+    // NWAC eligibility: only FR/SO. SO graduates out at end of year (heads
+    // to a 4-yr program in real life; for our save state they're marked
+    // transferred and dropped from roster). FR → SO normally.
+    const isNwac = state.level === 'NWAC'
+    let nextClass
+    if (isNwac) {
+      nextClass = { FR: 'SO', SO: 'GRAD' }[updated.classYear] || 'GRAD'
+    } else {
+      nextClass = { FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[updated.classYear]
+    }
     if (nextClass === 'GRAD') {
-      state.players[id] = { ...updated, eligibilityStatus: 'graduated' }
+      // For NWAC players, mark as transferred-out instead of graduated so
+      // the newsfeed reads correctly ("transferred to 4-yr program").
+      const exitStatus = isNwac && updated.classYear === 'SO' ? 'transferred' : 'graduated'
+      state.players[id] = { ...updated, eligibilityStatus: exitStatus }
     } else if (shouldRedshirt) {
       state.players[id] = { ...updated, redshirtUsed: true, semestersUsed: (updated.semestersUsed || 0) + 2 }
       state.newsfeed.unshift({
@@ -466,13 +478,20 @@ function runDevelopment(state) {
       payload: { playerId: r.player.id, gain: r.gain },
     })
   }
-  // Remove graduated players from roster
-  const grads = playerIds.filter(id => state.players[id]?.eligibilityStatus === 'graduated')
-  if (grads.length > 0) {
-    state.teams[state.userSchoolId].rosterPlayerIds = userTeam.rosterPlayerIds.filter(id => !grads.includes(id))
+  // Remove graduated + transferred players from roster
+  const exits = playerIds.filter(id => {
+    const s = state.players[id]?.eligibilityStatus
+    return s === 'graduated' || s === 'transferred'
+  })
+  if (exits.length > 0) {
+    state.teams[state.userSchoolId].rosterPlayerIds = userTeam.rosterPlayerIds.filter(id => !exits.includes(id))
+    const isNwac = state.level === 'NWAC'
+    const exitVerb = isNwac
+      ? `${exits.length} sophomore${exits.length === 1 ? '' : 's'} transferred out to 4-year programs`
+      : `${exits.length} senior${exits.length === 1 ? '' : 's'} graduated`
     state.newsfeed.unshift({
-      id: `grad_${state.calendar.year}`, year: state.calendar.year, week: 2, type: 'AWARD',
-      headline: `${grads.length} senior${grads.length === 1 ? '' : 's'} graduated. Roster down to ${state.teams[state.userSchoolId].rosterPlayerIds.length}.`,
+      id: `roster_exits_${state.calendar.year}`, year: state.calendar.year, week: 2, type: 'AWARD',
+      headline: `${exitVerb}. Roster down to ${state.teams[state.userSchoolId].rosterPlayerIds.length}.`,
       payload: {},
     })
   }
@@ -517,7 +536,7 @@ function runHsAttrition(state) {
 function runPortalOpen(state) {
   if (!state.recruits) state.recruits = {}
   const userHC = state.coaches[state.teams[state.userSchoolId]?.headCoachId]
-  const portalPool = generatePortalPool(state.calendar.year, state.rngSeed, userHC)
+  const portalPool = generatePortalPool(state.calendar.year, state.rngSeed, userHC, { level: state.level || 'NAIA' })
   Object.assign(state.recruits, portalPool)
   state.newsfeed.unshift({
     id: `portal_open_${state.calendar.year}`,

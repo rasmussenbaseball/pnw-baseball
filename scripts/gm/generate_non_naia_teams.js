@@ -353,9 +353,42 @@ function mkTeam(pearRow, divisionCode) {
   }
 }
 
-// ─── Preserve existing JUCO_NWAC list ─────────────────────────────────────
+// ─── Load NWAC teams + PPI from the NWBB stats backend cache ──────────────
+//
+// Sourced from https://nwbaseballstats.com/api/v1/team-ratings?division_level=JUCO
+// — the same engine that drives the public NWAC rankings on nwbaseballstats.com.
+// PPI is a 0-100ish power index. Cache lives in scripts/gm/nwac_ppi_cache.json;
+// refresh by re-running the cache pull (see the cache file's _meta).
+
+function loadNwacFromPpiCache() {
+  const ppiPath = path.join(__dirname, 'nwac_ppi_cache.json')
+  if (!fs.existsSync(ppiPath)) return null
+  const raw = JSON.parse(fs.readFileSync(ppiPath, 'utf8'))
+  const list = raw.teams || []
+  // Map PPI (range ~30..75) to our -15..+15 strength scale.
+  //   PPI 50 → strength 0  (median NWAC)
+  //   PPI 75 → strength 7.5 (top NWAC — Everett-tier)
+  //   PPI 30 → strength -6  (bottom NWAC)
+  // Slope: (ppi - 50) * 0.3
+  return list.map(t => ({
+    id: 'nwac-' + slugify(t.short_name),
+    name: t.short_name,
+    city: t.city || '',
+    state: t.state || '',
+    nickname: '',
+    strength: Math.round(((t.ppi ?? 50) - 50) * 0.3 * 10) / 10,
+    ppi: t.ppi,
+    ppiRank: t.ppi_rank,
+    subConference: t.conference_abbrev,   // NWAC-N / NWAC-S / NWAC-E / NWAC-W
+    colors: null,
+  }))
+}
 
 function loadExistingNwac() {
+  // Prefer the live PPI feed (28 teams w/ real ratings). Falls back to the
+  // existing static list if the cache isn't present.
+  const ppiList = loadNwacFromPpiCache()
+  if (ppiList && ppiList.length > 0) return ppiList
   try {
     const existing = JSON.parse(fs.readFileSync(OUT_PATH, 'utf8'))
     return (existing.divisions || []).find(d => d.id === 'JUCO_NWAC')?.teams || []

@@ -183,6 +183,7 @@ function ensureRecruitPool(save) {
     save.rngSeed || save.seed || 1,
     userHC,
     save.userSchoolId,
+    { level: save.level || 'NAIA' },
   )
   save.recruits = pool
 }

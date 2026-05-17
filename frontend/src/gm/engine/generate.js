@@ -63,12 +63,19 @@ function clamp(v, lo, hi) {
  * @param {number} programHistory   0-100 (15 worst, 86 top)
  * @param {'starter'|'bench'|'depth'} slotTier
  */
-function meanRatingFor(programHistory, slotTier = 'bench') {
+function meanRatingFor(programHistory, slotTier = 'bench', level = 'NAIA') {
   // Slope tuned so PH 15 → 60 starter mean, PH 86 → 79 starter mean.
   const ph = Math.max(15, Math.min(99, programHistory))
-  if (slotTier === 'starter') return 60 + (ph - 15) * 0.27   // 60..81
-  if (slotTier === 'bench')   return 52 + (ph - 15) * 0.18   // 52..67
-  return 44 + (ph - 15) * 0.12                                // 44..54
+  let mean
+  if (slotTier === 'starter')      mean = 60 + (ph - 15) * 0.27   // 60..81
+  else if (slotTier === 'bench')   mean = 52 + (ph - 15) * 0.18   // 52..67
+  else                              mean = 44 + (ph - 15) * 0.12   // 44..54
+
+  // Level shift on the mean — keeps the program's RELATIVE strength
+  // (PH-driven) but anchors the absolute level. D1 starters average
+  // ~6 OVR above an NAIA equivalent; D3 averages ~4 below.
+  const LEVEL_SHIFT = { D1: 6, D2: 2, NAIA: 0, D3: -4, NWAC: -2 }
+  return mean + (LEVEL_SHIFT[level] ?? 0)
 }
 
 /**
@@ -141,10 +148,13 @@ function pickPlatoonDominantSide(bats, rng) {
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @param {ReturnType<import('./playerArchetypes.js').composePlayerProfile>} [profile]
  */
-function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng, profile = null, bats = 'R') {
-  let mean = meanRatingFor(programHistory, slotTier) - (isPureHitter ? 0 : 10)
+function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng, profile = null, bats = 'R', level = 'NAIA') {
+  let mean = meanRatingFor(programHistory, slotTier, level) - (isPureHitter ? 0 : 10)
   mean = applyStarBump(mean, slotTier, rng)
-  const stddev = slotTier === 'starter' ? 9 : 11
+  // NWAC = wide spread per Nate. JUCO rosters carry future-D1 walk-ons +
+  // raw-talent kids, all in the same dugout. Bump stddev 5 points.
+  const baseStddev = slotTier === 'starter' ? 9 : 11
+  const stddev = level === 'NWAC' ? baseStddev + 5 : baseStddev
   const biases = profile?.biases || {}
   const rollKey = (key, extra = 0) => Math.round(clamp(
     rng.gaussian(mean + (biases[key] || 0) + extra, stddev),
@@ -180,10 +190,11 @@ function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier
   return block
 }
 
-function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTier, rng, profile = null) {
-  let mean = meanRatingFor(programHistory, slotTier) - (isPurePitcher ? 0 : 10)
+function generatePitcherRatings(programHistory, classYear, isPurePitcher, slotTier, rng, profile = null, level = 'NAIA') {
+  let mean = meanRatingFor(programHistory, slotTier, level) - (isPurePitcher ? 0 : 10)
   mean = applyStarBump(mean, slotTier, rng)
-  const stddev = slotTier === 'starter' ? 9 : 11
+  const baseStddev = slotTier === 'starter' ? 9 : 11
+  const stddev = level === 'NWAC' ? baseStddev + 5 : baseStddev
   const biases = profile?.biases || {}
   const rollKey = (key, extra = 0) => Math.round(clamp(
     rng.gaussian(mean + (biases[key] || 0) + extra, stddev),
@@ -419,8 +430,9 @@ export function generatePlayer(school, slot, rng, currentYear, idx) {
   const bats = rng.weighted(['R', 'L', 'S'], [70, 22, 8])
   const throws = rng.weighted(['R', 'L'], [80, 20])
 
-  const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng, profile, bats)
-  const pitcher = generatePitcherRatings(school.programHistory, slot.classYear, isPitcher, slotTier, rng, profile)
+  const level = school.level || 'NAIA'
+  const hitter = generateHitterRatings(school.programHistory, slot.classYear, !isPitcher, slotTier, rng, profile, bats, level)
+  const pitcher = generatePitcherRatings(school.programHistory, slot.classYear, isPitcher, slotTier, rng, profile, level)
 
   // Late-bloomer current-rating suppression: archetype tag drops current
   // ratings ~8-14 points. Combined with the +8 potential bonus this gives
