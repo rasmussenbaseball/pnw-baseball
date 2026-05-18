@@ -19,6 +19,7 @@ import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
+import { maybeFireRandomEvent } from './randomEvents'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
 import { computeWeeklyAwards } from './weeklyAwards'
@@ -1132,6 +1133,15 @@ export function advanceOneWeek(state) {
 
   // Fire events for the new week (budget review, draft, portal opens, etc.)
   runEventsForWeek(state, nextWeek)
+
+  // Story-mode random events. Roll for a popup that interrupts the next
+  // user advance (modal blocks the +1 Week button until they respond).
+  // Skipped silently for regular dynasties.
+  try {
+    maybeFireRandomEvent(state)
+  } catch (err) {
+    console.warn('random event roll threw:', err)
+  }
 
   // Weekly recruiting decisions — tick weeksOutstanding on every live offer
   // and check whether any recruit decides to commit this week. Without this

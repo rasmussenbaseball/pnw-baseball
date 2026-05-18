@@ -19,6 +19,7 @@ import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archet
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
+import { resolveEvent } from '../../gm/engine/randomEvents'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TutorialOverlay from '../../gm/components/TutorialOverlay'
@@ -190,6 +191,13 @@ export default function Dashboard() {
 
   // ─── Sim actions ───────────────────────────────────────────────────────────
   function simNextWeek() {
+    // Story mode pending event blocks every advance until the user makes a
+    // choice. We surface a modal at the bottom of the page; this guard just
+    // makes sure clicking the +Week button doesn't slip past it.
+    if (save.pendingEvent) {
+      alert('A program event is awaiting your decision. Scroll down and resolve it first.')
+      return
+    }
     // Auto mode short-circuits the gate checks — runAutoActions resolves any
     // open required action before we get here.
     if (autoOn) {
@@ -320,6 +328,17 @@ export default function Dashboard() {
   return (
     <GMShell schoolName={school.name} schoolColors={school.colors}>
     <div className="min-h-screen">
+      {/* Story-mode random event — blocks all advance until resolved */}
+      {save.pendingEvent && (
+        <PendingEventModal
+          event={save.pendingEvent}
+          onResolve={(choiceId) => {
+            resolveEvent(save, choiceId)
+            saveDynasty(save)
+            setSave({ ...save })
+          }}
+        />
+      )}
       {progress && <ProgressModal {...progress} />}
       {tutorialOpen && (
         <TutorialOverlay school={school} onClose={dismissTutorial} />
@@ -1022,6 +1041,46 @@ function BracketLine({ save, game, userId }) {
  * Surfaces an "URGENT" red banner if you've been fired, so the user can't
  * miss the implicit deadline to accept a new offer or end their career.
  */
+/**
+ * PendingEventModal — overlay shown whenever a story-mode random event is
+ * waiting on the user. Blocks the screen until the user picks a choice.
+ * Each choice has a blurb describing the trade-off so the user can make
+ * informed picks rather than rolling blind.
+ */
+function PendingEventModal({ event, onResolve }) {
+  if (!event) return null
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-amber-400">
+        <div className="bg-amber-400 text-[#1a1a2e] px-4 py-2 font-pixel-display tracking-widest text-sm">
+          PROGRAM EVENT — DECISION REQUIRED
+        </div>
+        <div className="p-5">
+          <h2 className="text-lg font-bold text-pnw-slate mb-2">{event.title}</h2>
+          <p className="text-sm text-gray-700 mb-4 leading-snug">{event.body}</p>
+          <div className="space-y-2">
+            {(event.choices || []).map(choice => (
+              <button
+                key={choice.id}
+                onClick={() => onResolve(choice.id)}
+                className="w-full text-left p-3 rounded-lg border-2 border-gray-200 hover:border-amber-400 hover:bg-amber-50 transition"
+              >
+                <div className="font-semibold text-sm text-pnw-slate">{choice.label}</div>
+                {choice.blurb && (
+                  <div className="text-[11px] text-gray-600 mt-1 leading-snug">{choice.blurb}</div>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-3 italic">
+            You must resolve this event before you can advance another week.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CareerOffersWidget({ save, slot }) {
   const career = save?.career
   if (!career || !career.enabled) return null

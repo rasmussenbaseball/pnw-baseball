@@ -166,17 +166,20 @@ export default function Career() {
 }
 
 function GoalBanner({ goalDone, ended, career }) {
+  if (ended) return null
+  // D1 HC is a MILESTONE, not an end-state. Keep playing — defend the
+  // throne, win a national title, get poached by an MLB org, anything.
   if (goalDone) {
     return (
       <div className="bg-gradient-to-br from-amber-50 to-purple-50 border-2 border-amber-400 rounded-xl p-5 mb-4 text-center">
-        <div className="text-amber-700 text-lg font-bold">🏆 Goal Achieved — D1 Head Coach</div>
+        <div className="text-amber-700 text-lg font-bold">★ Milestone: D1 Head Coach</div>
         <p className="text-sm text-pnw-slate mt-1">
-          You made it. Keep playing to defend the throne, or start a new save.
+          You made it to the top. The career keeps going — defend the seat, chase a national title,
+          or get poached. No true win condition; play as long as you want.
         </p>
       </div>
     )
   }
-  if (ended) return null
   // Current ladder rung indicator
   const last = career.trajectory[career.trajectory.length - 1]
   const currentLevel = last?.level || 'NWAC'

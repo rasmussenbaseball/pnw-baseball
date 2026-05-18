@@ -275,23 +275,23 @@ export function runCareerReview(state) {
   }
 
   // ── Offer generation ─────────────────────────────────────────────────
-  // Number of offers scales with performance + tuning baseline.
-  const perfBoost = Math.max(0, (winPct - 0.5) * 4)
-  const expected = tuning.baseOffersPerYear + perfBoost +
-    (firing ? 1.5 : 0)   // extra offers if you got fired — sympathy bounce-back
   const yearsAsCoach = state.career.trajectory.filter(t => t.result !== 'started').length
   const tooEarly = yearsAsCoach < tuning.firstOfferAfterYears
-  const offers = []
+  let offers = []
   if (!tooEarly) {
     const rng = makeRng('careerOffers', year, state.rngSeed || 1)
-    const numOffers = Math.max(0, Math.min(3, Math.round(expected + rng.gaussian(0, 0.6))))
-    for (let i = 0; i < numOffers; i++) {
-      const offer = generateOffer({
-        state, rng, currentTier, role, level, winPct, tuning,
-        userCoach, currentSchoolId: school.id, year, isFired: !!firing,
-      })
-      if (offer) offers.push(offer)
-    }
+    const careerWinPct = multiYearWinPct(state.career.trajectory)
+    offers = generateOffersForYear({
+      state, rng,
+      currentTier,
+      currentRole: role,
+      currentLevel: level,
+      winPct, careerWinPct,
+      tuning, userCoach,
+      currentSchoolId: school.id,
+      year,
+      isFired: !!firing,
+    })
   }
   state.career.currentOffers = offers
   if (offers.length > 0) {
@@ -324,100 +324,219 @@ function countYearsAtSchool(trajectory, schoolId) {
   return trajectory.filter(t => t.schoolId === schoolId && t.result !== 'started').length
 }
 
-// ─── Offer generation ──────────────────────────────────────────────────────
+// ─── Offer generation (tier-matched, performance-aware) ───────────────────
+//
+// The schools EVALUATE you each offseason and decide if you fit their
+// opening. The window of schools you'll hear from is determined by:
+//   1. Your career standing (currentTier).
+//   2. Your last-season + multi-year track record (winPct + careerWinPct).
+//   3. Your coach rating average (the "scout grade" — schools poach
+//      higher-rated coaches at higher levels).
+//
+// The combined attractiveness score lives on [0, 1]:
+//   attractiveness = 0.45*lastSeasonWinPct + 0.25*multiYearWinPct
+//                  + 0.30*ratingScore (50→1.0 at avg 80)
+//
+// Maps to a target-tier ceiling:
+//   target ceiling = currentTier + ⌊attractiveness * 250⌋ tier-points.
+// A 0.0 attractiveness (terrible year, raw coach) → ceiling = currentTier
+//   (best you can do is lateral). 1.0 (sweep season, elite coach) →
+//   currentTier + 250 (e.g. an NWAC HC can leap up to a D2 HC seat).
+//
+// The floor — i.e. the WORST offer that comes in — scales the other way:
+//   floor = currentTier - ⌊(1-attractiveness) * 150⌋
+//   You can be offered a step DOWN if you stunk this year.
+
+const ROLE_LADDER = [
+  'GRADUATE_ASSISTANT',
+  'BENCH_COACH',
+  'STRENGTH_CONDITIONING',
+  'HITTING_COACH',
+  'PITCHING_COACH',
+  'RECRUITING_COORDINATOR',
+  'DATA_ANALYTICS_MANAGER',
+  'DIRECTOR_OF_OPERATIONS',
+  'HEAD_COACH',
+]
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)) }
 
 /**
- * Generate ONE offer card. Picks a target program + role inside a window
- * around the user's current tier, then synthesizes a salary + blurb.
- *
- * Window logic:
- *   - 65% offers are at currentTier ± 1 tier rung (lateral or slight
- *     promotion)
- *   - 25% are PROMOTIONS: same level higher role, or HC at a lower
- *     level (e.g. HC NWAC if you're a coordinator at NAIA)
- *   - 10% are JUMP offers: cross-level promotions that significantly
- *     advance your career. Triggered more often by strong seasons.
+ * Multi-year track record — average win% across the last 3 SEASONS the
+ * user actually coached (skips 'started' + 'hired' + 'declined-offers' /
+ * 'fired' entries). Returns 0.5 if no games on record yet.
  */
-function generateOffer({ state, rng, currentTier, role, level, winPct, tuning, userCoach, currentSchoolId, year, isFired }) {
-  const allSchools = Object.values(state.schools || {})
-  const candidates = allSchools.filter(s => s.id !== currentSchoolId)
-  if (candidates.length === 0) return null
-  const targetSchool = rng.pick(candidates)
-  const targetLevel = targetSchool.level || 'NAIA'
+function multiYearWinPct(trajectory) {
+  const completed = (trajectory || [])
+    .filter(t => t.result === 'completed' && (t.wins || t.losses))
+    .slice(-3)
+  if (completed.length === 0) return 0.5
+  let totalW = 0, totalL = 0
+  for (const t of completed) { totalW += t.wins || 0; totalL += t.losses || 0 }
+  const games = totalW + totalL
+  return games > 0 ? totalW / games : 0.5
+}
 
-  // Pick a target role. Bias toward upgrade if winPct is strong OR random
-  // rolls into "upgradeOfferChance".
-  const wantsUpgrade = winPct > 0.55 || rng.chance(tuning.upgradeOfferChance)
-  let targetRole = pickTargetRole(role, targetLevel, wantsUpgrade, rng, isFired)
-  const targetTier = careerTier(targetRole, targetLevel)
+/**
+ * Compute the user's attractiveness score on [0, 1]. Drives how high
+ * up the ladder offers can reach this year.
+ */
+function attractivenessScore(userCoach, lastWinPct, careerWinPct) {
+  const ratingAvg = ((userCoach.developer || 60) + (userCoach.motivator || 60) +
+                     (userCoach.recruiter || 60) + (userCoach.tactician || 60)) / 4
+  const ratingScore = clamp01((ratingAvg - 50) / 30)   // 50→0, 80→1
+  return clamp01(
+    0.45 * clamp01(lastWinPct) +
+    0.25 * clamp01(careerWinPct) +
+    0.30 * ratingScore
+  )
+}
 
-  // Reject offers that are MORE than 250 tier-points above the user's
-  // current. (Going from BENCH_COACH NWAC tier 201 to HC D1 tier 1005
-  // would be unrealistic.) Re-roll with the same school but lower role.
-  if (targetTier > currentTier + 250 && targetRole === 'HEAD_COACH') {
-    targetRole = 'RECRUITING_COORDINATOR'
+/**
+ * Pool of candidate schools whose tier-range INCLUDES the target tier.
+ *
+ * A school's tier is determined by (best available role at that level)
+ * — for the purposes of offer matching we assume a school has openings
+ * primarily for HC + the 3 main assistant roles. We compute the set of
+ * (school, role) pairs whose careerTier falls within
+ * [targetFloor, targetCeiling].
+ */
+function tierMatchedOffers({ state, currentSchoolId, targetFloor, targetCeiling }) {
+  const ROLE_OPTIONS_BY_LEVEL = {
+    D1:   ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'RECRUITING_COORDINATOR', 'BENCH_COACH'],
+    D2:   ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH'],
+    D3:   ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH'],
+    NAIA: ['HEAD_COACH', 'PITCHING_COACH', 'HITTING_COACH', 'BENCH_COACH'],
+    NWAC: ['HEAD_COACH', 'BENCH_COACH'],
   }
+  const candidates = []
+  for (const school of Object.values(state.schools || {})) {
+    if (school.id === currentSchoolId) continue
+    const lvl = school.level || 'NAIA'
+    const roleOptions = ROLE_OPTIONS_BY_LEVEL[lvl] || ROLE_OPTIONS_BY_LEVEL.NAIA
+    for (const r of roleOptions) {
+      const t = careerTier(r, lvl)
+      if (t >= targetFloor && t <= targetCeiling) {
+        candidates.push({ school, role: r, tier: t })
+      }
+    }
+  }
+  return candidates
+}
 
-  // Salary: derived from school's resourceTier + the target role.
-  // computeCoachSalary takes a quality-avg as a multiplier — use the
-  // user's average rating to scale it.
-  const qualityAvg = ((userCoach.developer || 60) + (userCoach.motivator || 60) +
-                      (userCoach.recruiter || 60) + (userCoach.tactician || 60)) / 4
-  const salary = computeCoachSalary(
-    targetSchool.resourceTier || 'MID',
-    targetRole,
-    qualityAvg,
-  ) || 50_000
-  const signingBonus = Math.round(salary * (rng.next() * 0.15))
+/**
+ * Generate the full slate of offers this offseason. Replaces the old
+ * per-iteration generateOffer() — too random, didn't grind enough.
+ *
+ * Process:
+ *   1. Compute attractiveness from last-season + multi-year + rating.
+ *   2. Determine number of offers (attractiveness × tuning baseline).
+ *   3. Compute [floor, ceiling] tier window.
+ *   4. Build a pool of (school, role) candidates inside the window.
+ *   5. Weight + sample N unique ones, prioritizing schools where the
+ *      user's ratings actually match the role (e.g. high recruiter
+ *      rating → boosts recruiting-coordinator offers).
+ *
+ * Returns an array of offer cards (possibly empty).
+ */
+function generateOffersForYear({ state, rng, currentTier, currentRole, currentLevel, winPct, careerWinPct, tuning, userCoach, currentSchoolId, year, isFired }) {
+  const attract = attractivenessScore(userCoach, winPct, careerWinPct)
 
-  const isUpgrade = targetTier > currentTier
-  const blurb = isUpgrade
-    ? `${targetSchool.name} (${targetLevel}) wants you for ${roleLabel(targetRole)}. Real step up from where you are.`
-    : targetTier === currentTier
-      ? `${targetSchool.name} (${targetLevel}) is offering a lateral move to ${roleLabel(targetRole)}. Change of scenery, same rung.`
-      : `${targetSchool.name} (${targetLevel}) wants you for ${roleLabel(targetRole)}. Smaller program, but they'll back you fully.`
+  // Number of offers — high attractiveness coaches get more interest,
+  // low attractiveness barely get noticed. Fired coaches get a small
+  // sympathy bump (people want to scoop a deal).
+  const noiseRaw = rng.gaussian(0, 0.5)
+  const sympathyBump = isFired ? 1.0 : 0
+  const numOffers = Math.max(0, Math.min(4,
+    Math.round(tuning.baseOffersPerYear + (attract - 0.4) * 4 + sympathyBump + noiseRaw)
+  ))
 
-  return {
-    id: `offer_${year}_${targetSchool.id}_${rng.next().toString(36).slice(2, 7)}`,
-    fromSchoolId: targetSchool.id,
-    fromSchoolName: targetSchool.name,
-    level: targetLevel,
-    role: targetRole,
-    salary, signingBonus,
-    tierGain: targetTier - currentTier,
-    expiresAtYear: year + 1,
-    blurb,
+  // Tier window: ceiling rises with attractiveness; floor drops if you stunk.
+  // Promotion ceiling — capped so a 0-32 NWAC bench coach can't get a D1 HC
+  // offer just because they have high ratings.
+  const ceiling = currentTier + Math.round(attract * 220)
+  // If fired, floor drops further (someone needs a body).
+  const floor = currentTier - Math.round((1 - attract) * 150) - (isFired ? 75 : 0)
+
+  if (numOffers === 0) return []
+
+  // Build candidate pool inside the window.
+  const pool = tierMatchedOffers({ state, currentSchoolId, targetFloor: floor, targetCeiling: ceiling })
+  if (pool.length === 0) return []
+
+  // Rank candidates by FIT to the user's coach skills + a small random
+  // jitter, so the top schools are more likely to come calling.
+  for (const c of pool) {
+    c.fitScore = roleFitScore(userCoach, c.role) + rng.gaussian(0, 0.15)
+  }
+  pool.sort((a, b) => b.fitScore - a.fitScore)
+
+  // Draw N unique school+role pairs from the top of the pool, biasing
+  // toward better-fit schools. We pull from the top 3*numOffers slots.
+  const used = new Set()
+  const offers = []
+  const draftWindow = pool.slice(0, Math.max(numOffers * 3, 6))
+  while (offers.length < numOffers && draftWindow.length > 0) {
+    const idx = Math.floor(rng.next() * Math.min(draftWindow.length, 5))
+    const pick = draftWindow.splice(idx, 1)[0]
+    if (!pick) continue
+    const key = pick.school.id + ':' + pick.role
+    if (used.has(key)) continue
+    used.add(key)
+    offers.push(buildOfferCard(pick, currentTier, userCoach, year, rng))
+  }
+  return offers
+}
+
+/**
+ * Score how well the user's ratings match a target role. Higher = better fit.
+ * Drives which schools actually call you about openings.
+ */
+function roleFitScore(c, role) {
+  const dev = c.developer || 60
+  const mot = c.motivator || 60
+  const rec = c.recruiter || 60
+  const tac = c.tactician || 60
+  switch (role) {
+    case 'HEAD_COACH':                return (dev + mot + rec + tac) / 4 / 100
+    case 'PITCHING_COACH':            return (dev * 0.7 + tac * 0.3) / 100
+    case 'HITTING_COACH':             return (dev * 0.7 + tac * 0.3) / 100
+    case 'BENCH_COACH':               return (mot * 0.5 + tac * 0.5) / 100
+    case 'RECRUITING_COORDINATOR':    return (rec * 0.8 + mot * 0.2) / 100
+    case 'DATA_ANALYTICS_MANAGER':    return (tac * 0.7 + dev * 0.3) / 100
+    case 'DIRECTOR_OF_OPERATIONS':    return (mot * 0.5 + tac * 0.5) / 100
+    case 'STRENGTH_CONDITIONING':     return (dev * 0.8 + mot * 0.2) / 100
+    case 'GRADUATE_ASSISTANT':        return (dev * 0.5 + mot * 0.5) / 100
+    default:                          return 0.6
   }
 }
 
-function pickTargetRole(currentRole, targetLevel, wantsUpgrade, rng, isFired) {
-  // Roles ordered low → high.
-  const LADDER = [
-    'GRADUATE_ASSISTANT',
-    'BENCH_COACH',
-    'STRENGTH_CONDITIONING',
-    'HITTING_COACH',
-    'PITCHING_COACH',
-    'RECRUITING_COORDINATOR',
-    'DATA_ANALYTICS_MANAGER',
-    'DIRECTOR_OF_OPERATIONS',
-    'HEAD_COACH',
-  ]
-  const idx = LADDER.indexOf(currentRole)
-  const baseIdx = idx >= 0 ? idx : 1
-  if (isFired) {
-    // Fired coaches typically take a step DOWN before climbing again.
-    return LADDER[Math.max(0, baseIdx - 1)]
+function buildOfferCard(pick, currentTier, userCoach, year, rng) {
+  const { school, role, tier } = pick
+  const qualityAvg = ((userCoach.developer || 60) + (userCoach.motivator || 60) +
+                      (userCoach.recruiter || 60) + (userCoach.tactician || 60)) / 4
+  const salary = computeCoachSalary(school.resourceTier || 'MID', role, qualityAvg) || 50_000
+  const signingBonus = Math.round(salary * (rng.next() * 0.15))
+  const tierGain = tier - currentTier
+  const lvl = school.level || 'NAIA'
+  const isUpgrade = tierGain > 0
+  const isStepDown = tierGain < 0
+  const blurb = isUpgrade
+    ? `${school.name} (${lvl}) wants you for ${roleLabel(role)}. Real step up from where you are.`
+    : isStepDown
+      ? `${school.name} (${lvl}) needs a ${roleLabel(role)}. Not glamorous, but a job is a job.`
+      : `${school.name} (${lvl}) wants you for ${roleLabel(role)}. Lateral, but a fresh start.`
+  return {
+    id: `offer_${year}_${school.id}_${role}_${rng.next().toString(36).slice(2, 7)}`,
+    fromSchoolId: school.id,
+    fromSchoolName: school.name,
+    level: lvl,
+    role,
+    salary, signingBonus,
+    tierGain,
+    expiresAtYear: year + 1,
+    blurb,
   }
-  if (!wantsUpgrade) {
-    // Lateral or sideways: pick within ±1 rung.
-    const choices = LADDER.slice(Math.max(0, baseIdx - 1), baseIdx + 2)
-    return rng.pick(choices)
-  }
-  // Upgrade: step UP 1-3 rungs, weighted toward smaller jumps.
-  const r = rng.next()
-  const bump = r < 0.65 ? 1 : r < 0.92 ? 2 : 3
-  return LADDER[Math.min(LADDER.length - 1, baseIdx + bump)]
 }
 
 // ─── Offer acceptance ──────────────────────────────────────────────────────
