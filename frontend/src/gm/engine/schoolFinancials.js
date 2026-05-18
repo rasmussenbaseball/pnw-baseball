@@ -26,8 +26,14 @@ const ALLOCATIONS = data.budgetAllocations || {}
  */
 export function financialsFor(schoolId, level) {
   if (!schoolId) return null
-  // NWAC schools share a generic default (all JUCOs are ~equivalent)
-  if (level === 'NWAC') return FINANCIALS.NWAC_TUITION?.default || null
+  // NWAC: per-school tiered budgets (Bellevue + Lower Columbia ~ $80K, the
+  // smallest commuter schools ~ $35K). Fall through to the NWAC default if
+  // we don't have a specific entry for this school.
+  if (level === 'NWAC') {
+    const bucket = FINANCIALS.NWAC
+    if (!bucket) return null
+    return bucket[schoolId] || bucket.default || null
+  }
   const bucket = FINANCIALS[level]
   if (!bucket) return null
   return bucket[schoolId] || null
@@ -43,17 +49,30 @@ export function allocationsFor(level) {
 
 /**
  * Compute the full line-item breakdown of a school's baseball budget.
- * Returns dollar amounts by category that sum to totalBudget.
+ *
+ * Approach (after May 2026 reconciliation):
+ *   - `scholarships` is anchored to the school's researched scholarshipPool
+ *     (or zero at D3/NWAC).
+ *   - The REMAINING $ (totalBudget - scholarshipPool) splits across the
+ *     other categories via `budgetAllocations[level]` percentages, which
+ *     sum to 1.0 within each level.
+ *
+ * This guarantees the displayed scholarship line matches the recruiting
+ * page's pool, and that D3 + NWAC don't get a confusing "48% scholarships"
+ * split when their actual schol pool is $0.
  */
 export function lineItemBudget(school) {
   if (!school) return null
   const fin = financialsFor(school.id, school.level)
   if (!fin) return null
   const alloc = allocationsFor(school.level)
-  const total = fin.totalBudget
-  const out = { totalBudget: total }
+  const total = fin.totalBudget || 0
+  const pool = fin.scholarshipPool || 0
+  const remaining = Math.max(0, total - pool)
+  const out = { totalBudget: total, scholarships: pool }
   for (const [cat, pct] of Object.entries(alloc)) {
-    out[cat] = Math.round(total * pct)
+    if (cat.startsWith('_')) continue   // skip _note metadata keys
+    out[cat] = Math.round(remaining * pct)
   }
   return out
 }
@@ -86,8 +105,11 @@ export function applyRealFinancials(school) {
     school.travelBudget = breakdown.travel
     school.recruitingBudget = breakdown.recruiting
     school.equipmentBudget = breakdown.equipment
+    school.uniformsBudget = breakdown.uniforms || 0
+    school.mealsBudget = breakdown.meals || 0
     school.facilitiesBudget = breakdown.facilities
-    school.operationsBudget = breakdown.operations
+    school.medicalBudget = breakdown.medical || 0
+    school.operationsBudget = breakdown.operations || 0
   }
   return school
 }

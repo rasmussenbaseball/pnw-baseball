@@ -6,7 +6,7 @@ import {
   BUDGET_CATEGORIES,
   budgetCategoryEffects,
   extendedBudgetEffects,
-  BUDGET_GUIDANCE,
+  getBudgetGuidance,
   BUDGET_PRESETS,
   applyBudgetPreset,
   lockBudgetForYear,
@@ -146,7 +146,7 @@ export default function Budget() {
 
   function applyPreset(preset) {
     if (isLocked) return
-    save.budget = applyBudgetPreset(budget, preset)
+    save.budget = applyBudgetPreset(budget, preset, level)
     saveDynasty(save); setSave({ ...save })
   }
 
@@ -165,10 +165,14 @@ export default function Budget() {
     saveDynasty(save); setSave({ ...save })
   }
 
-  const effects = budgetCategoryEffects(budget)
-  const ext = extendedBudgetEffects(budget)
-
   const userSchool = save.schools[save.userSchoolId]
+  // Level-aware guidance + effects. Without this, a D3 program running 0%
+  // scholarship is graded against NAIA's 55% expectation and looks like a
+  // disaster on the page.
+  const level = userSchool?.level || save.level || 'NAIA'
+  const guidance = getBudgetGuidance(level)
+  const effects = budgetCategoryEffects(budget, level)
+  const ext = extendedBudgetEffects(budget, level)
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-5xl mx-auto">
@@ -181,8 +185,18 @@ export default function Budget() {
               {' '}(includes +${(boosts.budgetBonus / 1000).toFixed(0)}K from Director of Operations)
             </span>
           )}
+          {' '}· <span className="font-semibold text-pnw-slate">{level} program</span>
           {' '}· Job Security: <JobSecurityBadge js={budget.jobSecurity} />
           {' '}· {budget.yearsAtSchool || 0} year{budget.yearsAtSchool === 1 ? '' : 's'} at school
+        </p>
+        <p className="text-[11px] text-gray-500 mt-1">
+          Guidance bands are level-specific. {level === 'D3' || level === 'NWAC'
+            ? 'No athletic scholarships at this level — that line stays at $0.'
+            : level === 'D1'
+              ? 'D1 typical breakdown: ~30% coaching, ~30% scholarships, ~12% travel, ~9% facilities.'
+              : level === 'D2'
+                ? 'D2 typical breakdown: ~40% scholarships, ~22% coaching, ~12% travel.'
+                : 'NAIA typical breakdown: ~55% scholarships, ~19% coaching, ~14% travel.'}
         </p>
       </div>
 
@@ -254,9 +268,14 @@ export default function Budget() {
           const meta = CATEGORIES[cat]
           const value = budget.allocations[cat] || 0
           const pct = total > 0 ? value / total : 0
-          const guide = BUDGET_GUIDANCE[cat]
+          const guide = guidance[cat]
           const inRange = guide && pct >= guide.min && pct <= guide.max
-          const catLocked = isLocked || meta.lockedAlways || (cat === 'travel' && travelLocked) || meta.lockedFromHires
+          // At D3/NWAC, scholarships should be hard-locked at zero.
+          // (We surface this with a level-specific note instead of an unhittable
+          // guidance band.)
+          const isForcedZero = guide && guide.min === 0 && guide.max === 0
+          const catLocked = isLocked || meta.lockedAlways || isForcedZero ||
+            (cat === 'travel' && travelLocked) || meta.lockedFromHires
           return (
             <CategoryRow
               key={cat}
@@ -266,8 +285,10 @@ export default function Budget() {
               pct={pct}
               total={total}
               guide={guide}
-              inRange={inRange}
+              inRange={inRange || isForcedZero}   // 0% on forced-zero IS in range
               locked={catLocked}
+              forcedZero={isForcedZero}
+              level={level}
               onAdjust={(delta) => adjustCategory(cat, delta)}
               effectValue={effectsByCat(cat, effects, ext)}
             />
@@ -322,9 +343,16 @@ function UsageBar({ total, allocated, surplus, usagePct }) {
   )
 }
 
-function CategoryRow({ cat, meta, value, pct, total, guide, inRange, locked, onAdjust, effectValue }) {
+function CategoryRow({ cat, meta, value, pct, total, guide, inRange, locked, forcedZero, level, onAdjust, effectValue }) {
   const guideMin = guide ? Math.round(guide.min * total) : null
   const guideMax = guide ? Math.round(guide.max * total) : null
+  // Forced-zero categories (scholarships at D3/NWAC) show a level-specific
+  // explainer instead of the typical-range band.
+  const lockedReason = forcedZero
+    ? (level === 'D3' ? 'D3 — no athletic scholarships permitted by NCAA.'
+       : level === 'NWAC' ? 'NWAC — JUCO programs do not award athletic scholarships.'
+       : 'Locked at zero for this level.')
+    : null
   return (
     <div className={'bg-white rounded-xl border p-4 shadow-sm ' + (locked ? 'border-gray-200' : 'border-gray-200 hover:border-pnw-green/30')}>
       <div className="flex items-start gap-4">
@@ -335,15 +363,17 @@ function CategoryRow({ cat, meta, value, pct, total, guide, inRange, locked, onA
           <div className="flex justify-between items-baseline">
             <div>
               <div className="text-sm font-bold text-pnw-slate">
-                {meta.label} {locked && <span className="text-gray-400 text-xs">(locked)</span>}
+                {meta.label}
+                {locked && !forcedZero && <span className="text-gray-400 text-xs"> (locked)</span>}
+                {forcedZero && <span className="text-gray-500 text-xs"> (n/a at this level)</span>}
               </div>
-              <div className="text-[11px] text-gray-500">{meta.blurb}</div>
+              <div className="text-[11px] text-gray-500">{lockedReason || meta.blurb}</div>
             </div>
             <div className="text-right shrink-0 ml-4">
               <div className="text-xl font-bold text-pnw-slate font-mono">${(value / 1000).toFixed(1)}K</div>
               <div className={'text-[11px] ' + (inRange ? 'text-green-700' : 'text-amber-700')}>
                 {(pct * 100).toFixed(1)}%
-                {guide && (
+                {guide && !forcedZero && (
                   <span className="text-gray-400 ml-1">
                     (typical {(guide.min * 100).toFixed(0)}-{(guide.max * 100).toFixed(0)}%)
                   </span>

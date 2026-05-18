@@ -61,63 +61,90 @@
       "walla-walla":       { "tuition": 32800, "inStateDiscount": 1.0,  "roomAndBoard": 9800,  "totalBudget": 140000, "scholarshipPool": 90000 }
     },
 
-    "NWAC_TUITION": {
-      "_note": "NWAC = community college 2-yr. All ~$4-5K in-state tuition + minimal fees. No room/board most places (commuter campuses).",
-      "default": { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 55000, "scholarshipPool": 0 }
+    "NWAC": {
+      "_note": "NWAC = community college 2-yr. Per-school tiered budgets reflect real disparity — Bellevue / Lower Columbia / Spokane / Tacoma run real programs with paid staff; the smallest commuter schools run on $25-35K.",
+      "default":          { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 50000, "scholarshipPool": 0 },
+      "bellevue-cc":      { "tuition": 11400, "inStateDiscount": 0.40, "roomAndBoard": 0, "totalBudget": 85000, "scholarshipPool": 0 },
+      "lower-columbia":   { "tuition": 10800, "inStateDiscount": 0.43, "roomAndBoard": 0, "totalBudget": 80000, "scholarshipPool": 0 },
+      "spokane":          { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 75000, "scholarshipPool": 0 },
+      "tacoma":           { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 75000, "scholarshipPool": 0 },
+      "linn-benton":      { "tuition": 10600, "inStateDiscount": 0.44, "roomAndBoard": 0, "totalBudget": 72000, "scholarshipPool": 0 },
+      "mt-hood":          { "tuition": 10800, "inStateDiscount": 0.43, "roomAndBoard": 0, "totalBudget": 68000, "scholarshipPool": 0 },
+      "everett":          { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 65000, "scholarshipPool": 0 },
+      "walla-walla":      { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 60000, "scholarshipPool": 0 },
+      "yakima-valley":    { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 60000, "scholarshipPool": 0 },
+      "wenatchee-valley": { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 55000, "scholarshipPool": 0 },
+      "edmonds":          { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 52000, "scholarshipPool": 0 },
+      "pierce":           { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 50000, "scholarshipPool": 0 },
+      "skagit-valley":    { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 50000, "scholarshipPool": 0 },
+      "south-puget-sound":{ "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 48000, "scholarshipPool": 0 },
+      "shoreline":        { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 45000, "scholarshipPool": 0 },
+      "olympic":          { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 42000, "scholarshipPool": 0 },
+      "grays-harbor":     { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 40000, "scholarshipPool": 0 },
+      "centralia":        { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 38000, "scholarshipPool": 0 },
+      "big-bend":         { "tuition": 11200, "inStateDiscount": 0.42, "roomAndBoard": 0, "totalBudget": 35000, "scholarshipPool": 0 },
+      "treasure-valley":  { "tuition": 10800, "inStateDiscount": 0.43, "roomAndBoard": 0, "totalBudget": 38000, "scholarshipPool": 0 },
+      "umpqua":           { "tuition": 10600, "inStateDiscount": 0.44, "roomAndBoard": 0, "totalBudget": 36000, "scholarshipPool": 0 },
+      "douglas":          { "tuition": 12500, "inStateDiscount": 0.50, "roomAndBoard": 0, "totalBudget": 45000, "scholarshipPool": 0 }
     }
   },
 
   "budgetAllocations": {
-    "_note": "Standard percentage split for each level's totalBudget. Real EADA reports show these distributions are remarkably consistent within tier.",
+    "_note": "Per-level percentage split of NON-SCHOLARSHIP spending. Scholarships are anchored to each school's scholarshipPool (researched real-world figure); the remaining categories sum to 1.0 within each level. So coaching=0.45 means 45% of the non-scholarship pot at D3, where scholarships are $0 anyway.",
     "D1": {
-      "coaching":      0.36,
-      "scholarships":  0.30,
-      "travel":        0.10,
-      "recruiting":    0.05,
-      "equipment":     0.04,
-      "facilities":    0.08,
-      "operations":    0.05,
-      "other":         0.02
+      "coaching":      0.40,
+      "travel":        0.16,
+      "recruiting":    0.08,
+      "equipment":     0.07,
+      "uniforms":      0.03,
+      "meals":         0.05,
+      "facilities":    0.13,
+      "medical":       0.05,
+      "operations":    0.03
     },
     "D2": {
-      "coaching":      0.30,
-      "scholarships":  0.40,
-      "travel":        0.10,
-      "recruiting":    0.04,
-      "equipment":     0.05,
-      "facilities":    0.05,
-      "operations":    0.04,
-      "other":         0.02
+      "coaching":      0.38,
+      "travel":        0.18,
+      "recruiting":    0.13,
+      "equipment":     0.08,
+      "uniforms":      0.03,
+      "meals":         0.05,
+      "facilities":    0.08,
+      "medical":       0.04,
+      "operations":    0.03
     },
     "D3": {
-      "coaching":      0.45,
-      "scholarships":  0.00,
+      "coaching":      0.38,
       "travel":        0.20,
-      "recruiting":    0.05,
-      "equipment":     0.10,
-      "facilities":    0.08,
-      "operations":    0.10,
-      "other":         0.02
+      "recruiting":    0.10,
+      "equipment":     0.08,
+      "uniforms":      0.03,
+      "meals":         0.04,
+      "facilities":    0.13,
+      "medical":       0.04,
+      "operations":    0.00
     },
     "NAIA": {
-      "coaching":      0.32,
-      "scholarships":  0.48,
-      "travel":        0.08,
-      "recruiting":    0.03,
-      "equipment":     0.04,
-      "facilities":    0.03,
-      "operations":    0.02,
-      "other":         0.00
+      "coaching":      0.42,
+      "travel":        0.20,
+      "recruiting":    0.06,
+      "equipment":     0.07,
+      "uniforms":      0.03,
+      "meals":         0.05,
+      "facilities":    0.10,
+      "medical":       0.04,
+      "operations":    0.03
     },
     "NWAC": {
-      "coaching":      0.48,
-      "scholarships":  0.00,
+      "coaching":      0.42,
       "travel":        0.25,
-      "recruiting":    0.02,
-      "equipment":     0.10,
-      "facilities":    0.05,
-      "operations":    0.10,
-      "other":         0.00
+      "recruiting":    0.08,
+      "equipment":     0.08,
+      "uniforms":      0.03,
+      "meals":         0.05,
+      "facilities":    0.06,
+      "medical":       0.03,
+      "operations":    0.00
     }
   }
 }
