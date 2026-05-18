@@ -59,8 +59,22 @@ export const COACH_LOOKS = [
   { id: 19, skin: 2, hair: 5, hairStyle: 'side-part', facialHair: 'none',        polo: 4 },
 ]
 
-export default function CoachHeadshot({ lookId = 0, size = 48, className = '' }) {
-  const look = COACH_LOOKS[lookId % COACH_LOOKS.length]
+// Stable hash of a string → unsigned 32-bit int. Used to derive a deterministic
+// lookId for coaches who don't have one set (assistants, AI HCs).
+function stableHash(s) {
+  let h = 0
+  const str = String(s || '')
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
+  return h
+}
+
+export default function CoachHeadshot({ lookId, coachId, size = 48, className = '' }) {
+  // If lookId is missing (most generated coaches), derive one deterministically
+  // from coachId so the same coach gets the same face on every render.
+  const effectiveLookId = (typeof lookId === 'number')
+    ? lookId
+    : (coachId ? stableHash(coachId) % COACH_LOOKS.length : 0)
+  const look = COACH_LOOKS[effectiveLookId % COACH_LOOKS.length]
   const skin = SKINS[look.skin] || SKINS[0]
   const skinShd = darken(skin, 0.2)
   const hair = HAIR_COLORS[look.hair] || HAIR_COLORS[0]

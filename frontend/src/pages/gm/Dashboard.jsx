@@ -20,7 +20,7 @@ import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } fro
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { resolveEvent } from '../../gm/engine/randomEvents'
-import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
+import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TutorialOverlay from '../../gm/components/TutorialOverlay'
 import TeamLogo from '../../gm/components/TeamLogo'
@@ -195,7 +195,7 @@ export default function Dashboard() {
     // choice. We surface a modal at the bottom of the page; this guard just
     // makes sure clicking the +Week button doesn't slip past it.
     if (save.pendingEvent) {
-      alert('A program event is awaiting your decision. Scroll down and resolve it first.')
+      gmToast('A program event is awaiting your decision. Scroll down and resolve it first.', 'warn')
       return
     }
     // Auto mode short-circuits the gate checks — runAutoActions resolves any
@@ -215,11 +215,11 @@ export default function Dashboard() {
     } else {
       if (advanceBlocked) {
         if (requiredAction && !requiredAction.isComplete(save)) {
-          alert(`Finish "${requiredAction.label}" first — ${requiredAction.blurb}`)
+          gmToast(`Finish "${requiredAction.label}" first — ${requiredAction.blurb}`, 'warn')
           return
         }
         if (scheduleBlocked) {
-          alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
+          gmToast(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`, 'warn')
           return
         }
       }
@@ -280,7 +280,7 @@ export default function Dashboard() {
             setLastWeekRecap({ kind: 'season', results: [] })
           } catch (err) {
             console.error('postseason failed:', err)
-            alert('Postseason sim failed — see console. State was not saved.')
+            gmToast('Postseason sim failed — see console. State was not saved.', 'warn')
           }
           setProgress(null)
           setBusy(false)
@@ -300,7 +300,7 @@ export default function Dashboard() {
           setLastWeekRecap({ kind: 'season', results: summary.userResults, diff })
         } catch (err) {
           console.error('advanceWeek failed:', err)
-          alert('Sim failed — see console for details. State was not saved.')
+          gmToast('Sim failed — see console for details. State was not saved.', 'warn')
         }
         setBusy(false)
       }, 30)
@@ -311,7 +311,7 @@ export default function Dashboard() {
 
   function runSimAhead(preset) {
     if (scheduleBlocked) {
-      alert(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`)
+      gmToast(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`, 'warn')
       return
     }
     setBusy(true)
@@ -378,7 +378,7 @@ export default function Dashboard() {
                 setLastWeekRecap({ kind: 'season', results: summary.userResults })
               } catch (err) {
                 console.error('week sim failed:', err)
-                alert('Sim failed — see console.')
+                gmToast('Sim failed — see console.', 'warn')
               }
               setBusy(false)
             }, 30)
@@ -511,7 +511,7 @@ export default function Dashboard() {
                 setLastWeekRecap({ kind: 'season', results: summary.userResults })
               } catch (err) {
                 console.error('week sim failed:', err)
-                alert('Sim failed — see console.')
+                gmToast('Sim failed — see console.', 'warn')
               }
               setBusy(false)
             }, 30)
@@ -828,7 +828,7 @@ function CoachUpgradeWidget({ save, onChange }) {
   const earned = coach.upgradePointsEarned || 0
   function spend(ratingKey) {
     const result = spendCoachUpgradePoints(save, ratingKey, 1)
-    if (!result.ok) { alert(result.error); return }
+    if (!result.ok) { gmToast(result.error, 'error'); return }
     onChange?.()
   }
   // Show even if 0 points — surfaces the mechanic + lifetime earned so users
@@ -2475,7 +2475,7 @@ function CutsBanner({ save, slot }) {
           <div className="font-bold text-base"> REQUIRED: Cut {needed} player{needed === 1 ? '' : 's'} to advance</div>
           <div className="text-xs mt-1 leading-snug">
             You signed a class that put your roster <strong>{overflow}</strong> over the 50-player cap.
-            The AD already docked your job security ({overflow * 3} pts). You can\'t advance to the new year
+            The AD already docked your job security ({overflow * 3} pts). You can't advance to the new year
             until you cut down to 50. (Mandatory cut mode lets you cut seniors too.)
           </div>
         </div>

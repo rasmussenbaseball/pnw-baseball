@@ -25,7 +25,7 @@ import { DIFFICULTY_TUNING, pickStoryStart, roleLabel } from '../../gm/engine/st
 import pnwFinancials from '../../gm/data/pnw_school_financials.json'
 const PNW_CONFERENCES_FOR_CONFIRM = PNW_CONFERENCES
 import TeamLogo from '../../gm/components/TeamLogo'
-import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
+import GMShell, { PixelCard, PixelButton, gmToast } from '../../gm/components/GMShell'
 import CoachHeadshot, { COACH_LOOKS } from '../../gm/components/CoachHeadshot'
 import { prettyLabel } from '../../gm/engine/format'
 
@@ -186,10 +186,10 @@ export default function NewDynasty() {
     let slot = 1
     while (slot <= 3 && usedSlots.has(slot)) slot++
     if (slot > 3) {
-      alert('All 3 save slots are used. Delete one to start a new dynasty.')
+      gmToast('All 3 save slots are used. Delete one to start a new dynasty.', 'warn')
       return
     }
-    if (!levelInfo) { alert('Could not resolve the selected program.'); return }
+    if (!levelInfo) { gmToast('Could not resolve the selected program.', 'error'); return }
     const schoolName = levelInfo.school.name
     const isStory = storyMode === 'STORY'
     const baseInput = {
@@ -228,11 +228,11 @@ export default function NewDynasty() {
       }
     } catch (err) {
       console.error('Dynasty creation failed:', err)
-      alert('Dynasty creation failed: ' + (err.message || 'unknown error'))
+      gmToast('Dynasty creation failed: ' + (err.message || 'unknown error'), 'error')
       return
     }
     const result = saveDynasty(state)
-    if (!result.ok) { alert('Failed to save: ' + result.error); return }
+    if (!result.ok) { gmToast('Failed to save: ' + result.error, 'error'); return }
     navigate(`/gm/dashboard?slot=${slot}`)
   }
 

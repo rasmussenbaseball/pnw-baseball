@@ -12,7 +12,8 @@ import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import AttrTooltip from '../../gm/components/AttrTooltip'
-import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
+import CoachHeadshot from '../../gm/components/CoachHeadshot'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 
 const INTERVIEW_AP_COST = 20
 const FIRE_AP_COST = 20
@@ -85,11 +86,11 @@ export default function Coaches() {
     // tutorial, the standard 20 AP / interview cost applies.
     const cost = isTutorialHireWeek ? 0 : INTERVIEW_AP_COST
     if (save.ap.currentWeek < cost) {
-      alert(`Interviewing costs ${cost} AP — not enough this week.`)
+      gmToast(`Interviewing costs ${cost} AP — not enough this week.`, 'warn')
       return
     }
     if (optionalLocked && !FIRST_YEAR_REQUIRED_ROLES.includes(role)) {
-      alert('Optional coach roles unlock in Week 4. For now you can only hire your three required assistants.')
+      gmToast('Optional coach roles unlock in Week 4. For now you can only hire your three required assistants.', 'warn')
       return
     }
     save.ap.currentWeek -= cost
@@ -109,11 +110,11 @@ export default function Coaches() {
     // contractYearsRemaining). Per-role AP cost (e.g. GA is bargain 1 AP).
     const cost = OPTIONAL_HIRE_META[role]?.apCost ?? INTERVIEW_AP_COST
     if (optionalLocked) {
-      alert('Optional support-staff hires unlock Week 4.')
+      gmToast('Optional support-staff hires unlock Week 4.', 'warn')
       return
     }
     if (save.ap.currentWeek < cost) {
-      alert(`Hiring this support role costs ${cost} AP — not enough this week.`)
+      gmToast(`Hiring this support role costs ${cost} AP — not enough this week.`, 'warn')
       return
     }
     save.ap.currentWeek -= cost
@@ -149,10 +150,12 @@ export default function Coaches() {
 
   function fireCoach(coach) {
     if (save.ap.currentWeek < FIRE_AP_COST) {
-      alert(`Firing costs ${FIRE_AP_COST} AP — not enough this week.`)
+      gmToast(`Firing costs ${FIRE_AP_COST} AP — not enough this week.`, 'warn')
       return
     }
     const buyout = Math.round(coach.salary * (coach.contractYearsRemaining || 1) * 0.5)
+    // Use the browser confirm here — destructive irreversible action, want
+    // the user to actively confirm. Theming the confirm is a future polish.
     if (!confirm(`Fire ${coach.firstName} ${coach.lastName}? Costs ${FIRE_AP_COST} AP + $${(buyout / 1000).toFixed(0)}K buyout. This will hurt team morale briefly.`)) return
     save.ap.currentWeek -= FIRE_AP_COST
     save.ap.spentThisWeek += FIRE_AP_COST
@@ -547,7 +550,14 @@ function CoachCard({ coach, compact, hideStats }) {
   const arcKey = coach.archetype || inferArchetype(coach)
   const arc = ARCHETYPES[arcKey] || ARCHETYPES.GENERALIST
   return (
-    <div>
+    <div className="flex gap-3 items-start">
+      <CoachHeadshot
+        lookId={coach.lookId}
+        coachId={coach.id}
+        size={compact ? 40 : 56}
+        className="shrink-0 rounded border-2 border-[#3a3a5e]"
+      />
+      <div className="flex-1 min-w-0">
       <div className={'font-semibold ' + (compact ? '' : 'text-lg')}>{coach.firstName} {coach.lastName}</div>
       <div className="text-xs text-gray-500 mb-1">
         Age {coach.age} • <span className={'font-semibold ' + arc.color}>{arc.label}</span>
@@ -565,6 +575,7 @@ function CoachCard({ coach, compact, hideStats }) {
         {coach.salary > 0
           ? `Salary $${(coach.salary / 1000).toFixed(0)}K/yr • ${coach.contractYearsRemaining || 1} yr${coach.contractYearsRemaining === 1 ? '' : 's'} left`
           : `Unpaid GA position • 1 yr term`}
+      </div>
       </div>
     </div>
   )

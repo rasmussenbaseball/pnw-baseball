@@ -11,7 +11,7 @@ import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
 import { applyMeetingBoost, ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { playerOverall } from '../../gm/engine/playerRating'
-import GMShell, { ContextBox } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, gmToast } from '../../gm/components/GMShell'
 
 const STUDY_HALL_AP = 2
 const STUDY_HALL_BONUS = 0.02
@@ -64,13 +64,13 @@ export default function WeeklyActions() {
 
   function doAction(action, variant) {
     const cost = variant === 'TEMPORARY' ? action.tempAp : action.permAp
-    if (ap < cost) { alert(`Need ${cost} AP`); return }
+    if (ap < cost) { gmToast(`Need ${cost} AP`, "warn"); return }
     if (!isActionAvailable(action, currentPhase)) {
-      alert(`Not available during ${currentPhase}.`)
+      gmToast(`Not available during ${currentPhase}.`, "warn")
       return
     }
     if (isActionUsedThisWeek(save, action.key)) {
-      alert('Already done this week.')
+      gmToast('Already done this week.', 'warn')
       return
     }
     const result = applyWeeklyAction(save, action, variant)
@@ -121,11 +121,11 @@ export default function WeeklyActions() {
     const wkOfYear = save.calendar?.weekOfYear ?? 0
     const inSemester = (wkOfYear >= 5 && wkOfYear <= 18) || (wkOfYear >= 23 && wkOfYear <= 42)
     if (!inSemester) {
-      alert('School\'s not in session. Study Hall only works during the fall semester (Wks 5-18) or spring semester (Wks 23-42).')
+      gmToast("School's not in session. Study Hall only works during the fall semester (Wks 5-18) or spring semester (Wks 23-42).", 'warn')
       return
     }
     if (ap < cost) return
-    if (wasUsedThisWeek('STUDY_HALL')) { alert('Already done this week.'); return }
+    if (wasUsedThisWeek('STUDY_HALL')) { gmToast('Already done this week.', 'warn'); return }
     spendAP('program', cost)
     save.studyHall = {
       ...save.studyHall,
@@ -145,15 +145,15 @@ export default function WeeklyActions() {
 
   function doTutoring() {
     if (tutoringPicks.length !== TUTORING_PICKS) {
-      alert(`Pick exactly ${TUTORING_PICKS} players to send to the tutoring group.`)
+      gmToast(`Pick exactly ${TUTORING_PICKS} players to send to the tutoring group.`, "warn")
       return
     }
     if (ap < TUTORING_AP) return
-    if (wasUsedThisWeek('TUTORING_GROUP')) { alert('Tutoring group already ran this week.'); return }
+    if (wasUsedThisWeek('TUTORING_GROUP')) { gmToast('Tutoring group already ran this week.', 'warn'); return }
     const wkOfYear = save.calendar?.weekOfYear ?? 0
     const inSemester = (wkOfYear >= 5 && wkOfYear <= 18) || (wkOfYear >= 23 && wkOfYear <= 42)
     if (!inSemester) {
-      alert('School\'s not in session. Tutoring only works during the fall semester (Wks 5-18) or spring semester (Wks 23-42).')
+      gmToast("School's not in session. Tutoring only works during the fall semester (Wks 5-18) or spring semester (Wks 23-42).", 'warn')
       return
     }
     spendAP('program', TUTORING_AP)
@@ -181,10 +181,10 @@ export default function WeeklyActions() {
   }
 
   function doMeetings() {
-    if (meetingPicks.length < MEETING_MIN_PLAYERS) { alert('Pick at least 1 player.'); return }
+    if (meetingPicks.length < MEETING_MIN_PLAYERS) { gmToast('Pick at least 1 player.', 'warn'); return }
     const cost = meetingPicks.length * MEETING_AP_PER_PLAYER
-    if (ap < cost) { alert(`Need ${cost} AP for ${meetingPicks.length} meetings.`); return }
-    if (wasUsedThisWeek('PLAYER_MEETINGS')) { alert('Already done this week.'); return }
+    if (ap < cost) { gmToast(`Need ${cost} AP for ${meetingPicks.length} meetings.`, "warn"); return }
+    if (wasUsedThisWeek('PLAYER_MEETINGS')) { gmToast('Already done this week.', 'warn'); return }
     for (const pid of meetingPicks) {
       const p = save.players[pid]
       if (p) applyMeetingBoost(p, MEETING_BOOST)
@@ -204,17 +204,17 @@ export default function WeeklyActions() {
 
   function do1on1Dev() {
     if (!oneOnOnePlayer || !oneOnOneRating) {
-      alert('Pick a player and a rating to develop.')
+      gmToast('Pick a player and a rating to develop.', 'warn')
       return
     }
-    if (ap < ONE_ON_ONE_AP) { alert(`Need ${ONE_ON_ONE_AP} AP.`); return }
-    if (wasUsedThisWeek('ONE_ON_ONE_DEV')) { alert('Already done this week.'); return }
+    if (ap < ONE_ON_ONE_AP) { gmToast(`Need ${ONE_ON_ONE_AP} AP.`, "warn"); return }
+    if (wasUsedThisWeek('ONE_ON_ONE_DEV')) { gmToast('Already done this week.', 'warn'); return }
     const p = save.players[oneOnOnePlayer]
-    if (!p) { alert('Player not found.'); return }
+    if (!p) { gmToast('Player not found.', 'warn'); return }
     const isPitcher = p.isPitcher
     const block = isPitcher ? p.pitcher : p.hitter
     if (!block || typeof block[oneOnOneRating] !== 'number') {
-      alert('That rating doesn\'t apply to this player.')
+      gmToast("That rating doesn't apply to this player.", 'warn')
       return
     }
     // Potential is no longer a hard CEILING — it's a SPEED multiplier for
@@ -229,7 +229,7 @@ export default function WeeklyActions() {
     const before = block[oneOnOneRating]
     const baseBump = ONE_ON_ONE_BUMP * potMult
     const actualBump = Math.min(baseBump, Math.max(0, 99 - before))
-    if (actualBump <= 0) { alert('Player is already at 99 in this rating.'); return }
+    if (actualBump <= 0) { gmToast('Player is already at 99 in this rating.', 'warn'); return }
     block[oneOnOneRating] = Math.round((before + actualBump) * 10) / 10
     // Track as a permanent bump so the rating shows on Roster + PlayerDetail
     if (!save.permanentBumps) save.permanentBumps = []
@@ -256,7 +256,7 @@ export default function WeeklyActions() {
 
   function doFundraise() {
     if (ap < FUNDRAISE_AP) return
-    if (wasUsedThisWeek('FUNDRAISE')) { alert('Already done this week.'); return }
+    if (wasUsedThisWeek('FUNDRAISE')) { gmToast('Already done this week.', 'warn'); return }
     const raised = fundraise(FUNDRAISE_AP, userHC.motivator, userSchool.programHistory)
     save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + raised
     spendAP('program', FUNDRAISE_AP)
@@ -272,8 +272,8 @@ export default function WeeklyActions() {
   }
 
   function doCamp() {
-    if (!campOpen) { alert(`Prospect camp opens in Week ${CAMP_WEEK} (late October). Wait until then to run it.`); return }
-    if (campAlreadyHeld) { alert('You\'ve already held this year\'s camp.'); return }
+    if (!campOpen) { gmToast(`Prospect camp opens in Week ${CAMP_WEEK} (late October). Wait until then to run it.`, "warn"); return }
+    if (campAlreadyHeld) { gmToast("You've already held this year's camp.", 'warn'); return }
     const momentum = Math.round(
       ((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100
     )
@@ -284,7 +284,7 @@ export default function WeeklyActions() {
       save.recruits || {}, save.userSchoolId, invitedIds, campFee,
       userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
     )
-    if (result.cancelled) { alert(result.reason); return }
+    if (result.cancelled) { gmToast(result.reason, 'warn'); return }
     save.recruits = result.recruits
     save.prospectCamp = {
       fee: campFee,
@@ -595,7 +595,7 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
             <strong className="text-amber-900">What this does:</strong> Every invited recruit ({invitedCount} on the list right now)
             gets ~50% scouted for free + <strong>+5 interest</strong> in you. Plus the fee × attendees = real revenue into your budget.
             <span className="block mt-1">
-              <strong>Not enough invites?</strong> Bummer — you can\'t add more now. Invites were the
+              <strong>Not enough invites?</strong> Bummer — you can't add more now. Invites were the
               {' '}<Link to={`/gm/recruiting?slot=${slot}`} className="underline font-semibold">Recruiting page</Link>{' '}
               in Wks 5 & 10. Still run camp at lowest fee for revenue + scouting on who you do have.
             </span>
@@ -828,7 +828,7 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
           <div className="text-sm font-semibold text-pnw-slate"> 1-on-1 Development</div>
           <div className="text-xs text-gray-500 max-w-xl">
             Pull a player aside and grind on one specific rating. Costs {cost} AP. The bump
-            scales with the player\'s potential in that rating — high-potential guys grow
+            scales with the player's potential in that rating — high-potential guys grow
             faster, low-potential guys grow slower. Potential is NOT a ceiling; everyone
             can eventually reach 99 if you keep developing them.
           </div>

@@ -18,7 +18,7 @@ import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import {
   acceptCareerOffer, declineAllCareerOffers, roleLabel, DIFFICULTY_TUNING,
 } from '../../gm/engine/storyMode'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { gmToast } from '../../gm/components/GMShell'
 
 const LEVEL_COLOR = {
   D1:   'bg-purple-100 text-purple-800 border-purple-300',
@@ -65,7 +65,7 @@ export default function Career() {
     if (busy) return
     setBusy(true)
     const result = acceptCareerOffer(save, offerId)
-    if (!result.ok) { alert(result.error); setBusy(false); return }
+    if (!result.ok) { gmToast(result.error, 'error'); setBusy(false); return }
     saveDynasty(save)
     setSave({ ...save })
     setBusy(false)

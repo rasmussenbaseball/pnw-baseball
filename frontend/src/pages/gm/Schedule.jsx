@@ -19,7 +19,7 @@ import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } fr
 import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
 import TeamLogo from '../../gm/components/TeamLogo'
 import TeamRankChip from '../../gm/components/TeamRankChip'
-import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -89,7 +89,7 @@ export default function Schedule() {
     saveDynasty(save)
     setSave({ ...save })
     if (summary.userResults.length) {
-      alert('Week complete:\n' + summary.userResults.map(r => `${r.result} ${r.score} vs ${r.opponent}`).join('\n'))
+      gmToast('Week complete: ' + summary.userResults.map(r => `${r.result} ${r.score} vs ${r.opponent}`).join(' · '), 'success')
     }
   }
 
@@ -104,13 +104,13 @@ export default function Schedule() {
       save.schedule, seasonYear, save.seed || Date.now(),
     )
     if (result.games.length === 0) {
-      alert('Nothing to auto-fill — schedule already complete or no eligible opponents found.')
+      gmToast('Nothing to auto-fill — schedule already complete or no eligible opponents found.', 'info')
       return
     }
     save.schedule.push(...result.games)
     saveDynasty(save)
     setSave({ ...save })
-    alert(' ' + result.summary + '\n\nReview the schedule and adjust if you want — every game can be replaced before you confirm.')
+    gmToast(result.summary + ' — review + adjust if you want.', 'success')
   }
 
   function handleAddOpponent(week, opponent, options) {
@@ -118,13 +118,13 @@ export default function Schedule() {
       userSchoolId, opponent.id, opponent.division, week, seasonYear, schedule,
       { userIsHome: options?.userIsHome ?? true, format: options?.format },
     )
-    if (!result.ok) { alert(result.error); return }
+    if (!result.ok) { gmToast(result.error, 'error'); return }
     save.schedule.push(...result.games)
     saveDynasty(save)
     setSave({ ...save })
     setPickingForWeek(null)
     setPickingMidweek(null)
-    if (result.info) alert(result.info)
+    if (result.info) gmToast(result.info, 'info')
   }
 
   function handleAddBye(week) {
@@ -138,7 +138,7 @@ export default function Schedule() {
       userSchoolId, opponent.id, opponent.division,
       date, seasonYear, schedule, season,
     )
-    if (!result.ok) { alert(result.error); return }
+    if (!result.ok) { gmToast(result.error, 'error'); return }
     save.schedule.push(...result.games)
     saveDynasty(save)
     setSave({ ...save })

@@ -9,7 +9,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Link, useSearchParams, useLocation, matchPath } from 'react-router-dom'
+import { Link, useSearchParams, useLocation, useNavigate, matchPath } from 'react-router-dom'
 
 const NAV = [
   {
@@ -57,14 +57,115 @@ const NAV = [
 export default function GMShell({ children, schoolName, schoolColors }) {
   const [params] = useSearchParams()
   const slot = params.get('slot') || '1'
+  const location = useLocation()
+  const accent = schoolColors?.[0] || '#fbbf24'
+  // Hide the back-strip on the dashboard (it IS the home) and on the
+  // top-level GM landing. Everywhere else it gives a 1-tap escape.
+  const showBackStrip = location.pathname !== '/gm' && !location.pathname.startsWith('/gm/dashboard')
   return (
     <div className="gm-pixel-shell font-pixel min-h-screen bg-[#1a1a2e] text-[#e8e8e8]">
       {/* Subtle CRT scanlines for the retro feel */}
       <Scanlines />
       <PixelHeader slot={slot} schoolName={schoolName} schoolColors={schoolColors} />
+      {showBackStrip && <BackStrip slot={slot} accent={accent} />}
       <main className="relative z-10 px-3 sm:px-4 py-4 sm:py-5 max-w-6xl mx-auto">
         {children}
       </main>
+      <ToastContainer />
+    </div>
+  )
+}
+
+/**
+ * Slim back / home strip under the header. Two pixel chips: one runs the
+ * browser back stack (so users can return to whatever they were on before),
+ * the other jumps to Dashboard. Hidden on the dashboard + GM home pages.
+ */
+function BackStrip({ slot, accent }) {
+  const navigate = useNavigate()
+  return (
+    <div className="border-b border-[#3a3a5e] bg-[#0f0f1e]">
+      <div className="max-w-6xl mx-auto flex items-center gap-2 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            // Fallback to dashboard if there's no history (e.g. landed directly)
+            if (window.history.length > 1) navigate(-1)
+            else navigate(`/gm/dashboard?slot=${slot}`)
+          }}
+          className="font-pixel-display text-[9px] tracking-widest px-2.5 py-1.5 border-2 border-[#3a3a5e] text-[#a8a8c8] hover:text-white hover:border-[#a8a8c8] transition"
+          title="Back to previous page"
+        >
+          ← BACK
+        </button>
+        <Link
+          to={`/gm/dashboard?slot=${slot}`}
+          className="font-pixel-display text-[9px] tracking-widest px-2.5 py-1.5 border-2 text-[#1a1a2e] hover:opacity-90"
+          style={{ backgroundColor: accent, borderColor: accent }}
+          title="Back to Dashboard"
+        >
+          ⌂ HOME
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * In-app pixel-themed toast system. Pages dispatch a custom event with
+ * `gmToast(msg, level)` instead of calling the native `alert()` (which
+ * looks broken on /gm/* and pulls focus out of the pixel theme). The
+ * container listens, queues, and auto-dismisses after a few seconds.
+ *
+ * Levels: 'info' (default), 'warn', 'success', 'error'.
+ * Usage:    import { gmToast } from '../../gm/components/GMShell'
+ *           gmToast('Not enough AP', 'warn')
+ */
+export function gmToast(message, level = 'info') {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('gm:toast', { detail: { message, level } }))
+}
+
+function ToastContainer() {
+  const [toasts, setToasts] = useState([])
+  useEffect(() => {
+    function onToast(e) {
+      const id = Math.random().toString(36).slice(2, 9)
+      const t = { id, message: e.detail.message, level: e.detail.level || 'info' }
+      setToasts(prev => [...prev, t])
+      // Errors stick around longer so the user can read them.
+      const ttl = t.level === 'error' ? 7000 : t.level === 'warn' ? 5000 : 3500
+      setTimeout(() => {
+        setToasts(prev => prev.filter(x => x.id !== id))
+      }, ttl)
+    }
+    window.addEventListener('gm:toast', onToast)
+    return () => window.removeEventListener('gm:toast', onToast)
+  }, [])
+  if (toasts.length === 0) return null
+  const palette = {
+    info:    { bg: '#1a1a2e', border: '#fbbf24', text: '#fef3c7' },
+    success: { bg: '#0f2e1a', border: '#34d399', text: '#a7f3d0' },
+    warn:    { bg: '#2e1a0a', border: '#f59e0b', text: '#fed7aa' },
+    error:   { bg: '#2e0a0a', border: '#ef4444', text: '#fecaca' },
+  }
+  return (
+    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[120] flex flex-col gap-2 max-w-[92vw] w-[480px]">
+      {toasts.map(t => {
+        const p = palette[t.level] || palette.info
+        return (
+          <div
+            key={t.id}
+            role="status"
+            aria-live="polite"
+            className="font-pixel text-sm px-3 py-2 border-2 shadow-lg cursor-pointer animate-[fadeIn_0.15s_ease-out]"
+            style={{ backgroundColor: p.bg, borderColor: p.border, color: p.text }}
+            onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}
+          >
+            {t.message}
+          </div>
+        )
+      })}
     </div>
   )
 }

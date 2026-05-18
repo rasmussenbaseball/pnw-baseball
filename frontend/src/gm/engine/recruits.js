@@ -91,7 +91,9 @@ function seedRegionInterest(recruit, userSchoolId, coach) {
   const interest = isPrimary ? 12 : (isSecondary ? 7 : 12)
   recruit.scoutGrades[userSchoolId] = {
     interest,
-    noise: 10,
+    // ±15 = 30-point spread on EST OVR/POT before any AP-spending action
+    // is taken. Scouting actions (CALL/SCOUT_TRIP/etc.) reduce this fog.
+    noise: 15,
     revealedPreferences: [],
     actionsApplied: ['REGION_SEED'],
     apSpent: 0,
@@ -701,8 +703,8 @@ export const ACTION_TYPES = {
     apCost: 1,
     interestGain: 2,
     fogReduction: 0,
-    prefRevealChance: 0,
-    blurb: 'Quick, low-cost touch. Builds rapport.',
+    prefRevealChance: 0.10,   // small chance — passive social touch picks up hints
+    blurb: 'Quick, low-cost touch. Builds rapport, occasional priority hint.',
   },
   CALL: {
     key: 'CALL',
@@ -710,8 +712,8 @@ export const ACTION_TYPES = {
     apCost: 1,
     interestGain: 4,
     fogReduction: 1,
-    prefRevealChance: 0.05,
-    blurb: 'Hear them out. Small interest bump, hint at priorities.',
+    prefRevealChance: 0.20,
+    blurb: 'Hear them out. Small interest bump, hints at priorities.',
   },
   ASSISTANT_TALK: {
     key: 'ASSISTANT_TALK',
@@ -719,7 +721,7 @@ export const ACTION_TYPES = {
     apCost: 2,
     interestGain: 5,
     fogReduction: 2,
-    prefRevealChance: 0.15,
+    prefRevealChance: 0.35,
     blurb: 'Send an assistant to build the relationship. Often reveals a priority.',
   },
   FAMILY_ZOOM: {
@@ -728,8 +730,8 @@ export const ACTION_TYPES = {
     apCost: 3,
     interestGain: 7,
     fogReduction: 1,
-    prefRevealChance: 0.25,
-    blurb: 'Group call with the recruit + parents. Wins families over.',
+    prefRevealChance: 0.45,
+    blurb: 'Group call with the recruit + parents. Wins families over, reveals priorities.',
   },
   SCOUT_TRIP: {
     key: 'SCOUT_TRIP',
@@ -737,8 +739,8 @@ export const ACTION_TYPES = {
     apCost: 4,
     interestGain: 3,
     fogReduction: 7,
-    prefRevealChance: 0.10,
-    blurb: 'See them play. Big fog reduction.',
+    prefRevealChance: 0.25,
+    blurb: 'See them play. Big fog reduction, often picks up on what motivates them.',
   },
   HOME_VISIT: {
     key: 'HOME_VISIT',
@@ -782,7 +784,7 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
   if (!recruit.scoutGrades[userSchoolId]) {
     recruit.scoutGrades[userSchoolId] = {
       interest: 0,
-      noise: 10,                  // initial sight = ±10 rating noise (tightened)
+      noise: 15,                  // ±15 = 30-point spread before first scout action
       revealedPreferences: [],
       actionsApplied: [],
       apSpent: 0,

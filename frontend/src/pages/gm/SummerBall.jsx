@@ -26,7 +26,7 @@ import {
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
-import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 
 export default function SummerBall() {
   const { user } = useAuth()
@@ -105,7 +105,7 @@ export default function SummerBall() {
 
   function handlePlan(playerId, leagueKey) {
     const result = planSummerAssignment(save, playerId, leagueKey)
-    if (!result.ok) { alert(result.error); return }
+    if (!result.ok) { gmToast(result.error, 'error'); return }
     saveDynasty(save); setSave({ ...save })
     setPickingForPlayer(null)
   }
@@ -171,7 +171,7 @@ export default function SummerBall() {
             Eligible — not yet assigned
           </h2>
           <p className="text-[11px] text-gray-500 mb-2">
-            Seniors are excluded (they\'ll graduate or go pro). The leagues each player qualifies for
+            Seniors are excluded (they'll graduate or go pro). The leagues each player qualifies for
             depend on their current OVR.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -307,7 +307,7 @@ function StatusBanner({ status, week }) {
         <div className="font-bold"> Planning window OPEN — Week {week}</div>
         <div className="text-sm mt-1">
           Build your tentative summer-ball roster. Free to add / remove anyone right now.
-          After your season ends, you\'ll get one last chance to REMOVE players, but you can\'t add new ones.
+          After your season ends, you'll get one last chance to REMOVE players, but you can't add new ones.
         </div>
       </div>
     )
@@ -317,8 +317,8 @@ function StatusBanner({ status, week }) {
       <div className="bg-amber-50 border-l-4 border-amber-400 text-amber-900 rounded-r p-4 mb-4 mt-4">
         <div className="font-bold"> Final confirmation — Week {week}</div>
         <div className="text-sm mt-1">
-          Sign-ups are closed for the year. Review your summer roster below — REMOVE any player who shouldn\'t go
-          (overuse, injury concerns, transfer rumors). You can\'t add new players now.
+          Sign-ups are closed for the year. Review your summer roster below — REMOVE any player who shouldn't go
+          (overuse, injury concerns, transfer rumors). You can't add new players now.
         </div>
       </div>
     )

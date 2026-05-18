@@ -8,7 +8,7 @@ import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { cutsWindowOpen, ensureCutsState, cutPlayer, cutTrustTier, isMandatoryCutMode } from '../../gm/engine/cuts'
 import { getEnergy, energyLabel, energyColorClass } from '../../gm/engine/energy'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { gmToast } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
 const POSITION_GROUPS = {
@@ -45,7 +45,7 @@ export default function Roster() {
     if (!player) return
     if (!confirm(`Cut ${player.firstName} ${player.lastName}? This is permanent — they leave the program immediately.`)) return
     const result = cutPlayer(save, playerId)
-    if (!result.ok) { alert(result.error); return }
+    if (!result.ok) { gmToast(result.error, 'error'); return }
     saveDynasty(save)
     setSave({ ...save })
   }
@@ -324,7 +324,7 @@ function CutsControlPanel({ save, cutMode, setCutMode, remaining, mandatory }) {
           <div className="font-bold text-red-900"> Roster cuts available — {remaining} left</div>
           <div className="text-xs text-red-800 mt-1 leading-snug">
             AD trust tier: <strong>{tier.label}</strong> · {tier.note} Cuts are permanent.
-            Seniors auto-graduate — don\'t waste a cut on them.
+            Seniors auto-graduate — don't waste a cut on them.
           </div>
           <div className="text-[11px] text-gray-600 mt-1.5">
             <strong>How to earn more next year:</strong> win games, hit postseason, keep job security high.

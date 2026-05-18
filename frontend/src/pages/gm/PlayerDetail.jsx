@@ -125,7 +125,7 @@ export default function PlayerDetail() {
               <div className="text-[11px] text-gray-700 mt-2">
                 <strong>{player.injury.weeksRemaining}</strong> week{player.injury.weeksRemaining === 1 ? '' : 's'} remaining
                 {' '}of <strong>{player.injury.totalWeeks}</strong> ({player.injury.severity.toLowerCase()}).
-                Out of lineups + can\'t develop until cleared.
+                Out of lineups + can't develop until cleared.
                 {player.injury.severity !== 'MINOR' && (
                   <span className="block text-amber-800 mt-1">
                      {player.injury.severity === 'SEASON' ? 'Season-ending' : 'Serious'} injury — some lingering rating

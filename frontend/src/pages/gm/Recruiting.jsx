@@ -19,7 +19,7 @@ import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions
 import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import { getArchetype, getQuirk, formatHeight } from '../../gm/engine/playerArchetypes'
-import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 
 const POOL_LABELS = {
   HS_SR: 'HS Senior',
@@ -89,7 +89,7 @@ export default function Recruiting() {
     const r = save.recruits[recruitId]
     if (!r) return
     if (r.pool !== 'HS_SR') {
-      alert('Prospect camp is HS only.')
+      gmToast('Prospect camp is HS only.', 'warn')
       return
     }
     // Invite windows are ONLY Wk 5 and Wk 10. Outside those weeks, the user
@@ -97,7 +97,7 @@ export default function Recruiting() {
     const wk = save.calendar?.weekOfYear ?? 0
     const isInviteWindow = wk === 5 || wk === 10
     if (!isInviteWindow) {
-      alert('Camp invites can only be sent during Wk 5 or Wk 10. Wait for the next window.')
+      gmToast('Camp invites can only be sent during Wk 5 or Wk 10. Wait for the next window.', 'warn')
       return
     }
     // Track invites per window so the 50-per-window cap is enforced even
@@ -107,12 +107,12 @@ export default function Recruiting() {
     if (!currentlyInvited) {
       const totalInvited = Object.values(save.recruits || {}).filter(x => x.campInvited).length
       if (totalInvited >= CAMP_MAX_INVITES) {
-        alert(`Camp invite cap reached (${CAMP_MAX_INVITES}). Un-invite someone first.`)
+        gmToast(`Camp invite cap reached (${CAMP_MAX_INVITES}). Un-invite someone first.`, 'warn')
         return
       }
       const PER_WINDOW = 50
       if ((save.campInvitesByWindow[wk] || 0) >= PER_WINDOW) {
-        alert(`Week ${wk} invite cap reached (${PER_WINDOW} per window). Use the Wk ${wk === 5 ? 10 : 5} window for the rest.`)
+        gmToast(`Week ${wk} invite cap reached (${PER_WINDOW} per window). Use the Wk ${wk === 5 ? 10 : 5} window for the rest.`, 'warn')
         return
       }
       save.campInvitesByWindow[wk] = (save.campInvitesByWindow[wk] || 0) + 1
@@ -133,6 +133,58 @@ export default function Recruiting() {
     r.campInvited = !currentlyInvited
     saveDynasty(save)
     setSave({ ...save })
+  }
+
+  /**
+   * Auto-fill camp invites with the top-rated unsigned HS recruits this week.
+   * Stops at the per-window cap (50) or the total cap (100), whichever hits
+   * first. Existing invitees are preserved. Skips anyone already signed/lost.
+   */
+  function autoInviteCamp() {
+    const wk = save.calendar?.weekOfYear ?? 0
+    if (wk !== 5 && wk !== 10) {
+      gmToast('Auto-invite only works during Wk 5 or Wk 10.', 'warn')
+      return
+    }
+    if (!save.campInvitesByWindow) save.campInvitesByWindow = { 5: 0, 10: 0 }
+    const PER_WINDOW = 50
+    const slotsLeftWindow = Math.max(0, PER_WINDOW - (save.campInvitesByWindow[wk] || 0))
+    const totalInvited = Object.values(save.recruits || {}).filter(x => x.campInvited).length
+    const slotsLeftTotal = Math.max(0, CAMP_MAX_INVITES - totalInvited)
+    const slots = Math.min(slotsLeftWindow, slotsLeftTotal)
+    if (slots <= 0) {
+      gmToast('Invite cap reached for this window — un-invite someone first.', 'warn')
+      return
+    }
+    // Rank candidates: HS recruits, not signed/lost, not already invited.
+    // Score by Est OVR (averaged ratings) + a small bump for shown interest.
+    const candidates = Object.values(save.recruits || {})
+      .filter(r => r.pool === 'HS_SR' && r.status !== 'signed' && r.status !== 'lost' && !r.campInvited)
+      .map(r => {
+        const block = r.isPitcher ? r.trueHitter || r.truePitcher : r.trueHitter || r.truePitcher
+        const ratings = r.isPitcher ? r.truePitcher : r.trueHitter
+        const avg = ratings ? Object.values(ratings).reduce((a, b) => a + b, 0) / Object.keys(ratings).length : 50
+        const interest = r.scoutGrades?.[save.userSchoolId]?.interest || 0
+        return { r, score: avg + interest * 0.2 }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, slots)
+
+    let added = 0
+    for (const { r } of candidates) {
+      if (!r.scoutGrades[save.userSchoolId]) {
+        r.scoutGrades[save.userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
+      }
+      const g = r.scoutGrades[save.userSchoolId]
+      g.interest = Math.min(100, g.interest + 5)
+      r.campInvited = true
+      r.campInviteWindow = wk
+      save.campInvitesByWindow[wk] = (save.campInvitesByWindow[wk] || 0) + 1
+      added++
+    }
+    saveDynasty(save)
+    setSave({ ...save })
+    gmToast(`Auto-invited ${added} top-rated HS recruits to prospect camp.`, 'success')
   }
 
   if (!save) return <Navigate to="/gm" replace />
@@ -246,7 +298,7 @@ export default function Recruiting() {
     const action = ACTION_TYPES[actionKey]
     if (!action) return
     if (save.ap.currentWeek < action.apCost) {
-      alert(`Not enough AP. Need ${action.apCost}, have ${save.ap.currentWeek}.`)
+      gmToast(`Not enough AP. Need ${action.apCost}, have ${save.ap.currentWeek}.`, 'warn')
       return
     }
     const rng = makeRng('action', recruit.id, save.userSchoolId, Date.now())
@@ -261,9 +313,10 @@ export default function Recruiting() {
       const label = PREFERENCE_LABELS[result.revealed]
       const top3 = getTopPriorities(recruit)
       const inTop3 = top3.includes(result.revealed)
-      alert(
-        `${recruit.firstName} ${recruit.lastName} opened up about what matters to him: "${label}"` +
-        (inTop3 ? ` — one of his top 3 priorities.` : ` — not one of his top priorities, but still on his mind.`)
+      gmToast(
+        `${recruit.firstName} ${recruit.lastName} cares about: "${label}"` +
+        (inTop3 ? ` — TOP 3 priority.` : ` — not top 3.`),
+        inTop3 ? 'success' : 'info',
       )
     }
   }
@@ -274,7 +327,7 @@ export default function Recruiting() {
     if (isModification) {
       // Modifications cost 1 AP
       if (save.ap.currentWeek < 1) {
-        alert('Modifying an offer costs 1 AP. You don\'t have any left this week.')
+        gmToast('Modifying an offer costs 1 AP. You don\'t have any left this week.', 'warn')
         return
       }
       save.ap.currentWeek -= 1
@@ -384,6 +437,27 @@ export default function Recruiting() {
 
       {/* Roster snapshot — returning, weaknesses, spots available */}
       <RosterSnapshotPanel save={save} />
+
+      {/* Camp invite window banner — only shown during Wk 5/10 */}
+      {(save.calendar?.weekOfYear === 5 || save.calendar?.weekOfYear === 10) && (
+        <div className="mb-4 bg-amber-50 border-2 border-amber-300 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-amber-800 font-bold">📋 Camp Invite Window</div>
+            <div className="text-sm text-amber-900 font-semibold mt-0.5">
+              Wk {save.calendar.weekOfYear} — invite HS recruits to the Wk 13 Prospect Camp.
+            </div>
+            <div className="text-[11px] text-amber-800 mt-0.5">
+              {invitedCount}/{CAMP_MAX_INVITES} invited · {(save.campInvitesByWindow?.[save.calendar.weekOfYear] || 0)}/50 this window · attendees get scout-fog drop + interest bump
+            </div>
+          </div>
+          <button
+            onClick={autoInviteCamp}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded shadow whitespace-nowrap shrink-0"
+          >
+            ⚡ Auto-invite top recruits
+          </button>
+        </div>
+      )}
 
       {/* Board tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200">
@@ -1012,7 +1086,7 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
         >
           Open full recruit panel 
         </button>
-        {isHs && (
+        {isHs ? (
           <button
             onClick={onToggleCamp}
             className={'w-full px-2 py-1.5 rounded text-xs font-semibold ' +
@@ -1020,8 +1094,12 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
                 ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
                 : 'border border-gray-300 text-gray-700 hover:bg-gray-100')}
           >
-            {recruit.campInvited ? ' Camp invite sent' : '+ Invite to prospect camp (free)'}
+            {recruit.campInvited ? '✓ Camp invite sent' : '+ Invite to prospect camp (free)'}
           </button>
+        ) : (
+          <div className="w-full px-2 py-1.5 rounded text-xs text-gray-400 italic border border-dashed border-gray-200 text-center" title="Prospect camp is HS-only — JUCO and 4-year transfer recruits skip it.">
+            Camp not available for {recruit.pool === 'JUCO_TRANSFER' ? 'JUCO transfers' : '4-year transfers'}
+          </div>
         )}
       </div>
     </div>
@@ -1368,11 +1446,37 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
         )}
 
         {/* Suitor info: vague pre-scouted, exact after — and hidden entirely
-            until ANY scouting action has been taken. */}
-        {hasScoutedAtAll && (
+            until ANY scouting action has been taken. PNW rivals shown by
+            NAME (extra stakes when an in-region rival is also chasing). */}
+        {hasScoutedAtAll && (() => {
+          // PNW rivals — any school in state.schools that appears on the
+          // recruit's interestedSchools list and isn't the user. These are
+          // PNW programs in the user's level (state.schools is the PNW
+          // roster for that level). Show by name so the user can feel the
+          // in-region competition heat.
+          const pnwRivals = (recruit.interestedSchools || [])
+            .filter(id => id !== save.userSchoolId && save.schools[id])
+            .map(id => save.schools[id])
+          return (
         <div className="bg-amber-50 border border-amber-200 rounded p-2 mb-4 text-xs text-amber-900">
           {recruit.suitorsRevealed ? (
             <>
+              {pnwRivals.length > 0 && (
+                <div className="mb-2 pb-2 border-b border-amber-200">
+                  <strong className="text-red-700">⚔ PNW rivals also recruiting:</strong>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {pnwRivals.map(s => (
+                      <span
+                        key={s.id}
+                        className="inline-block px-2 py-0.5 rounded bg-white border font-semibold"
+                        style={{ borderColor: s.colors?.primary || '#b91c1c', color: s.colors?.primary || '#b91c1c' }}
+                      >
+                        {s.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <strong>Other interested programs:</strong>
               {recruit.suitors.d1 > 0 && <span> {recruit.suitors.d1} D1</span>}
               {recruit.suitors.topNaia > 0 && <span> • {recruit.suitors.topNaia} top NAIA</span>}
@@ -1394,7 +1498,8 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
             </>
           )}
         </div>
-        )}
+          )
+        })()}
 
         {/* Academic scholarship preview */}
         {hasScoutedAtAll && (() => {
@@ -1665,11 +1770,11 @@ function Wk4Tutorial({ save, apBaseline }) {
       </div>
       <div className={'text-sm leading-snug mb-2 ' + (done ? 'text-green-800' : 'text-amber-800')}>
         {done
-          ? <> All AP spent. You\'ve built your initial recruiting board for next year\'s class.
+          ? <> All AP spent. You've built your initial recruiting board for next year's class.
               Head to the dashboard to advance to Wk 5 (Fall Camp opens).</>
           : <>This is your <strong>first scouting week</strong>. You must spend every AP on
               recruiting actions — add recruits to your board, run scouting trips, send introductory
-              outreach. The class you\'re building is for <strong>next year's enrollment</strong>.
+              outreach. The class you're building is for <strong>next year's enrollment</strong>.
               Action buttons appear on each recruit card; clicking them costs AP.</>}
       </div>
       <div className="flex items-center gap-3 text-xs">
