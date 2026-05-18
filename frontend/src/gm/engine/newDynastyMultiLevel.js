@@ -47,13 +47,46 @@ export function newDynastyMultiLevel(input) {
   if (!conf) throw new Error(`Unknown PNW conference: ${conferenceId}`)
   const levelCfg = LEVEL_CONFIG[level] || {}
 
-  // 1. Build the schools map — the user's conference's full member list.
-  //    Each member is a "lite" school object with enough fields for the
-  //    engine to render + sim. Strength comes from non_naia_teams.json
-  //    when available; otherwise default to 0 (PEAR-median).
+  // 1. Build the schools map. For D1/D2/D3 dynasties we want the FULL
+  //    conference (e.g. Oregon's Big Ten dynasty plays Indiana, UCLA, etc.,
+  //    not just the other PNW Big Ten team). pnwMembers is the user-pickable
+  //    PNW subset; the rest of the conference comes from non_naia_teams.json
+  //    via pearConference matching.
+  //
+  //    For NWAC + NAIA + INDEPENDENT_D1 the existing behavior is right: only
+  //    PNW members are in scope.
   /** @type {Object<string, any>} */
   const schools = {}
-  for (const m of (conf.pnwMembers || [])) {
+
+  // Map our internal conferenceId to the pearConference string used in
+  // non_naia_teams.json. Lets us pull the full national conference roster.
+  const PEAR_CONF_NAME = {
+    BIG_TEN: 'Big Ten',
+    WCC: 'West Coast',
+    WAC: 'Western Athletic',
+    // GNAC + NWC + NWAC are PNW-only — don't expand.
+  }
+
+  // Members from playoff data (PNW + tagged additions).
+  const allMembers = [...(conf.pnwMembers || [])]
+  // For D1 conferences with a non-NAIA mapping, append the rest of the
+  // national conference roster from non_naia_teams.json.
+  const peerName = PEAR_CONF_NAME[conferenceId]
+  if (peerName && nonNaiaRaw.divisions) {
+    const div = nonNaiaRaw.divisions.find(d => d.id === level)
+    if (div) {
+      const pnwIds = new Set(allMembers.map(m => m.id))
+      for (const t of (div.teams || [])) {
+        if (t.pearConference !== peerName) continue
+        if (pnwIds.has(t.id)) continue   // already counted as a PNW member
+        allMembers.push({
+          id: t.id, name: t.name, city: t.city, state: t.state, nickname: t.nickname,
+        })
+      }
+    }
+  }
+
+  for (const m of allMembers) {
     const fromPool = findNonNaia(m.id)
     const synthetic = buildSyntheticSchool({
       id: m.id,

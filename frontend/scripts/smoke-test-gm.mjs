@@ -147,13 +147,15 @@ function report(level, label, state, simResult) {
 }
 
 // ─── Reference: real-world college baseball averages ──────────────────────
-// Sources: NCAA D1 stats annual, NAIA stats, NWAC stats.
+// Pulled directly from nwbaseballstats.com /api/v1/team-stats?season=2025
+// May 2026 — these are the actual aggregated league averages from the
+// public data, not estimates.
 const REAL_WORLD = {
-  D1:   { avg: 0.282, ops: 0.785, era: 5.20, kPer9: 9.1, label: 'NCAA D1 2024' },
-  D2:   { avg: 0.285, ops: 0.795, era: 5.50, kPer9: 8.6, label: 'NCAA D2 2024' },
-  D3:   { avg: 0.300, ops: 0.830, era: 5.95, kPer9: 7.8, label: 'NCAA D3 2024' },
-  NAIA: { avg: 0.295, ops: 0.820, era: 5.80, kPer9: 8.2, label: 'NAIA 2024' },
-  NWAC: { avg: 0.293, ops: 0.815, era: 5.65, kPer9: 8.0, label: 'NWAC 2024' },
+  D1:   { avg: 0.277, ops: 0.818, era: 5.59, kPer9: 8.4, label: 'NCAA D1 2025' },
+  D2:   { avg: 0.292, ops: 0.798, era: 6.32, kPer9: 6.7, label: 'NCAA D2 2025' },
+  D3:   { avg: 0.280, ops: 0.786, era: 5.76, kPer9: 7.3, label: 'NCAA D3 2025' },
+  NAIA: { avg: 0.294, ops: 0.857, era: 6.54, kPer9: 7.4, label: 'NAIA 2025' },
+  NWAC: { avg: 0.246, ops: 0.672, era: 4.57, kPer9: 7.1, label: 'NWAC 2025' },
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

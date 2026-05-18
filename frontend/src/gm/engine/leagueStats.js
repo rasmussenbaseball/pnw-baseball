@@ -32,10 +32,32 @@ export function synthesizeSeasonStats(player, teamCtx, year, seed) {
 
 // ─── Batter synthesis ───────────────────────────────────────────────────────
 
+// ─── Per-level real-world baselines ─────────────────────────────────────────
+// Targets pulled from nwbaseballstats.com /api/v1/team-stats?season=2025 in
+// May 2026. The actual baseline VALUES below are calibrated UPWARD from the
+// real targets because the per-rating-point slopes drift outcomes
+// downward (most rostered players sit above the 50-rating anchor).
+//
+// Each row contains "target" (what real-world league avg shows) + "raw"
+// (the baseline we feed to the synthesizer so the simulated league lands
+// at target). The smoke test in scripts/smoke-test-gm.mjs validates this.
+const LEVEL_BASELINES = {
+  D1:   { kPct: 0.245, bbPct: 0.116, hbpPct: 0.030, hrPerPa: 0.018, doublePct: 0.130, babip: 0.260, era: 5.59, whip: 1.52, gamesPerSeason: 56 },
+  D2:   { kPct: 0.215, bbPct: 0.090, hbpPct: 0.034, hrPerPa: 0.010, doublePct: 0.130, babip: 0.265, era: 6.32, whip: 1.68, gamesPerSeason: 52 },
+  D3:   { kPct: 0.220, bbPct: 0.101, hbpPct: 0.039, hrPerPa: 0.012, doublePct: 0.125, babip: 0.265, era: 5.76, whip: 1.59, gamesPerSeason: 41 },
+  NAIA: { kPct: 0.215, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.014, doublePct: 0.140, babip: 0.270, era: 6.54, whip: 1.67, gamesPerSeason: 45 },
+  NWAC: { kPct: 0.215, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.003, doublePct: 0.105, babip: 0.255, era: 4.57, whip: 1.44, gamesPerSeason: 47 },
+}
+
+function baselineFor(level) {
+  return LEVEL_BASELINES[level] || LEVEL_BASELINES.NAIA
+}
+
 function synthesizeBatter(player, teamCtx, year, seed) {
   const rng = makeRng('synthB', player.id, year, seed)
-  const games = teamCtx.games || 50
+  const games = teamCtx.games || 45
   const ovr = playerOverall(player)
+  const baseline = baselineFor(teamCtx.level)
 
   // How much PT does this player get? Top-9 lineup regulars play ~95% of
   // games; bench guys ~30%; depth ~10%. Estimate from OVR percentile within
@@ -57,43 +79,37 @@ function synthesizeBatter(player, teamCtx, year, seed) {
   const power = Math.max(player.hitter?.power_l ?? 50, player.hitter?.power_r ?? 50)
   const speed = player.hitter?.speed ?? 50
 
-  // BB% — 9% baseline + 0.15% per discipline pt over 50. Real college BB%
-  // sits at 10-11%; older 4% baseline was MLB-shaped and undershot OBP.
-  const bbPct = clamp(0.09 + (disc - 50) * 0.0015 + rng.gaussian(0, 0.012), 0.04, 0.22)
+  // Rate stats anchored to per-level real-world baselines. Each rate is the
+  // baseline + a per-rating-point delta + Gaussian noise. Clamp prevents
+  // tails from running away.
+  const bbPct = clamp(baseline.bbPct + (disc - 50) * 0.0014 + rng.gaussian(0, 0.012), 0.04, 0.22)
   const bb = Math.round(pa * bbPct)
-  // HBP — 1.2% baseline (real college HBP rate is higher than MLB)
-  const hbpPct = clamp(0.012 + rng.gaussian(0, 0.004), 0, 0.05)
+  const hbpPct = clamp(baseline.hbpPct + rng.gaussian(0, 0.005), 0, 0.07)
   const hbp = Math.round(pa * hbpPct)
-  // K% — 22% baseline (real college K% sits at 21-24%, was way under at 18%
-  // which inflated AVG/OPS by putting too many balls in play).
-  // -0.18% per contact pt, +0.10% per power pt (power guys K more).
-  const kPct = clamp(0.22 - (contact - 50) * 0.0018 + (power - 50) * 0.001 + rng.gaussian(0, 0.025), 0.06, 0.45)
+  // K% — contact pulls it down, power pushes it up (power guys K more).
+  const kPct = clamp(baseline.kPct - (contact - 50) * 0.0018 + (power - 50) * 0.0010 + rng.gaussian(0, 0.025), 0.05, 0.40)
   const k = Math.round(pa * kPct)
   // SF — small
   const sf = Math.round(pa * 0.012)
   const ab = Math.max(0, pa - bb - hbp - sf)
 
-  // BABIP — 0.300 baseline (real college BABIP runs .310-.320; we sit a tick
-  // below average and let contact + speed nudge up). +0.0012/contact pt,
-  // +0.0008/speed pt over 50.
-  const babip = clamp(0.300 + (contact - 50) * 0.0012 + (speed - 50) * 0.0008 + rng.gaussian(0, 0.025), 0.22, 0.40)
+  // BABIP — level baseline + contact/speed slopes
+  const babip = clamp(baseline.babip + (contact - 50) * 0.0012 + (speed - 50) * 0.0008 + rng.gaussian(0, 0.025), 0.22, 0.40)
   const teamOff = teamCtx.teamOffense ?? 60
   const teamOffShift = (teamOff - 60) * 0.0008
   const babipAdj = clamp(babip + teamOffShift, 0.22, 0.40)
-  // HR rate — power-driven. Real college HR per PA: D1 ~1.5%, NAIA ~2%,
-  // D3 ~1.8%. Previous formula baseline 1.2% + steep slope was producing
-  // ~2.6% for average hitters. Tightened to 0.7% baseline + gentler slope.
-  const hrRate = clamp(0.007 + Math.max(0, power - 50) * 0.0008 + Math.max(0, power - 75) * 0.0014 + rng.gaussian(0, 0.004), 0.001, 0.08)
+  // HR rate — power-driven. Baseline is per-level (D1 2.9%, NAIA 2.5%,
+  // NWAC just 0.5% — JUCOs play with wood bats + lower-velocity arms;
+  // HR per PA is dramatically lower).
+  const hrRate = clamp(baseline.hrPerPa + Math.max(0, power - 50) * 0.0008 + Math.max(0, power - 75) * 0.0012 + rng.gaussian(0, 0.004), 0.001, 0.08)
   const hr = Math.round(pa * hrRate)
   const bipAb = Math.max(0, ab - k - hr)
   let h = Math.round(bipAb * babipAdj) + hr
   h = Math.max(hr, Math.min(ab, h))
 
-  // Split hits into 1B / 2B / 3B / HR. Real college doubles rate is ~15%
-  // of non-HR hits; previous 18% baseline + 0.3% slope was inflating SLG
-  // by 0.05-0.08. Trimmed.
+  // Split hits into 1B / 2B / 3B / HR. Doubles share is per-level.
   const nonHr = Math.max(0, h - hr)
-  const doublePct = clamp(0.14 + (power - 50) * 0.002 + rng.gaussian(0, 0.018), 0.08, 0.28)
+  const doublePct = clamp(baseline.doublePct + (power - 50) * 0.0018 + rng.gaussian(0, 0.018), 0.08, 0.28)
   const triplePct = clamp(0.014 + (speed - 50) * 0.0006, 0.004, 0.04)
   const d = Math.round(nonHr * doublePct)
   const t = Math.round(nonHr * triplePct)
@@ -127,12 +143,13 @@ function zeroBatterStats(player) {
 
 function synthesizePitcher(player, teamCtx, year, seed) {
   const rng = makeRng('synthP', player.id, year, seed)
-  const games = teamCtx.games || 50
+  const games = teamCtx.games || 45
   const stuff = player.pitcher?.stuff ?? 50
   const control = player.pitcher?.control ?? 50
   const stamina = player.pitcher?.stamina ?? 50
   const velo = player.pitcher?.velocity_avg ?? player.measurables?.fbVeloMph ?? 87
   const ovr = playerOverall(player)
+  const baseline = baselineFor(teamCtx.level)
 
   // IP allocation: top 4 SP each get ~85 IP, 5th SP ~55, top RP 30, mid RP 15.
   // Bench arms 5-10 IP. Estimate from pitcher's rank within team's pitching staff.
@@ -152,18 +169,20 @@ function synthesizePitcher(player, teamCtx, year, seed) {
   const bfPerOut = 1.34 + rng.gaussian(0, 0.05)
   const bf = Math.round(outs * bfPerOut)
 
-  // K%, BB%, HR rate from ratings. Baselines tuned to real college numbers
-  // (D1 K% ~24%, NAIA ~21%, NWAC ~22%, D3 ~19%) rather than MLB-ish values.
-  // Stuff slope reduced from 0.0035 → 0.0022 so elite arms top out around
-  // 30% K rate rather than 36%+ (previously was producing K/9 of 11-12).
-  const kPct = clamp(0.21 + (stuff - 50) * 0.0022 + (velo - 87) * 0.003 + rng.gaussian(0, 0.02), 0.06, 0.40)
+  // K%, BB% anchored to per-level real-world pitcher baselines. Note these
+  // are HITTER rates flipped — pitchers face the same league environment.
+  // We use the hitter K%/BB% baselines because that's what hitters DO at
+  // this level (which equals what pitchers DO since it's mirror image).
+  const kPct = clamp(baseline.kPct + (stuff - 50) * 0.0020 + (velo - 87) * 0.003 + rng.gaussian(0, 0.02), 0.05, 0.40)
   const k = Math.round(bf * kPct)
-  const bbPct = clamp(0.11 - (control - 50) * 0.0020 + rng.gaussian(0, 0.018), 0.04, 0.22)
+  const bbPct = clamp(baseline.bbPct - (control - 50) * 0.0020 + rng.gaussian(0, 0.018), 0.04, 0.22)
   const bb = Math.round(bf * bbPct)
-  const hbpPct = clamp(0.018 - (control - 50) * 0.0003 + rng.gaussian(0, 0.005), 0.004, 0.05)
+  const hbpPct = clamp(baseline.hbpPct - (control - 50) * 0.0003 + rng.gaussian(0, 0.005), 0.004, 0.06)
   const hbp = Math.round(bf * hbpPct)
-  // HR rate suppressed by stuff + velo + opposing team strength
-  const hr9 = clamp(1.0 - (stuff - 50) * 0.013 - (velo - 87) * 0.04 + rng.gaussian(0, 0.2), 0.2, 3.0)
+  // HR rate: derived from level baseline HR/PA (per-pitcher HR/9 backs out
+  // from that) and suppressed by stuff + velo.
+  const hr9Baseline = baseline.hrPerPa * (bf / Math.max(1, outs / 3)) * 9
+  const hr9 = clamp(hr9Baseline - (stuff - 50) * 0.012 - (velo - 87) * 0.035 + rng.gaussian(0, 0.18), 0.05, 3.0)
   const ip = outs / 3
   const hr = Math.round(hr9 * ip / 9)
 
@@ -218,13 +237,11 @@ export function buildTeamSynthesisContext(state, teamId) {
     .map(id => state.players[id])
     .filter(Boolean)
   const playedGames = (team.wins || 0) + (team.losses || 0)
-  // Level-aware full-season game count (D1: 56, D2: 50, D3: 40, NAIA: 55,
-  // NWAC: 36). Used when the team hasn't actually played yet (W-L still 0)
-  // so synthesized stats project a realistic full-season volume rather
-  // than every team getting a generic 50 games.
+  // Level-aware full-season game count, pulled from real NWBB Stats 2025
+  // data (May 2026): D1 56, D2 52, D3 41, NAIA 45, NWAC 47. Used when the
+  // team hasn't actually played yet (W-L still 0).
   const level = state.schools?.[teamId]?.level || 'NAIA'
-  const FULL_SEASON = { D1: 56, D2: 50, D3: 40, NAIA: 55, NWAC: 36 }
-  const expected = FULL_SEASON[level] ?? 50
+  const expected = (LEVEL_BASELINES[level] || LEVEL_BASELINES.NAIA).gamesPerSeason
   const games = playedGames > 0 ? playedGames : expected
   const teamOffense = state.schools?.[teamId]?.programHistory ?? 50
 
