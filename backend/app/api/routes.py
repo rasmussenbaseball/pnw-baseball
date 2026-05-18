@@ -19706,21 +19706,30 @@ def all_conference(
     if poy_pid:
         taken_awards.add(poy_pid)
 
-    # Transfer of the Year: first-year at program, not freshman
-    transfer_pid = find_award(
-        lambda pid, rec: is_transfer(rec),
-        taken_awards,
-    )
-    if transfer_pid:
-        taken_awards.add(transfer_pid)
+    # NWAC is a 2-year JUCO league: nearly every roster spot is a
+    # freshman or a transfer, so Transfer-of-the-Year and Freshman-of-
+    # the-Year don't carry meaningful signal there. Skip them for any
+    # NWAC divisional team and for the All-NWAC aggregate.
+    skip_class_awards = conf.startswith("nwac-") or conf == "all-nwac"
 
-    # Freshman of the Year: Fr/R-Fr with the most WAR
-    freshman_pid = find_award(
-        lambda pid, rec: is_freshman(rec),
-        taken_awards,
-    )
-    if freshman_pid:
-        taken_awards.add(freshman_pid)
+    transfer_pid = None
+    freshman_pid = None
+    if not skip_class_awards:
+        # Transfer of the Year: first-year at program, not freshman
+        transfer_pid = find_award(
+            lambda pid, rec: is_transfer(rec),
+            taken_awards,
+        )
+        if transfer_pid:
+            taken_awards.add(transfer_pid)
+
+        # Freshman of the Year: Fr/R-Fr with the most WAR
+        freshman_pid = find_award(
+            lambda pid, rec: is_freshman(rec),
+            taken_awards,
+        )
+        if freshman_pid:
+            taken_awards.add(freshman_pid)
 
     def serialize_award(pid):
         if not pid:
