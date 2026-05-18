@@ -12,10 +12,10 @@ import { useEffect, useState } from 'react'
 
 const SLIDES = [
   {
-    title: 'Welcome to NAIA GM',
+    title: 'Welcome to PNW Coach Simulator',
     body: (
       <>
-        <p>You're the head coach of an NAIA Division baseball program. Your job is to take a small school and build a contender — recruit, develop, win games, and stay employed.</p>
+        <p>You're the head coach of a Pacific Northwest college baseball program. Your job is to recruit, develop, win games, and stay employed long enough to build a contender.</p>
         <p className="mt-3">The game runs week-by-week across a 52-week year. Sim one week at a time, or sim ahead with presets when you have nothing pressing to do. Every decision compounds.</p>
       </>
     ),

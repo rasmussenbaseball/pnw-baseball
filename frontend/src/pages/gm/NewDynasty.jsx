@@ -246,7 +246,7 @@ export default function NewDynasty() {
             ← Back to GM home
           </button>
           <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">NEW DYNASTY</h1>
-          <p className="font-pixel text-base text-[#a8a8c8]">Pick your school, choose your mode, build your coach.</p>
+          <p className="font-pixel text-base text-[#a8a8c8]">Set up your run, pick your school, build your coach.</p>
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
