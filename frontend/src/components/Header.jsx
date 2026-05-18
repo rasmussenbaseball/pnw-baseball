@@ -78,7 +78,7 @@ const NAV = [
     label: 'Misc',
     authRequired: true,
     items: [
-      { to: '/gm', label: 'NAIA Baseball GM', desc: 'Build a dynasty — recruit, sim seasons, manage Bushnell (alpha)' },
+      { to: '/gm', label: 'PNW Coach Simulator', desc: 'Coach any PNW college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
       { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
       { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
       { to: '/team-quiz', label: 'Team Quiz', desc: 'Test your knowledge of a PNW team across one or more seasons' },

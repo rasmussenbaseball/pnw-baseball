@@ -317,7 +317,7 @@ export default function App() {
           <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
 
-          {/* GM (NAIA Baseball GM — private alpha, locked to dev only) */}
+          {/* GM (PNW Coach Simulator — private alpha, locked to dev only) */}
           <Route path="/gm" element={<RequireGmEarlyAccess><GMHome /></RequireGmEarlyAccess>} />
           <Route path="/gm/new" element={<RequireGmEarlyAccess><NewDynasty /></RequireGmEarlyAccess>} />
           <Route path="/gm/dashboard" element={<RequireGmEarlyAccess><Dashboard /></RequireGmEarlyAccess>} />

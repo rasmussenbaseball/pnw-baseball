@@ -42,11 +42,14 @@ export function synthesizeSeasonStats(player, teamCtx, year, seed) {
 // (the baseline we feed to the synthesizer so the simulated league lands
 // at target). The smoke test in scripts/smoke-test-gm.mjs validates this.
 const LEVEL_BASELINES = {
+  // gamesPerSeason is the REGULAR-SEASON max — NAIA ~50 (max 55), D1 ~56,
+  // D3 ~40, D2 ~52, NWAC ~50. Postseason adds 4-15 more games for teams
+  // that qualify, but synthesizer projects from the regular season only.
   D1:   { kPct: 0.245, bbPct: 0.116, hbpPct: 0.030, hrPerPa: 0.018, doublePct: 0.130, babip: 0.260, era: 5.59, whip: 1.52, gamesPerSeason: 56 },
   D2:   { kPct: 0.215, bbPct: 0.090, hbpPct: 0.034, hrPerPa: 0.010, doublePct: 0.130, babip: 0.265, era: 6.32, whip: 1.68, gamesPerSeason: 52 },
   D3:   { kPct: 0.220, bbPct: 0.101, hbpPct: 0.039, hrPerPa: 0.012, doublePct: 0.125, babip: 0.265, era: 5.76, whip: 1.59, gamesPerSeason: 41 },
-  NAIA: { kPct: 0.215, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.014, doublePct: 0.140, babip: 0.270, era: 6.54, whip: 1.67, gamesPerSeason: 45 },
-  NWAC: { kPct: 0.215, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.003, doublePct: 0.105, babip: 0.255, era: 4.57, whip: 1.44, gamesPerSeason: 47 },
+  NAIA: { kPct: 0.215, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.014, doublePct: 0.140, babip: 0.270, era: 6.54, whip: 1.67, gamesPerSeason: 52 },
+  NWAC: { kPct: 0.215, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.003, doublePct: 0.105, babip: 0.255, era: 4.57, whip: 1.44, gamesPerSeason: 50 },
 }
 
 function baselineFor(level) {

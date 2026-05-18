@@ -154,7 +154,7 @@
         "details": "NAIA is a 4-year college conference. Players have 4 years of eligibility. Recruit pool: HS + JUCO transfers + 4-yr portal."
       },
       "rosterCap": 50,
-      "seasonGames": 45,
+      "seasonGames": 52,
       "national": {
         "name": "NAIA Tournament + Avista NAIA World Series",
         "fieldSize": 46,
@@ -197,7 +197,7 @@
         ]
       },
       "rosterCap": 30,
-      "seasonGames": 47,
+      "seasonGames": 50,
       "national": {
         "name": "NWAC Championship",
         "fieldSize": 8,
