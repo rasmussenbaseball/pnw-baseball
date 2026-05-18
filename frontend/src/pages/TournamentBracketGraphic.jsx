@@ -213,62 +213,66 @@ const TOURNAMENTS = {
   // ───────────────────────────────────────────────────────────────
   // NWAC SUPER REGIONALS — May 15 to 16, 2026
   //
-  // Four super regionals, each hosted by the #2 seed of a conference.
-  // Each has 3 teams: the #2 seed (host, bye to BO3 final) plus two
-  // teams that play a single-elim play-in (one #3 / #4 from a different
-  // conference). Winners advance to the NWAC Championships in Longview.
+  // Four best-of-3 super regionals, each hosted by the #2 seed of a
+  // conference. The original format included a single-elim play-in
+  // game; the 2026 NWAC ran direct BO3 series instead, so the lower
+  // seed visits the host without an intermediate round.
   //
   // The #1 seed from each conference (N1, S1, E1, W1) gets a direct bye
   // to the championships and is shown in the byes strip at the top.
+  //
+  // 2026 results: all four host #2 seeds swept 2-0.
   // ───────────────────────────────────────────────────────────────
   nwac_super_regionals_2026: {
     label: 'NWAC Super Regionals',
     sub: 'May 15 to 16, 2026 — Four regional host sites',
     season: 2026,
-    formatLabel: 'Single-elim play-in then Best-of-3 series at each host',
+    formatLabel: 'Best-of-3 series at each host site',
     seeds: [
-      // North conference
-      { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },
-      { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },
-      { seed: 3,  seedLabel: 'N3', team_id: 25, name: 'Bellevue' },
-      { seed: 4,  seedLabel: 'N4', team_id: 31, name: 'Shoreline' },
-      // South conference
-      { seed: 5,  seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },
-      { seed: 6,  seedLabel: 'S2', team_id: 43, name: 'Lane' },
-      { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },
-      { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },
-      // East conference
-      { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },
-      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },
-      { seed: 11, seedLabel: 'E3', team_id: 34, name: 'Columbia Basin' },
-      { seed: 12, seedLabel: 'E4', team_id: 39, name: 'Yakima Valley' },
-      // West conference
-      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
-      { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },
-      { seed: 15, seedLabel: 'W3', team_id: 53, name: 'Tacoma' },
-      { seed: 16, seedLabel: 'W4', team_id: 49, name: 'Clark' },
+      // Eight teams that played: 4 hosts + 4 visitors. Seeds 11, 12, 15, 16
+      // (E3 Col. Basin, E4 Yakima Valley, W3 Tacoma, W4 Clark) didn't enter
+      // the bracket this year because the play-in round was skipped.
+      // North
+      { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },           // bye
+      { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },           // host
+      { seed: 3,  seedLabel: 'N3', team_id: 25, name: 'Bellevue' },          // at Lane
+      { seed: 4,  seedLabel: 'N4', team_id: 31, name: 'Shoreline' },         // at Wenatchee
+      // South
+      { seed: 5,  seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },       // bye
+      { seed: 6,  seedLabel: 'S2', team_id: 43, name: 'Lane' },              // host
+      { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },            // at Edmonds
+      { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },          // at Pierce
+      // East
+      { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },           // bye
+      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },  // host
+      // West
+      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },    // bye
+      { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },            // host
     ],
     games: [
-      // ─ North Super Regional @ Edmonds ─
-      { num: 1, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 7  }, away: { ref: 'seed', val: 16 } },     // S3 vs W4
-      { num: 2, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 2  }, away: { ref: 'winner', game: 1 } },   // N2 vs G1 winner
-      // ─ East Super Regional @ Wenatchee Valley ─
-      { num: 3, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 4  }, away: { ref: 'seed', val: 15 } },     // N4 vs W3
-      { num: 4, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 10 }, away: { ref: 'winner', game: 3 } },   // E2 vs G3 winner
-      // ─ West Super Regional @ Pierce ─
-      { num: 5, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 8  }, away: { ref: 'seed', val: 11 } },     // S4 vs E3
-      { num: 6, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 14 }, away: { ref: 'winner', game: 5 } },   // W2 vs G5 winner
-      // ─ South Super Regional @ Lane ─
-      { num: 7, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 12 }, away: { ref: 'seed', val: 3  } },     // E4 vs N3
-      { num: 8, iso: null,         day: 'Fri-Sat May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 6  }, away: { ref: 'winner', game: 7 } },   // S2 vs G7 winner
+      // Each super regional is 2 cards: Game 1 (Fri May 15) and Game 2
+      // (Sat May 16) of a BO3. All 4 series ended 2-0, so no Game 3
+      // was played. The winner of Game 2 is the series winner.
+      // ─ North Super Regional @ Edmonds — Edmonds swept Umpqua ─
+      { num: 1, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },
+      { num: 2, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },
+      // ─ East Super Regional @ Wenatchee Valley — Wenatchee swept Shoreline ─
+      { num: 3, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 10 }, away: { ref: 'seed', val: 4 } },
+      { num: 4, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 10 }, away: { ref: 'seed', val: 4 } },
+      // ─ West Super Regional @ Pierce — Pierce swept Mt. Hood ─
+      { num: 5, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 14 }, away: { ref: 'seed', val: 8 } },
+      { num: 6, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 14 }, away: { ref: 'seed', val: 8 } },
+      // ─ South Super Regional @ Lane — Lane swept Bellevue ─
+      { num: 7, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 6 }, away: { ref: 'seed', val: 3 } },
+      { num: 8, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 6 }, away: { ref: 'seed', val: 3 } },
     ],
     // 2x2 grid layout — each quadrant has the play-in card on the left
     // and the best-of-3 card on the right, connected.
@@ -328,21 +332,27 @@ const TOURNAMENTS = {
     season: 2026,
     formatLabel: 'Double-elimination bracket (8 teams)',
     seeds: [
-      { seed: 1, seedLabel: 'N1', team_id: 28, name: 'Everett' },
-      { seed: 2, seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },
-      { seed: 3, seedLabel: 'E1', team_id: 35, name: 'Spokane' },
-      { seed: 4, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
+      // Top half: the four conference #1 seeds (received byes through SR)
+      { seed: 1, seedLabel: 'N1',  team_id: 28, name: 'Everett' },
+      { seed: 2, seedLabel: 'S1',  team_id: 44, name: 'Linn-Benton' },
+      { seed: 3, seedLabel: 'E1',  team_id: 35, name: 'Spokane' },
+      { seed: 4, seedLabel: 'W1',  team_id: 52, name: 'Lower Columbia' },
+      // Bottom half: the four Super Regional winners (all #2 hosts, swept 2-0)
+      { seed: 5, seedLabel: 'WSR', team_id: 30, name: 'Pierce' },
+      { seed: 6, seedLabel: 'ESR', team_id: 38, name: 'Wenatchee Valley' },
+      { seed: 7, seedLabel: 'SSR', team_id: 43, name: 'Lane' },
+      { seed: 8, seedLabel: 'NSR', team_id: 27, name: 'Edmonds' },
     ],
     games: [
       // ── WB Round 1 (Thu May 21) — #1 seeds vs SR winners ──
       { num: 1, iso: '2026-05-21', day: 'Thu May 21', time: '9:35 AM',
-        home: { ref: 'seed', val: 1 }, away: { ref: 'placeholder', name: 'WSR Winner' } },
+        home: { ref: 'seed', val: 1 }, away: { ref: 'seed', val: 5 } },  // N1 vs WSR
       { num: 2, iso: '2026-05-21', day: 'Thu May 21', time: '12:35 PM',
-        home: { ref: 'seed', val: 2 }, away: { ref: 'placeholder', name: 'ESR Winner' } },
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 6 } },  // S1 vs ESR
       { num: 3, iso: '2026-05-21', day: 'Thu May 21', time: '4:35 PM',
-        home: { ref: 'seed', val: 3 }, away: { ref: 'placeholder', name: 'SSR Winner' } },
+        home: { ref: 'seed', val: 3 }, away: { ref: 'seed', val: 7 } },  // E1 vs SSR
       { num: 4, iso: '2026-05-21', day: 'Thu May 21', time: '7:35 PM',
-        home: { ref: 'seed', val: 4 }, away: { ref: 'placeholder', name: 'NSR Winner' } },
+        home: { ref: 'seed', val: 4 }, away: { ref: 'seed', val: 8 } },  // W1 vs NSR
       // ── LB Round 1 (Fri May 22) — losers of WB R1 ──
       { num: 5, iso: '2026-05-22', day: 'Fri May 22', time: '9:35 AM',
         home: { ref: 'loser', game: 1 }, away: { ref: 'loser', game: 2 } },
@@ -459,36 +469,48 @@ const TOURNAMENTS = {
       { seed: 15, seedLabel: 'W3', team_id: 53, name: 'Tacoma' },
       { seed: 16, seedLabel: 'W4', team_id: 49, name: 'Clark' },
     ],
-    // Game numbering: G101-G108 = super regionals (1-8), G1-G15 = championships.
-    // Using >100 keeps the chained refs unambiguous since both brackets are
-    // in the same `games` array.
+    // Game numbering: G101-G108 = super regionals (4 series × 2 games each
+    // since the 2026 NWAC ran direct BO3 with no play-in), G1-G15 = championships.
+    // Numbering >100 keeps refs unambiguous when both brackets share one array.
+    //
+    // SR layout pairs by region (Game 1 + Game 2 of each series):
+    //   West:  G105 G106 — Pierce host vs Mt. Hood (Pierce swept 2-0)
+    //   East:  G103 G104 — Wenatchee host vs Shoreline (Wenatchee swept 2-0)
+    //   South: G107 G108 — Lane host vs Bellevue (Lane swept 2-0)
+    //   North: G101 G102 — Edmonds host vs Umpqua (Edmonds swept 2-0)
     games: [
-      // ─ Super Regionals ─
-      { num: 101, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 7  }, away: { ref: 'seed', val: 16 } },
-      { num: 102, iso: null, day: 'May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 2  }, away: { ref: 'winner', game: 101 } },
-      { num: 103, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 4  }, away: { ref: 'seed', val: 15 } },
-      { num: 104, iso: null, day: 'May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 10 }, away: { ref: 'winner', game: 103 } },
-      { num: 105, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 8  }, away: { ref: 'seed', val: 11 } },
-      { num: 106, iso: null, day: 'May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 14 }, away: { ref: 'winner', game: 105 } },
-      { num: 107, iso: '2026-05-15', day: 'Fri May 15', time: 'Single Elim',
-        home: { ref: 'seed', val: 12 }, away: { ref: 'seed', val: 3  } },
-      { num: 108, iso: null, day: 'May 15-16', time: 'Best of 3',
-        home: { ref: 'seed', val: 6  }, away: { ref: 'winner', game: 107 } },
-      // ─ Championships (WB R1 referencing SR winners) ─
+      // ─ Super Regionals ─ (all 4 hosts swept the series 2-0)
+      // North SR @ Edmonds — Edmonds (seed 2) vs Umpqua (seed 7)
+      { num: 101, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },
+      { num: 102, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },
+      // East SR @ Wenatchee Valley — Wenatchee (seed 10) vs Shoreline (seed 4)
+      { num: 103, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 10 }, away: { ref: 'seed', val: 4 } },
+      { num: 104, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 10 }, away: { ref: 'seed', val: 4 } },
+      // West SR @ Pierce — Pierce (seed 14) vs Mt. Hood (seed 8)
+      { num: 105, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 14 }, away: { ref: 'seed', val: 8 } },
+      { num: 106, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 14 }, away: { ref: 'seed', val: 8 } },
+      // South SR @ Lane — Lane (seed 6) vs Bellevue (seed 3)
+      { num: 107, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+        home: { ref: 'seed', val: 6 }, away: { ref: 'seed', val: 3 } },
+      { num: 108, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+        home: { ref: 'seed', val: 6 }, away: { ref: 'seed', val: 3 } },
+      // ─ Championships WB R1 — #1 seeds vs SR winners (known) ─
+      // Refs are direct seed lookups because the SR is complete and
+      // winners are the host #2 seeds.
       { num: 1, iso: '2026-05-21', day: 'Thu May 21', time: '9:35 AM',
-        home: { ref: 'seed', val: 1 }, away: { ref: 'winner', game: 106 } },   // N1 vs WSR
+        home: { ref: 'seed', val: 1 },  away: { ref: 'seed', val: 14 } },  // N1 Everett vs W2 Pierce (WSR)
       { num: 2, iso: '2026-05-21', day: 'Thu May 21', time: '12:35 PM',
-        home: { ref: 'seed', val: 5 }, away: { ref: 'winner', game: 104 } },   // S1 vs ESR
+        home: { ref: 'seed', val: 5 },  away: { ref: 'seed', val: 10 } },  // S1 Linn-Benton vs E2 Wenatchee (ESR)
       { num: 3, iso: '2026-05-21', day: 'Thu May 21', time: '4:35 PM',
-        home: { ref: 'seed', val: 9 }, away: { ref: 'winner', game: 108 } },   // E1 vs SSR
+        home: { ref: 'seed', val: 9 },  away: { ref: 'seed', val: 6 } },   // E1 Spokane vs S2 Lane (SSR)
       { num: 4, iso: '2026-05-21', day: 'Thu May 21', time: '7:35 PM',
-        home: { ref: 'seed', val: 13 }, away: { ref: 'winner', game: 102 } },  // W1 vs NSR
+        home: { ref: 'seed', val: 13 }, away: { ref: 'seed', val: 2 } },   // W1 Lower Columbia vs N2 Edmonds (NSR)
       { num: 5, iso: '2026-05-22', day: 'Fri May 22', time: '9:35 AM',
         home: { ref: 'loser', game: 1 }, away: { ref: 'loser', game: 2 } },
       { num: 6, iso: '2026-05-22', day: 'Fri May 22', time: '12:35 PM',
