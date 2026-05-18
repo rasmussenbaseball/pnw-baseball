@@ -28,6 +28,17 @@ import TeamRankChip from '../../gm/components/TeamRankChip'
 import { ensureNwbbRatings } from '../../gm/engine/nwbbRating'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
+// Humanize a school-id slug as a last-resort fallback when neither save.schools
+// nor NON_NAIA_DISPLAY have it. "nwac-linn-benton" → "Linn-Benton" (NWAC).
+function humanizeId(id) {
+  if (!id || typeof id !== 'string') return id
+  const m = id.match(/^(d[123]|naia|nwac)[-_](.+?)(?:[-_](d[123]|naia|nwac))?$/i)
+  if (!m) return id.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const prefix = m[1].toUpperCase()
+  const core = m[2].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return `${core} (${prefix})`
+}
+
 const NON_NAIA_DISPLAY = (() => {
   const out = {}
   for (const div of nonNaiaRaw.divisions) {
@@ -51,6 +62,7 @@ export default function Dashboard() {
   const [busy, setBusy] = useState(false)
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
   const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
+  const [simAheadConfirm, setSimAheadConfirm] = useState(null)   // { preset, gamesSkipped } when sim-ahead would auto-sim user games
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
   const [fallReportOpen, setFallReportOpen] = useState(false)
@@ -314,6 +326,25 @@ export default function Dashboard() {
       gmToast(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`, 'warn')
       return
     }
+    // If this sim-ahead would skip over any of the user's scheduled games,
+    // confirm with the user first (instead of silently auto-simming games
+    // they might want to play live). Count weeks where the user has at least
+    // one game in the schedule.
+    const userId = save.userSchoolId
+    const wkNow = save.calendar?.weekOfYear ?? 1
+    const wkEnd = wkNow + (preset.weeks || preset.est || 1)
+    const gamesSkipped = (save.schedule || []).filter(g =>
+      g.played !== true &&
+      g.type !== 'BYE' &&
+      typeof g.weekOfYear === 'number' &&
+      g.weekOfYear > wkNow && g.weekOfYear <= wkEnd &&
+      (g.homeId === userId || g.awayId === userId),
+    ).length
+    if (gamesSkipped > 0 && !simAheadConfirm) {
+      setSimAheadConfirm({ preset, gamesSkipped })
+      return
+    }
+    setSimAheadConfirm(null)
     setBusy(true)
     setLastWeekRecap(null)
     const result = simAhead(save, { weeks: preset.weeks, untilFn: preset.untilFn })
@@ -340,6 +371,14 @@ export default function Dashboard() {
         />
       )}
       {progress && <ProgressModal {...progress} />}
+      {simAheadConfirm && (
+        <SimAheadConfirmModal
+          gamesSkipped={simAheadConfirm.gamesSkipped}
+          preset={simAheadConfirm.preset}
+          onCancel={() => setSimAheadConfirm(null)}
+          onConfirm={() => runSimAhead(simAheadConfirm.preset)}
+        />
+      )}
       {tutorialOpen && (
         <TutorialOverlay school={school} level={save.level} onClose={dismissTutorial} />
       )}
@@ -1700,7 +1739,11 @@ function GameWeekBanner({ games, save, weekOfYear, slot, onSimNow }) {
   // Summarize: count + first opponent name
   const first = games[0]
   const oppId = first.homeId === userSchoolId ? first.awayId : first.homeId
-  const oppName = save.schools[oppId]?.name || 'Opponent'
+  // Same fall-back chain as elsewhere: own-division → non-NAIA registry →
+  // humanized slug. Don't fall through to the literal word "Opponent".
+  const oppName = save.schools[oppId]?.name
+    || NON_NAIA_DISPLAY[oppId]?.name
+    || humanizeId(oppId)
   const isHome = first.homeId === userSchoolId
   return (
     <div className="bg-pnw-green text-white rounded-xl p-4 mb-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 shadow-lg">
@@ -1779,7 +1822,10 @@ function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
           {games.map(g => {
             const isHome = g.homeId === userSchoolId
             const oppId = isHome ? g.awayId : g.homeId
-            const opp = save.schools[oppId] || { name: oppId }
+            // Check both save.schools (own division) and NON_NAIA_DISPLAY (other
+            // levels) so cross-level opponents like fall NWAC scrimmages resolve
+            // to a clean name instead of the raw ID (e.g. "nwac-linn-benton").
+            const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId] || { name: humanizeId(oppId) }
             return (
               <div key={g.id} className="flex justify-between text-xs text-gray-700 py-0.5">
                 <span>{isHome ? 'vs' : '@'} {opp.name}</span>
@@ -2517,6 +2563,46 @@ function summerBallSub(save) {
 // Sim-ahead UI
 // ────────────────────────────────────────────────────────────────────────────
 
+function SimAheadConfirmModal({ gamesSkipped, preset, onCancel, onConfirm }) {
+  useModalDismiss(onCancel)
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-start gap-3 mb-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-amber-700 font-bold">⚠ Auto-sim warning</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">Skip past {gamesSkipped} of your game{gamesSkipped === 1 ? '' : 's'}?</h3>
+          </div>
+          <ModalCloseButton onClick={onCancel} />
+        </div>
+        <p className="text-sm text-gray-700 leading-snug">
+          <span className="font-semibold">{preset.label}</span> covers {preset.weeks || preset.est} week{preset.weeks === 1 ? '' : 's'}.
+          During that span you have <span className="font-bold text-amber-700">{gamesSkipped}</span> scheduled
+          game{gamesSkipped === 1 ? '' : 's'} that would be <span className="font-semibold">auto-simmed</span>
+          — you won't be able to play them live or set lineups for them.
+        </p>
+        <p className="text-xs text-gray-500 mt-3">
+          Use a shorter Sim Ahead (or advance one week at a time) if you want to play these games yourself.
+        </p>
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded text-sm font-semibold hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded text-sm font-semibold"
+          >
+            Auto-sim {gamesSkipped} game{gamesSkipped === 1 ? '' : 's'} →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SimAheadBar({ save, busy, onRun }) {
   const presets = simPresets(save)
   if (presets.length <= 1) return null
@@ -2631,25 +2717,25 @@ function DiffWeek({ diff, index }) {
   const big = diff.ovrChanges.slice(0, 6)
   const happyMovers = diff.happinessChanges.slice(0, 4)
   return (
-    <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/60">
-      <div className="text-xs font-semibold text-pnw-slate mb-1.5">
-        Week {index}: {diff.fromMode === 'OFFSEASON' ? `Offseason Wk ${diff.fromOffseasonWeek} ${diff.toOffseasonWeek}` : `Season Wk ${diff.fromSeasonWeek} ${diff.toSeasonWeek}`}
+    <div className="border border-gray-300 rounded-lg p-3 bg-white">
+      <div className="text-sm font-semibold text-pnw-slate mb-2">
+        Week {index}: {diff.fromMode === 'OFFSEASON' ? `Offseason Wk ${diff.fromOffseasonWeek} → ${diff.toOffseasonWeek}` : `Season Wk ${diff.fromSeasonWeek} → ${diff.toSeasonWeek}`}
         {(diff.recordDelta.w + diff.recordDelta.l > 0) && (
-          <span className="ml-2 font-normal text-gray-600">
+          <span className="ml-2 font-normal text-gray-700">
             ({diff.recordDelta.w}W-{diff.recordDelta.l}L this week)
           </span>
         )}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <div className="text-[10px] uppercase text-gray-500 mb-1">Rating changes</div>
-          {big.length === 0 ? <div className="text-[11px] text-gray-400">— no rating moves this week</div> : (
-            <ul className="text-[11px] space-y-0.5">
+          <div className="text-xs uppercase font-semibold text-gray-600 mb-1">Rating changes</div>
+          {big.length === 0 ? <div className="text-xs text-gray-500">— no rating moves this week</div> : (
+            <ul className="text-xs space-y-0.5">
               {big.map(c => (
                 <li key={c.id} className="flex justify-between">
-                  <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
-                  <span className={c.delta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
-                    {c.before} {c.after} {c.delta > 0 ? '' : ''}
+                  <span className="text-gray-800">{c.name} <span className="text-gray-500">({c.pos})</span></span>
+                  <span className={c.delta > 0 ? 'text-emerald-700 font-mono font-semibold' : 'text-red-700 font-mono font-semibold'}>
+                    {c.before} → {c.after} {c.delta > 0 ? '▲' : '▼'}
                   </span>
                 </li>
               ))}
@@ -2657,14 +2743,14 @@ function DiffWeek({ diff, index }) {
           )}
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500 mb-1">Happiness shifts</div>
-          {happyMovers.length === 0 ? <div className="text-[11px] text-gray-400">— no happiness moves this week</div> : (
-            <ul className="text-[11px] space-y-0.5">
+          <div className="text-xs uppercase font-semibold text-gray-600 mb-1">Happiness shifts</div>
+          {happyMovers.length === 0 ? <div className="text-xs text-gray-500">— no happiness moves this week</div> : (
+            <ul className="text-xs space-y-0.5">
               {happyMovers.map(c => (
                 <li key={c.id} className="flex justify-between">
-                  <span className="text-gray-700">{c.name} <span className="text-gray-400">({c.pos})</span></span>
-                  <span className={c.delta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
-                    {c.before} {c.after} {c.delta > 0 ? '' : ''}
+                  <span className="text-gray-800">{c.name} <span className="text-gray-500">({c.pos})</span></span>
+                  <span className={c.delta > 0 ? 'text-emerald-700 font-mono font-semibold' : 'text-red-700 font-mono font-semibold'}>
+                    {c.before} → {c.after} {c.delta > 0 ? '▲' : '▼'}
                   </span>
                 </li>
               ))}
@@ -2673,8 +2759,8 @@ function DiffWeek({ diff, index }) {
         </div>
       </div>
       {diff.budgetDelta !== 0 && (
-        <div className="text-[11px] mt-2 text-gray-600">
-          Budget: <span className={diff.budgetDelta > 0 ? 'text-green-700 font-mono' : 'text-red-700 font-mono'}>
+        <div className="text-xs mt-2 text-gray-700">
+          Budget: <span className={diff.budgetDelta > 0 ? 'text-emerald-700 font-mono font-semibold' : 'text-red-700 font-mono font-semibold'}>
             {diff.budgetDelta > 0 ? '+' : ''}${(diff.budgetDelta / 1000).toFixed(1)}K
           </span>
         </div>

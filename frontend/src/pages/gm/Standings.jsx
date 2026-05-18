@@ -43,17 +43,17 @@ export default function Standings() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm min-w-[560px]">
+        <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-gray-50">
-            <tr className="text-left text-xs text-gray-500 uppercase">
+            <tr className="text-left text-sm text-gray-700 uppercase">
               <th className="py-2 px-3">#</th>
               <th></th>
               <th>Team</th>
-              <th title="National rank from the NWBB Rating engine">Nat</th>
-              <th>Conf W-L</th>
-              <th>Overall</th>
-              <th>Run Diff</th>
-              <th title="Strength of Schedule rank — 1 = hardest schedule">SOS</th>
+              <th title="National rank from the NWBB Rating engine — predictive 0-100 universal scale">National Rank</th>
+              <th>Conference W-L</th>
+              <th>Overall W-L</th>
+              <th title="Run Differential — runs scored minus runs allowed">Run Diff.</th>
+              <th title="Strength of Schedule rank — 1 = hardest schedule">Schedule Strength</th>
             </tr>
           </thead>
           <tbody>
@@ -68,10 +68,10 @@ export default function Standings() {
                     {school.name}
                     <TeamRankChip save={save} schoolId={school.id} />
                   </td>
-                  <td className="font-mono text-xs text-gray-600" title="National rank (NWBB Rating)">
+                  <td className="font-mono text-sm text-gray-700" title="National rank (NWBB Rating)">
                     {r ? `#${r.nationalRank}` : '—'}
                     {r && (
-                      <span className="text-[10px] text-gray-400 ml-1" title="NWBB Rating — predictive 0-100 universal scale">
+                      <span className="text-xs text-gray-500 ml-1" title="NWBB Rating — predictive 0-100 universal scale">
                         ({r.rating.toFixed(1)})
                       </span>
                     )}
@@ -81,7 +81,7 @@ export default function Standings() {
                   <td className={'font-mono ' + (team.runDiff > 0 ? 'text-green-700' : team.runDiff < 0 ? 'text-red-700' : 'text-gray-500')}>
                     {team.runDiff > 0 ? '+' : ''}{team.runDiff}
                   </td>
-                  <td className="font-mono text-xs text-gray-600" title="SOS — strength of schedule rank, 1 = hardest. Empty until games are played.">
+                  <td className="font-mono text-sm text-gray-700" title="Strength of Schedule rank — 1 = hardest schedule played. Empty until games are played.">
                     {r && r.gamesPlayed > 0 ? `#${r.sosRank}` : '—'}
                   </td>
                 </tr>

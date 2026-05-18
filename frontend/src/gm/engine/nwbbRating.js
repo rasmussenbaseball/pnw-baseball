@@ -166,10 +166,15 @@ export function recomputeNwbbRatings(state) {
   const schools = state.schools || {}
   const seeds = buildPreseasonSeeds(schools)
 
-  // Collect all played games. Cross-division ones count too.
+  // Collect all played games. Cross-division ones count too. Fall/spring
+  // scrimmages are excluded — they're development reps, not record-counting
+  // contests, so they shouldn't influence NWBB rating, SOS, or rank.
   const games = (state.schedule || []).filter(g =>
     g.played
     && g.type !== 'BYE'
+    && g.type !== 'FALL_SCRIMMAGE'
+    && g.type !== 'SPRING_SCRIMMAGE'
+    && g.countsTowardRecord !== false
     && g.homeId
     && g.awayId
     && g.homeId !== '__BYE__'

@@ -1359,8 +1359,15 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
 
   const suitorCount = totalSuitors(recruit)
 
-  // Offer competitiveness — average rival offer is ~$8K-$15K; if our offer is meaningfully above that, helps
-  const avgRivalOffer = 8000 + suitorCount * 1500
+  // Offer competitiveness — recruit's expectation is anchored to the LEVEL
+  // of the school making the offer, not a flat $8K baseline. Without this,
+  // low-budget programs (NAIA, D3, NWAC) got crushed for offering reasonable
+  // money. See buildRecruitFeedback for the matching values + rationale.
+  const _level = school.level || 'NAIA'
+  const _BASE = { D1: 16000, D2: 9000, D3: 0, NAIA: 5000, NWAC: 1500 }
+  const _pool = school.scholarshipPool ?? school.totalBudget?.scholarships ?? 0
+  const _poolBonus = Math.min(8000, Math.max(0, (_pool - 100000) / 30000) * 1000)
+  const avgRivalOffer = (_BASE[_level] ?? 5000) + _poolBonus + suitorCount * 1500
   let offerAdvantage = (recruit.liveOffer.amount - avgRivalOffer) / 5000   // -2 to +3 typically
 
   // NIL boost — if the user offered NIL on top of scholarship, that
@@ -1653,10 +1660,26 @@ export function buildRecruitFeedback(recruit, userSchoolId, state) {
     ctx.pipelineMatch = coachRegionList(userHC).includes(recruitRegion)
   }
 
-  // Offer reaction — depends on $ vs market AND how generous the recruit
-  // perceives it relative to peers
+  // Offer reaction — depends on $ vs LEVEL-APPROPRIATE market.
+  //
+  // Previously the "fair offer" floor was a flat 8K + suitor count — fine for
+  // D1 but punishing for D3 / NWAC / low-budget NAIA programs where the
+  // typical scholarship pool can't sustain $8K offers. A recruit looking at
+  // a $230K-pool NAIA school KNOWS the level — they don't expect $15K
+  // anymore than a D3 walk-on expects athletic money.
+  //
+  // Per-level base for avgRivalOffer (calibrated against the budget tables
+  // in budget.js):
+  const level = school.level || 'NAIA'
+  const LEVEL_BASE_OFFER = {
+    D1: 16000, D2: 9000, D3: 0, NAIA: 5000, NWAC: 1500,
+  }
+  // Programs with bigger pools sustain higher offers — light scale on top.
+  const poolDollars = school.scholarshipPool ?? school.totalBudget?.scholarships ?? 0
+  const poolBonus = Math.min(8000, Math.max(0, (poolDollars - 100000) / 30000) * 1000)
   const suitorCount = totalSuitors(recruit)
-  const avgRivalOffer = 8000 + suitorCount * 1500
+  const suitorBonus = suitorCount * 1500
+  const avgRivalOffer = (LEVEL_BASE_OFFER[level] ?? 5000) + poolBonus + suitorBonus
   let offerAdvantage = 0
   let nilBoost = 0
   if (hasOffer) {

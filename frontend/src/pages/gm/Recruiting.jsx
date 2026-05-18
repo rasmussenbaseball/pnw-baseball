@@ -52,6 +52,19 @@ const PREFERENCE_LABELS = {
   pipeline_fit:     'Coach pipeline fit',
 }
 
+// Plain-English explanation of how each priority gets evaluated against your
+// program. Shown in a tooltip next to the priority chip.
+const PREFERENCE_EXPLANATIONS = {
+  financial:       'Scored on your scholarship offer + NIL vs the level-adjusted market rate. Bigger offers + NIL stack here.',
+  proximity:       'Distance from the recruit\'s home town to your campus. Same state = full score, far away = penalty.',
+  playing_time:    'Open spots at the recruit\'s position on your roster. Fewer returners at their spot = higher score.',
+  program_history: 'Your recent W-L + NWBB ranking. Winning programs score better.',
+  facilities:      'Driven by your Facilities + S&C budget tier. Higher allocation = higher score.',
+  academics:       'Your school\'s academic profile (private/D3 lean higher; commuter schools lower).',
+  coaching:        'Your head coach\'s Developer rating. Top developers attract development-minded recruits.',
+  pipeline_fit:    'Whether the recruit\'s home region is in your head coach\'s primary or secondary region.',
+}
+
 export default function Recruiting() {
   const { user } = useAuth()
   const [params] = useSearchParams()
@@ -301,8 +314,32 @@ export default function Recruiting() {
       gmToast(`Not enough AP. Need ${action.apCost}, have ${save.ap.currentWeek}.`, 'warn')
       return
     }
+    // Per-recruit AP cap: a coach can't dump 30 AP on one prospect in a week.
+    // Cap at 10 AP/recruit/week so users have to spread effort across the
+    // board. (Total across all prospects is still gated by the weekly AP
+    // pool.) Tag the count with year+week so it auto-resets each new week.
+    const PER_RECRUIT_AP_CAP = 10
+    const currentWeekTag = `${save.calendar.year}_${save.calendar.weekOfYear}`
+    const g = recruit.scoutGrades?.[save.userSchoolId]
+    const alreadySpent = (g && g.apSpentWeekTag === currentWeekTag)
+      ? (g.apSpentThisWeek || 0)
+      : 0
+    if (alreadySpent + action.apCost > PER_RECRUIT_AP_CAP) {
+      gmToast(`You've spent ${alreadySpent} AP on ${recruit.firstName} ${recruit.lastName} this week. Cap is ${PER_RECRUIT_AP_CAP}/recruit per week — work other prospects.`, 'warn')
+      return
+    }
     const rng = makeRng('action', recruit.id, save.userSchoolId, Date.now())
     const result = applyRecruitingAction(recruit, save.userSchoolId, action, rng)
+    // Track per-recruit per-week AP — reset if tag from a previous week,
+    // then accumulate.
+    const grade = result.recruit.scoutGrades[save.userSchoolId]
+    if (grade) {
+      if (grade.apSpentWeekTag !== currentWeekTag) {
+        grade.apSpentThisWeek = 0
+        grade.apSpentWeekTag = currentWeekTag
+      }
+      grade.apSpentThisWeek = (grade.apSpentThisWeek || 0) + action.apCost
+    }
     save.recruits[recruit.id] = result.recruit
     save.ap.currentWeek -= action.apCost
     save.ap.spentThisWeek += action.apCost
@@ -1677,12 +1714,14 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
                   const fit = fb.priorityScores[key] ?? 50
                   const fitColor = fit >= 70 ? 'bg-emerald-500' : fit >= 50 ? 'bg-amber-400' : 'bg-red-500'
                   const fitLabel = fit >= 70 ? 'Strong' : fit >= 50 ? 'OK' : 'Weak'
+                  const explanation = PREFERENCE_EXPLANATIONS[key]
                   return (
-                    <div key={key} className="flex items-center gap-2 text-xs">
-                      <div className="w-44">
+                    <div key={key} className="flex items-center gap-2 text-sm">
+                      <div className="w-44 cursor-help" title={isRevealed && explanation ? `${PREFERENCE_LABELS[key]} — ${explanation}` : 'Reveal more by spending AP on this recruit.'}>
                         {isRevealed ? (
                           <span className="inline-block bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-semibold">
                             {PREFERENCE_LABELS[key]}
+                            <span className="ml-1 text-[10px] opacity-70" aria-hidden="true">ⓘ</span>
                           </span>
                         ) : (
                           <span className="inline-block bg-gray-100 text-gray-500 px-2 py-0.5 rounded italic">
@@ -1690,10 +1729,13 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
                           </span>
                         )}
                       </div>
-                      <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden cursor-help"
+                        title={isRevealed && explanation ? `How we score it: ${explanation}` : ''}
+                      >
                         <div className={'h-full ' + fitColor} style={{ width: `${fit}%` }} />
                       </div>
-                      <div className="w-12 text-right font-mono text-[11px] text-gray-600">
+                      <div className="w-12 text-right font-mono text-xs text-gray-600">
                         {fitLabel}
                       </div>
                     </div>

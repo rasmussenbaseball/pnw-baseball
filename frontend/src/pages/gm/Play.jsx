@@ -95,14 +95,37 @@ export default function Play() {
             // Persist the per-game boxscore so the user can review it from
             // the Completed-this-week list.
             if (result.boxscore?.batterStats) {
+              // Snapshot a name map for every player who appears in this
+              // boxscore. Synthetic opponents (non-NAIA) aren't in save.players,
+              // so without this lookup the box score would render raw IDs like
+              // "synth_george-fox-d3_p0" instead of names. We harvest names
+              // from the live game's lineups + bench + bullpen — the only
+              // place synth players exist before the game ends.
+              const playerNames = {}
+              const harvest = (lineup) => {
+                if (!lineup) return
+                const all = [
+                  ...(lineup.batters || []),
+                  ...(lineup.pitcherRotation || []),
+                  ...(lineup.bench || []),
+                ]
+                for (const p of all) {
+                  if (!p?.id) continue
+                  const name = `${p.firstName || ''} ${p.lastName || ''}`.trim()
+                  if (name) playerNames[p.id] = name
+                }
+              }
+              harvest(result.homeLineup)
+              harvest(result.awayLineup)
               g.boxscore = {
                 batterStats: result.boxscore.batterStats,
                 pitcherStats: result.boxscore.pitcherStats || {},
                 innings: result.boxscore.innings || null,
+                playerNames,
               }
             }
             // Accumulate stats into save.playerStats
-            accumulateBoxscore(save, result.boxscore)
+            accumulateBoxscore(save, result.boxscore, g.type)
             // Energy: deduct costs for the user's appearing players. Build the
             // appearance list from the user-side lineup + pitchers who threw.
             ensureEnergyState(save)
@@ -465,16 +488,25 @@ function BoxScoreModal({ save, game, oppName, isHome, onClose }) {
   const isMyRoster = pid => userTeam.rosterPlayerIds.includes(pid)
   const myBatters = []
   const oppBatters = []
+  // Resolve a display name for a player ID. Real players come from save.players;
+  // synthetic opponents (non-NAIA) come from the boxscore's playerNames snapshot
+  // (built at game-end from the live lineups). Falls back to a humanized form
+  // of the raw ID rather than rendering "synth_george-fox-d3_p0".
+  function nameFor(pid) {
+    const real = save.players[pid]
+    if (real) return `${real.firstName} ${real.lastName}`.trim()
+    if (bs.playerNames?.[pid]) return bs.playerNames[pid]
+    // Last-resort fallback: humanize the synth id
+    return pid.startsWith('synth_') ? 'Opp. Player' : pid
+  }
   for (const [pid, s] of Object.entries(bs.batterStats || {})) {
-    const player = save.players[pid] || { firstName: pid, lastName: '' }
-    const row = { pid, name: `${player.firstName} ${player.lastName}`.trim(), ...s }
+    const row = { pid, name: nameFor(pid), ...s }
     if (isMyRoster(pid)) myBatters.push(row); else oppBatters.push(row)
   }
   const myPitchers = []
   const oppPitchers = []
   for (const [pid, s] of Object.entries(bs.pitcherStats || {})) {
-    const player = save.players[pid] || { firstName: pid, lastName: '' }
-    const row = { pid, name: `${player.firstName} ${player.lastName}`.trim(), ...s }
+    const row = { pid, name: nameFor(pid), ...s }
     if (isMyRoster(pid)) myPitchers.push(row); else oppPitchers.push(row)
   }
   myBatters.sort((a, b) => (b.h || 0) - (a.h || 0))
@@ -579,8 +611,12 @@ function BoxScoreTable({ title, rows, type }) {
                   </tr>
                 )
               }
-              const ipDec = (r.outs || 0) / 3
-              const ipDisplay = r.ip != null ? r.ip.toFixed(1) : (Math.floor(ipDec) + '.' + ((r.outs || 0) % 3))
+              const outs = r.outs || 0
+              const ipDec = outs / 3
+              // Baseball IP notation: X.0 = X full innings, X.1 = +1 out, X.2 = +2 outs.
+              // Always derive from outs (not r.ip), since r.ip is stored as a
+              // decimal (outs/3) which would render 3.666 → "3.7" — wrong.
+              const ipDisplay = Math.floor(outs / 3) + '.' + (outs % 3)
               const era = ipDec > 0 ? (r.er * 9 / ipDec).toFixed(2) : '—'
               return (
                 <tr key={r.pid} className="border-t">
@@ -967,6 +1003,24 @@ function LiveGameView({ save, game, onExit }) {
         // safety net
         oppLineup = { batters: [], pitcherRotation: [] }
       }
+      // Doubleheader rotation: if this is the opp's SECOND game today, start
+      // their #2 pitcher instead of #1 (the AI doesn't have a manager who
+      // sets game-2 lineups, so default to "throw a different arm"). Without
+      // this, both games of a doubleheader showed the same opp starter.
+      const oppPlayedEarlierToday = (save.schedule || []).some(s =>
+        s.played && s.date === game.date && s.id !== game.id &&
+        (s.homeId === oppId || s.awayId === oppId),
+      )
+      if (oppPlayedEarlierToday && oppLineup.pitcherRotation?.length >= 2) {
+        oppLineup = {
+          ...oppLineup,
+          pitcherRotation: [
+            oppLineup.pitcherRotation[1],
+            oppLineup.pitcherRotation[0],
+            ...oppLineup.pitcherRotation.slice(2),
+          ],
+        }
+      }
     } else {
       // Non-NAIA opponent — build a synthetic 9-batter / 5-pitcher list from
       // a strength rating so the live engine has someone to face.
@@ -982,6 +1036,10 @@ function LiveGameView({ save, game, onExit }) {
       awayMotivator: (isHome ? oppHC?.motivator : userHC?.motivator) ?? 50,
       homeTeamName: (isHome ? userSchool : oppSchool)?.name || 'Home',
       awayTeamName: (isHome ? oppSchool : userSchool)?.name || 'Away',
+      // userSide tells the engine which side is human-controlled. Used by
+      // the opponent-auto-sub logic so we don't yank the user's pitcher
+      // automatically.
+      userSide: isHome ? 'home' : 'away',
       // Energy lookup — used by simPA to dampen ratings for tired players.
       // Wrapped (not snapshotted) so back-to-back doubleheader games read
       // the latest energy after the prior game's cost was applied.
@@ -1016,8 +1074,9 @@ function LiveGameView({ save, game, onExit }) {
   const userIsPitching = !userIsBatting
   const userSide = isHome ? 'home' : 'away'
 
-  const homeName = isHome ? userSchool?.name : (oppSchool?.name || 'Opponent')
-  const awayName = isHome ? (oppSchool?.name || 'Opponent') : userSchool?.name
+  const oppDisplayName = oppSchool?.name || (typeof oppId === 'string' ? oppId.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Opponent')
+  const homeName = isHome ? userSchool?.name : oppDisplayName
+  const awayName = isHome ? oppDisplayName : userSchool?.name
 
   // Current batter / pitcher refs
   const batter = live.currentBatter()
@@ -1370,16 +1429,21 @@ function UserFieldDiagram({ fielders, pitcher, bases, userIsPitching }) {
     C:  { top: 88, left: 50 },
   }
   return (
-    <div className="bg-gradient-to-b from-green-700 to-green-900 rounded-xl shadow-md relative overflow-hidden" style={{ aspectRatio: '4/3', minHeight: 260 }}>
+    <div className="bg-gradient-to-b from-green-700 to-green-900 rounded-xl shadow-md relative overflow-hidden border-2 border-[#3a3a5e]" style={{ aspectRatio: '4/3', minHeight: 260 }}>
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
         <path d="M 8 70 Q 50 -5 92 70" fill="rgba(160, 110, 75, 0.18)" stroke="rgba(255,255,255,0.2)" strokeWidth="0.3" />
         <polygon points="50,50 64,62 50,75 36,62" fill="rgba(160, 110, 75, 0.45)" stroke="rgba(255,255,255,0.5)" strokeWidth="0.4" />
         <circle cx="50" cy="62" r="2" fill="rgba(160, 110, 75, 0.7)" />
       </svg>
-      {/* Title */}
-      <div className="absolute top-2 left-2 right-2 flex justify-between text-[10px] uppercase tracking-wider text-white/80 font-semibold z-10">
-        <span>Defense {userIsPitching ? '(on field)' : '(while batting)'}</span>
-        <span className="opacity-75">{bases.some(b => b) ? 'Runners on' : 'Bases empty'}</span>
+      {/* Title — chunky dark chip so the section header is legible even
+          against the lightest part of the green-gradient field. */}
+      <div className="absolute top-2 left-2 right-2 flex justify-between items-center text-[10px] uppercase tracking-wider z-10">
+        <span className="bg-[#0f0f1e]/80 px-2 py-1 rounded text-amber-300 font-bold tracking-widest border border-amber-400/40">
+          Defense {userIsPitching ? '(on field)' : '(while batting)'}
+        </span>
+        <span className="bg-[#0f0f1e]/80 px-2 py-1 rounded text-white/90 font-semibold border border-white/20">
+          {bases.some(b => b) ? 'Runners on' : 'Bases empty'}
+        </span>
       </div>
       {['CF','LF','RF','SS','2B','3B','1B','P','C'].map(pos => {
         const f = pos === 'P' ? pitcher : fielders[pos]
@@ -1408,20 +1472,22 @@ function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool, 
   const accent = userSchool?.colors?.primary || '#fbbf24'
   return (
     <div className="bg-[#1a1a2e] rounded-lg border-2 border-[#3a3a5e] shadow-sm">
-      <div className="px-3 py-1.5 text-xs font-pixel font-bold uppercase tracking-widest" style={{ backgroundColor: accent, color: '#1a1a2e' }}>
+      <div className="px-3 py-1.5 text-xs font-pixel font-bold uppercase tracking-widest flex items-center gap-2" style={{ backgroundColor: accent, color: '#1a1a2e' }}>
+        {userSchool && <TeamLogo school={userSchool} size={18} />}
         Your Lineup
       </div>
       <div className="overflow-x-auto">
-      <table className="w-full text-xs min-w-[480px]">
-        <thead className="bg-[#0f0f1e] text-[9px] font-pixel uppercase tracking-widest text-amber-300">
+      <table className="w-full text-sm min-w-[540px]">
+        <thead className="bg-[#0f0f1e] text-[10px] font-pixel uppercase tracking-widest text-amber-300">
           <tr>
-            <th className="text-left py-1 pl-2 w-6">#</th>
+            <th className="text-left py-1.5 pl-2 w-7">#</th>
             <th className="text-left">Player</th>
-            <th className="text-center w-6">Pos</th>
-            <th className="text-center w-10">NRG</th>
+            <th className="text-center w-8" title="Position">Pos</th>
+            <th className="text-center w-10" title="Overall rating">OVR</th>
+            <th className="text-center w-12" title="Energy 0-100">Energy</th>
             <th className="text-center w-8">AB</th>
             <th className="text-center w-8">H</th>
-            <th className="text-center w-8">RBI</th>
+            <th className="text-center w-9">RBI</th>
             <th className="text-center w-8">K</th>
           </tr>
         </thead>
@@ -1430,14 +1496,16 @@ function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool, 
             const today = live.batterTodayLine(b.id)
             const isUp = isUserBatting && (battingIdx % 9) === i
             const energy = save ? getEnergy(save, b.id) : 100
+            const ovr = b ? playerOverall(b) : 0
             return (
               <tr key={b.id} className={'border-t border-[#3a3a5e] ' + (isUp ? 'bg-amber-400/15 font-semibold text-white' : 'text-[#e8e8e8]')}>
-                <td className="py-1 pl-2 text-[#a8a8c8]">{i + 1}</td>
+                <td className="py-1.5 pl-2 text-[#a8a8c8]">{i + 1}</td>
                 <td>
                   {isUp && <span className="text-amber-300 mr-0.5">▶</span>}
                   {b.firstName} {b.lastName}
                 </td>
                 <td className="text-center text-[#a8a8c8]">{b.primaryPosition}</td>
+                <td className={'text-center font-mono font-bold ' + ovrColorClass(ovr)}>{ovr}</td>
                 <td className={'text-center font-mono ' + energyColorClass(energy)}>{Math.round(energy)}</td>
                 <td className="text-center font-mono">{today.ab || 0}</td>
                 <td className="text-center font-mono">{today.h || 0}</td>
@@ -1451,6 +1519,16 @@ function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool, 
       </div>
     </div>
   )
+}
+
+// Color OVR cells by tier — quick visual scan of who's good.
+function ovrColorClass(ovr) {
+  if (!ovr) return 'text-[#6b7280]'
+  if (ovr >= 85) return 'text-emerald-300'
+  if (ovr >= 75) return 'text-lime-300'
+  if (ovr >= 65) return 'text-yellow-300'
+  if (ovr >= 55) return 'text-orange-300'
+  return 'text-red-400'
 }
 
 function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
@@ -1784,17 +1862,29 @@ const SYNTH_LAST_NAMES = [
 
 // Accumulate a finished game's box score into save.playerStats. Same shape as
 // season.js does for auto-simmed games. We mirror it here so live games update
-// the same stats stores the rest of the engine reads from.
-function accumulateBoxscore(save, boxscore) {
+// the same stats stores the rest of the engine reads from. Fall scrimmages
+// route into save.fallStats[year] (not save.playerStats) so the fall report
+// shows them but the spring stat line stays clean.
+function accumulateBoxscore(save, boxscore, gameType) {
   if (!boxscore) return
-  if (!save.playerStats) save.playerStats = {}
+  const isFall = gameType === 'FALL_SCRIMMAGE'
   const zeroBatter = { ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0,gamesPlayed:0 }
   const zeroPitcher = { ip:0,h:0,bb:0,k:0,er:0,outs:0,pa:0,hbp:0,hr:0,gamesPlayed:0 }
+  let target
+  if (isFall) {
+    if (!save.fallStats) save.fallStats = {}
+    const yr = save.calendar?.year ?? 0
+    if (!save.fallStats[yr]) save.fallStats[yr] = {}
+    target = save.fallStats[yr]
+  } else {
+    if (!save.playerStats) save.playerStats = {}
+    target = save.playerStats
+  }
   function bump(statsObj, isPitcher) {
     for (const [pid, s] of Object.entries(statsObj)) {
       const key = isPitcher ? `p_${pid}` : `b_${pid}`
-      if (!save.playerStats[key]) save.playerStats[key] = { playerId: pid, isPitcher, ...(isPitcher ? zeroPitcher : zeroBatter) }
-      const t = save.playerStats[key]
+      if (!target[key]) target[key] = { playerId: pid, isPitcher, ...(isPitcher ? zeroPitcher : zeroBatter) }
+      const t = target[key]
       for (const k of Object.keys(s)) t[k] = (t[k] || 0) + s[k]
       t.gamesPlayed = (t.gamesPlayed || 0) + 1
     }

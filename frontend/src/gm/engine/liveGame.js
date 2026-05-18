@@ -59,8 +59,13 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     awayPAIndex: 0,
     homePAs: 0,
     awayPAs: 0,
-    // Per-inning linescore — accumulates as we play
-    linescore: { home: [0], away: [0] },
+    // Per-inning linescore — index N = runs in inning N+1 for that side.
+    // Buckets are added at the START of each half-inning (top of N starts
+    // a new away bucket; bottom of N starts a new home bucket). We seed
+    // with just the top-of-1 away bucket here; everything else flows from
+    // flipHalfInning() pushing the NEXT half's bucket on entry. Avoids the
+    // off-by-one that previously put bottom-of-8 runs in the inning-9 box.
+    linescore: { home: [], away: [0] },
     // Active lineup snapshots (mutable — subs swap entries)
     homeBatters: [...homeLineup.batters],
     awayBatters: [...awayLineup.batters],
@@ -149,6 +154,10 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
       innings: state.inning,
       events: state.events,
       boxscore: { batterStats, pitcherStats },
+      // Pass through the lineups (including pitcherRotation + bench) so the
+      // box-score modal can build a player-id → name map for synthetic
+      // opponents that aren't in save.players.
+      homeLineup, awayLineup,
     }
     pushEvent({ kind: 'GAME_END', inning: state.inning, top: state.top, text: `Final: ${ctx.awayTeamName || 'Away'} ${state.awayRuns}, ${ctx.homeTeamName || 'Home'} ${state.homeRuns}.${reason ? ' ' + reason : ''}` })
   }
@@ -161,10 +170,44 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     state.balls = 0
     state.strikes = 0
     // Partial fatigue recovery between innings — a tired pitcher gets a
-    // breather sitting in the dugout. Composure & stamina determine the
-    // bounce-back; we just give a small flat recovery here.
+    // breather sitting in the dugout. Reduced to -3 (was -6) so the recovery
+    // doesn't completely cancel out per-pitch fatigue gain. With the new
+    // fatigue rate (~1.0/pitch), -3/inning leaves a clear arc: a starter
+    // climbs from Fresh → OK → Tiring → Gassed across a 7-inning outing.
     const sideKey = state.top ? 'home' : 'away'   // the side that just finished pitching
-    state[`${sideKey}Fatigue`] = Math.max(0, state[`${sideKey}Fatigue`] - 6)
+    state[`${sideKey}Fatigue`] = Math.max(0, state[`${sideKey}Fatigue`] - 3)
+
+    // Opponent-side auto-sub. If the opposing pitcher (NOT the user's) is
+    // gassed (fatigue ≥ 75) or has thrown a clearly-too-many pitches (≥ 95)
+    // and the bullpen has fresh arms, the AI brings in a reliever. This
+    // stops the previous bug where opponent CG'd at 200 pitches because the
+    // engine had no AI sub logic.
+    const oppSide = ctx.userSide === 'home' ? 'away' : 'home'
+    if (sideKey === oppSide) {
+      const oppFatigue = state[`${oppSide}Fatigue`]
+      const oppPitches = state[`${oppSide}Pitches`]
+      const bullpen = state[`${oppSide}Bullpen`]
+      if ((oppFatigue >= 75 || oppPitches >= 95) && bullpen.length > 0) {
+        const next = bullpen[0]
+        // Manual inline swap (we're already inside flipHalfInning so we can't
+        // call pitchingChange which posts a SUB event mid-flow — but we can
+        // mirror its effect here, then push the event).
+        const prev = state[`${oppSide}Pitcher`]
+        state[`${oppSide}Pitcher`] = next
+        state[`${oppSide}PitcherBF`] = 0
+        state[`${oppSide}Pitches`] = 0
+        state[`${oppSide}Fatigue`] = 0
+        state[`${oppSide}Confidence`] = next?.pitcher?.composure ?? 50
+        state[`${oppSide}PitcherLine`] = zeroPitcherLine()
+        state[`${oppSide}Fielders`]['P'] = next
+        state[`${oppSide}Bullpen`] = bullpen.filter(p => p.id !== next.id)
+        pushEvent({
+          kind: 'PITCHING_CHANGE',
+          inning: state.inning, top: state.top,
+          text: `${oppSide === 'home' ? (ctx.homeTeamName || 'Home') : (ctx.awayTeamName || 'Away')} pulls ${prev?.firstName} ${prev?.lastName} for ${next.firstName} ${next.lastName}.`,
+        })
+      }
+    }
     const wasTop = state.top
     if (wasTop) {
       if (state.inning >= 9 && state.homeRuns > state.awayRuns) {
@@ -562,32 +605,39 @@ function estimatePitchesForPA(outcome, rng) {
 function computeFatigueDelta(pitcher, pitchesThisPA) {
   const stamina = pitcher?.pitcher?.stamina ?? 50
   const durability = pitcher?.pitcher?.durability ?? 50
-  // staminaMult: stamina 50 → 1.0×, stamina 80 → 0.6×, stamina 30 → 1.4×
+  // staminaMult: stamina 50 → 1.0×, stamina 80 → 0.7×, stamina 30 → 1.35×
   const staminaMult = Math.max(0.55, 1.5 - (stamina / 100))
   const durabilityMult = Math.max(0.85, 1.15 - (durability / 200))
-  // ~1.0 fatigue per pitch at stamina 50. Closer to 0.55 at stamina 80.
-  return pitchesThisPA * 0.45 * staminaMult * durabilityMult
+  // ~1.0 fatigue per pitch at stamina 50. So 100-pitch outing at avg stamina
+  // accumulates ~100 fatigue gross; after between-inning recovery (~3/inning
+  // × 7-9 innings = 21-27), nets to ~75-80 → "Gassed". That matches the
+  // real-world expectation that a starter is shot at 100 pitches. Tuned up
+  // from the previous 0.45 which let pitchers throw forever (user reported
+  // 72 pitches with 0 fatigue).
+  return pitchesThisPA * 1.0 * staminaMult * durabilityMult
 }
 
 /**
- * Confidence drifts based on outcomes. K +3, BB -2, HR allowed -8, hit -2,
- * out +1. Capped 0..100. Anchored to the pitcher's composure rating in the
- * createLiveGame init.
+ * Confidence drifts based on outcomes. Tuned so a bad inning visibly tanks
+ * confidence (real-world: a pitcher who gives up 6 in an inning is RATTLED).
+ * Previous values were too gentle — user reported 6 runs allowed in an
+ * inning with confidence still at 80. Roughly: an inning that yields ≥4
+ * runs drops the pitcher into the "Cracking" zone.
  */
 function computeConfidenceShift(outcome) {
   switch (outcome) {
-    case 'K':       return +3
-    case 'OUT':     return +1
-    case 'SAC_FLY': return +0       // they got out but moved a runner
-    case 'SAC_BUNT': return +0
-    case 'GIDP':    return +4       // two outs on one pitch
-    case 'HR':      return -8
-    case 'TRIPLE':  return -3
-    case 'DOUBLE':  return -2
-    case 'SINGLE':  return -2
-    case 'BB':      return -2
-    case 'HBP':     return -1
-    case 'ERROR':   return -1
+    case 'K':       return +2
+    case 'OUT':     return +0.5
+    case 'SAC_FLY': return -1       // they got out but a run scored
+    case 'SAC_BUNT': return 0
+    case 'GIDP':    return +5       // two outs on one pitch — huge boost
+    case 'HR':      return -14
+    case 'TRIPLE':  return -7
+    case 'DOUBLE':  return -5
+    case 'SINGLE':  return -4
+    case 'BB':      return -3
+    case 'HBP':     return -3
+    case 'ERROR':   return -2
     default:        return 0
   }
 }

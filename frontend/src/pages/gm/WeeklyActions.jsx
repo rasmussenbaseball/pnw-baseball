@@ -441,25 +441,31 @@ export default function WeeklyActions() {
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-6">Academics / Fundraising / Camp</h2>
 
-      {/* Study Hall — two levels */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
-        <div className="text-sm font-semibold text-pnw-slate mb-1">Study Hall</div>
+      {/* Study Hall — two levels. Disabled (grayed) after a session is run
+          this week so the user can clearly see it's already been used. */}
+      <div className={'rounded-xl border p-5 shadow-sm mb-4 ' + (wasUsedThisWeek('STUDY_HALL') ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-white border-gray-200')}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-sm font-semibold text-pnw-slate">Study Hall</div>
+          {wasUsedThisWeek('STUDY_HALL') && (
+            <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded">✓ Done this week</span>
+          )}
+        </div>
         <div className="text-xs text-gray-500 mb-3">
           Boosts team GPA at term-end. Cumulative this term: <span className="font-semibold text-pnw-green">+{studyHallBonus.toFixed(2)} GPA</span> (cap +0.60).
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => doStudyHall('NORMAL')}
-            disabled={ap < STUDY_HALL_AP || studyHallBonus >= 0.6}
-            className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={ap < STUDY_HALL_AP || studyHallBonus >= 0.6 || wasUsedThisWeek('STUDY_HALL')}
+            className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:bg-transparent"
           >
             <div className="flex justify-between"><span className="font-semibold text-sm">Standard</span><span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">{STUDY_HALL_AP} AP</span></div>
             <div className="text-[11px] text-gray-500 mt-1">+0.02 team GPA this term.</div>
           </button>
           <button
             onClick={() => doStudyHall('EXTRA')}
-            disabled={ap < EXTRA_STUDY_HALL_AP || studyHallBonus >= 0.6}
-            className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={ap < EXTRA_STUDY_HALL_AP || studyHallBonus >= 0.6 || wasUsedThisWeek('STUDY_HALL')}
+            className="text-left p-3 border border-gray-200 rounded hover:border-pnw-green hover:bg-pnw-cream disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:bg-transparent"
           >
             <div className="flex justify-between"><span className="font-semibold text-sm">Extra Study Hall</span><span className="text-xs bg-pnw-green text-white px-2 py-0.5 rounded">{EXTRA_STUDY_HALL_AP} AP</span></div>
             <div className="text-[11px] text-gray-500 mt-1">+0.05 team GPA this term. Bigger lift, costlier.</div>

@@ -60,10 +60,12 @@ function appearanceCost(player, position) {
 /** Pitcher cost, driven by pitches thrown this game. */
 function pitchingCost(pitchesThrown, stamina = 50, durability = 50) {
   if (!pitchesThrown || pitchesThrown <= 0) return 0
-  // 0.55 base. Lower stamina = costs more per pitch.
+  // 0.85 base (was 0.55). Calibrated so a 100-pitch outing at stamina 50
+  // costs ~85 energy — leaves the pitcher near "done for ~5 days" rather
+  // than the previous ~55 cost that let starters look fresh after 5 IP.
   const staminaMult = Math.max(0.75, 1.45 - (stamina / 100))   // 80 sta → 0.85, 30 sta → 1.30
   const durMult = Math.max(0.85, 1.15 - (durability / 200))
-  return pitchesThrown * 0.55 * staminaMult * durMult
+  return pitchesThrown * 0.85 * staminaMult * durMult
 }
 
 /**
