@@ -42,14 +42,18 @@ export function synthesizeSeasonStats(player, teamCtx, year, seed) {
 // (the baseline we feed to the synthesizer so the simulated league lands
 // at target). The smoke test in scripts/smoke-test-gm.mjs validates this.
 const LEVEL_BASELINES = {
-  // gamesPerSeason is the REGULAR-SEASON max — NAIA ~50 (max 55), D1 ~56,
-  // D3 ~40, D2 ~52, NWAC ~50. Postseason adds 4-15 more games for teams
-  // that qualify, but synthesizer projects from the regular season only.
-  D1:   { kPct: 0.245, bbPct: 0.116, hbpPct: 0.030, hrPerPa: 0.018, doublePct: 0.130, babip: 0.260, era: 5.59, whip: 1.52, gamesPerSeason: 56 },
-  D2:   { kPct: 0.215, bbPct: 0.090, hbpPct: 0.034, hrPerPa: 0.010, doublePct: 0.130, babip: 0.265, era: 6.32, whip: 1.68, gamesPerSeason: 52 },
-  D3:   { kPct: 0.220, bbPct: 0.101, hbpPct: 0.039, hrPerPa: 0.012, doublePct: 0.125, babip: 0.265, era: 5.76, whip: 1.59, gamesPerSeason: 41 },
-  NAIA: { kPct: 0.215, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.014, doublePct: 0.140, babip: 0.270, era: 6.54, whip: 1.67, gamesPerSeason: 52 },
-  NWAC: { kPct: 0.215, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.003, doublePct: 0.105, babip: 0.255, era: 4.57, whip: 1.44, gamesPerSeason: 50 },
+  // Each baseline = the rate produced by an AVERAGE-rated player (60) at
+  // this level. Pulled from real NWBB 2025 data + slight upward adjustment
+  // to account for the fact that top-9 hitters / SP rotation skew higher
+  // than the 60 anchor, which pulls league averages up a tick.
+  //
+  // gamesPerSeason: regular season max — NAIA ~52 (max 55), D1 56, D3 41,
+  // D2 52, NWAC 50. Postseason adds 4-15 more for teams that qualify.
+  D1:   { kPct: 0.197, bbPct: 0.116, hbpPct: 0.030, hrPerPa: 0.020, doublePct: 0.105, babip: 0.275, era: 5.59, whip: 1.52, gamesPerSeason: 56 },
+  D2:   { kPct: 0.166, bbPct: 0.090, hbpPct: 0.034, hrPerPa: 0.012, doublePct: 0.105, babip: 0.290, era: 6.32, whip: 1.68, gamesPerSeason: 52 },
+  D3:   { kPct: 0.175, bbPct: 0.101, hbpPct: 0.039, hrPerPa: 0.014, doublePct: 0.100, babip: 0.285, era: 5.76, whip: 1.59, gamesPerSeason: 41 },
+  NAIA: { kPct: 0.170, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.017, doublePct: 0.115, babip: 0.295, era: 6.54, whip: 1.67, gamesPerSeason: 52 },
+  NWAC: { kPct: 0.173, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.004, doublePct: 0.080, babip: 0.245, era: 4.57, whip: 1.44, gamesPerSeason: 50 },
 }
 
 function baselineFor(level) {
@@ -83,28 +87,29 @@ function synthesizeBatter(player, teamCtx, year, seed) {
   const speed = player.hitter?.speed ?? 50
 
   // Rate stats anchored to per-level real-world baselines. Each rate is the
-  // baseline + a per-rating-point delta + Gaussian noise. Clamp prevents
-  // tails from running away.
-  const bbPct = clamp(baseline.bbPct + (disc - 50) * 0.0014 + rng.gaussian(0, 0.012), 0.04, 0.22)
+  // baseline + a per-rating-point delta + Gaussian noise. Slopes are
+  // calibrated so the AVERAGE rostered player (rating ~60) lands at the
+  // level baseline — meaning baseline IS the league-target.
+  // Anchor at rating 60 (typical roster mean) instead of 50.
+  const RATING_ANCHOR = 60
+  const bbPct = clamp(baseline.bbPct + (disc - RATING_ANCHOR) * 0.0010 + rng.gaussian(0, 0.012), 0.04, 0.22)
   const bb = Math.round(pa * bbPct)
   const hbpPct = clamp(baseline.hbpPct + rng.gaussian(0, 0.005), 0, 0.07)
   const hbp = Math.round(pa * hbpPct)
   // K% — contact pulls it down, power pushes it up (power guys K more).
-  const kPct = clamp(baseline.kPct - (contact - 50) * 0.0018 + (power - 50) * 0.0010 + rng.gaussian(0, 0.025), 0.05, 0.40)
+  const kPct = clamp(baseline.kPct - (contact - RATING_ANCHOR) * 0.0012 + (power - RATING_ANCHOR) * 0.0008 + rng.gaussian(0, 0.025), 0.05, 0.40)
   const k = Math.round(pa * kPct)
   // SF — small
   const sf = Math.round(pa * 0.012)
   const ab = Math.max(0, pa - bb - hbp - sf)
 
-  // BABIP — level baseline + contact/speed slopes
-  const babip = clamp(baseline.babip + (contact - 50) * 0.0012 + (speed - 50) * 0.0008 + rng.gaussian(0, 0.025), 0.22, 0.40)
+  // BABIP — level baseline + contact/speed slopes anchored at rating 60
+  const babip = clamp(baseline.babip + (contact - RATING_ANCHOR) * 0.0008 + (speed - RATING_ANCHOR) * 0.0005 + rng.gaussian(0, 0.025), 0.22, 0.40)
   const teamOff = teamCtx.teamOffense ?? 60
-  const teamOffShift = (teamOff - 60) * 0.0008
+  const teamOffShift = (teamOff - 60) * 0.0006
   const babipAdj = clamp(babip + teamOffShift, 0.22, 0.40)
-  // HR rate — power-driven. Baseline is per-level (D1 2.9%, NAIA 2.5%,
-  // NWAC just 0.5% — JUCOs play with wood bats + lower-velocity arms;
-  // HR per PA is dramatically lower).
-  const hrRate = clamp(baseline.hrPerPa + Math.max(0, power - 50) * 0.0008 + Math.max(0, power - 75) * 0.0012 + rng.gaussian(0, 0.004), 0.001, 0.08)
+  // HR rate — power-driven. Anchored at rating 60.
+  const hrRate = clamp(baseline.hrPerPa + Math.max(0, power - RATING_ANCHOR) * 0.0006 + Math.max(0, power - 80) * 0.0010 + rng.gaussian(0, 0.004), 0.001, 0.08)
   const hr = Math.round(pa * hrRate)
   const bipAb = Math.max(0, ab - k - hr)
   let h = Math.round(bipAb * babipAdj) + hr
@@ -112,8 +117,8 @@ function synthesizeBatter(player, teamCtx, year, seed) {
 
   // Split hits into 1B / 2B / 3B / HR. Doubles share is per-level.
   const nonHr = Math.max(0, h - hr)
-  const doublePct = clamp(baseline.doublePct + (power - 50) * 0.0018 + rng.gaussian(0, 0.018), 0.08, 0.28)
-  const triplePct = clamp(0.014 + (speed - 50) * 0.0006, 0.004, 0.04)
+  const doublePct = clamp(baseline.doublePct + (power - RATING_ANCHOR) * 0.0012 + rng.gaussian(0, 0.018), 0.08, 0.28)
+  const triplePct = clamp(0.014 + (speed - RATING_ANCHOR) * 0.0005, 0.004, 0.04)
   const d = Math.round(nonHr * doublePct)
   const t = Math.round(nonHr * triplePct)
 
@@ -172,20 +177,19 @@ function synthesizePitcher(player, teamCtx, year, seed) {
   const bfPerOut = 1.34 + rng.gaussian(0, 0.05)
   const bf = Math.round(outs * bfPerOut)
 
-  // K%, BB% anchored to per-level real-world pitcher baselines. Note these
-  // are HITTER rates flipped — pitchers face the same league environment.
-  // We use the hitter K%/BB% baselines because that's what hitters DO at
-  // this level (which equals what pitchers DO since it's mirror image).
-  const kPct = clamp(baseline.kPct + (stuff - 50) * 0.0020 + (velo - 87) * 0.003 + rng.gaussian(0, 0.02), 0.05, 0.40)
+  // Anchor at stuff/control 60 (typical staff mean rating) so the
+  // baseline IS the league target for an average-quality pitcher.
+  const RATING_ANCHOR = 60
+  const kPct = clamp(baseline.kPct + (stuff - RATING_ANCHOR) * 0.0014 + (velo - 87) * 0.002 + rng.gaussian(0, 0.02), 0.05, 0.40)
   const k = Math.round(bf * kPct)
-  const bbPct = clamp(baseline.bbPct - (control - 50) * 0.0020 + rng.gaussian(0, 0.018), 0.04, 0.22)
+  const bbPct = clamp(baseline.bbPct - (control - RATING_ANCHOR) * 0.0014 + rng.gaussian(0, 0.018), 0.04, 0.22)
   const bb = Math.round(bf * bbPct)
-  const hbpPct = clamp(baseline.hbpPct - (control - 50) * 0.0003 + rng.gaussian(0, 0.005), 0.004, 0.06)
+  const hbpPct = clamp(baseline.hbpPct - (control - RATING_ANCHOR) * 0.0003 + rng.gaussian(0, 0.005), 0.004, 0.06)
   const hbp = Math.round(bf * hbpPct)
   // HR rate: derived from level baseline HR/PA (per-pitcher HR/9 backs out
   // from that) and suppressed by stuff + velo.
   const hr9Baseline = baseline.hrPerPa * (bf / Math.max(1, outs / 3)) * 9
-  const hr9 = clamp(hr9Baseline - (stuff - 50) * 0.012 - (velo - 87) * 0.035 + rng.gaussian(0, 0.18), 0.05, 3.0)
+  const hr9 = clamp(hr9Baseline - (stuff - RATING_ANCHOR) * 0.008 - (velo - 87) * 0.025 + rng.gaussian(0, 0.18), 0.05, 3.0)
   const ip = outs / 3
   const hr = Math.round(hr9 * ip / 9)
 
