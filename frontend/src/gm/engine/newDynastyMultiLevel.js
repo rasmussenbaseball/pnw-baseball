@@ -30,6 +30,7 @@ import {
   classYearsForLevel, rosterCapForLevel, seasonGamesForLevel,
 } from './levelHelpers'
 import { applyRealFinancials } from './schoolFinancials'
+import { buildInitialCareer } from './storyMode'
 
 /**
  * Build a fresh save state for a non-NAIA dynasty.
@@ -83,10 +84,14 @@ export function newDynastyMultiLevel(input) {
     },
   }
 
-  // 3. Generate the user's coach
+  // 3. Generate the user's coach. In STORY mode the user is an ASSISTANT
+  //    at the program (role passed via input.storyRole), not the HC.
+  //    A separate auto-generated coach takes the HC slot.
   const userSchool = schools[input.userSchoolId]
   if (!userSchool) throw new Error(`User school ${input.userSchoolId} not in conference ${conferenceId}`)
-  const userHC = buildUserHeadCoach(input.userCoach, userSchool)
+  const isStoryMode = input.gameOptions?.storyMode === 'STORY'
+  const userStoryRole = input.storyRole || 'BENCH_COACH'
+  const userHC = buildUserHeadCoach(input.userCoach, userSchool, isStoryMode ? userStoryRole : 'HEAD_COACH')
 
   // 4. Generate full staffs + rosters for every team in the conference
   /** @type {Object<string, any>} */
@@ -100,9 +105,18 @@ export function newDynastyMultiLevel(input) {
     let headCoach
     let assistants
     if (school.id === input.userSchoolId) {
-      headCoach = userHC
-      const generated = generateStaff(school, seed)
-      assistants = generated.assistants
+      if (isStoryMode) {
+        // Story mode: school's HC is auto-generated; user is an assistant.
+        const generated = generateStaff(school, seed)
+        headCoach = generated.headCoach
+        // Replace one assistant slot with the user (matching their role).
+        const baseAssistants = generated.assistants.filter(a => a.role !== userStoryRole)
+        assistants = [userHC, ...baseAssistants].slice(0, generated.assistants.length || 3)
+      } else {
+        headCoach = userHC
+        const generated = generateStaff(school, seed)
+        assistants = generated.assistants
+      }
     } else {
       const generated = generateStaff(school, seed)
       headCoach = generated.headCoach
@@ -123,9 +137,17 @@ export function newDynastyMultiLevel(input) {
     }
 
     const isUserSchool = school.id === input.userSchoolId
-    const teamAssistants = isUserSchool ? [] : assistants
+    // In story mode, KEEP the user's assistant in the team; in regular
+    // mode strip the auto-generated assistants for the user's program
+    // so the Wk-2 hiring tutorial flow has slots to fill.
+    let teamAssistants
     if (isUserSchool) {
-      for (const a of assistants) delete coaches[a.id]
+      teamAssistants = isStoryMode ? assistants : []
+      if (!isStoryMode) {
+        for (const a of assistants) delete coaches[a.id]
+      }
+    } else {
+      teamAssistants = assistants
     }
     teams[school.id] = {
       schoolId: school.id,
@@ -194,7 +216,9 @@ export function newDynastyMultiLevel(input) {
     newsfeed: [{
       id: 'dyn_start',
       year: 2026, week: 1, type: 'AWARD',
-      headline: `${input.userCoach.firstName} ${input.userCoach.lastName} named head coach at ${userSchool.name}.`,
+      headline: isStoryMode
+        ? `${input.userCoach.firstName} ${input.userCoach.lastName} hired as ${userStoryRole.replace(/_/g, ' ').toLowerCase()} at ${userSchool.name}. The climb starts here.`
+        : `${input.userCoach.firstName} ${input.userCoach.lastName} named head coach at ${userSchool.name}.`,
       payload: {},
       big: true,
     }, {
@@ -204,20 +228,33 @@ export function newDynastyMultiLevel(input) {
       payload: {},
     }],
   }
+
+  // Story-mode career state. Stamps the starting school/role/level on the
+  // trajectory log; the offer engine takes over from there each offseason.
+  if (isStoryMode) {
+    state.career = buildInitialCareer({
+      difficulty: input.gameOptions?.difficulty || 'NORMAL',
+      schoolName: userSchool.name,
+      level,
+      role: userStoryRole,
+      year: 2026,
+    })
+    state.career.trajectory[0].schoolId = input.userSchoolId
+  }
   return state
 }
 
 // ─── Building blocks ──────────────────────────────────────────────────────
 
-function buildUserHeadCoach(uc, school) {
+function buildUserHeadCoach(uc, school, role = 'HEAD_COACH') {
   const qualityAvg = (uc.developer + uc.motivator + uc.recruiter + uc.tactician) / 4
   return {
     id: `hc_user_${school.id}`,
     firstName: uc.firstName,
     lastName: uc.lastName,
-    age: 35,
+    age: role === 'GRADUATE_ASSISTANT' ? 24 : role === 'BENCH_COACH' ? 28 : 35,
     schoolId: school.id,
-    role: 'HEAD_COACH',
+    role,
     archetype: uc.archetype || 'GENERALIST',
     yearsAtSchool: 0,
     yearsInRole: 0,
@@ -231,10 +268,11 @@ function buildUserHeadCoach(uc, school) {
     secondaryRegion: uc.secondaryRegion,
     lookId: uc.lookId ?? 0,
     pipelines: uc.pipelines,
-    salary: computeCoachSalary(school.resourceTier, 'HEAD_COACH', qualityAvg),
-    contractYearsRemaining: 4,
+    salary: computeCoachSalary(school.resourceTier, role, qualityAvg),
+    contractYearsRemaining: role === 'HEAD_COACH' ? 4 : 2,
     ambition: 50,
     loyalty: 99,
+    isUser: true,
   }
 }
 

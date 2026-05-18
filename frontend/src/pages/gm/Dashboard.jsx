@@ -704,6 +704,7 @@ export default function Dashboard() {
             <FocusTasks save={save} inOffseason={inOffseason} />
           </Panel>
 
+          <CareerOffersWidget save={save} slot={slot} />
           <CoachUpgradeWidget save={save} onChange={() => { saveDynasty(save); setSave({ ...save }) }} />
           <ConferenceStandingsWidget save={save} slot={slot} />
           <PostseasonBracketWidget save={save} slot={slot} />
@@ -1014,6 +1015,53 @@ function BracketLine({ save, game, userId }) {
  * Only visible on NWAC dynasties + after a year rollover that produced
  * actual transfers. Sorted by player OVR (best transfers first).
  */
+/**
+ * Career Offers widget — alerts the user in story mode that offers are
+ * pending. Hidden on regular dynasties. Hidden when no offers are open.
+ *
+ * Surfaces an "URGENT" red banner if you've been fired, so the user can't
+ * miss the implicit deadline to accept a new offer or end their career.
+ */
+function CareerOffersWidget({ save, slot }) {
+  const career = save?.career
+  if (!career || !career.enabled) return null
+  const offers = career.currentOffers || []
+  const fired = !!career.pendingFiring
+  if (offers.length === 0 && !fired) return null
+  const urgent = fired
+  return (
+    <div className={
+      'rounded-xl border-2 p-3 ' +
+      (urgent ? 'bg-red-50 border-red-400' : 'bg-amber-50 border-amber-300')
+    }>
+      <div className={'text-[10px] uppercase tracking-widest font-bold mb-1 ' + (urgent ? 'text-red-700' : 'text-amber-700')}>
+        {urgent ? 'CAREER URGENT' : 'Career Offers'}
+      </div>
+      <div className="text-sm text-pnw-slate font-bold mb-1">
+        {urgent
+          ? `You were fired by ${save.schools?.[save.userSchoolId]?.name || 'your program'}.`
+          : `${offers.length} coaching offer${offers.length === 1 ? '' : 's'} waiting.`}
+      </div>
+      <div className="text-[11px] text-gray-700 mb-2 leading-snug">
+        {urgent
+          ? offers.length > 0
+            ? `${offers.length} program${offers.length === 1 ? ' has' : 's have'} reached out. Pick one or end your career.`
+            : 'No offers came in. Decide whether to keep waiting or end your dynasty.'
+          : 'Each offseason brings new opportunities. Review the offer details before accepting.'}
+      </div>
+      <Link
+        to={`/gm/career?slot=${slot}`}
+        className={
+          'inline-block px-3 py-1.5 rounded text-xs font-bold ' +
+          (urgent ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-amber-500 text-white hover:bg-amber-600')
+        }
+      >
+        Open Career →
+      </Link>
+    </div>
+  )
+}
+
 function NwacAlumniWidget({ save }) {
   if (save.level !== 'NWAC') return null
   const hist = save.nwacAlumni || {}

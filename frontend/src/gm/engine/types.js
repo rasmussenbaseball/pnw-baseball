@@ -281,7 +281,8 @@
 
 /**
  * @typedef GameOptions
- * @property {'TRADITIONAL'|'CUSTOM'} mode
+ * @property {'TRADITIONAL'|'CUSTOM'} mode             // legacy ruleset toggle group
+ * @property {'STORY'|'REGULAR'} storyMode             // 'STORY' = climb-the-ladder career; 'REGULAR' = locked to one school
  * @property {'EASY'|'NORMAL'|'HARD'|'BRUTAL'} difficulty
  * @property {boolean} injuriesEnabled
  * @property {boolean} coachFiringEnabled

@@ -15,6 +15,7 @@ import { makeRng, hashSeed } from './rng'
 import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { defaultBudgetForSchool } from './budget'
 import { applyRealFinancials } from './schoolFinancials'
+import { buildInitialCareer } from './storyMode'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
@@ -235,6 +236,19 @@ export function newDynasty(input) {
       headline: `${input.userCoach.firstName} ${input.userCoach.lastName} named head coach at ${userSchool.name}.`,
       payload: {},
     }],
+  }
+  // Story mode rarely lands here (it normally starts at NWAC via the
+  // multi-level path), but if the wizard ever routes a story start through
+  // the NAIA path we still want a career block on the save.
+  if (input.gameOptions?.storyMode === 'STORY') {
+    state.career = buildInitialCareer({
+      difficulty: input.gameOptions?.difficulty || 'NORMAL',
+      schoolName: userSchool.name,
+      level: 'NAIA',
+      role: 'HEAD_COACH',
+      year: 2026,
+    })
+    state.career.trajectory[0].schoolId = input.userSchoolId
   }
   return state
 }

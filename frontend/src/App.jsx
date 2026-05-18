@@ -174,6 +174,7 @@ import Rankings from './pages/gm/Rankings'
 import Budget from './pages/gm/Budget'
 import Postseason from './pages/gm/Postseason'
 import Recruiting from './pages/gm/Recruiting'
+import Career from './pages/gm/Career'
 import GMPlayerDetail from './pages/gm/PlayerDetail'
 import Coaches from './pages/gm/Coaches'
 import WeeklyActions from './pages/gm/WeeklyActions'
@@ -327,6 +328,7 @@ export default function App() {
           <Route path="/gm/budget" element={<RequireGmEarlyAccess><Budget /></RequireGmEarlyAccess>} />
           <Route path="/gm/postseason" element={<RequireGmEarlyAccess><Postseason /></RequireGmEarlyAccess>} />
           <Route path="/gm/recruiting" element={<RequireGmEarlyAccess><Recruiting /></RequireGmEarlyAccess>} />
+          <Route path="/gm/career" element={<RequireGmEarlyAccess><Career /></RequireGmEarlyAccess>} />
           <Route path="/gm/coaches" element={<RequireGmEarlyAccess><Coaches /></RequireGmEarlyAccess>} />
           <Route path="/gm/weekly" element={<RequireGmEarlyAccess><WeeklyActions /></RequireGmEarlyAccess>} />
           <Route path="/gm/depth" element={<RequireGmEarlyAccess><DepthChart /></RequireGmEarlyAccess>} />

@@ -18,6 +18,7 @@
 
 import { runEndOfTermAcademics } from './academics'
 import { annualReview, lockTravelAllocation, extendedBudgetEffects } from './budget'
+import { runCareerReview } from './storyMode'
 import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
@@ -114,6 +115,7 @@ export const WEEK_EVENT_SCHEDULE = {
   46: ['BUDGET_REVIEW'],
   47: ['SUMMER_BALL_RESOLVE'],                    // mid-summer wrap
   48: ['MLB_DRAFT'],                              // early July
+  51: ['CAREER_REVIEW'],                          // story-mode firing + offers
   52: ['LAST_DAY_RECRUITING', 'CLASS_FINALIZE'],  // recruits join roster
 }
 
@@ -161,6 +163,7 @@ export function runEvent(state, eventKey) {
 
   switch (eventKey) {
     case 'BUDGET_REVIEW':            return runBudgetReview(state)
+    case 'CAREER_REVIEW':            return runStoryCareerReview(state)
     case 'END_OF_TERM_ACADEMICS':    return runAcademics(state)
     case 'PLAYER_DEVELOPMENT':       return runDevelopment(state)
     case 'MLB_DRAFT':                return runDraft(state)
@@ -353,6 +356,19 @@ export function runEventsForOffseasonWeek(state, offseasonWeek) {
 }
 
 // ─── Individual event implementations ──────────────────────────────────────
+
+function runStoryCareerReview(state) {
+  // Only fires when story mode is enabled — regular dynasties never see
+  // career offers or firings beyond the existing budget-driven JS hits.
+  if (!state.career || !state.career.enabled) {
+    return { label: 'Career review skipped (regular mode)', news: null }
+  }
+  const result = runCareerReview(state)
+  return {
+    label: 'Career review',
+    news: result,
+  }
+}
 
 function runBudgetReview(state) {
   const userTeam = state.teams[state.userSchoolId]

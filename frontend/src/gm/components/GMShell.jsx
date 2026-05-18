@@ -48,6 +48,7 @@ const NAV = [
       { label: 'Rankings',     path: '/gm/rankings' },
       { label: 'Summer Ball',  path: '/gm/summer' },
       { label: 'Postseason',   path: '/gm/postseason' },
+      { label: 'Career',       path: '/gm/career' },   // story-mode trajectory + offers
       { label: 'Tutorial',     path: '/gm/dashboard?tutorial=1' },
     ],
   },

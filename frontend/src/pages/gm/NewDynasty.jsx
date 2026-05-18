@@ -21,6 +21,8 @@ import { buildProgramRatings, starsToBar } from '../../gm/engine/programRating'
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
 import { ARCHETYPES } from '../../gm/engine/archetypes'
 import { PNW_DIVISIONS, PNW_CONFERENCES, pnwProgramsAtLevel } from '../../gm/engine/pnwPlayoffs'
+import { DIFFICULTY_TUNING, pickStoryStart, roleLabel } from '../../gm/engine/storyMode'
+import pnwFinancials from '../../gm/data/pnw_school_financials.json'
 const PNW_CONFERENCES_FOR_CONFIRM = PNW_CONFERENCES
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
@@ -88,8 +90,37 @@ export default function NewDynasty() {
   const [step, setStep] = useState(1)
   const [selectedSchoolId, setSelectedSchoolId] = useState(null)
 
+  // NEW: storyMode = 'STORY' (career climb) | 'REGULAR' (locked to school).
+  // Difficulty is decoupled from the legacy TRADITIONAL/CUSTOM modeKey.
+  const [storyMode, setStoryMode] = useState('REGULAR')
+  const [difficulty, setDifficulty] = useState('NORMAL')
+
   const [modeKey, setModeKey] = useState('TRADITIONAL')
   const [customOptions, setCustomOptions] = useState(GAME_MODE_PRESETS.CUSTOM)
+
+  // Story-mode auto-pick: pre-resolve a random bottom-tier NWAC school
+  // every time difficulty changes or the user enters story mode. Pre-resolves
+  // so the confirm screen has a concrete name to show.
+  const storyStart = useMemo(() => {
+    if (storyMode !== 'STORY') return null
+    // Build a {schoolId: school} map of NWAC programs from the playoff data.
+    const nwacPnw = pnwProgramsAtLevel('NWAC')
+    const nwacById = {}
+    for (const p of nwacPnw) nwacById[p.id] = { ...p, level: 'NWAC' }
+    // Tag totalAthleticBudget from PNW financials so pickStoryStart can
+    // filter on bottom-tier.
+    const bucket = pnwFinancials?.tuitionAndBudget?.NWAC || {}
+    for (const id of Object.keys(nwacById)) {
+      nwacById[id].totalAthleticBudget = (bucket[id] || bucket.default || {}).totalBudget
+    }
+    const seed = Math.floor(Math.random() * 1e9)
+    try {
+      return pickStoryStart(nwacById, difficulty, seed)
+    } catch (err) {
+      console.warn('story start failed:', err)
+      return null
+    }
+  }, [storyMode, difficulty])
 
   const [coachFirst, setCoachFirst] = useState('')
   const [coachLast, setCoachLast] = useState('')
@@ -99,19 +130,32 @@ export default function NewDynasty() {
   const [archetype, setArchetype] = useState('GENERALIST')
 
   const ratings = ARCHETYPES[archetype]?.fixedRatings || ARCHETYPES.GENERALIST.fixedRatings
+  // Story mode auto-resolves the starting school; regular mode uses the
+  // user's pick. Effective school is whichever applies.
+  const effectiveSchoolId = storyMode === 'STORY' ? storyStart?.schoolId : selectedSchoolId
   // Multi-level routing: NAIA goes through the original newDynasty path;
   // D1/D2/D3/NWAC goes through newDynastyMultiLevel (preview engine).
   // Look up the chosen school in BOTH datasets to figure out which one.
   const levelInfo = useMemo(
-    () => selectedSchoolId ? getLevelForSchool(selectedSchoolId, schools) : null,
-    [selectedSchoolId, schools],
+    () => effectiveSchoolId ? getLevelForSchool(effectiveSchoolId, schools) : null,
+    [effectiveSchoolId, schools],
   )
-  const canSubmit = selectedSchoolId && levelInfo
+  const canSubmit = effectiveSchoolId && levelInfo
     && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
 
   function getGameOptions() {
-    if (modeKey === 'TRADITIONAL') return { mode: 'TRADITIONAL', ...GAME_MODE_PRESETS.TRADITIONAL }
-    return { mode: 'CUSTOM', ...customOptions }
+    const base = modeKey === 'TRADITIONAL'
+      ? { mode: 'TRADITIONAL', ...GAME_MODE_PRESETS.TRADITIONAL }
+      : { mode: 'CUSTOM', ...customOptions }
+    // Override difficulty with the user's pick from step 1 and stamp story
+    // mode. Story mode forces coachFiringEnabled (you can be fired in
+    // story mode regardless of the custom toggles).
+    return {
+      ...base,
+      storyMode,
+      difficulty,
+      coachFiringEnabled: storyMode === 'STORY' ? true : base.coachFiringEnabled,
+    }
   }
 
   function handleCreate() {
@@ -126,12 +170,18 @@ export default function NewDynasty() {
     }
     if (!levelInfo) { alert('Could not resolve the selected program.'); return }
     const schoolName = levelInfo.school.name
+    const isStory = storyMode === 'STORY'
     const baseInput = {
       userSupabaseId: userId,
       saveSlot: slot,
-      dynastyName: `${coachFirst} ${coachLast}'s ${schoolName}`,
-      userSchoolId: selectedSchoolId,
+      dynastyName: isStory
+        ? `${coachFirst} ${coachLast}'s Career`
+        : `${coachFirst} ${coachLast}'s ${schoolName}`,
+      userSchoolId: effectiveSchoolId,
       gameOptions: getGameOptions(),
+      // Story-mode role override — passed into newDynastyMultiLevel to make
+      // the user an assistant rather than the HC.
+      ...(isStory && storyStart ? { storyRole: storyStart.role } : {}),
       userCoach: {
         firstName: coachFirst,
         lastName: coachLast,
@@ -146,7 +196,7 @@ export default function NewDynasty() {
     }
     let state
     try {
-      if (levelInfo.level === 'NAIA') {
+      if (levelInfo.level === 'NAIA' && !isStory) {
         state = newDynasty(baseInput)
       } else {
         state = newDynastyMultiLevel({
@@ -179,32 +229,53 @@ export default function NewDynasty() {
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
-          <StepDot active={step === 1} done={step > 1} num={1} label="Program" onClick={() => setStep(1)} />
-          <StepDot active={step === 2} done={step > 2} num={2} label="Mode" onClick={() => setStep(2)} />
-          <StepDot active={step === 3} done={step > 3} num={3} label="Coach" onClick={() => setStep(3)} />
-          <StepDot active={step === 4} done={step > 4} num={4} label="Confirm" onClick={() => setStep(4)} />
+          <StepDot active={step === 1} done={step > 1} num={1} label="Path" onClick={() => setStep(1)} />
+          <StepDot active={step === 2} done={step > 2} num={2} label="Program" onClick={() => setStep(2)} />
+          <StepDot active={step === 3} done={step > 3} num={3} label="Mode" onClick={() => setStep(3)} />
+          <StepDot active={step === 4} done={step > 4} num={4} label="Coach" onClick={() => setStep(4)} />
+          <StepDot active={step === 5} done={step > 5} num={5} label="Confirm" onClick={() => setStep(5)} />
         </div>
 
         {step === 1 && (
-          <ProgramStep
-            schools={allowedSchools}
-            conferences={conferences}
-            selectedSchoolId={selectedSchoolId}
-            setSelectedSchoolId={setSelectedSchoolId}
+          <PathStep
+            storyMode={storyMode}
+            setStoryMode={setStoryMode}
+            difficulty={difficulty}
+            setDifficulty={setDifficulty}
+            storyStart={storyStart}
             onNext={() => setStep(2)}
           />
         )}
         {step === 2 && (
+          storyMode === 'STORY'
+            ? <StoryProgramReveal
+                storyStart={storyStart}
+                schools={schools}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+              />
+            : <ProgramStep
+                schools={allowedSchools}
+                conferences={conferences}
+                selectedSchoolId={selectedSchoolId}
+                setSelectedSchoolId={setSelectedSchoolId}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+              />
+        )}
+        {step === 3 && (
           <ModeStep
             modeKey={modeKey}
             setModeKey={setModeKey}
             customOptions={customOptions}
             setCustomOptions={setCustomOptions}
-            onBack={() => setStep(1)}
-            onNext={() => setStep(3)}
+            difficulty={difficulty}
+            storyMode={storyMode}
+            onBack={() => setStep(2)}
+            onNext={() => setStep(4)}
           />
         )}
-        {step === 3 && (
+        {step === 4 && (
           <CoachStep
             coachFirst={coachFirst} setCoachFirst={setCoachFirst}
             coachLast={coachLast} setCoachLast={setCoachLast}
@@ -213,12 +284,12 @@ export default function NewDynasty() {
             secondaryRegion={secondaryRegion} setSecondaryRegion={setSecondaryRegion}
             archetype={archetype} setArchetype={setArchetype}
             ratings={ratings}
-            onBack={() => setStep(2)}
-            onNext={() => setStep(4)}
+            onBack={() => setStep(3)}
+            onNext={() => setStep(5)}
             canNext={!!(coachFirst && coachLast && primaryRegion && secondaryRegion && archetype)}
           />
         )}
-        {step === 4 && selectedSchoolId && levelInfo && (
+        {step === 5 && effectiveSchoolId && levelInfo && (
           <ConfirmStep
             school={levelInfo.school}
             conf={
@@ -228,6 +299,9 @@ export default function NewDynasty() {
             }
             level={levelInfo.level}
             mode={GAME_MODE_PRESETS[modeKey].label}
+            storyMode={storyMode}
+            difficulty={difficulty}
+            storyRole={storyStart?.role}
             coachFirst={coachFirst}
             coachLast={coachLast}
             coachLookId={coachLookId}
@@ -236,7 +310,7 @@ export default function NewDynasty() {
             ratings={ratings}
             archetype={archetype}
             canSubmit={canSubmit}
-            onBack={() => setStep(3)}
+            onBack={() => setStep(4)}
             onSubmit={handleCreate}
           />
         )}
@@ -247,7 +321,143 @@ export default function NewDynasty() {
 
 // ─── Step 1: Program ────────────────────────────────────────────────────────
 
-function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchoolId, onNext }) {
+// ─── Step 1: Path (Story vs Regular + Difficulty) ──────────────────────────
+
+function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStart, onNext }) {
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 1 · CAREER PATH">
+      <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
+        Two ways to play. Pick how your career arc works, then choose how unforgiving the game is.
+      </p>
+
+      {/* Story vs Regular cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+        <button
+          onClick={() => setStoryMode('REGULAR')}
+          className={
+            'text-left p-4 rounded-lg border-2 transition ' +
+            (storyMode === 'REGULAR'
+              ? 'border-amber-300 bg-[#3a3a5e]'
+              : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+          }
+        >
+          <div className="text-white font-bold text-base">Regular Dynasty</div>
+          <div className="text-[11px] text-[#a8a8c8] mt-2 leading-snug">
+            Pick a program. You are the HEAD COACH there forever. Build a multi-decade dynasty at the
+            school of your choice. No switching schools.
+          </div>
+          <div className="text-[10px] text-amber-300 mt-2 uppercase tracking-wider font-bold">
+            Recommended for first run
+          </div>
+        </button>
+        <button
+          onClick={() => setStoryMode('STORY')}
+          className={
+            'text-left p-4 rounded-lg border-2 transition ' +
+            (storyMode === 'STORY'
+              ? 'border-amber-300 bg-[#3a3a5e]'
+              : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+          }
+        >
+          <div className="text-white font-bold text-base">Story Mode — Climb the Ranks</div>
+          <div className="text-[11px] text-[#a8a8c8] mt-2 leading-snug">
+            Start as a low-tier assistant at a random NWAC program. Each offseason, receive coaching
+            offers from across the PNW. Accept to switch jobs and roles.
+            <strong className="text-amber-200"> Goal:</strong> reach a D1 head-coach seat.
+            <strong className="text-red-300"> You can get fired.</strong>
+          </div>
+          <div className="text-[10px] text-amber-300 mt-2 uppercase tracking-wider font-bold">
+            For the long career arc
+          </div>
+        </button>
+      </div>
+
+      {/* Difficulty */}
+      <div className="mb-4">
+        <div className="text-white font-pixel uppercase tracking-widest text-sm mb-2">Difficulty</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {Object.entries(DIFFICULTY_TUNING).map(([key, t]) => {
+            const active = difficulty === key
+            return (
+              <button
+                key={key}
+                onClick={() => setDifficulty(key)}
+                className={
+                  'p-3 rounded-lg border-2 text-left transition ' +
+                  (active
+                    ? 'border-amber-300 bg-[#3a3a5e]'
+                    : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+                }
+              >
+                <div className="text-white font-bold text-sm">{t.label}</div>
+                <div className="text-[10px] text-[#a8a8c8] mt-1.5 leading-snug">{t.blurb}</div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Story-mode preview banner */}
+      {storyMode === 'STORY' && storyStart && (
+        <div className="bg-[#0f0f1e] border-2 border-amber-400/40 rounded p-3 mb-3 text-[11px]">
+          <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1.5">
+            Random Starting Position
+          </div>
+          <div className="text-[#e8e8e8] leading-snug">
+            You'll begin as <strong className="text-amber-200">{roleLabel(storyStart.role)}</strong> at a
+            bottom-tier NWAC program (revealed on the next screen). Build credibility, win, get offers,
+            and climb up to a D1 head-coach seat.
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <PixelButton onClick={onNext}>Next →</PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+// ─── Step 2 (Story): Reveal Your Starting Position ─────────────────────────
+
+function StoryProgramReveal({ storyStart, schools, onBack, onNext }) {
+  if (!storyStart) {
+    return (
+      <PixelCard accent="#fbbf24" title="STEP 2 · STARTING POSITION">
+        <p className="text-red-300 text-sm">Couldn't resolve a starting position. Go back to step 1 and try again.</p>
+        <div className="flex justify-between mt-4">
+          <PixelButton onClick={onBack}>← Back</PixelButton>
+        </div>
+      </PixelCard>
+    )
+  }
+  const allPnw = pnwProgramsAtLevel('NWAC')
+  const school = allPnw.find(p => p.id === storyStart.schoolId) || { name: storyStart.schoolId }
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 2 · YOUR STARTING POSITION">
+      <p className="text-[#a8a8c8] text-sm mb-4 font-pixel">
+        Story mode randomly assigns your starting job. Here's where you land:
+      </p>
+      <div className="bg-[#0f0f1e] border-2 border-amber-300 rounded-lg p-6 text-center mb-4">
+        <div className="text-[#a8a8c8] text-xs uppercase tracking-widest mb-2">Year 1 Assignment</div>
+        <div className="text-3xl font-bold text-amber-300 mb-1">{roleLabel(storyStart.role)}</div>
+        <div className="text-white text-xl font-pixel-display">{school.name}</div>
+        <div className="text-[#a8a8c8] text-sm mt-2">NWAC · {school.state || ''}</div>
+      </div>
+      <div className="text-[11px] text-[#a8a8c8] leading-snug mb-4">
+        <strong className="text-amber-200">What this means:</strong> You're an assistant, not the head coach. The HC
+        is an NPC. You'll learn the school's pieces in Year 1; at the end of the season, you'll either get a contract
+        renewal, an offer to move up, or get cut. Make a name for yourself.
+      </div>
+      <div className="flex justify-between">
+        <PixelButton onClick={onBack}>← Back</PixelButton>
+        <PixelButton onClick={onNext}>Next: Mode →</PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchoolId, onBack, onNext }) {
   const [activeLevel, setActiveLevel] = useState('NAIA')
 
   // NAIA list: the Cascade Collegiate Conference (the only NAIA conference
@@ -280,7 +490,7 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
   const selectedProgram = programsForLevel.find(p => p.id === selectedSchoolId)
 
   return (
-    <PixelCard accent="#fbbf24" title="STEP 1 · CHOOSE YOUR PROGRAM">
+    <PixelCard accent="#fbbf24" title="STEP 2 · CHOOSE YOUR PROGRAM">
       <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
         Pick any <strong className="text-amber-300">PNW program</strong> at any level. NAIA is the fully shipped path;
         other levels are PREVIEW while engine integration finishes.
@@ -361,7 +571,8 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex justify-between">
+        <PixelButton onClick={onBack}>← Back</PixelButton>
         <PixelButton
           disabled={!selectedSchoolId}
           onClick={onNext}
@@ -430,9 +641,14 @@ function StarRow({ stars }) {
 
 // ─── Step 2: Mode ───────────────────────────────────────────────────────────
 
-function ModeStep({ modeKey, setModeKey, customOptions, setCustomOptions, onBack, onNext }) {
+function ModeStep({ modeKey, setModeKey, customOptions, setCustomOptions, difficulty, storyMode, onBack, onNext }) {
   return (
-    <PixelCard accent="#fbbf24" title="STEP 2 · PICK YOUR MODE">
+    <PixelCard accent="#fbbf24" title="STEP 3 · GAME RULES">
+      <div className="bg-[#0f0f1e] border-2 border-amber-400/40 rounded p-2 mb-4 text-[11px] text-[#a8a8c8] flex flex-wrap gap-3">
+        <span><strong className="text-amber-200">Path:</strong> {storyMode === 'STORY' ? 'Story Mode' : 'Regular Dynasty'}</span>
+        <span><strong className="text-amber-200">Difficulty:</strong> {DIFFICULTY_TUNING[difficulty]?.label || difficulty}</span>
+        {storyMode === 'STORY' && <span className="text-red-300"><strong>Firing forced ON</strong> (story mode)</span>}
+      </div>
       {Object.entries(GAME_MODE_PRESETS).map(([key, preset]) => (
         <button
           key={key}
@@ -679,10 +895,22 @@ function RegionPicker({ label, value, setValue, excludeValue, disabled = false, 
 
 // ─── Step 4: Confirm ────────────────────────────────────────────────────────
 
-function ConfirmStep({ school, conf, level, mode, coachFirst, coachLast, coachLookId, primaryRegion, secondaryRegion, ratings, archetype, canSubmit, onBack, onSubmit }) {
+function ConfirmStep({ school, conf, level, mode, storyMode, difficulty, storyRole, coachFirst, coachLast, coachLookId, primaryRegion, secondaryRegion, ratings, archetype, canSubmit, onBack, onSubmit }) {
   const isPreview = level && level !== 'NAIA'
+  const isStory = storyMode === 'STORY'
   return (
-    <PixelCard accent="#fbbf24" title="STEP 4 · CONFIRM AND START">
+    <PixelCard accent="#fbbf24" title="STEP 5 · CONFIRM AND START">
+      {/* Path summary banner */}
+      <div className={'rounded p-3 mb-4 border-2 ' + (isStory ? 'bg-purple-900/30 border-purple-400/40' : 'bg-[#0f0f1e] border-amber-400/40')}>
+        <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1">
+          {isStory ? 'Story Mode' : 'Regular Dynasty'} · {DIFFICULTY_TUNING[difficulty]?.label || difficulty} Difficulty
+        </div>
+        <p className="text-xs text-[#e8e8e8]">
+          {isStory
+            ? `You'll start as ${roleLabel(storyRole || 'BENCH_COACH')} at ${school.name}. Climb up. Goal: D1 head coach.`
+            : `You're the head coach at ${school.name}. Build a dynasty. No school changes.`}
+        </p>
+      </div>
       {isPreview && (
         <div className="bg-amber-900/30 border-2 border-amber-400/40 rounded p-3 mb-4">
           <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1">
