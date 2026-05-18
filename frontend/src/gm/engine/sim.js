@@ -28,6 +28,9 @@ import { energyMultiplier } from './energy'
 // SAC_FLY and SAC_BUNT are productive outs (advance/score runners, batter is out)
 // ERROR reaches a runner safely (BABIP boost from fielding errors)
 
+// Legacy NAIA-shaped baseline. Kept as a fallback for any code path that
+// doesn't pass a level. The level-aware table below is the source of truth
+// for any sim call that knows what league it's in.
 const BASE_RATES = {
   K:       0.22,
   BB:      0.105,
@@ -37,7 +40,33 @@ const BASE_RATES = {
   DOUBLE:  0.05,
   SINGLE:  0.175,
   ERROR:   0.010,   // batter reaches on E
-  OUT:     0.387,   // includes potential sacrifices, GIDP, regular outs
+  OUT:     0.387,
+}
+
+/**
+ * Per-level league-average outcome rates (calibrated against real 2025
+ * NWBB Stats data — see leagueStats.js LEVEL_BASELINES for the targets).
+ * Each row sums to 1.0 across the 9 PA outcomes.
+ *
+ * These represent the "rating 50 plays rating 50" outcome at each level.
+ * Player ratings shift outcomes from this baseline.
+ *
+ * D1   — high K%, high HR, average BABIP
+ * D2   — moderate K%, lower HR, slightly elevated BABIP
+ * D3   — moderate K%, moderate HR, mostly singles
+ * NAIA — hitter's league, balanced
+ * NWAC — lowest HR rate (wood-bat-ish JUCO), low contact, more outs
+ */
+const BASE_RATES_BY_LEVEL = {
+  D1:   { K: 0.250, BB: 0.115, HBP: 0.013, HR: 0.030, TRIPLE: 0.005, DOUBLE: 0.046, SINGLE: 0.145, ERROR: 0.010, OUT: 0.386 },
+  D2:   { K: 0.180, BB: 0.090, HBP: 0.015, HR: 0.024, TRIPLE: 0.006, DOUBLE: 0.050, SINGLE: 0.180, ERROR: 0.011, OUT: 0.444 },
+  D3:   { K: 0.190, BB: 0.100, HBP: 0.017, HR: 0.026, TRIPLE: 0.006, DOUBLE: 0.044, SINGLE: 0.170, ERROR: 0.012, OUT: 0.435 },
+  NAIA: { K: 0.190, BB: 0.105, HBP: 0.019, HR: 0.028, TRIPLE: 0.005, DOUBLE: 0.055, SINGLE: 0.175, ERROR: 0.011, OUT: 0.412 },
+  NWAC: { K: 0.200, BB: 0.110, HBP: 0.017, HR: 0.012, TRIPLE: 0.005, DOUBLE: 0.040, SINGLE: 0.155, ERROR: 0.014, OUT: 0.447 },
+}
+
+function baseRatesForLevel(level) {
+  return BASE_RATES_BY_LEVEL[level] || BASE_RATES
 }
 
 // ALPHA = dispersion of rating effects around the league baseline. Lowered
@@ -183,10 +212,13 @@ export function simPA(batter, pitcher, ctx, rng) {
     OUT: 0,
   }
 
-  // Apply ratings to baseline probabilities (multiplicative log-odds shift)
+  // Apply ratings to per-level baseline probabilities. The level is passed
+  // via ctx.level (added when the caller sets up simGame for a given save).
+  // Falls back to the legacy NAIA-shaped BASE_RATES if no level provided.
+  const baseRates = baseRatesForLevel(ctx.level)
   /** @type {Object<string,number>} */
   const probs = {}
-  for (const [k, base] of Object.entries(BASE_RATES)) {
+  for (const [k, base] of Object.entries(baseRates)) {
     const logitShift = adj[k] * ALPHA
     // logit transform & back
     const p = base * Math.exp(logitShift)
@@ -313,6 +345,7 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
       defenderPositions: defending.batterPositions,
       batterEnergy,
       pitcherEnergy,
+      level: ctx.level,           // per-level BASE_RATES
     }, rng)
     // Apply sub-outcome resolution (SAC_FLY, SAC_BUNT, GIDP) for OUTs
     if (result.outcome === 'OUT') result = resolveOutSubtype(result, state, batter, rng)

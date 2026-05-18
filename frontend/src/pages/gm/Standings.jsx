@@ -42,8 +42,8 @@ export default function Standings() {
         <p className="font-pixel text-base text-[#a8a8c8]">{userConf.name}</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead className="bg-gray-50">
             <tr className="text-left text-xs text-gray-500 uppercase">
               <th className="py-2 px-3">#</th>

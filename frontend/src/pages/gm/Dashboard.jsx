@@ -341,7 +341,7 @@ export default function Dashboard() {
       )}
       {progress && <ProgressModal {...progress} />}
       {tutorialOpen && (
-        <TutorialOverlay school={school} onClose={dismissTutorial} />
+        <TutorialOverlay school={school} level={save.level} onClose={dismissTutorial} />
       )}
       {phaseTransitionModal && (
         <PhaseTransitionModal
@@ -395,15 +395,15 @@ export default function Dashboard() {
         <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-pnw-green/30 to-transparent pointer-events-none"></div>
         <div className="absolute top-0 left-0 w-2 h-full bg-pnw-green"></div>
 
-        <div className="relative p-6 flex justify-between items-stretch gap-6">
+        <div className="relative p-4 sm:p-6 flex flex-col md:flex-row md:justify-between md:items-stretch gap-4 md:gap-6">
           {/* Identity */}
-          <div className="flex gap-5 items-center flex-1 min-w-0">
-            <div className="bg-white/10 rounded-2xl p-3 backdrop-blur-sm shadow-inner ring-1 ring-white/15 shrink-0">
-              <TeamLogo school={school} size={88} />
+          <div className="flex gap-3 sm:gap-5 items-center flex-1 min-w-0">
+            <div className="bg-white/10 rounded-2xl p-2 sm:p-3 backdrop-blur-sm shadow-inner ring-1 ring-white/15 shrink-0">
+              <TeamLogo school={school} size={64} />
             </div>
             <div className="min-w-0">
               <Link to="/gm" className="text-[10px] opacity-60 hover:underline tracking-wider uppercase">Dynasties</Link>
-              <div className="text-4xl font-extrabold leading-none tracking-tight mt-1 truncate flex items-baseline gap-2 flex-wrap">
+              <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold leading-none tracking-tight mt-1 truncate flex items-baseline gap-2 flex-wrap">
                 <span>{school.name}</span>
                 {userNwbb && (
                   <span
@@ -427,7 +427,7 @@ export default function Dashboard() {
           </div>
 
           {/* Right: current week + AP + Auto toggle */}
-          <div className="text-right border-l border-white/15 pl-6 flex flex-col justify-between">
+          <div className="text-right md:border-l border-white/15 md:pl-6 flex flex-col justify-between border-t md:border-t-0 pt-3 md:pt-0">
             <div>
               <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">{dateLabel}</div>
               <div className="text-base font-bold mt-0.5">{currentPhase.label}</div>

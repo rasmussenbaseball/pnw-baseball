@@ -10,7 +10,18 @@
 
 import { useEffect, useState } from 'react'
 
-const SLIDES = [
+// Level-specific bits used inside the slide content.
+const LEVEL_DETAILS = {
+  D1:   { rosterCap: 40, champName: 'College World Series (CWS)', champLocation: 'Charles Schwab Field, Omaha NE',  divName: 'NCAA D1' },
+  D2:   { rosterCap: 40, champName: 'D2 World Series',            champLocation: 'USA Baseball NTC, Cary NC',         divName: 'NCAA D2' },
+  D3:   { rosterCap: 40, champName: 'D3 World Series',            champLocation: 'Veterans Memorial Stadium, Cedar Rapids IA', divName: 'NCAA D3' },
+  NAIA: { rosterCap: 50, champName: 'Avista NAIA World Series',   champLocation: 'Harris Field, Lewiston ID',         divName: 'NAIA' },
+  NWAC: { rosterCap: 30, champName: 'NWAC Championship',          champLocation: 'Longview WA',                       divName: 'NWAC (JUCO)' },
+}
+
+function buildSlides(level = 'NAIA') {
+  const L = LEVEL_DETAILS[level] || LEVEL_DETAILS.NAIA
+  return [
   {
     title: 'Welcome to PNW Coach Simulator',
     body: (
@@ -66,7 +77,7 @@ const SLIDES = [
           <li><strong>Wk 3</strong> — Lock your annual budget</li>
           <li><strong>Wk 4</strong> — Open scouting + spend all AP on your recruit board</li>
           <li><strong>Wk 13</strong> — Run the annual Prospect Camp</li>
-          <li><strong>Wk 52</strong> — Mandatory cuts (only if you're over the 50-player roster cap)</li>
+          <li><strong>Wk 52</strong> — Mandatory cuts (only if you're over the {L.rosterCap}-player roster cap)</li>
         </ul>
         <p className="mt-3 text-sm text-gray-300">If you don't want to manage these by hand, turn on <strong>Auto mode</strong> from the hero header. Auto handles every required action plus weekly AP for you.</p>
       </>
@@ -171,21 +182,23 @@ const SLIDES = [
     title: 'Winning the dynasty',
     body: (
       <>
-        <p>The trophy ladder mirrors real NAIA:</p>
+        <p>The trophy ladder for {L.divName}:</p>
         <ul className="mt-3 space-y-1 text-sm list-disc list-inside">
-          <li><strong>Conference Tournament</strong> (Wk 40) — double-elim. Winner gets the auto-bid.</li>
-          <li><strong>Opening Round</strong> (Wk 41) — 4-team regional double-elim. Winner advances.</li>
-          <li><strong>Avista NAIA World Series</strong> (Wk 42) — Lewiston, ID. Win it and you've built a national contender.</li>
+          <li><strong>Conference Tournament</strong> (Wk 40) — winner gets the auto-bid to the national bracket.</li>
+          <li><strong>Regional / Opening Round</strong> (Wk 41) — multi-team site bracket. Winner advances.</li>
+          <li><strong>{L.champName}</strong> (Wk 42+) — {L.champLocation}. Win it and you've built a national contender.</li>
         </ul>
-        <p className="mt-3"><strong>Job security</strong> is your long-game stat. Lose seasons, run a bad GPA, over-recruit past 50 — it drops. Develop pros, win banners, keep grades up — it climbs. Drop below ~20 and the AD may move on from you.</p>
+        <p className="mt-3"><strong>Job security</strong> is your long-game stat. Lose seasons, run a bad GPA, over-recruit past {L.rosterCap} — it drops. Develop pros, win banners, keep grades up — it climbs. Drop below ~20 and the AD may move on from you.</p>
         <p className="mt-3 text-sm text-gray-300">You can reopen this tutorial any time from <strong>Extras → Tutorial</strong>.</p>
       </>
     ),
   },
-]
+  ]
+}
 
-export default function TutorialOverlay({ onClose, school }) {
+export default function TutorialOverlay({ onClose, school, level }) {
   const [idx, setIdx] = useState(0)
+  const SLIDES = buildSlides(level || school?.level || 'NAIA')
   const slide = SLIDES[idx]
 
   useEffect(() => {

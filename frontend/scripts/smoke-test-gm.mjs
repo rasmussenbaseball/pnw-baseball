@@ -14,6 +14,7 @@ import { advanceWeek, simWeek } from '../src/gm/engine/season.js'
 import { seedFromPear } from '../src/gm/engine/rankings.js'
 import { leagueAverages, computeBatting, computePitching } from '../src/gm/engine/advancedStats.js'
 import { synthesizeLeagueStats } from '../src/gm/engine/leagueStats.js'
+import { resolveEvent } from '../src/gm/engine/randomEvents.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -96,21 +97,47 @@ function aggregateLeague(state) {
   }
 }
 
-function simSeasonForState(state, weeksToSim = 18) {
-  // Advance up to week 39 (end of regular season). Cap at 18 calendar weeks.
+function simSeasonForState(state, weeksToSim = 52) {
+  // Advance through a full year (52 weeks) including postseason + offseason
+  // events. Surfaces crashes in any week's hook.
   let i = 0
-  while (i < weeksToSim && (state.calendar?.weekOfYear ?? 0) < 40) {
+  const startYear = state.calendar?.year
+  const crashes = []
+  const tStart = Date.now()
+  while (i < weeksToSim) {
+    const wk = state.calendar?.weekOfYear ?? 0
+    const yr = state.calendar?.year ?? startYear
+    if (i % 5 === 0) {
+      const elapsed = ((Date.now() - tStart) / 1000).toFixed(1)
+      console.log(`     · week ${i}/${weeksToSim}  (calendar: yr${yr} wk${wk}, ${elapsed}s elapsed)`)
+    }
     try {
       const ratings = seedFromPear(state.schools, state.conferences)
       simWeek(state, state.schedule || [], ratings)
       advanceWeek(state, state.schedule || [])
     } catch (e) {
-      console.error('sim crash at wk', state.calendar?.weekOfYear, e.message)
-      return { ok: false, week: state.calendar?.weekOfYear, error: e.message }
+      crashes.push({ year: yr, week: wk, error: e.message })
+      console.error(`     ✗ sim crashed at year ${yr} wk ${wk}:`, e.message)
+      console.error(e.stack?.split('\n').slice(0, 6).join('\n'))
+      return { ok: false, week: wk, year: yr, error: e.message, crashes, weeksSimmed: i }
+    }
+    // Resolve a pending event if one fires so subsequent advances aren't
+    // blocked by the modal.
+    if (state.pendingEvent) {
+      const choice = state.pendingEvent.choices?.[0]
+      if (choice) {
+        try {
+          resolveEvent(state, choice.id)
+        } catch (e) {
+          crashes.push({ year: yr, week: wk, event: state.pendingEvent.templateId, error: e.message })
+          console.error(`     ✗ event crashed: ${state.pendingEvent.templateId} → ${e.message}`)
+          console.error(e.stack?.split('\n').slice(0, 5).join('\n'))
+        }
+      }
     }
     i++
   }
-  return { ok: true, finalWeek: state.calendar?.weekOfYear, weeksSimmed: i }
+  return { ok: true, finalWeek: state.calendar?.weekOfYear, finalYear: state.calendar?.year, weeksSimmed: i, crashes }
 }
 
 function report(level, label, state, simResult) {
@@ -163,83 +190,102 @@ console.log('══════════════════════�
 console.log('GM SMOKE TEST — creating dynasties + simming full seasons')
 console.log('═══════════════════════════════════════════════════════════')
 
+// LEVELS env var lets you scope to one or more levels for debugging:
+//   LEVELS=NAIA npx tsx scripts/smoke-test-gm.mjs
+//   LEVELS=NAIA,D1 npx tsx scripts/smoke-test-gm.mjs
+// WEEKS env var caps the per-level week count (default 52)
+const RUN_LEVELS = (process.env.LEVELS || 'NAIA,NWAC,D1,D2,D3').split(',').map(s => s.trim().toUpperCase())
+const RUN_WEEKS = parseInt(process.env.WEEKS || '52', 10)
+function shouldRun(lvl) { return RUN_LEVELS.includes(lvl) }
+console.log(`Scoping to levels: ${RUN_LEVELS.join(', ')}; weeks=${RUN_WEEKS}`)
+
 const results = []
 
 // 1. NAIA dynasty at Bushnell
-console.log('\n[1/3] Creating NAIA dynasty at Bushnell...')
-try {
-  const naiaState = newDynasty(buildBase('NAIA', 'bushnell', 'cascade-collegiate'))
-  console.log(`     Created. ${Object.keys(naiaState.schools).length} schools, ${Object.keys(naiaState.players).length} players.`)
-  const sim = simSeasonForState(naiaState, 18)
-  results.push(report('NAIA', 'Bushnell', naiaState, sim))
-  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
-} catch (e) {
-  results.push({ level: 'NAIA', label: 'Bushnell', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
-  console.error('     CRASHED:', e.message)
+if (shouldRun('NAIA')) {
+  console.log('\n[1/5] Creating NAIA dynasty at Bushnell...')
+  try {
+    const naiaState = newDynasty(buildBase('NAIA', 'bushnell', 'cascade-collegiate'))
+    console.log(`     Created. ${Object.keys(naiaState.schools).length} schools, ${Object.keys(naiaState.players).length} players.`)
+    const sim = simSeasonForState(naiaState, RUN_WEEKS)
+    results.push(report('NAIA', 'Bushnell', naiaState, sim))
+    console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+  } catch (e) {
+    results.push({ level: 'NAIA', label: 'Bushnell', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+    console.error('     CRASHED:', e.message)
+  }
 }
 
 // 2. NWAC dynasty at Bellevue
-console.log('\n[2/5] Creating NWAC dynasty at Bellevue CC...')
-try {
-  const nwacState = newDynastyMultiLevel({
-    ...buildBase('NWAC', 'nwac-bellevue', 'NWAC_NORTH'),
-    level: 'NWAC', conferenceId: 'NWAC_NORTH',
-  })
-  console.log(`     Created. ${Object.keys(nwacState.schools).length} schools, ${Object.keys(nwacState.players).length} players.`)
-  const sim = simSeasonForState(nwacState, 18)
-  results.push(report('NWAC', 'Bellevue CC', nwacState, sim))
-  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
-} catch (e) {
-  results.push({ level: 'NWAC', label: 'Bellevue CC', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
-  console.error('     CRASHED:', e.message)
+if (shouldRun('NWAC')) {
+  console.log('\n[2/5] Creating NWAC dynasty at Bellevue CC...')
+  try {
+    const nwacState = newDynastyMultiLevel({
+      ...buildBase('NWAC', 'nwac-bellevue', 'NWAC_NORTH'),
+      level: 'NWAC', conferenceId: 'NWAC_NORTH',
+    })
+    console.log(`     Created. ${Object.keys(nwacState.schools).length} schools, ${Object.keys(nwacState.players).length} players.`)
+    const sim = simSeasonForState(nwacState, RUN_WEEKS)
+    results.push(report('NWAC', 'Bellevue CC', nwacState, sim))
+    console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+  } catch (e) {
+    results.push({ level: 'NWAC', label: 'Bellevue CC', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+    console.error('     CRASHED:', e.message)
+  }
 }
 
 // 3. D1 dynasty at Oregon
-console.log('\n[3/5] Creating D1 dynasty at Oregon...')
-try {
-  const d1State = newDynastyMultiLevel({
-    ...buildBase('D1', 'oregon-d1', 'BIG_TEN'),
-    level: 'D1', conferenceId: 'BIG_TEN',
-  })
-  console.log(`     Created. ${Object.keys(d1State.schools).length} schools, ${Object.keys(d1State.players).length} players.`)
-  const sim = simSeasonForState(d1State, 18)
-  results.push(report('D1', 'Oregon', d1State, sim))
-  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
-} catch (e) {
-  results.push({ level: 'D1', label: 'Oregon', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
-  console.error('     CRASHED:', e.message)
+if (shouldRun('D1')) {
+  console.log('\n[3/5] Creating D1 dynasty at Oregon...')
+  try {
+    const d1State = newDynastyMultiLevel({
+      ...buildBase('D1', 'oregon-d1', 'BIG_TEN'),
+      level: 'D1', conferenceId: 'BIG_TEN',
+    })
+    console.log(`     Created. ${Object.keys(d1State.schools).length} schools, ${Object.keys(d1State.players).length} players.`)
+    const sim = simSeasonForState(d1State, RUN_WEEKS)
+    results.push(report('D1', 'Oregon', d1State, sim))
+    console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+  } catch (e) {
+    results.push({ level: 'D1', label: 'Oregon', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+    console.error('     CRASHED:', e.message)
+  }
 }
 
 // 4. D2 dynasty at Central Washington
-console.log('\n[4/5] Creating D2 dynasty at Central Washington...')
-try {
-  const d2State = newDynastyMultiLevel({
-    ...buildBase('D2', 'central-washington-d2', 'GNAC'),
-    level: 'D2', conferenceId: 'GNAC',
-  })
-  console.log(`     Created. ${Object.keys(d2State.schools).length} schools, ${Object.keys(d2State.players).length} players.`)
-  const sim = simSeasonForState(d2State, 18)
-  results.push(report('D2', 'Central Washington', d2State, sim))
-  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
-} catch (e) {
-  results.push({ level: 'D2', label: 'Central Washington', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
-  console.error('     CRASHED:', e.message)
+if (shouldRun('D2')) {
+  console.log('\n[4/5] Creating D2 dynasty at Central Washington...')
+  try {
+    const d2State = newDynastyMultiLevel({
+      ...buildBase('D2', 'central-washington-d2', 'GNAC'),
+      level: 'D2', conferenceId: 'GNAC',
+    })
+    console.log(`     Created. ${Object.keys(d2State.schools).length} schools, ${Object.keys(d2State.players).length} players.`)
+    const sim = simSeasonForState(d2State, RUN_WEEKS)
+    results.push(report('D2', 'Central Washington', d2State, sim))
+    console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+  } catch (e) {
+    results.push({ level: 'D2', label: 'Central Washington', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+    console.error('     CRASHED:', e.message)
+  }
 }
 
 // 5. D3 dynasty at Whitworth
-console.log('\n[5/5] Creating D3 dynasty at Whitworth...')
-try {
-  const d3State = newDynastyMultiLevel({
-    ...buildBase('D3', 'whitworth-d3', 'NWC'),
-    level: 'D3', conferenceId: 'NWC',
-  })
-  console.log(`     Created. ${Object.keys(d3State.schools).length} schools, ${Object.keys(d3State.players).length} players.`)
-  const sim = simSeasonForState(d3State, 18)
-  results.push(report('D3', 'Whitworth', d3State, sim))
-  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
-} catch (e) {
-  results.push({ level: 'D3', label: 'Whitworth', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
-  console.error('     CRASHED:', e.message)
+if (shouldRun('D3')) {
+  console.log('\n[5/5] Creating D3 dynasty at Whitworth...')
+  try {
+    const d3State = newDynastyMultiLevel({
+      ...buildBase('D3', 'whitworth-d3', 'NWC'),
+      level: 'D3', conferenceId: 'NWC',
+    })
+    console.log(`     Created. ${Object.keys(d3State.schools).length} schools, ${Object.keys(d3State.players).length} players.`)
+    const sim = simSeasonForState(d3State, RUN_WEEKS)
+    results.push(report('D3', 'Whitworth', d3State, sim))
+    console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+  } catch (e) {
+    results.push({ level: 'D3', label: 'Whitworth', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+    console.error('     CRASHED:', e.message)
+  }
 }
 
 // ─── Report ─────────────────────────────────────────────────────────────────

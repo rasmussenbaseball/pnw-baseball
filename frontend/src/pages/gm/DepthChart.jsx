@@ -316,7 +316,8 @@ function PitchingGroup({ title, sub, players, slot, accent }) {
         <div className="text-sm font-bold">{title}</div>
         <div className="text-[11px] opacity-80">{sub}</div>
       </div>
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[560px]">
         <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
           <tr>
             <th className="text-left py-1 px-3">#</th>
@@ -358,6 +359,7 @@ function PitchingGroup({ title, sub, players, slot, accent }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
@@ -58,6 +59,24 @@ function RequireAdmin({ children }) {
 
 // GM early-access guard — locks the GM game to a single user during private alpha.
 const GM_EARLY_ACCESS_EMAILS = ['nate.rasmussen26@gmail.com', 'jawomack@bushnell.edu']
+
+// Loading screen shown while the lazy-loaded GM chunk is downloading.
+// Triggered on the FIRST navigation to any /gm/* route (after that, the
+// whole game bundle is cached so subsequent pages render instantly).
+function GmChunkLoading() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center bg-[#1a1a2e] text-[#e8e8e8] font-pixel">
+      <div className="text-center">
+        <div className="font-pixel-display text-[10px] tracking-widest text-amber-300 mb-3">
+          PNW COACH SIM
+        </div>
+        <div className="text-lg">Loading dynasty…</div>
+        <div className="text-xs text-[#a8a8c8] mt-2">First-time load, then cached.</div>
+      </div>
+    </div>
+  )
+}
+
 function RequireGmEarlyAccess({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
@@ -77,7 +96,9 @@ function RequireGmEarlyAccess({ children }) {
       </div>
     )
   }
-  return children
+  // Suspense boundary so lazy-loaded GM pages don't crash. The fallback
+  // shows a themed loading screen during the (one-time) chunk download.
+  return <Suspense fallback={<GmChunkLoading />}>{children}</Suspense>
 }
 
 // Portal access - any signed-in user with a free account. The PORTAL_OWNERS
@@ -164,28 +185,33 @@ import Percentiles from './pages/Percentiles'
 import TeamQuiz from './pages/TeamQuiz'
 
 // ─── GM (new section, isolated from existing site code) ───
-import GMHome from './pages/gm/GMHome'
-import NewDynasty from './pages/gm/NewDynasty'
-import Dashboard from './pages/gm/Dashboard'
-import Roster from './pages/gm/Roster'
-import Schedule from './pages/gm/Schedule'
-import Standings from './pages/gm/Standings'
-import Rankings from './pages/gm/Rankings'
-import Budget from './pages/gm/Budget'
-import Postseason from './pages/gm/Postseason'
-import Recruiting from './pages/gm/Recruiting'
-import Career from './pages/gm/Career'
-import GMPlayerDetail from './pages/gm/PlayerDetail'
-import Coaches from './pages/gm/Coaches'
-import WeeklyActions from './pages/gm/WeeklyActions'
-import DepthChart from './pages/gm/DepthChart'
-import Play from './pages/gm/Play'
-import GMCalendar from './pages/gm/Calendar'
-import SummerBall from './pages/gm/SummerBall'
-import GMStats from './pages/gm/Stats'
-import Records from './pages/gm/Records'
-import Academics from './pages/gm/Academics'
-import TeamStats from './pages/gm/TeamStats'
+// GM dynasty game pages — lazy-loaded so visitors to the main analytics
+// site don't download the ~1.5MB game bundle. Triggered on first /gm/*
+// navigation. The Vite manualChunks config pools these into a single
+// `gm-ui` chunk, so the very first /gm/ hit pays one download for all
+// dynasty pages.
+const GMHome = lazy(() => import('./pages/gm/GMHome'))
+const NewDynasty = lazy(() => import('./pages/gm/NewDynasty'))
+const Dashboard = lazy(() => import('./pages/gm/Dashboard'))
+const Roster = lazy(() => import('./pages/gm/Roster'))
+const Schedule = lazy(() => import('./pages/gm/Schedule'))
+const Standings = lazy(() => import('./pages/gm/Standings'))
+const Rankings = lazy(() => import('./pages/gm/Rankings'))
+const Budget = lazy(() => import('./pages/gm/Budget'))
+const Postseason = lazy(() => import('./pages/gm/Postseason'))
+const Recruiting = lazy(() => import('./pages/gm/Recruiting'))
+const Career = lazy(() => import('./pages/gm/Career'))
+const GMPlayerDetail = lazy(() => import('./pages/gm/PlayerDetail'))
+const Coaches = lazy(() => import('./pages/gm/Coaches'))
+const WeeklyActions = lazy(() => import('./pages/gm/WeeklyActions'))
+const DepthChart = lazy(() => import('./pages/gm/DepthChart'))
+const Play = lazy(() => import('./pages/gm/Play'))
+const GMCalendar = lazy(() => import('./pages/gm/Calendar'))
+const SummerBall = lazy(() => import('./pages/gm/SummerBall'))
+const GMStats = lazy(() => import('./pages/gm/Stats'))
+const Records = lazy(() => import('./pages/gm/Records'))
+const Academics = lazy(() => import('./pages/gm/Academics'))
+const TeamStats = lazy(() => import('./pages/gm/TeamStats'))
 
 export default function App() {
   // Portal routes get their own full-page shell — no main-site Header,

@@ -17,7 +17,10 @@ import LZString from 'lz-string'
 
 export const SAVE_VERSION = 1
 
-const KEY_PREFIX = 'naia-gm-save'
+// Current prefix (post-rebrand). Older "naia-gm-save" saves are auto-migrated
+// to this prefix the first time loadDynasty() or listDynasties() touches them.
+const KEY_PREFIX = 'pnw-coach-sim'
+const LEGACY_KEY_PREFIX = 'naia-gm-save'
 const COMPRESSION_MARKER = 'LZ:'
 
 /**
@@ -25,6 +28,32 @@ const COMPRESSION_MARKER = 'LZ:'
  */
 function storageKey(userId, slot) {
   return `${KEY_PREFIX}:${userId || 'guest'}:${slot}`
+}
+
+function legacyStorageKey(userId, slot) {
+  return `${LEGACY_KEY_PREFIX}:${userId || 'guest'}:${slot}`
+}
+
+/**
+ * If the new prefix has no entry but the legacy prefix does, copy the legacy
+ * blob over to the new prefix (one-time migration on read). We leave the
+ * legacy key in place as a safety net — it's a tiny LZ-compressed blob and
+ * users can clear it via the dynasty-delete UI if needed.
+ */
+function migrateLegacyKey(userId, slot) {
+  try {
+    const newKey = storageKey(userId, slot)
+    if (typeof localStorage === 'undefined') return null
+    const existing = localStorage.getItem(newKey)
+    if (existing) return existing
+    const legacyKey = legacyStorageKey(userId, slot)
+    const legacy = localStorage.getItem(legacyKey)
+    if (!legacy) return null
+    localStorage.setItem(newKey, legacy)
+    return legacy
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -65,7 +94,10 @@ export function saveDynasty(state) {
 export function loadDynasty(userId, slot) {
   const key = storageKey(userId, slot)
   try {
-    const raw = localStorage.getItem(key)
+    let raw = localStorage.getItem(key)
+    if (!raw) {
+      raw = migrateLegacyKey(userId, slot)
+    }
     if (!raw) return null
     let json
     if (raw.startsWith(COMPRESSION_MARKER)) {
@@ -118,6 +150,9 @@ export function listDynasties(userId) {
 export function deleteDynasty(userId, slot) {
   try {
     localStorage.removeItem(storageKey(userId, slot))
+    // Also clear any legacy-prefix copy so a stale naia-gm-save: entry can't
+    // resurrect this slot on the next migration pass.
+    localStorage.removeItem(legacyStorageKey(userId, slot))
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err.message }

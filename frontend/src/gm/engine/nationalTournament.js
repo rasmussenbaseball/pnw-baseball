@@ -31,17 +31,42 @@ const FOUR_TEAM_SITES = 4
  * @returns {string[]} the 46-team field, ordered by overall ranking
  */
 export function selectNationalField(autoBids, ratings) {
-  const inField = new Set(autoBids)
-  // At-large: highest-rated teams not already in
-  const atLargeCandidates = Object.values(ratings)
-    .filter(r => !inField.has(r.schoolId))
-    .sort((a, b) => b.overall_rating - a.overall_rating)
-    .slice(0, AT_LARGE_TARGET)
-  for (const r of atLargeCandidates) inField.add(r.schoolId)
-  // Return as array ordered by overall rating
+  // Auto-bids first (deduped) — these always make the field regardless of
+  // how many came through (conf champs + reg-season champs from 2-bid
+  // conferences). If for some reason there are MORE auto-bids than the
+  // total field size (shouldn't happen in real NAIA — 21 confs × ≤2 = 42,
+  // but we defend anyway), the top-rated auto-bids win the slots and the
+  // bottom ones drop out.
+  const uniqueAutoBids = [...new Set(autoBids.filter(Boolean))]
+  const ratedAutoBids = uniqueAutoBids
+    .map(id => ({ id, rating: ratings[id]?.overall_rating ?? -99 }))
+    .sort((a, b) => b.rating - a.rating)
+
+  // If auto-bids already meet/exceed the total field, just take the top
+  // TOTAL_FIELD and skip the at-large pass.
+  const inField = new Set()
+  if (ratedAutoBids.length >= TOTAL_FIELD) {
+    for (let i = 0; i < TOTAL_FIELD; i++) inField.add(ratedAutoBids[i].id)
+  } else {
+    for (const r of ratedAutoBids) inField.add(r.id)
+    // Fill remaining slots with the top-rated teams not already in. Use
+    // (TOTAL_FIELD - filled) instead of the fixed AT_LARGE_TARGET so a
+    // conference that produced an unexpected auto-bid total (e.g. only
+    // one champ when expected two) doesn't over- or under-fill the field.
+    const remainingSlots = TOTAL_FIELD - inField.size
+    const atLargeCandidates = Object.values(ratings)
+      .filter(r => !inField.has(r.schoolId))
+      .sort((a, b) => b.overall_rating - a.overall_rating)
+      .slice(0, remainingSlots)
+    for (const r of atLargeCandidates) inField.add(r.schoolId)
+  }
+
+  // Return as array ordered by overall rating, capped at TOTAL_FIELD as a
+  // belt-and-suspenders guard (if Set deduping reduced below — unlikely).
   return [...inField]
     .map(id => ({ id, rating: ratings[id]?.overall_rating ?? -99 }))
     .sort((a, b) => b.rating - a.rating)
+    .slice(0, TOTAL_FIELD)
     .map(x => x.id)
 }
 
@@ -67,15 +92,26 @@ export function buildOpeningRoundSites(field46, schools, conferences) {
   }
   // Snake-draft remaining 36 teams across sites
   const remaining = field46.slice(OPENING_ROUND_SITES)
+  // Hard cap: 46-team field × 10 sites means 36 remaining slots. If the field
+  // came in larger than expected (e.g. selection logic produced an oversized
+  // bracket), drop the extras — better than hanging in the placement loop.
+  const totalSlots = sites.reduce((s, x) => s + x.size, 0) - OPENING_ROUND_SITES
+  const placeable = remaining.slice(0, totalSlots)
+
   let forward = true
   let siteIdx = 0
-  for (const teamId of remaining) {
-    // Skip sites that are full
+  for (const teamId of placeable) {
+    // Skip sites that are full — bounded by 2 * sites.length to defend
+    // against any pathological state where every site is full but we
+    // still have teams to place (shouldn't happen given placeable cap).
+    let skipsAllowed = sites.length * 2
     while (sites[siteIdx].teams.length >= sites[siteIdx].size) {
       siteIdx = forward ? siteIdx + 1 : siteIdx - 1
       if (siteIdx >= sites.length) { siteIdx = sites.length - 1; forward = false }
       if (siteIdx < 0) { siteIdx = 0; forward = true }
+      if (--skipsAllowed <= 0) break
     }
+    if (sites[siteIdx].teams.length >= sites[siteIdx].size) break   // safety
     // Conference protection: try not to put a team in a site that already has
     // a team from the same conference (unless all alternatives are also full)
     const conf = schools[teamId]?.conferenceId
@@ -104,6 +140,7 @@ function simSiteGame(homeId, awayId, save, userSchoolId, ratings, seedKey) {
     return simGame(homeLineup, awayLineup, {
       homeMotivator: save.coaches[homeTeam.headCoachId]?.motivator ?? 50,
       awayMotivator: save.coaches[awayTeam.headCoachId]?.motivator ?? 50,
+      level: save.level || save.schools?.[userSchoolId]?.level || 'NAIA',
     }, seedKey)
   }
   return fastSimGame(

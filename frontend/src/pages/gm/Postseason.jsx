@@ -269,6 +269,10 @@ function MultiLevelNationalSection({ ps, save }) {
         {nat.games.map((g, i) => {
           const isLast = i === nat.games.length - 1
           const finalRoundLoss = isLast && !g.userWon
+          const opp = g.opponentName ? g.opponentName : 'Bracket opponent'
+          const score = (typeof g.userRuns === 'number' && typeof g.oppRuns === 'number')
+            ? `${schoolName} ${g.userRuns} — ${opp} ${g.oppRuns}`
+            : null
           return (
             <div
               key={i}
@@ -278,7 +282,13 @@ function MultiLevelNationalSection({ ps, save }) {
             >
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-gray-500">{g.round}</div>
-                <div className="text-sm font-semibold text-pnw-slate mt-0.5">{g.location || '—'}</div>
+                <div className="text-sm font-semibold text-pnw-slate mt-0.5">
+                  vs. {opp}{g.opponentNickname ? ` (${g.opponentNickname})` : ''}
+                </div>
+                {score && (
+                  <div className="text-[11px] font-mono text-gray-600 mt-0.5">{score}</div>
+                )}
+                <div className="text-[10px] text-gray-500 mt-0.5">{g.location || ''}</div>
               </div>
               <div className="text-right">
                 <div className={'text-sm font-bold ' + (g.userWon ? 'text-pnw-green' : 'text-red-700')}>
@@ -297,10 +307,16 @@ function MultiLevelNationalSection({ ps, save }) {
         </div>
       )}
 
+      {!nat.userWSChamp && nat.nationalChampionName && (
+        <div className="mt-3 text-xs text-gray-600">
+          National champion: <span className="font-semibold">{nat.nationalChampionName}</span>
+        </div>
+      )}
+
       <div className="mt-4 text-[10px] text-gray-500 italic">
-        Note: non-NAIA national brackets use a high-level "stub" sim — your run is computed
-        per-round vs synthetic opponents tuned to your NWBB Rating. A full PA-level WS sim
-        (with the other 7-15 bracket teams) is a future engine task.
+        Non-NAIA national brackets simulate your run round-by-round vs real PEAR-rated
+        opponents at this level. A full PA-level WS sim (with all bracket teams playing
+        in parallel) is a future engine upgrade.
       </div>
     </div>
   )

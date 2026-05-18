@@ -46,6 +46,7 @@ function simTourneyGame(homeId, awayId, save, userSchoolId, ratings, seedKey) {
     return simGame(homeLineup, awayLineup, {
       homeMotivator: homeHC?.motivator ?? 50,
       awayMotivator: awayHC?.motivator ?? 50,
+      level: save.level || save.schools?.[userSchoolId]?.level || 'NAIA',
     }, seedKey)
   }
   return fastSimGame(

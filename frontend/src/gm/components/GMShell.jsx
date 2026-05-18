@@ -62,7 +62,7 @@ export default function GMShell({ children, schoolName, schoolColors }) {
       {/* Subtle CRT scanlines for the retro feel */}
       <Scanlines />
       <PixelHeader slot={slot} schoolName={schoolName} schoolColors={schoolColors} />
-      <main className="relative z-10 px-4 py-5 max-w-6xl mx-auto">
+      <main className="relative z-10 px-3 sm:px-4 py-4 sm:py-5 max-w-6xl mx-auto">
         {children}
       </main>
     </div>
@@ -71,26 +71,27 @@ export default function GMShell({ children, schoolName, schoolColors }) {
 
 function PixelHeader({ slot, schoolName, schoolColors }) {
   const accent = schoolColors?.[0] || '#fbbf24'   // gold default
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   return (
     <header
       className="sticky top-0 z-30 border-b-4 shadow-lg"
       style={{ borderColor: accent, backgroundColor: '#0f0f1e' }}
     >
-      <div className="max-w-6xl mx-auto flex items-center gap-3 px-3 py-2">
+      <div className="max-w-6xl mx-auto flex items-center gap-2 sm:gap-3 px-3 py-2">
         {/* Home button — branding wordmark, no placeholder square */}
         <Link
           to={`/gm/dashboard?slot=${slot}`}
-          className="flex items-center hover:opacity-90 transition group"
+          className="flex items-center hover:opacity-90 transition group min-w-0"
           title="Back to dashboard"
         >
-          <div className="leading-none">
+          <div className="leading-none min-w-0">
             <div
-              className="font-pixel-display text-[10px] tracking-widest"
+              className="hidden sm:block font-pixel-display text-[10px] tracking-widest"
               style={{ color: accent }}
             >
               PNW COACH SIM
             </div>
-            <div className="font-pixel text-lg md:text-xl text-white truncate max-w-[260px]">
+            <div className="font-pixel text-sm sm:text-lg md:text-xl text-white truncate max-w-[140px] sm:max-w-[200px] md:max-w-[260px]">
               {schoolName || 'Home'}
             </div>
           </div>
@@ -98,14 +99,68 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
 
         <div className="flex-1" />
 
-        {/* Nav: explicit Home button first, then dropdown groups */}
-        <nav className="flex items-center gap-1">
+        {/* Desktop nav (sm and up) */}
+        <nav className="hidden sm:flex items-center gap-1">
           <HomeNavButton slot={slot} accent={accent} />
           {NAV.map(group => (
             <NavDropdown key={group.key} group={group} slot={slot} accent={accent} />
           ))}
         </nav>
+
+        {/* Mobile hamburger (xs only) */}
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(o => !o)}
+          aria-label="Open menu"
+          className="sm:hidden flex flex-col gap-1 p-2 border-2"
+          style={{ borderColor: accent }}
+        >
+          <span className="block w-5 h-0.5" style={{ backgroundColor: accent }} />
+          <span className="block w-5 h-0.5" style={{ backgroundColor: accent }} />
+          <span className="block w-5 h-0.5" style={{ backgroundColor: accent }} />
+        </button>
       </div>
+
+      {/* Mobile nav panel */}
+      {mobileNavOpen && (
+        <div
+          className="sm:hidden border-t-2 px-3 py-3 space-y-3"
+          style={{ borderColor: accent, backgroundColor: '#0f0f1e' }}
+        >
+          <Link
+            to={`/gm/dashboard?slot=${slot}`}
+            onClick={() => setMobileNavOpen(false)}
+            className="block font-pixel-display text-[11px] tracking-widest px-3 py-2 border-2 text-white"
+            style={{ borderColor: accent }}
+          >
+            ▸ HOME
+          </Link>
+          {NAV.map(group => (
+            <div key={group.key} className="space-y-1">
+              <div
+                className="font-pixel-display text-[10px] tracking-widest"
+                style={{ color: accent }}
+              >
+                {group.label.toUpperCase()}
+              </div>
+              {group.items.map(it => {
+                const sep = it.path.includes('?') ? '&' : '?'
+                const to = `${it.path}${sep}slot=${slot}`
+                return (
+                  <Link
+                    key={it.path + it.label}
+                    to={to}
+                    onClick={() => setMobileNavOpen(false)}
+                    className="block font-pixel text-sm pl-3 py-1.5 text-[#e8e8e8] hover:text-white"
+                  >
+                    ▸ {it.label}
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </header>
   )
 }
