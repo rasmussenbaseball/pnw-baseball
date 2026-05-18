@@ -213,109 +213,131 @@ const TOURNAMENTS = {
   // ───────────────────────────────────────────────────────────────
   // NWAC SUPER REGIONALS — May 15 to 16, 2026
   //
-  // Four best-of-3 super regionals, each hosted by the #2 seed of a
-  // conference. The original format included a single-elim play-in
-  // game; the 2026 NWAC ran direct BO3 series instead, so the lower
-  // seed visits the host without an intermediate round.
+  // Four super regionals, each hosted by the #2 seed of a conference.
+  // Each has 3 teams: the #2 host (bye to the BO3 final) plus two
+  // teams that play a single-elim play-in (one #3 and one #4 from
+  // different conferences). Winners advance to the NWAC Championships.
   //
   // The #1 seed from each conference (N1, S1, E1, W1) gets a direct bye
   // to the championships and is shown in the byes strip at the top.
   //
-  // 2026 results: all four host #2 seeds swept 2-0.
+  // Note: NWAC posted the play-in box scores on a URL that our
+  // GH-Action scraper doesn't traverse, so those four games aren't in
+  // our DB. The play-in cards use a `fallbackResult` field with scores
+  // read from the official 2026 NWAC Super Regional bracket PDF.
+  //
+  // 2026 results: all 4 #2 hosts swept the BO3 finals 2-0; play-in
+  // winners (S3 Umpqua, N4 Shoreline, S4 Mt. Hood, N3 Bellevue) lost.
   // ───────────────────────────────────────────────────────────────
   nwac_super_regionals_2026: {
     label: 'NWAC Super Regionals',
     sub: 'May 15 to 16, 2026 — Four regional host sites',
     season: 2026,
-    formatLabel: 'Best-of-3 series at each host site',
+    formatLabel: 'Single-elim play-in then Best-of-3 series at each host',
     seeds: [
-      // Eight teams that played: 4 hosts + 4 visitors. Seeds 11, 12, 15, 16
-      // (E3 Col. Basin, E4 Yakima Valley, W3 Tacoma, W4 Clark) didn't enter
-      // the bracket this year because the play-in round was skipped.
-      // North
-      { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },           // bye
-      { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },           // host
-      { seed: 3,  seedLabel: 'N3', team_id: 25, name: 'Bellevue' },          // at Lane
-      { seed: 4,  seedLabel: 'N4', team_id: 31, name: 'Shoreline' },         // at Wenatchee
-      // South
-      { seed: 5,  seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },       // bye
-      { seed: 6,  seedLabel: 'S2', team_id: 43, name: 'Lane' },              // host
-      { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },            // at Edmonds
-      { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },          // at Pierce
-      // East
-      { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },           // bye
-      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },  // host
-      // West
-      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },    // bye
-      { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },            // host
+      // North conference
+      { seed: 1,  seedLabel: 'N1', team_id: 28, name: 'Everett' },
+      { seed: 2,  seedLabel: 'N2', team_id: 27, name: 'Edmonds' },
+      { seed: 3,  seedLabel: 'N3', team_id: 25, name: 'Bellevue' },
+      { seed: 4,  seedLabel: 'N4', team_id: 31, name: 'Shoreline' },
+      // South conference
+      { seed: 5,  seedLabel: 'S1', team_id: 44, name: 'Linn-Benton' },
+      { seed: 6,  seedLabel: 'S2', team_id: 43, name: 'Lane' },
+      { seed: 7,  seedLabel: 'S3', team_id: 47, name: 'Umpqua' },
+      { seed: 8,  seedLabel: 'S4', team_id: 45, name: 'Mt. Hood' },
+      // East conference
+      { seed: 9,  seedLabel: 'E1', team_id: 35, name: 'Spokane' },
+      { seed: 10, seedLabel: 'E2', team_id: 38, name: 'Wenatchee Valley' },
+      { seed: 11, seedLabel: 'E3', team_id: 34, name: 'Columbia Basin' },
+      { seed: 12, seedLabel: 'E4', team_id: 39, name: 'Yakima Valley' },
+      // West conference
+      { seed: 13, seedLabel: 'W1', team_id: 52, name: 'Lower Columbia' },
+      { seed: 14, seedLabel: 'W2', team_id: 30, name: 'Pierce' },
+      { seed: 15, seedLabel: 'W3', team_id: 53, name: 'Tacoma' },
+      { seed: 16, seedLabel: 'W4', team_id: 49, name: 'Clark' },
     ],
     games: [
-      // Each super regional is 2 cards: Game 1 (Fri May 15) and Game 2
-      // (Sat May 16) of a BO3. All 4 series ended 2-0, so no Game 3
-      // was played. The winner of Game 2 is the series winner.
-      // ─ North Super Regional @ Edmonds — Edmonds swept Umpqua ─
-      { num: 1, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+      // 4 rows, 3 cards each: Play-in (single elim) → BO3 G1 → BO3 G2.
+      // Play-ins are hardcoded via fallbackResult since their box scores
+      // aren't in our DB.
+      // ─ NORTH @ Edmonds: Umpqua advances, Edmonds wins BO3 2-0 ─
+      { num: 1, iso: '2026-05-15', day: 'Fri May 15', time: 'Play-in · 12:00 PM',
+        home: { ref: 'seed', val: 7 }, away: { ref: 'seed', val: 16 },
+        fallbackResult: { home_score: 5, away_score: 0 } },             // S3 Umpqua 5, W4 Clark 0
+      { num: 2, iso: '2026-05-15', day: 'Fri May 15', time: 'BO3 Game 1',
+        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },  // resolves from DB
+      { num: 3, iso: '2026-05-16', day: 'Sat May 16', time: 'BO3 Game 2',
         home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },
-      { num: 2, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
-        home: { ref: 'seed', val: 2 }, away: { ref: 'seed', val: 7 } },
-      // ─ East Super Regional @ Wenatchee Valley — Wenatchee swept Shoreline ─
-      { num: 3, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+
+      // ─ EAST @ Wenatchee Valley: Shoreline advances, Wenatchee wins BO3 2-0 ─
+      { num: 4, iso: '2026-05-15', day: 'Fri May 15', time: 'Play-in · 1:00 PM',
+        home: { ref: 'seed', val: 4 }, away: { ref: 'seed', val: 15 },
+        fallbackResult: { home_score: 12, away_score: 5 } },            // N4 Shoreline 12, W3 Tacoma 5
+      { num: 5, iso: '2026-05-15', day: 'Fri May 15', time: 'BO3 Game 1',
         home: { ref: 'seed', val: 10 }, away: { ref: 'seed', val: 4 } },
-      { num: 4, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+      { num: 6, iso: '2026-05-16', day: 'Sat May 16', time: 'BO3 Game 2',
         home: { ref: 'seed', val: 10 }, away: { ref: 'seed', val: 4 } },
-      // ─ West Super Regional @ Pierce — Pierce swept Mt. Hood ─
-      { num: 5, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+
+      // ─ WEST @ Pierce: Mt. Hood advances (F/11), Pierce wins BO3 2-0 ─
+      { num: 7, iso: '2026-05-15', day: 'Fri May 15', time: 'Play-in · 12:00 PM',
+        home: { ref: 'seed', val: 8 }, away: { ref: 'seed', val: 11 },
+        fallbackResult: { home_score: 5, away_score: 4 } },             // S4 Mt. Hood 5, E3 Columbia Basin 4 (F/11)
+      { num: 8, iso: '2026-05-15', day: 'Fri May 15', time: 'BO3 Game 1',
         home: { ref: 'seed', val: 14 }, away: { ref: 'seed', val: 8 } },
-      { num: 6, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+      { num: 9, iso: '2026-05-16', day: 'Sat May 16', time: 'BO3 Game 2',
         home: { ref: 'seed', val: 14 }, away: { ref: 'seed', val: 8 } },
-      // ─ South Super Regional @ Lane — Lane swept Bellevue ─
-      { num: 7, iso: '2026-05-15', day: 'Fri May 15', time: 'Game 1',
+
+      // ─ SOUTH @ Lane: Bellevue advances, Lane wins BO3 2-0 ─
+      { num: 10, iso: '2026-05-15', day: 'Fri May 15', time: 'Play-in · 12:00 PM',
+        home: { ref: 'seed', val: 3 }, away: { ref: 'seed', val: 12 },
+        fallbackResult: { home_score: 12, away_score: 8 } },            // N3 Bellevue 12, E4 Yakima Valley 8
+      { num: 11, iso: '2026-05-15', day: 'Fri May 15', time: 'BO3 Game 1',
         home: { ref: 'seed', val: 6 }, away: { ref: 'seed', val: 3 } },
-      { num: 8, iso: '2026-05-16', day: 'Sat May 16', time: 'Game 2',
+      { num: 12, iso: '2026-05-16', day: 'Sat May 16', time: 'BO3 Game 2',
         home: { ref: 'seed', val: 6 }, away: { ref: 'seed', val: 3 } },
     ],
-    // 2x2 grid layout — each quadrant has the play-in card on the left
-    // and the best-of-3 card on the right, connected.
+    // 4 rows × 3 cards layout. Each row is one super regional. Cards are
+    // 480w × 130h, x-positions 100 / 610 / 1120, gap 30. Row pitch 200.
     layout: {
-      // Top-left: North
-      1: { x: 80,   y: 340, w: 380, h: 130 },
-      2: { x: 520,  y: 340, w: 380, h: 130 },
-      // Top-right: East
-      3: { x: 1020, y: 340, w: 380, h: 130 },
-      4: { x: 1460, y: 340, w: 380, h: 130 },
-      // Bottom-left: West
-      5: { x: 80,   y: 780, w: 380, h: 130 },
-      6: { x: 520,  y: 780, w: 380, h: 130 },
-      // Bottom-right: South
-      7: { x: 1020, y: 780, w: 380, h: 130 },
-      8: { x: 1460, y: 780, w: 380, h: 130 },
+      // Row 1: North @ Edmonds
+      1: { x: 100,  y: 270, w: 480, h: 130 },
+      2: { x: 610,  y: 270, w: 480, h: 130 },
+      3: { x: 1120, y: 270, w: 480, h: 130 },
+      // Row 2: East @ Wenatchee Valley
+      4: { x: 100,  y: 470, w: 480, h: 130 },
+      5: { x: 610,  y: 470, w: 480, h: 130 },
+      6: { x: 1120, y: 470, w: 480, h: 130 },
+      // Row 3: West @ Pierce
+      7: { x: 100,  y: 670, w: 480, h: 130 },
+      8: { x: 610,  y: 670, w: 480, h: 130 },
+      9: { x: 1120, y: 670, w: 480, h: 130 },
+      // Row 4: South @ Lane
+      10: { x: 100,  y: 870, w: 480, h: 130 },
+      11: { x: 610,  y: 870, w: 480, h: 130 },
+      12: { x: 1120, y: 870, w: 480, h: 130 },
     },
     connections: [
-      { from: 1, to: 2 },
-      { from: 3, to: 4 },
-      { from: 5, to: 6 },
-      { from: 7, to: 8 },
+      // Each regional: Play-in → BO3 G1 → BO3 G2
+      { from: 1, to: 2 },   { from: 2, to: 3 },
+      { from: 4, to: 5 },   { from: 5, to: 6 },
+      { from: 7, to: 8 },   { from: 8, to: 9 },
+      { from: 10, to: 11 }, { from: 11, to: 12 },
     ],
     sectionLabels: [
       // Byes strip
       { text: 'AUTO-ADVANCED TO CHAMPIONSHIPS:  N1 EVERETT  ·  S1 LINN-BENTON  ·  E1 SPOKANE  ·  W1 LOWER COLUMBIA',
-        x: 0, y: 240, w: CANVAS_W, centered: true },
-      // Regional headers
-      { text: 'NORTH SUPER REGIONAL — @ EDMONDS',
-        x: 80,   y: 305, w: 820, centered: true },
-      { text: 'EAST SUPER REGIONAL — @ WENATCHEE VALLEY',
-        x: 1020, y: 305, w: 820, centered: true },
-      { text: 'WEST SUPER REGIONAL — @ PIERCE',
-        x: 80,   y: 745, w: 820, centered: true },
-      { text: 'SOUTH SUPER REGIONAL — @ LANE',
-        x: 1020, y: 745, w: 820, centered: true },
-      // Champion advances label
-      { text: 'NORTH CHAMP →', x: 80,   y: 490, w: 820, centered: true },
-      { text: 'EAST CHAMP →',  x: 1020, y: 490, w: 820, centered: true },
-      { text: 'WEST CHAMP →',  x: 80,   y: 930, w: 820, centered: true },
-      { text: 'SOUTH CHAMP →', x: 1020, y: 930, w: 820, centered: true },
+        x: 0, y: 220, w: CANVAS_W, centered: true },
+      // Per-row headers (one per regional)
+      { text: 'NORTH SUPER REGIONAL — @ EDMONDS  ·  Edmonds advances',
+        x: 100, y: 245, w: 1500, centered: false },
+      { text: 'EAST SUPER REGIONAL — @ WENATCHEE VALLEY  ·  Wenatchee Valley advances',
+        x: 100, y: 445, w: 1500, centered: false },
+      { text: 'WEST SUPER REGIONAL — @ PIERCE  ·  Pierce advances',
+        x: 100, y: 645, w: 1500, centered: false },
+      { text: 'SOUTH SUPER REGIONAL — @ LANE  ·  Lane advances',
+        x: 100, y: 845, w: 1500, centered: false },
     ],
-    championshipGames: [2, 4, 6, 8],  // BO3 finals get the gold treatment
+    championshipGames: [3, 6, 9, 12],  // The deciding (BO3 G2) cards get gold
   },
 
   // ───────────────────────────────────────────────────────────────
@@ -738,6 +760,22 @@ function resolveBracket(tournament, dbGames) {
             outcome.loser_id  = homeId
           }
         }
+      }
+    }
+    // Fallback: if we don't have a DB-resolved final and the game entry
+    // carries an explicit `fallbackResult`, use those scores. Used for
+    // games that didn't make it into our scraper (e.g. NWAC noon play-ins
+    // posted on a URL outside the GH-Action's normal traversal).
+    if (outcome.home_score == null && g.fallbackResult && homeId && awayId) {
+      outcome.home_score = g.fallbackResult.home_score
+      outcome.away_score = g.fallbackResult.away_score
+      outcome.status = g.fallbackResult.status || 'final'
+      if (outcome.home_score > outcome.away_score) {
+        outcome.winner_id = homeId
+        outcome.loser_id  = awayId
+      } else if (outcome.away_score > outcome.home_score) {
+        outcome.winner_id = awayId
+        outcome.loser_id  = homeId
       }
     }
     outcomes.set(g.num, outcome)
