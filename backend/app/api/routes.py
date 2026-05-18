@@ -19661,11 +19661,26 @@ def all_conference(
     if mvp_pid:
         taken_awards.add(mvp_pid)
 
-    # Hitter of the Year: best non-MVP hitter (primary_role == BAT)
-    hoy_pid = find_award(
-        lambda pid, rec: primary_role.get(pid) == "BAT" and rec["war_bat"] > 0,
-        taken_awards,
+    # Hitter of the Year: best qualified hitter by wRC+ (primary_role == BAT,
+    # not already MVP). Uses wRC+ instead of total WAR because this award
+    # rewards offensive rate performance — WAR bundles playing time and
+    # baserunning that the wider MVP award already captures.
+    hoy_candidates = sorted(
+        [
+            (pid, rec) for pid, rec in players.items()
+            if primary_role.get(pid) == "BAT"
+            and is_qualified_bat(rec)
+            and rec.get("wrc_plus") is not None
+        ],
+        key=lambda x: (x[1]["wrc_plus"], x[1]["pa"]),
+        reverse=True,
     )
+    hoy_pid = None
+    for pid, _rec in hoy_candidates:
+        if pid in taken_awards:
+            continue
+        hoy_pid = pid
+        break
     if hoy_pid:
         taken_awards.add(hoy_pid)
 
