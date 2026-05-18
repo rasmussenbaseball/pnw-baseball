@@ -77,31 +77,20 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
       style={{ borderColor: accent, backgroundColor: '#0f0f1e' }}
     >
       <div className="max-w-6xl mx-auto flex items-center gap-3 px-3 py-2">
-        {/* Home button — pixel-style logo block */}
+        {/* Home button — branding wordmark, no placeholder square */}
         <Link
           to={`/gm/dashboard?slot=${slot}`}
-          className="flex items-center gap-2 hover:opacity-90 transition group"
+          className="flex items-center hover:opacity-90 transition group"
           title="Back to dashboard"
         >
-          <div
-            className="w-9 h-9 flex items-center justify-center text-lg font-bold"
-            style={{
-              backgroundColor: accent,
-              color: '#1a1a2e',
-              boxShadow: '2px 2px 0 rgba(0,0,0,0.5)',
-              imageRendering: 'pixelated',
-            }}
-          >
-            
-          </div>
-          <div className="hidden md:block leading-none">
+          <div className="leading-none">
             <div
               className="font-pixel-display text-[10px] tracking-widest"
               style={{ color: accent }}
             >
-              NAIA GM
+              PNW COACH SIM
             </div>
-            <div className="font-pixel text-xl text-white truncate max-w-[200px]">
+            <div className="font-pixel text-lg md:text-xl text-white truncate max-w-[260px]">
               {schoolName || 'Home'}
             </div>
           </div>

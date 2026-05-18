@@ -65,11 +65,11 @@ function RequireGmEarlyAccess({ children }) {
   if (!GM_EARLY_ACCESS_EMAILS.includes(user.email)) {
     return (
       <div className="max-w-xl mx-auto py-16 text-center">
-        <h1 className="text-3xl font-bold text-pnw-slate mb-4">NAIA Baseball GM</h1>
+        <h1 className="text-3xl font-bold text-pnw-slate mb-4">PNW Coach Simulator</h1>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
           <p className="text-sm text-amber-900 mb-2">🔒 <strong>Private Alpha</strong></p>
           <p className="text-sm text-gray-700">
-            The NAIA Baseball GM is currently in private development. Access is restricted to the lead developer.
+            PNW Coach Simulator is currently in private development. Access is restricted to the lead developer.
             Public release coming soon.
           </p>
         </div>
@@ -438,7 +438,7 @@ function GmTopBar() {
     <div className="bg-pnw-slate text-white border-b border-pnw-slate/40">
       <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between text-xs">
         <a href="/" className="opacity-80 hover:opacity-100 hover:underline">← Return to NW Baseball Stats</a>
-        <div className="font-semibold tracking-wide">NAIA Baseball GM</div>
+        <div className="font-semibold tracking-wide">PNW Coach Simulator</div>
         <a href="/gm" className="opacity-80 hover:opacity-100 hover:underline">Dynasties</a>
       </div>
     </div>

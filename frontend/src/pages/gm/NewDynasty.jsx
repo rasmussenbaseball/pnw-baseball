@@ -789,20 +789,31 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
         )}
         {programsForLevel.map(p => {
           const isSelected = selectedSchoolId === p.id
-          // Look up program rating. Rating data is built for NAIA schools
-          // only at the moment; non-NAIA programs fall back to a 2.5-star
-          // baseline derived from their strength rating (also estimated
-          // when no PEAR data is present).
+          // Look up program rating. Built for NAIA schools via programRatings;
+          // non-NAIA programs derive stars from the PEAR strength + rank we
+          // attached to each tile via pnwProgramsAtLevel. Strength typically
+          // ranges -3 (bottom-tier) to +8 (national elite); we map that to
+          // 0.5-5.0 stars with a non-linear curve so the top programs really
+          // stand out.
           const rating = programRatings?.[p.id]
           const fallbackStars = (() => {
-            // Estimate from school.strength if no rating record exists.
-            const fallback = Object.values(schools).find(s => s.id === p.id)
-            const strength = fallback?.strength ?? p.strength ?? 0
-            // Strength is roughly -3 to +5; map to 0.5-5 stars
-            return Math.max(0.5, Math.min(5.0, 2.5 + strength * 0.5))
+            const strength = p.strength ?? Object.values(schools).find(s => s.id === p.id)?.strength ?? 0
+            // pearRank fallback: top-25 programs get 4.5+, top-50 4+, etc.
+            const rank = p.pearRank
+            if (rank != null) {
+              if (rank <= 10)  return 5.0
+              if (rank <= 25)  return 4.5
+              if (rank <= 50)  return 4.0
+              if (rank <= 100) return 3.5
+              if (rank <= 175) return 3.0
+              if (rank <= 250) return 2.5
+              return 2.0
+            }
+            // No rank → use strength
+            return Math.max(0.5, Math.min(5.0, 2.5 + strength * 0.45))
           })()
           const stars = rating?.stars ?? fallbackStars
-          const nationalRank = rating?.nationalRank
+          const nationalRank = rating?.nationalRank ?? p.pearRank
           return (
             <button
               key={p.id}

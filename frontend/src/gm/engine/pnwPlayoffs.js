@@ -59,8 +59,19 @@ export function nationalSpecForLevel(level) {
 
 /**
  * All PNW programs at a given level, flattened across the level's confs.
- * Used by the New Dynasty picker (once expanded beyond CCC).
+ * Each entry is enriched with strength + colors + nickname from
+ * non_naia_teams.json so the New Dynasty picker can show real stars +
+ * team-color logo circles instead of flat 2.5 stars + bland defaults.
  */
+import nonNaiaForLookup from '../data/non_naia_teams.json'
+const NON_NAIA_BY_ID = (() => {
+  const out = {}
+  for (const div of nonNaiaForLookup.divisions || []) {
+    for (const t of div.teams || []) out[t.id] = t
+  }
+  return out
+})()
+
 export function pnwProgramsAtLevel(level) {
   const confIds = (PNW_DIVISIONS[level]?.pnwConferences) || []
   const out = []
@@ -68,7 +79,19 @@ export function pnwProgramsAtLevel(level) {
     const conf = PNW_CONFERENCES[id]
     if (!conf) continue
     for (const m of (conf.pnwMembers || [])) {
-      out.push({ ...m, conferenceId: id, conferenceName: conf.name, level })
+      const enrich = NON_NAIA_BY_ID[m.id] || {}
+      out.push({
+        ...m,
+        conferenceId: id,
+        conferenceName: conf.name,
+        level,
+        // From the PEAR-derived non_naia_teams.json:
+        strength: enrich.strength ?? 0,
+        pearRank: enrich.pearRank ?? null,
+        colors: enrich.colors || null,
+        nickname: m.nickname || enrich.nickname || null,
+        isIndependent: !!conf.isIndependent,
+      })
     }
   }
   return out

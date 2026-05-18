@@ -31,6 +31,7 @@ import {
 } from './levelHelpers'
 import { applyRealFinancials } from './schoolFinancials'
 import { buildInitialCareer } from './storyMode'
+import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /**
  * Build a fresh save state for a non-NAIA dynasty.
@@ -399,8 +400,17 @@ function stateToRegion(state) {
 export function buildLevelSchedule(conferenceId, schools, level, year, seed) {
   const rng = makeRng('level_sched', conferenceId, seed)
   const teamIds = Object.keys(schools)
-  if (teamIds.length < 2) return []
   const targetGames = seasonGamesForLevel(level)
+
+  // INDEPENDENT path — a single-school "conference" (Oregon State Indep
+  // is the canonical case). No conference games, no conference tournament.
+  // Schedule a full season of non-conference series against random D1
+  // opponents pulled from the non_naia universe. The user can still earn
+  // an at-large NCAA Regional bid but never a conference auto-bid.
+  if (teamIds.length < 2 || conferenceId === 'INDEPENDENT_D1') {
+    return buildIndependentSchedule(teamIds[0], level, year, rng, targetGames)
+  }
+
   const games = []
 
   // Each pair plays at least a 3-game series. Add more series until we hit target.
@@ -459,8 +469,84 @@ function dateForWeek(year, weekOfYear, dayOffset) {
 function conferenceAbbreviation(confId) {
   const map = {
     BIG_TEN: 'B1G', ACC: 'ACC', WCC: 'WCC', WAC: 'WAC',
+    INDEPENDENT_D1: 'IND',
     GNAC: 'GNAC', NWC: 'NWC', CCC: 'CCC', FRONTIER: 'FRC',
     NWAC_NORTH: 'NWAC-N', NWAC_SOUTH: 'NWAC-S', NWAC_EAST: 'NWAC-E', NWAC_WEST: 'NWAC-W',
   }
   return map[confId] || confId.slice(0, 6)
+}
+
+// ─── Independent-program scheduling ─────────────────────────────────────
+//
+// D1 independents (e.g. Oregon State after Pac-12 collapse) have no
+// conference and therefore no conference tournament. Their entire season
+// is non-conference games. This builder synthesizes a full slate against
+// random national D1 opponents, alternating home/road, with realistic
+// pacing (weekend 3-game series + 1 midweek per week).
+
+function buildIndependentSchedule(userSchoolId, level, year, rng, targetGames) {
+  if (!userSchoolId) return []
+  // Build opponent pool — every D1 team in the non-NAIA universe that
+  // ISN'T the user. Bias toward mid+ teams (skip the bottom 50) so the
+  // schedule has some teeth.
+  const allD1 = (nonNaiaRaw.divisions || []).find(d => d.id === 'D1')?.teams || []
+  const opponents = allD1
+    .filter(t => t.id !== userSchoolId)
+    .sort((a, b) => (b.strength || 0) - (a.strength || 0))
+    .slice(0, 220)
+  if (opponents.length === 0) return []
+
+  // ~13 weekends of regular-season slots starting wk 27.
+  const games = []
+  const seasonStartWeek = 27
+  const numWeekends = 13
+  // Each weekend = a 3-game series. Plus a midweek game most weeks.
+  let oppIdx = 0
+  for (let w = 0; w < numWeekends; w++) {
+    if (games.length >= targetGames) break
+    const opponent = opponents[oppIdx % opponents.length]
+    oppIdx++
+    const wk = seasonStartWeek + w
+    const homeFirst = (w % 2) === 0   // alternate home/away each weekend
+    const homeId = homeFirst ? userSchoolId : opponent.id
+    const awayId = homeFirst ? opponent.id : userSchoolId
+    const seriesId = `indep_${year}_w${w}`
+    for (let g = 0; g < 3; g++) {
+      games.push({
+        id: `${seriesId}_g${g}`,
+        year,
+        seasonWeek: w + 1,
+        weekOfYear: wk,
+        date: dateForWeek(year, wk, g + 4),   // Fri/Sat/Sun
+        homeId, awayId,
+        type: 'NON_CONFERENCE',
+        seriesId,
+        countsTowardRecord: true,
+        isDoubleheader: false,
+        played: false,
+        homeRuns: null, awayRuns: null,
+      })
+    }
+    // Midweek game (Tuesday) — pick a different random opponent
+    if (games.length < targetGames && w > 0) {
+      const midOpp = opponents[(oppIdx * 7 + w) % opponents.length]
+      oppIdx++
+      games.push({
+        id: `indep_mid_${year}_w${w}`,
+        year,
+        seasonWeek: w + 1,
+        weekOfYear: wk,
+        date: dateForWeek(year, wk, 1),
+        homeId: w % 3 === 0 ? midOpp.id : userSchoolId,
+        awayId: w % 3 === 0 ? userSchoolId : midOpp.id,
+        type: 'D1_MIDWEEK',
+        seriesId: null,
+        countsTowardRecord: true,
+        isDoubleheader: false,
+        played: false,
+        homeRuns: null, awayRuns: null,
+      })
+    }
+  }
+  return games
 }

@@ -20,7 +20,7 @@ import { runEndOfTermAcademics } from './academics'
 import { annualReview, lockTravelAllocation, extendedBudgetEffects } from './budget'
 import { runCareerReview } from './storyMode'
 import { runOutboundTransfers } from './outboundTransfers'
-import { applyHsAttrition, generatePortalPool } from './recruits'
+import { applyHsAttrition, generatePortalPool, academicRatingToGpa } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
 import { endOfSeasonDevelopment, tickPotentialEOY, tickWeightFluctuation } from './development'
 import { budgetCategoryEffects } from './budget'
@@ -312,6 +312,14 @@ function runClassFinalize(state) {
 
 /** Shape a Recruit into a Player. Inherits ratings + bio; resets stats. */
 function recruitToPlayer(r) {
+  // GPA carryover: recruits hold their high-school grades as `academicRating`
+  // (30-99 integer). Convert to a real 0-4.0 GPA via academicRatingToGpa so
+  // the player keeps their HS GPA from the moment they sign — no more
+  // everyone-starts-at-3.0 reset bug. Falls back to direct r.gpa if a
+  // future code path sets it explicitly.
+  const gpa = r.gpa != null
+    ? r.gpa
+    : (r.academicRating != null ? academicRatingToGpa(r.academicRating) : 3.0)
   return {
     id: r.id,
     firstName: r.firstName, lastName: r.lastName,
@@ -328,7 +336,8 @@ function recruitToPlayer(r) {
     hitter: r.hitter || null,
     pitcher: r.pitcher || null,
     hidden: r.hidden || {},
-    gpa: r.gpa ?? 3.0,
+    gpa,
+    academicRating: r.academicRating ?? null,   // keep raw 30-99 around for future academic events
     academicStanding: 'eligible',
     eligibilityStatus: 'eligible',
     scholarship: { annualAmount: r.scholarshipOffered ?? 0 },

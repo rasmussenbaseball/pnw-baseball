@@ -9,7 +9,7 @@
   "divisions": {
     "D1": {
       "name": "NCAA Division I",
-      "pnwConferences": ["BIG_TEN", "ACC", "WCC", "WAC"],
+      "pnwConferences": ["BIG_TEN", "WCC", "WAC", "INDEPENDENT_D1"],
       "eligibility": {
         "classYears": ["FR", "SO", "JR", "SR"],
         "maxSeasonsPerPlayer": 4,
@@ -195,27 +195,10 @@
         "location": "Charles Schwab Field, Omaha NE",
         "details": "Top 8 from full Big Ten standings qualify. Double-elim. Conference champion gets auto-bid to NCAA Tournament."
       },
+      "_note": "Big Ten — PNW members only (Oregon + Washington). USC and UCLA are also Big Ten baseball members but located in southern California, outside the PNW scope of this sim. Excluded.",
       "pnwMembers": [
         { "id": "oregon-d1", "name": "Oregon", "city": "Eugene", "state": "OR" },
-        { "id": "washington-d1", "name": "Washington", "city": "Seattle", "state": "WA" },
-        { "id": "ucla-d1", "name": "UCLA", "city": "Los Angeles", "state": "CA" },
-        { "id": "usc-d1", "name": "USC", "city": "Los Angeles", "state": "CA" }
-      ]
-    },
-
-    "ACC": {
-      "id": "ACC",
-      "name": "ACC",
-      "level": "D1",
-      "tournament": {
-        "format": "POOL_PLAY_SEMIS_CHAMPIONSHIP",
-        "fieldSize": 12,
-        "location": "Truist Field, Charlotte NC",
-        "details": "Top 12 from regular season. 4 pools of 3 — round-robin. Pool winners go to single-elim semis + final. Conference champion gets auto-bid."
-      },
-      "pnwMembers": [
-        { "id": "stanford-d1", "name": "Stanford", "city": "Stanford", "state": "CA" },
-        { "id": "california-d1", "name": "Cal", "city": "Berkeley", "state": "CA" }
+        { "id": "washington-d1", "name": "Washington", "city": "Seattle", "state": "WA" }
       ]
     },
 
@@ -227,13 +210,24 @@
         "format": "DOUBLE_ELIM",
         "fieldSize": 6,
         "location": "Banner Island Ballpark, Stockton CA",
-        "details": "Top 6 from regular season. Double-elim. Top 2 seeds get a first-round bye. Conf champ gets auto-bid. Oregon State + Washington State joined for baseball 2025-26 after the Pac-12 collapse."
+        "details": "Top 6 from regular season. Double-elim. Top 2 seeds get a first-round bye. Conf champ gets auto-bid. Washington State joined for baseball 2025-26 after the Pac-12 collapse."
       },
       "pnwMembers": [
         { "id": "gonzaga-d1", "name": "Gonzaga", "city": "Spokane", "state": "WA" },
         { "id": "portland-d1", "name": "Portland", "city": "Portland", "state": "OR" },
-        { "id": "oregon-st-d1", "name": "Oregon State", "city": "Corvallis", "state": "OR", "note": "joined WCC for baseball 2025-26 (Pac-12 holdover)" },
         { "id": "washington-state-d1", "name": "Washington State", "city": "Pullman", "state": "WA", "note": "joined WCC for baseball 2025-26 (Pac-12 holdover)" }
+      ]
+    },
+
+    "INDEPENDENT_D1": {
+      "id": "INDEPENDENT_D1",
+      "name": "Independent (D1)",
+      "level": "D1",
+      "isIndependent": true,
+      "tournament": null,
+      "_note": "D1 Independents have no conference affiliation — they schedule a full year of non-conference series against whoever will play them. NO conference tournament. They are eligible for NCAA Regionals as at-large bids only (no auto-bid). Oregon State is the highest-profile PNW independent after Pac-12 collapse — they stayed independent rather than joining the WCC.",
+      "pnwMembers": [
+        { "id": "oregon-st-d1", "name": "Oregon State", "city": "Corvallis", "state": "OR", "note": "Independent since 2024 — Pac-12 collapse fallout" }
       ]
     },
 
