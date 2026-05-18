@@ -806,34 +806,32 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
   const archetype = getArchetype(recruit.archetypeKey)
   const m = recruit.measurables || {}
 
-  // Compute Est OVR + Est POT ranges. We now show the ranges ALWAYS — even
-  // before any AP is spent — as a 30-ish point hint at the player's true
-  // value. Spending AP narrows the band as `noise` drops. This change makes
-  // recruiting boards usable from week 4 (scouting unlock) without users
-  // having to spend AP to see the most basic "is this guy any good" signal.
+  // Compute Est OVR + Est POT ranges. Always-visible 30-pt hint. As AP is
+  // spent, `noise` drops and the range narrows. CRITICAL: when the true
+  // value sits near the 20 or 99 boundary, naïve clamping shrinks the
+  // displayed band (e.g. true 96 with ±15 → 81-99 = 18 wide, not 30) which
+  // GIVES AWAY that the player is a stud before scouting. Use
+  // shiftedRange() to preserve the band's width by extending the unclamped
+  // side instead.
+  function shiftedRange(trueVal, half) {
+    const minWidth = half * 2
+    let lo = trueVal - half
+    let hi = trueVal + half
+    if (lo < 20) { hi = Math.min(99, 20 + minWidth); lo = 20 }
+    else if (hi > 99) { lo = Math.max(20, 99 - minWidth); hi = 99 }
+    return { lo, hi }
+  }
   function ovrRange() {
     const block = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
     if (!block) return { lo: null, hi: null }
     const trueOvr = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
-    // half = noise → at default noise 15, that's a 30-point spread.
-    const half = noise
-    return {
-      lo: Math.max(20, trueOvr - half),
-      hi: Math.min(99, trueOvr + half),
-    }
+    return shiftedRange(trueOvr, noise)   // default noise 15 → 30-pt band
   }
   function potRange() {
     const block = recruit.isPitcher ? recruit.truePotentialPitcher : recruit.truePotentialHitter
     if (!block) return { lo: null, hi: null }
     const truePot = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
-    // Same 30-point spread for potential. Slightly wider in the initial
-    // unscouted state would be more realistic but the user asked for ~30
-    // either way for simplicity.
-    const half = noise
-    return {
-      lo: Math.max(20, truePot - half),
-      hi: Math.min(99, truePot + half),
-    }
+    return shiftedRange(truePot, noise)
   }
   const ovr = ovrRange()
   const pot = potRange()
@@ -1231,11 +1229,18 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
   }, [recruit.id, grade.noise, save.calendar.year])
 
   // Visible stat ranges — half-width = noise (at default noise 15 that's a
-  // 30-point spread, which is the "loose hint" the user wants pre-scouting).
-  // As you spend AP, noise drops, range narrows.
+  // 30-point spread). As you spend AP, noise drops and the range narrows.
+  // Uses shifted clamping so a recruit near 99 doesn't get a tell-tale
+  // narrow band (e.g. 92 ±15 would clamp to 77-99 = 22 wide; shifted to
+  // preserve width gives 70-99 = 30 wide and hides the upside).
   function ratingRange(v) {
     const half = Math.max(1, grade.noise)
-    return { lo: Math.max(20, v - half), hi: Math.min(99, v + half) }
+    const minWidth = half * 2
+    let lo = v - half
+    let hi = v + half
+    if (lo < 20) { hi = Math.min(99, 20 + minWidth); lo = 20 }
+    else if (hi > 99) { lo = Math.max(20, 99 - minWidth); hi = 99 }
+    return { lo, hi }
   }
   // Compute Est OVR from the TRUE rating (not the noisy view) so the range
   // is centered on the right value. The displayed range hides the truth via

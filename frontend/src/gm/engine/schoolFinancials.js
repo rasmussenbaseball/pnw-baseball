@@ -48,6 +48,27 @@ export function allocationsFor(level) {
 }
 
 /**
+ * Per-level TRAVEL FLOOR. A road series costs real money regardless of
+ * total budget — bus rental + hotel + meals for a single weekend trip is
+ * ~$2.5K, and PNW programs typically have 8-12 road series per year.
+ * Without these floors, smaller programs would have travel allocations of
+ * $5-15K, which is below the actual cost of running their schedule. The
+ * floor prevents that nonsense and gets borrowed from the next-largest
+ * spend bucket (coaching) when needed.
+ */
+const TRAVEL_FLOOR_BY_LEVEL = {
+  D1:   80000,   // charter flights for distant series
+  D2:   45000,
+  D3:   38000,   // bus-heavy but every Northwest Conf road trip is a real cost
+  NAIA: 40000,
+  NWAC: 25000,   // long-haul bus league, schools are spread across two states
+}
+
+export function travelFloorForLevel(level) {
+  return TRAVEL_FLOOR_BY_LEVEL[level] || 30000
+}
+
+/**
  * Compute the full line-item breakdown of a school's baseball budget.
  *
  * Approach (after May 2026 reconciliation):
@@ -56,10 +77,17 @@ export function allocationsFor(level) {
  *   - The REMAINING $ (totalBudget - scholarshipPool) splits across the
  *     other categories via `budgetAllocations[level]` percentages, which
  *     sum to 1.0 within each level.
+ *   - TRAVEL FLOOR enforcement: if the computed travel allocation falls
+ *     below the per-level realistic floor, raise it to the floor and
+ *     reclaim the difference from coaching (the next-largest line).
  *
- * This guarantees the displayed scholarship line matches the recruiting
- * page's pool, and that D3 + NWAC don't get a confusing "48% scholarships"
- * split when their actual schol pool is $0.
+ * This guarantees:
+ *   (1) Scholarships line matches the recruiting page's pool exactly.
+ *   (2) Travel never drops below what it physically costs to play the
+ *       schedule (so a $440K NAIA program doesn't show $11K travel — it
+ *       shows $40K minimum, with coaching absorbing the difference).
+ *   (3) D3 + NWAC don't get a confusing "48% scholarships" split when
+ *       their actual schol pool is $0.
  */
 export function lineItemBudget(school) {
   if (!school) return null
@@ -71,8 +99,16 @@ export function lineItemBudget(school) {
   const remaining = Math.max(0, total - pool)
   const out = { totalBudget: total, scholarships: pool }
   for (const [cat, pct] of Object.entries(alloc)) {
-    if (cat.startsWith('_')) continue   // skip _note metadata keys
+    if (cat.startsWith('_')) continue
     out[cat] = Math.round(remaining * pct)
+  }
+  // Travel floor enforcement — pull the shortfall from coaching.
+  const floor = travelFloorForLevel(school.level)
+  if (out.travel < floor) {
+    const shortfall = floor - out.travel
+    const reclaim = Math.min(shortfall, out.coaching || 0)
+    out.coaching = (out.coaching || 0) - reclaim
+    out.travel = (out.travel || 0) + reclaim
   }
   return out
 }

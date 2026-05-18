@@ -267,8 +267,7 @@
         { "id": "saint-martins-d2", "name": "Saint Martin's", "city": "Lacey", "state": "WA" },
         { "id": "western-oregon-d2", "name": "Western Oregon", "city": "Monmouth", "state": "OR" },
         { "id": "northwest-nazarene-d2", "name": "Northwest Nazarene", "city": "Nampa", "state": "ID" },
-        { "id": "montana-state-billings-d2", "name": "Montana State Billings", "city": "Billings", "state": "MT" },
-        { "id": "concordia-or-d2", "name": "Concordia (OR)", "city": "Portland", "state": "OR" }
+        { "id": "montana-state-billings-d2", "name": "Montana State Billings", "city": "Billings", "state": "MT" }
       ]
     },
 

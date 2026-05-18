@@ -247,6 +247,22 @@ export function defaultBudgetForSchool(school, actualCoachPayroll = null) {
     // No scholarship pool — force the slot to zero. D3 + NWAC stay at 0.
     allocations.scholarships = 0
   }
+
+  // ── Travel floor ─────────────────────────────────────────────────────
+  // Travel can never drop below the realistic per-level minimum cost of
+  // actually running the schedule. If the proportional split landed below
+  // the floor, raise travel to the floor and pull the shortfall from
+  // coachingSalaries (the next-largest discretionary line).
+  const TRAVEL_FLOOR_BY_LEVEL = {
+    D1: 80000, D2: 45000, D3: 38000, NAIA: 40000, NWAC: 25000,
+  }
+  const travelFloor = TRAVEL_FLOOR_BY_LEVEL[level] || 30000
+  if (allocations.travel < travelFloor) {
+    const shortfall = travelFloor - allocations.travel
+    const reclaim = Math.min(shortfall, allocations.coachingSalaries || 0)
+    allocations.coachingSalaries = (allocations.coachingSalaries || 0) - reclaim
+    allocations.travel = (allocations.travel || 0) + reclaim
+  }
   // If we know the actual coach payroll, override the coachingSalaries slot
   // and steal/give back proportionally from the other categories so the total
   // still matches.

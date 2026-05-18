@@ -29,15 +29,15 @@ import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
 import CoachHeadshot, { COACH_LOOKS } from '../../gm/components/CoachHeadshot'
 import { prettyLabel } from '../../gm/engine/format'
 
-// Level pickers — NAIA is the fully-shipped path; others are PREVIEW (engine
-// integration is still partial; expect rough edges on schedule generation
-// and recruiting flows for non-NAIA).
+// Level tabs. All levels are playable now — the engine has the per-level
+// budgets, rosters, conference schedules, recruiting tier-shifts, and
+// postseason brackets wired up. PNW programs at every level work the same.
 const LEVEL_TABS = [
-  { key: 'NAIA', label: 'NAIA',  status: 'PLAYABLE',   blurb: 'Full alpha experience. 4-year programs, deep recruiting, full sim.' },
-  { key: 'D1',   label: 'D1',    status: 'PREVIEW',    blurb: 'NCAA Division I — 4-year. Engine support partial; schedule + national-bracket integration coming.' },
-  { key: 'D2',   label: 'D2',    status: 'PREVIEW',    blurb: 'NCAA Division II — 4-year. Engine support partial.' },
-  { key: 'D3',   label: 'D3',    status: 'PREVIEW',    blurb: 'NCAA Division III — 4-year, no athletic scholarships. Engine support partial.' },
-  { key: 'NWAC', label: 'NWAC',  status: 'PREVIEW',    blurb: 'JUCO — 2-year. Only FR/SO eligible. Players transfer out after SO year. Engine support partial.' },
+  { key: 'NAIA', label: 'NAIA', status: 'PLAYABLE', blurb: '4-year programs. Deep recruiting, full sim, real budgets.' },
+  { key: 'D1',   label: 'D1',   status: 'PLAYABLE', blurb: 'NCAA Division I — 4-year. Bigger budgets, NIL deals, tougher recruiting.' },
+  { key: 'D2',   label: 'D2',   status: 'PLAYABLE', blurb: 'NCAA Division II — 4-year. Big scholarship pools, regional play.' },
+  { key: 'D3',   label: 'D3',   status: 'PLAYABLE', blurb: 'NCAA Division III — 4-year, NO athletic scholarships. Coach + facilities matter more.' },
+  { key: 'NWAC', label: 'NWAC', status: 'PLAYABLE', blurb: 'JUCO — 2-year. Only FR/SO eligible. Players transfer to 4-yr programs after SO year.' },
 ]
 
 // Legacy — Year-1 alpha only allowed CCC. Now we surface all NAIA programs
@@ -250,15 +250,14 @@ export default function NewDynasty() {
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
-          <StepDot active={step === 1} done={step > 1} num={1} label="Path" onClick={() => setStep(1)} />
+          <StepDot active={step === 1} done={step > 1} num={1} label="Setup" onClick={() => setStep(1)} />
           <StepDot active={step === 2} done={step > 2} num={2} label="Program" onClick={() => setStep(2)} />
-          <StepDot active={step === 3} done={step > 3} num={3} label="Mode" onClick={() => setStep(3)} />
-          <StepDot active={step === 4} done={step > 4} num={4} label="Coach" onClick={() => setStep(4)} />
-          <StepDot active={step === 5} done={step > 5} num={5} label="Confirm" onClick={() => setStep(5)} />
+          <StepDot active={step === 3} done={step > 3} num={3} label="Coach" onClick={() => setStep(3)} />
+          <StepDot active={step === 4} done={step > 4} num={4} label="Confirm" onClick={() => setStep(4)} />
         </div>
 
         {step === 1 && (
-          <PathStep
+          <SetupStep
             storyMode={storyMode}
             setStoryMode={setStoryMode}
             difficulty={difficulty}
@@ -266,6 +265,10 @@ export default function NewDynasty() {
             storyStartMode={storyStartMode}
             setStoryStartMode={setStoryStartMode}
             storyStart={storyStart}
+            modeKey={modeKey}
+            setModeKey={setModeKey}
+            customOptions={customOptions}
+            setCustomOptions={setCustomOptions}
             onNext={() => setStep(2)}
           />
         )}
@@ -291,6 +294,7 @@ export default function NewDynasty() {
               : <ProgramStep
                   schools={allowedSchools}
                   conferences={conferences}
+                  programRatings={programRatings}
                   selectedSchoolId={selectedSchoolId}
                   setSelectedSchoolId={setSelectedSchoolId}
                   onBack={() => setStep(1)}
@@ -298,18 +302,6 @@ export default function NewDynasty() {
                 />
         )}
         {step === 3 && (
-          <ModeStep
-            modeKey={modeKey}
-            setModeKey={setModeKey}
-            customOptions={customOptions}
-            setCustomOptions={setCustomOptions}
-            difficulty={difficulty}
-            storyMode={storyMode}
-            onBack={() => setStep(2)}
-            onNext={() => setStep(4)}
-          />
-        )}
-        {step === 4 && (
           <CoachStep
             coachFirst={coachFirst} setCoachFirst={setCoachFirst}
             coachLast={coachLast} setCoachLast={setCoachLast}
@@ -318,12 +310,12 @@ export default function NewDynasty() {
             secondaryRegion={secondaryRegion} setSecondaryRegion={setSecondaryRegion}
             archetype={archetype} setArchetype={setArchetype}
             ratings={ratings}
-            onBack={() => setStep(3)}
-            onNext={() => setStep(5)}
+            onBack={() => setStep(2)}
+            onNext={() => setStep(4)}
             canNext={!!(coachFirst && coachLast && primaryRegion && secondaryRegion && archetype)}
           />
         )}
-        {step === 5 && effectiveSchoolId && levelInfo && (
+        {step === 4 && effectiveSchoolId && levelInfo && (
           <ConfirmStep
             school={levelInfo.school}
             conf={
@@ -344,7 +336,7 @@ export default function NewDynasty() {
             ratings={ratings}
             archetype={archetype}
             canSubmit={canSubmit}
-            onBack={() => setStep(4)}
+            onBack={() => setStep(3)}
             onSubmit={handleCreate}
           />
         )}
@@ -355,11 +347,16 @@ export default function NewDynasty() {
 
 // ─── Step 1: Program ────────────────────────────────────────────────────────
 
-// ─── Step 1: Path (Story vs Regular + Difficulty) ──────────────────────────
+// ─── Step 1: Setup (Path + Mode merged) ─────────────────────────────────
+//
+// Combines the formerly separate Path step (story-vs-regular + difficulty
+// + story-start-mode) and Mode step (TRADITIONAL/CUSTOM + game-option
+// toggles) into one screen. They overlapped — difficulty was set on both
+// pages, presets duplicated rule defaults. One pane is much clearer.
 
-function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStartMode, setStoryStartMode, storyStart, onNext }) {
+function SetupStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStartMode, setStoryStartMode, storyStart, modeKey, setModeKey, customOptions, setCustomOptions, onNext }) {
   return (
-    <PixelCard accent="#fbbf24" title="STEP 1 · CAREER PATH">
+    <PixelCard accent="#fbbf24" title="STEP 1 · GAME SETUP">
       <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
         Two ways to play. Pick how your career arc works, then choose how unforgiving the game is.
       </p>
@@ -495,8 +492,57 @@ function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storySta
         </div>
       )}
 
-      <div className="flex justify-end">
-        <PixelButton onClick={onNext}>Next →</PixelButton>
+      {/* ─── Game-rules section (was Mode step) ──────────────────────── */}
+      <div className="border-t-2 border-[#3a3a5e] pt-4 mt-2">
+        <div className="text-white font-pixel uppercase tracking-widest text-sm mb-2">Game Rules</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+          {Object.entries(GAME_MODE_PRESETS).map(([key, preset]) => (
+            <button
+              key={key}
+              onClick={() => setModeKey(key)}
+              className={
+                'text-left p-3 rounded-lg border-2 transition ' +
+                (modeKey === key ? 'border-amber-300 bg-[#3a3a5e]' : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+              }
+            >
+              <div className="font-bold text-white text-sm">{preset.label}</div>
+              <div className="text-[10px] text-[#a8a8c8] mt-1 leading-snug">{preset.blurb}</div>
+            </button>
+          ))}
+        </div>
+
+        {modeKey === 'CUSTOM' && (
+          <div className="p-3 bg-[#23233d] rounded space-y-2 border-2 border-[#3a3a5e]">
+            <Toggle
+              label="Injuries"
+              sub="Players can get hurt in games + practice."
+              value={customOptions.injuriesEnabled}
+              onChange={v => setCustomOptions({ ...customOptions, injuriesEnabled: v })}
+            />
+            <Toggle
+              label="Transfer portal"
+              sub="Inbound + outbound transfers each offseason."
+              value={customOptions.transferPortalEnabled}
+              onChange={v => setCustomOptions({ ...customOptions, transferPortalEnabled: v })}
+            />
+            <Toggle
+              label="Budget constraints"
+              sub="Hard cap on annual athletic budget."
+              value={customOptions.budgetConstraintsEnabled}
+              onChange={v => setCustomOptions({ ...customOptions, budgetConstraintsEnabled: v })}
+            />
+            <Toggle
+              label="Head coach can be fired"
+              sub={storyMode === 'STORY' ? 'Always ON in Story Mode.' : 'Job security can hit zero and end the run.'}
+              value={storyMode === 'STORY' ? true : customOptions.coachFiringEnabled}
+              onChange={v => storyMode !== 'STORY' && setCustomOptions({ ...customOptions, coachFiringEnabled: v })}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end mt-4">
+        <PixelButton onClick={onNext}>Next: Program →</PixelButton>
       </div>
     </PixelCard>
   )
@@ -669,7 +715,7 @@ function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelec
   )
 }
 
-function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchoolId, onBack, onNext }) {
+function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, setSelectedSchoolId, onBack, onNext }) {
   const [activeLevel, setActiveLevel] = useState('NAIA')
 
   // NAIA list: the Cascade Collegiate Conference (the only NAIA conference
@@ -704,8 +750,8 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
   return (
     <PixelCard accent="#fbbf24" title="STEP 2 · CHOOSE YOUR PROGRAM">
       <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
-        Pick any <strong className="text-amber-300">PNW program</strong> at any level. NAIA is the fully shipped path;
-        other levels are PREVIEW while engine integration finishes.
+        Pick any <strong className="text-amber-300">PNW program</strong> at any level. Stars reflect
+        roster talent + recent results — they're a quick read on how strong a program is heading into Year 1.
       </p>
 
       {/* Level tabs */}
@@ -724,20 +770,13 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
               }
             >
               {tab.label}
-              {tab.status === 'PREVIEW' && (
-                <span className="ml-1.5 text-[8px] font-bold tracking-wider opacity-75">PREVIEW</span>
-              )}
             </button>
           )
         })}
       </div>
 
       {/* Per-level blurb */}
-      <div className={
-        'text-[11px] mb-3 p-2 rounded border ' +
-        (isPreviewLevel ? 'bg-amber-900/30 border-amber-400/40 text-amber-200' : 'bg-[#23233d] border-[#3a3a5e] text-[#a8a8c8]')
-      }>
-        {isPreviewLevel && <strong>PREVIEW: </strong>}
+      <div className="text-[11px] mb-3 p-2 rounded border bg-[#23233d] border-[#3a3a5e] text-[#a8a8c8]">
         {currentTab?.blurb}
       </div>
 
@@ -750,6 +789,20 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
         )}
         {programsForLevel.map(p => {
           const isSelected = selectedSchoolId === p.id
+          // Look up program rating. Rating data is built for NAIA schools
+          // only at the moment; non-NAIA programs fall back to a 2.5-star
+          // baseline derived from their strength rating (also estimated
+          // when no PEAR data is present).
+          const rating = programRatings?.[p.id]
+          const fallbackStars = (() => {
+            // Estimate from school.strength if no rating record exists.
+            const fallback = Object.values(schools).find(s => s.id === p.id)
+            const strength = fallback?.strength ?? p.strength ?? 0
+            // Strength is roughly -3 to +5; map to 0.5-5 stars
+            return Math.max(0.5, Math.min(5.0, 2.5 + strength * 0.5))
+          })()
+          const stars = rating?.stars ?? fallbackStars
+          const nationalRank = rating?.nationalRank
           return (
             <button
               key={p.id}
@@ -767,21 +820,17 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
                 <div className="text-[10px] text-[#a8a8c8] mt-0.5">
                   {p.city || '—'}{p.city && p.state ? ', ' : ''}{p.state} · {p.conference}
                 </div>
+                <div className="mt-1">
+                  <StarRow stars={stars} />
+                  {nationalRank && (
+                    <span className="ml-2 text-[9px] text-amber-300 font-bold">#{nationalRank}</span>
+                  )}
+                </div>
               </div>
             </button>
           )
         })}
       </div>
-
-      {/* Selected-program detail (shows playoff path + roster info for non-NAIA) */}
-      {selectedProgram && isPreviewLevel && (
-        <div className="bg-[#0f0f1e] border-2 border-amber-400/40 rounded p-3 mb-3 text-[11px]">
-          <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1.5">
-            {selectedProgram.name} — {activeLevel} preview
-          </div>
-          <PreviewBlurb level={activeLevel} program={selectedProgram} />
-        </div>
-      )}
 
       <div className="flex justify-between">
         <PixelButton onClick={onBack}>← Back</PixelButton>
@@ -789,7 +838,7 @@ function ProgramStep({ schools, conferences, selectedSchoolId, setSelectedSchool
           disabled={!selectedSchoolId}
           onClick={onNext}
         >
-          Next: Mode →
+          Next: Coach →
         </PixelButton>
       </div>
     </PixelCard>
@@ -851,79 +900,13 @@ function StarRow({ stars }) {
   )
 }
 
-// ─── Step 2: Mode ───────────────────────────────────────────────────────────
+// ─── ModeStep was merged into SetupStep (May 2026) ──────────────────────
+// Old standalone Mode step removed — its UI lives at the bottom of SetupStep
+// now. ModeStep was here in the file; replacing with a no-op marker so any
+// lingering reference fails loudly rather than silently rendering nothing.
 
-function ModeStep({ modeKey, setModeKey, customOptions, setCustomOptions, difficulty, storyMode, onBack, onNext }) {
-  return (
-    <PixelCard accent="#fbbf24" title="STEP 3 · GAME RULES">
-      <div className="bg-[#0f0f1e] border-2 border-amber-400/40 rounded p-2 mb-4 text-[11px] text-[#a8a8c8] flex flex-wrap gap-3">
-        <span><strong className="text-amber-200">Path:</strong> {storyMode === 'STORY' ? 'Story Mode' : 'Regular Dynasty'}</span>
-        <span><strong className="text-amber-200">Difficulty:</strong> {DIFFICULTY_TUNING[difficulty]?.label || difficulty}</span>
-        {storyMode === 'STORY' && <span className="text-red-300"><strong>Firing forced ON</strong> (story mode)</span>}
-      </div>
-      {Object.entries(GAME_MODE_PRESETS).map(([key, preset]) => (
-        <button
-          key={key}
-          onClick={() => setModeKey(key)}
-          className={
-            'w-full text-left p-4 rounded-xl border-4 mb-3 transition ' +
-            (modeKey === key ? 'border-amber-300 bg-[#3a3a5e]' : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
-          }
-        >
-          <div className="font-bold text-white text-base">{preset.label}</div>
-          <div className="text-xs text-[#a8a8c8] mt-1">{preset.blurb}</div>
-        </button>
-      ))}
-
-      {modeKey === 'CUSTOM' && (
-        <div className="mt-4 p-4 bg-[#23233d] rounded-xl space-y-3 border-4 border-[#3a3a5e]">
-          <div>
-            <label className="text-[10px] uppercase tracking-widest text-amber-300 font-bold">Difficulty</label>
-            <p className="text-[10px] text-[#a8a8c8] mb-1">Affects AI rival strength and overall challenge.</p>
-            <select
-              className="block w-full mt-1 bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-sm text-white"
-              value={customOptions.difficulty}
-              onChange={e => setCustomOptions({ ...customOptions, difficulty: e.target.value })}
-            >
-              {['EASY', 'NORMAL', 'HARD', 'BRUTAL'].map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <Toggle
-            label="Injuries"
-            sub="Players can get hurt in games + practice. Recommended on for realism."
-            value={customOptions.injuriesEnabled}
-            onChange={v => setCustomOptions({ ...customOptions, injuriesEnabled: v })}
-          />
-          <Toggle
-            label="Transfer portal"
-            sub="Inbound + outbound transfers each offseason."
-            value={customOptions.transferPortalEnabled}
-            onChange={v => setCustomOptions({ ...customOptions, transferPortalEnabled: v })}
-          />
-          <Toggle
-            label="Budget constraints"
-            sub="Hard cap on annual athletic budget. Off = unlimited spending."
-            value={customOptions.budgetConstraintsEnabled}
-            onChange={v => setCustomOptions({ ...customOptions, budgetConstraintsEnabled: v })}
-          />
-          <Toggle
-            label="Head coach can be fired"
-            sub="Job security can drop to zero and end your dynasty."
-            value={customOptions.coachFiringEnabled}
-            onChange={v => setCustomOptions({ ...customOptions, coachFiringEnabled: v })}
-          />
-          <div className="text-[10px] text-amber-300 italic">
-            Some Custom toggles are wired (injuries, difficulty); others are scaffolded for upcoming releases.
-          </div>
-        </div>
-      )}
-
-      <div className="flex justify-between mt-4">
-        <PixelButton onClick={onBack} accent="#3a3a5e">← Back</PixelButton>
-        <PixelButton onClick={onNext}>Next: Coach →</PixelButton>
-      </div>
-    </PixelCard>
-  )
+function _DeprecatedModeStep() {
+  return null
 }
 
 // ─── Step 3: Coach ──────────────────────────────────────────────────────────
@@ -1108,10 +1091,9 @@ function RegionPicker({ label, value, setValue, excludeValue, disabled = false, 
 // ─── Step 4: Confirm ────────────────────────────────────────────────────────
 
 function ConfirmStep({ school, conf, level, mode, storyMode, difficulty, storyRole, coachFirst, coachLast, coachLookId, primaryRegion, secondaryRegion, ratings, archetype, canSubmit, onBack, onSubmit }) {
-  const isPreview = level && level !== 'NAIA'
   const isStory = storyMode === 'STORY'
   return (
-    <PixelCard accent="#fbbf24" title="STEP 5 · CONFIRM AND START">
+    <PixelCard accent="#fbbf24" title="STEP 4 · CONFIRM AND START">
       {/* Path summary banner */}
       <div className={'rounded p-3 mb-4 border-2 ' + (isStory ? 'bg-purple-900/30 border-purple-400/40' : 'bg-[#0f0f1e] border-amber-400/40')}>
         <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1">
@@ -1123,18 +1105,6 @@ function ConfirmStep({ school, conf, level, mode, storyMode, difficulty, storyRo
             : `You're the head coach at ${school.name}. Build a dynasty. No school changes.`}
         </p>
       </div>
-      {isPreview && (
-        <div className="bg-amber-900/30 border-2 border-amber-400/40 rounded p-3 mb-4">
-          <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1">
-            {level} preview dynasty
-          </div>
-          <p className="text-xs text-[#e8e8e8]">
-            Non-NAIA engine integration is partial. Dynasty will create + you can advance weeks +
-            sim conference games + view stats. Recruiting + national postseason routing are stubbed
-            (NAIA-equivalent) for now and will be replaced as the per-level paths ship.
-          </p>
-        </div>
-      )}
       <div className="grid grid-cols-1 md:grid-cols-[120px_1fr] gap-4 mb-6">
         <div className="bg-[#1a1a2e] border-4 border-[#3a3a5e] rounded-lg p-2 flex items-center justify-center">
           <CoachHeadshot lookId={coachLookId} size={96} />
