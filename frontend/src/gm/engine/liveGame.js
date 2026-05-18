@@ -177,6 +177,19 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     const sideKey = state.top ? 'home' : 'away'   // the side that just finished pitching
     state[`${sideKey}Fatigue`] = Math.max(0, state[`${sideKey}Fatigue`] - 3)
 
+    // Confidence drifts gently back toward the pitcher's composure baseline
+    // between innings (a small mental reset in the dugout). Bias is +1/3 of
+    // the gap toward composure, capped at ±4 per inning — so a rattled
+    // pitcher (down at 20 with composure 50) ticks up ~4 each frame, but
+    // a hot one above their baseline cools slightly. Never RESETS, only
+    // drifts: a guy who gave up 6 runs still walks back out shaken.
+    const currentPitcher = sideKey === 'home' ? state.homePitcher : state.awayPitcher
+    const baseline = currentPitcher?.pitcher?.composure ?? 50
+    const conf = state[`${sideKey}Confidence`]
+    const gap = baseline - conf
+    const drift = Math.max(-4, Math.min(4, gap / 3))
+    state[`${sideKey}Confidence`] = Math.max(0, Math.min(100, conf + drift))
+
     // Opponent-side auto-sub. If the opposing pitcher (NOT the user's) is
     // gassed (fatigue ≥ 75) or has thrown a clearly-too-many pitches (≥ 95)
     // and the bullpen has fresh arms, the AI brings in a reliever. This

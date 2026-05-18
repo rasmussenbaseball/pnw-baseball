@@ -15,7 +15,22 @@ import { pickCityForState } from './cities'
 import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
 import { composePlayerProfile, enforceArchetypeFloors } from './playerArchetypes'
 import { nilAdvantage } from './nil'
+import { playerOverall } from './playerRating'
 import jucoTeamsRaw from '../data/juco_teams.json'
+
+/**
+ * Estimate a recruit's TRUE overall rating from the raw rating block. Used
+ * by the playing-time priority calc to compare recruit-vs-blockers (so a
+ * 90-OVR recruit knows a 60-OVR starter doesn't block them). Returns null
+ * when we can't compute — caller falls back to a neutral default.
+ */
+function estimateRecruitTrueOverall(recruit) {
+  const block = recruit?.isPitcher ? recruit?.truePitcher : recruit?.trueHitter
+  if (!block) return null
+  const vals = Object.values(block).filter(v => typeof v === 'number')
+  if (vals.length === 0) return null
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+}
 
 // Recruit pool sizes. Trimmed in v1.6 — each makeRecruit allocates a fully
 // shaped recruit (ratings + scout grades + offers). Bigger pools = bigger
@@ -1389,16 +1404,35 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
     const team = state.teams?.[userSchoolId]
     const userHC = team ? state.coaches?.[team.headCoachId] : null
     if (userHC) ctx.coachDeveloper = userHC.developer ?? 55
-    // Playing-time proxy: how thin are we at the recruit's position?
+    // Playing-time proxy: weighted by ROSTER QUALITY at the recruit's
+    // position, not just headcount. A position with 3 returners at OVR 55
+    // is "wide open" for a high-end recruit; the same headcount at OVR 85
+    // is locked down. The recruit themselves matter too — a 90-OVR prospect
+    // looks at a 60-OVR starter and sees an open path; a 60-OVR prospect
+    // looks at the same starter and sees a blocked one.
     if (team && state.players) {
       const pos = recruit.primaryPosition
-      const sameSpot = team.rosterPlayerIds
+      const recruitOvr = estimateRecruitTrueOverall(recruit) ?? 60
+      const blockers = team.rosterPlayerIds
         .map(id => state.players[id])
         .filter(p => p && !p.isPitcher === !recruit.isPitcher
           && (recruit.isPitcher ? p.isPitcher : p.primaryPosition === pos))
-        .length
-      // 0 returners 1.0 wide open, 4+ 0.1 jammed
-      ctx.ptAvailability = clamp(1 - sameSpot * 0.22, 0.1, 1.0)
+      // For each player at the same spot, compute a "block strength":
+      //   1.0 = clearly better than recruit (recruit can't displace them)
+      //   0.5 = roughly even (competition, recruit has a shot)
+      //   0.0 = clearly worse than recruit (recruit walks into the spot)
+      // Sum the block strengths; the more cumulative blocking, the worse
+      // the playing-time score.
+      let totalBlock = 0
+      for (const p of blockers) {
+        const pOvr = playerOverall(p) ?? 50
+        const gap = pOvr - recruitOvr   // positive = blocker is better
+        // Sigmoid-ish: gap ≥ +10 → ~1.0 block, gap = 0 → 0.5, gap ≤ -10 → ~0
+        const block = 1 / (1 + Math.exp(-gap / 6))
+        totalBlock += block
+      }
+      // 0 effective blockers → 1.0 (wide open). 3+ effective blockers → 0.1.
+      ctx.ptAvailability = clamp(1 - totalBlock * 0.30, 0.1, 1.0)
     }
     // Pipeline match: recruit's home region matches coach's primary or
     // secondary region (or legacy regions[] for older saves).
@@ -1647,13 +1681,22 @@ export function buildRecruitFeedback(recruit, userSchoolId, state) {
   const ctx = {}
   if (userHC) ctx.coachDeveloper = userHC.developer ?? 55
   if (team && state.players) {
+    // Same OVR-weighted playing-time calc used by tryAdvanceRecruit — see
+    // that function for the rationale. Mirroring it here keeps the in-app
+    // "Playing time" priority bar consistent with the actual sign-prob math.
     const pos = recruit.primaryPosition
-    const sameSpot = team.rosterPlayerIds
+    const recruitOvr = estimateRecruitTrueOverall(recruit) ?? 60
+    const blockers = team.rosterPlayerIds
       .map(id => state.players[id])
       .filter(p => p && !p.isPitcher === !recruit.isPitcher
         && (recruit.isPitcher ? p.isPitcher : p.primaryPosition === pos))
-      .length
-    ctx.ptAvailability = clamp(1 - sameSpot * 0.22, 0.1, 1.0)
+    let totalBlock = 0
+    for (const p of blockers) {
+      const pOvr = playerOverall(p) ?? 50
+      const gap = pOvr - recruitOvr
+      totalBlock += 1 / (1 + Math.exp(-gap / 6))
+    }
+    ctx.ptAvailability = clamp(1 - totalBlock * 0.30, 0.1, 1.0)
   }
   if (userHC) {
     const recruitRegion = STATE_TO_REGION[recruit.hometown?.state]

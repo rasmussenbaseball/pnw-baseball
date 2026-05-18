@@ -57,7 +57,7 @@ const PREFERENCE_LABELS = {
 const PREFERENCE_EXPLANATIONS = {
   financial:       'Scored on your scholarship offer + NIL vs the level-adjusted market rate. Bigger offers + NIL stack here.',
   proximity:       'Distance from the recruit\'s home town to your campus. Same state = full score, far away = penalty.',
-  playing_time:    'Open spots at the recruit\'s position on your roster. Fewer returners at their spot = higher score.',
+  playing_time:    'Path to the lineup at the recruit\'s position. Scored on roster QUALITY (player overalls), not just headcount — a 90-OVR recruit looking at a 60-OVR starter sees an open path; the same starter blocks a 60-OVR recruit. Three weak guys blocking aren\'t as bad as one elite returner.',
   program_history: 'Your recent W-L + NWBB ranking. Winning programs score better.',
   facilities:      'Driven by your Facilities + S&C budget tier. Higher allocation = higher score.',
   academics:       'Your school\'s academic profile (private/D3 lean higher; commuter schools lower).',
