@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Optional
 from ..models.database import get_connection
+from ..cache import cached_endpoint
 from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
@@ -597,6 +598,7 @@ router.include_router(quiz_router)
 # ============================================================
 
 @router.get("/site-stats")
+@cached_endpoint(ttl_seconds=3600)
 def site_stats():
     """Return aggregate counts and a random player for the homepage."""
     with get_connection() as conn:
@@ -638,6 +640,7 @@ def site_stats():
 
 # ── Stats last-updated timestamps ─────────────────────────────────
 @router.get("/stats/last-updated")
+@cached_endpoint(ttl_seconds=300)
 def stats_last_updated_top(season: int = 2026):
     """Return the most recent updated_at timestamp per division level."""
     with get_connection() as conn:
@@ -737,6 +740,7 @@ def hometown_search(q: str = Query("", min_length=0)):
 # ============================================================
 
 @router.get("/divisions")
+@cached_endpoint(ttl_seconds=3600)
 def list_divisions():
     """List all divisions (D1, D2, D3, NAIA, NWAC)."""
     with get_connection() as conn:
@@ -747,6 +751,7 @@ def list_divisions():
 
 
 @router.get("/conferences")
+@cached_endpoint(ttl_seconds=3600)
 def list_conferences(division_id: Optional[int] = None):
     """List conferences, optionally filtered by division."""
     with get_connection() as conn:
@@ -769,6 +774,7 @@ def list_conferences(division_id: Optional[int] = None):
 
 
 @router.get("/teams")
+@cached_endpoint(ttl_seconds=1800)
 def list_teams(
     conference_id: Optional[int] = None,
     division_id: Optional[int] = None,
@@ -805,6 +811,7 @@ def list_teams(
 
 
 @router.get("/teams/summary")
+@cached_endpoint(ttl_seconds=1800)
 def teams_summary(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = None,
@@ -928,6 +935,7 @@ def teams_summary(
 
 
 @router.get("/standings")
+@cached_endpoint(ttl_seconds=900)
 def standings(
     season: int = Query(..., description="Season year"),
 ):
@@ -1386,6 +1394,7 @@ def conference_standings_graphic(
 
 
 @router.get("/stat-leaders")
+@cached_endpoint(ttl_seconds=1800)
 def stat_leaders(
     season: int = Query(..., description="Season year"),
     limit: int = Query(5, description="Number of leaders per category"),
@@ -1739,6 +1748,7 @@ LEVELS = ["D1", "D2", "D3", "NAIA", "JUCO"]
 
 
 @router.get("/records")
+@cached_endpoint(ttl_seconds=1800)
 def stat_records(
     limit: int = Query(5, description="Number of records per category"),
 ):
@@ -2095,6 +2105,7 @@ def stat_records(
 
 
 @router.get("/team-ratings")
+@cached_endpoint(ttl_seconds=1800)
 def team_ratings(
     season: int = Query(..., description="Season year"),
 ):
@@ -2169,6 +2180,7 @@ def team_ratings(
 
 
 @router.get("/national-rankings")
+@cached_endpoint(ttl_seconds=1800)
 def national_rankings(
     season: int = Query(..., description="Season year"),
 ):
@@ -3085,6 +3097,7 @@ def upset_of_the_day(
 # and future scheduled games.
 
 @router.get("/playoff-projections")
+@cached_endpoint(ttl_seconds=1800)
 def playoff_projections(
     season: int = Query(..., description="Season year"),
 ):
@@ -3678,6 +3691,7 @@ def team_correlations(
 
 
 @router.get("/teams/{team_id}")
+@cached_endpoint(ttl_seconds=3600)
 def get_team(team_id: int):
     """Get detailed info for a single team."""
     with get_connection() as conn:
@@ -3698,6 +3712,7 @@ def get_team(team_id: int):
 
 
 @router.get("/teams/{team_id}/rankings")
+@cached_endpoint(ttl_seconds=1800)
 def get_team_rankings(
     team_id: int,
     season: int = Query(2026, description="Season year"),
@@ -4506,6 +4521,7 @@ def team_info_graphic(
 # ============================================================
 
 @router.get("/leaderboards/batting")
+@cached_endpoint(ttl_seconds=1800)
 def batting_leaderboard(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = Query(None, description="Filter by division"),
@@ -4713,6 +4729,7 @@ def batting_leaderboard(
 # ============================================================
 
 @router.get("/leaderboards/pitching")
+@cached_endpoint(ttl_seconds=1800)
 def pitching_leaderboard(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = Query(None, description="Filter by division"),
@@ -4855,6 +4872,7 @@ def pitching_leaderboard(
 # ============================================================
 
 @router.get("/leaderboards/war")
+@cached_endpoint(ttl_seconds=1800)
 def war_leaderboard(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = Query(None),
@@ -5111,6 +5129,7 @@ PITCHER_PERCENTILE_STATS = [
 
 
 @router.get("/leaderboards/percentiles")
+@cached_endpoint(ttl_seconds=1800)
 def percentile_leaderboard(
     season: int = Query(..., description="Season year"),
     level: str = Query("D1", description="Division level: D1, D2, D3, NAIA, JUCO"),
@@ -5283,6 +5302,7 @@ def percentile_leaderboard(
 # ============================================================
 
 @router.get("/leaderboards/teams")
+@cached_endpoint(ttl_seconds=1800)
 def team_leaderboard(
     season: int = Query(..., description="Season year"),
     sort_by: str = Query("total_hr", description="Stat to rank by"),
@@ -6426,6 +6446,7 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
 
 
 @router.get("/players/{player_id}")
+@cached_endpoint(ttl_seconds=1800)
 def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
     """
     Get full player profile with career stats and percentiles.
@@ -7001,6 +7022,7 @@ def uncommitted_juco_players(
 # ============================================================
 
 @router.get("/teams/{team_id}/roster")
+@cached_endpoint(ttl_seconds=1800)
 def team_roster(team_id: int, season: Optional[int] = None):
     """Get the roster for a team."""
     with get_connection() as conn:
@@ -7017,6 +7039,7 @@ def team_roster(team_id: int, season: Optional[int] = None):
 
 
 @router.get("/teams/{team_id}/active-roster")
+@cached_endpoint(ttl_seconds=1800)
 def team_active_roster(team_id: int, season: int = Query(..., description="Season year")):
     """Hitters (any player with at least one PA) for this team in `season`.
     Used by Lineup Helper's build-from-scratch mode. Pure pitchers without
@@ -7044,6 +7067,7 @@ def team_active_roster(team_id: int, season: int = Query(..., description="Seaso
 
 
 @router.get("/teams/{team_id}/stats")
+@cached_endpoint(ttl_seconds=1800)
 def team_stats(team_id: int, season: int = Query(...)):
     """Get team info plus full batting and pitching stat tables for a season."""
     with get_connection() as conn:
@@ -7142,6 +7166,7 @@ def team_stats(team_id: int, season: int = Query(...)):
 # ============================================================
 
 @router.get("/league-environments")
+@cached_endpoint(ttl_seconds=3600)
 def league_environments(
     season: int = Query(..., description="Season year"),
 ):
@@ -7257,6 +7282,7 @@ def league_environments(
 # ============================================================
 
 @router.get("/seasons")
+@cached_endpoint(ttl_seconds=3600)
 def available_seasons():
     """List all seasons with data."""
     with get_connection() as conn:
@@ -7755,6 +7781,7 @@ _PARK_FACTORS_PATH = os.path.join(
 
 
 @router.get("/park-factors")
+@cached_endpoint(ttl_seconds=3600)
 def get_park_factors(
     state: Optional[str] = Query(None),
     division_id: Optional[int] = Query(None),
@@ -7834,6 +7861,7 @@ def get_park_factors(
 # ============================================================
 
 @router.get("/teams/{team_id}/championships")
+@cached_endpoint(ttl_seconds=3600)
 def team_championships(team_id: int):
     """Get all conference championships won by a team."""
     with get_connection() as conn:
@@ -7853,6 +7881,7 @@ def team_championships(team_id: int):
 # ============================================================
 
 @router.get("/teams/{team_id}/history")
+@cached_endpoint(ttl_seconds=3600)
 def team_history(team_id: int):
     """
     Comprehensive team history: year-by-year records, season stat leaders,
@@ -15762,6 +15791,7 @@ def _find_players_for_cell(cur, team_criteria, stat_criteria, limit=50):
 # ============================================================
 
 @router.get("/leaderboards/summer/batting")
+@cached_endpoint(ttl_seconds=3600)
 def summer_batting_leaderboard(
     season: int = Query(..., description="Season year"),
     league: Optional[str] = Query(None, description="Filter by league abbreviation (WCL, PIL)"),
@@ -15863,6 +15893,7 @@ def summer_batting_leaderboard(
 
 
 @router.get("/leaderboards/summer/pitching")
+@cached_endpoint(ttl_seconds=3600)
 def summer_pitching_leaderboard(
     season: int = Query(..., description="Season year"),
     league: Optional[str] = Query(None, description="Filter by league abbreviation (WCL, PIL)"),
@@ -18964,6 +18995,7 @@ AC_REL_MAX_GS = 3  # < 4 starts
 
 
 @router.get("/all-conference")
+@cached_endpoint(ttl_seconds=1800)
 def all_conference(
     conf: str = Query(..., description="Conference group key (e.g. gnac, nwc, ccc, nwac-east, all-nwac, all-pnw)"),
     season: int = Query(2026, description="Season year"),

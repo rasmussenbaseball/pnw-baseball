@@ -65,6 +65,66 @@ app.add_middleware(
 app.include_router(router, prefix="/api/v1")
 
 
+# ── Edge cache headers ───────────────────────────────────────────
+# Vercel's CDN sits in front of the API and respects s-maxage. Setting
+# Cache-Control here lets the edge serve repeat requests without ever
+# touching the droplet OR Supabase, compounding with the in-memory cache
+# applied at the endpoint level via @cached_endpoint.
+#
+# Each rule maps a URL prefix to (s-maxage, stale-while-revalidate) in
+# seconds. First matching rule wins, so order long-prefix-first.
+CACHE_CONTROL_RULES = [
+    # Live / near-live: short cache, edge can revalidate quickly
+    ("/api/v1/games/live",              (60, 30)),
+    ("/api/v1/games/ticker",            (60, 30)),
+    ("/api/v1/games/by-date",           (300, 120)),
+    ("/api/v1/games/recent",            (300, 120)),
+    ("/api/v1/games/future",            (300, 120)),
+    ("/api/v1/games/win-probabilities", (300, 120)),
+    ("/api/v1/games/upset-of-the-day",  (1800, 600)),
+    ("/api/v1/games/daily-performers",  (1800, 600)),
+    ("/api/v1/games/key-matchup",       (1800, 600)),
+    ("/api/v1/games/series-recap",      (1800, 600)),
+    ("/api/v1/games/daily-recap",       (1800, 600)),
+    # Refreshed once per daily-scrape cycle
+    ("/api/v1/stats/last-updated",      (300, 60)),
+    ("/api/v1/stat-leaders",            (1800, 600)),
+    ("/api/v1/national-rankings",       (1800, 600)),
+    ("/api/v1/team-ratings",            (1800, 600)),
+    ("/api/v1/leaderboards",            (1800, 600)),
+    ("/api/v1/standings",               (900, 300)),
+    ("/api/v1/playoff-projections",     (1800, 600)),
+    ("/api/v1/records",                 (1800, 600)),
+    ("/api/v1/all-conference",          (1800, 600)),
+    ("/api/v1/seasons",                 (3600, 600)),
+    ("/api/v1/site-stats",              (3600, 600)),
+    ("/api/v1/league-environments",     (3600, 600)),
+    ("/api/v1/divisions",               (3600, 600)),
+    ("/api/v1/conferences",             (3600, 600)),
+    ("/api/v1/teams",                   (1800, 600)),  # also covers /teams/{id}/*
+    ("/api/v1/players",                 (1800, 600)),  # also covers /players/{id}/*
+    ("/api/v1/park-factors",            (3600, 600)),
+]
+
+
+@app.middleware("http")
+async def add_cache_control_headers(request, call_next):
+    """Tag cacheable read endpoints with Cache-Control so the Vercel
+    edge CDN can serve repeat requests without hitting the droplet."""
+    response = await call_next(request)
+    # Only cache successful GETs
+    if request.method != "GET" or response.status_code != 200:
+        return response
+    path = request.url.path
+    for prefix, (max_age, swr) in CACHE_CONTROL_RULES:
+        if path.startswith(prefix):
+            response.headers["Cache-Control"] = (
+                f"public, s-maxage={max_age}, stale-while-revalidate={swr}"
+            )
+            break
+    return response
+
+
 @app.on_event("startup")
 def startup():
     init_db()
