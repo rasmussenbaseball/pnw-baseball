@@ -32,6 +32,39 @@ function estimateRecruitTrueOverall(recruit) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
 }
 
+/**
+ * Score for the "Wants to win" priority. Blends the school's static
+ * programHistory rep (40%) with the LIVE national ranking (60%) so a
+ * mid-tier program that's currently #5 nationally outpaces a perennial
+ * top-25 program that just had a down year. Ctx provides nationalRank;
+ * when missing, falls back to programHistory only.
+ *
+ * Rank score curve: #1 = 100, #25 = ~90, #50 = ~80, #100 = ~60, #200 = ~20.
+ */
+function programHistoryScore(school, ctx = {}) {
+  const baseRep = clamp(school?.programHistory ?? 50, 0, 100)
+  const rank = ctx.nationalRank
+  if (typeof rank !== 'number' || rank <= 0) return baseRep
+  const rankScore = clamp(100 - (rank - 1) * 0.4, 10, 100)
+  return Math.round(baseRep * 0.4 + rankScore * 0.6)
+}
+
+/**
+ * Score for the "Strong academics" priority. Blends academicReputation
+ * (50%) with the program's LIVE team GPA vs league average (50%).
+ * League average ~3.0. A 3.5 GPA program reads as elite (academics
+ * culture), a 2.6 reads as a hard pass to an academics-first recruit.
+ *
+ * GPA score curve: 3.5+ = 100, 3.0 = 60 (league avg), 2.5 = 20, ≤2.0 = 0.
+ */
+function academicsScore(school, ctx = {}) {
+  const baseRep = clamp(school?.academicReputation ?? 50, 0, 100)
+  const gpa = ctx.teamGpa
+  if (typeof gpa !== 'number') return baseRep
+  const gpaScore = clamp(20 + (gpa - 2.5) * 80, 0, 100)
+  return Math.round(baseRep * 0.5 + gpaScore * 0.5)
+}
+
 // Recruit pool sizes. Trimmed in v1.6 — each makeRecruit allocates a fully
 // shaped recruit (ratings + scout grades + offers). Bigger pools = bigger
 // end-of-year tick (this gets called inside runEndOfYear, which runs on the
@@ -1440,6 +1473,12 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
       const recruitRegion = STATE_TO_REGION[recruit.hometown.state]
       ctx.pipelineMatch = coachRegionList(userHC).includes(recruitRegion)
     }
+    // Live signals for the "Wants to win" + "Strong academics" priorities.
+    // National rank reflects current-season form (read by programHistoryScore).
+    // Team GPA reflects classroom culture (read by academicsScore).
+    const nr = state.nwbbRatings?.[userSchoolId]?.nationalRank
+    if (typeof nr === 'number' && nr > 0) ctx.nationalRank = nr
+    if (typeof state._currentTeamGpa === 'number') ctx.teamGpa = state._currentTeamGpa
   }
   const fitScore = computeFitScore(recruit, school, grade.interest, ctx)
 
@@ -1532,12 +1571,17 @@ function computeFitScore(recruit, school, interest, ctx = {}) {
   // Proximity: same region = good
   const recruitRegion = STATE_TO_REGION[recruit.hometown.state]
   if (recruitRegion === school.region) score += prefs.proximity * 4
-  // Program history (wins, reputation)
-  score += (school.programHistory / 100) * prefs.program_history * 4
+  // Program history — blend the static legacy rating with the LIVE national
+  // ranking. Static rep gives long-term cred, current rank reflects "are
+  // you winning RIGHT NOW" (which is what a recruit asking "wants to win"
+  // actually cares about). See programHistoryScore() for the math.
+  score += (programHistoryScore(school, ctx) / 100) * prefs.program_history * 4
   // Facilities
   score += (school.facilityRating / 100) * prefs.facilities * 4
-  // Academics
-  score += (school.academicReputation / 100) * prefs.academics * 4
+  // Academics — blend academic reputation with LIVE team GPA vs league
+  // average (~3.0). Strong-academics recruits care about real classroom
+  // culture, not just the school's reputation. See academicsScore().
+  score += (academicsScore(school, ctx) / 100) * prefs.academics * 4
   // Financial — offerAdvantage is the offer minus avg rival offer / 5000
   // (range roughly -3 to +3). Weighted by the recruit's $$$ priority.
   if (typeof ctx.offerAdvantage === 'number') {
@@ -1616,9 +1660,9 @@ export function priorityFitScores(recruit, school, ctx = {}) {
     playing_time: typeof ctx.ptAvailability === 'number'
       ? clamp(ctx.ptAvailability * 100, 0, 100)
       : 50,
-    program_history: clamp(school.programHistory || 50, 0, 100),
+    program_history: programHistoryScore(school, ctx),
     facilities: clamp(school.facilityRating || 50, 0, 100),
-    academics: clamp(school.academicReputation || 50, 0, 100),
+    academics: academicsScore(school, ctx),
     coaching: typeof ctx.coachDeveloper === 'number'
       ? clamp(ctx.coachDeveloper, 0, 100)
       : 50,
@@ -1702,6 +1746,12 @@ export function buildRecruitFeedback(recruit, userSchoolId, state) {
     const recruitRegion = STATE_TO_REGION[recruit.hometown?.state]
     ctx.pipelineMatch = coachRegionList(userHC).includes(recruitRegion)
   }
+  // Live signals for "Wants to win" + "Strong academics" priority scoring.
+  // Same fields tryAdvanceRecruit reads — keeps the UI bar in sync with
+  // the actual sign-prob math.
+  const nrFeedback = state?.nwbbRatings?.[userSchoolId]?.nationalRank
+  if (typeof nrFeedback === 'number' && nrFeedback > 0) ctx.nationalRank = nrFeedback
+  if (typeof state?._currentTeamGpa === 'number') ctx.teamGpa = state._currentTeamGpa
 
   // Offer reaction — depends on $ vs LEVEL-APPROPRIATE market.
   //

@@ -58,9 +58,9 @@ const PREFERENCE_EXPLANATIONS = {
   financial:       'Scored on your scholarship offer + NIL vs the level-adjusted market rate. Bigger offers + NIL stack here.',
   proximity:       'Distance from the recruit\'s home town to your campus. Same state = full score, far away = penalty.',
   playing_time:    'Path to the lineup at the recruit\'s position. Scored on roster QUALITY (player overalls), not just headcount — a 90-OVR recruit looking at a 60-OVR starter sees an open path; the same starter blocks a 60-OVR recruit. Three weak guys blocking aren\'t as bad as one elite returner.',
-  program_history: 'Your recent W-L + NWBB ranking. Winning programs score better.',
+  program_history: 'Your live NATIONAL RANKING (60% weight) blended with the school\'s legacy program reputation (40%). #1 national = elite, top-25 = strong, outside top-100 = soft. Climbing the rankings during the season is the fastest way to land "wants to win" recruits.',
   facilities:      'Driven by your Facilities + S&C budget tier. Higher allocation = higher score.',
-  academics:       'Your school\'s academic profile (private/D3 lean higher; commuter schools lower).',
+  academics:       'Your school\'s academic profile (50%) blended with your live TEAM GPA vs the league average around 3.0 (50%). A 3.5+ team GPA reads as an elite academics program; a 2.6 team GPA scares academics-first recruits even at a strong school. Run Study Hall + Tutoring during the term to lift this.',
   coaching:        'Your head coach\'s Developer rating. Top developers attract development-minded recruits.',
   pipeline_fit:    'Whether the recruit\'s home region is in your head coach\'s primary or secondary region.',
 }
