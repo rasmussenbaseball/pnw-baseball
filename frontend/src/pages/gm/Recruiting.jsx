@@ -806,12 +806,16 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
   const archetype = getArchetype(recruit.archetypeKey)
   const m = recruit.measurables || {}
 
-  // Compute Est OVR + Est POT ranges (uniform within ±noise — equally likely
-  // anywhere in the band).
+  // Compute Est OVR + Est POT ranges. We now show the ranges ALWAYS — even
+  // before any AP is spent — as a 30-ish point hint at the player's true
+  // value. Spending AP narrows the band as `noise` drops. This change makes
+  // recruiting boards usable from week 4 (scouting unlock) without users
+  // having to spend AP to see the most basic "is this guy any good" signal.
   function ovrRange() {
-    if (!scoutedAtAll) return { lo: null, hi: null }
     const block = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
+    if (!block) return { lo: null, hi: null }
     const trueOvr = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
+    // half = noise → at default noise 15, that's a 30-point spread.
     const half = noise
     return {
       lo: Math.max(20, trueOvr - half),
@@ -819,13 +823,13 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
     }
   }
   function potRange() {
-    if (!scoutedAtAll) return { lo: null, hi: null }
     const block = recruit.isPitcher ? recruit.truePotentialPitcher : recruit.truePotentialHitter
     if (!block) return { lo: null, hi: null }
     const truePot = Math.round(Object.values(block).reduce((a, b) => a + b, 0) / Object.keys(block).length)
-    // POT noise: 1.2× current noise (tightened from 1.5× — old bands were
-    // basically useless "60-99" reads on initial board view).
-    const half = Math.round(noise * 1.2)
+    // Same 30-point spread for potential. Slightly wider in the initial
+    // unscouted state would be more realistic but the user asked for ~30
+    // either way for simplicity.
+    const half = noise
     return {
       lo: Math.max(20, truePot - half),
       hi: Math.min(99, truePot + half),
@@ -1226,26 +1230,27 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
     return estimateRecruitRatings(recruit, save.userSchoolId, rng)
   }, [recruit.id, grade.noise, save.calendar.year])
 
-  // Visible stat ranges — noise is the ±3σ band, so half-width = noise / 2
-  // gives a "likely range." As you scout, noise shrinks range narrows.
+  // Visible stat ranges — half-width = noise (at default noise 15 that's a
+  // 30-point spread, which is the "loose hint" the user wants pre-scouting).
+  // As you spend AP, noise drops, range narrows.
   function ratingRange(v) {
-    const half = Math.max(1, Math.round(grade.noise / 2))
+    const half = Math.max(1, grade.noise)
     return { lo: Math.max(20, v - half), hi: Math.min(99, v + half) }
   }
-  const estOvrPoint = Math.round(
-    Object.values(noisyRatings.ratings).reduce((s, n) => s + n, 0) / Object.keys(noisyRatings.ratings).length
-  )
-  const estOvrRange = ratingRange(estOvrPoint)
-  // Est POT range — wider noise band than current (potential is harder to read)
+  // Compute Est OVR from the TRUE rating (not the noisy view) so the range
+  // is centered on the right value. The displayed range hides the truth via
+  // its width; we don't need to add per-render noise on top.
+  const trueBlock = recruit.isPitcher ? recruit.truePitcher : recruit.trueHitter
+  const trueOvrAvg = trueBlock
+    ? Math.round(Object.values(trueBlock).reduce((a, b) => a + b, 0) / Object.keys(trueBlock).length)
+    : 0
+  const estOvrRange = ratingRange(trueOvrAvg)
+  // Est POT range — same 30-point spread.
   const potBlock = recruit.isPitcher ? recruit.truePotentialPitcher : recruit.truePotentialHitter
   const truePotAvg = potBlock
     ? Math.round(Object.values(potBlock).reduce((a, b) => a + b, 0) / Object.keys(potBlock).length)
     : null
-  const potHalf = Math.max(1, Math.round(grade.noise * 1.2))
-  const estPotRange = truePotAvg == null ? null : {
-    lo: Math.max(20, truePotAvg - potHalf),
-    hi: Math.min(99, truePotAvg + potHalf),
-  }
+  const estPotRange = truePotAvg == null ? null : ratingRange(truePotAvg)
   const archetype = getArchetype(recruit.archetypeKey)
   const visibleQuirks = (recruit.visibleQuirks || []).map(getQuirk).filter(Boolean)
   const m = recruit.measurables || {}
@@ -1275,51 +1280,58 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
         </div>
 
-        {/* Pre-scout banner — until ANY scouting action is taken, no ratings,
-            no GPA, no suitors. Just identity above + a call to scout. */}
+        {/* Est OVR + POT ranges show ALWAYS — even before any scouting — as a
+            ~30-pt hint at the player's true value. The rest (interest, GPA,
+            suitors, archetype) stays gated behind first scouting action. */}
+        <div className="grid grid-cols-6 gap-2 mb-3">
+          <div className={'rounded p-2 text-center ' + (hasScoutedAtAll ? 'bg-pnw-cream' : 'bg-gray-100')}>
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
+            <div className="text-xl font-bold text-pnw-green">
+              {hasScoutedAtAll ? grade.interest : <span className="text-gray-400">?</span>}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
+            <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Est POT</div>
+            <div className="text-base font-bold text-pnw-green font-mono">
+              {estPotRange ? `${estPotRange.lo}–${estPotRange.hi}` : '—'}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
+            <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
+            <div className="text-xl font-bold text-gray-700">
+              {hasScoutedAtAll ? academicRatingToGpa(recruit.academicRating).toFixed(1) : <span className="text-gray-400">?</span>}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
+            <div className="text-sm font-bold text-gray-700">
+              {hasScoutedAtAll && recruit.suitorsRevealed ? totalSuit : '?'}
+            </div>
+          </div>
+        </div>
+
+        {/* Pre-scout banner — once OVR/POT are visible, this is just a
+            reminder that the rest is gated. */}
         {!hasScoutedAtAll && (
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4 mb-4 text-center">
-            <div className="text-3xl mb-1"></div>
-            <div className="text-sm font-bold text-amber-900">No scouting report yet</div>
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 mb-4 text-center">
+            <div className="text-sm font-bold text-amber-900">Est OVR + POT are loose 30-pt hints.</div>
             <div className="text-[11px] text-amber-800 mt-1 max-w-md mx-auto">
-              You know who they are — that's it. Spend AP on a scouting action below
-              (Text, Call, Scout Trip, etc.) to start revealing their ratings, suitors, GPA, and priorities.
+              Spend AP on a scouting action below (Text, Call, Scout Trip, etc.) to narrow the bands
+              and reveal Interest, GPA, suitors, archetype, and priorities.
             </div>
           </div>
         )}
 
         {hasScoutedAtAll && (
           <>
-            <div className="grid grid-cols-6 gap-2 mb-3">
-              <div className="bg-pnw-cream rounded p-2 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
-                <div className="text-xl font-bold text-pnw-green">{grade.interest}</div>
-              </div>
-              <div className="bg-gray-50 rounded p-2 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-gray-600">Est OVR</div>
-                <div className="text-base font-bold text-pnw-slate font-mono">{estOvrRange.lo}–{estOvrRange.hi}</div>
-              </div>
-              <div className="bg-gray-50 rounded p-2 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-gray-600">Est POT</div>
-                <div className="text-base font-bold text-pnw-green font-mono">
-                  {estPotRange ? `${estPotRange.lo}–${estPotRange.hi}` : '—'}
-                </div>
-              </div>
-              <div className="bg-gray-50 rounded p-2 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-gray-600">Scout fog</div>
-                <div className="text-xl font-bold text-gray-700">±{grade.noise}</div>
-              </div>
-              <div className="bg-gray-50 rounded p-2 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-gray-600">GPA</div>
-                <div className="text-xl font-bold text-gray-700">{academicRatingToGpa(recruit.academicRating).toFixed(1)}</div>
-              </div>
-              <div className="bg-gray-50 rounded p-2 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-gray-600">Suitors</div>
-                <div className="text-sm font-bold text-gray-700">
-                  {recruit.suitorsRevealed ? totalSuit : '?'}
-                </div>
-              </div>
-            </div>
             {/* Archetype + visible quirks — player's profile, set at generation */}
             {archetype && (
               <div className="bg-pnw-cream/40 rounded p-2 mb-3 border border-pnw-green/20">

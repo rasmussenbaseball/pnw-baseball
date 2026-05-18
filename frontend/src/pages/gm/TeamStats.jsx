@@ -50,6 +50,13 @@ export default function TeamStats() {
   const accent = school.colors?.[0] || '#fbbf24'
   const year = save.calendar?.year
 
+  // Advanced stats (wOBA, wRC+, oWAR, FIP, xFIP, pWAR) gated behind the
+  // Data Analytics Manager hire.
+  const hasAnalyticsMgr = (team?.assistantCoachIds || []).some(id => {
+    const c = save.coaches?.[id]
+    return c?.role === 'DATA_ANALYTICS_MANAGER'
+  })
+
   function setTab(t) {
     const next = new URLSearchParams(params)
     next.set('tab', t)
@@ -103,6 +110,8 @@ export default function TeamStats() {
         </p>
       </div>
 
+      {!hasAnalyticsMgr && <TSAnalyticsGate slot={slot} />}
+
       <div className="flex gap-2 mb-4">
         {TABS.map(t => (
           <button
@@ -120,10 +129,10 @@ export default function TeamStats() {
       </div>
 
       {tab === 'comparison' && (
-        <ComparisonView save={save} leagueStats={leagueStats} year={year} accent={accent} slot={slot} />
+        <ComparisonView save={save} leagueStats={leagueStats} year={year} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
       )}
       {tab === 'national' && (
-        <NationalLeadersView save={save} leagueStats={leagueStats} accent={accent} slot={slot} />
+        <NationalLeadersView save={save} leagueStats={leagueStats} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
       )}
     </GMShell>
   )
@@ -131,7 +140,7 @@ export default function TeamStats() {
 
 // ─── Team comparison view ───────────────────────────────────────────────────
 
-function ComparisonView({ save, leagueStats, year, accent, slot }) {
+function ComparisonView({ save, leagueStats, year, accent, slot, hasAnalyticsMgr }) {
   const lg = useMemo(() => leagueAverages({ playerStats: leagueStats }), [leagueStats])
   const team = save.teams[save.userSchoolId]
   const school = save.schools[save.userSchoolId]
@@ -258,7 +267,7 @@ function ComparisonView({ save, leagueStats, year, accent, slot }) {
         <div className="text-[#a8a8c8] text-sm mb-2">
           Click any column header to sort. Your team highlighted in green; conference opponents in cream.
         </div>
-        <TeamComparisonTable rows={teamRows} slot={slot} />
+        <TeamComparisonTable rows={teamRows} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
       </PixelCard>
     </div>
   )
@@ -283,7 +292,8 @@ function ComparisonRow({ label, user, conf, naia, fmt, lowerIsBetter = false }) 
   )
 }
 
-function TeamComparisonTable({ rows, slot }) {
+function TeamComparisonTable({ rows, slot, hasAnalyticsMgr }) {
+  const hide = !hasAnalyticsMgr
   const extractors = useMemo(() => ({
     name:    r => r.schoolName.toLowerCase(),
     record:  r => parseInt(r.record, 10) || 0,
@@ -312,7 +322,8 @@ function TeamComparisonTable({ rows, slot }) {
             <SortableHeader k="ops"     sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="OPS"     className="pr-2" />
             <SortableHeader k="hr"      sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="HR"      className="pr-2" />
             <SortableHeader k="era"     sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="ERA"     className="pr-2" />
-            <SortableHeader k="fip"     sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="FIP"     className="pr-2" />
+            {!hide && <SortableHeader k="fip"     sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="FIP"     className="pr-2" />}
+            {hide && <th className="pr-2 text-gray-500" title="Hire a Data Analytics Manager to unlock">FIP </th>}
             <SortableHeader k="whip"    sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="WHIP"    className="pr-2" />
             <SortableHeader k="k9"      sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="K/9"     className="pr-2" />
           </tr>
@@ -335,7 +346,7 @@ function TeamComparisonTable({ rows, slot }) {
               <td className="pr-2 font-mono tabular-nums">{fmtRate(r.ops)}</td>
               <td className="pr-2 font-mono tabular-nums">{r.hr}</td>
               <td className="pr-2 font-mono tabular-nums">{fmt2(r.era)}</td>
-              <td className="pr-2 font-mono tabular-nums">{fmt2(r.fip)}</td>
+              <td className="pr-2 font-mono tabular-nums">{hide ? <span className="text-gray-500 italic">???</span> : fmt2(r.fip)}</td>
               <td className="pr-2 font-mono tabular-nums">{fmt2(r.whip)}</td>
               <td className="pr-2 font-mono tabular-nums">{r.k_per_9.toFixed(1)}</td>
             </tr>
@@ -348,7 +359,7 @@ function TeamComparisonTable({ rows, slot }) {
 
 // ─── National leaders view ──────────────────────────────────────────────────
 
-function NationalLeadersView({ save, leagueStats, accent, slot }) {
+function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr }) {
   const lg = useMemo(() => leagueAverages({ playerStats: leagueStats }), [leagueStats])
 
   // Build flat lists of every qualifying player (hitter + pitcher), with the
@@ -395,6 +406,7 @@ function NationalLeadersView({ save, leagueStats, accent, slot }) {
         rows={topHitters}
         accent={accent}
         slot={slot}
+        hasAnalyticsMgr={hasAnalyticsMgr}
         columns={[
           { key: 'wOBA',    label: 'wOBA',    getValue: r => r.adv.wOBA,    fmt: fmtRate },
           { key: 'wRCplus', label: 'wRC+',    getValue: r => r.adv.wRCplus, fmt: v => String(v) },
@@ -410,6 +422,7 @@ function NationalLeadersView({ save, leagueStats, accent, slot }) {
         rows={topPitchers}
         accent={accent}
         slot={slot}
+        hasAnalyticsMgr={hasAnalyticsMgr}
         columns={[
           { key: 'pWAR', label: 'WAR',  getValue: r => r.adv.pWAR, fmt: fmtWar },
           { key: 'fip',  label: 'FIP',  getValue: r => -r.adv.fip, fmt: () => '' },   // sort marker; display uses raw
@@ -424,12 +437,16 @@ function NationalLeadersView({ save, leagueStats, accent, slot }) {
   )
 }
 
-function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId }) {
-  // Top 10 in WAR
+function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId, hasAnalyticsMgr }) {
+  // Without analytics manager, sort by ERA (P) / AVG (H) instead of WAR.
   const sorted = [...rows].sort((a, b) => {
-    const av = isPitcher ? a.adv.pWAR : a.adv.oWAR
-    const bv = isPitcher ? b.adv.pWAR : b.adv.oWAR
-    return bv - av
+    if (hasAnalyticsMgr) {
+      const av = isPitcher ? a.adv.pWAR : a.adv.oWAR
+      const bv = isPitcher ? b.adv.pWAR : b.adv.oWAR
+      return bv - av
+    }
+    if (isPitcher) return a.adv.era - b.adv.era
+    return b.adv.avg - a.adv.avg
   }).slice(0, 15)
   if (sorted.length === 0) {
     return (
@@ -438,6 +455,11 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId 
       </PixelCard>
     )
   }
+  const hide = !hasAnalyticsMgr
+  const lockTh = (label) => (
+    <th className="pr-2 text-gray-500" title="Hire a Data Analytics Manager to unlock">{label} </th>
+  )
+  const lockTd = <td className="pr-2 font-mono tabular-nums text-gray-500 italic">???</td>
   return (
     <PixelCard accent={accent} title={title}>
       <div className="overflow-x-auto">
@@ -448,16 +470,16 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId 
               <th className="pr-2">PLAYER</th>
               <th className="pr-2">SCHOOL</th>
               {isPitcher && <>
-                <th className="pr-2">WAR</th>
-                <th className="pr-2">FIP</th>
+                {hide ? lockTh('WAR') : <th className="pr-2">WAR</th>}
+                {hide ? lockTh('FIP') : <th className="pr-2">FIP</th>}
                 <th className="pr-2">ERA</th>
                 <th className="pr-2">K</th>
                 <th className="pr-2">IP</th>
               </>}
               {!isPitcher && <>
-                <th className="pr-2">wOBA</th>
-                <th className="pr-2">wRC+</th>
-                <th className="pr-2">WAR</th>
+                {hide ? lockTh('wOBA') : <th className="pr-2">wOBA</th>}
+                {hide ? lockTh('wRC+') : <th className="pr-2">wRC+</th>}
+                {hide ? lockTh('WAR') : <th className="pr-2">WAR</th>}
                 <th className="pr-2">AVG</th>
                 <th className="pr-2">HR</th>
                 <th className="pr-2">RBI</th>
@@ -477,15 +499,15 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId 
                 </td>
                 <td className="pr-2 text-[#cbd5e1]">{r.schoolName} <span className="text-[10px] text-[#a8a8c8]">{r.confAbbr}</span></td>
                 {isPitcher ? <>
-                  <td className="pr-2 font-mono tabular-nums">{fmtWar(r.adv.pWAR)}</td>
-                  <td className="pr-2 font-mono tabular-nums">{fmt2(r.adv.fip)}</td>
+                  {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{fmtWar(r.adv.pWAR)}</td>}
+                  {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{fmt2(r.adv.fip)}</td>}
                   <td className="pr-2 font-mono tabular-nums">{fmt2(r.adv.era)}</td>
                   <td className="pr-2 font-mono tabular-nums">{r.stats.k}</td>
                   <td className="pr-2 font-mono tabular-nums">{r.adv.ip.toFixed(1)}</td>
                 </> : <>
-                  <td className="pr-2 font-mono tabular-nums">{fmtRate(r.adv.wOBA)}</td>
-                  <td className="pr-2 font-mono tabular-nums">{r.adv.wRCplus}</td>
-                  <td className="pr-2 font-mono tabular-nums">{fmtWar(r.adv.oWAR)}</td>
+                  {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{fmtRate(r.adv.wOBA)}</td>}
+                  {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{r.adv.wRCplus}</td>}
+                  {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{fmtWar(r.adv.oWAR)}</td>}
                   <td className="pr-2 font-mono tabular-nums">{fmtRate(r.adv.avg)}</td>
                   <td className="pr-2 font-mono tabular-nums">{r.stats.hr}</td>
                   <td className="pr-2 font-mono tabular-nums">{r.stats.rbi}</td>
@@ -520,3 +542,28 @@ function whip(t){ const ip = t.outs / 3; return ip > 0 ? (t.p_h + t.p_bb) / ip :
 function k9(t)  { const ip = t.outs / 3; return ip > 0 ? (t.p_k * 9) / ip : 0 }
 function bb9(t) { const ip = t.outs / 3; return ip > 0 ? (t.p_bb * 9) / ip : 0 }
 function hr9(t) { const ip = t.outs / 3; return ip > 0 ? (t.p_hr * 9) / ip : 0 }
+
+// ─── Analytics Manager gate banner ──────────────────────────────────────
+
+function TSAnalyticsGate({ slot }) {
+  return (
+    <div className="bg-gradient-to-r from-purple-900/40 to-amber-900/30 border-4 border-amber-400 rounded p-3 mb-4 flex items-start gap-3">
+      <div className="text-2xl">🔒</div>
+      <div className="flex-1 min-w-0">
+        <div className="font-pixel-display text-[10px] tracking-widest text-amber-300 mb-1">
+          ADVANCED STATS LOCKED
+        </div>
+        <div className="text-[13px] text-white font-pixel leading-snug mb-2">
+          wOBA, wRC+, oWAR, FIP, xFIP, pWAR are hidden until you hire a <strong className="text-amber-200">Data Analytics Manager</strong>.
+          Basic columns (AVG/OPS/ERA/WHIP/K-9) still work normally.
+        </div>
+        <Link
+          to={`/gm/coaches?slot=${slot}`}
+          className="inline-block bg-amber-400 text-[#1a1a2e] font-bold text-[11px] tracking-widest uppercase px-3 py-1.5 rounded hover:bg-amber-300 transition"
+        >
+          Hire Data Manager →
+        </Link>
+      </div>
+    </div>
+  )
+}

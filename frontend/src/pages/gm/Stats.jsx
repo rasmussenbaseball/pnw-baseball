@@ -42,6 +42,14 @@ export default function Stats() {
   const team = save.teams[save.userSchoolId]
   const accent = school.colors?.[0] || '#fbbf24'
 
+  // Advanced stats (wOBA, wRC+, oWAR, FIP, xFIP, pWAR) are gated behind
+  // hiring a Data Analytics Manager — until then, those cells show ???
+  // and a CTA banner directs the user to the Coaches page to hire one.
+  const hasAnalyticsMgr = (team?.assistantCoachIds || []).some(id => {
+    const c = save.coaches?.[id]
+    return c?.role === 'DATA_ANALYTICS_MANAGER'
+  })
+
   function setView(v) {
     const next = new URLSearchParams(params)
     next.set('view', v)
@@ -68,6 +76,9 @@ export default function Stats() {
           {school.name} · season {currentYear}
         </p>
       </div>
+
+      {/* Data Analytics Manager gate banner */}
+      {!hasAnalyticsMgr && <AnalyticsGateBanner slot={slot} />}
 
       {/* View toggle */}
       <div className="flex gap-2 mb-4">
@@ -97,6 +108,7 @@ export default function Stats() {
           onYearChange={setYear}
           accent={accent}
           slot={slot}
+          hasAnalyticsMgr={hasAnalyticsMgr}
         />
       )}
       {view === 'fall' && (
@@ -108,10 +120,11 @@ export default function Stats() {
           onYearChange={setYear}
           accent={accent}
           slot={slot}
+          hasAnalyticsMgr={hasAnalyticsMgr}
         />
       )}
       {view === 'career' && (
-        <CareerView save={save} team={team} accent={accent} slot={slot} />
+        <CareerView save={save} team={team} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
       )}
     </GMShell>
   )
@@ -119,7 +132,7 @@ export default function Stats() {
 
 // ─── Spring view ──────────────────────────────────────────────────────────
 
-function SpringView({ save, team, year, allYears, onYearChange, accent, slot }) {
+function SpringView({ save, team, year, allYears, onYearChange, accent, slot, hasAnalyticsMgr }) {
   const isCurrent = year === save.calendar?.year
   const stats = isCurrent
     ? (save.playerStats || {})
@@ -165,15 +178,15 @@ function SpringView({ save, team, year, allYears, onYearChange, accent, slot }) 
             : `${batters.length} batters · ${pitchers.length} pitchers`}
         </span>
       </div>
-      <BatterTable rows={batters} save={save} accent={accent} slot={slot} />
-      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} />
+      <BatterTable rows={batters} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
+      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
     </>
   )
 }
 
 // ─── Fall view ────────────────────────────────────────────────────────────
 
-function FallView({ save, team, year, allYears, onYearChange, accent, slot }) {
+function FallView({ save, team, year, allYears, onYearChange, accent, slot, hasAnalyticsMgr }) {
   const stats = save.fallStats?.[year] || {}
   const roster = team.rosterPlayerIds || []
   const batters = []
@@ -203,15 +216,15 @@ function FallView({ save, team, year, allYears, onYearChange, accent, slot }) {
       <p className="text-xs text-[#a8a8c8] italic mb-3 font-pixel">
         Fall scrimmage stats — kept separate from spring. Use these to evaluate who has earned a starting job heading into spring.
       </p>
-      <BatterTable rows={batters} save={save} accent={accent} slot={slot} emptyMsg="No fall hitting yet." />
-      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} emptyMsg="No fall pitching yet." />
+      <BatterTable rows={batters} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} emptyMsg="No fall hitting yet." />
+      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} emptyMsg="No fall pitching yet." />
     </>
   )
 }
 
 // ─── Career view ──────────────────────────────────────────────────────────
 
-function CareerView({ save, team, accent, slot }) {
+function CareerView({ save, team, accent, slot, hasAnalyticsMgr }) {
   // Sum every archived spring year + the current year for each player
   const archive = save.statsArchive || {}
   const current = save.playerStats || {}
@@ -256,15 +269,15 @@ function CareerView({ save, team, accent, slot }) {
         Totals across {yearBlocks.length} season{yearBlocks.length === 1 ? '' : 's'} of play.
         New dynasty? Career totals build up as you sim through seasons.
       </p>
-      <BatterTable rows={batters} save={save} accent={accent} slot={slot} careerMode emptyMsg="No career hitting yet." />
-      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} careerMode emptyMsg="No career pitching yet." />
+      <BatterTable rows={batters} save={save} accent={accent} slot={slot} careerMode hasAnalyticsMgr={hasAnalyticsMgr} emptyMsg="No career hitting yet." />
+      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} careerMode hasAnalyticsMgr={hasAnalyticsMgr} emptyMsg="No career pitching yet." />
     </>
   )
 }
 
 // ─── Tables ───────────────────────────────────────────────────────────────
 
-function BatterTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
+function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, emptyMsg }) {
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="HITTING">
@@ -274,7 +287,13 @@ function BatterTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
   }
   const lg = useMemo(() => leagueAverages(save), [save])
   const enriched = rows.map(r => ({ r, adv: computeBatting(r, lg) }))
-  const sorted = [...enriched].sort((a, b) => b.adv.wOBA - a.adv.wOBA)
+  // Without an analytics manager, sort by OPS instead of wOBA (advanced
+  // stats are hidden) so the table is still ordered something sensible.
+  const sorted = hasAnalyticsMgr
+    ? [...enriched].sort((a, b) => b.adv.wOBA - a.adv.wOBA)
+    : [...enriched].sort((a, b) => b.adv.ops - a.adv.ops)
+  const hide = !hasAnalyticsMgr
+  const lockedCell = <td className="text-gray-500 italic">???</td>
   return (
     <PixelCard accent={accent} title="HITTING">
       <div className="overflow-x-auto">
@@ -286,7 +305,9 @@ function BatterTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
               {careerMode && <th>YRS</th>}
               <th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>K</th>
               <th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th>
-              <th>wOBA</th><th>wRC+</th><th>oWAR</th>
+              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">wOBA </span> : 'wOBA'}</th>
+              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">wRC+ </span> : 'wRC+'}</th>
+              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">oWAR </span> : 'oWAR'}</th>
             </tr>
           </thead>
           <tbody>
@@ -307,9 +328,9 @@ function BatterTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
                 <td>{fmtRate(adv.obp)}</td>
                 <td>{fmtRate(adv.slg)}</td>
                 <td className="font-bold">{fmtRate(adv.ops)}</td>
-                <td>{fmtRate(adv.wOBA)}</td>
-                <td className="font-bold">{adv.pa > 0 ? adv.wRCplus : '—'}</td>
-                <td>{fmtWar(adv.oWAR)}</td>
+                {hide ? lockedCell : <td>{fmtRate(adv.wOBA)}</td>}
+                {hide ? lockedCell : <td className="font-bold">{adv.pa > 0 ? adv.wRCplus : '—'}</td>}
+                {hide ? lockedCell : <td>{fmtWar(adv.oWAR)}</td>}
               </tr>
             ))}
           </tbody>
@@ -319,7 +340,7 @@ function BatterTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
   )
 }
 
-function PitcherTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
+function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, emptyMsg }) {
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="PITCHING">
@@ -329,7 +350,12 @@ function PitcherTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
   }
   const lg = useMemo(() => leagueAverages(save), [save])
   const enriched = rows.map(r => ({ r, adv: computePitching(r, lg) }))
-  const sorted = [...enriched].sort((a, b) => a.adv.fip - b.adv.fip)
+  // Without analytics manager, sort by ERA instead of FIP (FIP is hidden).
+  const sorted = hasAnalyticsMgr
+    ? [...enriched].sort((a, b) => a.adv.fip - b.adv.fip)
+    : [...enriched].sort((a, b) => a.adv.era - b.adv.era)
+  const hide = !hasAnalyticsMgr
+  const lockedCell = <td className="text-gray-500 italic">???</td>
   return (
     <PixelCard accent={accent} title="PITCHING">
       <div className="overflow-x-auto">
@@ -341,7 +367,9 @@ function PitcherTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
               {careerMode && <th>YRS</th>}
               <th>IP</th><th>H</th><th>BB</th><th>K</th><th>ER</th>
               <th>ERA</th><th>WHIP</th><th>K/9</th>
-              <th>FIP</th><th>xFIP</th><th>pWAR</th>
+              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">FIP </span> : 'FIP'}</th>
+              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">xFIP </span> : 'xFIP'}</th>
+              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">pWAR </span> : 'pWAR'}</th>
             </tr>
           </thead>
           <tbody>
@@ -360,14 +388,41 @@ function PitcherTable({ rows, save, accent, slot, careerMode, emptyMsg }) {
                 <td className="font-bold">{fmt2(adv.era)}</td>
                 <td>{fmt2(adv.whip)}</td>
                 <td>{adv.ip > 0 ? adv.kPer9.toFixed(1) : '—'}</td>
-                <td className="font-bold">{fmt2(adv.fip)}</td>
-                <td>{fmt2(adv.xfip)}</td>
-                <td>{fmtWar(adv.pWAR)}</td>
+                {hide ? lockedCell : <td className="font-bold">{fmt2(adv.fip)}</td>}
+                {hide ? lockedCell : <td>{fmt2(adv.xfip)}</td>}
+                {hide ? lockedCell : <td>{fmtWar(adv.pWAR)}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
     </PixelCard>
+  )
+}
+
+// ─── Analytics Manager gate banner ──────────────────────────────────────
+// Shown at the top of Stats whenever the user has NOT yet hired a Data
+// Analytics Manager. Surfaces what gets unlocked + a direct CTA button.
+
+function AnalyticsGateBanner({ slot }) {
+  return (
+    <div className="bg-gradient-to-r from-purple-900/40 to-amber-900/30 border-4 border-amber-400 rounded p-3 mb-4 flex items-start gap-3">
+      <div className="text-2xl">🔒</div>
+      <div className="flex-1 min-w-0">
+        <div className="font-pixel-display text-[10px] tracking-widest text-amber-300 mb-1">
+          ADVANCED STATS LOCKED
+        </div>
+        <div className="text-[13px] text-white font-pixel leading-snug mb-2">
+          wOBA, wRC+, oWAR, FIP, xFIP, pWAR are hidden until you hire a <strong className="text-amber-200">Data Analytics Manager</strong> for your staff.
+          Sortable basic stats (AVG/OPS/ERA/WHIP) still work normally.
+        </div>
+        <Link
+          to={`/gm/coaches?slot=${slot}`}
+          className="inline-block bg-amber-400 text-[#1a1a2e] font-bold text-[11px] tracking-widest uppercase px-3 py-1.5 rounded hover:bg-amber-300 transition"
+        >
+          Hire Data Manager →
+        </Link>
+      </div>
+    </div>
   )
 }
