@@ -225,7 +225,6 @@ export default function App() {
     <AuthProvider>
     <div className={`min-h-screen ${isPortal ? 'bg-portal-cream' : isGm ? 'bg-gray-50' : 'bg-nw-cream'}`}>
       {!isPortal && !isGm && <Header />}
-      {isGm && <GmTopBar />}
       <SignupPopup />
       <RouteContainer isPortal={isPortal} isGm={isGm}>
         <Routes>
@@ -457,16 +456,3 @@ function RouteContainer({ isPortal, isGm, children }) {
   )
 }
 
-// Slim top bar shown only on /gm routes — provides a "back to main site"
-// escape hatch and a Settings link. No site-wide nav clutter.
-function GmTopBar() {
-  return (
-    <div className="bg-pnw-slate text-white border-b border-pnw-slate/40">
-      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between text-xs">
-        <a href="/" className="opacity-80 hover:opacity-100 hover:underline">← Return to NW Baseball Stats</a>
-        <div className="font-semibold tracking-wide">PNW Coach Simulator</div>
-        <a href="/gm" className="opacity-80 hover:opacity-100 hover:underline">Dynasties</a>
-      </div>
-    </div>
-  )
-}

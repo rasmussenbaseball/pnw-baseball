@@ -79,14 +79,14 @@ export default function Calendar() {
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-end mt-1 mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end mt-1 mb-4 gap-2">
         <div>
-          <h1 className="font-pixel-display text-xl tracking-widest text-white">CALENDAR · {year}</h1>
+          <h1 className="font-pixel-display text-lg sm:text-xl tracking-widest text-white">CALENDAR · {year}</h1>
           <p className="text-sm text-gray-600">
             Full 52-week year. Currently at Week {currentWeek} · {phaseForWeek(currentWeek).season} ({phaseForWeek(currentWeek).label}).
           </p>
         </div>
-        <div className="text-right text-xs text-gray-500">
+        <div className="text-left sm:text-right text-xs text-gray-500">
           Hover events for details. Numbers in dark = today.
         </div>
       </div>

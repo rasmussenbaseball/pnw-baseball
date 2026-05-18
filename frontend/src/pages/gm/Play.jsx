@@ -1406,11 +1406,12 @@ function UserFieldDiagram({ fielders, pitcher, bases, userIsPitching }) {
 function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool, save }) {
   const accent = userSchool?.colors?.primary || '#fbbf24'
   return (
-    <div className="bg-[#1a1a2e] rounded-lg border-2 border-[#3a3a5e] shadow-sm overflow-hidden">
+    <div className="bg-[#1a1a2e] rounded-lg border-2 border-[#3a3a5e] shadow-sm">
       <div className="px-3 py-1.5 text-xs font-pixel font-bold uppercase tracking-widest" style={{ backgroundColor: accent, color: '#1a1a2e' }}>
         Your Lineup
       </div>
-      <table className="w-full text-xs">
+      <div className="overflow-x-auto">
+      <table className="w-full text-xs min-w-[480px]">
         <thead className="bg-[#0f0f1e] text-[9px] font-pixel uppercase tracking-widest text-amber-300">
           <tr>
             <th className="text-left py-1 pl-2 w-6">#</th>
@@ -1446,6 +1447,7 @@ function UserLineupCard({ batters, live, isUserBatting, battingIdx, userSchool, 
           })}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

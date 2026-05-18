@@ -86,10 +86,10 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
         >
           <div className="leading-none min-w-0">
             <div
-              className="hidden sm:block font-pixel-display text-[10px] tracking-widest"
+              className="hidden sm:flex items-center gap-1.5 font-pixel-display text-[10px] tracking-widest"
               style={{ color: accent }}
             >
-              PNW COACH SIM
+              <span>PNW COACH SIM</span>
             </div>
             <div className="font-pixel text-sm sm:text-lg md:text-xl text-white truncate max-w-[140px] sm:max-w-[200px] md:max-w-[260px]">
               {schoolName || 'Home'}
@@ -98,6 +98,17 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
         </Link>
 
         <div className="flex-1" />
+
+        {/* Themed back-to-main-site link — pixel chip styled to match. Only
+            shown on sm+. On xs it lives inside the hamburger menu. */}
+        <a
+          href="/"
+          title="Return to NW Baseball Stats main site"
+          className="hidden sm:inline-block font-pixel-display text-[9px] tracking-widest px-2.5 py-1.5 border-2 text-[#a8a8c8] hover:text-white hover:border-[#a8a8c8] transition"
+          style={{ borderColor: '#3a3a5e' }}
+        >
+          ← MAIN SITE
+        </a>
 
         {/* Desktop nav (sm and up) */}
         <nav className="hidden sm:flex items-center gap-1">
@@ -112,6 +123,7 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
           type="button"
           onClick={() => setMobileNavOpen(o => !o)}
           aria-label="Open menu"
+          aria-expanded={mobileNavOpen}
           className="sm:hidden flex flex-col gap-1 p-2 border-2"
           style={{ borderColor: accent }}
         >
@@ -124,7 +136,7 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
       {/* Mobile nav panel */}
       {mobileNavOpen && (
         <div
-          className="sm:hidden border-t-2 px-3 py-3 space-y-3"
+          className="sm:hidden border-t-2 px-3 py-3 space-y-3 max-h-[80vh] overflow-y-auto"
           style={{ borderColor: accent, backgroundColor: '#0f0f1e' }}
         >
           <Link
@@ -159,6 +171,16 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
               })}
             </div>
           ))}
+          {/* Themed back-to-main-site at bottom of mobile menu */}
+          <div className="pt-3 border-t-2" style={{ borderColor: '#3a3a5e' }}>
+            <a
+              href="/"
+              onClick={() => setMobileNavOpen(false)}
+              className="block font-pixel-display text-[10px] tracking-widest pl-3 py-2 text-[#a8a8c8] hover:text-white"
+            >
+              ← MAIN SITE
+            </a>
+          </div>
         </div>
       )}
     </header>

@@ -304,16 +304,16 @@ function UsageBar({ total, allocated, surplus, usagePct }) {
   const over = surplus < 0
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-4">
-      <div className="flex justify-between items-baseline mb-2">
+      <div className="flex flex-col xs:flex-row justify-between items-baseline mb-2 gap-2">
         <div>
           <div className="text-xs uppercase tracking-widest text-gray-500 font-bold">Budget Usage</div>
-          <div className="text-2xl font-bold text-pnw-slate mt-0.5">
+          <div className="text-xl sm:text-2xl font-bold text-pnw-slate mt-0.5">
             ${(allocated / 1000).toFixed(1)}K
             <span className="text-base text-gray-500 font-normal"> / ${(total / 1000).toFixed(1)}K</span>
           </div>
         </div>
-        <div className="text-right">
-          <div className={'text-2xl font-bold ' + (over ? 'text-red-700' : 'text-green-700')}>
+        <div className="text-left xs:text-right">
+          <div className={'text-xl sm:text-2xl font-bold ' + (over ? 'text-red-700' : 'text-green-700')}>
             {over ? '-' : '+'}${(Math.abs(surplus) / 1000).toFixed(1)}K
           </div>
           <div className="text-xs uppercase tracking-wider text-gray-500">

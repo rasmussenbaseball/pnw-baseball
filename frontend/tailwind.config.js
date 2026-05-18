@@ -3,6 +3,12 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      // Add an `xs` breakpoint between Tailwind defaults of base (mobile)
+      // and `sm` (640px). 480px covers the gap where iPhone-class phones
+      // in landscape transition out of the smallest layouts.
+      screens: {
+        'xs': '480px',
+      },
       colors: {
         // Main-site brand (teal / cream)
         'nw-teal': '#00687a',

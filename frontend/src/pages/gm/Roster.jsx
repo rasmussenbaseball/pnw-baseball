@@ -68,13 +68,13 @@ export default function Roster() {
   return (
     <GMShell schoolName={school.name} schoolColors={school.colors}>
     <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-6">
         <div>
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Dashboard</Link>
-          <h1 className="text-3xl font-bold text-pnw-slate mt-1">{school.name} — Roster</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mt-1">{school.name} — Roster</h1>
           <p className="text-sm text-gray-600">{players.length} players</p>
         </div>
-        <div className="flex gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:flex gap-2 md:gap-3">
           <TeamOvrCard label="Team OVR" value={teamOvr.overall} />
           <TeamOvrCard label="Hitting OVR" value={teamOvr.hitting} />
           <TeamOvrCard label="Pitching OVR" value={teamOvr.pitching} />

@@ -151,10 +151,10 @@ export default function Schedule() {
   return (
     <GMShell schoolName={userSchool.name} schoolColors={userSchool.colors}>
     <div className="max-w-5xl mx-auto">
-      <div className="mb-4 flex justify-between items-start">
-        <div>
+      <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+        <div className="min-w-0">
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Dashboard</Link>
-          <h1 className="text-3xl font-bold text-pnw-slate mt-1">{seasonYear} Schedule</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mt-1">{seasonYear} Schedule</h1>
           <p className="text-sm text-gray-600">
             {save.conferences[userSchool.conferenceId]?.name} • {confRules.seriesLength}-game conf weekend series •
             {' '}Conf opens {fmtTarget(confRules.confStartDate)} • Conf ends {fmtTarget(confRules.confEndDate)}
@@ -162,9 +162,9 @@ export default function Schedule() {
         </div>
         <button
           onClick={handleSimNextWeek}
-          className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
+          className="self-start sm:self-auto px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 whitespace-nowrap"
         >
-          Sim next week 
+          Sim next week
         </button>
       </div>
 

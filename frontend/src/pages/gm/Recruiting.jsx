@@ -318,10 +318,10 @@ export default function Recruiting() {
         <Wk4Tutorial save={save} apBaseline={apBaseline} />
       )}
 
-      <div className="mb-6 flex justify-between items-start">
-        <div>
+      <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+        <div className="min-w-0">
           <Link to={`/gm/dashboard?slot=${slot}`} className="text-sm text-pnw-green hover:underline">Dashboard</Link>
-          <h1 className="text-3xl font-bold text-pnw-slate mt-1">Recruiting Board</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mt-1">Recruiting Board</h1>
           <p className="text-sm text-gray-600">
             <span className="font-semibold">Class of {save.calendar.year + 1}–{String((save.calendar.year + 2) % 100).padStart(2, '0')}</span> ({save.calendar.year + 1} enrollees, play {save.calendar.year + 2} season) • {visible.length} on board • {phaseLabel}
           </p>
@@ -337,7 +337,7 @@ export default function Recruiting() {
             </p>
           )}
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right shrink-0">
           <div className="text-2xl font-bold text-pnw-green">{save.ap.currentWeek} AP</div>
           <div className="text-[10px] uppercase tracking-wider text-gray-500">This week</div>
         </div>
@@ -1288,7 +1288,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
         {/* Est OVR + POT ranges show ALWAYS — even before any scouting — as a
             ~30-pt hint at the player's true value. The rest (interest, GPA,
             suitors, archetype) stays gated behind first scouting action. */}
-        <div className="grid grid-cols-6 gap-2 mb-3">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
           <div className={'rounded p-2 text-center ' + (hasScoutedAtAll ? 'bg-pnw-cream' : 'bg-gray-100')}>
             <div className="text-[10px] uppercase tracking-wider text-gray-600">Interest</div>
             <div className="text-xl font-bold text-pnw-green">
@@ -1522,7 +1522,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
         {hasScoutedAtAll && (
           <div className="mb-4">
             <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Estimated ratings <span className="normal-case text-gray-400">— range based on scouting; narrows as you scout more.</span></div>
-            <div className="grid grid-cols-4 gap-1 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-xs">
               {Object.entries(noisyRatings.ratings).map(([k, v]) => {
                 const r = ratingRange(v)
                 const isPoint = r.lo === r.hi

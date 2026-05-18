@@ -746,8 +746,8 @@ function PlayerMeetings({ save, meetingPicks, setMeetingPicks, ap, usedThisWeek,
               : `Meet (${meetingPicks.length} player${meetingPicks.length === 1 ? '' : 's'} · ${cost} AP)`}
         </button>
       </div>
-      <div className="max-h-64 overflow-y-auto border border-gray-100 rounded mt-3">
-        <table className="w-full text-xs">
+      <div className="max-h-64 overflow-auto border border-gray-100 rounded mt-3">
+        <table className="w-full text-xs min-w-[480px]">
           <thead className="bg-gray-50 text-[10px] uppercase text-gray-500 sticky top-0">
             <tr>
               <th className="text-left px-2 py-1">Pick</th>
@@ -897,9 +897,9 @@ function CampAttendees({ save }) {
         {open ? '▾' : '▸'} Held this year: {camp.attendees} attended @ ${camp.fee} ${(camp.revenue / 1000).toFixed(1)}K
       </button>
       {open && (
-        <div className="mt-2 max-h-72 overflow-y-auto">
+        <div className="mt-2 max-h-72 overflow-auto">
           {ids.length === 0 ? <div className="text-gray-400">No attendees recorded.</div> :
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[11px] min-w-[500px]">
               <thead className="text-[10px] uppercase text-gray-500">
                 <tr>
                   <th className="text-left py-0.5">Recruit</th>

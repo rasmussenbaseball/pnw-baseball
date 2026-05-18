@@ -220,17 +220,17 @@ function SummerReport({ results, year }) {
 
   return (
     <div className="bg-gradient-to-br from-pnw-cream to-amber-50 border-2 border-pnw-green/40 rounded-xl p-5 mb-4 shadow-lg">
-      <div className="flex justify-between items-start mb-3">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
         <div>
           <div className="text-[11px] uppercase tracking-wider text-pnw-green font-bold">Summer {year} Report</div>
-          <h2 className="text-2xl font-bold text-pnw-slate"> How your summer played out</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-pnw-slate"> How your summer played out</h2>
         </div>
-        <div className="text-right text-xs">
-          <div className="font-mono text-3xl font-bold text-pnw-green leading-none">+{avgGain.toFixed(1)}</div>
+        <div className="text-left sm:text-right text-xs">
+          <div className="font-mono text-2xl sm:text-3xl font-bold text-pnw-green leading-none">+{avgGain.toFixed(1)}</div>
           <div className="uppercase tracking-wider text-gray-500 text-[10px] mt-0.5">Avg OVR gain</div>
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-2 mb-4 text-center text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-center text-xs">
         <ReportTile label="Players sent" value={total} />
         <ReportTile label="Injuries" value={injuries} color={injuries > 0 ? 'text-red-700' : 'text-gray-500'} />
         <ReportTile label="D1 poach interest" value={poached} color={poached > 0 ? 'text-amber-700' : 'text-gray-500'} />

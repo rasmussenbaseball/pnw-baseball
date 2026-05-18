@@ -175,9 +175,9 @@ export default function Coaches() {
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-5xl mx-auto">
-      <div className="mb-6 flex justify-between items-start">
-        <div>
-          <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">COACHING STAFF</h1>
+      <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+        <div className="min-w-0">
+          <h1 className="font-pixel-display text-lg sm:text-xl tracking-widest text-white mb-1">COACHING STAFF</h1>
           <p className="text-sm text-gray-600">
             {realAssistants.length + 1} coach{realAssistants.length + 1 === 1 ? '' : 'es'}
             {assistants.length > realAssistants.length && ` · ${assistants.length - realAssistants.length} support staff`}
@@ -185,7 +185,7 @@ export default function Coaches() {
             {' '}• Interview costs {INTERVIEW_AP_COST} AP
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right shrink-0">
           <div className="text-2xl font-bold text-pnw-green">{save.ap.currentWeek} AP</div>
           <div className="text-[10px] uppercase tracking-wider text-gray-500">This week</div>
         </div>
