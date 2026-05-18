@@ -101,18 +101,23 @@ export function newDynastyMultiLevel(input) {
   /** @type {Object<string, any>} */
   const players = {}
 
+  // In Story Mode Custom, the user can pick HEAD_COACH directly. We need
+  // to treat that case as the REGULAR-mode flow (user IS the HC) rather
+  // than the assistant-injection path.
+  const isStoryAsAssistant = isStoryMode && userStoryRole !== 'HEAD_COACH'
+
   for (const school of Object.values(schools)) {
     let headCoach
     let assistants
     if (school.id === input.userSchoolId) {
-      if (isStoryMode) {
-        // Story mode: school's HC is auto-generated; user is an assistant.
+      if (isStoryAsAssistant) {
+        // Story mode + non-HC role: NPC HC + user injected as assistant.
         const generated = generateStaff(school, seed)
         headCoach = generated.headCoach
-        // Replace one assistant slot with the user (matching their role).
         const baseAssistants = generated.assistants.filter(a => a.role !== userStoryRole)
         assistants = [userHC, ...baseAssistants].slice(0, generated.assistants.length || 3)
       } else {
+        // Regular mode OR story mode w/ HEAD_COACH start: user IS the HC.
         headCoach = userHC
         const generated = generateStaff(school, seed)
         assistants = generated.assistants
@@ -137,13 +142,14 @@ export function newDynastyMultiLevel(input) {
     }
 
     const isUserSchool = school.id === input.userSchoolId
-    // In story mode, KEEP the user's assistant in the team; in regular
-    // mode strip the auto-generated assistants for the user's program
-    // so the Wk-2 hiring tutorial flow has slots to fill.
+    // Story-as-assistant: KEEP the auto-generated staff (user is part of it).
+    // Story-as-HC (Custom HEAD_COACH) or REGULAR: strip the auto-generated
+    // assistants for the user's program so the Wk-2 hiring tutorial has
+    // slots to fill.
     let teamAssistants
     if (isUserSchool) {
-      teamAssistants = isStoryMode ? assistants : []
-      if (!isStoryMode) {
+      teamAssistants = isStoryAsAssistant ? assistants : []
+      if (!isStoryAsAssistant) {
         for (const a of assistants) delete coaches[a.id]
       }
     } else {

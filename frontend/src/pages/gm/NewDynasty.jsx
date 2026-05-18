@@ -94,21 +94,42 @@ export default function NewDynasty() {
   // Difficulty is decoupled from the legacy TRADITIONAL/CUSTOM modeKey.
   const [storyMode, setStoryMode] = useState('REGULAR')
   const [difficulty, setDifficulty] = useState('NORMAL')
+  // Story-mode start variant: 'TRADITIONAL' (random bottom JUCO bench coach)
+  // or 'CUSTOM' (user picks school + role). Traditional is the recommended
+  // grind-from-the-bottom experience; custom is for sandbox players.
+  const [storyStartMode, setStoryStartMode] = useState('TRADITIONAL')
+  const [customStartRole, setCustomStartRole] = useState('BENCH_COACH')
 
   const [modeKey, setModeKey] = useState('TRADITIONAL')
   const [customOptions, setCustomOptions] = useState(GAME_MODE_PRESETS.CUSTOM)
 
-  // Story-mode auto-pick: pre-resolve a random bottom-tier NWAC school
-  // every time difficulty changes or the user enters story mode. Pre-resolves
-  // so the confirm screen has a concrete name to show.
+  // Story-mode start:
+  //   TRADITIONAL → random bottom-tier NWAC school, role driven by difficulty
+  //                 (Easy: PitchingCoach, Normal: BenchCoach, Brutal: GA)
+  //   CUSTOM      → user picks school (selectedSchoolId) + role (customStartRole)
+  //                 directly. Difficulty still affects offer/firing tuning.
   const storyStart = useMemo(() => {
     if (storyMode !== 'STORY') return null
-    // Build a {schoolId: school} map of NWAC programs from the playoff data.
+
+    // Custom path — user is picking their own school + role. Resolved school
+    // comes from selectedSchoolId in step 2. If unset, the wizard hasn't
+    // gotten to step 2 yet; return a placeholder for the preview text only.
+    if (storyStartMode === 'CUSTOM') {
+      if (!selectedSchoolId) return null
+      const info = getLevelForSchool(selectedSchoolId, schools)
+      if (!info) return null
+      return {
+        schoolId: selectedSchoolId,
+        level: info.level,
+        role: customStartRole,
+        conferenceId: info.conferenceId,
+      }
+    }
+
+    // Traditional path — auto-pick a random bottom-tier NWAC program.
     const nwacPnw = pnwProgramsAtLevel('NWAC')
     const nwacById = {}
     for (const p of nwacPnw) nwacById[p.id] = { ...p, level: 'NWAC' }
-    // Tag totalAthleticBudget from PNW financials so pickStoryStart can
-    // filter on bottom-tier.
     const bucket = pnwFinancials?.tuitionAndBudget?.NWAC || {}
     for (const id of Object.keys(nwacById)) {
       nwacById[id].totalAthleticBudget = (bucket[id] || bucket.default || {}).totalBudget
@@ -120,7 +141,7 @@ export default function NewDynasty() {
       console.warn('story start failed:', err)
       return null
     }
-  }, [storyMode, difficulty])
+  }, [storyMode, difficulty, storyStartMode, selectedSchoolId, customStartRole, schools])
 
   const [coachFirst, setCoachFirst] = useState('')
   const [coachLast, setCoachLast] = useState('')
@@ -242,26 +263,39 @@ export default function NewDynasty() {
             setStoryMode={setStoryMode}
             difficulty={difficulty}
             setDifficulty={setDifficulty}
+            storyStartMode={storyStartMode}
+            setStoryStartMode={setStoryStartMode}
             storyStart={storyStart}
             onNext={() => setStep(2)}
           />
         )}
         {step === 2 && (
-          storyMode === 'STORY'
+          storyMode === 'STORY' && storyStartMode === 'TRADITIONAL'
             ? <StoryProgramReveal
                 storyStart={storyStart}
                 schools={schools}
                 onBack={() => setStep(1)}
                 onNext={() => setStep(3)}
               />
-            : <ProgramStep
-                schools={allowedSchools}
-                conferences={conferences}
-                selectedSchoolId={selectedSchoolId}
-                setSelectedSchoolId={setSelectedSchoolId}
-                onBack={() => setStep(1)}
-                onNext={() => setStep(3)}
-              />
+            : storyMode === 'STORY' && storyStartMode === 'CUSTOM'
+              ? <StoryCustomStartStep
+                  schools={schools}
+                  conferences={conferences}
+                  selectedSchoolId={selectedSchoolId}
+                  setSelectedSchoolId={setSelectedSchoolId}
+                  customStartRole={customStartRole}
+                  setCustomStartRole={setCustomStartRole}
+                  onBack={() => setStep(1)}
+                  onNext={() => setStep(3)}
+                />
+              : <ProgramStep
+                  schools={allowedSchools}
+                  conferences={conferences}
+                  selectedSchoolId={selectedSchoolId}
+                  setSelectedSchoolId={setSelectedSchoolId}
+                  onBack={() => setStep(1)}
+                  onNext={() => setStep(3)}
+                />
         )}
         {step === 3 && (
           <ModeStep
@@ -323,7 +357,7 @@ export default function NewDynasty() {
 
 // ─── Step 1: Path (Story vs Regular + Difficulty) ──────────────────────────
 
-function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStart, onNext }) {
+function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStartMode, setStoryStartMode, storyStart, onNext }) {
   return (
     <PixelCard accent="#fbbf24" title="STEP 1 · CAREER PATH">
       <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
@@ -397,8 +431,47 @@ function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storySta
         </div>
       </div>
 
+      {/* Story-mode starting variant — Traditional vs Custom */}
+      {storyMode === 'STORY' && (
+        <div className="mb-4">
+          <div className="text-white font-pixel uppercase tracking-widest text-sm mb-2">Starting Position</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <button
+              onClick={() => setStoryStartMode('TRADITIONAL')}
+              className={
+                'p-3 rounded-lg border-2 text-left transition ' +
+                (storyStartMode === 'TRADITIONAL'
+                  ? 'border-amber-300 bg-[#3a3a5e]'
+                  : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+              }
+            >
+              <div className="text-white font-bold text-sm">Traditional Story</div>
+              <div className="text-[10px] text-[#a8a8c8] mt-1.5 leading-snug">
+                <strong className="text-amber-200">Recommended.</strong> Random bottom-tier NWAC program.
+                Bench coach (or GA on Brutal / Pitching Coach on Easy). Grind from the bottom.
+              </div>
+            </button>
+            <button
+              onClick={() => setStoryStartMode('CUSTOM')}
+              className={
+                'p-3 rounded-lg border-2 text-left transition ' +
+                (storyStartMode === 'CUSTOM'
+                  ? 'border-amber-300 bg-[#3a3a5e]'
+                  : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+              }
+            >
+              <div className="text-white font-bold text-sm">Custom Start</div>
+              <div className="text-[10px] text-[#a8a8c8] mt-1.5 leading-snug">
+                Sandbox mode. Pick any PNW school + role yourself. Skip the grind; start where you want.
+                Offers + firings still apply per your difficulty.
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Story-mode preview banner */}
-      {storyMode === 'STORY' && storyStart && (
+      {storyMode === 'STORY' && storyStartMode === 'TRADITIONAL' && storyStart && (
         <div className="bg-[#0f0f1e] border-2 border-amber-400/40 rounded p-3 mb-3 text-[11px]">
           <div className="font-pixel uppercase tracking-widest text-amber-300 text-[10px] mb-1.5">
             Random Starting Position
@@ -407,6 +480,17 @@ function PathStep({ storyMode, setStoryMode, difficulty, setDifficulty, storySta
             You'll begin as <strong className="text-amber-200">{roleLabel(storyStart.role)}</strong> at a
             bottom-tier NWAC program (revealed on the next screen). Build credibility, win, get offers,
             and climb up to a D1 head-coach seat.
+          </div>
+        </div>
+      )}
+      {storyMode === 'STORY' && storyStartMode === 'CUSTOM' && (
+        <div className="bg-[#0f0f1e] border-2 border-purple-400/40 rounded p-3 mb-3 text-[11px]">
+          <div className="font-pixel uppercase tracking-widest text-purple-300 text-[10px] mb-1.5">
+            Custom Start
+          </div>
+          <div className="text-[#e8e8e8] leading-snug">
+            On the next screen, pick any PNW program at any level and choose your starting role. Career
+            offers + firings still fire based on your performance + difficulty tuning.
           </div>
         </div>
       )}
@@ -452,6 +536,134 @@ function StoryProgramReveal({ storyStart, schools, onBack, onNext }) {
       <div className="flex justify-between">
         <PixelButton onClick={onBack}>← Back</PixelButton>
         <PixelButton onClick={onNext}>Next: Mode →</PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+// ─── Step 2 (Story Custom): pick school + role yourself ────────────────────
+
+const STORY_CUSTOM_ROLES = [
+  { key: 'GRADUATE_ASSISTANT',     label: 'Graduate Assistant', tier: 'Entry' },
+  { key: 'BENCH_COACH',            label: 'Bench Coach',         tier: 'Entry' },
+  { key: 'STRENGTH_CONDITIONING',  label: 'S&C Coach',           tier: 'Entry' },
+  { key: 'HITTING_COACH',          label: 'Hitting Coach',       tier: 'Position' },
+  { key: 'PITCHING_COACH',         label: 'Pitching Coach',      tier: 'Position' },
+  { key: 'RECRUITING_COORDINATOR', label: 'Recruiting Coord.',   tier: 'Senior' },
+  { key: 'DIRECTOR_OF_OPERATIONS', label: 'Director of Ops',     tier: 'Senior' },
+  { key: 'DATA_ANALYTICS_MANAGER', label: 'Analytics Director',  tier: 'Senior' },
+  { key: 'HEAD_COACH',             label: 'Head Coach',          tier: 'Top' },
+]
+
+function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelectedSchoolId, customStartRole, setCustomStartRole, onBack, onNext }) {
+  const [activeLevel, setActiveLevel] = useState('NWAC')
+
+  // Per-level program lists. NAIA from schools.json; D1/D2/D3/NWAC from playoff formats.
+  const naiaPnwSchools = useMemo(() => {
+    return Object.values(schools)
+      .filter(s => s.conferenceId === 'cascade-collegiate')
+      .map(s => ({
+        id: s.id, name: s.name, nickname: s.nickname,
+        city: s.city, state: s.state,
+        conference: conferences[s.conferenceId]?.abbreviation || 'NAIA',
+        level: 'NAIA',
+      }))
+  }, [schools, conferences])
+
+  const programsForLevel = useMemo(() => {
+    if (activeLevel === 'NAIA') return naiaPnwSchools
+    return pnwProgramsAtLevel(activeLevel).map(p => ({
+      ...p,
+      conference: PNW_CONFERENCES[p.conferenceId]?.name || '',
+    }))
+  }, [activeLevel, naiaPnwSchools])
+
+  const canNext = !!selectedSchoolId && !!customStartRole
+
+  return (
+    <PixelCard accent="#fbbf24" title="STEP 2 · PICK YOUR STARTING POSITION">
+      <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
+        Sandbox start. Pick any PNW program at any level + the role you want to start in. Career
+        progression, offers, and firings all still apply.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-4">
+        {/* School picker — left column */}
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-amber-300 font-bold mb-2">School</div>
+          <div className="flex gap-1 mb-2 flex-wrap">
+            {LEVEL_TABS.map(tab => {
+              const isActive = activeLevel === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => { setActiveLevel(tab.key); setSelectedSchoolId(null) }}
+                  className={
+                    'px-2.5 py-1 rounded text-[10px] font-pixel uppercase tracking-widest border-2 transition ' +
+                    (isActive ? 'bg-amber-400 text-[#1a1a2e] border-amber-300 font-bold'
+                              : 'bg-[#23233d] text-[#e8e8e8] border-[#3a3a5e] hover:border-amber-300')
+                  }
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[400px] overflow-y-auto pr-1">
+            {programsForLevel.length === 0 && (
+              <div className="col-span-2 text-center text-[#a8a8c8] py-4 italic text-xs">
+                No PNW programs at this level.
+              </div>
+            )}
+            {programsForLevel.map(p => {
+              const isSelected = selectedSchoolId === p.id
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedSchoolId(p.id)}
+                  className={
+                    'flex items-center gap-2 p-2 rounded border-2 text-left transition ' +
+                    (isSelected ? 'border-amber-300 bg-[#3a3a5e]' : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+                  }
+                >
+                  <TeamLogo school={p} size={28} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-bold text-xs truncate">{p.name}</div>
+                    <div className="text-[9px] text-[#a8a8c8]">{p.state} · {p.conference}</div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Role picker — right column */}
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-amber-300 font-bold mb-2">Role</div>
+          <div className="space-y-1.5">
+            {STORY_CUSTOM_ROLES.map(r => {
+              const active = customStartRole === r.key
+              return (
+                <button
+                  key={r.key}
+                  onClick={() => setCustomStartRole(r.key)}
+                  className={
+                    'w-full text-left p-2 rounded-lg border-2 transition ' +
+                    (active ? 'border-amber-300 bg-[#3a3a5e]' : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+                  }
+                >
+                  <div className="text-white font-bold text-xs">{r.label}</div>
+                  <div className="text-[9px] text-[#a8a8c8] mt-0.5">{r.tier} tier</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-between mt-4">
+        <PixelButton onClick={onBack}>← Back</PixelButton>
+        <PixelButton disabled={!canNext} onClick={onNext}>Next: Mode →</PixelButton>
       </div>
     </PixelCard>
   )
