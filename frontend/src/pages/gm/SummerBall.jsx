@@ -26,7 +26,7 @@ import {
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
-import GMShell, { ContextBox } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 
 export default function SummerBall() {
   const { user } = useAuth()
@@ -588,12 +588,13 @@ function PickerModal({ save, eligiblePlayers, assignments, context, onPick, onCl
 }
 
 function Modal({ title, children, onClose }) {
+  useModalDismiss(onClose)
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-3">
+        <div className="flex justify-between items-start gap-3 mb-3">
           <h3 className="text-lg font-bold text-pnw-slate">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         {children}
       </div>

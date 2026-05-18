@@ -26,7 +26,7 @@ import {
 import { findBlockingPriorGame } from '../../gm/engine/schedule'
 import TeamLogo from '../../gm/components/TeamLogo'
 import TeamRankChip from '../../gm/components/TeamRankChip'
-import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
+import GMShell, { PixelCard, PixelButton, useModalDismiss } from '../../gm/components/GMShell'
 import PixelSelect from '../../gm/components/PixelSelect'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
@@ -458,6 +458,7 @@ function PlayedRow({ save, game }) {
 
 function BoxScoreModal({ save, game, oppName, isHome, onClose }) {
   const bs = game.boxscore
+  useModalDismiss(bs ? onClose : null)
   if (!bs) return null
   const userSchoolId = save.userSchoolId
   const userTeam = save.teams[userSchoolId]
@@ -494,7 +495,7 @@ function BoxScoreModal({ save, game, oppName, isHome, onClose }) {
               Final: {isHome ? `${game.awayRuns} - ${game.homeRuns}` : `${game.awayRuns} - ${game.homeRuns}`} · {game.date}
             </div>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl">×</button>
+          <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="shrink-0 w-9 h-9 flex items-center justify-center border-2 border-white/40 hover:border-white text-white/80 hover:text-white font-bold text-lg leading-none transition">×</button>
         </div>
         <div className="p-4 space-y-4">
           <BoxScoreTable title={`${userSchool.name} — Hitting`} rows={myBatters} type="batter" />
@@ -1638,12 +1639,13 @@ function PickPlayerForSpot({ batters, bench, save, onPick }) {
 }
 
 function SubModal({ title, children, onClose }) {
+  useModalDismiss(onClose)
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#1a1a2e] border-2 border-amber-400 rounded-lg p-4 max-w-xl w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-base font-pixel-display tracking-widest text-amber-300 uppercase">{title}</h3>
-          <button onClick={onClose} className="text-[#a8a8c8] hover:text-white text-xl">×</button>
+          <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="shrink-0 w-9 h-9 flex items-center justify-center border-2 border-[#3a3a5e] hover:border-amber-300 text-[#a8a8c8] hover:text-white font-bold text-lg leading-none transition">×</button>
         </div>
         {children}
       </div>

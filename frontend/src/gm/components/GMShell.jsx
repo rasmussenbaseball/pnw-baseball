@@ -358,6 +358,60 @@ export function ContextBox({ storageKey, title, children }) {
 }
 
 /**
+ * Reusable modal close-X button. Pixel-styled, chunky touch target, always
+ * visible against light-card or dark-card backgrounds. Use this in every
+ * modal so the close affordance is consistent + can't go invisible.
+ *
+ * @param {object} props
+ * @param {() => void} props.onClick   the modal's onClose callback
+ * @param {boolean} [props.dark]       set true for dark-card modals (defaults to light)
+ * @param {string} [props.className]   extra classes
+ */
+export function ModalCloseButton({ onClick, dark = false, className = '' }) {
+  const colorCls = dark
+    ? 'text-[#e8e8e8] hover:text-white border-[#3a3a5e] hover:border-amber-300 hover:bg-[#3a3a5e]'
+    : 'text-gray-500 hover:text-gray-900 border-gray-300 hover:border-gray-700 hover:bg-gray-100'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Close"
+      title="Close (Esc)"
+      className={
+        'shrink-0 w-9 h-9 flex items-center justify-center border-2 font-bold text-lg leading-none transition ' +
+        colorCls + ' ' + className
+      }
+    >
+      ×
+    </button>
+  )
+}
+
+/**
+ * useModalDismiss — attaches:
+ *   - Escape-key listener that fires onClose
+ *   - backdrop-click handler (returned as `backdropProps`) — call as
+ *     {...backdropProps} on the OUTER fixed-inset-0 div, and put
+ *     onClick={e => e.stopPropagation()} on the inner card.
+ *
+ * Used by every GM modal so users can dismiss via X, backdrop click, or Esc.
+ */
+export function useModalDismiss(onClose) {
+  useEffect(() => {
+    if (!onClose) return
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return {
+    backdropProps: { onClick: onClose },
+    stopProps: { onClick: (e) => e.stopPropagation() },
+  }
+}
+
+/**
  * Pixel-styled button. Chunky border, hard shadow, snappy hover.
  */
 export function PixelButton({ children, onClick, accent = '#fbbf24', disabled, className = '', ...rest }) {

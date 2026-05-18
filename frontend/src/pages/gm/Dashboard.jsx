@@ -20,7 +20,7 @@ import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } fro
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { resolveEvent } from '../../gm/engine/randomEvents'
-import GMShell, { PixelCard, PixelButton } from '../../gm/components/GMShell'
+import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import TutorialOverlay from '../../gm/components/TutorialOverlay'
 import TeamLogo from '../../gm/components/TeamLogo'
@@ -781,6 +781,7 @@ function SeasonPeriodBanner({ phase, weekOfYear }) {
 }
 
 function PhaseTransitionModal({ from, to, onClose }) {
+  useModalDismiss(onClose)
   const palette = SEASON_PALETTE[to.season] || SEASON_PALETTE['Late Summer']
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4" onClick={onClose}>
@@ -1758,12 +1759,13 @@ function CampInviteBanner({ save, slot, weekOfYear }) {
 }
 
 function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
+  const { backdropProps, stopProps } = useModalDismiss(onCancel)
   const userSchoolId = save.userSchoolId
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-lg">
-        <div className="flex justify-between items-start mb-3">
-          <div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-lg" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3">
+          <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-wider text-pnw-green font-bold">
               Week {weekOfYear} — Game Week
             </div>
@@ -1771,7 +1773,7 @@ function GameWeekModal({ games, save, weekOfYear, onEnter, onSim, onCancel }) {
               {games.length} game{games.length === 1 ? '' : 's'} this week
             </h3>
           </div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl leading-none"></button>
+          <ModalCloseButton onClick={onCancel} />
         </div>
         <div className="space-y-1 mb-4 max-h-40 overflow-y-auto text-sm">
           {games.map(g => {
@@ -1887,6 +1889,7 @@ function prettyStat(key) {
  * budget) plus the week's userResults if it was an in-season week.
  */
 function WeekRecapModal({ recap, save, onDismiss }) {
+  const { backdropProps, stopProps } = useModalDismiss(recap ? onDismiss : null)
   if (!recap) return null
   const diff = recap.diff
   const results = recap.results || []
@@ -1912,14 +1915,14 @@ function WeekRecapModal({ recap, save, onDismiss }) {
   }, [save])
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white p-4 rounded-t-xl flex justify-between items-start">
-          <div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopProps}>
+        <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white p-4 rounded-t-xl flex justify-between items-start gap-3 sticky top-0 z-10">
+          <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-wider opacity-80">Week Recap</div>
             <h3 className="text-2xl font-bold mt-0.5">{headerLabel}</h3>
           </div>
-          <button onClick={onDismiss} className="text-white/80 hover:text-white text-xl leading-none"></button>
+          <ModalCloseButton onClick={onDismiss} dark className="!border-white/40 !text-white" />
         </div>
 
         <div className="p-5 space-y-4">
@@ -2330,6 +2333,7 @@ function FallStatsBanner({ save, onOpen }) {
 }
 
 function FallStatsModal({ save, onClose }) {
+  useModalDismiss(onClose)
   const year = save.calendar?.year
   const fallStats = save.fallStats?.[year] || {}
   const userId = save.userSchoolId
@@ -2374,15 +2378,15 @@ function FallStatsModal({ save, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 rounded-t-xl flex justify-between items-start">
-          <div>
+        <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 rounded-t-xl flex justify-between items-start gap-3 sticky top-0 z-10">
+          <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-wider opacity-80">Fall {year} Scrimmage Report</div>
             <h3 className="text-2xl font-bold mt-0.5"> How fall went</h3>
             <div className="text-xs opacity-90 mt-1">
               8 fall scrimmage games · stats kept separate from spring · use this to set your spring depth chart
             </div>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl leading-none"></button>
+          <ModalCloseButton onClick={onClose} dark className="!border-white/40 !text-white" />
         </div>
         <div className="p-5 space-y-5">
           {/* Top hitters */}

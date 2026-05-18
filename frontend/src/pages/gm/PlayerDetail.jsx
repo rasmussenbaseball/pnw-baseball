@@ -10,7 +10,7 @@ import AttrTooltip from '../../gm/components/AttrTooltip'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
 import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtPct, fmtWar } from '../../gm/engine/advancedStats'
-import GMShell from '../../gm/components/GMShell'
+import GMShell, { ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
 export default function PlayerDetail() {
@@ -282,19 +282,20 @@ function HappinessPanel({ player }) {
 }
 
 function PositionChangeModal({ player, onPick, onClose }) {
+  useModalDismiss(onClose)
   const current = player.primaryPosition
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-3">
-          <div>
+        <div className="flex justify-between items-start gap-3 mb-3">
+          <div className="min-w-0">
             <h3 className="text-lg font-bold text-pnw-slate">Move {player.firstName} {player.lastName}</h3>
             <p className="text-xs text-gray-500 mt-0.5">
               Currently {displayPosition(current)}. Moving spots costs fielding rating
               — bigger transitions (especially to/from catcher) cost more.
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <div className="grid grid-cols-3 gap-2">
           {HITTER_POSITION_OPTIONS.map(pos => {

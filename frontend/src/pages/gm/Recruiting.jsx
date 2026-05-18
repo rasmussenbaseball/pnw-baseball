@@ -19,7 +19,7 @@ import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions
 import { prettyLabel } from '../../gm/engine/format'
 import TeamLogo from '../../gm/components/TeamLogo'
 import { getArchetype, getQuirk, formatHeight } from '../../gm/engine/playerArchetypes'
-import GMShell, { ContextBox } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 
 const POOL_LABELS = {
   HS_SR: 'HS Senior',
@@ -1046,6 +1046,7 @@ function ActionCard({ title, subtitle, onClick, disabled }) {
 // ── Camp modal ──────────────────────────────────────────────────────────────
 
 function CampModal({ save, coach, recruits, onConfirm, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
   const [fee, setFee] = useState(125)
   const [invitedIds, setInvitedIds] = useState([])
   const [showInviteList, setShowInviteList] = useState(false)
@@ -1070,11 +1071,11 @@ function CampModal({ save, coach, recruits, onConfirm, onClose }) {
     .slice(0, 80)
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex justify-between items-start mb-3">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3">
           <h3 className="text-xl font-bold text-pnw-slate">Hold Prospect Camp</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <p className="text-sm text-gray-600 mb-4">
           HS prospects only. Runs once a year in <strong>Week 13 (late October)</strong>. Attendees get +25 interest + scout fog drop + small rating bump. Revenue ($ × attendees) adds to budget immediately. Camp needs <strong>{CAMP_MIN_ATTENDEES} min</strong> attendees or it's cancelled. Max {CAMP_MAX_ATTENDEES}, with walk-ons capped at 25.
@@ -1176,15 +1177,16 @@ function CampModal({ save, coach, recruits, onConfirm, onClose }) {
 // ── Fundraise modal ─────────────────────────────────────────────────────────
 
 function FundraiseModal({ ap, onChangeAP, maxAP, coach, programHistory, onConfirm, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
   const motivatorMult = 0.7 + (coach.motivator / 100) * 0.9
   const historyMult = 0.7 + (programHistory / 100) * 0.9
   const estimated = Math.round(ap * 800 * motivatorMult * historyMult)
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-md w-full p-6">
-        <div className="flex justify-between items-start mb-3">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl max-w-md w-full p-6" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3">
           <h3 className="text-xl font-bold text-pnw-slate">Fundraise</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <p className="text-sm text-gray-600 mb-4">
           Spend AP on donor + alumni outreach. Money goes directly to your budget.
@@ -1211,6 +1213,7 @@ function FundraiseModal({ ap, onChangeAP, maxAP, coach, programHistory, onConfir
 // ── Recruit modal ───────────────────────────────────────────────────────────
 
 function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
   const grade = recruit.scoutGrades[save.userSchoolId] || { noise: 15, interest: 0, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
   const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
   const [offerAmount, setOfferAmount] = useState(recruit.liveOffer?.amount ?? 5000)
@@ -1261,10 +1264,10 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
   const m = recruit.measurables || {}
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex justify-between items-start mb-3">
-          <div>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3 sticky -top-6 -mt-6 pt-6 -mx-6 px-6 pb-3 bg-white z-10">
+          <div className="min-w-0">
             <h3 className="text-xl font-bold text-pnw-slate">{recruit.firstName} {recruit.lastName}</h3>
             <p className="text-sm text-gray-600">
               {recruit.primaryPosition} • {POOL_LABELS[recruit.pool]} • {recruit.hometown.state} • {recruit.bats}/{recruit.throws}
@@ -1282,7 +1285,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
               {m.maxEvMph && <span><span className="text-gray-400">Max EV:</span> <strong>{m.maxEvMph} mph</strong></span>}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         {/* Est OVR + POT ranges show ALWAYS — even before any scouting — as a

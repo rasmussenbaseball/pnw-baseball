@@ -19,7 +19,7 @@ import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } fr
 import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
 import TeamLogo from '../../gm/components/TeamLogo'
 import TeamRankChip from '../../gm/components/TeamRankChip'
-import GMShell, { ContextBox } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
 
 const NON_NAIA_DISPLAY = (() => {
@@ -546,6 +546,7 @@ function SeriesRow({ games, userSchoolId, save }) {
 }
 
 function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
   const [filter, setFilter] = useState('')
   const [divFilter, setDivFilter] = useState('ALL')
 
@@ -607,13 +608,13 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[85vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-3">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[85vh] overflow-y-auto" {...stopProps}>
+        <div className="flex justify-between items-center gap-3 mb-3 sticky -top-6 -mt-6 pt-6 -mx-6 px-6 pb-3 bg-white z-10">
           <h3 className="text-lg font-semibold">
             {midweekMode ? 'Pick midweek opponent' : 'Pick weekend opponent'}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div className="flex gap-1 mb-3 flex-wrap">
@@ -693,6 +694,7 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
 }
 
 function ScrimmagePicker({ save, season, year, onPick, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
   const slots = season === 'FALL' ? fallScrimmageSlots(year) : springScrimmageSlots(year + 1)
   const [filter, setFilter] = useState('')
   const [selectedDate, setSelectedDate] = useState(slots[0]?.date || '')
@@ -719,11 +721,11 @@ function ScrimmagePicker({ save, season, year, onPick, onClose }) {
     .slice(0, 50)
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-3">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto" {...stopProps}>
+        <div className="flex justify-between items-center gap-3 mb-3 sticky -top-6 -mt-6 pt-6 -mx-6 px-6 pb-3 bg-white z-10">
           <h3 className="text-lg font-semibold">{season} Scrimmage Doubleheader</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <p className="text-xs text-gray-500 mb-3">
           Pick a doubleheader date and opponent. 2 games count toward your 10 scrimmage allotment.

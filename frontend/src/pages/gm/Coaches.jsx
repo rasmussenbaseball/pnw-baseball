@@ -12,7 +12,7 @@ import { makeRng } from '../../gm/engine/rng'
 import { prettyLabel } from '../../gm/engine/format'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import AttrTooltip from '../../gm/components/AttrTooltip'
-import GMShell, { ContextBox } from '../../gm/components/GMShell'
+import GMShell, { ContextBox, ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 
 const INTERVIEW_AP_COST = 20
 const FIRE_AP_COST = 20
@@ -480,15 +480,16 @@ function HireButton({ role, apCurrent, cost = 20, disabled = false, onClick }) {
 }
 
 function InterviewModal({ role, candidates, onHire, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex justify-between items-start mb-3">
-          <div>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3 sticky -top-6 -mt-6 pt-6 -mx-6 px-6 pb-3 bg-white z-10">
+          <div className="min-w-0">
             <h3 className="text-xl font-bold text-pnw-slate">Interview — {prettyLabel(role)}</h3>
             <div className="text-xs text-gray-500 mt-1">{ROLE_DESCRIPTIONS[role]}</div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none"></button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <div className="space-y-3">
           {candidates.map(c => (
