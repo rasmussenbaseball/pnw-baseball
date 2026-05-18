@@ -43,17 +43,20 @@ export function synthesizeSeasonStats(player, teamCtx, year, seed) {
 // at target). The smoke test in scripts/smoke-test-gm.mjs validates this.
 const LEVEL_BASELINES = {
   // Each baseline = the rate produced by an AVERAGE-rated player (60) at
-  // this level. Pulled from real NWBB 2025 data + slight upward adjustment
-  // to account for the fact that top-9 hitters / SP rotation skew higher
-  // than the 60 anchor, which pulls league averages up a tick.
+  // this level. Targets pulled from real NWBB 2025 data.
+  //
+  // erScalar = level-specific multiplier on the FIP-like ER computation.
+  // Different levels convert baserunners to runs at different rates:
+  // NWAC has fewer extra-base hits + slower runners → lower ER conversion.
+  // D1 has more HRs + better baserunning → higher ER conversion.
   //
   // gamesPerSeason: regular season max — NAIA ~52 (max 55), D1 56, D3 41,
   // D2 52, NWAC 50. Postseason adds 4-15 more for teams that qualify.
-  D1:   { kPct: 0.197, bbPct: 0.116, hbpPct: 0.030, hrPerPa: 0.020, doublePct: 0.105, babip: 0.275, era: 5.59, whip: 1.52, gamesPerSeason: 56 },
-  D2:   { kPct: 0.166, bbPct: 0.090, hbpPct: 0.034, hrPerPa: 0.012, doublePct: 0.105, babip: 0.290, era: 6.32, whip: 1.68, gamesPerSeason: 52 },
-  D3:   { kPct: 0.175, bbPct: 0.101, hbpPct: 0.039, hrPerPa: 0.014, doublePct: 0.100, babip: 0.285, era: 5.76, whip: 1.59, gamesPerSeason: 41 },
-  NAIA: { kPct: 0.170, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.017, doublePct: 0.115, babip: 0.295, era: 6.54, whip: 1.67, gamesPerSeason: 52 },
-  NWAC: { kPct: 0.173, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.004, doublePct: 0.080, babip: 0.245, era: 4.57, whip: 1.44, gamesPerSeason: 50 },
+  D1:   { kPct: 0.197, bbPct: 0.116, hbpPct: 0.030, hrPerPa: 0.012, doublePct: 0.082, babip: 0.268, era: 5.59, whip: 1.52, erScalar: 0.95, gamesPerSeason: 56 },
+  D2:   { kPct: 0.166, bbPct: 0.090, hbpPct: 0.034, hrPerPa: 0.013, doublePct: 0.108, babip: 0.297, era: 6.32, whip: 1.68, erScalar: 1.06, gamesPerSeason: 52 },
+  D3:   { kPct: 0.175, bbPct: 0.101, hbpPct: 0.039, hrPerPa: 0.018, doublePct: 0.115, babip: 0.305, era: 5.76, whip: 1.59, erScalar: 0.93, gamesPerSeason: 41 },
+  NAIA: { kPct: 0.170, bbPct: 0.106, hbpPct: 0.044, hrPerPa: 0.022, doublePct: 0.130, babip: 0.315, era: 6.54, whip: 1.67, erScalar: 1.00, gamesPerSeason: 52 },
+  NWAC: { kPct: 0.173, bbPct: 0.112, hbpPct: 0.039, hrPerPa: 0.005, doublePct: 0.080, babip: 0.258, era: 4.57, whip: 1.44, erScalar: 0.78, gamesPerSeason: 50 },
 }
 
 function baselineFor(level) {
@@ -198,13 +201,11 @@ function synthesizePitcher(player, teamCtx, year, seed) {
   const bipAtBats = bf - k - bb - hbp - hr
   const h = hr + Math.round(Math.max(0, bipAtBats) * babipAg)
 
-  // ER from FIP-like component plus BABIP luck. Calibrated against
-  // smoke-test → real-world: original 0.65 gave ERA 3.0, 0.85 gave 4.2,
-  // 1.15 lands league ERA in the 5.2-5.9 band (D1 5.2 / NAIA 5.8 / D3 5.95).
-  // Hit coefficient also bumped slightly since base hits → runs is
-  // higher than FIP alone implies (baserunners convert at higher rates
-  // in college than MLB due to weaker bullpens + more bunting/sacrifice).
-  const expectedER = (h * 0.52 + bb * 0.45 + hbp * 0.42 + hr * 1.0) * 1.05
+  // ER from FIP-like component plus BABIP luck, scaled by level. Each
+  // level has its own erScalar in LEVEL_BASELINES that reflects the
+  // baserunner→ER conversion rate at that level (NWAC 0.80 = low-run
+  // environment; D2 1.05 = high-run; D1 0.95; NAIA 1.00).
+  const expectedER = (h * 0.52 + bb * 0.45 + hbp * 0.42 + hr * 1.0) * (baseline.erScalar ?? 1.0)
   const er = Math.max(0, Math.round(expectedER + rng.gaussian(0, expectedER * 0.10)))
 
   return {

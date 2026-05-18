@@ -178,8 +178,8 @@ try {
   console.error('     CRASHED:', e.message)
 }
 
-// 2. NWAC dynasty at Bellevue (correct ID is nwac-bellevue)
-console.log('\n[2/3] Creating NWAC dynasty at Bellevue CC...')
+// 2. NWAC dynasty at Bellevue
+console.log('\n[2/5] Creating NWAC dynasty at Bellevue CC...')
 try {
   const nwacState = newDynastyMultiLevel({
     ...buildBase('NWAC', 'nwac-bellevue', 'NWAC_NORTH'),
@@ -195,7 +195,7 @@ try {
 }
 
 // 3. D1 dynasty at Oregon
-console.log('\n[3/3] Creating D1 dynasty at Oregon...')
+console.log('\n[3/5] Creating D1 dynasty at Oregon...')
 try {
   const d1State = newDynastyMultiLevel({
     ...buildBase('D1', 'oregon-d1', 'BIG_TEN'),
@@ -207,6 +207,38 @@ try {
   console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
 } catch (e) {
   results.push({ level: 'D1', label: 'Oregon', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+  console.error('     CRASHED:', e.message)
+}
+
+// 4. D2 dynasty at Central Washington
+console.log('\n[4/5] Creating D2 dynasty at Central Washington...')
+try {
+  const d2State = newDynastyMultiLevel({
+    ...buildBase('D2', 'central-washington-d2', 'GNAC'),
+    level: 'D2', conferenceId: 'GNAC',
+  })
+  console.log(`     Created. ${Object.keys(d2State.schools).length} schools, ${Object.keys(d2State.players).length} players.`)
+  const sim = simSeasonForState(d2State, 18)
+  results.push(report('D2', 'Central Washington', d2State, sim))
+  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+} catch (e) {
+  results.push({ level: 'D2', label: 'Central Washington', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
+  console.error('     CRASHED:', e.message)
+}
+
+// 5. D3 dynasty at Whitworth
+console.log('\n[5/5] Creating D3 dynasty at Whitworth...')
+try {
+  const d3State = newDynastyMultiLevel({
+    ...buildBase('D3', 'whitworth-d3', 'NWC'),
+    level: 'D3', conferenceId: 'NWC',
+  })
+  console.log(`     Created. ${Object.keys(d3State.schools).length} schools, ${Object.keys(d3State.players).length} players.`)
+  const sim = simSeasonForState(d3State, 18)
+  results.push(report('D3', 'Whitworth', d3State, sim))
+  console.log(`     Sim done — ${sim.weeksSimmed} weeks, ended on week ${sim.finalWeek}.`)
+} catch (e) {
+  results.push({ level: 'D3', label: 'Whitworth', crashed: true, error: e.message, stack: e.stack?.slice(0, 200) })
   console.error('     CRASHED:', e.message)
 }
 
@@ -234,15 +266,20 @@ for (const r of results) {
   console.log(`  K/9 ${r.league.kPer9} (real ${real.kPer9.toFixed(1)})`)
   console.log(`  K%  ${r.league.kPct}`)
   console.log(`  WHIP ${r.league.whip}`)
-  // Flag big mismatches
-  const avgErr = Math.abs(parseFloat(r.league.avg) - real.avg)
-  const opsErr = Math.abs(parseFloat(r.league.ops) - real.ops)
-  const eraErr = Math.abs(parseFloat(r.league.era) - real.era)
+  // Compute deviations + flag against TIGHT tolerances (sim engine is the
+  // heart of the site; loose tolerances hide real bugs).
+  const avgErr = parseFloat(r.league.avg) - real.avg
+  const opsErr = parseFloat(r.league.ops) - real.ops
+  const eraErr = parseFloat(r.league.era) - real.era
+  const k9Err = parseFloat(r.league.kPer9) - real.kPer9
+  const sgn = (x) => x > 0 ? '+' : ''
+  console.log(`  Δ:  AVG ${sgn(avgErr)}${avgErr.toFixed(3)}  ·  OPS ${sgn(opsErr)}${opsErr.toFixed(3)}  ·  ERA ${sgn(eraErr)}${eraErr.toFixed(2)}  ·  K/9 ${sgn(k9Err)}${k9Err.toFixed(1)}`)
   const flags = []
-  if (avgErr > 0.035) flags.push(`AVG off by ${avgErr.toFixed(3)}`)
-  if (opsErr > 0.080) flags.push(`OPS off by ${opsErr.toFixed(3)}`)
-  if (eraErr > 1.50) flags.push(`ERA off by ${eraErr.toFixed(2)}`)
+  if (Math.abs(avgErr) > 0.020) flags.push(`AVG off by ${avgErr.toFixed(3)}`)
+  if (Math.abs(opsErr) > 0.035) flags.push(`OPS off by ${opsErr.toFixed(3)}`)
+  if (Math.abs(eraErr) > 0.50)  flags.push(`ERA off by ${eraErr.toFixed(2)}`)
+  if (Math.abs(k9Err) > 0.7)    flags.push(`K/9 off by ${k9Err.toFixed(1)}`)
   if (flags.length > 0) console.log(`  ⚠️ ${flags.join('  ·  ')}`)
-  else console.log(`  ✓ within range of real-world ${real.label}`)
+  else console.log(`  ✓ tight match to real-world ${real.label}`)
 }
 console.log('\n═══════════════════════════════════════════════════════════')
