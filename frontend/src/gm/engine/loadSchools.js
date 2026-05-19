@@ -75,25 +75,27 @@ function pearRatingForSchool(school) {
  */
 const PROGRAM_HISTORY_OVERRIDES = {
   // NAIA PNW — calibrated per Nate's feedback against the actual real-world
-  // hierarchy. Lewis-Clark elite, UBC clearly ahead of Bushnell, mid-tier
-  // CCC programs in the low 70s. Re-run scripts/pnw-team-ovr-report.mjs
-  // any time you tweak these values to see the resulting Team OVR.
+  // hierarchy. Ordering must match the PEAR national rank shown on each
+  // program tile: better national rank → higher PH → higher Team OVR.
+  // Re-run scripts/pnw-team-ovr-report.mjs after any tweak to verify.
   //
   // Approx mapping with the current roster generator (after May 2026 retune):
-  //   PH 94 → Team OVR 85   Lewis-Clark — real-world top NAIA
-  //   PH 80 → Team OVR 82   UBC
-  //   PH 72 → Team OVR 80   Bushnell
-  //   PH 60 → Team OVR 77-78  College of Idaho, Oregon Tech
-  //   PH 32 → Team OVR 72-73  Corban, Eastern Oregon
-  //   PH 28 → Team OVR 71-72  Warner Pacific
+  //   PH 94 → Team OVR 86   Lewis-Clark State (NAIA #2)
+  //   PH 80 → Team OVR 83   British Columbia (NAIA #6)
+  //   PH 72 → Team OVR 80   Bushnell (NAIA #36)
+  //   PH 64 → Team OVR 78   Oregon Tech (NAIA #39)
+  //   PH 60 → Team OVR 77   College of Idaho (NAIA #62)
+  //   PH 36 → Team OVR 71   Warner Pacific (NAIA #94)
+  //   PH 30 → Team OVR 69   Corban (NAIA #106)
+  //   PH 26 → Team OVR 68   Eastern Oregon (NAIA #118)
   'lewis-clark-state':     94,
   'british-columbia':      80,
   'bushnell':              72,
-  'oregon-tech':           60,
+  'oregon-tech':           64,
   'college-of-idaho':      60,
-  'corban':                32,
-  'eastern-oregon':        32,
-  'warner-pacific':        28,
+  'warner-pacific':        36,
+  'corban':                30,
+  'eastern-oregon':        26,
 }
 
 // ─── Hand-coded resource tiers for well-known programs ────────────────────────
