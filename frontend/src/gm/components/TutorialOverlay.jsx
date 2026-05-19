@@ -89,9 +89,9 @@ function buildSlides(level = 'NAIA') {
       <>
         <p>Players improve in four distinct ways. Knowing how each works lets you set up your year intentionally:</p>
         <ul className="mt-3 space-y-2 text-sm">
-          <li><strong className="text-emerald-300">Fall scrimmages (Sep-Oct)</strong> — every player in your lineup for a fall scrimmage gets a chance at a small rating bump. The more games they play, the more chances. Fall scrimmages also sharpen the team for the spring.</li>
+          <li><strong className="text-emerald-300">Practice drills (AP)</strong> — spend Action Points on hitting, pitching, and defensive drills each week to develop specific ratings. Permanent bumps in the offseason, quick temporary boosts during the season.</li>
           <li><strong className="text-emerald-300">In-season weekly dev (Spring)</strong> — players who put up real stats get rating bumps. Better stats = bigger bumps. Stamina also factors in for pitchers.</li>
-          <li><strong className="text-emerald-300">Offseason practice (Fall Camp / Winter Practice)</strong> — passive small bumps every week. Half rate in November (conditioning only). Zero in December and Summer.</li>
+          <li><strong className="text-emerald-300">Offseason practice (Fall Camp / Winter Practice)</strong> — passive small bumps every week. Half rate in Oct/Nov/Dec. Zero in Summer.</li>
           <li><strong className="text-emerald-300">Summer ball</strong> — sending a player to a summer league (Cape Cod, Northwoods, etc.) develops them aggressively over the summer. Top leagues develop faster but are harder to get into.</li>
         </ul>
         <p className="mt-3 text-sm text-gray-300">Players have a <strong>hidden potential</strong> per stat. They can't grow past it without their potential drifting (which it does based on real performance + your scouting). High potential = faster growth from every dev source above.</p>

@@ -37,7 +37,7 @@ export const WEEKS_PER_YEAR = 52
 //   - season:       human-readable umbrella period (shown as a banner)
 export const PHASES = {
   // ── August: late-summer setup (Wks 1-4) ─────────────────────────────────
-  TUTORIAL_SCHEDULE: { key: 'TUTORIAL_SCHEDULE', label: 'Set Schedule',     blurb: 'Lock in your non-conf weekends. Fall scrimmages auto-fill.',
+  TUTORIAL_SCHEDULE: { key: 'TUTORIAL_SCHEDULE', label: 'Set Schedule',     blurb: 'Lock in your non-conference weekends. Conference series are auto-generated.',
     season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
   TUTORIAL_HIRE:     { key: 'TUTORIAL_HIRE',     label: 'Hire Assistants',  blurb: '$40K assistant pool. Pitching / hitting / bench coach.',
     season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },

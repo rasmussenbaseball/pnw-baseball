@@ -543,7 +543,14 @@ export default function Dashboard() {
           umbrella period we're in (Fall Camp / November / December / etc).
           Always visible directly below the hero so the user knows what
           rules govern this week at a glance. */}
-      <SeasonPeriodBanner phase={currentPhase} weekOfYear={weekOfYear} />
+      <SeasonPeriodBanner
+        phase={currentPhase}
+        weekOfYear={weekOfYear}
+        requiredAction={requiredAction}
+        reqComplete={requiredAction ? requiredAction.isComplete(save) : null}
+        slot={slot}
+        autoOn={autoOn}
+      />
 
       {/* GAME WEEK BANNER — top-of-page when there are unplayed games */}
       {thisWeekUnplayed.length > 0 && (
@@ -617,28 +624,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Phase-gate banner — required action this week (hidden in auto mode) */}
-      {!autoOn && requiredAction && !requiredAction.isComplete(save) && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-4 flex justify-between items-start">
-          <div className="flex-1">
-            <div className="text-[11px] uppercase tracking-wider text-amber-700 font-bold mb-1">
-              Week {weekOfYear} — {currentPhase.label}
-            </div>
-            <div className="text-sm font-semibold text-amber-900">
-               Required: {requiredAction.label}
-            </div>
-            <div className="text-xs text-amber-800 mt-1 leading-snug">{requiredAction.blurb}</div>
-          </div>
-          <Link to={`${requiredAction.route}?slot=${slot}`} className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
-            Take care of it 
-          </Link>
-        </div>
-      )}
-      {!autoOn && requiredAction && requiredAction.isComplete(save) && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-2 mb-4 text-xs text-green-800 flex justify-between items-center">
-          <span><strong>Week {weekOfYear}:</strong> {requiredAction.doneText || requiredAction.label} — ready to advance.</span>
-        </div>
-      )}
+      {/* Required-action state is now folded into SeasonPeriodBanner above. */}
 
       {/* Legacy schedule-incomplete banner (separate concern from phase-gate) */}
       {scheduleBlocked && !requiredAction && (
@@ -799,11 +785,16 @@ const SEASON_PALETTE = {
   'Summer Recruiting': { bg: 'bg-yellow-700/90',  text: 'text-yellow-50',   accent: 'border-yellow-400' },
 }
 
-function SeasonPeriodBanner({ phase, weekOfYear }) {
+function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, slot, autoOn }) {
   if (!phase) return null
   const season = phase.season || 'Offseason'
   const palette = SEASON_PALETTE[season] || SEASON_PALETTE['Late Summer']
-  // Build a compact chip row showing what's active this period
+  // Required action drives the right-hand content. Auto mode hides the
+  // "do it yourself" CTA since the AI handles required actions.
+  const reqTodo = !autoOn && requiredAction && reqComplete === false
+  const reqDone = !autoOn && requiredAction && reqComplete === true
+  // Compact chip row showing what's active this period (only when there's no
+  // pending required action — the action takes visual priority).
   const chips = []
   if (phase.inSeason) chips.push('Games this week')
   if (phase.practice) chips.push('Practice')
@@ -813,17 +804,41 @@ function SeasonPeriodBanner({ phase, weekOfYear }) {
   return (
     <div className={`${palette.bg} ${palette.text} rounded-xl mb-4 px-4 py-3 border-l-4 ${palette.accent} shadow-md`}>
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <div className="text-[10px] uppercase tracking-widest opacity-75 font-bold">Current period</div>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-widest opacity-75 font-bold">
+            Current period · Week {weekOfYear}
+          </div>
           <div className="text-lg font-extrabold leading-tight">{season} — {phase.label}</div>
-          <div className="text-xs opacity-90 mt-1">{phase.blurb}</div>
+          {reqTodo ? (
+            <>
+              <div className="text-sm font-semibold mt-1">Required: {requiredAction.label}</div>
+              <div className="text-xs opacity-90 mt-0.5 leading-snug">{requiredAction.blurb}</div>
+            </>
+          ) : (
+            <div className="text-xs opacity-90 mt-1">{phase.blurb}</div>
+          )}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {chips.map(c => (
-            <span key={c} className="bg-black/30 text-[10px] uppercase tracking-wider font-bold rounded px-2 py-1">
-              {c}
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {reqTodo ? (
+            <Link
+              to={`${requiredAction.route}?slot=${slot}`}
+              className="px-4 py-2 bg-white text-pnw-slate rounded text-sm font-bold hover:opacity-90 shadow"
+            >
+              Take care of it →
+            </Link>
+          ) : reqDone ? (
+            <span className="bg-black/30 text-[11px] uppercase tracking-wider font-bold rounded px-2 py-1">
+              ✓ {requiredAction.doneText || 'Done'} — ready to advance
             </span>
-          ))}
+          ) : (
+            <div className="flex flex-wrap gap-1.5 justify-end">
+              {chips.map(c => (
+                <span key={c} className="bg-black/30 text-[10px] uppercase tracking-wider font-bold rounded px-2 py-1">
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1554,26 +1569,51 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
   )
 }
 
-// Non-mandatory, contextual "worth a look" suggestions. Always returns a few
-// so even Wk 1 (AP locked) gives the user productive things to explore.
+// Non-mandatory, contextual "worth a look" suggestions. ROTATES weekly so the
+// list feels fresh — different pages surface on different weeks. Always
+// returns a few so even Wk 1 (AP locked) gives productive things to explore.
 function buildExploreSuggestions(save, slot) {
-  const out = []
+  const wk = save.calendar?.weekOfYear ?? 0
+  const mode = save.calendar?.mode
+  const inSeason = mode === 'SEASON' || mode === 'POSTSEASON'
   const team = save.teams?.[save.userSchoolId]
   const players = (team?.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
   const withGpa = players.filter(p => typeof p.gpa === 'number')
   const avgGpa = withGpa.length ? withGpa.reduce((s, p) => s + p.gpa, 0) / withGpa.length : null
-  out.push({ text: 'Check out your roster + set your depth chart', to: `/gm/roster?slot=${slot}` })
-  if (avgGpa != null) {
-    const low = avgGpa < 2.6
-    out.push({
-      text: low ? `Look at your team GPA (${avgGpa.toFixed(2)}) — it's running low` : `Review your team GPA (${avgGpa.toFixed(2)})`,
-      to: `/gm/academics?slot=${slot}`,
-      flag: low,
-    })
+
+  // Pinned: surfaces only when relevant (e.g. low GPA) — always shown on top.
+  const pinned = []
+  if (avgGpa != null && avgGpa < 2.6) {
+    pinned.push({ text: `Team GPA is low (${avgGpa.toFixed(2)}) — consider study hall`, to: `/gm/academics?slot=${slot}`, flag: true })
   }
-  out.push({ text: "Scout next year's recruiting class", to: `/gm/recruiting?slot=${slot}` })
-  out.push({ text: 'Review your coaching staff', to: `/gm/coaches?slot=${slot}` })
-  return out
+
+  // Rotating pool — a different slice surfaces each week.
+  const pool = [
+    { text: 'Check your roster + set your depth chart', to: `/gm/roster?slot=${slot}` },
+    { text: "Scout next year's recruiting class", to: `/gm/recruiting?slot=${slot}` },
+    { text: 'Review your coaching staff', to: `/gm/coaches?slot=${slot}` },
+    { text: "Look at the calendar — see what's coming up", to: `/gm/calendar?slot=${slot}` },
+    { text: 'Review your budget allocations', to: `/gm/budget?slot=${slot}` },
+    { text: 'See where you stand in the rankings', to: `/gm/rankings?slot=${slot}` },
+    { text: 'Check team + player stats', to: `/gm/stats?slot=${slot}` },
+    { text: 'Review your team GPA + academics', to: `/gm/academics?slot=${slot}` },
+  ]
+  if (inSeason) {
+    pool.push({ text: 'Check the conference standings', to: `/gm/standings?slot=${slot}` })
+    pool.push({ text: 'Review your lineup before game day', to: `/gm/depth?slot=${slot}` })
+  }
+
+  // Rotate: pick 3, starting at an offset that advances each week so the set
+  // changes from one turn to the next.
+  const n = 3
+  const offset = ((wk % pool.length) + pool.length) % pool.length
+  const rotated = []
+  for (let i = 0; i < n && i < pool.length; i++) {
+    rotated.push(pool[(offset + i) % pool.length])
+  }
+  // De-dup against pinned (e.g. academics may appear in both)
+  const seen = new Set(pinned.map(p => p.to))
+  return [...pinned, ...rotated.filter(r => !seen.has(r.to))]
 }
 
 function PlayerRow({ p, ovr, slot }) {
