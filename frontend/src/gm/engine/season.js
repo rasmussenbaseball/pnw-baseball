@@ -38,6 +38,54 @@ import {
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /**
+ * Lightweight synthetic lineup for non-NAIA opponents. Used by simWeek so
+ * fast-simmed user games against D1/D2/D3/NWAC opponents can produce a
+ * boxscore (which is what makes the USER side's stats accumulate). The
+ * synthetic player IDs are filtered out before stats hit playerStats — only
+ * the user's real roster shows up on leaderboards.
+ *
+ * @param {string} schoolId — non-NAIA opp id, used as a deterministic seed
+ * @param {number} strength — non_naia_teams.json strength rating (~-3..+8)
+ */
+function makeSynthLineup(schoolId, strength) {
+  const mean = 60 + (strength || 0) * 4   // ratings centered ~46-76
+  let seed = 0
+  const key = String(schoolId || 'synth')
+  for (let i = 0; i < key.length; i++) seed = (seed * 31 + key.charCodeAt(i)) >>> 0
+  function nextRand() { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 16) / 0xFFFF }
+  function gauss(m, s) {
+    const u = Math.max(1e-6, nextRand()); const v = nextRand()
+    return m + s * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
+  }
+  function clampRating(v) { return Math.max(25, Math.min(99, Math.round(v))) }
+  const batters = []
+  for (let i = 0; i < 9; i++) {
+    batters.push({
+      id: `synth_${schoolId}_h${i}`,
+      hitter: {
+        contact_r: clampRating(gauss(mean, 9)),
+        contact_l: clampRating(gauss(mean, 9)),
+        power_r:   clampRating(gauss(mean - 2, 10)),
+        power_l:   clampRating(gauss(mean - 2, 10)),
+        discipline: clampRating(gauss(mean, 8)),
+        speed:     clampRating(gauss(mean, 10)),
+      },
+    })
+  }
+  const pitchers = []
+  for (let i = 0; i < 4; i++) {
+    pitchers.push({
+      id: `synth_${schoolId}_p${i}`,
+      pitcher: {
+        stuff:   clampRating(gauss(mean, 9)),
+        control: clampRating(gauss(mean, 8)),
+      },
+    })
+  }
+  return { batters, pitchers }
+}
+
+/**
  * Is `game` the second (or later) game of a doubleheader for the user team?
  * Used by the energy system to charge an extra cost on back-to-back games.
  */
@@ -167,7 +215,10 @@ export function simWeek(state, schedule, ratings) {
         level: state.level || state.schools?.[userSchoolId]?.level || 'NAIA',
       }, g.id)
     } else if (isUserGame) {
-      // User vs. non-NAIA opponent — fast sim against static strength
+      // User vs. non-NAIA opponent — fast sim against static strength,
+      // but pass the user's lineup + a synthetic opp lineup so fastSimGame
+      // can produce a lightweight boxscore. Without this the user's fall
+      // games against D2/D3 opponents would accumulate ZERO season stats.
       const userIsHome = g.homeId === userSchoolId
       const userRating = ratings?.[userSchoolId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
       const nonNaiaId = userIsHome ? g.awayId : g.homeId
@@ -177,14 +228,31 @@ export function simWeek(state, schedule, ratings) {
         offense_rating: (nonNaiaInfo?.strength ?? 0) * 0.5,
         pitching_rating: (nonNaiaInfo?.strength ?? 0) * 0.5,
       }
+      const userLineup = resolveLineupForGame(state, userSchoolId, g.id)
+      const synthLineup = makeSynthLineup(nonNaiaId, nonNaiaInfo?.strength ?? 0)
+      const homeLineup = userIsHome ? userLineup : synthLineup
+      const awayLineup = userIsHome ? synthLineup : userLineup
       result = userIsHome
-        ? fastSimGame(userRating, oppRating, g.id)
-        : fastSimGame(oppRating, userRating, g.id)
+        ? fastSimGame(userRating, oppRating, g.id, { homeLineup, awayLineup })
+        : fastSimGame(oppRating, userRating, g.id, { homeLineup, awayLineup })
     } else {
+      // Non-user game. If at least one team is in the user's conference
+      // we generate lineup-based boxscores so league leaderboards + weekly
+      // awards see realistic stat lines from rivals. Out-of-conference
+      // games stay score-only to keep state size + sim time manageable.
+      const userConfId = state.schools?.[userSchoolId]?.conferenceId
+      const homeInUserConf = state.schools?.[g.homeId]?.conferenceId === userConfId
+      const awayInUserConf = state.schools?.[g.awayId]?.conferenceId === userConfId
+      const wantBoxscore = userConfId && (homeInUserConf || awayInUserConf)
+      const opts = wantBoxscore && homeTeam && awayTeam ? {
+        homeLineup: defaultLineup(homeTeam, state.players),
+        awayLineup: defaultLineup(awayTeam, state.players),
+      } : undefined
       result = fastSimGame(
         ratings?.[g.homeId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 },
         ratings?.[g.awayId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 },
         g.id,
+        opts,
       )
     }
 
@@ -258,6 +326,11 @@ export function simWeek(state, schedule, ratings) {
       }
       const accumulate = (statsObj, isPitcher) => {
         for (const [pid, s] of Object.entries(statsObj)) {
+          // Skip synthetic opponents — they aren't in save.players so they'd
+          // pollute playerStats with phantom rows that no UI can resolve to
+          // a name. fastSimGame's lightweight boxscore generates these for
+          // non-NAIA opponents in user games + non-conference NAIA games.
+          if (!state.players[pid]) continue
           const key = isPitcher ? `p_${pid}` : `b_${pid}`
           let target
           if (isFall) {

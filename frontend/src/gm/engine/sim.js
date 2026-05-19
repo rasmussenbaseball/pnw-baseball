@@ -126,21 +126,176 @@ const HIT_SLOPE = 0.7
  * @param {string} seedKey
  * @returns {{ homeRuns: number, awayRuns: number }}
  */
-export function fastSimGame(home, away, seedKey) {
+export function fastSimGame(home, away, seedKey, opts = {}) {
   const rng = makeRng('fast', seedKey)
   // Expected runs from offense - opposing pitching diff
   const homeExp = clamp(5 + (home.offense_rating - away.pitching_rating) * 1.8 + 0.3, 0, 25)
   const awayExp = clamp(5 + (away.offense_rating - home.pitching_rating) * 1.8, 0, 25)
   // Sample with Poisson-ish noise
-  const homeRuns = Math.max(0, Math.round(rng.gaussian(homeExp, 3)))
-  const awayRuns = Math.max(0, Math.round(rng.gaussian(awayExp, 3)))
+  let homeRuns = Math.max(0, Math.round(rng.gaussian(homeExp, 3)))
+  let awayRuns = Math.max(0, Math.round(rng.gaussian(awayExp, 3)))
   // Avoid ties — extra innings shouldn't be a regular outcome
   if (homeRuns === awayRuns) {
-    return rng.chance(0.5)
-      ? { homeRuns: homeRuns + 1, awayRuns }
-      : { homeRuns, awayRuns: awayRuns + 1 }
+    if (rng.chance(0.5)) homeRuns++; else awayRuns++
+  }
+  // When lineups are supplied, also fabricate a lightweight per-player
+  // boxscore so league leaderboards + weekly awards + season stats reflect
+  // every game that gets fast-simmed (non-user games and user-vs-non-NAIA).
+  // Without this, only games routed through full simGame produce stats and
+  // the league looks like a one-team show. The numbers are coarse on a
+  // per-game basis but accumulate cleanly over a season.
+  if (opts.homeLineup && opts.awayLineup) {
+    const boxscore = buildLightBoxscore(opts.homeLineup, opts.awayLineup, homeRuns, awayRuns, rng)
+    return { homeRuns, awayRuns, boxscore }
   }
   return { homeRuns, awayRuns }
+}
+
+/**
+ * Lightweight per-player boxscore for fast-simmed games. Distributes the
+ * already-decided runs/hits across each lineup using player ratings so the
+ * top hitters / aces accumulate stats roughly in line with their skill.
+ * Doesn't run a PA-by-PA sim — just splits totals.
+ *
+ * Returned shape mirrors what simGame.boxscore produces so the accumulation
+ * code in season.js (state.playerStats/state.fallStats) doesn't care which
+ * sim engine produced it.
+ */
+function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng) {
+  const batterStats = {}
+  const pitcherStats = {}
+
+  function distributeBatters(lineup, runs, oppRuns) {
+    // Use the lineup's batters array; if absent fall back to 9 generic slots.
+    const batters = (lineup.batters || []).slice(0, 9).filter(Boolean)
+    if (batters.length === 0) return
+    // Total hits ≈ runs × 1.7 (typical R/H ratio across a 9-inning game).
+    const totalHits = Math.max(runs, Math.round(runs * 1.7 + rng.gaussian(0, 1)))
+    // Each batter ~4 PA
+    const pasPerBatter = 4
+    // Weights for hit allocation = contact rating averaged with discipline
+    const hitWeights = batters.map(b => {
+      const c = (b.hitter?.contact_r ?? 50) + (b.hitter?.contact_l ?? b.hitter?.contact_r ?? 50)
+      return c / 2
+    })
+    const wSum = hitWeights.reduce((s, n) => s + n, 0) || 1
+    let hitsRemaining = totalHits
+    let rbiRemaining = runs   // RBIs total ≈ runs scored
+    let hrRemaining = Math.max(0, Math.min(runs, Math.round(rng.gaussian(runs * 0.22, 1))))
+    for (let i = 0; i < batters.length; i++) {
+      const b = batters[i]
+      const pa = pasPerBatter + (i < 3 ? 1 : 0)   // top of order gets 5
+      const bbChance = ((b.hitter?.discipline ?? 50) - 40) / 600   // ~0.05-0.15
+      const bb = Math.max(0, Math.round(pa * bbChance + rng.gaussian(0, 0.3)))
+      const hbp = rng.chance(0.02) ? 1 : 0
+      const ab = Math.max(0, pa - bb - hbp)
+      // Hits this player gets ≈ totalHits × their weight / sum, but
+      // capped at remaining hits and ab.
+      const fairShare = totalHits * hitWeights[i] / wSum
+      const noisyShare = Math.max(0, Math.round(fairShare + rng.gaussian(0, 0.4)))
+      const h = Math.min(ab, hitsRemaining, noisyShare)
+      hitsRemaining -= h
+      // Split hits into doubles/triples/HR based on power; rest singles.
+      const power = (b.hitter?.power_r ?? 50) + (b.hitter?.power_l ?? b.hitter?.power_r ?? 50)
+      const powerScore = power / 2
+      let hr = 0
+      if (h > 0 && hrRemaining > 0 && rng.chance(Math.min(0.5, powerScore / 200))) {
+        hr = 1; hrRemaining--
+      }
+      const d = (h - hr) > 0 && rng.chance(Math.min(0.35, powerScore / 220)) ? 1 : 0
+      const t = (h - hr - d) > 0 && rng.chance(0.03) ? 1 : 0
+      // Strikeouts inverse-correlate with contact
+      const kChance = (90 - (b.hitter?.contact_r ?? 50)) / 320   // ~0.08-0.18
+      const k = Math.max(0, Math.round(ab * kChance + rng.gaussian(0, 0.5)))
+      // RBI: HR brings in ≥ 1 already, plus a small share of remaining runs
+      let rbi = hr
+      if (rbiRemaining > 0 && h > hr && rng.chance(0.35)) {
+        rbi += 1; rbiRemaining -= 1
+      }
+      // Runs scored: small chance per hit/walk
+      const r = h + bb > 0 && rng.chance(0.30) ? 1 : 0
+      // Stolen bases: speed-weighted, cheap
+      const speed = b.hitter?.speed ?? 50
+      const sb = (h - hr) > 0 && rng.chance(Math.max(0, (speed - 65) / 200)) ? 1 : 0
+      const cs = sb && rng.chance(0.15) ? 1 : 0
+      batterStats[b.id] = {
+        pa, ab, h, d, t, hr, bb, hbp, k, rbi, r, sb, cs,
+        sf: 0, sac: 0, gidp: 0, roe: 0,
+      }
+    }
+  }
+
+  function distributePitchers(lineup, runsAllowed, oppHits) {
+    const pitchers = (lineup.pitchers || []).slice(0, 4).filter(Boolean)
+    if (pitchers.length === 0) return
+    const starter = pitchers[0]
+    const bullpen = pitchers.slice(1)
+    // Starter goes ~5.2 IP unless they got hammered
+    const hammered = runsAllowed >= 8
+    const starterOuts = hammered ? 9 + Math.floor(rng.chance(0.5) ? 0 : 3) : 15 + Math.floor(rng.gaussian(2, 1))
+    const totalOuts = 27   // assume 9 innings; close enough for fast sim
+    const relieverOuts = Math.max(0, totalOuts - starterOuts)
+    const starterRunShare = clamp(starterOuts / totalOuts, 0.4, 0.85)
+    const starterRuns = Math.round(runsAllowed * starterRunShare)
+    const relieverRuns = Math.max(0, runsAllowed - starterRuns)
+    const starterHits = Math.round(oppHits * starterRunShare)
+    const relieverHits = Math.max(0, oppHits - starterHits)
+    // Starter line
+    const sStuff = starter.pitcher?.stuff ?? 50
+    const sControl = starter.pitcher?.control ?? 50
+    const sK = Math.max(0, Math.round((starterOuts / 27) * 9 * (sStuff - 35) / 50 + rng.gaussian(0, 1)))
+    const sBB = Math.max(0, Math.round((starterOuts / 27) * 3 * (75 - sControl) / 40 + rng.gaussian(0, 0.5)))
+    const sHr = Math.max(0, Math.round(starterRuns * 0.20 + rng.gaussian(0, 0.5)))
+    pitcherStats[starter.id] = {
+      ip: starterOuts / 3,
+      outs: starterOuts,
+      h: Math.max(starterHits, 0),
+      bb: sBB, hbp: 0, k: sK, hr: sHr,
+      er: starterRuns,
+      pa: Math.max(starterOuts + starterHits + sBB, 0),
+    }
+    // Bullpen — distribute remaining outs among up to 3 relievers
+    if (bullpen.length > 0 && relieverOuts > 0) {
+      const perRelOuts = Math.floor(relieverOuts / Math.min(bullpen.length, 3))
+      let outsLeft = relieverOuts
+      let runsLeft = relieverRuns
+      let hitsLeft = relieverHits
+      const usable = bullpen.slice(0, 3)
+      for (let i = 0; i < usable.length; i++) {
+        const p = usable[i]
+        const isLast = i === usable.length - 1
+        const o = isLast ? outsLeft : perRelOuts
+        outsLeft -= o
+        const r = isLast ? runsLeft : Math.round(runsLeft * (o / Math.max(1, relieverOuts)))
+        runsLeft -= r
+        const h = isLast ? hitsLeft : Math.round(hitsLeft * (o / Math.max(1, relieverOuts)))
+        hitsLeft -= h
+        const pStuff = p.pitcher?.stuff ?? 50
+        const pCtrl = p.pitcher?.control ?? 50
+        pitcherStats[p.id] = {
+          ip: o / 3,
+          outs: o,
+          h: Math.max(h, 0),
+          bb: Math.max(0, Math.round((o / 27) * 3 * (75 - pCtrl) / 40)),
+          hbp: 0,
+          k: Math.max(0, Math.round((o / 27) * 9 * (pStuff - 35) / 50)),
+          hr: Math.max(0, Math.round(r * 0.2)),
+          er: r,
+          pa: Math.max(o + h, 0),
+        }
+      }
+    }
+  }
+
+  // Compute opp hits per side (needed by distributePitchers) by using the
+  // same R-to-H ratio we used for batters.
+  const homeHits = Math.round(homeRuns * 1.7)
+  const awayHits = Math.round(awayRuns * 1.7)
+  distributeBatters(homeLineup, homeRuns, awayRuns)
+  distributeBatters(awayLineup, awayRuns, homeRuns)
+  distributePitchers(homeLineup, awayRuns, awayHits)
+  distributePitchers(awayLineup, homeRuns, homeHits)
+  return { batterStats, pitcherStats }
 }
 
 // ─── PA-level full sim ───────────────────────────────────────────────────────

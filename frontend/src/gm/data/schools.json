@@ -158,12 +158,7 @@
         { "id": "dakota-state", "name": "Dakota State", "city": "Madison", "state": "SD", "nickname": "Trojans", "colors": { "primary": "#003B5C", "secondary": "#FFC72C" } },
         { "id": "dickinson-state", "name": "Dickinson State", "city": "Dickinson", "state": "ND", "nickname": "Blue Hawks", "colors": { "primary": "#005EB8", "secondary": "#FFFFFF" } },
         { "id": "mayville-state", "name": "Mayville State", "city": "Mayville", "state": "ND", "nickname": "Comets", "colors": { "primary": "#7B2D26", "secondary": "#FFFFFF" } },
-        { "id": "valley-city-state", "name": "Valley City State", "city": "Valley City", "state": "ND", "nickname": "Vikings", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } },
-        { "id": "carroll-montana-naia", "name": "Carroll (MT)", "city": "Helena", "state": "MT", "nickname": "Saints", "colors": { "primary": "#46166B", "secondary": "#FFB81C" } },
-        { "id": "providence-naia", "name": "Providence (MT)", "city": "Great Falls", "state": "MT", "nickname": "Argonauts", "colors": { "primary": "#7B0828", "secondary": "#FFC72C" } },
-        { "id": "rocky-mountain-naia", "name": "Rocky Mountain", "city": "Billings", "state": "MT", "nickname": "Battlin' Bears", "colors": { "primary": "#5C2D91", "secondary": "#FFC72C" } },
-        { "id": "montana-tech-naia", "name": "Montana Tech", "city": "Butte", "state": "MT", "nickname": "Orediggers", "colors": { "primary": "#1F4E79", "secondary": "#C0C0C0" } },
-        { "id": "montana-western-naia", "name": "Montana Western", "city": "Dillon", "state": "MT", "nickname": "Bulldogs", "colors": { "primary": "#7B0828", "secondary": "#FFFFFF" } }
+        { "id": "valley-city-state", "name": "Valley City State", "city": "Valley City", "state": "ND", "nickname": "Vikings", "colors": { "primary": "#7B2D26", "secondary": "#FFD200" } }
       ]
     },
     {

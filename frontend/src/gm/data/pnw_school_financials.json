@@ -59,12 +59,7 @@
       "british-columbia":  { "tuition": 45200, "inStateDiscount": 0.19, "roomAndBoard": 12800, "totalBudget": 460000, "scholarshipPool": 240000 },
       "northwest-naia":         { "tuition": 36300, "inStateDiscount": 1.0,  "roomAndBoard": 11200, "totalBudget": 340000, "scholarshipPool": 170000 },
       "southern-oregon-naia":   { "tuition": 26500, "inStateDiscount": 0.40, "roomAndBoard": 12200, "totalBudget": 410000, "scholarshipPool": 215000 },
-      "walla-walla-naia":       { "tuition": 32800, "inStateDiscount": 1.0,  "roomAndBoard": 9800,  "totalBudget": 320000, "scholarshipPool": 165000 },
-      "carroll-montana-naia":   { "tuition": 38500, "inStateDiscount": 1.0,  "roomAndBoard": 12200, "totalBudget": 430000, "scholarshipPool": 220000 },
-      "providence-naia":        { "tuition": 32500, "inStateDiscount": 1.0,  "roomAndBoard": 11400, "totalBudget": 310000, "scholarshipPool": 160000 },
-      "rocky-mountain-naia":    { "tuition": 33800, "inStateDiscount": 1.0,  "roomAndBoard": 11800, "totalBudget": 340000, "scholarshipPool": 170000 },
-      "montana-tech-naia":      { "tuition": 25400, "inStateDiscount": 0.34, "roomAndBoard": 11200, "totalBudget": 320000, "scholarshipPool": 160000 },
-      "montana-western-naia":   { "tuition": 23400, "inStateDiscount": 0.32, "roomAndBoard": 10800, "totalBudget": 280000, "scholarshipPool": 140000 }
+      "walla-walla-naia":       { "tuition": 32800, "inStateDiscount": 1.0,  "roomAndBoard": 9800,  "totalBudget": 320000, "scholarshipPool": 165000 }
     },
 
     "NWAC": {
