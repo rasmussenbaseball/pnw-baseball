@@ -1116,7 +1116,12 @@ function refreshWeeklyAP(state) {
   for (const a of assistants) total += contribution(a)
   total += TIER_BONUS[school?.resourceTier] || 0
   total += experienceBonus
-  state.ap.currentWeek = Math.max(20, Math.min(50, Math.round(total)))
+  let weekly = Math.max(20, Math.min(50, Math.round(total)))
+  // November (wk 13) + December (wk 18) are single "month" turns — grant a
+  // full month of AP (4× the weekly value) so the user can do a month's
+  // worth of recruiting + development in that one turn.
+  if (wk === 13 || wk === 18) weekly *= 4
+  state.ap.currentWeek = weekly
   state.ap.spentThisWeek = 0
   state.ap.spentByCategory = {
     recruiting: 0, development: 0, team_boost: 0, program: 0, staff: 0,
@@ -1319,6 +1324,21 @@ export function advanceOneWeek(state) {
   // chips next to team names without recomputing every render.
   state.nwbbRatings = recomputeNwbbRatings(state)
   // (Fall scrimmages removed May 2026 — no offseason game sim hook needed.)
+
+  // Month-collapse (May 2026): November + December are each a SINGLE turn.
+  // November is anchored at wk 13 (prospect camp + a month of AP), December
+  // at wk 18. The in-between weeks (14-17, 19-22) are "fold" weeks: if a
+  // single advance lands on one, immediately advance again so the user only
+  // ever stops on the anchor. Each folded week still runs full bookkeeping
+  // above (dev, recruiting decisions, events) — they just don't get a turn.
+  if (isFoldWeek(state.calendar.weekOfYear)) {
+    advanceOneWeek(state)
+  }
+}
+
+/** Weeks that fold into the month-anchor turns (Nov anchor=13, Dec anchor=18). */
+function isFoldWeek(week) {
+  return (week >= 14 && week <= 17) || (week >= 19 && week <= 22)
 }
 
 /**

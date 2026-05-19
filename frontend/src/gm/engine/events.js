@@ -94,12 +94,11 @@ export const WEEK_EVENT_SCHEDULE = {
   5: ['FALL_CAMP_START', 'CAMP_INVITE_WINDOW'],
   10: ['CAMP_INVITE_WINDOW'],
   // Fall scrimmages auto-scheduled into wks 6-12 (8 games over ~4 weekends)
-  // ── Prospect Camp (wk 13) ──
+  // ── November turn (wk 13) — prospect camp ──
   13: ['PROSPECT_CAMP', 'HS_NLI_EARLY'],
-  // ── Training Period + Spring Practice (wks 14-26) ──
-  // Summer ball planning opens early November (Wk 14) — user has a few weeks
-  // through the offseason to build their tentative summer roster.
-  14: ['TRAINING_PERIOD', 'SUMMER_BALL_PLANNING'],
+  // ── December turn (wk 18) — summer ball planning opens here. (Wks 14-17
+  // fold into the November turn, so this moved off wk 14 to a real turn.) ──
+  18: ['SUMMER_BALL_PLANNING'],
   23: ['SPRING_PRACTICE'],
   // ── Season (wks 27-39) ──
   27: ['SEASON_OPEN'],

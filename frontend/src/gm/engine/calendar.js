@@ -50,8 +50,9 @@ export function offseasonWeekDate(startYear, offseasonWeek) {
 export function offseasonPhase(offseasonWeek) {
   if (offseasonWeek <= 4)  return 'Summer'
   if (offseasonWeek <= 12) return 'Fall Camp'
-  if (offseasonWeek === 13) return 'Prospect Camp'
-  if (offseasonWeek <= 22) return 'Training Period'
+  // November + December are each a single condensed turn (wks 13 + 18).
+  if (offseasonWeek <= 17) return 'November'
+  if (offseasonWeek <= 22) return 'December'
   return 'Spring Practice'
 }
 

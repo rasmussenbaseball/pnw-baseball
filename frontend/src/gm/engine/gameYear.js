@@ -48,14 +48,13 @@ export const PHASES = {
   // ── September-October: fall camp (Wks 5-13) ─────────────────────────────
   FALL_CAMP:         { key: 'FALL_CAMP',         label: 'Fall Camp',        blurb: 'Full team practice + scrimmages vs nearby D2/D3/JUCO opponents. Skills develop normally.',
     season: 'Fall Camp', practice: true, conditioning: true, devAllowed: true },
-  PROSPECT_CAMP:     { key: 'PROSPECT_CAMP',     label: 'Prospect Camp',    blurb: 'Annual recruiting camp on your campus. Run it from Weekly Actions.',
-    season: 'Fall Camp', practice: true, conditioning: true, devAllowed: true },
-  // ── November: conditioning-only (Wks 14-17) ─────────────────────────────
-  FALL_CONDITIONING: { key: 'FALL_CONDITIONING', label: 'Fall Conditioning', blurb: 'No team practice — strength + speed work only. Players can still improve, but at half the rate of fall camp.',
-    season: 'November', practice: false, conditioning: true, devAllowed: true, devRateMult: 0.5 },
-  // ── December: dead period (Wks 18-22) ───────────────────────────────────
-  DECEMBER_BREAK:    { key: 'DECEMBER_BREAK',    label: 'December Break',   blurb: 'Players are off — no practice, no conditioning. Players cannot improve. Use this time to scout your recruiting class.',
-    season: 'December', practice: false, conditioning: false, devAllowed: false },
+  // ── November: ONE turn (Wks 13-17). Prospect camp + a full month of AP.
+  // Nothing else happens, so the whole month is condensed to a single turn. ──
+  NOVEMBER:          { key: 'NOVEMBER',          label: 'November',         blurb: 'The whole month in one turn. Run your prospect camp and spend a full month of AP on recruiting + development — then advance straight to December.',
+    season: 'November', practice: true, conditioning: true, devAllowed: true, devRateMult: 0.5 },
+  // ── December: ONE turn (Wks 18-22). A full month of AP, no games. ──
+  DECEMBER:          { key: 'DECEMBER',          label: 'December',         blurb: 'The whole month in one turn. Spend a full month of AP on recruiting + winter development — then advance to January.',
+    season: 'December', practice: true, conditioning: true, devAllowed: true, devRateMult: 0.5 },
   // ── January: pre-season practice (Wks 23-26) ────────────────────────────
   WINTER_PRACTICE:   { key: 'WINTER_PRACTICE',   label: 'Winter Practice',  blurb: 'Pre-season ramp-up. Final roster prep. Last chance to dial in lineups before opening day.',
     season: 'January', practice: true, conditioning: true, devAllowed: true },
@@ -90,9 +89,10 @@ export function phaseForWeek(week) {
   if (week === 3) return PHASES.TUTORIAL_BUDGET
   if (week === 4) return PHASES.TUTORIAL_SCOUT
   if (week >= 5 && week <= 12) return PHASES.FALL_CAMP
-  if (week === 13) return PHASES.PROSPECT_CAMP
-  if (week >= 14 && week <= 17) return PHASES.FALL_CONDITIONING   // November
-  if (week >= 18 && week <= 22) return PHASES.DECEMBER_BREAK      // December
+  // November = wks 13-17 collapsed into one turn (prospect camp lives here).
+  if (week >= 13 && week <= 17) return PHASES.NOVEMBER
+  // December = wks 18-22 collapsed into one turn.
+  if (week >= 18 && week <= 22) return PHASES.DECEMBER
   if (week >= 23 && week <= 26) return PHASES.WINTER_PRACTICE     // January
   if (week >= 27 && week <= 29) return PHASES.NON_CONFERENCE
   if (week >= 30 && week <= 39) return PHASES.CONFERENCE

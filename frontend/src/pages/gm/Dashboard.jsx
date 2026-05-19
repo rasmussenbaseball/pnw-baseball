@@ -217,11 +217,12 @@ export default function Dashboard() {
         setEventPrompt({ kind: 'PROSPECT_CAMP' })
         return
       }
-      // Summer ball (Wk 14) isn't a hard gate. Prompt once per dynasty-year
-      // so dismissing it doesn't trap the user in a re-prompt loop.
+      // Summer ball (Wk 18 — the December turn) isn't a hard gate. Prompt
+      // once per dynasty-year so dismissing it doesn't trap the user in a
+      // re-prompt loop.
       const sbConfirmed = save.summerBall?.year === yr
         && Object.values(save.summerBall?.assignments || {}).some(a => a && !a.removed)
-      if (wk === 14 && !sbConfirmed && save._summerBallPromptedYear !== yr && !eventPrompt) {
+      if (wk === 18 && !sbConfirmed && save._summerBallPromptedYear !== yr && !eventPrompt) {
         save._summerBallPromptedYear = yr
         saveDynasty(save)
         setEventPrompt({ kind: 'SUMMER_BALL' })
