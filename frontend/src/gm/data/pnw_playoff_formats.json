@@ -22,7 +22,7 @@
           "SR"
         ],
         "maxSeasonsPerPlayer": 4,
-        "details": "NCAA D1 \u2014 4 years of eligibility. Highest level of college baseball. Best players get drafted after JR year."
+        "details": "NCAA D1 — 4 years of eligibility. Highest level of college baseball. Best players get drafted after JR year."
       },
       "rosterCap": 40,
       "seasonGames": 56,
@@ -35,7 +35,7 @@
             "format": "DOUBLE_ELIM",
             "sites": 16,
             "teamsPerSite": 4,
-            "details": "Top-16 national seeds host. Each site is 4 teams seeded 1-4. Double-elim \u2014 first to 4 wins (each team gets 2 lives). Winners (16) advance to Super Regionals."
+            "details": "Top-16 national seeds host. Each site is 4 teams seeded 1-4. Double-elim — first to 4 wins (each team gets 2 lives). Winners (16) advance to Super Regionals."
           },
           {
             "name": "Super Regionals",
@@ -67,7 +67,7 @@
           "SR"
         ],
         "maxSeasonsPerPlayer": 4,
-        "details": "NCAA D2 \u2014 4 years of eligibility. Tier below D1 but still elite collegiate level. Some draft pipeline, mostly from upper-class players."
+        "details": "NCAA D2 — 4 years of eligibility. Tier below D1 but still elite collegiate level. Some draft pipeline, mostly from upper-class players."
       },
       "rosterCap": 40,
       "seasonGames": 52,
@@ -105,7 +105,7 @@
           "SR"
         ],
         "maxSeasonsPerPlayer": 4,
-        "details": "NCAA D3 \u2014 4 years of eligibility. No athletic scholarships allowed. Skill tier roughly equivalent to NWAC + low NAIA. Rare draft picks."
+        "details": "NCAA D3 — 4 years of eligibility. No athletic scholarships allowed. Skill tier roughly equivalent to NWAC + low NAIA. Rare draft picks."
       },
       "rosterCap": 40,
       "seasonGames": 41,
@@ -132,7 +132,7 @@
             "location": "Veterans Memorial Stadium, Cedar Rapids IA",
             "format": "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL",
             "fieldSize": 8,
-            "details": "Same finals format as D1/D2 \u2014 double-elim into best-of-3 championship."
+            "details": "Same finals format as D1/D2 — double-elim into best-of-3 championship."
           }
         ]
       }
@@ -164,7 +164,7 @@
             "format": "DOUBLE_ELIM",
             "sites": 10,
             "teamsPerSite": 5,
-            "details": "10 host sites of 5 teams (one site has 4 \u2014 math works out). Double-elim. 10 winners advance."
+            "details": "10 host sites of 5 teams (one site has 4 — math works out). Double-elim. 10 winners advance."
           },
           {
             "name": "Avista NAIA World Series",
@@ -190,7 +190,7 @@
           "SO"
         ],
         "maxSeasonsPerPlayer": 2,
-        "details": "NWAC is a junior college conference. Players are only eligible for 2 seasons (FR + SO). Sophomores typically transfer to 4-year programs (D1/D2/D3/NAIA) after their NWAC career. Recruit pool is HS-only \u2014 no JUCO or 4-yr transfers in.",
+        "details": "NWAC is a junior college conference. Players are only eligible for 2 seasons (FR + SO). Sophomores typically transfer to 4-year programs (D1/D2/D3/NAIA) after their NWAC career. Recruit pool is HS-only — no JUCO or 4-yr transfers in.",
         "transferOutAtEnd": true,
         "recruitPools": [
           "HS_SR"
@@ -231,7 +231,7 @@
         "location": "Charles Schwab Field, Omaha NE",
         "details": "Top 8 from full Big Ten standings qualify. Double-elim. Conference champion gets auto-bid to NCAA Tournament."
       },
-      "_note": "Big Ten \u2014 PNW members only (Oregon + Washington). USC and UCLA are also Big Ten baseball members but located in southern California, outside the PNW scope of this sim. Excluded.",
+      "_note": "Big Ten — PNW members only (Oregon + Washington). USC and UCLA are also Big Ten baseball members but located in southern California, outside the PNW scope of this sim. Excluded.",
       "pnwMembers": [
         {
           "id": "oregon-d1",
@@ -285,14 +285,14 @@
       "level": "D1",
       "isIndependent": true,
       "tournament": null,
-      "_note": "D1 Independents have no conference affiliation \u2014 they schedule a full year of non-conference series against whoever will play them. NO conference tournament. They are eligible for NCAA Regionals as at-large bids only (no auto-bid). Oregon State is the highest-profile PNW independent after Pac-12 collapse \u2014 they stayed independent rather than joining the WCC.",
+      "_note": "D1 Independents have no conference affiliation — they schedule a full year of non-conference series against whoever will play them. NO conference tournament. They are eligible for NCAA Regionals as at-large bids only (no auto-bid). Oregon State is the highest-profile PNW independent after Pac-12 collapse — they stayed independent rather than joining the WCC.",
       "pnwMembers": [
         {
           "id": "oregon-st-d1",
           "name": "Oregon State",
           "city": "Corvallis",
           "state": "OR",
-          "note": "Independent since 2024 \u2014 Pac-12 collapse fallout"
+          "note": "Independent since 2024 — Pac-12 collapse fallout"
         }
       ]
     },
@@ -351,7 +351,7 @@
           "state": "ID"
         },
         {
-          "id": "montana-state-billings-d2",
+          "id": "msu-billings-d2",
           "name": "Montana State Billings",
           "city": "Billings",
           "state": "MT"
@@ -479,25 +479,25 @@
           "state": "OR"
         },
         {
-          "id": "ubc",
+          "id": "british-columbia",
           "name": "British Columbia",
           "city": "Vancouver",
           "state": "BC"
         },
         {
-          "id": "northwest",
+          "id": "northwest-naia",
           "name": "Northwest",
           "city": "Kirkland",
           "state": "WA"
         },
         {
-          "id": "southern-oregon",
+          "id": "southern-oregon-naia",
           "name": "Southern Oregon",
           "city": "Ashland",
           "state": "OR"
         },
         {
-          "id": "walla-walla",
+          "id": "walla-walla-naia",
           "name": "Walla Walla",
           "city": "College Place",
           "state": "WA"
@@ -560,43 +560,71 @@
           "id": "nwac-bellevue",
           "name": "Bellevue CC",
           "city": "Bellevue",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#003B5C",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-edmonds",
           "name": "Edmonds",
           "city": "Lynnwood",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#003C71",
+            "secondary": "#FFFFFF"
+          }
         },
         {
           "id": "nwac-everett",
           "name": "Everett",
           "city": "Everett",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#005A9C",
+            "secondary": "#FFD200"
+          }
         },
         {
           "id": "nwac-olympic",
           "name": "Olympic",
           "city": "Bremerton",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#1A2D5B",
+            "secondary": "#A0A2A4"
+          }
         },
         {
           "id": "nwac-shoreline",
           "name": "Shoreline",
           "city": "Shoreline",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#1F3A68",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-skagit-valley",
           "name": "Skagit Valley",
           "city": "Mount Vernon",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#005A9C",
+            "secondary": "#FFFFFF"
+          }
         },
         {
           "id": "nwac-douglas",
           "name": "Douglas",
           "city": "New Westminster",
-          "state": "BC"
+          "state": "BC",
+          "colors": {
+            "primary": "#003B5C",
+            "secondary": "#C8102E"
+          }
         }
       ]
     },
@@ -613,37 +641,61 @@
           "id": "nwac-linn-benton",
           "name": "Linn-Benton",
           "city": "Albany",
-          "state": "OR"
+          "state": "OR",
+          "colors": {
+            "primary": "#1F3A68",
+            "secondary": "#FFC72C"
+          }
         },
         {
           "id": "nwac-mt-hood",
           "name": "Mt. Hood",
           "city": "Gresham",
-          "state": "OR"
+          "state": "OR",
+          "colors": {
+            "primary": "#1F3A68",
+            "secondary": "#C8102E"
+          }
         },
         {
           "id": "nwac-umpqua",
           "name": "Umpqua",
           "city": "Roseburg",
-          "state": "OR"
+          "state": "OR",
+          "colors": {
+            "primary": "#003B5C",
+            "secondary": "#C8102E"
+          }
         },
         {
           "id": "nwac-treasure-valley",
           "name": "Treasure Valley",
           "city": "Ontario",
-          "state": "OR"
+          "state": "OR",
+          "colors": {
+            "primary": "#FF6A13",
+            "secondary": "#003B5C"
+          }
         },
         {
           "id": "nwac-lower-columbia",
           "name": "Lower Columbia",
           "city": "Longview",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#7B0828",
+            "secondary": "#FFFFFF"
+          }
         },
         {
           "id": "nwac-clackamas",
           "name": "Clackamas",
           "city": "Oregon City",
-          "state": "OR"
+          "state": "OR",
+          "colors": {
+            "primary": "#FF6A13",
+            "secondary": "#000000"
+          }
         }
       ]
     },
@@ -660,43 +712,71 @@
           "id": "nwac-spokane",
           "name": "Spokane",
           "city": "Spokane",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#003B5C",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-walla-walla",
           "name": "Walla Walla",
           "city": "Walla Walla",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#1F3A68",
+            "secondary": "#FFD200"
+          }
         },
         {
           "id": "nwac-wenatchee-valley",
           "name": "Wenatchee Valley",
           "city": "Wenatchee",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#005A9C",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-yakima-valley",
           "name": "Yakima Valley",
           "city": "Yakima",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#1F3A68",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-big-bend",
           "name": "Big Bend",
           "city": "Moses Lake",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#7B0828",
+            "secondary": "#FFD200"
+          }
         },
         {
           "id": "nwac-blue-mountain",
           "name": "Blue Mountain",
           "city": "Pendleton",
-          "state": "OR"
+          "state": "OR",
+          "colors": {
+            "primary": "#005A9C",
+            "secondary": "#FFFFFF"
+          }
         },
         {
           "id": "nwac-columbia-basin",
           "name": "Columbia Basin",
           "city": "Pasco",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#7B0828",
+            "secondary": "#1A2D5B"
+          }
         }
       ]
     },
@@ -713,31 +793,51 @@
           "id": "nwac-centralia",
           "name": "Centralia",
           "city": "Centralia",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#005A9C",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-grays-harbor",
           "name": "Grays Harbor",
           "city": "Aberdeen",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#003B5C",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-pierce",
           "name": "Pierce",
           "city": "Lakewood",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#7B0828",
+            "secondary": "#FFFFFF"
+          }
         },
         {
           "id": "nwac-south-puget-sound",
           "name": "South Puget Sound",
           "city": "Olympia",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#005A9C",
+            "secondary": "#FFB81C"
+          }
         },
         {
           "id": "nwac-tacoma",
           "name": "Tacoma",
           "city": "Tacoma",
-          "state": "WA"
+          "state": "WA",
+          "colors": {
+            "primary": "#1F3A68",
+            "secondary": "#FFB81C"
+          }
         }
       ]
     }
@@ -745,14 +845,14 @@
   "bracketFormats": {
     "DOUBLE_ELIM": {
       "name": "Double Elimination",
-      "explanation": "Each team gets two lives. Lose twice \u2192 out. Bracket has a winner's side and a loser's side; the loser's side champion has to beat the winner's side champion TWICE to win (since they have to give them their first loss). Standard for NCAA regionals, NAIA Opening Round."
+      "explanation": "Each team gets two lives. Lose twice → out. Bracket has a winner's side and a loser's side; the loser's side champion has to beat the winner's side champion TWICE to win (since they have to give them their first loss). Standard for NCAA regionals, NAIA Opening Round."
     },
     "BEST_OF_3": {
       "name": "Best-of-3 Series",
       "explanation": "First team to 2 wins. Standard for NCAA Super Regionals + WS finals. Higher seed hosts typically."
     },
     "POOL_PLAY_SEMIS_CHAMPIONSHIP": {
-      "name": "Pool Play \u2192 Semis \u2192 Championship",
+      "name": "Pool Play → Semis → Championship",
       "explanation": "Teams split into pools, round-robin within pool, top X from each pool advance to single-elim bracket. NAIA WS uses this; ACC tournament uses a variant."
     },
     "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL": {

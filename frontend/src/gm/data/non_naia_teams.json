@@ -1510,8 +1510,8 @@
           }
         },
         {
-          "id": "washington-st-d1",
-          "name": "Washington St.",
+          "id": "washington-state-d1",
+          "name": "Washington State",
           "city": "Pullman",
           "state": "WA",
           "nickname": "Cougars",
@@ -4583,15 +4583,18 @@
           "colors": null
         },
         {
-          "id": "mont-st-billings-d2",
-          "name": "Mont. St. Billings",
-          "city": "",
-          "state": "",
-          "nickname": "",
+          "id": "msu-billings-d2",
+          "name": "Montana State Billings",
+          "city": "Billings",
+          "state": "MT",
+          "nickname": "Yellowjackets",
           "strength": 1.31,
           "pearRank": 95,
           "pearConference": "Great Northwest",
-          "colors": null
+          "colors": {
+            "primary": "#003D7C",
+            "secondary": "#FFD200"
+          }
         },
         {
           "id": "spring-hill-d2",
@@ -4946,15 +4949,18 @@
           "colors": null
         },
         {
-          "id": "western-ore-d2",
-          "name": "Western Ore.",
-          "city": "",
-          "state": "",
-          "nickname": "",
+          "id": "western-oregon-d2",
+          "name": "Western Oregon",
+          "city": "Monmouth",
+          "state": "OR",
+          "nickname": "Wolves",
           "strength": 0.38,
           "pearRank": 127,
           "pearConference": "Great Northwest",
-          "colors": null
+          "colors": {
+            "primary": "#C8102E",
+            "secondary": "#1F3A68"
+          }
         },
         {
           "id": "tex-aandm-kingsville-d2",
@@ -5408,15 +5414,18 @@
           "colors": null
         },
         {
-          "id": "central-wash-d2",
-          "name": "Central Wash.",
-          "city": "",
-          "state": "",
-          "nickname": "",
+          "id": "central-washington-d2",
+          "name": "Central Washington",
+          "city": "Ellensburg",
+          "state": "WA",
+          "nickname": "Wildcats",
           "strength": -1.22,
           "pearRank": 169,
           "pearConference": "Great Northwest",
-          "colors": null
+          "colors": {
+            "primary": "#A8002A",
+            "secondary": "#000000"
+          }
         },
         {
           "id": "uah-d2",

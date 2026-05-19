@@ -88,7 +88,11 @@ export function pnwProgramsAtLevel(level) {
         // From the PEAR-derived non_naia_teams.json:
         strength: enrich.strength ?? 0,
         pearRank: enrich.pearRank ?? null,
-        colors: enrich.colors || null,
+        // Prefer the colors set directly on the PNW member (pnw_playoff_formats),
+        // then fall back to the PEAR-enriched colors (non_naia_teams.json). Means
+        // NWAC schools that aren't in the national PEAR data can still ship with
+        // hand-picked palettes via the playoff-formats file.
+        colors: m.colors || enrich.colors || null,
         nickname: m.nickname || enrich.nickname || null,
         isIndependent: !!conf.isIndependent,
       })

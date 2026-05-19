@@ -10,6 +10,7 @@ import { advanceWeek, advanceOffseasonWeek, simWeek } from './season'
 import { seedFromPear } from './rankings'
 import { offseasonPhase } from './calendar'
 import { happinessLevel } from './happiness'
+import { isAutoMode, runAutoActions } from './autoMode'
 
 /**
  * Capture the slice of save state we want to diff. Keep this small — full save
@@ -135,8 +136,19 @@ export function diffSnapshots(before, after) {
 /**
  * Advance exactly one week. Used both by the existing "Sim Next Week" button
  * and by the multi-week sim-ahead loop. Returns the new snapshot.
+ *
+ * When the user has Auto turned on, this ALSO runs the auto-co-GM actions
+ * for the week (required actions, AP spend, camp invites) BEFORE simming.
+ * Without this hook, multi-week sim-ahead with Auto on would silently
+ * stall on phase-gates ("Required: hire staff") that Auto is supposed to
+ * fulfill — the symptom Nate reported: "sim ahead bar doesn't work when
+ * auto is on."
  */
 export function tickOneWeek(save) {
+  if (isAutoMode(save)) {
+    // Best-effort; never throw in the middle of a sim-ahead loop.
+    try { runAutoActions(save) } catch (e) { console.warn('runAutoActions failed during simAhead tick:', e) }
+  }
   if (save.calendar.mode === 'OFFSEASON') {
     advanceOffseasonWeek(save)
   } else if (save.calendar.mode === 'SEASON') {

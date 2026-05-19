@@ -23,6 +23,8 @@ import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool, academicRatingToGpa } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
 import { endOfSeasonDevelopment, tickPotentialEOY, tickWeightFluctuation } from './development'
+import { generatePlayer } from './generate'
+import { makeRng } from './rng'
 import { budgetCategoryEffects } from './budget'
 import { totalAnnualTravelCost } from './travel'
 import { closePlanningWindow, resolveSummerBall, ensureSummerBallState } from './summerBall'
@@ -528,7 +530,106 @@ function runDevelopment(state) {
       payload: {},
     })
   }
+  // Age every OPPONENT team's roster — advance class years, graduate seniors,
+  // and backfill with new freshmen so opponents continue to evolve year over
+  // year. Without this, opponent rosters froze at year 1: same 18-year-olds
+  // forever, no recruiting impact, identical depth charts in year 5.
+  ageOpponentRosters(state)
+
   return { label: 'Player development', news: devReport }
+}
+
+/**
+ * Year-over-year aging + recruiting for every team that isn't the user's.
+ * Each opponent team:
+ *  - advances every player's class year (FR→SO→JR→SR→GRAD; NWAC: FR→SO→GRAD)
+ *  - drops graduated/transferred players
+ *  - applies a modest development bump to retained players
+ *  - generates new freshmen to refill toward the level's typical roster size
+ *
+ * Cheaper than the full user-team dev pipeline (no per-player stat lookups,
+ * no injury check, no academics) — this is meant to be aggregate enough to
+ * keep opponent OVR distributions believable across a 5+ year save without
+ * blowing up the offseason tick budget.
+ */
+function ageOpponentRosters(state) {
+  const userId = state.userSchoolId
+  const level = state.level || 'NAIA'
+  const isNwac = level === 'NWAC'
+  const TARGET_ROSTER = isNwac ? 28 : level === 'NAIA' ? 45 : 38
+  const rng = makeRng('ageOpp', state.rngSeed, state.calendar.year, level)
+  let aged = 0
+  let graduated = 0
+  let newFreshmen = 0
+  for (const team of Object.values(state.teams)) {
+    if (!team || team.schoolId === userId) continue
+    const rosterIds = team.rosterPlayerIds || []
+    const kept = []
+    for (const pid of rosterIds) {
+      const p = state.players[pid]
+      if (!p) continue
+      // Determine next class year for this player
+      const nextClass = isNwac
+        ? ({ FR: 'SO', SO: 'GRAD' }[p.classYear] || 'GRAD')
+        : ({ FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[p.classYear] || 'GRAD')
+      if (nextClass === 'GRAD') {
+        graduated++
+        // Mark as graduated but leave in state.players for stats history
+        state.players[pid] = { ...p, eligibilityStatus: 'graduated' }
+        continue
+      }
+      // Cheap dev bump: 0-2 OVR worth of small rating tweaks. Skips most of
+      // the user-team complexity (PA share, coach developer, budget effects);
+      // good enough to keep opponents from going stale.
+      const bump = rng.int(-1, 2)
+      const aged_p = { ...p, classYear: nextClass, seasonsUsed: (p.seasonsUsed || 0) + 1 }
+      if (bump > 0) {
+        // Apply bump to the player's primary rating block
+        const block = aged_p.isPitcher ? aged_p.pitcher : aged_p.hitter
+        if (block) {
+          const keys = Object.keys(block).filter(k => typeof block[k] === 'number' && block[k] < 99)
+          if (keys.length > 0) {
+            const k = keys[rng.int(0, keys.length - 1)]
+            block[k] = Math.min(99, block[k] + bump)
+          }
+        }
+      }
+      state.players[pid] = aged_p
+      kept.push(pid)
+      aged++
+    }
+    team.rosterPlayerIds = kept
+    // Backfill freshmen up to target roster size
+    const school = state.schools[team.schoolId]
+    if (school) {
+      const need = Math.max(0, TARGET_ROSTER - kept.length)
+      for (let i = 0; i < need; i++) {
+        try {
+          const slot = i % 2 === 0 ? 'hitter' : 'pitcher'
+          const newPlayer = generatePlayer(school, slot, rng, state.calendar.year, kept.length + i)
+          // Mark as freshman recruit
+          newPlayer.classYear = 'FR'
+          newPlayer.seasonsUsed = 0
+          newPlayer.semestersUsed = 0
+          state.players[newPlayer.id] = newPlayer
+          team.rosterPlayerIds.push(newPlayer.id)
+          newFreshmen++
+        } catch (e) {
+          // generatePlayer can throw if school is incomplete; skip rather than
+          // blow up the offseason for the user.
+          break
+        }
+      }
+    }
+  }
+  if (aged > 0 || graduated > 0 || newFreshmen > 0) {
+    state.newsfeed.unshift({
+      id: `opp_rosters_${state.calendar.year}`,
+      year: state.calendar.year, week: 2, type: 'AWARD',
+      headline: `League roster turnover: ${graduated} seniors graduated, ${aged} returners advanced a class, ${newFreshmen} new freshmen signed across PNW programs.`,
+      payload: { aged, graduated, newFreshmen },
+    })
+  }
 }
 
 function runDraft(state) {

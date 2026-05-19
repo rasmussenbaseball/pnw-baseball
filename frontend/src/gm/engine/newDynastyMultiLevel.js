@@ -97,7 +97,10 @@ export function newDynastyMultiLevel(input) {
       conferenceId,
       strength: fromPool?.strength ?? 0,
       level,
-      colors: fromPool?.colors || null,
+      // Prefer colors set directly on the PNW member (playoff_formats — used
+      // for NWAC schools that aren't in PEAR's national dataset), fall back
+      // to the non_naia_teams pool entry.
+      colors: m.colors || fromPool?.colors || null,
     })
     // Layer in researched real-world financials for PNW programs we have
     // data for (every D1/D2/D3/NAIA member of these confs is in the file).
