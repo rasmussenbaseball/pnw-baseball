@@ -23,6 +23,7 @@ import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { resolveEvent } from '../../gm/engine/randomEvents'
 import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
+import CoachHeadshot from '../../gm/components/CoachHeadshot'
 import TutorialOverlay from '../../gm/components/TutorialOverlay'
 import TeamLogo from '../../gm/components/TeamLogo'
 import TeamRankChip from '../../gm/components/TeamRankChip'
@@ -487,61 +488,56 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right: current week + AP + Auto toggle */}
-          <div className="text-right md:border-l border-white/15 md:pl-6 flex flex-col justify-between border-t md:border-t-0 pt-3 md:pt-0">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">{dateLabel}</div>
-              <div className="text-base font-bold mt-0.5">{currentPhase.label}</div>
-              <div className="text-[11px] opacity-70">Wk {weekOfYear} / 52</div>
+          {/* Right cluster — period/week, AP, and Auto toggle spread across
+              the space the old stat strip used to occupy (record / run diff /
+              Team OVR are already in the KPI cards below, so they were removed
+              from the hero). Everything here is enlarged for clarity. */}
+          <div className="flex items-stretch justify-end gap-6 sm:gap-10 md:gap-12 md:border-l border-white/15 md:pl-8 border-t md:border-t-0 pt-4 md:pt-0">
+            {/* Period + week */}
+            <div className="flex flex-col justify-center">
+              <div className="text-[11px] uppercase tracking-wider opacity-60 font-semibold">{dateLabel}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold mt-1 leading-none">{currentPhase.label}</div>
+              <div className="text-sm opacity-70 mt-1.5">Week {weekOfYear} / 52</div>
             </div>
-            <div className="mt-4 flex flex-col items-end gap-2">
-              <div title="Weekly AP = 22 base + coaching bonus (avg of each coach's developer/motivator/recruiter/tactician — every point above 50 adds AP, scaled by role) + tier bonus (D1_LITE +3, WELL_FUNDED +1, MID 0, SHOESTRING -1) + tenure (+1 per year at school, capped at 8). Clamped to 20-50. Hire/develop better assistants to raise the cap.">
-                <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
-                <div className="text-4xl font-extrabold mt-0.5 leading-none">
-                  {weekOfYear >= 1 && weekOfYear <= 3
-                    ? <span className="text-lg font-bold opacity-70"> Locked</span>
-                    : <>{save.ap.currentWeek}<span className="text-base opacity-70 font-normal"> AP</span></>}
-                </div>
-                <div className="text-[9px] opacity-60 mt-0.5">Hover for formula</div>
+            {/* AP */}
+            <div
+              className="flex flex-col justify-center"
+              title="Weekly AP = 22 base + coaching bonus (avg of each coach's developer/motivator/recruiter/tactician — every point above 50 adds AP, scaled by role) + tier bonus (D1_LITE +3, WELL_FUNDED +1, MID 0, SHOESTRING -1) + tenure (+1 per year at school, capped at 8). Clamped to 20-50; ×4 during the condensed month turns. Hire/develop better assistants to raise the cap."
+            >
+              <div className="text-[11px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
+              <div className="text-5xl sm:text-6xl font-extrabold mt-1 leading-none">
+                {weekOfYear >= 1 && weekOfYear <= 3
+                  ? <span className="text-2xl font-bold opacity-70">Locked</span>
+                  : <>{save.ap.currentWeek}<span className="text-2xl opacity-70 font-normal"> AP</span></>}
               </div>
-              <div className="flex flex-col items-end">
-                <div className="text-[10px] uppercase tracking-wider opacity-60 font-semibold mb-1">Weekly tasks</div>
-                <button
-                  type="button"
-                  onClick={toggleAutoMode}
-                  className={
-                    'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition border-2 ' +
-                    (autoOn
-                      ? 'bg-emerald-400 text-emerald-950 border-emerald-200 hover:bg-emerald-300'
-                      : 'bg-white/10 text-white border-white/30 hover:bg-white/20')
-                  }
-                  title={autoOn
-                    ? 'AI co-GM is handling required actions, AP, and recruiting each week. Click to switch back to managing it yourself.'
-                    : 'You are picking every weekly action. Click to let the AI co-GM handle it for you.'}
-                >
-                  <span className={'w-2 h-2 rounded-full ' + (autoOn ? 'bg-emerald-900' : 'bg-white/60')}></span>
-                  <span>{autoOn ? 'Auto: ON' : 'Auto: OFF'}</span>
-                </button>
-                <div className="text-[10px] opacity-70 mt-1 text-right max-w-[160px]">
-                  {autoOn
-                    ? 'AI is handling required actions + AP'
-                    : 'Click to let AI handle weekly tasks'}
-                </div>
+              <div className="text-[10px] opacity-60 mt-1.5">Hover for formula</div>
+            </div>
+            {/* Auto toggle */}
+            <div className="flex flex-col justify-center items-start">
+              <div className="text-[11px] uppercase tracking-wider opacity-60 font-semibold mb-2">Weekly tasks</div>
+              <button
+                type="button"
+                onClick={toggleAutoMode}
+                className={
+                  'flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-bold uppercase tracking-wider transition border-2 ' +
+                  (autoOn
+                    ? 'bg-emerald-400 text-emerald-950 border-emerald-200 hover:bg-emerald-300'
+                    : 'bg-white/10 text-white border-white/30 hover:bg-white/20')
+                }
+                title={autoOn
+                  ? 'AI co-GM is handling required actions, AP, and recruiting each week. Click to switch back to managing it yourself.'
+                  : 'You are picking every weekly action. Click to let the AI co-GM handle it for you.'}
+              >
+                <span className={'w-2.5 h-2.5 rounded-full ' + (autoOn ? 'bg-emerald-900' : 'bg-white/60')}></span>
+                <span>{autoOn ? 'Auto: ON' : 'Auto: OFF'}</span>
+              </button>
+              <div className="text-[10px] opacity-70 mt-2 max-w-[170px] leading-snug">
+                {autoOn
+                  ? 'AI is handling required actions + AP'
+                  : 'Click to let AI handle weekly tasks'}
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Status strip — record + conf + run diff + phase blurb */}
-        <div className="relative bg-black/30 backdrop-blur-sm px-6 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs border-t border-white/10">
-          <StatCell label="Overall" value={`${team.wins}-${team.losses}`} />
-          <StatCell label={conf.abbreviation} value={`${team.confWins}-${team.confLosses}`} />
-          <StatCell
-            label="Run Diff"
-            value={`${team.runDiff > 0 ? '+' : ''}${team.runDiff}`}
-            color={team.runDiff > 0 ? 'text-green-300' : team.runDiff < 0 ? 'text-red-300' : ''}
-          />
-          <StatCell label="Team OVR" value={teamOvr.overall} />
         </div>
       </div>
 
@@ -1810,9 +1806,7 @@ function CoachingStaffCard({ headCoach, assistants, totalPayroll }) {
       {/* HC tile */}
       <div className="bg-gradient-to-br from-pnw-cream to-white border border-pnw-green/30 rounded-lg p-3 mb-3">
         <div className="flex items-center gap-3 mb-2">
-          <div className={'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ' + 'bg-pnw-green'}>
-            {(headCoach.firstName?.[0] || '')}{(headCoach.lastName?.[0] || '')}
-          </div>
+          <CoachHeadshot lookId={headCoach.lookId} coachId={headCoach.id} size={40} className="shrink-0 rounded-full overflow-hidden ring-1 ring-pnw-green/40" />
           <div className="flex-1 min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-pnw-slate font-semibold">Head Coach</div>
             <div className="font-bold text-pnw-slate text-sm truncate">{headCoach.firstName} {headCoach.lastName}</div>
@@ -1836,9 +1830,7 @@ function CoachingStaffCard({ headCoach, assistants, totalPayroll }) {
             const ac = ARCHETYPES[c.archetype || inferArchetype(c)] || ARCHETYPES.GENERALIST
             return (
               <div key={c.id} className="flex items-center gap-2 text-xs py-1">
-                <div className="w-7 h-7 rounded-full bg-pnw-slate text-white flex items-center justify-center font-bold text-[10px]">
-                  {(c.firstName?.[0] || '')}{(c.lastName?.[0] || '')}
-                </div>
+                <CoachHeadshot lookId={c.lookId} coachId={c.id} size={28} className="shrink-0 rounded-full overflow-hidden ring-1 ring-pnw-slate/20" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-pnw-slate truncate">{c.firstName} {c.lastName}</div>
                   <div className="text-[10px] text-gray-500">
