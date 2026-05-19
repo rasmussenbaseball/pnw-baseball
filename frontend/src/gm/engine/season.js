@@ -1117,10 +1117,10 @@ function refreshWeeklyAP(state) {
   total += TIER_BONUS[school?.resourceTier] || 0
   total += experienceBonus
   let weekly = Math.max(20, Math.min(50, Math.round(total)))
-  // November (wk 13) + December (wk 18) are single "month" turns — grant a
-  // full month of AP (4× the weekly value) so the user can do a month's
-  // worth of recruiting + development in that one turn.
-  if (wk === 13 || wk === 18) weekly *= 4
+  // October (wk 9), November (wk 13), December (wk 18) are single "month"
+  // turns — grant a full month of AP (4× the weekly value) so the user can
+  // do a month's worth of recruiting + development in that one turn.
+  if (wk === 9 || wk === 13 || wk === 18) weekly *= 4
   state.ap.currentWeek = weekly
   state.ap.spentThisWeek = 0
   state.ap.spentByCategory = {
@@ -1336,9 +1336,16 @@ export function advanceOneWeek(state) {
   }
 }
 
-/** Weeks that fold into the month-anchor turns (Nov anchor=13, Dec anchor=18). */
+/**
+ * Weeks that fold into the month-anchor turns:
+ *   October  anchor = 9  (folds 10-12)
+ *   November anchor = 13 (folds 14-17)
+ *   December anchor = 18 (folds 19-22)
+ */
 function isFoldWeek(week) {
-  return (week >= 14 && week <= 17) || (week >= 19 && week <= 22)
+  return (week >= 10 && week <= 12)
+    || (week >= 14 && week <= 17)
+    || (week >= 19 && week <= 22)
 }
 
 /**

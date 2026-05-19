@@ -75,8 +75,9 @@ export function runAutoActions(save) {
     autoFulfillRequiredAction(save, req, summary)
   }
 
-  // 4. Prospect-camp invites in Wks 5 & 10 (independent of required action)
-  if (week === 5 || week === 10) {
+  // 4. Prospect-camp invites in Wks 5 & 9 (the October turn anchor;
+  // independent of required action)
+  if (week === 5 || week === 9) {
     autoSendCampInvites(save, week, summary)
   }
 
@@ -433,6 +434,12 @@ function spendWeeklyPractice(save, summary) {
   const cost = inSeason ? TEMP_AP : PERM_AP
   const ap = save.ap?.currentWeek ?? 0
   if (ap < cost) return 0
+  // Offseason PERMANENT drills cost 15 AP and crowd out recruiting if fired
+  // every single week. Per Nate, do them every OTHER week so most weeks the
+  // AP goes to the recruiting board. (In-season TEMPORARY boosts still fire
+  // every week — they're cheaper + only matter while games are live.)
+  const counter0 = (save.calendar?.week ?? save.calendar?.weekOfYear ?? 0)
+  if (!inSeason && (counter0 % 2 !== 0)) return 0
   // 11-action rotation balances hitting / pitching / defensive work. Cycles
   // by overall counter so consecutive weeks hit different stats.
   const ROTATION = [

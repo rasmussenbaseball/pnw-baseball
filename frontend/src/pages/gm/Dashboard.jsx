@@ -65,6 +65,7 @@ export default function Dashboard() {
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
   const [eventPrompt, setEventPrompt] = useState(null)   // { kind: 'PROSPECT_CAMP'|'SUMMER_BALL' } major-event stop prompt
+  const [apWarnModal, setApWarnModal] = useState(null)   // { ap } unspent-AP warning before advancing
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -196,7 +197,7 @@ export default function Dashboard() {
   }
 
   // ─── Sim actions ───────────────────────────────────────────────────────────
-  function simNextWeek() {
+  function simNextWeek(opts = {}) {
     // Story mode pending event blocks every advance until the user makes a
     // choice. We surface a modal at the bottom of the page; this guard just
     // makes sure clicking the +Week button doesn't slip past it.
@@ -254,16 +255,15 @@ export default function Dashboard() {
           return
         }
       }
-      // Soft confirm if AP is unspent in a non-tutorial week. Tutorial weeks
-      // (1-3) have ap=0 by design; Wk 4 is its own gate; otherwise leftover
-      // AP would have boosted recruiting / development.
+      // Unspent-AP warning modal (manual mode, non-tutorial weeks). Leftover
+      // AP is wasted — it would've boosted recruiting / development. The modal
+      // also offers a one-click switch to Auto. We gate behind a flag set by
+      // the modal's "Advance anyway" button so this doesn't loop.
       const wk = save.calendar?.weekOfYear ?? 0
       const ap = save.ap?.currentWeek ?? 0
-      if (ap > 0 && wk >= 5 && wk !== 4) {
-        const ok = window.confirm(
-          `You still have ${ap} AP unspent this week. Advance anyway? (Unused AP is lost — it doesn't carry over.)`
-        )
-        if (!ok) return
+      if (ap > 0 && wk >= 5 && !opts.ignoreApWarn) {
+        setApWarnModal({ ap })
+        return
       }
     }
     // Any unplayed user games this week (season OR fall scrim) pop the
@@ -424,6 +424,21 @@ export default function Dashboard() {
             navigate(`/gm/${dest}?slot=${slot}`)
           }}
           onCancel={() => setEventPrompt(null)}
+        />
+      )}
+      {apWarnModal && (
+        <UnspentApModal
+          ap={apWarnModal.ap}
+          onSpend={() => { setApWarnModal(null); navigate(`/gm/recruiting?slot=${slot}`) }}
+          onAuto={() => {
+            setAutoMode(save, true)
+            saveDynasty(save)
+            setSave({ ...save })
+            setApWarnModal(null)
+            gmToast('Auto mode ON — your staff will spend AP each week.', 'info')
+          }}
+          onAdvance={() => { setApWarnModal(null); simNextWeek({ ignoreApWarn: true }) }}
+          onCancel={() => setApWarnModal(null)}
         />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
@@ -752,8 +767,8 @@ export default function Dashboard() {
 
         {/* RIGHT column — focus tasks + conference standings widget */}
         <div className="space-y-4">
-          <Panel title="This Week's Focus" actionTo={null}>
-            <FocusTasks save={save} inOffseason={inOffseason} />
+          <Panel title="This Week's To-Do" actionTo={null}>
+            <FocusTasks save={save} slot={slot} inOffseason={inOffseason} autoOn={autoOn} />
           </Panel>
 
           <CareerOffersWidget save={save} slot={slot} />
@@ -1389,56 +1404,135 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
   )
 }
 
-function FocusTasks({ save, inOffseason }) {
+// Suggested ways to spend AP — mirrors the Auto-mode priority logic but as
+// human-facing hints (the user does it themselves). Reason-driven so the user
+// understands WHY each suggestion shows up.
+function buildApSuggestions(save, slot) {
+  const out = []
+  const team = save.teams?.[save.userSchoolId]
+  const players = (team?.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
+  const withGpa = players.filter(p => typeof p.gpa === 'number')
+  const avgGpa = withGpa.length ? withGpa.reduce((s, p) => s + p.gpa, 0) / withGpa.length : 3.0
+  const anyLow = withGpa.some(p => p.gpa < 2.3)
+  if (anyLow || avgGpa < 2.6) {
+    out.push({ text: `Study hall — team GPA is low (${avgGpa.toFixed(2)})`, to: `/gm/weekly?slot=${slot}` })
+  }
+  const openRecruits = Object.values(save.recruits || {}).filter(r => r.status === 'open').length
+  if (openRecruits > 0) {
+    out.push({ text: 'Work the recruiting board — scout, visit, make offers', to: `/gm/recruiting?slot=${slot}` })
+  }
+  out.push({ text: 'Run a practice drill to develop player ratings', to: `/gm/weekly?slot=${slot}` })
+  return out
+}
+
+function FocusTasks({ save, slot, inOffseason, autoOn }) {
   const seasonYear = save.calendar.year + 1
   const userSchool = save.schools[save.userSchoolId]
+  const wk = save.calendar?.weekOfYear ?? 0
   const openSchedSlots = openNonConfWeeks(save.userSchoolId, userSchool.conferenceId, save.schedule || [], seasonYear)
+  const req = requiredActionForWeek(save, wk)
+  const ap = save.ap?.currentWeek ?? 0
+  const apActive = wk >= 4   // AP unlocks in wk 4
 
-  // Build a list of priority tasks, ranked by importance
-  const priorities = []
-
-  if (openSchedSlots.length > 0) {
-    priorities.push({
-      text: `${openSchedSlots.length} open weekend slot${openSchedSlots.length === 1 ? '' : 's'} on next season's schedule`,
-      to: `/gm/schedule?slot=${save.saveSlot}`,
+  // Ordered checklist. Each item: { label, detail, done, to, urgent }.
+  const tasks = []
+  // 1. Required action for the week (schedule / hire / budget / scout / camp).
+  if (req) {
+    const done = req.isComplete(save)
+    tasks.push({
+      label: req.label,
+      detail: done ? (req.doneText || 'Done') : req.blurb,
+      done,
+      to: req.route ? `${req.route}?slot=${slot}` : null,
+      urgent: !done,
+    })
+  }
+  // 2. Schedule completeness (offseason only).
+  if (inOffseason && openSchedSlots.length > 0) {
+    tasks.push({
+      label: 'Fill your schedule',
+      detail: `${openSchedSlots.length} open weekend slot${openSchedSlots.length === 1 ? '' : 's'} on the ${seasonYear} schedule`,
+      done: false,
+      to: `/gm/schedule?slot=${slot}`,
       urgent: true,
     })
   }
-
-  if (inOffseason) {
-    if (save.calendar.offseasonWeek <= 4) {
-      priorities.push({ text: 'Sign top HS recruits before fall', to: `/gm/recruiting?slot=${save.saveSlot}` })
-    }
-    if (save.calendar.offseasonWeek >= 5 && save.calendar.offseasonWeek <= 13 && !save.prospectCamp?.year) {
-      const wk = save.calendar.offseasonWeek
-      const text = wk === 13
-        ? 'Run your prospect camp NOW (Wk 13)'
-        : wk === 5 || wk === 10
-          ? `Invite recruits to prospect camp (Wk ${wk} invite window)`
-          : `Prospect camp runs Wk 13 (${13 - wk} wk away)`
-      priorities.push({ text, to: `/gm/weekly?slot=${save.saveSlot}` })
-    }
-    if (!save.budget || save.budget.allocations?.scholarships === undefined) {
-      priorities.push({ text: 'Review your annual budget', to: `/gm/budget?slot=${save.saveSlot}` })
-    }
-  } else {
-    priorities.push({ text: 'Late-cycle recruiting open', to: `/gm/recruiting?slot=${save.saveSlot}` })
+  // 3. Spend all AP.
+  if (apActive) {
+    tasks.push({
+      label: 'Spend all your AP',
+      detail: ap > 0 ? `${ap} AP left — unused AP is wasted` : 'All AP spent',
+      done: ap === 0,
+      to: ap > 0 ? `/gm/recruiting?slot=${slot}` : null,
+      urgent: ap > 0,
+    })
   }
 
+  const suggestions = ap > 0 ? buildApSuggestions(save, slot) : []
+
+  const exploreLinks = [
+    { label: 'Roster', to: `/gm/roster?slot=${slot}` },
+    { label: 'Recruiting', to: `/gm/recruiting?slot=${slot}` },
+    { label: 'Stats', to: `/gm/stats?slot=${slot}` },
+    { label: 'Coaches', to: `/gm/coaches?slot=${slot}` },
+    { label: 'Budget', to: `/gm/budget?slot=${slot}` },
+  ]
+
   return (
-    <div className="space-y-3">
-      <div className="text-xs text-gray-600 space-y-1.5">
-        <div className="font-semibold text-gray-700">Weekly priorities:</div>
-        {priorities.length === 0 ? (
-          <div className="text-gray-400">Nothing pressing — explore the dashboard.</div>
-        ) : (
-          priorities.map((p, i) => (
-            <div key={i} className="flex justify-between items-center">
-              <span className={p.urgent ? 'text-amber-700 font-semibold' : ''}>{p.text}</span>
-              <Link to={p.to} className="text-pnw-green hover:underline shrink-0 ml-2">Go </Link>
+    <div className="space-y-3 text-xs">
+      {autoOn && (
+        <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+          Auto mode handles these for you. Switch to manual to take control.
+        </div>
+      )}
+      {/* Checklist */}
+      <div className="space-y-1.5">
+        {tasks.length === 0 ? (
+          <div className="text-gray-400">Nothing required this week — explore below.</div>
+        ) : tasks.map((t, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className={'shrink-0 mt-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[10px] font-bold ' +
+              (t.done ? 'bg-emerald-500 text-white' : 'border-2 border-amber-400 text-transparent')}>
+              {t.done ? '✓' : '○'}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-center gap-2">
+                <span className={'font-semibold ' + (t.done ? 'text-gray-400 line-through' : t.urgent ? 'text-amber-800' : 'text-gray-700')}>
+                  {t.label}
+                </span>
+                {!t.done && t.to && <Link to={t.to} className="text-pnw-green hover:underline shrink-0">Go</Link>}
+              </div>
+              {!t.done && <div className="text-[11px] text-gray-500 leading-snug">{t.detail}</div>}
             </div>
-          ))
-        )}
+          </div>
+        ))}
+      </div>
+
+      {/* AP spend suggestions */}
+      {suggestions.length > 0 && (
+        <div className="border-t pt-2">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Suggested ways to spend AP</div>
+          <div className="space-y-1">
+            {suggestions.map((s, i) => (
+              <div key={i} className="flex justify-between items-center gap-2">
+                <span className="text-gray-600">{s.text}</span>
+                <Link to={s.to} className="text-pnw-green hover:underline shrink-0">Go</Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Explore */}
+      <div className="border-t pt-2">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Explore</div>
+        <div className="flex flex-wrap gap-1.5">
+          {exploreLinks.map(l => (
+            <Link key={l.label} to={l.to} className="px-2 py-1 bg-gray-100 hover:bg-pnw-green hover:text-white rounded text-[11px] text-gray-700 transition">
+              {l.label}
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -1805,6 +1899,42 @@ function CampInviteBanner({ save, slot, weekOfYear }) {
   )
 }
 
+function UnspentApModal({ ap, onSpend, onAuto, onAdvance, onCancel }) {
+  const { backdropProps, stopProps } = useModalDismiss(onCancel)
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-amber-700 font-bold">⚠ Unspent AP</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">{ap} AP still unspent</h3>
+          </div>
+          <ModalCloseButton onClick={onCancel} />
+        </div>
+        <p className="text-sm text-gray-700 leading-snug mb-2">
+          Action Points don't carry over — anything you don't spend this week is <strong>lost</strong>.
+          Unspent AP means missed recruiting, development, and study-hall gains that compound over a season.
+        </p>
+        <p className="text-xs text-gray-500 mb-5">
+          Not sure how to spend it? Turn on <strong>Auto mode</strong> and your staff will handle AP, recruiting,
+          and required actions every week.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button onClick={onSpend} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+            Let me spend it →
+          </button>
+          <button onClick={onAuto} className="w-full px-4 py-2.5 border border-emerald-400 text-emerald-700 rounded text-sm font-semibold hover:bg-emerald-50">
+            Turn on Auto mode
+          </button>
+          <button onClick={onAdvance} className="w-full px-4 py-2 text-gray-500 rounded text-sm hover:bg-gray-50">
+            Advance anyway (waste {ap} AP)
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function MajorEventModal({ kind, onAuto, onManual, onCancel }) {
   const { backdropProps, stopProps } = useModalDismiss(onCancel)
   const isCamp = kind === 'PROSPECT_CAMP'
@@ -1986,7 +2116,9 @@ function WeekRecapModal({ recap, save, onDismiss }) {
   const recordDelta = diff?.recordDelta
   const isOffseason = recap.kind === 'offseason'
   const headerLabel = isOffseason
-    ? `Offseason Wk ${recap.from} ${recap.to} — ${recap.phase}`
+    ? (recap.from === recap.to
+        ? `Offseason Wk ${recap.to} — ${recap.phase}`
+        : `Offseason Wk ${recap.from} → ${recap.to} — ${recap.phase}`)
     : `Game Week Recap`
 
   // Surface newsfeed events that fired this week — gives the recap real

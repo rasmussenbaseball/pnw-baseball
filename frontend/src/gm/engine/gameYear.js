@@ -46,8 +46,11 @@ export const PHASES = {
   TUTORIAL_SCOUT:    { key: 'TUTORIAL_SCOUT',    label: 'Open Scouting',    blurb: "AP unlocks. Spend it all on next year's recruits.",
     season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
   // ── September-October: fall camp (Wks 5-13) ─────────────────────────────
-  FALL_CAMP:         { key: 'FALL_CAMP',         label: 'Fall Camp',        blurb: 'Full team practice + scrimmages vs nearby D2/D3/JUCO opponents. Skills develop normally.',
+  FALL_CAMP:         { key: 'FALL_CAMP',         label: 'Fall Camp',        blurb: 'Full team practice. Skills develop normally — spend AP on drills + recruiting.',
     season: 'Fall Camp', practice: true, conditioning: true, devAllowed: true },
+  // ── October: ONE turn (Wks 9-12). No games — condensed like Nov/Dec. ──
+  OCTOBER:           { key: 'OCTOBER',           label: 'October',          blurb: 'The whole month in one turn. A full month of AP for fall practice + recruiting — then advance to November.',
+    season: 'October', practice: true, conditioning: true, devAllowed: true },
   // ── November: ONE turn (Wks 13-17). Prospect camp + a full month of AP.
   // Nothing else happens, so the whole month is condensed to a single turn. ──
   NOVEMBER:          { key: 'NOVEMBER',          label: 'November',         blurb: 'The whole month in one turn. Run your prospect camp and spend a full month of AP on recruiting + development — then advance straight to December.',
@@ -88,7 +91,9 @@ export function phaseForWeek(week) {
   if (week === 2) return PHASES.TUTORIAL_HIRE
   if (week === 3) return PHASES.TUTORIAL_BUDGET
   if (week === 4) return PHASES.TUTORIAL_SCOUT
-  if (week >= 5 && week <= 12) return PHASES.FALL_CAMP
+  if (week >= 5 && week <= 8) return PHASES.FALL_CAMP            // September — weekly
+  // October = wks 9-12 collapsed into one turn.
+  if (week >= 9 && week <= 12) return PHASES.OCTOBER
   // November = wks 13-17 collapsed into one turn (prospect camp lives here).
   if (week >= 13 && week <= 17) return PHASES.NOVEMBER
   // December = wks 18-22 collapsed into one turn.

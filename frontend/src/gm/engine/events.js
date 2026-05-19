@@ -92,7 +92,9 @@ export const WEEK_EVENT_SCHEDULE = {
   4: [],                                          // scouting opens — AP unlocks, no engine event
   // ── Fall Camp (Sep-Oct, wks 5-12) ──
   5: ['FALL_CAMP_START', 'CAMP_INVITE_WINDOW'],
-  10: ['CAMP_INVITE_WINDOW'],
+  // Second camp-invite window moved to wk 9 (the October turn anchor) since
+  // wks 10-12 now fold into October.
+  9: ['CAMP_INVITE_WINDOW'],
   // Fall scrimmages auto-scheduled into wks 6-12 (8 games over ~4 weekends)
   // ── November turn (wk 13) — prospect camp ──
   13: ['PROSPECT_CAMP', 'HS_NLI_EARLY'],
