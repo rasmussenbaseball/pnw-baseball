@@ -87,8 +87,8 @@ export function pnwProgramsAtLevel(level) {
       // before dynasty creation get a stable value without spinning up
       // a roster. Mirrors the tierBase + strength × tierSlope formula —
       // keep these in sync with newDynastyMultiLevel.
-      const TIER_BASE  = { D1: 74, D2: 47, D3: 41, NWAC: 44 }
-      const TIER_SLOPE = { D1: 6.5, D2: 7.0, D3: 7.5, NWAC: 4.5 }
+      const TIER_BASE  = { D1: 74, D2: 46, D3: 30, NWAC: 44 }
+      const TIER_SLOPE = { D1: 6.5, D2: 9.0, D3: 11.0, NWAC: 4.5 }
       const programHistory = Math.max(15, Math.min(99,
         Math.round((TIER_BASE[level] ?? 50) + strength * (TIER_SLOPE[level] ?? 2.0))))
       out.push({

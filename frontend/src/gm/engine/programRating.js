@@ -23,7 +23,7 @@ import { seedFromPear } from './rankings'
 export function expectedTeamOvr(school) {
   if (!school) return 70
   const ph = Math.max(15, Math.min(99, school.programHistory ?? 50))
-  const LEVEL_SHIFT = { D1: 8, D2: 2, NAIA: 0, D3: -2, NWAC: -10 }
+  const LEVEL_SHIFT = { D1: 8, D2: 0, NAIA: 0, D3: -4, NWAC: -10 }
   const shift = LEVEL_SHIFT[school.level] ?? 0
   // 60 baseline + per-PH slope + level shift + top-9 selection bonus (~5)
   // Empirically matches the OVR report at every level within ±1 OVR.

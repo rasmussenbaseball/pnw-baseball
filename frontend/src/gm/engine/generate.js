@@ -76,9 +76,10 @@ function meanRatingFor(programHistory, slotTier = 'bench', level = 'NAIA') {
   // ~6 OVR above an NAIA equivalent; D3 averages ~4 below.
   // Level-shift on the rating mean. Calibrated against the user's expected
   // Team OVR hierarchy: top D1 ~94, top NAIA ~85, top D3 ~80, top NWAC ~75,
-  // worst NWAC ~62. NWAC pushed further negative so weak JUCOs land in the
-  // low 60s instead of the previous soft 67-71 floor.
-  const LEVEL_SHIFT = { D1: 8, D2: 2, NAIA: 0, D3: -2, NWAC: -10 }
+  // worst NWAC ~62. D2 + D3 pushed lower in May 2026 so the bottom of those
+  // conferences (Saint Martin's, Willamette) sit below the NAIA floor —
+  // the worst D2/D3 programs should feel weaker than the worst NAIA.
+  const LEVEL_SHIFT = { D1: 8, D2: 0, NAIA: 0, D3: -4, NWAC: -10 }
   return mean + (LEVEL_SHIFT[level] ?? 0)
 }
 
