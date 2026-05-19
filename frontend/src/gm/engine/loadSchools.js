@@ -48,7 +48,50 @@ function pearRatingForSchool(school) {
     const key = normalizeSchoolName(t)
     if (PEAR_RATINGS[key] != null) return PEAR_RATINGS[key]
   }
+  // Schema-aware name aliases for schools whose PEAR row uses a different
+  // form than schools.json. Keeps real-world ratings flowing into roster
+  // generation instead of defaulting to 50 (the "average" fallback).
+  const ALIASES = {
+    'lewisclarkstate': 'lewisclark',           // PEAR: "Lewis-Clark (ID)"
+  }
+  const norm = normalizeSchoolName(school.name)
+  if (ALIASES[norm] && PEAR_RATINGS[ALIASES[norm]] != null) {
+    return PEAR_RATINGS[ALIASES[norm]]
+  }
   return null  // unmatched
+}
+
+/**
+ * Hand-coded programHistory overrides. Used for schools that aren't in PEAR
+ * data (or where PEAR doesn't reflect real-world standing). Values are on
+ * the 15-99 scale that the roster generator reads. Calibrated for the PNW
+ * hierarchy the user cares about: Lewis-Clark elite (top of NAIA), Frontier
+ * Montana programs mid-tier, Cascade Collegiate spread across the middle.
+ *
+ * After applying:
+ *  - PEAR match: use PEAR-derived value
+ *  - This map: override
+ *  - Otherwise: 50 (default)
+ */
+const PROGRAM_HISTORY_OVERRIDES = {
+  // NAIA — PEAR misses some PNW programs; bring them in line
+  'lewis-clark-state':     92,   // Real-world top-3 NAIA every year
+  'bushnell':              78,
+  'oregon-tech':           75,
+  'college-of-idaho':      72,
+  'corban':                68,
+  'eastern-oregon':        60,
+  'warner-pacific':        58,
+  'british-columbia':      72,   // strong but not elite per user
+  'northwest-naia':        55,
+  'southern-oregon-naia':  64,
+  'walla-walla-naia':      55,
+  // Frontier (MT) — Carroll historically strongest, Western Montana weakest
+  'carroll-montana-naia':  78,
+  'providence-naia':       62,
+  'rocky-mountain-naia':   72,
+  'montana-tech-naia':     65,
+  'montana-western-naia':  55,
 }
 
 // ─── Hand-coded resource tiers for well-known programs ────────────────────────
@@ -181,7 +224,7 @@ function hydrateSchool(rawSchool, conferenceId) {
     scholarshipPool,
     coachingBudget,
     facilityRating: facility,
-    programHistory: pearToProgramHistory(pearRating),
+    programHistory: PROGRAM_HISTORY_OVERRIDES[rawSchool.id] ?? pearToProgramHistory(pearRating),
     academicReputation: academic,
     region: STATE_TO_REGION[rawSchool.state] ?? 'MW',
     metroSize: 'small',  // default; can override later

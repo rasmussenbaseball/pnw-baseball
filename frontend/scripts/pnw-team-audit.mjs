@@ -11,7 +11,7 @@
 import { newDynasty } from '../src/gm/engine/newDynasty.js'
 import { newDynastyMultiLevel } from '../src/gm/engine/newDynastyMultiLevel.js'
 import { pnwProgramsAtLevel } from '../src/gm/engine/pnwPlayoffs.js'
-import { playerOverall } from '../src/gm/engine/playerRating.js'
+import { playerOverall, teamOverall } from '../src/gm/engine/playerRating.js'
 import pnwFinancials from '../src/gm/data/pnw_school_financials.json'
 import schoolsRaw from '../src/gm/data/schools.json'
 
@@ -44,21 +44,16 @@ function makeState(level, schoolId, conferenceId) {
 function rosterOvrStats(state, schoolId) {
   const team = state.teams[schoolId]
   if (!team) return null
-  const ovrs = (team.rosterPlayerIds || [])
-    .map(id => state.players[id])
-    .filter(Boolean)
-    .map(p => playerOverall(p))
-    .filter(o => typeof o === 'number')
-    .sort((a, b) => b - a)
-  if (ovrs.length === 0) return null
-  const top9 = ovrs.slice(0, 9).reduce((s, x) => s + x, 0) / Math.min(9, ovrs.length)
+  // The canonical Team OVR — same number shown on the dashboard / roster.
+  // Top-9 hitters × 0.55 + top-5 pitchers × 0.45 (see teamOverall in
+  // playerRating.js). This is what we want to report for "how good is X
+  // team at the start of a sim."
+  const t = teamOverall(team, state.players)
   return {
-    count: ovrs.length,
-    high: ovrs[0],
-    low: ovrs[ovrs.length - 1],
-    avg: Math.round(ovrs.reduce((s, x) => s + x, 0) / ovrs.length),
-    top9: Math.round(top9),
-    topPitcherCount: ovrs.filter(o => o >= 75).length,
+    teamOvr: t.overall,
+    hittingOvr: t.hitting,
+    pitchingOvr: t.pitching,
+    count: (team.rosterPlayerIds || []).length,
   }
 }
 
