@@ -80,14 +80,25 @@ export function pnwProgramsAtLevel(level) {
     if (!conf) continue
     for (const m of (conf.pnwMembers || [])) {
       const enrich = NON_NAIA_BY_ID[m.id] || {}
+      const strength = enrich.strength ?? 0
+      // Pre-compute the same programHistory the dynasty-creation path
+      // ultimately uses (buildSyntheticSchool in newDynastyMultiLevel.js)
+      // so UIs that need to display expected Team OVR / star ratings
+      // before dynasty creation get a stable value without spinning up
+      // a roster. Mirrors the tierBase + strength × tierSlope formula —
+      // keep these in sync with newDynastyMultiLevel.
+      const TIER_BASE  = { D1: 74, D2: 47, D3: 41, NWAC: 44 }
+      const TIER_SLOPE = { D1: 6.5, D2: 7.0, D3: 7.5, NWAC: 4.5 }
+      const programHistory = Math.max(15, Math.min(99,
+        Math.round((TIER_BASE[level] ?? 50) + strength * (TIER_SLOPE[level] ?? 2.0))))
       out.push({
         ...m,
         conferenceId: id,
         conferenceName: conf.name,
         level,
-        // From the PEAR-derived non_naia_teams.json:
-        strength: enrich.strength ?? 0,
+        strength,
         pearRank: enrich.pearRank ?? null,
+        programHistory,
         // Prefer the colors set directly on the PNW member (pnw_playoff_formats),
         // then fall back to the PEAR-enriched colors (non_naia_teams.json). Means
         // NWAC schools that aren't in the national PEAR data can still ship with

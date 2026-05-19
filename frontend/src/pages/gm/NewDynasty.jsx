@@ -17,7 +17,7 @@ import { newDynasty } from '../../gm/engine/newDynasty'
 import { newDynastyMultiLevel } from '../../gm/engine/newDynastyMultiLevel'
 import { getLevelForSchool, isPreviewLevel } from '../../gm/engine/levelHelpers'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
-import { buildProgramRatings, starsToBar } from '../../gm/engine/programRating'
+import { buildProgramRatings, starsToBar, expectedTeamOvr, teamOvrToStars } from '../../gm/engine/programRating'
 import { REGIONS, REGION_LABELS, REGION_BLURBS } from '../../gm/engine/regions'
 import { ARCHETYPES } from '../../gm/engine/archetypes'
 import { PNW_DIVISIONS, PNW_CONFERENCES, pnwProgramsAtLevel } from '../../gm/engine/pnwPlayoffs'
@@ -613,6 +613,9 @@ function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelec
         city: s.city, state: s.state,
         conference: conferences[s.conferenceId]?.abbreviation || 'NAIA',
         level: 'NAIA',
+        // Needed by the Team-OVR badge on each program tile.
+        programHistory: s.programHistory,
+        colors: s.colors,
       }))
   }, [schools, conferences])
 
@@ -663,6 +666,8 @@ function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelec
             )}
             {programsForLevel.map(p => {
               const isSelected = selectedSchoolId === p.id
+              const teamOvr = expectedTeamOvr({ programHistory: p.programHistory, level: p.level })
+              const stars = teamOvrToStars(teamOvr)
               return (
                 <button
                   key={p.id}
@@ -674,8 +679,14 @@ function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelec
                 >
                   <TeamLogo school={p} size={28} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-white font-bold text-xs truncate">{p.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-white font-bold text-xs truncate">{p.name}</div>
+                      <div className={'shrink-0 font-mono font-bold text-[10px] px-1 py-0.5 rounded ' + teamOvrColorClass(teamOvr)} title="Expected starting Team OVR">
+                        {teamOvr}
+                      </div>
+                    </div>
                     <div className="text-[9px] text-[#a8a8c8]">{p.state} · {p.conference}</div>
+                    <div className="mt-0.5"><StarRow stars={stars} /></div>
                   </div>
                 </button>
               )
@@ -731,6 +742,10 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
         confId: s.conferenceId,
         colors: s.colors,
         level: 'NAIA',
+        // programHistory drives the expected-Team-OVR badge + star rating
+        // on the program tile. NAIA values come from loadSchools.js (PEAR
+        // + hand-coded overrides).
+        programHistory: s.programHistory,
       }))
   }, [schools, conferences])
 
@@ -789,30 +804,15 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
         )}
         {programsForLevel.map(p => {
           const isSelected = selectedSchoolId === p.id
-          // Look up program rating. Built for NAIA schools via programRatings;
-          // non-NAIA programs derive stars from the PEAR strength + rank we
-          // attached to each tile via pnwProgramsAtLevel. Strength typically
-          // ranges -3 (bottom-tier) to +8 (national elite); we map that to
-          // 0.5-5.0 stars with a non-linear curve so the top programs really
-          // stand out.
+          // Compute expected starting Team OVR — same number the Roster
+          // page will show once the dynasty is created. Stars derived
+          // directly from Team OVR (0.5★ ≈ 66 OVR, 5★ ≈ 91 OVR). NAIA
+          // tiles read programHistory off the loaded school object;
+          // D1/D2/D3/NWAC tiles get programHistory pre-computed in
+          // pnwProgramsAtLevel from PEAR strength + level formula.
+          const teamOvr = expectedTeamOvr({ programHistory: p.programHistory, level: p.level })
+          const stars = teamOvrToStars(teamOvr)
           const rating = programRatings?.[p.id]
-          const fallbackStars = (() => {
-            const strength = p.strength ?? Object.values(schools).find(s => s.id === p.id)?.strength ?? 0
-            // pearRank fallback: top-25 programs get 4.5+, top-50 4+, etc.
-            const rank = p.pearRank
-            if (rank != null) {
-              if (rank <= 10)  return 5.0
-              if (rank <= 25)  return 4.5
-              if (rank <= 50)  return 4.0
-              if (rank <= 100) return 3.5
-              if (rank <= 175) return 3.0
-              if (rank <= 250) return 2.5
-              return 2.0
-            }
-            // No rank → use strength
-            return Math.max(0.5, Math.min(5.0, 2.5 + strength * 0.45))
-          })()
-          const stars = rating?.stars ?? fallbackStars
           const nationalRank = rating?.nationalRank ?? p.pearRank
           return (
             <button
@@ -827,14 +827,22 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
             >
               <TeamLogo school={p} size={36} />
               <div className="flex-1 min-w-0">
-                <div className="text-white font-bold text-sm truncate">{p.name}</div>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-white font-bold text-sm truncate">{p.name}</div>
+                  <div
+                    className={'shrink-0 font-mono font-bold text-xs px-1.5 py-0.5 rounded ' + teamOvrColorClass(teamOvr)}
+                    title="Expected starting Team OVR — top-9 hitters × 0.55 + top-5 pitchers × 0.45"
+                  >
+                    {teamOvr} OVR
+                  </div>
+                </div>
                 <div className="text-[10px] text-[#a8a8c8] mt-0.5">
                   {p.city || '—'}{p.city && p.state ? ', ' : ''}{p.state} · {p.conference}
                 </div>
-                <div className="mt-1">
+                <div className="mt-1 flex items-center gap-2">
                   <StarRow stars={stars} />
                   {nationalRank && (
-                    <span className="ml-2 text-[9px] text-amber-300 font-bold">#{nationalRank}</span>
+                    <span className="text-[9px] text-amber-300 font-bold">#{nationalRank}</span>
                   )}
                 </div>
               </div>
@@ -886,6 +894,20 @@ function PreviewBlurb({ level, program }) {
       </div>
     </div>
   )
+}
+
+/**
+ * Colored chip class for the Team OVR badge on each program tile. Mirrors
+ * the standard OVR tier coloring used elsewhere in the GM UI — elite
+ * programs stand out, weak ones recede.
+ */
+function teamOvrColorClass(ovr) {
+  if (ovr >= 90) return 'bg-emerald-500 text-emerald-950'      // elite (top D1)
+  if (ovr >= 85) return 'bg-lime-500 text-lime-950'             // strong (top NAIA, mid D1)
+  if (ovr >= 80) return 'bg-yellow-400 text-yellow-950'         // above average
+  if (ovr >= 75) return 'bg-amber-500 text-amber-950'           // average
+  if (ovr >= 70) return 'bg-orange-500 text-orange-950'         // below average
+  return 'bg-red-500 text-red-950'                              // weak
 }
 
 function StarRow({ stars }) {
