@@ -26,7 +26,7 @@ import { computeWeeklyAwards } from './weeklyAwards'
 import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, runNwacPlayoffs, summarizeNwacUserPath, runNationalBracketFull, summarizeNationalUserPath } from './pnwPlayoffs'
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
-import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
+import { buildAllConferenceSchedules, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
@@ -311,19 +311,10 @@ export function simWeek(state, schedule, ratings) {
     gamesPlayed++
 
     // Accumulate per-player season stats from this game's boxscore.
-    // Fall scrimmages go into a separate state.fallStats[year] bucket so
-    // they don't pollute the official spring stat line, but still surface
-    // in the post-fall report.
+    // Fall games were removed (May 2026), so everything flows into the
+    // single state.playerStats bucket. Spring scrimmages still count.
     if (result.boxscore?.batterStats) {
-      const isFall = g.type === 'FALL_SCRIMMAGE'
-      const isSpring = g.type === 'SPRING_SCRIMMAGE'
-      if (isFall) {
-        if (!state.fallStats) state.fallStats = {}
-        const yr = state.calendar?.year ?? g.year
-        if (!state.fallStats[yr]) state.fallStats[yr] = {}
-      } else {
-        if (!state.playerStats) state.playerStats = {}
-      }
+      if (!state.playerStats) state.playerStats = {}
       const accumulate = (statsObj, isPitcher) => {
         for (const [pid, s] of Object.entries(statsObj)) {
           // Skip synthetic opponents — they aren't in save.players so they'd
@@ -332,24 +323,15 @@ export function simWeek(state, schedule, ratings) {
           // non-NAIA opponents in user games + non-conference NAIA games.
           if (!state.players[pid]) continue
           const key = isPitcher ? `p_${pid}` : `b_${pid}`
-          let target
-          if (isFall) {
-            const yr = state.calendar?.year ?? g.year
-            if (!state.fallStats[yr][key]) state.fallStats[yr][key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
-            target = state.fallStats[yr][key]
-          } else {
-            if (!state.playerStats[key]) state.playerStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
-            target = state.playerStats[key]
-            // Spring scrimmages still count toward spring playerStats per
-            // existing behavior (only fall is split off).
-          }
+          if (!state.playerStats[key]) state.playerStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
+          const target = state.playerStats[key]
           for (const k of Object.keys(s)) target[k] = (target[k] || 0) + s[k]
           // gamesPlayed: a single appearance in this game counts as 1.
           target.gamesPlayed = (target.gamesPlayed || 0) + 1
-          // Mirror into weeklyStats — only for non-fall, non-scrim games
-          // (regular-season + postseason). Cleared at the top of simWeek;
-          // read by weeklyAwards.computeWeeklyAwards at the end.
-          if (!isFall && g.type !== 'SPRING_SCRIMMAGE') {
+          // Mirror into weeklyStats for weekly awards — exclude spring
+          // scrimmages (they don't count toward awards). Cleared at the top
+          // of simWeek; read by weeklyAwards.computeWeeklyAwards at the end.
+          if (g.type !== 'SPRING_SCRIMMAGE') {
             if (!state.weeklyStats[key]) {
               state.weeklyStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
             }
@@ -1336,13 +1318,7 @@ export function advanceOneWeek(state) {
   // books. Cached on state.nwbbRatings so display code can render rank
   // chips next to team names without recomputing every render.
   state.nwbbRatings = recomputeNwbbRatings(state)
-
-  // Sim any fall scrimmages whose weekOfYear matches the new week. Lets us
-  // unify the scrimmage + game-week paths — they all flow through simWeek
-  // and update boxscores / playerStats the same way. Skip the user's games
-  // (those go through the live-play modal); auto-fall games NOT involving
-  // the user are simulated quickly.
-  simScrimmagesForCurrentWeek(state)
+  // (Fall scrimmages removed May 2026 — no offseason game sim hook needed.)
 }
 
 /**
@@ -1400,34 +1376,6 @@ function tickRecruitingDecisions(state) {
   if (newSteals > 0) state._stealsThisWeek = newSteals
 }
 
-/**
- * Sim only the offseason FALL_SCRIMMAGE games for the current week that the
- * user is NOT a participant in. User scrimmages flow through Play / live or
- * the dashboard "Sim Game(s)" CTA so the user has explicit control.
- */
-function simScrimmagesForCurrentWeek(state) {
-  if (state.calendar.mode !== 'OFFSEASON') return
-  const wk = state.calendar.weekOfYear
-  const userId = state.userSchoolId
-  const ratings = seedFromPear(state.schools, state.conferences)
-  for (const g of state.schedule || []) {
-    if (g.played) continue
-    if (g.type !== 'FALL_SCRIMMAGE') continue
-    let gw = g.weekOfYear
-    if (gw == null && g.date) gw = dateToWeekOfYear(g.date, state.calendar.year)
-    if (gw !== wk) continue
-    if (g.homeId === userId || g.awayId === userId) continue  // user's slate routes through UI
-    // Fast-sim non-user fall scrimmages — they affect no records but help
-    // populate dev / stats for other programs.
-    const home = ratings[g.homeId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
-    const away = ratings[g.awayId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
-    const result = fastSimGame(home, away, g.id)
-    g.homeRuns = result.homeRuns
-    g.awayRuns = result.awayRuns
-    g.played = true
-  }
-}
-
 // ─── Back-compat wrappers ──────────────────────────────────────────────────
 // Existing callers import these names — they delegate to advanceOneWeek now.
 
@@ -1449,12 +1397,8 @@ export function advanceWeek(state, _schedule) {
 
 export function rebuildScheduleForYear(state) {
   const year = state.calendar.year
-  const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
-    div.teams.map(t => ({ ...t, division: div.id }))
-  )
   const confSchedule = buildAllConferenceSchedules(state.conferences, state.schools, year, state.rngSeed)
-  const fallGames = autoScheduleFallGames(
-    state.userSchoolId, state.schools, flatNonNaia, year - 1, state.rngSeed + year
-  )
-  state.schedule = [...confSchedule, ...fallGames]
+  // Fall games removed (May 2026) — schedule is conference + user-built
+  // non-conference weekends only.
+  state.schedule = [...confSchedule]
 }

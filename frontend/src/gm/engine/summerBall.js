@@ -120,7 +120,7 @@ export const SUMMER_LEAGUES = {
     devMagnitude: 2.4,
     devTier: 'ELITE',
     injuryRisk: 0.07,
-    poachChance: 0.45,
+    poachChance: 0.22,
     draftBuzzMult: 1.35,
     color: 'bg-purple-100 text-purple-800',
   },
@@ -141,7 +141,7 @@ export const SUMMER_LEAGUES = {
     devMagnitude: 2.0,
     devTier: 'HIGH',
     injuryRisk: 0.16,
-    poachChance: 0.30,
+    poachChance: 0.18,
     draftBuzzMult: 1.18,
     color: 'bg-indigo-100 text-indigo-800',
   },
@@ -162,7 +162,7 @@ export const SUMMER_LEAGUES = {
     devMagnitude: 1.85,
     devTier: 'HIGH',
     injuryRisk: 0.09,
-    poachChance: 0.22,
+    poachChance: 0.15,
     draftBuzzMult: 1.12,
     color: 'bg-blue-100 text-blue-800',
   },
@@ -183,7 +183,7 @@ export const SUMMER_LEAGUES = {
     devMagnitude: 1.65,
     devTier: 'STRONG',
     injuryRisk: 0.09,
-    poachChance: 0.17,
+    poachChance: 0.10,
     draftBuzzMult: 1.08,
     color: 'bg-rose-100 text-rose-800',
   },
@@ -209,7 +209,7 @@ export const SUMMER_LEAGUES = {
     devMagnitude: 2.0,
     devTier: 'HIGH',
     injuryRisk: 0.11,
-    poachChance: 0.08,
+    poachChance: 0.06,
     draftBuzzMult: 1.04,
     color: 'bg-amber-100 text-amber-800',
   },
@@ -658,5 +658,8 @@ export function computePoachProbability({ league, moved, player, school, teamRat
   }[school?.level || 'NAIA'] || 1.10
 
   const p = base * movement * (1 - scholRetention) * (1 - qualityRetention) * levelVuln
-  return Math.max(0, Math.min(0.70, p))
+  // Hard ceiling of 25% — per Nate, poach rate should never exceed 25% even
+  // for the most prestigious leagues (Cape Cod etc.). A 45% chance to lose
+  // your best player felt punishing.
+  return Math.max(0, Math.min(0.25, p))
 }

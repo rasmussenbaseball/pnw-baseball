@@ -1947,21 +1947,14 @@ const SYNTH_LAST_NAMES = [
 // the same stats stores the rest of the engine reads from. Fall scrimmages
 // route into save.fallStats[year] (not save.playerStats) so the fall report
 // shows them but the spring stat line stays clean.
-function accumulateBoxscore(save, boxscore, gameType) {
+function accumulateBoxscore(save, boxscore /* , gameType */) {
   if (!boxscore) return
-  const isFall = gameType === 'FALL_SCRIMMAGE'
+  // Fall games removed (May 2026) — all box scores accumulate to the single
+  // season playerStats bucket.
   const zeroBatter = { ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0,gamesPlayed:0 }
   const zeroPitcher = { ip:0,h:0,bb:0,k:0,er:0,outs:0,pa:0,hbp:0,hr:0,gamesPlayed:0 }
-  let target
-  if (isFall) {
-    if (!save.fallStats) save.fallStats = {}
-    const yr = save.calendar?.year ?? 0
-    if (!save.fallStats[yr]) save.fallStats[yr] = {}
-    target = save.fallStats[yr]
-  } else {
-    if (!save.playerStats) save.playerStats = {}
-    target = save.playerStats
-  }
+  if (!save.playerStats) save.playerStats = {}
+  const target = save.playerStats
   function bump(statsObj, isPitcher) {
     for (const [pid, s] of Object.entries(statsObj)) {
       const key = isPitcher ? `p_${pid}` : `b_${pid}`

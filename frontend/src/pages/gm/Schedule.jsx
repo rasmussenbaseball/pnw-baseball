@@ -172,7 +172,6 @@ export default function Schedule() {
         <ul className="list-disc list-inside space-y-1">
           <li><strong>Conference games are auto-generated</strong> — 3-4 game weekend series against every other team in your conference, alternating home/away year-over-year.</li>
           <li><strong>You fill the non-conference weekends</strong>. Pre-conference (Wks 27-29) usually has 2-3 open weekends. Use Auto-create for a smart starter slate, or pick opponents manually.</li>
-          <li><strong>Fall scrimmages</strong> are required and auto-fill — 8 games vs nearby D2/D3/JUCO opponents in October. <strong className="text-emerald-300">Players in your fall lineup get a small rating bump per scrimmage</strong> — set fall lineups to develop the right guys.</li>
           <li><strong>Midweek games</strong> — you can add up to 2/year vs D1 opponents (single-game format). Big tests, but they don't count toward your conf record.</li>
           <li><strong>NAIA cap is 55 record-counting games</strong>. Scrimmages and byes don't count.</li>
         </ul>
@@ -209,40 +208,6 @@ export default function Schedule() {
           </div>
         </div>
       )}
-
-      {/* AUTO FALL GAMES — pinned near the top so the user sees them */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <div className="text-sm font-semibold text-amber-900">
-               Fall Scrimmages — auto-scheduled
-            </div>
-            <div className="text-xs text-amber-700">
-              8 games (4 doubleheaders) vs nearby D2/D3/JUCO opponents. No NAIA fall opponents allowed. Don't count toward record.
-            </div>
-          </div>
-          <div className="text-[11px] text-amber-800 bg-amber-100 px-2 py-1 rounded font-mono">
-            {scrimmages.length} game{scrimmages.length === 1 ? '' : 's'} set
-          </div>
-        </div>
-        {scrimmages.length > 0 && (
-          <div className="space-y-1 mt-2 text-xs text-amber-900">
-            {Object.entries(groupBySeriesId(scrimmages)).map(([sid, games]) => {
-              const g = games[0]
-              const oppId = g.homeId === userSchoolId ? g.awayId : g.homeId
-              const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId]
-              const isHome = g.homeId === userSchoolId
-              return (
-                <div key={sid} className="flex items-center gap-2">
-                  <TeamLogo school={opp} size={16} />
-                  <span>{g.date} — {games.length}-game DH {isHome ? 'vs' : '@'} {opp?.name}</span>
-                  <span className="text-amber-600 text-[10px]">({opp?.division || 'opponent'})</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
 
       {/* MIDWEEK section — moved up so people actually see it */}
       <div className={'rounded-xl p-4 border mb-4 ' + (scheduleIncomplete ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200')}>

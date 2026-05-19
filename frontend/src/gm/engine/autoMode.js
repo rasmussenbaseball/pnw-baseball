@@ -424,8 +424,15 @@ function spendWeeklyPractice(save, summary) {
   const phase = phaseForWeek(wk)
   if (!phase?.practice) return 0
   if (!phase?.devAllowed) return 0
+  // Variant choice (Nate's rule): TEMPORARY boosts only during the spring
+  // season — they wear off in 4 weeks, so they're only worth it when there
+  // are games that count NOW. Outside the season (offseason practice/dev
+  // weeks) use PERMANENT boosts so the rating gains actually stick.
+  const inSeason = !!phase?.inSeason
+  const variant = inSeason ? 'TEMPORARY' : 'PERMANENT'
+  const cost = inSeason ? TEMP_AP : PERM_AP
   const ap = save.ap?.currentWeek ?? 0
-  if (ap < TEMP_AP) return 0
+  if (ap < cost) return 0
   // 11-action rotation balances hitting / pitching / defensive work. Cycles
   // by overall counter so consecutive weeks hit different stats.
   const ROTATION = [
@@ -445,12 +452,13 @@ function spendWeeklyPractice(save, summary) {
   if (!actionDef) return 0
   // Mark + spend before applying so re-entrant calls during the same week
   // don't double-fire.
-  applyWeeklyAction(save, actionDef, 'TEMPORARY')
+  applyWeeklyAction(save, actionDef, variant)
   markActionUsedThisWeek(save, actionKey)
-  save.ap.currentWeek -= TEMP_AP
-  save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + TEMP_AP
-  summary.actionsTaken.push(`${actionDef.label} (+${actionDef.tempAmount} temp) — ${TEMP_AP} AP`)
-  return TEMP_AP
+  save.ap.currentWeek -= cost
+  save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + cost
+  const amt = inSeason ? `+${actionDef.tempAmount} temp` : `+${actionDef.permAmount} perm`
+  summary.actionsTaken.push(`${actionDef.label} (${amt}) — ${cost} AP`)
+  return cost
 }
 
 /**

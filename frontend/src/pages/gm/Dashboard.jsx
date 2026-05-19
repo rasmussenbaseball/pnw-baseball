@@ -3,13 +3,13 @@ import { Link, useSearchParams, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
-import { simAhead, simPresets, phaseLabel, snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
+import { snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
 import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
-import { openNonConfWeeks, fallScrimmagesRequired } from '../../gm/engine/schedule'
+import { openNonConfWeeks } from '../../gm/engine/schedule'
 import {
   calendarDateLabel, offseasonPhase, offseasonWeekDate, formatShortDate,
   OFFSEASON_WEEKS,
@@ -61,11 +61,8 @@ export default function Dashboard() {
   })
   const [busy, setBusy] = useState(false)
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
-  const [simResult, setSimResult] = useState(null)   // multi-week sim diff bundle
-  const [simAheadConfirm, setSimAheadConfirm] = useState(null)   // { preset, gamesSkipped } when sim-ahead would auto-sim user games
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
-  const [fallReportOpen, setFallReportOpen] = useState(false)
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -175,14 +172,9 @@ export default function Dashboard() {
     () => openNonConfWeeks(save.userSchoolId, school.conferenceId, save.schedule || [], seasonYear),
     [save, seasonYear, school.conferenceId],
   )
-  // Fall scrimmages: required during the offseason. Block sim once Fall Camp
-  // opens (offseasonWeek >= 5) if the user hasn't scheduled the minimum.
-  const fallScrimNeeded = useMemo(
-    () => fallScrimmagesRequired(save.userSchoolId, save.schedule || []),
-    [save],
-  )
-  const fallScrimBlocked = inOffseason && (save.calendar.offseasonWeek ?? 0) >= 5 && fallScrimNeeded > 0
-  const scheduleBlocked = (inOffseason && openSlots.length > 0) || fallScrimBlocked
+  // Fall scrimmages were removed (May 2026) — schedule completeness now only
+  // gates on unfilled spring non-conference weekend slots.
+  const scheduleBlocked = inOffseason && openSlots.length > 0
 
   // ── 52-week phase-gate ────────────────────────────────────────────────
   const weekOfYear = save.calendar.weekOfYear ?? save.calendar.offseasonWeek ?? 1
@@ -321,47 +313,6 @@ export default function Dashboard() {
     setBusy(false)
   }
 
-  function runSimAhead(preset) {
-    // Auto mode bypasses the schedule guard — the AI co-GM fills required
-    // actions / scrim slots as the sim loop advances. Mirrors the autoOn
-    // short-circuit in simNextWeek so sim-ahead works while auto is on.
-    if (!autoOn && scheduleBlocked) {
-      gmToast(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`, 'warn')
-      return
-    }
-    // If this sim-ahead would skip over any of the user's scheduled games,
-    // confirm with the user first (instead of silently auto-simming games
-    // they might want to play live). Count weeks where the user has at least
-    // one game in the schedule.
-    const userId = save.userSchoolId
-    const wkNow = save.calendar?.weekOfYear ?? 1
-    const wkEnd = wkNow + (preset.weeks || preset.est || 1)
-    const gamesSkipped = (save.schedule || []).filter(g =>
-      g.played !== true &&
-      g.type !== 'BYE' &&
-      typeof g.weekOfYear === 'number' &&
-      g.weekOfYear > wkNow && g.weekOfYear <= wkEnd &&
-      (g.homeId === userId || g.awayId === userId),
-    ).length
-    if (gamesSkipped > 0 && !simAheadConfirm) {
-      setSimAheadConfirm({ preset, gamesSkipped })
-      return
-    }
-    setSimAheadConfirm(null)
-    setBusy(true)
-    setLastWeekRecap(null)
-    // simThroughGames:true — the upfront confirm-modal already warned the
-    // user about auto-simmed games in this span. Don't make the sim engine
-    // stop at every game-week boundary; just run through to the requested
-    // milestone (or other terminal condition like postseason / camp).
-    const result = simAhead(save, { weeks: preset.weeks, untilFn: preset.untilFn, simThroughGames: true })
-    saveDynasty(save)
-    setSave({ ...save })
-    setSimResult({ preset: preset.label, ...result })
-    setBusy(false)
-  }
-
-
   // ─── UI ────────────────────────────────────────────────────────────────────
   return (
     <GMShell schoolName={school.name} schoolColors={school.colors}>
@@ -378,14 +329,6 @@ export default function Dashboard() {
         />
       )}
       {progress && <ProgressModal {...progress} />}
-      {simAheadConfirm && (
-        <SimAheadConfirmModal
-          gamesSkipped={simAheadConfirm.gamesSkipped}
-          preset={simAheadConfirm.preset}
-          onCancel={() => setSimAheadConfirm(null)}
-          onConfirm={() => runSimAhead(simAheadConfirm.preset)}
-        />
-      )}
       {tutorialOpen && (
         <TutorialOverlay school={school} level={save.level} onClose={dismissTutorial} />
       )}
@@ -591,11 +534,6 @@ export default function Dashboard() {
       {/* Cuts window — fires the first week after the user's season ends */}
       <CutsBanner save={save} slot={slot} />
 
-      {/* Fall stats report — fires right after the last fall game (Wk 13+) */}
-      <FallStatsBanner save={save} onOpen={() => setFallReportOpen(true)} />
-      {fallReportOpen && (
-        <FallStatsModal save={save} onClose={() => setFallReportOpen(false)} />
-      )}
 
       {/* Summer ball planning prompt — appears Wk 14 (hidden in auto mode) */}
       {weekOfYear === 14 && !autoOn && (
@@ -644,9 +582,6 @@ export default function Dashboard() {
             {openSlots.length > 0 && (
               <>You have <strong>{openSlots.length}</strong> open weekend slot{openSlots.length === 1 ? '' : 's'} on the {seasonYear} schedule. </>
             )}
-            {fallScrimBlocked && (
-              <>You need to schedule <strong>{fallScrimNeeded}</strong> more fall scrimmage game{fallScrimNeeded === 1 ? '' : 's'}. </>
-            )}
             Fix it before you can sim.
           </div>
           <Link to={`/gm/schedule?slot=${slot}`} className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs font-semibold hover:opacity-90">
@@ -672,12 +607,6 @@ export default function Dashboard() {
         startYear={save.calendar.startYear || save.calendar.year}
         thisWeekUnplayedCount={thisWeekUnplayed.length}
       />
-
-      {/* Sim-ahead presets (also hard-blocked when phase-gate or schedule incomplete) */}
-      {!advanceBlocked && <SimAheadBar save={save} busy={busy} onRun={runSimAhead} />}
-
-      {/* Weekly diff readout — appears after a multi-week sim */}
-      {simResult && <SimDiffPanel simResult={simResult} onDismiss={() => setSimResult(null)} />}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
@@ -2212,10 +2141,8 @@ function TeamStatsPanel({ save, slot }) {
   if (!team) return null
   const roster = team.rosterPlayerIds || []
   const playerStats = save.playerStats || {}
-  const fallStats = save.fallStats?.[save.calendar?.year] || {}
 
-  // Aggregate spring stats. If none exist yet, fall back to fall stats so
-  // the dashboard always shows SOMETHING during fall camp / training period.
+  // Aggregate spring/season stats only — fall games were removed (May 2026).
   function buildRows(statsBucket) {
     let tAb = 0, tH = 0, tIp = 0, tErP = 0, tHp = 0, tBbP = 0
     const batters = []
@@ -2243,13 +2170,10 @@ function TeamStatsPanel({ save, slot }) {
   }
 
   const spring = buildRows(playerStats)
-  const fall = buildRows(fallStats)
   const hasSpring = spring.batters.length > 0 || spring.pitchers.length > 0
-  const hasFall = fall.batters.length > 0 || fall.pitchers.length > 0
 
-  // Choose which stat bucket to display + label appropriately
-  const showing = hasSpring ? spring : hasFall ? fall : null
-  const statSourceLabel = hasSpring ? 'Spring season' : hasFall ? ' Fall scrimmages (no spring games yet)' : null
+  const showing = hasSpring ? spring : null
+  const statSourceLabel = hasSpring ? 'Spring season' : null
 
   // No stats at all yet show a "preseason preview" using ratings instead of
   // hiding the panel. Gives the user something useful on the home page from
@@ -2321,7 +2245,7 @@ function PreseasonStatsPanel({ team, players, slot }) {
         <TeamStatTile label="Pitching OVR" value={pitchingOvr} good={pitchingOvr >= 70} />
       </div>
       <div className="text-[11px] text-gray-400 italic mt-2">
-        Real stats appear once games start. Fall scrimmages count separately.
+        Real stats appear once the season starts.
       </div>
     </Panel>
   )
@@ -2363,170 +2287,6 @@ function LeaderCard({ label, leader, valueKey, fmt }) {
       <div className="text-[10px] uppercase tracking-wider text-gray-500">{label} leader</div>
       <div className="text-sm font-bold text-pnw-slate truncate">{leader.p.firstName} {leader.p.lastName}</div>
       <div className="text-base font-mono font-bold text-pnw-green">{display}</div>
-    </div>
-  )
-}
-
-function FallStatsBanner({ save, onOpen }) {
-  const year = save.calendar?.year
-  const weekOfYear = save.calendar?.weekOfYear ?? 1
-  const userId = save.userSchoolId
-  // Show only between Wks 13 and 26 (after fall ball wraps, before spring practice)
-  if (weekOfYear < 13 || weekOfYear > 26) return null
-  const fallStats = save.fallStats?.[year]
-  if (!fallStats) return null
-  // Confirm there are user players with stats
-  const userRoster = save.teams?.[userId]?.rosterPlayerIds || []
-  const hasUserStats = userRoster.some(pid =>
-    fallStats[`b_${pid}`]?.ab > 0 || fallStats[`p_${pid}`]?.ip > 0
-  )
-  if (!hasUserStats) return null
-  const viewed = save.fallStatsViewed?.year === year
-  return (
-    <div className={'rounded-r p-4 mb-4 border-l-4 flex justify-between items-center ' +
-      (viewed ? 'bg-amber-50/40 border-amber-300 text-amber-800' : 'bg-amber-50 border-amber-500 text-amber-900')}>
-      <div>
-        <div className="font-bold"> Fall stats report ready</div>
-        <div className="text-xs mt-1">
-          Your fall scrimmage stats are in — see who hit best, who pitched best, and who's pushing for the spring lineup.
-          {viewed && <span className="ml-1 text-amber-700 italic">(already viewed)</span>}
-        </div>
-      </div>
-      <button
-        onClick={onOpen}
-        className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3"
-      >
-        View report 
-      </button>
-    </div>
-  )
-}
-
-function FallStatsModal({ save, onClose }) {
-  useModalDismiss(onClose)
-  const year = save.calendar?.year
-  const fallStats = save.fallStats?.[year] || {}
-  const userId = save.userSchoolId
-  const userRoster = save.teams?.[userId]?.rosterPlayerIds || []
-
-  // Mark as viewed
-  useMemo(() => {
-    if (!save.fallStatsViewed || save.fallStatsViewed.year !== year) {
-      save.fallStatsViewed = { year }
-      saveDynasty(save)
-    }
-  }, [year, save])
-
-  // Build batter + pitcher rows
-  const batterRows = []
-  const pitcherRows = []
-  for (const pid of userRoster) {
-    const player = save.players[pid]
-    if (!player) continue
-    const bs = fallStats[`b_${pid}`]
-    const ps = fallStats[`p_${pid}`]
-    if (bs && bs.ab > 0) {
-      const avg = bs.h / Math.max(1, bs.ab)
-      const ops = avg + ((bs.h + bs.bb) / Math.max(1, bs.ab + bs.bb)) + ((bs.h - bs.d - bs.t - bs.hr + bs.d * 2 + bs.t * 3 + bs.hr * 4) / Math.max(1, bs.ab))
-      batterRows.push({
-        player, ab: bs.ab, h: bs.h, hr: bs.hr || 0, rbi: bs.rbi || 0, bb: bs.bb || 0, k: bs.k || 0,
-        avg, ops,
-      })
-    }
-    if (ps && ps.ip > 0) {
-      const era = ps.er * 9 / Math.max(0.1, ps.ip)
-      pitcherRows.push({
-        player, ip: ps.ip, h: ps.h || 0, bb: ps.bb || 0, k: ps.k || 0, er: ps.er || 0, era,
-      })
-    }
-  }
-  batterRows.sort((a, b) => b.ops - a.ops)
-  pitcherRows.sort((a, b) => a.era - b.era)
-
-  const fmt3 = n => n.toFixed(3).replace(/^0\./, '.')
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 rounded-t-xl flex justify-between items-start gap-3 sticky top-0 z-10">
-          <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-wider opacity-80">Fall {year} Scrimmage Report</div>
-            <h3 className="text-2xl font-bold mt-0.5"> How fall went</h3>
-            <div className="text-xs opacity-90 mt-1">
-              8 fall scrimmage games · stats kept separate from spring · use this to set your spring depth chart
-            </div>
-          </div>
-          <ModalCloseButton onClick={onClose} dark className="!border-white/40 !text-white" />
-        </div>
-        <div className="p-5 space-y-5">
-          {/* Top hitters */}
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Top hitters (by OPS)</div>
-            {batterRows.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No hitter ABs logged. (Did you skip fall scrimmages?)</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
-                    <tr><th className="p-1.5 text-left">Player</th><th>AB</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>K</th><th>AVG</th><th>OPS</th></tr>
-                  </thead>
-                  <tbody>
-                    {batterRows.slice(0, 12).map(r => (
-                      <tr key={r.player.id} className="border-t">
-                        <td className="p-1.5 font-medium text-pnw-slate">
-                          {r.player.firstName} {r.player.lastName}
-                          <span className="text-[10px] text-gray-400 ml-1">{r.player.primaryPosition}</span>
-                        </td>
-                        <td className="text-center font-mono">{r.ab}</td>
-                        <td className="text-center font-mono">{r.h}</td>
-                        <td className="text-center font-mono">{r.hr}</td>
-                        <td className="text-center font-mono">{r.rbi}</td>
-                        <td className="text-center font-mono">{r.bb}</td>
-                        <td className="text-center font-mono">{r.k}</td>
-                        <td className="text-center font-mono font-bold">{fmt3(r.avg)}</td>
-                        <td className="text-center font-mono font-bold text-pnw-green">{fmt3(r.ops)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Top pitchers */}
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Top pitchers (by ERA)</div>
-            {pitcherRows.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No pitcher IP logged.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
-                    <tr><th className="p-1.5 text-left">Player</th><th>IP</th><th>H</th><th>BB</th><th>K</th><th>ER</th><th>ERA</th></tr>
-                  </thead>
-                  <tbody>
-                    {pitcherRows.slice(0, 12).map(r => (
-                      <tr key={r.player.id} className="border-t">
-                        <td className="p-1.5 font-medium text-pnw-slate">{r.player.firstName} {r.player.lastName}</td>
-                        <td className="text-center font-mono">{r.ip.toFixed(1)}</td>
-                        <td className="text-center font-mono">{r.h}</td>
-                        <td className="text-center font-mono">{r.bb}</td>
-                        <td className="text-center font-mono">{r.k}</td>
-                        <td className="text-center font-mono">{r.er}</td>
-                        <td className="text-center font-mono font-bold text-pnw-green">{r.era.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="text-[11px] text-gray-500 italic">
-            Fall stats are kept separate from the spring stat line. They don't appear on the season AVG / ERA — they're just for evaluating who's earned a starting job heading into spring practice.
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
@@ -2583,243 +2343,3 @@ function summerBallSub(save) {
   return count > 0 ? `${count} planned` : 'Plan now'
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Sim-ahead UI
-// ────────────────────────────────────────────────────────────────────────────
-
-function SimAheadConfirmModal({ gamesSkipped, preset, onCancel, onConfirm }) {
-  useModalDismiss(onCancel)
-  return (
-    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-start gap-3 mb-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-amber-700 font-bold">⚠ Auto-sim warning</div>
-            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">Skip past {gamesSkipped} of your game{gamesSkipped === 1 ? '' : 's'}?</h3>
-          </div>
-          <ModalCloseButton onClick={onCancel} />
-        </div>
-        <p className="text-sm text-gray-700 leading-snug">
-          <span className="font-semibold">{preset.label}</span> covers {preset.weeks || preset.est} week{preset.weeks === 1 ? '' : 's'}.
-          During that span you have <span className="font-bold text-amber-700">{gamesSkipped}</span> scheduled
-          game{gamesSkipped === 1 ? '' : 's'} that would be <span className="font-semibold">auto-simmed</span>
-          — you won't be able to play them live or set lineups for them.
-        </p>
-        <p className="text-xs text-gray-500 mt-3">
-          Use a shorter Sim Ahead (or advance one week at a time) if you want to play these games yourself.
-        </p>
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded text-sm font-semibold hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded text-sm font-semibold"
-          >
-            Auto-sim {gamesSkipped} game{gamesSkipped === 1 ? '' : 's'} →
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SimAheadBar({ save, busy, onRun }) {
-  const presets = simPresets(save)
-  if (presets.length <= 1) return null
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-3 mb-4 shadow-sm flex flex-wrap items-center gap-2">
-      <div className="text-xs uppercase tracking-wider text-gray-500 mr-2">Sim ahead:</div>
-      {presets.map(p => (
-        <button
-          key={p.key}
-          onClick={() => onRun(p)}
-          disabled={busy}
-          className="px-3 py-1.5 bg-pnw-cream text-pnw-slate hover:bg-pnw-green hover:text-white border border-pnw-green/30 rounded text-xs font-semibold disabled:opacity-40"
-          title={p.est ? `~${p.est} weeks` : ''}
-        >
-          {p.label}{p.est ? ` (${p.est}w)` : ''}
-        </button>
-      ))}
-      <div className="text-[11px] text-gray-500 ml-auto">Per-week diffs will appear below.</div>
-    </div>
-  )
-}
-
-function SimDiffPanel({ simResult, onDismiss }) {
-  const { preset, weeksAdvanced, weeklyDiffs, aggregateDiff, stoppedReason, newsEvents } = simResult
-  const { backdropProps, stopProps } = useModalDismiss(onDismiss)
-  const events = newsEvents || []
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopProps}>
-        <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white p-4 rounded-t-xl flex justify-between items-start gap-3 sticky top-0 z-10">
-          <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-wider opacity-80">Sim Recap</div>
-            <h3 className="text-xl font-bold mt-0.5">
-              {preset} <span className="text-base font-normal opacity-90">· {weeksAdvanced} week{weeksAdvanced === 1 ? '' : 's'}</span>
-            </h3>
-          </div>
-          <ModalCloseButton onClick={onDismiss} dark className="!border-white/40 !text-white" />
-        </div>
-
-        <div className="p-5 space-y-4">
-          {stoppedReason === 'postseason_boundary' && (
-            <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-900">
-              Stopped before the postseason transition. Week 13 (the last regular-season week)
-              hasn't been played yet — click <strong>Advance Week</strong> once more to play it and
-              fire the postseason bracket + end-of-year wrap.
-            </div>
-          )}
-          {stoppedReason === 'prospect_camp_boundary' && (
-            <div className="bg-red-50 border border-red-300 rounded p-2 text-xs text-red-900">
-              <strong>Stopped before Prospect Camp (Wk 13).</strong> You can't skip this — head to
-              Weekly Actions and run camp before advancing.
-            </div>
-          )}
-          {stoppedReason === 'user_games_pending' && (
-            <div className="bg-pnw-cream border border-pnw-green/40 rounded p-2 text-xs text-pnw-slate">
-              <strong>Stopped on a game week.</strong> You have games this week — Enter Game live
-              or Sim Game(s) from the top of the dashboard.
-            </div>
-          )}
-
-          {/* News events that fired during these weeks. Highlighted at the top
-              so users see coach hirings / required-action fulfillments / etc.
-              they would otherwise miss when jumping multiple weeks. */}
-          {events.length > 0 && (
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">
-                What happened ({events.length} update{events.length === 1 ? '' : 's'})
-              </div>
-              <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                {events.map(ev => (
-                  <div key={ev.id} className="text-xs flex items-start gap-2 p-2 bg-pnw-cream/40 rounded">
-                    <span className="text-[10px] text-gray-500 uppercase font-mono shrink-0 mt-0.5">Wk {ev.week}</span>
-                    <span className="text-gray-700 leading-snug">{ev.headline}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Totals</div>
-            <DiffAggregate diff={aggregateDiff} />
-          </div>
-
-          <details>
-            <summary className="cursor-pointer text-xs font-semibold text-pnw-slate hover:text-pnw-green">
-              ▾ Week-by-week breakdown
-            </summary>
-            <div className="mt-2 space-y-3">
-              {weeklyDiffs.map((d, i) => (
-                <DiffWeek key={i} diff={d} index={i + 1} />
-              ))}
-            </div>
-          </details>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function DiffAggregate({ diff }) {
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-      <DiffStat
-        label="Record"
-        before={`${diff.recordDelta.w + diff.recordDelta.l === 0 ? 'no games' : `${diff.recordDelta.w}-${diff.recordDelta.l}`}`}
-        delta={diff.recordDelta.w - diff.recordDelta.l}
-        showSign
-      />
-      <DiffStat
-        label="Budget"
-        before={`$${(diff.budgetDelta / 1000).toFixed(1)}K`}
-        delta={diff.budgetDelta}
-        showSign
-      />
-      <DiffStat
-        label="Job Security"
-        before={`${diff.jobSecurityDelta > 0 ? '+' : ''}${diff.jobSecurityDelta}`}
-        delta={diff.jobSecurityDelta}
-        showSign
-      />
-      <div className="bg-gray-50 rounded p-2 text-center">
-        <div className="text-[10px] text-gray-500 uppercase">Rating moves</div>
-        <div className="font-mono font-bold text-pnw-slate">
-          {diff.ovrChanges.length} player{diff.ovrChanges.length === 1 ? '' : 's'}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function DiffStat({ label, before, delta }) {
-  const color = delta > 0 ? 'text-green-700' : delta < 0 ? 'text-red-700' : 'text-gray-500'
-  return (
-    <div className="bg-gray-50 rounded p-2 text-center">
-      <div className="text-[10px] text-gray-500 uppercase">{label}</div>
-      <div className={'font-mono font-bold ' + color}>{before}</div>
-    </div>
-  )
-}
-
-function DiffWeek({ diff, index }) {
-  const big = diff.ovrChanges.slice(0, 6)
-  const happyMovers = diff.happinessChanges.slice(0, 4)
-  return (
-    <div className="border border-gray-300 rounded-lg p-3 bg-white">
-      <div className="text-sm font-semibold text-pnw-slate mb-2">
-        Week {index}: {diff.fromMode === 'OFFSEASON' ? `Offseason Wk ${diff.fromOffseasonWeek} → ${diff.toOffseasonWeek}` : `Season Wk ${diff.fromSeasonWeek} → ${diff.toSeasonWeek}`}
-        {(diff.recordDelta.w + diff.recordDelta.l > 0) && (
-          <span className="ml-2 font-normal text-gray-700">
-            ({diff.recordDelta.w}W-{diff.recordDelta.l}L this week)
-          </span>
-        )}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <div className="text-xs uppercase font-semibold text-gray-600 mb-1">Rating changes</div>
-          {big.length === 0 ? <div className="text-xs text-gray-500">— no rating moves this week</div> : (
-            <ul className="text-xs space-y-0.5">
-              {big.map(c => (
-                <li key={c.id} className="flex justify-between">
-                  <span className="text-gray-800">{c.name} <span className="text-gray-500">({c.pos})</span></span>
-                  <span className={c.delta > 0 ? 'text-emerald-700 font-mono font-semibold' : 'text-red-700 font-mono font-semibold'}>
-                    {c.before} → {c.after} {c.delta > 0 ? '▲' : '▼'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div>
-          <div className="text-xs uppercase font-semibold text-gray-600 mb-1">Happiness shifts</div>
-          {happyMovers.length === 0 ? <div className="text-xs text-gray-500">— no happiness moves this week</div> : (
-            <ul className="text-xs space-y-0.5">
-              {happyMovers.map(c => (
-                <li key={c.id} className="flex justify-between">
-                  <span className="text-gray-800">{c.name} <span className="text-gray-500">({c.pos})</span></span>
-                  <span className={c.delta > 0 ? 'text-emerald-700 font-mono font-semibold' : 'text-red-700 font-mono font-semibold'}>
-                    {c.before} → {c.after} {c.delta > 0 ? '▲' : '▼'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-      {diff.budgetDelta !== 0 && (
-        <div className="text-xs mt-2 text-gray-700">
-          Budget: <span className={diff.budgetDelta > 0 ? 'text-emerald-700 font-mono font-semibold' : 'text-red-700 font-mono font-semibold'}>
-            {diff.budgetDelta > 0 ? '+' : ''}${(diff.budgetDelta / 1000).toFixed(1)}K
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}

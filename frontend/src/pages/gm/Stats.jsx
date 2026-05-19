@@ -18,8 +18,7 @@ import GMShell, { PixelCard } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
 const VIEWS = [
-  { key: 'spring', label: 'Spring' },
-  { key: 'fall',   label: 'Fall' },
+  { key: 'spring', label: 'Season' },
   { key: 'career', label: 'Career' },
 ]
 
@@ -66,7 +65,6 @@ export default function Stats() {
   const archiveYears = Object.keys(save.statsArchive || {}).map(Number).sort((a, b) => b - a)
   const currentYear = save.calendar?.year
   const allSpringYears = currentYear ? [currentYear, ...archiveYears.filter(y => y !== currentYear)] : archiveYears
-  const fallYears = Object.keys(save.fallStats || {}).map(Number).sort((a, b) => b - a)
 
   return (
     <GMShell schoolName={school.name} schoolColors={school.colors}>
@@ -105,18 +103,6 @@ export default function Stats() {
           team={team}
           year={yearParam || currentYear}
           allYears={allSpringYears}
-          onYearChange={setYear}
-          accent={accent}
-          slot={slot}
-          hasAnalyticsMgr={hasAnalyticsMgr}
-        />
-      )}
-      {view === 'fall' && (
-        <FallView
-          save={save}
-          team={team}
-          year={yearParam || fallYears[0] || currentYear}
-          allYears={fallYears}
           onYearChange={setYear}
           accent={accent}
           slot={slot}
@@ -180,44 +166,6 @@ function SpringView({ save, team, year, allYears, onYearChange, accent, slot, ha
       </div>
       <BatterTable rows={batters} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
       <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} />
-    </>
-  )
-}
-
-// ─── Fall view ────────────────────────────────────────────────────────────
-
-function FallView({ save, team, year, allYears, onYearChange, accent, slot, hasAnalyticsMgr }) {
-  const stats = save.fallStats?.[year] || {}
-  const roster = team.rosterPlayerIds || []
-  const batters = []
-  const pitchers = []
-  for (const pid of roster) {
-    const player = save.players[pid]
-    if (!player) continue
-    const bs = stats[`b_${pid}`]
-    const ps = stats[`p_${pid}`]
-    if (bs && bs.ab > 0) batters.push({ player, ...bs })
-    if (ps && ps.ip > 0) pitchers.push({ player, ...ps })
-  }
-
-  return (
-    <>
-      <div className="flex items-center gap-2 mb-3 font-pixel">
-        <span className="text-[#a8a8c8]">Fall year:</span>
-        <select
-          value={year || ''}
-          onChange={e => onYearChange(parseInt(e.target.value, 10))}
-          className="bg-[#23233d] border-4 border-[#3a3a5e] text-white px-2 py-1 text-base"
-        >
-          {allYears.length === 0 && <option value={save.calendar?.year}>{save.calendar?.year}</option>}
-          {allYears.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-      </div>
-      <p className="text-xs text-[#a8a8c8] italic mb-3 font-pixel">
-        Fall scrimmage stats — kept separate from spring. Use these to evaluate who has earned a starting job heading into spring.
-      </p>
-      <BatterTable rows={batters} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} emptyMsg="No fall hitting yet." />
-      <PitcherTable rows={pitchers} save={save} accent={accent} slot={slot} hasAnalyticsMgr={hasAnalyticsMgr} emptyMsg="No fall pitching yet." />
     </>
   )
 }
