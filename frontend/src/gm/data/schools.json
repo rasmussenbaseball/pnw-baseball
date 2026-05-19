@@ -85,9 +85,7 @@
         { "id": "lewis-clark-state", "name": "Lewis-Clark State", "city": "Lewiston", "state": "ID", "nickname": "Warriors", "colors": { "primary": "#00205B", "secondary": "#FFC72C" } },
         { "id": "oregon-tech", "name": "Oregon Tech", "city": "Klamath Falls", "state": "OR", "nickname": "Owls", "colors": { "primary": "#FF6A13", "secondary": "#000000" } },
         { "id": "warner-pacific", "name": "Warner Pacific", "city": "Portland", "state": "OR", "nickname": "Knights", "colors": { "primary": "#0033A0", "secondary": "#00843D" } },
-        { "id": "northwest-naia", "name": "Northwest", "city": "Kirkland", "state": "WA", "nickname": "Eagles", "colors": { "primary": "#582C83", "secondary": "#A09E60" } },
-        { "id": "southern-oregon-naia", "name": "Southern Oregon", "city": "Ashland", "state": "OR", "nickname": "Raiders", "colors": { "primary": "#990000", "secondary": "#000000" } },
-        { "id": "walla-walla-naia", "name": "Walla Walla", "city": "College Place", "state": "WA", "nickname": "Wolves", "colors": { "primary": "#FFB81C", "secondary": "#003366" } }
+        { "id": "northwest-naia", "name": "Northwest", "city": "Kirkland", "state": "WA", "nickname": "Eagles", "colors": { "primary": "#582C83", "secondary": "#A09E60" } }
       ]
     },
     {

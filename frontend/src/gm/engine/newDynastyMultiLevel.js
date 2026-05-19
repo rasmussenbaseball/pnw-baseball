@@ -325,9 +325,17 @@ function buildUserHeadCoach(uc, school, role = 'HEAD_COACH') {
  * the level + strength so the rest of the engine doesn't see undefined.
  */
 function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, strength, level, colors }) {
-  // Universal-strength projection per the same mapping nwbbRating uses
-  const tierBase = { D1: 78, D2: 55, D3: 40, NWAC: 50 }[level] ?? 50
-  const programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * 2.0)))
+  // Universal-strength projection per the same mapping nwbbRating uses.
+  // Tuned May 2026 to widen the gap between strong + weak programs within
+  // each level so the Team OVR hierarchy matches real-world expectations:
+  //   Top D1 → ~92 OVR, bottom D1 → ~84-86
+  //   Top D2 → ~82 OVR, bottom D2 → ~73-75
+  //   Top NWAC → ~75 OVR, bottom NWAC → ~60-65
+  // Each level now uses a steeper strength slope and a slightly higher
+  // tierBase. See scripts/pnw-team-ovr-report.mjs to verify hierarchy.
+  const tierBase  = { D1: 79, D2: 60, D3: 50, NWAC: 38 }[level] ?? 50
+  const tierSlope = { D1: 3.0, D2: 3.0, D3: 2.5, NWAC: 3.4 }[level] ?? 2.0
+  const programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
 
   // Resource tier per level (rough budget proxy)
   const resourceTier = level === 'D1' ? 'D1_LITE'

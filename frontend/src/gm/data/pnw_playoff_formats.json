@@ -489,18 +489,6 @@
           "name": "Northwest",
           "city": "Kirkland",
           "state": "WA"
-        },
-        {
-          "id": "southern-oregon-naia",
-          "name": "Southern Oregon",
-          "city": "Ashland",
-          "state": "OR"
-        },
-        {
-          "id": "walla-walla-naia",
-          "name": "Walla Walla",
-          "city": "College Place",
-          "state": "WA"
         }
       ]
     },

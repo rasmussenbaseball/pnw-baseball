@@ -74,7 +74,11 @@ function meanRatingFor(programHistory, slotTier = 'bench', level = 'NAIA') {
   // Level shift on the mean — keeps the program's RELATIVE strength
   // (PH-driven) but anchors the absolute level. D1 starters average
   // ~6 OVR above an NAIA equivalent; D3 averages ~4 below.
-  const LEVEL_SHIFT = { D1: 6, D2: 2, NAIA: 0, D3: -4, NWAC: -2 }
+  // Level-shift on the rating mean. Calibrated against the user's expected
+  // Team OVR hierarchy: top D1 ~92, top NAIA ~85, top NWAC ~75, worst NWAC
+  // ~62. NWAC pushed further negative (was -2 → -7) so weak JUCOs land in
+  // the low 60s instead of a soft 70-71 floor.
+  const LEVEL_SHIFT = { D1: 8, D2: 2, NAIA: 0, D3: -4, NWAC: -7 }
   return mean + (LEVEL_SHIFT[level] ?? 0)
 }
 
@@ -151,10 +155,13 @@ function pickPlatoonDominantSide(bats, rng) {
 function generateHitterRatings(programHistory, classYear, isPureHitter, slotTier, rng, profile = null, bats = 'R', level = 'NAIA') {
   let mean = meanRatingFor(programHistory, slotTier, level) - (isPureHitter ? 0 : 10)
   mean = applyStarBump(mean, slotTier, rng)
-  // NWAC = wide spread per Nate. JUCO rosters carry future-D1 walk-ons +
-  // raw-talent kids, all in the same dugout. Bump stddev 5 points.
+  // NWAC keeps a modest spread bonus (+2 vs +5 before) — weak JUCO rosters
+  // shouldn't have D1-prospect walk-ons floating their Team OVR back into
+  // the 70s. The previous +5 was raising Grays Harbor / Douglas etc. to
+  // a soft floor in the high 60s; the user reported "the really bad NWAC
+  // schools should be closer to 60-65."
   const baseStddev = slotTier === 'starter' ? 9 : 11
-  const stddev = level === 'NWAC' ? baseStddev + 5 : baseStddev
+  const stddev = level === 'NWAC' ? baseStddev + 2 : baseStddev
   const biases = profile?.biases || {}
   const rollKey = (key, extra = 0) => Math.round(clamp(
     rng.gaussian(mean + (biases[key] || 0) + extra, stddev),

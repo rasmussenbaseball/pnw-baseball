@@ -74,24 +74,33 @@ function pearRatingForSchool(school) {
  *  - Otherwise: 50 (default)
  */
 const PROGRAM_HISTORY_OVERRIDES = {
-  // NAIA — PEAR misses some PNW programs; bring them in line
-  'lewis-clark-state':     92,   // Real-world top-3 NAIA every year
-  'bushnell':              78,
-  'oregon-tech':           75,
-  'college-of-idaho':      72,
-  'corban':                68,
-  'eastern-oregon':        60,
-  'warner-pacific':        58,
-  'british-columbia':      72,   // strong but not elite per user
-  'northwest-naia':        55,
-  'southern-oregon-naia':  64,
-  'walla-walla-naia':      55,
-  // Frontier (MT) — Carroll historically strongest, Western Montana weakest
+  // NAIA PNW — calibrated per Nate's feedback against the actual real-world
+  // hierarchy. Lewis-Clark elite, UBC clearly ahead of Bushnell, mid-tier
+  // CCC programs in the low 70s. Re-run scripts/pnw-team-ovr-report.mjs
+  // any time you tweak these values to see the resulting Team OVR.
+  //
+  // Approx mapping with the current roster generator:
+  //   PH 94 → Team OVR 85   (Lewis-Clark — real-world top NAIA)
+  //   PH 80 → Team OVR 82   (UBC — top tier CCC after LCSC)
+  //   PH 72 → Team OVR 80   (Bushnell)
+  //   PH 60 → Team OVR 77-78 (College of Idaho, Oregon Tech)
+  //   PH 32 → Team OVR 73   (Corban, Eastern Oregon)
+  //   PH 28 → Team OVR 72   (Warner Pac, Northwest)
+  'lewis-clark-state':     94,
+  'british-columbia':      80,
+  'bushnell':              72,
+  'oregon-tech':           60,
+  'college-of-idaho':      60,
+  'corban':                32,
+  'eastern-oregon':        32,
+  'warner-pacific':        28,
+  'northwest-naia':        28,
+  // Frontier (MT)
   'carroll-montana-naia':  78,
-  'providence-naia':       62,
-  'rocky-mountain-naia':   72,
-  'montana-tech-naia':     65,
-  'montana-western-naia':  55,
+  'rocky-mountain-naia':   60,
+  'montana-tech-naia':     35,
+  'providence-naia':       28,
+  'montana-western-naia':  22,
 }
 
 // ─── Hand-coded resource tiers for well-known programs ────────────────────────
