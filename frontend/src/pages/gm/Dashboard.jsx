@@ -231,10 +231,15 @@ export default function Dashboard() {
       }
     }
     // Auto mode short-circuits the gate checks — runAutoActions resolves any
-    // open required action before we get here.
+    // open required action before we get here. Capture the actions so we can
+    // surface them in the Week Recap modal (not just the news feed) — the
+    // condensed month-turns hand auto ~100 AP and the user wants to see how
+    // it was spent.
+    let autoActionsThisAdvance = null
     if (autoOn) {
       const auto = runAutoActions(save)
       if (auto.actionsTaken.length > 0) {
+        autoActionsThisAdvance = auto.actionsTaken
         save.newsfeed = save.newsfeed || []
         save.newsfeed.unshift({
           id: `auto_${save.calendar.year}_${save.calendar.weekOfYear}_${Math.random().toString(36).slice(2, 5)}`,
@@ -289,6 +294,7 @@ export default function Dashboard() {
         to: save.calendar.offseasonWeek,
         phase: offseasonPhase(save.calendar.offseasonWeek),
         diff,
+        autoActions: autoActionsThisAdvance,
       })
     } else if (mode === 'SEASON') {
       const crossingIntoPostseason = (save.calendar.seasonWeek ?? 0) >= 13
@@ -328,7 +334,7 @@ export default function Dashboard() {
           setSave({ ...save })
           const afterSnap = snapshotState(save)
           const diff = diffSnapshots(beforeSnap, afterSnap)
-          setLastWeekRecap({ kind: 'season', results: summary.userResults, diff })
+          setLastWeekRecap({ kind: 'season', results: summary.userResults, diff, autoActions: autoActionsThisAdvance })
         } catch (err) {
           console.error('advanceWeek failed:', err)
           gmToast('Sim failed — see console for details. State was not saved.', 'warn')
@@ -1451,36 +1457,49 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
   const ap = save.ap?.currentWeek ?? 0
   const apActive = wk >= 4   // AP unlocks in wk 4
 
-  // Ordered checklist. Each item: { label, detail, done, to, urgent }.
+  const yr = save.calendar?.year
+  // Ordered checklist. Each item: { label, detail, done, to, linkLabel, urgent }.
   const tasks = []
   // 1. Required action for the week (schedule / hire / budget / scout / camp).
   if (req) {
     const done = req.isComplete(save)
+    const isCamp = req.key === 'PROSPECT_CAMP'
     tasks.push({
       label: req.label,
-      detail: done ? (req.doneText || 'Done') : req.blurb,
+      detail: done
+        ? (isCamp ? 'Camp held — see who attended + the scouting info you gained' : (req.doneText || 'Done'))
+        : req.blurb,
       done,
-      to: req.route ? `${req.route}?slot=${slot}` : null,
+      // Done prospect camp links to its results view; other done tasks have
+      // no link. Pending tasks link to where you complete them.
+      to: done ? (isCamp ? `/gm/weekly?slot=${slot}` : null) : (req.route ? `${req.route}?slot=${slot}` : null),
+      linkLabel: done ? (isCamp ? 'View results' : null) : 'Go',
       urgent: !done,
     })
   }
-  // 2. Schedule completeness (offseason only).
+  // 2. Calendar events for THIS turn that aren't the hard required action —
+  // so important dates (summer ball planning, camp invite windows) always
+  // surface on the to-do list and don't get silently skipped.
+  for (const ct of buildCalendarTasks(save, slot)) tasks.push(ct)
+  // 3. Schedule completeness (offseason only).
   if (inOffseason && openSchedSlots.length > 0) {
     tasks.push({
       label: 'Fill your schedule',
       detail: `${openSchedSlots.length} open weekend slot${openSchedSlots.length === 1 ? '' : 's'} on the ${seasonYear} schedule`,
       done: false,
       to: `/gm/schedule?slot=${slot}`,
+      linkLabel: 'Go',
       urgent: true,
     })
   }
-  // 3. Spend all AP.
+  // 4. Spend all AP.
   if (apActive) {
     tasks.push({
       label: 'Spend all your AP',
       detail: ap > 0 ? `${ap} AP left — unused AP is wasted` : 'All AP spent',
       done: ap === 0,
       to: ap > 0 ? `/gm/recruiting?slot=${slot}` : null,
+      linkLabel: 'Go',
       urgent: ap > 0,
     })
   }
@@ -1515,12 +1534,12 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center gap-2">
-                <span className={'font-semibold ' + (t.done ? 'text-gray-400 line-through' : t.urgent ? 'text-amber-800' : 'text-gray-700')}>
+                <span className={'font-semibold ' + (t.done && !t.linkLabel ? 'text-gray-400 line-through' : t.done ? 'text-gray-500' : t.urgent ? 'text-amber-800' : 'text-gray-700')}>
                   {t.label}
                 </span>
-                {!t.done && t.to && <Link to={t.to} className="text-pnw-green hover:underline shrink-0">Go</Link>}
+                {t.to && t.linkLabel && <Link to={t.to} className="text-pnw-green hover:underline shrink-0">{t.linkLabel}</Link>}
               </div>
-              {!t.done && <div className="text-[11px] text-gray-500 leading-snug">{t.detail}</div>}
+              <div className="text-[11px] text-gray-500 leading-snug">{t.detail}</div>
             </div>
           </div>
         ))}
@@ -1567,6 +1586,40 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
       </div>
     </div>
   )
+}
+
+// Notable calendar events for the current turn that aren't the hard required
+// action — so big dates (summer ball planning, camp invite windows) always
+// show on the to-do list instead of silently auto-resolving. Each is a normal
+// checklist item with a done state + link.
+function buildCalendarTasks(save, slot) {
+  const wk = save.calendar?.weekOfYear ?? 0
+  const yr = save.calendar?.year
+  const out = []
+  // Camp invite windows (Wks 5 + 9, the October turn).
+  if (wk === 5 || wk === 9) {
+    const invited = (save.prospectCamp?.invitedIds || []).length
+    out.push({
+      label: 'Prospect camp invite window',
+      detail: invited > 0 ? `${invited} recruit${invited === 1 ? '' : 's'} invited so far` : 'Invite recruits to your prospect camp',
+      done: invited > 0,
+      to: `/gm/recruiting?slot=${slot}`,
+      linkLabel: 'Invite',
+    })
+  }
+  // Summer ball planning (Wk 18 — the December turn). Not a hard gate.
+  if (wk === 18) {
+    const done = save.summerBall?.year === yr
+      && Object.values(save.summerBall?.assignments || {}).some(a => a && !a.removed)
+    out.push({
+      label: 'Summer ball planning',
+      detail: done ? 'Assignments set — review or adjust' : 'Assign players to summer leagues for next summer',
+      done,
+      to: `/gm/summer?slot=${slot}`,
+      linkLabel: done ? 'Review' : 'Plan',
+    })
+  }
+  return out
 }
 
 // Non-mandatory, contextual "worth a look" suggestions. ROTATES weekly so the
@@ -2223,6 +2276,22 @@ function WeekRecapModal({ recap, save, onDismiss }) {
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Auto-mode actions taken this turn — surfaced here (not just in
+              the news feed) so the month-turn AP spend is visible. */}
+          {recap.autoActions && recap.autoActions.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-bold mb-2">Auto mode handled</div>
+              <div className="space-y-1">
+                {recap.autoActions.map((a, i) => (
+                  <div key={i} className="text-xs flex items-start gap-2 p-2 bg-emerald-50 rounded">
+                    <span className="text-emerald-600 shrink-0 mt-0.5">●</span>
+                    <span className="text-gray-700 leading-snug">{a}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Events fired this week — hires, schedule completion, etc. */}
           {recentEvents.length > 0 && (
             <div>

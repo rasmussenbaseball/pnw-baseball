@@ -166,11 +166,33 @@ export function isActionAvailable(actionDef, currentPhase) {
   return actionDef.availableIn.includes(currentPhase)
 }
 
+// The condensed month-turns (October wk 9, November wk 13, December wk 18)
+// each simulate ~4 weeks, so any once-per-week action can be repeated up to
+// 4 times during them. Every other turn keeps the standard 1-use cap.
+const CONDENSED_MONTH_ANCHORS = new Set([9, 13, 18])
+
+export function maxActionUsesThisTurn(state) {
+  const wk = state?.calendar?.weekOfYear ?? 0
+  return CONDENSED_MONTH_ANCHORS.has(wk) ? 4 : 1
+}
+
+/** How many times `actionKey` has been used this turn. */
+export function actionUsesThisTurn(state, actionKey) {
+  return (state.weeklyActionsUsed || []).filter(x => x === actionKey || x?.key === actionKey).length
+}
+
+/** Uses still available this turn for `actionKey`. */
+export function actionUsesRemaining(state, actionKey) {
+  return Math.max(0, maxActionUsesThisTurn(state) - actionUsesThisTurn(state, actionKey))
+}
+
 export function isActionUsedThisWeek(state, actionKey) {
-  return (state.weeklyActionsUsed || []).includes(actionKey)
+  // "Used up" = no uses remaining this turn (1 normally, 4 in condensed months).
+  return actionUsesRemaining(state, actionKey) <= 0
 }
 
 export function markActionUsedThisWeek(state, actionKey) {
   if (!state.weeklyActionsUsed) state.weeklyActionsUsed = []
-  if (!state.weeklyActionsUsed.includes(actionKey)) state.weeklyActionsUsed.push(actionKey)
+  // Push every time so repeat uses are counted (condensed months allow 4).
+  state.weeklyActionsUsed.push(actionKey)
 }

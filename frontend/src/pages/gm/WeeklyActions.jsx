@@ -6,7 +6,7 @@ import {
   fundraise, simProspectCamp, predictCampTurnout,
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
-import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek } from '../../gm/engine/weeklyActions'
+import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek, actionUsesRemaining, maxActionUsesThisTurn } from '../../gm/engine/weeklyActions'
 import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
 import { applyMeetingBoost, ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
@@ -366,11 +366,13 @@ export default function WeeklyActions() {
       )}
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-1">Team Practice / Development</h2>
-      <p className="text-[11px] text-gray-500 mb-3">Permanent boosts stick; Temporary boosts give a bigger bump but wear off after 4 weeks. Once per week each.</p>
+      <p className="text-[11px] text-gray-500 mb-3">Permanent boosts stick; Temporary boosts give a bigger bump but wear off after 4 weeks. Once per turn each — up to 4× during the condensed month turns (Oct/Nov/Dec).</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
         {Object.values(WEEKLY_ACTIONS).map(a => {
           const available = isActionAvailable(a, currentPhase)
-          const usedThisWeek = isActionUsedThisWeek(save, a.key)
+          const usesLeft = actionUsesRemaining(save, a.key)
+          const maxUses = maxActionUsesThisTurn(save)
+          const usedThisWeek = usesLeft <= 0
           const baseDisabled = !available || usedThisWeek
           const targetLabel = a.target === 'hitters' ? 'hitters' : a.target === 'pitchers' ? 'pitchers' : 'all players'
           const keysLabel = a.ratingKey === '__velocity' ? 'Velocity' : prettyLabel(a.ratingKey)
@@ -378,7 +380,9 @@ export default function WeeklyActions() {
             <div key={a.key} className={'rounded-lg border p-3 ' + (baseDisabled ? 'border-gray-200 bg-gray-50 opacity-70' : 'border-gray-200 bg-white')}>
               <div className="flex justify-between items-baseline mb-1">
                 <div className="text-sm font-semibold text-pnw-slate">{a.emoji} {a.label}</div>
-                {usedThisWeek && <span className="text-[10px] text-green-700 font-bold"> used this week</span>}
+                {usedThisWeek
+                  ? <span className="text-[10px] text-green-700 font-bold">used up this period</span>
+                  : maxUses > 1 && <span className="text-[10px] text-gray-500 font-bold">{usesLeft}/{maxUses} uses left</span>}
               </div>
               <div className="text-[11px] text-gray-600 mb-2">
                 {a.blurb} • Targets <strong>{keysLabel}</strong> ({targetLabel}).

@@ -250,9 +250,16 @@ export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
     save.calendar?.year, save.seed || 1,
   )
   if (!save.prospectCamp) save.prospectCamp = {}
+  // Store the SAME shape the manual WeeklyActions path uses so the
+  // "Held this year" results view (which reads attendeeIds / attendees /
+  // fee) renders auto-run camps correctly instead of "No attendees recorded."
+  const attendeeIds = result?.attendeeIds || []
   save.prospectCamp.year = save.calendar?.year
-  save.prospectCamp.attendees = result?.attendeeIds || []
+  save.prospectCamp.attendeeIds = attendeeIds
+  save.prospectCamp.attendees = attendeeIds.length
+  save.prospectCamp.fee = fee
   save.prospectCamp.revenue = result?.revenue || 0
+  save.prospectCamp.held = true
   if (result?.cancelled) {
     summary.actionsTaken.push('Prospect camp had no takers — skipped')
   } else {
@@ -658,96 +665,72 @@ function hasRecruitingNeeds(save) {
   return recruits.some(r => r.status === 'open')
 }
 
-function spendRecruiting(save, ap) {
-  // Pick the recruit that's most worth touching this week. Score combines:
-  //   - estimated OVR (skill-weighted)
-  //   - existing interest with us
-  //   - inverse of scouting fog (we want to clarify cloudy players)
-  // Then apply the cheapest impactful action we can afford.
+function spendRecruiting(save, apBudget) {
+  // Work the recruiting board until the AP budget is used up. MULTI-PASS:
+  // re-scores + re-touches the top recruits each pass so a big monthly AP
+  // budget (the condensed Oct/Nov/Dec turns hand auto ~100 AP) actually digs
+  // deep on the top targets instead of one shallow touch each. Offers go out
+  // aggressively — by January a program should have several commits.
   const userSchoolId = save.userSchoolId
-  const recruits = Object.values(save.recruits || {})
-    .filter(r => r.status === 'open')
-  if (recruits.length === 0) return 0
-  const scored = recruits.map(r => {
-    const grade = r.scoutGrades?.[userSchoolId]
-    const interest = grade?.interest ?? 0
-    const fog = grade?.noise ?? 15
-    const ovr = avgEstOvr(r)
-    // Higher OVR + decent fit interest = priority. Add fog so we're nudged
-    // to scout the unknowns. Penalize already-signed elsewhere recruits.
-    return { r, score: ovr * 1.0 + interest * 0.5 + fog * 0.4 }
-  }).sort((a, b) => b.score - a.score)
-  const top = scored.slice(0, 30)
+  if (Object.values(save.recruits || {}).filter(r => r.status === 'open').length === 0) return 0
   const rng = makeRng('autoRecruit', save.calendar?.year, save.calendar?.weekOfYear, save.seed || 1)
-
   let spent = 0
-  for (const { r } of top) {
-    if (ap - spent < 1) break
-    const grade = r.scoutGrades?.[userSchoolId]
-    const interest = grade?.interest ?? 0
-    const fog = grade?.noise ?? 15
-    const ovr = avgEstOvr(r)
-    // Pick the action. The dollar cost is in AP only.
-    //   high fog (≥10) + AP ≥ 4 SCOUT_TRIP
-    //   high fog (≥10) + AP < 4 CALL
-    //   low fog + interest < 50 + AP ≥ 2 ASSISTANT_TALK
-    //   low fog + interest 50-80 + AP ≥ 5 HOME_VISIT
-    //   low fog + interest 80+ + AP ≥ 6 CAMPUS_VISIT (the closer)
-    //   default TEXT (1 AP)
-    let action
-    if (fog >= 10 && ap - spent >= ACTION_TYPES.SCOUT_TRIP.apCost) action = ACTION_TYPES.SCOUT_TRIP
-    else if (interest >= 80 && ap - spent >= ACTION_TYPES.CAMPUS_VISIT.apCost) action = ACTION_TYPES.CAMPUS_VISIT
-    else if (interest >= 50 && ap - spent >= ACTION_TYPES.HOME_VISIT.apCost) action = ACTION_TYPES.HOME_VISIT
-    else if (interest < 50 && ap - spent >= ACTION_TYPES.ASSISTANT_TALK.apCost) action = ACTION_TYPES.ASSISTANT_TALK
-    else action = ACTION_TYPES.TEXT
-    if (ap - spent < action.apCost) continue
-    // Don't repeat the same action on the same recruit (engine already
-    // enforces, but checking here saves a wasted call)
-    const alreadyApplied = (grade?.actionsApplied || []).includes(action.key)
-    if (alreadyApplied) {
-      // Fall back to TEXT (which has no one-shot constraint in practice)
-      action = ACTION_TYPES.TEXT
-      if (ap - spent < action.apCost) continue
-    }
-    try {
-      applyRecruitingAction(r, userSchoolId, action, rng)
-      save.ap.currentWeek -= action.apCost
-      save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
-      spent += action.apCost
-    } catch (err) {
-      // Action couldn't apply — skip this recruit
-      continue
-    }
-    // Re-read the grade so offer decisions reflect the action we just
-    // applied (which usually bumped interest + dropped noise). Previously
-    // we used the PRE-action grade, which made offers ~impossible to
-    // trigger — the action could lift interest to 72 but the check still
-    // saw 65 and bailed.
-    const postGrade = r.scoutGrades?.[userSchoolId]
-    const postInterest = postGrade?.interest ?? interest
-    const postFog = postGrade?.noise ?? fog
-    // Extend an offer when:
-    //   - they're a fit (ovr ≥ 55), AND
-    //   - we know enough about them (post-action fog ≤ 8), AND
-    //   - they like us (post-action interest ≥ 55) OR they LOVE us (≥ 70
-    //     regardless of fog), AND
-    //   - we haven't blown past the offer cap (room for the rest of the
-    //     class to commit + later signees).
-    // Costs $$ from the scholarship pool, not AP.
-    if (!r.liveOffer && ovr >= 55 && countActiveOffers(save, userSchoolId) < 25) {
-      const wellLiked = postInterest >= 70
-      const standardFit = postInterest >= 55 && postFog <= 8
-      if (wellLiked || standardFit) {
-        const offerAmount = computeAutoOffer(save, r, ovr)
-        if (offerAmount > 0) {
-          try {
-            setLiveOffer(r, userSchoolId, offerAmount)
-          } catch (err) {
-            // Pool exhausted — silent skip
+  let safety = 0
+  while (spent < apBudget && safety < 500) {
+    safety++
+    const open = Object.values(save.recruits || {}).filter(r => r.status === 'open')
+    if (open.length === 0) break
+    const scored = open.map(r => {
+      const grade = r.scoutGrades?.[userSchoolId]
+      const interest = grade?.interest ?? 0
+      const fog = grade?.noise ?? 15
+      const ovr = avgEstOvr(r)
+      return { r, interest, fog, ovr, score: ovr * 1.0 + interest * 0.6 + fog * 0.25 }
+    }).sort((a, b) => b.score - a.score)
+    const top = scored.slice(0, 25)
+    let didSomething = false
+    for (const { r, interest, fog, ovr } of top) {
+      if (apBudget - spent < 1) break
+      // Action ladder: clear the fog first, then build interest, then close.
+      let action
+      if (fog >= 8 && apBudget - spent >= ACTION_TYPES.SCOUT_TRIP.apCost) action = ACTION_TYPES.SCOUT_TRIP
+      else if (interest >= 70 && apBudget - spent >= ACTION_TYPES.CAMPUS_VISIT.apCost) action = ACTION_TYPES.CAMPUS_VISIT
+      else if (interest >= 45 && apBudget - spent >= ACTION_TYPES.HOME_VISIT.apCost) action = ACTION_TYPES.HOME_VISIT
+      else if (apBudget - spent >= ACTION_TYPES.ASSISTANT_TALK.apCost) action = ACTION_TYPES.ASSISTANT_TALK
+      else action = ACTION_TYPES.TEXT
+      if (apBudget - spent < action.apCost) continue
+      // Skip already-applied one-shot actions; TEXT is always repeatable.
+      const grade = r.scoutGrades?.[userSchoolId]
+      if ((grade?.actionsApplied || []).includes(action.key)) {
+        action = ACTION_TYPES.TEXT
+        if (apBudget - spent < action.apCost) continue
+      }
+      try {
+        applyRecruitingAction(r, userSchoolId, action, rng)
+        save.ap.currentWeek -= action.apCost
+        save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
+        spent += action.apCost
+        didSomething = true
+      } catch (err) {
+        continue
+      }
+      // OFFER — loosened a lot. We extend a scholarship once a fit recruit
+      // shows real interest OR we've invested enough scouting to know they're
+      // worth it. Fog is about how much we KNOW, not whether to commit $, so
+      // it no longer gates the offer. Costs $$ from the pool, not AP.
+      const pg = r.scoutGrades?.[userSchoolId]
+      const pInterest = pg?.interest ?? interest
+      const apOnThem = pg?.apSpent ?? 0
+      if (!r.liveOffer && ovr >= 50 && countActiveOffers(save, userSchoolId) < 25) {
+        if (pInterest >= 45 || apOnThem >= 6 || (pInterest >= 35 && ovr >= 68)) {
+          const offerAmount = computeAutoOffer(save, r, ovr)
+          if (offerAmount > 0) {
+            try { setLiveOffer(r, userSchoolId, offerAmount) } catch (err) { /* pool tapped */ }
           }
         }
       }
     }
+    if (!didSomething) break
   }
   return spent
 }
