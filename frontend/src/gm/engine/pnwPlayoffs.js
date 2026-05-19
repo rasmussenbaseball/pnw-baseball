@@ -317,6 +317,319 @@ export function runConferenceTournament(confId, seededTeams, simGame, seedKey) {
   return { format: 'DOUBLE_ELIM', games: r.games, champion: r.champion, fieldSize: seededTeams.length }
 }
 
+// ─── D1 / D2 / D3 full national bracket runner ─────────────────────────────
+//
+// All ~308 D1 / 256 D2 / 384 D3 teams live in non_naia_teams.json with
+// PEAR strength ratings + pearConference labels. We use that data to:
+//   - Sim each conference's auto-bid champion (a quick stochastic pick
+//     weighted toward the conf's top-strength teams — not a full bracket
+//     because we don't carry full schedules nationally).
+//   - Fill the at-large field by overall rating until field size is met.
+//   - Run real bracket sims at every stage (regionals, super regionals,
+//     CWS) via simDoubleElim / simBestOfN, with the user's team plugged
+//     in at its true seed if they qualify.
+//
+// Per-level structure:
+//   D1: 64 teams → 16 regional sites × 4 (double-elim) → 16 winners
+//                → 8 super regional sites × 2 (best-of-3) → 8 to CWS
+//                → 8-team double-elim CWS (best-of-3 final)
+//   D2: 56 teams → 8 regional sites × 7 (double-elim) → 8 winners
+//                → 8-team double-elim D2 WS (best-of-3 final)
+//   D3: 56 teams → 8 regional sites × 7 (double-elim) → 8 winners
+//                → 8-team double-elim D3 WS (best-of-3 final)
+//
+// The runner emits a complete bracket structure plus a userPath block so
+// the postseason UI can render the user's road through the tournament.
+
+const FIELD_CONFIG = {
+  D1: { fieldSize: 64, regionalSites: 16, perSite: 4, hasSuper: true,  wsField: 8 },
+  D2: { fieldSize: 56, regionalSites: 8,  perSite: 7, hasSuper: false, wsField: 8 },
+  D3: { fieldSize: 56, regionalSites: 8,  perSite: 7, hasSuper: false, wsField: 8 },
+}
+
+/**
+ * Strength → effective rating for fastSimGame compatibility. The user's
+ * team uses its real nwbbRating; everyone else uses the PEAR strength
+ * with a small yearly perturbation so the same conferences don't crown
+ * the same champion every year.
+ */
+function ratingForTeamInNationalSim(team, isUser, userRating, rng) {
+  if (isUser) {
+    const r = userRating ?? 60
+    return {
+      overall_rating: (r - 60) / 5,
+      offense_rating: (r - 60) / 10,
+      pitching_rating: (r - 60) / 10,
+    }
+  }
+  const baseStrength = team.strength ?? 0
+  // Add a small per-team noise so the rating drifts a little each year
+  const noise = (rng.next() - 0.5) * 1.5
+  const s = baseStrength + noise
+  return {
+    overall_rating: s,
+    offense_rating: s * 0.5,
+    pitching_rating: s * 0.5,
+  }
+}
+
+/**
+ * Pick a conference's auto-bid champion. Weighted by strength (top team
+ * wins ~55% of the time, runners-up share the rest). Avoids needing to
+ * sim a 5-game double-elim per conference × 30 conferences.
+ */
+function pickConferenceAutoBid(teamsInConf, rng) {
+  if (teamsInConf.length === 0) return null
+  if (teamsInConf.length === 1) return teamsInConf[0]
+  // Weighted draw — strength^3 over the top 4 teams favors the top dog.
+  const top = [...teamsInConf]
+    .sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0))
+    .slice(0, Math.min(4, teamsInConf.length))
+  const weights = top.map(t => Math.max(0.1, Math.pow(((t.strength ?? 0) + 5), 3)))
+  const total = weights.reduce((s, w) => s + w, 0)
+  let r = rng.next() * total
+  for (let i = 0; i < top.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return top[i]
+  }
+  return top[0]
+}
+
+/**
+ * Build the national field for a level. Returns the seeded list of
+ * qualifiers (#1 overall first), plus separate auto-bid + at-large
+ * arrays for display.
+ */
+function buildNationalField(state, level, nonNaiaTeamsByLevel, rng) {
+  const cfg = FIELD_CONFIG[level]
+  if (!cfg) return null
+  // Universe = every non-NAIA team at this level + user school if at level.
+  const universe = [...nonNaiaTeamsByLevel]
+  // Inject the user school as a synthetic "team" entry so it can win an
+  // auto-bid via their own conference. Use their nwbbRating-derived
+  // strength so they compete fairly.
+  const userSchoolId = state.userSchoolId
+  const userSchool = state.schools[userSchoolId]
+  let userTeamEntry = null
+  if (userSchool && state.level === level) {
+    // Map nwbbRating to a strength on the same scale (rating ~60 = strength 0)
+    const userRating = state.nwbbRatings?.[userSchoolId]?.rating ?? 60
+    userTeamEntry = {
+      id: userSchoolId,
+      name: userSchool.name,
+      pearConference: getUserConferenceName(state, level) || '_USER_INDEP',
+      strength: (userRating - 60) / 5,
+      _isUser: true,
+    }
+    universe.push(userTeamEntry)
+  }
+  // Group by conference. Skip teams with no conference (independents stay
+  // out of the auto-bid pool but can still earn an at-large).
+  const byConf = {}
+  for (const t of universe) {
+    if (!t.pearConference) continue
+    if (!byConf[t.pearConference]) byConf[t.pearConference] = []
+    byConf[t.pearConference].push(t)
+  }
+  // One auto-bid per conference
+  const autoBids = []
+  for (const conf of Object.keys(byConf)) {
+    const champ = pickConferenceAutoBid(byConf[conf], rng)
+    if (champ) autoBids.push(champ)
+  }
+  // At-large pool — top remaining by strength
+  const autoIds = new Set(autoBids.map(t => t.id))
+  const atLargePool = universe.filter(t => !autoIds.has(t.id))
+    .sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0))
+  const slotsRemaining = cfg.fieldSize - autoBids.length
+  const atLargeBids = atLargePool.slice(0, Math.max(0, slotsRemaining))
+  // Field seeding — overall by strength descending. #1 seed = highest
+  // strength overall.
+  const fullField = [...autoBids, ...atLargeBids]
+    .sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0))
+
+  return {
+    seededField: fullField,
+    autoBids,
+    atLargeBids,
+    userInField: !!userTeamEntry && fullField.some(t => t.id === userTeamEntry.id),
+    userBidType: !!userTeamEntry && autoBids.some(t => t.id === userTeamEntry.id) ? 'auto'
+      : (!!userTeamEntry && atLargeBids.some(t => t.id === userTeamEntry.id) ? 'at-large' : null),
+  }
+}
+
+/** Find the user's conference (PEAR name) — needed for the auto-bid path. */
+function getUserConferenceName(state, level) {
+  const userSchoolId = state.userSchoolId
+  if (!userSchoolId) return null
+  // PNW conference id → PEAR name mapping
+  const PNW_CONF_TO_PEAR = {
+    BIG_TEN: 'Big Ten', WCC: 'West Coast', WAC: 'Western Athletic',
+    GNAC: 'Great Northwest Athletic', NWC: 'Northwest Conference',
+  }
+  const confId = state.schools[userSchoolId]?.conferenceId
+  return PNW_CONF_TO_PEAR[confId] || null
+}
+
+/**
+ * Run regionals — split the seeded field across regional sites, sim
+ * double-elim at each, return site winners.
+ */
+function runRegionals(seededField, cfg, simGame, seedKey) {
+  // Distribute teams across sites using snake seeding so each site gets
+  // a balanced mix of seeds (#1 to site 1, #16 to site 1; #2 to site 2,
+  // #17 to site 2, ...). Standard NCAA practice.
+  const sites = Array.from({ length: cfg.regionalSites }, () => [])
+  let dir = 1
+  let idx = 0
+  for (let i = 0; i < seededField.length; i++) {
+    sites[idx].push(seededField[i])
+    idx += dir
+    if (idx === cfg.regionalSites) { idx = cfg.regionalSites - 1; dir = -1 }
+    else if (idx === -1) { idx = 0; dir = 1 }
+  }
+  const siteResults = []
+  for (let s = 0; s < sites.length; s++) {
+    const teams = sites[s].slice(0, cfg.perSite)
+    if (teams.length < 2) {
+      siteResults.push({ siteIndex: s, host: teams[0]?.id || null, teams: teams.map(t => t.id), games: [], winner: teams[0]?.id || null })
+      continue
+    }
+    const teamIds = teams.map(t => t.id)
+    const r = simDoubleElim(teamIds, simGame, `${seedKey}_reg${s}`)
+    siteResults.push({
+      siteIndex: s,
+      host: teamIds[0],   // #1 seed in the regional hosts
+      teams: teamIds,
+      games: r.games,
+      winner: r.champion,
+    })
+  }
+  return {
+    sites: siteResults,
+    winners: siteResults.map(r => r.winner).filter(Boolean),
+  }
+}
+
+/**
+ * Run super regionals — pair regional winners by overall seed and play
+ * best-of-3. Used by D1 + D3. (D2 skips this round — regional winners
+ * go straight to WS.)
+ */
+function runSuperRegionals(regionalWinners, seededField, simGame, seedKey) {
+  // Sort winners by their original overall seed so #1 plays #16, etc.
+  const winnerSet = new Set(regionalWinners)
+  const ordered = seededField
+    .map(t => t.id)
+    .filter(id => winnerSet.has(id))
+  const pairs = []
+  // Standard pairing: 1v16, 2v15, ... 8v9
+  const n = ordered.length
+  for (let i = 0; i < n / 2; i++) {
+    const hi = ordered[i]
+    const lo = ordered[n - 1 - i]
+    if (!hi || !lo || hi === lo) continue
+    pairs.push([hi, lo])
+  }
+  const pairResults = []
+  for (let p = 0; p < pairs.length; p++) {
+    const [host, visitor] = pairs[p]
+    const r = simBestOfN(host, visitor, simGame, `${seedKey}_super${p}`, 3)
+    pairResults.push({
+      pairIndex: p,
+      host,
+      visitor,
+      games: r.games,
+      winner: r.champion,
+      homeWins: r.homeWins,
+      awayWins: r.awayWins,
+    })
+  }
+  return {
+    pairs: pairResults,
+    winners: pairResults.map(r => r.winner).filter(Boolean),
+  }
+}
+
+/**
+ * Pull the user's path through a national bracket — what site they played
+ * in, whether they won regionals / super regionals, whether they reached
+ * + won the WS. Used by the postseason news + recap UI.
+ */
+export function summarizeNationalUserPath(result, userSchoolId) {
+  if (!result || !userSchoolId) return { qualified: false }
+  const inField = (result.field?.seededField || []).some(t => t.id === userSchoolId)
+  if (!inField) return { qualified: false }
+  const region = (result.regionals?.sites || []).find(s => s.teams.includes(userSchoolId))
+  const wonRegion = region?.winner === userSchoolId
+  let inSuper = false, wonSuper = false, superPair = null
+  if (result.superRegionals) {
+    superPair = (result.superRegionals.pairs || []).find(p => p.host === userSchoolId || p.visitor === userSchoolId)
+    inSuper = !!superPair
+    wonSuper = superPair?.winner === userSchoolId
+  }
+  const inWS = (result.worldSeries?.qualifiers || []).includes(userSchoolId)
+  const wonWS = result.worldSeries?.champion === userSchoolId
+  return {
+    qualified: true,
+    bidType: result.field?.userBidType,
+    region,
+    wonRegion,
+    superPair,
+    inSuper,
+    wonSuper,
+    inWS,
+    wonWS,
+    seed: (result.field?.seededField || []).findIndex(t => t.id === userSchoolId) + 1,
+  }
+}
+
+/**
+ * Top-level: run the full D1/D2/D3 national bracket.
+ *
+ * @param {object} state
+ * @param {'D1'|'D2'|'D3'} level
+ * @param {Array} nonNaiaTeamsByLevel  — teams from non_naia_teams.json at this level
+ * @param {(h: string, a: string, key: string) => { homeRuns: number, awayRuns: number }} simGame
+ * @param {string} seedKey
+ */
+export function runNationalBracketFull(state, level, nonNaiaTeamsByLevel, simGame, seedKey) {
+  const cfg = FIELD_CONFIG[level]
+  if (!cfg) return null
+  const rng = makeRng('natbracket', seedKey)
+  // 1. Field selection
+  const field = buildNationalField(state, level, nonNaiaTeamsByLevel, rng)
+  if (!field) return null
+  // 2. Regionals
+  const regionals = runRegionals(field.seededField, cfg, simGame, seedKey)
+  // 3. Super regionals (D1 + D3) or skip (D2)
+  let superRegionals = null
+  let wsField = regionals.winners.slice(0, cfg.wsField)
+  if (cfg.hasSuper) {
+    superRegionals = runSuperRegionals(regionals.winners, field.seededField, simGame, seedKey)
+    wsField = superRegionals.winners.slice(0, cfg.wsField)
+  }
+  // 4. World Series — 8-team double-elim (champ has to beat losers-bracket
+  // winner twice if necessary, per simDoubleElim semantics).
+  let worldSeries = null
+  if (wsField.length >= 2) {
+    const de = simDoubleElim(wsField, simGame, `${seedKey}_ws`)
+    worldSeries = {
+      qualifiers: wsField,
+      games: de.games,
+      champion: de.champion,
+    }
+  }
+  return {
+    level,
+    field,
+    regionals,
+    superRegionals,
+    worldSeries,
+    nationalChampion: worldSeries?.champion || null,
+  }
+}
+
 // ─── NWAC full playoff runner ─────────────────────────────────────────────
 //
 // Implements the format Nate specified:

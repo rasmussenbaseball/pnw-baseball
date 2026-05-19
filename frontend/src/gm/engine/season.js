@@ -23,7 +23,7 @@ import { maybeFireRandomEvent } from './randomEvents'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
 import { computeWeeklyAwards } from './weeklyAwards'
-import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, runNwacPlayoffs, summarizeNwacUserPath } from './pnwPlayoffs'
+import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, runNwacPlayoffs, summarizeNwacUserPath, runNationalBracketFull, summarizeNationalUserPath } from './pnwPlayoffs'
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
@@ -901,17 +901,60 @@ function runPostseasonMultiLevel(state) {
     state.teams[state.userSchoolId].runDiff += userRuns - oppRuns
   }
 
-  // National bracket — simplified deterministic sim. Conference champion
-  // (if user) gets bracket spots through to the world series. We can't sim
-  // every D1/D2/D3/NWAC program nationally (we don't track their game
-  // results), so we use a per-level "fast" simulation against the host's
-  // universal-strength rating from the non_naia_teams pool.
-  const natSpec = nationalSpecForLevel(level)
-  let national = null
-  if (userChamp && natSpec) {
-    national = simNationalBracketStub(state, level, natSpec)
+  // ── Full national bracket (D1/D2/D3) ────────────────────────────────
+  // Real bracket sim: every conference produces an auto-bid champion,
+  // at-large bids fill the field by NWBB rating / PEAR strength, then we
+  // run regionals → super regionals (D1/D3) → 8-team double-elim World
+  // Series. The user's team is plugged in at its true overall seed if it
+  // qualified (auto-bid by winning their conf tournament, or at-large by
+  // rating). Uses the full team universe in non_naia_teams.json.
+  const levelTeams = (nonNaiaTeamsData.divisions || []).find(d => d.id === level)?.teams || []
+  // simGame for the national bracket — strength-aware ratings, user gets
+  // their nwbbRating-derived line.
+  const userRatingForNat = state.nwbbRatings?.[state.userSchoolId]?.rating ?? 60
+  const ratingCache = {}
+  const natRng = makeRng('natratings', state.rngSeed, state.calendar.year, level)
+  const ratingForNat = (sid) => {
+    if (ratingCache[sid]) return ratingCache[sid]
+    let r
+    if (sid === state.userSchoolId) {
+      r = { overall_rating: (userRatingForNat - 60) / 5, offense_rating: (userRatingForNat - 60) / 10, pitching_rating: (userRatingForNat - 60) / 10 }
+    } else {
+      const t = levelTeams.find(x => x.id === sid)
+      const s = (t?.strength ?? 0) + (natRng.next() - 0.5) * 1.5
+      r = { overall_rating: s, offense_rating: s * 0.5, pitching_rating: s * 0.5 }
+    }
+    ratingCache[sid] = r
+    return r
+  }
+  const natSimGame = (h, a, key) => fastSimGame(ratingForNat(h), ratingForNat(a), key)
+
+  // If the user won their conf tournament they hold an auto-bid; otherwise
+  // they may still earn an at-large via rating (handled inside the runner).
+  const national = runNationalBracketFull(state, level, levelTeams, natSimGame, `nat_${state.calendar.year}_${level}`)
+  const userNatPath = summarizeNationalUserPath(national, state.userSchoolId)
+
+  // Apply the user's national-bracket game W/L to their record (run diff).
+  if (userNatPath.qualified && national) {
+    const userGames = []
+    if (userNatPath.region) for (const g of (userNatPath.region.games || [])) {
+      if (g.homeId === state.userSchoolId || g.awayId === state.userSchoolId) userGames.push(g)
+    }
+    if (userNatPath.superPair) for (const g of (userNatPath.superPair.games || [])) {
+      if (g.homeId === state.userSchoolId || g.awayId === state.userSchoolId) userGames.push(g)
+    }
+    if (national.worldSeries) for (const g of (national.worldSeries.games || [])) {
+      if (g.homeId === state.userSchoolId || g.awayId === state.userSchoolId) userGames.push(g)
+    }
+    for (const g of userGames) {
+      const userHome = g.homeId === state.userSchoolId
+      const userRuns = userHome ? g.homeRuns : g.awayRuns
+      const oppRuns = userHome ? g.awayRuns : g.homeRuns
+      state.teams[state.userSchoolId].runDiff += userRuns - oppRuns
+    }
   }
 
+  const natSpec = nationalSpecForLevel(level)
   state.postseason = {
     year: state.calendar.year + 1,
     level,
@@ -922,15 +965,18 @@ function runPostseasonMultiLevel(state) {
       champion: tourney.champion,
       autoBids: userChamp ? [tourney.champion] : [],
     }],
-    autoBids: userChamp ? [tourney.champion] : [],
+    autoBids: (national?.field?.autoBids || []).map(t => t.id),
+    atLargeBids: (national?.field?.atLargeBids || []).map(t => t.id),
     userChamp,
-    userQualified: seeded.includes(state.userSchoolId),
+    userQualified: userNatPath.qualified,
     national,
+    nationalUserPath: userNatPath,
     nationalSpec: natSpec,
-    userInField: !!national,
-    userORWon: national?.userORWon ?? false,
-    userInWS: national?.userInWS ?? false,
-    userWSChamp: national?.userWSChamp ?? false,
+    nationalChampion: national?.nationalChampion || null,
+    userInField: userNatPath.qualified,
+    userORWon: userNatPath.wonRegion ?? false,
+    userInWS: userNatPath.inWS ?? false,
+    userWSChamp: userNatPath.wonWS ?? false,
   }
 
   // National-conf-champion tracking — sims every level-relevant conference's
@@ -938,188 +984,72 @@ function runPostseasonMultiLevel(state) {
   // state.nationalChamps[year][level] for the Postseason page.
   runNationalChampionsTracking(state, level)
 
-  // Newsfeed lines
+  // Newsfeed lines — conference + national bracket outcome.
   const userName = state.schools[state.userSchoolId].name
+  const wsName = natSpec?.name || 'national tournament'
+  const champName = state.schools[national?.nationalChampion]?.name
+    || levelTeams.find(t => t.id === national?.nationalChampion)?.name
+    || 'TBD'
   if (userChamp) {
     state.newsfeed.unshift({
       id: `confchamp_${state.calendar.year}`,
       year: state.calendar.year + 1, week: 17, type: 'POSTSEASON',
-      headline: `${userName} wins the ${conf.name}! Auto-bid earned (national bracket sim coming in a future engine update).`,
+      headline: `${userName} wins the ${conf.name}! Auto-bid to the ${wsName}.`,
       payload: {}, big: true,
     })
   } else if (state.postseason.userQualified) {
     state.newsfeed.unshift({
-      id: `confelim_${state.calendar.year}`,
+      id: `atlarge_${state.calendar.year}`,
       year: state.calendar.year + 1, week: 17, type: 'POSTSEASON',
-      headline: `Eliminated in the ${conf.name} tournament. ${state.schools[tourney.champion]?.name || ''} took the title.`,
+      headline: `${userName} earns an AT-LARGE bid to the ${wsName} (seed #${userNatPath.seed}).`,
+      payload: {}, big: true,
+    })
+  }
+  // National-run headlines
+  if (userNatPath.wonWS) {
+    state.newsfeed.unshift({
+      id: `natchamp_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 19, type: 'POSTSEASON',
+      headline: `${userName} ARE NATIONAL CHAMPIONS — wins the ${wsName}!`,
+      payload: {}, big: true,
+    })
+  } else if (userNatPath.inWS) {
+    state.newsfeed.unshift({
+      id: `natws_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 19, type: 'POSTSEASON',
+      headline: `Reached the ${wsName}! ${champName} won the national title.`,
+      payload: {}, big: true,
+    })
+  } else if (userNatPath.wonSuper) {
+    state.newsfeed.unshift({
+      id: `natsuper_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
+      headline: `Won the Super Regional — advancing to the ${wsName}!`,
       payload: {},
     })
-  } else {
+  } else if (userNatPath.wonRegion) {
     state.newsfeed.unshift({
-      id: `confmiss_${state.calendar.year}`,
+      id: `natreg_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
+      headline: `Won the Regional! ${national?.superRegionals ? 'On to the Super Regional.' : `Headed to the ${wsName}.`}`,
+      payload: {},
+    })
+  } else if (userNatPath.qualified) {
+    state.newsfeed.unshift({
+      id: `natexit_${state.calendar.year}`,
+      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
+      headline: `Eliminated in Regionals (seed #${userNatPath.seed}). ${champName} won the ${wsName}.`,
+      payload: {},
+    })
+  } else if (!userChamp) {
+    state.newsfeed.unshift({
+      id: `natmiss_${state.calendar.year}`,
       year: state.calendar.year + 1, week: 17, type: 'POSTSEASON',
-      headline: `Missed the ${conf.name} tournament.`,
+      headline: `Missed the ${wsName} field. ${champName} won the national title.`,
       payload: {},
     })
   }
   return { tournaments: state.postseason.tournaments, autoBids: state.postseason.autoBids }
-}
-
-/**
- * Simulate the user's national bracket run AT A HIGH LEVEL for non-NAIA
- * dynasties. We don't track every D1/D2/D3/NWAC game in the country, so
- * this stub:
- *   - Builds a synthetic field of opponents (national PEAR-derived teams)
- *   - Sims each round as a single fast-sim game where the user's "team
- *     strength" is their universal NWBB rating
- *   - Reports the round the user got bounced + the eventual national champ
- *
- * The result is a believable "playoff run" without the engine needing to
- * carry 300 D1 schedules. Future enhancement: full PA-level WS sim.
- */
-function simNationalBracketStub(state, level, natSpec) {
-  const rngForSim = makeRng('natstub', state.rngSeed, state.calendar.year, level)
-  const rounds = natSpec.rounds || []
-  // User's universal rating — use their NWBB rating or fall back to a
-  // mid-tier strength for the level
-  const userRating = state.nwbbRatings?.[state.userSchoolId]?.rating ?? 65
-
-  // Pull the top-rated non-NAIA teams at this level from non_naia_teams.json
-  // (already imported via PEAR). Used to produce named opponents per round
-  // and to pick a believable national champion when the user loses.
-  const nonNaiaTeams = (() => {
-    const div = (nonNaiaTeamsData.divisions || []).find(d => d.id === level)
-    return (div?.teams || []).filter(t => t.id !== state.userSchoolId)
-  })()
-
-  // Strength → universal-scale rating. PEAR strength is roughly 0-8 (D1 top
-  // = ~7.4). We map to a rating curve where the strongest team gets ~92
-  // and median gets ~60. This matches how user's nwbb rating is scaled.
-  function strengthToRating(strength) {
-    if (typeof strength !== 'number') return 55
-    return Math.max(35, Math.min(95, 60 + (strength - 3.5) * 5.2))
-  }
-
-  // Pool of opponent teams sorted strongest first. We pluck one per round.
-  // For higher rounds, we pluck from the elite tier (top 10), for early
-  // rounds from the broader top 60.
-  const sortedTeams = [...nonNaiaTeams].sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0))
-
-  function pickOpponent(roundIdx) {
-    if (sortedTeams.length === 0) return null
-    // Final/championship rounds → pick from top 10. Super → top 25.
-    // Regionals → top 60. Random within the slice.
-    const slice = roundIdx >= 2 ? 10
-      : roundIdx >= 1 ? 25
-      : 60
-    const max = Math.min(slice, sortedTeams.length)
-    const idx = Math.floor(rngForSim.next() * max)
-    return sortedTeams[idx]
-  }
-
-  const games = []
-  let userAlive = true
-  let lastRoundWon = null
-  for (let r = 0; r < rounds.length; r++) {
-    if (!userAlive) break
-    const round = rounds[r]
-    const opp = pickOpponent(r)
-    const oppRating = opp ? strengthToRating(opp.strength) : userRating + (r * 3)
-    // Fast sim — user wins with prob = logistic(userRating - oppRating)
-    const diff = userRating - oppRating
-    const winProb = 1 / (1 + Math.exp(-diff * 0.18))
-    const userWon = rngForSim.chance(winProb)
-    // Synthesize a plausible game line so UI can display it
-    const userRuns = userWon ? 4 + Math.floor(rngForSim.next() * 6) : Math.floor(rngForSim.next() * 4)
-    const oppRuns = userWon ? Math.floor(rngForSim.next() * userRuns) : userRuns + 1 + Math.floor(rngForSim.next() * 5)
-    games.push({
-      round: round.name,
-      location: round.location || '',
-      opponentId: opp?.id || null,
-      opponentName: opp?.name || 'TBD',
-      opponentNickname: opp?.nickname || null,
-      userRuns,
-      oppRuns,
-      userWon,
-      winProb: Math.round(winProb * 100),
-    })
-    if (userWon) lastRoundWon = round.name
-    else userAlive = false
-  }
-  const userWSChamp = userAlive && rounds.length > 0
-  const userInWS = games.some(g =>
-    g.round.includes('World Series') || g.round.includes('CWS') || (g.userWon && g.round.includes('Super')))
-
-  // Final-game champion (if user lost): the team that knocked the user out
-  // continues through the bracket — at the championship level the strongest
-  // remaining team is likely the eventual national champ.
-  let nationalChampion = null
-  let nationalChampionName = null
-  if (userWSChamp) {
-    nationalChampion = state.userSchoolId
-    nationalChampionName = state.schools[state.userSchoolId]?.name || null
-  } else if (sortedTeams.length > 0) {
-    // Pick a believable national champion from the top 6 strongest teams,
-    // weighted by strength.
-    const elites = sortedTeams.slice(0, 6)
-    const totalStrength = elites.reduce((sum, t) => sum + Math.max(0.1, t.strength ?? 0), 0)
-    let r2 = rngForSim.next() * totalStrength
-    for (const t of elites) {
-      r2 -= Math.max(0.1, t.strength ?? 0)
-      if (r2 <= 0) { nationalChampion = t.id; nationalChampionName = t.name; break }
-    }
-    if (!nationalChampion) {
-      nationalChampion = elites[0]?.id || null
-      nationalChampionName = elites[0]?.name || null
-    }
-  }
-
-  // News headlines
-  const schoolName = state.schools[state.userSchoolId]?.name
-  const lastGame = games[games.length - 1]
-  if (userWSChamp) {
-    state.newsfeed.unshift({
-      id: `natchamp_${state.calendar.year}`,
-      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
-      headline: `${schoolName} WINS THE ${natSpec.name}! National champions at ${rounds[rounds.length - 1]?.location || 'national tournament site'}!`,
-      payload: {}, big: true,
-    })
-  } else if (lastRoundWon) {
-    const knockedOutBy = lastGame?.opponentName ? ` Knocked out by ${lastGame.opponentName}.` : ''
-    state.newsfeed.unshift({
-      id: `natexit_${state.calendar.year}`,
-      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
-      headline: `${schoolName} eliminated after the ${lastRoundWon}.${knockedOutBy} Solid postseason run.`,
-      payload: {},
-    })
-  } else {
-    const knockedOutBy = lastGame?.opponentName ? ` Lost to ${lastGame.opponentName}.` : ''
-    state.newsfeed.unshift({
-      id: `natfirst_${state.calendar.year}`,
-      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
-      headline: `${schoolName} lost in the opening round of the ${natSpec.name}.${knockedOutBy}`,
-      payload: {},
-    })
-  }
-
-  // National champion headline (if user wasn't the champ)
-  if (nationalChampionName && nationalChampion !== state.userSchoolId) {
-    state.newsfeed.unshift({
-      id: `natchampother_${state.calendar.year}`,
-      year: state.calendar.year + 1, week: 18, type: 'POSTSEASON',
-      headline: `${nationalChampionName} crowned ${state.calendar.year + 1} ${level} national champions.`,
-      payload: {},
-    })
-  }
-
-  return {
-    games,
-    nationalChampion,
-    nationalChampionName,
-    userORWon: games[0]?.userWon ?? false,
-    userInWS, userWSChamp,
-    lastRoundWon,
-  }
 }
 
 export const ROSTER_CAP_MAX = 50
