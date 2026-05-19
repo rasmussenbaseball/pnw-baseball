@@ -689,6 +689,12 @@ export default function Dashboard() {
         <KpiCard label="Job Security" value={save.budget?.jobSecurity ?? 50} suffix="/100" />
       </div>
 
+      {/* This Week's To-Do — pinned to the top so the user always sees
+          exactly what to do before advancing. Full-width, above News. */}
+      <Panel title="This Week's To-Do" actionTo={null} className="mb-4">
+        <FocusTasks save={save} slot={slot} inOffseason={inOffseason} autoOn={autoOn} />
+      </Panel>
+
       {/* News — moved above the 3-column layout so the latest happenings are
           the first thing the user reads after sim controls + KPIs. Used to
           live in the center column where it was buried below team stats. */}
@@ -767,10 +773,6 @@ export default function Dashboard() {
 
         {/* RIGHT column — focus tasks + conference standings widget */}
         <div className="space-y-4">
-          <Panel title="This Week's To-Do" actionTo={null}>
-            <FocusTasks save={save} slot={slot} inOffseason={inOffseason} autoOn={autoOn} />
-          </Panel>
-
           <CareerOffersWidget save={save} slot={slot} />
           <CoachUpgradeWidget save={save} onChange={() => { saveDynasty(save); setSave({ ...save }) }} />
           <ConferenceStandingsWidget save={save} slot={slot} />
@@ -1469,6 +1471,7 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
   }
 
   const suggestions = ap > 0 ? buildApSuggestions(save, slot) : []
+  const explore = buildExploreSuggestions(save, slot)
 
   const exploreLinks = [
     { label: 'Roster', to: `/gm/roster?slot=${slot}` },
@@ -1523,9 +1526,22 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
         </div>
       )}
 
-      {/* Explore */}
+      {/* Worth a look — non-mandatory contextual suggestions (always shown,
+          useful even in tutorial weeks before AP unlocks). */}
       <div className="border-t pt-2">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Explore</div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">Worth a look</div>
+        <div className="space-y-1">
+          {explore.map((s, i) => (
+            <div key={i} className="flex justify-between items-center gap-2">
+              <span className={s.flag ? 'text-amber-700' : 'text-gray-600'}>{s.text}</span>
+              <Link to={s.to} className="text-pnw-green hover:underline shrink-0">Go</Link>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick jump */}
+      <div className="border-t pt-2">
         <div className="flex flex-wrap gap-1.5">
           {exploreLinks.map(l => (
             <Link key={l.label} to={l.to} className="px-2 py-1 bg-gray-100 hover:bg-pnw-green hover:text-white rounded text-[11px] text-gray-700 transition">
@@ -1536,6 +1552,28 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
       </div>
     </div>
   )
+}
+
+// Non-mandatory, contextual "worth a look" suggestions. Always returns a few
+// so even Wk 1 (AP locked) gives the user productive things to explore.
+function buildExploreSuggestions(save, slot) {
+  const out = []
+  const team = save.teams?.[save.userSchoolId]
+  const players = (team?.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
+  const withGpa = players.filter(p => typeof p.gpa === 'number')
+  const avgGpa = withGpa.length ? withGpa.reduce((s, p) => s + p.gpa, 0) / withGpa.length : null
+  out.push({ text: 'Check out your roster + set your depth chart', to: `/gm/roster?slot=${slot}` })
+  if (avgGpa != null) {
+    const low = avgGpa < 2.6
+    out.push({
+      text: low ? `Look at your team GPA (${avgGpa.toFixed(2)}) — it's running low` : `Review your team GPA (${avgGpa.toFixed(2)})`,
+      to: `/gm/academics?slot=${slot}`,
+      flag: low,
+    })
+  }
+  out.push({ text: "Scout next year's recruiting class", to: `/gm/recruiting?slot=${slot}` })
+  out.push({ text: 'Review your coaching staff', to: `/gm/coaches?slot=${slot}` })
+  return out
 }
 
 function PlayerRow({ p, ovr, slot }) {

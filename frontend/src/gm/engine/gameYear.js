@@ -191,7 +191,7 @@ const MANDATORY_CUTS_REQUIREMENT = {
 const SCHEDULE_REQUIREMENT = {
   key: 'SCHEDULE',
   label: 'Set your schedule',
-  blurb: 'Lock in non-conference weekends for the coming spring. Fall games auto-fill against nearby D2/D3/JUCO opponents.',
+  blurb: 'Lock in your non-conference weekends for the coming spring. Conference series are auto-generated.',
   route: '/gm/schedule',
   isComplete: (state) => isScheduleComplete(state),
   doneText: ' Schedule complete',
