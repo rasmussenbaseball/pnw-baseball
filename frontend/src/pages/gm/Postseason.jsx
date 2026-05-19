@@ -131,17 +131,14 @@ export default function Postseason() {
       {/* National-bracket field — every level. Reads state.nationalChamps */}
       <NationalFieldSection ps={ps} save={save} />
 
-      {/* Multi-level national bracket — stub-sim'd run when user wins conf */}
-      {ps.level && ps.level !== 'NAIA' && ps.national && (
-        <MultiLevelNationalSection ps={ps} save={save} />
+      {/* NWAC playoff bracket */}
+      {ps.level === 'NWAC' && ps.nwac && (
+        <NwacBracketSection ps={ps} save={save} />
       )}
-      {ps.level && ps.level !== 'NAIA' && !ps.national && (
-        <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <h2 className="text-lg font-semibold mb-2">{ps.nationalSpec?.name || 'National Tournament'}</h2>
-          <p className="text-xs text-gray-600">
-            Conference champions advance to the national bracket. {save.schools[save.userSchoolId]?.name} did{ps.userChamp ? '' : "n't"} win the conference this year.
-          </p>
-        </div>
+
+      {/* D1/D2/D3 full national bracket */}
+      {ps.level && ps.level !== 'NAIA' && ps.level !== 'NWAC' && ps.national && (
+        <NationalBracketSection ps={ps} save={save} />
       )}
 
       {ps.level === 'NAIA' && ps.national && (
@@ -247,77 +244,243 @@ function NationalFieldSection({ ps, save }) {
   )
 }
 
-function MultiLevelNationalSection({ ps, save }) {
+// Resolve a team's display name — real schools live in save.schools;
+// synthetic national-bracket opponents (D1/D2/D3) come from the level pool.
+function teamNameResolver(save, ps) {
+  const pool = {}
+  for (const t of (ps.national?.field?.seededField || [])) pool[t.id] = t.name
+  return (id) => save.schools[id]?.name || pool[id] || (id ? id.replace(/-d[123]$/, '').replace(/-/g, ' ') : '—')
+}
+
+function NationalBracketSection({ ps, save }) {
   const nat = ps.national
   if (!nat) return null
-  const schoolName = save.schools[save.userSchoolId]?.name
-  return (
-    <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-      <h2 className="text-lg font-semibold mb-1">{ps.nationalSpec?.name || 'National Tournament'}</h2>
-      <p className="text-xs text-gray-500 mb-4">
-        Auto-bid earned by winning the {save.conferences[save.schools[save.userSchoolId]?.conferenceId]?.name} championship.
-      </p>
+  const path = ps.nationalUserPath || {}
+  const nameFor = teamNameResolver(save, ps)
+  const champName = nameFor(nat.nationalChampion)
+  const userId = save.userSchoolId
+  const isUserChamp = nat.nationalChampion === userId
 
-      {nat.userWSChamp && (
-        <div className="mb-4 p-3 bg-gradient-to-r from-yellow-100 to-amber-100 border border-amber-300 rounded">
-          <div className="text-xs uppercase tracking-wider text-amber-900">{ps.year} National Champion</div>
-          <div className="text-xl font-bold text-pnw-slate mt-1">{schoolName}</div>
+  return (
+    <div className="mt-6 space-y-4">
+      {/* Field summary */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <h2 className="text-lg font-semibold mb-1">{ps.nationalSpec?.name || 'National Tournament'}</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          {(nat.field?.seededField || []).length}-team field — {(nat.field?.autoBids || []).length} conference auto-bids
+          + {(nat.field?.atLargeBids || []).length} at-large bids (selected by NWBB rating).
+        </p>
+
+        {/* Champion banner */}
+        {nat.nationalChampion && (
+          <div className={'mb-3 p-3 rounded border ' + (isUserChamp
+            ? 'bg-gradient-to-r from-yellow-100 to-amber-100 border-amber-300'
+            : 'bg-gray-50 border-gray-200')}>
+            <div className="text-xs uppercase tracking-wider text-amber-900">{ps.year} National Champion</div>
+            <div className="flex items-center gap-2 mt-1">
+              <TeamLogo school={save.schools[nat.nationalChampion]} size={26} />
+              <div className="text-xl font-bold text-pnw-slate">{champName}</div>
+            </div>
+          </div>
+        )}
+
+        {/* User path summary */}
+        {path.qualified ? (
+          <div className="text-sm text-gray-700">
+            <span className="font-semibold">{save.schools[userId]?.name}</span> earned a
+            {' '}<span className="font-semibold">{path.bidType === 'auto' ? 'conference auto-bid' : 'at-large bid'}</span>
+            {' '}(overall seed #{path.seed}).{' '}
+            {path.wonWS ? 'Won the national championship!'
+              : path.inWS ? 'Reached the World Series.'
+              : path.wonSuper ? 'Won the Super Regional, fell short of the title.'
+              : path.wonRegion ? 'Won the Regional.'
+              : 'Eliminated in the Regional round.'}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-600">
+            {save.schools[userId]?.name} missed the {ps.level} national field this year. {champName} won it all.
+          </div>
+        )}
+      </div>
+
+      {/* User's regional */}
+      {path.region && (
+        <BracketSiteCard
+          title="Your Regional"
+          host={nameFor(path.region.host)}
+          teams={path.region.teams}
+          games={path.region.games}
+          winner={path.region.winner}
+          userId={userId}
+          nameFor={nameFor}
+          save={save}
+        />
+      )}
+
+      {/* User's super regional (D1/D3) */}
+      {path.superPair && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-pnw-slate mb-2">Your Super Regional (best-of-3)</h3>
+          <div className="text-sm mb-2">
+            {nameFor(path.superPair.host)} vs {nameFor(path.superPair.visitor)} —
+            {' '}<span className="font-mono">{path.superPair.homeWins}-{path.superPair.awayWins}</span>,
+            winner <span className="font-semibold">{nameFor(path.superPair.winner)}</span>
+          </div>
+          <GameList games={path.superPair.games} userId={userId} nameFor={nameFor} />
         </div>
       )}
 
-      <div className="space-y-2">
-        {nat.games.map((g, i) => {
-          const isLast = i === nat.games.length - 1
-          const finalRoundLoss = isLast && !g.userWon
-          const opp = g.opponentName ? g.opponentName : 'Bracket opponent'
-          const score = (typeof g.userRuns === 'number' && typeof g.oppRuns === 'number')
-            ? `${schoolName} ${g.userRuns} — ${opp} ${g.oppRuns}`
-            : null
-          return (
-            <div
-              key={i}
-              className={'flex items-center justify-between p-3 rounded border ' +
-                (g.userWon ? 'border-pnw-green bg-pnw-cream/30' : finalRoundLoss ? 'border-red-300 bg-red-50' : 'border-gray-200')
-              }
-            >
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-gray-500">{g.round}</div>
-                <div className="text-sm font-semibold text-pnw-slate mt-0.5">
-                  vs. {opp}{g.opponentNickname ? ` (${g.opponentNickname})` : ''}
-                </div>
-                {score && (
-                  <div className="text-[11px] font-mono text-gray-600 mt-0.5">{score}</div>
-                )}
-                <div className="text-[10px] text-gray-500 mt-0.5">{g.location || ''}</div>
-              </div>
-              <div className="text-right">
-                <div className={'text-sm font-bold ' + (g.userWon ? 'text-pnw-green' : 'text-red-700')}>
-                  {g.userWon ? 'Advanced' : 'Eliminated'}
-                </div>
-                <div className="text-[10px] text-gray-500">({g.winProb}% win prob)</div>
+      {/* World Series */}
+      {nat.worldSeries?.games?.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-pnw-slate mb-1">
+            {nat.superRegionals ? 'College World Series' : `${ps.level} World Series`} — 8-team double-elim
+          </h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Field: {(nat.worldSeries.qualifiers || []).map(nameFor).join(', ')}
+          </p>
+          <GameList games={nat.worldSeries.games} userId={userId} nameFor={nameFor} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BracketSiteCard({ title, host, teams, games, winner, userId, nameFor, save }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+      <h3 className="text-sm font-semibold text-pnw-slate mb-2">{title} <span className="font-normal text-gray-500">— hosted by {host}</span></h3>
+      <div className="space-y-1 mb-3 text-xs">
+        {(teams || []).map(id => (
+          <div key={id} className={'flex items-center gap-2 ' + (id === userId ? 'font-bold text-pnw-green' : '')}>
+            <TeamLogo school={save.schools[id]} size={16} />
+            <span>{nameFor(id)}</span>
+            {winner === id && <span className="text-pnw-green font-bold">— Regional champ</span>}
+          </div>
+        ))}
+      </div>
+      <GameList games={games} userId={userId} nameFor={nameFor} />
+    </div>
+  )
+}
+
+function GameList({ games, userId, nameFor }) {
+  if (!games || games.length === 0) return null
+  return (
+    <div className="space-y-1 text-xs">
+      {games.map((g, i) => {
+        const homeWon = (g.winner ? g.winner === g.homeId : g.homeRuns > g.awayRuns)
+        const userIn = g.homeId === userId || g.awayId === userId
+        return (
+          <div key={i} className={'flex items-center justify-between p-1.5 rounded ' + (userIn ? 'bg-pnw-cream' : '')}>
+            <span className="text-gray-500 w-28 shrink-0">{g.label || `Game ${i + 1}`}</span>
+            <span className={'flex-1 text-right ' + (homeWon ? 'font-bold' : 'text-gray-500')}>{nameFor(g.homeId)}</span>
+            <span className="font-mono mx-2">{g.homeRuns}–{g.awayRuns}</span>
+            <span className={'flex-1 ' + (!homeWon ? 'font-bold' : 'text-gray-500')}>{nameFor(g.awayId)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function NwacBracketSection({ ps, save }) {
+  const nwac = ps.nwac
+  if (!nwac) return null
+  const path = ps.nwacUserPath || {}
+  const userId = save.userSchoolId
+  const nameFor = (id) => save.schools[id]?.name || (id ? id.replace(/^nwac-/, '').replace(/-/g, ' ') : '—')
+  const champName = nameFor(nwac.nwacChampion)
+  const isUserChamp = nwac.nwacChampion === userId
+  const DIV_LABEL = { NWAC_NORTH: 'North', NWAC_SOUTH: 'South', NWAC_EAST: 'East', NWAC_WEST: 'West' }
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <h2 className="text-lg font-semibold mb-1">NWAC Championship</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Top 4 per division qualify. Division champs bye to the 8-team championship at Longview, WA; #2 seeds host super regionals.
+        </p>
+
+        {nwac.nwacChampion && (
+          <div className={'mb-3 p-3 rounded border ' + (isUserChamp
+            ? 'bg-gradient-to-r from-yellow-100 to-amber-100 border-amber-300'
+            : 'bg-gray-50 border-gray-200')}>
+            <div className="text-xs uppercase tracking-wider text-amber-900">{ps.year} NWAC Champion</div>
+            <div className="flex items-center gap-2 mt-1">
+              <TeamLogo school={save.schools[nwac.nwacChampion]} size={26} />
+              <div className="text-xl font-bold text-pnw-slate">{champName}</div>
+            </div>
+          </div>
+        )}
+
+        {path.qualified ? (
+          <div className="text-sm text-gray-700">
+            <span className="font-semibold">{save.schools[userId]?.name}</span> seeded #{path.seed} in the {DIV_LABEL[path.division] || path.division} division.{' '}
+            {path.wonChampionship ? 'Won the NWAC Championship!'
+              : path.inChampionship ? 'Reached the 8-team championship at Longview.'
+              : path.wonSuperRegional ? 'Won the Super Regional, fell short at Longview.'
+              : path.hadBye ? 'Earned a #1-seed bye but came up short.'
+              : 'Eliminated in the Super Regional.'}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-600">
+            {save.schools[userId]?.name} missed the NWAC playoffs (top 4 in division required). {champName} won it all.
+          </div>
+        )}
+      </div>
+
+      {/* Division seeds */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-pnw-slate mb-2">Division Seeds (top 4)</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {Object.keys(nwac.seedsByDiv || {}).map(div => (
+            <div key={div}>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{DIV_LABEL[div] || div}</div>
+              <div className="space-y-0.5 text-xs">
+                {(nwac.seedsByDiv[div] || []).map((id, i) => (
+                  <div key={id} className={'flex items-center gap-2 ' + (id === userId ? 'font-bold text-pnw-green' : '')}>
+                    <span className="w-4 text-gray-500">#{i + 1}</span>
+                    <TeamLogo school={save.schools[id]} size={14} />
+                    <span>{nameFor(id)}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          )
-        })}
+          ))}
+        </div>
       </div>
 
-      {!nat.userWSChamp && nat.lastRoundWon && (
-        <div className="mt-3 text-xs text-gray-600">
-          Final result: eliminated after the {nat.lastRoundWon}.
+      {/* Super regionals */}
+      {(nwac.superRegionals || []).length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-pnw-slate mb-2">Super Regionals</h3>
+          <div className="space-y-3">
+            {nwac.superRegionals.map((sr, i) => (
+              <div key={i} className="border border-gray-200 rounded p-2">
+                <div className="text-xs mb-1">
+                  Host: <span className="font-semibold">{nameFor(sr.hostId)}</span> ·
+                  Play-in: {nameFor(sr.playInA)} vs {nameFor(sr.playInB)} →
+                  {' '}<span className="font-semibold">{nameFor(sr.playInGame?.winner)}</span> ·
+                  Winner: <span className="font-semibold text-pnw-green">{nameFor(sr.winner)}</span>
+                </div>
+                <GameList games={sr.bo3Games} userId={userId} nameFor={nameFor} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {!nat.userWSChamp && nat.nationalChampionName && (
-        <div className="mt-3 text-xs text-gray-600">
-          National champion: <span className="font-semibold">{nat.nationalChampionName}</span>
+      {/* Championship games */}
+      {nwac.championship?.games?.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-pnw-slate mb-1">NWAC Championship — Longview, WA (double-elim)</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Field: {(nwac.championship.qualifiers || []).map(nameFor).join(', ')}
+          </p>
+          <GameList games={nwac.championship.games} userId={userId} nameFor={nameFor} />
         </div>
       )}
-
-      <div className="mt-4 text-[10px] text-gray-500 italic">
-        Non-NAIA national brackets simulate your run round-by-round vs real PEAR-rated
-        opponents at this level. A full PA-level WS sim (with all bracket teams playing
-        in parallel) is a future engine upgrade.
-      </div>
     </div>
   )
 }
