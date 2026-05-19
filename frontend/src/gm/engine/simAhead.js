@@ -143,11 +143,28 @@ export function diffSnapshots(before, after) {
  * stall on phase-gates ("Required: hire staff") that Auto is supposed to
  * fulfill — the symptom Nate reported: "sim ahead bar doesn't work when
  * auto is on."
+ *
+ * Auto actions also push a headline to save.newsfeed so they appear in
+ * the News page after a multi-week sim — otherwise coach hirings and
+ * other auto-fulfilled actions would happen invisibly.
  */
 export function tickOneWeek(save) {
   if (isAutoMode(save)) {
     // Best-effort; never throw in the middle of a sim-ahead loop.
-    try { runAutoActions(save) } catch (e) { console.warn('runAutoActions failed during simAhead tick:', e) }
+    try {
+      const auto = runAutoActions(save)
+      if (auto && auto.actionsTaken && auto.actionsTaken.length > 0) {
+        save.newsfeed = save.newsfeed || []
+        const wk = save.calendar?.weekOfYear ?? save.calendar?.offseasonWeek ?? 1
+        save.newsfeed.unshift({
+          id: `auto_${save.calendar?.year}_${wk}_${Math.random().toString(36).slice(2, 5)}`,
+          year: save.calendar?.year,
+          week: wk,
+          type: 'AWARD',
+          headline: `Auto: ${auto.actionsTaken.join(' · ')}`,
+        })
+      }
+    } catch (e) { console.warn('runAutoActions failed during simAhead tick:', e) }
   }
   if (save.calendar.mode === 'OFFSEASON') {
     advanceOffseasonWeek(save)
@@ -170,6 +187,10 @@ export function tickOneWeek(save) {
  */
 export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
   const start = snapshotState(save)
+  // Mark the newsfeed boundary so we can slice out events fired during
+  // these weeks for the post-sim recap modal. newsfeed.unshift puts new
+  // items at the front, so anything newer than this length is new.
+  const startNewsLen = (save.newsfeed || []).length
   const weeklyDiffs = []
   let prev = start
   let count = 0
@@ -211,12 +232,18 @@ export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
       break
     }
   }
+  // Slice out newsfeed entries that fired during this sim-ahead. Newest-
+  // first ordering (unshift), so the new items occupy indices [0..delta).
+  const endNewsLen = (save.newsfeed || []).length
+  const delta = Math.max(0, endNewsLen - startNewsLen)
+  const newsEvents = delta > 0 ? (save.newsfeed || []).slice(0, delta) : []
   return {
     weeksAdvanced: count,
     weeklyDiffs,
     aggregateDiff: diffSnapshots(start, prev),
     finalSnapshot: prev,
     stoppedReason,
+    newsEvents,
   }
 }
 

@@ -2646,48 +2646,79 @@ function SimAheadBar({ save, busy, onRun }) {
 }
 
 function SimDiffPanel({ simResult, onDismiss }) {
-  const { preset, weeksAdvanced, weeklyDiffs, aggregateDiff, stoppedReason } = simResult
+  const { preset, weeksAdvanced, weeklyDiffs, aggregateDiff, stoppedReason, newsEvents } = simResult
+  const { backdropProps, stopProps } = useModalDismiss(onDismiss)
+  const events = newsEvents || []
   return (
-    <div className="bg-white rounded-xl border border-pnw-green/40 p-4 mb-4 shadow-sm">
-      <div className="flex justify-between items-baseline mb-3">
-        <h2 className="text-sm font-semibold text-pnw-slate uppercase tracking-wider">
-           Sim Recap — {preset} ({weeksAdvanced} week{weeksAdvanced === 1 ? '' : 's'})
-        </h2>
-        <button onClick={onDismiss} className="text-xs text-gray-500 hover:text-pnw-green">Dismiss </button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopProps}>
+        <div className="bg-gradient-to-r from-pnw-slate to-pnw-green text-white p-4 rounded-t-xl flex justify-between items-start gap-3 sticky top-0 z-10">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-wider opacity-80">Sim Recap</div>
+            <h3 className="text-xl font-bold mt-0.5">
+              {preset} <span className="text-base font-normal opacity-90">· {weeksAdvanced} week{weeksAdvanced === 1 ? '' : 's'}</span>
+            </h3>
+          </div>
+          <ModalCloseButton onClick={onDismiss} dark className="!border-white/40 !text-white" />
+        </div>
+
+        <div className="p-5 space-y-4">
+          {stoppedReason === 'postseason_boundary' && (
+            <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-900">
+              Stopped before the postseason transition. Week 13 (the last regular-season week)
+              hasn't been played yet — click <strong>Advance Week</strong> once more to play it and
+              fire the postseason bracket + end-of-year wrap.
+            </div>
+          )}
+          {stoppedReason === 'prospect_camp_boundary' && (
+            <div className="bg-red-50 border border-red-300 rounded p-2 text-xs text-red-900">
+              <strong>Stopped before Prospect Camp (Wk 13).</strong> You can't skip this — head to
+              Weekly Actions and run camp before advancing.
+            </div>
+          )}
+          {stoppedReason === 'user_games_pending' && (
+            <div className="bg-pnw-cream border border-pnw-green/40 rounded p-2 text-xs text-pnw-slate">
+              <strong>Stopped on a game week.</strong> You have games this week — Enter Game live
+              or Sim Game(s) from the top of the dashboard.
+            </div>
+          )}
+
+          {/* News events that fired during these weeks. Highlighted at the top
+              so users see coach hirings / required-action fulfillments / etc.
+              they would otherwise miss when jumping multiple weeks. */}
+          {events.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">
+                What happened ({events.length} update{events.length === 1 ? '' : 's'})
+              </div>
+              <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                {events.map(ev => (
+                  <div key={ev.id} className="text-xs flex items-start gap-2 p-2 bg-pnw-cream/40 rounded">
+                    <span className="text-[10px] text-gray-500 uppercase font-mono shrink-0 mt-0.5">Wk {ev.week}</span>
+                    <span className="text-gray-700 leading-snug">{ev.headline}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Totals</div>
+            <DiffAggregate diff={aggregateDiff} />
+          </div>
+
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold text-pnw-slate hover:text-pnw-green">
+              ▾ Week-by-week breakdown
+            </summary>
+            <div className="mt-2 space-y-3">
+              {weeklyDiffs.map((d, i) => (
+                <DiffWeek key={i} diff={d} index={i + 1} />
+              ))}
+            </div>
+          </details>
+        </div>
       </div>
-
-      {stoppedReason === 'postseason_boundary' && (
-        <div className="mb-3 bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-900">
-          Stopped before the postseason transition. Week 13 (the last regular-season week)
-          hasn't been played yet — click <strong>Advance Week </strong> once more to play it and
-          fire the postseason bracket + end-of-year wrap.
-        </div>
-      )}
-      {stoppedReason === 'prospect_camp_boundary' && (
-        <div className="mb-3 bg-red-50 border border-red-300 rounded p-2 text-xs text-red-900">
-          <strong> Stopped before Prospect Camp (Wk 13).</strong> You can't skip this — head to
-          Weekly Actions and run camp before advancing.
-        </div>
-      )}
-      {stoppedReason === 'user_games_pending' && (
-        <div className="mb-3 bg-pnw-cream border border-pnw-green/40 rounded p-2 text-xs text-pnw-slate">
-           <strong>Stopped on a game week.</strong> You have games this week — Enter Game live
-          or Sim Game(s) from the top of the dashboard.
-        </div>
-      )}
-
-      <DiffAggregate diff={aggregateDiff} />
-
-      <details className="mt-3">
-        <summary className="cursor-pointer text-xs font-semibold text-pnw-slate hover:text-pnw-green">
-          ▾ Week-by-week breakdown
-        </summary>
-        <div className="mt-2 space-y-3">
-          {weeklyDiffs.map((d, i) => (
-            <DiffWeek key={i} diff={d} index={i + 1} />
-          ))}
-        </div>
-      </details>
     </div>
   )
 }
