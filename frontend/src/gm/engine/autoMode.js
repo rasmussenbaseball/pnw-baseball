@@ -231,7 +231,7 @@ function ensureRecruitPool(save) {
   save.recruits = pool
 }
 
-function autoFulfillProspectCamp(save, summary) {
+export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
   // Wk 13 — run the camp at a mid-tier fee. Use already-invited recruits +
   // walk-ons. The simProspectCamp function returns revenue.
   const userSchoolId = save.userSchoolId

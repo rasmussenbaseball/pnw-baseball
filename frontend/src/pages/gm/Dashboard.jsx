@@ -17,7 +17,8 @@ import {
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
-import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
+import { isAutoMode, setAutoMode, runAutoActions, autoFulfillProspectCamp } from '../../gm/engine/autoMode'
+import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { resolveEvent } from '../../gm/engine/randomEvents'
 import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
@@ -63,6 +64,7 @@ export default function Dashboard() {
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
+  const [eventPrompt, setEventPrompt] = useState(null)   // { kind: 'PROSPECT_CAMP'|'SUMMER_BALL' } major-event stop prompt
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -201,6 +203,30 @@ export default function Dashboard() {
     if (save.pendingEvent) {
       gmToast('A program event is awaiting your decision. Scroll down and resolve it first.', 'warn')
       return
+    }
+    // Major-event stop prompts (manual mode only). Pause on the prospect-camp
+    // week (Wk 13) and the summer-ball planning week (Wk 14) and ask whether
+    // the user wants to auto-select or handle it themselves. Auto mode skips
+    // these (runAutoActions handles both).
+    if (!autoOn) {
+      const wk = save.calendar?.weekOfYear ?? 0
+      const yr = save.calendar?.year
+      // Prospect camp (Wk 13) is also a hard required-action gate, so this
+      // just gives a nicer auto-vs-manual choice before the block.
+      if (wk === 13 && save.prospectCamp?.year !== yr && !eventPrompt) {
+        setEventPrompt({ kind: 'PROSPECT_CAMP' })
+        return
+      }
+      // Summer ball (Wk 14) isn't a hard gate. Prompt once per dynasty-year
+      // so dismissing it doesn't trap the user in a re-prompt loop.
+      const sbConfirmed = save.summerBall?.year === yr
+        && Object.values(save.summerBall?.assignments || {}).some(a => a && !a.removed)
+      if (wk === 14 && !sbConfirmed && save._summerBallPromptedYear !== yr && !eventPrompt) {
+        save._summerBallPromptedYear = yr
+        saveDynasty(save)
+        setEventPrompt({ kind: 'SUMMER_BALL' })
+        return
+      }
     }
     // Auto mode short-circuits the gate checks — runAutoActions resolves any
     // open required action before we get here.
@@ -373,6 +399,30 @@ export default function Dashboard() {
             }, 30)
           }}
           onCancel={() => setGameWeekModal(false)}
+        />
+      )}
+      {eventPrompt && (
+        <MajorEventModal
+          kind={eventPrompt.kind}
+          onAuto={() => {
+            try {
+              if (eventPrompt.kind === 'PROSPECT_CAMP') autoFulfillProspectCamp(save)
+              else if (eventPrompt.kind === 'SUMMER_BALL') autoAssignSummerBall(save)
+              saveDynasty(save)
+              setSave({ ...save })
+            } catch (err) {
+              console.error('auto major-event failed:', err)
+              gmToast('Auto-select failed — see console.', 'warn')
+            }
+            setEventPrompt(null)
+            gmToast(eventPrompt.kind === 'PROSPECT_CAMP' ? 'Prospect camp auto-run.' : 'Summer ball placements auto-selected.', 'info')
+          }}
+          onManual={() => {
+            const dest = eventPrompt.kind === 'PROSPECT_CAMP' ? 'weekly' : 'summer'
+            setEventPrompt(null)
+            navigate(`/gm/${dest}?slot=${slot}`)
+          }}
+          onCancel={() => setEventPrompt(null)}
         />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
@@ -1750,6 +1800,43 @@ function CampInviteBanner({ save, slot, weekOfYear }) {
       <Link to={`/gm/recruiting?slot=${slot}&board=INVITES`} className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
         Manage invites 
       </Link>
+    </div>
+  )
+}
+
+function MajorEventModal({ kind, onAuto, onManual, onCancel }) {
+  const { backdropProps, stopProps } = useModalDismiss(onCancel)
+  const isCamp = kind === 'PROSPECT_CAMP'
+  const title = isCamp ? 'Prospect Camp' : 'Summer Ball Planning'
+  const blurb = isCamp
+    ? 'Your annual on-campus recruiting camp is here. Run it yourself to pick the fee + invite list, or let your staff handle it automatically.'
+    : 'Time to set summer ball placements. Assign players to leagues yourself for full control, or auto-select the best-fit league for each eligible player.'
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-pnw-green font-bold">Major event</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">{title}</h3>
+          </div>
+          <ModalCloseButton onClick={onCancel} />
+        </div>
+        <p className="text-sm text-gray-700 leading-snug mb-5">{blurb}</p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onManual}
+            className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
+          >
+            Let me handle it →
+          </button>
+          <button
+            onClick={onAuto}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded text-sm font-semibold text-pnw-slate hover:bg-gray-50"
+          >
+            Auto-select for me
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

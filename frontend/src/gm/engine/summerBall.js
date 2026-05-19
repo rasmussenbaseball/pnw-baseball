@@ -299,6 +299,40 @@ export function leaguesForPlayer(player) {
   })
 }
 
+/**
+ * Auto-assign summer ball placements for the user's roster. Walks players
+ * best-OVR-first and slots each into the highest-prestige league they
+ * qualify for that still has an open program slot. Used by the "auto-select"
+ * choice on the planning-week popup + by Auto mode.
+ *
+ * @returns {{ assigned: number }}
+ */
+export function autoAssignSummerBall(state) {
+  ensureSummerBallState(state)
+  if (state.summerBall.status !== 'PLANNING') return { assigned: 0 }
+  const team = state.teams?.[state.userSchoolId]
+  if (!team) return { assigned: 0 }
+  const roster = (team.rosterPlayerIds || [])
+    .map(id => state.players[id])
+    .filter(Boolean)
+    .map(p => ({ p, ovr: playerOverall(p) }))
+    .sort((a, b) => b.ovr - a.ovr)
+  let assigned = 0
+  for (const { p } of roster) {
+    // Skip players already placed this planning window.
+    const existing = state.summerBall.assignments[p.id]
+    if (existing && !existing.removed) continue
+    // leaguesForPlayer is prestige-descending; take the first open slot.
+    const eligible = leaguesForPlayer(p)
+    for (const leagueKey of eligible) {
+      const r = planSummerAssignment(state, p.id, leagueKey)
+      if (r.ok) { assigned++; break }
+      // slot full / ineligible → try next league down
+    }
+  }
+  return { assigned }
+}
+
 // ─── State setup ────────────────────────────────────────────────────────────
 
 /**
