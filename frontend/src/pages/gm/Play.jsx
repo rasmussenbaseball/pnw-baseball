@@ -530,17 +530,17 @@ function BoxScoreModal({ save, game, oppName, isHome, onClose }) {
           <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="shrink-0 w-9 h-9 flex items-center justify-center border-2 border-white/40 hover:border-white text-white/80 hover:text-white font-bold text-lg leading-none transition">×</button>
         </div>
         <div className="p-4 space-y-4">
-          <BoxScoreTable title={`${userSchool.name} — Hitting`} rows={myBatters} type="batter" />
-          <BoxScoreTable title={`${oppName} — Hitting`} rows={oppBatters} type="batter" />
-          <BoxScoreTable title={`${userSchool.name} — Pitching`} rows={myPitchers} type="pitcher" />
-          <BoxScoreTable title={`${oppName} — Pitching`} rows={oppPitchers} type="pitcher" />
+          <BoxScoreTable title={`${userSchool.name} — Hitting`} rows={myBatters} type="batter" save={save} />
+          <BoxScoreTable title={`${oppName} — Hitting`} rows={oppBatters} type="batter" save={save} />
+          <BoxScoreTable title={`${userSchool.name} — Pitching`} rows={myPitchers} type="pitcher" save={save} />
+          <BoxScoreTable title={`${oppName} — Pitching`} rows={oppPitchers} type="pitcher" save={save} />
         </div>
       </div>
     </div>
   )
 }
 
-function BoxScoreTable({ title, rows, type }) {
+function BoxScoreTable({ title, rows, type, save }) {
   if (rows.length === 0) {
     return (
       <div>
@@ -548,6 +548,16 @@ function BoxScoreTable({ title, rows, type }) {
         <div className="text-xs text-gray-400 italic px-2 py-1">No players logged.</div>
       </div>
     )
+  }
+  // Opponent rows from synthetic schools (D1/D2/D3/NWAC) aren't stored in
+  // save.players. We render OVR/YR only when we can look the player up.
+  function lookupMeta(pid) {
+    const p = save?.players?.[pid]
+    if (!p) return { ovr: null, yr: null }
+    return {
+      ovr: playerOverall(p),
+      yr: p.redshirtUsed ? 'RS-' + p.classYear : p.classYear,
+    }
   }
   return (
     <div>
@@ -558,6 +568,8 @@ function BoxScoreTable({ title, rows, type }) {
             {type === 'batter' ? (
               <tr>
                 <th className="text-left py-1 px-2">Player</th>
+                <th className="text-center">YR</th>
+                <th className="text-center">OVR</th>
                 <th className="text-center">AB</th>
                 <th className="text-center">R</th>
                 <th className="text-center">H</th>
@@ -575,6 +587,8 @@ function BoxScoreTable({ title, rows, type }) {
             ) : (
               <tr>
                 <th className="text-left py-1 px-2">Pitcher</th>
+                <th className="text-center">YR</th>
+                <th className="text-center">OVR</th>
                 <th className="text-center">IP</th>
                 <th className="text-center">H</th>
                 <th className="text-center">R</th>
@@ -590,11 +604,14 @@ function BoxScoreTable({ title, rows, type }) {
           </thead>
           <tbody>
             {rows.map(r => {
+              const { ovr, yr } = lookupMeta(r.pid)
               if (type === 'batter') {
                 const avg = r.ab > 0 ? (r.h / r.ab) : null
                 return (
                   <tr key={r.pid} className="border-t">
                     <td className="py-1 px-2 font-medium">{r.name}</td>
+                    <td className="text-center font-mono text-[11px] text-gray-600">{yr ?? '—'}</td>
+                    <td className="text-center font-mono font-semibold text-pnw-slate">{ovr ?? '—'}</td>
                     <td className="text-center font-mono">{r.ab || 0}</td>
                     <td className="text-center font-mono">{r.r || 0}</td>
                     <td className="text-center font-mono font-semibold">{r.h || 0}</td>
@@ -621,6 +638,8 @@ function BoxScoreTable({ title, rows, type }) {
               return (
                 <tr key={r.pid} className="border-t">
                   <td className="py-1 px-2 font-medium">{r.name}</td>
+                  <td className="text-center font-mono text-[11px] text-gray-600">{yr ?? '—'}</td>
+                  <td className="text-center font-mono font-semibold text-pnw-slate">{ovr ?? '—'}</td>
                   <td className="text-center font-mono font-semibold">{ipDisplay}</td>
                   <td className="text-center font-mono">{r.h || 0}</td>
                   <td className="text-center font-mono">{(r.er || 0) /* R approximation */}</td>
@@ -1589,13 +1608,19 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
           <div className="space-y-1 max-h-80 overflow-y-auto">
             {bullpen.map(p => {
               const energy = save ? getEnergy(save, p.id) : 100
+              const ovr = playerOverall(p)
+              const yr = p.redshirtUsed ? 'RS-' + p.classYear : p.classYear
               return (
                 <button
                   key={p.id}
                   onClick={() => onSubmit('PITCH', { player: p })}
                   className="w-full text-left p-2 hover:bg-amber-400/10 rounded text-sm flex justify-between items-center border border-[#3a3a5e]"
                 >
-                  <span className="font-medium text-white">{p.firstName} {p.lastName}</span>
+                  <span className="font-medium text-white flex items-center gap-2">
+                    <span className="font-mono text-[11px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded">{ovr}</span>
+                    <span className="text-[10px] text-[#a8a8c8] font-mono">{yr}</span>
+                    {p.firstName} {p.lastName}
+                  </span>
                   <span className="text-[11px] text-[#a8a8c8] font-mono flex items-center gap-2">
                     <span className={energyColorClass(energy)}>NRG {Math.round(energy)}</span>
                     <span>Stuff {p.pitcher?.stuff} · Stam {p.pitcher?.stamina} · Velo {p.pitcher?.velocity_avg?.toFixed(0) || '—'}</span>
@@ -1713,16 +1738,25 @@ function PickPlayerForSpot({ batters, bench, save, onPick }) {
   if (spotIdx == null) {
     return (
       <div className="space-y-1 max-h-80 overflow-y-auto">
-        {batters.map((b, i) => (
-          <button
-            key={b.id + '_' + i}
-            onClick={() => setSpotIdx(i)}
-            className="w-full text-left p-2 hover:bg-blue-400/10 rounded text-sm flex justify-between border border-[#3a3a5e] text-[#e8e8e8]"
-          >
-            <span><span className="text-amber-300 mr-2">#{i + 1}</span>{b.firstName} {b.lastName}</span>
-            <span className="text-[11px] text-[#a8a8c8]">{b.primaryPosition}</span>
-          </button>
-        ))}
+        {batters.map((b, i) => {
+          const ovr = playerOverall(b)
+          const yr = b.redshirtUsed ? 'RS-' + b.classYear : b.classYear
+          return (
+            <button
+              key={b.id + '_' + i}
+              onClick={() => setSpotIdx(i)}
+              className="w-full text-left p-2 hover:bg-blue-400/10 rounded text-sm flex justify-between border border-[#3a3a5e] text-[#e8e8e8]"
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-amber-300">#{i + 1}</span>
+                <span className="font-mono text-[11px] bg-blue-400/20 text-blue-300 px-1.5 py-0.5 rounded">{ovr}</span>
+                <span className="text-[10px] text-[#a8a8c8] font-mono">{yr}</span>
+                {b.firstName} {b.lastName}
+              </span>
+              <span className="text-[11px] text-[#a8a8c8]">{b.primaryPosition}</span>
+            </button>
+          )
+        })}
       </div>
     )
   }
@@ -1735,13 +1769,19 @@ function PickPlayerForSpot({ batters, bench, save, onPick }) {
       <div className="grid grid-cols-1 gap-1 max-h-72 overflow-y-auto">
         {bench.map(p => {
           const energy = save ? getEnergy(save, p.id) : 100
+          const ovr = playerOverall(p)
+          const yr = p.redshirtUsed ? 'RS-' + p.classYear : p.classYear
           return (
             <button
               key={p.id}
               onClick={() => onPick(spotIdx, p)}
               className="text-left p-1.5 hover:bg-blue-400/10 rounded text-xs flex justify-between text-[#e8e8e8] border border-[#3a3a5e]"
             >
-              <span>{p.firstName} {p.lastName}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-[11px] bg-blue-400/20 text-blue-300 px-1.5 py-0.5 rounded">{ovr}</span>
+                <span className="text-[10px] text-[#a8a8c8] font-mono">{yr}</span>
+                {p.firstName} {p.lastName}
+              </span>
               <span className="font-mono flex gap-2">
                 <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
                 <span className="text-[#a8a8c8]">C {p.hitter?.contact_r ?? '—'}/P {p.hitter?.power_r ?? '—'} · {p.bats}HB</span>

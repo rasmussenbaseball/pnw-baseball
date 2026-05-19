@@ -350,7 +350,11 @@ export default function Dashboard() {
     setSimAheadConfirm(null)
     setBusy(true)
     setLastWeekRecap(null)
-    const result = simAhead(save, { weeks: preset.weeks, untilFn: preset.untilFn })
+    // simThroughGames:true — the upfront confirm-modal already warned the
+    // user about auto-simmed games in this span. Don't make the sim engine
+    // stop at every game-week boundary; just run through to the requested
+    // milestone (or other terminal condition like postseason / camp).
+    const result = simAhead(save, { weeks: preset.weeks, untilFn: preset.untilFn, simThroughGames: true })
     saveDynasty(save)
     setSave({ ...save })
     setSimResult({ preset: preset.label, ...result })

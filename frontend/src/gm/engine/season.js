@@ -417,12 +417,29 @@ export function simWeek(state, schedule, ratings) {
       const oppSchool = state.schools[oppId] || NON_NAIA_LOOKUP[oppId]
       const userWon = (g.homeId === userSchoolId && result.homeRuns > result.awayRuns) ||
                        (g.awayId === userSchoolId && result.awayRuns > result.homeRuns)
+      const hi = Math.max(result.homeRuns, result.awayRuns)
+      const lo = Math.min(result.homeRuns, result.awayRuns)
       userResults.push({
         gameId: g.id,
         opponent: oppSchool?.name || 'Unknown',
         homeAway: g.homeId === userSchoolId ? 'home' : 'away',
         result: userWon ? 'W' : 'L',
-        score: `${Math.max(result.homeRuns, result.awayRuns)}-${Math.min(result.homeRuns, result.awayRuns)}`,
+        score: `${hi}-${lo}`,
+      })
+      // Newsfeed entry — so the News tab + multi-week sim recap show the
+      // result alongside other weekly events. Tag fall scrim / spring scrim
+      // explicitly so users can scan game type at a glance.
+      state.newsfeed = state.newsfeed || []
+      const ha = g.homeId === userSchoolId ? 'vs' : '@'
+      const tag = g.type === 'FALL_SCRIMMAGE' ? ' (fall scrim)'
+        : g.type === 'SPRING_SCRIMMAGE' ? ' (spring scrim)'
+        : ''
+      state.newsfeed.unshift({
+        id: `game_${g.id}`,
+        year: state.calendar?.year,
+        week: state.calendar?.weekOfYear ?? state.calendar?.offseasonWeek ?? 1,
+        type: 'GAME',
+        headline: `${userWon ? 'W' : 'L'} ${hi}-${lo} ${ha} ${oppSchool?.name || 'Unknown'}${tag}`,
       })
     }
   }

@@ -23,7 +23,7 @@
 
 import { autoCreateSchedule } from './schedule'
 import { applyBudgetPreset, lockBudgetForYear, BUDGET_PRESETS } from './budget'
-import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, simProspectCamp, fundraise, generateRecruitPool } from './recruits'
+import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, withdrawOffer, simProspectCamp, fundraise, generateRecruitPool } from './recruits'
 import { makeRng } from './rng'
 import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
@@ -60,24 +60,65 @@ export function runAutoActions(save) {
     autoMandatoryCuts(save, summary)
   }
 
-  // 2. Required action for this week
+  // 2. Prune stale offers BEFORE scouting + AP spend — frees scholarship $$
+  // for fresher targets the AP-loop is about to scout. Doesn't fire unless
+  // the recruit pool already exists.
+  if (save.recruits && Object.keys(save.recruits).length > 0) {
+    autoPullStagnantOffers(save, summary)
+  }
+
+  // 3. Required action for this week
   const req = requiredActionForWeek(save, week)
   if (req && !req.isComplete(save)) {
     autoFulfillRequiredAction(save, req, summary)
   }
 
-  // 3. Prospect-camp invites in Wks 5 & 10 (independent of required action)
+  // 4. Prospect-camp invites in Wks 5 & 10 (independent of required action)
   if (week === 5 || week === 10) {
     autoSendCampInvites(save, week, summary)
   }
 
-  // 4. Weekly AP — only spend if user has AP this week and hasn't touched it
+  // 5. Weekly AP — only spend if user has AP this week and hasn't touched it
   const ap = save.ap?.currentWeek ?? 0
   if (ap > 0 && week >= 4) {
     autoSpendAP(save, summary)
   }
 
   return summary
+}
+
+/**
+ * Pull live offers that have been sitting for 10+ weeks with no commitment
+ * (and no fresh strong interest). Frees scholarship $$ so the auto-recruit
+ * pass can extend offers to fresher targets that are actually engaging.
+ */
+function autoPullStagnantOffers(save, summary) {
+  const userSchoolId = save.userSchoolId
+  if (!userSchoolId) return
+  let pulled = 0
+  for (const r of Object.values(save.recruits || {})) {
+    if (!r.liveOffer || r.liveOffer.schoolId !== userSchoolId) continue
+    if (r.status !== 'open') continue
+    const weeksOut = r.liveOffer.weeksOutstanding || 0
+    if (weeksOut < 10) continue
+    // Don't pull if they're showing strong renewed interest — they may
+    // still commit. The cutoff is 75 (above the "I'd offer" threshold).
+    const interest = r.scoutGrades?.[userSchoolId]?.interest || 0
+    if (interest >= 75) continue
+    try { withdrawOffer(r, userSchoolId) ; pulled++ } catch (e) {}
+  }
+  if (pulled > 0) {
+    summary.actionsTaken.push(`Pulled ${pulled} stale offer${pulled === 1 ? '' : 's'} (>10 wk no commit)`)
+  }
+}
+
+/** How many recruits currently hold a live offer from the user's program. */
+function countActiveOffers(save, userSchoolId) {
+  let n = 0
+  for (const r of Object.values(save.recruits || {})) {
+    if (r.liveOffer && r.liveOffer.schoolId === userSchoolId) n++
+  }
+  return n
 }
 
 // ─── Required-action fulfillment ────────────────────────────────────────────
@@ -607,14 +648,33 @@ function spendRecruiting(save, ap) {
       // Action couldn't apply — skip this recruit
       continue
     }
-    // Extend an offer on a clear win (full-scout + good fit) — costs $, not AP
-    if (interest >= 70 && fog <= 4 && ovr >= 60 && !r.liveOffer) {
-      const offerAmount = computeAutoOffer(save, r, ovr)
-      if (offerAmount > 0) {
-        try {
-          setLiveOffer(r, userSchoolId, offerAmount)
-        } catch (err) {
-          // Pool exhausted — silent skip
+    // Re-read the grade so offer decisions reflect the action we just
+    // applied (which usually bumped interest + dropped noise). Previously
+    // we used the PRE-action grade, which made offers ~impossible to
+    // trigger — the action could lift interest to 72 but the check still
+    // saw 65 and bailed.
+    const postGrade = r.scoutGrades?.[userSchoolId]
+    const postInterest = postGrade?.interest ?? interest
+    const postFog = postGrade?.noise ?? fog
+    // Extend an offer when:
+    //   - they're a fit (ovr ≥ 55), AND
+    //   - we know enough about them (post-action fog ≤ 8), AND
+    //   - they like us (post-action interest ≥ 55) OR they LOVE us (≥ 70
+    //     regardless of fog), AND
+    //   - we haven't blown past the offer cap (room for the rest of the
+    //     class to commit + later signees).
+    // Costs $$ from the scholarship pool, not AP.
+    if (!r.liveOffer && ovr >= 55 && countActiveOffers(save, userSchoolId) < 25) {
+      const wellLiked = postInterest >= 70
+      const standardFit = postInterest >= 55 && postFog <= 8
+      if (wellLiked || standardFit) {
+        const offerAmount = computeAutoOffer(save, r, ovr)
+        if (offerAmount > 0) {
+          try {
+            setLiveOffer(r, userSchoolId, offerAmount)
+          } catch (err) {
+            // Pool exhausted — silent skip
+          }
         }
       }
     }

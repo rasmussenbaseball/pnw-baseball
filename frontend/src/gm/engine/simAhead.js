@@ -168,6 +168,14 @@ export function tickOneWeek(save) {
   }
   if (save.calendar.mode === 'OFFSEASON') {
     advanceOffseasonWeek(save)
+    // Auto-sim any unplayed user fall scrim for the new weekOfYear too.
+    // advanceOffseasonWeek's internal simScrimmagesForCurrentWeek skips
+    // user games (they normally route through the live-play modal);
+    // sim-ahead is the user's explicit opt-in to auto-sim everything.
+    const ratings = seedFromPear(save.schools, save.conferences)
+    try { simWeek(save, save.schedule, ratings) } catch (e) {
+      console.warn('user fall game sim during sim-ahead failed:', e)
+    }
   } else if (save.calendar.mode === 'SEASON') {
     const ratings = seedFromPear(save.schools, save.conferences)
     simWeek(save, save.schedule, ratings)
@@ -185,7 +193,7 @@ export function tickOneWeek(save) {
  *   - weeklyDiffs: array of per-week diffs (one entry per tick), oldest first
  *   - aggregateDiff: a single diff from the start snapshot to the final snapshot
  */
-export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
+export function simAhead(save, { weeks, untilFn, maxWeeks = 26, simThroughGames = false } = {}) {
   const start = snapshotState(save)
   // Mark the newsfeed boundary so we can slice out events fired during
   // these weeks for the post-sim recap modal. newsfeed.unshift puts new
@@ -224,10 +232,12 @@ export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
     count++
     if (untilFn && untilFn(next)) break
     if (next.mode === 'POSTSEASON') break
-    // After the tick: stop if the user has unplayed games this week so they
-    // can play them live OR explicitly auto-sim. Avoids the "I just simmed
-    // past 4 unplayed scrim weeks" trap.
-    if (hasUnplayedUserGamesThisWeek(save)) {
+    // After the tick: by default stop if the user has unplayed games this
+    // week so they can play them live OR explicitly auto-sim. The Dashboard
+    // shows a confirm-modal upfront if the requested span crosses game
+    // weeks — once confirmed it passes simThroughGames:true and we keep
+    // simming through.
+    if (!simThroughGames && hasUnplayedUserGamesThisWeek(save)) {
       stoppedReason = 'user_games_pending'
       break
     }
@@ -255,7 +265,9 @@ export function simAhead(save, { weeks, untilFn, maxWeeks = 26 } = {}) {
 export function simPresets(save) {
   const cal = save.calendar
   const presets = []
-  presets.push({ key: '1WK', label: 'Sim 1 week', est: 1, untilFn: () => true })
+  // No "Sim 1 week" preset — that overlaps with the Advance Week button,
+  // which has live-game handling (GameWeekModal) that this bar lacks. The
+  // sim-ahead bar is exclusively multi-week jumps.
 
   if (cal.mode === 'OFFSEASON') {
     const ow = cal.offseasonWeek
