@@ -24,6 +24,8 @@
 import { autoCreateSchedule } from './schedule'
 import { applyBudgetPreset, lockBudgetForYear, BUDGET_PRESETS } from './budget'
 import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, withdrawOffer, simProspectCamp, fundraise, generateRecruitPool } from './recruits'
+import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek, PERM_AP, TEMP_AP } from './weeklyActions'
+import { phaseForWeek } from './gameYear'
 import { makeRng } from './rng'
 import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
@@ -369,7 +371,18 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
     }
   }
 
-  // 3. Recruiting — the primary sink
+  // 3. Weekly practice action — rotate hitting/pitching/defensive drills
+  // through a variety of stats across weeks. Fires only in practice-eligible
+  // phases (Fall Camp, Spring Season, etc.). This is the lever Nate
+  // specifically called out as missing: "Where is the practice/weekly
+  // actions? Sometimes we need to mix in some other actions like training
+  // players." Auto now fires one TEMPORARY weekly action per practice week.
+  if (!forceAllOnRecruiting && ap >= TEMP_AP) {
+    const spent = spendWeeklyPractice(save, summary)
+    if (spent > 0) ap -= spent
+  }
+
+  // 4. Recruiting — the primary sink
   if (ap > 0 && hasRecruitingNeeds(save)) {
     const spent = spendRecruiting(save, ap)
     if (spent > 0) {
@@ -378,8 +391,8 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
     }
   }
 
-  // 4. Team development boost — small per-week practice action that bumps
-  // one rating across the roster. Spends 8 AP if we have it.
+  // 5. Team development boost — fallback if we still have AP and no weekly
+  // practice happened. Spends 8 AP if we have it.
   if (!forceAllOnRecruiting && ap >= 8) {
     const spent = spendTeamDevBoost(save)
     if (spent > 0) {
@@ -396,6 +409,48 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
       summary.actionsTaken.push(`Additional recruiting — ${spent} AP`)
     }
   }
+}
+
+/**
+ * Auto-fire one weekly practice action — rotates through the WEEKLY_ACTIONS
+ * catalog so hitters, pitchers, and defenders all get attention across the
+ * year. Uses the TEMPORARY variant (10 AP for +5 to a rating for 4 weeks)
+ * since it's cheaper than PERMANENT and the short-term boost shows up in
+ * the very next game week. Only fires in practice-eligible phases; skipped
+ * outside those (December break, postseason, summer recruiting).
+ */
+function spendWeeklyPractice(save, summary) {
+  const wk = save.calendar?.weekOfYear ?? 0
+  const phase = phaseForWeek(wk)
+  if (!phase?.practice) return 0
+  if (!phase?.devAllowed) return 0
+  const ap = save.ap?.currentWeek ?? 0
+  if (ap < TEMP_AP) return 0
+  // 11-action rotation balances hitting / pitching / defensive work. Cycles
+  // by overall counter so consecutive weeks hit different stats.
+  const ROTATION = [
+    'CONTACT_R', 'STUFF_WORK', 'POWER_R', 'CONTROL_WORK',
+    'PLATE_DISCIPLINE', 'STAMINA_WORK', 'FIELDING_DRILLS',
+    'SPEED_CAMP', 'CONTACT_L', 'THROWING_DRILLS', 'POWER_L',
+  ]
+  const counter = (save.calendar?.week ?? wk) || 1
+  // Find the first action in the rotation that isn't already used this week.
+  let actionKey = null
+  for (let i = 0; i < ROTATION.length; i++) {
+    const candidate = ROTATION[(counter + i) % ROTATION.length]
+    if (!isActionUsedThisWeek(save, candidate)) { actionKey = candidate; break }
+  }
+  if (!actionKey) return 0
+  const actionDef = WEEKLY_ACTIONS[actionKey]
+  if (!actionDef) return 0
+  // Mark + spend before applying so re-entrant calls during the same week
+  // don't double-fire.
+  applyWeeklyAction(save, actionDef, 'TEMPORARY')
+  markActionUsedThisWeek(save, actionKey)
+  save.ap.currentWeek -= TEMP_AP
+  save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + TEMP_AP
+  summary.actionsTaken.push(`${actionDef.label} (+${actionDef.tempAmount} temp) — ${TEMP_AP} AP`)
+  return TEMP_AP
 }
 
 /**

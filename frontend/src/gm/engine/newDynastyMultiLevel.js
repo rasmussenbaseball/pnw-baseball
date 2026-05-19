@@ -70,7 +70,27 @@ export function newDynastyMultiLevel(input) {
   }
 
   // Members from playoff data (PNW + tagged additions).
-  const allMembers = [...(conf.pnwMembers || [])]
+  // For NWAC dynasties we want ALL FOUR divisions in scope — Nate's spec:
+  // NWAC teams only play other NWAC teams, conference games are within
+  // division, non-conference games are cross-division NWAC. Tag each member
+  // with the division they belong to so the schedule builder can split
+  // conference vs non-conference correctly.
+  const NWAC_DIVS = ['NWAC_NORTH', 'NWAC_SOUTH', 'NWAC_EAST', 'NWAC_WEST']
+  /** @type {Array<{ id: string, name: string, city?: string, state?: string, nickname?: string, colors?: any, _divId: string }>} */
+  const allMembers = []
+  if (level === 'NWAC') {
+    for (const divId of NWAC_DIVS) {
+      const divConf = CONF_CONFIG[divId]
+      if (!divConf) continue
+      for (const m of (divConf.pnwMembers || [])) {
+        allMembers.push({ ...m, _divId: divId })
+      }
+    }
+  } else {
+    for (const m of (conf.pnwMembers || [])) {
+      allMembers.push({ ...m, _divId: conferenceId })
+    }
+  }
   // For D1 conferences with a non-NAIA mapping, append the rest of the
   // national conference roster from non_naia_teams.json.
   const peerName = PEAR_CONF_NAME[conferenceId]
@@ -83,6 +103,7 @@ export function newDynastyMultiLevel(input) {
         if (pnwIds.has(t.id)) continue   // already counted as a PNW member
         allMembers.push({
           id: t.id, name: t.name, city: t.city, state: t.state, nickname: t.nickname,
+          _divId: conferenceId,
         })
       }
     }
@@ -90,13 +111,17 @@ export function newDynastyMultiLevel(input) {
 
   for (const m of allMembers) {
     const fromPool = findNonNaia(m.id)
+    // For NWAC, each team's conferenceId is its own division (NWAC_NORTH etc).
+    // Other levels just use the user's conferenceId since the user's conf is
+    // the only one populated.
+    const memberConfId = m._divId || conferenceId
     const synthetic = buildSyntheticSchool({
       id: m.id,
       name: m.name,
       city: m.city,
       state: m.state,
       nickname: m.nickname || (fromPool?.nickname ?? ''),
-      conferenceId,
+      conferenceId: memberConfId,
       strength: fromPool?.strength ?? 0,
       level,
       // Prefer colors set directly on the PNW member (playoff_formats — used
@@ -110,17 +135,34 @@ export function newDynastyMultiLevel(input) {
     schools[m.id] = synthetic
   }
 
-  // 2. Build the conferences map — single conference for now (user's).
+  // 2. Build the conferences map. For NWAC we register all 4 divisions
+  // (with each division's schoolIds) so the rest of the engine can iterate
+  // them. For other levels there's just the user's conference.
   /** @type {Object<string, any>} */
-  const conferences = {
-    [conferenceId]: {
+  const conferences = {}
+  if (level === 'NWAC') {
+    for (const divId of NWAC_DIVS) {
+      const divConf = CONF_CONFIG[divId]
+      if (!divConf) continue
+      const memberIds = (divConf.pnwMembers || []).map(m => m.id).filter(id => schools[id])
+      conferences[divId] = {
+        id: divId,
+        name: divConf.name,
+        abbreviation: conferenceAbbreviation(divId),
+        level,
+        schoolIds: memberIds,
+        tournament: divConf.tournament,
+      }
+    }
+  } else {
+    conferences[conferenceId] = {
       id: conferenceId,
       name: conf.name,
       abbreviation: conferenceAbbreviation(conferenceId),
       level,
       schoolIds: Object.keys(schools),
       tournament: conf.tournament,
-    },
+    }
   }
 
   // 3. Generate the user's coach. In STORY mode the user is an ASSISTANT
@@ -472,6 +514,14 @@ export function buildLevelSchedule(conferenceId, schools, level, year, seed) {
     return buildIndependentSchedule(teamIds[0], level, year, rng, targetGames)
   }
 
+  // NWAC path — split by division. 1 series within division as CONFERENCE
+  // games; each team plays ~3 cross-division series as NON_CONFERENCE
+  // games against other NWAC teams (never non-NWAC). Per Nate: "NWAC teams
+  // can NOT play any teams other than NWAC teams."
+  if (level === 'NWAC') {
+    return buildNwacSchedule(schools, year, rng)
+  }
+
   const games = []
 
   // Each pair plays at least a 3-game series. Add more series until we hit target.
@@ -514,6 +564,115 @@ export function buildLevelSchedule(conferenceId, schools, level, year, seed) {
       }
     }
   }
+  return games
+}
+
+/**
+ * NWAC schedule builder.
+ *
+ *   - Conference: 1 series (3 games) vs every team in the same division.
+ *     Each division has a different team count so conf-game totals vary
+ *     by team (~18-24 conf games).
+ *   - Non-conference: 3 series vs randomly-drawn teams from OTHER NWAC
+ *     divisions. Adds ~9 games, brings the total slate to ~27-33 games.
+ *   - Never schedules a non-NWAC opponent.
+ *
+ * Per Nate: division/region champ = conf record. Final 8 bracket lives in
+ * pnwPlayoffs — this builder is regular-season only.
+ */
+function buildNwacSchedule(schools, year, rng) {
+  // Group teams by their conferenceId (division).
+  const byDiv = {}
+  for (const id of Object.keys(schools)) {
+    const div = schools[id].conferenceId || 'NWAC_NORTH'
+    if (!byDiv[div]) byDiv[div] = []
+    byDiv[div].push(id)
+  }
+  const games = []
+  let seriesIdx = 0
+  const seasonStartWeek = 27   // matches buildLevelSchedule's regular-season window
+
+  // 1. Within-division round-robin — 1 series per opponent pair.
+  for (const div of Object.keys(byDiv)) {
+    const teams = byDiv[div]
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        // Alternate home by deterministic index so it's not always the lower-
+        // indexed team hosting.
+        const homeFirst = (i + j) % 2 === 0
+        const homeId = homeFirst ? teams[i] : teams[j]
+        const awayId = homeFirst ? teams[j] : teams[i]
+        const wk = seasonStartWeek + (seriesIdx % 14)
+        const seriesId = `${div}_${year}_${seriesIdx}`
+        for (let g = 0; g < 3; g++) {
+          games.push({
+            id: `${seriesId}_g${g}`,
+            year,
+            seasonWeek: (seriesIdx % 14) + 1,
+            weekOfYear: wk,
+            date: dateForWeek(year, wk, g),
+            homeId, awayId,
+            type: 'CONFERENCE',
+            seriesId,
+            countsTowardRecord: true,
+            isDoubleheader: false,
+            played: false,
+            homeRuns: null, awayRuns: null,
+          })
+        }
+        seriesIdx++
+      }
+    }
+  }
+
+  // 2. Cross-division NWAC non-conference. Each team plays ~3 series
+  // against a random non-division NWAC opponent. Track pairings to avoid
+  // duplicate matchups within the cross-div pool.
+  const SERIES_PER_TEAM = 3
+  const seenPair = new Set()
+  function pairKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}` }
+  const allTeamIds = Object.keys(schools)
+  for (const teamId of allTeamIds) {
+    const myDiv = schools[teamId].conferenceId
+    // Candidates = NWAC teams NOT in my division
+    const candidates = allTeamIds.filter(other =>
+      other !== teamId
+      && schools[other].conferenceId !== myDiv
+      && !seenPair.has(pairKey(teamId, other))
+    )
+    // Shuffle deterministically using the rng
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(rng.next() * (i + 1))
+      ;[candidates[i], candidates[j]] = [candidates[j], candidates[i]]
+    }
+    const opps = candidates.slice(0, SERIES_PER_TEAM)
+    for (const oppId of opps) {
+      seenPair.add(pairKey(teamId, oppId))
+      const homeFirst = rng.chance(0.5)
+      const homeId = homeFirst ? teamId : oppId
+      const awayId = homeFirst ? oppId : teamId
+      const wk = seasonStartWeek + (seriesIdx % 14)
+      const seriesId = `NWAC_XDIV_${year}_${seriesIdx}`
+      for (let g = 0; g < 3; g++) {
+        games.push({
+          id: `${seriesId}_g${g}`,
+          year,
+          seasonWeek: (seriesIdx % 14) + 1,
+          weekOfYear: wk,
+          date: dateForWeek(year, wk, g),
+          homeId, awayId,
+          type: 'NON_CONFERENCE',
+          seriesId,
+          countsTowardRecord: true,
+          isDoubleheader: false,
+          played: false,
+          homeRuns: null, awayRuns: null,
+        })
+      }
+      seriesIdx++
+    }
+  }
+
   return games
 }
 

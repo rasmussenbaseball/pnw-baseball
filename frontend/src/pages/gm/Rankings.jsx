@@ -37,11 +37,20 @@ export default function Rankings() {
   // Compute / read NWBB ratings — cached on state.nwbbRatings
   const ratings = useMemo(() => ensureNwbbRatings(save), [save])
 
-  // Build display rows: NAIA only. Join with team record (W-L) so we can show
-  // it in the table without a separate scan.
+  // Build display rows. For NAIA dynasties (the default), filter to NAIA
+  // teams only. For D1/D2/D3/NWAC dynasties — where save.schools is the
+  // populated synthetic conference universe — show every team in
+  // save.schools (they're the relevant peers). Crucially this means NWAC
+  // dynasties see all 28 NWAC teams across all 4 divisions ranked together,
+  // mirroring the PPI rankings on the main stats site.
+  const userLevel = save.schools?.[save.userSchoolId]?.level
+  const isMultiLevel = userLevel && userLevel !== 'NAIA'
   const rows = useMemo(() => {
     return Object.values(ratings)
-      .filter(r => !r.isNonNaia)
+      .filter(r => isMultiLevel
+        ? !!save.schools[r.teamId]   // NWAC/D1/D2/D3 — keep every populated school
+        : !r.isNonNaia,               // NAIA — original behavior
+      )
       .map(r => {
         const school = save.schools[r.teamId]
         const team = save.teams[r.teamId]
@@ -53,7 +62,7 @@ export default function Rankings() {
           losses: team?.losses || 0,
         }
       })
-  }, [ratings, save])
+  }, [ratings, save, isMultiLevel])
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {

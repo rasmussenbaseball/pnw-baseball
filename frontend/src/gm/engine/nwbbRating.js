@@ -294,19 +294,24 @@ export function recomputeNwbbRatings(state) {
     }
   }
 
-  // Assign nationalRank (NAIA only, lower rank = better rating)
-  const naiaSorted = Object.values(out)
-    .filter(r => !r.isNonNaia)
-    .sort((a, b) => b.rating - a.rating)
-  naiaSorted.forEach((r, i) => { r.nationalRank = i + 1 })
+  // Assign nationalRank. For NAIA dynasties this ranks NAIA only (original
+  // behavior). For multi-level dynasties (D1/D2/D3/NWAC) the synth
+  // conference universe lives in state.schools, so we rank everything in
+  // state.schools — this is what gives NWAC dynasties a Rankings page that
+  // covers all 28 NWAC teams across the 4 divisions.
+  const userLevel = schools[state?.userSchoolId]?.level
+  const isMultiLevel = userLevel && userLevel !== 'NAIA'
+  const rankPool = isMultiLevel
+    ? Object.values(out).filter(r => !!schools[r.teamId])
+    : Object.values(out).filter(r => !r.isNonNaia)
+  rankPool.sort((a, b) => b.rating - a.rating).forEach((r, i) => { r.nationalRank = i + 1 })
 
-  // Assign sosRank (NAIA only, lower rank = harder schedule). Only ranked
-  // among teams that have actually played games — pre-season teams have
-  // sosRank=0 (unranked) so the UI shows "—" instead of "#1 of nothing".
-  const sosSorted = Object.values(out)
-    .filter(r => !r.isNonNaia && r.sos != null && r.gamesPlayed > 0)
-    .sort((a, b) => b.sos - a.sos)
-  sosSorted.forEach((r, i) => { r.sosRank = i + 1 })
+  // Assign sosRank. Same pool (NAIA-only OR multi-level user universe).
+  // Lower rank = harder schedule. Only ranked among teams that have actually
+  // played games — pre-season teams have sosRank=0 (unranked) so the UI
+  // shows "—" instead of "#1 of nothing".
+  const sosPool = rankPool.filter(r => r.sos != null && r.gamesPlayed > 0)
+  sosPool.sort((a, b) => b.sos - a.sos).forEach((r, i) => { r.sosRank = i + 1 })
 
   return out
 }
