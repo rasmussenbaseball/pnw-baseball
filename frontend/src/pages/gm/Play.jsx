@@ -1165,7 +1165,15 @@ function LiveGameView({ save, game, onExit }) {
       {/* MATCHUP — current batter + pitcher, with rich detail */}
       {!s.isOver && batter && pitcher && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-          <BatterCard batter={batter} todayLine={batterToday} onDeck={onDeck} inTheHole={inTheHole} side={battingSide} />
+          <BatterCard
+            batter={batter}
+            todayLine={batterToday}
+            onDeck={onDeck}
+            inTheHole={inTheHole}
+            side={battingSide}
+            isUser={userIsBatting}
+            teamSchool={userIsBatting ? userSchool : oppSchool}
+          />
           <PitcherCard
             pitcher={pitcher}
             line={s.top ? s.homePitcherLine : s.awayPitcherLine}
@@ -1173,6 +1181,8 @@ function LiveGameView({ save, game, onExit }) {
             fatigue={s.top ? s.homeFatigue : s.awayFatigue}
             confidence={s.top ? s.homeConfidence : s.awayConfidence}
             bf={s.top ? s.homePitcherBF : s.awayPitcherBF}
+            isUser={userIsPitching}
+            teamSchool={userIsPitching ? userSchool : oppSchool}
           />
         </div>
       )}
@@ -1321,7 +1331,7 @@ function ScoreboardRow({ name, linescore, runs, hits, errors, inningCols, isBatt
   )
 }
 
-function BatterCard({ batter, todayLine, onDeck, inTheHole, side }) {
+function BatterCard({ batter, todayLine, onDeck, inTheHole, side, isUser, teamSchool }) {
   const c = todayLine || { ab: 0, h: 0, d: 0, t: 0, hr: 0, rbi: 0, bb: 0, k: 0 }
   const ab = c.ab || 0
   const h = c.h || 0
@@ -1332,8 +1342,23 @@ function BatterCard({ batter, todayLine, onDeck, inTheHole, side }) {
   const contactR = batter?.hitter?.contact_r ?? 50
   const powerL = batter?.hitter?.power_l ?? 50
   const powerR = batter?.hitter?.power_r ?? 50
+  // Team affiliation strip: emerald "YOUR HITTER" or red "OPPONENT" so the
+  // user can scan-tell who's at bat without reading names.
+  const sideLabel = isUser ? 'YOUR HITTER' : 'OPPONENT BATTER'
+  const sideColor = isUser ? 'bg-emerald-500 text-emerald-950' : 'bg-red-500 text-red-50'
   return (
-    <div className="bg-[#1a1a2e] rounded-lg border-2 border-blue-400/60 p-3 shadow-sm">
+    <div className={'bg-[#1a1a2e] rounded-lg border-2 p-3 shadow-sm ' + (isUser ? 'border-emerald-400' : 'border-red-400')}>
+      <div className="flex items-center justify-between mb-2 -mt-1">
+        <span className={'text-[9px] font-pixel-display uppercase tracking-widest font-bold px-2 py-0.5 rounded ' + sideColor}>
+          {sideLabel}
+        </span>
+        {teamSchool && (
+          <div className="flex items-center gap-1.5 text-[10px] text-[#a8a8c8] font-pixel">
+            <TeamLogo school={teamSchool} size={16} />
+            <span className="truncate max-w-[100px]">{teamSchool.name}</span>
+          </div>
+        )}
+      </div>
       <div className="flex justify-between items-start">
         <div>
           <div className="text-[10px] font-pixel uppercase tracking-widest text-blue-300 font-bold">At the plate</div>
@@ -1363,14 +1388,27 @@ function BatterCard({ batter, todayLine, onDeck, inTheHole, side }) {
   )
 }
 
-function PitcherCard({ pitcher, line, pitches, fatigue, confidence, bf }) {
+function PitcherCard({ pitcher, line, pitches, fatigue, confidence, bf, isUser, teamSchool }) {
   const ip = Math.floor((line?.outs || 0) / 3) + '.' + ((line?.outs || 0) % 3)
   const fatiguePct = Math.min(100, fatigue)
   const fatigueLabel = fatigue < 25 ? 'Fresh' : fatigue < 50 ? 'OK' : fatigue < 75 ? 'Tiring' : 'Gassed'
   const fatigueColor = fatigue < 25 ? 'bg-emerald-500' : fatigue < 50 ? 'bg-lime-500' : fatigue < 75 ? 'bg-amber-500' : 'bg-red-500'
   const confidenceColor = confidence >= 65 ? 'text-emerald-300' : confidence >= 45 ? 'text-white' : 'text-red-400'
+  const sideLabel = isUser ? 'YOUR PITCHER' : 'OPPONENT PITCHER'
+  const sideColor = isUser ? 'bg-emerald-500 text-emerald-950' : 'bg-red-500 text-red-50'
   return (
-    <div className="bg-[#1a1a2e] rounded-lg border-2 border-amber-400/60 p-3 shadow-sm">
+    <div className={'bg-[#1a1a2e] rounded-lg border-2 p-3 shadow-sm ' + (isUser ? 'border-emerald-400' : 'border-red-400')}>
+      <div className="flex items-center justify-between mb-2 -mt-1">
+        <span className={'text-[9px] font-pixel-display uppercase tracking-widest font-bold px-2 py-0.5 rounded ' + sideColor}>
+          {sideLabel}
+        </span>
+        {teamSchool && (
+          <div className="flex items-center gap-1.5 text-[10px] text-[#a8a8c8] font-pixel">
+            <TeamLogo school={teamSchool} size={16} />
+            <span className="truncate max-w-[100px]">{teamSchool.name}</span>
+          </div>
+        )}
+      </div>
       <div className="flex justify-between items-start">
         <div>
           <div className="text-[10px] font-pixel uppercase tracking-widest text-amber-300 font-bold">On the mound</div>
@@ -1455,9 +1493,13 @@ function UserFieldDiagram({ fielders, pitcher, bases, userIsPitching }) {
             className="absolute text-center"
             style={{ top: `${coord.top}%`, left: `${coord.left}%`, transform: 'translate(-50%, -50%)' }}
           >
-            <div className="bg-white/95 rounded shadow text-[10px] leading-tight px-1.5 py-0.5 min-w-[60px]">
-              <div className="text-pnw-slate font-bold">{pos}</div>
-              <div className="text-gray-700 text-[9px] truncate max-w-[80px]">
+            {/* Dark themed fielder chip — was bg-white/95 + dark text which
+                blended into the lighter green portion of the field; the
+                contrast hurt readability. Dark navy fill with bright text
+                pops against every part of the green gradient. */}
+            <div className="bg-[#1a1a2e] rounded shadow-md text-xs leading-tight px-2 py-1 min-w-[68px] border border-amber-400/60">
+              <div className="text-amber-300 font-bold font-pixel-display tracking-widest text-[10px]">{pos}</div>
+              <div className="text-white text-[11px] font-pixel truncate max-w-[90px]">
                 {f ? `${f.firstName?.[0] || ''}. ${f.lastName || '?'}` : '—'}
               </div>
             </div>

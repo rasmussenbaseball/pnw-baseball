@@ -262,8 +262,14 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     if (!r1) return
     if (state.bases[1]) return             // 2B occupied, can't steal into it
     const runnerSpeed = r1.hitter?.speed ?? 50
-    // Attempt probability scales with speed: 50 → 10%, 75 → 22%, 90 → 32%
-    const attemptProb = Math.max(0, Math.min(0.40, 0.10 + (runnerSpeed - 50) * 0.005))
+    // Attempt probability scales with speed AND with the runner's odds of
+    // success — slow guys don't attempt, fast guys go often. Previously the
+    // attempt rate at avg speed was 10% regardless of success odds, so
+    // mid-speed runners on slow rosters got thrown out a lot. Now requires
+    // a real green light: only attempt when speed > 55, and probability
+    // ramps up sharply with speed.
+    if (runnerSpeed < 55) return
+    const attemptProb = Math.max(0, Math.min(0.45, (runnerSpeed - 55) * 0.012))
     if (!rng.chance(attemptProb)) return
 
     // Defending catcher
@@ -276,10 +282,13 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     // Pitcher hold — small contribution from pitcher's command + composure
     const stealPitcher = currentPitcher()
     const pitchHold = ((stealPitcher?.pitcher?.command ?? 50) * 0.5 + (stealPitcher?.pitcher?.composure ?? 50) * 0.5)
-    // Success probability: anchored at 70% for neutral matchup, swings with
-    // (runnerSpeed - catcherPop). 1 rating pt ≈ 0.5% swing.
-    const successBase = 0.70 + (runnerSpeed - catcherPop) * 0.005 - (pitchHold - 50) * 0.001
-    const successProb = Math.max(0.30, Math.min(0.92, successBase))
+    // Success probability — anchored at real-world college baseline (~75%
+    // success on stolen-base attempts). Was 70% before but compounded with
+    // a steep swing on (speed - pop), which left mid-speed runners getting
+    // caught most of the time vs decent catchers. New formula: higher base
+    // + gentler swing.
+    const successBase = 0.78 + (runnerSpeed - catcherPop) * 0.003 - (pitchHold - 50) * 0.0008
+    const successProb = Math.max(0.45, Math.min(0.95, successBase))
     const successful = rng.chance(successProb)
     const runnerName = nm(r1)
     if (successful) {
@@ -621,13 +630,14 @@ function computeFatigueDelta(pitcher, pitchesThisPA) {
   // staminaMult: stamina 50 → 1.0×, stamina 80 → 0.7×, stamina 30 → 1.35×
   const staminaMult = Math.max(0.55, 1.5 - (stamina / 100))
   const durabilityMult = Math.max(0.85, 1.15 - (durability / 200))
-  // ~1.0 fatigue per pitch at stamina 50. So 100-pitch outing at avg stamina
-  // accumulates ~100 fatigue gross; after between-inning recovery (~3/inning
-  // × 7-9 innings = 21-27), nets to ~75-80 → "Gassed". That matches the
-  // real-world expectation that a starter is shot at 100 pitches. Tuned up
-  // from the previous 0.45 which let pitchers throw forever (user reported
-  // 72 pitches with 0 fatigue).
-  return pitchesThisPA * 1.0 * staminaMult * durabilityMult
+  // ~1.4 fatigue per pitch at stamina 50. Previous tuning at 1.0/pitch was
+  // STILL too gentle — user reported a pitcher at 90 pitches reading "OK"
+  // at fatigue 30. Math check: 90 pitches at stamina 60 (probably user's
+  // starter) × 0.9 mult ≈ 81 fatigue gross; minus 9 inning-ends × 3
+  // recovery ≈ 27; net ~54 → "Tiring." With the new 1.4 rate: 90 × 1.4 ×
+  // 0.9 ≈ 113 gross, minus 27 = 86 → "Gassed." Aligns with how a real
+  // 90-pitch college starter should feel.
+  return pitchesThisPA * 1.4 * staminaMult * durabilityMult
 }
 
 /**

@@ -687,6 +687,20 @@ export default function Dashboard() {
         <KpiCard label="Job Security" value={save.budget?.jobSecurity ?? 50} suffix="/100" />
       </div>
 
+      {/* News — moved above the 3-column layout so the latest happenings are
+          the first thing the user reads after sim controls + KPIs. Used to
+          live in the center column where it was buried below team stats. */}
+      <Panel title="News" actionTo={null} className="mb-4">
+        <div className="space-y-2">
+          {(save.newsfeed || []).slice(0, 8).map(n => (
+            <NewsRow key={n.id} item={n} />
+          ))}
+          {(save.newsfeed || []).length === 0 && (
+            <div className="text-xs text-gray-400 italic">No news yet. Take an action or sim a week.</div>
+          )}
+        </div>
+      </Panel>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* LEFT column — staff + budget */}
         <div className="space-y-4">
@@ -744,16 +758,9 @@ export default function Dashboard() {
             </div>
           </Panel>
 
-          <Panel title="News" actionTo={null}>
-            <div className="space-y-2">
-              {(save.newsfeed || []).slice(0, 8).map(n => (
-                <NewsRow key={n.id} item={n} />
-              ))}
-              {(save.newsfeed || []).length === 0 && (
-                <div className="text-xs text-gray-400 italic">No news yet. Take an action or sim a week.</div>
-              )}
-            </div>
-          </Panel>
+          {/* News panel moved to the top of the page (above the 3-column
+              grid) per playtester feedback. Was buried at the bottom of
+              the center column before. */}
         </div>
 
         {/* RIGHT column — focus tasks + conference standings widget */}
@@ -1312,12 +1319,22 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
     ? offseasonWeekDate(startYear, offseasonWeek)
     : null
 
+  // Icon for the period — surface a meaningful symbol so the chip isn't an
+  // empty square. Offseason variants pick by what's happening that month
+  // (summer / fall / winter / spring buildup); in-season is a baseball.
+  function offseasonIcon(wk) {
+    if (wk <= 4) return '☀️'      // Late Summer
+    if (wk <= 13) return '🍂'    // Fall Camp
+    if (wk <= 17) return '🏋️'    // November conditioning
+    if (wk <= 21) return '❄️'    // December dead period
+    return '🧤'                   // Winter Practice / Spring ramp
+  }
   let primary
   if (inOffseason) {
     primary = (
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-lg">
-          
+        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-2xl shrink-0">
+          {offseasonIcon(offseasonWeek)}
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
@@ -1332,8 +1349,8 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
     const oppName = (save.schools[opp] || NON_NAIA_DISPLAY[opp])?.name || 'TBD'
     primary = (
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-pnw-green flex items-center justify-center text-lg">
-          
+        <div className="w-10 h-10 rounded-lg bg-pnw-green flex items-center justify-center text-2xl shrink-0">
+          ⚾
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
@@ -1703,9 +1720,9 @@ function Rating({ label, v }) {
   )
 }
 
-function Panel({ title, actionTo, actionLabel, children }) {
+function Panel({ title, actionTo, actionLabel, children, className = '' }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition">
+    <div className={'bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition ' + className}>
       <div className="flex justify-between items-baseline mb-3 pb-2 border-b border-gray-100">
         <h2 className="text-xs font-bold text-pnw-slate uppercase tracking-widest">{title}</h2>
         {actionTo && (
