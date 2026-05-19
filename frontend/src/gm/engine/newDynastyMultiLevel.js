@@ -333,8 +333,15 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
   //   Top NWAC → ~75 OVR, bottom NWAC → ~60-65
   // Each level now uses a steeper strength slope and a slightly higher
   // tierBase. See scripts/pnw-team-ovr-report.mjs to verify hierarchy.
-  const tierBase  = { D1: 79, D2: 60, D3: 50, NWAC: 38 }[level] ?? 50
-  const tierSlope = { D1: 3.0, D2: 3.0, D3: 2.5, NWAC: 3.4 }[level] ?? 2.0
+  // PH formula tuned for the PNW Team OVR hierarchy Nate wants:
+  //   D1   best ~94 (Oregon St), worst ~85 (Seattle U)
+  //   D2   best ~82 (NN Nazarene), worst ~70 (Saint Martin's)
+  //   D3   best ~80 (Whitworth), worst ~70 (Willamette)
+  //   NWAC best ~75 (Everett), worst ~62 (Grays Harbor)
+  // Steeper slopes than before — programs with similar PEAR strengths now
+  // sit ~10 OVR apart from elites to floor of their level.
+  const tierBase  = { D1: 74, D2: 47, D3: 41, NWAC: 44 }[level] ?? 50
+  const tierSlope = { D1: 6.5, D2: 7.0, D3: 7.5, NWAC: 4.5 }[level] ?? 2.0
   const programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
 
   // Resource tier per level (rough budget proxy)

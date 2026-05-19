@@ -75,10 +75,10 @@ function meanRatingFor(programHistory, slotTier = 'bench', level = 'NAIA') {
   // (PH-driven) but anchors the absolute level. D1 starters average
   // ~6 OVR above an NAIA equivalent; D3 averages ~4 below.
   // Level-shift on the rating mean. Calibrated against the user's expected
-  // Team OVR hierarchy: top D1 ~92, top NAIA ~85, top NWAC ~75, worst NWAC
-  // ~62. NWAC pushed further negative (was -2 → -7) so weak JUCOs land in
-  // the low 60s instead of a soft 70-71 floor.
-  const LEVEL_SHIFT = { D1: 8, D2: 2, NAIA: 0, D3: -4, NWAC: -7 }
+  // Team OVR hierarchy: top D1 ~94, top NAIA ~85, top D3 ~80, top NWAC ~75,
+  // worst NWAC ~62. NWAC pushed further negative so weak JUCOs land in the
+  // low 60s instead of the previous soft 67-71 floor.
+  const LEVEL_SHIFT = { D1: 8, D2: 2, NAIA: 0, D3: -2, NWAC: -10 }
   return mean + (LEVEL_SHIFT[level] ?? 0)
 }
 

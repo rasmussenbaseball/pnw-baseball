@@ -140,8 +140,7 @@
     "NAIA": {
       "name": "NAIA",
       "pnwConferences": [
-        "CCC",
-        "FRONTIER"
+        "CCC"
       ],
       "eligibility": {
         "classYears": [
@@ -483,12 +482,6 @@
           "name": "British Columbia",
           "city": "Vancouver",
           "state": "BC"
-        },
-        {
-          "id": "northwest-naia",
-          "name": "Northwest",
-          "city": "Kirkland",
-          "state": "WA"
         }
       ]
     },
@@ -496,44 +489,9 @@
       "id": "FRONTIER",
       "name": "Frontier Conference",
       "level": "NAIA",
-      "tournament": {
-        "format": "DOUBLE_ELIM",
-        "fieldSize": 6,
-        "location": "rotating host",
-        "details": "Top 6 from Frontier regular season qualify. Double-elim. Champion gets NAIA Opening Round auto-bid. Note: Frontier is primarily a Montana/MT-region conference but contains some PNW-adjacent programs."
-      },
-      "pnwMembers": [
-        {
-          "id": "carroll-montana-naia",
-          "name": "Carroll (MT)",
-          "city": "Helena",
-          "state": "MT"
-        },
-        {
-          "id": "providence-naia",
-          "name": "Providence (MT)",
-          "city": "Great Falls",
-          "state": "MT"
-        },
-        {
-          "id": "rocky-mountain-naia",
-          "name": "Rocky Mountain",
-          "city": "Billings",
-          "state": "MT"
-        },
-        {
-          "id": "montana-tech-naia",
-          "name": "Montana Tech",
-          "city": "Butte",
-          "state": "MT"
-        },
-        {
-          "id": "montana-western-naia",
-          "name": "Montana Western",
-          "city": "Dillon",
-          "state": "MT"
-        }
-      ]
+      "_note": "Frontier Conference (Montana) does NOT sponsor baseball. The MT programs that DO play (rare) are independent or compete in other conferences. Leaving the entry as a placeholder in case Frontier adds baseball in the future. No PNW members at present.",
+      "tournament": null,
+      "pnwMembers": []
     },
     "NWAC_NORTH": {
       "id": "NWAC_NORTH",

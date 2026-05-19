@@ -79,13 +79,13 @@ const PROGRAM_HISTORY_OVERRIDES = {
   // CCC programs in the low 70s. Re-run scripts/pnw-team-ovr-report.mjs
   // any time you tweak these values to see the resulting Team OVR.
   //
-  // Approx mapping with the current roster generator:
-  //   PH 94 → Team OVR 85   (Lewis-Clark — real-world top NAIA)
-  //   PH 80 → Team OVR 82   (UBC — top tier CCC after LCSC)
-  //   PH 72 → Team OVR 80   (Bushnell)
-  //   PH 60 → Team OVR 77-78 (College of Idaho, Oregon Tech)
-  //   PH 32 → Team OVR 73   (Corban, Eastern Oregon)
-  //   PH 28 → Team OVR 72   (Warner Pac, Northwest)
+  // Approx mapping with the current roster generator (after May 2026 retune):
+  //   PH 94 → Team OVR 85   Lewis-Clark — real-world top NAIA
+  //   PH 80 → Team OVR 82   UBC
+  //   PH 72 → Team OVR 80   Bushnell
+  //   PH 60 → Team OVR 77-78  College of Idaho, Oregon Tech
+  //   PH 32 → Team OVR 72-73  Corban, Eastern Oregon
+  //   PH 28 → Team OVR 71-72  Warner Pacific
   'lewis-clark-state':     94,
   'british-columbia':      80,
   'bushnell':              72,
@@ -94,13 +94,6 @@ const PROGRAM_HISTORY_OVERRIDES = {
   'corban':                32,
   'eastern-oregon':        32,
   'warner-pacific':        28,
-  'northwest-naia':        28,
-  // Frontier (MT)
-  'carroll-montana-naia':  78,
-  'rocky-mountain-naia':   60,
-  'montana-tech-naia':     35,
-  'providence-naia':       28,
-  'montana-western-naia':  22,
 }
 
 // ─── Hand-coded resource tiers for well-known programs ────────────────────────
