@@ -16,6 +16,8 @@ import { buildAllConferenceSchedules, autoScheduleFallGames } from './schedule'
 import { defaultBudgetForSchool } from './budget'
 import { applyRealFinancials } from './schoolFinancials'
 import { buildInitialCareer } from './storyMode'
+import { teamOverall } from './playerRating'
+import { expectedTeamOvr } from './programRating'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
@@ -138,6 +140,13 @@ export function newDynasty(input) {
       runDiff: 0,
     }
     normalizeRosterScholarships(teams[school.id], school, players)
+    // Pin starting Team OVR to the deterministic value shown on the program
+    // tile so every new dynasty for a given school starts at the same number,
+    // regardless of roster randomness. teamOverall() applies the offset.
+    {
+      const raw = teamOverall(teams[school.id], players).overall
+      teams[school.id].ovrOffset = expectedTeamOvr({ ...school, level: 'NAIA' }) - raw
+    }
   }
 
   // 4. Calendar — dynasty starts first week of August 2026 (offseason) fall

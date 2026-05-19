@@ -322,7 +322,10 @@ export default function Dashboard() {
   }
 
   function runSimAhead(preset) {
-    if (scheduleBlocked) {
+    // Auto mode bypasses the schedule guard — the AI co-GM fills required
+    // actions / scrim slots as the sim loop advances. Mirrors the autoOn
+    // short-circuit in simNextWeek so sim-ahead works while auto is on.
+    if (!autoOn && scheduleBlocked) {
       gmToast(`Finish your schedule first — ${openSlots.length} open weekend slot${openSlots.length === 1 ? '' : 's'} remaining. Head to Schedule.`, 'warn')
       return
     }

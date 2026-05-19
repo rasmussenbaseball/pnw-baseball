@@ -206,15 +206,24 @@ export const HITTER_POSITION_OPTIONS = HITTER_POSITIONS
 
 /**
  * Aggregate team OVR — average top-9 hitter OVR + top-5 pitcher OVR.
+ *
+ * `team.ovrOffset` (set at dynasty creation) shifts every output by the
+ * same amount so the in-game Team OVR matches the deterministic value
+ * shown on the team-picker tile (expectedTeamOvr in programRating.js).
+ * Without this, roster randomness moves the starting Team OVR by ±2-3
+ * even for the same school. Subsequent roster changes (recruits,
+ * transfers, development) still flow through normally — the offset is
+ * a constant, not a hard pin.
  */
 export function teamOverall(team, players) {
   const roster = team.rosterPlayerIds.map(id => players[id]).filter(Boolean)
   const hitters = roster.filter(p => p.isHitter).map(hitterOverall).sort((a, b) => b - a).slice(0, 9)
   const pitchers = roster.filter(p => p.isPitcher).map(pitcherOverall).sort((a, b) => b - a).slice(0, 5)
   const avg = arr => arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0
+  const offset = team.ovrOffset ?? 0
   return {
-    overall: Math.round((avg(hitters) * 0.55 + avg(pitchers) * 0.45)),
-    hitting: Math.round(avg(hitters)),
-    pitching: Math.round(avg(pitchers)),
+    overall: Math.round(avg(hitters) * 0.55 + avg(pitchers) * 0.45) + offset,
+    hitting: Math.round(avg(hitters)) + offset,
+    pitching: Math.round(avg(pitchers)) + offset,
   }
 }
