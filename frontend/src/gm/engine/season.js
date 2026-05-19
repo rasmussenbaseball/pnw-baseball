@@ -23,7 +23,7 @@ import { maybeFireRandomEvent } from './randomEvents'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
 import { computeWeeklyAwards } from './weeklyAwards'
-import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf } from './pnwPlayoffs'
+import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, runNwacPlayoffs, summarizeNwacUserPath } from './pnwPlayoffs'
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
 import { buildAllConferenceSchedules, autoScheduleFallGames, dateToWeekOfYear } from './schedule'
@@ -768,18 +768,9 @@ function runPostseasonMultiLevel(state) {
   if (!conf) return null
   const level = state.level
 
-  // Seed conference qualifiers by conf W-L → run diff
-  const standings = (conf.schoolIds || [])
-    .map(id => ({ schoolId: id, team: state.teams[id] }))
-    .filter(x => x.team)
-    .sort((a, b) => {
-      if (a.team.confWins !== b.team.confWins) return b.team.confWins - a.team.confWins
-      return b.team.runDiff - a.team.runDiff
-    })
-  const fieldSize = qualifierCountForConf(userConfId)
-  const seeded = standings.slice(0, fieldSize).map(x => x.schoolId)
-
-  // simGame callback — use fast monte-carlo against the universal rating
+  // simGame callback — use fast monte-carlo against the universal rating.
+  // Defined first so the NWAC branch (which doesn't go through the conf-
+  // tournament path) can use the same callback.
   const ratingFor = (sid) => {
     const team = state.teams[sid]
     if (!team) return { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
@@ -792,6 +783,111 @@ function runPostseasonMultiLevel(state) {
     }
   }
   const simGame = (h, a, key) => fastSimGame(ratingFor(h), ratingFor(a), key)
+
+  // NWAC postseason: skips the per-conference tournament entirely. The NWAC
+  // playoff structure IS the postseason — regular-season conf record seeds
+  // the divisions, top 4 from each div feed super regionals + championship
+  // (see runNwacPlayoffs in pnwPlayoffs.js). Each conference doesn't run a
+  // separate tournament; the conf record IS the bid.
+  if (level === 'NWAC') {
+    const nwacResult = runNwacPlayoffs(state, simGame, `nwac_${state.calendar.year}`)
+    const userPath = summarizeNwacUserPath(nwacResult, state.userSchoolId)
+
+    // Apply W/L from the user's games to the user team (record only)
+    const userGamesFromResult = []
+    if (userPath.qualified && userPath.superRegional) {
+      const sr = userPath.superRegional
+      if (sr.playInGame && (sr.playInA === state.userSchoolId || sr.playInB === state.userSchoolId)) {
+        userGamesFromResult.push({
+          homeId: sr.playInA, awayId: sr.playInB,
+          homeRuns: sr.playInGame.homeRuns, awayRuns: sr.playInGame.awayRuns,
+        })
+      }
+      for (const g of (sr.bo3Games || [])) {
+        if (g.homeId === state.userSchoolId || g.awayId === state.userSchoolId) userGamesFromResult.push(g)
+      }
+    }
+    if (userPath.qualified && nwacResult.championship) {
+      for (const g of (nwacResult.championship.games || [])) {
+        if (g.homeId === state.userSchoolId || g.awayId === state.userSchoolId) userGamesFromResult.push(g)
+      }
+    }
+    for (const g of userGamesFromResult) {
+      const userHome = g.homeId === state.userSchoolId
+      const userRuns = userHome ? g.homeRuns : g.awayRuns
+      const oppRuns = userHome ? g.awayRuns : g.homeRuns
+      state.teams[state.userSchoolId].runDiff += userRuns - oppRuns
+    }
+
+    state.postseason = {
+      year: state.calendar.year + 1,
+      level,
+      nwac: nwacResult,
+      nwacUserPath: userPath,
+      tournaments: [],
+      autoBids: nwacResult.championship?.qualifiers || [],
+      userChamp: userPath.wonChampionship,
+      userQualified: userPath.qualified,
+      userInField: userPath.inChampionship,
+      userORWon: userPath.wonSuperRegional,
+      userInWS: userPath.inChampionship,
+      userWSChamp: userPath.wonChampionship,
+    }
+
+    // News headlines for the NWAC postseason path
+    const userName = state.schools[state.userSchoolId]?.name
+    const champName = state.schools[nwacResult.nwacChampion]?.name || 'TBD'
+    if (userPath.wonChampionship) {
+      state.newsfeed.unshift({
+        id: `nwac_champ_${state.calendar.year}`,
+        year: state.calendar.year + 1, week: 42, type: 'POSTSEASON',
+        headline: `${userName} WINS THE NWAC CHAMPIONSHIP at Longview, WA!`,
+        big: true,
+      })
+    } else if (userPath.inChampionship) {
+      state.newsfeed.unshift({
+        id: `nwac_finals_${state.calendar.year}`,
+        year: state.calendar.year + 1, week: 42, type: 'POSTSEASON',
+        headline: `Advanced to the 8-team NWAC Championship in Longview, WA. ${champName} took the title.`,
+        big: true,
+      })
+    } else if (userPath.wonSuperRegional) {
+      state.newsfeed.unshift({
+        id: `nwac_sr_${state.calendar.year}`,
+        year: state.calendar.year + 1, week: 41, type: 'POSTSEASON',
+        headline: `Won NWAC Super Regional — Longview-bound!`,
+      })
+    } else if (userPath.qualified) {
+      const where = userPath.hadBye ? '#1 seed bye (but lost championship)' : `seeded #${userPath.seed} (eliminated)`
+      state.newsfeed.unshift({
+        id: `nwac_exit_${state.calendar.year}`,
+        year: state.calendar.year + 1, week: 41, type: 'POSTSEASON',
+        headline: `NWAC playoff run ends — ${where}. ${champName} won it all.`,
+      })
+    } else {
+      state.newsfeed.unshift({
+        id: `nwac_miss_${state.calendar.year}`,
+        year: state.calendar.year + 1, week: 40, type: 'POSTSEASON',
+        headline: `Missed the NWAC playoffs (top 4 in division required). ${champName} won the NWAC.`,
+      })
+    }
+
+    runNationalChampionsTracking(state, level)
+    return state.postseason
+  }
+
+  // Non-NWAC multi-level (D1/D2/D3): single-conference tournament + stub
+  // national bracket. The conference-tournament path below is unchanged.
+  // Seed conference qualifiers by conf W-L → run diff
+  const standings = (conf.schoolIds || [])
+    .map(id => ({ schoolId: id, team: state.teams[id] }))
+    .filter(x => x.team)
+    .sort((a, b) => {
+      if (a.team.confWins !== b.team.confWins) return b.team.confWins - a.team.confWins
+      return b.team.runDiff - a.team.runDiff
+    })
+  const fieldSize = qualifierCountForConf(userConfId)
+  const seeded = standings.slice(0, fieldSize).map(x => x.schoolId)
 
   const tourney = runConferenceTournament(userConfId, seeded, simGame, `pml_${state.calendar.year}_${userConfId}`)
   const userChamp = tourney.champion === state.userSchoolId

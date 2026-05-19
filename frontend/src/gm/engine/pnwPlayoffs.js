@@ -316,3 +316,149 @@ export function runConferenceTournament(confId, seededTeams, simGame, seedKey) {
   const r = simDoubleElim(seededTeams, simGame, seedKey)
   return { format: 'DOUBLE_ELIM', games: r.games, champion: r.champion, fieldSize: seededTeams.length }
 }
+
+// ─── NWAC full playoff runner ─────────────────────────────────────────────
+//
+// Implements the format Nate specified:
+//   - Top 4 from each of 4 divisions (N/S/E/W) by conference record qualify.
+//   - Each division's #1 seed gets a BYE direct to the 8-team championship.
+//   - 4 super-regional sites hosted by each division's #2 seed.
+//   - At each site: a single play-in game (cross-division #3 vs #4 from
+//     other divisions) — winner plays the host #2 in a best-of-3.
+//   - 4 super-regional winners + 4 division champs = 8 teams →
+//     double-elim championship at Longview, WA.
+//
+// Cross-conference play-in pairings (per CLAUDE.md / playoff_formats.json):
+//   - North hosts: N2 + (W4 vs S3 play-in)
+//   - East  hosts: E2 + (N4 vs W3 play-in)
+//   - West  hosts: W2 + (S4 vs E3 play-in)
+//   - South hosts: S2 + (E4 vs N3 play-in)
+//
+// @param {object} state            the save state (uses state.conferences + state.teams)
+// @param {(h: string, a: string, key: string) => { homeRuns: number, awayRuns: number }} simGame
+// @param {string} seedKey
+export function runNwacPlayoffs(state, simGame, seedKey) {
+  const DIVS = ['NWAC_NORTH', 'NWAC_SOUTH', 'NWAC_EAST', 'NWAC_WEST']
+  // 1. Top-4 per division by (confWins desc, runDiff desc).
+  const seedsByDiv = {}
+  for (const divId of DIVS) {
+    const conf = state.conferences?.[divId]
+    if (!conf) { seedsByDiv[divId] = []; continue }
+    const standings = (conf.schoolIds || [])
+      .map(id => ({ id, team: state.teams?.[id] }))
+      .filter(x => x.team)
+      .sort((a, b) => {
+        if (a.team.confWins !== b.team.confWins) return b.team.confWins - a.team.confWins
+        return b.team.runDiff - a.team.runDiff
+      })
+    seedsByDiv[divId] = standings.slice(0, 4).map(x => x.id)
+  }
+
+  // Helper — pull seed N (1-indexed) from a division. Null if missing.
+  const seed = (divId, n) => seedsByDiv[divId]?.[n - 1] || null
+
+  // 2. Super-regional layout.
+  const SR_LAYOUT = [
+    { host: 'NWAC_NORTH', playIn: ['NWAC_WEST',  4, 'NWAC_SOUTH', 3] },
+    { host: 'NWAC_EAST',  playIn: ['NWAC_NORTH', 4, 'NWAC_WEST',  3] },
+    { host: 'NWAC_WEST',  playIn: ['NWAC_SOUTH', 4, 'NWAC_EAST',  3] },
+    { host: 'NWAC_SOUTH', playIn: ['NWAC_EAST',  4, 'NWAC_NORTH', 3] },
+  ]
+
+  // #1 seeds get auto-byes to championship.
+  const championshipField = []
+  for (const divId of DIVS) {
+    const s1 = seed(divId, 1)
+    if (s1) championshipField.push(s1)
+  }
+
+  // 3. Run super regionals.
+  const superRegionals = []
+  for (const sr of SR_LAYOUT) {
+    const hostId = seed(sr.host, 2)
+    const [divA, seedA, divB, seedB] = sr.playIn
+    const playInA = seed(divA, seedA)
+    const playInB = seed(divB, seedB)
+    if (!hostId || !playInA || !playInB) continue
+    // Single play-in game — higher-seeded play-in team gets host edge.
+    // (Both are visiting the host site so this is mostly cosmetic.)
+    const playInGame = simGame(playInA, playInB, `${seedKey}_sr_${sr.host}_pi`)
+    const playInWinner = playInGame.homeRuns > playInGame.awayRuns ? playInA : playInB
+    // Best-of-3 at the #2 seed's home park.
+    const bo3 = simBestOfN(hostId, playInWinner, simGame, `${seedKey}_sr_${sr.host}_bo3`, 3)
+    superRegionals.push({
+      hostConf: sr.host,
+      hostId,
+      playInA, playInB,
+      playInGame: { homeId: playInA, awayId: playInB, ...playInGame, winner: playInWinner },
+      bo3Games: bo3.games,
+      winner: bo3.champion,
+    })
+    if (bo3.champion) championshipField.push(bo3.champion)
+  }
+
+  // 4. NWAC Championship — 8-team double-elim at Longview, WA.
+  let championship = null
+  if (championshipField.length >= 2) {
+    const de = simDoubleElim(championshipField, simGame, `${seedKey}_champ`)
+    championship = {
+      location: 'Longview, WA',
+      qualifiers: championshipField.slice(),
+      games: de.games,
+      champion: de.champion,
+    }
+  }
+
+  return {
+    seedsByDiv,
+    superRegionals,
+    championship,
+    nwacChampion: championship?.champion || null,
+  }
+}
+
+/**
+ * Locate which round of NWAC playoffs the user reached + what knocked
+ * them out. Used by the news/postseason recap so we can show
+ * "Won Super Regional vs Lower Columbia (2-1), bounced in NWAC Champ
+ * losers' bracket by Bellevue."
+ */
+export function summarizeNwacUserPath(result, userSchoolId) {
+  if (!result || !userSchoolId) return { qualified: false }
+  // Did the user appear in any division's top-4?
+  let userSeed = null
+  let userDiv = null
+  for (const div of Object.keys(result.seedsByDiv || {})) {
+    const idx = (result.seedsByDiv[div] || []).indexOf(userSchoolId)
+    if (idx >= 0) { userSeed = idx + 1; userDiv = div; break }
+  }
+  if (userSeed == null) return { qualified: false }
+
+  const hadBye = userSeed === 1
+  let superRegional = null
+  let userInSuperRegional = false
+  let userWonSuperRegional = false
+  if (!hadBye) {
+    for (const sr of result.superRegionals || []) {
+      if (sr.hostId === userSchoolId || sr.playInA === userSchoolId || sr.playInB === userSchoolId) {
+        superRegional = sr
+        userInSuperRegional = true
+        userWonSuperRegional = sr.winner === userSchoolId
+        break
+      }
+    }
+  }
+  const inChampField = (result.championship?.qualifiers || []).includes(userSchoolId)
+  const userWonIt = result.nwacChampion === userSchoolId
+  return {
+    qualified: true,
+    seed: userSeed,
+    division: userDiv,
+    hadBye,
+    inSuperRegional: userInSuperRegional,
+    wonSuperRegional: userWonSuperRegional,
+    superRegional,
+    inChampionship: inChampField,
+    wonChampionship: userWonIt,
+  }
+}
