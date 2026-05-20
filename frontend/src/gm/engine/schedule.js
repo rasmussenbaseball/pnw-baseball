@@ -999,12 +999,13 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
 /**
  * Auto-create the non-conference slate for a NON-NAIA dynasty (D1/D2/D3).
  *
- * The user's `schools` map only contains their own conference, so weekend
- * non-conf opponents are drawn from the same-division national pool
- * (nonNaiaTeams). Fills EVERY open week with a 3-game series (front
- * non-conf weeks + any in-conference bye weeks), closer opponents favored,
- * with a roughly half-home split. Same-conference + already-in-`schools`
- * teams are excluded so we never double-book a conference opponent.
+ * In a full-division dynasty every same-level team is a REAL program in
+ * `schools`, so weekend non-conf opponents are drawn from `schools` (any team
+ * NOT in the user's own conference). Falls back to the abstract national pool
+ * (nonNaiaTeams) for older saves where only the user's conference is real.
+ * Fills EVERY open week with a 3-game series (front non-conf weeks + any
+ * in-conference bye weeks), prefers similarly-rated opponents, proximity as a
+ * secondary tiebreak, with a roughly half-home split.
  */
 function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schools, nonNaiaTeams, existingSchedule, year, seed, ratings, level) {
   const rng = makeRng('autoSchedML', userSchoolId, year, seed)
@@ -1012,32 +1013,38 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
 
   // Rating-aware scheduling, same idea as the NAIA path: prefer opponents
   // rated similarly to the user, push cupcakes (much weaker) down, and use
-  // proximity as a secondary (cheaper-travel) factor. Abstract opponents
-  // aren't in state.nwbbRatings, so fall back to a strength-derived universal
-  // rating (nonNaiaToUniversal).
+  // proximity as a secondary (cheaper-travel) factor. Teams without a stored
+  // NWBB rating fall back to a strength-derived universal rating.
   const ratingOf = (id, strength) =>
     ratings?.[id]?.rating ?? nonNaiaToUniversal({ strength: strength ?? 0, division: level })
   const userRating = ratings?.[userSchoolId]?.rating
     ?? nonNaiaToUniversal({ strength: userSchool.pearRating ?? 0, division: level })
 
-  const pool = (nonNaiaTeams || [])
-    .filter(t => t.division === level)            // same level only
-    .filter(t => t.id !== userSchoolId)
-    .filter(t => !schools[t.id])                  // not in the user's conference
-    .filter(t => t.conferenceId !== conferenceId) // belt-and-suspenders
-    .map(t => {
-      const rating = ratingOf(t.id, t.strength)
-      const ratingGap = rating - userRating       // + stronger, - weaker than user
-      const proximity = stateProximity(userState, t.state)
-      // Push cupcakes down; nudge similar-rated teams up.
-      const cupcakePenalty = ratingGap < -12 ? (-12 - ratingGap) * 0.5 : 0
-      const similarBonus = Math.abs(ratingGap) <= 6 ? -4 : 0
-      return {
-        id: t.id, name: t.name, state: t.state, division: level, rating,
-        // Rating fit dominates, proximity is the secondary tiebreak, small jitter.
-        sortKey: Math.abs(ratingGap) * 0.5 + proximity * 0.6 + rng.next() * 2 + cupcakePenalty + similarBonus,
-      }
-    })
+  // Candidate opponents: every REAL same-level program outside the user's
+  // conference. (Full-division dynasties have all teams real here.) If none
+  // are found — e.g. an older abstract save — fall back to the national pool.
+  let candidates = Object.values(schools || {})
+    .filter(s => s.id !== userSchoolId && s.conferenceId !== conferenceId)
+    .map(s => ({ id: s.id, name: s.name, state: s.state, strength: s.pearRating ?? 0 }))
+  if (candidates.length === 0) {
+    candidates = (nonNaiaTeams || [])
+      .filter(t => t.division === level && t.id !== userSchoolId && !schools[t.id] && t.conferenceId !== conferenceId)
+      .map(t => ({ id: t.id, name: t.name, state: t.state, strength: t.strength ?? 0 }))
+  }
+
+  const pool = candidates.map(c => {
+    const rating = ratingOf(c.id, c.strength)
+    const ratingGap = rating - userRating         // + stronger, - weaker than user
+    const proximity = stateProximity(userState, c.state)
+    // Push cupcakes down; nudge similar-rated teams up.
+    const cupcakePenalty = ratingGap < -12 ? (-12 - ratingGap) * 0.5 : 0
+    const similarBonus = Math.abs(ratingGap) <= 6 ? -4 : 0
+    return {
+      id: c.id, name: c.name, state: c.state, division: level, rating,
+      // Rating fit dominates, proximity is the secondary tiebreak, small jitter.
+      sortKey: Math.abs(ratingGap) * 0.5 + proximity * 0.6 + rng.next() * 2 + cupcakePenalty + similarBonus,
+    }
+  })
   pool.sort((a, b) => a.sortKey - b.sortKey)
 
   const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year, level)
