@@ -142,25 +142,30 @@ export function autoLineup(state, teamId, gameId) {
   // Pitcher rotation — ORDER it so index 0 is TODAY's starter; consumers
   // (simGame / light boxscore) always start rotation[0]. The bullpen follows.
   const pscore = p => (p.pitcher.stuff + p.pitcher.control + p.pitcher.stamina) / 3
-  let rotation = [...pitchers].sort((a, b) => pscore(b) - pscore(a)).slice(0, 6)
+  const skillSorted = [...pitchers].sort((a, b) => pscore(b) - pscore(a))
+  let rotation
   if (energyTracked) {
-    // User's staff: today's starter is the freshest well-rested arm. A
-    // pitcher who threw recently has low energy and drops to the back, so
-    // he can't start again until rested (recovery ≈ a full week → ~5+ days
-    // off, exactly the real starter cadence). Within an 8-pt band fall back
-    // to skill so we don't bench an ace for a 2-pt energy edge.
-    rotation = [...rotation].sort((a, b) => {
+    // User's staff: the WHOLE staff is eligible. Previously this was capped at
+    // the top 6 (slice(0,6)), so only ~6 arms ever pitched all season and they
+    // threw every weekend on fumes. Order by freshness, then skill within an
+    // 8-pt energy band — so today's starter is the best WELL-RESTED arm and a
+    // pitcher who just threw drops to the back to recover (recovery ≈ a week →
+    // real starter cadence). Across a 3-game weekend this cycles ~10-12 arms.
+    rotation = [...skillSorted].sort((a, b) => {
       const ea = en(a.id), eb = en(b.id)
       if (Math.abs(ea - eb) > 8) return eb - ea
       return pscore(b) - pscore(a)
     })
-  } else if (rotation.length > 1) {
-    // Non-user staff (no energy tracked): rotate the skill-sorted staff by
-    // the series-game index so a different starter leads each game.
-    const k = gameIdx % rotation.length
-    rotation = [...rotation.slice(k), ...rotation.slice(0, k)]
+  } else {
+    // Non-user staff (no energy tracked): rotate the top 6 by the series-game
+    // index so a different starter leads each game; deeper arms follow.
+    const top = skillSorted.slice(0, 6)
+    const k = top.length > 1 ? gameIdx % top.length : 0
+    rotation = [...top.slice(k), ...top.slice(0, k), ...skillSorted.slice(6)]
   }
-  const pitcherRotation = rotation.slice(0, 5)
+  // Keep a deep bullpen reachable in-game for the user (up to 10 arms) so fresh
+  // relievers are always available across a weekend; opponents use 6.
+  const pitcherRotation = rotation.slice(0, energyTracked ? 10 : 6)
 
   return { batters, batterPositions, pitcherRotation, bench }
 }

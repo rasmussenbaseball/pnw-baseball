@@ -779,6 +779,19 @@ export function runEndOfYear(state) {
   }
   state.schedule = []
   state.playerStats = {}
+  // Fresh recruiting board for the new cycle. Signed recruits have already
+  // joined the roster (class finalize, wk52), so the OLD board must be wiped —
+  // otherwise last year's signees linger (the "16 players signed" carryover)
+  // and their stale live offers re-commit during the new year's weeks 1-3.
+  // The fall recruiting board lazily regenerates (ensureRecruitPool) once
+  // scouting opens in week 4.
+  state.recruits = {}
+  state._newCommitRecruits = []
+  // Re-prompt the user to set their non-conference weekends for the new year.
+  // rebuildScheduleForYear auto-generates the conference round-robin, but the
+  // user's own non-conf games don't carry over, so without this they'd start
+  // the season with a half-empty schedule.
+  state.scheduleComplete = false
   // Heal everyone for the new season — SEASON-ending injuries already had
   // their rating penalty applied; we just clear the active injury flags so
   // players start fall fresh. (Stat penalty stays.)

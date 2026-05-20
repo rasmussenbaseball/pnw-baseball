@@ -605,14 +605,31 @@ export function resolveSummerBall(state) {
     })
     resultEntry.poachProb = poachP
     if (!injured && moved >= 2 && rng.chance(poachP)) {
-      // Don't actually remove them — flag as "interest" for now. A future
-      // pass can wire this into outboundTransfers.
+      // ACTUAL departure (per Nate): the second outbound window is summer-ball
+      // poaching. A player who lit up the summer gets pulled up to D1 and
+      // leaves the program now (wk47). Their scholarship frees immediately
+      // (they're removed from the roster). Surfaces in the wk47 departures
+      // popup via state._newDepartures.
       player._summerPoachInterest = { league: a.leagueKey, year }
+      const userTeam = state.teams?.[state.userSchoolId]
+      if (userTeam) {
+        userTeam.rosterPlayerIds = (userTeam.rosterPlayerIds || []).filter(id => id !== playerId)
+      }
+      player.eligibilityStatus = 'transferred'
+      player.transferredTo = 'D1'
+      state._newDepartures = [...(state._newDepartures || []), {
+        id: playerId,
+        name: `${player.firstName} ${player.lastName}`,
+        classYear: player.classYear,
+        pos: player.primaryPosition,
+        dest: 'D1',
+        isStar: true,
+      }]
       news.push({
         id: `sb_poach_${year}_${playerId}`,
-        year, week: 47, type: 'TRANSFER_RUMOR',
-        headline: `D1 programs calling for ${player.firstName} ${player.lastName} after a hot ${lg.short} summer. Watch the portal.`,
-        payload: { playerId, leagueKey: a.leagueKey },
+        year, week: 47, type: 'TRANSFER_OUT',
+        headline: `${player.firstName} ${player.lastName} (${player.classYear}, ${player.primaryPosition}) transferred up to D1 after a hot ${lg.short} summer.`,
+        payload: { playerId, leagueKey: a.leagueKey, destination: 'D1' },
       })
       resultEntry.poached = true
       poached = true

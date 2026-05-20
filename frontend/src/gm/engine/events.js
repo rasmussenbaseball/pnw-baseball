@@ -109,7 +109,7 @@ export const WEEK_EVENT_SCHEDULE = {
   43: ['PORTAL_OPEN', 'OUTBOUND_TRANSFERS_MID', 'END_OF_TERM_ACADEMICS',
        'SUMMER_BALL_CONFIRM', 'CUTS_WINDOW_OPENS'],
   44: ['PLAYER_DEVELOPMENT'],
-  45: ['OUTBOUND_TRANSFERS_LATE', 'HS_ATTRITION'],
+  45: ['HS_ATTRITION'],
   46: ['BUDGET_REVIEW'],
   47: ['SUMMER_BALL_RESOLVE'],                    // mid-summer wrap
   48: ['MLB_DRAFT'],                              // early July

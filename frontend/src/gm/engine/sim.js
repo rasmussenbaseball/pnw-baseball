@@ -387,7 +387,13 @@ export function simPA(batter, pitcher, ctx, rng) {
   // Hit-outcome adj is dampened by HIT_SLOPE so elite hitter slash lines
   // stay realistic for NAIA (.400 elite ceiling, not .500+).
   const adj = {
-    K:    (-(discipline - 50) + (contact - 50) * -0.3 - (stuff - 50) - (vsBatter - 50)) / 50 - veloEdge * 0.6,
+    // Strikeouts RISE with pitcher stuff / platoon edge / velocity and FALL
+    // with batter discipline + contact. The signs on stuff/vsBatter/velo were
+    // previously inverted (good, hard-throwing pitchers struck out FEWER —
+    // user staffs sat at ~4.9 K/9 vs a ~7.6 league avg). Coefficients on the
+    // pitcher terms are dampened so an elite arm lands ~10 K/9, an average arm
+    // ~8, not a 40%+ K rate.
+    K:    ((stuff - 50) * 0.5 + (vsBatter - 50) * 0.25 - (discipline - 50) - (contact - 50) * 0.3) / 50 + veloEdge * 0.6,
     BB:   ((discipline - 50) - (control - 50) * 1.2) / 50,
     HBP:  (-(control - 50) * 0.9) / 50,
     HR:     HIT_SLOPE * (((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.5),
@@ -570,9 +576,12 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     // Advance batter
     if (state.top) state.awayPAIndex++; else state.homePAIndex++
 
-    // Check pitcher fatigue — naive: swap after ~25 PAs
+    // Pitcher fatigue / hook — starter goes ~25 PAs (~6 IP), then relievers
+    // turn over every ~8 PAs (~2 IP) so a game uses ~3-4 arms instead of
+    // riding 2 deep into the night. Combined with the deep, energy-sorted
+    // rotation this spreads innings across the whole staff over a weekend.
     const pas = state.top ? state.awayPAs : state.homePAs   // PAs faced (rough)
-    if (pas > 25 + pitcherIdx * 12) {
+    if (pas > 25 + pitcherIdx * 8) {
       if (state.top) state.homePitcherIdx = Math.min(state.homePitcherIdx + 1, defending.pitcherRotation.length - 1)
       else state.awayPitcherIdx = Math.min(state.awayPitcherIdx + 1, defending.pitcherRotation.length - 1)
     }

@@ -346,17 +346,18 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
     pool: profilePool,
   })
 
-  // Rating distribution per pool. Means + caps tuned May 2026.
+  // Rating distribution per pool. Means + caps tuned (Nate, summer portal
+  // should carry a decent number of 80+ OVR transfers, ceilings ~90+).
   let meanRating, stddev, cap
   if (pool === 'HS_SR')       { meanRating = 58; stddev = 12; cap = 92 }
-  else if (pool === 'JUCO')   { meanRating = 64; stddev = 11; cap = 95 }
-  else if (pool === 'NAIA_TRANSFER') { meanRating = 60; stddev = 12; cap = 92 }
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 76; stddev = 7; cap = 97 }
-  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 60; stddev = 10; cap = 85 }
-  else if (pool === 'D1_TRANSFER') { meanRating = 70; stddev = 9;  cap = 95 }
-  else if (pool === 'D2_TRANSFER') { meanRating = 62; stddev = 11; cap = 92 }
-  else if (pool === 'D3_TRANSFER') { meanRating = 56; stddev = 11; cap = 88 }
-  else                             { meanRating = 58; stddev = 12; cap = 92 }
+  else if (pool === 'JUCO')   { meanRating = 66; stddev = 12; cap = 95 }
+  else if (pool === 'NAIA_TRANSFER') { meanRating = 65; stddev = 13; cap = 95 }
+  else if (pool === 'D1_TRANSFER' && subtype === 'D1_UNDERUSED') { meanRating = 78; stddev = 8; cap = 99 }
+  else if (pool === 'D1_TRANSFER' && subtype === 'D1_YOUNG')     { meanRating = 63; stddev = 11; cap = 88 }
+  else if (pool === 'D1_TRANSFER') { meanRating = 73; stddev = 10; cap = 97 }
+  else if (pool === 'D2_TRANSFER') { meanRating = 66; stddev = 12; cap = 94 }
+  else if (pool === 'D3_TRANSFER') { meanRating = 58; stddev = 11; cap = 90 }
+  else                             { meanRating = 60; stddev = 12; cap = 92 }
 
   // LEVEL SCALING — the recruit pool a user sees depends on the level
   // they're coaching at. Top D1 talent doesn't show up on a D3 board;

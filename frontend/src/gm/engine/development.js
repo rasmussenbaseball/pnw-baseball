@@ -43,6 +43,8 @@ const HITTER_KEYS = ['contact_l', 'contact_r', 'power_l', 'power_r', 'discipline
 const PITCHER_KEYS = ['stuff', 'control', 'command', 'stamina', 'vs_l', 'vs_r', 'composure', 'durability']
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+/** Round a rating to 1 decimal so ratings never accumulate long float tails. */
+function round1(v) { return Math.round(v * 10) / 10 }
 
 // ─── Performance score (used by EOY dev + potential drift) ─────────────────
 
@@ -375,7 +377,7 @@ export function tickWeightFluctuation(player, seed) {
   if (drift > 0) {
     // Gained weight — adds power / velo
     if (player.isPitcher) {
-      if (typeof block.stuff === 'number') block.stuff = clamp(block.stuff + rng.gaussian(0.6, 0.3), 20, 99)
+      if (typeof block.stuff === 'number') block.stuff = round1(clamp(block.stuff + rng.gaussian(0.6, 0.3), 20, 99))
       // Also tick the velocity numbers if present
       if (typeof block.velocity_avg === 'number') {
         block.velocity_avg = Math.round((block.velocity_avg + rng.gaussian(0.5, 0.25)) * 10) / 10
@@ -383,8 +385,8 @@ export function tickWeightFluctuation(player, seed) {
         block.velocity_max = Math.round((block.velocity_max + rng.gaussian(0.5, 0.25)) * 10) / 10
       }
     } else {
-      if (typeof block.power_l === 'number') block.power_l = clamp(block.power_l + rng.gaussian(0.7, 0.3), 20, 99)
-      if (typeof block.power_r === 'number') block.power_r = clamp(block.power_r + rng.gaussian(0.7, 0.3), 20, 99)
+      if (typeof block.power_l === 'number') block.power_l = round1(clamp(block.power_l + rng.gaussian(0.7, 0.3), 20, 99))
+      if (typeof block.power_r === 'number') block.power_r = round1(clamp(block.power_r + rng.gaussian(0.7, 0.3), 20, 99))
       // Refresh max EV measurable
       const pw = Math.max(block.power_l || 0, block.power_r || 0)
       const ht = player.measurables.heightInches || 70
@@ -393,10 +395,10 @@ export function tickWeightFluctuation(player, seed) {
     }
   } else {
     // Lost weight — adds speed, stamina, durability
-    if (typeof block.stamina === 'number') block.stamina = clamp(block.stamina + rng.gaussian(0.5, 0.25), 20, 99)
-    if (typeof block.durability === 'number') block.durability = clamp(block.durability + rng.gaussian(0.5, 0.25), 20, 99)
+    if (typeof block.stamina === 'number') block.stamina = round1(clamp(block.stamina + rng.gaussian(0.5, 0.25), 20, 99))
+    if (typeof block.durability === 'number') block.durability = round1(clamp(block.durability + rng.gaussian(0.5, 0.25), 20, 99))
     if (!player.isPitcher && typeof block.speed === 'number') {
-      block.speed = clamp(block.speed + rng.gaussian(0.6, 0.3), 20, 99)
+      block.speed = round1(clamp(block.speed + rng.gaussian(0.6, 0.3), 20, 99))
       // Refresh 60-yard measurable
       player.measurables.sixtyYardSec = Math.round((7.0 - (block.speed - 50) * 0.012) * 100) / 100
     }

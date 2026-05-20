@@ -175,11 +175,11 @@ export default function Roster() {
                     <td className={'text-xs ' + ratingColor(pot)}>{pot}</td>
                     <td className="font-mono text-xs">{p.isHitter ? <StatCell value={Math.round((p.hitter.contact_l + p.hitter.contact_r) / 2)} arrow={arrowFor(save, p.id, ['contact_l', 'contact_r'], 'hitter')} /> : '—'}</td>
                     <td className="font-mono text-xs">{p.isHitter ? <StatCell value={Math.round((p.hitter.power_l + p.hitter.power_r) / 2)} arrow={arrowFor(save, p.id, ['power_l', 'power_r'], 'hitter')} /> : '—'}</td>
-                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={p.hitter.discipline} arrow={arrowFor(save, p.id, ['discipline'], 'hitter')} /> : '—'}</td>
-                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={p.hitter.fielding} arrow={arrowFor(save, p.id, ['fielding'], 'hitter')} /> : '—'}</td>
-                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stuff} arrow={arrowFor(save, p.id, ['stuff'], 'pitcher')} /> : '—'}</td>
-                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.control} arrow={arrowFor(save, p.id, ['control'], 'pitcher')} /> : '—'}</td>
-                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={p.pitcher.stamina} arrow={arrowFor(save, p.id, ['stamina'], 'pitcher')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={Math.round(p.hitter.discipline)} arrow={arrowFor(save, p.id, ['discipline'], 'hitter')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isHitter ? <StatCell value={Math.round(p.hitter.fielding)} arrow={arrowFor(save, p.id, ['fielding'], 'hitter')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={Math.round(p.pitcher.stuff)} arrow={arrowFor(save, p.id, ['stuff'], 'pitcher')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={Math.round(p.pitcher.control)} arrow={arrowFor(save, p.id, ['control'], 'pitcher')} /> : '—'}</td>
+                    <td className="font-mono text-xs">{p.isPitcher ? <StatCell value={Math.round(p.pitcher.stamina)} arrow={arrowFor(save, p.id, ['stamina'], 'pitcher')} /> : '—'}</td>
                     <td className="text-xs"><HappinessPill player={p} /></td>
                     <td className="text-xs">
                       <EnergyPill save={save} playerId={p.id} />

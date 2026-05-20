@@ -30,6 +30,7 @@ import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
 import { playerOverall } from './playerRating'
 import { generateCoach } from './coaches'
+import { autoUpgradeCoach } from './coachProgression'
 import { rosterCapForLevel } from './levelHelpers'
 import { scholarshipSnapshot } from './scholarshipAccounting'
 import { autoAssignSummerBall } from './summerBall'
@@ -96,6 +97,12 @@ export function runAutoActions(save) {
       } catch (err) { /* ignore */ }
     }
   }
+
+  // 6. Auto-upgrade the head coach — spend accumulated upgrade points, spread
+  // evenly across the four ratings (raise the lowest each time). Otherwise an
+  // auto-mode dynasty would bank points forever and never improve the coach.
+  const upgraded = autoUpgradeCoach(save)
+  if (upgraded > 0) summary.actionsTaken.push(`Spent ${upgraded} coach upgrade point${upgraded === 1 ? '' : 's'} (even spread)`)
 
   return summary
 }

@@ -80,6 +80,31 @@ export function spendCoachUpgradePoints(state, ratingKey, points = 1) {
   return { ok: true, newRating: coach[ratingKey], pointsLeft: coach.upgradePoints }
 }
 
+/**
+ * AUTO MODE: spend all available upgrade points, spreading them evenly across
+ * the four coach ratings. "Evenly" = always raise the LOWEST-rated non-capped
+ * stat, so the four ratings stay as balanced as possible. Returns the number
+ * of points spent.
+ */
+export function autoUpgradeCoach(state) {
+  const team = state.teams?.[state.userSchoolId]
+  if (!team) return 0
+  const coach = state.coaches?.[team.headCoachId]
+  if (!coach) return 0
+  const keys = ['developer', 'motivator', 'recruiter', 'tactician']
+  let spent = 0
+  // Guard against an infinite loop if every stat is capped.
+  while ((coach.upgradePoints || 0) > 0) {
+    const open = keys.filter(k => (coach[k] || 50) < RATING_CAP)
+    if (open.length === 0) break
+    open.sort((a, b) => (coach[a] || 50) - (coach[b] || 50))
+    const res = spendCoachUpgradePoints(state, open[0], 1)
+    if (!res.ok) break
+    spent++
+  }
+  return spent
+}
+
 // ─── Earning rules (called from event hooks) ────────────────────────────────
 
 /**
