@@ -1551,7 +1551,10 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
   // bogus "Sat Jan 30" date in June. weekOfYear + dateForWeek map cleanly
   // across the whole Aug→Jul cycle.
   const woy = save.calendar?.weekOfYear ?? offseasonWeek
-  const date = inOffseason ? dateForWeek(save.calendar?.year, woy) : null
+  // calendar.year is the AUGUST start year (wk1 = Aug 1 of that year), so feed
+  // it straight to offseasonWeekDate. (dateForWeek subtracts 1 because it
+  // takes the SPRING year — using it here would render a year early.)
+  const date = inOffseason ? offseasonWeekDate(save.calendar?.year, woy) : null
 
   // Icon for the period — surface a meaningful symbol so the chip isn't an
   // empty square. Offseason variants pick by what's happening that month

@@ -787,6 +787,19 @@ export function runEndOfYear(state) {
   // scouting opens in week 4.
   state.recruits = {}
   state._newCommitRecruits = []
+  // Fresh energy for everyone — players shouldn't carry last season's (or the
+  // postseason's) fatigue into fall. Without this, arms that threw in the WS
+  // start the new year gassed and the energy dampener skews early sims.
+  state.playerEnergy = {}
+  // Saved lineups are keyed by game id; the schedule is rebuilt below with NEW
+  // ids, so last year's lineups are orphaned dead weight — drop them.
+  state.lineups = {}
+  // Clear last season's postseason bracket so nothing stale lingers until the
+  // new postseason is set up (wk39→40).
+  state.postseason = null
+  // POTW reveal buffers don't carry across seasons.
+  state._pendingPotw = null
+  state._potwUserWinners = []
   // Re-prompt the user to set their non-conference weekends for the new year.
   // rebuildScheduleForYear auto-generates the conference round-robin, but the
   // user's own non-conf games don't carry over, so without this they'd start
@@ -1559,7 +1572,12 @@ export function advanceWeek(state, _schedule) {
 // user fills in non-conference weekends from the Schedule page.
 
 export function rebuildScheduleForYear(state) {
-  const year = state.calendar.year
+  // calendar.year is the AUGUST start year; the SPRING season the schedule
+  // covers is year+1. The dynasty-start build (newDynasty), the Schedule page,
+  // and autoFulfillSchedule all use year+1 — this MUST match, or the year-2
+  // conference schedule is built for the wrong year and the auto-filled
+  // non-conference games (year+1) won't line up with it.
+  const year = state.calendar.year + 1
   const confSchedule = buildAllConferenceSchedules(state.conferences, state.schools, year, state.rngSeed)
   // Early-week non-conference fillers for non-user teams so the whole league
   // plays + accrues stats from week 1 (user self-schedules their non-conf).

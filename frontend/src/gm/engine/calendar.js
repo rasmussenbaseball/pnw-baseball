@@ -89,11 +89,11 @@ export function calendarDateLabel(calendar) {
     // 27+ and produced nonsense dates like "Sat Jan 30" in June. weekOfYear
     // maps cleanly across the whole Aug→Jul cycle.
     if (typeof calendar.weekOfYear === 'number') {
-      // Wk 1 = Aug 1 of the academic-start year; each week is +7 days. When
-      // calendar.startYear is set it's already that Aug-start year; otherwise
-      // derive it from the spring year (year - 1), matching dateForWeek().
-      const startYear = calendar.startYear ?? (calendar.year - 1)
-      const d = offseasonWeekDate(startYear, calendar.weekOfYear)
+      // Wk 1 = Aug 1 of the current academic year. calendar.year IS that
+      // August start year and increments every rollover, so use it directly.
+      // (calendar.startYear is the ORIGINAL dynasty start and goes stale after
+      // year 1, so it must NOT be used for the live date.)
+      const d = offseasonWeekDate(calendar.year, calendar.weekOfYear)
       return formatShortDate(d) + ', ' + d.getFullYear()
     }
     if (calendar.offseasonWeek) {
