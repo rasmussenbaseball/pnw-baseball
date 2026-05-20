@@ -1429,7 +1429,7 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
         )}
         {recap?.kind === 'season' && recap.results && recap.results.length > 0 && (
           <div className="text-[10px] opacity-90 text-right">
-            {recap.results.slice(0, 3).map(r => (
+            {recap.results.slice(0, 6).map(r => (
               <div key={r.gameId}>{r.result} {r.score} {r.homeAway === 'home' ? 'vs' : '@'} {r.opponent}</div>
             ))}
           </div>

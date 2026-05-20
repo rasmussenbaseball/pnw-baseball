@@ -61,7 +61,7 @@ const BASE_RATES_BY_LEVEL = {
   D1:   { K: 0.250, BB: 0.115, HBP: 0.013, HR: 0.030, TRIPLE: 0.005, DOUBLE: 0.046, SINGLE: 0.145, ERROR: 0.010, OUT: 0.386 },
   D2:   { K: 0.180, BB: 0.090, HBP: 0.015, HR: 0.024, TRIPLE: 0.006, DOUBLE: 0.050, SINGLE: 0.180, ERROR: 0.011, OUT: 0.444 },
   D3:   { K: 0.190, BB: 0.100, HBP: 0.017, HR: 0.026, TRIPLE: 0.006, DOUBLE: 0.044, SINGLE: 0.170, ERROR: 0.012, OUT: 0.435 },
-  NAIA: { K: 0.190, BB: 0.105, HBP: 0.019, HR: 0.028, TRIPLE: 0.005, DOUBLE: 0.055, SINGLE: 0.175, ERROR: 0.011, OUT: 0.412 },
+  NAIA: { K: 0.202, BB: 0.105, HBP: 0.019, HR: 0.028, TRIPLE: 0.005, DOUBLE: 0.051, SINGLE: 0.167, ERROR: 0.011, OUT: 0.412 },
   NWAC: { K: 0.200, BB: 0.110, HBP: 0.017, HR: 0.012, TRIPLE: 0.005, DOUBLE: 0.040, SINGLE: 0.155, ERROR: 0.014, OUT: 0.447 },
 }
 
@@ -112,7 +112,11 @@ function averageFielding(defenders, playedPositions) {
 // great stuff still drive realistic K%/BB% spreads. This separates the two
 // concerns: rate-stat dispersion (K%/BB%, kept wide) vs hit-quality dispersion
 // (BABIP/SLG, compressed so we don't get .500 hitters).
-const HIT_SLOPE = 0.7
+//
+// Lowered 0.7 → 0.60 (May 2026): hitting was outrunning pitching — too many
+// hitters posting .500+. A flatter hit slope pulls elite bats back toward a
+// realistic ceiling (~.380-.400) without touching K/BB dispersion.
+const HIT_SLOPE = 0.60
 
 // ─── Fast sim (team-strength based) ──────────────────────────────────────────
 
@@ -178,10 +182,13 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     const totalHits = Math.max(runs, Math.round(runs * 1.7 + rng.gaussian(0, 1)))
     // Each batter ~4 PA
     const pasPerBatter = 4
-    // Weights for hit allocation = contact rating averaged with discipline
+    // Weights for hit allocation = contact rating, FLATTENED so the best bat
+    // doesn't hog a game's hits and post a .500 line. `30 + c*0.7` compresses
+    // the spread (a 90-contact bat gets ~1.4× a 50-contact bat's share instead
+    // of 1.8×), which keeps individual league averages believable.
     const hitWeights = batters.map(b => {
-      const c = (b.hitter?.contact_r ?? 50) + (b.hitter?.contact_l ?? b.hitter?.contact_r ?? 50)
-      return c / 2
+      const c = ((b.hitter?.contact_r ?? 50) + (b.hitter?.contact_l ?? b.hitter?.contact_r ?? 50)) / 2
+      return 30 + c * 0.7
     })
     const wSum = hitWeights.reduce((s, n) => s + n, 0) || 1
     let hitsRemaining = totalHits

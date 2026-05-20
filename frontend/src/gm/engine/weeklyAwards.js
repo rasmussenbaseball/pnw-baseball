@@ -28,11 +28,12 @@ import { awardCoachUpgradePoints } from './coachProgression'
 function hitterWeekScore(s) {
   const pa = s.pa || 0
   if (pa < 4) return -Infinity
-  // Realism cap: a normal weekend is a 3-4 game series (~12-18 AB). A line far
-  // beyond that means the team got double-booked into two series that week (a
-  // scheduling artifact) — disqualify those so Player of the Week reflects a
-  // real weekend, not a double-counted "11-for-28".
-  if ((s.ab || 0) > 20) return -Infinity
+  // Realism cap: a full 4-game series with a hot bat playing every game can
+  // legitimately reach ~20-22 AB (5 PA × 4 games). Only disqualify lines well
+  // beyond that (>26 AB ≈ 6+ games), which only happen when a team got
+  // double-booked into two series that week — a scheduling artifact that would
+  // otherwise produce an impossible "11-for-28" Player of the Week.
+  if ((s.ab || 0) > 26) return -Infinity
   const singles = (s.h || 0) - (s.d || 0) - (s.t || 0) - (s.hr || 0)
   const tb = singles + (s.d || 0) * 2 + (s.t || 0) * 3 + (s.hr || 0) * 4
   return tb + (s.bb || 0) + (s.hbp || 0) + (s.rbi || 0) * 0.6 - (s.k || 0) * 0.4

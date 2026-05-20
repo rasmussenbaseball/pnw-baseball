@@ -47,7 +47,7 @@ const ALLOWED_CONFERENCE_ID = 'cascade-collegiate'
 const RATING_DESCRIPTIONS = {
   developer: 'Drives offseason player progression — bigger gains for everyone on the roster.',
   motivator: 'Team chemistry + GPA boost + clutch/composure in big moments + fundraising yield.',
-  recruiter: 'Weekly AP earned + closing rate on verbals + prospect-camp turnout.',
+  recruiter: 'Weekly AP earned + how fast you build recruit interest + closing rate on verbals.',
   tactician: 'In-game AI calls — lineup, pitching changes, defensive positioning.',
 }
 

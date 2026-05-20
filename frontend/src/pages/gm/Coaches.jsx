@@ -199,7 +199,7 @@ export default function Coaches() {
         <ul className="list-disc list-inside space-y-1 mt-2">
           <li><strong>Required roles</strong> — Pitching Coach, Hitting Coach, Bench Coach. NAIA programs must carry all three.</li>
           <li><strong>Optional support staff</strong> — DOO, S&C, GA, Data Analytics, Recruiting Coordinator. Each unlocks a small program-wide effect (extra budget, fewer injuries, +1 AP/wk, etc).</li>
-          <li><strong>Four ratings</strong> per coach: <strong>Developer</strong> (drives player skill growth), <strong>Motivator</strong> (drives happiness + end-of-term GPA bumps), <strong>Recruiter</strong> (drives prospect-camp turnout + AI recruit interest), <strong>Tactician</strong> (in-game decisions).</li>
+          <li><strong>Four ratings</strong> per coach: <strong>Developer</strong> (drives player skill growth), <strong>Motivator</strong> (drives happiness + end-of-term GPA bumps), <strong>Recruiter</strong> (drives weekly AP + how fast you build recruit interest + closing rate), <strong>Tactician</strong> (in-game decisions).</li>
           <li><strong>Salary matters</strong>. Top-of-market coaches won't sign for league-minimum money. Use the Strong Coaching budget preset if you want the best.</li>
           <li><strong>Each interview costs 20 AP.</strong> Pick interviews carefully — Wk 2 is your hire window each year.</li>
         </ul>
