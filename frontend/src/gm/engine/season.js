@@ -8,7 +8,7 @@
  */
 
 import { simGame, fastSimGame, defaultLineup } from './sim'
-import { resolveLineupForGame, lineupPlayerIds, getSavedLineup } from './lineups'
+import { resolveLineupForGame, lineupPlayerIds, getSavedLineup, autoLineup } from './lineups'
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
@@ -197,15 +197,15 @@ export function simWeek(state, schedule, ratings) {
 
     let result
     if (isUserGame && homeTeam && awayTeam) {
-      // Both sides are real NAIA teams — full sim. Use the user's saved
-      // lineup if they set one (fall scrimmages, regular-season games they
-      // micromanaged); otherwise fall back to defaultLineup (top-9 + top-5).
+      // Both sides are real NAIA teams — full sim. The user's side uses their
+      // saved lineup if set, else a smart auto lineup; the opponent uses a
+      // smart auto lineup too (positional, rotates a role player in).
       const homeLineup = g.homeId === userSchoolId
         ? resolveLineupForGame(state, userSchoolId, g.id)
-        : defaultLineup(homeTeam, state.players)
+        : autoLineup(state, g.homeId, g.id)
       const awayLineup = g.awayId === userSchoolId
         ? resolveLineupForGame(state, userSchoolId, g.id)
-        : defaultLineup(awayTeam, state.players)
+        : autoLineup(state, g.awayId, g.id)
       const homeHC = state.coaches[homeTeam.headCoachId]
       const awayHC = state.coaches[awayTeam.headCoachId]
       // Rotate the starting pitcher by the game's slot in the weekend series
@@ -248,8 +248,8 @@ export function simWeek(state, schedule, ratings) {
       // show. Both teams must exist in state.teams (same-level league members).
       const wantBoxscore = !!(homeTeam && awayTeam)
       const opts = wantBoxscore ? {
-        homeLineup: defaultLineup(homeTeam, state.players),
-        awayLineup: defaultLineup(awayTeam, state.players),
+        homeLineup: autoLineup(state, g.homeId, g.id),
+        awayLineup: autoLineup(state, g.awayId, g.id),
       } : undefined
       result = fastSimGame(
         ratings?.[g.homeId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 },

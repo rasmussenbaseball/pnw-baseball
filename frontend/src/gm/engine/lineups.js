@@ -10,10 +10,132 @@
  */
 
 import { defaultLineup } from './sim'
+import { playerOverall } from './playerRating'
+import { positionFit, positionFitRank } from './positions'
+import { getEnergy } from './energy'
 
 /** Get the saved lineup for a game (or null). */
 export function getSavedLineup(state, gameId) {
   return state.lineups?.[gameId] || null
+}
+
+const FIELD_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
+
+/** Parse the series-game index from a game id ending in _g0 / _g1 / _g2. */
+function gameIndexOf(gameId) {
+  const m = String(gameId || '').match(/_g(\d+)$/)
+  return m ? parseInt(m[1], 10) : 0
+}
+
+/**
+ * Build a realistic auto lineup for a team for a specific game.
+ *
+ *   - Assigns the best fielder to each of the 8 positions (greedy by
+ *     position-fit then OVR), so the lineup is a proper everyday nine, not
+ *     just "top 9 bats stacked anywhere."
+ *   - DH = the best remaining bat. The DH slot ROTATES: a strong everyday
+ *     bat who's tired gets moved to DH (rest their legs, keep their bat),
+ *     freeing their field spot for a backup.
+ *   - ENERGY rest (only when energy is tracked — the user's team): a core
+ *     starter running on fumes (energy < 50) is benched for the freshest
+ *     capable backup at that position. Capped at ~2 rests/game so the core
+ *     plays nearly every day.
+ *   - Without energy (non-user teams) a role player gets an occasional start
+ *     by rotating the weakest field spot in ~1 of every 3 games, so bench
+ *     bats still accumulate some stats over a season.
+ *
+ * @returns {{ batters: Player[], batterPositions: string[], pitcherRotation: Player[], bench: Player[] }}
+ */
+export function autoLineup(state, teamId, gameId) {
+  const team = state.teams?.[teamId]
+  if (!team) return { batters: [], batterPositions: [], pitcherRotation: [], bench: [] }
+  const elig = p => p
+    && (p.injury?.weeksRemaining || 0) === 0
+    && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed'
+  const roster = (team.rosterPlayerIds || []).map(id => state.players[id]).filter(elig)
+  const hitters = roster.filter(p => p.isHitter)
+  const pitchers = roster.filter(p => p.isPitcher)
+  // Energy is only tracked for the user's roster (non-user players sit at the
+  // default 100), so energy-based rest only applies to the user's team. Other
+  // teams use deterministic game-index rotation for role-player variety.
+  const energyTracked = teamId === state.userSchoolId && !!state.playerEnergy
+  const en = id => getEnergy(state, id)
+  const gameIdx = gameIndexOf(gameId)
+
+  // Greedy positional assignment. For each field position pick the best
+  // available player by (fit, then OVR), but prefer a rested backup over a
+  // gassed starter when energy is tracked.
+  const available = new Set(hitters.map(p => p.id))
+  const byId = Object.fromEntries(hitters.map(p => [p.id, p]))
+  const assignment = []   // { player, pos }
+  let restsUsed = 0
+  for (const pos of FIELD_POSITIONS) {
+    const candidates = hitters
+      .filter(p => available.has(p.id))
+      .sort((a, b) => {
+        const fr = positionFitRank(a, pos) - positionFitRank(b, pos)
+        if (fr !== 0) return fr
+        return playerOverall(b) - playerOverall(a)
+      })
+    if (candidates.length === 0) continue
+    let pick = candidates[0]
+    // Energy rest: if the best option is gassed, slot the freshest capable
+    // backup instead (cap total rests so the core still plays daily).
+    if (energyTracked && restsUsed < 2 && en(pick.id) < 50 && candidates.length > 1) {
+      const fresh = candidates.slice(1).find(c => en(c.id) >= 65)
+      if (fresh) { pick = fresh; restsUsed++ }
+    }
+    assignment.push({ player: pick, pos })
+    available.delete(pick.id)
+  }
+
+  // DH — best remaining bat by OVR. Rotate it: in a 3-game series the DH
+  // varies by game so the everyday nine spread their off-the-field rest.
+  const remaining = hitters.filter(p => available.has(p.id)).sort((a, b) => playerOverall(b) - playerOverall(a))
+  // Pick a DH from the top remaining bats, offset by the series game index
+  // (and, when energy is tracked, prefer the freshest of the top 3).
+  let dh = null
+  if (remaining.length > 0) {
+    const pool = remaining.slice(0, Math.min(3, remaining.length))
+    if (energyTracked) {
+      dh = [...pool].sort((a, b) => en(b.id) - en(a.id))[0]
+    } else {
+      dh = pool[gameIdx % pool.length]
+    }
+    available.delete(dh.id)
+  }
+  if (dh) assignment.push({ player: dh, pos: 'DH' })
+
+  // Non-user teams (no energy): occasionally start a bench bat for variety so
+  // role players accumulate stats over a season (~1 in 3 games at the 8th
+  // batting slot, deterministic by game index).
+  if (!energyTracked && remaining.length > 1 && gameIdx % 3 === 2) {
+    const benchBat = remaining[1]   // 2nd-best remaining = a role player
+    // Swap them in for the lowest-OVR field starter.
+    let weakestIdx = 0
+    for (let i = 1; i < assignment.length; i++) {
+      if (assignment[i].pos === 'DH') continue
+      if (playerOverall(assignment[i].player) < playerOverall(assignment[weakestIdx].player)) weakestIdx = i
+    }
+    if (assignment[weakestIdx]) {
+      assignment[weakestIdx] = { player: benchBat, pos: assignment[weakestIdx].pos }
+    }
+  }
+
+  // Batting order — sort the assigned 9 by OVR (best bats hit higher) but keep
+  // it stable enough that it reads like a real order.
+  const ordered = [...assignment].sort((a, b) => playerOverall(b.player) - playerOverall(a.player))
+  const batters = ordered.map(x => x.player)
+  const batterPositions = ordered.map(x => x.pos)
+  const usedIds = new Set(batters.map(p => p.id))
+  const bench = hitters.filter(p => !usedIds.has(p.id))
+
+  // Pitcher rotation — top 5 by skill. simGame picks the day's starter via
+  // its starterIdx (series-game index), so rotation ORDER is what matters.
+  const pscore = p => (p.pitcher.stuff + p.pitcher.control + p.pitcher.stamina) / 3
+  const pitcherRotation = [...pitchers].sort((a, b) => pscore(b) - pscore(a)).slice(0, 5)
+
+  return { batters, batterPositions, pitcherRotation, bench }
 }
 
 /** Save a lineup. Validates that all referenced players are on the team's roster. */
@@ -69,16 +191,10 @@ export function resolveLineupForGame(state, teamId, gameId) {
       return { batters, batterPositions, pitcherRotation: rotation, bench, wasSaved: true }
     }
   }
-  // Fall back to default — add bench (roster minus starting + bullpen)
-  const def = defaultLineup(team, state.players)
-  const activeIds = new Set([
-    ...(def.batters || []).map(b => b.id),
-    ...(def.pitcherRotation || []).map(p => p.id),
-  ])
-  const bench = players.filter(p => !activeIds.has(p.id))
-  // Default positions = each batter's primaryPosition (no out-of-position penalty)
-  const batterPositions = (def.batters || []).map(b => b.primaryPosition)
-  return { ...def, batterPositions, bench, wasSaved: false }
+  // No saved lineup → smart auto lineup (positional, energy-aware rest +
+  // rotating DH). This is what untouched user games + auto mode use.
+  const auto = autoLineup(state, teamId, gameId)
+  return { ...auto, wasSaved: false }
 }
 
 /** List the IDs of players who appeared in this game's saved lineup. */
