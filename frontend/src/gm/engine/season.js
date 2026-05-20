@@ -1110,11 +1110,12 @@ function refreshWeeklyAP(state) {
   const team = state.teams[state.userSchoolId]
   if (!team) return
 
-  // AP is LOCKED during weeks 1-3 of every year (scheduling / hiring /
-  // budgeting tutorial). Unlocks in wk 4 (scouting opens). This is enforced
-  // here so every code path that bumps a week gets the right value.
+  // AP is LOCKED during weeks 1-3 (tutorial) AND during the postseason weeks
+  // 40-42. Postseason is all about playing/managing playoff games — there are
+  // no recruiting/development levers to spend AP on, so it's zeroed out (and
+  // playoff teams are the only ones doing anything those weeks anyway).
   const wk = state.calendar?.weekOfYear ?? 0
-  if (wk >= 1 && wk <= 3) {
+  if ((wk >= 1 && wk <= 3) || (wk >= 40 && wk <= 42)) {
     state.ap.currentWeek = 0
     state.ap.spentThisWeek = 0
     state.ap.spentByCategory = {

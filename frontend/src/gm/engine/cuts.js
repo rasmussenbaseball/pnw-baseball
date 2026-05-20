@@ -67,12 +67,16 @@ export function cutsOpenAtWeek(state) {
   // 'REG_SEASON' (missed conf tournament), 'CONF_TOURNAMENT', 'OPENING_ROUND',
   // 'WORLD_SERIES'. Default to REG_SEASON if we have no record.
   const stage = ps.userEliminatedAt || (ps.userQualified ? 'OPENING_ROUND' : 'REG_SEASON')
+  // Cuts NEVER open during the postseason (wks 40-42) — that window is for
+  // playing playoff games, not roster churn. The cuts window opens at wk 44
+  // (after the World Series wraps + a buffer week) regardless of when the
+  // user was eliminated, so it lands in the quiet early offseason.
   switch (stage) {
-    case 'REG_SEASON':       return 40   // 3 extra offseason weeks
-    case 'CONF_TOURNAMENT':  return 41
-    case 'OPENING_ROUND':    return 42
-    case 'WORLD_SERIES':     return 43
-    default:                 return 43
+    case 'REG_SEASON':       return 44
+    case 'CONF_TOURNAMENT':  return 44
+    case 'OPENING_ROUND':    return 44
+    case 'WORLD_SERIES':     return 45
+    default:                 return 44
   }
 }
 

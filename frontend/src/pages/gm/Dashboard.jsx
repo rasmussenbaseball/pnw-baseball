@@ -352,17 +352,15 @@ export default function Dashboard() {
       }, 30)
       return
     } else if (mode === 'POSTSEASON') {
-      // The full postseason bracket is simmed at the 39→40 boundary (in the
-      // SEASON branch above), so weeks 40-42 have nothing left to play. Without
-      // a branch here the advance button did NOTHING and the game froze at
-      // wk 40. Fast-forward through the (empty) postseason weeks into the
-      // offseason (wk 43) so the dynasty keeps moving.
+      // The bracket is computed at the 39→40 boundary; weeks 40-42 reveal it
+      // one round at a time (wk40 = conference tournament, wk41 = regionals/
+      // opening round, wk42 = World Series). Advance exactly ONE week per click
+      // so the user stops on each round and sees where they are, instead of
+      // fast-forwarding past the whole postseason. (Earlier this branch was
+      // missing entirely, which froze the game at wk40.)
       setTimeout(() => {
         try {
-          let guard = 0
-          while (save.calendar.mode === 'POSTSEASON' && guard++ < 6) {
-            advanceWeek(save, save.schedule)
-          }
+          advanceWeek(save, save.schedule)
           saveDynasty(save)
           setSave({ ...save })
           setLastWeekRecap({ kind: 'season', results: [] })
@@ -708,6 +706,14 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Postseason bracket — pinned to the very top during the playoffs (wks
+          40-42) so the user always sees exactly which round they're in. */}
+      {mode === 'POSTSEASON' && (
+        <div className="mb-4">
+          <PostseasonBracketWidget save={save} slot={slot} highlightWeek={weekOfYear} />
+        </div>
+      )}
+
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
         <KpiCard label="Team OVR" value={teamOvr.overall} accent />
@@ -1006,7 +1012,7 @@ function CoachUpgradeWidget({ save, onChange }) {
  *
  * Pre-postseason: widget hides itself entirely.
  */
-function PostseasonBracketWidget({ save, slot }) {
+function PostseasonBracketWidget({ save, slot, highlightWeek }) {
   const ps = save.postseason
   if (!ps) return null
   const userId = save.userSchoolId
@@ -1018,10 +1024,16 @@ function PostseasonBracketWidget({ save, slot }) {
     ? nat?.openingRound?.sites?.find(s => s.teams.some(t => t.id === userId))
     : null
   const ws = nat?.worldSeries
+  // Which round is "live" this week: 40 = conference tournament, 41 =
+  // regionals/opening round, 42 = World Series.
+  const roundLabel = highlightWeek === 40 ? 'Conference Tournament'
+    : highlightWeek === 41 ? 'Regionals (Opening Round)'
+    : highlightWeek === 42 ? 'World Series'
+    : null
 
   return (
     <Panel
-      title={`${ps.year} Postseason`}
+      title={roundLabel ? `${ps.year} Postseason · ${roundLabel}` : `${ps.year} Postseason`}
       actionTo={`/gm/postseason?slot=${slot}`}
       actionLabel="Full bracket"
     >
