@@ -37,6 +37,7 @@
 
 import { makeRng, hashSeed } from './rng'
 import { sortByProximity, stateProximity } from './proximity'
+import { postseasonLayout } from './gameYear'
 import confRulesRaw from '../data/conference_rules.json'
 
 /** @typedef {import('./types.js').Conference} Conference */
@@ -140,6 +141,16 @@ function seasonWeek1Friday(year) {
 
 /** Last week of the regular season; postseason starts the following week. */
 export const REGULAR_SEASON_LAST_WEEK = 13
+
+/**
+ * Level-aware last week of the regular season (seasonWeek). NAIA = 13; D2
+ * ends a week earlier (12) since its postseason runs an extra round. Derived
+ * from the unified postseason layout so it stays in sync with gameYear.
+ */
+export function regularSeasonLastWeek(level) {
+  const seasonEnd = postseasonLayout(level)?.seasonEnd ?? 39
+  return seasonEnd - 26
+}
 
 /**
  * Compute season week (1-N) from a Date or ISO string. Both sides parsed
@@ -435,10 +446,8 @@ export function buildNonConferenceFillers(schedule, conferences, schools, year, 
  * @param {number} year
  * @returns {Array<{ week: number, date: string }>}
  */
-export function openNonConfWeeks(schoolId, conferenceId, schedule, year) {
-  const { startFri, endFri } = conferenceWindow(conferenceId, year)
-  const confStartWeek = dateToSeasonWeek(startFri, year)
-  const confEndWeek = dateToSeasonWeek(endFri, year)
+export function openNonConfWeeks(schoolId, conferenceId, schedule, year, level = 'NAIA') {
+  const lastWeek = regularSeasonLastWeek(level)
 
   const occupied = new Set(
     schedule
@@ -451,7 +460,7 @@ export function openNonConfWeeks(schoolId, conferenceId, schedule, year) {
   // conference window, plus weeks after conference play wraps) can host
   // non-conf series or byes — same as real-world NAIA midweek byes.
   const out = []
-  for (let w = 1; w <= REGULAR_SEASON_LAST_WEEK; w++) {
+  for (let w = 1; w <= lastWeek; w++) {
     if (!occupied.has(w)) out.push({ week: w, date: weekToDateApprox(w, year) })
   }
   return out
@@ -783,6 +792,19 @@ export function autoScheduleFallGames(/* userSchoolId, schools, nonNaiaTeams, ye
 export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaTeams, existingSchedule, year, seed, ratings = {}) {
   const userSchool = schools[userSchoolId]
   if (!userSchool) return { games: [], summary: 'No user school.' }
+
+  // Non-NAIA dynasties (D1/D2/D3): the `schools` map only holds the user's own
+  // conference, so there are no in-`schools` non-conf opponents. Draw weekend
+  // opponents from the same-division national pool instead, and fill EVERY
+  // open week with a 3-game series.
+  const userLevel = userSchool.level || 'NAIA'
+  if (userLevel !== 'NAIA') {
+    return autoCreateScheduleNonNaia(
+      userSchoolId, conferenceId, userSchool, schools, nonNaiaTeams,
+      existingSchedule, year, seed, ratings, userLevel,
+    )
+  }
+
   const userState = userSchool.state
   const userRegion = userSchool.region
 
@@ -971,6 +993,74 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   const summary = `Auto-built ${newGames.filter(g => g.type === 'NON_CONFERENCE').length} non-conf games` +
     ` (${placedIn} in-region, ${placedOut} out-of-region) and ${midweeksAdded} midweek game${midweeksAdded === 1 ? '' : 's'}.`
     return { games: newGames, summary }
+}
+
+/**
+ * Auto-create the non-conference slate for a NON-NAIA dynasty (D1/D2/D3).
+ *
+ * The user's `schools` map only contains their own conference, so weekend
+ * non-conf opponents are drawn from the same-division national pool
+ * (nonNaiaTeams). Fills EVERY open week with a 3-game series (front
+ * non-conf weeks + any in-conference bye weeks), closer opponents favored,
+ * with a roughly half-home split. Same-conference + already-in-`schools`
+ * teams are excluded so we never double-book a conference opponent.
+ */
+function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schools, nonNaiaTeams, existingSchedule, year, seed, ratings, level) {
+  const rng = makeRng('autoSchedML', userSchoolId, year, seed)
+  const userState = userSchool.state
+
+  const pool = (nonNaiaTeams || [])
+    .filter(t => t.division === level)            // same level only
+    .filter(t => t.id !== userSchoolId)
+    .filter(t => !schools[t.id])                  // not in the user's conference
+    .filter(t => t.conferenceId !== conferenceId) // belt-and-suspenders
+    .map(t => ({
+      id: t.id, name: t.name, state: t.state, division: level,
+      proximity: stateProximity(userState, t.state),
+    }))
+  // Closer opponents first, with a small jitter so the slate varies year to year.
+  pool.sort((a, b) => (a.proximity - b.proximity) + (rng.next() - 0.5) * 1.2)
+
+  const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year, level)
+    .sort((a, b) => a.week - b.week)
+  if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.' }
+  if (pool.length === 0) return { games: [], summary: 'No non-conference opponents available.' }
+
+  const newGames = []
+  const used = new Set()
+  const targetHome = Math.ceil(openWeeks.length / 2)
+  let homeCount = 0
+  let poolCursor = 0
+
+  for (let i = 0; i < openWeeks.length; i++) {
+    // Next distinct opponent (wrap + allow reuse only if the pool is exhausted).
+    let opp = null
+    for (let scan = 0; scan < pool.length; scan++) {
+      const cand = pool[(poolCursor + scan) % pool.length]
+      if (!used.has(cand.id)) { opp = cand; poolCursor = (poolCursor + scan + 1) % pool.length; break }
+    }
+    if (!opp) opp = pool[i % pool.length]   // pool exhausted — reuse
+
+    const homesLeft = targetHome - homeCount
+    const slotsLeft = openWeeks.length - i
+    const userIsHome = homesLeft >= slotsLeft ? true : homesLeft <= 0 ? false : rng.chance(0.55)
+
+    const result = tryAddNonConfGame(
+      userSchoolId, opp.id, opp.division, openWeeks[i].week, year,
+      [...existingSchedule, ...newGames], { userIsHome },
+    )
+    if (result.ok) {
+      newGames.push(...result.games)
+      used.add(opp.id)
+      if (userIsHome) homeCount++
+    }
+  }
+
+  const seriesCount = Math.round(newGames.filter(g => g.type === 'NON_CONFERENCE').length / 3)
+  return {
+    games: newGames,
+    summary: `Auto-built ${seriesCount} non-conference series to fill every open week.`,
+  }
 }
 
 /**

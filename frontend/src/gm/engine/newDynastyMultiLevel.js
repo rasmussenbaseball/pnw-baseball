@@ -561,13 +561,18 @@ export function buildLevelSchedule(conferenceId, schools, level, year, seed) {
   // each time a pair repeats.
   const layout = postseasonLayout(level)
   const maxWeeks = Math.max(1, (layout.seasonEnd ?? 39) - 26)   // D2 ends wk38 → 12 weeks
+  // Reserve the first couple of weeks for NON-conference play (the user fills
+  // them via auto-create / manual scheduling). The conference round-robin then
+  // leans to the BACK of the season and runs THROUGH the final regular-season
+  // week — so the year ends on conference games, not non-conf filler.
+  const FRONT_NONCONF = maxWeeks > 4 ? 2 : 0
   const rounds = roundRobinRounds(teamIds)                       // N-1 (even) / N (odd) matchings
   const games = []
   const playCount = new Map()   // pairKey → times played (drives home/away alternation)
   const seasonStartWeek = 27
-  for (let w = 0; w < maxWeeks; w++) {
+  for (let w = FRONT_NONCONF; w < maxWeeks; w++) {
     if (rounds.length === 0) break
-    const round = rounds[w % rounds.length]
+    const round = rounds[(w - FRONT_NONCONF) % rounds.length]
     const wk = seasonStartWeek + w
     for (const [t1, t2] of round) {
       const key = t1 < t2 ? `${t1}|${t2}` : `${t2}|${t1}`

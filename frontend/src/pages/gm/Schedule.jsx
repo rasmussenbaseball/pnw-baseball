@@ -13,7 +13,7 @@ import {
   getConferenceRules,
   autoCreateSchedule,
   NAIA_GAME_CAP, NAIA_SCRIMMAGE_CAP, NAIA_D1_MIDWEEK_CAP,
-  REGULAR_SEASON_LAST_WEEK,
+  REGULAR_SEASON_LAST_WEEK, regularSeasonLastWeek,
 } from '../../gm/engine/schedule'
 import { totalAnnualTravelCost, estimateAwaySeriesCost, estimateMidweekCost } from '../../gm/engine/travel'
 import { sortByProximity, stateProximity, proximityLabel } from '../../gm/engine/proximity'
@@ -62,7 +62,8 @@ export default function Schedule() {
   })
 
   const scrimmages = myGames.filter(g => g.seasonWeek === 0)
-  const openWeeks = openNonConfWeeks(userSchoolId, userSchool.conferenceId, schedule, seasonYear)
+  const lastRegWeek = regularSeasonLastWeek(save.level)
+  const openWeeks = openNonConfWeeks(userSchoolId, userSchool.conferenceId, schedule, seasonYear, save.level)
   const countedGames = countRecordGames(userSchoolId, schedule)
   const gameCapRemaining = gamesRemaining(userSchoolId, schedule)
   const scrimCount = countScrimmages(userSchoolId, schedule)
@@ -328,7 +329,7 @@ export default function Schedule() {
       {scheduledWeekNums.length > 0 && (
         <div className="mb-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-2">Scheduled weeks</h2>
-          {scheduledWeekNums.filter(w => w <= REGULAR_SEASON_LAST_WEEK).map(week => {
+          {scheduledWeekNums.filter(w => w <= lastRegWeek).map(week => {
             const games = byWeek[week]
             const dateLabel = games[0]?.date
             // Detect type
@@ -361,8 +362,12 @@ export default function Schedule() {
       {/* Postseason boundary */}
       <div className="bg-pnw-slate text-white rounded-xl p-3 mb-6 text-sm font-semibold">
         <div className="flex items-center justify-between">
-          <span> Postseason begins Week {REGULAR_SEASON_LAST_WEEK + 1}</span>
-          <span className="text-xs font-normal opacity-80">Wk 14 Conf Tournament • Wk 15 Opening Round • Wk 16 NAIA World Series</span>
+          <span> Postseason begins Week {lastRegWeek + 1}</span>
+          <span className="text-xs font-normal opacity-80">
+            {save.level === 'D2'
+              ? 'Conf Tournament → Regional → Super Regional → D2 World Series'
+              : 'Wk 14 Conf Tournament • Wk 15 Opening Round • Wk 16 NAIA World Series'}
+          </span>
         </div>
       </div>
 
