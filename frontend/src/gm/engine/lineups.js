@@ -21,9 +21,18 @@ export function getSavedLineup(state, gameId) {
 
 const FIELD_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
 
-/** Parse the series-game index from a game id ending in _g0 / _g1 / _g2. */
+/**
+ * Parse the series-game index from a game id. Game ids are built as
+ * `g_${seriesId}_${i}` (see schedule.buildSeriesGames), so the trailing
+ * `_<number>` IS the series-game index (0 = Fri, 1 = Sat, 2 = Sun). School
+ * ids are kebab-case slugs that never end in a digit, so matching the final
+ * `_<digits>` is unambiguous. (The old regex `/_g(\d+)$/` never matched the
+ * real id shape, so gameIdx was always 0 — which made non-user teams start
+ * their ace in EVERY game of a series, producing impossible 15-17 IP weekly
+ * pitching lines.)
+ */
 function gameIndexOf(gameId) {
-  const m = String(gameId || '').match(/_g(\d+)$/)
+  const m = String(gameId || '').match(/_(\d+)$/)
   return m ? parseInt(m[1], 10) : 0
 }
 

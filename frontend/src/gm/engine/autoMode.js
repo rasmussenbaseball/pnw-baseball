@@ -91,9 +91,16 @@ export function runAutoActions(save) {
 }
 
 /**
- * Pull live offers that have been sitting for 10+ weeks with no commitment
- * (and no fresh strong interest). Frees scholarship $$ so the auto-recruit
- * pass can extend offers to fresher targets that are actually engaging.
+ * Pull live offers that have gone genuinely COLD — only the truly dead ones.
+ *
+ * Tuned way down (May 2026): the old rule pulled any offer >10 weeks old with
+ * interest <75, which yanked warm offers constantly. Two things made it
+ * over-fire: (1) the condensed Oct/Nov/Dec turns tick weeksOutstanding by
+ * 4-5 per turn (fold weeks), so an offer ages to "10 weeks" in ~2 real turns,
+ * and (2) interest <75 covers almost everyone the auto would ever offer. Now
+ * we only pull offers that are BOTH old (>=18 weeks) AND clearly cold
+ * (interest <40) — i.e. the recruit has effectively moved on. Everything
+ * warmer rides until they sign or sign elsewhere.
  */
 function autoPullStagnantOffers(save, summary) {
   const userSchoolId = save.userSchoolId
@@ -103,15 +110,14 @@ function autoPullStagnantOffers(save, summary) {
     if (!r.liveOffer || r.liveOffer.schoolId !== userSchoolId) continue
     if (r.status !== 'open') continue
     const weeksOut = r.liveOffer.weeksOutstanding || 0
-    if (weeksOut < 10) continue
-    // Don't pull if they're showing strong renewed interest — they may
-    // still commit. The cutoff is 75 (above the "I'd offer" threshold).
+    if (weeksOut < 18) continue
+    // Only pull if interest has gone cold — a warm recruit may still commit.
     const interest = r.scoutGrades?.[userSchoolId]?.interest || 0
-    if (interest >= 75) continue
+    if (interest >= 40) continue
     try { withdrawOffer(r, userSchoolId) ; pulled++ } catch (e) {}
   }
   if (pulled > 0) {
-    summary.actionsTaken.push(`Pulled ${pulled} stale offer${pulled === 1 ? '' : 's'} (>10 wk no commit)`)
+    summary.actionsTaken.push(`Pulled ${pulled} cold offer${pulled === 1 ? '' : 's'} (long-stale, no interest)`)
   }
 }
 
@@ -219,7 +225,7 @@ function autoFulfillScouting(save, summary) {
  * the lazy init in Recruiting.jsx so auto mode can spend AP on recruits
  * without the user ever opening the page.
  */
-function ensureRecruitPool(save) {
+export function ensureRecruitPool(save) {
   if (save.recruits && Object.keys(save.recruits).length > 0) return
   const userHC = save.coaches?.[save.teams?.[save.userSchoolId]?.headCoachId]
   const pool = generateRecruitPool(
@@ -240,8 +246,15 @@ export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
   // before the weekly AP-spend step that normally lazy-generates the pool, so
   // without this the camp would draw from an empty pool → 0 attendees.
   ensureRecruitPool(save)
-  const invitedIds = save.prospectCamp?.invitedIds || []
+  // Invites can live in two places depending on how they were added:
+  //   - auto invites → save.prospectCamp.invitedIds
+  //   - manual invites (Recruiting page) → recruit.campInvited flag
+  // Merge both so neither path silently drops the other's invites.
   const recruits = save.recruits || {}
+  const flaggedInvites = Object.values(recruits)
+    .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
+    .map(r => r.id)
+  const invitedIds = [...new Set([...(save.prospectCamp?.invitedIds || []), ...flaggedInvites])]
   const headCoach = save.coaches?.[save.teams?.[userSchoolId]?.headCoachId]
   const coachRecruiter = headCoach?.recruiter ?? 55
   const programMomentum = save.teams?.[userSchoolId]?.programMomentum ?? 50
@@ -262,9 +275,14 @@ export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
   save.prospectCamp.year = save.calendar?.year
   save.prospectCamp.attendeeIds = attendeeIds
   save.prospectCamp.attendees = attendeeIds.length
+  save.prospectCamp.details = result?.details || []
   save.prospectCamp.fee = fee
   save.prospectCamp.revenue = result?.revenue || 0
   save.prospectCamp.held = true
+  // Credit the camp revenue to the budget (the manual path does this too).
+  if (save.budget && (result?.revenue || 0) > 0) {
+    save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + result.revenue
+  }
   if (result?.cancelled) {
     summary.actionsTaken.push('Prospect camp had no takers — skipped')
   } else {
@@ -741,21 +759,30 @@ function spendRecruiting(save, apBudget) {
 }
 
 function computeAutoOffer(save, recruit, ovr) {
-  // Simple offer scale: higher OVR + better academic rating more $
-  // Capped to leave room for the rest of the class.
+  // Offer scale that SPREADS by talent instead of bucketing everyone at ~$7K.
+  // The old 4-bucket ladder (12k / 7k / 4k / 1.5k) jammed the whole 60-79 OVR
+  // band — which is most of any class — into the 4k/7k buckets, so nearly
+  // every offer looked identical. This is a smooth ramp: each OVR point above
+  // ~48 is worth ~$300, so a 90-OVR stud lands ~$12.5K while a 55-OVR depth
+  // arm lands ~$2K. A little ±8% jitter keeps the numbers from looking
+  // robotic. Capped to ~15% of the remaining pool to leave room for the rest
+  // of the class.
   const userSchoolId = save.userSchoolId
   // The scholarship pool lives on the SCHOOL, not the team — reading it off
   // the team returned undefined → 0 → every offer was suppressed (the "auto
   // never makes an offer" bug). Fall back to a sane default if missing.
   const remainingPool = save.schools?.[userSchoolId]?.scholarshipPool ?? 200000
   if (remainingPool < 2000) return 0
-  let amt
-  if (ovr >= 80) amt = 12000
-  else if (ovr >= 70) amt = 7000
-  else if (ovr >= 60) amt = 4000
-  else amt = 1500
+  let amt = Math.round((Math.max(48, ovr) - 48) * 300)
+  // ±8% deterministic-ish jitter (recruit id keeps it stable across renders)
+  const jitterSeed = String(recruit.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0)
+  const jitter = 0.92 + ((jitterSeed % 17) / 17) * 0.16   // 0.92 .. 1.08
+  amt = Math.round(amt * jitter)
   // Stretch for in-state PNW kids — small home discount works
   if (recruit.hometown?.state === 'OR' || recruit.hometown?.state === 'WA') amt = Math.round(amt * 0.95)
+  amt = Math.max(amt, 800)   // even a depth piece gets a token offer
+  // Round to the nearest $100 so offers read cleanly
+  amt = Math.round(amt / 100) * 100
   return Math.min(amt, Math.floor(remainingPool * 0.15))
 }
 

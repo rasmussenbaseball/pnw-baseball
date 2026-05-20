@@ -1195,6 +1195,27 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
   const rng = makeRng('camp', userSchoolId, year, seed)
   const attendeeIds = []
   const invitedSet = new Set(invitedIds || [])
+  // Per-attendee boost log — captured at camp time so the results popup can
+  // show "who attended + what scouting boost they got" even if the board
+  // changes later. { id, name, pos, estOvr, interestGain, invited }
+  const details = []
+  const logAttendee = (r, invited, interestBefore) => {
+    const g = r.scoutGrades[userSchoolId] || {}
+    const block = r.isPitcher ? r.truePitcher : r.trueHitter
+    const vals = block ? Object.values(block).filter(v => typeof v === 'number' && v < 100) : []
+    const estOvr = vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null
+    details.push({
+      id: r.id,
+      name: `${r.firstName} ${r.lastName}`,
+      pos: r.isPitcher ? 'P' : r.primaryPosition,
+      state: r.hometown?.state || '',
+      estOvr,
+      interest: g.interest ?? 0,
+      interestGain: Math.max(0, (g.interest ?? 0) - interestBefore),
+      noise: g.noise ?? 15,
+      invited: !!invited,
+    })
+  }
   // Target attendance scales with program quality (Nate): floor 20 for any
   // program, up to ~80 for elite programs. We cap natural turnout at this
   // target and top up to it so weaker schools land near 20 and powers near 80.
@@ -1241,6 +1262,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
       if (!r.scoutGrades[userSchoolId]) {
         r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
       }
+      const _interestBefore = r.scoutGrades[userSchoolId].interest ?? 0
       // Attending camp = ~50% scouted out of the gate. Bump apSpent to 5 so
       // the scouting progress bar shows it; drop noise to 7 (full-scout floor
       // is 2 once they have 10+ AP spent across actions).
@@ -1259,6 +1281,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
       for (const k of Object.keys(block)) {
         if (rng.chance(0.25)) block[k] = Math.min(99, block[k] + 1)
       }
+      logAttendee(r, isInvited, _interestBefore)
     }
   }
 
@@ -1284,15 +1307,19 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
       if (!r.scoutGrades[userSchoolId]) {
         r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
       }
+      const _interestBefore = r.scoutGrades[userSchoolId].interest ?? 0
       r.scoutGrades[userSchoolId].interest = Math.min(100, r.scoutGrades[userSchoolId].interest + 15)
       r.scoutGrades[userSchoolId].noise = Math.min(r.scoutGrades[userSchoolId].noise, 9)
       r.scoutGrades[userSchoolId].apSpent = Math.max(r.scoutGrades[userSchoolId].apSpent || 0, 3)
       r.scoutGrades[userSchoolId].actionsApplied.push('CAMP_ATTEND')
+      logAttendee(r, invitedSet.has(r.id), _interestBefore)
     }
   }
 
+  // Sort details best-prospect-first for display.
+  details.sort((a, b) => (b.estOvr ?? 0) - (a.estOvr ?? 0))
   const revenue = attendeeIds.length * feePerAttendee
-  return { attendeeIds, revenue, recruits }
+  return { attendeeIds, revenue, recruits, details }
 }
 
 // ─── Fundraising (AP $) ────────────────────────────────────────────────────
@@ -1503,9 +1530,10 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
 
   // Offer freshness bonus — recruits don't sit on offers forever; the longer
   // an offer's been out + relationship's been built, the more decisive they
-  // get. After 4 weeks of consideration, +25% per the next 4 weeks.
+  // get. Kicks in after 2 weeks now (was 4) and ramps faster, so the board
+  // actually MOVES through the fall instead of everyone waiting until spring.
   const weeksOut = recruit.liveOffer.weeksOutstanding || 0
-  if (weeksOut >= 4) baseProb *= 1 + Math.min(0.4, (weeksOut - 4) * 0.07)
+  if (weeksOut >= 2) baseProb *= 1 + Math.min(0.6, (weeksOut - 2) * 0.10)
 
   // Financial-priority recruits cool on no-athletic-$ programs (D3, NWAC).
   // Real-world parallel: a kid whose top priority is "wants $$$" won't
@@ -1525,9 +1553,14 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
     }
   }
 
-  const suitorDivisor = 1 + suitorCount * 0.7   // 1 suitor: ÷1.7; 5 suitors: ÷4.5
+  // Softened (May 2026): the old 0.7 multiplier crushed sign odds for any
+  // recruit with a few other suitors (5 suitors → ÷4.5), so almost nobody
+  // committed during the fall. 0.45 keeps competition meaningful (5 suitors
+  // → ÷3.25) without freezing the board. Floor raised 0.02 → 0.05 so even a
+  // contested recruit eventually decides over a full recruiting cycle.
+  const suitorDivisor = 1 + suitorCount * 0.45   // 1 suitor: ÷1.45; 5 suitors: ÷3.25
 
-  const signProb = clamp(baseProb / suitorDivisor, 0.02, 0.92)
+  const signProb = clamp(baseProb / suitorDivisor, 0.05, 0.92)
   if (rng.chance(signProb)) {
     recruit.status = 'signed'
     recruit.signedTo = userSchoolId

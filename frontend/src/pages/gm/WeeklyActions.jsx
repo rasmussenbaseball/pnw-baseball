@@ -6,6 +6,7 @@ import {
   fundraise, simProspectCamp, predictCampTurnout,
   CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
 } from '../../gm/engine/recruits'
+import { ensureRecruitPool } from '../../gm/engine/autoMode'
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek, actionUsesRemaining, maxActionUsesThisTurn } from '../../gm/engine/weeklyActions'
 import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
@@ -49,6 +50,7 @@ export default function WeeklyActions() {
   const [tutoringPicks, setTutoringPicks] = useState([])
   const [oneOnOnePlayer, setOneOnOnePlayer] = useState('')
   const [oneOnOneRating, setOneOnOneRating] = useState('')
+  const [campResultsModal, setCampResultsModal] = useState(null)
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -275,12 +277,19 @@ export default function WeeklyActions() {
   function doCamp() {
     if (!campOpen) { gmToast(`Prospect camp opens in Week ${CAMP_WEEK} (late October). Wait until then to run it.`, "warn"); return }
     if (campAlreadyHeld) { gmToast("You've already held this year's camp.", 'warn'); return }
+    // CRITICAL: make sure the recruit pool exists before simming the camp.
+    // If the user never opened the Recruiting page, save.recruits is empty and
+    // the camp would run on nothing → 0 attendees (the long-standing bug).
+    ensureRecruitPool(save)
     const momentum = Math.round(
       ((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100
     )
-    const invitedIds = Object.values(save.recruits || {})
+    // Merge both invite sources: the campInvited flag (Recruiting page) AND
+    // any auto-mode invites stored on save.prospectCamp.invitedIds.
+    const flagged = Object.values(save.recruits || {})
       .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
       .map(r => r.id)
+    const invitedIds = [...new Set([...(save.prospectCamp?.invitedIds || []), ...flagged])]
     const result = simProspectCamp(
       save.recruits || {}, save.userSchoolId, invitedIds, campFee,
       userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
@@ -293,6 +302,7 @@ export default function WeeklyActions() {
       year: save.calendar.year,
       attendeeIds: result.attendeeIds,
       attendees: result.attendeeIds.length,
+      details: result.details || [],
       revenue: result.revenue,
     }
     save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + result.revenue
@@ -304,6 +314,7 @@ export default function WeeklyActions() {
       payload: { fee: campFee, attendees: result.attendeeIds.length },
     })
     saveDynasty(save); setSave({ ...save })
+    setCampResultsModal(result)   // pop the results summary immediately
   }
 
   const invitedIds = Object.values(save.recruits || {})
@@ -318,6 +329,13 @@ export default function WeeklyActions() {
 
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    {campResultsModal && (
+      <CampResultsModal
+        result={campResultsModal}
+        fee={campFee}
+        onClose={() => setCampResultsModal(null)}
+      />
+    )}
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex justify-between items-start">
         <div>
@@ -363,6 +381,11 @@ export default function WeeklyActions() {
           campFee={campFee}
           campPredict={campPredict}
           onRunCamp={doCamp}
+          onViewResults={() => setCampResultsModal({
+            attendeeIds: save.prospectCamp?.attendeeIds || [],
+            details: save.prospectCamp?.details || [],
+            revenue: save.prospectCamp?.revenue || 0,
+          })}
         />
       )}
 
@@ -564,25 +587,34 @@ export default function WeeklyActions() {
   )
 }
 
-function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCount, campFee, setCampFee, campPredict, onRunCamp }) {
+function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCount, campFee, setCampFee, campPredict, onRunCamp, onViewResults }) {
   if (campAlreadyHeld) {
     const camp = save.prospectCamp
+    const count = camp.attendees ?? (camp.attendeeIds?.length || 0)
     return (
-      <div className="bg-green-50 border-2 border-green-300 rounded-xl p-4 mb-4 shadow-sm">
+      <div className="bg-[#16331f] border-4 border-pnw-green rounded p-4 mb-4">
         <div className="flex justify-between items-start gap-3">
-          <div>
-            <div className="text-xs uppercase tracking-wider text-green-700 font-bold mb-1">
-               Prospect Camp — held this year
+          <div className="flex-1">
+            <div className="font-pixel-display text-[10px] uppercase tracking-widest text-pnw-green mb-1">
+              Prospect Camp — held this year
             </div>
-            <div className="text-sm text-green-900">
-              <strong>{camp.attendees ?? (camp.attendeeIds?.length || 0)}</strong> attendees at <strong>${camp.fee ?? 100}</strong> per head ·
-              <strong> +${((camp.revenue ?? ((camp.attendeeIds?.length || 0) * (camp.fee ?? 100))) / 1000).toFixed(1)}K</strong> revenue added to your budget.
+            <div className="text-sm text-green-100 font-pixel">
+              <strong>{count}</strong> prospects attended at <strong>${camp.fee ?? 100}</strong> per head ·
+              <strong> +${((camp.revenue ?? (count * (camp.fee ?? 100))) / 1000).toFixed(1)}K</strong> added to your budget.
             </div>
-            <div className="text-[11px] text-green-800 mt-1">
-              Attendees gained +5 interest and ended up ~50% scouted on your board.
-              Camp is done for the year — comes around again next October.
+            <div className="text-[11px] text-green-300/80 mt-1 font-pixel">
+              Every attendee got a scouting + interest boost and now sits on your recruiting board.
+              Camp comes around again next October.
             </div>
           </div>
+          {count > 0 && (
+            <button
+              onClick={onViewResults}
+              className="shrink-0 bg-pnw-green text-[#0c1f12] font-pixel-display text-[10px] tracking-widest uppercase px-3 py-2 rounded hover:opacity-90"
+            >
+              View results
+            </button>
+          )}
         </div>
         <CampAttendees save={save} />
       </div>
@@ -876,6 +908,73 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
                 : <span className="text-amber-700">already at 99</span>}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Popup shown right after running the camp (and re-openable via "View
+// results"). Lists exactly who showed up + the scouting/interest boost each
+// got. Reads the camp `details` snapshot captured at run time.
+function CampResultsModal({ result, fee, onClose }) {
+  const rows = (result?.details || []).slice().sort((a, b) => (b.estOvr ?? 0) - (a.estOvr ?? 0))
+  const count = rows.length || (result?.attendeeIds?.length || 0)
+  const revenue = result?.revenue ?? (count * (fee ?? 100))
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="bg-[#1a1a2e] border-4 border-pnw-green rounded max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-4 border-b-2 border-[#3a3a5e]">
+          <div className="font-pixel-display text-sm tracking-widest text-pnw-green">PROSPECT CAMP RESULTS</div>
+          <div className="text-[12px] text-[#c8c8e8] font-pixel mt-1">
+            <strong className="text-white">{count}</strong> prospects showed up · <strong className="text-white">+${(revenue / 1000).toFixed(1)}K</strong> in camp revenue.
+            Each got a scouting + interest bump and is now on your recruiting board.
+          </div>
+        </div>
+        <div className="overflow-auto p-3">
+          {count === 0 ? (
+            <div className="text-[#a8a8c8] italic text-sm font-pixel p-4 text-center">
+              No prospects attended this year.
+            </div>
+          ) : (
+            <table className="w-full text-[12px] font-pixel">
+              <thead className="text-[10px] uppercase tracking-wider text-[#a8a8c8] sticky top-0 bg-[#1a1a2e]">
+                <tr>
+                  <th className="text-left py-1 px-2">Prospect</th>
+                  <th>Pos</th>
+                  <th>Est OVR</th>
+                  <th>St</th>
+                  <th>Interest</th>
+                  <th>+Int</th>
+                  <th>How</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(d => (
+                  <tr key={d.id} className="border-t border-[#3a3a5e] text-white">
+                    <td className="py-1 px-2">{d.name}</td>
+                    <td className="text-center">{d.pos}</td>
+                    <td className="text-center font-mono font-bold text-pnw-green">{d.estOvr ?? '—'}</td>
+                    <td className="text-center text-[#a8a8c8]">{d.state}</td>
+                    <td className="text-center font-mono">{d.interest}</td>
+                    <td className="text-center font-mono text-green-400">{d.interestGain > 0 ? `+${d.interestGain}` : '—'}</td>
+                    <td className="text-center text-[10px] text-[#a8a8c8]">{d.invited ? 'invited' : 'walk-on'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="p-3 border-t-2 border-[#3a3a5e] text-right">
+          <button
+            onClick={onClose}
+            className="bg-pnw-green text-[#0c1f12] font-pixel-display text-[10px] tracking-widest uppercase px-4 py-2 rounded hover:opacity-90"
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>

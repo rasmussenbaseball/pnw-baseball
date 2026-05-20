@@ -82,12 +82,20 @@ export function spendCoachUpgradePoints(state, ratingKey, points = 1) {
 
 // ─── Earning rules (called from event hooks) ────────────────────────────────
 
-/** Per-game outcome — call after each simulated user game. */
+/**
+ * Per-game outcome — call after each simulated user game.
+ *
+ * Tuned DOWN (May 2026): a routine win is worth 1 point (was 2 + a flat conf
+ * bonus, which handed out ~6-7 points in a single 2-1 conference week — way
+ * too fast). Now a typical 2-win week earns 2 points; the only premium left is
+ * for genuinely big wins over nationally-ranked opponents, so points still
+ * feel earned but accumulate at a much slower clip. Postseason runs + end-of-
+ * year honors remain the real engine for upgrade points.
+ */
 export function awardForGameResult(state, won, opponentRank = null, isConf = false) {
   if (!won) return
-  let pts = 2
-  if (isConf) pts += 1
-  if (opponentRank && opponentRank <= 25) pts += 2
+  let pts = 1
+  if (opponentRank && opponentRank <= 25) pts += 1
   if (opponentRank && opponentRank <= 10) pts += 1
   awardCoachUpgradePoints(state, pts, `Win${isConf ? ' (conf)' : ''}${opponentRank ? ` over #${opponentRank}` : ''}`)
 }

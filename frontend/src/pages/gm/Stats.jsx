@@ -226,6 +226,11 @@ function CareerView({ save, team, accent, slot, hasAnalyticsMgr }) {
 // ─── Tables ───────────────────────────────────────────────────────────────
 
 function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, emptyMsg }) {
+  // NOTE: all hooks must run unconditionally and in the same order on every
+  // render — never put a hook after an early return, or React throws
+  // "rendered more hooks than during the previous render" and white-screens
+  // the page the moment `rows` flips between empty and non-empty.
+  const lg = useMemo(() => leagueAverages(save), [save])
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="HITTING">
@@ -233,7 +238,6 @@ function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, em
       </PixelCard>
     )
   }
-  const lg = useMemo(() => leagueAverages(save), [save])
   const enriched = rows.map(r => ({ r, adv: computeBatting(r, lg) }))
   // Without an analytics manager, sort by OPS instead of wOBA (advanced
   // stats are hidden) so the table is still ordered something sensible.
@@ -289,6 +293,8 @@ function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, em
 }
 
 function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, emptyMsg }) {
+  // Hooks must run before any early return (see BatterTable note).
+  const lg = useMemo(() => leagueAverages(save), [save])
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="PITCHING">
@@ -296,7 +302,6 @@ function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, e
       </PixelCard>
     )
   }
-  const lg = useMemo(() => leagueAverages(save), [save])
   const enriched = rows.map(r => ({ r, adv: computePitching(r, lg) }))
   // Without analytics manager, sort by ERA instead of FIP (FIP is hidden).
   const sorted = hasAnalyticsMgr
