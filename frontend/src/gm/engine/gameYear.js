@@ -68,9 +68,11 @@ export const PHASES = {
   // ── May: postseason (Wks 40-42) ─────────────────────────────────────────
   CONF_TOURNAMENT:   { key: 'CONF_TOURNAMENT',   label: 'Conf Tournament',  blurb: 'Double-elim bracket. Winner gets the NAIA auto-bid.',
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
-  OPENING_ROUND:     { key: 'OPENING_ROUND',     label: 'Opening Round',    blurb: 'NAIA regional brackets — 4-team double-elim.',
+  OPENING_ROUND:     { key: 'OPENING_ROUND',     label: 'Opening Round',    blurb: 'Regional brackets — double-elimination.',
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
-  WORLD_SERIES:      { key: 'WORLD_SERIES',      label: 'World Series',     blurb: 'Avista NAIA WS in Lewiston, ID.',
+  SUPER_REGIONAL:    { key: 'SUPER_REGIONAL',    label: 'Super Regional',   blurb: 'Best-of-3 series. Winner advances to the World Series.',
+    season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
+  WORLD_SERIES:      { key: 'WORLD_SERIES',      label: 'World Series',     blurb: 'National finals.',
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
   // ── June-July: portal + draft (Wks 43-52) ───────────────────────────────
   PORTAL:            { key: 'PORTAL',            label: 'Summer Recruiting', blurb: 'Inbound + outbound transfers. Recruit from the portal. Summer ball runs in the background.',
@@ -82,10 +84,28 @@ export const PHASES = {
 }
 
 /**
- * Phase for a given week number (1–52). This is the source of truth for
- * "what is week N about?" — used by Dashboard, Calendar page, sim gating, etc.
+ * Per-LEVEL postseason layout. Most leagues run 3 playoff rounds in weeks
+ * 40-42 (regular season ends wk39). Leagues with a FOURTH round (a conference
+ * tournament PLUS regionals + super regionals + World Series — e.g. NCAA D2)
+ * start the postseason a week earlier (wk39), so their regular season ends a
+ * week sooner (wk38). NAIA + any unrecognized level keep the 3-round layout.
+ *
+ *   confTourney → regional → (superRegional) → ws
  */
-export function phaseForWeek(week) {
+export function postseasonLayout(level) {
+  if (level === 'D2') {
+    return { seasonEnd: 38, confTourney: 39, regional: 40, superRegional: 41, ws: 42, start: 39, rounds: 4 }
+  }
+  return { seasonEnd: 39, confTourney: 40, regional: 41, superRegional: null, ws: 42, start: 40, rounds: 3 }
+}
+
+/**
+ * Phase for a given week number (1–52). Source of truth for "what is week N
+ * about?" — used by Dashboard, Calendar page, sim gating, etc. `level` shifts
+ * the postseason window for 4-round leagues (see postseasonLayout).
+ */
+export function phaseForWeek(week, level) {
+  const L = postseasonLayout(level)
   if (week === 1) return PHASES.TUTORIAL_SCHEDULE
   if (week === 2) return PHASES.TUTORIAL_HIRE
   if (week === 3) return PHASES.TUTORIAL_BUDGET
@@ -99,10 +119,11 @@ export function phaseForWeek(week) {
   if (week >= 18 && week <= 22) return PHASES.DECEMBER
   if (week >= 23 && week <= 26) return PHASES.WINTER_PRACTICE     // January
   if (week >= 27 && week <= 29) return PHASES.NON_CONFERENCE
-  if (week >= 30 && week <= 39) return PHASES.CONFERENCE
-  if (week === 40) return PHASES.CONF_TOURNAMENT
-  if (week === 41) return PHASES.OPENING_ROUND
-  if (week === 42) return PHASES.WORLD_SERIES
+  if (week >= 30 && week <= L.seasonEnd) return PHASES.CONFERENCE
+  if (week === L.confTourney) return PHASES.CONF_TOURNAMENT
+  if (week === L.regional) return PHASES.OPENING_ROUND
+  if (L.superRegional && week === L.superRegional) return PHASES.SUPER_REGIONAL
+  if (week === L.ws) return PHASES.WORLD_SERIES
   if (week === 48) return PHASES.MLB_DRAFT_WEEK
   if (week === 52) return PHASES.RECRUIT_FINALIZE
   if (week >= 43 && week <= 51) return PHASES.PORTAL
@@ -132,16 +153,17 @@ export function isPhaseTransition(prevWeek, nextWeek) {
  * Calendar mode derived from week — kept for back-compat with existing code
  * that reads `state.calendar.mode`.
  */
-export function modeForWeek(week) {
-  if (week >= 27 && week <= 39) return 'SEASON'
-  if (week >= 40 && week <= 42) return 'POSTSEASON'
+export function modeForWeek(week, level) {
+  const L = postseasonLayout(level)
+  if (week >= 27 && week <= L.seasonEnd) return 'SEASON'
+  if (week >= L.start && week <= L.ws) return 'POSTSEASON'
   return 'OFFSEASON'
 }
 
-/** seasonWeek (1–13 reg, 14–16 postseason) — null in offseason. */
-export function seasonWeekForWeek(week) {
-  if (week >= 27 && week <= 39) return week - 26
-  if (week >= 40 && week <= 42) return week - 26   // 14, 15, 16
+/** seasonWeek (regular 1..N, then postseason) — null in offseason. */
+export function seasonWeekForWeek(week, level) {
+  const L = postseasonLayout(level)
+  if (week >= 27 && week <= L.ws) return week - 26
   return null
 }
 

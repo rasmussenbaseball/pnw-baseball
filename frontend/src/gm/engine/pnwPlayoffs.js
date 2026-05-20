@@ -343,7 +343,7 @@ export function runConferenceTournament(confId, seededTeams, simGame, seedKey) {
 
 const FIELD_CONFIG = {
   D1: { fieldSize: 64, regionalSites: 16, perSite: 4, hasSuper: true,  wsField: 8 },
-  D2: { fieldSize: 56, regionalSites: 8,  perSite: 7, hasSuper: false, wsField: 8 },
+  D2: { fieldSize: 56, regionalSites: 16, perSite: 4, hasSuper: true,  wsField: 8 },
   D3: { fieldSize: 56, regionalSites: 8,  perSite: 7, hasSuper: false, wsField: 8 },
 }
 

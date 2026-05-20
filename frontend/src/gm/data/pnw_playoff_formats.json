@@ -2,8 +2,8 @@
   "_meta": {
     "purpose": "Playoff formats + conference rosters for every level of PNW college baseball. Used as the design reference + data source when the GM game expands beyond NAIA to support D1/D2/D3/JUCO PNW programs.",
     "scope": "PNW = Washington, Oregon, Idaho, Montana + British Columbia. Per Nate's May 2026 decision the GM game stays PNW-only, so we only need playoff structure for conferences that contain PNW programs.",
-    "lastUpdated": "2026-05-17",
-    "sources": "NCAA published bracket formats, conference championship history, and pearatings.com for member lists. Bracket structures reflect 2024-25 season conventions."
+    "lastUpdated": "2026-05-21",
+    "sources": "NCAA published bracket formats, conference championship history, and pearatings.com for member lists. Bracket structures reflect 2024-25 season conventions. D2 corrected May 2026 from NCAA.com 2025 bracket + GNAC championship format (data file previously omitted super regionals)."
   },
   "divisions": {
     "D1": {
@@ -22,7 +22,7 @@
           "SR"
         ],
         "maxSeasonsPerPlayer": 4,
-        "details": "NCAA D1 — 4 years of eligibility. Highest level of college baseball. Best players get drafted after JR year."
+        "details": "NCAA D1 \u2014 4 years of eligibility. Highest level of college baseball. Best players get drafted after JR year."
       },
       "rosterCap": 40,
       "seasonGames": 56,
@@ -35,7 +35,7 @@
             "format": "DOUBLE_ELIM",
             "sites": 16,
             "teamsPerSite": 4,
-            "details": "Top-16 national seeds host. Each site is 4 teams seeded 1-4. Double-elim — first to 4 wins (each team gets 2 lives). Winners (16) advance to Super Regionals."
+            "details": "Top-16 national seeds host. Each site is 4 teams seeded 1-4. Double-elim \u2014 first to 4 wins (each team gets 2 lives). Winners (16) advance to Super Regionals."
           },
           {
             "name": "Super Regionals",
@@ -67,7 +67,7 @@
           "SR"
         ],
         "maxSeasonsPerPlayer": 4,
-        "details": "NCAA D2 — 4 years of eligibility. Tier below D1 but still elite collegiate level. Some draft pipeline, mostly from upper-class players."
+        "details": "NCAA D2 \u2014 4 years of eligibility. Tier below D1 but still elite collegiate level. Some draft pipeline, mostly from upper-class players."
       },
       "rosterCap": 40,
       "seasonGames": 52,
@@ -78,18 +78,31 @@
           {
             "name": "Regionals",
             "format": "DOUBLE_ELIM",
+            "sites": 16,
+            "teamsPerSite": "3-4",
+            "details": "56-team field across 16 regional sites (8 sites of 3 teams, 8 sites of 4 teams), all double-elimination. 16 regional winners advance. Hosts/seeds by national ranking."
+          },
+          {
+            "name": "Super Regionals",
+            "format": "BEST_OF_3",
             "sites": 8,
-            "teamsPerSite": 7,
-            "details": "8 regional sites, 7 teams each (mod). Double-elim. Winner advances to D2 WS."
+            "teamsPerSite": 2,
+            "details": "16 regional winners paired into 8 best-of-3 super regionals. Higher seed hosts. 8 winners advance."
           },
           {
             "name": "D2 World Series",
             "location": "USA Baseball NTC, Cary NC",
             "format": "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL",
             "fieldSize": 8,
-            "details": "8 regional winners. Double-elim brackets of 4, then best-of-3 final."
+            "details": "8 super-regional winners in a single 8-team double-elimination bracket; since 2025 the final two teams play a best-of-3 for the title."
           }
         ]
+      },
+      "conferenceTournament": {
+        "format": "DOUBLE_ELIM",
+        "teams": 3,
+        "host": "1-seed",
+        "details": "GNAC conference tournament: top 3 regular-season teams, double-elimination, hosted by the #1 seed. Played the week BEFORE the NCAA regionals."
       }
     },
     "D3": {
@@ -105,7 +118,7 @@
           "SR"
         ],
         "maxSeasonsPerPlayer": 4,
-        "details": "NCAA D3 — 4 years of eligibility. No athletic scholarships allowed. Skill tier roughly equivalent to NWAC + low NAIA. Rare draft picks."
+        "details": "NCAA D3 \u2014 4 years of eligibility. No athletic scholarships allowed. Skill tier roughly equivalent to NWAC + low NAIA. Rare draft picks."
       },
       "rosterCap": 40,
       "seasonGames": 41,
@@ -132,7 +145,7 @@
             "location": "Veterans Memorial Stadium, Cedar Rapids IA",
             "format": "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL",
             "fieldSize": 8,
-            "details": "Same finals format as D1/D2 — double-elim into best-of-3 championship."
+            "details": "Same finals format as D1/D2 \u2014 double-elim into best-of-3 championship."
           }
         ]
       }
@@ -163,7 +176,7 @@
             "format": "DOUBLE_ELIM",
             "sites": 10,
             "teamsPerSite": 5,
-            "details": "10 host sites of 5 teams (one site has 4 — math works out). Double-elim. 10 winners advance."
+            "details": "10 host sites of 5 teams (one site has 4 \u2014 math works out). Double-elim. 10 winners advance."
           },
           {
             "name": "Avista NAIA World Series",
@@ -189,7 +202,7 @@
           "SO"
         ],
         "maxSeasonsPerPlayer": 2,
-        "details": "NWAC is a junior college conference. Players are only eligible for 2 seasons (FR + SO). Sophomores typically transfer to 4-year programs (D1/D2/D3/NAIA) after their NWAC career. Recruit pool is HS-only — no JUCO or 4-yr transfers in.",
+        "details": "NWAC is a junior college conference. Players are only eligible for 2 seasons (FR + SO). Sophomores typically transfer to 4-year programs (D1/D2/D3/NAIA) after their NWAC career. Recruit pool is HS-only \u2014 no JUCO or 4-yr transfers in.",
         "transferOutAtEnd": true,
         "recruitPools": [
           "HS_SR"
@@ -230,7 +243,7 @@
         "location": "Charles Schwab Field, Omaha NE",
         "details": "Top 8 from full Big Ten standings qualify. Double-elim. Conference champion gets auto-bid to NCAA Tournament."
       },
-      "_note": "Big Ten — PNW members only (Oregon + Washington). USC and UCLA are also Big Ten baseball members but located in southern California, outside the PNW scope of this sim. Excluded.",
+      "_note": "Big Ten \u2014 PNW members only (Oregon + Washington). USC and UCLA are also Big Ten baseball members but located in southern California, outside the PNW scope of this sim. Excluded.",
       "pnwMembers": [
         {
           "id": "oregon-d1",
@@ -284,14 +297,14 @@
       "level": "D1",
       "isIndependent": true,
       "tournament": null,
-      "_note": "D1 Independents have no conference affiliation — they schedule a full year of non-conference series against whoever will play them. NO conference tournament. They are eligible for NCAA Regionals as at-large bids only (no auto-bid). Oregon State is the highest-profile PNW independent after Pac-12 collapse — they stayed independent rather than joining the WCC.",
+      "_note": "D1 Independents have no conference affiliation \u2014 they schedule a full year of non-conference series against whoever will play them. NO conference tournament. They are eligible for NCAA Regionals as at-large bids only (no auto-bid). Oregon State is the highest-profile PNW independent after Pac-12 collapse \u2014 they stayed independent rather than joining the WCC.",
       "pnwMembers": [
         {
           "id": "oregon-st-d1",
           "name": "Oregon State",
           "city": "Corvallis",
           "state": "OR",
-          "note": "Independent since 2024 — Pac-12 collapse fallout"
+          "note": "Independent since 2024 \u2014 Pac-12 collapse fallout"
         }
       ]
     },
@@ -791,14 +804,14 @@
   "bracketFormats": {
     "DOUBLE_ELIM": {
       "name": "Double Elimination",
-      "explanation": "Each team gets two lives. Lose twice → out. Bracket has a winner's side and a loser's side; the loser's side champion has to beat the winner's side champion TWICE to win (since they have to give them their first loss). Standard for NCAA regionals, NAIA Opening Round."
+      "explanation": "Each team gets two lives. Lose twice \u2192 out. Bracket has a winner's side and a loser's side; the loser's side champion has to beat the winner's side champion TWICE to win (since they have to give them their first loss). Standard for NCAA regionals, NAIA Opening Round."
     },
     "BEST_OF_3": {
       "name": "Best-of-3 Series",
       "explanation": "First team to 2 wins. Standard for NCAA Super Regionals + WS finals. Higher seed hosts typically."
     },
     "POOL_PLAY_SEMIS_CHAMPIONSHIP": {
-      "name": "Pool Play → Semis → Championship",
+      "name": "Pool Play \u2192 Semis \u2192 Championship",
       "explanation": "Teams split into pools, round-robin within pool, top X from each pool advance to single-elim bracket. NAIA WS uses this; ACC tournament uses a variant."
     },
     "DOUBLE_ELIM_INTO_BEST_OF_3_FINAL": {
