@@ -34,16 +34,23 @@ export default function Academics() {
     if (s) ensureUnifiedCalendar(s)
     return s
   }, [userId, slot])
+
+  // All hooks must run before any early return. Guard for a null save INSIDE
+  // the memo rather than returning early above it.
+  const players = useMemo(() => {
+    if (!save) return []
+    const t = save.teams[save.userSchoolId]
+    return (t?.rosterPlayerIds || [])
+      .map(id => save.players[id])
+      .filter(Boolean)
+      .map(p => ({ ...p, _ovr: playerOverall(p) }))
+  }, [save])
+
   if (!save) return <Navigate to="/gm" replace />
 
   const school = save.schools[save.userSchoolId]
   const team = save.teams[save.userSchoolId]
   const accent = school.colors?.[0] || '#fbbf24'
-
-  const players = useMemo(() => (team.rosterPlayerIds || [])
-    .map(id => save.players[id])
-    .filter(Boolean)
-    .map(p => ({ ...p, _ovr: playerOverall(p) })), [team.rosterPlayerIds, save.players])
 
   const summary = teamAcademicSummary(players)
   const atRisk = players.filter(p => p.academicStanding === 'ineligible' || p.academicStanding === 'probation')

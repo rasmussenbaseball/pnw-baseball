@@ -61,7 +61,7 @@ const BASE_RATES_BY_LEVEL = {
   D1:   { K: 0.250, BB: 0.115, HBP: 0.013, HR: 0.030, TRIPLE: 0.005, DOUBLE: 0.046, SINGLE: 0.145, ERROR: 0.010, OUT: 0.386 },
   D2:   { K: 0.180, BB: 0.090, HBP: 0.015, HR: 0.024, TRIPLE: 0.006, DOUBLE: 0.050, SINGLE: 0.180, ERROR: 0.011, OUT: 0.444 },
   D3:   { K: 0.190, BB: 0.100, HBP: 0.017, HR: 0.026, TRIPLE: 0.006, DOUBLE: 0.044, SINGLE: 0.170, ERROR: 0.012, OUT: 0.435 },
-  NAIA: { K: 0.202, BB: 0.105, HBP: 0.019, HR: 0.028, TRIPLE: 0.005, DOUBLE: 0.051, SINGLE: 0.167, ERROR: 0.011, OUT: 0.412 },
+  NAIA: { K: 0.212, BB: 0.105, HBP: 0.019, HR: 0.028, TRIPLE: 0.005, DOUBLE: 0.049, SINGLE: 0.159, ERROR: 0.011, OUT: 0.412 },
   NWAC: { K: 0.200, BB: 0.110, HBP: 0.017, HR: 0.012, TRIPLE: 0.005, DOUBLE: 0.040, SINGLE: 0.155, ERROR: 0.014, OUT: 0.447 },
 }
 
@@ -132,12 +132,15 @@ const HIT_SLOPE = 0.60
  */
 export function fastSimGame(home, away, seedKey, opts = {}) {
   const rng = makeRng('fast', seedKey)
-  // Expected runs from offense - opposing pitching diff
-  const homeExp = clamp(5 + (home.offense_rating - away.pitching_rating) * 1.8 + 0.3, 0, 25)
-  const awayExp = clamp(5 + (away.offense_rating - home.pitching_rating) * 1.8, 0, 25)
-  // Sample with Poisson-ish noise
-  let homeRuns = Math.max(0, Math.round(rng.gaussian(homeExp, 3)))
-  let awayRuns = Math.max(0, Math.round(rng.gaussian(awayExp, 3)))
+  // Expected runs from offense - opposing pitching diff. Differential effect
+  // softened (1.8 → 1.3) and the clamp tightened (was 0-25 → 1-15) so even a
+  // dominant team doesn't routinely hang 18-20 — that's what produced absurd
+  // undefeated/.560 teams. Most games now land in a realistic 3-10 run band.
+  const homeExp = clamp(5 + (home.offense_rating - away.pitching_rating) * 1.3 + 0.3, 1, 15)
+  const awayExp = clamp(5 + (away.offense_rating - home.pitching_rating) * 1.3, 1, 15)
+  // Sample with Poisson-ish noise (σ trimmed 3 → 2.4 to reduce extreme games)
+  let homeRuns = Math.max(0, Math.round(rng.gaussian(homeExp, 2.4)))
+  let awayRuns = Math.max(0, Math.round(rng.gaussian(awayExp, 2.4)))
   // Avoid ties — extra innings shouldn't be a regular outcome
   if (homeRuns === awayRuns) {
     if (rng.chance(0.5)) homeRuns++; else awayRuns++
@@ -178,10 +181,19 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     // Use the lineup's batters array; if absent fall back to 9 generic slots.
     const batters = (lineup.batters || []).slice(0, 9).filter(Boolean)
     if (batters.length === 0) return
-    // Total hits ≈ runs × 1.7 (typical R/H ratio across a 9-inning game).
-    const totalHits = Math.max(runs, Math.round(runs * 1.7 + rng.gaussian(0, 1)))
-    // Each batter ~4 PA
+    // Total hits ≈ runs × 1.55. CRITICAL: clamp the team's per-game hit total to
+    // a believable batting-average band. Without this, a blowout (a strong team
+    // hanging 14 on a weak one) translated directly into ~24 hits → a .60 team
+    // game and absurd season AVGs (the .564 / undefeated teams). Real teams hang
+    // crooked numbers via HRs + walks + efficiency, not 24 hits — so we cap the
+    // game's hits at ~.42 of at-bats and floor at ~.15, which keeps season team
+    // averages in a realistic .230-.340 range no matter how lopsided the score.
     const pasPerBatter = 4
+    const estAB = batters.length * pasPerBatter + Math.min(3, batters.length) - 3   // ≈ AB after a few walks
+    const maxHits = Math.round(estAB * 0.42)
+    const minHits = Math.round(estAB * 0.15)
+    let totalHits = Math.round(runs * 1.55 + rng.gaussian(0, 1))
+    totalHits = Math.max(Math.min(runs, minHits), Math.min(totalHits, maxHits))
     // Weights for hit allocation = contact rating, FLATTENED so the best bat
     // doesn't hog a game's hits and post a .500 line. `30 + c*0.7` compresses
     // the spread (a 90-contact bat gets ~1.4× a 50-contact bat's share instead

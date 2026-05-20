@@ -8,8 +8,55 @@
  * their content; the shell handles chrome.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Component } from 'react'
 import { Link, useSearchParams, useLocation, useNavigate, matchPath } from 'react-router-dom'
+
+/**
+ * Catches render-time crashes on any GM page so the user gets a recoverable
+ * message + the actual error text (for reporting) instead of a blank white
+ * screen. Without this, one bad render anywhere nukes the whole app.
+ */
+class GMErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+  componentDidCatch(error, info) {
+    // Surface in the console for debugging.
+    console.error('GM page crashed:', error, info?.componentStack)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="max-w-2xl mx-auto mt-10 p-5 border-4 border-red-500 rounded bg-[#2a1a2e]">
+          <div className="font-pixel-display text-sm tracking-widest text-red-400 mb-2">THIS PAGE HIT AN ERROR</div>
+          <p className="font-pixel text-sm text-[#e8e8e8] mb-3">
+            Something broke while rendering this page. Your dynasty save is fine — head back to the
+            dashboard. If this keeps happening, send over the error text below.
+          </p>
+          <pre className="text-[11px] text-red-300 bg-black/40 rounded p-2 overflow-auto max-h-40 whitespace-pre-wrap">
+            {String(this.state.error?.message || this.state.error)}
+          </pre>
+          <div className="flex gap-2 mt-3">
+            <a href="/gm" className="bg-amber-400 text-[#1a1a2e] font-pixel-display text-[10px] tracking-widest uppercase px-3 py-2 rounded">
+              ← GM Home
+            </a>
+            <button
+              onClick={() => this.setState({ error: null })}
+              className="border-2 border-[#3a3a5e] text-[#e8e8e8] font-pixel-display text-[10px] tracking-widest uppercase px-3 py-2 rounded"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const NAV = [
   {
@@ -24,8 +71,7 @@ const NAV = [
   {
     key: 'stats', label: 'Stats',
     items: [
-      { label: 'Spring stats',   path: '/gm/stats?view=spring' },
-      { label: 'Fall stats',     path: '/gm/stats?view=fall' },
+      { label: 'Season stats',   path: '/gm/stats?view=spring' },
       { label: 'Career stats',   path: '/gm/stats?view=career' },
       { label: 'Team stats',     path: '/gm/teamstats' },
       { label: 'Records',        path: '/gm/records' },
@@ -69,7 +115,7 @@ export default function GMShell({ children, schoolName, schoolColors }) {
       <PixelHeader slot={slot} schoolName={schoolName} schoolColors={schoolColors} />
       {showBackStrip && <BackStrip slot={slot} accent={accent} />}
       <main className="relative z-10 px-3 sm:px-4 py-4 sm:py-5 max-w-6xl mx-auto">
-        {children}
+        <GMErrorBoundary>{children}</GMErrorBoundary>
       </main>
       <ToastContainer />
     </div>

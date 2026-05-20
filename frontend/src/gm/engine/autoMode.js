@@ -31,6 +31,8 @@ import { cutPlayer, ensureCutsState } from './cuts'
 import { playerOverall } from './playerRating'
 import { generateCoach } from './coaches'
 import { rosterCapForLevel } from './levelHelpers'
+import { scholarshipSnapshot } from './scholarshipAccounting'
+import { autoAssignSummerBall } from './summerBall'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 // ─── Toggle helpers ─────────────────────────────────────────────────────────
@@ -79,6 +81,20 @@ export function runAutoActions(save) {
   const ap = save.ap?.currentWeek ?? 0
   if (ap > 0 && week >= 4) {
     autoSpendAP(save, summary)
+  }
+
+  // 5. Summer ball — auto mode never assigned anyone (the planning popup is
+  // suppressed in auto). Once planning opens (wk 18, the December turn), assign
+  // the best/highest-upside players to summer leagues so the user actually has
+  // a summer roster. Idempotent — only fills open slots.
+  if (week >= 18 && save.summerBall?.status !== 'CONFIRMED') {
+    const assignedBefore = Object.values(save.summerBall?.assignments || {}).filter(a => a && !a.removed).length
+    if (assignedBefore === 0) {
+      try {
+        const res = autoAssignSummerBall(save)
+        if (res?.assigned > 0) summary.actionsTaken.push(`Assigned ${res.assigned} players to summer ball leagues`)
+      } catch (err) { /* ignore */ }
+    }
   }
 
   return summary
@@ -713,6 +729,21 @@ function spendRecruiting(save, apBudget) {
   const spotsOpen = recruitingSpotsAvailable(save)
   const maxActiveOffers = Math.max(0, spotsOpen - PORTAL_BUFFER)
 
+  // ── Budget awareness ──────────────────────────────────────────────────
+  // HARD RULE: never let total scholarship commitments exceed the pool. We
+  // track the remaining available $ and cap every offer to it, decrementing as
+  // we go. When money is tight relative to the spots we still want to fill,
+  // offers shrink automatically (e.g. $20K left over 8 spots → ~$2.5K offers,
+  // not $5-10K) — start low and reassess, exactly as a real budget forces.
+  const pool = save.schools?.[userSchoolId]?.scholarshipPool ?? 0
+  let availBudget = Math.max(0, scholarshipSnapshot(save).nextYearAvailable)
+  const spotsToFill = Math.max(1, maxActiveOffers)
+  // Effective per-recruit average: the smaller of the program's normal slice
+  // (pool/40) and what the remaining budget actually supports across the spots
+  // we still want to fill. This is what makes offers drop when money is tight.
+  const normalAvg = pool > 0 ? pool / 40 : 0
+  const effAvg = pool > 0 ? Math.min(normalAvg, availBudget / spotsToFill) : 0
+
   // The bar this program recruits against — average OVR of its contributors.
   // Everything below adapts to it, so a low-OVR NWAC/D3 program chases the
   // 58-65 kids it can actually land while Bushnell holds out for studs +
@@ -775,13 +806,18 @@ function spendRecruiting(save, apBudget) {
     // no-money D3/NWAC). $0 is a valid roster offer for broke programs.
     const eff = recruitEffValue(save, r, /* perceived */ false)
     const worthOffer = eff >= bar - 6
-    const noMoney = (save.schools?.[userSchoolId]?.scholarshipPool ?? 0) <= 0
     if (!r.liveOffer && worthOffer && interestOf(r) >= 28
         && openOffersCount() < maxActiveOffers) {
-      const amt = computeAutoOffer(save, r)
-      if (amt > 0 || noMoney) {
-        try { setLiveOffer(r, userSchoolId, amt) } catch (err) { /* pool tapped */ }
-      }
+      // Talent-based amount scaled to the program's EFFECTIVE average (budget-
+      // aware), then HARD-CAPPED to the remaining available $ so we can never
+      // blow past the scholarship budget. A broke / no-money program offers $0
+      // (a roster offer) and the recruit decides on non-financial factors.
+      let amt = computeAutoOffer(save, r, effAvg)
+      amt = Math.min(amt, Math.max(0, Math.round(availBudget)))
+      try {
+        setLiveOffer(r, userSchoolId, amt)
+        availBudget -= amt
+      } catch (err) { /* pool tapped */ }
     }
   }
 
@@ -805,32 +841,26 @@ function spendRecruiting(save, apBudget) {
   return spent
 }
 
-function computeAutoOffer(save, recruit) {
-  // TEAM- AND POOL-RELATIVE offer scale. The dollar figure is anchored to the
-  // program's OWN budget (its average scholarship), not an absolute table, and
-  // scaled by how much the recruit out-classes the team's bar:
-  //   - A no-money program (D3 / NWAC, pool 0) extends $0 ROSTER offers — the
-  //     recruit decides on non-financial factors.
-  //   - For a funded program the average scholarship ≈ pool / 40 (Bushnell's
-  //     ~$200K pool → ~$5K average, matching reality).
-  //   - The best recruits (well above the team's bar) command ~2-2.4× that
-  //     average; an average fit gets ~1×; a project / depth piece gets a token
-  //     amount so the big money is saved for the studs.
-  const userSchoolId = save.userSchoolId
-  const pool = save.schools?.[userSchoolId]?.scholarshipPool ?? 0
-  if (pool <= 0) return 0   // no athletic money — roster offer only
-  const avgScholarship = pool / 40
+function computeAutoOffer(save, recruit, effAvg) {
+  // TEAM- AND BUDGET-RELATIVE offer scale. The dollar figure is anchored to the
+  // program's EFFECTIVE average scholarship (`effAvg`, which already accounts
+  // for how much money is actually left), then scaled by how much the recruit
+  // out-classes the team's bar:
+  //   - effAvg 0 (no money / broke) → $0 roster offer.
+  //   - The best recruits (well above the team's bar) command ~2-2.4× the
+  //     effective average; an average fit gets ~1×; a project / depth piece a
+  //     token amount, so the big money goes to the studs.
+  if (!effAvg || effAvg <= 0) return 0   // no athletic money to spend
   const eff = recruitEffValue(save, recruit, /* perceived */ false)
   const bar = teamBaselineOvr(save)
   const rel = eff - bar   // how far above/below the program's level the recruit is
   // rel +15 → ~2.2×, rel 0 → 1.0×, rel −8 → ~0.36×. Floor 0.12×, cap 2.4×.
   const mult = Math.max(0.12, Math.min(2.4, 1.0 + rel * 0.08))
-  let amt = avgScholarship * mult
+  let amt = effAvg * mult
   // Small in-state PNW discount (kids closer to home take a touch less).
   if (recruit.hometown?.state === 'OR' || recruit.hometown?.state === 'WA') amt *= 0.95
   amt = Math.round(amt / 250) * 250   // round to nearest $250 so offers read clean
-  // Never let one offer eat more than ~20% of the annual pool.
-  return Math.max(0, Math.min(amt, Math.round(pool * 0.20)))
+  return Math.max(0, amt)
 }
 
 function spendFundraise(save) {

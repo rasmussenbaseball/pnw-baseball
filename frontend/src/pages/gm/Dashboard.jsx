@@ -67,6 +67,7 @@ export default function Dashboard() {
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
   const [eventPrompt, setEventPrompt] = useState(null)   // { kind: 'SUMMER_BALL' } major-event stop prompt
   const [apWarnModal, setApWarnModal] = useState(null)   // { ap } unspent-AP warning before advancing
+  const [awardsModal, setAwardsModal] = useState(null)   // end-of-season All-Conference + Gold Glove popup
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -304,11 +305,25 @@ export default function Dashboard() {
             const ratings = seedFromPear(save.schools, save.conferences)
             simWeek(save, save.schedule, ratings)
             setProgress(p => ({ ...p, step: 'Wrapping up year…', pct: 80 }))
+            const awardYear = save.calendar.year
             advanceWeek(save, save.schedule)
             setProgress(p => ({ ...p, step: 'Saving…', pct: 95 }))
             saveDynasty(save)
             setSave({ ...save })
             setLastWeekRecap({ kind: 'season', results: [] })
+            // Surface the All-Conference + Gold Glove winners for the user's
+            // conference (computed during advanceWeek's 39→40 transition).
+            const confId = save.schools?.[save.userSchoolId]?.conferenceId
+            const award = save.awardsHistory?.[awardYear]?.[confId]
+            if (award) {
+              setAwardsModal({
+                year: awardYear,
+                confName: save.conferences?.[confId]?.name || save.conferences?.[confId]?.abbreviation || 'Conference',
+                firstTeam: award.firstTeam || [],
+                secondTeam: award.secondTeam || [],
+                goldGlove: award.goldGlove || [],
+              })
+            }
           } catch (err) {
             console.error('postseason failed:', err)
             gmToast('Postseason sim failed — see console. State was not saved.', 'warn')
@@ -332,6 +347,28 @@ export default function Dashboard() {
         } catch (err) {
           console.error('advanceWeek failed:', err)
           gmToast('Sim failed — see console for details. State was not saved.', 'warn')
+        }
+        setBusy(false)
+      }, 30)
+      return
+    } else if (mode === 'POSTSEASON') {
+      // The full postseason bracket is simmed at the 39→40 boundary (in the
+      // SEASON branch above), so weeks 40-42 have nothing left to play. Without
+      // a branch here the advance button did NOTHING and the game froze at
+      // wk 40. Fast-forward through the (empty) postseason weeks into the
+      // offseason (wk 43) so the dynasty keeps moving.
+      setTimeout(() => {
+        try {
+          let guard = 0
+          while (save.calendar.mode === 'POSTSEASON' && guard++ < 6) {
+            advanceWeek(save, save.schedule)
+          }
+          saveDynasty(save)
+          setSave({ ...save })
+          setLastWeekRecap({ kind: 'season', results: [] })
+        } catch (err) {
+          console.error('postseason advance failed:', err)
+          gmToast('Advance failed — see console for details.', 'warn')
         }
         setBusy(false)
       }, 30)
@@ -438,6 +475,9 @@ export default function Dashboard() {
           onAdvance={() => { setApWarnModal(null); simNextWeek({ ignoreApWarn: true }) }}
           onCancel={() => setApWarnModal(null)}
         />
+      )}
+      {awardsModal && (
+        <SeasonAwardsModal data={awardsModal} userTeamId={save.userSchoolId} slot={slot} onClose={() => setAwardsModal(null)} />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
           stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
@@ -2029,6 +2069,51 @@ function UnspentApModal({ ap, onSpend, onAuto, onAdvance, onCancel }) {
             Advance anyway (waste {ap} AP)
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// End-of-regular-season honors popup — All-Conference (1st + 2nd team) and
+// Gold Glove for the user's conference. The user's own players are highlighted.
+function SeasonAwardsModal({ data, userTeamId, slot, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  const Row = ({ p }) => {
+    const mine = p.teamId === userTeamId
+    return (
+      <div className={'flex items-center justify-between gap-2 py-1 px-2 rounded text-sm ' + (mine ? 'bg-amber-100 font-semibold text-amber-900' : 'text-pnw-slate')}>
+        <span className="truncate">
+          {(p._ggPos || p.position || '')} · {p.playerName}
+          {mine && <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">your player</span>}
+        </span>
+        <span className="text-xs text-gray-500 shrink-0">{p.schoolName || ''}</span>
+      </div>
+    )
+  }
+  const Section = ({ title, rows, color }) => (
+    <div className="mb-3">
+      <div className={'text-[10px] uppercase tracking-widest font-bold mb-1 ' + color}>{title}</div>
+      {rows.length === 0
+        ? <div className="text-xs text-gray-400 italic px-2">None</div>
+        : <div className="space-y-0.5">{rows.map((p, i) => <Row key={p.id || i} p={p} />)}</div>}
+    </div>
+  )
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-lg max-h-[85vh] overflow-auto" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-amber-600 font-bold">{data.year} Postseason honors</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">{data.confName} — All-Conference & Gold Glove</h3>
+          </div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
+        <Section title="First Team All-Conference" rows={data.firstTeam} color="text-pnw-green" />
+        <Section title="Second Team All-Conference" rows={data.secondTeam} color="text-blue-600" />
+        <Section title="Gold Glove" rows={data.goldGlove} color="text-amber-600" />
+        <button onClick={onClose} className="w-full mt-2 px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+          Close
+        </button>
       </div>
     </div>
   )
