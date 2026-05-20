@@ -18,6 +18,7 @@ import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
+import { teamNameOf } from '../../gm/engine/postseasonInteractive'
 import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { resolveEvent } from '../../gm/engine/randomEvents'
@@ -187,7 +188,7 @@ export default function Dashboard() {
 
   // ── 52-week phase-gate ────────────────────────────────────────────────
   const weekOfYear = save.calendar.weekOfYear ?? save.calendar.offseasonWeek ?? 1
-  const currentPhase = phaseForWeek(weekOfYear)
+  const currentPhase = phaseForWeek(weekOfYear, save.level)
   const requiredAction = requiredActionForWeek(save, weekOfYear)
   const phaseGate = canAdvanceWeek(save)
   // Auto-mode lifts the phase-gate. The AI co-GM (autoMode.js) will fill in
@@ -1267,12 +1268,13 @@ function InteractiveRoundRow({ save, round, title, active }) {
           const userHome = g.homeId === userId
           const played = g.played && g.homeRuns != null
           const oppId = userHome ? g.awayId : g.homeId
-          const opp = (save.schools[oppId]?.name || '').split(' ')[0]
+          const fullOpp = teamNameOf(save, oppId)
+          const opp = fullOpp.split(' ')[0]
           const userRuns = userHome ? g.homeRuns : g.awayRuns
           const oppRuns = userHome ? g.awayRuns : g.homeRuns
           const won = played && userRuns > oppRuns
           return (
-            <span key={i} title={save.schools[oppId]?.name || ''} className={'text-[10px] font-mono px-1.5 py-0.5 rounded ' +
+            <span key={i} title={fullOpp} className={'text-[10px] font-mono px-1.5 py-0.5 rounded ' +
               (!played ? 'bg-gray-100 text-gray-400' : won ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}>
               {played ? `${won ? 'W' : 'L'} ${userRuns}-${oppRuns} ${opp}` : `vs ${opp}`}
             </span>
@@ -1282,7 +1284,7 @@ function InteractiveRoundRow({ save, round, title, active }) {
       {round.resolved && (
         <div className="text-[11px] mt-1">
           <strong className={round.userWon ? 'text-pnw-green' : 'text-red-600'}>
-            {round.userWon ? 'Won the bracket — advanced' : 'Eliminated (2nd loss)'}
+            {round.userWon ? 'Won — advanced' : 'Eliminated'}
           </strong>
         </div>
       )}
@@ -1587,7 +1589,7 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
     if (wk <= 26) return '🧤'    // Winter Practice / Spring ramp
     return '☀️'                   // Summer Recruiting (wks 43-52)
   }
-  const ph = phaseForWeek(woy)
+  const ph = phaseForWeek(woy, save.level)
   let primary
   if (inOffseason) {
     primary = (

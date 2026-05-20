@@ -700,7 +700,7 @@ function finalize(state, ratings) {
 // sims; the abstract national field is fast-simmed. Hosts + seeds by ranking.
 
 /** Team display name for either a real school or an abstract D2 program. */
-function teamNameOf(state, id) {
+export function teamNameOf(state, id) {
   return state.schools?.[id]?.name || D2_ABSTRACT_BY_ID[id]?.name || 'Opponent'
 }
 
@@ -792,7 +792,7 @@ function setupD2Regional(state) {
   for (const rg of regionals) {
     if (rg.seeds.includes(userId)) {
       // At-large or auto-bid → the user PLAYS this regional interactively.
-      rg.isUser = true; ps.userAlive = true; ps.userEliminatedAt = null; continue
+      rg.isUser = true; ps.userAlive = true; ps.userQualified = true; ps.userEliminatedAt = null; continue
     }
     rg.champion = runMatchGraph(rg.seeds, deGraph(rg.seeds.length), '__none__', () => null, sim, `d2reg_${year}_${rg.idx}`).champion || rg.seeds[0]
   }

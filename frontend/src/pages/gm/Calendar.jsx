@@ -83,7 +83,7 @@ export default function Calendar() {
         <div>
           <h1 className="font-pixel-display text-lg sm:text-xl tracking-widest text-white">CALENDAR · {year}</h1>
           <p className="text-sm text-gray-600">
-            Full 52-week year. Currently at Week {currentWeek} · {phaseForWeek(currentWeek).season} ({phaseForWeek(currentWeek).label}).
+            Full 52-week year. Currently at Week {currentWeek} · {phaseForWeek(currentWeek, save?.level).season} ({phaseForWeek(currentWeek, save?.level).label}).
           </p>
         </div>
         <div className="text-left sm:text-right text-xs text-gray-500">
@@ -119,12 +119,12 @@ export default function Calendar() {
 }
 
 function WeekCard({ save, slot, week, year, currentWeek, userSchoolId }) {
-  const phase = phaseForWeek(week)
+  const phase = phaseForWeek(week, save?.level)
   const req = requiredActionForWeek(save, week)
   const events = WEEK_EVENT_SCHEDULE[week] || []
   const isToday = week === currentWeek
   const isPast = week < currentWeek
-  const mode = modeForWeek(week)
+  const mode = modeForWeek(week, save?.level)
   // Match by seasonWeek (regular-season / postseason) OR weekOfYear (fall
   // scrimmages, which carry the unified-calendar tag). Old saves' fall
   // games are missing weekOfYear — fall back to the date-derived check.

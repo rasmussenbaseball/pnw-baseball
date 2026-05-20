@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell from '../../gm/components/GMShell'
+import { teamNameOf } from '../../gm/engine/postseasonInteractive'
 
 // Full-page view of the round-by-round interactive NAIA postseason.
 // Per-game pills for the user's interactive series in a round.
@@ -21,7 +22,7 @@ function UserRoundGames({ save, rd }) {
           const played = g?.played && g.homeRuns != null
           const userHome = g && g.homeId === userId
           const oppId = userHome ? g?.awayId : g?.homeId
-          const oppNm = save.schools[oppId]?.name || 'Opponent'
+          const oppNm = teamNameOf(save, oppId)
           const ur = userHome ? g?.homeRuns : g?.awayRuns
           const or = userHome ? g?.awayRuns : g?.homeRuns
           const won = played && ur > or
@@ -39,7 +40,7 @@ function UserRoundGames({ save, rd }) {
       </div>
       {rd.resolved && (
         <div className={'text-sm font-bold mt-1 font-pixel ' + (rd.userWon ? 'text-pnw-green' : 'text-red-400')}>
-          {rd.userWon ? 'Won the bracket — advanced' : 'Eliminated (2nd loss)'}
+          {rd.userWon ? 'Won — advanced' : 'Eliminated'}
         </div>
       )}
     </>
@@ -49,8 +50,7 @@ function UserRoundGames({ save, rd }) {
 // Full-page view of the interactive D2 postseason (4 rounds).
 function D2PostseasonPage({ save, ps, userSchool }) {
   const userId = save.userSchoolId
-  const champName = save.schools[ps.nationalChampion]?.name
-    || (save.postseason?.national?.ws && ps.nationalChampion ? ps.nationalChampion : null)
+  const champName = ps.nationalChampion ? teamNameOf(save, ps.nationalChampion) : null
   const rounds = [
     { rd: ps.rounds?.CONF, title: 'Round 1 — GNAC Tournament (top 3, double-elim)' },
     { rd: ps.rounds?.REGIONAL, title: 'Round 2 — NCAA Regional (double-elim)' },
