@@ -54,6 +54,28 @@ function deGraph(n) {
       wbChampKey: 'wbf', lbChampKey: 'lbf',
     }
   }
+  if (n >= 8) {
+    // Standard 8-team double-elim (used by D2/D3 regionals + NWAC + WS brackets).
+    // Seeds 0..7. Cross-feeds in the losers bracket reduce immediate rematches.
+    return {
+      graph: [
+        { key: 'wb1', a: 0, b: 7 },
+        { key: 'wb2', a: 3, b: 4 },
+        { key: 'wb3', a: 2, b: 5 },
+        { key: 'wb4', a: 1, b: 6 },
+        { key: 'wb5', a: { win: 'wb1' }, b: { win: 'wb2' } },
+        { key: 'wb6', a: { win: 'wb3' }, b: { win: 'wb4' } },
+        { key: 'wbf', a: { win: 'wb5' }, b: { win: 'wb6' } },
+        { key: 'lb1', a: { lose: 'wb1' }, b: { lose: 'wb2' } },
+        { key: 'lb2', a: { lose: 'wb3' }, b: { lose: 'wb4' } },
+        { key: 'lb3', a: { lose: 'wb5' }, b: { win: 'lb2' } },
+        { key: 'lb4', a: { lose: 'wb6' }, b: { win: 'lb1' } },
+        { key: 'lb5', a: { win: 'lb3' }, b: { win: 'lb4' } },
+        { key: 'lbf', a: { lose: 'wbf' }, b: { win: 'lb5' } },
+      ],
+      wbChampKey: 'wbf', lbChampKey: 'lbf',
+    }
+  }
   if (n >= 5) {
     // 5-team: 4v5 → vs 1 ; 2v3 ; WB final
     return {
@@ -130,6 +152,32 @@ function runMatchGraph(seeds, spec, userId, getUserResult, simNonUser, keyPrefix
   if (results.GF1.winner === wb) return { champion: wb }
   if (!results.GF2) { const r = play('GF2', wb, lb); if (r.pending) return r }
   return { champion: results.GF2.winner }
+}
+
+/**
+ * Resumable best-of-3 series (super regionals + WS finals). Returns
+ * { champion } once a team reaches 2 wins, or { pending } for the next user
+ * game. Higher seed (aId) hosts every game (simplification). gameKeys are
+ * `${keyPrefix}_g1..g3`.
+ */
+function runBestOf3(aId, bId, userId, getUserResult, simNonUser, keyPrefix) {
+  const wins = { [aId]: 0, [bId]: 0 }
+  for (let g = 1; g <= 3; g++) {
+    if (wins[aId] >= 2 || wins[bId] >= 2) break
+    const key = `${keyPrefix}_g${g}`
+    let w
+    if (aId === userId || bId === userId) {
+      const res = getUserResult(key)
+      if (!res) return { pending: { homeId: aId, awayId: bId, gameKey: key } }
+      w = (res.homeId && res.awayId)
+        ? (res.homeRuns > res.awayRuns ? res.homeId : res.awayId)
+        : (res.homeRuns > res.awayRuns ? aId : bId)
+    } else {
+      w = simNonUser(aId, bId, `${keyPrefix}_${g}`)
+    }
+    wins[w] = (wins[w] || 0) + 1
+  }
+  return { champion: wins[aId] >= 2 ? aId : bId }
 }
 
 // ── round-robin pool (WS) ────────────────────────────────────────────────────
