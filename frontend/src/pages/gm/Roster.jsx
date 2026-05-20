@@ -148,7 +148,7 @@ export default function Roster() {
                   <tr key={p.id} className={'border-t hover:bg-gray-50 ' + (cutMode ? '' : 'cursor-pointer')} onClick={() => !cutMode && navigate(`/gm/player/${p.id}?slot=${slot}`)}>
                     <td className="py-2 px-3 font-medium">
                       <div className="flex items-center gap-2">
-                        <PixelHeadshot playerId={p.id} size={28} className="shrink-0" />
+                        <PixelHeadshot playerId={p.id} size={28} teamColors={school?.colors} className="shrink-0" />
                         <span className="truncate">
                           {p.firstName} {p.lastName}
                           {p.injury?.weeksRemaining > 0 && (

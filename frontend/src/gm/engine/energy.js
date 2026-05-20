@@ -170,7 +170,7 @@ export function tickIntraDayRecovery(state, rosterPlayerIds) {
     if (!p) continue
     const current = getEnergy(state, pid)
     if (current >= 100) continue
-    const recovery = p.isPitcher ? 5 : 18
+    const recovery = p.isPitcher ? 10 : 18
     setEnergy(state, pid, current + recovery)
   }
 }

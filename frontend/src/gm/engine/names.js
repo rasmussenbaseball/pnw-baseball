@@ -48,7 +48,26 @@ const FIRST_NAMES = [
   'Talon','Tanner','Tate','Taylor','Theo','Theodore','Thomas','Tim','Timothy','Tobias',
   'Todd','Tony','Travis','Trent','Trenton','Trevor','Trey','Tripp','Tristan','Troy',
   'Tucker','Tyler','Tyson','Vance','Victor','Vincent','Walker','Walter','Warren','Wesley',
-  'Weston','William','Wyatt','Xander','Xavier','Zach','Zachary','Zane','Zion'
+  'Weston','William','Wyatt','Xander','Xavier','Zach','Zachary','Zane','Zion',
+  // Expanded pool (May 2026) — cut down on repeat first names across the
+  // ~7000-player league.
+  'Abel','Abraham','Ace','Alan','Albert','Alberto','Alec','Alfredo','Alonzo','Amari',
+  'Amir','Archer','Ari','Armando','Arturo','Atticus','August','Augustus','Barrett','Bear',
+  'Beckett','Beckham','Bo','Boston','Bowen','Braxton','Brendan','Brent','Bridger','Bruce',
+  'Byron','Cael','Cain','Calvin','Cannon','Cash','Cesar','Chance','Charlie','Cohen',
+  'Conor','Crew','Dane','Dante','Dax','Deacon','Desmond','Dexter','Dion','Donald',
+  'Douglas','Duke','Edgar','Edward','Edwin','Elias','Ellis','Emanuel','Emery','Emiliano',
+  'Enrique','Enzo','Esteban','Fabian','Fernando','Ford','Foster','Francisco','Fredrick','Gael',
+  'Galen','Gannon','Gideon','Gilberto','Gunnar','Gus','Harlan','Harrison','Harvey','Holden',
+  'Houston','Ignacio','Israel','Jagger','Jaime','Jair','Jarrett','Jaxson','Jeffrey','Jensen',
+  'Jett','Joe','Joseph','Judson','Kasen','Keaton','Keith','Kenneth','Kieran','Konnor',
+  'Lachlan','Larry','Layne','Leland','Lennox','Leonardo','Lionel','Lucca','Magnus','Marcos',
+  'Mathias','Maximus','Memphis','Messiah','Misael','Moises','Monte','Murphy','Neil','Nehemiah',
+  'Nikolai','Noel','Octavio','Otis','Otto','Ozzie','Patton','Phoenix','Quentin','Quinton',
+  'Ramiro','Raylan','Reuben','Rhys','Roderick','Rogelio','Rohan','Ronan','Rowan','Ruben',
+  'Rudy','Salvador','Santino','Saul','Shepherd','Solomon','Soren','Stetson','Sterling','Tadeo',
+  'Tatum','Thaddeus','Titus','Tomas','Tristen','Truman','Ulises','Uriel','Valentino','Vaughn',
+  'Vicente','Waylon','Wilder','Wilson','Winston','Yahir','Zaid','Zander','Zeke','Zayden'
 ]
 
 // ─── Last names (general US pool, no regional split here) ────────────────────
@@ -142,7 +161,21 @@ const LAST_NAMES = [
   'Weber','Webster','Welch','Wells','West','Wheeler','Whitaker','White','Whitehead','Whitfield',
   'Whitley','Wiggins','Wilcox','Wilder','Wiley','Wilkerson','Wilkins','Wilkinson','Williams','Williamson',
   'Willis','Wilson','Winters','Wise','Wolf','Wolfe','Wong','Wood','Woodard','Woods',
-  'Woodward','Wright','Wyatt','Yang','Yates','York','Young','Zamora','Zhang','Zimmerman'
+  'Woodward','Wright','Wyatt','Yang','Yates','York','Young','Zamora','Zhang','Zimmerman',
+  // Expanded pool (May 2026) — fewer repeat surnames across the league.
+  'Abbott','Acosta','Akers','Albright','Alford','Amos','Ashby','Avila','Bain','Ballard',
+  'Barr','Barron','Beal','Beard','Benton','Berger','Blackburn','Blevins','Bonner','Bowles',
+  'Brandt','Bray','Brennan','Brewster','Buck','Burr','Cady','Cano','Carlton','Carney',
+  'Cason','Choi','Cleveland','Clifton','Colvin','Conners','Corbett','Cortes','Cota','Coyle',
+  'Creech','Crews','Crowe','Dahl','Darby','Deal','Deaton','Devine','Diehl','Dodd',
+  'Doss','Drummond','Eastman','Eckert','Egan','Elkins','Ellison','Engel','Estrella','Ezell',
+  'Fagan','Falk','Farrell','Feliciano','Fenton','Fink','Finnegan','Flagg','Fogle','Forsythe',
+  'Fritz','Gable','Gainey','Gallo','Gann','Gillis','Goble','Goddard','Goetz','Gorman',
+  'Grimm','Hatcher','Heller','Hipp','Hutto','Ivey','Jett','Kessler','Knapp','Ledford',
+  'Lockhart','Mraz','Nava','Oakley','Pak','Pham','Quintero','Rosen','Salgado','Tipton',
+  'Trejo','Ulrich','Vu','Whitman','Yoder','Zepeda','Bautista','Cisneros','Dube','Escobar',
+  'Fonseca','Galvan','Hidalgo','Ibarra','Jaramillo','Klein','Lozano','Maddux','Nieto','Olvera',
+  'Prieto','Quiroz','Rincon','Solano','Tavares','Urias','Vela','Wexler','Yi','Zuniga'
 ]
 
 // Lighter regional touches — surnames more common in particular regions get

@@ -749,13 +749,13 @@ export default function Dashboard() {
             <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 mt-0.5">Top Hitters</div>
             <div className="space-y-0.5 mb-4">
               {topHitters.map(({ p, ovr }) => (
-                <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} />
+                <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} teamColors={school?.colors} />
               ))}
             </div>
             <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 border-t pt-3">Top Pitchers</div>
             <div className="space-y-0.5">
               {topPitchers.map(({ p, ovr }) => (
-                <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} />
+                <PlayerRow key={p.id} p={p} ovr={ovr} slot={slot} teamColors={school?.colors} />
               ))}
             </div>
           </Panel>
@@ -1671,7 +1671,7 @@ function buildExploreSuggestions(save, slot) {
   return [...pinned, ...rotated.filter(r => !seen.has(r.to))]
 }
 
-function PlayerRow({ p, ovr, slot }) {
+function PlayerRow({ p, ovr, slot, teamColors }) {
   // Pixel headshot replaces the initials avatar. Tier badge still
   // communicates "this player is GOOD" at a glance.
   const tier = ovrTier(ovr)
@@ -1680,7 +1680,7 @@ function PlayerRow({ p, ovr, slot }) {
       to={`/gm/player/${p.id}?slot=${slot}`}
       className="flex items-center gap-3 py-1.5 px-1 rounded hover:bg-gray-50 transition group"
     >
-      <PixelHeadshot playerId={p.id} size={36} />
+      <PixelHeadshot playerId={p.id} size={36} teamColors={teamColors} />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm text-pnw-slate group-hover:text-pnw-green truncate">
           {p.firstName} {p.lastName}

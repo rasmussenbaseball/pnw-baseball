@@ -1117,6 +1117,11 @@ function refreshWeeklyAP(state) {
   total += TIER_BONUS[school?.resourceTier] || 0
   total += experienceBonus
   let weekly = Math.max(20, Math.min(50, Math.round(total)))
+  // Difficulty actually bites in a regular dynasty now: it scales your weekly
+  // AP, so harder = fewer Action Points to spend on recruiting + development.
+  const DIFF_AP_MULT = { EASY: 1.25, NORMAL: 1.0, HARD: 0.85, BRUTAL: 0.70 }
+  const diff = state.gameOptions?.difficulty || 'NORMAL'
+  weekly = Math.round(weekly * (DIFF_AP_MULT[diff] ?? 1.0))
   // October (wk 9), November (wk 13), December (wk 18) are single "month"
   // turns — grant a full month of AP (4× the weekly value) so the user can
   // do a month's worth of recruiting + development in that one turn.

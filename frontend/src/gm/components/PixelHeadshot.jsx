@@ -17,20 +17,27 @@
 
 // ─── Palettes ──────────────────────────────────────────────────────────────
 
+// SKIN_TONES + SKIN_SHADOWS are parallel arrays — keep them index-aligned.
 const SKIN_TONES = [
   '#FBD3B0', '#F5C09A', '#E5A982', '#D49B72',
   '#B97B5A', '#9A6447', '#7A4F37', '#5E3922', '#432A18',
+  '#EFC4A0', '#CC9166', '#8C5A40', '#6B4226',
 ]
 
 const SKIN_SHADOWS = [
   '#E8B895', '#DBA77F', '#C68F6A', '#B5825D',
   '#9A6347', '#7E4F36', '#5F3D28', '#472A18', '#2F1B0E',
+  '#D9AB86', '#B27A52', '#714730', '#52311C',
 ]
 
 const HAIR_COLORS = [
   '#1A1A1A', '#2B1810', '#3C2415', '#5C3A1F',
   '#7A4F2A', '#A07050', '#D1A055', '#DDB572',
   '#BB4422', '#9C5B2A', '#7A7A7A', '#A8A8A8',
+  // Expanded — more variety so headshots repeat less.
+  '#0E0E0E', '#241409', '#4A2C12', '#6E4520',
+  '#8C5A33', '#C28E4E', '#E3C98A', '#5A3210',
+  '#8A3A1E', '#6B6B6B', '#C4C4C4', '#3A2A1A',
 ]
 
 // Hair "style" — controls how hair sits around the cap. 0 = none/bald,
@@ -60,22 +67,60 @@ function pickFromSeed(arr, seed) {
   return arr[seed % arr.length]
 }
 
+// Relative luminance of a #hex color (0 = black, 1 = white).
+function luminance(hex) {
+  const h = String(hex || '').replace('#', '')
+  if (h.length < 6) return 0.5
+  const r = parseInt(h.slice(0, 2), 16) / 255
+  const g = parseInt(h.slice(2, 4), 16) / 255
+  const b = parseInt(h.slice(4, 6), 16) / 255
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+// Varied DARK cap palette for when no team colors are supplied — keeps
+// headshots from all looking identical while staying "always a dark color."
+const DARK_CAPS = ['#1A2238', '#22303C', '#2B1B3A', '#13322B', '#3A1F1F', '#1F2A44', '#2C2C34', '#102A43']
+const DARK_JERSEYS = ['#2E3A4E', '#36454F', '#3C2A50', '#1E4940', '#52302E', '#2C3A5C', '#3A3A44', '#1C3A58']
+
 // ─── Headshot ──────────────────────────────────────────────────────────────
 
 /**
  * @param {{ playerId: string, capColor?: string, jerseyColor?: string,
+ *           teamColors?: {primary?:string, secondary?:string},
  *           capAccent?: string, size?: number, className?: string }} props
  */
 export default function PixelHeadshot({
   playerId,
-  capColor = '#8B0000',
-  jerseyColor = '#fbbf24',
+  capColor,
+  jerseyColor,
+  teamColors,
   capAccent = '#FFFFFF',
   size = 48,
   className = '',
 }) {
   // Seed all picks from the player id so the same player always looks the same
   const base = pHash(playerId || 'anon')
+
+  // Cap + jersey colors. Priority:
+  //   1. explicit capColor / jerseyColor props
+  //   2. team colors (cap = the DARKER team color so it reads as a cap)
+  //   3. a varied dark default keyed off the player id
+  if (!capColor || !jerseyColor) {
+    if (teamColors?.primary) {
+      const p = teamColors.primary
+      const s = teamColors.secondary || darken(p, 0.3)
+      // Cap = darker of the two so it always looks like a dark cap; jersey =
+      // the other team color.
+      const pDark = luminance(p) <= luminance(s)
+      const cap = pDark ? p : s
+      const jersey = pDark ? s : p
+      capColor = capColor || (luminance(cap) > 0.6 ? darken(cap, 0.4) : cap)
+      jerseyColor = jerseyColor || jersey
+    } else {
+      capColor = capColor || pickFromSeed(DARK_CAPS, base >> 20)
+      jerseyColor = jerseyColor || pickFromSeed(DARK_JERSEYS, base >> 23)
+    }
+  }
   const skinIdx  = base % SKIN_TONES.length
   const hairIdx  = (base >> 4) % HAIR_COLORS.length
   const styleIdx = (base >> 8) % HAIR_STYLES.length

@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { defaultLineup } from '../../gm/engine/sim'
+import { __pools } from '../../gm/engine/names'
 import { resolveLineupForGame, getSavedLineup, saveLineup } from '../../gm/engine/lineups'
 import { createLiveGame } from '../../gm/engine/liveGame'
 import { simWeek, advanceWeek } from '../../gm/engine/season'
@@ -1916,31 +1917,10 @@ function stableHash(str) {
 
 // Tiny pool of plausible college-baseball names — used only for non-NAIA
 // opponents (D1/D2/D3/NWAC) where we don't generate real player records.
-const SYNTH_FIRST_NAMES = [
-  'Alex', 'Andrew', 'Anthony', 'Austin', 'Ben', 'Blake', 'Brady', 'Brendan',
-  'Caleb', 'Cameron', 'Carter', 'Chase', 'Chris', 'Cody', 'Connor', 'Cooper',
-  'Cole', 'Dalton', 'Daniel', 'David', 'Derek', 'Dominic', 'Dylan', 'Eli',
-  'Elijah', 'Ethan', 'Evan', 'Garrett', 'Gavin', 'Hayden', 'Hunter', 'Isaac',
-  'Jack', 'Jackson', 'Jacob', 'Jake', 'James', 'Jared', 'Jason', 'Jaxon',
-  'Joey', 'Jordan', 'Joshua', 'Josiah', 'Justin', 'Kade', 'Kaiden', 'Kobe',
-  'Kyle', 'Landon', 'Logan', 'Lucas', 'Luke', 'Mason', 'Matt', 'Max',
-  'Michael', 'Nathan', 'Nick', 'Noah', 'Owen', 'Parker', 'Peyton', 'Preston',
-  'Reese', 'Ryan', 'Sam', 'Sean', 'Seth', 'Shane', 'Spencer', 'Tanner',
-  'Tate', 'Trevor', 'Tyler', 'Wyatt', 'Xavier', 'Zach', 'Brock', 'Trey',
-]
-const SYNTH_LAST_NAMES = [
-  'Adams', 'Allen', 'Anderson', 'Bailey', 'Baker', 'Barnes', 'Bell', 'Bennett',
-  'Brown', 'Bryant', 'Campbell', 'Carter', 'Clark', 'Cole', 'Collins', 'Cook',
-  'Cooper', 'Cox', 'Davis', 'Edwards', 'Evans', 'Fisher', 'Foster', 'Garcia',
-  'Gonzalez', 'Gray', 'Green', 'Hall', 'Hamilton', 'Harris', 'Hayes', 'Henderson',
-  'Hill', 'Howard', 'Hughes', 'Jackson', 'Johnson', 'Jones', 'Kelly', 'King',
-  'Lee', 'Lewis', 'Long', 'Martin', 'Martinez', 'Miller', 'Mitchell', 'Moore',
-  'Morgan', 'Murphy', 'Nelson', 'Owens', 'Parker', 'Patterson', 'Perez', 'Perry',
-  'Peterson', 'Phillips', 'Powell', 'Reed', 'Reyes', 'Rivera', 'Roberts', 'Robinson',
-  'Rodriguez', 'Rogers', 'Russell', 'Sanchez', 'Sanders', 'Scott', 'Smith', 'Stewart',
-  'Sullivan', 'Taylor', 'Thomas', 'Thompson', 'Torres', 'Turner', 'Walker', 'Ward',
-  'Watson', 'White', 'Williams', 'Wilson', 'Wood', 'Wright', 'Young', 'Bishop',
-]
+// Reuse the full league name pools (names.js) so synthetic live opponents
+// draw from the same big lists as real players (far fewer repeats).
+const SYNTH_FIRST_NAMES = __pools.FIRST_NAMES
+const SYNTH_LAST_NAMES = __pools.LAST_NAMES
 
 // Accumulate a finished game's box score into save.playerStats. Same shape as
 // season.js does for auto-simmed games. We mirror it here so live games update

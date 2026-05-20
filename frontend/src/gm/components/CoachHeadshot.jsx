@@ -57,6 +57,24 @@ export const COACH_LOOKS = [
   // Variety
   { id: 18, skin: 5, hair: 11, hairStyle: 'short',    facialHair: 'short-beard', polo: 2 },
   { id: 19, skin: 2, hair: 5, hairStyle: 'side-part', facialHair: 'none',        polo: 4 },
+  // Expanded set (May 2026) — more distinct coach faces so assistants
+  // across the league repeat far less.
+  { id: 20, skin: 0, hair: 3, hairStyle: 'short',     facialHair: 'full-beard',  polo: 5 },
+  { id: 21, skin: 1, hair: 5, hairStyle: 'receding',  facialHair: 'none',        polo: 7 },
+  { id: 22, skin: 2, hair: 0, hairStyle: 'buzz',      facialHair: 'goatee',      polo: 1 },
+  { id: 23, skin: 2, hair: 8, hairStyle: 'bald',      facialHair: 'mustache',    polo: 3 },
+  { id: 24, skin: 3, hair: 1, hairStyle: 'side-part', facialHair: 'short-beard', polo: 0 },
+  { id: 25, skin: 3, hair: 4, hairStyle: 'short',     facialHair: 'full-beard',  polo: 6 },
+  { id: 26, skin: 4, hair: 9, hairStyle: 'buzz',      facialHair: 'short-beard', polo: 2 },
+  { id: 27, skin: 4, hair: 2, hairStyle: 'receding',  facialHair: 'none',        polo: 5 },
+  { id: 28, skin: 5, hair: 9, hairStyle: 'short',     facialHair: 'goatee',      polo: 4 },
+  { id: 29, skin: 6, hair: 9, hairStyle: 'bald',      facialHair: 'mustache',    polo: 0 },
+  { id: 30, skin: 6, hair: 9, hairStyle: 'side-part', facialHair: 'none',        polo: 7 },
+  { id: 31, skin: 7, hair: 9, hairStyle: 'buzz',      facialHair: 'short-beard', polo: 1 },
+  { id: 32, skin: 8, hair: 9, hairStyle: 'short',     facialHair: 'full-beard',  polo: 6 },
+  { id: 33, skin: 1, hair: 8, hairStyle: 'bald',      facialHair: 'goatee',      polo: 3 },
+  { id: 34, skin: 0, hair: 10, hairStyle: 'short',    facialHair: 'mustache',    polo: 5 },
+  { id: 35, skin: 5, hair: 7, hairStyle: 'receding',  facialHair: 'short-beard', polo: 2 },
 ]
 
 // Stable hash of a string → unsigned 32-bit int. Used to derive a deterministic

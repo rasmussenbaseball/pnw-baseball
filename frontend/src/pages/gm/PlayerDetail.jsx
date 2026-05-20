@@ -79,7 +79,7 @@ export default function PlayerDetail() {
 
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mt-2 mb-6 gap-4">
         <div className="flex items-start gap-3 min-w-0">
-          <PixelHeadshot playerId={player.id} size={64} className="shrink-0" />
+          <PixelHeadshot playerId={player.id} size={64} teamColors={save.schools?.[player.schoolId]?.colors} className="shrink-0" />
           <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate break-words">{player.firstName} {player.lastName}</h1>
           <p className="text-sm text-gray-600">
