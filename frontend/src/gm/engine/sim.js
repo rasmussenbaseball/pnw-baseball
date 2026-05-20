@@ -61,7 +61,7 @@ const BASE_RATES_BY_LEVEL = {
   D1:   { K: 0.250, BB: 0.115, HBP: 0.013, HR: 0.030, TRIPLE: 0.005, DOUBLE: 0.046, SINGLE: 0.145, ERROR: 0.010, OUT: 0.386 },
   D2:   { K: 0.180, BB: 0.090, HBP: 0.015, HR: 0.024, TRIPLE: 0.006, DOUBLE: 0.050, SINGLE: 0.180, ERROR: 0.011, OUT: 0.444 },
   D3:   { K: 0.190, BB: 0.100, HBP: 0.017, HR: 0.026, TRIPLE: 0.006, DOUBLE: 0.044, SINGLE: 0.170, ERROR: 0.012, OUT: 0.435 },
-  NAIA: { K: 0.212, BB: 0.105, HBP: 0.019, HR: 0.028, TRIPLE: 0.005, DOUBLE: 0.049, SINGLE: 0.159, ERROR: 0.011, OUT: 0.412 },
+  NAIA: { K: 0.220, BB: 0.090, HBP: 0.017, HR: 0.024, TRIPLE: 0.004, DOUBLE: 0.044, SINGLE: 0.150, ERROR: 0.010, OUT: 0.441 },
   NWAC: { K: 0.200, BB: 0.110, HBP: 0.017, HR: 0.012, TRIPLE: 0.005, DOUBLE: 0.040, SINGLE: 0.155, ERROR: 0.014, OUT: 0.447 },
 }
 
@@ -113,10 +113,12 @@ function averageFielding(defenders, playedPositions) {
 // concerns: rate-stat dispersion (K%/BB%, kept wide) vs hit-quality dispersion
 // (BABIP/SLG, compressed so we don't get .500 hitters).
 //
-// Lowered 0.7 → 0.60 (May 2026): hitting was outrunning pitching — too many
-// hitters posting .500+. A flatter hit slope pulls elite bats back toward a
-// realistic ceiling (~.380-.400) without touching K/BB dispersion.
-const HIT_SLOPE = 0.60
+// Lowered again 0.60 → 0.48 (May 2026): the FULL sim (user games) was running
+// way hot vs the light sim (rest of NAIA) — a strong team posted a .364 team
+// AVG and a 7.6 ERA. A flatter hit slope compresses both elite offenses AND
+// the run environment toward the league baseline, closing the gap with the
+// light sim (which centers ~.270 / ~5 ERA).
+const HIT_SLOPE = 0.48
 
 // ─── Fast sim (team-strength based) ──────────────────────────────────────────
 

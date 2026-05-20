@@ -92,7 +92,11 @@ function rewardUserPlayer(state, playerId, kind, scope) {
   if (!p) return
   const isUser = state.teams?.[state.userSchoolId]?.rosterPlayerIds?.includes(playerId)
   if (!isUser) return
-  const bump = scope === 'NAIA' ? 3 : 1
+  // Each Player-of-the-Week is a small +1 to every rating in the relevant
+  // block (was +3 for NAIA — far too much, a repeat winner ballooned to 99).
+  // Conf POTW and NAIA POTW each give +1, so winning both in a week stacks to
+  // +2 total, per Nate.
+  const bump = 1
   if (kind === 'HITTER' && p.hitter) {
     for (const key of Object.keys(p.hitter)) {
       if (typeof p.hitter[key] === 'number') {

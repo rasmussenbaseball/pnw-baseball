@@ -736,7 +736,7 @@ export default function Dashboard() {
           trend={gpaTrend(save)}
           to={`/gm/academics?slot=${slot}`}
         />
-        <KpiCard label="Job Security" value={save.budget?.jobSecurity ?? 50} suffix="/100" />
+        <KpiCard label="Job Security" value={Math.round(save.budget?.jobSecurity ?? 50)} suffix="/100" />
       </div>
 
       {/* This Week's To-Do — pinned to the top so the user always sees

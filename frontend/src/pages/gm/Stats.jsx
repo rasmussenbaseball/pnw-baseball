@@ -124,13 +124,19 @@ function SpringView({ save, team, year, allYears, onYearChange, accent, slot, ha
     ? (save.playerStats || {})
     : (save.statsArchive?.[year] || {})
   const roster = team.rosterPlayerIds || []
-  // For career-archived years, also union in players who may have left
-  const allPlayerIds = new Set(roster)
-  for (const key of Object.keys(stats)) {
-    const pid = stats[key].playerId
-    if (pid) allPlayerIds.add(pid)
+  // Season stats = YOUR roster only. (playerStats is now league-wide so every
+  // NAIA team accrues stats — unioning all of them here dumped hundreds of
+  // hitters onto this page. The full league is on the National Leaders tab of
+  // Team Stats.) For archived years we still union in players who've since
+  // left so a past season shows everyone who played for you.
+  let ids
+  if (isCurrent) {
+    ids = [...roster]
+  } else {
+    const set = new Set(roster)
+    for (const key of Object.keys(stats)) { const pid = stats[key].playerId; if (pid) set.add(pid) }
+    ids = [...set]
   }
-  const ids = [...allPlayerIds]
 
   const batters = []
   const pitchers = []

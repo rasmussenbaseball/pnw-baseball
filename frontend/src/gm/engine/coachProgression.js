@@ -94,10 +94,16 @@ export function spendCoachUpgradePoints(state, ratingKey, points = 1) {
  */
 export function awardForGameResult(state, won, opponentRank = null, isConf = false) {
   if (!won) return
-  let pts = 1
+  // Tuned DOWN again (May 2026): routine wins now earn NOTHING — over a ~50-game
+  // season that was handing out 25-30 points. Points should be scarce. Only a
+  // win over a nationally-ranked opponent earns anything (+1 top-25, +2 top-10),
+  // so the real engine for upgrade points is postseason runs + end-of-year
+  // honors + MLB draft picks.
+  let pts = 0
   if (opponentRank && opponentRank <= 25) pts += 1
   if (opponentRank && opponentRank <= 10) pts += 1
-  awardCoachUpgradePoints(state, pts, `Win${isConf ? ' (conf)' : ''}${opponentRank ? ` over #${opponentRank}` : ''}`)
+  if (pts <= 0) return
+  awardCoachUpgradePoints(state, pts, `Win over #${opponentRank}`)
 }
 
 /** Postseason — called when the user advances or wins a round. */

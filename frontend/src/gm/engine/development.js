@@ -131,6 +131,11 @@ export function applyWeeklyDevelopment(player, seasonStats) {
   if (!player || !seasonStats) return
   const classMult = { FR: 1.2, SO: 1.0, JR: 0.8, SR: 0.5 }[player.classYear] ?? 0.8
 
+  // Global in-season dev damper. Accumulated over 13 weeks the old magnitudes
+  // let a hot hitter gain ~8-10 OVR in one season (90 → 99). Most growth should
+  // come from the offseason check-in; in-season is a small nudge. 0.4 keeps a
+  // standout's in-season gain to ~2-4 points.
+  const WEEKLY_DEV_SCALE = 0.4
   const deltas = {}   // { ratingKey: delta }
   const reasons = []  // [{ rating, delta, reason }]
   function bump(rating, base, reason) {
@@ -143,7 +148,7 @@ export function applyWeeklyDevelopment(player, seasonStats) {
     // Growth scales with potential speed; declines are LESS modulated
     // (everyone declines at roughly the same rate from bad play).
     const mult = base > 0 ? speed * classMult : (0.5 + classMult * 0.3)
-    const d = base * mult
+    const d = base * mult * WEEKLY_DEV_SCALE
     deltas[rating] = (deltas[rating] || 0) + d
     reasons.push({ rating, delta: d, reason })
   }

@@ -352,7 +352,7 @@ export function annualReview(budget, seasonResult) {
   if (winPct < 0.4) jsDelta -= 6
   if (winPct < 0.3) jsDelta -= 10
 
-  const newJobSecurity = Math.max(0, Math.min(100, budget.jobSecurity + jsDelta))
+  const newJobSecurity = Math.round(Math.max(0, Math.min(100, budget.jobSecurity + jsDelta)))
 
   // Next year budget adjust
   let budgetAdjustPct = 0

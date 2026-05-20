@@ -192,6 +192,21 @@ function confChampionsAll(state, ratings) {
   return champs
 }
 
+/**
+ * CURRENT-SEASON strength of a team (higher = better). Postseason seeding must
+ * use how teams actually did THIS year — not the preseason PEAR ratings, which
+ * was the bug that let a 56th-ranked, eliminated team "host" a regional. Prefer
+ * the live NWBB national rank (recomputed weekly), then fall back to W-L + run
+ * differential.
+ */
+function seasonScore(state, id) {
+  const nr = state.nwbbRatings?.[id]?.nationalRank
+  if (typeof nr === 'number' && nr > 0) return 100000 - nr   // rank 1 = highest
+  const t = state.teams?.[id]
+  if (!t) return -1e9
+  return (t.wins || 0) * 1000 + (t.runDiff || 0)
+}
+
 function nationalField(state, ratings) {
   const ps = state.postseason
   if (!ps.confChampions || Object.keys(ps.confChampions).length === 0) {
@@ -199,11 +214,12 @@ function nationalField(state, ratings) {
   }
   const hasTeam = (id) => !!state.teams?.[id]
   const set = new Set(Object.values(ps.confChampions).filter(id => id && hasTeam(id)))
+  // At-large bids: the best teams BY CURRENT SEASON not already auto-bid in.
   const all = Object.keys(state.schools || {})
     .filter(id => !set.has(id) && hasTeam(id))
-    .sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
+    .sort((a, b) => seasonScore(state, b) - seasonScore(state, a))
   for (const id of all.slice(0, 36)) set.add(id)
-  return [...set].sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
+  return [...set].sort((a, b) => seasonScore(state, b) - seasonScore(state, a))
 }
 
 // ── public API ──────────────────────────────────────────────────────────────
@@ -470,15 +486,12 @@ function setupWorldSeries(state, ratings) {
       pendingGameId: null, gameIds: [], champion: null,
     }
     tickInteractivePostseason(state)
-  } else {
-    // User isn't in the WS — sim the whole thing for viewing.
-    const r = simFullWS(state, ratings, poolA, poolB, year)
-    ps.national.ws.poolAStandings = r.poolAStandings
-    ps.national.ws.poolBStandings = r.poolBStandings
-    ps.national.ws.championship = r.championship
-    ps.national.ws.champion = r.champion
-    if (!ps.nationalChampion) ps.nationalChampion = r.champion
   }
+  // If the user ISN'T in the WS, we DON'T sim it now — week 42 IS the World
+  // Series, so it shouldn't already be decided when you arrive. The field +
+  // pools are shown; the games are simmed and the champion crowned when you
+  // advance OUT of week 42 (finalize). The user-interactive case resolves as
+  // they play their own games during the week.
 }
 
 function finalize(state, ratings) {
@@ -486,14 +499,25 @@ function finalize(state, ratings) {
   const userId = state.userSchoolId
   const year = state.calendar.year
   if (ps.userAlive && ps.rounds.WS?.userWon) { ps.userNatChamp = true; ps.nationalChampion = userId }
+  // Spectator WS (user not in it): NOW (advancing out of wk42) play out the
+  // World Series — pools + 4-team championship — and crown the champion.
+  const ws = ps.national?.ws
+  if (!ps.nationalChampion && ws && ws.poolA && ws.poolB) {
+    const r = simFullWS(state, ratings, ws.poolA, ws.poolB, year)
+    ws.poolAStandings = r.poolAStandings
+    ws.poolBStandings = r.poolBStandings
+    ws.championship = r.championship
+    ws.champion = r.champion
+    ps.nationalChampion = r.champion
+  }
   if (!ps.nationalChampion) {
+    // Last-ditch fallback if there was no WS structure at all.
     const field = nationalField(state, ratings).filter(id => id !== userId)
     const sim = makeNonUserSim(ratings)
     const seeds = field.slice(0, 4)
-    if (seeds.length >= 4) {
-      const r = runMatchGraph(seeds, deGraph(4), '__none__', () => null, sim, `wsfin_${year}`)
-      ps.nationalChampion = r.champion || seeds[0]
-    } else { ps.nationalChampion = seeds[0] || null }
+    ps.nationalChampion = seeds.length >= 4
+      ? (runMatchGraph(seeds, deGraph(4), '__none__', () => null, sim, `wsfin_${year}`).champion || seeds[0])
+      : (seeds[0] || null)
   }
   ps.stage = 'DONE'
   const champName = state.schools[ps.nationalChampion]?.name || 'Unknown'
