@@ -39,8 +39,14 @@ export default function GMHome() {
             {[1, 2, 3].map(slot => {
               const d = dynasties.find(x => x.slot === slot)
               if (d) {
+                // Prefer the global NAIA schools table; for non-NAIA dynasties
+                // (not in that table) fall back to the name/colors the save
+                // recorded in its own schools map (see listDynasties).
                 const school = schools[d.userSchoolId]
-                const conf = school ? conferences[school.conferenceId] : null
+                  || (d.schoolName ? { name: d.schoolName, nickname: d.schoolNickname, colors: d.schoolColors } : null)
+                const conf = (school && schools[d.userSchoolId])
+                  ? conferences[school.conferenceId]
+                  : (d.confAbbr ? { abbreviation: d.confAbbr } : null)
                 return (
                   <PixelCard
                     key={slot}

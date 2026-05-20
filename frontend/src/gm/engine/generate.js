@@ -13,6 +13,8 @@ import { pickFullName } from './names'
 import { initialAcademicState } from './academics'
 import { pickCityForState } from './cities'
 import { composePlayerProfile, enforceArchetypeFloors } from './playerArchetypes'
+import { hitterOverall, pitcherOverall } from './playerRating'
+import { expectedTeamOvr } from './programRating'
 
 /** @typedef {import('./types.js').Player} Player */
 /** @typedef {import('./types.js').Position} Position */
@@ -628,7 +630,57 @@ export function generateRoster(school, seed, currentYear = 2026, opts = {}) {
     const slot = { ...positions[i], classYear: classYears[i], slotTier }
     roster.push(generatePlayer(school, slot, rng, currentYear, i))
   }
+  // Anchor the roster's natural Team OVR to the program's expected OVR so the
+  // in-game hitting / pitching / overall numbers are HONEST (no display-time
+  // offset fudge). See scaleRosterToTarget.
+  scaleRosterToTarget(roster, school)
   return roster
+}
+
+// Rating sub-fields that feed hitterOverall / pitcherOverall. Shifting all of
+// them by a constant shifts the computed OVR by that same constant (both are
+// weighted averages).
+const HITTER_OVR_FIELDS = ['contact_l', 'contact_r', 'power_l', 'power_r', 'discipline', 'speed', 'fielding', 'arm']
+const PITCHER_OVR_FIELDS = ['stuff', 'control', 'command', 'stamina', 'vs_l', 'vs_r', 'composure', 'durability']
+
+function shiftRatingBlock(block, fields, delta) {
+  if (!block) return
+  for (const f of fields) {
+    if (typeof block[f] === 'number') {
+      block[f] = Math.max(25, Math.min(99, Math.round(block[f] + delta)))
+    }
+  }
+}
+
+/**
+ * Shift a freshly-generated roster so its natural Team OVR — top-9 hitters
+ * weighted .55 + top-5 pitchers .45, the exact formula teamOverall() uses —
+ * equals the program's expected Team OVR (the number shown on the team
+ * picker). This keeps hitting / pitching / overall honestly consistent with
+ * the assigned team rating instead of patching only `overall` with a hidden
+ * offset. Current AND potential blocks shift together so current<=potential
+ * stays intact. Works for every level (expectedTeamOvr is level-aware).
+ */
+function scaleRosterToTarget(roster, school) {
+  if (!roster || roster.length === 0 || !school) return
+  const target = expectedTeamOvr(school)
+  const hitters = roster.filter(p => p.isHitter).map(hitterOverall).sort((a, b) => b - a).slice(0, 9)
+  const pitchers = roster.filter(p => p.isPitcher).map(pitcherOverall).sort((a, b) => b - a).slice(0, 5)
+  const avg = arr => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0)
+  const natural = Math.round(avg(hitters) * 0.55 + avg(pitchers) * 0.45)
+  if (!natural) return
+  const delta = target - natural
+  if (delta === 0) return
+  for (const p of roster) {
+    if (p.isHitter) {
+      shiftRatingBlock(p.hitter, HITTER_OVR_FIELDS, delta)
+      shiftRatingBlock(p.hidden?.potential_hitter, HITTER_OVR_FIELDS, delta)
+    }
+    if (p.isPitcher) {
+      shiftRatingBlock(p.pitcher, PITCHER_OVR_FIELDS, delta)
+      shiftRatingBlock(p.hidden?.potential_pitcher, PITCHER_OVR_FIELDS, delta)
+    }
+  }
 }
 
 function shuffleInPlace(arr, rng) {

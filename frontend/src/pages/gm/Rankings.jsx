@@ -5,6 +5,17 @@ import { loadDynasty } from '../../gm/engine/save'
 import { ensureNwbbRatings } from '../../gm/engine/nwbbRating'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell from '../../gm/components/GMShell'
+import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
+
+// Lookup so abstract (non-conference) national teams render with a real name,
+// nickname, colors + division instead of their raw id.
+const NON_NAIA_DISPLAY = (() => {
+  const out = {}
+  for (const div of nonNaiaRaw.divisions) {
+    for (const t of div.teams) out[t.id] = { ...t, division: div.id }
+  }
+  return out
+})()
 
 /**
  * National Rankings page — driven by the NWBB Rating engine.
@@ -48,21 +59,22 @@ export default function Rankings() {
   const rows = useMemo(() => {
     return Object.values(ratings)
       .filter(r => isMultiLevel
-        ? !!save.schools[r.teamId]   // NWAC/D1/D2/D3 — keep every populated school
+        ? r.division === userLevel    // D1/D2/D3 — whole division (conf + national pool)
         : !r.isNonNaia,               // NAIA — original behavior
       )
       .map(r => {
-        const school = save.schools[r.teamId]
+        const school = save.schools[r.teamId] || NON_NAIA_DISPLAY[r.teamId]
         const team = save.teams[r.teamId]
         return {
           ...r,
           school,
-          conferenceAbbr: save.conferences[school?.conferenceId]?.abbreviation || '',
+          conferenceAbbr: save.conferences[school?.conferenceId]?.abbreviation
+            || school?.pearConference || (r.isNonNaia ? r.division : ''),
           wins: team?.wins || 0,
           losses: team?.losses || 0,
         }
       })
-  }, [ratings, save, isMultiLevel])
+  }, [ratings, save, isMultiLevel, userLevel])
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {

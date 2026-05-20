@@ -301,19 +301,24 @@ export function recomputeNwbbRatings(state) {
       marginAvg: list.length > 0 ? totalMargin / list.length : 0,
       nationalRank: 0,      // filled below
       isNonNaia: !isNaia(tid),
+      // Division this team belongs to. In-`schools` teams use their level
+      // (NAIA schools have no level → 'NAIA'); abstract teams use their
+      // non_naia division. Drives the multi-level ranking pool + UI filter.
+      division: schools[tid]?.level || NON_NAIA_BY_ID[tid]?.division || 'NAIA',
       seedSource: seeds[tid]?.source || 'PEAR',
     }
   }
 
   // Assign nationalRank. For NAIA dynasties this ranks NAIA only (original
-  // behavior). For multi-level dynasties (D1/D2/D3/NWAC) the synth
-  // conference universe lives in state.schools, so we rank everything in
-  // state.schools — this is what gives NWAC dynasties a Rankings page that
-  // covers all 28 NWAC teams across the 4 divisions.
+  // behavior). For multi-level dynasties (D1/D2/D3) we rank EVERY team in the
+  // user's division — the user's conference (in state.schools) PLUS the full
+  // abstract national pool for that division — so a D2 dynasty's rankings
+  // cover all 256 D2 programs, just like NAIA. (NWAC's national pool is
+  // tagged JUCO_NWAC, so NWAC keeps ranking its in-schools universe only.)
   const userLevel = schools[state?.userSchoolId]?.level
   const isMultiLevel = userLevel && userLevel !== 'NAIA'
   const rankPool = isMultiLevel
-    ? Object.values(out).filter(r => !!schools[r.teamId])
+    ? Object.values(out).filter(r => r.division === userLevel)
     : Object.values(out).filter(r => !r.isNonNaia)
   rankPool.sort((a, b) => b.rating - a.rating).forEach((r, i) => { r.nationalRank = i + 1 })
 

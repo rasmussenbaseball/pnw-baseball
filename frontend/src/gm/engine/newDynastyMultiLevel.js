@@ -32,8 +32,6 @@ import {
 import { applyRealFinancials } from './schoolFinancials'
 import { dateForWeek as unifiedDateForWeek, postseasonLayout } from './gameYear'
 import { buildInitialCareer } from './storyMode'
-import { teamOverall } from './playerRating'
-import { expectedTeamOvr } from './programRating'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /**
@@ -252,13 +250,9 @@ export function newDynastyMultiLevel(input) {
       assistantCoachIds: teamAssistants.map(a => a.id),
       wins: 0, losses: 0, confWins: 0, confLosses: 0, runDiff: 0,
     }
-    // Pin starting Team OVR to expectedTeamOvr so the in-game value matches
-    // the deterministic OVR shown on the team-picker tile. Roster randomness
-    // would otherwise move the starting Team OVR ±2-3 per new dynasty.
-    {
-      const raw = teamOverall(teams[school.id], players).overall
-      teams[school.id].ovrOffset = expectedTeamOvr({ ...school, level }) - raw
-    }
+    // Team OVR is now anchored honestly at roster-generation time (see
+    // scaleRosterToTarget in generate.js) — hitting/pitching/overall all
+    // reflect the assigned program rating, so no display-time ovrOffset.
   }
 
   // 5. Schedule — conference round-robin scaled to level's seasonGames. D2 ends

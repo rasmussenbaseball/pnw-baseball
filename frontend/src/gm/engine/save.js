@@ -129,10 +129,20 @@ export function listDynasties(userId) {
   for (let slot = 1; slot <= 3; slot++) {
     const save = loadDynasty(userId, slot)
     if (save) {
+      // Resolve display info from the save's OWN schools map so non-NAIA
+      // dynasties (D1/D2/D3/NWAC) — whose school ids aren't in the global
+      // NAIA schools table — show their real name instead of "Unknown school".
+      const school = save.schools?.[save.userSchoolId]
+      const conf = school ? save.conferences?.[school.conferenceId] : null
       out.push({
         slot,
         dynastyName: save.dynastyName,
         userSchoolId: save.userSchoolId,
+        schoolName: school?.name || null,
+        schoolNickname: school?.nickname || null,
+        schoolColors: school?.colors || null,
+        confAbbr: conf?.abbreviation || null,
+        level: save.level || 'NAIA',
         year: save.calendar.year,
         week: save.calendar.week,
         lastSavedAt: save.lastSavedAt,
