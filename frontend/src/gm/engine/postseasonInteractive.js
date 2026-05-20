@@ -285,6 +285,11 @@ function applyDeResult(state, ps, stage, round, res) {
       ps.userChamp = round.userWon
       ps.confChampions[ps.userConfId] = res.champion
     }
+    if (stage === 'REGIONAL') {
+      // Record the user's regional champion into the national bracket display.
+      const ureg = (ps.national?.regionals || []).find(r => r.isUser)
+      if (ureg) ureg.champion = res.champion
+    }
     if (!round.userWon) { ps.userAlive = false; ps.userEliminatedAt = stage }
   }
 }
@@ -308,20 +313,26 @@ function tickWorldSeries(state, ps, round, userId, year, getUserResult, sim, rat
     const userAdvanced = aTop.includes(userId)
     round.poolStandings = res.standings
     round.userInChamp = userAdvanced
+    // Store standings for the national-bracket display.
+    if (ps.national?.ws) {
+      ps.national.ws.poolAStandings = res.standings
+      ps.national.ws.poolBStandings = poolBRes.standings
+    }
+    round.champSeeds = [aTop[0], bTop[1], bTop[0], aTop[1]].filter(Boolean)
+    round.champSeedKey = `wschamp_${year}`
     if (!userAdvanced) {
       round.resolved = true; round.pendingGameId = null
       round.userWon = false
       ps.userAlive = false; ps.userEliminatedAt = 'WS'
       // crown champ in background among the 4 qualifiers
-      round.champSeeds = [aTop[0], bTop[1], bTop[0], aTop[1]].filter(Boolean)
       const r = runMatchGraph(round.champSeeds, deGraph(4), '__none__', () => null, sim, `wschamp_${year}`)
       ps.nationalChampion = r.champion
+      if (ps.national?.ws) { ps.national.ws.championship = { seeds: round.champSeeds, champion: r.champion }; ps.national.ws.champion = r.champion }
       return
     }
     // User advanced → 4-team double-elim championship. Seed A1,B2,B1,A2.
     round.phase = 'CHAMP'
-    round.champSeeds = [aTop[0], bTop[1], bTop[0], aTop[1]].filter(Boolean)
-    round.champSeedKey = `wschamp_${year}`
+    if (ps.national?.ws) ps.national.ws.championship = { seeds: round.champSeeds, champion: null }
     tickWorldSeries(state, ps, round, userId, year, getUserResult, sim, ratings)
     return
   }
@@ -341,6 +352,7 @@ function tickWorldSeries(state, ps, round, userId, year, getUserResult, sim, rat
     round.userWon = res.champion === userId
     if (round.userWon) { ps.userNatChamp = true; ps.nationalChampion = userId }
     else { ps.userAlive = false; ps.userEliminatedAt = 'WS'; ps.nationalChampion = res.champion }
+    if (ps.national?.ws) { ps.national.ws.championship = { seeds: round.champSeeds, champion: res.champion }; ps.national.ws.champion = res.champion }
   }
 }
 
@@ -348,55 +360,125 @@ export function advanceInteractivePostseasonNAIA(state, leavingWeek) {
   const ps = state.postseason
   if (!ps || !ps.interactive) return
   const ratings = seedFromPear(state.schools, state.conferences)
+  // ALWAYS build the national bracket so it's fully viewable even after the
+  // user is eliminated. setupRegional/setupWorldSeries wire the user's portion
+  // interactively only if they're still alive; otherwise everything is simmed.
   if (leavingWeek === 40) {
-    if (ps.userAlive && ps.rounds.CONF?.userWon) setupRegional(state, ratings)
+    setupRegional(state, ratings)
     ps.stage = 'REGIONAL'
   } else if (leavingWeek === 41) {
-    if (ps.userAlive && ps.rounds.REGIONAL?.userWon) setupWorldSeries(state, ratings)
+    setupWorldSeries(state, ratings)
     ps.stage = 'WS'
   } else if (leavingWeek === 42) {
     finalize(state, ratings)
   }
 }
 
-function setupRegional(state, ratings) {
+// Build the FULL national field: 46 teams in 10 regionals (6 five-team, 4 four-
+// team), hosted by the top 10 seeds. Sims every non-user regional so the whole
+// Opening Round is viewable; the user's regional (if they qualified) is wired
+// up as the interactive round and its champion is filled in once they play it.
+function buildNationalRegionals(state, ratings) {
   const ps = state.postseason
   const userId = state.userSchoolId
   const year = state.calendar.year
-  const field = nationalField(state, ratings).filter(id => id !== userId)
-  // The user's regional is a standard double-elim. Most NAIA regionals are
-  // 5-team (6 of 10); a few are 4-team. Use 5 when the field supports it.
-  const size = field.length >= 4 ? 5 : 4
-  // Seed the regional by rating: host (top) first, then the user slotted by
-  // their rating among the picks.
-  const picks = field.slice(0, size - 1)
-  const seeds = [userId, ...picks].sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
-  ps.rounds.REGIONAL = {
-    format: 'DE', seeds, spec: deGraph(seeds.length),
-    seedKey: `reg_${year}_${userId}`,
-    label: `NAIA Opening Round — ${seeds.length}-team regional (double-elim)`,
-    resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+  const sim = makeNonUserSim(ratings)
+  let field = nationalField(state, ratings)
+  if (ps.userAlive && !field.includes(userId)) field = [userId, ...field]
+  field = field.slice(0, 46)
+  const sizes = [5, 5, 5, 5, 5, 5, 4, 4, 4, 4]   // 6×5 + 4×4 = 46
+  const regionals = sizes.map((sz, i) => ({ idx: i, hostId: field[i], seeds: [field[i]], target: sz, champion: null }))
+  // Fill seeds 11..46 across regionals, one tier per pass (2-seeds, then 3s…).
+  let next = 10
+  for (let pass = 0; pass < 5 && next < field.length; pass++) {
+    for (let i = 0; i < 10 && next < field.length; i++) {
+      if (regionals[i].seeds.length < regionals[i].target) regionals[i].seeds.push(field[next++])
+    }
   }
-  tickInteractivePostseason(state)
+  for (const rg of regionals) {
+    if (ps.userAlive && rg.seeds.includes(userId)) { rg.isUser = true; continue }
+    const res = runMatchGraph(rg.seeds, deGraph(rg.seeds.length), '__none__', () => null, sim, `reg_${year}_${rg.idx}`)
+    rg.champion = res.champion || rg.seeds[0]
+  }
+  ps.national = ps.national || {}
+  ps.national.regionals = regionals.map(rg => ({
+    idx: rg.idx, hostId: rg.hostId, seeds: rg.seeds, champion: rg.champion, isUser: !!rg.isUser,
+  }))
+  return regionals
+}
+
+function setupRegional(state, ratings) {
+  const ps = state.postseason
+  const year = state.calendar.year
+  const userId = state.userSchoolId
+  buildNationalRegionals(state, ratings)
+  const ureg = (ps.national.regionals || []).find(r => r.isUser)
+  if (ureg && ps.userAlive) {
+    ps.rounds.REGIONAL = {
+      format: 'DE', seeds: ureg.seeds, spec: deGraph(ureg.seeds.length),
+      seedKey: `reg_${year}_${ureg.idx}`, regionalIdx: ureg.idx,
+      label: `NAIA Opening Round — ${ureg.seeds.length}-team regional (double-elim)`,
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+// Run a full pool + 4-team championship in the background (no user), returning
+// { poolAStandings, poolBStandings, championship:{seeds,champion}, champion }.
+function simFullWS(state, ratings, poolA, poolB, year) {
+  const sim = makeNonUserSim(ratings)
+  const a = runPool(poolA, '__none__', () => null, sim, `wsA_${year}`).standings
+  const b = runPool(poolB, '__none__', () => null, sim, `wsB_${year}`).standings
+  const champSeeds = [a[0]?.id, b[1]?.id, b[0]?.id, a[1]?.id].filter(Boolean)
+  let champion = champSeeds[0]
+  if (champSeeds.length >= 4) {
+    champion = runMatchGraph(champSeeds, deGraph(4), '__none__', () => null, sim, `wschamp_${year}`).champion || champSeeds[0]
+  }
+  return { poolAStandings: a, poolBStandings: b, championship: { seeds: champSeeds, champion }, champion }
 }
 
 function setupWorldSeries(state, ratings) {
   const ps = state.postseason
   const userId = state.userSchoolId
   const year = state.calendar.year
-  // 10-team WS: two pools of 5. The user is in pool A with 4 others; pool B is
-  // the next 5 strongest. (Field display is simplified; the bracket is exact.)
-  const field = nationalField(state, ratings).filter(id => id !== userId).slice(0, 9)
-  const poolA = [userId, field[0], field[2], field[4], field[6]].filter(Boolean)
-  const poolB = [field[1], field[3], field[5], field[7], field[8]].filter(Boolean)
-  ps.rounds.WS = {
-    format: 'WS', phase: 'POOL', pool: poolA, poolB,
-    seedKey: `ws_${year}_${userId}`,
-    label: 'NAIA World Series — pool play → 4-team championship',
-    resolved: false, userWon: false, userInChamp: false,
-    pendingGameId: null, gameIds: [], champion: null,
+  // The 10 regional champions are the WS field.
+  let champs = (ps.national?.regionals || []).map(r => r.champion).filter(Boolean)
+  if (champs.length < 10) {
+    // pad from the field if any regional champ is missing
+    const extra = nationalField(state, ratings).filter(id => !champs.includes(id))
+    champs = [...champs, ...extra].slice(0, 10)
   }
-  tickInteractivePostseason(state)
+  const userIsChamp = ps.userAlive && champs.includes(userId)
+  let poolA, poolB
+  if (userIsChamp) {
+    const o = champs.filter(id => id !== userId)
+    poolA = [userId, o[0], o[2], o[4], o[6]].filter(Boolean)
+    poolB = [o[1], o[3], o[5], o[7]].filter(Boolean)
+  } else {
+    poolA = champs.slice(0, 5); poolB = champs.slice(5, 10)
+  }
+  ps.national = ps.national || {}
+  ps.national.ws = { poolA, poolB, poolAStandings: null, poolBStandings: null, championship: null, champion: null }
+
+  if (userIsChamp) {
+    ps.rounds.WS = {
+      format: 'WS', phase: 'POOL', pool: poolA, poolB,
+      seedKey: `ws_${year}_${userId}`,
+      label: 'NAIA World Series — pool play → 4-team championship',
+      resolved: false, userWon: false, userInChamp: false,
+      pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  } else {
+    // User isn't in the WS — sim the whole thing for viewing.
+    const r = simFullWS(state, ratings, poolA, poolB, year)
+    ps.national.ws.poolAStandings = r.poolAStandings
+    ps.national.ws.poolBStandings = r.poolBStandings
+    ps.national.ws.championship = r.championship
+    ps.national.ws.champion = r.champion
+    if (!ps.nationalChampion) ps.nationalChampion = r.champion
+  }
 }
 
 function finalize(state, ratings) {

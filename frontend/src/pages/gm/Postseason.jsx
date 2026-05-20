@@ -6,13 +6,48 @@ import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell from '../../gm/components/GMShell'
 
 // Full-page view of the round-by-round interactive NAIA postseason.
+// Per-game pills for the user's interactive series in a round.
+function UserRoundGames({ save, rd }) {
+  const userId = save.userSchoolId
+  if (!rd) return null
+  return (
+    <>
+      {!rd.resolved && rd.oppName && (
+        <div className="text-sm text-white font-pixel mb-1">Now playing: vs {rd.oppName}</div>
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        {(rd.gameIds || []).map((id, i) => {
+          const g = (save.schedule || []).find(x => x.id === id)
+          const played = g?.played && g.homeRuns != null
+          const userHome = g && g.homeId === userId
+          const oppId = userHome ? g?.awayId : g?.homeId
+          const oppNm = save.schools[oppId]?.name || 'Opponent'
+          const ur = userHome ? g?.homeRuns : g?.awayRuns
+          const or = userHome ? g?.awayRuns : g?.homeRuns
+          const won = played && ur > or
+          return (
+            <span key={i} className={'text-xs font-mono px-2 py-1 rounded ' +
+              (!played ? 'bg-[#1a1a2e] text-gray-500' : won ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300')}>
+              {played ? `${won ? 'W' : 'L'} ${ur}-${or} vs ${oppNm}` : `vs ${oppNm}`}
+            </span>
+          )
+        })}
+      </div>
+      {rd.resolved && (
+        <div className={'text-sm font-bold mt-1 font-pixel ' + (rd.userWon ? 'text-pnw-green' : 'text-red-400')}>
+          {rd.userWon ? 'Won the bracket — advanced' : 'Eliminated (2nd loss)'}
+        </div>
+      )}
+    </>
+  )
+}
+
 function InteractivePostseasonPage({ save, ps, userSchool }) {
   const userId = save.userSchoolId
-  const ROUNDS = [
-    { key: 'CONF', title: 'Round 1 — Conference Tournament' },
-    { key: 'REGIONAL', title: 'Round 2 — NAIA Opening Round (Regionals)' },
-    { key: 'WS', title: 'Round 3 — Avista NAIA World Series' },
-  ]
+  const nm = (id) => save.schools[id]?.name || '—'
+  const regionals = ps.national?.regionals || []
+  const ws = ps.national?.ws
+  const confRd = ps.rounds?.CONF
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-3xl mx-auto">
@@ -20,57 +55,92 @@ function InteractivePostseasonPage({ save, ps, userSchool }) {
         <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} POSTSEASON</h1>
         <p className="text-sm text-[#a8a8c8] font-pixel">
           {ps.userNatChamp ? 'NAIA NATIONAL CHAMPIONS!'
-            : !ps.userQualified ? 'You missed the conference tournament — season over.'
+            : !ps.userQualified ? 'You missed the conference tournament — but the national bracket plays on below.'
             : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON'
-              ? `Eliminated in the ${({ CONF: 'conference tournament', REGIONAL: 'opening round', WS: 'World Series' })[ps.userEliminatedAt]}.`
-              : 'Win each series to advance. Play (or sim) every game from the home page.'}
+              ? `Eliminated in the ${({ CONF: 'conference tournament', REGIONAL: 'opening round', WS: 'World Series' })[ps.userEliminatedAt]} — the rest of the bracket continues below.`
+              : 'Win each round to advance. Play (or sim) every game from the home page.'}
         </p>
       </div>
-      {ROUNDS.map(({ key, title }) => {
-        const rd = ps.rounds?.[key]
-        return (
-          <div key={key} className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
-            <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">{title}</div>
-            {!rd ? (
-              <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
-            ) : (
-              <>
-                {!rd.resolved && rd.oppName && (
-                  <div className="text-base text-white font-pixel mb-2">Now playing: vs {rd.oppName}</div>
-                )}
-                <div className="flex flex-wrap gap-1.5">
-                  {(rd.gameIds || []).map((id, i) => {
-                    const g = (save.schedule || []).find(x => x.id === id)
-                    const played = g?.played && g.homeRuns != null
-                    const userHome = g && g.homeId === userId
-                    const oppId = userHome ? g?.awayId : g?.homeId
-                    const oppNm = save.schools[oppId]?.name || 'Opponent'
-                    const ur = userHome ? g?.homeRuns : g?.awayRuns
-                    const or = userHome ? g?.awayRuns : g?.homeRuns
-                    const won = played && ur > or
-                    return (
-                      <span key={i} className={'text-xs font-mono px-2 py-1 rounded ' +
-                        (!played ? 'bg-[#1a1a2e] text-gray-500' : won ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300')}>
-                        {played ? `${won ? 'W' : 'L'} ${ur}-${or} vs ${oppNm}` : `vs ${oppNm}`}
-                      </span>
-                    )
-                  })}
-                </div>
-                {rd.resolved && (
-                  <div className={'text-sm font-bold mt-2 font-pixel ' + (rd.userWon ? 'text-pnw-green' : 'text-red-400')}>
-                    {rd.userWon ? 'Won the bracket — advanced' : 'Eliminated (2nd loss)'}
-                  </div>
-                )}
-              </>
+
+      {/* ── Round 1: Conference Tournament (your bracket) ── */}
+      <div className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+        <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">Round 1 — Conference Tournament (5-team double-elim)</div>
+        {!confRd ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Didn't make the conference tournament.</div>
+        ) : (
+          <>
+            <UserRoundGames save={save} rd={confRd} />
+            {confRd.champion && (
+              <div className="text-[12px] text-[#a8a8c8] font-pixel mt-1">
+                Champion: <strong className={confRd.champion === userId ? 'text-pnw-green' : 'text-white'}>{nm(confRd.champion)}</strong>
+              </div>
             )}
+          </>
+        )}
+      </div>
+
+      {/* ── Round 2: All 10 regionals ── */}
+      <div className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+        <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">Round 2 — NAIA Opening Round · 10 Regionals</div>
+        {regionals.length === 0 ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Regionals haven't started yet.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {regionals.map((rg) => (
+              <div key={rg.idx} className={'rounded p-2 border ' + (rg.isUser ? 'border-pnw-green bg-pnw-green/10' : 'border-[#3a3a5e]')}>
+                <div className="text-[10px] uppercase tracking-wider text-[#a8a8c8] font-pixel mb-1">
+                  Regional {rg.idx + 1} · host {nm(rg.hostId)} {rg.isUser && <span className="text-pnw-green">(yours)</span>}
+                </div>
+                <div className="text-[11px] text-[#c8c8e8] font-pixel leading-tight">
+                  {(rg.seeds || []).map((id, i) => (
+                    <div key={id} className={id === userId ? 'text-pnw-green font-bold' : ''}>
+                      {i + 1}. {nm(id)}{rg.champion === id ? ' 🏆' : ''}
+                    </div>
+                  ))}
+                </div>
+                {rg.isUser && ps.rounds?.REGIONAL && <div className="mt-1"><UserRoundGames save={save} rd={ps.rounds.REGIONAL} /></div>}
+              </div>
+            ))}
           </div>
-        )
-      })}
+        )}
+      </div>
+
+      {/* ── Round 3: World Series ── */}
+      <div className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+        <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">Round 3 — Avista NAIA World Series</div>
+        {!ws ? (
+          <div className="text-sm text-gray-500 italic font-pixel">World Series hasn't started yet.</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 mb-2">
+              {[['Pool A', ws.poolA, ws.poolAStandings], ['Pool B', ws.poolB, ws.poolBStandings]].map(([label, pool, standings]) => (
+                <div key={label}>
+                  <div className="text-[10px] uppercase tracking-wider text-[#a8a8c8] font-pixel mb-1">{label}</div>
+                  <div className="text-[11px] font-pixel leading-tight">
+                    {(standings || (pool || []).map(id => ({ id }))).map((s) => (
+                      <div key={s.id} className={s.id === userId ? 'text-pnw-green font-bold' : 'text-[#c8c8e8]'}>
+                        {nm(s.id)}{s.wins != null ? ` (${s.wins}-${s.losses})` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {ps.rounds?.WS && <div className="mb-2"><UserRoundGames save={save} rd={ps.rounds.WS} /></div>}
+            {ws.championship && (
+              <div className="text-[11px] text-[#a8a8c8] font-pixel border-t border-[#3a3a5e] pt-2">
+                Championship (4-team double-elim): {(ws.championship.seeds || []).map(nm).join(', ')}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {ps.nationalChampion && (
         <div className="bg-[#23233d] border-2 border-amber-500/50 rounded-lg p-4">
           <span className="text-sm text-[#a8a8c8] font-pixel">National champion: </span>
           <strong className={'font-pixel ' + (ps.nationalChampion === userId ? 'text-amber-400' : 'text-white')}>
-            {save.schools[ps.nationalChampion]?.name || '—'}
+            {nm(ps.nationalChampion)}
           </strong>
         </div>
       )}
