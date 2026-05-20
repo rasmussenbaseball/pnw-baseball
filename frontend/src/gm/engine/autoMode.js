@@ -13,8 +13,7 @@
  *        - GPA dropping study hall
  *        - Recruiting class still open + AP available work the board
  *        - Otherwise fundraise + team boost
- *   3. Prospect camp invites in Wks 5 & 10.
- *   4. Mandatory cuts when over the 50-player cap.
+ *   3. Mandatory cuts when over the 50-player cap.
  *
  * Architecture: a single entry point `runAutoActions(save)`is called from
  * Dashboard right before sim advances. It mutates save in place — same
@@ -31,6 +30,7 @@ import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
 import { playerOverall } from './playerRating'
 import { generateCoach } from './coaches'
+import { rosterCapForLevel } from './levelHelpers'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 // ─── Toggle helpers ─────────────────────────────────────────────────────────
@@ -113,15 +113,6 @@ function autoPullStagnantOffers(save, summary) {
   if (pulled > 0) {
     summary.actionsTaken.push(`Pulled ${pulled} cold offer${pulled === 1 ? '' : 's'} (long-stale, no interest)`)
   }
-}
-
-/** How many recruits currently hold a live offer from the user's program. */
-function countActiveOffers(save, userSchoolId) {
-  let n = 0
-  for (const r of Object.values(save.recruits || {})) {
-    if (r.liveOffer && r.liveOffer.schoolId === userSchoolId) n++
-  }
-  return n
 }
 
 // ─── Required-action fulfillment ────────────────────────────────────────────
@@ -260,6 +251,43 @@ function avgEstOvr(r) {
   const vals = Object.values(block).filter(v => typeof v === 'number' && v < 100)
   if (vals.length === 0) return 50
   return vals.reduce((s, v) => s + v, 0) / vals.length
+}
+
+/**
+ * What the auto WOULD perceive a recruit's OVR to be BEFORE scouting them.
+ * The auto used to read true OVR directly (avgEstOvr), so it could perfectly
+ * cherry-pick the best players sight-unseen — every auto-scouted recruit came
+ * back in the same narrow 70-76 band, and it never "wasted" a look on a bust.
+ * Real scouting is uncertain: the auto sees a NOISY impression (true ± the
+ * recruit's current scouting fog) and decides whom to pursue from that. Some
+ * pan out, some don't — exactly like the EST OVR range the user sees. The
+ * bias is deterministic per recruit so the impression is stable across the
+ * week's passes, and it shrinks as the recruit gets scouted (noise drops).
+ */
+function perceivedOvr(save, r) {
+  const trueAvg = avgEstOvr(r)
+  const noise = r.scoutGrades?.[save.userSchoolId]?.noise ?? 15
+  const seed = String(r.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0)
+  const frac = ((seed * 9301 + 49297) % 233280) / 233280   // stable 0..1
+  const bias = (frac * 2 - 1) * noise                       // -noise .. +noise
+  return trueAvg + bias
+}
+
+/**
+ * Roster spots open for the upcoming recruiting cycle = cap − returning
+ * (non-graduating) − already-committed. Mirrors RosterSnapshotPanel.
+ */
+function recruitingSpotsAvailable(save) {
+  const cap = rosterCapForLevel(save.level || 'NAIA')
+  const team = save.teams?.[save.userSchoolId]
+  if (!team) return 0
+  const players = (team.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
+  const isGrad = (p) => p.classYear === 'SR' && !(p.redshirtUsed === true && (p.seasonsUsed ?? 0) < 4)
+  const returning = players.filter(p => !isGrad(p)).length
+  const committed = Object.values(save.recruits || {}).filter(
+    r => r.signedTo === save.userSchoolId && r.status === 'signed',
+  ).length
+  return Math.max(0, cap - returning - committed)
 }
 
 // ─── Weekly AP allocation ───────────────────────────────────────────────────
@@ -631,14 +659,25 @@ function spendRecruiting(save, apBudget) {
     } catch (err) { return false }
   }
 
-  // Priority targets: level-appropriate prospects, best first. Focus on ~16 so
-  // a normal week's AP (~22) digs deep on a few while a big turn (100 AP at
-  // wk4, or the 4× month turns) can court the whole short list.
+  // How many MORE recruits we want to sign this cycle. We deliberately leave a
+  // PORTAL_BUFFER of spots open so the user isn't maxed out before the summer
+  // transfer portal — the old logic offered until the roster was full. Once
+  // the class is (nearly) full this drops to 0 and the auto stops extending
+  // new offers (it still nudges existing ones toward a decision).
+  const PORTAL_BUFFER = 3
+  const spotsOpen = recruitingSpotsAvailable(save)
+  const maxActiveOffers = Math.max(0, spotsOpen - PORTAL_BUFFER)
+
+  // Priority targets ranked by PERCEIVED OVR (a noisy pre-scouting impression),
+  // NOT true OVR — so the auto can't omnisciently cherry-pick only the best
+  // and instead pursues some prospects who turn out worse than they looked.
+  // Focus on ~18 so a normal week's AP digs deep on a few while a big turn
+  // (100 AP at wk4, or the 4× month turns) can court the whole short list.
   const targets = openList()
-    .map(r => ({ r, ovr: avgEstOvr(r) }))
-    .filter(t => t.ovr >= 50)
-    .sort((a, b) => b.ovr - a.ovr)
-    .slice(0, 16)
+    .map(r => ({ r, perceived: perceivedOvr(save, r) }))
+    .filter(t => t.perceived >= 52)
+    .sort((a, b) => b.perceived - a.perceived)
+    .slice(0, 18)
 
   // Courtship ladder. SCOUT_TRIP first to clear fog, then the high-value
   // interest actions, then repeatable touches. One-shots are skipped if
@@ -654,9 +693,18 @@ function spendRecruiting(save, apBudget) {
   ]
   const interestOf = (r) => r.scoutGrades?.[userSchoolId]?.interest ?? 0
   const wasApplied = (r, key) => (r.scoutGrades?.[userSchoolId]?.actionsApplied || []).includes(key)
+  // OUTSTANDING offers only (open recruits) — signed recruits already counted
+  // against spotsOpen, so we must NOT double-count them here.
+  const openOffersCount = () => Object.values(save.recruits || {}).filter(
+    r => r.status === 'open' && r.liveOffer?.schoolId === userSchoolId,
+  ).length
 
-  for (const { r, ovr } of targets) {
+  // Only pursue NEW recruits while we still have spots to fill. Once the class
+  // is full (minus the portal buffer) we stop spending AP courting new kids and
+  // just nudge the offers already out (below).
+  for (const { r } of (maxActiveOffers > 0 ? targets : [])) {
     if (apLeft() < 1) break
+    if (openOffersCount() >= maxActiveOffers) break   // class is full enough — stop pursuing new kids
     for (const action of LADDER) {
       if (apLeft() < action.apCost) continue
       if (interestOf(r) >= 60) break   // courted enough — go offer
@@ -664,11 +712,15 @@ function spendRecruiting(save, apBudget) {
       if (!repeatable && wasApplied(r, action.key)) continue
       apply(r, action)
     }
-    // Extend an offer once we've built real interest. The offer itself adds
-    // another +18 interest, which clears the sign gate comfortably.
-    if (!r.liveOffer && ovr >= 50 && interestOf(r) >= 28
-        && countActiveOffers(save, userSchoolId) < 30) {
-      const amt = computeAutoOffer(save, r, ovr)
+    // Extend an offer once we've built interest — but only to recruits whose
+    // TRUE OVR (now revealed by scouting) is genuinely level-worthy (>=62), and
+    // only while we still have spots to fill (minus the portal buffer). Players
+    // we scouted that turned out below 62 get courted but NOT offered — not
+    // every recruit we look at deserves a scholarship.
+    const trueOvr = avgEstOvr(r)
+    if (!r.liveOffer && trueOvr >= 62 && interestOf(r) >= 28
+        && openOffersCount() < maxActiveOffers) {
+      const amt = computeAutoOffer(save, r, trueOvr)
       if (amt > 0) { try { setLiveOffer(r, userSchoolId, amt) } catch (err) { /* pool tapped */ } }
     }
   }
