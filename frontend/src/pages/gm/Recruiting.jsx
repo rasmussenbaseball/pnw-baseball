@@ -106,7 +106,7 @@ export default function Recruiting() {
   // Lazy-generate recruit pool on first visit, biased by coach
   const recruits = useMemo(() => {
     if (save.recruits && Object.keys(save.recruits).length > 0) return save.recruits
-    const pool = generateRecruitPool(save.calendar.year + 1, save.rngSeed, userHC, save.userSchoolId)
+    const pool = generateRecruitPool(save.calendar.year + 1, save.rngSeed, userHC, save.userSchoolId, { level: save.level || 'NAIA' })
     save.recruits = pool
     saveDynasty(save)
     return pool
