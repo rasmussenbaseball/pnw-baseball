@@ -664,6 +664,14 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
     academicRating,     // 30-99, HS grades / GPA equivalent — drives academic scholarship $
     liveOffer: null,    // { amount: $, weeksOutstanding: n } — user's persistent offer
     poolSubtype: subtype || null,  // 'D1_UNDERUSED' | 'D1_YOUNG' or null
+    // When this recruit likes to decide. HS kids commit in the fall/winter
+    // (NLI-style). JUCO kids are SPLIT — about half commit in the fall, the
+    // rest wait until the spring season plays out before deciding. Drives the
+    // commit-probability timing in tryAdvanceRecruit so a class isn't fully
+    // locked up before the spring even starts.
+    commitTiming: pool === 'HS_SR' ? 'FALL'
+      : pool === 'JUCO' ? (rng.chance(0.5) ? 'FALL' : 'SPRING')
+      : 'EARLY',
   }
 }
 
@@ -1321,7 +1329,20 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
 
   // Summer acceleration: short portal window → recruits decide faster.
   const summerMult = opts.signMultiplier ?? 1
-  const signProb = clamp(baseProb / suitorDivisor * summerMult, 0.05, 0.95)
+  // COMMIT TIMING (fall vs spring) + a slight overall difficulty bump so the
+  // class doesn't lock up before the spring. Only applies to the regular
+  // (non-summer) cycle — the summer portal stays fast (signMultiplier set).
+  let timingMult = 1
+  if (summerMult === 1) {
+    const wk = state?.calendar?.weekOfYear ?? 10
+    const timing = recruit.commitTiming || (recruit.pool === 'HS_SR' ? 'FALL' : 'EARLY')
+    // SPRING-timed (some JUCO) hold off until the spring season (wk 27+).
+    if (timing === 'SPRING' && wk < 27) timingMult = 0.18
+    // Slightly harder across the board so fall commits spread out instead of
+    // flooding in the first few weeks.
+    timingMult *= 0.8
+  }
+  const signProb = clamp(baseProb / suitorDivisor * summerMult * timingMult, 0.04, 0.95)
   if (rng.chance(signProb)) {
     recruit.status = 'signed'
     recruit.signedTo = userSchoolId

@@ -149,8 +149,14 @@ function pickReliever(rotation, usedSet, tier, getEnergy) {
     cands.push({ i, score, energy: getEnergy ? getEnergy(p.id) : 100 })
   }
   if (cands.length === 0) return null
-  const fresh = cands.filter(c => c.energy >= 25)
-  const pool = fresh.length > 0 ? fresh : cands
+  // Prefer GENUINELY available arms. An arm that already threw earlier in the
+  // series only recovers ~10 energy/day, so a Friday starter sits ~50 by Sunday
+  // — well above the old 25 floor, which let pickReliever grab the gassed ace
+  // again (the 9.2-IP-weekend bug). Require ~55 first; step down only if nobody
+  // clears the bar, so deep, fresh relievers are used before tired starters.
+  let pool = cands.filter(c => c.energy >= 55)
+  if (pool.length === 0) pool = cands.filter(c => c.energy >= 30)
+  if (pool.length === 0) pool = cands
   pool.sort((a, b) => b.score - a.score)   // best arm first
   if (tier === 'HIGH') return pool[0].i
   if (tier === 'LOW') return pool[pool.length - 1].i
@@ -686,6 +692,14 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
         state.inning++
       }
     }
+  }
+
+  // Extra-innings safety: the loop hard-stops after 12 innings, which could
+  // leave a TIE on the board — and a tie was then scored as a LOSS for the
+  // user with a tied line ("L 2-2"). Baseball has no ties; break it here with a
+  // slight nod to the home team (last at-bat).
+  if (state.homeRuns === state.awayRuns) {
+    if (rng.chance(0.54)) state.homeRuns++; else state.awayRuns++
   }
 
   // Finalize: convert outs innings pitched (IP = outs/3)

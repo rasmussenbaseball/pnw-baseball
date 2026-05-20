@@ -1314,6 +1314,18 @@ export function advanceOneWeek(state) {
   // Other levels still use the all-at-once runPostseason for now.
   const isNaia = !state.level || state.level === 'NAIA'
   if (nextWeek === 40 && prevWeek === 39) {
+    // Snapshot the user's roster for this season so the Stats page can show a
+    // UBC-ONLY view of past seasons. We grab it HERE (end of the regular
+    // season) while the roster is still intact — before offseason graduations
+    // + transfers strip players who played that spring. Keyed by
+    // state.calendar.year to match how statsArchive is keyed at rollover.
+    {
+      const ut = state.teams?.[state.userSchoolId]
+      if (ut) {
+        if (!state.rosterArchive) state.rosterArchive = {}
+        state.rosterArchive[state.calendar.year] = [...(ut.rosterPlayerIds || [])]
+      }
+    }
     // All-Conference + Gold Glove awards based on regular-season stats. Fires
     // first so honors are tied to the season that just ended.
     runEndOfRegularSeasonAwards(state)

@@ -47,10 +47,11 @@ function hitterWeekScore(s) {
 function pitcherWeekScore(s) {
   const outs = s.outs || 0
   if (outs < 15) return -Infinity
-  // Realism cap: one pitcher won't legitimately throw more than ~10 IP (30
-  // outs) in a weekend. More than that is a double-booked-team artifact (the
-  // 16+ IP weekly lines) — disqualify so awards stay believable.
-  if (outs > 30) return -Infinity
+  // Realism cap: a weekend Pitcher-of-the-Week threw ONE strong start (~6-8
+  // IP). With the leverage-based hook a starter rarely exceeds ~24 outs, so
+  // anything past ~25 outs (8.1 IP) means the arm pitched in TWO games that
+  // weekend (start + relief) — not a believable POTW line. Disqualify those.
+  if (outs > 25) return -Infinity
   return outs - (s.er || 0) * 3 - (s.bb || 0) * 1.5 - (s.hr || 0) * 4 + (s.k || 0) * 0.5
 }
 

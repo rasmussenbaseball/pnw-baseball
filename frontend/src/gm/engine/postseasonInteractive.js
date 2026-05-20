@@ -468,7 +468,18 @@ function buildNationalRegionals(state, ratings) {
     }
   }
   for (const rg of regionals) {
-    if (ps.userAlive && rg.seeds.includes(userId)) { rg.isUser = true; continue }
+    // If the user landed in the national field — as a conference champ OR an
+    // AT-LARGE bid (a strong team that didn't win its conf tournament, like a
+    // #45 6-seed) — they made the Opening Round and must PLAY it. Previously
+    // only ps.userAlive teams were made interactive, so an at-large team showed
+    // up in a regional but couldn't play and got auto-simmed a loss. Revive
+    // them here so their regional is interactive.
+    if (rg.seeds.includes(userId)) {
+      rg.isUser = true
+      ps.userAlive = true
+      ps.userEliminatedAt = null
+      continue
+    }
     const res = runMatchGraph(rg.seeds, deGraph(rg.seeds.length), '__none__', () => null, sim, `reg_${year}_${rg.idx}`)
     rg.champion = res.champion || rg.seeds[0]
   }
