@@ -55,11 +55,20 @@ function pitcherWeekScore(s) {
   return outs - (s.er || 0) * 3 - (s.bb || 0) * 1.5 - (s.hr || 0) * 4 + (s.k || 0) * 0.5
 }
 
+// Minimum WEEK score to merit a Player-of-the-Week. Prevents embarrassing
+// winners (a 1-for-15 hitter, or a 5.1-IP / 5-ER pitcher) from "winning" in a
+// thin week where few teams played — better to award nobody than a bad line.
+// A real POTW week (e.g. 7+ total bases, or a 6-IP/2-ER quality start) clears
+// these comfortably at every level.
+const MIN_HITTER_WEEK_SCORE = 7
+const MIN_PITCHER_WEEK_SCORE = 8
+
 /**
  * Pick the best player matching `predicate` from a stats map using `scoreFn`.
- * Returns { playerId, score, stats } or null.
+ * Returns { playerId, score, stats } or null. `minScore` gates out weak
+ * winners — if the best qualifier doesn't clear it, nobody wins.
  */
-function pickBest(weeklyStats, predicate, scoreFn) {
+function pickBest(weeklyStats, predicate, scoreFn, minScore = -Infinity) {
   let best = null
   let bestScore = -Infinity
   for (const [key, stats] of Object.entries(weeklyStats || {})) {
@@ -70,7 +79,7 @@ function pickBest(weeklyStats, predicate, scoreFn) {
       best = { playerId: stats.playerId, score, stats }
     }
   }
-  return best
+  return bestScore >= minScore ? best : null
 }
 
 /**
@@ -138,13 +147,18 @@ export function computeWeeklyAwards(state) {
     for (const pid of (team.rosterPlayerIds || [])) playerConf[pid] = confId
   }
 
-  // NAIA-wide winners
-  const naiaHitter = pickBest(weekly,
+  // National winners. Only meaningful for NAIA, where the whole league is
+  // simulated with real player stats. For multi-level dynasties (D1/D2/D3/NWAC)
+  // only the user's conference produces player box scores, so a "national"
+  // award would just duplicate the conference winner with a wrong "NAIA"
+  // label — skip it and award the conference POTW only.
+  const isNaiaLevel = !state.level || state.level === 'NAIA'
+  const naiaHitter = isNaiaLevel ? pickBest(weekly,
     (s) => !s.isPitcher && playerById[s.playerId],
-    hitterWeekScore)
-  const naiaPitcher = pickBest(weekly,
+    hitterWeekScore, MIN_HITTER_WEEK_SCORE) : null
+  const naiaPitcher = isNaiaLevel ? pickBest(weekly,
     (s) => s.isPitcher && playerById[s.playerId],
-    pitcherWeekScore)
+    pitcherWeekScore, MIN_PITCHER_WEEK_SCORE) : null
 
   // Conference winners — one set per conference
   const confWinners = {}
@@ -152,10 +166,10 @@ export function computeWeeklyAwards(state) {
     confWinners[confId] = {
       hitter: pickBest(weekly,
         (s) => !s.isPitcher && playerConf[s.playerId] === confId,
-        hitterWeekScore),
+        hitterWeekScore, MIN_HITTER_WEEK_SCORE),
       pitcher: pickBest(weekly,
         (s) => s.isPitcher && playerConf[s.playerId] === confId,
-        pitcherWeekScore),
+        pitcherWeekScore, MIN_PITCHER_WEEK_SCORE),
     }
   }
 
