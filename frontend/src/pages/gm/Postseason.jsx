@@ -5,6 +5,76 @@ import { loadDynasty } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell from '../../gm/components/GMShell'
 
+// Full-page view of the round-by-round interactive NAIA postseason.
+function InteractivePostseasonPage({ save, ps, userSchool }) {
+  const userId = save.userSchoolId
+  const ROUNDS = [
+    { key: 'CONF', title: 'Round 1 — Conference Tournament' },
+    { key: 'REGIONAL', title: 'Round 2 — NAIA Opening Round (Regionals)' },
+    { key: 'WS', title: 'Round 3 — Avista NAIA World Series' },
+  ]
+  return (
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-3xl mx-auto">
+      <div className="mb-5">
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} POSTSEASON</h1>
+        <p className="text-sm text-[#a8a8c8] font-pixel">
+          {ps.userNatChamp ? 'NAIA NATIONAL CHAMPIONS!'
+            : !ps.userQualified ? 'You missed the conference tournament — season over.'
+            : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON'
+              ? `Eliminated in the ${({ CONF: 'conference tournament', REGIONAL: 'opening round', WS: 'World Series' })[ps.userEliminatedAt]}.`
+              : 'Win each series to advance. Play (or sim) every game from the home page.'}
+        </p>
+      </div>
+      {ROUNDS.map(({ key, title }) => {
+        const rd = ps.rounds?.[key]
+        return (
+          <div key={key} className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+            <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">{title}</div>
+            {!rd ? (
+              <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
+            ) : (
+              <>
+                <div className="text-base text-white font-pixel mb-2">vs {rd.oppName}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(rd.gameIds || []).map((id, i) => {
+                    const g = (save.schedule || []).find(x => x.id === id)
+                    const played = g?.played && g.homeRuns != null
+                    const userHome = g && g.homeId === userId
+                    const ur = userHome ? g?.homeRuns : g?.awayRuns
+                    const or = userHome ? g?.awayRuns : g?.homeRuns
+                    const won = played && ur > or
+                    return (
+                      <span key={i} className={'text-xs font-mono px-2 py-1 rounded ' +
+                        (!played ? 'bg-[#1a1a2e] text-gray-500' : won ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300')}>
+                        {played ? `Game ${i + 1}: ${ur}-${or}` : `Game ${i + 1}: TBD`}
+                      </span>
+                    )
+                  })}
+                </div>
+                {rd.decided && (
+                  <div className={'text-sm font-bold mt-2 font-pixel ' + (rd.won ? 'text-pnw-green' : 'text-red-400')}>
+                    {rd.won ? `Series won (${rd.wins}-${rd.losses}) — advanced` : `Series lost (${rd.wins}-${rd.losses}) — eliminated`}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })}
+      {ps.nationalChampion && (
+        <div className="bg-[#23233d] border-2 border-amber-500/50 rounded-lg p-4">
+          <span className="text-sm text-[#a8a8c8] font-pixel">National champion: </span>
+          <strong className={'font-pixel ' + (ps.nationalChampion === userId ? 'text-amber-400' : 'text-white')}>
+            {save.schools[ps.nationalChampion]?.name || '—'}
+          </strong>
+        </div>
+      )}
+    </div>
+    </GMShell>
+  )
+}
+
 export default function Postseason() {
   const { user } = useAuth()
   const [params] = useSearchParams()
@@ -26,6 +96,12 @@ export default function Postseason() {
   }
 
   const ps = save.postseason
+
+  // Interactive NAIA postseason (round-by-round, user plays each series).
+  if (ps.interactive) {
+    return <InteractivePostseasonPage save={save} ps={ps} userSchool={userSchool} />
+  }
+
   const userConfId = save.schools[save.userSchoolId]?.conferenceId
   const userTournament = ps.tournaments.find(t => t.conferenceId === userConfId)
 

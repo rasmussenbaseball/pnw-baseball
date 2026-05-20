@@ -298,13 +298,13 @@ export default function Dashboard() {
         // to deferred offseason events), but conference tournaments + national
         // tournament still run synchronously. Show a progress modal with the
         // phase label so users see it working, not "frozen."
-        setProgress({ title: 'Running postseason', step: 'Conference tournaments…', pct: 10 })
+        setProgress({ title: 'Entering the playoffs', step: 'Finishing the regular season…', pct: 10 })
         setTimeout(() => {
           try {
-            setProgress(p => ({ ...p, step: 'National tournament…', pct: 40 }))
+            setProgress(p => ({ ...p, step: 'Seeding the brackets…', pct: 40 }))
             const ratings = seedFromPear(save.schools, save.conferences)
             simWeek(save, save.schedule, ratings)
-            setProgress(p => ({ ...p, step: 'Wrapping up year…', pct: 80 }))
+            setProgress(p => ({ ...p, step: 'Setting your first matchup…', pct: 80 }))
             const awardYear = save.calendar.year
             advanceWeek(save, save.schedule)
             setProgress(p => ({ ...p, step: 'Saving…', pct: 95 }))
@@ -1031,6 +1031,41 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
     : highlightWeek === 42 ? 'World Series'
     : null
 
+  // ── Interactive NAIA postseason (round-by-round, user plays each series) ──
+  if (ps.interactive) {
+    return (
+      <Panel
+        title={roundLabel ? `${ps.year} Postseason · ${roundLabel}` : `${ps.year} Postseason`}
+        actionTo={`/gm/postseason?slot=${slot}`}
+        actionLabel="Full bracket"
+      >
+        {!ps.userQualified && (
+          <div className="text-[11px] text-gray-500 italic mb-2">
+            Your team didn't make the conference tournament — season over. Watch the brackets play out.
+          </div>
+        )}
+        <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title="Round 1 — Conference Tournament" active={highlightWeek === 40} />
+        <InteractiveRoundRow save={save} round={ps.rounds?.REGIONAL} title="Round 2 — NAIA Opening Round" active={highlightWeek === 41} />
+        <InteractiveRoundRow save={save} round={ps.rounds?.WS} title="Round 3 — NAIA World Series" active={highlightWeek === 42} />
+        <div className="border-t pt-2 mt-1 text-[11px]">
+          {ps.userNatChamp ? (
+            <span className="text-amber-600 font-bold">NATIONAL CHAMPIONS!</span>
+          ) : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON' ? (
+            <span className="text-gray-500">Eliminated in the {({ CONF: 'conference tournament', REGIONAL: 'opening round', WS: 'World Series' })[ps.userEliminatedAt]}.</span>
+          ) : null}
+          {ps.nationalChampion && (
+            <div className="mt-0.5">
+              <span className="text-gray-500">National champion: </span>
+              <strong className={ps.nationalChampion === userId ? 'text-amber-600' : 'text-pnw-slate'}>
+                {save.schools[ps.nationalChampion]?.name || '—'}
+              </strong>
+            </div>
+          )}
+        </div>
+      </Panel>
+    )
+  }
+
   return (
     <Panel
       title={roundLabel ? `${ps.year} Postseason · ${roundLabel}` : `${ps.year} Postseason`}
@@ -1125,6 +1160,55 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
         </div>
       )}
     </Panel>
+  )
+}
+
+// One round of the interactive postseason: the user's best-of-3 vs an opponent,
+// with per-game W/L pills and the series status. Reads the played games out of
+// the schedule so it reflects exactly what the user did.
+function InteractiveRoundRow({ save, round, title, active }) {
+  const userId = save.userSchoolId
+  if (!round) {
+    return (
+      <div className={'mb-2 py-1.5 px-2 rounded ' + (active ? 'bg-pnw-cream/60' : '')}>
+        <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">{title}</div>
+        <div className="text-[11px] text-gray-400 italic">Not reached.</div>
+      </div>
+    )
+  }
+  const games = (round.gameIds || [])
+    .map(id => (save.schedule || []).find(g => g.id === id))
+    .filter(Boolean)
+  return (
+    <div className={'mb-2 py-1.5 px-2 rounded ' + (active ? 'bg-pnw-cream/60 border border-pnw-green/40' : '')}>
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{title}</div>
+        {active && <span className="text-[9px] uppercase tracking-wider text-pnw-green font-bold">This week</span>}
+      </div>
+      <div className="text-[12px] text-pnw-slate font-semibold">vs {round.oppName}</div>
+      <div className="flex items-center gap-1 mt-1">
+        {games.map((g, i) => {
+          const userHome = g.homeId === userId
+          const played = g.played && g.homeRuns != null
+          const userRuns = userHome ? g.homeRuns : g.awayRuns
+          const oppRuns = userHome ? g.awayRuns : g.homeRuns
+          const won = played && userRuns > oppRuns
+          return (
+            <span key={i} className={'text-[10px] font-mono px-1.5 py-0.5 rounded ' +
+              (!played ? 'bg-gray-100 text-gray-400' : won ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}>
+              {played ? `${userRuns}-${oppRuns}` : `G${i + 1}`}
+            </span>
+          )
+        })}
+      </div>
+      {round.decided && (
+        <div className="text-[11px] mt-1">
+          <strong className={round.won ? 'text-pnw-green' : 'text-red-600'}>
+            {round.won ? 'Series won — advanced' : 'Series lost — eliminated'}
+          </strong>
+        </div>
+      )}
+    </div>
   )
 }
 

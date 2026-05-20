@@ -12,6 +12,7 @@ import { resolveLineupForGame, lineupPlayerIds, getSavedLineup, autoLineup } fro
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
+import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA } from './postseasonInteractive'
 import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
@@ -1235,14 +1236,28 @@ export function advanceOneWeek(state) {
     runEndOfYear(state)
   }
 
-  // Postseason: fires once when we enter wk 40 (conference tournament).
-  // The bracket runs all three rounds (conf, opening, WS) in one call.
+  // ── Postseason ──────────────────────────────────────────────────────
+  // NAIA dynasties play the postseason round-by-round (wk40 conf tournament,
+  // wk41 regionals, wk42 World Series) — the user's series for each round is
+  // generated into the schedule and PLAYED via the normal game-week flow.
+  // Other levels still use the all-at-once runPostseason for now.
+  const isNaia = !state.level || state.level === 'NAIA'
   if (nextWeek === 40 && prevWeek === 39) {
-    // All-Conference + Gold Glove awards based on regular-season stats.
-    // Fires BEFORE runPostseason so the awards are tied to the season
-    // that just ended, not the postseason that's about to.
+    // All-Conference + Gold Glove awards based on regular-season stats. Fires
+    // first so honors are tied to the season that just ended.
     runEndOfRegularSeasonAwards(state)
-    runPostseason(state)
+    if (isNaia) {
+      try { setupInteractivePostseasonNAIA(state) }
+      catch (err) { console.error('interactive postseason setup failed:', err); runPostseason(state) }
+    } else {
+      runPostseason(state)
+    }
+  }
+  // Round transitions: resolve the round just played + set up the next one.
+  if (isNaia && state.postseason?.interactive) {
+    if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonNAIA(state, 40)
+    else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNAIA(state, 41)
+    else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonNAIA(state, 42)
   }
 
   // Capture last-week AP spend BEFORE the refresh resets it — used by the
