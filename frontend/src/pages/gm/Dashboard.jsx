@@ -69,6 +69,8 @@ export default function Dashboard() {
   const [apWarnModal, setApWarnModal] = useState(null)   // { ap } unspent-AP warning before advancing
   const [awardsModal, setAwardsModal] = useState(null)   // end-of-season All-Conference + Gold Glove popup
   const [commitModal, setCommitModal] = useState(null)   // recruit-commit profile popup(s) after an advance
+  const [departureModal, setDepartureModal] = useState(null)   // outbound-transfer popup
+  const [draftModal, setDraftModal] = useState(null)           // MLB draft popup
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -281,10 +283,16 @@ export default function Dashboard() {
       const beforeSnap = snapshotState(save)
       advanceOffseasonWeek(save)
       const _commits = (save._newCommitRecruits || []).slice()
+      const _departures = (save._newDepartures || []).slice()
+      const _drafted = (save._newDraftPicks || []).slice()
       save._newCommitRecruits = []
+      save._newDepartures = []
+      save._newDraftPicks = []
       saveDynasty(save)
       setSave({ ...save })
       if (_commits.length) setCommitModal(_commits)
+      if (_departures.length) setDepartureModal(_departures)
+      if (_drafted.length) setDraftModal(_drafted)
       const afterSnap = snapshotState(save)
       const diff = diffSnapshots(beforeSnap, afterSnap)
       setLastWeekRecap({
@@ -486,6 +494,12 @@ export default function Dashboard() {
       )}
       {commitModal && commitModal.length > 0 && (
         <CommitModal save={save} recruitIds={commitModal} slot={slot} onClose={() => setCommitModal(null)} />
+      )}
+      {departureModal && departureModal.length > 0 && (
+        <DepartureModal departures={departureModal} onClose={() => setDepartureModal(null)} />
+      )}
+      {draftModal && draftModal.length > 0 && (
+        <DraftModal picks={draftModal} onClose={() => setDraftModal(null)} />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
           stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
@@ -872,7 +886,7 @@ function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, sl
           <div className="text-[10px] uppercase tracking-widest opacity-75 font-bold">
             Current period · Week {weekOfYear}
           </div>
-          <div className="text-lg font-extrabold leading-tight">{season} — {phase.label}</div>
+          <div className="text-lg font-extrabold leading-tight">{phase.label === season ? season : `${season} — ${phase.label}`}</div>
           {reqTodo ? (
             <>
               <div className="text-sm font-semibold mt-1">Required: {requiredAction.label}</div>
@@ -1516,6 +1530,11 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
     if (wk <= 21) return '❄️'    // December dead period
     return '🧤'                   // Winter Practice / Spring ramp
   }
+  // Use the UNIFIED 52-week calendar for the label. The legacy offseasonWeek
+  // mapping wraps past its max for the post-postseason weeks (43-52), which
+  // produced nonsense like "Offseason Wk 30/26 · Spring Practice" in June.
+  const woy = save.calendar?.weekOfYear ?? offseasonWeek
+  const ph = phaseForWeek(woy)
   let primary
   if (inOffseason) {
     primary = (
@@ -1525,9 +1544,9 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
-            Offseason Wk {offseasonWeek}/{OFFSEASON_WEEKS} · {formatShortDate(date)}
+            Week {woy}/52{date ? ` · ${formatShortDate(date)}` : ''}
           </div>
-          <div className="text-sm font-semibold mt-0.5">{offseasonPhase(offseasonWeek)}</div>
+          <div className="text-sm font-semibold mt-0.5">{ph?.label || 'Offseason'}</div>
         </div>
       </div>
     )
@@ -2256,6 +2275,63 @@ function CommitModal({ save, recruitIds, slot, onClose }) {
             Recruiting board
           </Link>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Outbound-transfer popup — who left your program (portal / transfer / quit).
+function DepartureModal({ departures, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  const destLabel = (d) => ({ D1: 'transferred up to D1', D2: 'transferred to D2', D3: 'transferred to D3', JUCO: 'dropped to JUCO', QUIT: 'left baseball' })[d] || 'entered the portal'
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-red-600 font-bold">📤 Roster departures</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">{departures.length} player{departures.length === 1 ? '' : 's'} leaving</h3>
+          </div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
+        <div className="space-y-1 mb-4 max-h-64 overflow-auto">
+          {departures.map((d, i) => (
+            <div key={i} className={'flex items-center justify-between gap-2 py-1 px-2 rounded text-sm ' + (d.isStar ? 'bg-red-50 font-semibold text-red-900' : 'text-pnw-slate')}>
+              <span>{d.pos} · {d.name} ({d.classYear}){d.isStar && <span className="ml-1 text-[10px] uppercase tracking-wider text-red-600">key player</span>}</span>
+              <span className="text-xs text-gray-500 shrink-0">{destLabel(d.dest)}</span>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Got it</button>
+      </div>
+    </div>
+  )
+}
+
+// MLB Draft popup — your players selected (so the draft can't be missed).
+function DraftModal({ picks, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  const sorted = [...picks].sort((a, b) => a.round - b.round)
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-amber-600 font-bold">⚾ MLB Draft</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">{picks.length} player{picks.length === 1 ? '' : 's'} drafted!</h3>
+          </div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
+        <div className="space-y-1 mb-3">
+          {sorted.map((p, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 py-1 px-2 rounded text-sm bg-amber-50 text-amber-900 font-semibold">
+              <span>{p.pos} · {p.name}</span>
+              <span className="text-xs shrink-0">Round {p.round}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mb-4">Big for the program — draft picks boost recruiting pull and your reputation.</p>
+        <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Great!</button>
       </div>
     </div>
   )

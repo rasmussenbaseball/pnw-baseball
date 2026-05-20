@@ -647,6 +647,12 @@ function runDraft(state) {
       payload: { playerId: pk.playerId, round: pk.round }, big: true,
     })
   }
+  // Capture YOUR draftees for a Dashboard popup so the draft can't be missed.
+  if (userPicks.length > 0) {
+    state._newDraftPicks = [...(state._newDraftPicks || []), ...userPicks.map(pk => ({
+      name: pk.name, pos: pk.pos, round: pk.round,
+    }))]
+  }
   if (userPicks.length > 0 && state.budget) {
     state.budget.jobSecurity = Math.min(100, (state.budget.jobSecurity || 50) + userPicks.length * 3)
   }

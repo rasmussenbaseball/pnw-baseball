@@ -177,6 +177,16 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     })
   }
   if (transferred.length > 0) {
+    // Capture departures for a Dashboard popup so the user always sees who they
+    // lost (not just a buried news line).
+    state._newDepartures = [...(state._newDepartures || []), ...transferred.map(t => ({
+      id: t.player.id,
+      name: `${t.player.firstName} ${t.player.lastName}`,
+      classYear: t.player.classYear,
+      pos: t.player.primaryPosition,
+      dest: t.destination,
+      isStar: !!t.isStar,
+    }))]
     state.newsfeed.unshift({
       id: `out_summary_${state.calendar.year}_${phase}`,
       year: state.calendar.year + 1,
