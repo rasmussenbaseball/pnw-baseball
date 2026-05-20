@@ -35,26 +35,30 @@ function InteractivePostseasonPage({ save, ps, userSchool }) {
               <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
             ) : (
               <>
-                <div className="text-base text-white font-pixel mb-2">vs {rd.oppName}</div>
+                {!rd.resolved && rd.oppName && (
+                  <div className="text-base text-white font-pixel mb-2">Now playing: vs {rd.oppName}</div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {(rd.gameIds || []).map((id, i) => {
                     const g = (save.schedule || []).find(x => x.id === id)
                     const played = g?.played && g.homeRuns != null
                     const userHome = g && g.homeId === userId
+                    const oppId = userHome ? g?.awayId : g?.homeId
+                    const oppNm = save.schools[oppId]?.name || 'Opponent'
                     const ur = userHome ? g?.homeRuns : g?.awayRuns
                     const or = userHome ? g?.awayRuns : g?.homeRuns
                     const won = played && ur > or
                     return (
                       <span key={i} className={'text-xs font-mono px-2 py-1 rounded ' +
                         (!played ? 'bg-[#1a1a2e] text-gray-500' : won ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300')}>
-                        {played ? `Game ${i + 1}: ${ur}-${or}` : `Game ${i + 1}: TBD`}
+                        {played ? `${won ? 'W' : 'L'} ${ur}-${or} vs ${oppNm}` : `vs ${oppNm}`}
                       </span>
                     )
                   })}
                 </div>
-                {rd.decided && (
-                  <div className={'text-sm font-bold mt-2 font-pixel ' + (rd.won ? 'text-pnw-green' : 'text-red-400')}>
-                    {rd.won ? `Series won (${rd.wins}-${rd.losses}) — advanced` : `Series lost (${rd.wins}-${rd.losses}) — eliminated`}
+                {rd.resolved && (
+                  <div className={'text-sm font-bold mt-2 font-pixel ' + (rd.userWon ? 'text-pnw-green' : 'text-red-400')}>
+                    {rd.userWon ? 'Won the bracket — advanced' : 'Eliminated (2nd loss)'}
                   </div>
                 )}
               </>

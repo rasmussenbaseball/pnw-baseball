@@ -17,6 +17,7 @@ import { __pools } from '../../gm/engine/names'
 import { resolveLineupForGame, getSavedLineup, saveLineup } from '../../gm/engine/lineups'
 import { createLiveGame } from '../../gm/engine/liveGame'
 import { simWeek, advanceWeek } from '../../gm/engine/season'
+import { tickInteractivePostseason } from '../../gm/engine/postseasonInteractive'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { positionFit, positionFitRank, positionFitLabel } from '../../gm/engine/positions'
@@ -185,6 +186,11 @@ export default function Play() {
                 realTeam.runDiff += realRuns - oppRuns
               }
             }
+          }
+          // Interactive postseason: advance the bracket after a playoff game
+          // (generates the next single game, or resolves the round).
+          if (save.postseason?.interactive && save.postseason.stage !== 'DONE') {
+            try { tickInteractivePostseason(save) } catch (e) { console.error('postseason tick failed:', e) }
           }
           saveDynasty(save); refresh()
           setView({ kind: 'LIST' })

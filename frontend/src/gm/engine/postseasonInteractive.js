@@ -1,118 +1,178 @@
 /**
- * Interactive NAIA postseason (May 2026).
+ * Interactive NAIA postseason (May 2026, v2 — proper single-game brackets).
  *
- * Replaces the old "sim the entire bracket at the 39→40 boundary" model with a
- * round-by-round flow the user actually plays:
+ *   Week 40 — Conference Tournament   (double-elimination, single games)
+ *   Week 41 — NAIA Opening Round      (4-team regional double-elim, single games)
+ *   Week 42 — NAIA World Series        (single-elim among site winners)
  *
- *   Week 40 — Conference Tournament   (best-of-3 vs the conf's top other seed)
- *   Week 41 — NAIA Opening Round      (best-of-3 vs a seeded national opponent)
- *   Week 42 — NAIA World Series       (best-of-3 vs the other finalist)
+ * Each bracket is SINGLE GAMES (you face a team once per bracket node) — NOT a
+ * best-of-3 series. The user plays through their bracket one game at a time:
+ * the resumable bracket runner sims non-user games deterministically and PAUSES
+ * whenever the user is due to play, generating that single game into the live
+ * schedule (so the normal game-week/Play/sim flow handles it). After each user
+ * game is played, `tickInteractivePostseason` re-runs the bracket, advancing the
+ * user (winners bracket) or dropping them (losers bracket) until they win the
+ * bracket or take their 2nd loss.
  *
- * The user's series for each round is written into `state.schedule` with the
- * matching seasonWeek (14/15/16), so the EXISTING, battle-tested game-week +
- * Play + simWeek flow handles play/sim/box-scores — no parallel game engine.
- * Win the series to advance; lose and your season ends. Non-user results are
- * simmed in the background (rating-based) so a national champion is crowned for
- * display when the user doesn't go all the way.
- *
- * State shape (state.postseason when interactive):
+ * state.postseason (interactive) shape:
  *   {
  *     year, level:'NAIA', interactive:true,
- *     stage: 'CONF'|'REGIONAL'|'WS'|'DONE',
- *     userQualified, userAlive,
- *     userEliminatedAt: null|'REG_SEASON'|'CONF'|'REGIONAL'|'WS',
- *     userChamp,        // won conf tournament
- *     userNatChamp,     // won the World Series
- *     nationalChampion, // schoolId (for display)
- *     rounds: { CONF:{...}, REGIONAL:{...}, WS:{...} },   // per-round series
+ *     stage:'CONF'|'REGIONAL'|'WS'|'DONE',
+ *     userQualified, userAlive, userEliminatedAt,
+ *     userChamp, userNatChamp, nationalChampion,
+ *     rounds: { CONF:{...}, REGIONAL:{...}, WS:{...} },
  *   }
- *
- * Each round entry: { oppId, oppName, gameIds:[...], decided, won, wins, losses, host }
+ *   round: { format, seeds:[], seedKey, label, resolved, userWon,
+ *            pendingGameId, oppName, gameIds:[] }
  */
 
 import { seedFromPear } from './rankings'
 import { fastSimGame } from './sim'
+import { makeRng } from './rng'
 import { qualifierCountForConf } from './pnwPlayoffs'
 
-const SERIES_LEN = 3        // best-of-3 every round
-const NEEDED = 2            // 2 wins takes a best-of-3
+const STAGE_WEEK = { CONF: 40, REGIONAL: 41, WS: 42 }
+const STAGE_SEASONWEEK = { CONF: 14, REGIONAL: 15, WS: 16 }
 
 function ratingOf(ratings, id) {
   return ratings[id] || { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
 }
 
-/** Background best-of-3 between two non-user teams. Returns the winner id. */
-function simSeriesWinner(ratings, aId, bId, seedKey) {
-  let aw = 0, bw = 0
-  for (let i = 0; i < SERIES_LEN && aw < NEEDED && bw < NEEDED; i++) {
-    const r = fastSimGame(ratingOf(ratings, aId), ratingOf(ratings, bId), `${seedKey}_g${i}`)
-    if (r.homeRuns >= r.awayRuns) aw++; else bw++
+/** A deterministic non-user single game → winner id. */
+function makeNonUserSim(ratings) {
+  return (homeId, awayId, key) => {
+    const r = fastSimGame(ratingOf(ratings, homeId), ratingOf(ratings, awayId), `psnu_${key}`)
+    return r.homeRuns >= r.awayRuns ? homeId : awayId
   }
-  return aw >= bw ? aId : bId
-}
-
-/** Date helper — postseason weeks land in mid/late May. Rough but ordered. */
-function psDate(year, round) {
-  const day = round === 'CONF' ? 12 : round === 'REGIONAL' ? 19 : 26
-  return `${year}-05-${String(day).padStart(2, '0')}`
 }
 
 /**
- * Build the user's best-of-3 series for a round and push the games into the
- * schedule so the normal game-week/Play flow picks them up.
+ * Resumable single-game DOUBLE-ELIM. Returns either { champion } when the whole
+ * bracket is decided, or { pending: { homeId, awayId, gameKey } } when it's the
+ * user's turn to play a game that hasn't been played yet.
  *
- * @returns {string[]} the generated game ids
+ * @param {string[]} teams        seeded team ids (index 0 = top seed)
+ * @param {string} userId
+ * @param {(key:string)=>{homeRuns:number,awayRuns:number}|null} getUserResult
+ * @param {(h:string,a:string,key:string)=>string} simNonUser  returns winner id
  */
-function generateUserSeries(state, round, oppId, seasonWeek, userIsHome) {
-  const userId = state.userSchoolId
+function runResumableDoubleElim(teams, userId, getUserResult, simNonUser, seedKey) {
+  let winners = [...teams]
+  let losers = []
+  let round = 0
+  const play = (h, a, key) => {
+    if (h === userId || a === userId) {
+      const res = getUserResult(key)
+      if (!res) return { pending: { homeId: h, awayId: a, gameKey: key } }
+      return { winner: res.homeRuns > res.awayRuns ? h : a }
+    }
+    return { winner: simNonUser(h, a, key) }
+  }
+  while (winners.length + losers.length > 1) {
+    round++
+    if (round > 30) break
+    const nextW = [], newL = []
+    for (let i = 0; i < winners.length; i += 2) {
+      const h = winners[i], a = winners[i + 1]
+      if (a == null) { nextW.push(h); continue }
+      const g = play(h, a, `${seedKey}_wbr${round}_${i}`)
+      if (g.pending) return g
+      nextW.push(g.winner); newL.push(g.winner === h ? a : h)
+    }
+    const lbAlive = [...losers]; const nextL = []
+    for (let i = 0; i < lbAlive.length; i += 2) {
+      const h = lbAlive[i], a = lbAlive[i + 1]
+      if (a == null) { nextL.push(h); continue }
+      const g = play(h, a, `${seedKey}_lbr${round}_${i}`)
+      if (g.pending) return g
+      nextL.push(g.winner)
+    }
+    winners = nextW
+    losers = [...nextL, ...newL]
+  }
+  if (winners.length === 1 && losers.length === 1) {
+    const w = winners[0], l = losers[0]
+    const g1 = play(w, l, `${seedKey}_final1`)
+    if (g1.pending) return g1
+    if (g1.winner === w) return { champion: w }
+    const g2 = play(w, l, `${seedKey}_final2`)
+    if (g2.pending) return g2
+    return { champion: g2.winner }
+  }
+  return { champion: winners[0] || losers[0] || null }
+}
+
+/** Resumable single-game SINGLE-ELIM (used for the World Series field). */
+function runResumableSingleElim(teams, userId, getUserResult, simNonUser, seedKey) {
+  let alive = [...teams]
+  let round = 0
+  const play = (h, a, key) => {
+    if (h === userId || a === userId) {
+      const res = getUserResult(key)
+      if (!res) return { pending: { homeId: h, awayId: a, gameKey: key } }
+      return { winner: res.homeRuns > res.awayRuns ? h : a }
+    }
+    return { winner: simNonUser(h, a, key) }
+  }
+  while (alive.length > 1) {
+    round++
+    if (round > 12) break
+    const next = []
+    for (let i = 0; i < alive.length; i += 2) {
+      const h = alive[i], a = alive[i + 1]
+      if (a == null) { next.push(h); continue }
+      const g = play(h, a, `${seedKey}_r${round}_${i}`)
+      if (g.pending) return g
+      next.push(g.winner)
+    }
+    alive = next
+  }
+  return { champion: alive[0] || null }
+}
+
+// ── schedule game generation ────────────────────────────────────────────────
+
+function userGameId(year, stage, gameKey) {
+  return `ps_${year}_${stage}_${gameKey}`
+}
+
+function getUserResultFromSchedule(state, year, stage) {
+  return (gameKey) => {
+    const id = userGameId(year, stage, gameKey)
+    const g = (state.schedule || []).find(x => x.id === id)
+    if (!g || !g.played || g.homeRuns == null) return null
+    return { homeRuns: g.homeRuns, awayRuns: g.awayRuns }
+  }
+}
+
+/** Generate ONE user game into the schedule for the pending bracket matchup. */
+function generatePendingGame(state, stage, pending) {
   const year = state.calendar.year
-  const ids = []
+  const id = userGameId(year, stage, pending.gameKey)
+  if ((state.schedule || []).some(g => g.id === id)) return id
   if (!state.schedule) state.schedule = []
-  const homeId = userIsHome ? userId : oppId
-  const awayId = userIsHome ? oppId : userId
-  const date = psDate(year, round)
-  for (let i = 0; i < SERIES_LEN; i++) {
-    const id = `ps_${year}_${round}_${userId}_g${i}`
-    // Don't duplicate if regenerated.
-    if (state.schedule.some(g => g.id === id)) { ids.push(id); continue }
-    state.schedule.push({
-      id,
-      year,
-      seasonWeek,
-      weekOfYear: 39 + (seasonWeek - 13),   // 14→40, 15→41, 16→42
-      date,
-      homeId,
-      awayId,
-      type: 'POSTSEASON',
-      postseasonRound: round,
-      countsTowardRecord: false,   // tracked in state.postseason, not the regular W-L
-      isDoubleheader: false,
-      played: false,
-      homeRuns: null,
-      awayRuns: null,
-    })
-    ids.push(id)
-  }
-  return ids
+  const seasonWeek = STAGE_SEASONWEEK[stage]
+  state.schedule.push({
+    id,
+    year,
+    seasonWeek,
+    weekOfYear: STAGE_WEEK[stage],
+    date: `${year}-05-${String(STAGE_WEEK[stage] === 40 ? 12 : STAGE_WEEK[stage] === 41 ? 19 : 26).padStart(2, '0')}`,
+    homeId: pending.homeId,
+    awayId: pending.awayId,
+    type: 'POSTSEASON',
+    postseasonStage: stage,
+    countsTowardRecord: false,
+    isDoubleheader: false,
+    played: false,
+    homeRuns: null,
+    awayRuns: null,
+  })
+  return id
 }
 
-/** Tally a finished user series from the played schedule games. */
-function tallyUserSeries(state, gameIds) {
-  const userId = state.userSchoolId
-  let wins = 0, losses = 0, playedCount = 0
-  for (const id of gameIds) {
-    const g = state.schedule.find(x => x.id === id)
-    if (!g || !g.played || g.homeRuns == null) continue
-    playedCount++
-    const userHome = g.homeId === userId
-    const userRuns = userHome ? g.homeRuns : g.awayRuns
-    const oppRuns = userHome ? g.awayRuns : g.homeRuns
-    if (userRuns > oppRuns) wins++; else losses++
-  }
-  return { wins, losses, playedCount, won: wins > losses, complete: wins >= NEEDED || losses >= NEEDED || playedCount >= SERIES_LEN }
-}
+// ── seeding + fields ──────────────────────────────────────────────────────
 
-/** Conference standings (by conf record, then run diff) → seeded school ids. */
 function seedConference(state, confId) {
   const conf = state.conferences?.[confId]
   if (!conf) return []
@@ -123,37 +183,43 @@ function seedConference(state, confId) {
     .map(x => x.id)
 }
 
-/** Best non-user team in a conference by rating (the user's conf-final foe). */
-function topOtherInConf(state, ratings, confId, excludeId) {
-  const seeds = seedConference(state, confId).filter(id => id !== excludeId)
-  if (seeds.length === 0) return null
-  // Prefer the top SEED (record) but break near-ties by rating.
-  return seeds[0]
+/** Seed an array of ids into standard 1-vs-N bracket order (1,N,...,mid). */
+function bracketOrder(seeds) {
+  // Simple standard ordering for 4: [1,4,2,3]; for others, snake it.
+  const n = seeds.length
+  if (n <= 2) return seeds
+  const out = []
+  let lo = 0, hi = n - 1
+  while (lo <= hi) {
+    out.push(seeds[lo]); if (lo !== hi) out.push(seeds[hi])
+    lo++; hi--
+  }
+  return out
 }
 
-/**
- * SET UP the postseason (fired once at the 39→40 transition). Determines
- * whether the user qualified for their conference tournament, generates their
- * conference-final series, and crowns every OTHER conference champion in the
- * background so the national field is known.
- */
+function confChampionsAll(state, ratings) {
+  const champs = {}
+  const sim = makeNonUserSim(ratings)
+  for (const confId of Object.keys(state.conferences || {})) {
+    const seeds = seedConference(state, confId)
+    if (seeds.length === 0) continue
+    if (seeds.length === 1) { champs[confId] = seeds[0]; continue }
+    // Quick double-elim among the top few (all auto-simmed — no user here).
+    const field = bracketOrder(seeds.slice(0, qualifierCountForConf(confId) || 4))
+    const res = runResumableDoubleElim(field, '__none__', () => null, sim, `cc_${state.calendar.year}_${confId}`)
+    champs[confId] = res.champion || seeds[0]
+  }
+  return champs
+}
+
+// ── public API ──────────────────────────────────────────────────────────────
+
 export function setupInteractivePostseasonNAIA(state) {
   const userId = state.userSchoolId
   const year = state.calendar.year
   const ratings = seedFromPear(state.schools, state.conferences)
   const userConfId = state.schools?.[userId]?.conferenceId
 
-  // Background: crown each conference champion (auto-bids). Top seed beats the
-  // #2 in a quick series — coarse but fine for the national field display.
-  const confChampions = {}
-  for (const confId of Object.keys(state.conferences || {})) {
-    const seeds = seedConference(state, confId)
-    if (seeds.length === 0) continue
-    if (seeds.length === 1) { confChampions[confId] = seeds[0]; continue }
-    confChampions[confId] = simSeriesWinner(ratings, seeds[0], seeds[1], `cc_${year}_${confId}`)
-  }
-
-  // User qualification: did they finish in the top-N of their conference?
   const userSeeds = seedConference(state, userConfId)
   const fieldSize = qualifierCountForConf(userConfId) || 4
   const userSeedIdx = userSeeds.indexOf(userId)
@@ -170,38 +236,75 @@ export function setupInteractivePostseasonNAIA(state) {
     userChamp: false,
     userNatChamp: false,
     nationalChampion: null,
-    confChampions,
     userConfId,
+    confChampions: {},
     rounds: { CONF: null, REGIONAL: null, WS: null },
   }
+  state.postseason = ps
 
   if (userQualified) {
-    const oppId = topOtherInConf(state, ratings, userConfId, userId)
-    if (oppId) {
-      // Higher seed hosts — user hosts if they're the top seed.
-      const userIsHome = userSeedIdx === 0
-      const gameIds = generateUserSeries(state, 'CONF', oppId, 14, userIsHome)
-      ps.rounds.CONF = {
-        oppId, oppName: state.schools[oppId]?.name || 'Opponent',
-        gameIds, decided: false, won: false, wins: 0, losses: 0,
-        label: `${state.conferences[userConfId]?.abbreviation || 'Conf'} Tournament Final`,
-        host: userIsHome ? userId : oppId,
-      }
-    } else {
-      // No opponent (tiny conf) — auto-champ.
-      ps.userChamp = true
-      confChampions[userConfId] = userId
+    const field = bracketOrder(userSeeds.slice(0, fieldSize))
+    ps.rounds.CONF = {
+      format: 'DOUBLE_ELIM',
+      seeds: field,
+      seedKey: `conf_${year}_${userConfId}`,
+      label: `${state.conferences[userConfId]?.abbreviation || 'Conf'} Tournament`,
+      resolved: false, userWon: false, pendingGameId: null, oppName: '', gameIds: [],
     }
+    tickInteractivePostseason(state)   // generate the user's first game
+  } else {
+    // Didn't qualify — crown the conf champ in the background for display.
+    ps.confChampions = confChampionsAll(state, ratings)
   }
-
-  state.postseason = ps
   return ps
 }
 
 /**
- * ADVANCE the interactive postseason one round. Called at each 40→41, 41→42,
- * 42→43 transition (BEFORE the week number is used for anything else). Resolves
- * the round the user just played and sets up the next one (or finalizes).
+ * Generate the next user game for the CURRENT round, or resolve the round if the
+ * user's bracket is complete. Called after EVERY user postseason game is played
+ * (from simWeek + Play) so the bracket advances one game at a time.
+ */
+export function tickInteractivePostseason(state) {
+  const ps = state.postseason
+  if (!ps || !ps.interactive || ps.stage === 'DONE') return
+  const stage = ps.stage
+  const round = ps.rounds[stage]
+  if (!round || round.resolved) return
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const ratings = seedFromPear(state.schools, state.conferences)
+  const sim = makeNonUserSim(ratings)
+  const getUserResult = getUserResultFromSchedule(state, year, stage)
+
+  const runner = round.format === 'SINGLE_ELIM' ? runResumableSingleElim : runResumableDoubleElim
+  const res = runner(round.seeds, userId, getUserResult, sim, round.seedKey)
+
+  if (res.pending) {
+    const id = generatePendingGame(state, stage, res.pending)
+    round.pendingGameId = id
+    if (!round.gameIds.includes(id)) round.gameIds.push(id)
+    const oppId = res.pending.homeId === userId ? res.pending.awayId : res.pending.homeId
+    round.oppName = state.schools[oppId]?.name || 'Opponent'
+  } else {
+    // Bracket complete for this round.
+    round.resolved = true
+    round.pendingGameId = null
+    round.champion = res.champion
+    round.userWon = res.champion === userId
+    if (stage === 'CONF') {
+      ps.userChamp = round.userWon
+      ps.confChampions[ps.userConfId] = res.champion
+    }
+    if (!round.userWon) {
+      ps.userAlive = false
+      ps.userEliminatedAt = stage
+    }
+  }
+}
+
+/**
+ * Week transition (40→41, 41→42, 42→43). Sets up the NEXT round if the user
+ * advanced, or finalizes the postseason after the World Series week.
  */
 export function advanceInteractivePostseasonNAIA(state, leavingWeek) {
   const ps = state.postseason
@@ -210,94 +313,86 @@ export function advanceInteractivePostseasonNAIA(state, leavingWeek) {
   const year = state.calendar.year
   const ratings = seedFromPear(state.schools, state.conferences)
 
-  // leavingWeek = the postseason week we're advancing OUT of (40, 41, or 42).
   if (leavingWeek === 40) {
-    resolveAndAdvance(state, ratings, 'CONF', 'REGIONAL', 15, year)
+    if (ps.userAlive && ps.rounds.CONF?.userWon) setupRound(state, ratings, 'REGIONAL')
+    ps.stage = 'REGIONAL'
   } else if (leavingWeek === 41) {
-    resolveAndAdvance(state, ratings, 'REGIONAL', 'WS', 16, year)
+    if (ps.userAlive && ps.rounds.REGIONAL?.userWon) setupRound(state, ratings, 'WS')
+    ps.stage = 'WS'
   } else if (leavingWeek === 42) {
-    resolveFinal(state, ratings, year)
+    finalize(state, ratings)
   }
 }
 
-function resolveAndAdvance(state, ratings, round, nextRound, nextSeasonWeek, year) {
+function nationalField(state, ratings) {
+  const ps = state.postseason
+  // Ensure conf champions exist (the user's conf champ is set when CONF resolves).
+  if (!ps.confChampions || Object.keys(ps.confChampions).length === 0) {
+    ps.confChampions = confChampionsAll(state, ratings)
+  }
+  const hasTeam = (id) => !!state.teams?.[id]
+  const set = new Set(Object.values(ps.confChampions).filter(id => id && hasTeam(id)))
+  const all = Object.keys(state.schools || {})
+    .filter(id => !set.has(id) && hasTeam(id))
+    .sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
+  for (const id of all.slice(0, 24)) set.add(id)
+  return [...set]
+}
+
+function setupRound(state, ratings, stage) {
   const ps = state.postseason
   const userId = state.userSchoolId
-  const rd = ps.rounds[round]
-
-  // Resolve the round the user just played (if they were alive in it).
-  if (ps.userAlive && rd && rd.gameIds?.length) {
-    const t = tallyUserSeries(state, rd.gameIds)
-    rd.wins = t.wins; rd.losses = t.losses; rd.decided = true; rd.won = t.won
-    if (round === 'CONF' && t.won) ps.userChamp = true
-    if (!t.won) {
-      ps.userAlive = false
-      ps.userEliminatedAt = round
-    } else {
-      ps.confChampions[ps.userConfId] = userId   // user is their conf's auto-bid
-    }
-  } else if (ps.userAlive && !rd) {
-    // user was alive but had no series (auto-advance / bye)
-  }
-
-  // Build the national field from conf champions (+ a few rating-based at-large
-  // bids) so we can pick the user's next opponent + crown a champ if eliminated.
+  const year = state.calendar.year
   const field = nationalField(state, ratings)
+    .sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
 
-  if (ps.userAlive) {
-    // Generate the user's next-round series vs the strongest available foe.
-    const oppId = pickUserOpponent(state, ratings, field, userId, round)
-    if (oppId) {
-      const userIsHome = (ratings[userId]?.overall_rating ?? 0) >= (ratings[oppId]?.overall_rating ?? 0)
-      const gameIds = generateUserSeries(state, nextRound, oppId, nextSeasonWeek, userIsHome)
-      ps.rounds[nextRound] = {
-        oppId, oppName: state.schools[oppId]?.name || 'Opponent',
-        gameIds, decided: false, won: false, wins: 0, losses: 0,
-        label: nextRound === 'REGIONAL' ? 'NAIA Opening Round' : 'NAIA World Series',
-        host: userIsHome ? userId : oppId,
-      }
-      ps.userInField = true
+  // Pick a small bracket the user is part of.
+  const others = field.filter(id => id !== userId)
+  if (stage === 'REGIONAL') {
+    // 4-team regional double-elim: user + 3 nearby-strength teams.
+    const mid = Math.floor(others.length / 2)
+    const picks = [others[mid], others[mid + 1], others[mid + 2]].filter(Boolean)
+    const seeds = bracketOrder([userId, ...picks])
+    ps.rounds.REGIONAL = {
+      format: 'DOUBLE_ELIM', seeds, seedKey: `reg_${year}_${userId}`,
+      label: 'NAIA Opening Round', resolved: false, userWon: false,
+      pendingGameId: null, oppName: '', gameIds: [],
+    }
+  } else if (stage === 'WS') {
+    // World Series: single-elim among the user + the strongest remaining teams.
+    const picks = others.slice(0, 3)
+    const seeds = bracketOrder([userId, ...picks])
+    ps.rounds.WS = {
+      format: 'SINGLE_ELIM', seeds, seedKey: `ws_${year}_${userId}`,
+      label: 'NAIA World Series', resolved: false, userWon: false,
+      pendingGameId: null, oppName: '', gameIds: [],
     }
   }
-
-  ps.stage = nextRound
+  tickInteractivePostseason(state)
 }
 
-function resolveFinal(state, ratings, year) {
+function finalize(state, ratings) {
   const ps = state.postseason
   const userId = state.userSchoolId
-  const rd = ps.rounds.WS
-
-  if (ps.userAlive && rd && rd.gameIds?.length) {
-    const t = tallyUserSeries(state, rd.gameIds)
-    rd.wins = t.wins; rd.losses = t.losses; rd.decided = true; rd.won = t.won
-    if (t.won) {
-      ps.userNatChamp = true
-      ps.nationalChampion = userId
-    } else {
-      ps.userAlive = false
-      ps.userEliminatedAt = 'WS'
-    }
+  const year = state.calendar.year
+  if (ps.userAlive && ps.rounds.WS?.userWon) {
+    ps.userNatChamp = true
+    ps.nationalChampion = userId
   }
-
-  // Crown a national champion for display if the user didn't win it all.
   if (!ps.nationalChampion) {
-    const field = nationalField(state, ratings)
-    const others = field.filter(id => id !== userId)
-    others.sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
-    // Sim a tiny bracket among the top 4 to crown someone plausible.
-    const top = others.slice(0, 4)
+    // Crown a plausible champion among the strongest field teams (background).
+    const field = nationalField(state, ratings).filter(id => id !== userId)
+      .sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
+    const sim = makeNonUserSim(ratings)
+    const top = bracketOrder(field.slice(0, 4))
     if (top.length >= 2) {
-      const sf1 = simSeriesWinner(ratings, top[0], top[top.length - 1], `wsf1_${year}`)
-      const sf2 = top.length >= 3 ? simSeriesWinner(ratings, top[1], top[2], `wsf2_${year}`) : top[0]
-      ps.nationalChampion = simSeriesWinner(ratings, sf1, sf2, `wsfinal_${year}`)
+      const res = runResumableSingleElim(top, '__none__', () => null, sim, `wsfinal_${year}`)
+      ps.nationalChampion = res.champion || top[0]
     } else {
       ps.nationalChampion = top[0] || null
     }
   }
-
   ps.stage = 'DONE'
-  // Newsfeed wrap-up.
   const champName = state.schools[ps.nationalChampion]?.name || 'Unknown'
   state.newsfeed = state.newsfeed || []
   state.newsfeed.unshift({
@@ -308,40 +403,4 @@ function resolveFinal(state, ratings, year) {
       : `${champName} are crowned NAIA national champions.`,
     big: ps.userNatChamp,
   })
-}
-
-/** Conference champions + a few at-large bids, by rating. */
-function nationalField(state, ratings) {
-  const ps = state.postseason
-  // Only teams with a real roster row can be played/simmed as the user's
-  // opponent, so restrict the field to those.
-  const hasTeam = (id) => !!state.teams?.[id]
-  const champs = Object.values(ps.confChampions || {}).filter(id => id && hasTeam(id))
-  const set = new Set(champs)
-  // At-large: top-rated teams not already in.
-  const all = Object.keys(state.schools || {})
-    .filter(id => !set.has(id) && hasTeam(id))
-    .sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
-  for (const id of all.slice(0, 18)) set.add(id)
-  return [...set]
-}
-
-/** Pick the user's next opponent — a strong field team they haven't faced. */
-function pickUserOpponent(state, ratings, field, userId, justFinishedRound) {
-  const faced = new Set()
-  const ps = state.postseason
-  for (const r of Object.values(ps.rounds || {})) {
-    if (r?.oppId) faced.add(r.oppId)
-  }
-  const candidates = field
-    .filter(id => id !== userId && !faced.has(id))
-    .sort((a, b) => (ratings[b]?.overall_rating ?? 0) - (ratings[a]?.overall_rating ?? 0))
-  if (candidates.length === 0) return null
-  // Opening round = mid-strength foe; World Series = the strongest remaining.
-  if (justFinishedRound === 'CONF') {
-    // regional opponent: pick from the middle of the field for a fair draw
-    const mid = Math.floor(candidates.length / 2)
-    return candidates[Math.min(mid, candidates.length - 1)]
-  }
-  return candidates[0]   // WS: the best remaining team
 }

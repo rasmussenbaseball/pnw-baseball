@@ -68,6 +68,7 @@ export default function Dashboard() {
   const [eventPrompt, setEventPrompt] = useState(null)   // { kind: 'SUMMER_BALL' } major-event stop prompt
   const [apWarnModal, setApWarnModal] = useState(null)   // { ap } unspent-AP warning before advancing
   const [awardsModal, setAwardsModal] = useState(null)   // end-of-season All-Conference + Gold Glove popup
+  const [commitModal, setCommitModal] = useState(null)   // recruit-commit profile popup(s) after an advance
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -279,8 +280,11 @@ export default function Dashboard() {
       const prevWeek = save.calendar.offseasonWeek
       const beforeSnap = snapshotState(save)
       advanceOffseasonWeek(save)
+      const _commits = (save._newCommitRecruits || []).slice()
+      save._newCommitRecruits = []
       saveDynasty(save)
       setSave({ ...save })
+      if (_commits.length) setCommitModal(_commits)
       const afterSnap = snapshotState(save)
       const diff = diffSnapshots(beforeSnap, afterSnap)
       setLastWeekRecap({
@@ -339,8 +343,11 @@ export default function Dashboard() {
           const ratings = seedFromPear(save.schools, save.conferences)
           const summary = simWeek(save, save.schedule, ratings)
           advanceWeek(save, save.schedule)
+          const _commits = (save._newCommitRecruits || []).slice()
+          save._newCommitRecruits = []
           saveDynasty(save)
           setSave({ ...save })
+          if (_commits.length) setCommitModal(_commits)
           const afterSnap = snapshotState(save)
           const diff = diffSnapshots(beforeSnap, afterSnap)
           setLastWeekRecap({ kind: 'season', results: summary.userResults, diff, autoActions: autoActionsThisAdvance })
@@ -476,6 +483,9 @@ export default function Dashboard() {
       )}
       {awardsModal && (
         <SeasonAwardsModal data={awardsModal} userTeamId={save.userSchoolId} slot={slot} onClose={() => setAwardsModal(null)} />
+      )}
+      {commitModal && commitModal.length > 0 && (
+        <CommitModal save={save} recruitIds={commitModal} slot={slot} onClose={() => setCommitModal(null)} />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
           stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
@@ -1185,26 +1195,30 @@ function InteractiveRoundRow({ save, round, title, active }) {
         <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{title}</div>
         {active && <span className="text-[9px] uppercase tracking-wider text-pnw-green font-bold">This week</span>}
       </div>
-      <div className="text-[12px] text-pnw-slate font-semibold">vs {round.oppName}</div>
-      <div className="flex items-center gap-1 mt-1">
+      {!round.resolved && round.oppName && (
+        <div className="text-[12px] text-pnw-slate font-semibold">Now playing: vs {round.oppName}</div>
+      )}
+      <div className="flex flex-wrap items-center gap-1 mt-1">
         {games.map((g, i) => {
           const userHome = g.homeId === userId
           const played = g.played && g.homeRuns != null
+          const oppId = userHome ? g.awayId : g.homeId
+          const opp = (save.schools[oppId]?.name || '').split(' ')[0]
           const userRuns = userHome ? g.homeRuns : g.awayRuns
           const oppRuns = userHome ? g.awayRuns : g.homeRuns
           const won = played && userRuns > oppRuns
           return (
-            <span key={i} className={'text-[10px] font-mono px-1.5 py-0.5 rounded ' +
+            <span key={i} title={save.schools[oppId]?.name || ''} className={'text-[10px] font-mono px-1.5 py-0.5 rounded ' +
               (!played ? 'bg-gray-100 text-gray-400' : won ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}>
-              {played ? `${userRuns}-${oppRuns}` : `G${i + 1}`}
+              {played ? `${won ? 'W' : 'L'} ${userRuns}-${oppRuns} ${opp}` : `vs ${opp}`}
             </span>
           )
         })}
       </div>
-      {round.decided && (
+      {round.resolved && (
         <div className="text-[11px] mt-1">
-          <strong className={round.won ? 'text-pnw-green' : 'text-red-600'}>
-            {round.won ? 'Series won — advanced' : 'Series lost — eliminated'}
+          <strong className={round.userWon ? 'text-pnw-green' : 'text-red-600'}>
+            {round.userWon ? 'Won the bracket — advanced' : 'Eliminated (2nd loss)'}
           </strong>
         </div>
       )}
@@ -2164,6 +2178,77 @@ function UnspentApModal({ ap, onSpend, onAuto, onAdvance, onCancel }) {
           <button onClick={onAdvance} className="w-full px-4 py-2 text-gray-500 rounded text-sm hover:bg-gray-50">
             Advance anyway (waste {ap} AP)
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Recruit-commit popup — a full signing profile for each new commit this
+// advance (steps through them one at a time). Reads the recruit straight off
+// save.recruits so it shows the real profile, not just a news line.
+function CommitModal({ save, recruitIds, slot, onClose }) {
+  const [idx, setIdx] = useState(0)
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  const ids = (recruitIds || []).filter(id => save.recruits?.[id])
+  if (ids.length === 0) return null
+  const r = save.recruits[ids[Math.min(idx, ids.length - 1)]]
+  const block = r.isPitcher ? r.truePitcher : r.trueHitter
+  const potBlock = r.isPitcher ? r.truePotentialPitcher : r.truePotentialHitter
+  const avg = (b) => {
+    if (!b) return null
+    const vals = Object.values(b).filter(v => typeof v === 'number' && v < 100)
+    return vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null
+  }
+  const estOvr = avg(block)
+  const estPot = avg(potBlock)
+  const offer = r.liveOffer?.amount
+  const last = idx >= ids.length - 1
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-1">
+          <div className="text-[10px] uppercase tracking-wider text-pnw-green font-bold">
+            🎉 New commit{ids.length > 1 ? ` (${idx + 1} of ${ids.length})` : ''}
+          </div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
+        <h3 className="text-xl font-bold text-pnw-slate">{r.firstName} {r.lastName}</h3>
+        <div className="text-sm text-gray-600 mb-3">
+          {r.isPitcher ? 'P' : r.primaryPosition} · {r.pool === 'HS_SR' ? 'HS Senior' : r.pool === 'JUCO_TRANSFER' ? 'JUCO Transfer' : 'Transfer'}
+          {r.hometown && <> · {r.hometown.city}, {r.hometown.state}</>}
+          {r.archetype && <> · <em>{r.archetype}</em></>}
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="bg-pnw-cream rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">Est OVR</div>
+            <div className="text-lg font-bold text-pnw-slate">{estOvr ?? '—'}</div>
+          </div>
+          <div className="bg-pnw-cream rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">Est POT</div>
+            <div className="text-lg font-bold text-pnw-green">{estPot ?? '—'}</div>
+          </div>
+          <div className="bg-pnw-cream rounded p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">Offer</div>
+            <div className="text-lg font-bold text-pnw-slate">{offer ? `$${(offer / 1000).toFixed(1)}K` : '$0'}</div>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Signed with your program — joins the roster when the class finalizes. Ratings reveal fully then.
+        </p>
+        <div className="flex gap-2">
+          {!last ? (
+            <button onClick={() => setIdx(i => i + 1)} className="flex-1 px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+              Next commit →
+            </button>
+          ) : (
+            <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+              Great!
+            </button>
+          )}
+          <Link to={`/gm/recruiting?slot=${slot}`} className="px-4 py-2.5 border border-gray-300 rounded text-sm font-semibold text-pnw-slate hover:bg-gray-50">
+            Recruiting board
+          </Link>
         </div>
       </div>
     </div>

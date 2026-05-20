@@ -136,8 +136,8 @@ export function fastSimGame(home, away, seedKey, opts = {}) {
   // softened (1.8 → 1.3) and the clamp tightened (was 0-25 → 1-15) so even a
   // dominant team doesn't routinely hang 18-20 — that's what produced absurd
   // undefeated/.560 teams. Most games now land in a realistic 3-10 run band.
-  const homeExp = clamp(5 + (home.offense_rating - away.pitching_rating) * 1.3 + 0.3, 1, 15)
-  const awayExp = clamp(5 + (away.offense_rating - home.pitching_rating) * 1.3, 1, 15)
+  const homeExp = clamp(5.5 + (home.offense_rating - away.pitching_rating) * 1.3 + 0.3, 1.5, 15)
+  const awayExp = clamp(5.5 + (away.offense_rating - home.pitching_rating) * 1.3, 1.5, 15)
   // Sample with Poisson-ish noise (σ trimmed 3 → 2.4 to reduce extreme games)
   let homeRuns = Math.max(0, Math.round(rng.gaussian(homeExp, 2.4)))
   let awayRuns = Math.max(0, Math.round(rng.gaussian(awayExp, 2.4)))
@@ -192,7 +192,11 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     const estAB = batters.length * pasPerBatter + Math.min(3, batters.length) - 3   // ≈ AB after a few walks
     const maxHits = Math.round(estAB * 0.42)
     const minHits = Math.round(estAB * 0.15)
-    let totalHits = Math.round(runs * 1.55 + rng.gaussian(0, 1))
+    // ratio 1.8 centers the light-sim league average around ~.270-.285, in
+    // line with the full sim (the user's team), so the comparison page isn't a
+    // 130-point mismatch. The .42 cap above still keeps blowout games from
+    // inflating season averages.
+    let totalHits = Math.round(runs * 1.8 + rng.gaussian(0, 1))
     totalHits = Math.max(Math.min(runs, minHits), Math.min(totalHits, maxHits))
     // Weights for hit allocation = contact rating, FLATTENED so the best bat
     // doesn't hog a game's hits and post a .500 line. `30 + c*0.7` compresses

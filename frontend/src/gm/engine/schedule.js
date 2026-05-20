@@ -792,32 +792,37 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   // Pool = NAIA only, not in user's conference. Bucket by in-region vs
   // out-of-region, then within each bucket order by proximity to user state
   // (with a small random jitter so it's not always the same picks).
+  // Within-level only: `schools` already holds the user's level (NAIA plays
+  // NAIA). Exclude the user's own conference (those are the conf schedule).
+  // Each candidate gets a JITTERED proximity key so the auto-scheduler doesn't
+  // pick the same handful of nearest teams every year — closer teams are still
+  // favored, but a ±8-unit random jitter mixes the field meaningfully.
   const naiaCandidates = Object.values(schools)
     .filter(s => s.id !== userSchoolId)
     .filter(s => s.conferenceId !== conferenceId)
-    .map(s => ({
-      id: s.id, name: s.name, state: s.state, region: s.region,
-      proximity: stateProximity(userState, s.state),
-    }))
+    .map(s => {
+      const proximity = stateProximity(userState, s.state)
+      return {
+        id: s.id, name: s.name, state: s.state, region: s.region,
+        proximity,
+        // soft sort key: proximity + a big random jitter for variety
+        sortKey: proximity + rng.next() * 8,
+      }
+    })
 
-  // In-region buckets — closer first. CA + PNW states get prioritized for
-  // the user (e.g. Bushnell in OR CA + WA + ID candidates float up first).
+  // In-region buckets — closer-ish first (jittered). CA + PNW states get a
+  // gentle priority nudge for the user (e.g. Bushnell in OR favors CA/WA/ID).
   const PRIORITY_STATES = new Set(['CA', 'OR', 'WA', 'ID', 'NV', 'MT'])
   const inRegion = naiaCandidates
     .filter(c => c.region === userRegion)
     .sort((a, b) => {
-      const aPri = PRIORITY_STATES.has(a.state) ? -1 : 0
-      const bPri = PRIORITY_STATES.has(b.state) ? -1 : 0
-      if (aPri !== bPri) return aPri - bPri
-      if (a.proximity !== b.proximity) return a.proximity - b.proximity
-      return rng.next() - 0.5
+      const aKey = a.sortKey - (PRIORITY_STATES.has(a.state) ? 4 : 0)
+      const bKey = b.sortKey - (PRIORITY_STATES.has(b.state) ? 4 : 0)
+      return aKey - bKey
     })
   const outRegion = naiaCandidates
     .filter(c => c.region !== userRegion)
-    .sort((a, b) => {
-      if (a.proximity !== b.proximity) return a.proximity - b.proximity
-      return rng.next() - 0.5
-    })
+    .sort((a, b) => a.sortKey - b.sortKey)
 
   // Find which slots are open after conference is built. Auto-fills ONLY
   // weekend slots; doesn't touch any games already on the schedule.

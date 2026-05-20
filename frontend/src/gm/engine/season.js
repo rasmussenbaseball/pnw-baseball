@@ -12,7 +12,7 @@ import { resolveLineupForGame, lineupPlayerIds, getSavedLineup, autoLineup } fro
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
-import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA } from './postseasonInteractive'
+import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason } from './postseasonInteractive'
 import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
@@ -565,6 +565,12 @@ export function simWeek(state, schedule, ratings) {
         applyWeeklyDevelopment(player, seasonStats)
       }
     }
+  }
+
+  // Interactive postseason: after the user's pending bracket game is simmed,
+  // advance the bracket (generate the next single game, or resolve the round).
+  if (state.postseason?.interactive && state.postseason.stage !== 'DONE') {
+    try { tickInteractivePostseason(state) } catch (err) { console.error('postseason tick failed:', err) }
   }
 
   return { gamesPlayed, userResults }
@@ -1423,6 +1429,7 @@ function tickRecruitingDecisions(state) {
   const rng = makeRng('recruit_decisions', state.rngSeed, state.calendar?.year, state.calendar?.weekOfYear)
   let newSigns = 0
   let newSteals = 0
+  const committedThisTick = []   // recruit ids that committed — for the popup
   for (const r of Object.values(state.recruits)) {
     // 1. Tick weeksOutstanding on user's live offers
     if (r.liveOffer?.schoolId === userId) {
@@ -1433,6 +1440,7 @@ function tickRecruitingDecisions(state) {
       const signed = tryAdvanceRecruit(r, userId, userSchool, rng, state)
       if (signed) {
         newSigns++
+        committedThisTick.push(r.id)
         state.newsfeed.unshift({
           id: `sign_${r.id}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
           year: state.calendar?.year, week: state.calendar?.week, type: 'RECRUIT_VERBAL',
@@ -1457,6 +1465,12 @@ function tickRecruitingDecisions(state) {
   }
   if (newSigns > 0) state._newCommitsThisWeek = newSigns
   if (newSteals > 0) state._stealsThisWeek = newSteals
+  // Accumulate committed recruit ids across the whole advance (a single advance
+  // can fold several weeks). The Dashboard reads + clears this to pop a full
+  // signing-profile modal for each new commit.
+  if (committedThisTick.length > 0) {
+    state._newCommitRecruits = [...(state._newCommitRecruits || []), ...committedThisTick]
+  }
 }
 
 // ─── Back-compat wrappers ──────────────────────────────────────────────────

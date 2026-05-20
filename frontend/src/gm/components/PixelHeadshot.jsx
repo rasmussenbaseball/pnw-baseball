@@ -64,7 +64,12 @@ function pHash(str) {
 }
 
 function pickFromSeed(arr, seed) {
-  return arr[seed % arr.length]
+  // seed can be NEGATIVE (it's often a signed bit-shift of a hash). A negative
+  // index returns undefined → callers then do undefined.replace(...) and the
+  // whole page white-screens. Normalize into [0, len).
+  if (!arr || arr.length === 0) return undefined
+  const i = ((Math.trunc(seed) % arr.length) + arr.length) % arr.length
+  return arr[i]
 }
 
 // Relative luminance of a #hex color (0 = black, 1 = white).
@@ -273,7 +278,7 @@ function buildPixels({ skin, skinShd, hair, hairStyle, facialHair, eyeStyle, cap
 // ─── Color helpers ─────────────────────────────────────────────────────────
 
 function hexToRgb(hex) {
-  const m = hex.replace('#', '')
+  const m = String(hex || '#000000').replace('#', '')
   return {
     r: parseInt(m.slice(0, 2), 16),
     g: parseInt(m.slice(2, 4), 16),
