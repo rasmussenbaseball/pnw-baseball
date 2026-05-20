@@ -1863,18 +1863,24 @@ function avatarColor(p) {
 }
 
 function ScholarshipBar({ snapshot }) {
-  const pct = Math.min(1, snapshot.percentUsed)
-  const committedPct = snapshot.pool > 0 ? snapshot.committedPlayers / snapshot.pool : 0
-  const offerPct = snapshot.pool > 0 ? snapshot.pendingOffers / snapshot.pool : 0
+  // NEXT-YEAR basis: committed = returning (non-graduating) + signed recruits +
+  // pending offers. The old header added the FULL current roster (incl.
+  // graduating seniors who free their $) to next year's recruits, which
+  // double-counted across years and read as "over budget" ($246K of $230K)
+  // even when next year was comfortably under. Available = pool − committed.
+  const pool = snapshot.pool || 0
+  const nextYearCommitted = Math.max(0, pool - snapshot.nextYearAvailable)
+  const pctOf = (v) => pool > 0 ? (v / pool) * 100 : 0
   return (
     <div>
       <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-600">${(snapshot.committed / 1000).toFixed(0)}K of ${(snapshot.pool / 1000).toFixed(0)}K committed</span>
-        <span className="text-pnw-green font-semibold">${(snapshot.available / 1000).toFixed(0)}K avail</span>
+        <span className="text-gray-600">${(nextYearCommitted / 1000).toFixed(0)}K of ${(pool / 1000).toFixed(0)}K committed</span>
+        <span className="text-pnw-green font-semibold">${(snapshot.nextYearAvailable / 1000).toFixed(0)}K avail</span>
       </div>
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden flex">
-        <div className="bg-pnw-slate h-full" style={{ width: `${committedPct * 100}%` }} />
-        <div className="bg-amber-500 h-full" style={{ width: `${offerPct * 100}%` }} />
+        <div className="bg-pnw-slate h-full" style={{ width: `${pctOf(snapshot.returningCommitted)}%` }} title="Returning roster" />
+        <div className="bg-blue-500 h-full" style={{ width: `${pctOf(snapshot.signedRecruits)}%` }} title="Signed recruits" />
+        <div className="bg-amber-500 h-full" style={{ width: `${pctOf(snapshot.pendingOffers)}%` }} title="Pending offers" />
       </div>
     </div>
   )
