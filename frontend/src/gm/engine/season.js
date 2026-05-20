@@ -247,6 +247,7 @@ export function simWeek(state, schedule, ratings) {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
         getEnergy: energyAccessor,
+        neutralSite: !!g.neutralSite,   // postseason neutral-site games get no home edge
         level: state.level || state.schools?.[userSchoolId]?.level || 'NAIA',
       }, g.id)
     } else if (isUserGame) {

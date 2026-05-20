@@ -120,6 +120,43 @@ function averageFielding(defenders, playedPositions) {
 // light sim (which centers ~.270 / ~5 ERA).
 const HIT_SLOPE = 0.48
 
+// Home-field edge for the full per-PA sim. Applied as a small swing on hit
+// outcomes for the batting team (positive when home is batting, negative when
+// away is batting), so the home club both scores a bit more AND allows a bit
+// less — netting ~0.6-0.7 runs/game and an ~58% home win rate (per Nate).
+const HOME_PA_EDGE = 0.05
+
+/**
+ * Pick the next reliever from a rotation by LEVERAGE. The bullpen isn't used
+ * top-down: a manager saves the best arms for the closest games and burns
+ * mop-up guys in blowouts. Returns the rotation index to bring in, or null if
+ * no fresh arm is available.
+ *
+ *   tier 'HIGH' (close + late)  → best available arm (the closer/setup)
+ *   tier 'MED'  (one-score-ish) → a middle arm
+ *   tier 'LOW'  (blowout)       → the WORST available arm (mop-up; saves the
+ *                                 good arms for games that matter)
+ *
+ * Gassed arms (energy < 25) are filtered out unless everyone's gassed.
+ */
+function pickReliever(rotation, usedSet, tier, getEnergy) {
+  const cands = []
+  for (let i = 0; i < rotation.length; i++) {
+    if (usedSet.has(i)) continue
+    const p = rotation[i]
+    if (!p || !p.pitcher) continue
+    const score = ((p.pitcher.stuff ?? 50) + (p.pitcher.control ?? 50) + (p.pitcher.command ?? 50)) / 3
+    cands.push({ i, score, energy: getEnergy ? getEnergy(p.id) : 100 })
+  }
+  if (cands.length === 0) return null
+  const fresh = cands.filter(c => c.energy >= 25)
+  const pool = fresh.length > 0 ? fresh : cands
+  pool.sort((a, b) => b.score - a.score)   // best arm first
+  if (tier === 'HIGH') return pool[0].i
+  if (tier === 'LOW') return pool[pool.length - 1].i
+  return pool[Math.floor(pool.length / 2)].i
+}
+
 // ─── Fast sim (team-strength based) ──────────────────────────────────────────
 
 /**
@@ -138,7 +175,12 @@ export function fastSimGame(home, away, seedKey, opts = {}) {
   // softened (1.8 → 1.3) and the clamp tightened (was 0-25 → 1-15) so even a
   // dominant team doesn't routinely hang 18-20 — that's what produced absurd
   // undefeated/.560 teams. Most games now land in a realistic 3-10 run band.
-  const homeExp = clamp(5.5 + (home.offense_rating - away.pitching_rating) * 1.3 + 0.3, 1.5, 15)
+  // Home-field edge — calibrated so league home teams win ~58% (per Nate).
+  // With each team's runs ~N(exp, 2.4), the run-difference SD is ~3.4, so a
+  // ~0.68-run home bump puts P(home win) near 0.58. Neutral-site games (e.g.
+  // postseason at a neutral park) get no edge.
+  const homeBonus = opts.neutral ? 0 : 0.68
+  const homeExp = clamp(5.5 + (home.offense_rating - away.pitching_rating) * 1.3 + homeBonus, 1.5, 15)
   const awayExp = clamp(5.5 + (away.offense_rating - home.pitching_rating) * 1.3, 1.5, 15)
   // Sample with Poisson-ish noise (σ trimmed 3 → 2.4 to reduce extreme games)
   let homeRuns = Math.max(0, Math.round(rng.gaussian(homeExp, 2.4)))
@@ -432,6 +474,16 @@ export function simPA(batter, pitcher, ctx, rng) {
     probs.SINGLE *= (1 + bump)
     probs.HR *= (1 + bump * 0.5)
   }
+  // Home-field edge — lift hits (and trim Ks) for the home batting team, the
+  // reverse for the away team. Drives the ~58% home win rate.
+  if (ctx.siteEdge) {
+    const e = ctx.siteEdge
+    probs.SINGLE *= (1 + e)
+    probs.DOUBLE *= (1 + e)
+    probs.TRIPLE *= (1 + e)
+    probs.HR *= (1 + e * 0.8)
+    probs.K *= (1 - e * 0.4)
+  }
 
   // Normalize and sample
   const total = Object.values(probs).reduce((a, b) => a + b, 0)
@@ -506,6 +558,13 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     awayPitcherIdx: ctx.awayStarterIdx ?? 0,
     homePAs: 0,
     awayPAs: 0,
+    // Leverage-aware bullpen management: track PAs faced by the CURRENT pitcher
+    // (reset on each change) + which rotation slots have already been used, so
+    // we can pull on a per-outing leash and bring in the right arm for the spot.
+    homeCurPAs: 0,
+    awayCurPAs: 0,
+    homeUsed: new Set([ctx.homeStarterIdx ?? 0]),
+    awayUsed: new Set([ctx.awayStarterIdx ?? 0]),
     log: [],
   }
 
@@ -535,6 +594,9 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     const preRuns = state.top ? state.awayRuns : state.homeRuns
     const batterEnergy = ctx.getEnergy ? ctx.getEnergy(batter.id) : 100
     const pitcherEnergy = ctx.getEnergy ? ctx.getEnergy(pitcher.id) : 100
+    // Home-field edge: home batting gets a small lift, away batting a small
+    // dip. Zero at a neutral site.
+    const siteEdge = ctx.neutralSite ? 0 : (state.top ? -HOME_PA_EDGE : HOME_PA_EDGE)
     let result = simPA(batter, pitcher, {
       leverage,
       coachMotivator: motivator,
@@ -542,6 +604,7 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
       defenderPositions: defending.batterPositions,
       batterEnergy,
       pitcherEnergy,
+      siteEdge,
       level: ctx.level,           // per-level BASE_RATES
     }, rng)
     // Apply sub-outcome resolution (SAC_FLY, SAC_BUNT, GIDP) for OUTs
@@ -576,14 +639,40 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     // Advance batter
     if (state.top) state.awayPAIndex++; else state.homePAIndex++
 
-    // Pitcher fatigue / hook — starter goes ~25 PAs (~6 IP), then relievers
-    // turn over every ~8 PAs (~2 IP) so a game uses ~3-4 arms instead of
-    // riding 2 deep into the night. Combined with the deep, energy-sorted
-    // rotation this spreads innings across the whole staff over a weekend.
-    const pas = state.top ? state.awayPAs : state.homePAs   // PAs faced (rough)
-    if (pas > 25 + pitcherIdx * 8) {
-      if (state.top) state.homePitcherIdx = Math.min(state.homePitcherIdx + 1, defending.pitcherRotation.length - 1)
-      else state.awayPitcherIdx = Math.min(state.awayPitcherIdx + 1, defending.pitcherRotation.length - 1)
+    // ── Bullpen management — leverage + confidence + fatigue ───────────────
+    // The defending pitcher just faced a batter; tick their per-outing PA count.
+    if (state.top) state.homeCurPAs++; else state.awayCurPAs++
+    const curPAs = state.top ? state.homeCurPAs : state.awayCurPAs
+    const usedSet = state.top ? state.homeUsed : state.awayUsed
+    const starterIdx = state.top ? (ctx.homeStarterIdx ?? 0) : (ctx.awayStarterIdx ?? 0)
+    const isStarter = pitcherIdx === starterIdx
+    const curEr = pStat(pitcher.id).er
+    // Game leverage tier from score margin + inning.
+    const margin = Math.abs(state.homeRuns - state.awayRuns)
+    let tier
+    if (margin >= 6) tier = 'LOW'                       // blowout → mop-up
+    else if (margin <= 2) tier = state.inning >= 6 ? 'HIGH' : 'MED'  // tight/late → best arms
+    else tier = 'MED'
+    // Leash (PAs for THIS outing). Starters ride longer when cruising and get a
+    // quick hook when struggling — especially in a tight late game. Relievers
+    // run a short leash in close games (matchup arms) and a long one in
+    // blowouts (eat innings, save the good arms). A reliever who coughs up runs
+    // in a non-blowout is pulled immediately.
+    let leash
+    if (isStarter) {
+      leash = curEr >= 4 ? 18 : curEr <= 1 ? 30 : 25
+      if (tier === 'HIGH' && curEr >= 3) leash -= 4
+    } else {
+      leash = tier === 'LOW' ? 12 : tier === 'HIGH' ? 6 : 8
+      if (curEr >= 2 && tier !== 'LOW') leash = Math.min(leash, curPAs)
+    }
+    if (curPAs >= leash) {
+      const nextIdx = pickReliever(defending.pitcherRotation, usedSet, tier, ctx.getEnergy)
+      if (nextIdx != null) {
+        usedSet.add(nextIdx)
+        if (state.top) { state.homePitcherIdx = nextIdx; state.homeCurPAs = 0 }
+        else { state.awayPitcherIdx = nextIdx; state.awayCurPAs = 0 }
+      }
     }
 
     // Check inning end
