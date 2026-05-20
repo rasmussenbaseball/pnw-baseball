@@ -71,14 +71,12 @@ export default function TeamStats() {
     .length
   const seasonStarted = totalRegularGamesPlayed > 0
 
-  // Synthesize league-wide stats once per render. Memoized off the player
-  // count so we re-synthesize when rosters change but not on every keystroke.
-  // Skip the expensive synth pass entirely when the season hasn't started.
+  // Use REAL accumulated game stats (save.playerStats). Every team in the
+  // league now generates a lightweight boxscore each week (see season.js
+  // simWeek), so playerStats reflects actual games played — no more
+  // full-season projections showing 90+ HR on 0-0 teams.
   const seed = save.seed || save.rngSeed || 1
-  const leagueStats = useMemo(
-    () => seasonStarted ? synthesizeLeagueStats(save, year, seed) : {},
-    [save, year, seed, seasonStarted],
-  )
+  const leagueStats = save.playerStats || {}
 
   if (!seasonStarted) {
     return (

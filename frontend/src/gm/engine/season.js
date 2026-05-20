@@ -242,15 +242,12 @@ export function simWeek(state, schedule, ratings) {
         ? fastSimGame(userRating, oppRating, g.id, { homeLineup, awayLineup })
         : fastSimGame(oppRating, userRating, g.id, { homeLineup, awayLineup })
     } else {
-      // Non-user game. If at least one team is in the user's conference
-      // we generate lineup-based boxscores so league leaderboards + weekly
-      // awards see realistic stat lines from rivals. Out-of-conference
-      // games stay score-only to keep state size + sim time manageable.
-      const userConfId = state.schools?.[userSchoolId]?.conferenceId
-      const homeInUserConf = state.schools?.[g.homeId]?.conferenceId === userConfId
-      const awayInUserConf = state.schools?.[g.awayId]?.conferenceId === userConfId
-      const wantBoxscore = userConfId && (homeInUserConf || awayInUserConf)
-      const opts = wantBoxscore && homeTeam && awayTeam ? {
+      // Non-user game. Generate lineup-based boxscores for EVERY game where
+      // both teams are real (i.e. every team in the user's league plays + puts
+      // up stats every week) so weekly awards + leaderboards aren't a one-team
+      // show. Both teams must exist in state.teams (same-level league members).
+      const wantBoxscore = !!(homeTeam && awayTeam)
+      const opts = wantBoxscore ? {
         homeLineup: defaultLineup(homeTeam, state.players),
         awayLineup: defaultLineup(awayTeam, state.players),
       } : undefined
