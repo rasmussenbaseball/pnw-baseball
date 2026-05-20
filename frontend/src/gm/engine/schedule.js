@@ -38,6 +38,7 @@
 import { makeRng, hashSeed } from './rng'
 import { sortByProximity, stateProximity } from './proximity'
 import { postseasonLayout } from './gameYear'
+import { nonNaiaToUniversal } from './nwbbRating'
 import confRulesRaw from '../data/conference_rules.json'
 
 /** @typedef {import('./types.js').Conference} Conference */
@@ -1009,17 +1010,35 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
   const rng = makeRng('autoSchedML', userSchoolId, year, seed)
   const userState = userSchool.state
 
+  // Rating-aware scheduling, same idea as the NAIA path: prefer opponents
+  // rated similarly to the user, push cupcakes (much weaker) down, and use
+  // proximity as a secondary (cheaper-travel) factor. Abstract opponents
+  // aren't in state.nwbbRatings, so fall back to a strength-derived universal
+  // rating (nonNaiaToUniversal).
+  const ratingOf = (id, strength) =>
+    ratings?.[id]?.rating ?? nonNaiaToUniversal({ strength: strength ?? 0, division: level })
+  const userRating = ratings?.[userSchoolId]?.rating
+    ?? nonNaiaToUniversal({ strength: userSchool.pearRating ?? 0, division: level })
+
   const pool = (nonNaiaTeams || [])
     .filter(t => t.division === level)            // same level only
     .filter(t => t.id !== userSchoolId)
     .filter(t => !schools[t.id])                  // not in the user's conference
     .filter(t => t.conferenceId !== conferenceId) // belt-and-suspenders
-    .map(t => ({
-      id: t.id, name: t.name, state: t.state, division: level,
-      proximity: stateProximity(userState, t.state),
-    }))
-  // Closer opponents first, with a small jitter so the slate varies year to year.
-  pool.sort((a, b) => (a.proximity - b.proximity) + (rng.next() - 0.5) * 1.2)
+    .map(t => {
+      const rating = ratingOf(t.id, t.strength)
+      const ratingGap = rating - userRating       // + stronger, - weaker than user
+      const proximity = stateProximity(userState, t.state)
+      // Push cupcakes down; nudge similar-rated teams up.
+      const cupcakePenalty = ratingGap < -12 ? (-12 - ratingGap) * 0.5 : 0
+      const similarBonus = Math.abs(ratingGap) <= 6 ? -4 : 0
+      return {
+        id: t.id, name: t.name, state: t.state, division: level, rating,
+        // Rating fit dominates, proximity is the secondary tiebreak, small jitter.
+        sortKey: Math.abs(ratingGap) * 0.5 + proximity * 0.6 + rng.next() * 2 + cupcakePenalty + similarBonus,
+      }
+    })
+  pool.sort((a, b) => a.sortKey - b.sortKey)
 
   const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year, level)
     .sort((a, b) => a.week - b.week)
