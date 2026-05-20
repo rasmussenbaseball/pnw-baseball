@@ -1040,6 +1040,7 @@ function FundraiseModal({ ap, onChangeAP, maxAP, coach, programHistory, onConfir
 function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose }) {
   const { backdropProps, stopProps } = useModalDismiss(onClose)
   const grade = recruit.scoutGrades[save.userSchoolId] || { noise: 15, interest: 0, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
+  const isSignedToUs = recruit.status === 'signed' && recruit.signedTo === save.userSchoolId
   const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
   const [offerAmount, setOfferAmount] = useState(recruit.liveOffer?.amount ?? 5000)
   const [nilOffer, setNilOffer] = useState(recruit.liveOffer?.nilAmount ?? 0)
@@ -1394,11 +1395,23 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
           </div>
         )}
 
+        {/* If the recruit has already COMMITTED to us, show that instead of the
+            live "still deciding" feedback (which would otherwise read as
+            "insulted / cold" even though they signed). */}
+        {isSignedToUs && (
+          <div className="mb-4 bg-green-50 border-2 border-green-400 rounded-lg p-3">
+            <div className="text-[10px] uppercase tracking-wider text-green-700 font-bold">Committed to you</div>
+            <div className="text-sm text-green-900 mt-0.5">
+              {recruit.firstName} {recruit.lastName} signed with your program
+              {recruit.liveOffer?.amount ? <> at <strong>${(recruit.liveOffer.amount / 1000).toFixed(1)}K</strong></> : ' (roster offer)'}.
+              They're locked in for next year's class.
+            </div>
+          </div>
+        )}
+
         {/* Recruit reaction + commit proximity + commit price — only shown
-            after a live offer is in. This is the headline panel: it tells
-            the user how the player feels about THEIR offer and how close
-            they are to a decision. */}
-        {hasLiveOffer && (() => {
+            after a live offer is in AND they haven't committed yet. */}
+        {hasLiveOffer && !isSignedToUs && (() => {
           const fb = buildRecruitFeedback(recruit, save.userSchoolId, save)
           return <RecruitFeedbackPanel feedback={fb} />
         })()}
