@@ -12,7 +12,7 @@ import { resolveLineupForGame, lineupPlayerIds, getSavedLineup, autoLineup } fro
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
-import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason } from './postseasonInteractive'
+import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason, setupInteractivePostseasonD2, advanceInteractivePostseasonD2 } from './postseasonInteractive'
 import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
@@ -29,7 +29,7 @@ import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
 import { buildAllConferenceSchedules, buildNonConferenceFillers, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
-import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
+import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek, postseasonLayout } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
 import { makeRng } from './rng'
 import {
@@ -1294,9 +1294,10 @@ export function advanceOneWeek(state) {
   }
   state.calendar.week = (state.calendar.week || 0) + 1   // overall counter (never resets)
 
-  // Re-derive mode + week-of-mode for legacy consumers
-  state.calendar.mode = modeForWeek(nextWeek)
-  state.calendar.seasonWeek = seasonWeekForWeek(nextWeek)
+  // Re-derive mode + week-of-mode for legacy consumers (level-aware: 4-round
+  // leagues like D2 start the postseason a week earlier).
+  state.calendar.mode = modeForWeek(nextWeek, state.level)
+  state.calendar.seasonWeek = seasonWeekForWeek(nextWeek, state.level)
   if (state.calendar.mode === 'OFFSEASON') {
     // Offseason "weeks 1-26" run Aug-Jan in the new model; weeks 43-52 are
     // post-postseason offseason (Jun-Jul). Both map back to a single offseason
@@ -1313,17 +1314,18 @@ export function advanceOneWeek(state) {
   }
 
   // ── Postseason ──────────────────────────────────────────────────────
-  // NAIA dynasties play the postseason round-by-round (wk40 conf tournament,
-  // wk41 regionals, wk42 World Series) — the user's series for each round is
-  // generated into the schedule and PLAYED via the normal game-week flow.
-  // Other levels still use the all-at-once runPostseason for now.
+  // Interactive, round-by-round: the user's games for each round are generated
+  // into the schedule and PLAYED via the normal game-week flow. NAIA = 3 rounds
+  // (conf tourney wk40 → regionals wk41 → WS wk42). D2 = 4 rounds, starting a
+  // week earlier (conf tourney wk39 → regional wk40 → super regional wk41 → WS
+  // wk42). Other levels still use the all-at-once runPostseason for now.
   const isNaia = !state.level || state.level === 'NAIA'
-  if (nextWeek === 40 && prevWeek === 39) {
-    // Snapshot the user's roster for this season so the Stats page can show a
-    // UBC-ONLY view of past seasons. We grab it HERE (end of the regular
-    // season) while the roster is still intact — before offseason graduations
-    // + transfers strip players who played that spring. Keyed by
-    // state.calendar.year to match how statsArchive is keyed at rollover.
+  const isD2 = state.level === 'D2'
+  const L = postseasonLayout(state.level)
+  // Postseason START (regular season just ended → first playoff round).
+  if (nextWeek === L.start && prevWeek === L.seasonEnd) {
+    // Snapshot the user's roster for the season-end Stats archive (before
+    // offseason graduations/transfers strip players who played that spring).
     {
       const ut = state.teams?.[state.userSchoolId]
       if (ut) {
@@ -1331,21 +1333,30 @@ export function advanceOneWeek(state) {
         state.rosterArchive[state.calendar.year] = [...(ut.rosterPlayerIds || [])]
       }
     }
-    // All-Conference + Gold Glove awards based on regular-season stats. Fires
-    // first so honors are tied to the season that just ended.
+    // All-Conference + Gold Glove awards based on regular-season stats.
     runEndOfRegularSeasonAwards(state)
     if (isNaia) {
       try { setupInteractivePostseasonNAIA(state) }
       catch (err) { console.error('interactive postseason setup failed:', err); runPostseason(state) }
+    } else if (isD2) {
+      try { setupInteractivePostseasonD2(state) }
+      catch (err) { console.error('D2 postseason setup failed:', err); runPostseason(state) }
     } else {
       runPostseason(state)
     }
   }
   // Round transitions: resolve the round just played + set up the next one.
-  if (isNaia && state.postseason?.interactive) {
-    if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonNAIA(state, 40)
-    else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNAIA(state, 41)
-    else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonNAIA(state, 42)
+  if (state.postseason?.interactive) {
+    if (isNaia) {
+      if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonNAIA(state, 40)
+      else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNAIA(state, 41)
+      else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonNAIA(state, 42)
+    } else if (isD2) {
+      if (nextWeek === 40 && prevWeek === 39) advanceInteractivePostseasonD2(state, 39)
+      else if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonD2(state, 40)
+      else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonD2(state, 41)
+      else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonD2(state, 42)
+    }
   }
 
   // Capture last-week AP spend BEFORE the refresh resets it — used by the
@@ -1600,5 +1611,17 @@ export function rebuildScheduleForYear(state) {
   // Early-week non-conference fillers for non-user teams so the whole league
   // plays + accrues stats from week 1 (user self-schedules their non-conf).
   const fillers = buildNonConferenceFillers(confSchedule, state.conferences, state.schools, year, state.userSchoolId)
-  state.schedule = [...confSchedule, ...fillers]
+  state.schedule = capRegularSeasonForLevel([...confSchedule, ...fillers], state.level)
+}
+
+/**
+ * 4-round leagues (D2) end the regular season a week early (wk38 = seasonWeek
+ * 12) so wk39 is free for the conference tournament. Drop any regular-season
+ * series in seasonWeek 13.
+ */
+export function capRegularSeasonForLevel(schedule, level) {
+  const L = postseasonLayout(level)
+  const lastSeasonWeek = L.seasonEnd - 26   // NAIA 13, D2 12
+  if (lastSeasonWeek >= 13) return schedule
+  return schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > lastSeasonWeek))
 }

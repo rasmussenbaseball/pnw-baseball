@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
 import { snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
-import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES, dateForWeek } from '../../gm/engine/gameYear'
+import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES, dateForWeek, postseasonLayout } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
@@ -308,7 +308,11 @@ export default function Dashboard() {
         autoActions: autoActionsThisAdvance,
       })
     } else if (mode === 'SEASON') {
-      const crossingIntoPostseason = (save.calendar.seasonWeek ?? 0) >= 13
+      // Crossing into the postseason: the current week is the LAST regular-
+      // season week (next advance enters the playoffs). D2 ends a week earlier
+      // (seasonWeek 12) than NAIA (seasonWeek 13).
+      const lastRegSeasonWeek = postseasonLayout(save.level).seasonEnd - 26
+      const crossingIntoPostseason = (save.calendar.seasonWeek ?? 0) >= lastRegSeasonWeek
       if (crossingIntoPostseason) {
         // Postseason tick is now lighter than before (the EOY heavy work moved
         // to deferred offseason events), but conference tournaments + national
@@ -1077,14 +1081,19 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
     ? nat?.openingRound?.sites?.find(s => s.teams.some(t => t.id === userId))
     : null
   const ws = nat?.worldSeries
-  // Which round is "live" this week: 40 = conference tournament, 41 =
-  // regionals/opening round, 42 = World Series.
-  const roundLabel = highlightWeek === 40 ? 'Conference Tournament'
-    : highlightWeek === 41 ? 'Regionals (Opening Round)'
-    : highlightWeek === 42 ? 'World Series'
-    : null
+  const isD2 = ps.level === 'D2'
+  // Which round is "live" this week. D2 runs 4 rounds (conf tourney wk39 →
+  // regional wk40 → super regional wk41 → WS wk42); everyone else runs 3.
+  const roundLabel = isD2
+    ? (highlightWeek === 39 ? 'Conference Tournament'
+      : highlightWeek === 40 ? 'NCAA Regional'
+      : highlightWeek === 41 ? 'Super Regional'
+      : highlightWeek === 42 ? 'World Series' : null)
+    : (highlightWeek === 40 ? 'Conference Tournament'
+      : highlightWeek === 41 ? 'Regionals (Opening Round)'
+      : highlightWeek === 42 ? 'World Series' : null)
 
-  // ── Interactive NAIA postseason (round-by-round, user plays each series) ──
+  // ── Interactive postseason (round-by-round, user plays each series) ──
   if (ps.interactive) {
     return (
       <Panel
@@ -1094,17 +1103,29 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
       >
         {!ps.userQualified && (
           <div className="text-[11px] text-gray-500 italic mb-2">
-            Your team didn't make the conference tournament — season over. Watch the brackets play out.
+            {isD2 ? "Your team didn't make the GNAC tournament — but a strong record can still earn an at-large NCAA bid."
+              : "Your team didn't make the conference tournament — season over. Watch the brackets play out."}
           </div>
         )}
-        <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title="Round 1 — Conference Tournament" active={highlightWeek === 40} />
-        <InteractiveRoundRow save={save} round={ps.rounds?.REGIONAL} title="Round 2 — NAIA Opening Round" active={highlightWeek === 41} />
-        <InteractiveRoundRow save={save} round={ps.rounds?.WS} title="Round 3 — NAIA World Series" active={highlightWeek === 42} />
+        {isD2 ? (
+          <>
+            <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title="Round 1 — GNAC Tournament" active={highlightWeek === 39} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.REGIONAL} title="Round 2 — NCAA Regional" active={highlightWeek === 40} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.SUPER} title="Round 3 — Super Regional (best-of-3)" active={highlightWeek === 41} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title="Round 4 — D2 World Series" active={highlightWeek === 42} />
+          </>
+        ) : (
+          <>
+            <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title="Round 1 — Conference Tournament" active={highlightWeek === 40} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.REGIONAL} title="Round 2 — NAIA Opening Round" active={highlightWeek === 41} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title="Round 3 — NAIA World Series" active={highlightWeek === 42} />
+          </>
+        )}
         <div className="border-t pt-2 mt-1 text-[11px]">
           {ps.userNatChamp ? (
             <span className="text-amber-600 font-bold">NATIONAL CHAMPIONS!</span>
           ) : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON' ? (
-            <span className="text-gray-500">Eliminated in the {({ CONF: 'conference tournament', REGIONAL: 'opening round', WS: 'World Series' })[ps.userEliminatedAt]}.</span>
+            <span className="text-gray-500">Eliminated in the {({ CONF: isD2 ? 'GNAC tournament' : 'conference tournament', REGIONAL: isD2 ? 'regional' : 'opening round', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.</span>
           ) : null}
           {ps.nationalChampion && (
             <div className="mt-0.5">

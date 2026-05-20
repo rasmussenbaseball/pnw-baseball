@@ -46,9 +46,57 @@ function UserRoundGames({ save, rd }) {
   )
 }
 
+// Full-page view of the interactive D2 postseason (4 rounds).
+function D2PostseasonPage({ save, ps, userSchool }) {
+  const userId = save.userSchoolId
+  const champName = save.schools[ps.nationalChampion]?.name
+    || (save.postseason?.national?.ws && ps.nationalChampion ? ps.nationalChampion : null)
+  const rounds = [
+    { rd: ps.rounds?.CONF, title: 'Round 1 — GNAC Tournament (top 3, double-elim)' },
+    { rd: ps.rounds?.REGIONAL, title: 'Round 2 — NCAA Regional (double-elim)' },
+    { rd: ps.rounds?.SUPER, title: 'Round 3 — Super Regional (best-of-3)' },
+    { rd: ps.rounds?.WS, title: 'Round 4 — D2 World Series (double-elim → best-of-3 final)' },
+  ]
+  return (
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-3xl mx-auto">
+      <div className="mb-5">
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} NCAA D2 POSTSEASON</h1>
+        <p className="text-sm text-[#a8a8c8] font-pixel">
+          {ps.userNatChamp ? 'NCAA DIVISION II NATIONAL CHAMPIONS!'
+            : !ps.userQualified ? "You missed the GNAC tournament — a strong record can still earn an at-large NCAA bid."
+            : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON'
+              ? `Eliminated in the ${({ CONF: 'GNAC tournament', REGIONAL: 'regional', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.`
+              : 'Win each round to advance. Play (or sim) every game from the home page.'}
+        </p>
+      </div>
+      {rounds.map(({ rd, title }, i) => (
+        <div key={i} className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+          <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">{title}</div>
+          {!rd ? (
+            <div className="text-sm text-gray-500 italic font-pixel">{i === 0 ? "Didn't make the GNAC tournament." : 'Not reached.'}</div>
+          ) : (
+            <UserRoundGames save={save} rd={rd} />
+          )}
+        </div>
+      ))}
+      {champName && (
+        <div className="text-[12px] text-[#a8a8c8] font-pixel mt-2">
+          National champion: <strong className={ps.nationalChampion === userId ? 'text-pnw-green' : 'text-white'}>{champName}</strong>
+        </div>
+      )}
+      <Link to={`/gm/dashboard?slot=${new URLSearchParams(window.location.search).get('slot') || '1'}`} className="inline-block mt-4 text-sm text-pnw-green font-pixel hover:underline">← Dashboard</Link>
+    </div>
+    </GMShell>
+  )
+}
+
 function InteractivePostseasonPage({ save, ps, userSchool }) {
   const userId = save.userSchoolId
   const nm = (id) => save.schools[id]?.name || '—'
+  // D2 has its own 4-round structure (GNAC tourney → regional → super regional
+  // → WS) + an abstract national field, so render it on a dedicated path.
+  if (ps.level === 'D2') return <D2PostseasonPage save={save} ps={ps} userSchool={userSchool} />
   const regionals = ps.national?.regionals || []
   const ws = ps.national?.ws
   const confRd = ps.rounds?.CONF

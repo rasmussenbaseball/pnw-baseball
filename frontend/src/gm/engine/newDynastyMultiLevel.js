@@ -252,8 +252,11 @@ export function newDynastyMultiLevel(input) {
     }
   }
 
-  // 5. Schedule — conference round-robin scaled to level's seasonGames
-  const schedule = buildLevelSchedule(conferenceId, schools, level, 2027, seed)
+  // 5. Schedule — conference round-robin scaled to level's seasonGames. D2 ends
+  // a week early (postseason starts wk39), so drop any regular-season games in
+  // seasonWeek 13+.
+  let schedule = buildLevelSchedule(conferenceId, schools, level, 2027, seed)
+  if (level === 'D2') schedule = schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > 12))
 
   // 6. Calendar — same dynasty-start cadence as NAIA
   const calendar = {

@@ -20,6 +20,13 @@
 
 import { seedFromPear } from './rankings'
 import { fastSimGame } from './sim'
+import { nonNaiaToUniversal } from './nwbbRating'
+import nonNaiaRaw from '../data/non_naia_teams.json'
+
+// Abstract D2 universe (strength-only teams that fill the national field around
+// the user's real GNAC program).
+const D2_ABSTRACT = (nonNaiaRaw.divisions || []).find(d => d.id === 'D2')?.teams?.map(t => ({ ...t, division: 'D2' })) || []
+const D2_ABSTRACT_BY_ID = Object.fromEntries(D2_ABSTRACT.map(t => [t.id, t]))
 
 const STAGE_WEEK = { CONF: 40, REGIONAL: 41, WS: 42 }
 const STAGE_SEASONWEEK = { CONF: 14, REGIONAL: 15, WS: 16 }
@@ -148,6 +155,10 @@ function runMatchGraph(seeds, spec, userId, getUserResult, simNonUser, keyPrefix
   const wb = results[spec.wbChampKey]?.winner
   const lb = results[spec.lbChampKey]?.winner
   if (!wb || !lb) return { champion: wb || lb || seeds[0] }
+  // Best-of-3 final variant (D2 WS): the bracket only determines the two
+  // FINALISTS — the caller runs a clean best-of-3 between them (no WB-champ
+  // win-twice advantage). Return them instead of playing the grand final.
+  if (spec.bestOf3Final) return { finalists: [wb, lb] }
   if (!results.GF1) { const r = play('GF1', wb, lb); if (r.pending) return r }
   if (results.GF1.winner === wb) return { champion: wb }
   if (!results.GF2) { const r = play('GF2', wb, lb); if (r.pending) return r }
@@ -243,17 +254,29 @@ function generatePendingGame(state, stage, pending, hostId = null) {
     homeId = hostId
     awayId = pending.homeId
   }
+  const woy = psWeekFor(state, stage)
+  const dayOfMay = 5 + (woy - 39) * 7   // rough display date within May
   state.schedule.push({
     id, year,
-    seasonWeek: STAGE_SEASONWEEK[stage],
-    weekOfYear: STAGE_WEEK[stage],
-    date: `${year}-05-${STAGE_WEEK[stage] === 40 ? 12 : STAGE_WEEK[stage] === 41 ? 19 : 26}`,
+    seasonWeek: woy - 26,
+    weekOfYear: woy,
+    date: `${year}-05-${String(Math.min(28, Math.max(5, dayOfMay))).padStart(2, '0')}`,
     homeId, awayId,
     type: 'POSTSEASON', postseasonStage: stage, neutralSite,
     countsTowardRecord: false, isDoubleheader: false,
     played: false, homeRuns: null, awayRuns: null,
   })
   return id
+}
+
+/**
+ * The weekOfYear a given postseason stage falls on, per level. D2 runs four
+ * rounds (CONF 39, REGIONAL 40, SUPER 41, WS 42); everyone else runs three
+ * (CONF 40, REGIONAL 41, WS 42).
+ */
+function psWeekFor(state, stage) {
+  if (state.level === 'D2') return ({ CONF: 39, REGIONAL: 40, SUPER: 41, WS: 42 })[stage] ?? 42
+  return ({ CONF: 40, REGIONAL: 41, WS: 42 })[stage] ?? 42
 }
 
 // ── seeding helpers ──────────────────────────────────────────────────────────
@@ -367,7 +390,9 @@ export function tickInteractivePostseason(state) {
   const userId = state.userSchoolId
   const year = state.calendar.year
   const ratings = seedFromPear(state.schools, state.conferences)
-  const sim = makeNonUserSim(ratings)
+  // D2 background games use the D2 rating universe (real GNAC + abstract teams);
+  // everyone else uses the PEAR-seeded NAIA universe.
+  const sim = state.level === 'D2' ? makeD2Sim(state) : makeNonUserSim(ratings)
   const getUserResult = getUserResultFromSchedule(state, year, stage)
 
   if (round.format === 'DE') {
@@ -379,17 +404,38 @@ export function tickInteractivePostseason(state) {
     tickWorldSeries(state, ps, round, userId, year, getUserResult, sim, ratings)
     return
   }
+  if (round.format === 'BO3') {
+    // Best-of-3 (D2 super regional). Higher seed (aId) hosts.
+    const res = runBestOf3(round.aId, round.bId, userId, getUserResult, sim, round.seedKey)
+    if (res.pending) {
+      const id = generatePendingGame(state, stage, res.pending, round.aId)
+      round.pendingGameId = id
+      if (!round.gameIds.includes(id)) round.gameIds.push(id)
+      const oppId = res.pending.homeId === userId ? res.pending.awayId : res.pending.homeId
+      round.oppName = teamNameOf(state, oppId)
+    } else {
+      round.resolved = true; round.pendingGameId = null
+      round.champion = res.champion
+      round.userWon = res.champion === userId
+      if (!round.userWon) { ps.userAlive = false; ps.userEliminatedAt = stage }
+    }
+    return
+  }
+  if (round.format === 'WS8') {
+    tickD2WorldSeries(state, ps, round, userId, getUserResult, sim)
+    return
+  }
 }
 
 function applyDeResult(state, ps, stage, round, res) {
   const userId = state.userSchoolId
   if (res.pending) {
     // CONF + REGIONAL: 1-seed (seeds[0]) hosts; other matchups are neutral.
-    const id = generatePendingGame(state, stage, res.pending, round.seeds?.[0])
+    const id = generatePendingGame(state, stage, res.pending, round.hostId ?? round.seeds?.[0])
     round.pendingGameId = id
     if (!round.gameIds.includes(id)) round.gameIds.push(id)
     const oppId = res.pending.homeId === userId ? res.pending.awayId : res.pending.homeId
-    round.oppName = state.schools[oppId]?.name || 'Opponent'
+    round.oppName = teamNameOf(state, oppId)
   } else {
     round.resolved = true
     round.pendingGameId = null
@@ -643,6 +689,254 @@ function finalize(state, ratings) {
     headline: ps.userNatChamp
       ? `${state.schools[userId]?.name} WINS THE NAIA NATIONAL CHAMPIONSHIP!`
       : `${champName} are crowned NAIA national champions.`,
+    big: ps.userNatChamp,
+  })
+}
+
+// ══ D2 interactive postseason ════════════════════════════════════════════════
+// GNAC Conf Tournament (top 3, double-elim, wk39) → NCAA Regional (3-4 team
+// double-elim, wk40) → Super Regional (best-of-3, wk41) → D2 World Series
+// (8-team double-elim into a best-of-3 final, wk42). Real GNAC teams play full
+// sims; the abstract national field is fast-simmed. Hosts + seeds by ranking.
+
+/** Team display name for either a real school or an abstract D2 program. */
+function teamNameOf(state, id) {
+  return state.schools?.[id]?.name || D2_ABSTRACT_BY_ID[id]?.name || 'Opponent'
+}
+
+/** Unified 0-100 rating for any D2 team (real → NWBB rating; abstract → PEAR). */
+function d2RatingOf(state, id) {
+  const r = state.nwbbRatings?.[id]?.rating
+  if (typeof r === 'number') return r
+  const ab = D2_ABSTRACT_BY_ID[id]
+  return ab ? nonNaiaToUniversal(ab) : 50
+}
+
+/** Deterministic background-game sim for D2 (returns the winning team id). */
+function makeD2Sim(state) {
+  const mk = (x) => ({ overall_rating: (x - 60) / 5, offense_rating: (x - 60) / 10, pitching_rating: (x - 60) / 10 })
+  return (h, a, key) => {
+    const r = fastSimGame(mk(d2RatingOf(state, h)), mk(d2RatingOf(state, a)), `d2_${key}`)
+    return r.homeRuns >= r.awayRuns ? h : a
+  }
+}
+
+/** 56-team D2 national field, seeded best-first by rating (GNAC + abstract). */
+function d2NationalField(state) {
+  const real = Object.keys(state.schools || {}).filter(id => state.teams?.[id])
+  const cands = [
+    ...real.map(id => ({ id, rating: d2RatingOf(state, id) })),
+    ...D2_ABSTRACT.map(t => ({ id: t.id, rating: nonNaiaToUniversal(t) })),
+  ].sort((a, b) => b.rating - a.rating)
+  return cands.slice(0, 56).map(c => c.id)
+}
+
+export function setupInteractivePostseasonD2(state) {
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const userConfId = state.schools?.[userId]?.conferenceId
+  const userSeeds = seedConference(state, userConfId)   // GNAC, by confWins → runDiff
+  const fieldSize = Math.min(3, userSeeds.length)        // GNAC tournament = top 3
+  const userSeedIdx = userSeeds.indexOf(userId)
+  const userInConfTourney = fieldSize >= 2 && userSeedIdx >= 0 && userSeedIdx < fieldSize
+  const ps = {
+    year: year + 1, level: 'D2', interactive: true, stage: 'CONF',
+    userQualified: userInConfTourney, userAlive: userInConfTourney,
+    userEliminatedAt: userInConfTourney ? null : 'REG_SEASON',
+    userConfId, userChamp: false, userNatChamp: false, nationalChampion: null,
+    confChampions: {}, rounds: { CONF: null, REGIONAL: null, SUPER: null, WS: null },
+    national: { regionals: [], superRegionals: [], ws: null },
+  }
+  state.postseason = ps
+  if (userInConfTourney) {
+    const seeds = userSeeds.slice(0, fieldSize)
+    ps.rounds.CONF = {
+      format: 'DE', seeds, spec: deGraph(seeds.length), hostId: seeds[0],
+      seedKey: `d2conf_${year}`,
+      label: `${state.conferences[userConfId]?.abbreviation || 'GNAC'} Tournament (top ${fieldSize}, double-elim)`,
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+  return ps
+}
+
+export function advanceInteractivePostseasonD2(state, leavingWeek) {
+  const ps = state.postseason
+  if (!ps || !ps.interactive || ps.level !== 'D2') return
+  if (leavingWeek === 39) { ps.stage = 'REGIONAL'; setupD2Regional(state) }
+  else if (leavingWeek === 40) { ps.stage = 'SUPER'; setupD2Super(state) }
+  else if (leavingWeek === 41) { ps.stage = 'WS'; setupD2WS(state) }
+  else if (leavingWeek === 42) { finalizeD2(state) }
+}
+
+function setupD2Regional(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeD2Sim(state)
+  let field = d2NationalField(state)
+  // Auto-bid: a GNAC tournament champ who isn't already in the at-large field
+  // still makes the regionals.
+  if (ps.userChamp && !field.includes(userId)) field = [userId, ...field].slice(0, 56)
+  field = field.slice(0, 56)
+  // 16 sites: 8 of 4 teams + 8 of 3 = 56. Top 16 by rating host.
+  const sizes = [4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3]
+  const regionals = sizes.map((sz, i) => ({ idx: i, hostId: field[i], seeds: [field[i]], target: sz, champion: null }))
+  let next = 16
+  for (let pass = 0; pass < 4 && next < field.length; pass++) {
+    for (let i = 0; i < 16 && next < field.length; i++) {
+      if (regionals[i].seeds.length < regionals[i].target) regionals[i].seeds.push(field[next++])
+    }
+  }
+  for (const rg of regionals) {
+    if (rg.seeds.includes(userId)) {
+      // At-large or auto-bid → the user PLAYS this regional interactively.
+      rg.isUser = true; ps.userAlive = true; ps.userEliminatedAt = null; continue
+    }
+    rg.champion = runMatchGraph(rg.seeds, deGraph(rg.seeds.length), '__none__', () => null, sim, `d2reg_${year}_${rg.idx}`).champion || rg.seeds[0]
+  }
+  ps.national.regionals = regionals.map(rg => ({ idx: rg.idx, hostId: rg.hostId, seeds: rg.seeds, champion: rg.champion, isUser: !!rg.isUser }))
+  const ureg = ps.national.regionals.find(r => r.isUser)
+  if (ureg && ps.userAlive) {
+    ps.rounds.REGIONAL = {
+      format: 'DE', seeds: ureg.seeds, spec: deGraph(ureg.seeds.length),
+      seedKey: `d2reg_${year}_${ureg.idx}`, regionalIdx: ureg.idx, hostId: ureg.seeds[0],
+      label: `NCAA D2 Regional — ${ureg.seeds.length}-team double-elim`,
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function setupD2Super(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeD2Sim(state)
+  const champs = (ps.national.regionals || []).map(r => r.champion)
+  // Pair the 16 regional champions 1v16, 2v15, … into 8 best-of-3 super regionals.
+  const pairs = []
+  for (let j = 0; j < 8; j++) pairs.push([champs[j], champs[15 - j]])
+  ps.national.superRegionals = pairs.map((p, j) => ({ idx: j, a: p[0], b: p[1], champion: null, isUser: p.includes(userId) }))
+  for (const sr of ps.national.superRegionals) {
+    if (sr.isUser && ps.userAlive) continue
+    sr.champion = runBestOf3(sr.a, sr.b, '__none__', () => null, sim, `d2sr_${year}_${sr.idx}`).champion
+  }
+  const usr = ps.national.superRegionals.find(s => s.isUser)
+  if (usr && ps.userAlive) {
+    // Higher-rated team hosts (aId).
+    const aId = d2RatingOf(state, usr.a) >= d2RatingOf(state, usr.b) ? usr.a : usr.b
+    const bId = aId === usr.a ? usr.b : usr.a
+    ps.rounds.SUPER = {
+      format: 'BO3', aId, bId, seedKey: `d2sr_${year}_${usr.idx}`, superIdx: usr.idx,
+      label: 'NCAA D2 Super Regional — best-of-3', oppName: teamNameOf(state, aId === userId ? bId : aId),
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function setupD2WS(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  // Record the user's super-regional champion before assembling the WS field.
+  const usr = (ps.national.superRegionals || []).find(s => s.isUser)
+  if (usr) usr.champion = ps.rounds.SUPER?.champion || (ps.userAlive ? userId : usr.a)
+  const champs = (ps.national.superRegionals || []).map(s => s.champion).filter(Boolean).slice(0, 8)
+  ps.national.ws = { seeds: champs, finalists: null, champion: null }
+  const userInWS = ps.userAlive && champs.includes(userId)
+  if (userInWS) {
+    const seeded = [...champs].sort((a, b) => d2RatingOf(state, b) - d2RatingOf(state, a))
+    ps.rounds.WS = {
+      format: 'WS8', phase: 'BRACKET', seeds: seeded, spec: { ...deGraph(8), bestOf3Final: true },
+      seedKey: `d2ws_${year}`, label: 'NCAA D2 World Series — 8-team double-elim → best-of-3 final',
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null, finalists: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function tickD2WorldSeries(state, ps, round, userId, getUserResult, sim) {
+  if (round.phase === 'BRACKET') {
+    const res = runMatchGraph(round.seeds, round.spec, userId, getUserResult, sim, round.seedKey)
+    if (res.pending) {
+      const id = generatePendingGame(state, 'WS', res.pending)   // WS = neutral site
+      round.pendingGameId = id
+      if (!round.gameIds.includes(id)) round.gameIds.push(id)
+      const oppId = res.pending.homeId === userId ? res.pending.awayId : res.pending.homeId
+      round.oppName = teamNameOf(state, oppId)
+      return
+    }
+    round.finalists = res.finalists || (res.champion ? [res.champion] : [])
+    round.phase = 'FINAL'
+    ps.national.ws.finalists = round.finalists
+    if (round.finalists.length < 2 || !round.finalists.includes(userId)) {
+      // User didn't reach the final — sim the best-of-3 + crown the champion.
+      ps.userAlive = false; ps.userEliminatedAt = 'WS'
+      round.resolved = true
+      const fr = round.finalists.length >= 2
+        ? runBestOf3(round.finalists[0], round.finalists[1], '__none__', () => null, sim, `${round.seedKey}_final`)
+        : { champion: round.finalists[0] }
+      round.champion = fr.champion
+      ps.national.ws.champion = fr.champion
+      ps.nationalChampion = fr.champion
+      return
+    }
+    tickD2WorldSeries(state, ps, round, userId, getUserResult, sim)
+    return
+  }
+  // FINAL — best-of-3 between the two finalists.
+  const [aId, bId] = round.finalists
+  const res = runBestOf3(aId, bId, userId, getUserResult, sim, `${round.seedKey}_final`)
+  if (res.pending) {
+    const id = generatePendingGame(state, 'WS', res.pending)
+    round.pendingGameId = id
+    if (!round.gameIds.includes(id)) round.gameIds.push(id)
+    const oppId = res.pending.homeId === userId ? res.pending.awayId : res.pending.homeId
+    round.oppName = teamNameOf(state, oppId)
+  } else {
+    round.resolved = true; round.pendingGameId = null
+    round.champion = res.champion
+    round.userWon = res.champion === userId
+    ps.national.ws.champion = res.champion
+    ps.nationalChampion = res.champion
+    if (round.userWon) ps.userNatChamp = true
+    else { ps.userAlive = false; ps.userEliminatedAt = 'WS' }
+  }
+}
+
+function finalizeD2(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeD2Sim(state)
+  if (ps.userAlive && ps.rounds.WS?.userWon) { ps.userNatChamp = true; ps.nationalChampion = userId }
+  if (!ps.nationalChampion) {
+    // User not in the WS (or it wasn't resolved) — play it out now and crown.
+    const champs = ps.national.ws?.seeds || []
+    if (champs.length >= 2) {
+      const seeded = [...champs].sort((a, b) => d2RatingOf(state, b) - d2RatingOf(state, a))
+      const res = runMatchGraph(seeded, { ...deGraph(8), bestOf3Final: true }, '__none__', () => null, sim, `d2wsfin_${year}`)
+      const finalists = res.finalists || (res.champion ? [res.champion] : [])
+      ps.national.ws = ps.national.ws || {}
+      ps.national.ws.finalists = finalists
+      ps.nationalChampion = finalists.length >= 2
+        ? runBestOf3(finalists[0], finalists[1], '__none__', () => null, sim, `d2wsfin_${year}_final`).champion
+        : (finalists[0] || seeded[0])
+      ps.national.ws.champion = ps.nationalChampion
+    }
+  }
+  ps.stage = 'DONE'
+  const champName = teamNameOf(state, ps.nationalChampion)
+  state.newsfeed = state.newsfeed || []
+  state.newsfeed.unshift({
+    id: `d2_done_${year}_${Math.random().toString(36).slice(2, 6)}`,
+    year: year + 1, week: 16, type: 'POSTSEASON',
+    headline: ps.userNatChamp
+      ? `${state.schools[userId]?.name} WINS THE NCAA DIVISION II NATIONAL CHAMPIONSHIP!`
+      : `${champName} win the NCAA Division II title.`,
     big: ps.userNatChamp,
   })
 }
