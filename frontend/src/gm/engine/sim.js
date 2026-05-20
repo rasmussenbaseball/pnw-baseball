@@ -61,7 +61,7 @@ const BASE_RATES_BY_LEVEL = {
   D1:   { K: 0.250, BB: 0.115, HBP: 0.013, HR: 0.030, TRIPLE: 0.005, DOUBLE: 0.046, SINGLE: 0.145, ERROR: 0.010, OUT: 0.386 },
   D2:   { K: 0.180, BB: 0.090, HBP: 0.015, HR: 0.024, TRIPLE: 0.006, DOUBLE: 0.050, SINGLE: 0.180, ERROR: 0.011, OUT: 0.444 },
   D3:   { K: 0.190, BB: 0.100, HBP: 0.017, HR: 0.026, TRIPLE: 0.006, DOUBLE: 0.044, SINGLE: 0.170, ERROR: 0.012, OUT: 0.435 },
-  NAIA: { K: 0.220, BB: 0.090, HBP: 0.017, HR: 0.024, TRIPLE: 0.004, DOUBLE: 0.044, SINGLE: 0.150, ERROR: 0.010, OUT: 0.441 },
+  NAIA: { K: 0.220, BB: 0.090, HBP: 0.017, HR: 0.027, TRIPLE: 0.004, DOUBLE: 0.049, SINGLE: 0.161, ERROR: 0.010, OUT: 0.422 },
   NWAC: { K: 0.200, BB: 0.110, HBP: 0.017, HR: 0.012, TRIPLE: 0.005, DOUBLE: 0.040, SINGLE: 0.155, ERROR: 0.014, OUT: 0.447 },
 }
 
@@ -493,9 +493,13 @@ export function simPA(batter, pitcher, ctx, rng) {
     K:    ((stuff - 50) * 0.5 + (vsBatter - 50) * 0.25 - (discipline - 50) - (contact - 50) * 0.3) / 50 + veloEdge * 0.6,
     BB:   ((discipline - 50) - (control - 50) * 1.2) / 50,
     HBP:  (-(control - 50) * 0.9) / 50,
-    HR:     HIT_SLOPE * (((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.5),
+    // Pitcher STUFF suppression on hits softened (0.5 → 0.4): elite staffs were
+    // posting ~2.3 ERAs (too dominant — most games 5-1 / 4-2). Letting good
+    // arms give up a few more hits raises scoring toward a realistic band
+    // without touching the hitter (contact/power) terms.
+    HR:     HIT_SLOPE * (((power - 50) - (command - 50) * 1.1 - (stuff - 50) * 0.4) / 50 - veloEdge * 0.5),
     // BIP hits suppressed by defense edge (better defense = fewer BABIP hits)
-    SINGLE: HIT_SLOPE * (((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.5) / 50 - veloEdge * 0.3 - defenseEdge * 0.30),
+    SINGLE: HIT_SLOPE * (((contact - 50) + (speed - 50) * 0.2 - (stuff - 50) * 0.4) / 50 - veloEdge * 0.3 - defenseEdge * 0.30),
     DOUBLE: HIT_SLOPE * (((power - 50) * 0.4 + (speed - 50) * 0.3) / 50 - veloEdge * 0.4 - defenseEdge * 0.35),
     TRIPLE: HIT_SLOPE * (((speed - 50) * 0.5 + (power - 50) * 0.2) / 50 - defenseEdge * 0.40),
     // Error rate flips with defense — elite defense commits ~40% fewer errors

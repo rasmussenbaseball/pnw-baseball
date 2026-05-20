@@ -679,6 +679,16 @@ function runDraft(state) {
   const picks = simMlbDraft(state, state.calendar.year)
   if (!state.draftResults) state.draftResults = {}
   state.draftResults[state.calendar.year] = picks
+  // Drafted players sign pro and LEAVE — remove them from their roster (the
+  // user's complaint: a drafted player was still on the team). Frees their
+  // scholarship immediately since they're off the roster.
+  for (const pk of picks) {
+    if (!pk?.playerId) continue
+    const t = state.teams?.[pk.teamId]
+    if (t) t.rosterPlayerIds = (t.rosterPlayerIds || []).filter(id => id !== pk.playerId)
+    const player = state.players?.[pk.playerId]
+    if (player) { player.eligibilityStatus = 'drafted'; player.draftedRound = pk.round }
+  }
   const userConfId = state.schools[state.userSchoolId]?.conferenceId
   state.newsfeed.unshift({
     id: `draft_${state.calendar.year}`,

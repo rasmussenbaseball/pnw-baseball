@@ -801,6 +801,11 @@ export function runEndOfYear(state) {
   // POTW reveal buffers don't carry across seasons.
   state._pendingPotw = null
   state._potwUserWinners = []
+  // Fresh summer-ball state. Last year's RESOLVED assignments lingered, so the
+  // wk18 auto-assign saw assignedBefore > 0 and SKIPPED — nobody got assigned
+  // to summer ball in year 2. Clearing it lets ensureSummerBallState rebuild a
+  // clean PLANNING slate for the new year.
+  state.summerBall = null
   // Re-prompt the user to set their non-conference weekends for the new year.
   // rebuildScheduleForYear auto-generates the conference round-robin, but the
   // user's own non-conf games don't carry over, so without this they'd start
