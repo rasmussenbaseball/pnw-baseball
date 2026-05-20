@@ -265,12 +265,57 @@ function avgEstOvr(r) {
  * week's passes, and it shrinks as the recruit gets scouted (noise drops).
  */
 function perceivedOvr(save, r) {
-  const trueAvg = avgEstOvr(r)
+  return avgEstOvr(r) + noisyBias(save, r, 0)
+}
+
+/** Deterministic-but-noisy bias (-noise..+noise) for a recruit, scaled by the
+ *  user's current scouting fog on them. `salt` lets us draw an independent
+ *  bias for current-OVR vs potential so the two aren't perfectly correlated. */
+function noisyBias(save, r, salt) {
   const noise = r.scoutGrades?.[save.userSchoolId]?.noise ?? 15
-  const seed = String(r.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0)
+  const seed = String(r.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0) + salt
   const frac = ((seed * 9301 + 49297) % 233280) / 233280   // stable 0..1
-  const bias = (frac * 2 - 1) * noise                       // -noise .. +noise
-  return trueAvg + bias
+  return (frac * 2 - 1) * noise
+}
+
+/** Average POTENTIAL (ceiling) across a recruit's rating block. */
+function avgPotentialOf(r) {
+  const block = r.isPitcher ? r.truePotentialPitcher : r.truePotentialHitter
+  if (!block) return avgEstOvr(r)
+  const vals = Object.values(block).filter(v => typeof v === 'number' && v < 100)
+  if (vals.length === 0) return avgEstOvr(r)
+  return vals.reduce((s, v) => s + v, 0) / vals.length
+}
+
+/**
+ * A recruit's effective VALUE to a program, blending current ability with
+ * ceiling. Freshmen (HS) are projects judged mostly on UPSIDE; JUCO are
+ * ready-now arms/bats judged mostly on CURRENT ability; 4-yr transfers sit in
+ * between. `perceived=true` uses the noisy pre-scouting impression (for
+ * deciding whom to chase); `perceived=false` uses true ratings (for the offer
+ * decision, after scouting has revealed them).
+ */
+function recruitEffValue(save, r, perceived) {
+  const ovr = perceived ? avgEstOvr(r) + noisyBias(save, r, 0) : avgEstOvr(r)
+  const pot = perceived ? avgPotentialOf(r) + noisyBias(save, r, 7) : avgPotentialOf(r)
+  if (r.pool === 'HS_SR')        return 0.45 * ovr + 0.55 * pot   // freshman — bet on the ceiling
+  if (r.pool === 'JUCO_TRANSFER') return 0.72 * ovr + 0.28 * pot  // JUCO — ready now
+  return 0.6 * ovr + 0.4 * pot                                    // 4-yr transfer
+}
+
+/**
+ * The bar a recruit is measured against = average OVR of the user's likely
+ * contributors (top ~25 on the roster). A weak program's bar is low, so it
+ * courts + offers 60-OVR players; a strong program's bar is high, so it holds
+ * out for studs (but still gambles on high-upside freshmen, whose effValue
+ * leans on potential). This is what makes the logic adapt to the user's team.
+ */
+function teamBaselineOvr(save) {
+  const team = save.teams?.[save.userSchoolId]
+  const players = (team?.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
+  if (!players.length) return 60
+  const ovrs = players.map(p => playerOverall(p)).sort((a, b) => b - a).slice(0, 25)
+  return ovrs.reduce((s, v) => s + v, 0) / ovrs.length
 }
 
 /**
@@ -668,14 +713,22 @@ function spendRecruiting(save, apBudget) {
   const spotsOpen = recruitingSpotsAvailable(save)
   const maxActiveOffers = Math.max(0, spotsOpen - PORTAL_BUFFER)
 
-  // Priority targets ranked by PERCEIVED OVR (a noisy pre-scouting impression),
-  // NOT true OVR — so the auto can't omnisciently cherry-pick only the best
-  // and instead pursues some prospects who turn out worse than they looked.
-  // Focus on ~18 so a normal week's AP digs deep on a few while a big turn
-  // (100 AP at wk4, or the 4× month turns) can court the whole short list.
+  // The bar this program recruits against — average OVR of its contributors.
+  // Everything below adapts to it, so a low-OVR NWAC/D3 program chases the
+  // 58-65 kids it can actually land while Bushnell holds out for studs +
+  // high-upside freshmen.
+  const bar = teamBaselineOvr(save)
+
+  // Priority targets ranked by PERCEIVED effective value (a noisy pre-scouting
+  // impression blending current ability + ceiling), NOT true ratings — so the
+  // auto can't omnisciently cherry-pick only the best and instead pursues some
+  // prospects who turn out worse than they looked, plus high-upside projects.
+  // The floor is team-relative (bar − 12) so weak programs court lower and
+  // strong programs don't waste looks on players far below their level.
+  const courtFloor = Math.max(40, bar - 12)
   const targets = openList()
-    .map(r => ({ r, perceived: perceivedOvr(save, r) }))
-    .filter(t => t.perceived >= 52)
+    .map(r => ({ r, perceived: recruitEffValue(save, r, /* perceived */ true) }))
+    .filter(t => t.perceived >= courtFloor)
     .sort((a, b) => b.perceived - a.perceived)
     .slice(0, 18)
 
@@ -712,16 +765,23 @@ function spendRecruiting(save, apBudget) {
       if (!repeatable && wasApplied(r, action.key)) continue
       apply(r, action)
     }
-    // Extend an offer once we've built interest — but only to recruits whose
-    // TRUE OVR (now revealed by scouting) is genuinely level-worthy (>=62), and
-    // only while we still have spots to fill (minus the portal buffer). Players
-    // we scouted that turned out below 62 get courted but NOT offered — not
-    // every recruit we look at deserves a scholarship.
-    const trueOvr = avgEstOvr(r)
-    if (!r.liveOffer && trueOvr >= 62 && interestOf(r) >= 28
+    // Extend an offer once we've built interest — but only to recruits worth it
+    // FOR THIS PROGRAM. Worthiness is team-relative: a recruit's true effective
+    // value (current ability + ceiling, weighted by freshman vs JUCO) must be
+    // within ~6 of the team's bar. So a 62-OVR flatliner isn't worth it for
+    // Bushnell, but a 62/88 freshman (high ceiling) is — and for a weak NWAC
+    // program the same 62 is a clear get. The offer $ is scaled to the team's
+    // pool (best recruits ~2× the team average, depth gets a token / $0 for
+    // no-money D3/NWAC). $0 is a valid roster offer for broke programs.
+    const eff = recruitEffValue(save, r, /* perceived */ false)
+    const worthOffer = eff >= bar - 6
+    const noMoney = (save.schools?.[userSchoolId]?.scholarshipPool ?? 0) <= 0
+    if (!r.liveOffer && worthOffer && interestOf(r) >= 28
         && openOffersCount() < maxActiveOffers) {
-      const amt = computeAutoOffer(save, r, trueOvr)
-      if (amt > 0) { try { setLiveOffer(r, userSchoolId, amt) } catch (err) { /* pool tapped */ } }
+      const amt = computeAutoOffer(save, r)
+      if (amt > 0 || noMoney) {
+        try { setLiveOffer(r, userSchoolId, amt) } catch (err) { /* pool tapped */ }
+      }
     }
   }
 
@@ -745,32 +805,32 @@ function spendRecruiting(save, apBudget) {
   return spent
 }
 
-function computeAutoOffer(save, recruit, ovr) {
-  // Offer scale that SPREADS by talent instead of bucketing everyone at ~$7K.
-  // The old 4-bucket ladder (12k / 7k / 4k / 1.5k) jammed the whole 60-79 OVR
-  // band — which is most of any class — into the 4k/7k buckets, so nearly
-  // every offer looked identical. This is a smooth ramp: each OVR point above
-  // ~48 is worth ~$300, so a 90-OVR stud lands ~$12.5K while a 55-OVR depth
-  // arm lands ~$2K. A little ±8% jitter keeps the numbers from looking
-  // robotic. Capped to ~15% of the remaining pool to leave room for the rest
-  // of the class.
+function computeAutoOffer(save, recruit) {
+  // TEAM- AND POOL-RELATIVE offer scale. The dollar figure is anchored to the
+  // program's OWN budget (its average scholarship), not an absolute table, and
+  // scaled by how much the recruit out-classes the team's bar:
+  //   - A no-money program (D3 / NWAC, pool 0) extends $0 ROSTER offers — the
+  //     recruit decides on non-financial factors.
+  //   - For a funded program the average scholarship ≈ pool / 40 (Bushnell's
+  //     ~$200K pool → ~$5K average, matching reality).
+  //   - The best recruits (well above the team's bar) command ~2-2.4× that
+  //     average; an average fit gets ~1×; a project / depth piece gets a token
+  //     amount so the big money is saved for the studs.
   const userSchoolId = save.userSchoolId
-  // The scholarship pool lives on the SCHOOL, not the team — reading it off
-  // the team returned undefined → 0 → every offer was suppressed (the "auto
-  // never makes an offer" bug). Fall back to a sane default if missing.
-  const remainingPool = save.schools?.[userSchoolId]?.scholarshipPool ?? 200000
-  if (remainingPool < 2000) return 0
-  let amt = Math.round((Math.max(48, ovr) - 48) * 300)
-  // ±8% deterministic-ish jitter (recruit id keeps it stable across renders)
-  const jitterSeed = String(recruit.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0)
-  const jitter = 0.92 + ((jitterSeed % 17) / 17) * 0.16   // 0.92 .. 1.08
-  amt = Math.round(amt * jitter)
-  // Stretch for in-state PNW kids — small home discount works
-  if (recruit.hometown?.state === 'OR' || recruit.hometown?.state === 'WA') amt = Math.round(amt * 0.95)
-  amt = Math.max(amt, 800)   // even a depth piece gets a token offer
-  // Round to the nearest $100 so offers read cleanly
-  amt = Math.round(amt / 100) * 100
-  return Math.min(amt, Math.floor(remainingPool * 0.15))
+  const pool = save.schools?.[userSchoolId]?.scholarshipPool ?? 0
+  if (pool <= 0) return 0   // no athletic money — roster offer only
+  const avgScholarship = pool / 40
+  const eff = recruitEffValue(save, recruit, /* perceived */ false)
+  const bar = teamBaselineOvr(save)
+  const rel = eff - bar   // how far above/below the program's level the recruit is
+  // rel +15 → ~2.2×, rel 0 → 1.0×, rel −8 → ~0.36×. Floor 0.12×, cap 2.4×.
+  const mult = Math.max(0.12, Math.min(2.4, 1.0 + rel * 0.08))
+  let amt = avgScholarship * mult
+  // Small in-state PNW discount (kids closer to home take a touch less).
+  if (recruit.hometown?.state === 'OR' || recruit.hometown?.state === 'WA') amt *= 0.95
+  amt = Math.round(amt / 250) * 250   // round to nearest $250 so offers read clean
+  // Never let one offer eat more than ~20% of the annual pool.
+  return Math.max(0, Math.min(amt, Math.round(pool * 0.20)))
 }
 
 function spendFundraise(save) {
