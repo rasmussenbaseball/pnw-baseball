@@ -780,13 +780,23 @@ export function autoScheduleFallGames(/* userSchoolId, schools, nonNaiaTeams, ye
  * @param {number} seed
  * @returns {{ games: Game[], summary: string }}
  */
-export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaTeams, existingSchedule, year, seed) {
+export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaTeams, existingSchedule, year, seed, ratings = {}) {
   const userSchool = schools[userSchoolId]
   if (!userSchool) return { games: [], summary: 'No user school.' }
   const userState = userSchool.state
   const userRegion = userSchool.region
 
   const rng = makeRng('autoSched', userSchoolId, year, seed)
+
+  // Rating-aware scheduling (per Nate): teams should play similarly-rated
+  // opponents, a strong program books at least one quality (top-~20) non-conf
+  // opponent even if it means travel, and good teams shouldn't fill the slate
+  // with cupcakes. ratings = state.nwbbRatings (id → { rating, nationalRank }).
+  const ratingOf = (id) => (ratings?.[id]?.rating ?? 50)
+  const rankOf = (id) => (ratings?.[id]?.nationalRank ?? 999)
+  const userRating = ratingOf(userSchoolId)
+  const userRank = rankOf(userSchoolId)
+  const userIsStrong = userRank <= 30 || userRating >= 68
 
   // ── Pick non-conf opponents ────────────────────────────────────────────
   // Pool = NAIA only, not in user's conference. Bucket by in-region vs
@@ -802,11 +812,18 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
     .filter(s => s.conferenceId !== conferenceId)
     .map(s => {
       const proximity = stateProximity(userState, s.state)
+      const rating = ratingOf(s.id)
+      const ratingGap = rating - userRating   // + = stronger than user, - = weaker
+      // Prefer similar-rated opponents; push CUPCAKES (much weaker) down so a
+      // good team doesn't end up scheduling three bad teams. Teams within ±8
+      // rating get a small nudge up.
+      const cupcakePenalty = ratingGap < -15 ? (-15 - ratingGap) * 0.6 : 0
+      const similarBonus = Math.abs(ratingGap) <= 8 ? -3 : 0
       return {
         id: s.id, name: s.name, state: s.state, region: s.region,
-        proximity,
-        // soft sort key: proximity + a big random jitter for variety
-        sortKey: proximity + rng.next() * 8,
+        proximity, rating, rank: rankOf(s.id),
+        // soft sort key: proximity + jitter, adjusted for rating fit
+        sortKey: proximity + rng.next() * 8 + cupcakePenalty + similarBonus,
       }
     })
 
@@ -820,9 +837,13 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
       const bKey = b.sortKey - (PRIORITY_STATES.has(b.state) ? 4 : 0)
       return aKey - bKey
     })
+  // Out-of-region pool. For a STRONG program, lead this pool with the best
+  // opponents (rating desc) so the one out-of-region trip is a marquee, top-~20
+  // matchup — a quality game worth the travel. Weaker programs keep the
+  // proximity ordering (cheap, nearby trips).
   const outRegion = naiaCandidates
     .filter(c => c.region !== userRegion)
-    .sort((a, b) => a.sortKey - b.sortKey)
+    .sort((a, b) => userIsStrong ? (b.rating - a.rating) : (a.sortKey - b.sortKey))
 
   // Find which slots are open after conference is built. Auto-fills ONLY
   // weekend slots; doesn't touch any games already on the schedule.

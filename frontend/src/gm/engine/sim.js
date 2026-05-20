@@ -69,14 +69,15 @@ function baseRatesForLevel(level) {
   return BASE_RATES_BY_LEVEL[level] || BASE_RATES
 }
 
-// ALPHA = dispersion of rating effects around the league baseline. Lowered
-// May 2026 (0.6 → 0.45) to keep elite hitter slash lines REALISTIC for NAIA:
-// a 95-rating contact + power + discipline triple-stack was producing .500+
-// AVGs because every dimension was getting multiplicatively boosted at once.
-// At 0.45 elite hitters cap around .395-.420 AVG, which matches real NAIA
-// leaderboards (Cordova led NAIA 2024 at .445 — the single tip of the curve,
-// not the routine outcome we were producing).
-const ALPHA = 0.45
+// ALPHA = dispersion of rating effects around the league baseline. Was dropped
+// to 0.45 to tame .500 AVGs — but that ALSO flattened team quality so an
+// 85-OVR roster played like a 70 and good teams never separated (Nate, after
+// ~10 seasons, never had a winning year with a top team). HIT_SLOPE (below) now
+// SEPARATELY dampens the hit/HR outcomes, so AVG stays realistic even at a
+// higher ALPHA: raising it back toward 0.58 sharpens the K / BB / run-
+// prevention spread (the dimensions NOT under HIT_SLOPE), so a great staff and
+// disciplined lineup actually out-class weaker opponents and win more.
+const ALPHA = 0.58
 
 /**
  * Average fielding rating across an array of defenders. The catcher counts
@@ -223,11 +224,39 @@ export function fastSimGame(home, away, seedKey, opts = {}) {
  * code in season.js (state.playerStats/state.fallStats) doesn't care which
  * sim engine produced it.
  */
+/**
+ * Realistic team K + BB totals for a fast-simmed game. Computed ONCE per side
+ * from the batting team's contact/discipline vs the OPPOSING staff's stuff/
+ * control, then handed to BOTH the batters (their K/BB) and the opposing
+ * pitchers (the K/BB they recorded) so the two reconcile. Previously batters
+ * and pitchers used separate, mismatched formulas — the league showed ~7% K
+ * for hitters but ~8 K/9 for pitchers, which can't both be true.
+ */
+function lightTeamKBB(battingLineup, oppLineup, rng) {
+  const bs = (battingLineup.batters || []).slice(0, 9).filter(Boolean)
+  const n = bs.length || 9
+  const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 50
+  const teamContact = mean(bs.map(b => ((b.hitter?.contact_r ?? 50) + (b.hitter?.contact_l ?? b.hitter?.contact_r ?? 50)) / 2))
+  const teamDisc = mean(bs.map(b => b.hitter?.discipline ?? 50))
+  const oppP = (oppLineup.pitcherRotation || oppLineup.pitchers || []).filter(Boolean).slice(0, 4)
+  const oppStuff = oppP.length ? mean(oppP.map(p => p.pitcher?.stuff ?? 50)) : 50
+  const oppCtrl = oppP.length ? mean(oppP.map(p => p.pitcher?.control ?? 50)) : 50
+  const estPA = Math.round(n * 4.3)
+  // K ~20% of PA at league-average contact/stuff; better contact lowers it,
+  // tougher stuff raises it. BB ~8.5%; discipline raises, opp control lowers.
+  const kRate = clamp(0.20 - (teamContact - 60) * 0.0045 + (oppStuff - 60) * 0.0045, 0.08, 0.34)
+  const bbRate = clamp(0.085 + (teamDisc - 55) * 0.0030 - (oppCtrl - 55) * 0.0030, 0.03, 0.16)
+  return {
+    totalK: Math.max(0, Math.round(estPA * kRate + rng.gaussian(0, 1))),
+    totalBB: Math.max(0, Math.round(estPA * bbRate + rng.gaussian(0, 1))),
+  }
+}
+
 function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gameIdx = 0) {
   const batterStats = {}
   const pitcherStats = {}
 
-  function distributeBatters(lineup, runs, oppRuns) {
+  function distributeBatters(lineup, runs, teamK, teamBB) {
     // Use the lineup's batters array; if absent fall back to 9 generic slots.
     const batters = (lineup.batters || []).slice(0, 9).filter(Boolean)
     if (batters.length === 0) return
@@ -257,14 +286,23 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
       return 30 + c * 0.7
     })
     const wSum = hitWeights.reduce((s, n) => s + n, 0) || 1
+    // Distribute the team's total walks (by discipline) and strikeouts (by
+    // INVERSE contact) across the lineup. The totals come from lightTeamKBB so
+    // the batters' K/BB reconcile with the opposing pitchers' lines.
+    const bbWeights = batters.map(b => Math.max(1, b.hitter?.discipline ?? 50))
+    const bbWsum = bbWeights.reduce((s, n) => s + n, 0) || 1
+    const kWeights = batters.map(b => Math.max(1, 110 - ((b.hitter?.contact_r ?? 50) + (b.hitter?.contact_l ?? b.hitter?.contact_r ?? 50)) / 2))
+    const kWsum = kWeights.reduce((s, n) => s + n, 0) || 1
+    let bbRemaining = Math.max(0, teamBB || 0)
+    let kRemaining = Math.max(0, teamK || 0)
     let hitsRemaining = totalHits
     let rbiRemaining = runs   // RBIs total ≈ runs scored
     let hrRemaining = Math.max(0, Math.min(runs, Math.round(rng.gaussian(runs * 0.22, 1))))
     for (let i = 0; i < batters.length; i++) {
       const b = batters[i]
       const pa = pasPerBatter + (i < 3 ? 1 : 0)   // top of order gets 5
-      const bbChance = ((b.hitter?.discipline ?? 50) - 40) / 600   // ~0.05-0.15
-      const bb = Math.max(0, Math.round(pa * bbChance + rng.gaussian(0, 0.3)))
+      const bb = Math.max(0, Math.min(bbRemaining, pa - 1, Math.round(teamBB * bbWeights[i] / bbWsum)))
+      bbRemaining -= bb
       const hbp = rng.chance(0.02) ? 1 : 0
       const ab = Math.max(0, pa - bb - hbp)
       // Hits this player gets ≈ totalHits × their weight / sum, but
@@ -282,9 +320,10 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
       }
       const d = (h - hr) > 0 && rng.chance(Math.min(0.35, powerScore / 220)) ? 1 : 0
       const t = (h - hr - d) > 0 && rng.chance(0.03) ? 1 : 0
-      // Strikeouts inverse-correlate with contact
-      const kChance = (90 - (b.hitter?.contact_r ?? 50)) / 320   // ~0.08-0.18
-      const k = Math.max(0, Math.round(ab * kChance + rng.gaussian(0, 0.5)))
+      // Strikeouts: a share of the team total (computed vs the opposing
+      // staff), weighted toward low-contact bats, capped at this batter's AB.
+      const k = Math.max(0, Math.min(ab, kRemaining, Math.round(teamK * kWeights[i] / kWsum)))
+      kRemaining -= k
       // RBI: HR brings in ≥ 1 already, plus a small share of remaining runs
       let rbi = hr
       if (rbiRemaining > 0 && h > hr && rng.chance(0.35)) {
@@ -303,10 +342,10 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     }
   }
 
-  function distributePitchers(lineup, runsAllowed, oppHits) {
-    // Accept either shape: synthetic lineups use `pitchers`, real lineups
-    // (autoLineup / resolveLineupForGame) use `pitcherRotation` already
-    // ordered so index 0 is today's starter (rotation handled upstream).
+  // oppK / oppBB = the K + BB the OPPOSING batters recorded — i.e. exactly the
+  // strikeouts + walks THIS staff produced. Passing them in keeps pitcher K/9
+  // and BB/9 consistent with the hitters' K%/BB%.
+  function distributePitchers(lineup, runsAllowed, oppHits, oppK, oppBB) {
     const allP = (lineup.pitcherRotation || lineup.pitchers || []).filter(Boolean)
     if (allP.length === 0) return
     const starter = allP[0]
@@ -321,11 +360,13 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     const relieverRuns = Math.max(0, runsAllowed - starterRuns)
     const starterHits = Math.round(oppHits * starterRunShare)
     const relieverHits = Math.max(0, oppHits - starterHits)
-    // Starter line
-    const sStuff = starter.pitcher?.stuff ?? 50
-    const sControl = starter.pitcher?.control ?? 50
-    const sK = Math.max(0, Math.round((starterOuts / 27) * 9 * (sStuff - 35) / 50 + rng.gaussian(0, 1)))
-    const sBB = Math.max(0, Math.round((starterOuts / 27) * 3 * (75 - sControl) / 40 + rng.gaussian(0, 0.5)))
+    // K + BB split proportionally to outs (the staff's K/BB == the opposing
+    // batters' K/BB totals).
+    const outShare = starterOuts / Math.max(1, totalOuts)
+    const sK = Math.round((oppK || 0) * outShare)
+    const sBB = Math.round((oppBB || 0) * outShare)
+    let kLeft = Math.max(0, (oppK || 0) - sK)
+    let bbLeft = Math.max(0, (oppBB || 0) - sBB)
     const sHr = Math.max(0, Math.round(starterRuns * 0.20 + rng.gaussian(0, 0.5)))
     pitcherStats[starter.id] = {
       ip: starterOuts / 3,
@@ -335,7 +376,7 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
       er: starterRuns,
       pa: Math.max(starterOuts + starterHits + sBB, 0),
     }
-    // Bullpen — distribute remaining outs among up to 3 relievers
+    // Bullpen — distribute remaining outs (+ remaining K/BB) among up to 3 arms
     if (bullpen.length > 0 && relieverOuts > 0) {
       const perRelOuts = Math.floor(relieverOuts / Math.min(bullpen.length, 3))
       let outsLeft = relieverOuts
@@ -351,15 +392,17 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
         runsLeft -= r
         const h = isLast ? hitsLeft : Math.round(hitsLeft * (o / Math.max(1, relieverOuts)))
         hitsLeft -= h
-        const pStuff = p.pitcher?.stuff ?? 50
-        const pCtrl = p.pitcher?.control ?? 50
+        const kk = isLast ? kLeft : Math.round((oppK || 0) * (o / Math.max(1, totalOuts)))
+        kLeft -= kk
+        const bw = isLast ? bbLeft : Math.round((oppBB || 0) * (o / Math.max(1, totalOuts)))
+        bbLeft -= bw
         pitcherStats[p.id] = {
           ip: o / 3,
           outs: o,
           h: Math.max(h, 0),
-          bb: Math.max(0, Math.round((o / 27) * 3 * (75 - pCtrl) / 40)),
+          bb: Math.max(0, bw),
           hbp: 0,
-          k: Math.max(0, Math.round((o / 27) * 9 * (pStuff - 35) / 50)),
+          k: Math.max(0, kk),
           hr: Math.max(0, Math.round(r * 0.2)),
           er: r,
           pa: Math.max(o + h, 0),
@@ -372,10 +415,16 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
   // same R-to-H ratio we used for batters.
   const homeHits = Math.round(homeRuns * 1.7)
   const awayHits = Math.round(awayRuns * 1.7)
-  distributeBatters(homeLineup, homeRuns, awayRuns)
-  distributeBatters(awayLineup, awayRuns, homeRuns)
-  distributePitchers(homeLineup, awayRuns, awayHits)
-  distributePitchers(awayLineup, homeRuns, homeHits)
+  // Team K/BB totals — one set per side, shared between the batters and the
+  // OPPOSING pitchers so hitter K%/BB% and pitcher K/9·BB/9 reconcile.
+  const homeKBB = lightTeamKBB(homeLineup, awayLineup, rng)
+  const awayKBB = lightTeamKBB(awayLineup, homeLineup, rng)
+  distributeBatters(homeLineup, homeRuns, homeKBB.totalK, homeKBB.totalBB)
+  distributeBatters(awayLineup, awayRuns, awayKBB.totalK, awayKBB.totalBB)
+  // Home pitchers faced the away batters → away batters' K/BB are the home
+  // staff's K/BB (and vice-versa).
+  distributePitchers(homeLineup, awayRuns, awayHits, awayKBB.totalK, awayKBB.totalBB)
+  distributePitchers(awayLineup, homeRuns, homeHits, homeKBB.totalK, homeKBB.totalBB)
   return { batterStats, pitcherStats }
 }
 

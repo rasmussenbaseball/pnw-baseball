@@ -102,6 +102,7 @@ export default function Schedule() {
     const result = autoCreateSchedule(
       userSchoolId, userSchool.conferenceId, save.schools, flatNonNaia,
       save.schedule, seasonYear, save.seed || Date.now(),
+      save.nwbbRatings || {},
     )
     if (result.games.length === 0) {
       gmToast('Nothing to auto-fill — schedule already complete or no eligible opponents found.', 'info')

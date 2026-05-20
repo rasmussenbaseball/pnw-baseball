@@ -163,6 +163,7 @@ function autoFulfillSchedule(save, summary) {
   const result = autoCreateSchedule(
     userSchoolId, conf, save.schools, flatNonNaia,
     save.schedule || [], save.calendar.year + 1, save.seed || 1,
+    save.nwbbRatings || {},
   )
   if (result?.games?.length > 0) {
     if (!save.schedule) save.schedule = []
