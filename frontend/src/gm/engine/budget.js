@@ -379,8 +379,15 @@ export function annualReview(budget, seasonResult) {
   if (overRatio > 0) budgetAdjustPct -= Math.min(0.15, overRatio * 1.5)
   if (winPct < 0.35) budgetAdjustPct -= 0.04
 
-  // Calculate rollover from unused $ — CAPPED AT 25% of total budget
-  const spent = BUDGET_CATEGORIES.reduce((s, c) => s + (budget.actuallySpent[c] || 0), 0)
+  // Calculate rollover from unused $ — CAPPED AT 25% of total budget.
+  // "Spent" = what you ALLOCATED across categories (that money funds
+  // scholarships, coaches, facilities, etc. — it's committed). `actuallySpent`
+  // is never incremented in this model, so using it treated the ENTIRE budget
+  // as unused and returned ~all of it (e.g. $540K). Only the UNALLOCATED
+  // remainder rolls over.
+  const allocated = BUDGET_CATEGORIES.reduce((s, c) => s + (budget.allocations[c] || 0), 0)
+  const discretionary = BUDGET_CATEGORIES.reduce((s, c) => s + (budget.actuallySpent[c] || 0), 0)
+  const spent = Math.max(allocated, discretionary)
   const rolloverCap = budget.totalAthleticBudget * 0.25
   const unusedRaw = Math.max(0, budget.totalAthleticBudget - spent)
   const unused = Math.min(unusedRaw, rolloverCap)
