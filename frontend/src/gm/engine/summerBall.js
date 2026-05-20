@@ -41,7 +41,7 @@
  */
 
 import { makeRng } from './rng'
-import { playerOverall } from './playerRating'
+import { playerOverall, playerPotentialOverall } from './playerRating'
 
 /** @typedef {{
  *   key: string,
@@ -312,22 +312,54 @@ export function autoAssignSummerBall(state) {
   if (state.summerBall.status !== 'PLANNING') return { assigned: 0 }
   const team = state.teams?.[state.userSchoolId]
   if (!team) return { assigned: 0 }
+  // Priority = current OVR + future ceiling (Nate: send the best + the
+  // highest-potential). Weight OVR a bit more than potential.
   const roster = (team.rosterPlayerIds || [])
     .map(id => state.players[id])
     .filter(Boolean)
-    .map(p => ({ p, ovr: playerOverall(p) }))
-    .sort((a, b) => b.ovr - a.ovr)
+    .map(p => {
+      const ovr = playerOverall(p)
+      const pot = playerPotentialOverall(p)
+      return { p, ovr, pot, score: ovr * 0.6 + pot * 0.4 }
+    })
+    .sort((a, b) => b.score - a.score)
   let assigned = 0
+  const isOpen = (p) => {
+    const e = state.summerBall.assignments[p.id]
+    return !e || e.removed
+  }
   for (const { p } of roster) {
-    // Skip players already placed this planning window.
-    const existing = state.summerBall.assignments[p.id]
-    if (existing && !existing.removed) continue
+    if (!isOpen(p)) continue
     // leaguesForPlayer is prestige-descending; take the first open slot.
     const eligible = leaguesForPlayer(p)
     for (const leagueKey of eligible) {
       const r = planSummerAssignment(state, p.id, leagueKey)
       if (r.ok) { assigned++; break }
-      // slot full / ineligible → try next league down
+    }
+  }
+  // GUARANTEE at least 4 players go out each year. If eligibility/slots left
+  // us short, force the top unassigned players into any open league slot
+  // (bypass the min-OVR gate — better to get reps than send nobody).
+  if (assigned < 4) {
+    for (const { p } of roster) {
+      if (assigned >= 4) break
+      if (!isOpen(p)) continue
+      for (const leagueKey of SUMMER_LEAGUE_KEYS) {
+        const lg = SUMMER_LEAGUES[leagueKey]
+        const cap = lg?.slotsPerProgram ?? 1
+        const occupants = Object.entries(state.summerBall.assignments)
+          .filter(([pid, a]) => !a.removed && a.leagueKey === leagueKey && pid !== p.id).length
+        if (occupants >= cap) continue
+        state.summerBall.assignments[p.id] = {
+          leagueKey, plannedAt: state.calendar?.weekOfYear || null, confirmed: false, removed: false,
+        }
+        if (p.happiness && typeof p.happiness.value === 'number' && !p._summerMoodApplied) {
+          p.happiness.value = Math.min(100, p.happiness.value + 4 + Math.round((lg?.prestige ?? 5) * 0.6))
+          p._summerMoodApplied = true
+        }
+        assigned++
+        break
+      }
     }
   }
   return { assigned }
@@ -410,6 +442,15 @@ export function planSummerAssignment(state, playerId, leagueKey) {
     confirmed: false,
     removed: false,
   }
+  // Players are thrilled to be sent to a summer league — the more
+  // prestigious the league, the bigger the mood bump. Only apply once per
+  // assignment (re-leaguing within the window doesn't stack endlessly).
+  if (player.happiness && typeof player.happiness.value === 'number' && !player._summerMoodApplied) {
+    const prestige = lg?.prestige ?? 5
+    const bump = 4 + Math.round(prestige * 0.6)   // ~+5 (low) to ~+10 (Cape Cod)
+    player.happiness.value = Math.min(100, player.happiness.value + bump)
+    player._summerMoodApplied = true
+  }
   return { ok: true }
 }
 
@@ -418,6 +459,9 @@ export function removeSummerAssignment(state, playerId) {
   ensureSummerBallState(state)
   if (state.summerBall.status === 'RESOLVED') return { ok: false, error: 'Already resolved.' }
   delete state.summerBall.assignments[playerId]
+  // Allow the mood bump to re-apply if they're reassigned later.
+  const p = state.players[playerId]
+  if (p) delete p._summerMoodApplied
   return { ok: true }
 }
 

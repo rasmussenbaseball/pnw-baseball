@@ -90,6 +90,14 @@ export default function SummerBall() {
     )
   }
 
+  // Primitive signature of the current assignments. planSummerAssignment
+  // mutates save.summerBall.assignments IN PLACE, so the object reference
+  // doesn't change — depending on `sb` directly left the memo stale (the
+  // slot counter never updated after assigning). This string changes
+  // whenever an assignment is added / removed / re-leagued.
+  const assignSig = Object.entries(sb.assignments || {})
+    .map(([pid, a]) => `${pid}:${a.leagueKey}:${a.removed ? 1 : 0}`)
+    .join('|')
   // Build league assigned-players map
   const byLeague = useMemo(() => {
     const out = {}
@@ -101,7 +109,7 @@ export default function SummerBall() {
       out[a.leagueKey]?.push({ player: p, assignment: a })
     }
     return out
-  }, [sb, save.players])
+  }, [assignSig, save.players])
 
   function handlePlan(playerId, leagueKey) {
     const result = planSummerAssignment(save, playerId, leagueKey)

@@ -647,20 +647,26 @@ export default function Dashboard() {
       {/* Sim action bar — keep `busy`as the literal busy spinner state.
           Block separately so the button shows "Locked" instead of "Simming…"
           when the phase-gate is unsatisfied. */}
-      <SimActionBar
-        mode={mode}
-        inOffseason={inOffseason}
-        nextGame={nextGame}
-        userSchoolId={save.userSchoolId}
-        save={save}
-        busy={busy}
-        blocked={advanceBlocked}
-        onSim={simNextWeek}
-        recap={lastWeekRecap}
-        offseasonWeek={save.calendar.offseasonWeek}
-        startYear={save.calendar.startYear || save.calendar.year}
-        thisWeekUnplayedCount={thisWeekUnplayed.length}
-      />
+      {/* Hide the advance bar while there are unplayed games this week — the
+          GameWeekBanner above is the single play-this-week control (no more
+          two competing teal banners). It reappears once games are played so
+          the user can advance to the next week. */}
+      {thisWeekUnplayed.length === 0 && (
+        <SimActionBar
+          mode={mode}
+          inOffseason={inOffseason}
+          nextGame={nextGame}
+          userSchoolId={save.userSchoolId}
+          save={save}
+          busy={busy}
+          blocked={advanceBlocked}
+          onSim={simNextWeek}
+          recap={lastWeekRecap}
+          offseasonWeek={save.calendar.offseasonWeek}
+          startYear={save.calendar.startYear || save.calendar.year}
+          thisWeekUnplayedCount={thisWeekUnplayed.length}
+        />
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
