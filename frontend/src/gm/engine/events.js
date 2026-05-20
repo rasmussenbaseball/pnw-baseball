@@ -18,6 +18,7 @@
 
 import { runEndOfTermAcademics } from './academics'
 import { annualReview, lockTravelAllocation, extendedBudgetEffects } from './budget'
+import { seedFromPear } from './rankings'
 import { runCareerReview } from './storyMode'
 import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool, academicRatingToGpa } from './recruits'
@@ -378,11 +379,24 @@ function runStoryCareerReview(state) {
 
 function runBudgetReview(state) {
   const userTeam = state.teams[state.userSchoolId]
+  // Expectations: PRESEASON rank (PEAR program strength) vs how the season
+  // actually FINISHED (live NWBB national rank). Drives the AD's judgment so a
+  // preseason favorite that flops loses job security even with a winning record.
+  let expectedRank = null
+  try {
+    const pear = seedFromPear(state.schools, state.conferences)
+    const order = Object.values(pear).sort((a, b) => (b.overall_rating ?? 0) - (a.overall_rating ?? 0))
+    const idx = order.findIndex(r => r.schoolId === state.userSchoolId)
+    if (idx >= 0) expectedRank = idx + 1
+  } catch (e) { /* ignore — expectation term just won't apply */ }
+  const actualRank = state.nwbbRatings?.[state.userSchoolId]?.nationalRank || null
   const seasonResult = {
     wins: userTeam._lastSeason?.wins ?? userTeam.wins,
     losses: userTeam._lastSeason?.losses ?? userTeam.losses,
     confChampion: state.postseason?.userChamp || false,
     postseasonAppearance: state.postseason?.userQualified || false,
+    expectedRank,
+    actualRank,
   }
   const reviewResult = annualReview(state.budget, seasonResult)
   state.budget = reviewResult.newBudget

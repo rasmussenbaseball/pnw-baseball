@@ -27,7 +27,7 @@ import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
 const TABS = [
   { key: 'comparison', label: 'Team Comparison' },
-  { key: 'national',   label: 'National Leaders' },
+  { key: 'national',   label: 'League Leaders' },
 ]
 
 export default function TeamStats() {
@@ -400,7 +400,7 @@ function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr 
   return (
     <div className="space-y-4">
       <LeaderCard
-        title="NATIONAL HITTING LEADERS"
+        title="NAIA HITTING LEADERS (sortable · top 50)"
         rows={topHitters}
         accent={accent}
         slot={slot}
@@ -416,7 +416,7 @@ function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr 
         userTeamId={save.userSchoolId}
       />
       <LeaderCard
-        title="NATIONAL PITCHING LEADERS"
+        title="NAIA PITCHING LEADERS (sortable · top 50)"
         rows={topPitchers}
         accent={accent}
         slot={slot}
@@ -436,16 +436,37 @@ function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr 
 }
 
 function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId, hasAnalyticsMgr }) {
-  // Without analytics manager, sort by ERA (P) / AVG (H) instead of WAR.
-  const sorted = [...rows].sort((a, b) => {
-    if (hasAnalyticsMgr) {
-      const av = isPitcher ? a.adv.pWAR : a.adv.oWAR
-      const bv = isPitcher ? b.adv.pWAR : b.adv.oWAR
-      return bv - av
+  // Sort value per stat column (always "higher = better" so a desc sort puts
+  // the leader on top — ERA/FIP are negated). Click a header to sort by it.
+  const sortVal = (r, key) => {
+    switch (key) {
+      case 'wOBA': return r.adv.wOBA
+      case 'wRC+': return r.adv.wRCplus
+      case 'WAR':  return isPitcher ? r.adv.pWAR : r.adv.oWAR
+      case 'AVG':  return r.adv.avg
+      case 'HR':   return r.stats.hr
+      case 'RBI':  return r.stats.rbi
+      case 'FIP':  return -r.adv.fip
+      case 'ERA':  return -r.adv.era
+      case 'K':    return r.stats.k
+      case 'IP':   return r.adv.ip
+      default:     return 0
     }
-    if (isPitcher) return a.adv.era - b.adv.era
-    return b.adv.avg - a.adv.avg
-  }).slice(0, 15)
+  }
+  const defaultKey = hasAnalyticsMgr ? 'WAR' : (isPitcher ? 'ERA' : 'AVG')
+  const [sortKey, setSortKey] = useState(defaultKey)
+  // Columns the user can sort by (locked advanced stats fall back to basic).
+  const sorted = [...rows].sort((a, b) => sortVal(b, sortKey) - sortVal(a, sortKey)).slice(0, 50)
+  // Clickable stat header.
+  const SortTh = ({ k, locked }) => (
+    <th
+      className={'pr-2 cursor-pointer select-none ' + (sortKey === k ? 'text-white' : locked ? 'text-gray-500' : '')}
+      onClick={() => !locked && setSortKey(k)}
+      title={locked ? 'Hire a Data Analytics Manager to unlock' : `Sort by ${k}`}
+    >
+      {k}{sortKey === k ? ' ▾' : ''}{locked ? ' ' : ''}
+    </th>
+  )
   if (sorted.length === 0) {
     return (
       <PixelCard accent={accent} title={title}>
@@ -468,19 +489,19 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId,
               <th className="pr-2">PLAYER</th>
               <th className="pr-2">SCHOOL</th>
               {isPitcher && <>
-                {hide ? lockTh('WAR') : <th className="pr-2">WAR</th>}
-                {hide ? lockTh('FIP') : <th className="pr-2">FIP</th>}
-                <th className="pr-2">ERA</th>
-                <th className="pr-2">K</th>
-                <th className="pr-2">IP</th>
+                <SortTh k="WAR" locked={hide} />
+                <SortTh k="FIP" locked={hide} />
+                <SortTh k="ERA" />
+                <SortTh k="K" />
+                <SortTh k="IP" />
               </>}
               {!isPitcher && <>
-                {hide ? lockTh('wOBA') : <th className="pr-2">wOBA</th>}
-                {hide ? lockTh('wRC+') : <th className="pr-2">wRC+</th>}
-                {hide ? lockTh('WAR') : <th className="pr-2">WAR</th>}
-                <th className="pr-2">AVG</th>
-                <th className="pr-2">HR</th>
-                <th className="pr-2">RBI</th>
+                <SortTh k="wOBA" locked={hide} />
+                <SortTh k="wRC+" locked={hide} />
+                <SortTh k="WAR" locked={hide} />
+                <SortTh k="AVG" />
+                <SortTh k="HR" />
+                <SortTh k="RBI" />
               </>}
             </tr>
           </thead>

@@ -343,12 +343,29 @@ export function annualReview(budget, seasonResult) {
   const over = overBudgetAmount(budget)
   const overRatio = over > 0 ? over / Math.max(1, budget.totalAthleticBudget) : 0
 
-  // Job security delta
+  // EXPECTATIONS are the dominant driver: the AD judges you against where the
+  // program was PICKED to finish, not just your raw record. A preseason top-5
+  // team that finishes 50th underperformed badly — even with a winning record —
+  // and should LOSE job security. A team picked 50th that finishes 20th
+  // overachieved and gains. `expectedRank` (preseason) + `actualRank` (final)
+  // are passed in by the caller; if absent we skip the term (back-compat).
+  let expDelta = 0
+  let expNote = null
+  if (typeof seasonResult.expectedRank === 'number' && typeof seasonResult.actualRank === 'number'
+      && seasonResult.expectedRank > 0 && seasonResult.actualRank > 0) {
+    const gap = seasonResult.expectedRank - seasonResult.actualRank   // + = beat expectations
+    expDelta = Math.max(-26, Math.min(20, gap * 0.35))
+    if (gap <= -20) expNote = `Picked ~#${seasonResult.expectedRank} preseason, finished ~#${seasonResult.actualRank} — the AD expected far more. Job security takes a hit.`
+    else if (gap >= 15) expNote = `Picked ~#${seasonResult.expectedRank}, finished ~#${seasonResult.actualRank} — a breakout that exceeded expectations.`
+  }
+
+  // Job security delta. Win % matters but is secondary to expectations now.
   let jsDelta = 0
-  jsDelta += winRateAbove500 * 30
+  jsDelta += expDelta
+  jsDelta += winRateAbove500 * 15
   jsDelta -= overRatio * 30
-  if (seasonResult.confChampion) jsDelta += 15
-  if (seasonResult.postseasonAppearance) jsDelta += 10
+  if (seasonResult.confChampion) jsDelta += 12
+  if (seasonResult.postseasonAppearance) jsDelta += 4
   if (winPct < 0.4) jsDelta -= 6
   if (winPct < 0.3) jsDelta -= 10
 
@@ -379,6 +396,7 @@ export function annualReview(budget, seasonResult) {
     newAllocations[c] = Math.round(newTotal * ratio)
   }
   const news = []
+  if (expNote) news.push(expNote)
   if (seasonResult.confChampion) news.push('Conference championship AD approved 8% budget bump for next year.')
   if (seasonResult.postseasonAppearance) news.push('NAIA postseason appearance +4% budget next year.')
   if (overRatio > 0) news.push(`Over budget by $${(over / 1000).toFixed(1)}K (${(overRatio * 100).toFixed(1)}%) — AD displeased. Job security .`)
