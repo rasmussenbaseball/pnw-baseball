@@ -236,6 +236,10 @@ export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
   // Wk 13 — run the camp at a mid-tier fee. Use already-invited recruits +
   // walk-ons. The simProspectCamp function returns revenue.
   const userSchoolId = save.userSchoolId
+  // Make sure the recruit pool exists FIRST — the camp's required-action runs
+  // before the weekly AP-spend step that normally lazy-generates the pool, so
+  // without this the camp would draw from an empty pool → 0 attendees.
+  ensureRecruitPool(save)
   const invitedIds = save.prospectCamp?.invitedIds || []
   const recruits = save.recruits || {}
   const headCoach = save.coaches?.[save.teams?.[userSchoolId]?.headCoachId]
@@ -740,8 +744,10 @@ function computeAutoOffer(save, recruit, ovr) {
   // Simple offer scale: higher OVR + better academic rating more $
   // Capped to leave room for the rest of the class.
   const userSchoolId = save.userSchoolId
-  const team = save.teams[userSchoolId]
-  const remainingPool = team?.scholarshipPool ?? 0
+  // The scholarship pool lives on the SCHOOL, not the team — reading it off
+  // the team returned undefined → 0 → every offer was suppressed (the "auto
+  // never makes an offer" bug). Fall back to a sane default if missing.
+  const remainingPool = save.schools?.[userSchoolId]?.scholarshipPool ?? 200000
   if (remainingPool < 2000) return 0
   let amt
   if (ovr >= 80) amt = 12000
