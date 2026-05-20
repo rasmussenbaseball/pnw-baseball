@@ -25,10 +25,14 @@ function UserRoundGames({ save, rd }) {
           const ur = userHome ? g?.homeRuns : g?.awayRuns
           const or = userHome ? g?.awayRuns : g?.homeRuns
           const won = played && ur > or
+          // Site: 1-seed hosts the conf tournament + regional (home for the
+          // host, otherwise neutral); the World Series is all neutral.
+          const site = g?.neutralSite ? 'N' : (userHome ? 'vs' : '@')
+          const vsLabel = site === 'N' ? `vs ${oppNm} (N)` : `${site} ${oppNm}`
           return (
             <span key={i} className={'text-xs font-mono px-2 py-1 rounded ' +
               (!played ? 'bg-[#1a1a2e] text-gray-500' : won ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300')}>
-              {played ? `${won ? 'W' : 'L'} ${ur}-${or} vs ${oppNm}` : `vs ${oppNm}`}
+              {played ? `${won ? 'W' : 'L'} ${ur}-${or} ${vsLabel}` : vsLabel}
             </span>
           )
         })}

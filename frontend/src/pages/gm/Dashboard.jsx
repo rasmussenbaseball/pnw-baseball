@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
 import { snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
-import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES } from '../../gm/engine/gameYear'
+import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES, dateForWeek } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
 import { teamOverall, playerOverall } from '../../gm/engine/playerRating'
 import { teamAcademicSummary } from '../../gm/engine/academics'
@@ -279,7 +279,7 @@ export default function Dashboard() {
     setBusy(true)
     setLastWeekRecap(null)
     if (mode === 'OFFSEASON') {
-      const prevWeek = save.calendar.offseasonWeek
+      const prevWeek = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
       const beforeSnap = snapshotState(save)
       advanceOffseasonWeek(save)
       const _commits = (save._newCommitRecruits || []).slice()
@@ -295,11 +295,14 @@ export default function Dashboard() {
       if (_drafted.length) setDraftModal(_drafted)
       const afterSnap = snapshotState(save)
       const diff = diffSnapshots(beforeSnap, afterSnap)
+      const newWoy = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
       setLastWeekRecap({
         kind: 'offseason',
         from: prevWeek,
-        to: save.calendar.offseasonWeek,
-        phase: offseasonPhase(save.calendar.offseasonWeek),
+        to: newWoy,
+        // Use the unified 52-week phase label, not the legacy offseasonPhase()
+        // (which only knew Aug-Jan and labeled June "Spring Practice").
+        phase: phaseForWeek(newWoy)?.label || '',
         diff,
         autoActions: autoActionsThisAdvance,
       })
@@ -376,8 +379,21 @@ export default function Dashboard() {
       setTimeout(() => {
         try {
           advanceWeek(save, save.schedule)
+          // Advancing OUT of week 42 (World Series) crosses into the summer
+          // (wk43), where the MID outbound-transfer wave + early portal fire.
+          // Capture those collectors so departures/commits/draft pop their
+          // modals immediately instead of getting buried until a later week.
+          const _commits = (save._newCommitRecruits || []).slice()
+          const _departures = (save._newDepartures || []).slice()
+          const _drafted = (save._newDraftPicks || []).slice()
+          save._newCommitRecruits = []
+          save._newDepartures = []
+          save._newDraftPicks = []
           saveDynasty(save)
           setSave({ ...save })
+          if (_commits.length) setCommitModal(_commits)
+          if (_departures.length) setDepartureModal(_departures)
+          if (_drafted.length) setDraftModal(_drafted)
           setLastWeekRecap({ kind: 'season', results: [] })
         } catch (err) {
           console.error('postseason advance failed:', err)
@@ -1516,31 +1532,31 @@ function ConferenceStandingsWidget({ save, slot }) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, blocked = false, onSim, recap, offseasonWeek, startYear, thisWeekUnplayedCount = 0 }) {
-  const date = inOffseason
-    ? offseasonWeekDate(startYear, offseasonWeek)
-    : null
+  // Use the UNIFIED 52-week calendar for both the label AND the date. The
+  // legacy offseasonWeek mapping wraps past its max for the post-postseason
+  // weeks (43-52), which produced "Offseason Wk 30/26 · Spring Practice" AND a
+  // bogus "Sat Jan 30" date in June. weekOfYear + dateForWeek map cleanly
+  // across the whole Aug→Jul cycle.
+  const woy = save.calendar?.weekOfYear ?? offseasonWeek
+  const date = inOffseason ? dateForWeek(save.calendar?.year, woy) : null
 
   // Icon for the period — surface a meaningful symbol so the chip isn't an
   // empty square. Offseason variants pick by what's happening that month
   // (summer / fall / winter / spring buildup); in-season is a baseball.
   function offseasonIcon(wk) {
     if (wk <= 4) return '☀️'      // Late Summer
-    if (wk <= 13) return '🍂'    // Fall Camp
-    if (wk <= 17) return '🏋️'    // November conditioning
-    if (wk <= 21) return '❄️'    // December dead period
-    return '🧤'                   // Winter Practice / Spring ramp
+    if (wk <= 8) return '🍂'     // Fall Camp
+    if (wk <= 22) return '🏋️'    // Oct-Dec conditioning turns
+    if (wk <= 26) return '🧤'    // Winter Practice / Spring ramp
+    return '☀️'                   // Summer Recruiting (wks 43-52)
   }
-  // Use the UNIFIED 52-week calendar for the label. The legacy offseasonWeek
-  // mapping wraps past its max for the post-postseason weeks (43-52), which
-  // produced nonsense like "Offseason Wk 30/26 · Spring Practice" in June.
-  const woy = save.calendar?.weekOfYear ?? offseasonWeek
   const ph = phaseForWeek(woy)
   let primary
   if (inOffseason) {
     primary = (
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-2xl shrink-0">
-          {offseasonIcon(offseasonWeek)}
+          {offseasonIcon(woy)}
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
@@ -2561,8 +2577,8 @@ function WeekRecapModal({ recap, save, onDismiss }) {
   const isOffseason = recap.kind === 'offseason'
   const headerLabel = isOffseason
     ? (recap.from === recap.to
-        ? `Offseason Wk ${recap.to} — ${recap.phase}`
-        : `Offseason Wk ${recap.from} → ${recap.to} — ${recap.phase}`)
+        ? `Week ${recap.to}/52 — ${recap.phase}`
+        : `Week ${recap.from} → ${recap.to}/52 — ${recap.phase}`)
     : `Game Week Recap`
 
   // Surface newsfeed events that fired this week — gives the recap real

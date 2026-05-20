@@ -123,10 +123,19 @@ const NON_NAIA_BY_ID = (() => {
  * @param {object<string, import('./types.js').School>} schools  NAIA schools
  * @returns {object<string, { rating: number, source: 'PEAR'|'NON_NAIA' }>}
  */
-export function buildPreseasonSeeds(schools) {
+export function buildPreseasonSeeds(schools, carried = null) {
   const out = {}
-  // NAIA from PEAR
+  // NAIA seeds. After year 1, prefer the CARRIED rating — where the team
+  // finished last season — so the Rankings page starts the new year exactly
+  // where it ended instead of snapping back to the static PEAR preseason
+  // numbers (per Nate: "rankings should remain the same from the previous
+  // year"). Falls back to PEAR for year 1 / any team without a carried value.
   for (const school of Object.values(schools || {})) {
+    const carriedRating = carried?.[school.id]
+    if (typeof carriedRating === 'number' && isFinite(carriedRating)) {
+      out[school.id] = { rating: carriedRating, source: 'CARRIED' }
+      continue
+    }
     const pear = pearForSchoolWith(school, PEAR_LOOKUP)
     const rating = pear ? pearToUniversal(pear.Rating) : 50
     out[school.id] = { rating, source: 'PEAR' }
@@ -164,7 +173,9 @@ export function buildPreseasonSeeds(schools) {
  */
 export function recomputeNwbbRatings(state) {
   const schools = state.schools || {}
-  const seeds = buildPreseasonSeeds(schools)
+  // state.carriedRatings (set at end of each season) carries last year's final
+  // ratings forward as this year's preseason seed.
+  const seeds = buildPreseasonSeeds(schools, state.carriedRatings)
 
   // Collect all played games. Cross-division ones count too. Fall/spring
   // scrimmages are excluded — they're development reps, not record-counting

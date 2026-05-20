@@ -39,6 +39,21 @@ function makeNonUserSim(ratings) {
 // seed index; { win:key } / { lose:key } = winner/loser of a prior match.
 
 function deGraph(n) {
+  if (n <= 2) {
+    // 1-2 teams: a single decisive game (no real double-elim possible).
+    return { graph: [{ key: 'wb1', a: 0, b: 1 }], wbChampKey: 'wb1', lbChampKey: 'wb1', single: true }
+  }
+  if (n === 3) {
+    // 3-team double-elim: 1 gets a bye to the WB final.
+    return {
+      graph: [
+        { key: 'wb1', a: 1, b: 2 },                       // 2 vs 3
+        { key: 'wbf', a: 0, b: { win: 'wb1' } },          // 1 vs W(2v3)
+        { key: 'lbf', a: { lose: 'wb1' }, b: { lose: 'wbf' } },
+      ],
+      wbChampKey: 'wbf', lbChampKey: 'lbf',
+    }
+  }
   if (n >= 5) {
     // 5-team: 4v5 → vs 1 ; 2v3 ; WB final
     return {
@@ -72,6 +87,8 @@ function deGraph(n) {
  * { pending:{ homeId, awayId, gameKey } }.
  */
 function runMatchGraph(seeds, spec, userId, getUserResult, simNonUser, keyPrefix) {
+  if (!seeds || seeds.length === 0) return { champion: null }
+  if (seeds.length === 1) return { champion: seeds[0] }
   const results = {}
   const refTeam = (ref) => {
     if (typeof ref === 'number') return seeds[ref]
@@ -83,7 +100,12 @@ function runMatchGraph(seeds, spec, userId, getUserResult, simNonUser, keyPrefix
     if (h === userId || a === userId) {
       const res = getUserResult(key)
       if (!res) return { pending: { homeId: h, awayId: a, gameKey: key } }
-      const winner = res.homeRuns > res.awayRuns ? h : a
+      // Winner by TEAM ID using the schedule's recorded sides (which may have
+      // been host-swapped), then map back to this match's h/a so the bracket
+      // stays correct regardless of who was listed home.
+      const winner = (res.homeId && res.awayId)
+        ? (res.homeRuns > res.awayRuns ? res.homeId : res.awayId)
+        : (res.homeRuns > res.awayRuns ? h : a)
       results[key] = { winner, loser: winner === h ? a : h }
       return {}
     }
@@ -98,6 +120,9 @@ function runMatchGraph(seeds, spec, userId, getUserResult, simNonUser, keyPrefix
     const r = play(m.key, h, a)
     if (r.pending) return r
   }
+  // Single decisive game (tiny field) — no winners-bracket/losers-bracket grand
+  // final; the lone match decides it.
+  if (spec.single) return { champion: results[spec.wbChampKey]?.winner || seeds[0] }
   const wb = results[spec.wbChampKey]?.winner
   const lb = results[spec.lbChampKey]?.winner
   if (!wb || !lb) return { champion: wb || lb || seeds[0] }
@@ -144,22 +169,39 @@ function getUserResultFromSchedule(state, year, stage) {
   return (gameKey) => {
     const g = (state.schedule || []).find(x => x.id === userGameId(year, stage, gameKey))
     if (!g || !g.played || g.homeRuns == null) return null
-    return { homeRuns: g.homeRuns, awayRuns: g.awayRuns }
+    // Return the schedule's actual home/away ids too: generatePendingGame may
+    // have swapped them so the host sits at home, so the bracket can't assume
+    // homeRuns belongs to its own `h` team.
+    return { homeRuns: g.homeRuns, awayRuns: g.awayRuns, homeId: g.homeId, awayId: g.awayId }
   }
 }
 
-function generatePendingGame(state, stage, pending) {
+function generatePendingGame(state, stage, pending, hostId = null) {
   const year = state.calendar.year
   const id = userGameId(year, stage, pending.gameKey)
   if ((state.schedule || []).some(g => g.id === id)) return id
   if (!state.schedule) state.schedule = []
+  // Site rule (per Nate): the 1-seed HOSTS the conference tournament and the
+  // regional, so any game involving the host is played at the host (host =
+  // home). Every other matchup in those rounds — and ALL World Series games —
+  // is a neutral-site game. We still pick a stable home/away for box-score
+  // bookkeeping, but flag neutralSite so the UI can label it.
+  let homeId = pending.homeId
+  let awayId = pending.awayId
+  const hostPlaying = hostId && (homeId === hostId || awayId === hostId)
+  const neutralSite = !hostPlaying
+  if (hostPlaying && awayId === hostId) {
+    // Make the host the home team for display when they're listed as away.
+    homeId = hostId
+    awayId = pending.homeId
+  }
   state.schedule.push({
     id, year,
     seasonWeek: STAGE_SEASONWEEK[stage],
     weekOfYear: STAGE_WEEK[stage],
     date: `${year}-05-${STAGE_WEEK[stage] === 40 ? 12 : STAGE_WEEK[stage] === 41 ? 19 : 26}`,
-    homeId: pending.homeId, awayId: pending.awayId,
-    type: 'POSTSEASON', postseasonStage: stage,
+    homeId, awayId,
+    type: 'POSTSEASON', postseasonStage: stage, neutralSite,
     countsTowardRecord: false, isDoubleheader: false,
     played: false, homeRuns: null, awayRuns: null,
   })
@@ -209,9 +251,16 @@ function seasonScore(state, id) {
 
 function nationalField(state, ratings) {
   const ps = state.postseason
-  if (!ps.confChampions || Object.keys(ps.confChampions).length === 0) {
-    ps.confChampions = confChampionsAll(state, ratings)
-  }
+  // Always make sure EVERY conference has a champion in the field. Previously
+  // this only computed confChampionsAll when confChampions was empty — but once
+  // the user won their own conference tournament, confChampions held exactly ONE
+  // entry (the user's), so the `length === 0` guard skipped computing all the
+  // OTHER conferences. The national field then had just 1 auto-bid + 36
+  // at-large = 37 teams, not enough to fill 10 regionals (46), and the user
+  // could get squeezed out of a regional entirely. Merge: keep the user's
+  // actual tournament result, backfill every other conference.
+  const full = confChampionsAll(state, ratings)
+  ps.confChampions = { ...full, ...(ps.confChampions || {}) }
   const hasTeam = (id) => !!state.teams?.[id]
   const set = new Set(Object.values(ps.confChampions).filter(id => id && hasTeam(id)))
   // At-large bids: the best teams BY CURRENT SEASON not already auto-bid in.
@@ -287,7 +336,8 @@ export function tickInteractivePostseason(state) {
 function applyDeResult(state, ps, stage, round, res) {
   const userId = state.userSchoolId
   if (res.pending) {
-    const id = generatePendingGame(state, stage, res.pending)
+    // CONF + REGIONAL: 1-seed (seeds[0]) hosts; other matchups are neutral.
+    const id = generatePendingGame(state, stage, res.pending, round.seeds?.[0])
     round.pendingGameId = id
     if (!round.gameIds.includes(id)) round.gameIds.push(id)
     const oppId = res.pending.homeId === userId ? res.pending.awayId : res.pending.homeId
@@ -379,12 +429,18 @@ export function advanceInteractivePostseasonNAIA(state, leavingWeek) {
   // ALWAYS build the national bracket so it's fully viewable even after the
   // user is eliminated. setupRegional/setupWorldSeries wire the user's portion
   // interactively only if they're still alive; otherwise everything is simmed.
+  // IMPORTANT: advance ps.stage BEFORE running setup. setupRegional/
+  // setupWorldSeries call tickInteractivePostseason(), which reads
+  // ps.rounds[ps.stage]. If the stage were still 'CONF' (resolved), the tick
+  // would return early and NEVER generate the user's regional/WS game — the
+  // exact bug where a CCC champion got no regional game and was dropped from
+  // the World Series.
   if (leavingWeek === 40) {
-    setupRegional(state, ratings)
     ps.stage = 'REGIONAL'
+    setupRegional(state, ratings)
   } else if (leavingWeek === 41) {
-    setupWorldSeries(state, ratings)
     ps.stage = 'WS'
+    setupWorldSeries(state, ratings)
   } else if (leavingWeek === 42) {
     finalize(state, ratings)
   }

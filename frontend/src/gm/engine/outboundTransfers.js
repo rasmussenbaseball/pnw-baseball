@@ -169,8 +169,8 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     const prefix = t.isStar ? '' : ''
     state.newsfeed.unshift({
       id: `out_${t.player.id}_${state.calendar.year}_${phase}`,
-      year: state.calendar.year + 1,
-      week: phase === 'MID_OFFSEASON' ? 3 : 18,
+      year: state.calendar.year,
+      week: state.calendar.weekOfYear,
       type: 'TRANSFER_OUT',
       headline: `${prefix} ${t.player.firstName} ${t.player.lastName} (${t.player.classYear}, ${t.player.primaryPosition}) ${destText}.`,
       payload: { destination: t.destination, playerId: t.player.id, isStar: t.isStar },
@@ -189,8 +189,8 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     }))]
     state.newsfeed.unshift({
       id: `out_summary_${state.calendar.year}_${phase}`,
-      year: state.calendar.year + 1,
-      week: phase === 'MID_OFFSEASON' ? 3 : 18,
+      year: state.calendar.year,
+      week: state.calendar.weekOfYear,
       type: 'TRANSFER_OUT',
       headline: phase === 'MID_OFFSEASON'
         ? `Early portal activity: ${transferred.length} player${transferred.length === 1 ? '' : 's'} leaving the program.`

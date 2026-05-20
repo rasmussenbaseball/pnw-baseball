@@ -535,7 +535,10 @@ export function simWeek(state, schedule, ratings) {
   // Computed from state.weeklyStats (populated above during simWeek). Posts
   // to newsfeed and bumps the user's player stats + coach upgrade points
   // when the user's roster wins one.
-  if (gamesPlayed > 0 && state.calendar?.mode !== 'OFFSEASON') {
+  // Player-of-the-Week is a REGULAR-SEASON honor only. No POTW during the
+  // postseason (weeks 40-42) — per Nate, playoff weeks shouldn't generate
+  // weekly awards or the attached rating bumps.
+  if (gamesPlayed > 0 && state.calendar?.mode === 'SEASON') {
     computeWeeklyAwards(state)
   }
 
@@ -706,7 +709,10 @@ export function runEndOfYear(state) {
   // year's spring season. Keyed by the YEAR the spring took place in
   // (state.calendar.year before it ticks).
   if (!state.statsArchive) state.statsArchive = {}
-  const archivedYear = state.calendar?.year
+  // advanceOneWeek already ticked state.calendar.year on the 52→1 rollover
+  // BEFORE calling runEndOfYear, so the season that just finished is (year-1).
+  // Archive under that finished year, not the new one.
+  const archivedYear = (state.calendar?.year ?? 1) - 1
   if (archivedYear != null && state.playerStats) {
     state.statsArchive[archivedYear] = state.playerStats
     // Also archive team W-L for the year so career views can show context.
@@ -726,8 +732,25 @@ export function runEndOfYear(state) {
     }
   }
 
-  // Calendar transition
-  state.calendar.year++
+  // Carry the FINAL NWBB ratings forward as next year's preseason seed, so the
+  // Rankings page starts the new season where this one ended (per Nate) instead
+  // of resetting to the static PEAR preseason numbers. buildPreseasonSeeds()
+  // reads state.carriedRatings on the next recompute.
+  if (state.nwbbRatings) {
+    state.carriedRatings = {}
+    for (const [tid, r] of Object.entries(state.nwbbRatings)) {
+      // Only carry NAIA teams (non-NAIA are reseeded to their fixed strength).
+      if (state.schools?.[tid] && typeof r?.rating === 'number') {
+        state.carriedRatings[tid] = r.rating
+      }
+    }
+  }
+
+  // Calendar transition. NOTE: advanceOneWeek already incremented
+  // state.calendar.year when it wrapped weekOfYear 52→1, so we must NOT
+  // increment again here (doing so double-counted the year and pushed the
+  // new season a full year into the future). Just normalize the legacy
+  // mode/week fields.
   state.calendar.mode = 'OFFSEASON'
   state.calendar.offseasonWeek = 1
   state.calendar.seasonWeek = null
@@ -1429,6 +1452,14 @@ function tickRecruitingDecisions(state) {
   const rng = makeRng('recruit_decisions', state.rngSeed, state.calendar?.year, state.calendar?.weekOfYear)
   let newSigns = 0
   let newSteals = 0
+  // SUMMER PORTAL (weeks 43+): the post-season recruiting window is short, the
+  // user has just lost players to outbound transfers, and replacements must be
+  // signed in only ~9 turns. Make commits noticeably easier + faster — lower
+  // the interest gate and boost sign probability so the user can actually
+  // backfill the roster (per Nate: "make committing players in the summer
+  // easier, players decide quicker after week 43").
+  const isSummer = (state.calendar?.weekOfYear ?? 0) >= 43
+  const advanceOpts = isSummer ? { gateOverride: 24, signMultiplier: 2.3 } : {}
   const committedThisTick = []   // recruit ids that committed — for the popup
   for (const r of Object.values(state.recruits)) {
     // 1. Tick weeksOutstanding on user's live offers
@@ -1437,7 +1468,7 @@ function tickRecruitingDecisions(state) {
     }
     // 2. Sign roll on open recruits with a user offer
     if (r.status === 'open' && r.liveOffer?.schoolId === userId) {
-      const signed = tryAdvanceRecruit(r, userId, userSchool, rng, state)
+      const signed = tryAdvanceRecruit(r, userId, userSchool, rng, state, advanceOpts)
       if (signed) {
         newSigns++
         committedThisTick.push(r.id)

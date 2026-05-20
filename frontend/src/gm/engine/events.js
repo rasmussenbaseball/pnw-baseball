@@ -268,7 +268,7 @@ function runClassFinalize(state) {
     if (r.status !== 'signed' || r.signedTo !== userId) continue
     if (r.joinedAt && r.joinedAt === state.calendar.year) continue
     if (!state.players[r.id]) {
-      state.players[r.id] = recruitToPlayer(r)
+      state.players[r.id] = recruitToPlayer(r, state.calendar?.year, userId)
     }
     if (!team.rosterPlayerIds.includes(r.id)) team.rosterPlayerIds.push(r.id)
     r.joinedAt = state.calendar.year
@@ -309,7 +309,7 @@ function runClassFinalize(state) {
 }
 
 /** Shape a Recruit into a Player. Inherits ratings + bio; resets stats. */
-function recruitToPlayer(r) {
+function recruitToPlayer(r, year, schoolId = null) {
   // GPA carryover: recruits hold their high-school grades as `academicRating`
   // (30-99 integer). Convert to a real 0-4.0 GPA via academicRatingToGpa so
   // the player keeps their HS GPA from the moment they sign — no more
@@ -318,9 +318,36 @@ function recruitToPlayer(r) {
   const gpa = r.gpa != null
     ? r.gpa
     : (r.academicRating != null ? academicRatingToGpa(r.academicRating) : 3.0)
+  // CRITICAL: recruits store ratings under trueHitter/truePitcher/
+  // truePotentialHitter/truePotentialPitcher — NOT hitter/pitcher/hidden like
+  // generated players. The old code read r.hitter (undefined), producing a
+  // hitter with `hitter: null` + `isHitter: true`, which white-screened the
+  // Roster page (`p.hitter.contact_l`) the first time a class enrolled in
+  // season 2. Map the real fields and rebuild a full hidden block.
+  const hitter = r.trueHitter || null
+  const pitcher = r.truePitcher || null
+  const hidden = {
+    potential_hitter: r.truePotentialHitter || hitter,
+    potential_pitcher: r.truePotentialPitcher || pitcher,
+    // Recruits don't carry these hidden personality ratings; seed believable
+    // defaults (downstream reads all guard with `?? <default>`).
+    work_ethic: r.hidden?.work_ethic ?? 60,
+    clutch: r.hidden?.clutch ?? 50,
+    injury_prone: r.hidden?.injury_prone ?? 50,
+    loyalty: r.hidden?.loyalty ?? 65,
+    academic_aptitude: r.academicRating ?? 70,
+    archetype: r.archetypeKey ?? null,
+    bodyFrame: r.bodyFrameKey ?? null,
+    quirks: [...(r.visibleQuirks || []), ...(r.hiddenQuirks || [])],
+    reverseSplit: !!r.reverseSplit,
+  }
+  // FR birthdate — ~18-19 years old. Spring season `year` means they enroll
+  // the prior fall, so born ~year-19. Stored ISO-style like generated players.
+  const birthYear = (year || new Date().getFullYear()) - 19
   return {
     id: r.id,
     firstName: r.firstName, lastName: r.lastName,
+    birthDate: `${birthYear}-08-15`,
     bats: r.bats, throws: r.throws,
     primaryPosition: r.primaryPosition,
     positions: r.positions || [r.primaryPosition],
@@ -329,16 +356,23 @@ function recruitToPlayer(r) {
     semestersUsed: 0,
     redshirtUsed: false,
     hometown: r.hometown,
+    schoolId,
+    previousSchoolName: r.previousSchoolName ?? null,
+    previousLeagueId: r.previousLeagueId ?? null,
     isHitter: !r.isPitcher,
     isPitcher: !!r.isPitcher,
-    hitter: r.hitter || null,
-    pitcher: r.pitcher || null,
-    hidden: r.hidden || {},
+    hitter,
+    pitcher,
+    hidden,
+    measurables: r.measurables || null,
+    archetypeKey: r.archetypeKey ?? null,
+    bodyFrameKey: r.bodyFrameKey ?? null,
+    injury: null,
     gpa,
     academicRating: r.academicRating ?? null,   // keep raw 30-99 around for future academic events
     academicStanding: 'eligible',
     eligibilityStatus: 'eligible',
-    scholarship: { annualAmount: r.scholarshipOffered ?? 0 },
+    scholarship: { annualAmount: r.liveOffer?.amount ?? r.scholarshipOffered ?? 0, yearsCommitted: 4 },
     happiness: { value: 65, lastWeek: 65 },   // fresh recruits start happy
   }
 }

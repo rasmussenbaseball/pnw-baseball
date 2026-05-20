@@ -1182,7 +1182,7 @@ export function withdrawOffer(recruit, userSchoolId) {
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @returns {string | null}   the school they signed with, or null
  */
-export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = null) {
+export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = null, opts = {}) {
   if (recruit.status === 'signed' || recruit.status === 'lost') return null
   const grade = recruit.scoutGrades[userSchoolId]
   if (!grade) return null
@@ -1190,7 +1190,10 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   // courted enough to hold a live offer AND sits above ~32 interest is a
   // realistic commit candidate. The old 45 gate was unreachable for the
   // auto-courted board (interest stalled in the mid-30s), so nobody signed.
-  if (grade.interest < 32) return null
+  // SUMMER (opts.gateOverride): the portal window after week 43 is short
+  // (~9 turns) and players must decide fast, so the gate drops.
+  const interestGate = opts.gateOverride ?? 32
+  if (grade.interest < interestGate) return null
   if (!recruit.liveOffer || recruit.liveOffer.schoolId !== userSchoolId) return null
 
   const suitorCount = totalSuitors(recruit)
@@ -1315,7 +1318,9 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   // contested recruit eventually decides over a full recruiting cycle.
   const suitorDivisor = 1 + suitorCount * 0.45   // 1 suitor: ÷1.45; 5 suitors: ÷3.25
 
-  const signProb = clamp(baseProb / suitorDivisor, 0.05, 0.92)
+  // Summer acceleration: short portal window → recruits decide faster.
+  const summerMult = opts.signMultiplier ?? 1
+  const signProb = clamp(baseProb / suitorDivisor * summerMult, 0.05, 0.95)
   if (rng.chance(signProb)) {
     recruit.status = 'signed'
     recruit.signedTo = userSchoolId

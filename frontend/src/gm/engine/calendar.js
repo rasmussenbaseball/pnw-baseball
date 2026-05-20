@@ -83,10 +83,24 @@ export function formatShortDate(d) {
  * @param {import('./types.js').Calendar & { startYear?: number }} calendar
  */
 export function calendarDateLabel(calendar) {
-  if (calendar.mode === 'OFFSEASON' && calendar.offseasonWeek) {
-    const startYear = calendar.startYear ?? calendar.year
-    const d = offseasonWeekDate(startYear, calendar.offseasonWeek)
-    return formatShortDate(d) + ', ' + d.getFullYear()
+  if (calendar.mode === 'OFFSEASON') {
+    // Prefer the unified 52-week counter. The legacy offseasonWeek path only
+    // handled weeks 1-26 (Aug-Jan); summer weeks 43-52 mapped to offseasonWeek
+    // 27+ and produced nonsense dates like "Sat Jan 30" in June. weekOfYear
+    // maps cleanly across the whole Aug→Jul cycle.
+    if (typeof calendar.weekOfYear === 'number') {
+      // Wk 1 = Aug 1 of the academic-start year; each week is +7 days. When
+      // calendar.startYear is set it's already that Aug-start year; otherwise
+      // derive it from the spring year (year - 1), matching dateForWeek().
+      const startYear = calendar.startYear ?? (calendar.year - 1)
+      const d = offseasonWeekDate(startYear, calendar.weekOfYear)
+      return formatShortDate(d) + ', ' + d.getFullYear()
+    }
+    if (calendar.offseasonWeek) {
+      const startYear = calendar.startYear ?? calendar.year
+      const d = offseasonWeekDate(startYear, calendar.offseasonWeek)
+      return formatShortDate(d) + ', ' + d.getFullYear()
+    }
   }
   if (calendar.mode === 'SEASON' && calendar.seasonWeek) {
     return `Season Wk ${calendar.seasonWeek}, ${calendar.year + 1}`
