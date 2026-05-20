@@ -724,9 +724,13 @@ function makeD2Sim(state) {
 /** 56-team D2 national field, seeded best-first by rating (GNAC + abstract). */
 function d2NationalField(state) {
   const real = Object.keys(state.schools || {}).filter(id => state.teams?.[id])
+  const seen = new Set(real)
   const cands = [
     ...real.map(id => ({ id, rating: d2RatingOf(state, id) })),
-    ...D2_ABSTRACT.map(t => ({ id: t.id, rating: nonNaiaToUniversal(t) })),
+    // Abstract entries only for any D2 team NOT present as a real program
+    // (with full-division dynasties every team is real, so this is usually a
+    // no-op; kept for older saves that still treat the field as abstract).
+    ...D2_ABSTRACT.filter(t => !seen.has(t.id)).map(t => ({ id: t.id, rating: nonNaiaToUniversal(t) })),
   ].sort((a, b) => b.rating - a.rating)
   return cands.slice(0, 56).map(c => c.id)
 }

@@ -28,6 +28,7 @@ import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, r
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
 import { buildAllConferenceSchedules, buildNonConferenceFillers, dateToWeekOfYear } from './schedule'
+import { buildFullDivisionSchedule } from './newDynastyMultiLevel'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek, postseasonLayout } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
@@ -1607,6 +1608,17 @@ export function rebuildScheduleForYear(state) {
   // conference schedule is built for the wrong year and the auto-filled
   // non-conference games (year+1) won't line up with it.
   const year = state.calendar.year + 1
+  // D1/D2/D3 full-division dynasties rebuild with the same builder used at
+  // creation (circle-method round-robin + front-week fillers) so year 2+ keeps
+  // the whole league playing every week. NAIA + NWAC keep their builders.
+  const level = state.level
+  if (level && level !== 'NAIA' && level !== 'NWAC') {
+    state.schedule = capRegularSeasonForLevel(
+      buildFullDivisionSchedule(state.conferences, state.schools, level, year, state.rngSeed, state.userSchoolId),
+      level,
+    )
+    return
+  }
   const confSchedule = buildAllConferenceSchedules(state.conferences, state.schools, year, state.rngSeed)
   // Early-week non-conference fillers for non-user teams so the whole league
   // plays + accrues stats from week 1 (user self-schedules their non-conf).

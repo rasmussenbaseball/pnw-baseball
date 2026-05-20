@@ -49,6 +49,8 @@ export default function TeamStats() {
   const conf = save.conferences[school.conferenceId]
   const accent = school.colors?.[0] || '#fbbf24'
   const year = save.calendar?.year
+  // National label adapts to the dynasty's level (NAIA / D2 / D1 / D3 / NWAC).
+  const leagueLabel = (save.level && save.level !== 'NAIA') ? save.level : 'NAIA'
 
   // Advanced stats (wOBA, wRC+, oWAR, FIP, xFIP, pWAR) gated behind the
   // Data Analytics Manager hire.
@@ -104,7 +106,7 @@ export default function TeamStats() {
       <div className="mb-4">
         <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">TEAM STATS</h1>
         <p className="font-pixel text-base text-[#a8a8c8]">
-          {school.name} · {year} season · vs {conf.name} · vs NAIA
+          {school.name} · {year} season · vs {conf.name} · vs {leagueLabel}
         </p>
       </div>
 
@@ -143,6 +145,7 @@ function ComparisonView({ save, leagueStats, year, accent, slot, hasAnalyticsMgr
   const team = save.teams[save.userSchoolId]
   const school = save.schools[save.userSchoolId]
   const conf = save.conferences[school.conferenceId]
+  const leagueLabel = (save.level && save.level !== 'NAIA') ? save.level : 'NAIA'
   const userRoster = team.rosterPlayerIds || []
   const userTotals = aggregateTeamStats(userRoster, leagueStats)
 
@@ -189,38 +192,38 @@ function ComparisonView({ save, leagueStats, year, accent, slot, hasAnalyticsMgr
 
   return (
     <div className="space-y-4">
-      <PixelCard accent={accent} title="HITTING — YOUR TEAM VS CONFERENCE VS NAIA">
-        <ComparisonRow
+      <PixelCard accent={accent} title={`HITTING — YOUR TEAM VS CONFERENCE VS ${leagueLabel}`}>
+        <ComparisonRow leagueLabel={leagueLabel}
           label="AVG"  user={safe(userTotals.h, userTotals.ab)}
           conf={safe(confTotals.h, confTotals.ab)}
           naia={safe(naiaTotals.h, naiaTotals.ab)}
           fmt={fmtRate}
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="OBP"  user={safe(userTotals.h + userTotals.bb + userTotals.hbp, userTotals.ab + userTotals.bb + userTotals.hbp + userTotals.sf)}
           conf={safe(confTotals.h + confTotals.bb + confTotals.hbp, confTotals.ab + confTotals.bb + confTotals.hbp + confTotals.sf)}
           naia={safe(naiaTotals.h + naiaTotals.bb + naiaTotals.hbp, naiaTotals.ab + naiaTotals.bb + naiaTotals.hbp + naiaTotals.sf)}
           fmt={fmtRate}
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="SLG" user={safe(tb(userTotals), userTotals.ab)}
           conf={safe(tb(confTotals), confTotals.ab)}
           naia={safe(tb(naiaTotals), naiaTotals.ab)}
           fmt={fmtRate}
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="HR" user={userTotals.hr}
           conf={Math.round(confTotals.hr / numConfTeams)}
           naia={Math.round(naiaTotals.hr / numNaiaTeams)}
           fmt={v => String(v)}
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="K%" user={safe(userTotals.k, userTotals.pa)}
           conf={safe(confTotals.k, confTotals.pa)}
           naia={safe(naiaTotals.k, naiaTotals.pa)}
           fmt={v => (v * 100).toFixed(1) + '%'}
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="BB%" user={safe(userTotals.bb, userTotals.pa)}
           conf={safe(confTotals.bb, confTotals.pa)}
           naia={safe(naiaTotals.bb, naiaTotals.pa)}
@@ -228,32 +231,32 @@ function ComparisonView({ save, leagueStats, year, accent, slot, hasAnalyticsMgr
         />
       </PixelCard>
 
-      <PixelCard accent={accent} title="PITCHING — YOUR TEAM VS CONFERENCE VS NAIA">
-        <ComparisonRow
+      <PixelCard accent={accent} title={`PITCHING — YOUR TEAM VS CONFERENCE VS ${leagueLabel}`}>
+        <ComparisonRow leagueLabel={leagueLabel}
           label="ERA" user={era(userTotals)}
           conf={era(confTotals)}
           naia={era(naiaTotals)}
           fmt={fmt2} lowerIsBetter
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="WHIP" user={whip(userTotals)}
           conf={whip(confTotals)}
           naia={whip(naiaTotals)}
           fmt={fmt2} lowerIsBetter
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="K/9" user={k9(userTotals)}
           conf={k9(confTotals)}
           naia={k9(naiaTotals)}
           fmt={v => v.toFixed(1)}
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="BB/9" user={bb9(userTotals)}
           conf={bb9(confTotals)}
           naia={bb9(naiaTotals)}
           fmt={v => v.toFixed(1)} lowerIsBetter
         />
-        <ComparisonRow
+        <ComparisonRow leagueLabel={leagueLabel}
           label="HR/9" user={hr9(userTotals)}
           conf={hr9(confTotals)}
           naia={hr9(naiaTotals)}
@@ -271,7 +274,7 @@ function ComparisonView({ save, leagueStats, year, accent, slot, hasAnalyticsMgr
   )
 }
 
-function ComparisonRow({ label, user, conf, naia, fmt, lowerIsBetter = false }) {
+function ComparisonRow({ label, user, conf, naia, fmt, lowerIsBetter = false, leagueLabel = 'NAIA' }) {
   const userBetterThanConf = lowerIsBetter ? user < conf : user > conf
   const userBetterThanNaia = lowerIsBetter ? user < naia : user > naia
   return (
@@ -284,7 +287,7 @@ function ComparisonRow({ label, user, conf, naia, fmt, lowerIsBetter = false }) 
         {fmt(conf)} <span className="text-[10px] text-[#a8a8c8] ml-1">conf</span>
       </div>
       <div className="text-right font-mono tabular-nums text-[#cbd5e1]">
-        {fmt(naia)} <span className="text-[10px] text-[#a8a8c8] ml-1">NAIA</span>
+        {fmt(naia)} <span className="text-[10px] text-[#a8a8c8] ml-1">{leagueLabel}</span>
       </div>
     </div>
   )
@@ -359,6 +362,7 @@ function TeamComparisonTable({ rows, slot, hasAnalyticsMgr }) {
 
 function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr }) {
   const lg = useMemo(() => leagueAverages({ playerStats: leagueStats }), [leagueStats])
+  const leagueLabel = (save.level && save.level !== 'NAIA') ? save.level : 'NAIA'
 
   // Build flat lists of every qualifying player (hitter + pitcher), with the
   // school name + computed advanced stats. ~7,000 rows for a full league —
@@ -400,7 +404,7 @@ function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr 
   return (
     <div className="space-y-4">
       <LeaderCard
-        title="NAIA HITTING LEADERS (sortable · top 50)"
+        title={`${leagueLabel} HITTING LEADERS (sortable · top 50)`}
         rows={topHitters}
         accent={accent}
         slot={slot}
@@ -416,7 +420,7 @@ function NationalLeadersView({ save, leagueStats, accent, slot, hasAnalyticsMgr 
         userTeamId={save.userSchoolId}
       />
       <LeaderCard
-        title="NAIA PITCHING LEADERS (sortable · top 50)"
+        title={`${leagueLabel} PITCHING LEADERS (sortable · top 50)`}
         rows={topPitchers}
         accent={accent}
         slot={slot}

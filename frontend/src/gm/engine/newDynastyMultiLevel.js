@@ -77,34 +77,55 @@ export function newDynastyMultiLevel(input) {
   const NWAC_DIVS = ['NWAC_NORTH', 'NWAC_SOUTH', 'NWAC_EAST', 'NWAC_WEST']
   /** @type {Array<{ id: string, name: string, city?: string, state?: string, nickname?: string, colors?: any, _divId: string }>} */
   const allMembers = []
+  // Display name per conference id (so the conferences map + Rankings show
+  // "Mid-America Intercollegiate" etc. for the non-user conferences).
+  /** @type {Object<string,string>} */
+  const confNameById = {}
   if (level === 'NWAC') {
     for (const divId of NWAC_DIVS) {
       const divConf = CONF_CONFIG[divId]
       if (!divConf) continue
+      confNameById[divId] = divConf.name
       for (const m of (divConf.pnwMembers || [])) {
         allMembers.push({ ...m, _divId: divId })
       }
     }
   } else {
+    // D1/D2/D3: build the FULL division so every team plays every week with a
+    // real roster — true NAIA parity (per Nate). Teams are grouped into their
+    // real conferences by pearConference; the user's conference keeps its
+    // CONF_CONFIG id/name/tournament, all others get a slugged id + name.
+    const slugConf = (name) => 'CONF_' + String(name || 'IND').replace(/[^A-Za-z0-9]+/g, '_').toUpperCase().slice(0, 24)
+    let userPearConf = null
     for (const m of (conf.pnwMembers || [])) {
-      allMembers.push({ ...m, _divId: conferenceId })
+      const t = findNonNaia(m.id)
+      if (t?.pearConference) { userPearConf = t.pearConference; break }
     }
-  }
-  // For D1 conferences with a non-NAIA mapping, append the rest of the
-  // national conference roster from non_naia_teams.json.
-  const peerName = PEAR_CONF_NAME[conferenceId]
-  if (peerName && nonNaiaRaw.divisions) {
-    const div = nonNaiaRaw.divisions.find(d => d.id === level)
-    if (div) {
-      const pnwIds = new Set(allMembers.map(m => m.id))
-      for (const t of (div.teams || [])) {
-        if (t.pearConference !== peerName) continue
-        if (pnwIds.has(t.id)) continue   // already counted as a PNW member
-        allMembers.push({
-          id: t.id, name: t.name, city: t.city, state: t.state, nickname: t.nickname,
-          _divId: conferenceId,
-        })
-      }
+    const confIdFor = (pearConf) => (pearConf && pearConf === userPearConf) ? conferenceId : slugConf(pearConf)
+    confNameById[conferenceId] = conf.name
+    const divisionTeams = (nonNaiaRaw.divisions || []).find(d => d.id === level)?.teams || []
+    const pnwById = {}
+    for (const m of (conf.pnwMembers || [])) pnwById[m.id] = m
+    const seen = new Set()
+    for (const t of divisionTeams) {
+      const cid = confIdFor(t.pearConference)
+      if (cid !== conferenceId) confNameById[cid] = t.pearConference
+      const pnw = pnwById[t.id]
+      allMembers.push({
+        id: t.id,
+        name: pnw?.name || t.name,
+        city: t.city, state: t.state,
+        nickname: pnw?.nickname || t.nickname,
+        colors: pnw?.colors || t.colors || null,
+        _divId: cid,
+      })
+      seen.add(t.id)
+    }
+    // Safety net: ensure every one of the user's PNW members exists even if a
+    // particular id is missing from the national pool.
+    for (const m of (conf.pnwMembers || [])) {
+      if (seen.has(m.id)) continue
+      allMembers.push({ ...m, _divId: conferenceId })
     }
   }
 
@@ -154,13 +175,23 @@ export function newDynastyMultiLevel(input) {
       }
     }
   } else {
-    conferences[conferenceId] = {
-      id: conferenceId,
-      name: conf.name,
-      abbreviation: conferenceAbbreviation(conferenceId),
-      level,
-      schoolIds: Object.keys(schools),
-      tournament: conf.tournament,
+    // One conference per distinct conferenceId now present in `schools`
+    // (the user's conf + every other conference in the division).
+    const byConf = {}
+    for (const id of Object.keys(schools)) {
+      const cid = schools[id].conferenceId
+      ;(byConf[cid] || (byConf[cid] = [])).push(id)
+    }
+    for (const cid of Object.keys(byConf)) {
+      const isUser = cid === conferenceId
+      conferences[cid] = {
+        id: cid,
+        name: confNameById[cid] || (isUser ? conf.name : cid),
+        abbreviation: isUser ? conferenceAbbreviation(conferenceId) : (confNameById[cid] || cid),
+        level,
+        schoolIds: byConf[cid],
+        tournament: isUser ? conf.tournament : null,
+      }
     }
   }
 
@@ -255,10 +286,17 @@ export function newDynastyMultiLevel(input) {
     // reflect the assigned program rating, so no display-time ovrOffset.
   }
 
-  // 5. Schedule — conference round-robin scaled to level's seasonGames. D2 ends
-  // a week early (postseason starts wk39), so drop any regular-season games in
-  // seasonWeek 13+.
-  let schedule = buildLevelSchedule(conferenceId, schools, level, 2027, seed)
+  // 5. Schedule. D1/D2/D3 build the FULL division (every conference plays a
+  // round-robin + front-week non-conf fillers so the whole league plays every
+  // week — true NAIA parity). NWAC + single-team independents keep the
+  // simpler per-conference builder. D2 ends a week early (postseason starts
+  // wk39), so drop any regular-season games in seasonWeek 13+.
+  let schedule
+  if (level === 'NWAC' || conferenceId === 'INDEPENDENT_D1' || Object.keys(schools).length < 2) {
+    schedule = buildLevelSchedule(conferenceId, schools, level, 2027, seed)
+  } else {
+    schedule = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
+  }
   if (level === 'D2') schedule = schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > 12))
 
   // 6. Calendar — same dynasty-start cadence as NAIA
@@ -622,6 +660,85 @@ function roundRobinRounds(teamIds) {
     arr.splice(1, 0, arr.pop())
   }
   return rounds
+}
+
+// Build a single Game record (3-game series day g uses dayOffset g+4 → weekend).
+function mkSeriesGame(seriesId, g, year, seasonWeek, weekOfYear, homeId, awayId, type) {
+  return {
+    id: `${seriesId}_g${g}`,
+    year,
+    seasonWeek,
+    weekOfYear,
+    date: dateForWeek(year, weekOfYear, g + 4),
+    homeId, awayId,
+    type,
+    seriesId,
+    countsTowardRecord: true,
+    isDoubleheader: false,
+    played: false,
+    homeRuns: null, awayRuns: null,
+  }
+}
+
+/**
+ * Full-division schedule (D1/D2/D3). Every conference plays a circle-method
+ * round-robin in the BACK of the season (weeks FRONT+1..maxWeeks), and every
+ * NON-user team gets non-conference filler series in the reserved front weeks
+ * so the WHOLE league plays every week and accrues records/stats — true NAIA
+ * parity. The user's front weeks stay open (they self-schedule via auto-create).
+ */
+export function buildFullDivisionSchedule(conferences, schools, level, year, seed, userSchoolId) {
+  const layout = postseasonLayout(level)
+  const maxWeeks = Math.max(1, (layout.seasonEnd ?? 39) - 26)
+  const FRONT_NONCONF = maxWeeks > 4 ? 2 : 0
+  const seasonStartWeek = 27
+  const games = []
+
+  // 1. Per-conference round-robin in the back of the season.
+  for (const cid of Object.keys(conferences)) {
+    const teamIds = (conferences[cid].schoolIds || []).filter(id => schools[id])
+    if (teamIds.length < 2) continue
+    const rounds = roundRobinRounds(teamIds)
+    if (rounds.length === 0) continue
+    const playCount = new Map()
+    for (let w = FRONT_NONCONF; w < maxWeeks; w++) {
+      const round = rounds[(w - FRONT_NONCONF) % rounds.length]
+      const wk = seasonStartWeek + w
+      for (const [t1, t2] of round) {
+        const key = t1 < t2 ? `${t1}|${t2}` : `${t2}|${t1}`
+        const n = playCount.get(key) || 0
+        playCount.set(key, n + 1)
+        const homeId = (n % 2) === 0 ? t1 : t2
+        const awayId = (n % 2) === 0 ? t2 : t1
+        const seriesId = `${cid}_${year}_w${w}_${homeId}`
+        for (let g = 0; g < 3; g++) {
+          games.push(mkSeriesGame(seriesId, g, year, w + 1, wk, homeId, awayId, 'CONFERENCE'))
+        }
+      }
+    }
+  }
+
+  // 2. Front-week non-conference fillers for every NON-user team (the user
+  //    self-schedules their own front weeks). Pair the league two-by-two,
+  //    rotating the order each front week so pairings vary.
+  if (FRONT_NONCONF > 0) {
+    const pool = Object.keys(schools).filter(id => id !== userSchoolId)
+    for (let w = 0; w < FRONT_NONCONF; w++) {
+      const order = [...pool]
+      for (let i = 0; i < w; i++) order.push(order.shift())   // rotate
+      const wk = seasonStartWeek + w
+      for (let i = 0; i + 1 < order.length; i += 2) {
+        const homeId = order[i]
+        const awayId = order[i + 1]
+        const seriesId = `ncfill_${year}_w${w}_${homeId}`
+        for (let g = 0; g < 3; g++) {
+          games.push(mkSeriesGame(seriesId, g, year, w + 1, wk, homeId, awayId, 'NON_CONFERENCE'))
+        }
+      }
+    }
+  }
+
+  return games
 }
 
 /**
