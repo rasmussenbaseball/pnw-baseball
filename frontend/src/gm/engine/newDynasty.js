@@ -12,7 +12,7 @@ import { loadSchools } from './loadSchools'
 import { generateRoster } from './generate'
 import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
-import { buildAllConferenceSchedules } from './schedule'
+import { buildAllConferenceSchedules, buildNonConferenceFillers } from './schedule'
 import { defaultBudgetForSchool } from './budget'
 import { applyRealFinancials } from './schoolFinancials'
 import { buildInitialCareer } from './storyMode'
@@ -172,10 +172,12 @@ export function newDynasty(input) {
   // opponents during conference weeks which violated the conf-weekends-only
   // rule; that's gone.
   const confSchedule = buildAllConferenceSchedules(conferences, schools, 2027, seed)
-  // Fall games removed (May 2026) — the schedule is conference series plus
-  // the user-built non-conference weekends from the Schedule page.
+  // Non-user teams get auto non-conference series in the early weeks so the
+  // whole league plays + accrues stats from week 1 (the user self-schedules
+  // their own non-conf, so they're excluded).
+  const fillers = buildNonConferenceFillers(confSchedule, conferences, schools, 2027, input.userSchoolId)
   /** @type {import('./schedule.js').Game[]} */
-  const schedule = [...confSchedule]
+  const schedule = [...confSchedule, ...fillers]
 
   // 5. AP + budget initial state for the user's team
   const userTeam = teams[input.userSchoolId]

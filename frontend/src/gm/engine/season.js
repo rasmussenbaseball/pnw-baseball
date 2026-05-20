@@ -26,7 +26,7 @@ import { computeWeeklyAwards } from './weeklyAwards'
 import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, runNwacPlayoffs, summarizeNwacUserPath, runNationalBracketFull, summarizeNationalUserPath } from './pnwPlayoffs'
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
-import { buildAllConferenceSchedules, dateToWeekOfYear } from './schedule'
+import { buildAllConferenceSchedules, buildNonConferenceFillers, dateToWeekOfYear } from './schedule'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
@@ -208,17 +208,14 @@ export function simWeek(state, schedule, ratings) {
         : autoLineup(state, g.awayId, g.id)
       const homeHC = state.coaches[homeTeam.headCoachId]
       const awayHC = state.coaches[awayTeam.headCoachId]
-      // Rotate the starting pitcher by the game's slot in the weekend series
-      // (id ends _g0/_g1/_g2) so the ace doesn't start all three days.
-      const sm = String(g.id).match(/_g(\d+)$/)
-      const seriesIdx = sm ? parseInt(sm[1], 10) : 0
+      // autoLineup already orders each rotation so index 0 is today's
+      // starter (freshest-rested for the user, series-rotated for others),
+      // so simGame just starts rotation[0] (default starterIdx 0).
       result = simGame(homeLineup, awayLineup, {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
         getEnergy: energyAccessor,
         level: state.level || state.schools?.[userSchoolId]?.level || 'NAIA',
-        homeStarterIdx: seriesIdx,
-        awayStarterIdx: seriesIdx,
       }, g.id)
     } else if (isUserGame) {
       // User vs. non-NAIA opponent — fast sim against static strength,
@@ -1428,7 +1425,8 @@ export function advanceWeek(state, _schedule) {
 export function rebuildScheduleForYear(state) {
   const year = state.calendar.year
   const confSchedule = buildAllConferenceSchedules(state.conferences, state.schools, year, state.rngSeed)
-  // Fall games removed (May 2026) — schedule is conference + user-built
-  // non-conference weekends only.
-  state.schedule = [...confSchedule]
+  // Early-week non-conference fillers for non-user teams so the whole league
+  // plays + accrues stats from week 1 (user self-schedules their non-conf).
+  const fillers = buildNonConferenceFillers(confSchedule, state.conferences, state.schools, year, state.userSchoolId)
+  state.schedule = [...confSchedule, ...fillers]
 }

@@ -368,6 +368,63 @@ export function buildAllConferenceSchedules(conferences, schools, year, seed) {
   return out
 }
 
+/**
+ * Fill the early-season (pre-conference) weeks with non-conference series so
+ * EVERY team in the league plays — and accumulates stats — from week 1, not
+ * just the user (who builds their own non-conf slate). Without this, non-user
+ * teams sit idle until conference play opens (~wk 4) and the user's players
+ * sweep all the early weekly awards.
+ *
+ * Pairs up teams that have no game in a given early week into 3-game series.
+ * The user's team is excluded — they fill their own non-conf weekends.
+ *
+ * @param {Game[]} schedule        already-built conference schedule
+ * @param {Object} conferences     state.conferences
+ * @param {Object} schools         state.schools
+ * @param {number} year
+ * @param {string} excludeSchoolId the user's school (skip — they self-schedule)
+ * @returns {Game[]} new non-conference filler games
+ */
+export function buildNonConferenceFillers(schedule, conferences, schools, year, excludeSchoolId) {
+  const EARLY_WEEKS = [1, 2, 3]
+  const teamIds = []
+  for (const conf of Object.values(conferences)) {
+    for (const id of (conf.schoolIds || [])) {
+      if (id === excludeSchoolId) continue
+      if (schools[id]) teamIds.push(id)
+    }
+  }
+  if (teamIds.length < 2) return []
+  // Which teams already have a game each early week (from conference play).
+  const occupiedByWeek = {}
+  for (const g of schedule) {
+    if (g.type === 'BYE') continue
+    const w = g.seasonWeek
+    if (!occupiedByWeek[w]) occupiedByWeek[w] = new Set()
+    occupiedByWeek[w].add(g.homeId)
+    occupiedByWeek[w].add(g.awayId)
+  }
+  const rng = makeRng('noncfill', year, excludeSchoolId || 'x')
+  const out = []
+  for (const w of EARLY_WEEKS) {
+    const occ = occupiedByWeek[w] || new Set()
+    const open = teamIds.filter(id => !occ.has(id))
+    // Deterministic shuffle so pairings vary but are reproducible.
+    for (let i = open.length - 1; i > 0; i--) {
+      const j = Math.floor(rng.next() * (i + 1))
+      ;[open[i], open[j]] = [open[j], open[i]]
+    }
+    const fri = seasonWeekFriday(w, year)
+    for (let i = 0; i + 1 < open.length; i += 2) {
+      const homeId = open[i]
+      const awayId = open[i + 1]
+      const seriesId = `ncf_${year}_w${w}_${homeId}_${awayId}`
+      out.push(...buildSeriesGames(seriesId, homeId, awayId, fri, year, 3, 'FRI_SAT_SUN', 'NON_CONFERENCE'))
+    }
+  }
+  return out
+}
+
 // ─── Non-conference open windows ─────────────────────────────────────────────
 
 /**

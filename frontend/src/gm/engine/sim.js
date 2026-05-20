@@ -232,14 +232,12 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
 
   function distributePitchers(lineup, runsAllowed, oppHits) {
     // Accept either shape: synthetic lineups use `pitchers`, real lineups
-    // (resolveLineupForGame / defaultLineup) use `pitcherRotation`.
-    const allP = (lineup.pitchers || lineup.pitcherRotation || []).filter(Boolean)
+    // (autoLineup / resolveLineupForGame) use `pitcherRotation` already
+    // ordered so index 0 is today's starter (rotation handled upstream).
+    const allP = (lineup.pitcherRotation || lineup.pitchers || []).filter(Boolean)
     if (allP.length === 0) return
-    // Rotate the starter by game-in-series so a 3-game weekend uses 3
-    // different starters instead of the ace 3 times.
-    const startIdx = allP.length > 1 ? (gameIdx % allP.length) : 0
-    const starter = allP[startIdx]
-    const bullpen = allP.filter((_, i) => i !== startIdx).slice(0, 3)
+    const starter = allP[0]
+    const bullpen = allP.slice(1, 4)
     // Starter goes ~5.2 IP unless they got hammered
     const hammered = runsAllowed >= 8
     const starterOuts = hammered ? 9 + Math.floor(rng.chance(0.5) ? 0 : 3) : 15 + Math.floor(rng.gaussian(2, 1))

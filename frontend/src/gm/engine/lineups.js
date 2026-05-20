@@ -130,10 +130,28 @@ export function autoLineup(state, teamId, gameId) {
   const usedIds = new Set(batters.map(p => p.id))
   const bench = hitters.filter(p => !usedIds.has(p.id))
 
-  // Pitcher rotation — top 5 by skill. simGame picks the day's starter via
-  // its starterIdx (series-game index), so rotation ORDER is what matters.
+  // Pitcher rotation — ORDER it so index 0 is TODAY's starter; consumers
+  // (simGame / light boxscore) always start rotation[0]. The bullpen follows.
   const pscore = p => (p.pitcher.stuff + p.pitcher.control + p.pitcher.stamina) / 3
-  const pitcherRotation = [...pitchers].sort((a, b) => pscore(b) - pscore(a)).slice(0, 5)
+  let rotation = [...pitchers].sort((a, b) => pscore(b) - pscore(a)).slice(0, 6)
+  if (energyTracked) {
+    // User's staff: today's starter is the freshest well-rested arm. A
+    // pitcher who threw recently has low energy and drops to the back, so
+    // he can't start again until rested (recovery ≈ a full week → ~5+ days
+    // off, exactly the real starter cadence). Within an 8-pt band fall back
+    // to skill so we don't bench an ace for a 2-pt energy edge.
+    rotation = [...rotation].sort((a, b) => {
+      const ea = en(a.id), eb = en(b.id)
+      if (Math.abs(ea - eb) > 8) return eb - ea
+      return pscore(b) - pscore(a)
+    })
+  } else if (rotation.length > 1) {
+    // Non-user staff (no energy tracked): rotate the skill-sorted staff by
+    // the series-game index so a different starter leads each game.
+    const k = gameIdx % rotation.length
+    rotation = [...rotation.slice(k), ...rotation.slice(0, k)]
+  }
+  const pitcherRotation = rotation.slice(0, 5)
 
   return { batters, batterPositions, pitcherRotation, bench }
 }
