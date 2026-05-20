@@ -30,6 +30,7 @@ import {
   classYearsForLevel, rosterCapForLevel, seasonGamesForLevel,
 } from './levelHelpers'
 import { applyRealFinancials } from './schoolFinancials'
+import { dateForWeek as unifiedDateForWeek } from './gameYear'
 import { buildInitialCareer } from './storyMode'
 import { teamOverall } from './playerRating'
 import { expectedTeamOvr } from './programRating'
@@ -221,6 +222,14 @@ export function newDynastyMultiLevel(input) {
       players[p.id] = p
       rosterIds.push(p.id)
     }
+    // Anchor the generated roster's scholarship commitments to the school's
+    // actual pool. estimateScholarship sizes each offer off player ratings,
+    // which for WELL_FUNDED D2 programs with full 40-50 rosters routinely
+    // overshoots the pool — leaving a brand-new dynasty already over budget
+    // with $0 to recruit (NN: $390K committed vs a $250K pool). Scale so the
+    // full roster sits a hair under the pool; graduating seniors then free
+    // real next-year money. Pool=0 (D3/NWAC: no athletic aid) → zero out.
+    normalizeRosterScholarships(rosterIds, players, school.scholarshipPool)
 
     const isUserSchool = school.id === input.userSchoolId
     // Story-as-assistant: KEEP the auto-generated staff (user is part of it).
@@ -318,11 +327,6 @@ export function newDynastyMultiLevel(input) {
         : `${input.userCoach.firstName} ${input.userCoach.lastName} named head coach at ${userSchool.name}.`,
       payload: {},
       big: true,
-    }, {
-      id: 'preview_notice',
-      year: 2026, week: 1, type: 'AWARD',
-      headline: `${level} preview: non-NAIA engine integration is in progress. Schedule + sim work; recruiting + postseason use NAIA-equivalent stubs for now.`,
-      payload: {},
     }],
   }
 
@@ -476,6 +480,30 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
     metroSize: 'small',
     pearRating: strength || 0,
     level,
+  }
+}
+
+/**
+ * Scale a freshly-generated roster's per-player scholarship amounts so the
+ * full commitment fits the school's pool. Keeps the relative spread (the
+ * stud still gets the most) but caps the sum at ~92% of pool. Pool<=0
+ * (D3/NWAC have no athletic scholarships) zeroes everything out.
+ */
+function normalizeRosterScholarships(rosterIds, players, pool) {
+  if (!pool || pool <= 0) {
+    for (const id of rosterIds) {
+      if (players[id]?.scholarship) players[id].scholarship.annualAmount = 0
+    }
+    return
+  }
+  let total = 0
+  for (const id of rosterIds) total += players[id]?.scholarship?.annualAmount || 0
+  const target = pool * 0.92
+  if (total <= target || total <= 0) return
+  const factor = target / total
+  for (const id of rosterIds) {
+    const sch = players[id]?.scholarship
+    if (sch && sch.annualAmount) sch.annualAmount = Math.round(sch.annualAmount * factor)
   }
 }
 
@@ -679,12 +707,14 @@ function buildNwacSchedule(schools, year, rng) {
   return games
 }
 
-// Approximate ISO date for a given (year, weekOfYear, dayOffset). The
-// engine uses date strings only for display + ordering — exact calendar
-// alignment isn't required.
-function dateForWeek(year, weekOfYear, dayOffset) {
-  const startMs = Date.UTC(year, 0, 1) + (weekOfYear - 1) * 7 * 86400000 + dayOffset * 86400000
-  const d = new Date(startMs)
+// ISO date for a given (year, weekOfYear, dayOffset), anchored to the SAME
+// unified calendar the rest of the engine uses: `year` is the spring-end
+// year, Wk 1 = Aug 1 of (year-1), Wk 27 = ~late Jan/early Feb of `year`.
+// (The old local version anchored to Jan 1 of `year`, which dropped spring
+// conference games into July — the D2 schedule-date bug.)
+function dateForWeek(year, weekOfYear, dayOffset = 0) {
+  const base = unifiedDateForWeek(year, weekOfYear)   // Date at Aug1(year-1)+weeks
+  const d = new Date(base.getTime() + dayOffset * 86400000)
   return d.toISOString().slice(0, 10)
 }
 
