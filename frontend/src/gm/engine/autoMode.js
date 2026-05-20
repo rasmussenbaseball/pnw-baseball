@@ -7,7 +7,7 @@
  * Enter Game vs Sim from the GameWeekModal. It only fills in:
  *
  *   1. Required actions that gate the week (schedule, hire, budget, scout,
- *      prospect camp, mandatory cuts) — picked sensibly so the user can
+ *      mandatory cuts) — picked sensibly so the user can
  *      still beat sim into Wk 5 even if they haven't touched the menus.
  *   2. Leftover weekly AP spent on the highest-priority lever:
  *        - GPA dropping study hall
@@ -23,7 +23,7 @@
 
 import { autoCreateSchedule } from './schedule'
 import { applyBudgetPreset, lockBudgetForYear, BUDGET_PRESETS } from './budget'
-import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, withdrawOffer, simProspectCamp, fundraise, generateRecruitPool } from './recruits'
+import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, withdrawOffer, fundraise, generateRecruitPool } from './recruits'
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek, PERM_AP, TEMP_AP } from './weeklyActions'
 import { phaseForWeek } from './gameYear'
 import { makeRng } from './rng'
@@ -75,13 +75,7 @@ export function runAutoActions(save) {
     autoFulfillRequiredAction(save, req, summary)
   }
 
-  // 4. Prospect-camp invites in Wks 5 & 9 (the October turn anchor;
-  // independent of required action)
-  if (week === 5 || week === 9) {
-    autoSendCampInvites(save, week, summary)
-  }
-
-  // 5. Weekly AP — only spend if user has AP this week and hasn't touched it
+  // 4. Weekly AP — only spend if user has AP this week and hasn't touched it
   const ap = save.ap?.currentWeek ?? 0
   if (ap > 0 && week >= 4) {
     autoSpendAP(save, summary)
@@ -138,7 +132,6 @@ function autoFulfillRequiredAction(save, req, summary) {
     case 'HIRE':           return autoFulfillHire(save, summary)
     case 'BUDGET':         return autoFulfillBudget(save, summary)
     case 'SCOUT':          return autoFulfillScouting(save, summary)
-    case 'PROSPECT_CAMP':  return autoFulfillProspectCamp(save, summary)
     case 'MANDATORY_CUTS': return autoMandatoryCuts(save, summary)
     default: return
   }
@@ -238,58 +231,6 @@ export function ensureRecruitPool(save) {
   save.recruits = pool
 }
 
-export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
-  // Wk 13 — run the camp at a mid-tier fee. Use already-invited recruits +
-  // walk-ons. The simProspectCamp function returns revenue.
-  const userSchoolId = save.userSchoolId
-  // Make sure the recruit pool exists FIRST — the camp's required-action runs
-  // before the weekly AP-spend step that normally lazy-generates the pool, so
-  // without this the camp would draw from an empty pool → 0 attendees.
-  ensureRecruitPool(save)
-  // Invites can live in two places depending on how they were added:
-  //   - auto invites → save.prospectCamp.invitedIds
-  //   - manual invites (Recruiting page) → recruit.campInvited flag
-  // Merge both so neither path silently drops the other's invites.
-  const recruits = save.recruits || {}
-  const flaggedInvites = Object.values(recruits)
-    .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
-    .map(r => r.id)
-  const invitedIds = [...new Set([...(save.prospectCamp?.invitedIds || []), ...flaggedInvites])]
-  const headCoach = save.coaches?.[save.teams?.[userSchoolId]?.headCoachId]
-  const coachRecruiter = headCoach?.recruiter ?? 55
-  const programMomentum = save.teams?.[userSchoolId]?.programMomentum ?? 50
-  const fee = 100   // fixed $100/attendee
-  const programHistory = save.schools?.[userSchoolId]?.programHistory ?? 50
-
-  // Need to pass a working `recruits`set even if there's nothing here yet
-  const result = simProspectCamp(
-    recruits, userSchoolId, invitedIds, fee,
-    coachRecruiter, programMomentum,
-    save.calendar?.year, save.seed || 1, programHistory,
-  )
-  if (!save.prospectCamp) save.prospectCamp = {}
-  // Store the SAME shape the manual WeeklyActions path uses so the
-  // "Held this year" results view (which reads attendeeIds / attendees /
-  // fee) renders auto-run camps correctly instead of "No attendees recorded."
-  const attendeeIds = result?.attendeeIds || []
-  save.prospectCamp.year = save.calendar?.year
-  save.prospectCamp.attendeeIds = attendeeIds
-  save.prospectCamp.attendees = attendeeIds.length
-  save.prospectCamp.details = result?.details || []
-  save.prospectCamp.fee = fee
-  save.prospectCamp.revenue = result?.revenue || 0
-  save.prospectCamp.held = true
-  // Credit the camp revenue to the budget (the manual path does this too).
-  if (save.budget && (result?.revenue || 0) > 0) {
-    save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + result.revenue
-  }
-  if (result?.cancelled) {
-    summary.actionsTaken.push('Prospect camp had no takers — skipped')
-  } else {
-    summary.actionsTaken.push(`Ran prospect camp — ${result.attendeeIds?.length || 0} attended, $${result.revenue || 0} raised`)
-  }
-}
-
 // ─── Mandatory cuts ─────────────────────────────────────────────────────────
 
 function autoMandatoryCuts(save, summary) {
@@ -311,30 +252,6 @@ function autoMandatoryCuts(save, summary) {
     if (result?.ok !== false) cut++
   }
   if (cut > 0) summary.actionsTaken.push(`Mandatory cuts: trimmed ${cut} bottom-OVR players`)
-}
-
-// ─── Camp invites ───────────────────────────────────────────────────────────
-
-function autoSendCampInvites(save, week, summary) {
-  // Wks 5 & 10 — invite top HS targets we have any interest in.
-  if (!save.prospectCamp) save.prospectCamp = { invitedIds: [], year: save.calendar?.year }
-  if (!save.prospectCamp.invitedIds) save.prospectCamp.invitedIds = []
-  const userSchoolId = save.userSchoolId
-  const recruits = Object.values(save.recruits || {})
-  // Take top ~40 HS prospects by est. OVR
-  const targets = recruits
-    .filter(r => r.pool === 'HS_SR' && r.status === 'open')
-    .map(r => ({ r, ovr: avgEstOvr(r) }))
-    .sort((a, b) => b.ovr - a.ovr)
-    .slice(0, 40)
-  const already = new Set(save.prospectCamp.invitedIds)
-  let added = 0
-  for (const { r } of targets) {
-    if (already.has(r.id)) continue
-    save.prospectCamp.invitedIds.push(r.id)
-    added++
-  }
-  if (added > 0) summary.actionsTaken.push(`Invited ${added} top HS targets to prospect camp`)
 }
 
 function avgEstOvr(r) {
@@ -689,71 +606,89 @@ function hasRecruitingNeeds(save) {
 }
 
 function spendRecruiting(save, apBudget) {
-  // Work the recruiting board until the AP budget is used up. MULTI-PASS:
-  // re-scores + re-touches the top recruits each pass so a big monthly AP
-  // budget (the condensed Oct/Nov/Dec turns hand auto ~100 AP) actually digs
-  // deep on the top targets instead of one shallow touch each. Offers go out
-  // aggressively — by January a program should have several commits.
+  // CONCENTRATE, don't spread. The old loop touched 25 recruits one shallow
+  // action at a time, which (combined with the action ladder gating the big
+  // interest actions behind interest thresholds the recruit couldn't reach)
+  // left the whole board stuck in the mid-30s — below the sign threshold — so
+  // NOBODY ever committed. This version courts a focused set of priority
+  // targets HARD: it runs each one up the full courtship ladder until their
+  // interest is genuinely high, then extends an offer. Fewer recruits, but the
+  // ones it works actually sign.
   const userSchoolId = save.userSchoolId
-  if (Object.values(save.recruits || {}).filter(r => r.status === 'open').length === 0) return 0
+  const openList = () => Object.values(save.recruits || {}).filter(r => r.status === 'open')
+  if (openList().length === 0) return 0
   const rng = makeRng('autoRecruit', save.calendar?.year, save.calendar?.weekOfYear, save.seed || 1)
   let spent = 0
-  let safety = 0
-  while (spent < apBudget && safety < 500) {
-    safety++
-    const open = Object.values(save.recruits || {}).filter(r => r.status === 'open')
-    if (open.length === 0) break
-    const scored = open.map(r => {
-      const grade = r.scoutGrades?.[userSchoolId]
-      const interest = grade?.interest ?? 0
-      const fog = grade?.noise ?? 15
-      const ovr = avgEstOvr(r)
-      return { r, interest, fog, ovr, score: ovr * 1.0 + interest * 0.6 + fog * 0.25 }
-    }).sort((a, b) => b.score - a.score)
-    const top = scored.slice(0, 25)
-    let didSomething = false
-    for (const { r, interest, fog, ovr } of top) {
-      if (apBudget - spent < 1) break
-      // Action ladder: clear the fog first, then build interest, then close.
-      let action
-      if (fog >= 8 && apBudget - spent >= ACTION_TYPES.SCOUT_TRIP.apCost) action = ACTION_TYPES.SCOUT_TRIP
-      else if (interest >= 70 && apBudget - spent >= ACTION_TYPES.CAMPUS_VISIT.apCost) action = ACTION_TYPES.CAMPUS_VISIT
-      else if (interest >= 45 && apBudget - spent >= ACTION_TYPES.HOME_VISIT.apCost) action = ACTION_TYPES.HOME_VISIT
-      else if (apBudget - spent >= ACTION_TYPES.ASSISTANT_TALK.apCost) action = ACTION_TYPES.ASSISTANT_TALK
-      else action = ACTION_TYPES.TEXT
-      if (apBudget - spent < action.apCost) continue
-      // Skip already-applied one-shot actions; TEXT is always repeatable.
-      const grade = r.scoutGrades?.[userSchoolId]
-      if ((grade?.actionsApplied || []).includes(action.key)) {
-        action = ACTION_TYPES.TEXT
-        if (apBudget - spent < action.apCost) continue
-      }
-      try {
-        applyRecruitingAction(r, userSchoolId, action, rng)
-        save.ap.currentWeek -= action.apCost
-        save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
-        spent += action.apCost
-        didSomething = true
-      } catch (err) {
-        continue
-      }
-      // OFFER — loosened a lot. We extend a scholarship once a fit recruit
-      // shows real interest OR we've invested enough scouting to know they're
-      // worth it. Fog is about how much we KNOW, not whether to commit $, so
-      // it no longer gates the offer. Costs $$ from the pool, not AP.
-      const pg = r.scoutGrades?.[userSchoolId]
-      const pInterest = pg?.interest ?? interest
-      const apOnThem = pg?.apSpent ?? 0
-      if (!r.liveOffer && ovr >= 50 && countActiveOffers(save, userSchoolId) < 25) {
-        if (pInterest >= 45 || apOnThem >= 6 || (pInterest >= 35 && ovr >= 68)) {
-          const offerAmount = computeAutoOffer(save, r, ovr)
-          if (offerAmount > 0) {
-            try { setLiveOffer(r, userSchoolId, offerAmount) } catch (err) { /* pool tapped */ }
-          }
-        }
-      }
+  const apLeft = () => apBudget - spent
+  const apply = (r, action) => {
+    if (apLeft() < action.apCost) return false
+    try {
+      applyRecruitingAction(r, userSchoolId, action, rng)
+      save.ap.currentWeek -= action.apCost
+      save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
+      spent += action.apCost
+      return true
+    } catch (err) { return false }
+  }
+
+  // Priority targets: level-appropriate prospects, best first. Focus on ~16 so
+  // a normal week's AP (~22) digs deep on a few while a big turn (100 AP at
+  // wk4, or the 4× month turns) can court the whole short list.
+  const targets = openList()
+    .map(r => ({ r, ovr: avgEstOvr(r) }))
+    .filter(t => t.ovr >= 50)
+    .sort((a, b) => b.ovr - a.ovr)
+    .slice(0, 16)
+
+  // Courtship ladder. SCOUT_TRIP first to clear fog, then the high-value
+  // interest actions, then repeatable touches. One-shots are skipped if
+  // already applied; TEXT/CALL repeat.
+  const LADDER = [
+    ACTION_TYPES.SCOUT_TRIP,
+    ACTION_TYPES.CAMPUS_VISIT,
+    ACTION_TYPES.HOME_VISIT,
+    ACTION_TYPES.FAMILY_ZOOM,
+    ACTION_TYPES.ASSISTANT_TALK,
+    ACTION_TYPES.CALL,
+    ACTION_TYPES.TEXT,
+  ]
+  const interestOf = (r) => r.scoutGrades?.[userSchoolId]?.interest ?? 0
+  const wasApplied = (r, key) => (r.scoutGrades?.[userSchoolId]?.actionsApplied || []).includes(key)
+
+  for (const { r, ovr } of targets) {
+    if (apLeft() < 1) break
+    for (const action of LADDER) {
+      if (apLeft() < action.apCost) continue
+      if (interestOf(r) >= 60) break   // courted enough — go offer
+      const repeatable = action.key === 'TEXT' || action.key === 'CALL'
+      if (!repeatable && wasApplied(r, action.key)) continue
+      apply(r, action)
     }
-    if (!didSomething) break
+    // Extend an offer once we've built real interest. The offer itself adds
+    // another +18 interest, which clears the sign gate comfortably.
+    if (!r.liveOffer && ovr >= 50 && interestOf(r) >= 28
+        && countActiveOffers(save, userSchoolId) < 30) {
+      const amt = computeAutoOffer(save, r, ovr)
+      if (amt > 0) { try { setLiveOffer(r, userSchoolId, amt) } catch (err) { /* pool tapped */ } }
+    }
+  }
+
+  // Leftover AP: keep nudging already-offered recruits who are still short of
+  // a confident commit, cheapest-touch first, so the board keeps moving.
+  let safety = 0
+  while (apLeft() >= ACTION_TYPES.TEXT.apCost && safety < 400) {
+    safety++
+    const warm = Object.values(save.recruits || {})
+      .filter(r => r.status === 'open' && r.liveOffer?.schoolId === userSchoolId && interestOf(r) < 60)
+      .sort((a, b) => interestOf(b) - interestOf(a))
+    if (warm.length === 0) break
+    let did = false
+    for (const r of warm) {
+      const action = apLeft() >= ACTION_TYPES.CALL.apCost ? ACTION_TYPES.CALL : ACTION_TYPES.TEXT
+      if (apLeft() < action.apCost) break
+      if (apply(r, action)) did = true
+    }
+    if (!did) break
   }
   return spent
 }

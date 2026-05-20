@@ -17,7 +17,7 @@ import {
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
-import { isAutoMode, setAutoMode, runAutoActions, autoFulfillProspectCamp } from '../../gm/engine/autoMode'
+import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
 import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { resolveEvent } from '../../gm/engine/randomEvents'
@@ -65,7 +65,7 @@ export default function Dashboard() {
   const [lastWeekRecap, setLastWeekRecap] = useState(null)
   const [progress, setProgress] = useState(null)     // { title, step, pct } for heavy ticks
   const [gameWeekModal, setGameWeekModal] = useState(false)   // shown when entering a week with games
-  const [eventPrompt, setEventPrompt] = useState(null)   // { kind: 'PROSPECT_CAMP'|'SUMMER_BALL' } major-event stop prompt
+  const [eventPrompt, setEventPrompt] = useState(null)   // { kind: 'SUMMER_BALL' } major-event stop prompt
   const [apWarnModal, setApWarnModal] = useState(null)   // { ap } unspent-AP warning before advancing
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
@@ -206,19 +206,12 @@ export default function Dashboard() {
       gmToast('A program event is awaiting your decision. Scroll down and resolve it first.', 'warn')
       return
     }
-    // Major-event stop prompts (manual mode only). Pause on the prospect-camp
-    // week (Wk 13) and the summer-ball planning week (Wk 14) and ask whether
-    // the user wants to auto-select or handle it themselves. Auto mode skips
-    // these (runAutoActions handles both).
+    // Major-event stop prompts (manual mode only). Pause on the summer-ball
+    // planning week and ask whether the user wants to auto-select or handle it
+    // themselves. Auto mode skips these (runAutoActions handles them).
     if (!autoOn) {
       const wk = save.calendar?.weekOfYear ?? 0
       const yr = save.calendar?.year
-      // Prospect camp (Wk 13) is also a hard required-action gate, so this
-      // just gives a nicer auto-vs-manual choice before the block.
-      if (wk === 13 && save.prospectCamp?.year !== yr && !eventPrompt) {
-        setEventPrompt({ kind: 'PROSPECT_CAMP' })
-        return
-      }
       // Summer ball (Wk 18 — the December turn) isn't a hard gate. Prompt
       // once per dynasty-year so dismissing it doesn't trap the user in a
       // re-prompt loop.
@@ -414,8 +407,7 @@ export default function Dashboard() {
           kind={eventPrompt.kind}
           onAuto={() => {
             try {
-              if (eventPrompt.kind === 'PROSPECT_CAMP') autoFulfillProspectCamp(save)
-              else if (eventPrompt.kind === 'SUMMER_BALL') autoAssignSummerBall(save)
+              if (eventPrompt.kind === 'SUMMER_BALL') autoAssignSummerBall(save)
               saveDynasty(save)
               setSave({ ...save })
             } catch (err) {
@@ -423,12 +415,11 @@ export default function Dashboard() {
               gmToast('Auto-select failed — see console.', 'warn')
             }
             setEventPrompt(null)
-            gmToast(eventPrompt.kind === 'PROSPECT_CAMP' ? 'Prospect camp auto-run.' : 'Summer ball placements auto-selected.', 'info')
+            gmToast('Summer ball placements auto-selected.', 'info')
           }}
           onManual={() => {
-            const dest = eventPrompt.kind === 'PROSPECT_CAMP' ? 'weekly' : 'summer'
             setEventPrompt(null)
-            navigate(`/gm/${dest}?slot=${slot}`)
+            navigate(`/gm/summer?slot=${slot}`)
           }}
           onCancel={() => setEventPrompt(null)}
         />
@@ -499,18 +490,32 @@ export default function Dashboard() {
               <div className="text-2xl sm:text-3xl font-extrabold mt-1 leading-none">{currentPhase.label}</div>
               <div className="text-sm opacity-70 mt-1.5">Week {weekOfYear} / 52</div>
             </div>
-            {/* AP */}
-            <div
-              className="flex flex-col justify-center"
-              title="Weekly AP = 22 base + coaching bonus (avg of each coach's developer/motivator/recruiter/tactician — every point above 50 adds AP, scaled by role) + tier bonus (D1_LITE +3, WELL_FUNDED +1, MID 0, SHOESTRING -1) + tenure (+1 per year at school, capped at 8). Clamped to 20-50; ×4 during the condensed month turns. Hire/develop better assistants to raise the cap."
-            >
+            {/* AP — hover the block to see how weekly AP is calculated. Uses a
+                custom group-hover panel (native title tooltips were unreliable
+                and showed nothing for some users). */}
+            <div className="flex flex-col justify-center relative group cursor-help">
               <div className="text-[11px] uppercase tracking-wider opacity-60 font-semibold">Action Points</div>
               <div className="text-5xl sm:text-6xl font-extrabold mt-1 leading-none">
                 {weekOfYear >= 1 && weekOfYear <= 3
                   ? <span className="text-2xl font-bold opacity-70">Locked</span>
                   : <>{save.ap.currentWeek}<span className="text-2xl opacity-70 font-normal"> AP</span></>}
               </div>
-              <div className="text-[10px] opacity-60 mt-1.5">Hover for formula</div>
+              <div className="text-[10px] opacity-60 mt-1.5 underline decoration-dotted">How is this calculated?</div>
+              {/* Hover panel */}
+              <div className="pointer-events-none absolute top-full left-0 mt-2 z-50 w-72 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="bg-[#1a1a2e] border border-white/20 rounded-lg p-3 text-left shadow-2xl">
+                  <div className="text-[11px] font-bold text-white mb-1.5 uppercase tracking-wide">Weekly AP formula</div>
+                  <ul className="text-[11px] text-gray-300 space-y-1 leading-snug">
+                    <li>• <strong className="text-white">22</strong> base</li>
+                    <li>• <strong className="text-white">+ coaching</strong> — every point your coaches average above 50 (dev/mot/rec/tac) adds AP, scaled by role</li>
+                    <li>• <strong className="text-white">+ tier</strong> — D1-lite +3, well-funded +1, shoestring −1</li>
+                    <li>• <strong className="text-white">+ tenure</strong> — +1 per year at the school (max +8)</li>
+                    <li>• Clamped to <strong className="text-white">20–50</strong>; <strong className="text-white">×4</strong> on the condensed Oct/Nov/Dec turns</li>
+                    <li>• <strong className="text-white">Week 4: 100 AP</strong> one-time board-building budget</li>
+                    <li>• Weeks 1–3 are locked (0 AP)</li>
+                  </ul>
+                </div>
+              </div>
             </div>
             {/* Auto toggle */}
             <div className="flex flex-col justify-center items-start">
@@ -588,7 +593,7 @@ export default function Dashboard() {
         <div className="bg-emerald-950/40 border border-emerald-400/40 rounded-xl p-2 mb-4 text-xs text-emerald-200 flex justify-between items-center">
           <span>
             <strong className="text-emerald-300"> Auto mode is ON.</strong>{' '}
-            Required actions, AP, prospect-camp invites, and recruiting are handled for you each week.
+            Required actions, AP, and recruiting are handled for you each week.
             You can still open any page and override decisions manually.
           </span>
           <button
@@ -599,11 +604,6 @@ export default function Dashboard() {
             Switch to Manual
           </button>
         </div>
-      )}
-
-      {/* Camp invite window (Wks 5 & 10) — prominent reminder + count */}
-      {(weekOfYear === 5 || weekOfYear === 10) && !autoOn && (
-        <CampInviteBanner save={save} slot={slot} weekOfYear={weekOfYear} />
       )}
 
       {/* Cuts window — fires the first week after the user's season ends */}
@@ -1313,6 +1313,13 @@ function ConferenceStandingsWidget({ save, slot }) {
         <div className="text-xs text-gray-400 italic">Preseason — no conference results yet.</div>
       ) : (
         <div className="space-y-0.5">
+          {/* Column header — CONF + overall (OVR) record */}
+          <div className="flex items-center gap-2 py-0.5 px-1.5 text-[9px] uppercase tracking-wider text-gray-400">
+            <div className="w-4" />
+            <div className="flex-1">Team</div>
+            <div className="w-12 text-right">Conf</div>
+            <div className="w-12 text-right">Overall</div>
+          </div>
           {rows.map((row, i) => {
             const isUser = row.school.id === save.userSchoolId
             return (
@@ -1325,8 +1332,11 @@ function ConferenceStandingsWidget({ save, slot }) {
                   <span className="truncate">{row.school.name}</span>
                   <TeamRankChip save={save} schoolId={row.school.id} />
                 </div>
-                <div className="font-mono text-[11px] tabular-nums text-pnw-slate">
+                <div className="w-12 text-right font-mono text-[11px] tabular-nums text-pnw-slate">
                   {row.team.confWins}-{row.team.confLosses}
+                </div>
+                <div className="w-12 text-right font-mono text-[11px] tabular-nums text-gray-500">
+                  {row.team.wins}-{row.team.losses}
                 </div>
               </div>
             )
@@ -1462,25 +1472,20 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
   const yr = save.calendar?.year
   // Ordered checklist. Each item: { label, detail, done, to, linkLabel, urgent }.
   const tasks = []
-  // 1. Required action for the week (schedule / hire / budget / scout / camp).
+  // 1. Required action for the week (schedule / hire / budget / scout).
   if (req) {
     const done = req.isComplete(save)
-    const isCamp = req.key === 'PROSPECT_CAMP'
     tasks.push({
       label: req.label,
-      detail: done
-        ? (isCamp ? 'Camp held — see who attended + the scouting info you gained' : (req.doneText || 'Done'))
-        : req.blurb,
+      detail: done ? (req.doneText || 'Done') : req.blurb,
       done,
-      // Done prospect camp links to its results view; other done tasks have
-      // no link. Pending tasks link to where you complete them.
-      to: done ? (isCamp ? `/gm/weekly?slot=${slot}` : null) : (req.route ? `${req.route}?slot=${slot}` : null),
-      linkLabel: done ? (isCamp ? 'View results' : null) : 'Go',
+      to: done ? null : (req.route ? `${req.route}?slot=${slot}` : null),
+      linkLabel: done ? null : 'Go',
       urgent: !done,
     })
   }
   // 2. Calendar events for THIS turn that aren't the hard required action —
-  // so important dates (summer ball planning, camp invite windows) always
+  // so important dates (summer ball planning) always
   // surface on the to-do list and don't get silently skipped.
   for (const ct of buildCalendarTasks(save, slot)) tasks.push(ct)
   // 3. Schedule completeness (offseason only).
@@ -1598,17 +1603,6 @@ function buildCalendarTasks(save, slot) {
   const wk = save.calendar?.weekOfYear ?? 0
   const yr = save.calendar?.year
   const out = []
-  // Camp invite windows (Wks 5 + 9, the October turn).
-  if (wk === 5 || wk === 9) {
-    const invited = (save.prospectCamp?.invitedIds || []).length
-    out.push({
-      label: 'Prospect camp invite window',
-      detail: invited > 0 ? `${invited} recruit${invited === 1 ? '' : 's'} invited so far` : 'Invite recruits to your prospect camp',
-      done: invited > 0,
-      to: `/gm/recruiting?slot=${slot}`,
-      linkLabel: 'Invite',
-    })
-  }
   // Summer ball planning (Wk 18 — the December turn). Not a hard gate.
   if (wk === 18) {
     const done = save.summerBall?.year === yr
@@ -2004,30 +1998,6 @@ function GameWeekBanner({ games, save, weekOfYear, slot, onSimNow }) {
   )
 }
 
-function CampInviteBanner({ save, slot, weekOfYear }) {
-  const invited = Object.values(save.recruits || {}).filter(r => r.campInvited).length
-  const MAX = 100
-  const isSecondWindow = weekOfYear === 10
-  return (
-    <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-4 flex justify-between items-start">
-      <div className="flex-1">
-        <div className="text-[11px] uppercase tracking-wider text-blue-700 font-bold mb-1">
-          Week {weekOfYear} — {isSecondWindow ? 'Final' : 'First'} Camp Invite Window
-        </div>
-        <div className="text-sm text-blue-900 leading-snug">
-          You can invite up to <strong>{MAX} HS recruits</strong> to your prospect camp (held Wk 13).
-          Currently invited: <strong>{invited}/{MAX}</strong>. Invitees get a small interest boost
-          immediately; attendees end up ~50% scouted.
-          {isSecondWindow && <span className="block mt-1 text-amber-800 font-semibold"> Last chance to invite or remove before camp.</span>}
-        </div>
-      </div>
-      <Link to={`/gm/recruiting?slot=${slot}&board=INVITES`} className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-semibold hover:opacity-90 shrink-0 ml-3">
-        Manage invites 
-      </Link>
-    </div>
-  )
-}
-
 function UnspentApModal({ ap, onSpend, onAuto, onAdvance, onCancel }) {
   const { backdropProps, stopProps } = useModalDismiss(onCancel)
   return (
@@ -2066,11 +2036,8 @@ function UnspentApModal({ ap, onSpend, onAuto, onAdvance, onCancel }) {
 
 function MajorEventModal({ kind, onAuto, onManual, onCancel }) {
   const { backdropProps, stopProps } = useModalDismiss(onCancel)
-  const isCamp = kind === 'PROSPECT_CAMP'
-  const title = isCamp ? 'Prospect Camp' : 'Summer Ball Planning'
-  const blurb = isCamp
-    ? 'Your annual on-campus recruiting camp is here. Run it yourself to pick the fee + invite list, or let your staff handle it automatically.'
-    : 'Time to set summer ball placements. Assign players to leagues yourself for full control, or auto-select the best-fit league for each eligible player.'
+  const title = 'Summer Ball Planning'
+  const blurb = 'Time to set summer ball placements. Assign players to leagues yourself for full control, or auto-select the best-fit league for each eligible player.'
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" {...backdropProps}>
       <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>

@@ -3,7 +3,7 @@
  *
  * Real college baseball has things happen on specific dates — the MLB draft
  * is mid-July, the transfer portal opens after the season, fall scrimmages
- * are October Fridays, prospect camp is early November, etc. Rather than
+ * are October Fridays, etc. Rather than
  * cramming all of that into a single end-of-year synchronous tick (which
  * locks the browser for 5–15 seconds), this module:
  *
@@ -58,7 +58,6 @@ export const EVENT_TYPES = {
   FALL_CAMP_START:          { label: 'Fall Camp opens', desc: 'Scrimmage Fridays in October — set lineups in Play.' },
   FALL_SCRIM_FRIDAY:        { label: 'Fall scrimmage', desc: 'Doubleheader vs a nearby school.' },
   TRAINING_PERIOD:          { label: 'Training Period', desc: 'No games — focused skill / position work.' },
-  PROSPECT_CAMP:            { label: 'Prospect Camp', desc: 'Annual recruiting camp. Run it from Weekly Actions.' },
   HS_NLI_EARLY:             { label: 'HS NLI early signing', desc: 'Top recruits start locking in commitments.' },
   DEAD_PERIOD:              { label: 'Dead Period (Dec)', desc: 'Recruiting contact restricted.' },
   SPRING_PRACTICE:          { label: 'Spring Practice', desc: 'Pre-season ramp-up.' },
@@ -71,7 +70,6 @@ export const EVENT_TYPES = {
   LAST_DAY_RECRUITING:      { label: 'Late recruiting closes', desc: 'Final HS commitments locked for this cycle.' },
   CLASS_FINALIZE:           { label: 'Class finalizes', desc: 'Signed recruits officially join the roster — ratings fully revealed.' },
   LOCK_TRAVEL_BUDGET:       { label: 'Travel budget locks', desc: 'Travel allocation set from your scheduled trips. Adjust other categories from here.' },
-  CAMP_INVITE_WINDOW:       { label: 'Camp invite window', desc: 'Invite up to 100 HS recruits to your prospect camp. Attendees get a +interest boost and end up ~50% scouted.' },
   SUMMER_BALL_PLANNING:     { label: 'Summer ball planning', desc: 'Decide who you\'ll send to summer leagues next summer. Final roster confirms after the season.' },
   SUMMER_BALL_CONFIRM:      { label: 'Summer ball confirm', desc: 'Lock in (or pull) your summer ball roster. You can REMOVE players but cannot add new ones now.' },
   SUMMER_BALL_RESOLVE:      { label: 'Summer ball wraps', desc: 'Mid-summer recap — dev gains, injuries, poach interest, draft buzz from every league.' },
@@ -91,13 +89,9 @@ export const WEEK_EVENT_SCHEDULE = {
   3: ['LOCK_TRAVEL_BUDGET'],                      // travel cost locked from schedule
   4: [],                                          // scouting opens — AP unlocks, no engine event
   // ── Fall Camp (Sep-Oct, wks 5-12) ──
-  5: ['FALL_CAMP_START', 'CAMP_INVITE_WINDOW'],
-  // Second camp-invite window moved to wk 9 (the October turn anchor) since
-  // wks 10-12 now fold into October.
-  9: ['CAMP_INVITE_WINDOW'],
-  // Fall scrimmages auto-scheduled into wks 6-12 (8 games over ~4 weekends)
-  // ── November turn (wk 13) — prospect camp ──
-  13: ['PROSPECT_CAMP', 'HS_NLI_EARLY'],
+  5: ['FALL_CAMP_START'],
+  // ── November turn (wk 13) ──
+  13: ['HS_NLI_EARLY'],
   // ── December turn (wk 18) — summer ball planning opens here. (Wks 14-17
   // fold into the November turn, so this moved off wk 14 to a real turn.) ──
   18: ['SUMMER_BALL_PLANNING'],
@@ -149,7 +143,7 @@ export const SEASON_EVENT_SCHEDULE = (() => {
 // Markers — purely calendar-display, no engine action.
 const MARKER_ONLY = new Set([
   'SET_SCHEDULE', 'FALL_CAMP_START', 'FALL_SCRIM_FRIDAY', 'TRAINING_PERIOD',
-  'PROSPECT_CAMP', 'HS_NLI_EARLY', 'DEAD_PERIOD', 'SPRING_PRACTICE',
+  'HS_NLI_EARLY', 'DEAD_PERIOD', 'SPRING_PRACTICE',
   'SEASON_OPEN', 'CONF_OPEN', 'REG_SEASON_END', 'CONF_TOURNAMENT',
   'OPENING_ROUND', 'WORLD_SERIES', 'LAST_DAY_RECRUITING',
   'SUMMER_BALL_PLANNING',

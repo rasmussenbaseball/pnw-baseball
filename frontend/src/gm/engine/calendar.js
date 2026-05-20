@@ -9,10 +9,9 @@
  *   Wk 1     Aug 1         Schedule (tutorial)
  *   Wk 2     Aug 8         Hire assistants (tutorial)
  *   Wk 3     Aug 15        Budget (tutorial)
- *   Wk 4     Aug 22        Scouting opens (tutorial)
- *   Wk 5-12  Sep-Oct       Fall Camp + 8 fall scrimmages
- *   Wk 13    Early Nov     Prospect Camp (mandatory)
- *   Wk 14-22 Nov-mid Jan   Training Period (no Dec dead period anymore)
+ *   Wk 4     Aug 22        Scouting opens — 100 AP board-building budget
+ *   Wk 5-12  Sep-Oct       Fall Camp
+ *   Wk 13-22 Nov-mid Jan   Training Period (no Dec dead period anymore)
  *   Wk 23-26 mid Jan       Spring Practice
  *   Wk 27-29 Feb           Non-conference
  *   Wk 30-39 Mar-May       Conference play (10 series)

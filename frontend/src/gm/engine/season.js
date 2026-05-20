@@ -156,6 +156,37 @@ export function simWeek(state, schedule, ratings) {
   const sortedSchedule = [...schedule].sort((a, b) =>
     (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id),
   )
+
+  // ── Double-booking guard ──────────────────────────────────────────────
+  // A team should play ONE series per week. But the user's non-conference
+  // opponents can end up double-booked: the early-week non-conference fillers
+  // are built at year-rollover (before the user schedules), so an opponent the
+  // user later adds may already have a filler that same week. Left unchecked,
+  // that team plays ~6 games and racks up impossible weekly lines (16+ IP,
+  // 28 AB) that win Player of the Week. Pre-pass: for THIS week's games, drop
+  // any NON_CONFERENCE *filler* series (no user side) whose teams are already
+  // playing another series this week.
+  {
+    const inWeek = (g) => !g.played && g.type !== 'BYE'
+      && ((targetWeek != null && g.seasonWeek === targetWeek)
+        || (g.weekOfYear != null && targetWeekOfYear != null && g.weekOfYear === targetWeekOfYear))
+    const weekGames = sortedSchedule.filter(inWeek)
+    const seriesByTeam = {}
+    for (const g of weekGames) {
+      for (const tid of [g.homeId, g.awayId]) {
+        if (!seriesByTeam[tid]) seriesByTeam[tid] = new Set()
+        seriesByTeam[tid].add(g.seriesId || g.id)
+      }
+    }
+    for (const g of weekGames) {
+      if (g.type !== 'NON_CONFERENCE') continue
+      if (g.homeId === userSchoolId || g.awayId === userSchoolId) continue   // never drop a user game
+      const homeMulti = (seriesByTeam[g.homeId]?.size || 0) > 1
+      const awayMulti = (seriesByTeam[g.awayId]?.size || 0) > 1
+      if (homeMulti || awayMulti) g.played = true   // cancel this filler game (consumed, no sim)
+    }
+  }
+
   let lastUserDate = null   // for overnight-rest recovery between non-DH days
 
   for (const g of sortedSchedule) {
@@ -703,7 +734,6 @@ export function runEndOfYear(state) {
   }
   state.schedule = []
   state.playerStats = {}
-  state.prospectCamp = null
   // Heal everyone for the new season — SEASON-ending injuries already had
   // their rating penalty applied; we just clear the active injury flags so
   // players start fall fresh. (Stat penalty stays.)
@@ -1126,6 +1156,11 @@ function refreshWeeklyAP(state) {
   // turns — grant a full month of AP (4× the weekly value) so the user can
   // do a month's worth of recruiting + development in that one turn.
   if (wk === 9 || wk === 13 || wk === 18) weekly *= 4
+  // Week 4 is the FIRST recruiting week (scouting opens). Grant a big one-time
+  // board-building budget (100 AP) so the user can fully scout + start
+  // courting their recruiting board right away. This replaced the old
+  // prospect-camp mechanic (removed May 2026).
+  if (wk === 4) weekly = Math.max(weekly, 100)
   state.ap.currentWeek = weekly
   state.ap.spentThisWeek = 0
   state.ap.spentByCategory = {

@@ -9,7 +9,6 @@ import {
   setLiveOffer, withdrawOffer, totalSuitors, visibleSuitors,
   academicScholarship, academicRatingToGpa,
   scoutingProgress, isFullyScouted,
-  predictRecruitAttendance, rsvpLabel, CAMP_MAX_INVITES,
   getTopPriorities, priorityFitScores, buildRecruitFeedback,
 } from '../../gm/engine/recruits'
 import { annualNilPoolForSchool, nilOfferCapForSchool, totalNilCommitted, formatNil } from '../../gm/engine/nil'
@@ -98,108 +97,6 @@ export default function Recruiting() {
     setSave({ ...save })
   }
 
-  function toggleCampInvite(recruitId) {
-    const r = save.recruits[recruitId]
-    if (!r) return
-    if (r.pool !== 'HS_SR') {
-      gmToast('Prospect camp is HS only.', 'warn')
-      return
-    }
-    // Invite windows are ONLY Wk 5 and Wk 10. Outside those weeks, the user
-    // can view the list but not modify it. 50 invites max per window.
-    const wk = save.calendar?.weekOfYear ?? 0
-    const isInviteWindow = wk === 5 || wk === 10
-    if (!isInviteWindow) {
-      gmToast('Camp invites can only be sent during Wk 5 or Wk 10. Wait for the next window.', 'warn')
-      return
-    }
-    // Track invites per window so the 50-per-window cap is enforced even
-    // after un-inviting + re-inviting.
-    if (!save.campInvitesByWindow) save.campInvitesByWindow = { 5: 0, 10: 0 }
-    const currentlyInvited = !!r.campInvited
-    if (!currentlyInvited) {
-      const totalInvited = Object.values(save.recruits || {}).filter(x => x.campInvited).length
-      if (totalInvited >= CAMP_MAX_INVITES) {
-        gmToast(`Camp invite cap reached (${CAMP_MAX_INVITES}). Un-invite someone first.`, 'warn')
-        return
-      }
-      const PER_WINDOW = 50
-      if ((save.campInvitesByWindow[wk] || 0) >= PER_WINDOW) {
-        gmToast(`Week ${wk} invite cap reached (${PER_WINDOW} per window). Use the Wk ${wk === 5 ? 10 : 5} window for the rest.`, 'warn')
-        return
-      }
-      save.campInvitesByWindow[wk] = (save.campInvitesByWindow[wk] || 0) + 1
-      // Send the invite + give them a small immediate interest boost — being
-      // contacted at all is a positive signal even if they decline camp.
-      if (!r.scoutGrades[save.userSchoolId]) {
-        r.scoutGrades[save.userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
-      }
-      const g = r.scoutGrades[save.userSchoolId]
-      g.interest = Math.min(100, g.interest + 5)
-      r.campInviteWindow = wk
-    } else {
-      // Un-inviting frees a slot in the window it was sent during.
-      const inviteWk = r.campInviteWindow || wk
-      save.campInvitesByWindow[inviteWk] = Math.max(0, (save.campInvitesByWindow[inviteWk] || 0) - 1)
-      r.campInviteWindow = null
-    }
-    r.campInvited = !currentlyInvited
-    saveDynasty(save)
-    setSave({ ...save })
-  }
-
-  /**
-   * Auto-fill camp invites with the top-rated unsigned HS recruits this week.
-   * Stops at the per-window cap (50) or the total cap (100), whichever hits
-   * first. Existing invitees are preserved. Skips anyone already signed/lost.
-   */
-  function autoInviteCamp() {
-    const wk = save.calendar?.weekOfYear ?? 0
-    if (wk !== 5 && wk !== 10) {
-      gmToast('Auto-invite only works during Wk 5 or Wk 10.', 'warn')
-      return
-    }
-    if (!save.campInvitesByWindow) save.campInvitesByWindow = { 5: 0, 10: 0 }
-    const PER_WINDOW = 50
-    const slotsLeftWindow = Math.max(0, PER_WINDOW - (save.campInvitesByWindow[wk] || 0))
-    const totalInvited = Object.values(save.recruits || {}).filter(x => x.campInvited).length
-    const slotsLeftTotal = Math.max(0, CAMP_MAX_INVITES - totalInvited)
-    const slots = Math.min(slotsLeftWindow, slotsLeftTotal)
-    if (slots <= 0) {
-      gmToast('Invite cap reached for this window — un-invite someone first.', 'warn')
-      return
-    }
-    // Rank candidates: HS recruits, not signed/lost, not already invited.
-    // Score by Est OVR (averaged ratings) + a small bump for shown interest.
-    const candidates = Object.values(save.recruits || {})
-      .filter(r => r.pool === 'HS_SR' && r.status !== 'signed' && r.status !== 'lost' && !r.campInvited)
-      .map(r => {
-        const block = r.isPitcher ? r.trueHitter || r.truePitcher : r.trueHitter || r.truePitcher
-        const ratings = r.isPitcher ? r.truePitcher : r.trueHitter
-        const avg = ratings ? Object.values(ratings).reduce((a, b) => a + b, 0) / Object.keys(ratings).length : 50
-        const interest = r.scoutGrades?.[save.userSchoolId]?.interest || 0
-        return { r, score: avg + interest * 0.2 }
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, slots)
-
-    let added = 0
-    for (const { r } of candidates) {
-      if (!r.scoutGrades[save.userSchoolId]) {
-        r.scoutGrades[save.userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [], apSpent: 0 }
-      }
-      const g = r.scoutGrades[save.userSchoolId]
-      g.interest = Math.min(100, g.interest + 5)
-      r.campInvited = true
-      r.campInviteWindow = wk
-      save.campInvitesByWindow[wk] = (save.campInvitesByWindow[wk] || 0) + 1
-      added++
-    }
-    saveDynasty(save)
-    setSave({ ...save })
-    gmToast(`Auto-invited ${added} top-rated HS recruits to prospect camp.`, 'success')
-  }
-
   if (!save) return <Navigate to="/gm" replace />
 
   const phase = recruitingPhase(save.calendar)
@@ -231,7 +128,6 @@ export default function Recruiting() {
   const boardFiltered = visible.filter(r => {
     if (board === 'FOLLOWING') return r.followed === true
     if (board === 'OFFERS') return r.liveOffer?.schoolId === save.userSchoolId
-    if (board === 'INVITES') return r.campInvited === true
     return true
   })
 
@@ -299,7 +195,6 @@ export default function Recruiting() {
     .slice(0, 80)
 
   const followedCount = Object.values(save.recruits || {}).filter(r => r.followed && r.status !== 'signed' && r.status !== 'lost').length
-  const invitedCount = Object.values(save.recruits || {}).filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost').length
 
   const signedRecruits = Object.values(recruits).filter(r => r.signedTo === save.userSchoolId)
   const liveOffers = Object.values(recruits).filter(r =>
@@ -398,8 +293,6 @@ export default function Recruiting() {
   const phaseLabel = phase === 'PRE_PORTAL'
     ? 'Pre-Portal — HS + JUCO recruits only'
     : 'Portal Open — All pools (D1/D2/D3/NAIA transfers + remaining HS/JUCO)'
-  const campWindowOpen = isCampWindowOpen(save.calendar)
-  const campHeldThisYear = save.prospectCamp?.year === save.calendar.year
 
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
@@ -440,7 +333,6 @@ export default function Recruiting() {
           <li><strong>Each action is one-shot per recruit.</strong> You can't run two Scout Trips on the same kid. Pick the right tool for where they are: Scout Trip when fog is high, Campus Visit when interest is already 80+.</li>
           <li><strong>Extend an offer</strong> when you're confident. Offers use $ from your scholarship pool (not AP). Bigger offers = more interest. You can revise or withdraw later.</li>
           <li><strong>The recruit decides</strong>. Each recruit has 3 main priorities (revealed via Home Visit / Campus Visit). If your school satisfies their top 3 + the offer is fair, they commit fast. Miss their priorities and they shop around.</li>
-          <li><strong>Prospect Camp Wk 13</strong> is huge — invitees show up, get partially scouted, and bump interest in you. Invite top targets in Wks 5 and 10.</li>
         </ul>
         <p className="mt-2 text-xs text-gray-300">Visible quirks + archetype are shown for free. Hidden quirks (clutch, injury history, work ethic) require deeper scouting to surface.</p>
       </ContextBox>
@@ -458,11 +350,6 @@ export default function Recruiting() {
           <div className="text-[10px] text-gray-400">${(totalOffered / 1000).toFixed(0)}K committed</div>
         </div>
         <Link to={`/gm/weekly?slot=${slot}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-pnw-green hover:bg-pnw-cream">
-          <div className="text-xs text-gray-500 uppercase tracking-wider">Prospect camp</div>
-          <div className="text-lg font-bold text-pnw-slate">{campHeldThisYear ? `${save.prospectCamp.attendees} att` : campWindowOpen ? 'Open' : 'Closed'}</div>
-          <div className="text-[10px] text-gray-400">Manage on Weekly Actions </div>
-        </Link>
-        <Link to={`/gm/weekly?slot=${slot}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-pnw-green hover:bg-pnw-cream">
           <div className="text-xs text-gray-500 uppercase tracking-wider">Fundraise</div>
           <div className="text-lg font-bold text-pnw-slate">Weekly Actions</div>
           <div className="text-[10px] text-gray-400">Manage on Weekly Actions </div>
@@ -475,34 +362,12 @@ export default function Recruiting() {
       {/* Roster snapshot — returning, weaknesses, spots available */}
       <RosterSnapshotPanel save={save} />
 
-      {/* Camp invite window banner — only shown during Wk 5/10 */}
-      {(save.calendar?.weekOfYear === 5 || save.calendar?.weekOfYear === 10) && (
-        <div className="mb-4 bg-amber-50 border-2 border-amber-300 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex-1">
-            <div className="text-[10px] uppercase tracking-wider text-amber-800 font-bold">📋 Camp Invite Window</div>
-            <div className="text-sm text-amber-900 font-semibold mt-0.5">
-              Wk {save.calendar.weekOfYear} — invite HS recruits to the Wk 13 Prospect Camp.
-            </div>
-            <div className="text-[11px] text-amber-800 mt-0.5">
-              {invitedCount}/{CAMP_MAX_INVITES} invited · {(save.campInvitesByWindow?.[save.calendar.weekOfYear] || 0)}/50 this window · attendees get scout-fog drop + interest bump
-            </div>
-          </div>
-          <button
-            onClick={autoInviteCamp}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded shadow whitespace-nowrap shrink-0"
-          >
-            ⚡ Auto-invite top recruits
-          </button>
-        </div>
-      )}
-
       {/* Board tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {[
           { key: 'BOARD', label: 'Board', count: visible.length },
           { key: 'FOLLOWING', label: ' Following', count: followedCount },
           { key: 'OFFERS', label: 'Offers Out', count: liveOffers.length },
-          { key: 'INVITES', label: `Camp Invites`, count: `${invitedCount}/${CAMP_MAX_INVITES}` },
           { key: 'SIGNED', label: 'Signed', count: signedRecruits.length },
         ].map(t => (
           <button
@@ -635,7 +500,6 @@ export default function Recruiting() {
                 onToggleExpand={() => setExpandedRow(expandedRow === recruit.id ? null : recruit.id)}
                 onOpenModal={() => setOpenRecruit(recruit)}
                 onToggleFollow={() => toggleFollow(recruit.id)}
-                onToggleCamp={() => toggleCampInvite(recruit.id)}
               />
             ))}
           </tbody>
@@ -872,13 +736,6 @@ function ScholarshipBanner({ save }) {
   )
 }
 
-function isCampWindowOpen(calendar) {
-  if (calendar.mode !== 'OFFSEASON') return false
-  // Use sim-date, not wall clock: offseason week 1 = Aug 1. Camp window is
-  // Aug-Nov of the offseason roughly offseason weeks 1-17.
-  return calendar.offseasonWeek >= 1 && calendar.offseasonWeek <= 17
-}
-
 function _unusedComputeProgramMomentum(save) {
   // Use last completed season's win pct + postseason status
   const team = save.teams[save.userSchoolId]
@@ -907,7 +764,7 @@ function SuitorBadge({ recruit }) {
   return <span className={'text-[10px] ' + color}>{parts.slice(0, 2).join(' • ') || 'none'}</span>
 }
 
-function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, onOpenModal, onToggleFollow, onToggleCamp }) {
+function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, onOpenModal, onToggleFollow }) {
   const isSigned = recruit.signedTo === save.userSchoolId
   const hasLiveOffer = recruit.liveOffer?.schoolId === save.userSchoolId
   const apSpent = recruit.scoutGrades?.[save.userSchoolId]?.apSpent || 0
@@ -1054,7 +911,6 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
               save={save}
               hasLiveOffer={hasLiveOffer}
               onOpenModal={onOpenModal}
-              onToggleCamp={onToggleCamp}
               archetype={archetype}
               measurables={m}
               scoutedAtAll={scoutedAtAll}
@@ -1066,7 +922,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
   )
 }
 
-function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables, onOpenModal, onToggleCamp }) {
+function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables, onOpenModal }) {
   const visibleQuirks = (recruit.visibleQuirks || []).map(getQuirk).filter(Boolean)
   const isHs = recruit.pool === 'HS_SR'
   return (
@@ -1119,25 +975,10 @@ function RecruitExpansion({ recruit, save, scoutedAtAll, archetype, measurables,
         <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Actions</div>
         <button
           onClick={onOpenModal}
-          className="w-full mb-1.5 px-2 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
+          className="w-full px-2 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
         >
-          Open full recruit panel 
+          Open full recruit panel
         </button>
-        {isHs ? (
-          <button
-            onClick={onToggleCamp}
-            className={'w-full px-2 py-1.5 rounded text-xs font-semibold ' +
-              (recruit.campInvited
-                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                : 'border border-gray-300 text-gray-700 hover:bg-gray-100')}
-          >
-            {recruit.campInvited ? '✓ Camp invite sent' : '+ Invite to prospect camp (free)'}
-          </button>
-        ) : (
-          <div className="w-full px-2 py-1.5 rounded text-xs text-gray-400 italic border border-dashed border-gray-200 text-center" title="Prospect camp is HS-only — JUCO and 4-year transfer recruits skip it.">
-            Camp not available for {recruit.pool === 'JUCO_TRANSFER' ? 'JUCO transfers' : '4-year transfers'}
-          </div>
-        )}
       </div>
     </div>
   )
@@ -1155,137 +996,6 @@ function ActionCard({ title, subtitle, onClick, disabled }) {
       <div className="font-semibold text-pnw-slate">{title}</div>
       <div className="text-xs text-gray-500 mt-1">{subtitle}</div>
     </button>
-  )
-}
-
-// ── Camp modal ──────────────────────────────────────────────────────────────
-
-function CampModal({ save, coach, recruits, onConfirm, onClose }) {
-  const { backdropProps, stopProps } = useModalDismiss(onClose)
-  const [fee, setFee] = useState(125)
-  const [invitedIds, setInvitedIds] = useState([])
-  const [showInviteList, setShowInviteList] = useState(false)
-
-  const momentum = useMemo(() => computeProgramMomentum(save), [save])
-
-  const prediction = useMemo(() => {
-    return predictCampTurnout(recruits, save.userSchoolId, invitedIds, fee, coach.recruiter, momentum)
-  }, [recruits, save.userSchoolId, invitedIds, fee, coach.recruiter, momentum])
-
-  const projectedRevenue = prediction.predictedAttendees * fee
-  const isBelowMin = prediction.predictedAttendees < CAMP_MIN_ATTENDEES
-
-  // List of pool recruits to invite from
-  const invitablePool = Object.values(recruits)
-    .filter(r => r.pool === 'HS_SR' && r.status === 'open')
-    .sort((a, b) => {
-      const ia = a.scoutGrades[save.userSchoolId]?.interest ?? 0
-      const ib = b.scoutGrades[save.userSchoolId]?.interest ?? 0
-      return ib - ia
-    })
-    .slice(0, 80)
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" {...backdropProps}>
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" {...stopProps}>
-        <div className="flex justify-between items-start gap-3 mb-3">
-          <h3 className="text-xl font-bold text-pnw-slate">Hold Prospect Camp</h3>
-          <ModalCloseButton onClick={onClose} />
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          HS prospects only. Runs once a year in <strong>Week 13 (late October)</strong>. Attendees get +25 interest + scout fog drop + small rating bump. Revenue ($ × attendees) adds to budget immediately. Camp needs <strong>{CAMP_MIN_ATTENDEES} min</strong> attendees or it's cancelled. Max {CAMP_MAX_ATTENDEES}, with walk-ons capped at 25.
-        </p>
-
-        <div className="mb-4">
-          <label className="text-xs uppercase tracking-wider text-gray-500">Fee per attendee</label>
-          <div className="flex items-center gap-3 mt-1">
-            <input type="range" min={25} max={200} step={5} value={fee} onChange={e => setFee(parseInt(e.target.value, 10))} className="flex-1" />
-            <span className="font-mono font-bold text-pnw-green w-16 text-right">${fee}</span>
-          </div>
-        </div>
-
-        <div className="bg-pnw-cream rounded p-3 mb-4">
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">Predicted</div>
-              <div className={'text-xl font-bold ' + (isBelowMin ? 'text-red-700' : 'text-pnw-green')}>{prediction.predictedAttendees}</div>
-              <div className="text-[10px] text-gray-500">attendees</div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">Invited</div>
-              <div className="text-xl font-bold text-pnw-slate">{prediction.invitedAttendees}</div>
-              <div className="text-[10px] text-gray-500">of {invitedIds.length} invites</div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">Walk-ons</div>
-              <div className="text-xl font-bold text-pnw-slate">{prediction.walkOns}</div>
-              <div className="text-[10px] text-gray-500">uninvited</div>
-            </div>
-          </div>
-          <div className="mt-3 text-center">
-            <span className="text-sm text-gray-700">Projected revenue: </span>
-            <span className="font-bold text-pnw-green">${(projectedRevenue / 1000).toFixed(1)}K</span>
-          </div>
-          {isBelowMin && (
-            <div className="mt-2 text-xs text-red-700 text-center">
-               Below the {CAMP_MIN_ATTENDEES}-attendee minimum. Lower the fee or invite more players, or the camp won't run.
-            </div>
-          )}
-        </div>
-
-        <div className="bg-gray-50 rounded p-2 text-xs text-gray-600 mb-4">
-          Coach recruiter: <strong>{coach.recruiter}</strong> • Program momentum: <strong>{momentum}/100</strong>
-        </div>
-
-        <div className="mb-4">
-          <button
-            onClick={() => setShowInviteList(!showInviteList)}
-            className="text-sm text-pnw-green hover:underline"
-          >
-            {showInviteList ? 'Hide' : 'Show'} invite list ({invitedIds.length} selected)
-          </button>
-        </div>
-
-        {showInviteList && (
-          <div className="border rounded p-2 mb-4 max-h-60 overflow-y-auto">
-            {invitablePool.map(r => {
-              const isInvited = invitedIds.includes(r.id)
-              const interest = r.scoutGrades[save.userSchoolId]?.interest ?? 0
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => {
-                    setInvitedIds(prev =>
-                      isInvited ? prev.filter(x => x !== r.id) : [...prev, r.id],
-                    )
-                  }}
-                  className={'w-full flex items-center justify-between p-1.5 text-xs rounded ' +
-                    (isInvited ? 'bg-pnw-cream' : 'hover:bg-gray-50')
-                  }
-                >
-                  <span>
-                    {isInvited && ' '}
-                    {r.firstName} {r.lastName} ({r.primaryPosition}, {r.hometown.state})
-                  </span>
-                  <span className="text-gray-500">Interest {interest}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border rounded text-sm">Cancel</button>
-          <button
-            onClick={() => onConfirm(fee, invitedIds)}
-            disabled={isBelowMin}
-            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            Hold Camp
-          </button>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -1530,7 +1240,7 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
               <strong>Recruiting interest:</strong>{' '}
               <em>{visibleSuitors(recruit).label}</em>
               <div className="text-[10px] text-amber-700 mt-1">
-                Take a Scout Trip, Home Visit, or invite to Camp to learn who else is recruiting them.
+                Take a Scout Trip or Home Visit to learn who else is recruiting them.
               </div>
             </>
           )}

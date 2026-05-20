@@ -29,7 +29,7 @@ export const ATTR_DESCRIPTIONS = {
   // Coach
   developer: 'Developer (DEV): drives how fast your players progress toward their potential. Higher = faster offseason ratings gains for everyone.',
   motivator: 'Motivator (MOT): drives team chemistry, GPA boost from coaching, clutch/composure in big moments, and fundraising yield.',
-  recruiter: 'Recruiter (REC): drives weekly AP, the program\'s closing rate on verbals, and how many recruits show up to your prospect camp.',
+  recruiter: 'Recruiter (REC): drives weekly AP, how fast you build interest with recruits, and the program\'s closing rate on verbal commitments.',
   tactician: 'Tactician (TAC): drives in-game AI decisions — lineup construction, pitching changes, defensive positioning.',
 }
 

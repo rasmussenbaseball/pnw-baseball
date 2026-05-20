@@ -840,15 +840,27 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
   }
   const grade = recruit.scoutGrades[userSchoolId]
 
-  // One-shot rule: each scouting action can only be applied ONCE per
-  // recruit. The caller should ideally already prevent the click, but we
-  // re-check here so engine state stays consistent. SCHOLARSHIP_OFFER is
-  // exempt because it's managed via setLiveOffer (live offers can change).
-  if (action.key !== 'SCHOLARSHIP_OFFER' && grade.actionsApplied.includes(action.key)) {
+  // One-shot rule: the big high-touch actions (visits, scout trips) can only
+  // be applied ONCE per recruit. But TEXT and CALL are REPEATABLE rapport
+  // touches — without a repeatable interest source, a recruit's interest
+  // tops out below the sign threshold and they can NEVER commit (the old
+  // "nobody ever signs" bug). SCHOLARSHIP_OFFER is also exempt (managed via
+  // setLiveOffer). Repeatable touches get diminishing returns so you can't
+  // trivially spam to 100, but they DO let you nudge a recruit over the line.
+  const REPEATABLE = action.key === 'SCHOLARSHIP_OFFER'
+    || action.key === 'TEXT' || action.key === 'CALL'
+  if (!REPEATABLE && grade.actionsApplied.includes(action.key)) {
     return { recruit, interestGain: 0, revealed: null, alreadyApplied: true }
   }
 
-  grade.interest = Math.min(100, grade.interest + action.interestGain)
+  // Diminishing returns on repeated rapport touches: each additional TEXT/CALL
+  // beyond the first two gives half its listed interest (min 1).
+  let interestGain = action.interestGain
+  if ((action.key === 'TEXT' || action.key === 'CALL')) {
+    const priorTouches = grade.actionsApplied.filter(k => k === action.key).length
+    if (priorTouches >= 2) interestGain = Math.max(1, Math.round(action.interestGain / 2))
+  }
+  grade.interest = Math.min(100, grade.interest + interestGain)
   grade.noise = Math.max(2, grade.noise - action.fogReduction)
   grade.actionsApplied.push(action.key)
   grade.apSpent = (grade.apSpent || 0) + (action.apCost || 0)
@@ -878,7 +890,7 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
   // revealed + meaningful interest bump (recruit feels prioritized).
   applyFullScoutIfEligible(recruit, userSchoolId)
 
-  return { recruit, interestGain: action.interestGain, revealed }
+  return { recruit, interestGain, revealed }
 }
 
 /**
@@ -1059,269 +1071,6 @@ function avgTrueRating(r) {
   return vals.reduce((a, b) => a + b, 0) / vals.length
 }
 
-// ─── Prospect Camp ───────────────────────────────────────────────────────────
-//
-// Every program holds one prospect camp in the fall. The user sets a $ fee
-// per attendee. Higher fees fewer attendees. Better-rated recruits are
-// harder to lure to camp; they're already getting attention from D1.
-//
-// Attendees:
-//   - Receive a small rating bump (development boost)
-//   - Have their scout fog reduced for your school
-//   - Earn money for your budget ($ fee × attendee count)
-//   - Bump their interest in your program meaningfully
-
-// Camp constants
-export const CAMP_MIN_ATTENDEES = 20
-export const CAMP_MAX_ATTENDEES = 100
-export const CAMP_MAX_INVITES = 100      // user can invite up to 100 HS recruits
-export const CAMP_MAX_WALKONS = 25
-
-/**
- * Per-recruit camp attendance probability — exposed so the UI can show
- * RSVP predictions (Likely / Unsure / Probably not). Mirrors the math
- * inside simProspectCamp for invited players.
- *
- * @param {import('./types.js').Recruit} recruit
- * @param {string} userSchoolId
- * @param {number} feePerAttendee
- * @param {number} coachRecruiterRating
- * @param {number} programMomentum   0-100
- */
-export function predictRecruitAttendance(recruit, userSchoolId, feePerAttendee, coachRecruiterRating, programMomentum) {
-  if (recruit.pool !== 'HS_SR') return 0
-  const feeMult = clamp(1.5 - (feePerAttendee - 50) / 200, 0.4, 1.6)
-  const coachMult = 0.7 + (coachRecruiterRating / 100) * 0.7
-  const momentumMult = 0.7 + (programMomentum / 100) * 0.7
-  const avgRating = avgTrueRating(recruit)
-  const existingInterest = recruit.scoutGrades?.[userSchoolId]?.interest ?? 0
-  let prob
-  if (avgRating >= 75) prob = 0.30
-  else if (avgRating >= 65) prob = 0.55
-  else if (avgRating >= 55) prob = 0.75
-  else prob = 0.85
-  prob *= feeMult * coachMult * momentumMult * (1 + existingInterest / 150)
-  return clamp(prob, 0, 0.95)
-}
-
-export function rsvpLabel(prob) {
-  if (prob >= 0.65) return { label: 'Likely', color: 'text-green-700', bg: 'bg-green-50' }
-  if (prob >= 0.35) return { label: 'Unsure', color: 'text-amber-700', bg: 'bg-amber-50' }
-  return { label: 'Probably not', color: 'text-gray-500', bg: 'bg-gray-50' }
-}
-
-/**
- * Predict prospect camp turnout.
- *
- * Calibration target: Bushnell at $125 fee with average coach + neutral
- * program 30-40 attendees. Hard cap at 100, floor at 20 (otherwise camp
- * doesn't run).
- *
- * Attendance sources:
- *   1. INVITED players — guaranteed-ish attendance (fee-modulated)
- *   2. WALK-ONS — players in the pool with high interest in your program
- *      show up uninvited (program-momentum-driven)
- *
- * Turnout factors (multipliers stack):
- *   - Fee: lower = more, higher = fewer
- *   - Coach recruiter rating
- *   - Program momentum (recent W-L, conf rankings)
- *   - Existing interest in your program
- *
- * @param {Object<string,import('./types.js').Recruit>} recruits
- * @param {string} userSchoolId
- * @param {string[]} invitedIds       recruit IDs the coach explicitly invited
- * @param {number} feePerAttendee
- * @param {number} coachRecruiterRating
- * @param {number} programMomentum    0-100, e.g. last season's win pct × 100
- * @returns {{ predictedAttendees: number, invitedAttendees: number, walkOns: number }}
- */
-export function predictCampTurnout(recruits, userSchoolId, invitedIds, feePerAttendee, coachRecruiterRating, programMomentum) {
-  // Fee multiplier — calibrated so $125 produces ~1.0×
-  // ($50 ~1.5×, $125 1.0×, $200 ~0.6×)
-  const feeMult = clamp(1.5 - (feePerAttendee - 50) / 200, 0.4, 1.6)
-  // Coach + momentum multipliers (0.7–1.4× each)
-  const coachMult = 0.7 + (coachRecruiterRating / 100) * 0.7
-  const momentumMult = 0.7 + (programMomentum / 100) * 0.7
-
-  const invitedSet = new Set(invitedIds)
-  let invitedAttendees = 0
-  let walkOns = 0
-
-  for (const r of Object.values(recruits)) {
-    // CAMP IS HS-ONLY per Nate's direction
-    if (r.pool !== 'HS_SR') continue
-    if (r.status === 'signed' || r.status === 'lost') continue
-
-    const avgRating = avgTrueRating(r)
-    const existingInterest = r.scoutGrades[userSchoolId]?.interest ?? 0
-
-    if (invitedSet.has(r.id)) {
-      let base
-      if (avgRating >= 75) base = 0.30
-      else if (avgRating >= 65) base = 0.55
-      else if (avgRating >= 55) base = 0.75
-      else base = 0.85
-      base *= feeMult * coachMult * momentumMult
-      base *= 1 + existingInterest / 150
-      invitedAttendees += clamp(base, 0, 1)
-    } else {
-      const proximityBonus = r.hometown.state === 'OR' || r.hometown.state === 'WA' ? 1.5 : 1.0
-      let base = (existingInterest / 100) * 0.4
-      base *= feeMult * coachMult * momentumMult * proximityBonus
-      const reputationFloor = (programMomentum / 100) * 0.015
-      base += reputationFloor
-      walkOns += clamp(base, 0, 0.6)
-    }
-  }
-
-  // Cap walk-ons at CAMP_MAX_WALKONS
-  const cappedWalkOns = Math.min(walkOns, CAMP_MAX_WALKONS)
-  const predictedAttendees = Math.min(CAMP_MAX_ATTENDEES, Math.round(invitedAttendees + cappedWalkOns))
-  return {
-    predictedAttendees,
-    invitedAttendees: Math.round(invitedAttendees),
-    walkOns: Math.round(cappedWalkOns),
-  }
-}
-
-/**
- * Simulate prospect camp attendance. Returns attendees + revenue, or null
- * if attendance falls below the 20-player minimum (camp cancelled).
- *
- * @returns {{ attendeeIds: string[], revenue: number, recruits: any, cancelled?: boolean, reason?: string }}
- */
-export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttendee, coachRecruiterRating, programMomentum, year, seed, programHistory = 50) {
-  const rng = makeRng('camp', userSchoolId, year, seed)
-  const attendeeIds = []
-  const invitedSet = new Set(invitedIds || [])
-  // Per-attendee boost log — captured at camp time so the results popup can
-  // show "who attended + what scouting boost they got" even if the board
-  // changes later. { id, name, pos, estOvr, interestGain, invited }
-  const details = []
-  const logAttendee = (r, invited, interestBefore) => {
-    const g = r.scoutGrades[userSchoolId] || {}
-    const block = r.isPitcher ? r.truePitcher : r.trueHitter
-    const vals = block ? Object.values(block).filter(v => typeof v === 'number' && v < 100) : []
-    const estOvr = vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null
-    details.push({
-      id: r.id,
-      name: `${r.firstName} ${r.lastName}`,
-      pos: r.isPitcher ? 'P' : r.primaryPosition,
-      state: r.hometown?.state || '',
-      estOvr,
-      interest: g.interest ?? 0,
-      interestGain: Math.max(0, (g.interest ?? 0) - interestBefore),
-      noise: g.noise ?? 15,
-      invited: !!invited,
-    })
-  }
-  // Target attendance scales with program quality (Nate): floor 20 for any
-  // program, up to ~80 for elite programs. We cap natural turnout at this
-  // target and top up to it so weaker schools land near 20 and powers near 80.
-  const phClamped = Math.max(15, Math.min(99, programHistory ?? 50))
-  const targetAttendees = Math.max(CAMP_MIN_ATTENDEES, Math.min(80,
-    Math.round(20 + ((phClamped - 15) / 84) * 60)))
-
-  const feeMult = clamp(1.5 - (feePerAttendee - 50) / 200, 0.4, 1.6)
-  const coachMult = 0.7 + (coachRecruiterRating / 100) * 0.7
-  const momentumMult = 0.7 + (programMomentum / 100) * 0.7
-
-  let walkOnsAccepted = 0
-  for (const r of Object.values(recruits)) {
-    // HS only per Nate's direction
-    if (r.pool !== 'HS_SR') continue
-    if (r.status === 'signed' || r.status === 'lost') continue
-    if (attendeeIds.length >= targetAttendees) break
-
-    const isInvited = invitedSet.has(r.id)
-    // Enforce walk-on cap
-    if (!isInvited && walkOnsAccepted >= CAMP_MAX_WALKONS) continue
-
-    const avgRating = avgTrueRating(r)
-    const existingInterest = r.scoutGrades[userSchoolId]?.interest ?? 0
-    let prob
-
-    if (isInvited) {
-      if (avgRating >= 75) prob = 0.30
-      else if (avgRating >= 65) prob = 0.55
-      else if (avgRating >= 55) prob = 0.75
-      else prob = 0.85
-      prob *= feeMult * coachMult * momentumMult * (1 + existingInterest / 150)
-    } else {
-      const proximityBonus = (r.hometown.state === 'OR' || r.hometown.state === 'WA') ? 1.5 : 1.0
-      prob = (existingInterest / 100) * 0.4
-      prob *= feeMult * coachMult * momentumMult * proximityBonus
-      prob += (programMomentum / 100) * 0.015
-    }
-
-    if (rng.chance(Math.min(prob, 0.95))) {
-      if (!isInvited) walkOnsAccepted++
-      attendeeIds.push(r.id)
-      // Apply camp effects
-      if (!r.scoutGrades[userSchoolId]) {
-        r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
-      }
-      const _interestBefore = r.scoutGrades[userSchoolId].interest ?? 0
-      // Attending camp = ~50% scouted out of the gate. Bump apSpent to 5 so
-      // the scouting progress bar shows it; drop noise to 7 (full-scout floor
-      // is 2 once they have 10+ AP spent across actions).
-      r.scoutGrades[userSchoolId].interest = Math.min(100, r.scoutGrades[userSchoolId].interest + 25)
-      r.scoutGrades[userSchoolId].noise = Math.min(r.scoutGrades[userSchoolId].noise, 7)
-      r.scoutGrades[userSchoolId].apSpent = Math.max(r.scoutGrades[userSchoolId].apSpent || 0, 5)
-      r.scoutGrades[userSchoolId].actionsApplied.push('CAMP_ATTEND')
-      const undisclosed = Object.keys(r.preferences).filter(
-        p => !r.scoutGrades[userSchoolId].revealedPreferences.includes(p),
-      )
-      if (undisclosed.length > 0) {
-        r.scoutGrades[userSchoolId].revealedPreferences.push(rng.pick(undisclosed))
-      }
-      // Small permanent rating bump
-      const block = r.isPitcher ? r.truePitcher : r.trueHitter
-      for (const k of Object.keys(block)) {
-        if (rng.chance(0.25)) block[k] = Math.min(99, block[k] + 1)
-      }
-      logAttendee(r, isInvited, _interestBefore)
-    }
-  }
-
-  // Per Nate (May 2026): camp ALWAYS runs. If natural turnout falls short of
-  // CAMP_MIN_ATTENDEES, we top up with additional walk-ons (any remaining HS
-  // recruit not already an attendee) until we hit the floor. The walk-on cap
-  // is relaxed for this fill since the alternative is cancellation (worse
-  // outcome than "the camp had some random extra kids show up").
-  if (attendeeIds.length < targetAttendees) {
-    const eligible = Object.values(recruits)
-      .filter(r => r.pool === 'HS_SR' && r.status !== 'signed' && r.status !== 'lost')
-      .filter(r => !attendeeIds.includes(r.id))
-    // Prefer recruits with at least SOME existing interest, then by avg rating
-    eligible.sort((a, b) => {
-      const ai = a.scoutGrades?.[userSchoolId]?.interest ?? 0
-      const bi = b.scoutGrades?.[userSchoolId]?.interest ?? 0
-      if (ai !== bi) return bi - ai
-      return avgTrueRating(b) - avgTrueRating(a)
-    })
-    for (const r of eligible) {
-      if (attendeeIds.length >= targetAttendees) break
-      attendeeIds.push(r.id)
-      if (!r.scoutGrades[userSchoolId]) {
-        r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }
-      }
-      const _interestBefore = r.scoutGrades[userSchoolId].interest ?? 0
-      r.scoutGrades[userSchoolId].interest = Math.min(100, r.scoutGrades[userSchoolId].interest + 15)
-      r.scoutGrades[userSchoolId].noise = Math.min(r.scoutGrades[userSchoolId].noise, 9)
-      r.scoutGrades[userSchoolId].apSpent = Math.max(r.scoutGrades[userSchoolId].apSpent || 0, 3)
-      r.scoutGrades[userSchoolId].actionsApplied.push('CAMP_ATTEND')
-      logAttendee(r, invitedSet.has(r.id), _interestBefore)
-    }
-  }
-
-  // Sort details best-prospect-first for display.
-  details.sort((a, b) => (b.estOvr ?? 0) - (a.estOvr ?? 0))
-  const revenue = attendeeIds.length * feePerAttendee
-  return { attendeeIds, revenue, recruits, details }
-}
-
 // ─── Fundraising (AP $) ────────────────────────────────────────────────────
 
 /**
@@ -1373,8 +1122,10 @@ export function setLiveOffer(recruit, userSchoolId, amount, nilAmount = 0) {
       weeksOutstanding: 0,
       changes: 1,
     }
-    // Initial interest bump — bigger when NIL is meaningful
-    let bump = 12
+    // Initial interest bump — a scholarship offer is a strong signal of
+    // commitment, so it moves the needle a lot (18, was 12). Bigger when NIL
+    // is meaningful.
+    let bump = 18
     if (nilAmount >= 10000) bump += 6
     if (nilAmount >= 100000) bump += 6
     recruit.scoutGrades[userSchoolId].interest = Math.min(100, recruit.scoutGrades[userSchoolId].interest + bump)
@@ -1435,7 +1186,11 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   if (recruit.status === 'signed' || recruit.status === 'lost') return null
   const grade = recruit.scoutGrades[userSchoolId]
   if (!grade) return null
-  if (grade.interest < 45) return null
+  // Lowered 45 → 32 (May 2026 recruiting rework). A recruit who's been
+  // courted enough to hold a live offer AND sits above ~32 interest is a
+  // realistic commit candidate. The old 45 gate was unreachable for the
+  // auto-courted board (interest stalled in the mid-30s), so nobody signed.
+  if (grade.interest < 32) return null
   if (!recruit.liveOffer || recruit.liveOffer.schoolId !== userSchoolId) return null
 
   const suitorCount = totalSuitors(recruit)

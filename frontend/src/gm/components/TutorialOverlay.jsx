@@ -75,8 +75,7 @@ function buildSlides(level = 'NAIA') {
           <li><strong>Wk 1</strong> — Set your schedule (non-conference weekends)</li>
           <li><strong>Wk 2</strong> — Hire assistant coaches (pitching / hitting / bench)</li>
           <li><strong>Wk 3</strong> — Lock your annual budget</li>
-          <li><strong>Wk 4</strong> — Open scouting + spend all AP on your recruit board</li>
-          <li><strong>Wk 13</strong> — Run the annual Prospect Camp</li>
+          <li><strong>Wk 4</strong> — Open scouting with a big 100 AP budget to build out your recruit board</li>
           <li><strong>Wk 52</strong> — Mandatory cuts (only if you're over the {L.rosterCap}-player roster cap)</li>
         </ul>
         <p className="mt-3 text-sm text-gray-300">If you don't want to manage these by hand, turn on <strong>Auto mode</strong> from the hero header. Auto handles every required action plus weekly AP for you.</p>
@@ -126,7 +125,7 @@ function buildSlides(level = 'NAIA') {
           <li><strong>Win them over</strong> — they evaluate your offer + 7 other preferences (proximity, playing time, coaching, etc.)</li>
           <li><strong>Sign</strong> — they commit and join your roster Wk 52</li>
         </ul>
-        <p className="mt-3 text-sm text-gray-300"><strong>Prospect Camp</strong> in Wk 13 is the year's biggest recruiting lever. Invite top targets in Wks 5 & 10. Attendance dramatically reduces scouting fog + bumps interest.</p>
+        <p className="mt-3 text-sm text-gray-300"><strong>Week 4 unlocks a big 100 AP scouting budget</strong> — the year's biggest chance to build your board. Pour it into scout trips, visits, and early offers on your top targets so commitments start rolling in through the fall.</p>
       </>
     ),
   },
@@ -156,7 +155,7 @@ function buildSlides(level = 'NAIA') {
           <li><strong>Scholarships</strong> (~55%) — the pool you offer to recruits</li>
           <li><strong>Coaching salaries</strong> (~18%) — what you pay your staff</li>
           <li><strong>Facilities + S&C + Medical</strong> — passive dev boosts + injury reduction</li>
-          <li><strong>Recruiting</strong> — travel + camp costs</li>
+          <li><strong>Recruiting</strong> — travel + scouting costs</li>
         </ul>
         <p className="mt-3"><strong>Coaches</strong> drive your weekly AP. Strong staffs push you near the 50 AP cap; weak ones stay closer to 20. Coach ratings (developer / motivator / recruiter / tactician) also affect skill dev, happiness, recruit fit scores, and in-game decisions.</p>
       </>
@@ -169,10 +168,9 @@ function buildSlides(level = 'NAIA') {
         <p>If you'd rather watch the season unfold than manage every weekly micro-decision, hit the <strong>AUTO</strong> button in the hero header.</p>
         <p className="mt-3">Auto mode handles:</p>
         <ul className="mt-3 space-y-1 text-sm list-disc list-inside">
-          <li>All required actions (schedule, hire, budget, scout, prospect camp, mandatory cuts)</li>
+          <li>All required actions (schedule, hire, budget, scout, mandatory cuts)</li>
           <li>Weekly AP allocation — smart picks across study hall, recruiting, fundraising</li>
-          <li>Prospect-camp invites in Wks 5 & 10</li>
-          <li>Recruiting actions on your top targets each week</li>
+          <li>Recruiting actions + offers on your top targets each week</li>
         </ul>
         <p className="mt-3 text-sm text-gray-300">You can flip between AUTO and MANUAL at any time. Auto plays the games for you only if you choose Sim Games when the game-week modal pops; you can still play games yourself when you want.</p>
       </>

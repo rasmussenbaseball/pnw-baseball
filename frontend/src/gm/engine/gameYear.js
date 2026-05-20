@@ -43,7 +43,7 @@ export const PHASES = {
     season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
   TUTORIAL_BUDGET:   { key: 'TUTORIAL_BUDGET',   label: 'Set Budget',       blurb: 'Travel is locked from your schedule. Allocate the rest.',
     season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
-  TUTORIAL_SCOUT:    { key: 'TUTORIAL_SCOUT',    label: 'Open Scouting',    blurb: "AP unlocks. Spend it all on next year's recruits.",
+  TUTORIAL_SCOUT:    { key: 'TUTORIAL_SCOUT',    label: 'Open Scouting',    blurb: "AP unlocks with a big one-time scouting budget — build out your recruiting board for next year's class.",
     season: 'Late Summer', practice: false, conditioning: false, devAllowed: false },
   // ── September-October: fall camp (Wks 5-13) ─────────────────────────────
   FALL_CAMP:         { key: 'FALL_CAMP',         label: 'Fall Camp',        blurb: 'Full team practice. Skills develop normally — spend AP on drills + recruiting.',
@@ -51,9 +51,8 @@ export const PHASES = {
   // ── October: ONE turn (Wks 9-12). No games — condensed like Nov/Dec. ──
   OCTOBER:           { key: 'OCTOBER',           label: 'October',          blurb: 'The whole month in one turn. A full month of AP for fall practice + recruiting — then advance to November.',
     season: 'October', practice: true, conditioning: true, devAllowed: true },
-  // ── November: ONE turn (Wks 13-17). Prospect camp + a full month of AP.
-  // Nothing else happens, so the whole month is condensed to a single turn. ──
-  NOVEMBER:          { key: 'NOVEMBER',          label: 'November',         blurb: 'The whole month in one turn. Run your prospect camp and spend a full month of AP on recruiting + development — then advance straight to December.',
+  // ── November: ONE turn (Wks 13-17). A full month of AP, no games. ──
+  NOVEMBER:          { key: 'NOVEMBER',          label: 'November',         blurb: 'The whole month in one turn. Spend a full month of AP on recruiting + development — then advance straight to December.',
     season: 'November', practice: true, conditioning: true, devAllowed: true, devRateMult: 0.5 },
   // ── December: ONE turn (Wks 18-22). A full month of AP, no games. ──
   DECEMBER:          { key: 'DECEMBER',          label: 'December',         blurb: 'The whole month in one turn. Spend a full month of AP on recruiting + winter development — then advance to January.',
@@ -94,7 +93,7 @@ export function phaseForWeek(week) {
   if (week >= 5 && week <= 8) return PHASES.FALL_CAMP            // September — weekly
   // October = wks 9-12 collapsed into one turn.
   if (week >= 9 && week <= 12) return PHASES.OCTOBER
-  // November = wks 13-17 collapsed into one turn (prospect camp lives here).
+  // November = wks 13-17 collapsed into one turn.
   if (week >= 13 && week <= 17) return PHASES.NOVEMBER
   // December = wks 18-22 collapsed into one turn.
   if (week >= 18 && week <= 22) return PHASES.DECEMBER
@@ -174,7 +173,6 @@ export function requiredActionForWeek(state, week) {
     case 2: return HIRE_REQUIREMENT
     case 3: return BUDGET_REQUIREMENT
     case 4: return SCOUT_REQUIREMENT
-    case 13: return PROSPECT_CAMP_REQUIREMENT
     default: return null
   }
 }
@@ -218,19 +216,10 @@ const BUDGET_REQUIREMENT = {
 const SCOUT_REQUIREMENT = {
   key: 'SCOUT',
   label: 'Open scouting & build your board',
-  blurb: 'AP unlocks this week. Spend every point on scouting recruits for next year\'s class. Add them to your board, run trips, sign-of-interest visits.',
+  blurb: 'AP unlocks with a big one-time scouting budget (100 AP). Pour it into scouting recruits for next year\'s class — add them to your board, run scout trips, campus + home visits, and start extending offers to your top targets.',
   route: '/gm/recruiting',
   isComplete: (state) => (state.ap?.currentWeek ?? 0) === 0,
   doneText: ' AP spent on scouting',
-}
-
-const PROSPECT_CAMP_REQUIREMENT = {
-  key: 'PROSPECT_CAMP',
-  label: 'Run your prospect camp',
-  blurb: 'Once-a-year HS recruiting camp on your campus. Click below — there\'s a "Run Camp Now" panel at the top of Weekly Actions. Pick a fee, hit the button. (Invites were taken in Wks 5 & 10; if you missed those, you can still run it at lowest fee for revenue.)',
-  route: '/gm/weekly',
-  isComplete: (state) => state.prospectCamp?.year === state.calendar?.year,
-  doneText: ' Camp held',
 }
 
 // ─── Per-week completion checks (kept here so gameYear.js owns the spine) ──

@@ -2,11 +2,7 @@ import { useState } from 'react'
 import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
-import {
-  fundraise, simProspectCamp, predictCampTurnout,
-  CAMP_MIN_ATTENDEES, CAMP_MAX_ATTENDEES,
-} from '../../gm/engine/recruits'
-import { ensureRecruitPool } from '../../gm/engine/autoMode'
+import { fundraise } from '../../gm/engine/recruits'
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek, actionUsesRemaining, maxActionUsesThisTurn } from '../../gm/engine/weeklyActions'
 import { prettyLabel, displayClassYear } from '../../gm/engine/format'
 import { offseasonPhase } from '../../gm/engine/calendar'
@@ -25,8 +21,6 @@ const TUTORING_AP = 5
 const TUTORING_PICKS = 3
 const TUTORING_BOOST = 0.20    // +0.20 GPA per player picked
 const FUNDRAISE_AP = 10
-const CAMP_MIN_FEE = 25
-const CAMP_MAX_FEE = 300
 const MEETING_AP_PER_PLAYER = 2
 const MEETING_MAX_PLAYERS = 5
 const MEETING_MIN_PLAYERS = 1
@@ -44,13 +38,10 @@ export default function WeeklyActions() {
   const userId = user?.id || 'guest'
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
-  // Camp fee is fixed at $100/attendee (Nate removed the fee choice).
-  const campFee = 100
   const [meetingPicks, setMeetingPicks] = useState([])
   const [tutoringPicks, setTutoringPicks] = useState([])
   const [oneOnOnePlayer, setOneOnOnePlayer] = useState('')
   const [oneOnOneRating, setOneOnOneRating] = useState('')
-  const [campResultsModal, setCampResultsModal] = useState(null)
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -92,20 +83,6 @@ export default function WeeklyActions() {
     setActionReceipt(`${action.label} (${variantLabel}) — +${result.perPlayerBump.toFixed(1)} avg ${bumpedKeys} on ${result.playersAffected} players.`)
     setTimeout(() => setActionReceipt(null), 5000)
   }
-  // Prospect Camp runs at Week 13 (late October). The phase-gate at Wk 13 in
-  // gameYear.js blocks the user from advancing until the camp has been held,
-  // so this check MUST line up with that. (Old code checked offseasonWeek
-  // === 14 which created a soft-lock — phase-gate said "run camp now," but
-  // the Run Camp button stayed locked until Wk 14, which the user couldn't
-  // reach. Fixed by switching to weekOfYear.)
-  const CAMP_WEEK = 13
-  const weekOfYear = save.calendar?.weekOfYear
-    ?? (save.calendar?.mode === 'OFFSEASON' ? save.calendar?.offseasonWeek : null)
-  const campOpen = weekOfYear === CAMP_WEEK
-  const campAlreadyHeld = save.prospectCamp?.year === save.calendar.year
-  const weeksUntilCamp = weekOfYear != null && weekOfYear < CAMP_WEEK
-    ? CAMP_WEEK - weekOfYear
-    : null
 
   function spendAP(cat, n) {
     save.ap.currentWeek -= n
@@ -274,68 +251,10 @@ export default function WeeklyActions() {
     saveDynasty(save); setSave({ ...save })
   }
 
-  function doCamp() {
-    if (!campOpen) { gmToast(`Prospect camp opens in Week ${CAMP_WEEK} (late October). Wait until then to run it.`, "warn"); return }
-    if (campAlreadyHeld) { gmToast("You've already held this year's camp.", 'warn'); return }
-    // CRITICAL: make sure the recruit pool exists before simming the camp.
-    // If the user never opened the Recruiting page, save.recruits is empty and
-    // the camp would run on nothing → 0 attendees (the long-standing bug).
-    ensureRecruitPool(save)
-    const momentum = Math.round(
-      ((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100
-    )
-    // Merge both invite sources: the campInvited flag (Recruiting page) AND
-    // any auto-mode invites stored on save.prospectCamp.invitedIds.
-    const flagged = Object.values(save.recruits || {})
-      .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
-      .map(r => r.id)
-    const invitedIds = [...new Set([...(save.prospectCamp?.invitedIds || []), ...flagged])]
-    const result = simProspectCamp(
-      save.recruits || {}, save.userSchoolId, invitedIds, campFee,
-      userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
-      userSchool.programHistory ?? 50,
-    )
-    if (result.cancelled) { gmToast(result.reason, 'warn'); return }
-    save.recruits = result.recruits
-    save.prospectCamp = {
-      fee: campFee,
-      year: save.calendar.year,
-      attendeeIds: result.attendeeIds,
-      attendees: result.attendeeIds.length,
-      details: result.details || [],
-      revenue: result.revenue,
-    }
-    save.budget.totalAthleticBudget = (save.budget.totalAthleticBudget || 0) + result.revenue
-    save.newsfeed.unshift({
-      id: `camp_${save.calendar.year}`,
-      year: save.calendar.year, week: save.calendar.week,
-      type: 'AWARD',
-      headline: `Prospect camp — ${result.attendeeIds.length} attendees at $${campFee} +$${(result.revenue / 1000).toFixed(1)}K.`,
-      payload: { fee: campFee, attendees: result.attendeeIds.length },
-    })
-    saveDynasty(save); setSave({ ...save })
-    setCampResultsModal(result)   // pop the results summary immediately
-  }
-
-  const invitedIds = Object.values(save.recruits || {})
-    .filter(r => r.campInvited && r.status !== 'signed' && r.status !== 'lost')
-    .map(r => r.id)
-  const campPredict = predictCampTurnout(
-    save.recruits || {}, save.userSchoolId, invitedIds,
-    campFee, userHC.recruiter,
-    Math.round(((userTeam.wins / Math.max(1, userTeam.wins + userTeam.losses)) || 0.5) * 100),
-  )
   const fundEstimate = fundraise(FUNDRAISE_AP, userHC.motivator, userSchool.programHistory)
 
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
-    {campResultsModal && (
-      <CampResultsModal
-        result={campResultsModal}
-        fee={campFee}
-        onClose={() => setCampResultsModal(null)}
-      />
-    )}
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex justify-between items-start">
         <div>
@@ -367,27 +286,6 @@ export default function WeeklyActions() {
         </ul>
         <p className="mt-2 text-xs text-gray-300">Each action is one-per-week unless noted. Unspent AP at week's end is <strong>lost</strong> — it does not carry over.</p>
       </ContextBox>
-
-      {/* TOP-OF-PAGE PROSPECT CAMP BANNER — shown only when camp week is active
-          OR camp was already held this year. Pinned high so users who click
-          through from the Dashboard phase-gate land on it immediately. */}
-      {(campOpen || campAlreadyHeld) && (
-        <ProspectCampBanner
-          save={save}
-          slot={slot}
-          campOpen={campOpen}
-          campAlreadyHeld={campAlreadyHeld}
-          invitedCount={invitedIds.length}
-          campFee={campFee}
-          campPredict={campPredict}
-          onRunCamp={doCamp}
-          onViewResults={() => setCampResultsModal({
-            attendeeIds: save.prospectCamp?.attendeeIds || [],
-            details: save.prospectCamp?.details || [],
-            revenue: save.prospectCamp?.revenue || 0,
-          })}
-        />
-      )}
 
       <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mt-6 mb-1">Team Practice / Development</h2>
       <p className="text-[11px] text-gray-500 mb-3">Permanent boosts stick; Temporary boosts give a bigger bump but wear off after 4 weeks. Once per turn each — up to 4× during the condensed month turns (Oct/Nov/Dec).</p>
@@ -467,7 +365,7 @@ export default function WeeklyActions() {
         onRun={do1on1Dev}
       />
 
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-6">Academics / Fundraising / Camp</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3 mt-6">Academics / Fundraising</h2>
 
       {/* Study Hall — two levels. Disabled (grayed) after a session is run
           this week so the user can clearly see it's already been used. */}
@@ -545,133 +443,11 @@ export default function WeeklyActions() {
         </button>
       </div>
 
-      {/* Prospect Camp info card — when camp ISN'T this week + hasn't been held.
-          Live banner above handles the "do it now" + "results" states. */}
-      {!campOpen && !campAlreadyHeld && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
-          <div className="flex justify-between items-start gap-3">
-            <div>
-              <div className="text-sm font-semibold text-pnw-slate">
-                 Prospect Camp <span className="text-xs text-gray-500 font-normal">— annual recruiting event (Week 13, late October)</span>
-              </div>
-              <div className="text-xs text-gray-600 mt-1 leading-snug max-w-2xl">
-                Once a year, run a HS-only prospect camp on your campus. Invited recruits attend, you charge a fee
-                ($25-$300 — higher = revenue, lower = bigger turnout), and every attendee leaves <strong>+5 interest</strong>
-                in your program plus they get partially scouted automatically (~50%).
-                Big-revenue swing day for any program.
-              </div>
-              <div className="text-xs text-gray-600 mt-2">
-                <strong>How it works (3 steps):</strong>
-                <ol className="list-decimal ml-4 mt-1 space-y-0.5">
-                  <li><strong>Wks 5 & 10</strong> — invite up to 50 recruits each window from the <Link to={`/gm/recruiting?slot=${slot}`} className="text-pnw-green hover:underline">Recruiting</Link> page</li>
-                  <li><strong>Wk 13</strong> — come back here, pick a fee, click <em>Run camp</em></li>
-                  <li>Results post immediately — revenue is added to your budget, attendees show up partially scouted on your recruit board</li>
-                </ol>
-              </div>
-              <div className="text-[11px] text-gray-500 mt-2">
-                Currently invited: <strong>{invitedIds.length}</strong> recruit{invitedIds.length === 1 ? '' : 's'}.
-                {weeksUntilCamp != null && weeksUntilCamp > 0 && (
-                  <> · Camp runs in <strong>{weeksUntilCamp}</strong> week{weeksUntilCamp === 1 ? '' : 's'}.</>
-                )}
-              </div>
-            </div>
-            <div className="text-right shrink-0">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">Status</div>
-              <div className="font-bold text-gray-400"> Locked — Wk {CAMP_WEEK}</div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
     </GMShell>
   )
 }
 
-function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCount, campFee, setCampFee, campPredict, onRunCamp, onViewResults }) {
-  if (campAlreadyHeld) {
-    const camp = save.prospectCamp
-    const count = camp.attendees ?? (camp.attendeeIds?.length || 0)
-    return (
-      <div className="bg-[#16331f] border-4 border-pnw-green rounded p-4 mb-4">
-        <div className="flex justify-between items-start gap-3">
-          <div className="flex-1">
-            <div className="font-pixel-display text-[10px] uppercase tracking-widest text-pnw-green mb-1">
-              Prospect Camp — held this year
-            </div>
-            <div className="text-sm text-green-100 font-pixel">
-              <strong>{count}</strong> prospects attended at <strong>${camp.fee ?? 100}</strong> per head ·
-              <strong> +${((camp.revenue ?? (count * (camp.fee ?? 100))) / 1000).toFixed(1)}K</strong> added to your budget.
-            </div>
-            <div className="text-[11px] text-green-300/80 mt-1 font-pixel">
-              Every attendee got a scouting + interest boost and now sits on your recruiting board.
-              Camp comes around again next October.
-            </div>
-          </div>
-          {count > 0 && (
-            <button
-              onClick={onViewResults}
-              className="shrink-0 bg-pnw-green text-[#0c1f12] font-pixel-display text-[10px] tracking-widest uppercase px-3 py-2 rounded hover:opacity-90"
-            >
-              View results
-            </button>
-          )}
-        </div>
-        <CampAttendees save={save} />
-      </div>
-    )
-  }
-
-  // campOpen && !held — the live run-camp UI
-  return (
-    <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-5 mb-4 shadow-md">
-      <div className="text-xs uppercase tracking-wider text-amber-700 font-bold mb-1">
-         Required Action · Week 13
-      </div>
-      <div className="flex justify-between items-start gap-4">
-        <div className="flex-1">
-          <h2 className="text-lg font-bold text-amber-900"> Run your Prospect Camp</h2>
-          <p className="text-sm text-amber-900 mt-1 leading-snug">
-            This is the once-a-year recruiting camp on your campus. <strong>You must run it
-            before you can advance</strong> — the camp charges a flat <strong>$100 per attendee</strong>.
-            Click <em>Run Camp Now</em>.
-          </p>
-          <div className="bg-white/70 rounded p-2 mt-2 text-xs text-amber-900">
-            <strong className="text-amber-900">What this does:</strong> Every invited recruit ({invitedCount} on the list right now)
-            gets ~50% scouted for free + <strong>+5 interest</strong> in you. Plus the fee × attendees = real revenue into your budget.
-            <span className="block mt-1">
-              <strong>Not enough invites?</strong> Bummer — you can't add more now. Invites were the
-              {' '}<Link to={`/gm/recruiting?slot=${slot}`} className="underline font-semibold">Recruiting page</Link>{' '}
-              in Wks 5 & 10. Still run camp at lowest fee for revenue + scouting on who you do have.
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 bg-white rounded-lg p-3 border border-amber-300">
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="bg-gray-50 rounded p-2">
-            <div className="text-lg font-bold text-pnw-slate">{invitedCount}</div>
-            <div className="text-[10px] uppercase text-gray-500">Invited</div>
-          </div>
-          <div className="bg-gray-50 rounded p-2">
-            <div className="text-lg font-bold text-pnw-slate">~{campPredict.predictedAttendees}</div>
-            <div className="text-[10px] uppercase text-gray-500">Expected attendees</div>
-          </div>
-          <div className="bg-gray-50 rounded p-2">
-            <div className="text-lg font-bold text-green-700">${((campPredict.predictedAttendees * campFee) / 1000).toFixed(1)}K</div>
-            <div className="text-[10px] uppercase text-gray-500">Est. revenue ($100/head)</div>
-          </div>
-        </div>
-        <button
-          onClick={onRunCamp}
-          className="mt-4 w-full px-4 py-3 bg-pnw-green text-white rounded text-base font-bold hover:opacity-90"
-        >
-          Run Camp Now
-        </button>
-      </div>
-    </div>
-  )
-}
 
 /**
  * 3-player picker for the targeted tutoring action. Pre-sorts by lowest
@@ -910,134 +686,6 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-// Popup shown right after running the camp (and re-openable via "View
-// results"). Lists exactly who showed up + the scouting/interest boost each
-// got. Reads the camp `details` snapshot captured at run time.
-function CampResultsModal({ result, fee, onClose }) {
-  const rows = (result?.details || []).slice().sort((a, b) => (b.estOvr ?? 0) - (a.estOvr ?? 0))
-  const count = rows.length || (result?.attendeeIds?.length || 0)
-  const revenue = result?.revenue ?? (count * (fee ?? 100))
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div
-        className="bg-[#1a1a2e] border-4 border-pnw-green rounded max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="p-4 border-b-2 border-[#3a3a5e]">
-          <div className="font-pixel-display text-sm tracking-widest text-pnw-green">PROSPECT CAMP RESULTS</div>
-          <div className="text-[12px] text-[#c8c8e8] font-pixel mt-1">
-            <strong className="text-white">{count}</strong> prospects showed up · <strong className="text-white">+${(revenue / 1000).toFixed(1)}K</strong> in camp revenue.
-            Each got a scouting + interest bump and is now on your recruiting board.
-          </div>
-        </div>
-        <div className="overflow-auto p-3">
-          {count === 0 ? (
-            <div className="text-[#a8a8c8] italic text-sm font-pixel p-4 text-center">
-              No prospects attended this year.
-            </div>
-          ) : (
-            <table className="w-full text-[12px] font-pixel">
-              <thead className="text-[10px] uppercase tracking-wider text-[#a8a8c8] sticky top-0 bg-[#1a1a2e]">
-                <tr>
-                  <th className="text-left py-1 px-2">Prospect</th>
-                  <th>Pos</th>
-                  <th>Est OVR</th>
-                  <th>St</th>
-                  <th>Interest</th>
-                  <th>+Int</th>
-                  <th>How</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(d => (
-                  <tr key={d.id} className="border-t border-[#3a3a5e] text-white">
-                    <td className="py-1 px-2">{d.name}</td>
-                    <td className="text-center">{d.pos}</td>
-                    <td className="text-center font-mono font-bold text-pnw-green">{d.estOvr ?? '—'}</td>
-                    <td className="text-center text-[#a8a8c8]">{d.state}</td>
-                    <td className="text-center font-mono">{d.interest}</td>
-                    <td className="text-center font-mono text-green-400">{d.interestGain > 0 ? `+${d.interestGain}` : '—'}</td>
-                    <td className="text-center text-[10px] text-[#a8a8c8]">{d.invited ? 'invited' : 'walk-on'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <div className="p-3 border-t-2 border-[#3a3a5e] text-right">
-          <button
-            onClick={onClose}
-            className="bg-pnw-green text-[#0c1f12] font-pixel-display text-[10px] tracking-widest uppercase px-4 py-2 rounded hover:opacity-90"
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function CampAttendees({ save }) {
-  const camp = save.prospectCamp
-  if (!camp) return null
-  const ids = camp.attendeeIds || []
-  const userId = save.userSchoolId
-  // Est OVR from the scouted view of a recruit's true ratings.
-  const estOvr = (r) => {
-    const block = r.isPitcher ? r.truePitcher : r.trueHitter
-    if (!block) return null
-    const vals = Object.values(block).filter(v => typeof v === 'number' && v < 100)
-    if (!vals.length) return null
-    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
-  }
-  // Sort attendees by est OVR desc so the best prospects are at the top.
-  const rows = ids
-    .map(id => save.recruits?.[id])
-    .filter(Boolean)
-    .map(r => ({ r, ovr: estOvr(r) ?? 0 }))
-    .sort((a, b) => b.ovr - a.ovr)
-  return (
-    <div className="text-[11px] text-gray-700 mt-3 border-t pt-3">
-      <div className="text-[10px] uppercase tracking-wider text-pnw-slate font-bold mb-1.5">
-        Camp results — {rows.length} attended, fully on your recruiting board now
-      </div>
-      {rows.length === 0 ? <div className="text-gray-400">No attendees recorded.</div> : (
-        <div className="max-h-80 overflow-auto rounded border border-gray-200">
-          <table className="w-full text-[11px] min-w-[520px]">
-            <thead className="text-[10px] uppercase text-gray-500 bg-gray-50 sticky top-0">
-              <tr>
-                <th className="text-left py-1 px-2">Recruit</th>
-                <th>Pos</th>
-                <th>Est OVR</th>
-                <th>State</th>
-                <th>Interest</th>
-                <th>Scout fog</th>
-                <th>Prefs known</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ r, ovr }) => {
-                const g = r.scoutGrades?.[userId] || {}
-                return (
-                  <tr key={r.id} className="border-t hover:bg-gray-50">
-                    <td className="py-1 px-2 font-medium">{r.firstName} {r.lastName}</td>
-                    <td className="text-center">{r.isPitcher ? 'P' : r.primaryPosition}</td>
-                    <td className="text-center font-mono font-semibold text-pnw-slate">{ovr || '—'}</td>
-                    <td className="text-center">{r.hometown?.state}</td>
-                    <td className="text-center font-mono">{g.interest ?? 0}</td>
-                    <td className="text-center font-mono">±{g.noise ?? 15}</td>
-                    <td className="text-center">{(g.revealedPreferences || []).length}/8</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   )
 }
