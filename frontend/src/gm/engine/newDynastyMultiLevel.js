@@ -30,7 +30,7 @@ import {
   classYearsForLevel, rosterCapForLevel, seasonGamesForLevel,
 } from './levelHelpers'
 import { applyRealFinancials } from './schoolFinancials'
-import { dateForWeek as unifiedDateForWeek } from './gameYear'
+import { dateForWeek as unifiedDateForWeek, postseasonLayout } from './gameYear'
 import { buildInitialCareer } from './storyMode'
 import { teamOverall } from './playerRating'
 import { expectedTeamOvr } from './programRating'
@@ -553,49 +553,76 @@ export function buildLevelSchedule(conferenceId, schools, level, year, seed) {
     return buildNwacSchedule(schools, year, rng)
   }
 
+  // Proper round-robin via the circle method. Each generated "round" is a set
+  // of pairings in which every team appears AT MOST once — so a team never
+  // plays two series in the same week (the old seriesIdx%14 scheme did exactly
+  // that). We lay one round per week starting wk 27 and cycle the rotation
+  // until the level's regular-season window is full, alternating who hosts
+  // each time a pair repeats.
+  const layout = postseasonLayout(level)
+  const maxWeeks = Math.max(1, (layout.seasonEnd ?? 39) - 26)   // D2 ends wk38 → 12 weeks
+  const rounds = roundRobinRounds(teamIds)                       // N-1 (even) / N (odd) matchings
   const games = []
-
-  // Each pair plays at least a 3-game series. Add more series until we hit target.
-  // Roughly: each team has (N-1) opponents × seriesCount × 3 games per series.
-  // seriesCount = ceil(targetGames / ((N-1) * 3)) — at least 1.
-  const N = teamIds.length
-  const seriesPerPair = Math.max(1, Math.ceil(targetGames / Math.max(1, (N - 1) * 3)))
-
-  // Build pairwise series. Weekend slot starts in late Feb (week 26) and
-  // each series takes 1 week. We have ~14 weeks of regular season slots.
-  let seriesIdx = 0
-  const seasonStartWeek = 27   // regular season starts week 27 of game year
-  for (let s = 0; s < seriesPerPair; s++) {
-    for (let i = 0; i < N; i++) {
-      for (let j = i + 1; j < N; j++) {
-        // Alternate home/away across series rounds
-        const homeFirst = (s % 2) === 0
-        const homeId = homeFirst ? teamIds[i] : teamIds[j]
-        const awayId = homeFirst ? teamIds[j] : teamIds[i]
-        const wk = seasonStartWeek + (seriesIdx % 14)
-        const seriesId = `${conferenceId}_${year}_${seriesIdx}`
-        // 3-game series — Fri/Sat/Sun
-        for (let g = 0; g < 3; g++) {
-          games.push({
-            id: `${seriesId}_g${g}`,
-            year,
-            seasonWeek: (seriesIdx % 14) + 1,
-            weekOfYear: wk,
-            date: dateForWeek(year, wk, g),
-            homeId, awayId,
-            type: 'CONFERENCE',
-            seriesId,
-            countsTowardRecord: true,
-            isDoubleheader: false,
-            played: false,
-            homeRuns: null, awayRuns: null,
-          })
-        }
-        seriesIdx++
+  const playCount = new Map()   // pairKey → times played (drives home/away alternation)
+  const seasonStartWeek = 27
+  for (let w = 0; w < maxWeeks; w++) {
+    if (rounds.length === 0) break
+    const round = rounds[w % rounds.length]
+    const wk = seasonStartWeek + w
+    for (const [t1, t2] of round) {
+      const key = t1 < t2 ? `${t1}|${t2}` : `${t2}|${t1}`
+      const n = playCount.get(key) || 0
+      playCount.set(key, n + 1)
+      const homeFirst = (n % 2) === 0
+      const homeId = homeFirst ? t1 : t2
+      const awayId = homeFirst ? t2 : t1
+      const seriesId = `${conferenceId}_${year}_w${w}_${homeId}`
+      // 3-game weekend series — Fri/Sat/Sun
+      for (let g = 0; g < 3; g++) {
+        games.push({
+          id: `${seriesId}_g${g}`,
+          year,
+          seasonWeek: w + 1,
+          weekOfYear: wk,
+          date: dateForWeek(year, wk, g + 4),
+          homeId, awayId,
+          type: 'CONFERENCE',
+          seriesId,
+          countsTowardRecord: true,
+          isDoubleheader: false,
+          played: false,
+          homeRuns: null, awayRuns: null,
+        })
       }
     }
   }
   return games
+}
+
+/**
+ * Round-robin pairings via the circle method. Returns an array of rounds;
+ * each round is an array of [teamA, teamB] pairs in which every team appears
+ * at most once. Odd team counts get a rotating bye. N-1 rounds for even N,
+ * N rounds for odd N — a full single round-robin (everyone plays everyone).
+ */
+function roundRobinRounds(teamIds) {
+  const arr = [...teamIds]
+  if (arr.length < 2) return []
+  if (arr.length % 2 === 1) arr.push('__BYE__')
+  const n = arr.length
+  const rounds = []
+  for (let r = 0; r < n - 1; r++) {
+    const pairs = []
+    for (let i = 0; i < n / 2; i++) {
+      const a = arr[i]
+      const b = arr[n - 1 - i]
+      if (a !== '__BYE__' && b !== '__BYE__') pairs.push([a, b])
+    }
+    rounds.push(pairs)
+    // Rotate everyone but the first element (standard circle-method rotation).
+    arr.splice(1, 0, arr.pop())
+  }
+  return rounds
 }
 
 /**

@@ -366,7 +366,8 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
   //
   // Mean shift (added to baseline pool mean):
   //   D1   +12   recruits the top talent
-  //   D2   + 5
+  //   D2     0   SAME baseline as NAIA (per Nate — D2 and NAIA recruit from
+  //              the same talent tier, no bump)
   //   NAIA   0   (baseline)
   //   D3   - 6   no athletic $ → only walk-on-quality + the rare gem
   //   NWAC - 3   wide spread; mostly lower than NAIA HS but with star outliers
@@ -374,8 +375,8 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
   //   D1   +5    can find 95+ ceilings
   //   D3   -5    cap at 86
   //   NWAC handled below — wider stddev for the spread
-  const LEVEL_MEAN_SHIFT = { D1: 12, D2: 5, NAIA: 0, D3: -6, NWAC: -3 }
-  const LEVEL_CAP_SHIFT  = { D1: 5,  D2: 2, NAIA: 0, D3: -5, NWAC: -2 }
+  const LEVEL_MEAN_SHIFT = { D1: 12, D2: 0, NAIA: 0, D3: -6, NWAC: -3 }
+  const LEVEL_CAP_SHIFT  = { D1: 5,  D2: 0, NAIA: 0, D3: -5, NWAC: -2 }
   meanRating += LEVEL_MEAN_SHIFT[userLevel] ?? 0
   cap = Math.min(99, Math.max(50, cap + (LEVEL_CAP_SHIFT[userLevel] ?? 0)))
   // NWAC unique: WIDE spread. Top JUCO programs (per NWBB PPI) attract
