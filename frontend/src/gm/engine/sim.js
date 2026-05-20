@@ -145,7 +145,12 @@ export function fastSimGame(home, away, seedKey, opts = {}) {
   // the league looks like a one-team show. The numbers are coarse on a
   // per-game basis but accumulate cleanly over a season.
   if (opts.homeLineup && opts.awayLineup) {
-    const boxscore = buildLightBoxscore(opts.homeLineup, opts.awayLineup, homeRuns, awayRuns, rng)
+    // Rotate the starting pitcher by the game's position in the series so the
+    // ace doesn't "start" all 3 games of a weekend (the old bug: 12+ IP in a
+    // single weekend). The game id ends in _g0 / _g1 / _g2 for series games.
+    const m = String(seedKey).match(/_g(\d+)$/)
+    const gameIdx = m ? parseInt(m[1], 10) : 0
+    const boxscore = buildLightBoxscore(opts.homeLineup, opts.awayLineup, homeRuns, awayRuns, rng, gameIdx)
     return { homeRuns, awayRuns, boxscore }
   }
   return { homeRuns, awayRuns }
@@ -161,7 +166,7 @@ export function fastSimGame(home, away, seedKey, opts = {}) {
  * code in season.js (state.playerStats/state.fallStats) doesn't care which
  * sim engine produced it.
  */
-function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng) {
+function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gameIdx = 0) {
   const batterStats = {}
   const pitcherStats = {}
 
@@ -226,10 +231,15 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng) {
   }
 
   function distributePitchers(lineup, runsAllowed, oppHits) {
-    const pitchers = (lineup.pitchers || []).slice(0, 4).filter(Boolean)
-    if (pitchers.length === 0) return
-    const starter = pitchers[0]
-    const bullpen = pitchers.slice(1)
+    // Accept either shape: synthetic lineups use `pitchers`, real lineups
+    // (resolveLineupForGame / defaultLineup) use `pitcherRotation`.
+    const allP = (lineup.pitchers || lineup.pitcherRotation || []).filter(Boolean)
+    if (allP.length === 0) return
+    // Rotate the starter by game-in-series so a 3-game weekend uses 3
+    // different starters instead of the ace 3 times.
+    const startIdx = allP.length > 1 ? (gameIdx % allP.length) : 0
+    const starter = allP[startIdx]
+    const bullpen = allP.filter((_, i) => i !== startIdx).slice(0, 3)
     // Starter goes ~5.2 IP unless they got hammered
     const hammered = runsAllowed >= 8
     const starterOuts = hammered ? 9 + Math.floor(rng.chance(0.5) ? 0 : 3) : 15 + Math.floor(rng.gaussian(2, 1))
@@ -460,8 +470,11 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     awayRuns: 0,
     homePAIndex: 0,
     awayPAIndex: 0,
-    homePitcherIdx: 0,
-    awayPitcherIdx: 0,
+    // Starting pitcher = rotation slot for THIS game in the series, so a
+    // 3-game weekend rotates through the staff instead of starting the ace
+    // all three days (the old 12+ IP/weekend bug).
+    homePitcherIdx: ctx.homeStarterIdx ?? 0,
+    awayPitcherIdx: ctx.awayStarterIdx ?? 0,
     homePAs: 0,
     awayPAs: 0,
     log: [],

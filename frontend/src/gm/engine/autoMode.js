@@ -241,13 +241,14 @@ export function autoFulfillProspectCamp(save, summary = { actionsTaken: [] }) {
   const headCoach = save.coaches?.[save.teams?.[userSchoolId]?.headCoachId]
   const coachRecruiter = headCoach?.recruiter ?? 55
   const programMomentum = save.teams?.[userSchoolId]?.programMomentum ?? 50
-  const fee = 100   // mid-tier — caps revenue but maxes turnout
+  const fee = 100   // fixed $100/attendee
+  const programHistory = save.schools?.[userSchoolId]?.programHistory ?? 50
 
   // Need to pass a working `recruits`set even if there's nothing here yet
   const result = simProspectCamp(
     recruits, userSchoolId, invitedIds, fee,
     coachRecruiter, programMomentum,
-    save.calendar?.year, save.seed || 1,
+    save.calendar?.year, save.seed || 1, programHistory,
   )
   if (!save.prospectCamp) save.prospectCamp = {}
   // Store the SAME shape the manual WeeklyActions path uses so the

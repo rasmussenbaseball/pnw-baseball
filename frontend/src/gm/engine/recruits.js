@@ -1191,10 +1191,16 @@ export function predictCampTurnout(recruits, userSchoolId, invitedIds, feePerAtt
  *
  * @returns {{ attendeeIds: string[], revenue: number, recruits: any, cancelled?: boolean, reason?: string }}
  */
-export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttendee, coachRecruiterRating, programMomentum, year, seed) {
+export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttendee, coachRecruiterRating, programMomentum, year, seed, programHistory = 50) {
   const rng = makeRng('camp', userSchoolId, year, seed)
   const attendeeIds = []
   const invitedSet = new Set(invitedIds || [])
+  // Target attendance scales with program quality (Nate): floor 20 for any
+  // program, up to ~80 for elite programs. We cap natural turnout at this
+  // target and top up to it so weaker schools land near 20 and powers near 80.
+  const phClamped = Math.max(15, Math.min(99, programHistory ?? 50))
+  const targetAttendees = Math.max(CAMP_MIN_ATTENDEES, Math.min(80,
+    Math.round(20 + ((phClamped - 15) / 84) * 60)))
 
   const feeMult = clamp(1.5 - (feePerAttendee - 50) / 200, 0.4, 1.6)
   const coachMult = 0.7 + (coachRecruiterRating / 100) * 0.7
@@ -1205,7 +1211,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
     // HS only per Nate's direction
     if (r.pool !== 'HS_SR') continue
     if (r.status === 'signed' || r.status === 'lost') continue
-    if (attendeeIds.length >= CAMP_MAX_ATTENDEES) break
+    if (attendeeIds.length >= targetAttendees) break
 
     const isInvited = invitedSet.has(r.id)
     // Enforce walk-on cap
@@ -1261,7 +1267,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
   // recruit not already an attendee) until we hit the floor. The walk-on cap
   // is relaxed for this fill since the alternative is cancellation (worse
   // outcome than "the camp had some random extra kids show up").
-  if (attendeeIds.length < CAMP_MIN_ATTENDEES) {
+  if (attendeeIds.length < targetAttendees) {
     const eligible = Object.values(recruits)
       .filter(r => r.pool === 'HS_SR' && r.status !== 'signed' && r.status !== 'lost')
       .filter(r => !attendeeIds.includes(r.id))
@@ -1273,7 +1279,7 @@ export function simProspectCamp(recruits, userSchoolId, invitedIds, feePerAttend
       return avgTrueRating(b) - avgTrueRating(a)
     })
     for (const r of eligible) {
-      if (attendeeIds.length >= CAMP_MIN_ATTENDEES) break
+      if (attendeeIds.length >= targetAttendees) break
       attendeeIds.push(r.id)
       if (!r.scoutGrades[userSchoolId]) {
         r.scoutGrades[userSchoolId] = { interest: 0, noise: 15, revealedPreferences: [], actionsApplied: [] }

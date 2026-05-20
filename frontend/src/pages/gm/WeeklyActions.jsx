@@ -43,7 +43,8 @@ export default function WeeklyActions() {
   const userId = user?.id || 'guest'
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
-  const [campFee, setCampFee] = useState(125)
+  // Camp fee is fixed at $100/attendee (Nate removed the fee choice).
+  const campFee = 100
   const [meetingPicks, setMeetingPicks] = useState([])
   const [tutoringPicks, setTutoringPicks] = useState([])
   const [oneOnOnePlayer, setOneOnOnePlayer] = useState('')
@@ -283,6 +284,7 @@ export default function WeeklyActions() {
     const result = simProspectCamp(
       save.recruits || {}, save.userSchoolId, invitedIds, campFee,
       userHC.recruiter, momentum, save.calendar.year, save.rngSeed + save.calendar.year,
+      userSchool.programHistory ?? 50,
     )
     if (result.cancelled) { gmToast(result.reason, 'warn'); return }
     save.recruits = result.recruits
@@ -359,7 +361,6 @@ export default function WeeklyActions() {
           campAlreadyHeld={campAlreadyHeld}
           invitedCount={invitedIds.length}
           campFee={campFee}
-          setCampFee={setCampFee}
           campPredict={campPredict}
           onRunCamp={doCamp}
         />
@@ -574,8 +575,8 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
                Prospect Camp — held this year
             </div>
             <div className="text-sm text-green-900">
-              <strong>{camp.attendees}</strong> attendees at <strong>${camp.fee}</strong> per head 
-              <strong> +${(camp.revenue / 1000).toFixed(1)}K</strong> revenue added to your budget.
+              <strong>{camp.attendees ?? (camp.attendeeIds?.length || 0)}</strong> attendees at <strong>${camp.fee ?? 100}</strong> per head ·
+              <strong> +${((camp.revenue ?? ((camp.attendeeIds?.length || 0) * (camp.fee ?? 100))) / 1000).toFixed(1)}K</strong> revenue added to your budget.
             </div>
             <div className="text-[11px] text-green-800 mt-1">
               Attendees gained +5 interest and ended up ~50% scouted on your board.
@@ -599,7 +600,8 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
           <h2 className="text-lg font-bold text-amber-900"> Run your Prospect Camp</h2>
           <p className="text-sm text-amber-900 mt-1 leading-snug">
             This is the once-a-year recruiting camp on your campus. <strong>You must run it
-            before you can advance to Week 14</strong> — pick a fee below and click <em>Run Camp Now</em>.
+            before you can advance</strong> — the camp charges a flat <strong>$100 per attendee</strong>.
+            Click <em>Run Camp Now</em>.
           </p>
           <div className="bg-white/70 rounded p-2 mt-2 text-xs text-amber-900">
             <strong className="text-amber-900">What this does:</strong> Every invited recruit ({invitedCount} on the list right now)
@@ -614,23 +616,7 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
       </div>
 
       <div className="mt-4 bg-white rounded-lg p-3 border border-amber-300">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="text-xs text-amber-900 font-semibold">Set the camp fee:</div>
-          <span className="text-lg font-bold font-mono text-pnw-green">${campFee}</span>
-          <span className="text-[10px] text-gray-500">per attendee</span>
-        </div>
-        <input
-          type="range"
-          min={CAMP_MIN_FEE} max={CAMP_MAX_FEE} step={5}
-          value={campFee}
-          onChange={e => setCampFee(parseInt(e.target.value, 10))}
-          className="w-full"
-        />
-        <div className="flex justify-between text-[10px] text-gray-500 mt-0.5">
-          <span>${CAMP_MIN_FEE} — bigger turnout</span>
-          <span>${CAMP_MAX_FEE} — more revenue / smaller turnout</span>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-3 gap-2 text-center">
           <div className="bg-gray-50 rounded p-2">
             <div className="text-lg font-bold text-pnw-slate">{invitedCount}</div>
             <div className="text-[10px] uppercase text-gray-500">Invited</div>
@@ -641,14 +627,14 @@ function ProspectCampBanner({ save, slot, campOpen, campAlreadyHeld, invitedCoun
           </div>
           <div className="bg-gray-50 rounded p-2">
             <div className="text-lg font-bold text-green-700">${((campPredict.predictedAttendees * campFee) / 1000).toFixed(1)}K</div>
-            <div className="text-[10px] uppercase text-gray-500">Est. revenue</div>
+            <div className="text-[10px] uppercase text-gray-500">Est. revenue ($100/head)</div>
           </div>
         </div>
         <button
           onClick={onRunCamp}
           className="mt-4 w-full px-4 py-3 bg-pnw-green text-white rounded text-base font-bold hover:opacity-90"
         >
-          Run Camp Now 
+          Run Camp Now
         </button>
       </div>
     </div>
@@ -897,48 +883,60 @@ function OneOnOneDev({ save, ap, playerId, rating, setPlayerId, setRating, cost,
 }
 
 function CampAttendees({ save }) {
-  const [open, setOpen] = useState(false)
   const camp = save.prospectCamp
   if (!camp) return null
   const ids = camp.attendeeIds || []
+  const userId = save.userSchoolId
+  // Est OVR from the scouted view of a recruit's true ratings.
+  const estOvr = (r) => {
+    const block = r.isPitcher ? r.truePitcher : r.trueHitter
+    if (!block) return null
+    const vals = Object.values(block).filter(v => typeof v === 'number' && v < 100)
+    if (!vals.length) return null
+    return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
+  }
+  // Sort attendees by est OVR desc so the best prospects are at the top.
+  const rows = ids
+    .map(id => save.recruits?.[id])
+    .filter(Boolean)
+    .map(r => ({ r, ovr: estOvr(r) ?? 0 }))
+    .sort((a, b) => b.ovr - a.ovr)
   return (
-    <div className="text-[11px] text-gray-600 mt-3 border-t pt-2">
-      <button onClick={() => setOpen(o => !o)} className="font-semibold text-pnw-slate hover:underline">
-        {open ? '▾' : '▸'} Held this year: {camp.attendees} attended @ ${camp.fee} ${(camp.revenue / 1000).toFixed(1)}K
-      </button>
-      {open && (
-        <div className="mt-2 max-h-72 overflow-auto">
-          {ids.length === 0 ? <div className="text-gray-400">No attendees recorded.</div> :
-            <table className="w-full text-[11px] min-w-[500px]">
-              <thead className="text-[10px] uppercase text-gray-500">
-                <tr>
-                  <th className="text-left py-0.5">Recruit</th>
-                  <th>Pos</th>
-                  <th>State</th>
-                  <th>Interest</th>
-                  <th>Scout fog</th>
-                  <th>Priorities</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ids.map(id => {
-                  const r = save.recruits?.[id]
-                  if (!r) return null
-                  const g = r.scoutGrades?.[save.userSchoolId] || {}
-                  return (
-                    <tr key={id} className="border-t">
-                      <td className="py-0.5">{r.firstName} {r.lastName}</td>
-                      <td className="text-center">{r.isPitcher ? 'P' : r.primaryPosition}</td>
-                      <td className="text-center">{r.hometown.state}</td>
-                      <td className="text-center font-mono">{g.interest ?? 0}</td>
-                      <td className="text-center font-mono">±{g.noise ?? 15}</td>
-                      <td className="text-center">{(g.revealedPreferences || []).length}/8</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          }
+    <div className="text-[11px] text-gray-700 mt-3 border-t pt-3">
+      <div className="text-[10px] uppercase tracking-wider text-pnw-slate font-bold mb-1.5">
+        Camp results — {rows.length} attended, fully on your recruiting board now
+      </div>
+      {rows.length === 0 ? <div className="text-gray-400">No attendees recorded.</div> : (
+        <div className="max-h-80 overflow-auto rounded border border-gray-200">
+          <table className="w-full text-[11px] min-w-[520px]">
+            <thead className="text-[10px] uppercase text-gray-500 bg-gray-50 sticky top-0">
+              <tr>
+                <th className="text-left py-1 px-2">Recruit</th>
+                <th>Pos</th>
+                <th>Est OVR</th>
+                <th>State</th>
+                <th>Interest</th>
+                <th>Scout fog</th>
+                <th>Prefs known</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ r, ovr }) => {
+                const g = r.scoutGrades?.[userId] || {}
+                return (
+                  <tr key={r.id} className="border-t hover:bg-gray-50">
+                    <td className="py-1 px-2 font-medium">{r.firstName} {r.lastName}</td>
+                    <td className="text-center">{r.isPitcher ? 'P' : r.primaryPosition}</td>
+                    <td className="text-center font-mono font-semibold text-pnw-slate">{ovr || '—'}</td>
+                    <td className="text-center">{r.hometown?.state}</td>
+                    <td className="text-center font-mono">{g.interest ?? 0}</td>
+                    <td className="text-center font-mono">±{g.noise ?? 15}</td>
+                    <td className="text-center">{(g.revealedPreferences || []).length}/8</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

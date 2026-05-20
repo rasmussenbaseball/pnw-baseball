@@ -208,11 +208,17 @@ export function simWeek(state, schedule, ratings) {
         : defaultLineup(awayTeam, state.players)
       const homeHC = state.coaches[homeTeam.headCoachId]
       const awayHC = state.coaches[awayTeam.headCoachId]
+      // Rotate the starting pitcher by the game's slot in the weekend series
+      // (id ends _g0/_g1/_g2) so the ace doesn't start all three days.
+      const sm = String(g.id).match(/_g(\d+)$/)
+      const seriesIdx = sm ? parseInt(sm[1], 10) : 0
       result = simGame(homeLineup, awayLineup, {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
         getEnergy: energyAccessor,
         level: state.level || state.schools?.[userSchoolId]?.level || 'NAIA',
+        homeStarterIdx: seriesIdx,
+        awayStarterIdx: seriesIdx,
       }, g.id)
     } else if (isUserGame) {
       // User vs. non-NAIA opponent — fast sim against static strength,
