@@ -178,7 +178,9 @@ export function computeWeeklyAwards(state) {
       conferenceName: conferenceName || '',
       statsLine: line,
     })
-    rewardUserPlayer(state, winner.playerId, kind, scope)
+    // NOTE: the rating reward + newsfeed + popup are applied at REVEAL time
+    // (next week — see revealWeeklyAwards), not here, so POTW is announced the
+    // following week like real life.
   }
 
   // NAIA national first (higher-profile)
@@ -190,33 +192,77 @@ export function computeWeeklyAwards(state) {
     record('CONF', 'PITCHER', w.pitcher, conf?.name || conf?.abbreviation)
   }
 
-  // Push to newsfeed (only the user's conference + NAIA winners — too noisy
-  // to surface every conference's POTW every week)
+  // DEFERRED REVEAL (per Nate): don't surface this week's POTW yet — queue it
+  // so it's announced when the user sims the NEXT week ("last week's POTW").
+  // revealWeeklyAwards (called at the start of the next game-week tick) does
+  // the newsfeed push, the rating rewards, the history store, and flags any
+  // user-team winners for a popup.
+  state._pendingPotw = {
+    year: state.calendar?.year ?? 0,
+    week: state.calendar?.weekOfYear ?? 0,
+    out,
+  }
+
+  return out
+}
+
+/**
+ * Reveal the PREVIOUS week's queued Player-of-the-Week awards: applies the
+ * small rating rewards, posts the newsfeed lines, stores them in
+ * weeklyAwardsHistory for the Dashboard widget, and stashes any user-team
+ * winners on state._potwUserWinners so the Dashboard can pop a celebratory
+ * modal. Safe to call every game-week tick (no-op when nothing is queued).
+ */
+export function revealWeeklyAwards(state) {
+  const pend = state._pendingPotw
+  if (!pend || !Array.isArray(pend.out) || pend.out.length === 0) {
+    state._pendingPotw = null
+    return []
+  }
+  const { year: yr, week: wk, out } = pend
+  const userTeam = state.teams?.[state.userSchoolId]
   const userConfId = state.schools?.[state.userSchoolId]?.conferenceId
+  const userWinners = []
+
   for (const a of out) {
+    // Apply the (small, +1) rating reward to the user's player + coach points.
+    rewardUserPlayer(state, a.playerId, a.kind, a.scope)
+
     const isUserConf = a.scope === 'CONF' && a.conferenceName === state.conferences?.[userConfId]?.name
     const isNaia = a.scope === 'NAIA'
+    const isYours = !!userTeam?.rosterPlayerIds?.includes(a.playerId)
+    if (isYours && (isNaia || a.scope === 'CONF')) userWinners.push(a)
+    // Newsfeed: only the user's conference + NAIA winners (too noisy otherwise)
     if (!isUserConf && !isNaia) continue
-    const userTeam = state.teams?.[state.userSchoolId]
-    const isYours = userTeam?.rosterPlayerIds?.includes(a.playerId)
     const scopeLabel = a.scope === 'NAIA' ? 'NAIA' : (a.conferenceName || 'Conf')
     const kindLabel = a.kind === 'HITTER' ? 'Hitter' : 'Pitcher'
+    state.newsfeed = state.newsfeed || []
     state.newsfeed.unshift({
-      id: `award_${a.playerId}_${a.scope}_${a.kind}_${state.calendar?.year}_${state.calendar?.weekOfYear}`,
-      year: state.calendar?.year, week: state.calendar?.week, type: 'AWARD',
+      id: `award_${a.playerId}_${a.scope}_${a.kind}_${yr}_${wk}`,
+      year: yr, week: wk, type: 'AWARD',
       headline: `${scopeLabel} ${kindLabel} of the Week: ${a.playerName} (${a.schoolName}) — ${a.statsLine}${isYours ? ' [your player]' : ''}`,
       payload: { playerId: a.playerId, scope: a.scope, kind: a.kind },
       big: isYours,
     })
   }
 
-  // Persist into state.weeklyAwardsHistory for the Dashboard widget
+  // Persist into state.weeklyAwardsHistory for the Dashboard widget (revealed
+  // a week late, matching the delayed announcement).
   if (!state.weeklyAwardsHistory) state.weeklyAwardsHistory = {}
-  const yr = state.calendar?.year ?? 0
-  const wk = state.calendar?.weekOfYear ?? 0
   if (!state.weeklyAwardsHistory[yr]) state.weeklyAwardsHistory[yr] = {}
   state.weeklyAwardsHistory[yr][wk] = out
 
+  // Stash user winners (deduped by player+scope+kind) for the Dashboard popup.
+  if (userWinners.length > 0) {
+    state._potwUserWinners = [
+      ...(state._potwUserWinners || []),
+      ...userWinners.map(a => ({
+        playerId: a.playerId, playerName: a.playerName, schoolName: a.schoolName,
+        scope: a.scope, kind: a.kind, statsLine: a.statsLine, week: wk,
+      })),
+    ]
+  }
+  state._pendingPotw = null
   return out
 }
 

@@ -23,7 +23,7 @@ import { runEventsForWeek } from './events'
 import { maybeFireRandomEvent } from './randomEvents'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
-import { computeWeeklyAwards } from './weeklyAwards'
+import { computeWeeklyAwards, revealWeeklyAwards } from './weeklyAwards'
 import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, runNwacPlayoffs, summarizeNwacUserPath, runNationalBracketFull, summarizeNationalUserPath } from './pnwPlayoffs'
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
@@ -306,6 +306,19 @@ export function simWeek(state, schedule, ratings) {
         })
         .map(a => ({ ...a, isSecondGameOfDay: isSecond }))
       applyGameEnergyCosts(state, userAppearances)
+      // EQUAL FOOTING: charge the OPPONENT's lineup the same per-game energy
+      // costs. simGame applies the energy dampener to BOTH sides via getEnergy,
+      // but previously only the user accrued fatigue — opponents always played
+      // at 100 energy (full strength) while the user's stars tired across a
+      // series. That silently weakened ONLY the user, dragging a top-rated team
+      // to ~.500. Fatiguing the opponent too makes the head-to-head symmetric.
+      const oppAppearances = result.appearances
+        .filter(a => {
+          if (a.isPitcher) return !userTeam?.rosterPlayerIds.includes(a.playerId)
+          return a.teamId !== userSide
+        })
+        .map(a => ({ ...a, isSecondGameOfDay: isSecond }))
+      applyGameEnergyCosts(state, oppAppearances)
     } else if (isUserGame) {
       // Fast-sim user game (vs non-NAIA) — deduct a baseline cost for the
       // starting 9 + starter so doubleheader energy still drains.
@@ -535,9 +548,11 @@ export function simWeek(state, schedule, ratings) {
   // Computed from state.weeklyStats (populated above during simWeek). Posts
   // to newsfeed and bumps the user's player stats + coach upgrade points
   // when the user's roster wins one.
-  // Player-of-the-Week is a REGULAR-SEASON honor only. No POTW during the
-  // postseason (weeks 40-42) — per Nate, playoff weeks shouldn't generate
-  // weekly awards or the attached rating bumps.
+  // Player-of-the-Week is announced a week LATE (per Nate): reveal LAST week's
+  // queued POTW now — every game-week tick, including the first postseason week
+  // so the final regular-season award still surfaces. Then compute THIS week's
+  // (regular season only — no playoff POTW) and queue it for next week's reveal.
+  revealWeeklyAwards(state)
   if (gamesPlayed > 0 && state.calendar?.mode === 'SEASON') {
     computeWeeklyAwards(state)
   }
@@ -1299,11 +1314,18 @@ export function advanceOneWeek(state) {
   tickWeeklyBookkeeping(state)
   tickTeamGPAWeekly(state)
 
-  // Energy recovery — every player on the user's roster bounces back some
-  // each week. Pitchers recover slower than position players. See energy.js.
-  const userTeamForRecovery = state.teams?.[state.userSchoolId]
-  if (userTeamForRecovery) {
-    tickWeeklyRecovery(state, userTeamForRecovery.rosterPlayerIds || [])
+  // Energy recovery — every player who accrued fatigue bounces back some each
+  // week. This now covers the user's roster PLUS any opponent players who got
+  // charged energy facing the user (see the symmetric-fatigue change in
+  // simWeek). Recovering only the user would let opponents drain to empty over
+  // a season and over-correct the balance. Pitchers recover slower than
+  // position players. See energy.js.
+  const energyIds = Object.keys(state.playerEnergy || {})
+  if (energyIds.length > 0) {
+    tickWeeklyRecovery(state, energyIds)
+  } else {
+    const userTeamForRecovery = state.teams?.[state.userSchoolId]
+    if (userTeamForRecovery) tickWeeklyRecovery(state, userTeamForRecovery.rosterPlayerIds || [])
   }
 
   // Passive offseason practice / conditioning dev. Fires for the user's

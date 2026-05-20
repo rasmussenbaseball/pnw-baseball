@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [commitModal, setCommitModal] = useState(null)   // recruit-commit profile popup(s) after an advance
   const [departureModal, setDepartureModal] = useState(null)   // outbound-transfer popup
   const [draftModal, setDraftModal] = useState(null)           // MLB draft popup
+  const [potwModal, setPotwModal] = useState(null)             // user-player Player-of-the-Week popup
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -323,8 +324,12 @@ export default function Dashboard() {
             const awardYear = save.calendar.year
             advanceWeek(save, save.schedule)
             setProgress(p => ({ ...p, step: 'Saving…', pct: 95 }))
+            // Entering the postseason reveals the FINAL regular-season POTW.
+            const _potw = (save._potwUserWinners || []).slice()
+            save._potwUserWinners = []
             saveDynasty(save)
             setSave({ ...save })
+            if (_potw.length) setPotwModal(_potw)
             setLastWeekRecap({ kind: 'season', results: [] })
             // Surface the All-Conference + Gold Glove winners for the user's
             // conference (computed during advanceWeek's 39→40 transition).
@@ -356,9 +361,14 @@ export default function Dashboard() {
           advanceWeek(save, save.schedule)
           const _commits = (save._newCommitRecruits || []).slice()
           save._newCommitRecruits = []
+          // Last week's POTW (revealed during this week's simWeek). Pop a
+          // celebratory modal if one of the user's players won.
+          const _potw = (save._potwUserWinners || []).slice()
+          save._potwUserWinners = []
           saveDynasty(save)
           setSave({ ...save })
           if (_commits.length) setCommitModal(_commits)
+          if (_potw.length) setPotwModal(_potw)
           const afterSnap = snapshotState(save)
           const diff = diffSnapshots(beforeSnap, afterSnap)
           setLastWeekRecap({ kind: 'season', results: summary.userResults, diff, autoActions: autoActionsThisAdvance })
@@ -516,6 +526,9 @@ export default function Dashboard() {
       )}
       {draftModal && draftModal.length > 0 && (
         <DraftModal picks={draftModal} onClose={() => setDraftModal(null)} />
+      )}
+      {potwModal && potwModal.length > 0 && (
+        <PotwModal winners={potwModal} slot={slot} onClose={() => setPotwModal(null)} />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
           stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
@@ -2348,6 +2361,46 @@ function DraftModal({ picks, onClose }) {
         </div>
         <p className="text-xs text-gray-500 mb-4">Big for the program — draft picks boost recruiting pull and your reputation.</p>
         <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Great!</button>
+      </div>
+    </div>
+  )
+}
+
+// Player-of-the-Week popup — fires when one of YOUR players wins a conference
+// or NAIA POTW (revealed a week after the games, like real life).
+function PotwModal({ winners, slot, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-yellow-600 font-bold">🏆 Player of the Week</div>
+            <h3 className="text-lg font-bold text-pnw-slate mt-0.5">
+              {winners.length === 1 ? 'One of your players earned POTW!' : `${winners.length} of your players earned POTW!`}
+            </h3>
+          </div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
+        <div className="space-y-1.5 mb-4 max-h-64 overflow-auto">
+          {winners.map((w, i) => (
+            <Link
+              key={i}
+              to={`/gm/player/${w.playerId}?slot=${slot}`}
+              className="block py-1.5 px-2.5 rounded bg-yellow-50 hover:bg-yellow-100 text-yellow-900"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-sm">{w.playerName}</span>
+                <span className="text-[10px] uppercase tracking-wider font-bold shrink-0">
+                  {w.scope === 'NAIA' ? 'NAIA' : 'Conf'} {w.kind === 'HITTER' ? 'Hitter' : 'Pitcher'}
+                </span>
+              </div>
+              <div className="text-xs text-yellow-700 mt-0.5">{w.statsLine}</div>
+            </Link>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mb-4">Award winners get a small permanent rating bump. Nice work.</p>
+        <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Let's go!</button>
       </div>
     </div>
   )
