@@ -3482,58 +3482,43 @@ def nwac_mvp_tracker(season: int = Query(2026)):
         """, (season, team_ids))
         pit_rows = [dict(r) for r in cur.fetchall()]
 
-    def zscores(values):
-        n = len(values)
-        if n == 0:
-            return {}
-        mean = sum(values) / n
-        var = sum((v - mean) ** 2 for v in values) / n if n > 1 else 0
-        sd = var ** 0.5
-        return mean, sd
+    # WAR (offensive_war / pitching_war) is a common "wins" currency across
+    # hitters and pitchers, so we rank on it globally — which is naturally
+    # hitter-heavy (hitters compile ~2-3 WAR vs ~1 for arms). WAR rate
+    # (WAR/PA, WAR/9) gates out volume-only compilers and a quality
+    # multiplier (wRC+ / FIP+) refines. The >=3 pitcher floor below then
+    # guarantees arms are represented.
+    PA_REF = 200.0   # reference PA for hitter rate scaling
+    IP_REF = 60.0    # reference IP for pitcher rate scaling
 
-    # ── Build hitter candidates ──
     hitters = []
     for r in bat_rows:
         pa = r["plate_appearances"] or 0
         war = float(r["offensive_war"] or 0)
+        rate = (war / pa) if pa else 0
+        quality = float(r["wrc_plus"] or 100)
+        qmult = 0.75 + 0.25 * max(0.5, min(2.0, quality / 100.0))
+        # 60% total WAR + 40% rate projected to a reference workload
+        value = 0.60 * war + 0.40 * (rate * PA_REF)
         hitters.append({
-            **r,
-            "role": "BAT",
-            "war": war,
-            "rate": (war / pa) if pa else 0,
-            "quality": float(r["wrc_plus"] or 100),
+            **r, "role": "BAT", "war": war, "rate": rate, "quality": quality,
+            "mvp_score": round(value * qmult, 4),
         })
-    # ── Build pitcher candidates ──
+
     pitchers = []
     for r in pit_rows:
         ip = _ip_to_real(r["innings_pitched"])
         if ip < MIN_IP:
             continue
         war = float(r["pitching_war"] or 0)
+        rate9 = (war / ip * 9.0) if ip else 0
+        quality = float(r["fip_plus"] or 100)
+        qmult = 0.75 + 0.25 * max(0.5, min(2.0, quality / 100.0))
+        value = 0.60 * war + 0.40 * (rate9 / 9.0 * IP_REF)
         pitchers.append({
-            **r,
-            "role": "PIT",
-            "ip_real": ip,
-            "war": war,
-            "rate": (war / ip * 9.0) if ip else 0,
-            "quality": float(r["fip_plus"] or 100),
+            **r, "role": "PIT", "ip_real": ip, "war": war, "rate": rate9, "quality": quality,
+            "mvp_score": round(value * qmult, 4),
         })
-
-    # ── Z-score within each group, then composite MVP score ──
-    def score_group(group):
-        if not group:
-            return
-        wm, wsd = zscores([g["war"] for g in group])
-        rm, rsd = zscores([g["rate"] for g in group])
-        qm, qsd = zscores([g["quality"] for g in group])
-        for g in group:
-            zw = (g["war"] - wm) / wsd if wsd else 0
-            zr = (g["rate"] - rm) / rsd if rsd else 0
-            zq = (g["quality"] - qm) / qsd if qsd else 0
-            g["mvp_score"] = round(0.40 * zr + 0.35 * zw + 0.25 * zq, 4)
-
-    score_group(hitters)
-    score_group(pitchers)
 
     # Dedup two-way players: keep their higher-scoring role.
     best_by_player = {}
