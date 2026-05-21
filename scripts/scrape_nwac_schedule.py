@@ -60,13 +60,17 @@ NWAC_TEAMS = {
     "Umpqua", "Walla Walla", "Wenatchee Valley", "Yakima Valley",
 }
 
-# NWAC playoff bracket prefixes: N1-N4, S1-S4, E1-E4, W1-W4 (North/South/East/West seeds 1-4)
-# These appear in front of team names during postseason like "E4 Yakima Valley"
-SEED_PREFIX_RE = re.compile(r"^[NSEW][1-4]\s+", re.IGNORECASE)
+# NWAC playoff bracket prefixes. Two flavors appear in front of team
+# names during the postseason:
+#   • Regional seeds: N1-N4, S1-S4, E1-E4, W1-W4  (e.g. "E4 Yakima Valley")
+#   • Super-regional winner codes: NSR/SSR/ESR/WSR (e.g. "WSR Pierce")
+# Both label the 8-team championship field on the composite scoreboard.
+SEED_PREFIX_RE = re.compile(r"^[NSEW](?:[1-4]|SR)\s+", re.IGNORECASE)
 
 
 def strip_seed_prefix(name):
-    """Strip NWAC playoff seed prefix (e.g., "E4 Yakima Valley" → "Yakima Valley")."""
+    """Strip NWAC playoff seed prefix (e.g. "E4 Yakima Valley" → "Yakima
+    Valley", "WSR Pierce" → "Pierce")."""
     if not name:
         return name
     return SEED_PREFIX_RE.sub("", name).strip()
@@ -84,8 +88,12 @@ def is_tbd_opponent(name):
 
 def resolve_team_name(display_name):
     """Convert schedule page display name to DB short_name."""
-    # Strip NWAC playoff seed prefixes first (e.g., "E4 Yakima Valley" → "Yakima Valley")
-    name = strip_seed_prefix(display_name)
+    # Strip leading "vs "/"at " location indicators first — the composite
+    # scoreboard shows tournament games as e.g. "vs N1 Everett" — then the
+    # NWAC playoff seed prefix ("E4 Yakima Valley" → "Yakima Valley",
+    # "WSR Pierce" → "Pierce").
+    name = re.sub(r"^(?:at|vs)\.?\s+", "", display_name or "", flags=re.IGNORECASE).strip()
+    name = strip_seed_prefix(name)
     # Check explicit mapping next
     if name in SCHEDULE_NAME_TO_DB:
         return SCHEDULE_NAME_TO_DB[name]
