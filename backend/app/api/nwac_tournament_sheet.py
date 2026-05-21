@@ -55,6 +55,7 @@ def _champ_team_ids():
 #   neutral       → no color (gray) — role/context stat, not good/bad
 # ─────────────────────────────────────────────────────────────────
 HITTER_PCT_DIRS = {
+    'pa':            'higher_better',  # more reps = more of a regular
     'offensive_war': 'higher_better',
     'wrc_plus':      'higher_better',
     'batting_avg':   'higher_better',
@@ -84,9 +85,9 @@ PITCHER_PCT_DIRS = {
     'putaway_pct':  'higher_better',
 }
 
-# Sample-size qualifiers — below these, a player is shown on the board
-# but rendered neutral-gray and excluded from the percentile cohort.
-HITTER_MIN_PA = 25
+# Sample-size cutoffs — players below these are dropped from the board
+# entirely (not just grayed), keeping it to meaningful contributors.
+HITTER_MIN_PA = 20
 PITCHER_MIN_IP = 5.0
 
 
@@ -368,6 +369,12 @@ def build_nwac_tournament_sheet(cur, season):
     hitters = _build_hitter_rows(raw_hitters, pbp_h, team_meta)
     pitchers = _build_pitcher_rows(raw_pitchers, pbp_p, team_meta)
 
+    # Drop sub-threshold players entirely (≥20 PA / ≥5 IP).
+    hitters = [r for r in hitters if _hitter_qualified(r)]
+    pitchers = [r for r in pitchers if _pitcher_qualified(r)]
+
+    # With everyone shown now qualified, percentiles rank across the
+    # full displayed field.
     _attach_percentiles(hitters, HITTER_PCT_DIRS, _hitter_qualified)
     _attach_percentiles(pitchers, PITCHER_PCT_DIRS, _pitcher_qualified)
 

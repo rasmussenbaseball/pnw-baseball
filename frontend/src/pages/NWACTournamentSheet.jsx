@@ -2,23 +2,24 @@
 // the NWAC Championships (Longview, WA).
 //
 // Two ranked-by-WAR boards: every PITCHER across the field first,
-// then every HITTER. Each board is paginated into landscape US Letter
-// pages. Stat cells are percentile-shaded green→white→red against the
-// championship field; bio columns (Team, Yr, Ht, Wt, Commitment) sit
-// to the left. Player names colored by handedness.
+// then every HITTER. Each board is paginated into portrait US Letter
+// pages (densely packed to save paper). Stat cells are percentile-shaded
+// green→white→red against the championship field; bio columns (Team, Yr,
+// Ht, Wt, Commitment) sit to the left. Player names colored by handedness
+// (no separate B/T column, to keep portrait width tight).
 //
-// Landscape print: a dynamically-injected @page rule (mounted only
-// while this page is) flips the print to letter landscape and strips
-// the portal chrome, so the saved PDF is a clean multi-page board.
+// Print: a dynamically-injected @page rule (mounted only while this page
+// is) sets letter portrait and strips the portal chrome, so the saved
+// PDF is a clean multi-page board.
 
 import { useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 
 const SEASON = 2026
 
-// Rows per printed page — tuned so a landscape US Letter page fills
-// without overflowing into a blank page.
-const ROWS_PER_PAGE = 26
+// Rows per printed page — tuned so a portrait US Letter page packs
+// densely (to save paper) without overflowing into a blank page.
+const ROWS_PER_PAGE = 48
 
 
 // ─────────────────────────────────────────────────────────
@@ -77,19 +78,22 @@ const fmt = {
 
 
 // Stat columns (color-shaded). Bio columns are rendered separately.
+// Portrait orientation, so widths are tight — handedness is conveyed by
+// the name color (no separate B/T column).
 const HITTER_COLS = [
-  { label: 'WAR',  val: r => fmt.war(r.offensive_war), pctKey: 'offensive_war', width: '4.6%' },
-  { label: 'wRC+', val: r => fmt.int(r.wrc_plus),      pctKey: 'wrc_plus',      width: '4.6%' },
-  { label: 'AVG',  val: r => fmt.rate(r.batting_avg),  pctKey: 'batting_avg',   width: '4.6%' },
-  { label: 'OBP',  val: r => fmt.rate(r.on_base_pct),  pctKey: 'on_base_pct',   width: '4.6%' },
-  { label: 'SLG',  val: r => fmt.rate(r.slugging_pct), pctKey: 'slugging_pct',  width: '4.6%' },
-  { label: 'SB',   val: r => fmt.int(r.sb),            pctKey: 'sb',            width: '4.2%' },
-  { label: 'HR',   val: r => fmt.int(r.hr),            pctKey: 'hr',            width: '4.2%' },
-  { label: 'K%',   val: r => fmt.pct(r.k_pct),         pctKey: 'k_pct',         width: '4.8%' },
-  { label: 'BB%',  val: r => fmt.pct(r.bb_pct),        pctKey: 'bb_pct',        width: '4.8%' },
-  { label: 'ISO',  val: r => fmt.rate(r.iso),          pctKey: 'iso',           width: '4.6%' },
-  { label: 'Sw%',  val: r => fmt.pct(r.swing_pct),     pctKey: 'swing_pct',     width: '4.8%' },
-  { label: 'Ct%',  val: r => fmt.pct(r.contact_pct),   pctKey: 'contact_pct',   width: '4.8%' },
+  { label: 'PA',   val: r => fmt.int(r.pa),            pctKey: 'pa',            width: '4.2%' },
+  { label: 'WAR',  val: r => fmt.war(r.offensive_war), pctKey: 'offensive_war', width: '4.4%' },
+  { label: 'wRC+', val: r => fmt.int(r.wrc_plus),      pctKey: 'wrc_plus',      width: '4.4%' },
+  { label: 'AVG',  val: r => fmt.rate(r.batting_avg),  pctKey: 'batting_avg',   width: '4.4%' },
+  { label: 'OBP',  val: r => fmt.rate(r.on_base_pct),  pctKey: 'on_base_pct',   width: '4.4%' },
+  { label: 'SLG',  val: r => fmt.rate(r.slugging_pct), pctKey: 'slugging_pct',  width: '4.4%' },
+  { label: 'SB',   val: r => fmt.int(r.sb),            pctKey: 'sb',            width: '3.8%' },
+  { label: 'HR',   val: r => fmt.int(r.hr),            pctKey: 'hr',            width: '3.8%' },
+  { label: 'K%',   val: r => fmt.pct(r.k_pct),         pctKey: 'k_pct',         width: '4.6%' },
+  { label: 'BB%',  val: r => fmt.pct(r.bb_pct),        pctKey: 'bb_pct',        width: '4.6%' },
+  { label: 'ISO',  val: r => fmt.rate(r.iso),          pctKey: 'iso',           width: '4.4%' },
+  { label: 'Sw%',  val: r => fmt.pct(r.swing_pct),     pctKey: 'swing_pct',     width: '4.6%' },
+  { label: 'Ct%',  val: r => fmt.pct(r.contact_pct),   pctKey: 'contact_pct',   width: '4.6%' },
 ]
 
 const PITCHER_COLS = [
@@ -98,10 +102,10 @@ const PITCHER_COLS = [
   { label: 'GS',    val: r => fmt.int(r.gs),           pctKey: 'gs',           width: '3.6%', direction: 'neutral' },
   { label: 'ERA',   val: r => fmt.dec2(r.era),         pctKey: 'era',          width: '4.6%' },
   { label: 'FIP',   val: r => fmt.dec2(r.fip),         pctKey: 'fip',          width: '4.6%' },
-  { label: 'SIERA', val: r => fmt.dec2(r.siera),       pctKey: 'siera',        width: '5.0%' },
+  { label: 'SIERA', val: r => fmt.dec2(r.siera),       pctKey: 'siera',        width: '5.2%' },
   { label: 'BAA',   val: r => fmt.rate(r.baa),         pctKey: 'baa',          width: '4.6%' },
-  { label: 'K%',    val: r => fmt.pct(r.k_pct),        pctKey: 'k_pct',        width: '4.8%' },
-  { label: 'BB%',   val: r => fmt.pct(r.bb_pct),       pctKey: 'bb_pct',       width: '4.8%' },
+  { label: 'K%',    val: r => fmt.pct(r.k_pct),        pctKey: 'k_pct',        width: '4.6%' },
+  { label: 'BB%',   val: r => fmt.pct(r.bb_pct),       pctKey: 'bb_pct',       width: '4.6%' },
   { label: 'Whf%',  val: r => fmt.pct(r.whiff_pct),    pctKey: 'whiff_pct',    width: '4.8%' },
   { label: 'Stk%',  val: r => fmt.pct(r.strike_pct),   pctKey: 'strike_pct',   width: '4.8%' },
   { label: 'Put%',  val: r => fmt.pct(r.putaway_pct),  pctKey: 'putaway_pct',  width: '4.8%' },
@@ -119,7 +123,7 @@ export default function NWACTournamentSheet() {
     style.id = 'nwac-tourney-print-style'
     style.textContent = `
       @media print {
-        @page { size: letter landscape; margin: 0.35in; }
+        @page { size: letter portrait; margin: 0.3in; }
         body { background: white; }
         body * { visibility: hidden; }
         .nwac-tourney-sheet,
@@ -138,11 +142,11 @@ export default function NWACTournamentSheet() {
           page-break-after: auto;
           break-after: auto;
         }
-        .nwac-tourney-sheet table { font-size: 8.5px; }
+        .nwac-tourney-sheet table { font-size: 7px; }
         .nwac-tourney-sheet table td,
         .nwac-tourney-sheet table th {
-          padding-top: 2.5px;
-          padding-bottom: 2.5px;
+          padding-top: 1.5px;
+          padding-bottom: 1.5px;
         }
         .nwac-tourney-sheet,
         .nwac-tourney-sheet * {
@@ -189,7 +193,7 @@ export default function NWACTournamentSheet() {
   return (
     <div className="nwac-tourney-sheet mx-auto px-3 py-4 print:px-0 print:py-0">
       {/* Toolbar — hidden on print */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 print:hidden max-w-[1100px] mx-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 print:hidden max-w-[850px] mx-auto">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-portal-purple-dark">
             NWAC Championship Board · {data.season}
@@ -262,7 +266,7 @@ function chunk(arr, n) {
 // ─────────────────────────────────────────────────────────
 function BoardPage({ title, subtitle, rows, cols, handField, showLegend, thresholds, kind }) {
   return (
-    <section className="tourney-page max-w-[1100px] mx-auto print:max-w-none mb-8 print:mb-0">
+    <section className="tourney-page max-w-[850px] mx-auto print:max-w-none mb-8 print:mb-0">
       <div className="flex items-end justify-between border-b-2 border-portal-purple pb-1.5 mb-2">
         <div>
           <div className="text-[10px] uppercase tracking-widest text-gray-500 leading-none">
@@ -292,33 +296,31 @@ function BoardTable({ rows, cols, handField }) {
   return (
     <table className="w-full border-collapse text-[9px] leading-tight tabular-nums table-fixed">
       <colgroup>
-        <col style={{ width: '2.6%' }} />  {/* rank */}
-        <col style={{ width: '4.5%' }} />  {/* team */}
-        <col style={{ width: '2.6%' }} />  {/* # */}
-        <col style={{ width: '12%' }}  />  {/* name */}
-        <col style={{ width: '3%' }}   />  {/* B/T */}
-        <col style={{ width: '3%' }}   />  {/* Yr */}
-        <col style={{ width: '4%' }}   />  {/* Ht */}
+        <col style={{ width: '2.5%' }} />  {/* rank */}
+        <col style={{ width: '3.5%' }} />  {/* team */}
+        <col style={{ width: '2.5%' }} />  {/* # */}
+        <col style={{ width: '13%' }}  />  {/* name */}
+        <col style={{ width: '2.5%' }} />  {/* Yr */}
+        <col style={{ width: '5%' }}   />  {/* Ht */}
         <col style={{ width: '3.5%' }} />  {/* Wt */}
-        <col style={{ width: '9%' }}   />  {/* Commit */}
+        <col style={{ width: '9.5%' }} />  {/* Commit */}
         {cols.map((c, i) => (
           <col key={i} style={{ width: c.width }} />
         ))}
       </colgroup>
       <thead>
         <tr className="bg-portal-purple text-portal-cream">
-          <th className="text-right  px-1 py-1 border border-portal-purple-dark text-[8.5px]">#</th>
-          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">Tm</th>
-          <th className="text-right  px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">No.</th>
-          <th className="text-left   px-1 py-1 border border-portal-purple-dark text-[8.5px]">Name</th>
-          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">{handField === 'bats' ? 'B' : 'T'}</th>
-          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">Yr</th>
-          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">Ht</th>
-          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px]">Wt</th>
-          <th className="text-left   px-1 py-1 border border-portal-purple-dark text-[8.5px]">Commit</th>
+          <th className="text-right  px-1 py-1 border border-portal-purple-dark text-[8px]">#</th>
+          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8px]">Tm</th>
+          <th className="text-right  px-0.5 py-1 border border-portal-purple-dark text-[8px]">No.</th>
+          <th className="text-left   px-1 py-1 border border-portal-purple-dark text-[8px]">Name</th>
+          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8px]">Yr</th>
+          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8px]">Ht</th>
+          <th className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8px]">Wt</th>
+          <th className="text-left   px-1 py-1 border border-portal-purple-dark text-[8px]">Commit</th>
           {cols.map(c => (
             <th key={c.label}
-                className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8.5px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+                className="text-center px-0.5 py-1 border border-portal-purple-dark text-[8px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
               {c.label}
             </th>
           ))}
@@ -348,9 +350,6 @@ function BoardTable({ rows, cols, handField }) {
                   title={`${row.first_name || ''} ${row.last_name || ''}`.trim()}>
                 {isLow && <span className="text-gray-400 mr-0.5">†</span>}
                 {row.first_name?.[0]}. {row.last_name}
-              </td>
-              <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600">
-                {row[handField] || '–'}
               </td>
               <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600">
                 {row.year_in_school || '–'}

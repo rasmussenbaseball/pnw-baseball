@@ -56,7 +56,7 @@ function NWACChampBoardCard({ onOpen }) {
     <div className="bg-gradient-to-br from-[#04323d] via-[#062f3a] to-[#021b22] border border-pnw-teal/40 rounded-lg shadow-sm p-4 text-white">
       <div className="flex items-baseline justify-between mb-1">
         <h2 className="text-lg font-bold text-white">NWAC Championship Board</h2>
-        <span className="text-[11px] text-pnw-teal/80">landscape · all 8 teams · ranked by WAR</span>
+        <span className="text-[11px] text-pnw-teal/80">all 8 teams · ranked by WAR</span>
       </div>
       <p className="text-xs text-white/70 mb-3">
         The whole championship field on two ranked boards: every pitcher, then every hitter
