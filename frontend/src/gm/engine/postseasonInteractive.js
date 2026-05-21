@@ -780,10 +780,17 @@ function setupD2Regional(state) {
   const year = state.calendar.year
   const sim = makeD2Sim(state)
   let field = d2NationalField(state)
-  // Auto-bid: a GNAC tournament champ who isn't already in the at-large field
-  // still makes the regionals.
-  if (ps.userChamp && !field.includes(userId)) field = [userId, ...field].slice(0, 56)
+  // Auto-bid: a conference-tournament champ who isn't already in the at-large
+  // field still makes the regionals — but they're SEEDED BY RATING, not handed
+  // the #1 overall seed. Bump the weakest at-large team for the champ, then
+  // re-sort the whole field by rating so hosting + seeding stay rating-based
+  // (a #68 GNAC champ becomes a low seed who travels, not the host).
+  if (ps.userChamp && !field.includes(userId)) {
+    field = field.slice(0, 55)
+    field.push(userId)
+  }
   field = field.slice(0, 56)
+  field.sort((a, b) => d2RatingOf(state, b) - d2RatingOf(state, a))
   // 16 sites: 8 of 4 teams + 8 of 3 = 56. Top 16 by rating host.
   const sizes = [4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3]
   const regionals = sizes.map((sz, i) => ({ idx: i, hostId: field[i], seeds: [field[i]], target: sz, champion: null }))

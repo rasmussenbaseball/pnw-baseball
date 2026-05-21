@@ -3,6 +3,7 @@ import { useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { ensureNwbbRatings } from '../../gm/engine/nwbbRating'
+import { teamOverall } from '../../gm/engine/playerRating'
 import TeamLogo from '../../gm/components/TeamLogo'
 import GMShell from '../../gm/components/GMShell'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
@@ -65,9 +66,12 @@ export default function Rankings() {
       .map(r => {
         const school = save.schools[r.teamId] || NON_NAIA_DISPLAY[r.teamId]
         const team = save.teams[r.teamId]
+        const ovr = (team && (team.rosterPlayerIds || []).length)
+          ? teamOverall(team, save.players).overall : null
         return {
           ...r,
           school,
+          ovr,
           conferenceAbbr: save.conferences[school?.conferenceId]?.abbreviation
             || school?.pearConference || (r.isNonNaia ? r.division : ''),
           wins: team?.wins || 0,
@@ -151,6 +155,7 @@ export default function Rankings() {
                   <th>Program</th>
                   <th>Conf</th>
                   <th title={COLUMNS[0].desc} className="text-right pr-3">Rating</th>
+                  <th title="Team OVR — roster strength (0-99)" className="text-right pr-3">OVR</th>
                   <th title="Record">Record</th>
                   <th title={COLUMNS[2].desc} className="text-right pr-3">SOS</th>
                   <th title="SOS rank — 1 = hardest schedule">SOS#</th>
@@ -170,6 +175,7 @@ export default function Rankings() {
                       <td className="text-white">{r.school?.name || r.teamId}</td>
                       <td className="text-[10px] text-[#a8a8c8]">{r.conferenceAbbr}</td>
                       <td className={'font-mono text-right pr-3 ' + ratingColor(r.rating)}>{r.rating.toFixed(1)}</td>
+                      <td className="font-mono text-right pr-3 text-pnw-green">{r.ovr != null ? r.ovr : '—'}</td>
                       <td className="font-mono">{r.wins}-{r.losses}</td>
                       <td className="font-mono text-right pr-3">{r.sos != null && r.gamesPlayed > 0 ? r.sos.toFixed(1) : '—'}</td>
                       <td className="font-mono text-[10px] text-[#a8a8c8]">{r.gamesPlayed > 0 && r.sosRank > 0 ? `#${r.sosRank}` : '—'}</td>

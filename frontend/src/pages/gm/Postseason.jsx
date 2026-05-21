@@ -3,6 +3,7 @@ import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import TeamLogo from '../../gm/components/TeamLogo'
+import TeamRankChip from '../../gm/components/TeamRankChip'
 import GMShell from '../../gm/components/GMShell'
 import { teamNameOf } from '../../gm/engine/postseasonInteractive'
 
@@ -59,7 +60,7 @@ function D2PostseasonPage({ save, ps, userSchool }) {
 
   const seedList = (ids) => (ids || []).map((id, i) => (
     <span key={id} className={(id === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]')}>
-      {i + 1}. {nm(id)}{i < ids.length - 1 ? '  ·  ' : ''}
+      {i + 1}. {nm(id)}<TeamRankChip save={save} schoolId={id} showRank={false} />{i < ids.length - 1 ? '  ·  ' : ''}
     </span>
   ))
 
@@ -117,9 +118,9 @@ function D2PostseasonPage({ save, ps, userSchool }) {
             {supers.map((sr) => (
               <div key={sr.idx} className={'rounded p-2 text-xs font-pixel border ' +
                 (sr.isUser ? 'border-pnw-green bg-pnw-green/10' : 'border-[#3a3a5e] bg-[#1a1a2e]')}>
-                <span className={sr.a === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(sr.a)}</span>
+                <span className={sr.a === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(sr.a)}<TeamRankChip save={save} schoolId={sr.a} /></span>
                 <span className="text-gray-500"> vs </span>
-                <span className={sr.b === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(sr.b)}</span>
+                <span className={sr.b === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(sr.b)}<TeamRankChip save={save} schoolId={sr.b} /></span>
                 {sr.champion && <span className="text-amber-300"> → {nm(sr.champion)}</span>}
               </div>
             ))}

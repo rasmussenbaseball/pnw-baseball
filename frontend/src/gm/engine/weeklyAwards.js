@@ -152,17 +152,8 @@ export function computeWeeklyAwards(state) {
     for (const pid of (team.rosterPlayerIds || [])) playerConf[pid] = confId
   }
 
-  // National winners — best across the WHOLE league. Every level now simulates
-  // all teams with real player box scores (NAIA + full-division D1/D2/D3), so
-  // the national award is meaningful at every level. The display label adapts
-  // to the level at reveal time (NAIA / D2 / ...).
-  const naiaHitter = pickBest(weekly,
-    (s) => !s.isPitcher && playerById[s.playerId],
-    hitterWeekScore, MIN_HITTER_WEEK_SCORE)
-  const naiaPitcher = pickBest(weekly,
-    (s) => s.isPitcher && playerById[s.playerId],
-    pitcherWeekScore, MIN_PITCHER_WEEK_SCORE)
-
+  // CONFERENCE-ONLY awards (per Nate): no national/NAIA Player of the Week —
+  // only conference Hitter/Pitcher of the Week honors.
   // Conference winners — one set per conference
   const confWinners = {}
   for (const confId of Object.keys(state.conferences || {})) {
@@ -201,9 +192,6 @@ export function computeWeeklyAwards(state) {
     // following week like real life.
   }
 
-  // NAIA national first (higher-profile)
-  record('NAIA', 'HITTER',  naiaHitter,  null)
-  record('NAIA', 'PITCHER', naiaPitcher, null)
   for (const [confId, w] of Object.entries(confWinners)) {
     const conf = state.conferences[confId]
     record('CONF', 'HITTER',  w.hitter,  conf?.name || conf?.abbreviation)
