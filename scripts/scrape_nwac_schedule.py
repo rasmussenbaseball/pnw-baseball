@@ -534,10 +534,20 @@ def main():
     composite_games = fetch_composite_today(api_key, season_year)
 
     # ── 2. Fetch master schedule page for full season ──
-    html = fetch_schedule(api_key, season_year)
-
-    # Parse games from schedule page
-    games = parse_schedule_page(html, season_year)
+    # The full-season schedule page is sometimes WAF-blocked (ScraperAPI
+    # returns a tiny challenge page). When that happens we must NOT abort:
+    # the composite page above already has today's completed games, which
+    # is what live updates (e.g. tournament results) depend on. Treat a
+    # schedule-page failure as a soft miss and continue with composite only.
+    games = []
+    try:
+        html = fetch_schedule(api_key, season_year)
+        games = parse_schedule_page(html, season_year)
+    except Exception as e:
+        logger.warning(
+            f"Schedule page unavailable ({e}); continuing with "
+            f"{len(composite_games)} composite game(s) only."
+        )
 
     if not games and not composite_games:
         logger.warning("No games found on either page")
