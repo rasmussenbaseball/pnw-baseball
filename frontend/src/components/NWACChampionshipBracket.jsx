@@ -284,7 +284,7 @@ function TeamRow({ team, score, won, isFinal }) {
       )}
       {team.seed && (
         <span
-          className={`text-[8px] font-bold w-7 shrink-0 ${
+          className={`text-[8px] font-bold shrink-0 ${
             won ? 'text-amber-300' : dimmed ? 'text-white/30' : 'text-pnw-teal/70'
           }`}
         >
