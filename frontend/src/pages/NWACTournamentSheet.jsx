@@ -351,7 +351,8 @@ function BoardTable({ rows, cols, handField }) {
                 {isLow && <span className="text-gray-400 mr-0.5">†</span>}
                 {row.first_name?.[0]}. {row.last_name}
               </td>
-              <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600">
+              <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600 whitespace-nowrap tracking-tighter"
+                  style={/^R-/i.test(row.year_in_school || '') ? { fontSize: '5.5px' } : undefined}>
                 {row.year_in_school || '–'}
               </td>
               <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600 whitespace-nowrap">
