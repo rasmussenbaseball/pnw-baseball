@@ -34,7 +34,7 @@ export default function NWACChampionshipOdds() {
       </div>
 
       {/* Rows */}
-      <div className="flex-1 px-3 sm:px-4 py-2 divide-y divide-white/5">
+      <div className="flex-1 flex flex-col px-3 sm:px-4 py-2 divide-y divide-white/5">
         {loading && teams.length === 0 ? (
           <div className="py-6 text-center text-white/40 text-sm animate-pulse">
             Crunching the simulations…
@@ -47,10 +47,7 @@ export default function NWACChampionshipOdds() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 sm:px-5 py-2 border-t border-white/10 flex items-center justify-between">
-        <span className="text-[10px] text-white/50">
-          Fair odds · no vig
-        </span>
+      <div className="px-4 sm:px-5 py-2 border-t border-white/10 flex items-center justify-end">
         <Link
           to="/team-ratings"
           className="text-[10px] font-semibold text-pnw-teal hover:text-white transition-colors"
@@ -77,7 +74,7 @@ function OddsRow({ team, rank, maxPct }) {
   return (
     <Link
       to={`/team/${team.team_id}`}
-      className={`flex items-center gap-2 py-1.5 hover:bg-white/[0.04] transition-colors group ${elim ? 'opacity-45' : ''}`}
+      className={`flex-1 flex items-center gap-2 py-1.5 hover:bg-white/[0.04] transition-colors group ${elim ? 'opacity-45' : ''}`}
     >
       {/* Rank */}
       <span className="w-4 text-center text-[11px] font-mono font-bold text-white/40 shrink-0">
