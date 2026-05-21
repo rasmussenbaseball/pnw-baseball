@@ -598,3 +598,11 @@ export function useHistoricMatchupOpponents(teamId, season = CURRENT_SEASON) {
 export function useNwacChampionshipOdds(season = CURRENT_SEASON) {
   return useApi('/nwac-championship-odds', { season }, [season])
 }
+
+/**
+ * NWAC Tournament MVP tracker - top value players across the 8
+ * championship teams (WAR rate, wRC+/FIP+), >=3 pitchers guaranteed.
+ */
+export function useNwacMvpTracker(season = CURRENT_SEASON) {
+  return useApi('/nwac-mvp-tracker', { season }, [season])
+}
