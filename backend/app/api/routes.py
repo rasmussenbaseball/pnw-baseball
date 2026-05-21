@@ -3292,7 +3292,7 @@ def playoff_projections(
 
 
 @router.get("/nwac-championship-odds")
-@cached_endpoint(ttl_seconds=1800)
+@cached_endpoint(ttl_seconds=180)  # short TTL so odds move with each result during the tournament
 def nwac_championship_odds(season: int = Query(2026)):
     """
     Monte Carlo odds for each team to win the 8-team NWAC Championship.
@@ -3440,7 +3440,7 @@ def _ip_to_real(ip):
 
 
 @router.get("/nwac-mvp-tracker")
-@cached_endpoint(ttl_seconds=1800)
+@cached_endpoint(ttl_seconds=180)  # short TTL so the tracker reflects tournament games promptly
 def nwac_mvp_tracker(season: int = Query(2026)):
     """
     Most-likely tournament-MVP candidates from the 8 championship teams.
