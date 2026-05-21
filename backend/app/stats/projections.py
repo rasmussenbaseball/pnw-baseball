@@ -1092,24 +1092,52 @@ def _nwac_game(a, b, ratings, host_id, hfa):
     return (a, b) if random.random() < prob_a else (b, a)
 
 
+# Bracket game graph (matches frontend lib/brackets.js numbering). Each
+# game is (num, home_ref, away_ref); ref is ('seed', n) | ('W', game) |
+# ('L', game). Games are listed in dependency order so a single pass
+# resolves everything.
+NWAC_2026_CHAMP_GRAPH = [
+    (1,  ('seed', 1), ('seed', 5)),
+    (2,  ('seed', 2), ('seed', 6)),
+    (3,  ('seed', 3), ('seed', 7)),
+    (4,  ('seed', 4), ('seed', 8)),
+    (5,  ('L', 1), ('L', 2)),     # LB R1
+    (6,  ('L', 3), ('L', 4)),
+    (7,  ('W', 1), ('W', 2)),     # WB semifinals
+    (8,  ('W', 3), ('W', 4)),
+    (9,  ('W', 6), ('L', 7)),     # LB R2 (cross-paired)
+    (10, ('W', 5), ('L', 8)),
+    (11, ('W', 7), ('W', 8)),     # WB Final
+    (12, ('W', 9), ('L', 11)),    # LB Final (WB-Final loser drops here)
+    (13, ('W', 10), ('W', 11)),   # Semifinal (WB-Final winner)
+    (14, ('W', 12), ('W', 13)),   # Championship
+]
+NWAC_2026_CHAMP_RESET_GAME = 15   # bracket reset, if necessary
+
+
 def simulate_nwac_championship_odds(
     team_ratings,
     seeds=None,
     host_id=NWAC_2026_CHAMP_HOST_ID,
     hfa=NWAC_2026_CHAMP_HFA,
     n_simulations=50000,
+    known_results=None,
 ):
     """
     Monte Carlo the 8-team NWAC Championship (single-game double elim).
 
-    team_ratings: {team_id: {"power_rating": float, ...}}
-    Returns {team_id: {"champ_pct": float, "final_pct": float}} where
-    champ_pct is P(wins the title) and final_pct is P(reaches the
-    grand final).
+    team_ratings:  {team_id: {"power_rating": float, ...}}
+    known_results: optional {game_num: (winner_id, loser_id)} for games
+                   that have already gone final. Those games are fixed
+                   (not simulated), so the odds update live and eliminated
+                   teams fall to ~0% as the tournament plays out.
+
+    Returns {team_id: {"champ_pct": float, "final_pct": float}}.
     """
     seeds = seeds or NWAC_2026_CHAMP_SEEDS
     ratings = {tid: info.get("power_rating") for tid, info in team_ratings.items()}
     teams = list(seeds.values())
+    known = known_results or {}
 
     def g(a, b):
         return _nwac_game(a, b, ratings, host_id, hfa)
@@ -1118,34 +1146,47 @@ def simulate_nwac_championship_odds(
     final_counts = {t: 0 for t in teams}
 
     for _ in range(n_simulations):
-        # ── Winners bracket ──
-        w1, l1 = g(seeds[1], seeds[5])
-        w2, l2 = g(seeds[2], seeds[6])
-        w3, l3 = g(seeds[3], seeds[7])
-        w4, l4 = g(seeds[4], seeds[8])
-        # WB semifinals
-        ws1, wsl1 = g(w1, w2)
-        ws2, wsl2 = g(w3, w4)
-        # WB final → winner is undefeated into the grand final
-        wb_champ, wb_loser = g(ws1, ws2)
+        results = {}            # game_num -> (winner, loser)
+        losses = {t: 0 for t in teams}
 
-        # ── Losers bracket (cross-paired to avoid early rematches) ──
-        lb1a, _ = g(l1, l2)
-        lb1b, _ = g(l3, l4)
-        lb2a, _ = g(lb1a, wsl2)
-        lb2b, _ = g(lb1b, wsl1)
-        lb_semi, _ = g(lb2a, lb2b)
-        lb_champ, _ = g(lb_semi, wb_loser)   # LB final: WB-final loser drops in here
+        def resolve(ref):
+            kind, val = ref
+            if kind == "seed":
+                return seeds.get(val)
+            r = results.get(val)
+            if not r:
+                return None
+            return r[0] if kind == "W" else r[1]
 
-        # ── Grand final (bracket reset if the LB team wins) ──
-        final_counts[wb_champ] += 1
-        final_counts[lb_champ] += 1
-        gf_w, gf_l = g(wb_champ, lb_champ)
-        if gf_w == wb_champ:
-            champion = wb_champ
+        for num, hr, ar in NWAC_2026_CHAMP_GRAPH:
+            a = resolve(hr)
+            b = resolve(ar)
+            if a is None or b is None:
+                continue
+            if num in known:
+                w, l = known[num]
+            else:
+                w, l = g(a, b)
+            results[num] = (w, l)
+            if l in losses:
+                losses[l] += 1
+
+        g14 = results.get(14)
+        if not g14:
+            continue
+        w14, l14 = g14
+        final_counts[w14] += 1
+        final_counts[l14] += 1
+
+        # Champion: if the Game 14 loser now has 2 losses, the winner takes
+        # it; otherwise both finalists have 1 loss → bracket-reset game.
+        remaining = [t for t in teams if losses[t] < 2]
+        if len(remaining) <= 1:
+            champion = w14
+        elif NWAC_2026_CHAMP_RESET_GAME in known:
+            champion = known[NWAC_2026_CHAMP_RESET_GAME][0]
         else:
-            # LB champ handed WB champ its first loss → winner-take-all replay
-            champion, _ = g(wb_champ, lb_champ)
+            champion, _ = g(w14, l14)
         champ_counts[champion] += 1
 
     return {
@@ -1155,3 +1196,65 @@ def simulate_nwac_championship_odds(
         }
         for t in teams
     }
+
+
+def resolve_known_nwac_results(db_games, seeds=None):
+    """Walk the bracket graph and map completed DB games to game numbers.
+
+    db_games: list of dicts with home_team_id, away_team_id, winner_id
+              (winner_id None when not yet final).
+    Returns {game_num: (winner_id, loser_id)} for games already decided,
+    plus a set of eliminated team_ids (2+ losses).
+    """
+    seeds = seeds or NWAC_2026_CHAMP_SEEDS
+    pair_winner = {}
+    for gm in db_games:
+        w = gm.get("winner_id")
+        h, a = gm.get("home_team_id"), gm.get("away_team_id")
+        if w and h and a:
+            pair_winner[frozenset((h, a))] = w
+
+    results = {}
+
+    def resolve(ref):
+        kind, val = ref
+        if kind == "seed":
+            return seeds.get(val)
+        r = results.get(val)
+        if not r:
+            return None
+        return r[0] if kind == "W" else r[1]
+
+    for num, hr, ar in NWAC_2026_CHAMP_GRAPH:
+        a = resolve(hr)
+        b = resolve(ar)
+        if a is None or b is None:
+            continue
+        key = frozenset((a, b))
+        if key in pair_winner:
+            w = pair_winner[key]
+            l = b if w == a else a
+            results[num] = (w, l)
+
+    losses = {}
+    for w, l in results.values():
+        losses[l] = losses.get(l, 0) + 1
+    eliminated = {t for t, n in losses.items() if n >= 2}
+    return results, eliminated
+
+
+def pct_to_american(p):
+    """Fair American moneyline from a win probability. Returns an int
+    (e.g. -150, +240) or None if the probability is ~0 (eliminated)."""
+    if p is None or p <= 0.0005:
+        return None
+    if p >= 0.9995:
+        return -100000
+    if p >= 0.5:
+        val = -100.0 * p / (1.0 - p)
+    else:
+        val = 100.0 * (1.0 - p) / p
+    a = abs(val)
+    step = 5 if a < 200 else (10 if a < 1000 else 50)
+    a = int(round(a / step) * step)
+    return -a if val < 0 else a

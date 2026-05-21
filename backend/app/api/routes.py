@@ -63,6 +63,8 @@ from ..stats.projections import (
     determine_playoff_fields,
     elo_win_prob,
     simulate_nwac_championship_odds,
+    resolve_known_nwac_results,
+    pct_to_american,
     NWAC_2026_CHAMP_SEEDS,
     NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
@@ -3369,16 +3371,49 @@ def nwac_championship_odds(season: int = Query(2026)):
             "ppi_rank": t.get("ppi_rank"),
         }
 
-    odds = simulate_nwac_championship_odds(team_ratings, n_simulations=50000)
+    # ── Live conditioning: feed completed championship games into the sim ──
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT home_team_id, away_team_id, home_score, away_score, status
+            FROM games
+            WHERE season = %s
+              AND home_team_id = ANY(%s) AND away_team_id = ANY(%s)
+              AND game_date BETWEEN '2026-05-21' AND '2026-05-26'
+        """, (season, team_ids, team_ids))
+        champ_games = []
+        for r in cur.fetchall():
+            r = dict(r)
+            winner = None
+            if r["status"] == "final" and r["home_score"] is not None and r["away_score"] is not None:
+                if r["home_score"] > r["away_score"]:
+                    winner = r["home_team_id"]
+                elif r["away_score"] > r["home_score"]:
+                    winner = r["away_team_id"]
+            champ_games.append({
+                "home_team_id": r["home_team_id"],
+                "away_team_id": r["away_team_id"],
+                "winner_id": winner,
+            })
+
+    known_results, eliminated = resolve_known_nwac_results(champ_games)
+    games_played = len(known_results)
+
+    odds = simulate_nwac_championship_odds(
+        team_ratings, n_simulations=50000, known_results=known_results,
+    )
 
     teams_out = []
     for tid in team_ids:
         m = meta.get(tid, {"team_id": tid, "seed": seed_by_team.get(tid)})
         o = odds.get(tid, {"champ_pct": 0, "final_pct": 0})
+        champ_pct = round(o["champ_pct"], 4)
         teams_out.append({
             **m,
-            "champ_pct": round(o["champ_pct"], 4),
+            "champ_pct": champ_pct,
             "reach_final_pct": round(o["final_pct"], 4),
+            "american_odds": pct_to_american(o["champ_pct"]),
+            "eliminated": tid in eliminated,
             "is_host": tid == NWAC_2026_CHAMP_HOST_ID,
         })
     teams_out.sort(key=lambda x: -x["champ_pct"])
@@ -3388,7 +3423,178 @@ def nwac_championship_odds(season: int = Query(2026)):
         "venue": "Lower Columbia College, Longview WA",
         "host_team_id": NWAC_2026_CHAMP_HOST_ID,
         "n_simulations": 50000,
+        "games_played": games_played,
         "teams": teams_out,
+    }
+
+
+def _ip_to_real(ip):
+    """Convert baseball IP notation (6.2 = 6 and 2/3) to a real number."""
+    if ip is None:
+        return 0.0
+    whole = int(ip)
+    frac = round((float(ip) - whole) * 10)
+    if frac >= 3:  # already decimal, not notation
+        return float(ip)
+    return whole + frac / 3.0
+
+
+@router.get("/nwac-mvp-tracker")
+@cached_endpoint(ttl_seconds=1800)
+def nwac_mvp_tracker(season: int = Query(2026)):
+    """
+    Most-likely tournament-MVP candidates from the 8 championship teams.
+
+    Ranks players by an MVP score: primary weight on WAR rate (WAR/PA for
+    hitters, WAR/9 for pitchers), then total WAR, then quality (wRC+ /
+    FIP+). Returns the top 10 with at least 3 pitchers guaranteed (WAR is
+    hitter-dominated, so the top pitchers are force-included if needed).
+    """
+    team_ids = list(NWAC_2026_CHAMP_SEEDS.values())
+    MIN_PA = 100
+    MIN_IP = 20.0
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                   t.id as team_id, t.short_name, t.logo_url,
+                   bs.plate_appearances, bs.offensive_war, bs.wrc_plus,
+                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.home_runs
+            FROM batting_stats bs
+            JOIN players p ON p.id = bs.player_id
+            JOIN teams t ON t.id = bs.team_id
+            WHERE bs.season = %s AND bs.team_id = ANY(%s)
+              AND bs.plate_appearances >= %s AND bs.offensive_war IS NOT NULL
+        """, (season, team_ids, MIN_PA))
+        bat_rows = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT p.id as player_id, p.first_name, p.last_name, p.position,
+                   t.id as team_id, t.short_name, t.logo_url,
+                   ps.innings_pitched, ps.pitching_war, ps.fip_plus, ps.fip,
+                   ps.era, ps.strikeouts, ps.k_per_9
+            FROM pitching_stats ps
+            JOIN players p ON p.id = ps.player_id
+            JOIN teams t ON t.id = ps.team_id
+            WHERE ps.season = %s AND ps.team_id = ANY(%s)
+              AND ps.pitching_war IS NOT NULL
+        """, (season, team_ids))
+        pit_rows = [dict(r) for r in cur.fetchall()]
+
+    def zscores(values):
+        n = len(values)
+        if n == 0:
+            return {}
+        mean = sum(values) / n
+        var = sum((v - mean) ** 2 for v in values) / n if n > 1 else 0
+        sd = var ** 0.5
+        return mean, sd
+
+    # ── Build hitter candidates ──
+    hitters = []
+    for r in bat_rows:
+        pa = r["plate_appearances"] or 0
+        war = float(r["offensive_war"] or 0)
+        hitters.append({
+            **r,
+            "role": "BAT",
+            "war": war,
+            "rate": (war / pa) if pa else 0,
+            "quality": float(r["wrc_plus"] or 100),
+        })
+    # ── Build pitcher candidates ──
+    pitchers = []
+    for r in pit_rows:
+        ip = _ip_to_real(r["innings_pitched"])
+        if ip < MIN_IP:
+            continue
+        war = float(r["pitching_war"] or 0)
+        pitchers.append({
+            **r,
+            "role": "PIT",
+            "ip_real": ip,
+            "war": war,
+            "rate": (war / ip * 9.0) if ip else 0,
+            "quality": float(r["fip_plus"] or 100),
+        })
+
+    # ── Z-score within each group, then composite MVP score ──
+    def score_group(group):
+        if not group:
+            return
+        wm, wsd = zscores([g["war"] for g in group])
+        rm, rsd = zscores([g["rate"] for g in group])
+        qm, qsd = zscores([g["quality"] for g in group])
+        for g in group:
+            zw = (g["war"] - wm) / wsd if wsd else 0
+            zr = (g["rate"] - rm) / rsd if rsd else 0
+            zq = (g["quality"] - qm) / qsd if qsd else 0
+            g["mvp_score"] = round(0.40 * zr + 0.35 * zw + 0.25 * zq, 4)
+
+    score_group(hitters)
+    score_group(pitchers)
+
+    # Dedup two-way players: keep their higher-scoring role.
+    best_by_player = {}
+    for g in hitters + pitchers:
+        pid = g["player_id"]
+        if pid not in best_by_player or g["mvp_score"] > best_by_player[pid]["mvp_score"]:
+            best_by_player[pid] = g
+    all_players = sorted(best_by_player.values(), key=lambda x: -x["mvp_score"])
+
+    # ── Top 10, guaranteeing >= 3 pitchers ──
+    top = all_players[:10]
+    n_pit = sum(1 for g in top if g["role"] == "PIT")
+    if n_pit < 3:
+        need = 3 - n_pit
+        in_ids = {g["player_id"] for g in top}
+        extra_pitchers = [g for g in all_players if g["role"] == "PIT" and g["player_id"] not in in_ids][:need]
+        # Drop the lowest-scoring hitters to make room
+        hitters_in_top = sorted([g for g in top if g["role"] == "BAT"], key=lambda x: x["mvp_score"])
+        drop_ids = {g["player_id"] for g in hitters_in_top[:len(extra_pitchers)]}
+        top = [g for g in top if g["player_id"] not in drop_ids] + extra_pitchers
+        top.sort(key=lambda x: -x["mvp_score"])
+
+    def fmt_player(g, rank):
+        name = f"{g['first_name']} {g['last_name']}"
+        if g["role"] == "PIT":
+            stat_line = f"{g['ip_real']:.1f} IP · {g['era']:.2f} ERA · {int(round(g['quality']))} FIP+"
+            key_stats = {
+                "ip": round(g["ip_real"], 1),
+                "era": round(float(g["era"]), 2) if g["era"] is not None else None,
+                "fip_plus": round(g["quality"], 1),
+                "war": round(g["war"], 2),
+                "k": g.get("strikeouts"),
+            }
+        else:
+            stat_line = f"{int(round(g['quality']))} wRC+ · {g['offensive_war']:.1f} oWAR · {g['home_runs'] or 0} HR"
+            key_stats = {
+                "pa": g["plate_appearances"],
+                "wrc_plus": round(g["quality"], 1),
+                "war": round(g["war"], 2),
+                "hr": g.get("home_runs"),
+                "avg": round(float(g["batting_avg"]), 3) if g.get("batting_avg") is not None else None,
+            }
+        return {
+            "rank": rank,
+            "player_id": g["player_id"],
+            "name": name,
+            "position": "P" if g["role"] == "PIT" else (g.get("position") or "—"),
+            "role": g["role"],
+            "team_id": g["team_id"],
+            "team_short": g["short_name"],
+            "team_logo": g["logo_url"],
+            "mvp_score": g["mvp_score"],
+            "stat_line": stat_line,
+            **key_stats,
+        }
+
+    players_out = [fmt_player(g, i + 1) for i, g in enumerate(top)]
+
+    return {
+        "season": season,
+        "players": players_out,
     }
 
 
