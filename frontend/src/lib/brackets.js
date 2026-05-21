@@ -349,25 +349,27 @@ export const TOURNAMENTS = {
       { num: 8, iso: '2026-05-22', day: 'Fri May 22', time: '7:35 PM',
         home: { ref: 'winner', game: 3 }, away: { ref: 'winner', game: 4 } },
       // ── LB Round 2 (Sat May 23) ──
+      // LB Round 2 cross-pairs to avoid early rematches: W6 (bottom LB
+      // survivor) draws L7 (top WB-semi loser); W5 draws L8.
       { num: 9,  iso: '2026-05-23', day: 'Sat May 23', time: '11:00 AM',
-        home: { ref: 'winner', game: 5 }, away: { ref: 'loser', game: 7 } },
+        home: { ref: 'winner', game: 6 }, away: { ref: 'loser', game: 7 } },
       { num: 10, iso: '2026-05-23', day: 'Sat May 23', time: '2:00 PM',
-        home: { ref: 'winner', game: 6 }, away: { ref: 'loser', game: 8 } },
+        home: { ref: 'winner', game: 5 }, away: { ref: 'loser', game: 8 } },
       // ── WB Final (Sat May 23) ──
       { num: 11, iso: '2026-05-23', day: 'Sat May 23', time: '5:35 PM',
         home: { ref: 'winner', game: 7 }, away: { ref: 'winner', game: 8 } },
-      // ── LB Round 3 (Sun May 24) — default pairing per NWAC rules ──
+      // ── LB Final (Sun May 24) — WB-Final loser drops in here vs W9 ──
       { num: 12, iso: '2026-05-24', day: 'Sun May 24', time: '12:00 PM',
         home: { ref: 'winner', game: 9 }, away: { ref: 'loser', game: 11 } },
-      // ── LB Final (Sun May 24) ──
+      // ── Semifinal (Sun May 24) — WB-Final winner vs the other LB survivor ──
       { num: 13, iso: '2026-05-24', day: 'Sun May 24', time: '4:05 PM',
-        home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 12 } },
-      // ── Championship Final (Sun May 24) ──
+        home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 11 } },
+      // ── Championship (Sun May 24) — LB Final winner vs Semifinal winner ──
       { num: 14, iso: '2026-05-24', day: 'Sun May 24', time: '7:30 PM',
-        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 } },
-      // ── If Necessary (Mon May 25) ──
+        home: { ref: 'winner', game: 12 }, away: { ref: 'winner', game: 13 } },
+      // ── If Necessary — bracket reset, the Game 14 finalists replay ──
       { num: 15, iso: '2026-05-25', day: 'Mon May 25', time: '3:35 PM',
-        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 },
+        home: { ref: 'winner', game: 13 }, away: { ref: 'winner', game: 12 },
         ifNecessary: true },
     ],
     layout: {
@@ -405,13 +407,16 @@ export const TOURNAMENTS = {
       { from: 4, to: 8 },
       { from: 7, to: 11 },
       { from: 8, to: 11 },
-      { from: 11, to: 14 },
+      // WB Final winner → Semifinal (G13); loser → LB Final (G12)
+      { from: 11, to: 13 },
+      { from: 11, to: 12 },
       // LB
       { from: 5, to: 9 },
       { from: 6, to: 10 },
       { from: 9, to: 12 },
-      { from: 12, to: 13 },
       { from: 10, to: 13 },
+      // LB Final (G12) + Semifinal (G13) → Championship (G14)
+      { from: 12, to: 14 },
       { from: 13, to: 14 },
     ],
     sectionLabels: [
@@ -505,19 +510,23 @@ export const TOURNAMENTS = {
       { num: 8, iso: '2026-05-22', day: 'Fri May 22', time: '7:35 PM',
         home: { ref: 'winner', game: 3 }, away: { ref: 'winner', game: 4 } },
       { num: 9,  iso: '2026-05-23', day: 'Sat May 23', time: '11:00 AM',
-        home: { ref: 'winner', game: 5 }, away: { ref: 'loser', game: 7 } },
+        home: { ref: 'winner', game: 6 }, away: { ref: 'loser', game: 7 } },
       { num: 10, iso: '2026-05-23', day: 'Sat May 23', time: '2:00 PM',
-        home: { ref: 'winner', game: 6 }, away: { ref: 'loser', game: 8 } },
+        home: { ref: 'winner', game: 5 }, away: { ref: 'loser', game: 8 } },
       { num: 11, iso: '2026-05-23', day: 'Sat May 23', time: '5:35 PM',
         home: { ref: 'winner', game: 7 }, away: { ref: 'winner', game: 8 } },
+      // LB Final — WB-Final loser drops in vs W9
       { num: 12, iso: '2026-05-24', day: 'Sun May 24', time: '12:00 PM',
         home: { ref: 'winner', game: 9 }, away: { ref: 'loser', game: 11 } },
+      // Semifinal — WB-Final winner vs the other LB survivor
       { num: 13, iso: '2026-05-24', day: 'Sun May 24', time: '4:05 PM',
-        home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 12 } },
+        home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 11 } },
+      // Championship — LB Final winner vs Semifinal winner
       { num: 14, iso: '2026-05-24', day: 'Sun May 24', time: '7:30 PM',
-        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 } },
+        home: { ref: 'winner', game: 12 }, away: { ref: 'winner', game: 13 } },
+      // If necessary — bracket reset
       { num: 15, iso: '2026-05-25', day: 'Mon May 25', time: '3:35 PM',
-        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 13 },
+        home: { ref: 'winner', game: 13 }, away: { ref: 'winner', game: 12 },
         ifNecessary: true },
     ],
     // ── Layout (1920×1080) ──
@@ -577,13 +586,16 @@ export const TOURNAMENTS = {
       { from: 4, to: 8 },
       { from: 7, to: 11 },
       { from: 8, to: 11 },
-      { from: 11, to: 14 },
+      // WB Final winner → Semifinal (G13); loser → LB Final (G12)
+      { from: 11, to: 13 },
+      { from: 11, to: 12 },
       // LB
       { from: 5, to: 9 },
       { from: 6, to: 10 },
       { from: 9, to: 12 },
-      { from: 12, to: 13 },
       { from: 10, to: 13 },
+      // LB Final (G12) + Semifinal (G13) → Championship (G14)
+      { from: 12, to: 14 },
       { from: 13, to: 14 },
     ],
     sectionLabels: [

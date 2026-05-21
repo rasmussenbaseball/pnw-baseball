@@ -24,17 +24,27 @@ const TOURNEY = TOURNAMENTS.nwac_championships_2026
 // One row of columns (instead of two stacked sections) keeps the whole
 // thing short enough to see on one screen and fills the full width.
 const COLUMNS = [
-  { key: 'wb1',   label: 'WB Round 1', side: 'wb',    games: [1, 2, 3, 4] },
-  { key: 'wb2',   label: 'WB Round 2', side: 'wb',    games: [7, 8] },
-  { key: 'wbf',   label: 'WB Final',   side: 'wb',    games: [11] },
+  { key: 'wb1',   label: 'WB Round 1',  side: 'wb',    games: [1, 2, 3, 4] },
+  { key: 'wb2',   label: 'WB Round 2',  side: 'wb',    games: [7, 8] },
+  { key: 'wbf',   label: 'WB Final',    side: 'wb',    games: [11] },
+  { key: 'semi',  label: 'Semifinal',   side: 'wb',    games: [13] },
   { key: 'champ', label: 'Championship', side: 'champ', games: [14] },
-  { key: 'lbf',   label: 'LB Final',   side: 'lb',    games: [13] },
-  { key: 'lb3',   label: 'LB Elim 3',  side: 'lb',    games: [12] },
-  { key: 'lb2',   label: 'LB Elim 2',  side: 'lb',    games: [9, 10] },
-  { key: 'lb1',   label: 'LB Elim 1',  side: 'lb',    games: [5, 6] },
+  { key: 'lbf',   label: 'LB Final',    side: 'lb',    games: [12] },
+  { key: 'lb2',   label: 'LB Round 2',  side: 'lb',    games: [9, 10] },
+  { key: 'lb1',   label: 'LB Round 1',  side: 'lb',    games: [5, 6] },
 ]
 const CHAMP_GAME = 14
 const IF_NEC_GAME = 15
+
+// Shrink the font for longer team names so they fit the narrow cards
+// instead of truncating. Tuned so "Wenatchee Valley" (16) still fits.
+function nameSizeClass(name) {
+  const n = (name || '').length
+  if (n <= 9) return 'text-[11px]'
+  if (n <= 12) return 'text-[10px]'
+  if (n <= 15) return 'text-[9px]'
+  return 'text-[8px]'
+}
 
 export default function NWACChampionshipBracket() {
   const [outcomes, setOutcomes] = useState(null)
@@ -102,12 +112,11 @@ export default function NWACChampionshipBracket() {
   }, [outcomes])
 
   return (
-    <div className="mb-3 rounded-2xl overflow-hidden shadow-lg border border-pnw-teal/30 bg-gradient-to-br from-[#04323d] via-[#062f3a] to-[#021b22]">
+    <div className="mt-4 sm:mt-5 mb-3 rounded-2xl overflow-hidden shadow-lg border border-pnw-teal/30 bg-gradient-to-br from-[#04323d] via-[#062f3a] to-[#021b22]">
       {/* ── Banner ── */}
       <div className="relative px-4 sm:px-6 py-4 border-b border-white/10">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="text-3xl leading-none" aria-hidden>🏆</span>
             <div className="min-w-0">
               <h2 className="text-lg sm:text-2xl font-extrabold tracking-tight text-white leading-none">
                 NWAC CHAMPIONSHIPS
@@ -192,7 +201,6 @@ function StatusPill({ status }) {
       {status.tone === 'live' && (
         <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
       )}
-      {status.tone === 'champ' && <span aria-hidden>🏆</span>}
       {status.label}
     </span>
   )
@@ -282,17 +290,8 @@ function TeamRow({ team, score, won, isFinal }) {
       ) : (
         <span className="w-4 h-4 shrink-0" />
       )}
-      {team.seed && (
-        <span
-          className={`text-[8px] font-bold shrink-0 ${
-            won ? 'text-amber-300' : dimmed ? 'text-white/30' : 'text-pnw-teal/70'
-          }`}
-        >
-          {team.seed}
-        </span>
-      )}
       <span
-        className={`text-[11px] truncate flex-1 ${
+        className={`${nameSizeClass(team.name)} leading-tight flex-1 min-w-0 whitespace-nowrap overflow-hidden ${
           team.placeholder
             ? 'text-white/30 italic'
             : won
