@@ -47,16 +47,22 @@ function UserRoundGames({ save, rd }) {
   )
 }
 
-// Full-page view of the interactive D2 postseason (4 rounds).
+// Full-page view of the interactive D2 postseason (4 rounds). Shows the FIELD
+// (teams in each regional / super-regional / WS) plus the user's own games.
 function D2PostseasonPage({ save, ps, userSchool }) {
   const userId = save.userSchoolId
-  const champName = ps.nationalChampion ? teamNameOf(save, ps.nationalChampion) : null
-  const rounds = [
-    { rd: ps.rounds?.CONF, title: 'Round 1 — GNAC Tournament (top 3, double-elim)' },
-    { rd: ps.rounds?.REGIONAL, title: 'Round 2 — NCAA Regional (double-elim)' },
-    { rd: ps.rounds?.SUPER, title: 'Round 3 — Super Regional (best-of-3)' },
-    { rd: ps.rounds?.WS, title: 'Round 4 — D2 World Series (double-elim → best-of-3 final)' },
-  ]
+  const nm = (id) => teamNameOf(save, id)
+  const champName = ps.nationalChampion ? nm(ps.nationalChampion) : null
+  const regionals = ps.national?.regionals || []
+  const supers = ps.national?.superRegionals || []
+  const ws = ps.national?.ws
+
+  const seedList = (ids) => (ids || []).map((id, i) => (
+    <span key={id} className={(id === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]')}>
+      {i + 1}. {nm(id)}{i < ids.length - 1 ? '  ·  ' : ''}
+    </span>
+  ))
+
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-3xl mx-auto">
@@ -69,17 +75,78 @@ function D2PostseasonPage({ save, ps, userSchool }) {
               ? `Eliminated in the ${({ CONF: 'GNAC tournament', REGIONAL: 'regional', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.`
               : 'Win each round to advance. Play (or sim) every game from the home page.'}
         </p>
+        <p className="text-[11px] text-gray-500 font-pixel mt-1">
+          Format: GNAC tourney (top 3) → 16 NCAA regionals of 3-4 (double-elim, top seed hosts) → 8 super regionals (best-of-3) → 8-team World Series (double-elim, best-of-3 final). Your games are highlighted in green.
+        </p>
       </div>
-      {rounds.map(({ rd, title }, i) => (
-        <div key={i} className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
-          <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">{title}</div>
-          {!rd ? (
-            <div className="text-sm text-gray-500 italic font-pixel">{i === 0 ? "Didn't make the GNAC tournament." : 'Not reached.'}</div>
-          ) : (
-            <UserRoundGames save={save} rd={rd} />
-          )}
-        </div>
-      ))}
+
+      {/* Round 1 — GNAC Tournament */}
+      <PSCard title="Round 1 — GNAC Tournament (top 3, double-elim)">
+        {ps.rounds?.CONF ? <UserRoundGames save={save} rd={ps.rounds.CONF} />
+          : <div className="text-sm text-gray-500 italic font-pixel">Didn't make the GNAC tournament.</div>}
+      </PSCard>
+
+      {/* Round 2 — Regionals (full field) */}
+      <PSCard title="Round 2 — NCAA Regionals (16 sites, double-elim)">
+        {ps.rounds?.REGIONAL && <div className="mb-2"><UserRoundGames save={save} rd={ps.rounds.REGIONAL} /></div>}
+        {regionals.length === 0 ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {regionals.map((rg) => (
+              <div key={rg.idx} className={'rounded p-2 text-xs font-pixel border ' +
+                (rg.isUser ? 'border-pnw-green bg-pnw-green/10' : 'border-[#3a3a5e] bg-[#1a1a2e]')}>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">
+                  Regional {rg.idx + 1} · host {nm(rg.hostId)}{rg.isUser && <span className="text-pnw-green"> (yours)</span>}
+                  {rg.champion && <span className="text-amber-300"> → {nm(rg.champion)}</span>}
+                </div>
+                <div className="leading-snug">{seedList(rg.seeds)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </PSCard>
+
+      {/* Round 3 — Super Regionals */}
+      <PSCard title="Round 3 — Super Regionals (best-of-3)">
+        {ps.rounds?.SUPER && <div className="mb-2"><UserRoundGames save={save} rd={ps.rounds.SUPER} /></div>}
+        {supers.length === 0 ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {supers.map((sr) => (
+              <div key={sr.idx} className={'rounded p-2 text-xs font-pixel border ' +
+                (sr.isUser ? 'border-pnw-green bg-pnw-green/10' : 'border-[#3a3a5e] bg-[#1a1a2e]')}>
+                <span className={sr.a === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(sr.a)}</span>
+                <span className="text-gray-500"> vs </span>
+                <span className={sr.b === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(sr.b)}</span>
+                {sr.champion && <span className="text-amber-300"> → {nm(sr.champion)}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </PSCard>
+
+      {/* Round 4 — World Series */}
+      <PSCard title="Round 4 — D2 World Series (8 teams, double-elim → best-of-3 final)">
+        {ps.rounds?.WS && <div className="mb-2"><UserRoundGames save={save} rd={ps.rounds.WS} /></div>}
+        {!ws ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
+        ) : (
+          <div className="text-xs font-pixel space-y-1">
+            <div><span className="text-gray-400">Field (8): </span>{seedList(ws.seeds)}</div>
+            {ws.finalists && (
+              <div><span className="text-gray-400">Finals: </span>
+                <span className={ws.finalists[0] === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(ws.finalists[0])}</span>
+                <span className="text-gray-500"> vs </span>
+                <span className={ws.finalists[1] === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(ws.finalists[1])}</span>
+              </div>
+            )}
+            {ws.champion && <div className="text-amber-300">Champion: {nm(ws.champion)}</div>}
+          </div>
+        )}
+      </PSCard>
+
       {champName && (
         <div className="text-[12px] text-[#a8a8c8] font-pixel mt-2">
           National champion: <strong className={ps.nationalChampion === userId ? 'text-pnw-green' : 'text-white'}>{champName}</strong>
@@ -88,6 +155,16 @@ function D2PostseasonPage({ save, ps, userSchool }) {
       <Link to={`/gm/dashboard?slot=${new URLSearchParams(window.location.search).get('slot') || '1'}`} className="inline-block mt-4 text-sm text-pnw-green font-pixel hover:underline">← Dashboard</Link>
     </div>
     </GMShell>
+  )
+}
+
+// Small card wrapper for a D2 postseason round.
+function PSCard({ title, children }) {
+  return (
+    <div className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+      <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">{title}</div>
+      {children}
+    </div>
   )
 }
 
