@@ -3520,26 +3520,11 @@ def nwac_mvp_tracker(season: int = Query(2026)):
             "mvp_score": round(value * qmult, 4),
         })
 
-    # Dedup two-way players: keep their higher-scoring role.
-    best_by_player = {}
-    for g in hitters + pitchers:
-        pid = g["player_id"]
-        if pid not in best_by_player or g["mvp_score"] > best_by_player[pid]["mvp_score"]:
-            best_by_player[pid] = g
-    all_players = sorted(best_by_player.values(), key=lambda x: -x["mvp_score"])
-
-    # ── Top 10, guaranteeing >= 3 pitchers ──
-    top = all_players[:10]
-    n_pit = sum(1 for g in top if g["role"] == "PIT")
-    if n_pit < 3:
-        need = 3 - n_pit
-        in_ids = {g["player_id"] for g in top}
-        extra_pitchers = [g for g in all_players if g["role"] == "PIT" and g["player_id"] not in in_ids][:need]
-        # Drop the lowest-scoring hitters to make room
-        hitters_in_top = sorted([g for g in top if g["role"] == "BAT"], key=lambda x: x["mvp_score"])
-        drop_ids = {g["player_id"] for g in hitters_in_top[:len(extra_pitchers)]}
-        top = [g for g in top if g["player_id"] not in drop_ids] + extra_pitchers
-        top.sort(key=lambda x: -x["mvp_score"])
+    # Two independent leaderboards: top hitters and top pitchers by MVP score.
+    hitters.sort(key=lambda x: -x["mvp_score"])
+    pitchers.sort(key=lambda x: -x["mvp_score"])
+    top_hitters = hitters[:10]
+    top_pitchers = pitchers[:10]
 
     def fmt_player(g, rank):
         name = f"{g['first_name']} {g['last_name']}"
@@ -3575,11 +3560,10 @@ def nwac_mvp_tracker(season: int = Query(2026)):
             **key_stats,
         }
 
-    players_out = [fmt_player(g, i + 1) for i, g in enumerate(top)]
-
     return {
         "season": season,
-        "players": players_out,
+        "hitters": [fmt_player(g, i + 1) for i, g in enumerate(top_hitters)],
+        "pitchers": [fmt_player(g, i + 1) for i, g in enumerate(top_pitchers)],
     }
 
 
