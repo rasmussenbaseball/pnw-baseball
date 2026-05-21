@@ -4,6 +4,7 @@ import { useStatLeaders, useNationalRankings, useTeamRatings, useSummerStatLeade
 import { divisionBadgeClass, formatGameTime } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import NWACChampionshipBracket from '../components/NWACChampionshipBracket'
+import NWACChampionshipOdds from '../components/NWACChampionshipOdds'
 
 const SEASON = 2026
 
@@ -52,8 +53,9 @@ export default function Homepage() {
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
 
-      {/* NWAC Championships takeover — interactive bracket */}
+      {/* NWAC Championships takeover — interactive bracket + odds */}
       <NWACChampionshipBracket />
+      <NWACChampionshipOdds />
 
       {/* Main dashboard grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mt-3 sm:mt-5">

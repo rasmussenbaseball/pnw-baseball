@@ -590,3 +590,11 @@ export function useHistoricMatchupOpponents(teamId, season = CURRENT_SEASON) {
     [teamId, season]
   )
 }
+
+/**
+ * NWAC Championship odds - Monte Carlo probability for each of the 8
+ * championship teams to win the title (and to reach the grand final).
+ */
+export function useNwacChampionshipOdds(season = CURRENT_SEASON) {
+  return useApi('/nwac-championship-odds', { season }, [season])
+}
