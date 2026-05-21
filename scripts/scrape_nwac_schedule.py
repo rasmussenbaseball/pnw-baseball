@@ -104,6 +104,41 @@ def resolve_team_name(display_name):
     return name
 
 
+def scraperapi_fetch(api_key, target_url, min_size=3000, label="page"):
+    """GET target_url through ScraperAPI, escalating proxy tiers if the
+    NWAC AWS WAF returns its tiny challenge page.
+
+    The NWAC site blocks datacenter IPs intermittently — a standard
+    ScraperAPI request usually works but sometimes comes back as a ~2 KB
+    challenge page. When that happens we retry on the premium (residential)
+    and then ultra-premium proxy pools, which get past the WAF reliably.
+
+    Returns the page HTML, or None if every tier was blocked.
+    """
+    tiers = [
+        ("standard", {}),
+        ("premium", {"premium": "true"}),
+        ("ultra_premium", {"ultra_premium": "true"}),
+    ]
+    last_size = 0
+    for tier_name, extra in tiers:
+        params = {"api_key": api_key, "url": target_url}
+        params.update(extra)
+        try:
+            resp = requests.get("http://api.scraperapi.com", params=params, timeout=120)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning(f"{label}: ScraperAPI {tier_name} request failed: {e}")
+            continue
+        last_size = len(resp.text)
+        if last_size >= min_size and "captcha" not in resp.text.lower():
+            logger.info(f"{label}: got {last_size:,} bytes via {tier_name} proxy")
+            return resp.text
+        logger.warning(f"{label}: blocked via {tier_name} proxy (size={last_size})")
+    logger.warning(f"{label}: all proxy tiers blocked (last size={last_size})")
+    return None
+
+
 def fetch_schedule(api_key, season_year):
     """Fetch the NWAC master schedule page via ScraperAPI."""
     season_str = f"{season_year - 1}-{str(season_year)[2:]}"
@@ -111,23 +146,10 @@ def fetch_schedule(api_key, season_year):
 
     logger.info(f"Fetching NWAC schedule: {schedule_url}")
 
-    url = (
-        f"http://api.scraperapi.com"
-        f"?api_key={api_key}"
-        f"&url={schedule_url}"
-    )
-
-    resp = requests.get(url, timeout=120)
-    resp.raise_for_status()
-
-    if len(resp.text) < 5000 or "captcha" in resp.text.lower():
-        raise RuntimeError(
-            f"Schedule page appears blocked (size={len(resp.text)}). "
-            "ScraperAPI may need premium mode for this page."
-        )
-
-    logger.info(f"Got {len(resp.text):,} bytes")
-    return resp.text
+    html = scraperapi_fetch(api_key, schedule_url, min_size=5000, label="Schedule page")
+    if html is None:
+        raise RuntimeError("Schedule page blocked on all ScraperAPI proxy tiers.")
+    return html
 
 
 def _infer_date_from_cell(date_text, current_date, season_year):
@@ -404,22 +426,11 @@ def fetch_composite_today(api_key, season_year):
     composite_url = "https://nwacsports.com/sports/bsb/composite"
     logger.info(f"Fetching NWAC composite page for today ({today}): {composite_url}")
 
-    url = f"http://api.scraperapi.com?api_key={api_key}&url={composite_url}"
-
-    try:
-        resp = requests.get(url, timeout=120)
-        resp.raise_for_status()
-    except Exception as e:
-        logger.warning(f"Composite page fetch failed: {e}")
+    html = scraperapi_fetch(api_key, composite_url, min_size=3000, label="Composite page")
+    if html is None:
         return []
 
-    if len(resp.text) < 3000:
-        logger.warning(f"Composite page appears blocked (size={len(resp.text)})")
-        return []
-
-    logger.info(f"Got {len(resp.text):,} bytes from composite page")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
     games = []
 
     # Each game is in an .event-box div containing two .team divs
