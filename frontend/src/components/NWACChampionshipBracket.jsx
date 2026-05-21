@@ -19,26 +19,22 @@ import {
 
 const TOURNEY = TOURNAMENTS.nwac_championships_2026
 
-// Round groupings for the column layout (game numbers per round)
-const WB_ROUNDS = [
-  { label: 'Round 1', games: [1, 2, 3, 4] },
-  { label: 'Round 2', games: [7, 8] },
-  { label: 'WB Final', games: [11] },
-]
-const LB_ROUNDS = [
-  { label: 'Elimination 1', games: [5, 6] },
-  { label: 'Elimination 2', games: [9, 10] },
-  { label: 'Elimination 3', games: [12] },
-  { label: 'LB Final', games: [13] },
+// Converging layout: winners bracket flows left→center, losers bracket
+// flows right→center, championship sits in the middle where they meet.
+// One row of columns (instead of two stacked sections) keeps the whole
+// thing short enough to see on one screen and fills the full width.
+const COLUMNS = [
+  { key: 'wb1',   label: 'WB Round 1', side: 'wb',    games: [1, 2, 3, 4] },
+  { key: 'wb2',   label: 'WB Round 2', side: 'wb',    games: [7, 8] },
+  { key: 'wbf',   label: 'WB Final',   side: 'wb',    games: [11] },
+  { key: 'champ', label: 'Championship', side: 'champ', games: [14] },
+  { key: 'lbf',   label: 'LB Final',   side: 'lb',    games: [13] },
+  { key: 'lb3',   label: 'LB Elim 3',  side: 'lb',    games: [12] },
+  { key: 'lb2',   label: 'LB Elim 2',  side: 'lb',    games: [9, 10] },
+  { key: 'lb1',   label: 'LB Elim 1',  side: 'lb',    games: [5, 6] },
 ]
 const CHAMP_GAME = 14
 const IF_NEC_GAME = 15
-
-function fmtScheduled(g) {
-  // "Thu May 21 · 9:35 AM"
-  const day = (g.day || '').replace(/^\w+ /, (m) => m) // keep as-is
-  return [g.day, g.time].filter(Boolean).join(' · ')
-}
 
 export default function NWACChampionshipBracket() {
   const [outcomes, setOutcomes] = useState(null)
@@ -125,51 +121,41 @@ export default function NWACChampionshipBracket() {
         </div>
       </div>
 
-      {/* ── Bracket body (horizontal scroll on small screens) ── */}
-      <div className="overflow-x-auto scrollbar-hide px-4 sm:px-6 py-5">
-        <div className="min-w-[860px]">
-          {/* Winners bracket */}
-          <SectionLabel>Winners Bracket</SectionLabel>
-          <div className="flex items-stretch gap-4 sm:gap-6 mb-6">
-            {WB_ROUNDS.map((round) => (
-              <RoundColumn key={round.label} label={round.label}>
-                {round.games.map((num) => (
-                  <GameCard
-                    key={num}
-                    gameNum={num}
-                    outcomes={outcomes}
-                    teamForRef={teamForRef}
-                  />
-                ))}
-              </RoundColumn>
-            ))}
-            {/* Championship card lives at the right edge, spanning visually */}
-            <div className="flex flex-col justify-center">
-              <RoundColumn label="Championship" gold>
-                <GameCard
-                  gameNum={CHAMP_GAME}
-                  outcomes={outcomes}
-                  teamForRef={teamForRef}
-                  championship
-                />
-                <IfNecessaryNote outcomes={outcomes} />
-              </RoundColumn>
+      {/* ── Bracket body — converging layout, fills full width ── */}
+      <div className="overflow-x-auto scrollbar-hide px-3 sm:px-5 pt-3 pb-4">
+        <div className="min-w-[820px]">
+          {/* Group labels: WINNERS (left) · CHAMPIONSHIP (center) · LOSERS (right) */}
+          <div className="flex items-end mb-2">
+            <div className="flex-[3] text-[10px] font-bold uppercase tracking-[0.15em] text-pnw-teal/80">
+              Winners Bracket →
+            </div>
+            <div className="flex-1 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">
+              Title
+            </div>
+            <div className="flex-[4] text-right text-[10px] font-bold uppercase tracking-[0.15em] text-rose-300/70">
+              ← Losers Bracket (elimination)
             </div>
           </div>
 
-          {/* Losers bracket */}
-          <SectionLabel tone="loser">Losers Bracket (elimination)</SectionLabel>
-          <div className="flex items-stretch gap-4 sm:gap-6">
-            {LB_ROUNDS.map((round) => (
-              <RoundColumn key={round.label} label={round.label}>
-                {round.games.map((num) => (
+          {/* Single converging row of columns */}
+          <div className="flex items-stretch gap-2 sm:gap-3">
+            {COLUMNS.map((col) => (
+              <RoundColumn
+                key={col.key}
+                label={col.label}
+                side={col.side}
+                gold={col.side === 'champ'}
+              >
+                {col.games.map((num) => (
                   <GameCard
                     key={num}
                     gameNum={num}
                     outcomes={outcomes}
                     teamForRef={teamForRef}
+                    championship={col.side === 'champ'}
                   />
                 ))}
+                {col.side === 'champ' && <IfNecessaryNote outcomes={outcomes} />}
               </RoundColumn>
             ))}
           </div>
@@ -212,31 +198,20 @@ function StatusPill({ status }) {
   )
 }
 
-// ── Section label ──
-function SectionLabel({ children, tone }) {
-  return (
-    <div
-      className={`text-[10px] font-bold uppercase tracking-[0.15em] mb-2 ${
-        tone === 'loser' ? 'text-rose-300/70' : 'text-pnw-teal/80'
-      }`}
-    >
-      {children}
-    </div>
-  )
-}
-
 // ── Round column wrapper ──
-function RoundColumn({ label, children, gold }) {
+// flex-1 so the eight columns spread evenly across the full width.
+// min-w keeps cards legible and triggers horizontal scroll on phones.
+function RoundColumn({ label, children, side }) {
+  const labelTone =
+    side === 'champ' ? 'text-amber-300'
+    : side === 'lb' ? 'text-rose-300/60'
+    : 'text-pnw-teal/60'
   return (
-    <div className="flex-none w-[180px] flex flex-col">
-      <div
-        className={`text-[9px] font-bold uppercase tracking-wider mb-2 text-center ${
-          gold ? 'text-amber-300' : 'text-white/40'
-        }`}
-      >
+    <div className="flex-1 min-w-[96px] flex flex-col">
+      <div className={`text-[8px] font-bold uppercase tracking-wider mb-1.5 text-center ${labelTone}`}>
         {label}
       </div>
-      <div className="flex flex-col justify-around gap-3 flex-1">{children}</div>
+      <div className="flex flex-col justify-around gap-2 flex-1">{children}</div>
     </div>
   )
 }
@@ -294,7 +269,7 @@ function GameCard({ gameNum, outcomes, teamForRef, championship }) {
 function TeamRow({ team, score, won, isFinal }) {
   const dimmed = isFinal && !won
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${won ? 'bg-amber-400/10' : ''}`}>
+    <div className={`flex items-center gap-1.5 px-2 py-1 ${won ? 'bg-amber-400/10' : ''}`}>
       {team.logo ? (
         <img
           src={team.logo}
