@@ -1046,3 +1046,112 @@ def determine_playoff_fields(projected_conferences):
         brackets.append(champ_bracket)
 
     return brackets
+
+
+# ============================================================
+# NWAC Championship — odds to win it all
+# ============================================================
+# Dedicated, accurate model for the 8-team NWAC Championship at
+# Lower Columbia College (Longview, WA). Unlike the approximate
+# random-draw sim in _simulate_tournaments, this uses the real
+# first-round matchups, true single-game double elimination, and
+# home-field advantage for the host (Lower Columbia).
+
+# Seed -> team_id for the 2026 field (4 conference #1 seeds + 4
+# super-regional winners). Matches frontend lib/brackets.js.
+NWAC_2026_CHAMP_SEEDS = {
+    1: 28,   # N1  Everett
+    2: 44,   # S1  Linn-Benton
+    3: 35,   # E1  Spokane
+    4: 52,   # W1  Lower Columbia (HOST)
+    5: 30,   # WSR Pierce
+    6: 38,   # ESR Wenatchee Valley
+    7: 43,   # SSR Lane
+    8: 27,   # NSR Edmonds
+}
+NWAC_2026_CHAMP_HOST_ID = 52       # Lower Columbia hosts at LCC
+NWAC_2026_CHAMP_HFA = 3.0          # rating-point home bump (~+5-6% win prob at scale=30)
+
+
+def _nwac_game(a, b, ratings, host_id, hfa):
+    """Single game. Returns (winner_id, loser_id). Host gets the HFA bump."""
+    ra = ratings.get(a)
+    rb = ratings.get(b)
+    if ra is None and rb is None:
+        prob_a = 0.5
+    elif rb is None:
+        prob_a = 0.6
+    elif ra is None:
+        prob_a = 0.4
+    else:
+        if a == host_id:
+            ra += hfa
+        if b == host_id:
+            rb += hfa
+        prob_a = elo_win_prob(ra, rb)
+    return (a, b) if random.random() < prob_a else (b, a)
+
+
+def simulate_nwac_championship_odds(
+    team_ratings,
+    seeds=None,
+    host_id=NWAC_2026_CHAMP_HOST_ID,
+    hfa=NWAC_2026_CHAMP_HFA,
+    n_simulations=50000,
+):
+    """
+    Monte Carlo the 8-team NWAC Championship (single-game double elim).
+
+    team_ratings: {team_id: {"power_rating": float, ...}}
+    Returns {team_id: {"champ_pct": float, "final_pct": float}} where
+    champ_pct is P(wins the title) and final_pct is P(reaches the
+    grand final).
+    """
+    seeds = seeds or NWAC_2026_CHAMP_SEEDS
+    ratings = {tid: info.get("power_rating") for tid, info in team_ratings.items()}
+    teams = list(seeds.values())
+
+    def g(a, b):
+        return _nwac_game(a, b, ratings, host_id, hfa)
+
+    champ_counts = {t: 0 for t in teams}
+    final_counts = {t: 0 for t in teams}
+
+    for _ in range(n_simulations):
+        # ── Winners bracket ──
+        w1, l1 = g(seeds[1], seeds[5])
+        w2, l2 = g(seeds[2], seeds[6])
+        w3, l3 = g(seeds[3], seeds[7])
+        w4, l4 = g(seeds[4], seeds[8])
+        # WB semifinals
+        ws1, wsl1 = g(w1, w2)
+        ws2, wsl2 = g(w3, w4)
+        # WB final → winner is undefeated into the grand final
+        wb_champ, wb_loser = g(ws1, ws2)
+
+        # ── Losers bracket (cross-paired to avoid early rematches) ──
+        lb1a, _ = g(l1, l2)
+        lb1b, _ = g(l3, l4)
+        lb2a, _ = g(lb1a, wsl2)
+        lb2b, _ = g(lb1b, wsl1)
+        lb_semi, _ = g(lb2a, lb2b)
+        lb_champ, _ = g(lb_semi, wb_loser)   # LB final: WB-final loser drops in here
+
+        # ── Grand final (bracket reset if the LB team wins) ──
+        final_counts[wb_champ] += 1
+        final_counts[lb_champ] += 1
+        gf_w, gf_l = g(wb_champ, lb_champ)
+        if gf_w == wb_champ:
+            champion = wb_champ
+        else:
+            # LB champ handed WB champ its first loss → winner-take-all replay
+            champion, _ = g(wb_champ, lb_champ)
+        champ_counts[champion] += 1
+
+    return {
+        t: {
+            "champ_pct": champ_counts[t] / n_simulations,
+            "final_pct": final_counts[t] / n_simulations,
+        }
+        for t in teams
+    }

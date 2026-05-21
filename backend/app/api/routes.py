@@ -62,6 +62,9 @@ from ..stats.projections import (
     build_projected_standings,
     determine_playoff_fields,
     elo_win_prob,
+    simulate_nwac_championship_odds,
+    NWAC_2026_CHAMP_SEEDS,
+    NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -3284,6 +3287,104 @@ def playoff_projections(
             "playoffs": playoff_brackets,
             "frozen_conferences": frozen_conferences_meta,
         }
+
+
+@router.get("/nwac-championship-odds")
+@cached_endpoint(ttl_seconds=1800)
+def nwac_championship_odds(season: int = Query(2026)):
+    """
+    Monte Carlo odds for each team to win the 8-team NWAC Championship.
+
+    Strength = the same cross-division power rating used by playoff
+    projections (Pythagorean run diff + wRC+ + FIP + WAR/game, blended
+    with national ranking). Home-field advantage is applied to the host
+    (Lower Columbia). Returns teams sorted by championship probability.
+    """
+    seeds = NWAC_2026_CHAMP_SEEDS
+    team_ids = list(seeds.values())
+    seed_by_team = {tid: s for s, tid in seeds.items()}
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Same inputs the projections engine feeds _compute_power_rating.
+        cur.execute("""
+            SELECT t.id, t.short_name, t.name, t.logo_url, d.level as division_level,
+                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
+                   COALESCE(bat.rs, 0) as runs_scored,
+                   COALESCE(pit.ra, 0) as runs_allowed,
+                   COALESCE(bat.avg_wrc_plus, 100) as avg_wrc_plus,
+                   COALESCE(pit.avg_fip, 4.5) as avg_fip,
+                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as total_war,
+                   cr.national_percentile
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(runs) as rs,
+                    SUM(offensive_war) as total_owar,
+                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus
+                FROM batting_stats WHERE season = %s
+                GROUP BY team_id
+            ) bat ON bat.team_id = t.id
+            LEFT JOIN (
+                SELECT team_id,
+                    SUM(runs_allowed) as ra,
+                    SUM(pitching_war) as total_pwar,
+                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
+                FROM pitching_stats WHERE season = %s
+                GROUP BY team_id
+            ) pit ON pit.team_id = t.id
+            LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
+            WHERE t.id = ANY(%s)
+        """, (season, season, season, season, team_ids))
+        rows = [dict(r) for r in cur.fetchall()]
+
+    team_ratings = {}
+    meta = {}
+    for r in rows:
+        rating = _compute_power_rating(
+            r["wins"] or 0, r["losses"] or 0,
+            r["runs_scored"], r["runs_allowed"],
+            r["avg_wrc_plus"], r["avg_fip"], r["total_war"],
+            r["division_level"], r["national_percentile"],
+        )
+        team_ratings[r["id"]] = {"power_rating": rating, "short_name": r["short_name"]}
+        meta[r["id"]] = {
+            "team_id": r["id"],
+            "name": r["name"],
+            "short_name": r["short_name"],
+            "logo_url": r["logo_url"],
+            "seed": seed_by_team.get(r["id"]),
+            "wins": r["wins"] or 0,
+            "losses": r["losses"] or 0,
+            "power_rating": round(rating, 1) if rating is not None else None,
+        }
+
+    odds = simulate_nwac_championship_odds(team_ratings, n_simulations=50000)
+
+    teams_out = []
+    for tid in team_ids:
+        m = meta.get(tid, {"team_id": tid, "seed": seed_by_team.get(tid)})
+        o = odds.get(tid, {"champ_pct": 0, "final_pct": 0})
+        teams_out.append({
+            **m,
+            "champ_pct": round(o["champ_pct"], 4),
+            "reach_final_pct": round(o["final_pct"], 4),
+            "is_host": tid == NWAC_2026_CHAMP_HOST_ID,
+        })
+    teams_out.sort(key=lambda x: -x["champ_pct"])
+
+    return {
+        "season": season,
+        "venue": "Lower Columbia College, Longview WA",
+        "host_team_id": NWAC_2026_CHAMP_HOST_ID,
+        "n_simulations": 50000,
+        "teams": teams_out,
+    }
 
 
 @router.get("/teams/scatter")
