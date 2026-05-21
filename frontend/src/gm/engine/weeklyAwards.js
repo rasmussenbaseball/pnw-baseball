@@ -120,10 +120,15 @@ function rewardUserPlayer(state, playerId, kind, scope) {
       }
     }
   }
-  // Coach upgrade points
-  awardCoachUpgradePoints(state, scope === 'NAIA' ? 2 : 1,
-    `${scope === 'NAIA' ? 'NAIA' : 'Conf'} ${kind === 'HITTER' ? 'Hitter' : 'Pitcher'} of the Week (${p.firstName} ${p.lastName})`,
-  )
+  // Coach upgrade points — points should be SCARCE (per Nate). A weekly
+  // conference POTW is flavor (0 coach points); only the national POTW grants
+  // a single point.
+  const pts = scope === 'NAIA' ? 1 : 0
+  if (pts > 0) {
+    awardCoachUpgradePoints(state, pts,
+      `National ${kind === 'HITTER' ? 'Hitter' : 'Pitcher'} of the Week (${p.firstName} ${p.lastName})`,
+    )
+  }
 }
 
 /**
@@ -147,18 +152,16 @@ export function computeWeeklyAwards(state) {
     for (const pid of (team.rosterPlayerIds || [])) playerConf[pid] = confId
   }
 
-  // National winners. Only meaningful for NAIA, where the whole league is
-  // simulated with real player stats. For multi-level dynasties (D1/D2/D3/NWAC)
-  // only the user's conference produces player box scores, so a "national"
-  // award would just duplicate the conference winner with a wrong "NAIA"
-  // label — skip it and award the conference POTW only.
-  const isNaiaLevel = !state.level || state.level === 'NAIA'
-  const naiaHitter = isNaiaLevel ? pickBest(weekly,
+  // National winners — best across the WHOLE league. Every level now simulates
+  // all teams with real player box scores (NAIA + full-division D1/D2/D3), so
+  // the national award is meaningful at every level. The display label adapts
+  // to the level at reveal time (NAIA / D2 / ...).
+  const naiaHitter = pickBest(weekly,
     (s) => !s.isPitcher && playerById[s.playerId],
-    hitterWeekScore, MIN_HITTER_WEEK_SCORE) : null
-  const naiaPitcher = isNaiaLevel ? pickBest(weekly,
+    hitterWeekScore, MIN_HITTER_WEEK_SCORE)
+  const naiaPitcher = pickBest(weekly,
     (s) => s.isPitcher && playerById[s.playerId],
-    pitcherWeekScore, MIN_PITCHER_WEEK_SCORE) : null
+    pitcherWeekScore, MIN_PITCHER_WEEK_SCORE)
 
   // Conference winners — one set per conference
   const confWinners = {}
@@ -247,9 +250,11 @@ export function revealWeeklyAwards(state) {
     const isNaia = a.scope === 'NAIA'
     const isYours = !!userTeam?.rosterPlayerIds?.includes(a.playerId)
     if (isYours && (isNaia || a.scope === 'CONF')) userWinners.push(a)
-    // Newsfeed: only the user's conference + NAIA winners (too noisy otherwise)
+    // Newsfeed: only the user's conference + national winners (too noisy otherwise)
     if (!isUserConf && !isNaia) continue
-    const scopeLabel = a.scope === 'NAIA' ? 'NAIA' : (a.conferenceName || 'Conf')
+    // National label adapts to the dynasty's level (NAIA / D2 / D1 / D3 / NWAC).
+    const natLabel = (state.level && state.level !== 'NAIA') ? state.level : 'NAIA'
+    const scopeLabel = a.scope === 'NAIA' ? natLabel : (a.conferenceName || 'Conf')
     const kindLabel = a.kind === 'HITTER' ? 'Hitter' : 'Pitcher'
     state.newsfeed = state.newsfeed || []
     state.newsfeed.unshift({

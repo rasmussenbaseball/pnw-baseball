@@ -454,6 +454,59 @@ function autoSpendAP(save, summary, forceAllOnRecruiting = false) {
       summary.actionsTaken.push(`Additional recruiting — ${spent} AP`)
     }
   }
+
+  // 6. SOAK UP every remaining AP on scouting (per Nate: a full roster doesn't
+  // mean you stop scouting — you just can't offer). Scouting the board still
+  // reduces fog + builds next year's class. Guarantees auto mode never wastes
+  // AP, even when there's nothing else left to do this week.
+  if (ap >= 1) {
+    const spent = spendRemainingOnScouting(save, ap)
+    if (spent > 0) {
+      ap -= spent
+      summary.actionsTaken.push(`Scouted the board (used leftover AP) — ${spent} AP`)
+    }
+  }
+}
+
+/**
+ * Spend ALL remaining AP scouting open recruits. Works even when the roster is
+ * full — scouting builds knowledge + next year's board without making offers.
+ * Prefers higher-value scouting actions (SCOUT_TRIP) for the least-scouted
+ * recruits, then falls back to repeatable cheap actions (CALL/TEXT) so any
+ * leftover AP is fully consumed.
+ */
+function spendRemainingOnScouting(save, apBudget) {
+  const userSchoolId = save.userSchoolId
+  const open = Object.values(save.recruits || {}).filter(r => r.status === 'open')
+  if (open.length === 0) return 0
+  const rng = makeRng('autoScoutSoak', save.calendar?.year, save.calendar?.weekOfYear, save.seed || 1)
+  const ladder = [ACTION_TYPES.SCOUT_TRIP, ACTION_TYPES.CALL, ACTION_TYPES.TEXT].filter(Boolean)
+  let spent = 0
+  let guard = 0
+  while ((apBudget - spent) >= 1 && guard < 1000) {
+    guard++
+    let did = false
+    for (const r of open) {
+      for (const action of ladder) {
+        if (!action || (apBudget - spent) < action.apCost) continue
+        try {
+          // One-shot actions (SCOUT_TRIP) return { alreadyApplied:true } when
+          // already used — that's a no-op, so don't charge AP; fall through to
+          // a repeatable action (CALL/TEXT) instead.
+          const res = applyRecruitingAction(r, userSchoolId, action, rng)
+          if (res && res.alreadyApplied) continue
+          save.ap.currentWeek -= action.apCost
+          save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
+          spent += action.apCost
+          did = true
+          break
+        } catch (err) { /* action not allowed for this recruit — try next */ }
+      }
+      if ((apBudget - spent) < 1) break
+    }
+    if (!did) break   // nothing applicable left — stop
+  }
+  return spent
 }
 
 /**

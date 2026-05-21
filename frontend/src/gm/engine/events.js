@@ -504,8 +504,12 @@ function runDevelopment(state) {
     if (gain >= 1.5) devReport.push({ player: updated, gain })
     if (gain <= -1.5) devReport.push({ player: updated, gain })   // include big drops too
     delete updated._devGain
-    // Class advance + redshirt — pulled from old runEndOfYear path
-    const REDSHIRT_GAME_LIMIT = 11
+    // Class advance + redshirt. The generous "played ≤11 games → auto-redshirt"
+    // rule is NAIA-only (per Nate). At NCAA levels (D1/D2/D3) + NWAC, appearing
+    // in even ONE game burns the year — so only a player who played ZERO games
+    // can redshirt (limit 0).
+    const isNaiaLevel = !state.level || state.level === 'NAIA'
+    const REDSHIRT_GAME_LIMIT = isNaiaLevel ? 11 : 0
     const gp = (state.playerStats?.[statsKey] ?? state._archivedPlayerStats?.[statsKey])?.gamesPlayed || 0
     const eligibleToRedshirt = !updated.redshirtUsed && (updated.seasonsUsed || 0) < 3
     const shouldRedshirt = eligibleToRedshirt && gp <= REDSHIRT_GAME_LIMIT
@@ -693,7 +697,7 @@ function runDraft(state) {
   state.newsfeed.unshift({
     id: `draft_${state.calendar.year}`,
     year: state.calendar.year, week: 3, type: 'AWARD',
-    headline: `${summarizeDraft(picks, userConfId)}`,
+    headline: `${summarizeDraft(picks, userConfId, state.level)}`,
     payload: { year: state.calendar.year, picks },
   })
   const userPicks = picks.filter(p => p.teamId === state.userSchoolId)

@@ -123,14 +123,15 @@ export function simMlbDraft(state, year) {
  * Format a one-line draft summary for the newsfeed. e.g.:
  *   "MLB Draft: 8 NAIA players picked — 6 P, 2 hitters. 2 from CCC."
  */
-export function summarizeDraft(picks, userConferenceId) {
-  if (!picks || picks.length === 0) return '0 NAIA players selected in this year\'s MLB Draft.'
+export function summarizeDraft(picks, userConferenceId, level = 'NAIA') {
+  const lbl = (level && level !== 'NAIA') ? level : 'NAIA'
+  if (!picks || picks.length === 0) return `0 ${lbl} players selected in this year's MLB Draft.`
   const pitchers = picks.filter(p => p.isPitcher).length
   const hitters = picks.length - pitchers
   const confCount = userConferenceId
     ? picks.filter(p => p.conferenceId === userConferenceId).length
     : 0
-  let s = `MLB Draft: ${picks.length} NAIA player${picks.length === 1 ? '' : 's'} picked — ${pitchers} P, ${hitters} hitter${hitters === 1 ? '' : 's'}.`
-  if (confCount > 0) s += `${confCount} from your conference.`
+  let s = `MLB Draft: ${picks.length} ${lbl} player${picks.length === 1 ? '' : 's'} picked — ${pitchers} P, ${hitters} hitter${hitters === 1 ? '' : 's'}.`
+  if (confCount > 0) s += ` ${confCount} from your conference.`
   return s
 }

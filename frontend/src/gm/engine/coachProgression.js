@@ -119,35 +119,49 @@ export function autoUpgradeCoach(state) {
  */
 export function awardForGameResult(state, won, opponentRank = null, isConf = false) {
   if (!won) return
-  // Tuned DOWN again (May 2026): routine wins now earn NOTHING — over a ~50-game
-  // season that was handing out 25-30 points. Points should be scarce. Only a
-  // win over a nationally-ranked opponent earns anything (+1 top-25, +2 top-10),
-  // so the real engine for upgrade points is postseason runs + end-of-year
-  // honors + MLB draft picks.
-  let pts = 0
-  if (opponentRank && opponentRank <= 25) pts += 1
-  if (opponentRank && opponentRank <= 10) pts += 1
-  if (pts <= 0) return
-  awardCoachUpgradePoints(state, pts, `Win over #${opponentRank}`)
+  // Points are SCARCE. Routine wins earn nothing; only a win over a top-10
+  // national team earns a single point (the season baseline + postseason +
+  // honors are the real engine).
+  if (!(opponentRank && opponentRank <= 10)) return
+  awardCoachUpgradePoints(state, 1, `Win over #${opponentRank}`)
 }
 
 /** Postseason — called when the user advances or wins a round. */
 export function awardForPostseason(state, kind) {
+  // Scaled down (May 2026) so a deep postseason run is meaningful but not the
+  // bulk of a coach's yearly points. Winning it all ≈ +14 across the bracket.
   const grant = {
-    CONF_TOURNAMENT_WIN: 12,
-    OPENING_ROUND_ADVANCE: 8,
-    OPENING_ROUND_WIN: 15,
-    WORLD_SERIES_APPEARANCE: 18,
-    WORLD_SERIES_WIN: 30,
+    CONF_TOURNAMENT_WIN: 1,
+    OPENING_ROUND_ADVANCE: 1,
+    OPENING_ROUND_WIN: 1,
+    WORLD_SERIES_APPEARANCE: 2,
+    WORLD_SERIES_WIN: 2,
   }[kind]
   if (!grant) return
   awardCoachUpgradePoints(state, grant, kind.replaceAll('_', ' ').toLowerCase())
 }
 
-/** End-of-year — called once per spring after the season wraps. */
+/** End-of-year — called once per spring after the season wraps. Honors are a
+ * small bonus on top of the record-scaled season baseline. */
 export function awardForEndOfYearHonors(state, { firstTeam = 0, secondTeam = 0, goldGlove = 0, draftPicks = 0 }) {
-  if (firstTeam > 0)  awardCoachUpgradePoints(state, firstTeam * 3, `${firstTeam} All-Conf 1st team`)
-  if (secondTeam > 0) awardCoachUpgradePoints(state, secondTeam * 2, `${secondTeam} All-Conf 2nd team`)
-  if (goldGlove > 0)  awardCoachUpgradePoints(state, goldGlove * 3, `${goldGlove} Gold Glove`)
-  if (draftPicks > 0) awardCoachUpgradePoints(state, draftPicks * 5, `${draftPicks} MLB Draft pick${draftPicks > 1 ? 's' : ''}`)
+  if (firstTeam > 0)  awardCoachUpgradePoints(state, firstTeam, `${firstTeam} All-Conf 1st team`)
+  if (draftPicks > 0) awardCoachUpgradePoints(state, draftPicks, `${draftPicks} MLB Draft pick${draftPicks > 1 ? 's' : ''}`)
+  // 2nd team + Gold Glove no longer grant coach points (they piled up fast on
+  // a loaded roster); the season baseline + 1st-team + draft cover honors.
+}
+
+/**
+ * Per-season coaching baseline — the BULK of a coach's yearly upgrade points,
+ * scaled by the team's record. Targets Nate's range: a great team (~40+ wins)
+ * ≈ 18 baseline, a bad team (~12 wins) ≈ 9-10. With the (small) postseason +
+ * honors bonuses on top, a great coach lands ~25/yr and a poor one ~10/yr.
+ * Call once per season.
+ */
+export function awardSeasonCoachingBaseline(state) {
+  const team = state.teams?.[state.userSchoolId]
+  if (!team) return
+  const wins = team.wins || 0
+  // Floor of 7 (coaching a full season) + ~0.28/win, capped at 18.
+  const pts = Math.max(7, Math.min(18, Math.round(7 + wins * 0.28)))
+  awardCoachUpgradePoints(state, pts, `Season coaching (${wins} wins)`)
 }

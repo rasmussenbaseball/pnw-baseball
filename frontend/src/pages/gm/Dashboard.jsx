@@ -179,7 +179,7 @@ export default function Dashboard() {
   // they fill them in — otherwise their first season has gaps.
   const seasonYear = save.calendar.year + 1
   const openSlots = useMemo(
-    () => openNonConfWeeks(save.userSchoolId, school.conferenceId, save.schedule || [], seasonYear),
+    () => openNonConfWeeks(save.userSchoolId, school.conferenceId, save.schedule || [], seasonYear, save.level),
     [save, seasonYear, school.conferenceId],
   )
   // Fall scrimmages were removed (May 2026) — schedule completeness now only
@@ -1688,7 +1688,7 @@ function FocusTasks({ save, slot, inOffseason, autoOn }) {
   const seasonYear = save.calendar.year + 1
   const userSchool = save.schools[save.userSchoolId]
   const wk = save.calendar?.weekOfYear ?? 0
-  const openSchedSlots = openNonConfWeeks(save.userSchoolId, userSchool.conferenceId, save.schedule || [], seasonYear)
+  const openSchedSlots = openNonConfWeeks(save.userSchoolId, userSchool.conferenceId, save.schedule || [], seasonYear, save.level)
   const req = requiredActionForWeek(save, wk)
   const ap = save.ap?.currentWeek ?? 0
   const apActive = wk >= 4   // AP unlocks in wk 4

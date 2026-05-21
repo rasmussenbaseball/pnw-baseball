@@ -21,7 +21,7 @@
 
 import { synthesizeConferenceStats, buildTeamSynthesisContext, synthesizeSeasonStats } from './leagueStats'
 import { leagueAverages, computeBatting, computePitching } from './advancedStats'
-import { awardForEndOfYearHonors } from './coachProgression'
+import { awardForEndOfYearHonors, awardSeasonCoachingBaseline } from './coachProgression'
 
 const HITTER_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH']
 const MIN_PA = 80
@@ -46,6 +46,10 @@ export function runEndOfRegularSeasonAwards(state) {
 
   const seed = state.seed || state.rngSeed || 1
   state.awardsHistory[year] = {}
+
+  // Per-season coaching baseline (the bulk of a coach's yearly upgrade points,
+  // scaled by record). Awarded once here at season's end.
+  awardSeasonCoachingBaseline(state)
 
   for (const conferenceId of Object.keys(state.conferences || {})) {
     const result = computeConferenceAwards(state, conferenceId, year, seed)
