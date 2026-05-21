@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useStatLeaders, useNationalRankings, useTeamRatings, useGamesTicker, useLiveScores, useSummerStatLeaders, useUpsetOfTheDay, useDailyPerformers, useKeyMatchup, useWinProbabilities } from '../hooks/useApi'
+import { useStatLeaders, useNationalRankings, useTeamRatings, useSummerStatLeaders, useUpsetOfTheDay, useDailyPerformers, useKeyMatchup, useWinProbabilities } from '../hooks/useApi'
 import { divisionBadgeClass, formatGameTime } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
+import NWACChampionshipBracket from '../components/NWACChampionshipBracket'
 
 const SEASON = 2026
 
@@ -34,8 +35,6 @@ export default function Homepage() {
   const { data: leaders } = useStatLeaders(SEASON, 5, true)
   const { data: rankings } = useNationalRankings(SEASON)
   const { data: ratings } = useTeamRatings(SEASON)
-  const { data: recentGames } = useGamesTicker(SEASON, 15)
-  const { data: liveData, refetch: refetchLive } = useLiveScores()
   const { data: wclLeaders } = useSummerStatLeaders(2025, 'WCL')
   const { data: upsetData } = useUpsetOfTheDay(SEASON)
   const { data: matchupData } = useKeyMatchup(today, SEASON)
@@ -48,29 +47,13 @@ export default function Homepage() {
   const perfDate = hasTodayPerformers ? today : yesterday
   const { user } = useAuth()
 
-  // Show live ticker when there are any today games (live, final, or scheduled)
-  const todayGames = liveData?.today || []
-  const hasLiveGames = todayGames.some(g => g.status === 'live')
-  const hasTodayGames = todayGames.length > 0
-
-  // Auto-refresh live scores every 2 minutes
-  useEffect(() => {
-    if (!refetchLive) return
-    const interval = setInterval(() => refetchLive(), 120000)
-    return () => clearInterval(interval)
-  }, [refetchLive])
-
   return (
     <div>
-      {/* Game scores ticker - shows today's games (live/final/scheduled), falls back to recent DB results */}
-      {hasTodayGames ? (
-        <LiveGamesTicker games={todayGames} hasLive={hasLiveGames} />
-      ) : (
-        <GameResultsTicker games={recentGames} />
-      )}
-
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
+
+      {/* NWAC Championships takeover — interactive bracket */}
+      <NWACChampionshipBracket />
 
       {/* Main dashboard grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mt-3 sm:mt-5">
@@ -100,159 +83,6 @@ export default function Homepage() {
 
 
 
-// ════════════════════════════════════════════
-// GAME RESULTS TICKER (horizontal scroll of recent scores)
-// ════════════════════════════════════════════
-function GameResultsTicker({ games }) {
-  if (!games || games.length === 0) return null
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-3">
-      <div className="flex items-center">
-        <div className="flex-none px-3 py-2 bg-pnw-slate text-white">
-          <Link to="/scoreboard" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors">
-            Scores
-          </Link>
-        </div>
-        <div className="flex overflow-x-auto scrollbar-hide gap-0 divide-x divide-gray-100 flex-1">
-          {games.map((g) => {
-            const isFinal = g.status === 'final' || (g.home_score != null && g.away_score != null)
-            const homeWon = isFinal && g.home_score > g.away_score
-            const awayWon = isFinal && g.away_score > g.home_score
-            return (
-              <Link
-                key={g.id}
-                to={`/game/${g.id}`}
-                className="flex-none px-3 py-1.5 hover:bg-gray-50 transition-colors min-w-[120px]"
-              >
-                {/* Away */}
-                <div className={`flex items-center justify-between gap-2 ${homeWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
-                  <div className="flex items-center gap-1 min-w-0">
-                    {g.away_logo && (
-                      <img src={g.away_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
-                        onError={(e) => { e.target.style.display = 'none' }} />
-                    )}
-                    <span className="text-[11px] truncate">{g.away_name}</span>
-                  </div>
-                  {g.away_score != null && (
-                    <span className="text-[11px] font-mono tabular-nums">{g.away_score}</span>
-                  )}
-                </div>
-                {/* Home */}
-                <div className={`flex items-center justify-between gap-2 ${awayWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
-                  <div className="flex items-center gap-1 min-w-0">
-                    {g.home_logo && (
-                      <img src={g.home_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
-                        onError={(e) => { e.target.style.display = 'none' }} />
-                    )}
-                    <span className="text-[11px] truncate">{g.home_name}</span>
-                  </div>
-                  {g.home_score != null && (
-                    <span className="text-[11px] font-mono tabular-nums">{g.home_score}</span>
-                  )}
-                </div>
-                {/* Date */}
-                <div className="text-[9px] text-gray-300 text-center mt-0.5">
-                  {g.game_date ? new Date(g.game_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-                  {g.innings && g.innings !== 9 ? ` (${g.innings})` : ''}
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-        <Link to="/scoreboard" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      </div>
-    </div>
-  )
-}
-
-
-// ════════════════════════════════════════════
-// LIVE GAMES TICKER (shows today's games with live indicators)
-// ════════════════════════════════════════════
-function LiveGamesTicker({ games, hasLive }) {
-  if (!games || games.length === 0) return null
-
-  return (
-    <div className={`bg-white rounded-xl shadow-sm border overflow-hidden mb-3 ${hasLive ? 'border-red-200' : 'border-gray-200'}`}>
-      <div className="flex items-center">
-        <div className={`flex-none px-3 py-2 ${hasLive ? 'bg-red-600' : 'bg-pnw-slate'} text-white`}>
-          <Link to="/scoreboard" className="text-[10px] uppercase tracking-wider font-bold hover:text-teal-300 transition-colors flex items-center gap-1">
-            {hasLive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-            {hasLive ? 'Live' : 'Recent'}
-          </Link>
-        </div>
-        <div className="flex overflow-x-auto scrollbar-hide gap-0 divide-x divide-gray-100 flex-1">
-          {games.map((g, i) => {
-            const isLive = g.status === 'live'
-            const isFinal = g.status === 'final'
-            const teamScore = g.team_score != null && g.team_score !== '' ? parseInt(g.team_score) : null
-            const oppScore = g.opponent_score != null && g.opponent_score !== '' ? parseInt(g.opponent_score) : null
-            const teamWon = isFinal && teamScore > oppScore
-            const oppWon = isFinal && oppScore > teamScore
-
-            return (
-              <Link
-                key={`${g.id}-${g.team}-${i}`}
-                to="/scoreboard"
-                className={`flex-none px-3 py-1.5 hover:bg-gray-50 transition-colors min-w-[130px] ${isLive ? 'bg-red-50/50' : ''}`}
-              >
-                {/* Team */}
-                <div className={`flex items-center justify-between gap-2 ${oppWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
-                  <div className="flex items-center gap-1 min-w-0">
-                    {g.team_logo && (
-                      <img src={g.team_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
-                        onError={(e) => { e.target.style.display = 'none' }} />
-                    )}
-                    <span className="text-[11px] truncate">{g.team}</span>
-                  </div>
-                  {teamScore != null ? (
-                    <span className="text-[11px] font-mono tabular-nums">{teamScore}</span>
-                  ) : null}
-                </div>
-                {/* Opponent */}
-                <div className={`flex items-center justify-between gap-2 ${teamWon ? 'text-gray-400' : 'font-semibold text-gray-800'}`}>
-                  <div className="flex items-center gap-1 min-w-0">
-                    {(g.opponent_logo || g.opponent_image) && (
-                      <img src={g.opponent_logo || g.opponent_image} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
-                        onError={(e) => { e.target.style.display = 'none' }} />
-                    )}
-                    <span className="text-[11px] truncate">{g.location === 'away' ? '@ ' : ''}{g.opponent}</span>
-                  </div>
-                  {oppScore != null ? (
-                    <span className="text-[11px] font-mono tabular-nums">{oppScore}</span>
-                  ) : null}
-                </div>
-                {/* Status */}
-                <div className="text-[9px] text-center mt-0.5">
-                  {isLive ? (
-                    <span className="text-red-500 font-bold animate-pulse">
-                      {g.game_state_display && g.game_state_display !== 'SCHEDULED' ? g.game_state_display : 'LIVE'}
-                    </span>
-                  ) : isFinal ? (
-                    <span className="text-gray-300">Final</span>
-                  ) : (() => {
-                    const t = formatGameTime(g.time)
-                    return t ? <span className="text-gray-300">{t}</span> : null
-                  })()}
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-        <Link to="/scoreboard" className="flex-none px-3 py-2 text-nw-teal hover:text-nw-teal/70 transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      </div>
-    </div>
-  )
-}
 
 
 // ════════════════════════════════════════════
