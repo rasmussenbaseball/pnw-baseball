@@ -33,6 +33,7 @@ export default function PortalPDFs() {
         </p>
       </div>
 
+      <NWACChampBoardCard onOpen={() => navigate('/portal/nwac-tournament-sheet')} />
       <ScoutingSheetCard onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)} />
       <BullpenSheetCard onPick={(id) => navigate(`/portal/bullpen-sheet/${id}`)} />
       <CatcherCardsCard onPick={(id) => navigate(`/portal/catcher-cards/${id}`)} />
@@ -40,6 +41,37 @@ export default function PortalPDFs() {
         navigate(`/portal/pdfs/player-card/${id}${side ? `?side=${side}` : ''}`)} />
       <BulkPlayerCardsCard onGenerate={(idsParam) =>
         navigate(`/portal/pdfs/bulk-player-cards?ids=${encodeURIComponent(idsParam)}`)} />
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────
+// NWAC Championship Board — cross-team ranked board (no picker).
+// Every pitcher then every hitter across the 8 championship teams,
+// ranked by WAR, shaded vs the field. Landscape multi-page PDF.
+// ─────────────────────────────────────────────────────────
+function NWACChampBoardCard({ onOpen }) {
+  return (
+    <div className="bg-gradient-to-br from-[#04323d] via-[#062f3a] to-[#021b22] border border-pnw-teal/40 rounded-lg shadow-sm p-4 text-white">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="text-lg font-bold text-white">NWAC Championship Board</h2>
+        <span className="text-[11px] text-pnw-teal/80">landscape · all 8 teams · ranked by WAR</span>
+      </div>
+      <p className="text-xs text-white/70 mb-3">
+        The whole championship field on two ranked boards: every pitcher, then every hitter
+        across all 8 teams in Longview, sorted by WAR. Each row shows year, height, weight, and
+        commitment, with main and advanced stats color-shaded against the field.
+      </p>
+      <div className="flex items-center justify-end">
+        <button
+          onClick={onOpen}
+          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                     bg-pnw-teal text-white hover:bg-white hover:text-[#04323d] transition-colors"
+        >
+          Open Board
+        </button>
+      </div>
     </div>
   )
 }

@@ -96,6 +96,7 @@ CACHE_CONTROL_RULES = [
     ("/api/v1/playoff-projections",     (1800, 600)),
     ("/api/v1/nwac-championship-odds",  (1800, 600)),
     ("/api/v1/nwac-mvp-tracker",        (1800, 600)),
+    ("/api/v1/portal/nwac-tournament-sheet", (1800, 600)),
     ("/api/v1/records",                 (1800, 600)),
     ("/api/v1/all-conference",          (1800, 600)),
     ("/api/v1/seasons",                 (3600, 600)),

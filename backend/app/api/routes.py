@@ -21462,6 +21462,21 @@ def portal_scouting_sheet(
         return result
 
 
+@router.get("/portal/nwac-tournament-sheet")
+@cached_endpoint(ttl_seconds=1800)
+def portal_nwac_tournament_sheet(
+    season: int = Query(2026, description="Season year"),
+):
+    """Cross-team scouting board for the 8 NWAC Championship teams.
+    Two ranked-by-WAR boards (pitchers, then hitters) pooling every
+    player across the field, with bio columns (Ht/Wt/Yr/Commitment)
+    and percentile shading computed within the championship field."""
+    from .nwac_tournament_sheet import build_nwac_tournament_sheet
+    with get_connection() as conn:
+        cur = conn.cursor()
+        return build_nwac_tournament_sheet(cur, season)
+
+
 @router.post("/coaching/lineup-helper/build")
 def lineup_helper_build(req: BuildLineupRequest):
     """Build-from-scratch mode. User picks 9 players (any positions, no
