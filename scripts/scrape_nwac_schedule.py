@@ -496,10 +496,21 @@ def fetch_composite_today(api_key, season_year):
         # Get status (Final, Final - 7 innings, etc.)
         status_el = box.select_one(".event-status") or box.select_one("[class*='status']")
         status_text = status_el.get_text(strip=True) if status_el else ""
-        is_final = "Final" in status_text or (away["score"] is not None and home["score"] is not None)
+        # A game is complete ONLY when its status explicitly reads "Final".
+        # Do NOT treat "both scores present" as final: an in-progress game
+        # (e.g. 3-2 in the 5th) also shows both scores, and recording it as
+        # final would push a non-final result onto the bracket/odds before
+        # the game is actually over. Mirrors the schedule-page parser.
+        is_final = "final" in status_text.lower()
 
         if not is_final:
             continue  # Only grab completed games
+
+        # A final game must have real scores; skip if the box hasn't posted
+        # them yet (don't write a scoreless "final").
+        if away["score"] is None or home["score"] is None:
+            logger.info(f"SKIP(no-scores): {away['name']} @ {home['name']} status='{status_text}'")
+            continue
 
         # Parse innings from status
         innings = 9
