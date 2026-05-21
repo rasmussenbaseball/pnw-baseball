@@ -3306,62 +3306,67 @@ def nwac_championship_odds(season: int = Query(2026)):
 
     with get_connection() as conn:
         cur = conn.cursor()
-        # Same inputs the projections engine feeds _compute_power_rating.
+        # PPI is normalized WITHIN the JUCO pool, so it spreads NWAC teams
+        # across the full strength range (the cross-division power rating
+        # compresses them against a shared floor/ceiling). Compute PPI over
+        # every JUCO team, then pull the 8 championship teams.
         cur.execute("""
-            SELECT t.id, t.short_name, t.name, t.logo_url, d.level as division_level,
-                   COALESCE(s.wins, 0) as wins, COALESCE(s.losses, 0) as losses,
-                   COALESCE(bat.rs, 0) as runs_scored,
-                   COALESCE(pit.ra, 0) as runs_allowed,
-                   COALESCE(bat.avg_wrc_plus, 100) as avg_wrc_plus,
-                   COALESCE(pit.avg_fip, 4.5) as avg_fip,
-                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as total_war,
-                   cr.national_percentile
+            SELECT t.id, t.short_name, t.name, t.logo_url,
+                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
+                   COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
+                   COALESCE(pit.team_fip, 4.5) as team_fip,
+                   COALESCE(s.wins, 0) as wins,
+                   COALESCE(s.losses, 0) as losses,
+                   COALESCE(s.conference_wins, 0) as conf_wins,
+                   COALESCE(s.conference_losses, 0) as conf_losses
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
             LEFT JOIN (
                 SELECT team_id,
-                    SUM(runs) as rs,
                     SUM(offensive_war) as total_owar,
                     SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
-                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as avg_wrc_plus
-                FROM batting_stats WHERE season = %s
-                GROUP BY team_id
+                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
+                FROM batting_stats WHERE season = %s GROUP BY team_id
             ) bat ON bat.team_id = t.id
             LEFT JOIN (
                 SELECT team_id,
-                    SUM(runs_allowed) as ra,
                     SUM(pitching_war) as total_pwar,
                     SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
-                FROM pitching_stats WHERE season = %s
-                GROUP BY team_id
+                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
+                FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
-            LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
-            WHERE t.id = ANY(%s)
-        """, (season, season, season, season, team_ids))
-        rows = [dict(r) for r in cur.fetchall()]
+            WHERE t.is_active = 1 AND d.level = 'JUCO'
+        """, (season, season, season))
+        juco_rows = [dict(r) for r in cur.fetchall()]
+
+    for t in juco_rows:
+        total = t["wins"] + t["losses"]
+        t["win_pct"] = round(t["wins"] / total, 3) if total > 0 else 0.0
+        ct = t["conf_wins"] + t["conf_losses"]
+        t["conf_win_pct"] = round(t["conf_wins"] / ct, 3) if ct > 0 else 0.0
+    juco_ranked = compute_ppi_for_division(juco_rows)
+    by_id = {t["id"]: t for t in juco_ranked}
 
     team_ratings = {}
     meta = {}
-    for r in rows:
-        rating = _compute_power_rating(
-            r["wins"] or 0, r["losses"] or 0,
-            r["runs_scored"], r["runs_allowed"],
-            r["avg_wrc_plus"], r["avg_fip"], r["total_war"],
-            r["division_level"], r["national_percentile"],
-        )
-        team_ratings[r["id"]] = {"power_rating": rating, "short_name": r["short_name"]}
-        meta[r["id"]] = {
-            "team_id": r["id"],
-            "name": r["name"],
-            "short_name": r["short_name"],
-            "logo_url": r["logo_url"],
-            "seed": seed_by_team.get(r["id"]),
-            "wins": r["wins"] or 0,
-            "losses": r["losses"] or 0,
-            "power_rating": round(rating, 1) if rating is not None else None,
+    for tid in team_ids:
+        t = by_id.get(tid)
+        if not t:
+            continue
+        ppi = t.get("ppi")
+        team_ratings[tid] = {"power_rating": ppi, "short_name": t["short_name"]}
+        meta[tid] = {
+            "team_id": tid,
+            "name": t["name"],
+            "short_name": t["short_name"],
+            "logo_url": t["logo_url"],
+            "seed": seed_by_team.get(tid),
+            "wins": t["wins"],
+            "losses": t["losses"],
+            "ppi": round(ppi, 1) if ppi is not None else None,
+            "ppi_rank": t.get("ppi_rank"),
         }
 
     odds = simulate_nwac_championship_odds(team_ratings, n_simulations=50000)
