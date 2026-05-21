@@ -9,6 +9,12 @@
 
 const API_BASE = '/api/v1'
 
+// Canvas dimensions the graphic renderer draws into. Some tournament
+// sectionLabels use CANVAS_W for full-width centering, so the constant
+// must live alongside the data it's referenced from.
+export const CANVAS_W = 1920
+export const CANVAS_H = 1080
+
 export const TOURNAMENTS = {
   ccc_2026: {
     label: 'CCC Tournament',
