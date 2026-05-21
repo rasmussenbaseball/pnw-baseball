@@ -134,14 +134,16 @@ export default function NWACChampionshipBracket() {
       <div className="overflow-x-auto scrollbar-hide px-3 sm:px-5 pt-3 pb-4">
         <div className="min-w-[820px]">
           {/* Group labels: WINNERS (left) · CHAMPIONSHIP (center) · LOSERS (right) */}
-          <div className="flex items-end mb-2">
-            <div className="flex-[3] text-[10px] font-bold uppercase tracking-[0.15em] text-pnw-teal/80">
+          {/* Weights mirror the 8 columns below: winners = wb1/wb2/wbf/semi
+              (4), title = championship (1), losers = lbf/lb2/lb1 (3). */}
+          <div className="flex items-end mb-2 gap-2 sm:gap-3">
+            <div className="flex-[4] text-[10px] font-bold uppercase tracking-[0.15em] text-pnw-teal/80">
               Winners Bracket →
             </div>
             <div className="flex-1 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">
               Title
             </div>
-            <div className="flex-[4] text-right text-[10px] font-bold uppercase tracking-[0.15em] text-rose-300/70">
+            <div className="flex-[3] text-right text-[10px] font-bold uppercase tracking-[0.15em] text-rose-300/70">
               ← Losers Bracket (elimination)
             </div>
           </div>
