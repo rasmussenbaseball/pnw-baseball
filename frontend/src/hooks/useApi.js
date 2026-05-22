@@ -596,7 +596,13 @@ export function useHistoricMatchupOpponents(teamId, season = CURRENT_SEASON) {
  * championship teams to win the title (and to reach the grand final).
  */
 export function useNwacChampionshipOdds(season = CURRENT_SEASON) {
-  return useApi('/nwac-championship-odds', { season }, [season])
+  // Live tournament widget. The API is proxied through Vercel, whose edge
+  // cache was serving a stale copy (e.g. a team shown eliminated minutes
+  // after the result was corrected). A per-minute token makes the URL
+  // unique each minute, bypassing the CDN copy and auto-refetching every
+  // minute. The origin's own 180s cache keeps recompute cost bounded.
+  const t = Math.floor(Date.now() / 60000)
+  return useApi('/nwac-championship-odds', { season, _t: t }, [season, t])
 }
 
 /**
@@ -604,5 +610,8 @@ export function useNwacChampionshipOdds(season = CURRENT_SEASON) {
  * championship teams (WAR rate, wRC+/FIP+), >=3 pitchers guaranteed.
  */
 export function useNwacMvpTracker(season = CURRENT_SEASON) {
-  return useApi('/nwac-mvp-tracker', { season }, [season])
+  // Same per-minute cache-bust as the odds widget so the tracker reflects
+  // tournament games promptly instead of a stale edge-cached response.
+  const t = Math.floor(Date.now() / 60000)
+  return useApi('/nwac-mvp-tracker', { season, _t: t }, [season, t])
 }
