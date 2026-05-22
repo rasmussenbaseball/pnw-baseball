@@ -503,13 +503,20 @@ def fetch_composite_today(api_key, season_year):
         # the game is actually over. Mirrors the schedule-page parser.
         is_final = "final" in status_text.lower()
 
-        if not is_final:
-            continue  # Only grab completed games
-
         # A final game must have real scores; skip if the box hasn't posted
         # them yet (don't write a scoreless "final").
-        if away["score"] is None or home["score"] is None:
+        if is_final and (away["score"] is None or home["score"] is None):
             logger.info(f"SKIP(no-scores): {away['name']} @ {home['name']} status='{status_text}'")
+            continue
+
+        # We record NON-final games too (status='scheduled'), as long as the
+        # composite gave us a box-score URL. The composite is the ONLY page
+        # that lists NWAC postseason games and it only shows the CURRENT day,
+        # so capturing the (permanent) box-score URL now lets the box-score
+        # scraper finalize a late game later by fetching the URL directly —
+        # even after the composite has rolled over to the next day. Without a
+        # URL there's nothing to come back to, so skip those.
+        if not is_final and not box_score_url:
             continue
 
         # Parse innings from status
@@ -538,16 +545,20 @@ def fetch_composite_today(api_key, season_year):
             "game_date": game_date,
             "away_team_name": away_db_name,
             "home_team_name": home_db_name,
-            "away_score": away["score"],
-            "home_score": home["score"],
+            # Only store scores for FINAL games; a scheduled/in-progress row
+            # keeps null scores so a live score never reaches the bracket.
+            "away_score": away["score"] if is_final else None,
+            "home_score": home["score"] if is_final else None,
             "innings": innings,
             "is_conference_game": is_conference,
             "game_number": game_number,
-            "status": "final",
+            "status": "final" if is_final else "scheduled",
             "source_url": box_score_url,
         })
 
-    logger.info(f"Parsed {len(games)} completed games from composite page")
+    n_final = sum(1 for g in games if g["status"] == "final")
+    logger.info(f"Parsed {len(games)} games from composite page "
+                f"({n_final} final, {len(games) - n_final} scheduled w/ box-score URL)")
     return games
 
 

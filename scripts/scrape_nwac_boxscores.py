@@ -216,10 +216,15 @@ def get_recent_nwac_games(cur, season, days):
         JOIN conferences c ON ht.conference_id = c.id
         JOIN divisions d ON c.division_id = d.id
         WHERE g.season = %s
-          AND g.status = 'final'
           AND g.source_url LIKE '%%nwacsports.com%%boxscores%%'
           AND d.level = 'JUCO'
           AND g.game_date >= CURRENT_DATE - (%s || ' days')::interval
+          -- Final games (re-scraped for scorer corrections) PLUS games we
+          -- captured as 'scheduled' (with only a box-score URL) whose date
+          -- has passed — those are postseason/late games that finalized
+          -- after our last schedule scrape. They're over, so it's safe to
+          -- pull the box score and finalize them from it.
+          AND (g.status = 'final' OR g.game_date < CURRENT_DATE)
         ORDER BY g.game_date DESC
     """, (season, days))
     return cur.fetchall()
@@ -351,6 +356,23 @@ def process_boxscore(box_url, season_year, dry_run=False):
             box_url,
             game_id,
         ))
+
+        # Finalize from the box score if this game wasn't marked final yet.
+        # This handles late postseason games we captured as 'scheduled' (with
+        # only their box-score URL) because they finished after the last
+        # schedule scrape. The box score is the authoritative final score.
+        # Gated on `status IS DISTINCT FROM 'final'` so it never overwrites an
+        # already-final game (scorer-correction re-scrapes keep their score).
+        if away_score is not None and home_score is not None:
+            cur.execute("""
+                UPDATE games
+                SET home_score = %s, away_score = %s,
+                    status = 'final', updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND status IS DISTINCT FROM 'final'
+            """, (home_score, away_score, game_id))
+            if cur.rowcount:
+                logger.info(f"    Finalized game {game_id} from box score: "
+                            f"{away_name} {away_score} @ {home_name} {home_score}")
 
         # Clear any existing batting/pitching data for this game
         cur.execute("DELETE FROM game_batting WHERE game_id = %s", (game_id,))
