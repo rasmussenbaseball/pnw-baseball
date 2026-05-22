@@ -3443,127 +3443,180 @@ def _ip_to_real(ip):
 @cached_endpoint(ttl_seconds=180)  # short TTL so the tracker reflects tournament games promptly
 def nwac_mvp_tracker(season: int = Query(2026)):
     """
-    Most-likely tournament-MVP candidates from the 8 championship teams.
+    Tournament MVP Watch — ranks players by their actual NWAC Championship
+    performance (Thu–Mon), not season stats.
 
-    Ranks players by an MVP score: primary weight on WAR rate (WAR/PA for
-    hitters, WAR/9 for pitchers), then total WAR, then quality (wRC+ /
-    FIP+). Returns the top 10 with at least 3 pitchers guaranteed (WAR is
-    hitter-dominated, so the top pitchers are force-included if needed).
+    Only box scores from championship-window games (May 21–26) between the
+    8 championship teams count. Each performance earns box-score points,
+    summed across the weekend, and we return the top 10 hitters and top 10
+    pitchers by total points.
+
+    HITTER points (per game, summed):
+      1B +1, 2B +2, 3B +3, HR +4, BB +1, HBP +1, RBI +1, R +1, SB +1, CS -1
+
+    PITCHER points (per appearance, summed):
+      out +1 (so a K = +2: out plus the strikeout), K +1, ER -2,
+      H -0.5, BB/HBP -0.5, HR -1.5, plus bonuses: quality start +2,
+      win +2, save +2
     """
     team_ids = list(NWAC_2026_CHAMP_SEEDS.values())
-    MIN_PA = 100
-    MIN_IP = 20.0
+    TOURNEY_START = "2026-05-21"  # Thursday
+    TOURNEY_END = "2026-05-26"    # buffer past the Monday (May 25) finale
 
+    # Shared WHERE for "final championship-window games between the 8 teams".
+    # The team_id IN (home,away) clause is the mandatory ghost-row guard for
+    # game_batting / game_pitching (orphan rows from past scraping bugs).
     with get_connection() as conn:
         cur = conn.cursor()
+
         cur.execute("""
-            SELECT p.id as player_id, p.first_name, p.last_name, p.position,
-                   t.id as team_id, t.short_name, t.logo_url,
-                   bs.plate_appearances, bs.offensive_war, bs.wrc_plus,
-                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.home_runs
-            FROM batting_stats bs
-            JOIN players p ON p.id = bs.player_id
-            JOIN teams t ON t.id = bs.team_id
-            WHERE bs.season = %s AND bs.team_id = ANY(%s)
-              AND bs.plate_appearances >= %s AND bs.offensive_war IS NOT NULL
-        """, (season, team_ids, MIN_PA))
+            SELECT gb.player_id, p.first_name, p.last_name, p.position,
+                   gb.team_id, t.short_name, t.logo_url,
+                   COUNT(DISTINCT gb.game_id) AS games,
+                   COALESCE(SUM(gb.at_bats),0)       AS ab,
+                   COALESCE(SUM(gb.runs),0)          AS r,
+                   COALESCE(SUM(gb.hits),0)          AS h,
+                   COALESCE(SUM(gb.doubles),0)       AS doubles,
+                   COALESCE(SUM(gb.triples),0)       AS triples,
+                   COALESCE(SUM(gb.home_runs),0)     AS hr,
+                   COALESCE(SUM(gb.rbi),0)           AS rbi,
+                   COALESCE(SUM(gb.walks),0)         AS bb,
+                   COALESCE(SUM(gb.hit_by_pitch),0)  AS hbp,
+                   COALESCE(SUM(gb.strikeouts),0)    AS k,
+                   COALESCE(SUM(gb.stolen_bases),0)  AS sb,
+                   COALESCE(SUM(gb.caught_stealing),0) AS cs
+            FROM game_batting gb
+            JOIN games g   ON g.id = gb.game_id
+            JOIN players p ON p.id = gb.player_id
+            JOIN teams t   ON t.id = gb.team_id
+            WHERE g.season = %s
+              AND g.game_date BETWEEN %s AND %s
+              AND g.status = 'final'
+              AND g.home_team_id = ANY(%s) AND g.away_team_id = ANY(%s)
+              AND gb.team_id = ANY(%s)
+              AND gb.team_id IN (g.home_team_id, g.away_team_id)
+              AND gb.player_id IS NOT NULL
+            GROUP BY gb.player_id, p.first_name, p.last_name, p.position,
+                     gb.team_id, t.short_name, t.logo_url
+        """, (season, TOURNEY_START, TOURNEY_END, team_ids, team_ids, team_ids))
         bat_rows = [dict(r) for r in cur.fetchall()]
 
+        # Pitchers: one row per appearance so we can convert each game's IP
+        # (baseball notation) to outs and tally per-game bonuses correctly.
         cur.execute("""
-            SELECT p.id as player_id, p.first_name, p.last_name, p.position,
-                   t.id as team_id, t.short_name, t.logo_url,
-                   ps.innings_pitched, ps.pitching_war, ps.fip_plus, ps.fip,
-                   ps.era, ps.strikeouts, ps.k_per_9
-            FROM pitching_stats ps
-            JOIN players p ON p.id = ps.player_id
-            JOIN teams t ON t.id = ps.team_id
-            WHERE ps.season = %s AND ps.team_id = ANY(%s)
-              AND ps.pitching_war IS NOT NULL
-        """, (season, team_ids))
-        pit_rows = [dict(r) for r in cur.fetchall()]
+            SELECT gp.player_id, p.first_name, p.last_name,
+                   gp.team_id, t.short_name, t.logo_url,
+                   gp.innings_pitched, gp.strikeouts, gp.earned_runs,
+                   gp.hits_allowed, gp.walks, gp.hit_batters,
+                   gp.home_runs_allowed, gp.decision, gp.is_quality_start
+            FROM game_pitching gp
+            JOIN games g   ON g.id = gp.game_id
+            JOIN players p ON p.id = gp.player_id
+            JOIN teams t   ON t.id = gp.team_id
+            WHERE g.season = %s
+              AND g.game_date BETWEEN %s AND %s
+              AND g.status = 'final'
+              AND g.home_team_id = ANY(%s) AND g.away_team_id = ANY(%s)
+              AND gp.team_id = ANY(%s)
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
+              AND gp.player_id IS NOT NULL
+        """, (season, TOURNEY_START, TOURNEY_END, team_ids, team_ids, team_ids))
+        pit_appearances = [dict(r) for r in cur.fetchall()]
 
-    # WAR (offensive_war / pitching_war) is a common "wins" currency across
-    # hitters and pitchers, so we rank on it globally — which is naturally
-    # hitter-heavy (hitters compile ~2-3 WAR vs ~1 for arms). WAR rate
-    # (WAR/PA, WAR/9) gates out volume-only compilers and a quality
-    # multiplier (wRC+ / FIP+) refines. The >=3 pitcher floor below then
-    # guarantees arms are represented.
-    PA_REF = 200.0   # reference PA for hitter rate scaling
-    IP_REF = 60.0    # reference IP for pitcher rate scaling
-
+    # ── Hitters: box-score points ──
     hitters = []
     for r in bat_rows:
-        pa = r["plate_appearances"] or 0
-        war = float(r["offensive_war"] or 0)
-        rate = (war / pa) if pa else 0
-        quality = float(r["wrc_plus"] or 100)
-        qmult = 0.75 + 0.25 * max(0.5, min(2.0, quality / 100.0))
-        # 60% total WAR + 40% rate projected to a reference workload
-        value = 0.60 * war + 0.40 * (rate * PA_REF)
+        singles = max(0, (r["h"] or 0) - (r["doubles"] or 0) - (r["triples"] or 0) - (r["hr"] or 0))
+        pts = (
+            1 * singles + 2 * r["doubles"] + 3 * r["triples"] + 4 * r["hr"]
+            + 1 * r["bb"] + 1 * r["hbp"] + 1 * r["rbi"] + 1 * r["r"]
+            + 1 * r["sb"] - 1 * r["cs"]
+        )
+        ab = r["ab"] or 0
+        avg = (r["h"] / ab) if ab else None
         hitters.append({
-            **r, "role": "BAT", "war": war, "rate": rate, "quality": quality,
-            "mvp_score": round(value * qmult, 4),
+            "player_id": r["player_id"],
+            "name": f"{r['first_name']} {r['last_name']}",
+            "position": r.get("position") or "—",
+            "team_id": r["team_id"], "team_short": r["short_name"], "team_logo": r["logo_url"],
+            "points": round(float(pts), 1),
+            "games": r["games"], "ab": ab, "h": r["h"], "hr": r["hr"], "rbi": r["rbi"],
+            "r": r["r"], "sb": r["sb"], "bb": r["bb"], "avg": round(avg, 3) if avg is not None else None,
+            "stat_line": (
+                f"{r['h']}-{ab}, {r['hr']} HR, {r['rbi']} RBI"
+                + (f", {r['sb']} SB" if r["sb"] else "")
+            ),
         })
+
+    # ── Pitchers: aggregate appearances, then box-score points ──
+    pit_agg = {}
+    for a in pit_appearances:
+        pid = a["player_id"]
+        agg = pit_agg.get(pid)
+        if agg is None:
+            agg = {
+                "player_id": pid,
+                "name": f"{a['first_name']} {a['last_name']}",
+                "team_id": a["team_id"], "team_short": a["short_name"], "team_logo": a["logo_url"],
+                "games": 0, "outs": 0, "k": 0, "er": 0, "h": 0, "bb": 0, "hbp": 0,
+                "hr": 0, "qs": 0, "wins": 0, "saves": 0,
+            }
+            pit_agg[pid] = agg
+        agg["games"] += 1
+        agg["outs"] += int(round(_ip_to_real(a["innings_pitched"]) * 3))
+        agg["k"]   += a["strikeouts"] or 0
+        agg["er"]  += a["earned_runs"] or 0
+        agg["h"]   += a["hits_allowed"] or 0
+        agg["bb"]  += a["walks"] or 0
+        agg["hbp"] += a["hit_batters"] or 0
+        agg["hr"]  += a["home_runs_allowed"] or 0
+        if a["is_quality_start"]:
+            agg["qs"] += 1
+        dec = (a["decision"] or "").strip().upper()
+        if dec in ("W", "WIN"):
+            agg["wins"] += 1
+        elif dec in ("S", "SV", "SAVE", "SVO"):
+            agg["saves"] += 1
 
     pitchers = []
-    for r in pit_rows:
-        ip = _ip_to_real(r["innings_pitched"])
-        if ip < MIN_IP:
-            continue
-        war = float(r["pitching_war"] or 0)
-        rate9 = (war / ip * 9.0) if ip else 0
-        quality = float(r["fip_plus"] or 100)
-        qmult = 0.75 + 0.25 * max(0.5, min(2.0, quality / 100.0))
-        value = 0.60 * war + 0.40 * (rate9 / 9.0 * IP_REF)
+    for agg in pit_agg.values():
+        outs = agg["outs"]
+        pts = (
+            1 * outs + 1 * agg["k"] - 2 * agg["er"]
+            - 0.5 * agg["h"] - 0.5 * (agg["bb"] + agg["hbp"]) - 1.5 * agg["hr"]
+            + 2 * agg["qs"] + 2 * agg["wins"] + 2 * agg["saves"]
+        )
+        innings = outs / 3.0
+        era = (agg["er"] * 9.0 / innings) if innings else None
+        # Display innings in baseball notation (e.g. 6.2 = 6 2/3).
+        ip_disp = (outs // 3) + (outs % 3) / 10.0
         pitchers.append({
-            **r, "role": "PIT", "ip_real": ip, "war": war, "rate": rate9, "quality": quality,
-            "mvp_score": round(value * qmult, 4),
+            "player_id": agg["player_id"],
+            "name": agg["name"],
+            "position": "P",
+            "team_id": agg["team_id"], "team_short": agg["team_short"], "team_logo": agg["team_logo"],
+            "points": round(float(pts), 1),
+            "games": agg["games"], "ip": round(ip_disp, 1), "k": agg["k"],
+            "er": agg["er"], "h": agg["h"], "bb": agg["bb"],
+            "era": round(era, 2) if era is not None else None,
+            "stat_line": (
+                f"{ip_disp:.1f} IP, {agg['k']} K"
+                + (f", {era:.2f} ERA" if era is not None else "")
+            ),
         })
 
-    # Two independent leaderboards: top hitters and top pitchers by MVP score.
-    hitters.sort(key=lambda x: -x["mvp_score"])
-    pitchers.sort(key=lambda x: -x["mvp_score"])
-    top_hitters = hitters[:10]
-    top_pitchers = pitchers[:10]
-
-    def fmt_player(g, rank):
-        name = f"{g['first_name']} {g['last_name']}"
-        if g["role"] == "PIT":
-            stat_line = f"{g['ip_real']:.1f} IP · {g['era']:.2f} ERA · {int(round(g['quality']))} FIP+"
-            key_stats = {
-                "ip": round(g["ip_real"], 1),
-                "era": round(float(g["era"]), 2) if g["era"] is not None else None,
-                "fip_plus": round(g["quality"], 1),
-                "war": round(g["war"], 2),
-                "k": g.get("strikeouts"),
-            }
-        else:
-            stat_line = f"{int(round(g['quality']))} wRC+ · {g['offensive_war']:.1f} oWAR · {g['home_runs'] or 0} HR"
-            key_stats = {
-                "pa": g["plate_appearances"],
-                "wrc_plus": round(g["quality"], 1),
-                "war": round(g["war"], 2),
-                "hr": g.get("home_runs"),
-                "avg": round(float(g["batting_avg"]), 3) if g.get("batting_avg") is not None else None,
-            }
-        return {
-            "rank": rank,
-            "player_id": g["player_id"],
-            "name": name,
-            "position": "P" if g["role"] == "PIT" else (g.get("position") or "—"),
-            "role": g["role"],
-            "team_id": g["team_id"],
-            "team_short": g["short_name"],
-            "team_logo": g["logo_url"],
-            "mvp_score": g["mvp_score"],
-            "stat_line": stat_line,
-            **key_stats,
-        }
+    hitters.sort(key=lambda x: (-x["points"], -(x["hr"] or 0)))
+    pitchers.sort(key=lambda x: (-x["points"], -x["k"]))
+    for i, h in enumerate(hitters[:10]):
+        h["rank"] = i + 1
+    for i, p in enumerate(pitchers[:10]):
+        p["rank"] = i + 1
 
     return {
         "season": season,
-        "hitters": [fmt_player(g, i + 1) for i, g in enumerate(top_hitters)],
-        "pitchers": [fmt_player(g, i + 1) for i, g in enumerate(top_pitchers)],
+        "window": {"start": TOURNEY_START, "end": TOURNEY_END},
+        "hitters": hitters[:10],
+        "pitchers": pitchers[:10],
     }
 
 

@@ -22,6 +22,9 @@ export default function NWACMvpTracker() {
         <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-white leading-snug">
           Tournament MVP Watch
         </h2>
+        <p className="text-[10px] text-pnw-teal/70 mt-1 font-medium">
+          Box score points · Longview, Thu–Mon · updates live
+        </p>
       </div>
 
       {/* Two columns: hitters | pitchers */}
@@ -63,11 +66,12 @@ function MvpColumn({ title, accent, players, loading }) {
 
 function MvpRow({ player, accent }) {
   const isPitcher = accent === 'sky'
-  // Secondary stat shown under the name: quality metric for quick read.
-  const sub = isPitcher
-    ? `${player.fip_plus != null ? Math.round(player.fip_plus) : '—'} FIP+ · ${player.era != null ? player.era.toFixed(2) : '—'} ERA`
-    : `${player.wrc_plus != null ? Math.round(player.wrc_plus) : '—'} wRC+ · ${player.hr ?? 0} HR`
+  // Secondary line: the player's actual tournament box-score line.
+  const sub = player.stat_line
   const warTone = isPitcher ? 'text-sky-300' : 'text-emerald-300'
+  // Points are whole numbers for hitters, half-points possible for pitchers.
+  const pts = player.points ?? 0
+  const ptsStr = Number.isInteger(pts) ? `${pts}` : pts.toFixed(1)
 
   return (
     <Link
@@ -95,10 +99,10 @@ function MvpRow({ player, accent }) {
       </div>
       <div className="text-right shrink-0">
         <div className={`text-[12px] font-bold tabular-nums leading-none ${warTone}`}>
-          {player.war?.toFixed(1)}
+          {ptsStr}
         </div>
         <div className="text-[7px] uppercase tracking-wider text-white/30 leading-tight">
-          {isPitcher ? 'pWAR' : 'oWAR'}
+          PTS
         </div>
       </div>
     </Link>
