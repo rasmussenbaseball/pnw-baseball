@@ -7450,7 +7450,8 @@ def team_stats(team_id: int, season: int = Query(...)):
                     team_stats_row[ts_key] = v
 
         cur.execute(
-            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
+            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.jersey_number
                FROM batting_stats bs
                JOIN players p ON bs.player_id = p.id
                WHERE bs.team_id = %s AND bs.season = %s
@@ -7477,7 +7478,8 @@ def team_stats(team_id: int, season: int = Query(...)):
         cur.execute(
             """SELECT ps.*,
                       COALESCE(ps.k_pct, 0) - COALESCE(ps.bb_pct, 0) as k_bb_pct,
-                      p.first_name, p.last_name, p.position, p.year_in_school
+                      p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.jersey_number
                FROM pitching_stats ps
                JOIN players p ON ps.player_id = p.id
                WHERE ps.team_id = %s AND ps.season = %s

@@ -39,6 +39,15 @@ export default function StatsTable({
   const renderCell = (row, col, rowIndex) => {
     // Special column renderers
     if (col.key === 'rank') {
+      // On rosters / team-page stat tables the "#" column should show the
+      // player's actual jersey number, not a positional rank. We detect that
+      // by the row carrying a `jersey_number` field (team-page responses do;
+      // leaderboards don't). Fall back to the row index everywhere else so
+      // global leaderboards keep their natural 1, 2, 3, ... ranking.
+      if ('jersey_number' in row) {
+        const j = row.jersey_number
+        return (j === null || j === undefined || j === '') ? '—' : j
+      }
       return offset + rowIndex + 1
     }
 
