@@ -1082,10 +1082,11 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
     ? nat?.openingRound?.sites?.find(s => s.teams.some(t => t.id === userId))
     : null
   const ws = nat?.worldSeries
-  const isD2 = ps.level === 'D2'
-  // Which round is "live" this week. D2 runs 4 rounds (conf tourney wk39 →
-  // regional wk40 → super regional wk41 → WS wk42); everyone else runs 3.
-  const roundLabel = isD2
+  const is4Round = ps.level === 'D2' || ps.level === 'D3'
+  const confAbbr4R = save.conferences?.[ps.userConfId]?.abbreviation || (ps.level === 'D3' ? 'NWC' : 'GNAC')
+  // Which round is "live" this week. 4-round leagues (D2 + D3) run conf tourney
+  // wk39 → regional wk40 → super regional wk41 → WS wk42; everyone else runs 3.
+  const roundLabel = is4Round
     ? (highlightWeek === 39 ? 'Conference Tournament'
       : highlightWeek === 40 ? 'NCAA Regional'
       : highlightWeek === 41 ? 'Super Regional'
@@ -1104,16 +1105,16 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
       >
         {!ps.userQualified && (
           <div className="text-[11px] text-gray-500 italic mb-2">
-            {isD2 ? "Your team didn't make the GNAC tournament — but a strong record can still earn an at-large NCAA bid."
+            {is4Round ? `Your team didn't make the ${confAbbr4R} tournament — but a strong record can still earn an at-large NCAA bid.`
               : "Your team didn't make the conference tournament — season over. Watch the brackets play out."}
           </div>
         )}
-        {isD2 ? (
+        {is4Round ? (
           <>
-            <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title="Round 1 — GNAC Tournament" active={highlightWeek === 39} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title={`Round 1 — ${confAbbr4R} Tournament`} active={highlightWeek === 39} />
             <InteractiveRoundRow save={save} round={ps.rounds?.REGIONAL} title="Round 2 — NCAA Regional" active={highlightWeek === 40} />
             <InteractiveRoundRow save={save} round={ps.rounds?.SUPER} title="Round 3 — Super Regional (best-of-3)" active={highlightWeek === 41} />
-            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title="Round 4 — D2 World Series" active={highlightWeek === 42} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title={`Round 4 — ${ps.level} World Series`} active={highlightWeek === 42} />
           </>
         ) : (
           <>
@@ -1126,7 +1127,7 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
           {ps.userNatChamp ? (
             <span className="text-amber-600 font-bold">NATIONAL CHAMPIONS!</span>
           ) : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON' ? (
-            <span className="text-gray-500">Eliminated in the {({ CONF: isD2 ? 'GNAC tournament' : 'conference tournament', REGIONAL: isD2 ? 'regional' : 'opening round', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.</span>
+            <span className="text-gray-500">Eliminated in the {({ CONF: is4Round ? `${confAbbr4R} tournament` : 'conference tournament', REGIONAL: is4Round ? 'regional' : 'opening round', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.</span>
           ) : null}
           {ps.nationalChampion && (
             <div className="mt-0.5">

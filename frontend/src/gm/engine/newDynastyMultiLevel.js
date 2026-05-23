@@ -297,7 +297,11 @@ export function newDynastyMultiLevel(input) {
   } else {
     schedule = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
   }
-  if (level === 'D2') schedule = schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > 12))
+  // 4-round leagues (D2 + D3) end the regular season a week early — keep
+  // seasonWeek <= 12 (wk38) so wk39 is free for the conference tournament.
+  if (level === 'D2' || level === 'D3') {
+    schedule = schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > 12))
+  }
 
   // 6. Calendar — same dynasty-start cadence as NAIA
   const calendar = {

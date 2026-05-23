@@ -23,10 +23,13 @@ import { fastSimGame } from './sim'
 import { nonNaiaToUniversal } from './nwbbRating'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
-// Abstract D2 universe (strength-only teams that fill the national field around
-// the user's real GNAC program).
+// Abstract D2 + D3 universes — fallback for older saves that don't have the
+// full division built out as real programs. In a full-division dynasty every
+// team is real, so these are usually no-ops.
 const D2_ABSTRACT = (nonNaiaRaw.divisions || []).find(d => d.id === 'D2')?.teams?.map(t => ({ ...t, division: 'D2' })) || []
 const D2_ABSTRACT_BY_ID = Object.fromEntries(D2_ABSTRACT.map(t => [t.id, t]))
+const D3_ABSTRACT = (nonNaiaRaw.divisions || []).find(d => d.id === 'D3')?.teams?.map(t => ({ ...t, division: 'D3' })) || []
+const D3_ABSTRACT_BY_ID = Object.fromEntries(D3_ABSTRACT.map(t => [t.id, t]))
 
 const STAGE_WEEK = { CONF: 40, REGIONAL: 41, WS: 42 }
 const STAGE_SEASONWEEK = { CONF: 14, REGIONAL: 15, WS: 16 }
@@ -275,7 +278,11 @@ function generatePendingGame(state, stage, pending, hostId = null) {
  * (CONF 40, REGIONAL 41, WS 42).
  */
 function psWeekFor(state, stage) {
-  if (state.level === 'D2') return ({ CONF: 39, REGIONAL: 40, SUPER: 41, WS: 42 })[stage] ?? 42
+  // 4-round leagues (D2 + D3) end the regular season a week early so the
+  // bracket fits in 4 weeks: conf tourney 39, regional 40, super 41, WS 42.
+  if (state.level === 'D2' || state.level === 'D3') {
+    return ({ CONF: 39, REGIONAL: 40, SUPER: 41, WS: 42 })[stage] ?? 42
+  }
   return ({ CONF: 40, REGIONAL: 41, WS: 42 })[stage] ?? 42
 }
 
@@ -390,9 +397,12 @@ export function tickInteractivePostseason(state) {
   const userId = state.userSchoolId
   const year = state.calendar.year
   const ratings = seedFromPear(state.schools, state.conferences)
-  // D2 background games use the D2 rating universe (real GNAC + abstract teams);
-  // everyone else uses the PEAR-seeded NAIA universe.
-  const sim = state.level === 'D2' ? makeD2Sim(state) : makeNonUserSim(ratings)
+  // 4-round leagues (D2, D3) use a level-specific rating universe (real teams
+  // in the division + abstract fallback); NAIA / others use the PEAR-seeded
+  // universe.
+  const sim = state.level === 'D2' ? makeD2Sim(state)
+    : state.level === 'D3' ? makeD3Sim(state)
+    : makeNonUserSim(ratings)
   const getUserResult = getUserResultFromSchedule(state, year, stage)
 
   if (round.format === 'DE') {
@@ -699,9 +709,9 @@ function finalize(state, ratings) {
 // (8-team double-elim into a best-of-3 final, wk42). Real GNAC teams play full
 // sims; the abstract national field is fast-simmed. Hosts + seeds by ranking.
 
-/** Team display name for either a real school or an abstract D2 program. */
+/** Team display name for either a real school or an abstract D2/D3 program. */
 export function teamNameOf(state, id) {
-  return state.schools?.[id]?.name || D2_ABSTRACT_BY_ID[id]?.name || 'Opponent'
+  return state.schools?.[id]?.name || D2_ABSTRACT_BY_ID[id]?.name || D3_ABSTRACT_BY_ID[id]?.name || 'Opponent'
 }
 
 /** Unified 0-100 rating for any D2 team (real → NWBB rating; abstract → PEAR). */
@@ -948,6 +958,206 @@ function finalizeD2(state) {
     headline: ps.userNatChamp
       ? `${state.schools[userId]?.name} WINS THE NCAA DIVISION II NATIONAL CHAMPIONSHIP!`
       : `${champName} win the NCAA Division II title.`,
+    big: ps.userNatChamp,
+  })
+}
+
+// ─── D3 INTERACTIVE POSTSEASON ───────────────────────────────────────────
+//
+// Mirrors the D2 framework (4 rounds: NWC tourney → 16 regionals → 8 super
+// regionals best-of-3 → 8-team WS double-elim → best-of-3 final). Real 2025
+// NCAA D3 format: 64-team national field, 16 regionals of 4, eight best-of-3
+// super regionals, 8-team World Series at Eastlake, OH (best-of-3 final).
+
+/** Unified 0-100 rating for any D3 team (real → NWBB rating; abstract → PEAR). */
+function d3RatingOf(state, id) {
+  const r = state.nwbbRatings?.[id]?.rating
+  if (typeof r === 'number') return r
+  const ab = D3_ABSTRACT_BY_ID[id]
+  return ab ? nonNaiaToUniversal(ab) : 50
+}
+
+/** Deterministic background-game sim for D3 (returns the winning team id). */
+function makeD3Sim(state) {
+  const mk = (x) => ({ overall_rating: (x - 60) / 5, offense_rating: (x - 60) / 10, pitching_rating: (x - 60) / 10 })
+  return (h, a, key) => {
+    const r = fastSimGame(mk(d3RatingOf(state, h)), mk(d3RatingOf(state, a)), `d3_${key}`)
+    return r.homeRuns >= r.awayRuns ? h : a
+  }
+}
+
+/** 64-team D3 national field, seeded best-first by rating. */
+function d3NationalField(state) {
+  const real = Object.keys(state.schools || {})
+    .filter(id => state.teams?.[id] && state.schools[id].level === 'D3')
+  const seen = new Set(real)
+  const cands = [
+    ...real.map(id => ({ id, rating: d3RatingOf(state, id) })),
+    ...D3_ABSTRACT.filter(t => !seen.has(t.id)).map(t => ({ id: t.id, rating: nonNaiaToUniversal(t) })),
+  ].sort((a, b) => b.rating - a.rating)
+  return cands.slice(0, 64).map(c => c.id)
+}
+
+export function setupInteractivePostseasonD3(state) {
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const userConfId = state.schools?.[userId]?.conferenceId
+  const userSeeds = seedConference(state, userConfId)        // NWC, by confWins → runDiff
+  const fieldSize = Math.min(4, userSeeds.length)            // NWC tournament = top 4
+  const userSeedIdx = userSeeds.indexOf(userId)
+  const userInConfTourney = fieldSize >= 2 && userSeedIdx >= 0 && userSeedIdx < fieldSize
+  const ps = {
+    year: year + 1, level: 'D3', interactive: true, stage: 'CONF',
+    userQualified: userInConfTourney, userAlive: userInConfTourney,
+    userEliminatedAt: userInConfTourney ? null : 'REG_SEASON',
+    userConfId, userChamp: false, userNatChamp: false, nationalChampion: null,
+    confChampions: {}, rounds: { CONF: null, REGIONAL: null, SUPER: null, WS: null },
+    national: { regionals: [], superRegionals: [], ws: null },
+  }
+  state.postseason = ps
+  if (userInConfTourney) {
+    const seeds = userSeeds.slice(0, fieldSize)
+    ps.rounds.CONF = {
+      format: 'DE', seeds, spec: deGraph(seeds.length), hostId: seeds[0],
+      seedKey: `d3conf_${year}`,
+      label: `${state.conferences[userConfId]?.abbreviation || 'NWC'} Tournament (top ${fieldSize}, double-elim)`,
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+  return ps
+}
+
+export function advanceInteractivePostseasonD3(state, leavingWeek) {
+  const ps = state.postseason
+  if (!ps || !ps.interactive || ps.level !== 'D3') return
+  if (leavingWeek === 39) { ps.stage = 'REGIONAL'; setupD3Regional(state) }
+  else if (leavingWeek === 40) { ps.stage = 'SUPER'; setupD3Super(state) }
+  else if (leavingWeek === 41) { ps.stage = 'WS'; setupD3WS(state) }
+  else if (leavingWeek === 42) { finalizeD3(state) }
+}
+
+function setupD3Regional(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeD3Sim(state)
+  let field = d3NationalField(state)
+  // Auto-bid: a conference champ who isn't in the top-64 at-large field bumps
+  // the weakest at-large; field is then re-sorted by rating so seeding/hosting
+  // stays rating-based (low-rated champs travel, don't host).
+  if (ps.userChamp && !field.includes(userId)) {
+    field = field.slice(0, 63)
+    field.push(userId)
+  }
+  field = field.slice(0, 64)
+  field.sort((a, b) => d3RatingOf(state, b) - d3RatingOf(state, a))
+  // 16 sites of 4 = 64. Top 16 by rating host.
+  const sizes = Array(16).fill(4)
+  const regionals = sizes.map((sz, i) => ({ idx: i, hostId: field[i], seeds: [field[i]], target: sz, champion: null }))
+  let next = 16
+  for (let pass = 0; pass < 4 && next < field.length; pass++) {
+    for (let i = 0; i < 16 && next < field.length; i++) {
+      if (regionals[i].seeds.length < regionals[i].target) regionals[i].seeds.push(field[next++])
+    }
+  }
+  for (const rg of regionals) {
+    if (rg.seeds.includes(userId)) {
+      rg.isUser = true; ps.userAlive = true; ps.userQualified = true; ps.userEliminatedAt = null; continue
+    }
+    rg.champion = runMatchGraph(rg.seeds, deGraph(rg.seeds.length), '__none__', () => null, sim, `d3reg_${year}_${rg.idx}`).champion || rg.seeds[0]
+  }
+  ps.national.regionals = regionals.map(rg => ({ idx: rg.idx, hostId: rg.hostId, seeds: rg.seeds, champion: rg.champion, isUser: !!rg.isUser }))
+  const ureg = ps.national.regionals.find(r => r.isUser)
+  if (ureg && ps.userAlive) {
+    ps.rounds.REGIONAL = {
+      format: 'DE', seeds: ureg.seeds, spec: deGraph(ureg.seeds.length),
+      seedKey: `d3reg_${year}_${ureg.idx}`, regionalIdx: ureg.idx, hostId: ureg.seeds[0],
+      label: `NCAA D3 Regional — ${ureg.seeds.length}-team double-elim`,
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function setupD3Super(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeD3Sim(state)
+  const champs = (ps.national.regionals || []).map(r => r.champion)
+  // Pair the 16 regional champions 1v16, 2v15, … into 8 best-of-3 super regionals.
+  const pairs = []
+  for (let j = 0; j < 8; j++) pairs.push([champs[j], champs[15 - j]])
+  ps.national.superRegionals = pairs.map((p, j) => ({ idx: j, a: p[0], b: p[1], champion: null, isUser: p.includes(userId) }))
+  for (const sr of ps.national.superRegionals) {
+    if (sr.isUser && ps.userAlive) continue
+    sr.champion = runBestOf3(sr.a, sr.b, '__none__', () => null, sim, `d3sr_${year}_${sr.idx}`).champion
+  }
+  const usr = ps.national.superRegionals.find(s => s.isUser)
+  if (usr && ps.userAlive) {
+    // Higher-rated team hosts (aId).
+    const aId = d3RatingOf(state, usr.a) >= d3RatingOf(state, usr.b) ? usr.a : usr.b
+    const bId = aId === usr.a ? usr.b : usr.a
+    ps.rounds.SUPER = {
+      format: 'BO3', aId, bId, seedKey: `d3sr_${year}_${usr.idx}`, superIdx: usr.idx,
+      label: 'NCAA D3 Super Regional — best-of-3', oppName: teamNameOf(state, aId === userId ? bId : aId),
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function setupD3WS(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const usr = (ps.national.superRegionals || []).find(s => s.isUser)
+  if (usr) usr.champion = ps.rounds.SUPER?.champion || (ps.userAlive ? userId : usr.a)
+  const champs = (ps.national.superRegionals || []).map(s => s.champion).filter(Boolean).slice(0, 8)
+  ps.national.ws = { seeds: champs, finalists: null, champion: null }
+  const userInWS = ps.userAlive && champs.includes(userId)
+  if (userInWS) {
+    const seeded = [...champs].sort((a, b) => d3RatingOf(state, b) - d3RatingOf(state, a))
+    ps.rounds.WS = {
+      format: 'WS8', phase: 'BRACKET', seeds: seeded, spec: { ...deGraph(8), bestOf3Final: true },
+      seedKey: `d3ws_${year}`, label: 'NCAA D3 World Series — 8-team double-elim → best-of-3 final',
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null, finalists: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function finalizeD3(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeD3Sim(state)
+  if (ps.userAlive && ps.rounds.WS?.userWon) { ps.userNatChamp = true; ps.nationalChampion = userId }
+  if (!ps.nationalChampion) {
+    // User not in the WS (or it wasn't resolved) — play it out now and crown.
+    const champs = ps.national.ws?.seeds || []
+    if (champs.length >= 2) {
+      const seeded = [...champs].sort((a, b) => d3RatingOf(state, b) - d3RatingOf(state, a))
+      const res = runMatchGraph(seeded, { ...deGraph(8), bestOf3Final: true }, '__none__', () => null, sim, `d3wsfin_${year}`)
+      const finalists = res.finalists || (res.champion ? [res.champion] : [])
+      ps.national.ws = ps.national.ws || {}
+      ps.national.ws.finalists = finalists
+      ps.nationalChampion = finalists.length >= 2
+        ? runBestOf3(finalists[0], finalists[1], '__none__', () => null, sim, `d3wsfin_${year}_final`).champion
+        : (finalists[0] || seeded[0])
+      ps.national.ws.champion = ps.nationalChampion
+    }
+  }
+  ps.stage = 'DONE'
+  const champName = teamNameOf(state, ps.nationalChampion)
+  state.newsfeed = state.newsfeed || []
+  state.newsfeed.unshift({
+    id: `d3_done_${year}_${Math.random().toString(36).slice(2, 6)}`,
+    year: year + 1, week: 16, type: 'POSTSEASON',
+    headline: ps.userNatChamp
+      ? `${state.schools[userId]?.name} WINS THE NCAA DIVISION III NATIONAL CHAMPIONSHIP!`
+      : `${champName} win the NCAA Division III title.`,
     big: ps.userNatChamp,
   })
 }

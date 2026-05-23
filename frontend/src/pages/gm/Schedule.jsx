@@ -364,8 +364,8 @@ export default function Schedule() {
         <div className="flex items-center justify-between">
           <span> Postseason begins Week {lastRegWeek + 1}</span>
           <span className="text-xs font-normal opacity-80">
-            {save.level === 'D2'
-              ? 'Conf Tournament → Regional → Super Regional → D2 World Series'
+            {(save.level === 'D2' || save.level === 'D3')
+              ? `Conf Tournament → Regional → Super Regional → ${save.level} World Series`
               : 'Wk 14 Conf Tournament • Wk 15 Opening Round • Wk 16 NAIA World Series'}
           </span>
         </div>

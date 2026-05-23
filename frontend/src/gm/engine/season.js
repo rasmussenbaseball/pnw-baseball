@@ -12,7 +12,7 @@ import { resolveLineupForGame, lineupPlayerIds, getSavedLineup, autoLineup } fro
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
-import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason, setupInteractivePostseasonD2, advanceInteractivePostseasonD2 } from './postseasonInteractive'
+import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason, setupInteractivePostseasonD2, advanceInteractivePostseasonD2, setupInteractivePostseasonD3, advanceInteractivePostseasonD3 } from './postseasonInteractive'
 import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
@@ -1322,6 +1322,7 @@ export function advanceOneWeek(state) {
   // wk42). Other levels still use the all-at-once runPostseason for now.
   const isNaia = !state.level || state.level === 'NAIA'
   const isD2 = state.level === 'D2'
+  const isD3 = state.level === 'D3'
   const L = postseasonLayout(state.level)
   // Postseason START (regular season just ended → first playoff round).
   if (nextWeek === L.start && prevWeek === L.seasonEnd) {
@@ -1342,6 +1343,9 @@ export function advanceOneWeek(state) {
     } else if (isD2) {
       try { setupInteractivePostseasonD2(state) }
       catch (err) { console.error('D2 postseason setup failed:', err); runPostseason(state) }
+    } else if (isD3) {
+      try { setupInteractivePostseasonD3(state) }
+      catch (err) { console.error('D3 postseason setup failed:', err); runPostseason(state) }
     } else {
       runPostseason(state)
     }
@@ -1357,6 +1361,11 @@ export function advanceOneWeek(state) {
       else if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonD2(state, 40)
       else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonD2(state, 41)
       else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonD2(state, 42)
+    } else if (isD3) {
+      if (nextWeek === 40 && prevWeek === 39) advanceInteractivePostseasonD3(state, 39)
+      else if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonD3(state, 40)
+      else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonD3(state, 41)
+      else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonD3(state, 42)
     }
   }
 

@@ -48,15 +48,26 @@ function UserRoundGames({ save, rd }) {
   )
 }
 
-// Full-page view of the interactive D2 postseason (4 rounds). Shows the FIELD
-// (teams in each regional / super-regional / WS) plus the user's own games.
-function D2PostseasonPage({ save, ps, userSchool }) {
+// Full-page view of an interactive 4-ROUND postseason (D2 + D3). Shows the
+// full FIELD (teams in each regional / super-regional / WS) plus the user's
+// own games. Labels adapt to the level (D2 / D3) and the user's conference.
+function FourRoundPostseasonPage({ save, ps, userSchool }) {
   const userId = save.userSchoolId
   const nm = (id) => teamNameOf(save, id)
   const champName = ps.nationalChampion ? nm(ps.nationalChampion) : null
   const regionals = ps.national?.regionals || []
   const supers = ps.national?.superRegionals || []
   const ws = ps.national?.ws
+
+  // Level-specific labels.
+  const levelLbl = ps.level || 'D2'                                 // "D2" / "D3"
+  const divRoman = levelLbl === 'D3' ? 'III' : 'II'                 // "II" / "III"
+  const confAbbr = save.conferences?.[ps.userConfId]?.abbreviation || (levelLbl === 'D3' ? 'NWC' : 'GNAC')
+  const confTop = ps.rounds?.CONF?.seeds?.length || (levelLbl === 'D3' ? 4 : 3)
+  // Regional size summary for the format blurb.
+  const regSizes = [...new Set((regionals || []).map(r => (r.seeds || []).length))].filter(Boolean).sort((a, b) => b - a)
+  const regSizeLbl = regSizes.length === 0 ? '4'
+    : regSizes.length === 1 ? `${regSizes[0]}` : regSizes.join('-')
 
   const seedList = (ids) => (ids || []).map((id, i) => (
     <span key={id} className={(id === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]')}>
@@ -68,23 +79,23 @@ function D2PostseasonPage({ save, ps, userSchool }) {
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-3xl mx-auto">
       <div className="mb-5">
-        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} NCAA D2 POSTSEASON</h1>
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} NCAA {levelLbl} POSTSEASON</h1>
         <p className="text-sm text-[#a8a8c8] font-pixel">
-          {ps.userNatChamp ? 'NCAA DIVISION II NATIONAL CHAMPIONS!'
-            : !ps.userQualified ? "You missed the GNAC tournament — a strong record can still earn an at-large NCAA bid."
+          {ps.userNatChamp ? `NCAA DIVISION ${divRoman} NATIONAL CHAMPIONS!`
+            : !ps.userQualified ? `You missed the ${confAbbr} tournament — a strong record can still earn an at-large NCAA bid.`
             : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON'
-              ? `Eliminated in the ${({ CONF: 'GNAC tournament', REGIONAL: 'regional', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.`
+              ? `Eliminated in the ${({ CONF: `${confAbbr} tournament`, REGIONAL: 'regional', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.`
               : 'Win each round to advance. Play (or sim) every game from the home page.'}
         </p>
         <p className="text-[11px] text-gray-500 font-pixel mt-1">
-          Format: GNAC tourney (top 3) → 16 NCAA regionals of 3-4 (double-elim, top seed hosts) → 8 super regionals (best-of-3) → 8-team World Series (double-elim, best-of-3 final). Your games are highlighted in green.
+          Format: {confAbbr} tourney (top {confTop}) → 16 NCAA regionals of {regSizeLbl} (double-elim, top seed hosts) → 8 super regionals (best-of-3) → 8-team World Series (double-elim, best-of-3 final). Your games are highlighted in green.
         </p>
       </div>
 
-      {/* Round 1 — GNAC Tournament */}
-      <PSCard title="Round 1 — GNAC Tournament (top 3, double-elim)">
+      {/* Round 1 — Conference Tournament */}
+      <PSCard title={`Round 1 — ${confAbbr} Tournament (top ${confTop}, double-elim)`}>
         {ps.rounds?.CONF ? <UserRoundGames save={save} rd={ps.rounds.CONF} />
-          : <div className="text-sm text-gray-500 italic font-pixel">Didn't make the GNAC tournament.</div>}
+          : <div className="text-sm text-gray-500 italic font-pixel">Didn't make the {confAbbr} tournament.</div>}
       </PSCard>
 
       {/* Round 2 — Regionals (full field) */}
@@ -129,7 +140,7 @@ function D2PostseasonPage({ save, ps, userSchool }) {
       </PSCard>
 
       {/* Round 4 — World Series */}
-      <PSCard title="Round 4 — D2 World Series (8 teams, double-elim → best-of-3 final)">
+      <PSCard title={`Round 4 — ${levelLbl} World Series (8 teams, double-elim → best-of-3 final)`}>
         {ps.rounds?.WS && <div className="mb-2"><UserRoundGames save={save} rd={ps.rounds.WS} /></div>}
         {!ws ? (
           <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
@@ -174,7 +185,7 @@ function InteractivePostseasonPage({ save, ps, userSchool }) {
   const nm = (id) => save.schools[id]?.name || '—'
   // D2 has its own 4-round structure (GNAC tourney → regional → super regional
   // → WS) + an abstract national field, so render it on a dedicated path.
-  if (ps.level === 'D2') return <D2PostseasonPage save={save} ps={ps} userSchool={userSchool} />
+  if (ps.level === 'D2' || ps.level === 'D3') return <FourRoundPostseasonPage save={save} ps={ps} userSchool={userSchool} />
   const regionals = ps.national?.regionals || []
   const ws = ps.national?.ws
   const confRd = ps.rounds?.CONF
