@@ -40,7 +40,7 @@ This file is the master onboarding doc for anyone (or any Claude session) starti
 ## 3. Repository & Code Locations
 
 - **GitHub:** `rasmussenbaseball/pnw-baseball`
-- **Local (Mac):** `~/Desktop/pnw-baseball`
+- **Local (Mac):** `~/code/pnw-baseball`
 - **Production server:** `/opt/pnw-baseball` (NOT `/root/pnw-baseball`, NOT `/var/www/pnw-baseball`)
 - **Branch:** `main` (all deploys happen from main)
 
@@ -152,11 +152,11 @@ The connection uses `RealDictCursor`, so rows behave like dicts.
 
 ```bash
 # Backend (from repo root)
-cd ~/Desktop/pnw-baseball
+cd ~/code/pnw-baseball
 python3 -m uvicorn backend.app.main:app --port 8000 --reload
 
 # Frontend (in another terminal)
-cd ~/Desktop/pnw-baseball/frontend
+cd ~/code/pnw-baseball/frontend
 npm run dev
 ```
 

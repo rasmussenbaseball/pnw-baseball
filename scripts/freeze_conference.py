@@ -116,6 +116,20 @@ CONF_GROUPS = {
         ],
         "conf_abbrevs": ["NWAC-N", "NWAC-E", "NWAC-S", "NWAC-W"],
     },
+    # D1 PNW teams are spread across 4 conferences (Big Ten, WCC, MWC,
+    # Independent), so we resolve this group by explicit team short_names
+    # rather than by conference name/abbrev. resolve_team_ids() honors
+    # `team_short_names` when present.
+    "d1-pnw": {
+        "label": "D1 (PNW)",
+        "team_short_names": [
+            "UW", "Wash. St.", "Oregon", "Oregon St.",
+            "Gonzaga", "Portland", "Seattle U",
+        ],
+        # Empty so the conf-name code path harmlessly returns no extra teams.
+        "conf_names": [],
+        "conf_abbrevs": [],
+    },
     # all-pnw intentionally omitted: there is no "end of regular season" for
     # a virtual grouping that spans every division, and its All-PNW page
     # derives from the individual conference freezes anyway.
@@ -137,7 +151,12 @@ CONF_KEY_TO_RESPONSE_ABBREV = {
 
 
 def resolve_team_ids(cur, conf_key, season):
-    """Return (group_label, [team_id, ...]) for the given conference key."""
+    """Return (group_label, [team_id, ...]) for the given conference key.
+
+    Two resolution modes: either by conference name/abbrev (the default for
+    coherent conferences like GNAC / NWAC divisions), or by an explicit
+    list of team short_names (used for D1 PNW which spans 4 conferences).
+    """
     group = CONF_GROUPS.get(conf_key)
     if not group:
         raise ValueError(
@@ -145,17 +164,29 @@ def resolve_team_ids(cur, conf_key, season):
             f"Supported: {sorted(CONF_GROUPS.keys())}"
         )
 
-    cur.execute(
-        """
-        SELECT t.id, t.name, t.short_name
-        FROM teams t
-        JOIN conferences c ON c.id = t.conference_id
-        WHERE t.is_active = 1
-          AND (c.name = ANY(%s) OR c.abbreviation = ANY(%s))
-        ORDER BY t.name
-        """,
-        (group["conf_names"], group["conf_abbrevs"]),
-    )
+    short_names = group.get("team_short_names") or []
+    if short_names:
+        cur.execute(
+            """
+            SELECT t.id, t.name, t.short_name
+            FROM teams t
+            WHERE t.is_active = 1 AND t.short_name = ANY(%s)
+            ORDER BY t.name
+            """,
+            (short_names,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT t.id, t.name, t.short_name
+            FROM teams t
+            JOIN conferences c ON c.id = t.conference_id
+            WHERE t.is_active = 1
+              AND (c.name = ANY(%s) OR c.abbreviation = ANY(%s))
+            ORDER BY t.name
+            """,
+            (group["conf_names"], group["conf_abbrevs"]),
+        )
     teams = [dict(r) for r in cur.fetchall()]
     return group["label"], teams
 
