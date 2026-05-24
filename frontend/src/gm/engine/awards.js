@@ -52,6 +52,11 @@ export function runEndOfRegularSeasonAwards(state) {
   awardSeasonCoachingBaseline(state)
 
   for (const conferenceId of Object.keys(state.conferences || {})) {
+    // Skip single-team conferences (e.g. INDEPENDENT_D1 / Oregon State alone).
+    // An "All-Conference team" or "Conference Gold Glove" with only one team
+    // in the conference is meaningless. Per Nate.
+    const conf = state.conferences[conferenceId]
+    if ((conf?.schoolIds?.length || 0) <= 1) continue
     const result = computeConferenceAwards(state, conferenceId, year, seed)
     if (!result) continue
     state.awardsHistory[year][conferenceId] = result

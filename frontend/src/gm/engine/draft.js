@@ -42,8 +42,12 @@ const PITCHER_BIAS = 0.85
 export function simMlbDraft(state, year) {
   const rng = makeRng('draft', year, state.rngSeed)
 
-  // Build the draft-eligible pool: SRs across every NAIA team + JR standouts
-  // (juniors with OVR ≥ 78 are the rare draft-eligible junior class).
+  // Build the draft-eligible pool. MLB draft eligibility rules (per Nate +
+  // real NCAA rules): a player can ONLY be drafted after their JUNIOR or
+  // SENIOR season. Freshmen and sophomores are NEVER draft-eligible
+  // regardless of OVR or level. Juniors must opt in — we model that with an
+  // OVR gate (only standouts declare; others return for their SR year).
+  // Graduated players (just finished SR) are also surfaced.
   const pool = []
   for (const teamId of Object.keys(state.teams)) {
     const team = state.teams[teamId]
@@ -52,6 +56,8 @@ export function simMlbDraft(state, year) {
     for (const pid of team.rosterPlayerIds) {
       const p = state.players[pid]
       if (!p) continue
+      // Hard gate: FR + SO are NEVER draft-eligible. No exceptions.
+      if (p.classYear === 'FR' || p.classYear === 'SO') continue
       const ovr = playerOverall(p)
       const isSenior = p.classYear === 'SR' || p.eligibilityStatus === 'graduated'
       const isJrStandout = p.classYear === 'JR' && ovr >= 78

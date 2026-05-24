@@ -664,21 +664,29 @@ function shiftRatingBlock(block, fields, delta) {
 function scaleRosterToTarget(roster, school) {
   if (!roster || roster.length === 0 || !school) return
   const target = expectedTeamOvr(school)
-  const hitters = roster.filter(p => p.isHitter).map(hitterOverall).sort((a, b) => b - a).slice(0, 9)
-  const pitchers = roster.filter(p => p.isPitcher).map(pitcherOverall).sort((a, b) => b - a).slice(0, 5)
   const avg = arr => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0)
-  const natural = Math.round(avg(hitters) * 0.55 + avg(pitchers) * 0.45)
-  if (!natural) return
-  const delta = target - natural
-  if (delta === 0) return
-  for (const p of roster) {
-    if (p.isHitter) {
-      shiftRatingBlock(p.hitter, HITTER_OVR_FIELDS, delta)
-      shiftRatingBlock(p.hidden?.potential_hitter, HITTER_OVR_FIELDS, delta)
-    }
-    if (p.isPitcher) {
-      shiftRatingBlock(p.pitcher, PITCHER_OVR_FIELDS, delta)
-      shiftRatingBlock(p.hidden?.potential_pitcher, PITCHER_OVR_FIELDS, delta)
+  // Iterate until the team OVR converges on the target. shiftRatingBlock
+  // clamps each rating at 99, so for a high-target team (OSU at 96, Georgia
+  // Tech at 98) the first shift saturates top players' ratings and loses
+  // some of the delta — that's why the loaded team showed 94 even though
+  // the picker said 96. Re-measuring and re-shifting picks up the slack.
+  // Cap at 4 passes — convergence is typically 1-2; 4 is a safety net.
+  for (let pass = 0; pass < 4; pass++) {
+    const hitters = roster.filter(p => p.isHitter).map(hitterOverall).sort((a, b) => b - a).slice(0, 9)
+    const pitchers = roster.filter(p => p.isPitcher).map(pitcherOverall).sort((a, b) => b - a).slice(0, 5)
+    const natural = Math.round(avg(hitters) * 0.55 + avg(pitchers) * 0.45)
+    if (!natural) return
+    const delta = target - natural
+    if (delta === 0) return
+    for (const p of roster) {
+      if (p.isHitter) {
+        shiftRatingBlock(p.hitter, HITTER_OVR_FIELDS, delta)
+        shiftRatingBlock(p.hidden?.potential_hitter, HITTER_OVR_FIELDS, delta)
+      }
+      if (p.isPitcher) {
+        shiftRatingBlock(p.pitcher, PITCHER_OVR_FIELDS, delta)
+        shiftRatingBlock(p.hidden?.potential_pitcher, PITCHER_OVR_FIELDS, delta)
+      }
     }
   }
 }

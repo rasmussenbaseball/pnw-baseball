@@ -245,9 +245,16 @@ export function simWeek(state, schedule, ratings) {
       // autoLineup already orders each rotation so index 0 is today's
       // starter (freshest-rested for the user, series-rotated for others),
       // so simGame just starts rotation[0] (default starterIdx 0).
+      // MIDWEEK exception: D1 midweek games shift the starter to slot 3+
+      // so the ace + #2/3 SPs don't burn on Tuesday before a weekend
+      // series. Real-life behavior per Nate.
+      const isMidweekGame = g.type === 'D1_MIDWEEK'
+      const midweekStarter = isMidweekGame ? 3 : 0
       result = simGame(homeLineup, awayLineup, {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
+        homeStarterIdx: midweekStarter,
+        awayStarterIdx: midweekStarter,
         getEnergy: energyAccessor,
         neutralSite: !!g.neutralSite,   // postseason neutral-site games get no home edge
         level: state.level || state.schools?.[userSchoolId]?.level || 'NAIA',
@@ -1251,6 +1258,12 @@ function refreshWeeklyAP(state) {
   // courting their recruiting board right away. This replaced the old
   // prospect-camp mechanic (removed May 2026).
   if (wk === 4) weekly = Math.max(weekly, 100)
+  // SUMMER RECRUITING WINDOW (wks 43-52). Per Nate: rosters drop after the
+  // draft + portal-out wave, and there are only ~9 weeks to refill. Players
+  // are filling spots from D1 transfer portal which moves fast in real life.
+  // DOUBLE the weekly AP to give the user enough lever to actually rebuild.
+  // Cap stays sane — 100 max so a coach with a strong staff doesn't drown.
+  if (wk >= 43 && wk <= 52) weekly = Math.min(100, weekly * 2)
   state.ap.currentWeek = weekly
   state.ap.spentThisWeek = 0
   state.ap.spentByCategory = {
@@ -1565,8 +1578,13 @@ function tickRecruitingDecisions(state) {
   // the interest gate and boost sign probability so the user can actually
   // backfill the roster (per Nate: "make committing players in the summer
   // easier, players decide quicker after week 43").
+  // BUFFED May 2026 round 2 — user reported roster stuck at 28 in year-2
+  // because summer commit speed wasn't keeping up with portal-out + draft.
+  // Lowered the gate further (24 → 18) and bumped signMultiplier (2.3 → 3.5)
+  // so the same recruiting AP spend converts to more commits before wk52
+  // class-finalize.
   const isSummer = (state.calendar?.weekOfYear ?? 0) >= 43
-  const advanceOpts = isSummer ? { gateOverride: 24, signMultiplier: 2.3 } : {}
+  const advanceOpts = isSummer ? { gateOverride: 18, signMultiplier: 3.5 } : {}
   const committedThisTick = []   // recruit ids that committed — for the popup
   for (const r of Object.values(state.recruits)) {
     // 1. Tick weeksOutstanding on user's live offers

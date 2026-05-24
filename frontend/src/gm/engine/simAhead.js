@@ -132,13 +132,16 @@ export function diffSnapshots(before, after) {
     recordDelta: { w: after.wins - before.wins, l: after.losses - before.losses },
     runDiffDelta: after.runDiff - before.runDiff,
     // National-ranking movement — Dashboard surfaces this in the week recap
-    // so the user can see where their rank moved each in-season week.
-    rankMove: (before.nationalRank != null && after.nationalRank != null
-      && (before.wins !== after.wins || before.losses !== after.losses))
+    // EVERY week the user has a current national rank, not only when wins/
+    // losses changed. Reasoning (per Nate): user wants to see where they
+    // stand week-to-week even on a bye week or when rating shifted via
+    // other teams' results. delta will be 0 / "unchanged" when nothing
+    // moved; that's still informative.
+    rankMove: (after.nationalRank != null)
       ? {
-        before: before.nationalRank,
+        before: before.nationalRank ?? after.nationalRank,
         after: after.nationalRank,
-        delta: before.nationalRank - after.nationalRank,   // + = climbed up
+        delta: (before.nationalRank ?? after.nationalRank) - after.nationalRank,
         beforeRating: before.nwbbRating,
         afterRating: after.nwbbRating,
       }

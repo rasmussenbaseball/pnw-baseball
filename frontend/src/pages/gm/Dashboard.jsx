@@ -2355,7 +2355,20 @@ function CommitModal({ save, recruitIds, slot, onClose }) {
 // Outbound-transfer popup — who left your program (portal / transfer / quit).
 function DepartureModal({ departures, onClose }) {
   const { backdropProps, stopProps } = useModalDismiss(onClose)
-  const destLabel = (d) => ({ D1: 'transferred up to D1', D2: 'transferred to D2', D3: 'transferred to D3', JUCO: 'dropped to JUCO', QUIT: 'left baseball' })[d] || 'entered the portal'
+  const destLabel = (d) => ({
+    D1: 'transferred up to D1',
+    D1_UP: 'transferred to a bigger D1 program',
+    D1_LAT: 'transferred to a peer D1 program',
+    D1_DOWN: 'transferred to a smaller D1 program',
+    D2: 'transferred to D2',
+    D2_UP: 'transferred to a top-tier D2',
+    D2_LAT: 'transferred to a peer D2 program',
+    D3: 'transferred to D3',
+    D3_LAT: 'transferred to a peer D3 program',
+    NAIA: 'transferred to NAIA',
+    JUCO: 'dropped to JUCO',
+    QUIT: 'left baseball',
+  })[d] || 'entered the portal'
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" {...backdropProps}>
       <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-md" {...stopProps}>

@@ -23,7 +23,11 @@ import { seedFromPear } from './rankings'
 export function expectedTeamOvr(school) {
   if (!school) return 70
   const ph = Math.max(15, Math.min(99, school.programHistory ?? 50))
-  const LEVEL_SHIFT = { D1: 8, D2: 0, NAIA: 0, D3: -4, NWAC: -10 }
+  // D1 LEVEL_SHIFT bumped 8 → 10 so the top D1 program (Georgia Tech-tier)
+  // lands at ~98 OVR. Combined with the widened PH slope below, this gives
+  // D1 the realistic 80 → 98 spread Nate is looking for between worst and
+  // best D1 program (was 85 → 96, too compressed).
+  const LEVEL_SHIFT = { D1: 10, D2: 0, NAIA: 0, D3: -4, NWAC: -10 }
   const shift = LEVEL_SHIFT[school.level] ?? 0
   // 60 baseline + per-PH slope + level shift + top-9 selection bonus (~5)
   // Empirically matches the OVR report at every level within ±1 OVR.

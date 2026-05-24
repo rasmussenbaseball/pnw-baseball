@@ -437,15 +437,17 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
   // Each level now uses a steeper strength slope and a slightly higher
   // tierBase. See scripts/pnw-team-ovr-report.mjs to verify hierarchy.
   // PH formula tuned for the PNW Team OVR hierarchy Nate wants:
-  //   D1   best ~94 (Oregon St), worst ~85 (Seattle U)
+  //   D1   best ~98 (Georgia Tech-tier), worst ~80 (Alcorn-tier) — wider
+  //         spread per Nate (May 2026); was 85→96, too compressed.
   //   D2   best ~83 (NN Nazarene), worst ~67 (Saint Martin's)
   //   D3   best ~81 (Whitworth), worst ~65 (Willamette)
   //   NWAC best ~75 (Everett), worst ~62 (Grays Harbor)
-  // D2 + D3 slopes widened May 2026 — bottom-of-conference programs now
-  // dip below the NAIA floor (Eastern Oregon ~68) so the worst PNW D2/D3
-  // teams feel meaningfully weaker than the worst NAIA team.
+  // D1 slope DROPPED from 6.5 → 3.5 (was clamping everyone at PH=99 — top D1
+  // were all 96 because Georgia Tech, Oregon St., and a dozen others all hit
+  // the cap). The new slope spreads the 308 D1 teams across PH 34-100, which
+  // maps to OVR 80-98 via expectedTeamOvr.
   const tierBase  = { D1: 74, D2: 46, D3: 30, NWAC: 44 }[level] ?? 50
-  const tierSlope = { D1: 6.5, D2: 9.0, D3: 11.0, NWAC: 4.5 }[level] ?? 2.0
+  const tierSlope = { D1: 3.5, D2: 9.0, D3: 11.0, NWAC: 4.5 }[level] ?? 2.0
   const programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
 
   // Resource tier per level (rough budget proxy)

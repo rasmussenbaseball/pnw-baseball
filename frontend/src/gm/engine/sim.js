@@ -208,7 +208,12 @@ export function fastSimGame(home, away, seedKey, opts = {}) {
     // single weekend). The game id ends in _g0 / _g1 / _g2 for series games.
     const m = String(seedKey).match(/_g(\d+)$/)
     const gameIdx = m ? parseInt(m[1], 10) : 0
-    const boxscore = buildLightBoxscore(opts.homeLineup, opts.awayLineup, homeRuns, awayRuns, rng, gameIdx)
+    // MIDWEEK detection: D1_MIDWEEK games have id starting with 'mw_' or
+    // 'indep_mid_'. Real teams don't start an ace on Tuesday — they slot a
+    // mid-rotation arm (#4-5 SP) and use deep bullpen guys who didn't throw
+    // on the weekend. Per Nate.
+    const isMidweek = /^(mw_|indep_mid_)/.test(String(seedKey)) || opts.isMidweek
+    const boxscore = buildLightBoxscore(opts.homeLineup, opts.awayLineup, homeRuns, awayRuns, rng, gameIdx, isMidweek)
     return { homeRuns, awayRuns, boxscore }
   }
   return { homeRuns, awayRuns }
@@ -252,7 +257,7 @@ function lightTeamKBB(battingLineup, oppLineup, rng) {
   }
 }
 
-function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gameIdx = 0) {
+function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gameIdx = 0, isMidweek = false) {
   const batterStats = {}
   const pitcherStats = {}
 
@@ -348,11 +353,24 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
   function distributePitchers(lineup, runsAllowed, oppHits, oppK, oppBB) {
     const allP = (lineup.pitcherRotation || lineup.pitchers || []).filter(Boolean)
     if (allP.length === 0) return
-    const starter = allP[0]
-    const bullpen = allP.slice(1, 4)
-    // Starter goes ~5.2 IP unless they got hammered
+    // MIDWEEK pitching: real teams DON'T start an ace on Tuesday. They slot
+    // a #4 SP (or sometimes a "midweek starter") and bullpen with arms that
+    // didn't throw on the weekend. Skip slots 0-2 (weekend SPs) entirely;
+    // start at slot 3 and pull bullpen from slot 4+ so weekend arms rest.
+    // Per Nate.
+    const starterSlot = isMidweek ? Math.min(3, allP.length - 1) : 0
+    const starter = allP[starterSlot] || allP[0]
+    const bullpen = isMidweek
+      // Midweek bullpen: deeper arms (slot 4+) that didn't pitch on weekend
+      ? allP.slice(starterSlot + 1, starterSlot + 4).filter(Boolean)
+      : allP.slice(1, 4)
+    // Starter goes ~5.2 IP unless they got hammered. Midweek starters are
+    // typically shorter outings (3-4 IP) — they're a tandem with multiple
+    // relievers. Burn fewer IP on the midweek starter so the bullpen carries
+    // more, matching how real teams handle Tue games.
     const hammered = runsAllowed >= 8
-    const starterOuts = hammered ? 9 + Math.floor(rng.chance(0.5) ? 0 : 3) : 15 + Math.floor(rng.gaussian(2, 1))
+    const baseOuts = isMidweek ? 10 : 15   // midweek SP ~3.1 IP, weekend ~5.0 IP
+    const starterOuts = hammered ? 9 + Math.floor(rng.chance(0.5) ? 0 : 3) : baseOuts + Math.floor(rng.gaussian(2, 1))
     const totalOuts = 27   // assume 9 innings; close enough for fast sim
     const relieverOuts = Math.max(0, totalOuts - starterOuts)
     const starterRunShare = clamp(starterOuts / totalOuts, 0.4, 0.85)

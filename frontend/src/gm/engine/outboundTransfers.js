@@ -49,8 +49,14 @@ function pickD1Destination(playerState, rng) {
 /**
  * Evaluate a player's transfer decision.
  *
+ * Destinations are RELATIVE to the user's program level (per Nate). A D1 user
+ * can have players transfer to a BETTER D1 program (D1_UP), a peer D1 (D1_LAT),
+ * or DOWN to D2/D3 — but never "up to D1" because they're already there.
+ *
  * @param {Player} player
- * @param {{ paShare: number, ipShare: number }} ctx
+ * @param {{ paShare: number, ipShare: number, userLevel?: string, teamPerformance?: number }} ctx
+ *   userLevel — 'D1' | 'D2' | 'D3' | 'NAIA' | 'NWAC'
+ *   teamPerformance — win% (0-1). Strong teams retain more players.
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @param {'MID_OFFSEASON' | 'LATE_OFFSEASON'} phase
  * @returns {{ transferring: boolean, destination: string | null, isStar: boolean, isD1: boolean }}
@@ -63,27 +69,79 @@ export function evaluateTransfer(player, ctx, rng, phase = 'LATE_OFFSEASON') {
   const potOvr = playerPotentialOverall(player)
   const loyalty = player.hidden.loyalty ?? 60
   const playingTime = player.isPitcher ? ctx.ipShare : ctx.paShare
+  const userLevel = ctx.userLevel || 'NAIA'
+  const winPct = typeof ctx.teamPerformance === 'number' ? ctx.teamPerformance : 0.5
 
-  // STAR vulnerability — even with good playing time, top players can leave for D1
+  // STAR vulnerability — even with good playing time, top players can leave
+  // for a bigger program (e.g. mid-D1 → blue-blood D1).
   const isStarLevel = ovr >= 85 || (ovr >= 78 && potOvr >= 88)
+
+  // PERFORMANCE retention bonus: a winning team keeps more players. A team
+  // at .700 retains a lot of guys; a team at .300 loses more. Symmetric.
+  const perfMult = clampN(1 + (0.5 - winPct) * 0.9, 0.55, 1.4)
+
+  // Pick a destination weighted-relative to userLevel.
+  // For D1 user:
+  //   STAR going up → D1_UP (a better D1 program)
+  //   Decent + uppy → D1_LAT (lateral D1) or D1_DOWN (lower-tier D1)
+  //   Bench / bad     → D1_DOWN, D2, D3
+  // For D2/D3/NAIA users, fall back to legacy NAIA-perspective destinations.
+  function pickDest(scenario) {
+    if (userLevel === 'D1') {
+      switch (scenario) {
+        case 'STAR_UP':   return rng.weighted(['D1_UP', 'D1_LAT'], [80, 20])
+        case 'GOOD_UP':   return rng.weighted(['D1_UP', 'D1_LAT', 'D1_DOWN'], [30, 50, 20])
+        case 'MID_UP':    return rng.weighted(['D1_LAT', 'D1_DOWN', 'D2'], [40, 45, 15])
+        case 'DOWN':      return rng.weighted(['D1_DOWN', 'D2', 'D3', 'JUCO'], [25, 40, 25, 10])
+        case 'QUIT_TIER': return rng.weighted(['D1_DOWN', 'D2', 'D3', 'JUCO', 'QUIT'], [15, 25, 25, 25, 10])
+      }
+    }
+    if (userLevel === 'D2') {
+      switch (scenario) {
+        case 'STAR_UP':   return rng.weighted(['D1', 'D2_UP'], [70, 30])
+        case 'GOOD_UP':   return rng.weighted(['D1', 'D2_UP', 'D2_LAT'], [25, 45, 30])
+        case 'MID_UP':    return rng.weighted(['D2_LAT', 'NAIA', 'D3'], [45, 35, 20])
+        case 'DOWN':      return rng.weighted(['D2_LAT', 'D3', 'NAIA', 'JUCO'], [20, 40, 30, 10])
+        case 'QUIT_TIER': return rng.weighted(['D3', 'NAIA', 'JUCO', 'QUIT'], [30, 30, 30, 10])
+      }
+    }
+    if (userLevel === 'D3') {
+      switch (scenario) {
+        case 'STAR_UP':   return rng.weighted(['D1', 'D2'], [40, 60])
+        case 'GOOD_UP':   return rng.weighted(['D2', 'D3_LAT', 'NAIA'], [40, 35, 25])
+        case 'MID_UP':    return rng.weighted(['D3_LAT', 'NAIA', 'JUCO'], [50, 35, 15])
+        case 'DOWN':      return rng.weighted(['D3_LAT', 'JUCO', 'NAIA'], [40, 35, 25])
+        case 'QUIT_TIER': return rng.weighted(['JUCO', 'NAIA', 'QUIT'], [40, 30, 30])
+      }
+    }
+    // NAIA + others — original behavior
+    switch (scenario) {
+      case 'STAR_UP':   return rng.weighted(['D1'], [100])
+      case 'GOOD_UP':   return rng.weighted(['D1', 'NAIA', 'D2'], [55, 30, 15])
+      case 'MID_UP':    return rng.weighted(['D1', 'NAIA', 'D2', 'D3'], [20, 50, 20, 10])
+      case 'DOWN':      return rng.weighted(['NAIA', 'D2', 'D3', 'JUCO'], [50, 25, 15, 10])
+      case 'QUIT_TIER': return rng.weighted(['NAIA', 'D2', 'D3', 'JUCO', 'QUIT'], [30, 25, 20, 15, 10])
+    }
+  }
 
   // Dramatic mid-offseason: stars poached + visible departures
   if (phase === 'MID_OFFSEASON') {
-    // Star poaching: high-OVR players have a chance to leave regardless of PT
+    // Star poaching: high-OVR players have a chance to leave for a bigger
+    // program. ~12% baseline minus loyalty modifier, scaled by team-perf
+    // (good seasons retain stars better — Nate's request).
     if (isStarLevel) {
-      // Even playing every day, ~12% chance to be poached
-      const baseProb = 0.12 - (loyalty / 1000)
+      const baseProb = (0.12 - (loyalty / 1000)) * perfMult
       if (rng.chance(baseProb)) {
-        return { transferring: true, destination: 'D1', isStar: true, isD1: true }
+        const dest = pickDest('STAR_UP')
+        return { transferring: true, destination: dest, isStar: true, isD1: dest.startsWith('D1') }
       }
     }
     // Highly disgruntled bench guys exit early
     const playingTimeFactor = playingTime < 0.15 && ovr >= 65 && loyalty < 50
-    if (playingTimeFactor && rng.chance(0.18)) {
+    if (playingTimeFactor && rng.chance(0.18 * perfMult)) {
       const upAppeal = ovr >= 78 ? 0.5 : ovr >= 68 ? 0.25 : 0.05
-      return rng.chance(upAppeal)
-        ? { transferring: true, destination: 'D1', isStar: false, isD1: true }
-        : { transferring: true, destination: 'NAIA', isStar: false, isD1: false }
+      const dest = pickDest(rng.chance(upAppeal) ? 'GOOD_UP' : 'MID_UP')
+      return { transferring: true, destination: dest, isStar: false, isD1: dest.startsWith('D1') }
     }
     return { transferring: false, destination: null, isStar: false, isD1: false }
   }
@@ -95,21 +153,24 @@ export function evaluateTransfer(player, ctx, rng, phase = 'LATE_OFFSEASON') {
   else if (upAppeal >= 10) transferProb = 0.25
   else if (upAppeal <= -5 && playingTime < 0.2 && loyalty < 50) transferProb = 0.22
   else transferProb = 0.04
+  transferProb *= perfMult
 
   if (!rng.chance(transferProb)) return { transferring: false, destination: null, isStar: false, isD1: false }
 
   let destination
-  if (upAppeal >= 25) destination = rng.weighted(['D1', 'NAIA', 'D2'], [55, 30, 15])
-  else if (upAppeal >= 10) destination = rng.weighted(['D1', 'NAIA', 'D2', 'D3'], [20, 50, 20, 10])
-  else if (upAppeal >= -5) destination = rng.weighted(['NAIA', 'D2', 'D3', 'JUCO'], [50, 25, 15, 10])
-  else destination = rng.weighted(['NAIA', 'D2', 'D3', 'JUCO', 'QUIT'], [30, 25, 20, 15, 10])
+  if (upAppeal >= 25) destination = pickDest('GOOD_UP')
+  else if (upAppeal >= 10) destination = pickDest('MID_UP')
+  else if (upAppeal >= -5) destination = pickDest('DOWN')
+  else destination = pickDest('QUIT_TIER')
   return {
     transferring: true,
     destination,
     isStar: false,
-    isD1: destination === 'D1',
+    isD1: destination.startsWith('D1') && destination !== 'D1_DOWN' ? true : (destination === 'D1' || destination === 'D1_UP'),
   }
 }
+
+function clampN(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
 /**
  * Run transfer evaluation for one phase. Mutates state.
@@ -134,6 +195,14 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     return stats.pa / Math.max(1, totalPA / 9)
   }
 
+  // Team performance — used to dampen transfers when the program is winning.
+  // Per Nate: a strong, well-performing program holds onto more players.
+  const userLevel = state.level || state.schools?.[state.userSchoolId]?.level || 'NAIA'
+  const wins = userTeam.wins ?? userTeam._lastSeason?.wins ?? 0
+  const losses = userTeam.losses ?? userTeam._lastSeason?.losses ?? 0
+  const totalGames = wins + losses
+  const teamPerformance = totalGames > 0 ? wins / totalGames : 0.5
+
   const transferred = []
   for (const id of [...rosterIds]) {
     const player = state.players[id]
@@ -141,6 +210,8 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     const result = evaluateTransfer(player, {
       paShare: player.isPitcher ? 0 : playingTime(player),
       ipShare: player.isPitcher ? playingTime(player) : 0,
+      userLevel,
+      teamPerformance,
     }, rng, phase)
     if (!result.transferring) continue
 
@@ -155,6 +226,23 @@ export function runOutboundTransfers(state, phase = 'LATE_OFFSEASON') {
     if (t.destination === 'D1') {
       const dest = pickD1Destination(t.player.hometown.state, rng)
       destText = `committed to ${dest} (D1)`
+    } else if (t.destination === 'D1_UP') {
+      // Player going UP to a bigger D1 (SEC / ACC / Big-12 blue blood)
+      const dest = rng.pick(D1_DESTINATIONS_NATIONAL)
+      destText = `transferred up to ${dest} (D1)`
+    } else if (t.destination === 'D1_LAT') {
+      // Lateral D1 move (similar tier)
+      const dest = pickD1Destination(t.player.hometown.state, rng)
+      destText = `transferred to ${dest} (D1)`
+    } else if (t.destination === 'D1_DOWN') {
+      // Stepping down to a smaller D1 program
+      destText = `transferred to a smaller D1 program`
+    } else if (t.destination === 'D2_UP') {
+      destText = `transferred to a top-tier D2 program`
+    } else if (t.destination === 'D2_LAT') {
+      destText = `transferred to ${rng.pick(D2_D3_FLAVOR)}`
+    } else if (t.destination === 'D3_LAT') {
+      destText = `transferred to a peer D3 program`
     } else if (t.destination === 'NAIA') {
       destText = `transferred to ${rng.pick(NAIA_RIVAL_FLAVOR)}`
     } else if (t.destination === 'D2' || t.destination === 'D3') {
