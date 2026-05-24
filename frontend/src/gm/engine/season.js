@@ -256,11 +256,29 @@ export function simWeek(state, schedule, ratings) {
         homeLineup.pitcherRotation = (homeLineup.pitcherRotation || []).slice(4)
         awayLineup.pitcherRotation = (awayLineup.pitcherRotation || []).slice(4)
       }
+      // ROTATE STARTER BY GAME-IN-SERIES (per Nate, May 2026 — POTW
+      // always going to user fix). Parse the _g\d+ suffix on the game id
+      // so a 4-game weekend uses pitchers #0/#1/#2/#3 instead of
+      // starting the #1 SP four times in a row. Without this, the user
+      // (and every other team) accumulates 60+ weekly outs on their
+      // ace — which the POTW selector disqualifies (>25 outs cap),
+      // leaving relievers to win pitcher-of-the-week. Midweek games
+      // already sliced the top 4 arms off, so slot 0 is the deep arm.
+      const seriesMatch = String(g.id).match(/_g(\d+)$/)
+      const gameInSeries = seriesMatch ? parseInt(seriesMatch[1], 10) : 0
+      const homeRotLen = (homeLineup.pitcherRotation || []).length
+      const awayRotLen = (awayLineup.pitcherRotation || []).length
+      const homeStarterIdx = isMidweekGame
+        ? 0
+        : (gameInSeries % Math.max(1, homeRotLen))
+      const awayStarterIdx = isMidweekGame
+        ? 0
+        : (gameInSeries % Math.max(1, awayRotLen))
       result = simGame(homeLineup, awayLineup, {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
-        homeStarterIdx: 0,    // already the deep arm — rotation was sliced for midweek
-        awayStarterIdx: 0,
+        homeStarterIdx,
+        awayStarterIdx,
         // Team OVR offsets — bring the sim in line with the displayed
         // Team OVR. Without this, a 98-OVR team whose roster naturally
         // landed at 95 (due to 99 rating clamps) was simming as a 95.

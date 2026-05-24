@@ -364,8 +364,21 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
       // last-resort midweek arm. Shouldn't happen at D1 rostercaps.
       pool.push(...allP.slice(3))
     }
-    const starter = pool[0] || allP[0]
-    const bullpen = pool.slice(1, 4)
+    // ROTATE STARTER BY GAME-IN-SERIES (per Nate, May 2026 — POTW always
+    // going to user fix). Without rotation, fast-sim opposing teams credit
+    // their #1 SP with starting ALL 4 weekend games — accumulating ~70
+    // outs of weekly stats, which the POTW selector disqualifies (>25 outs
+    // cap). Result: every opposing starter was ineligible and the user
+    // could not lose POTW. Cycling the starter idx by gameIdx keeps each
+    // opposing SP's weekly line within a realistic ~18-22 outs.
+    // Midweek games already burn the deep pool — no further rotation.
+    const starterPickIdx = isMidweek
+      ? 0
+      : (Math.max(0, gameIdx) % Math.max(1, pool.length))
+    const starter = pool[starterPickIdx] || pool[0] || allP[0]
+    // Bullpen = the rest of the pool (excluding whoever just "started"),
+    // capped at 3 relievers per game.
+    const bullpen = pool.filter((_, i) => i !== starterPickIdx).slice(0, 3)
     // Starter goes ~5.2 IP unless they got hammered. Midweek starters are
     // typically shorter outings (3-4 IP) — they're a tandem with multiple
     // relievers. Burn fewer IP on the midweek starter so the bullpen carries
