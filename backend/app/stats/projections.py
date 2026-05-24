@@ -1178,15 +1178,27 @@ def simulate_nwac_championship_odds(
         final_counts[w14] += 1
         final_counts[l14] += 1
 
-        # Champion: if the Game 14 loser now has 2 losses, the winner takes
-        # it; otherwise both finalists have 1 loss → bracket-reset game.
+        # If Game 15 is needed, it's W11 vs W14 — NOT a bracket reset of G14.
+        # This single rule covers both NWAC scenarios:
+        #   (a) Standard reset: W11 played G14 (because W11 = W13, having
+        #       won G13) and lost it. Then L14 == W11, so W11 vs W14 is the
+        #       classic replay between the two 1-loss teams.
+        #   (b) Three-team scenario: W11 lost G13, so per NWAC rule W11 byes
+        #       G14. G14 eliminates one of W12/W13 (whichever loses), and
+        #       G15 = W11 vs the surviving G14 winner.
+        # In either case, when only one team has < 2 losses after G14, that
+        # team wins by default and G15 is skipped.
         remaining = [t for t in teams if losses[t] < 2]
         if len(remaining) <= 1:
             champion = w14
         elif NWAC_2026_CHAMP_RESET_GAME in known:
             champion = known[NWAC_2026_CHAMP_RESET_GAME][0]
         else:
-            champion, _ = g(w14, l14)
+            w11 = results.get(11, (None, None))[0]
+            # Fall back to a reset of G14 if W11 somehow isn't resolved
+            # (shouldn't happen — Game 11 always precedes 14 in the graph).
+            opponent = w11 if w11 is not None else l14
+            champion, _ = g(opponent, w14)
         champ_counts[champion] += 1
 
     return {

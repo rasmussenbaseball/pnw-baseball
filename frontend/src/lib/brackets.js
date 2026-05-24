@@ -364,12 +364,18 @@ export const TOURNAMENTS = {
       // ── Semifinal (Sun May 24) — WB-Final winner vs the other LB survivor ──
       { num: 13, iso: '2026-05-24', day: 'Sun May 24', time: '4:05 PM',
         home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 11 } },
-      // ── Championship (Sun May 24) — LB Final winner vs Semifinal winner ──
-      { num: 14, iso: '2026-05-24', day: 'Sun May 24', time: '7:30 PM',
+      // ── Championship (Mon May 25) — winner of G12 vs winner of G13 ──
+      { num: 14, iso: '2026-05-25', day: 'Mon May 25', time: '12:00 PM',
         home: { ref: 'winner', game: 12 }, away: { ref: 'winner', game: 13 } },
-      // ── If Necessary — bracket reset, the Game 14 finalists replay ──
+      // ── If Necessary (Mon May 25) — WB-Final winner vs G14 winner.
+      // This single ref handles BOTH outcomes correctly:
+      //   • Standard reset: WB-Final winner (Lane) wins G13, loses G14 to W12.
+      //     L14 == W11 == Lane, so G15 = W11 vs W14 replays the title game.
+      //   • 3-team scenario (Lane loses G13): per official rule, WB-Final
+      //     winner (Lane) byes G14. G14 eliminates one team between W12 and
+      //     W13. G15 = Lane (W11) vs W14 decides the championship.
       { num: 15, iso: '2026-05-25', day: 'Mon May 25', time: '3:35 PM',
-        home: { ref: 'winner', game: 13 }, away: { ref: 'winner', game: 12 },
+        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 14 },
         ifNecessary: true },
     ],
     layout: {
@@ -521,12 +527,14 @@ export const TOURNAMENTS = {
       // Semifinal — WB-Final winner vs the other LB survivor
       { num: 13, iso: '2026-05-24', day: 'Sun May 24', time: '4:05 PM',
         home: { ref: 'winner', game: 10 }, away: { ref: 'winner', game: 11 } },
-      // Championship — LB Final winner vs Semifinal winner
-      { num: 14, iso: '2026-05-24', day: 'Sun May 24', time: '7:30 PM',
+      // Championship — winner of G12 vs winner of G13 (Mon May 25 noon)
+      { num: 14, iso: '2026-05-25', day: 'Mon May 25', time: '12:00 PM',
         home: { ref: 'winner', game: 12 }, away: { ref: 'winner', game: 13 } },
-      // If necessary — bracket reset
+      // If necessary — WB-Final winner (W11) vs G14 winner. Handles both
+      // the standard bracket-reset (W11 lost G14 -> replay) and the 3-team
+      // scenario where W11 byes G14 (per NWAC rule when 3 teams remain).
       { num: 15, iso: '2026-05-25', day: 'Mon May 25', time: '3:35 PM',
-        home: { ref: 'winner', game: 13 }, away: { ref: 'winner', game: 12 },
+        home: { ref: 'winner', game: 11 }, away: { ref: 'winner', game: 14 },
         ifNecessary: true },
     ],
     // ── Layout (1920×1080) ──
