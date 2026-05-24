@@ -718,12 +718,19 @@ export function buildFullDivisionSchedule(conferences, schools, level, year, see
     for (let w = FRONT_NONCONF; w < maxWeeks; w++) {
       const round = rounds[(w - FRONT_NONCONF) % rounds.length]
       const wk = seasonStartWeek + w
-      for (const [t1, t2] of round) {
+      for (let i = 0; i < round.length; i++) {
+        const [t1, t2] = round[i]
         const key = t1 < t2 ? `${t1}|${t2}` : `${t2}|${t1}`
         const n = playCount.get(key) || 0
         playCount.set(key, n + 1)
-        const homeId = (n % 2) === 0 ? t1 : t2
-        const awayId = (n % 2) === 0 ? t2 : t1
+        // The circle method puts the "pivot" team at index 0 in every round —
+        // so without rotation it would host every match. Flip pair order based
+        // on (round + position) so each team plays ~half its conference series
+        // at home and half on the road. Repeat-pair plays alternate via n%2.
+        const flip = ((w - FRONT_NONCONF) + i) % 2 === 1
+        const [first, second] = flip ? [t2, t1] : [t1, t2]
+        const homeId = (n % 2) === 0 ? first : second
+        const awayId = (n % 2) === 0 ? second : first
         const seriesId = `${cid}_${year}_w${w}_${homeId}`
         for (let g = 0; g < 3; g++) {
           games.push(mkSeriesGame(seriesId, g, year, w + 1, wk, homeId, awayId, 'CONFERENCE'))

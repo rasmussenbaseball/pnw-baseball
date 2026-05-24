@@ -598,7 +598,7 @@ export default function Dashboard() {
               </div>
               <div className="text-[10px] opacity-60 mt-1.5 underline decoration-dotted">How is this calculated?</div>
               {/* Hover panel */}
-              <div className="pointer-events-none absolute top-full left-0 mt-2 z-50 w-72 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="pointer-events-none absolute top-full right-0 mt-2 z-50 w-72 max-w-[calc(100vw-2rem)] opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="bg-[#1a1a2e] border border-white/20 rounded-lg p-3 text-left shadow-2xl">
                   <div className="text-[11px] font-bold text-white mb-1.5 uppercase tracking-wide">Weekly AP formula</div>
                   <ul className="text-[11px] text-gray-300 space-y-1 leading-snug">
@@ -2698,6 +2698,37 @@ function WeekRecapModal({ recap, save, onDismiss }) {
                     <span className="text-gray-700 leading-snug">{a}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* National ranking movement — surfaced any week the user played a
+              game (delta != null only when wins/losses changed). Works at every
+              level since rankings update after simWeek. */}
+          {recap.diff?.rankMove && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">National rankings</div>
+              <div className="text-xs flex items-center gap-3 p-2 bg-amber-50 rounded">
+                {(() => {
+                  const m = recap.diff.rankMove
+                  const up = m.delta > 0
+                  const flat = m.delta === 0
+                  const cls = flat ? 'text-gray-500' : up ? 'text-emerald-700' : 'text-red-700'
+                  const arrow = flat ? '→' : up ? '▲' : '▼'
+                  return (
+                    <>
+                      <span className="font-mono text-gray-700">#{m.before} → #{m.after}</span>
+                      <span className={'font-bold ' + cls}>
+                        {arrow} {flat ? 'unchanged' : `${up ? '+' : ''}${m.delta} spot${Math.abs(m.delta) === 1 ? '' : 's'}`}
+                      </span>
+                      {m.beforeRating != null && m.afterRating != null && (
+                        <span className="font-mono text-gray-500 text-[10px]">
+                          rating {m.beforeRating.toFixed(1)} → {m.afterRating.toFixed(1)}
+                        </span>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}

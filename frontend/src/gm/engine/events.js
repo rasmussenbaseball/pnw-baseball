@@ -603,7 +603,11 @@ function ageOpponentRosters(state) {
   const userId = state.userSchoolId
   const level = state.level || 'NAIA'
   const isNwac = level === 'NWAC'
-  const TARGET_ROSTER = isNwac ? 28 : level === 'NAIA' ? 45 : 38
+  // Target rostered count after EOY attrition + freshman refill (per Nate):
+  // 4-year baseball rosters should sit in the 36-50 range; bump non-NAIA to
+  // 42 so post-attrition + in-season churn keeps every team comfortably above
+  // the 36 floor.
+  const TARGET_ROSTER = isNwac ? 28 : level === 'NAIA' ? 45 : 42
   const rng = makeRng('ageOpp', state.rngSeed, state.calendar.year, level)
   let aged = 0
   let graduated = 0

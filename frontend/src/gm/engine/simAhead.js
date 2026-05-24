@@ -36,6 +36,7 @@ export function snapshotState(save) {
       ratings,
     }
   }
+  const myRating = save.nwbbRatings?.[save.userSchoolId]
   return {
     week: save.calendar.week,
     seasonWeek: save.calendar.seasonWeek,
@@ -48,6 +49,8 @@ export function snapshotState(save) {
     wins: team.wins,
     losses: team.losses,
     runDiff: team.runDiff,
+    nationalRank: myRating?.nationalRank ?? null,
+    nwbbRating: myRating?.rating ?? null,
   }
 }
 
@@ -128,5 +131,17 @@ export function diffSnapshots(before, after) {
     jobSecurityDelta: after.jobSecurity - before.jobSecurity,
     recordDelta: { w: after.wins - before.wins, l: after.losses - before.losses },
     runDiffDelta: after.runDiff - before.runDiff,
+    // National-ranking movement — Dashboard surfaces this in the week recap
+    // so the user can see where their rank moved each in-season week.
+    rankMove: (before.nationalRank != null && after.nationalRank != null
+      && (before.wins !== after.wins || before.losses !== after.losses))
+      ? {
+        before: before.nationalRank,
+        after: after.nationalRank,
+        delta: before.nationalRank - after.nationalRank,   // + = climbed up
+        beforeRating: before.nwbbRating,
+        afterRating: after.nwbbRating,
+      }
+      : null,
   }
 }

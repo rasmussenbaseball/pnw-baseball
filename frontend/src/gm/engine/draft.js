@@ -95,7 +95,20 @@ export function simMlbDraft(state, year) {
 
   const picks = []
   const usedIds = new Set()
-  // Spread across 20 rounds. Higher-OVR picks go earlier.
+  // Round window by dynasty level (per Nate). Picks are distributed across
+  // this range — best pick at the floor, worst at round 20. D1s can go top of
+  // the draft; small-school players go later:
+  //   D1   rounds 1-20  (anywhere)
+  //   D2   rounds 6-20  (best D2s ~6-10, most 10-20)
+  //   NAIA rounds 8-20  (top NAIA arms rarely sneak into single digits)
+  //   D3   rounds 10-20 (most D3 picks are 10-20)
+  //   NWAC rounds 14-20 (rare JUCO picks)
+  const level = state.level || 'NAIA'
+  const ROUND_WINDOW = {
+    D1: [1, 20], D2: [6, 20], NAIA: [8, 20], D3: [10, 20], NWAC: [14, 20],
+  }[level] || [1, 20]
+  const [minRound, maxRound] = ROUND_WINDOW
+  // Spread across the level's round window. Higher-OVR picks go earlier.
   for (let i = 0; i < totalPicks; i++) {
     const wantPitcher = rng.chance(PITCHER_BIAS)
     // Try to find the highest-rated remaining candidate matching the role
@@ -106,8 +119,10 @@ export function simMlbDraft(state, year) {
     const c = pool[idx]
     usedIds.add(c.playerId)
 
-    // Distribute picks across 20 rounds: pick #1 round 1, last pick round 20.
-    const round = Math.max(1, Math.min(20, Math.round(1 + (i / Math.max(1, totalPicks - 1)) * 19)))
+    // Distribute picks across [minRound, maxRound]: best pick at the floor of
+    // the level's window, worst at the ceiling.
+    const span = maxRound - minRound
+    const round = Math.max(minRound, Math.min(maxRound, Math.round(minRound + (i / Math.max(1, totalPicks - 1)) * span)))
     picks.push({
       ...c,
       round,

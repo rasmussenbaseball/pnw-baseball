@@ -342,6 +342,42 @@ function teamBaselineOvr(save) {
   return ovrs.reduce((s, v) => s + v, 0) / ovrs.length
 }
 
+const _POS_BUCKET_INFIELD = new Set(['1B', '2B', '3B', 'SS'])
+const _POS_TARGETS = { P: 14, C: 3, IF: 8, OF: 6 }
+function _posBucket(primaryPosition, isPitcher) {
+  if (isPitcher || primaryPosition === 'P' || primaryPosition === 'SP' || primaryPosition === 'RP') return 'P'
+  if (primaryPosition === 'C') return 'C'
+  if (_POS_BUCKET_INFIELD.has(primaryPosition)) return 'IF'
+  return 'OF'
+}
+/**
+ * Build a recruit→bonus function based on the user's CURRENT positional gaps
+ * vs an ideal 4-year roster (~14 P / 3 C / 8 IF / 6 OF). Recruits at a short
+ * bucket get up to +15 added to their perceived value, so a roster with an
+ * "extreme need for pitchers" actually steers auto mode at pitchers.
+ */
+function positionalNeedBonusFn(save) {
+  const team = save.teams?.[save.userSchoolId]
+  const have = { P: 0, C: 0, IF: 0, OF: 0 }
+  for (const id of (team?.rosterPlayerIds || [])) {
+    const p = save.players?.[id]
+    if (!p) continue
+    if (p.eligibilityStatus === 'graduated' || p.eligibilityStatus === 'cut' || p.eligibilityStatus === 'dismissed') continue
+    have[_posBucket(p.primaryPosition, p.isPitcher)]++
+  }
+  // Also count already-signed recruits so we don't keep loading up the same
+  // bucket after we've already filled it via the recruiting class.
+  for (const r of Object.values(save.recruits || {})) {
+    if (r.status !== 'signed' || r.signedTo !== save.userSchoolId) continue
+    have[_posBucket(r.primaryPosition, r.isPitcher)]++
+  }
+  return (recruit) => {
+    const bucket = _posBucket(recruit.primaryPosition, recruit.isPitcher)
+    const need = (_POS_TARGETS[bucket] || 0) - (have[bucket] || 0)
+    return Math.max(0, Math.min(15, need * 2))
+  }
+}
+
 /**
  * Roster spots open for the upcoming recruiting cycle = cap − returning
  * (non-graduating) − already-committed. Mirrors RosterSnapshotPanel.
@@ -818,8 +854,14 @@ function spendRecruiting(save, apBudget) {
   // The floor is team-relative (bar − 12) so weak programs court lower and
   // strong programs don't waste looks on players far below their level.
   const courtFloor = Math.max(40, bar - 12)
+  // Positional-need bonus on top of perceived value: if the user is short on
+  // pitchers / catchers / infielders / outfielders relative to a healthy
+  // 42-player roster, recruits at the short position bubble up the priority
+  // list. So "we have ZERO pitchers and an extreme need" actually steers auto
+  // mode at pitchers (per Nate).
+  const needBonus = positionalNeedBonusFn(save)
   const targets = openList()
-    .map(r => ({ r, perceived: recruitEffValue(save, r, /* perceived */ true) }))
+    .map(r => ({ r, perceived: recruitEffValue(save, r, /* perceived */ true) + needBonus(r) }))
     .filter(t => t.perceived >= courtFloor)
     .sort((a, b) => b.perceived - a.perceived)
     .slice(0, 18)

@@ -24,7 +24,7 @@
         "maxSeasonsPerPlayer": 4,
         "details": "NCAA D1 \u2014 4 years of eligibility. Highest level of college baseball. Best players get drafted after JR year."
       },
-      "rosterCap": 40,
+      "rosterCap": 45,
       "seasonGames": 56,
       "national": {
         "name": "NCAA D1 Tournament + College World Series",
@@ -69,7 +69,7 @@
         "maxSeasonsPerPlayer": 4,
         "details": "NCAA D2 \u2014 4 years of eligibility. Tier below D1 but still elite collegiate level. Some draft pipeline, mostly from upper-class players."
       },
-      "rosterCap": 40,
+      "rosterCap": 45,
       "seasonGames": 52,
       "national": {
         "name": "NCAA D2 Tournament + D2 World Series",
@@ -120,7 +120,7 @@
         "maxSeasonsPerPlayer": 4,
         "details": "NCAA D3 \u2014 4 years of eligibility. No athletic scholarships allowed. Skill tier roughly equivalent to NWAC + low NAIA. Rare draft picks."
       },
-      "rosterCap": 40,
+      "rosterCap": 45,
       "seasonGames": 41,
       "national": {
         "name": "NCAA D3 Tournament + D3 World Series",
