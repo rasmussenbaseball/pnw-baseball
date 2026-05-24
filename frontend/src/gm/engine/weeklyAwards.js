@@ -19,6 +19,7 @@
  */
 
 import { awardCoachUpgradePoints } from './coachProgression'
+import { makeRng } from './rng'
 
 /**
  * Score a hitter's WEEK (not season). Higher = better.
@@ -64,22 +65,47 @@ const MIN_HITTER_WEEK_SCORE = 7
 const MIN_PITCHER_WEEK_SCORE = 8
 
 /**
- * Pick the best player matching `predicate` from a stats map using `scoreFn`.
- * Returns { playerId, score, stats } or null. `minScore` gates out weak
- * winners — if the best qualifier doesn't clear it, nobody wins.
+ * Pick a POTW from a stats map. Returns { playerId, score, stats } or null.
+ *
+ * Selection is WEIGHTED-RANDOM among the top 8 qualifying candidates, with
+ * the weight tied to the score's edge above the floor. The best line still
+ * wins most often — but a top-five line beating the chalk happens enough
+ * that POTW doesn't lock onto a single dominant pitcher all season.
+ *
+ * This mirrors how real-life weekly awards work (a panel votes, and a #3
+ * line with a flashy stat can take it from the #1 line with a slightly
+ * better one). It also breaks the prior "user wins POTW every week" bug:
+ * before, a +1-per-rating snowball compounded the user's small advantage
+ * over a full season — and a deterministic best-line picker amplified it.
+ *
+ * `minScore` gates out weak winners — if NO candidate clears the bar,
+ * nobody wins (better silence than a bad POTW line).
  */
-function pickBest(weeklyStats, predicate, scoreFn, minScore = -Infinity) {
-  let best = null
-  let bestScore = -Infinity
+function pickBest(weeklyStats, predicate, scoreFn, minScore = -Infinity, rng = null) {
+  const candidates = []
   for (const [key, stats] of Object.entries(weeklyStats || {})) {
     if (!predicate(stats)) continue
     const score = scoreFn(stats)
-    if (score > bestScore) {
-      bestScore = score
-      best = { playerId: stats.playerId, score, stats }
+    if (score >= minScore) {
+      candidates.push({ playerId: stats.playerId, score, stats })
     }
   }
-  return bestScore >= minScore ? best : null
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => b.score - a.score)
+  const top = candidates.slice(0, 8)
+  // Without an rng (legacy / non-deterministic context) just return the best.
+  if (!rng) return top[0]
+  // Floor weights at 0.5 above the lowest top-N score so the worst of the
+  // top 8 still has a small chance, but the best is meaningfully favored.
+  const floor = top[top.length - 1].score - 0.5
+  const weights = top.map(c => Math.max(0.1, c.score - floor))
+  const totalW = weights.reduce((a, b) => a + b, 0)
+  let r = rng.float(0, totalW)
+  for (let i = 0; i < top.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return top[i]
+  }
+  return top[0]
 }
 
 /**
@@ -102,22 +128,28 @@ function rewardUserPlayer(state, playerId, kind, scope) {
   if (!p) return
   const isUser = state.teams?.[state.userSchoolId]?.rosterPlayerIds?.includes(playerId)
   if (!isUser) return
-  // Each Player-of-the-Week is a small +1 to every rating in the relevant
-  // block (was +3 for NAIA — far too much, a repeat winner ballooned to 99).
-  // Conf POTW and NAIA POTW each give +1, so winning both in a week stacks to
-  // +2 total, per Nate.
-  const bump = 1
+  // Player-of-the-Week development reward (per Nate, May 2026 — POTW
+  // snowball fix). The old rule (+1 to EVERY rating, every week) was a
+  // structural cheat: only the user's POTW winner got the bump, while
+  // every other team's winners got nothing. After 8 wins the user's ace
+  // was +8 across all 8 pitcher ratings — a 64-point advantage vs the
+  // rest of the league, which then cascaded into MORE POTW wins.
+  //
+  // New rule: +1 to the SINGLE most-relevant primary rating only, so a
+  // streak still feels rewarding (~+10 to one rating over a strong
+  // season) without rocketing every rating to 99.
   if (kind === 'HITTER' && p.hitter) {
-    for (const key of Object.keys(p.hitter)) {
-      if (typeof p.hitter[key] === 'number') {
-        p.hitter[key] = Math.min(99, p.hitter[key] + bump)
-      }
+    // Bump contact (both sides) by +1 — the headline hitter stat.
+    if (typeof p.hitter.contact_r === 'number') {
+      p.hitter.contact_r = Math.min(99, p.hitter.contact_r + 1)
+    }
+    if (typeof p.hitter.contact_l === 'number') {
+      p.hitter.contact_l = Math.min(99, p.hitter.contact_l + 1)
     }
   } else if (kind === 'PITCHER' && p.pitcher) {
-    for (const key of Object.keys(p.pitcher)) {
-      if (typeof p.pitcher[key] === 'number') {
-        p.pitcher[key] = Math.min(99, p.pitcher[key] + bump)
-      }
+    // Bump stuff (the headline pitcher stat) by +1.
+    if (typeof p.pitcher.stuff === 'number') {
+      p.pitcher.stuff = Math.min(99, p.pitcher.stuff + 1)
     }
   }
   // Coach upgrade points — points should be SCARCE (per Nate). A weekly
@@ -142,6 +174,16 @@ export function computeWeeklyAwards(state) {
   const weekly = state.weeklyStats || {}
   // Skip when nobody played this week (e.g. bye week, fall scrimmage weeks)
   if (Object.keys(weekly).length === 0) return []
+
+  // Deterministic per-week rng for the weighted-random POTW picker. Seeded
+  // off the season year + week + dynasty seed so a given save replays the
+  // same POTW outcomes if simmed again.
+  const rng = makeRng(
+    'potw',
+    state.calendar?.year ?? 0,
+    state.calendar?.weekOfYear ?? 0,
+    state.rngSeed ?? 'default',
+  )
 
   const playerById = state.players || {}
   // Build a playerId → conferenceId map so we can scope conference awards
@@ -169,10 +211,10 @@ export function computeWeeklyAwards(state) {
     confWinners.NWAC = {
       hitter: pickBest(weekly,
         (s) => !s.isPitcher && nwacRegions.has(playerConf[s.playerId]),
-        hitterWeekScore, MIN_HITTER_WEEK_SCORE),
+        hitterWeekScore, MIN_HITTER_WEEK_SCORE, rng),
       pitcher: pickBest(weekly,
         (s) => s.isPitcher && nwacRegions.has(playerConf[s.playerId]),
-        pitcherWeekScore, MIN_PITCHER_WEEK_SCORE),
+        pitcherWeekScore, MIN_PITCHER_WEEK_SCORE, rng),
     }
   } else {
     for (const confId of Object.keys(state.conferences || {})) {
@@ -181,10 +223,10 @@ export function computeWeeklyAwards(state) {
       confWinners[confId] = {
         hitter: pickBest(weekly,
           (s) => !s.isPitcher && playerConf[s.playerId] === confId,
-          hitterWeekScore, MIN_HITTER_WEEK_SCORE),
+          hitterWeekScore, MIN_HITTER_WEEK_SCORE, rng),
         pitcher: pickBest(weekly,
           (s) => s.isPitcher && playerConf[s.playerId] === confId,
-          pitcherWeekScore, MIN_PITCHER_WEEK_SCORE),
+          pitcherWeekScore, MIN_PITCHER_WEEK_SCORE, rng),
       }
     }
   }

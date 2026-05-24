@@ -11,7 +11,7 @@
       "pipelineFlag": "NWAC",
       "region": "NW",
       "teams": [
-        { "id": "bellevue-cc", "name": "Bellevue CC", "state": "WA" },
+        { "id": "bellevue-cc", "name": "Bellevue", "state": "WA" },
         { "id": "big-bend", "name": "Big Bend", "state": "WA" },
         { "id": "centralia", "name": "Centralia", "state": "WA" },
         { "id": "douglas", "name": "Douglas", "state": "BC" },
