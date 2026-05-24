@@ -828,7 +828,11 @@ function buildNwacSchedule(schools, year, rng) {
   }
   const games = []
   const seasonStartWeek = 27
-  const TOTAL_WEEKS = 13      // NAIA/NWAC regular season is 13 spring weeks
+  // NWAC regular season is 14 spring weeks (vs NAIA's 13) — playoffs only
+  // run 2 weeks for NWAC (super regionals wk41 + championship wk42) so the
+  // extra game week fills the calendar without leaving the user idle. Per
+  // Nate (May 2026): "no 2 weeks off before playoffs."
+  const TOTAL_WEEKS = 14
   const CROSS_REGION_WEEKS = 3   // first 3 weeks reserved for cross-region
 
   // Helper — build a 4-game weekend series (Fri DH + Sat DH) between two teams.
@@ -903,7 +907,7 @@ function buildNwacSchedule(schools, year, rng) {
   }
   const playCount = new Map()   // pairKey → count (alternates home/away)
   function pairKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}` }
-  const confWeeks = TOTAL_WEEKS - CROSS_REGION_WEEKS    // 10 conf-window weeks
+  const confWeeks = TOTAL_WEEKS - CROSS_REGION_WEEKS    // 11 conf-window weeks (14-3)
 
   for (const div of Object.keys(byDiv)) {
     // SHUFFLE the team order before circle-method so the round-robin

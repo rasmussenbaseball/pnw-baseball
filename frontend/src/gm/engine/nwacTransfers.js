@@ -246,6 +246,25 @@ export function assignNwacTransferDestinations(state) {
   if (userCoachPts > 0) {
     awardCoachUpgradePoints(state, userCoachPts, `Sophomore class placed at 4-yr programs`)
   }
+
+  // Per Nate (May 2026): build a dedicated payload for the Dashboard's
+  // NWAC SO-departures modal. Captures EVERY sophomore who left the
+  // user's roster this year (including career-ended kids who got no
+  // 4-yr offer — they should still show up so the user sees the full
+  // class turnover). Dashboard reads + clears state._nwacDepartures.
+  const userTransfers = state.nwacAlumni[year].filter(a => {
+    const p = state.players[a.playerId]
+    return p && p.schoolId === userTeamId
+  })
+  if (userTransfers.length > 0) {
+    state._nwacDepartures = userTransfers.map(a => ({
+      id: a.playerId,
+      name: a.playerName,
+      pos: a.position,
+      ovr: a.ovr,
+      destination: a.destination,
+    }))
+  }
 }
 
 function makePersistentRng(state) {

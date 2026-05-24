@@ -1414,10 +1414,13 @@ export function advanceOneWeek(state) {
       else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonD1(state, 41)
       else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonD1(state, 42)
     } else if (state.level === 'NWAC') {
-      // NWAC uses NAIA's 3-round window: super-regional play-in wk40,
-      // best-of-3 final wk41, championship at Longview wk42.
-      if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonNWAC(state, 40)
-      else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNWAC(state, 41)
+      // NWAC postseason is 2 weeks: super-regional wk41, championship wk42.
+      // Setup of wk41's super-regional happens via the POSTSEASON START
+      // hook (setupInteractivePostseasonNWAC), so this only handles the
+      // round-to-round transitions:
+      //   41 → 42 : super resolved → set up Longview championship
+      //   42 → 43 : championship resolved → finalize
+      if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNWAC(state, 41)
       else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonNWAC(state, 42)
     }
   }

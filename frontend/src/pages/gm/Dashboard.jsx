@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [awardsModal, setAwardsModal] = useState(null)   // end-of-season All-Conference + Gold Glove popup
   const [commitModal, setCommitModal] = useState(null)   // recruit-commit profile popup(s) after an advance
   const [departureModal, setDepartureModal] = useState(null)   // outbound-transfer popup
+  const [nwacDeparturesModal, setNwacDeparturesModal] = useState(null)   // NWAC sophomore class — full destinations list
   const [draftModal, setDraftModal] = useState(null)           // MLB draft popup
   const [potwModal, setPotwModal] = useState(null)             // user-player Player-of-the-Week popup
   const [seasonRecapModal, setSeasonRecapModal] = useState(null)  // year-rollover comprehensive recap
@@ -305,14 +306,17 @@ export default function Dashboard() {
           const _commits = (save._newCommitRecruits || []).slice()
           const _departures = (save._newDepartures || []).slice()
           const _drafted = (save._newDraftPicks || []).slice()
+          const _nwacDepartures = (save._nwacDepartures || []).slice()
           save._newCommitRecruits = []
           save._newDepartures = []
           save._newDraftPicks = []
+          save._nwacDepartures = []
           saveDynasty(save)
           setSave({ ...save })
           if (_commits.length) setCommitModal(_commits)
           if (_departures.length) setDepartureModal(_departures)
           if (_drafted.length) setDraftModal(_drafted)
+          if (_nwacDepartures.length) setNwacDeparturesModal(_nwacDepartures)
           const afterSnap = snapshotState(save)
           const diff = diffSnapshots(beforeSnap, afterSnap)
           const newWoy = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
@@ -426,14 +430,17 @@ export default function Dashboard() {
           const _commits = (save._newCommitRecruits || []).slice()
           const _departures = (save._newDepartures || []).slice()
           const _drafted = (save._newDraftPicks || []).slice()
+          const _nwacDepartures = (save._nwacDepartures || []).slice()
           save._newCommitRecruits = []
           save._newDepartures = []
           save._newDraftPicks = []
+          save._nwacDepartures = []
           saveDynasty(save)
           setSave({ ...save })
           if (_commits.length) setCommitModal(_commits)
           if (_departures.length) setDepartureModal(_departures)
           if (_drafted.length) setDraftModal(_drafted)
+          if (_nwacDepartures.length) setNwacDeparturesModal(_nwacDepartures)
           setLastWeekRecap({ kind: 'season', results: [] })
         } catch (err) {
           console.error('postseason advance failed:', err)
@@ -555,6 +562,9 @@ export default function Dashboard() {
       )}
       {departureModal && departureModal.length > 0 && (
         <DepartureModal departures={departureModal} onClose={() => setDepartureModal(null)} />
+      )}
+      {nwacDeparturesModal && nwacDeparturesModal.length > 0 && (
+        <NwacDeparturesModal departures={nwacDeparturesModal} onClose={() => setNwacDeparturesModal(null)} />
       )}
       {draftModal && draftModal.length > 0 && (
         <DraftModal picks={draftModal} onClose={() => setDraftModal(null)} />
@@ -2406,6 +2416,108 @@ function DepartureModal({ departures, onClose }) {
           ))}
         </div>
         <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Got it</button>
+      </div>
+    </div>
+  )
+}
+
+// NWAC sophomore-class departures popup. Every NWAC SO leaves at the end
+// of year 2 (transfer up to 4-yr OR career ends). This is the user-team-
+// specific list with destinations + OVR — surfaced after the season ends
+// so the user sees the FULL class turnover before year 3 begins.
+function NwacDeparturesModal({ departures, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  // Sort by destination tier — D1 commits first (the big news), then D2,
+  // then D3/NAIA, then career-ended last.
+  const tierRank = (d) => {
+    if (!d?.destination || d.destination.division === 'NONE') return 5
+    const div = d.destination.division
+    if (div === 'D1') return 0
+    if (div === 'D2') return 1
+    if (div === 'NAIA') return 2
+    if (div === 'D3') return 3
+    return 4
+  }
+  const sorted = [...departures].sort((a, b) => {
+    const ta = tierRank(a), tb = tierRank(b)
+    if (ta !== tb) return ta - tb
+    return b.ovr - a.ovr
+  })
+  const placed = sorted.filter(d => d.destination?.division && d.destination.division !== 'NONE')
+  const ended = sorted.filter(d => !d.destination?.division || d.destination.division === 'NONE')
+
+  function divChip(div) {
+    if (!div || div === 'NONE') return { txt: 'Career ended', cls: 'bg-gray-100 text-gray-600' }
+    if (div === 'D1')   return { txt: 'D1',   cls: 'bg-amber-100 text-amber-800 font-bold' }
+    if (div === 'D2')   return { txt: 'D2',   cls: 'bg-blue-100 text-blue-800' }
+    if (div === 'NAIA') return { txt: 'NAIA', cls: 'bg-emerald-100 text-emerald-800' }
+    if (div === 'D3')   return { txt: 'D3',   cls: 'bg-purple-100 text-purple-800' }
+    return { txt: div, cls: 'bg-gray-100 text-gray-700' }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl p-6 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" {...stopProps}>
+        <div className="flex justify-between items-start gap-3 mb-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-pnw-green font-bold">🎓 Sophomore class — 4-year destinations</div>
+            <h3 className="text-xl font-bold text-pnw-slate mt-0.5">
+              {departures.length} sophomore{departures.length === 1 ? '' : 's'} moving on
+            </h3>
+            <div className="text-xs text-gray-600 mt-1">
+              Every NWAC SO transfers out after their 2nd year. Here's where your class landed.
+            </div>
+          </div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
+
+        {placed.length > 0 && (
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">Placed at 4-year programs ({placed.length})</div>
+            <div className="space-y-1">
+              {placed.map((d, i) => {
+                const chip = divChip(d.destination?.division)
+                return (
+                  <div key={d.id || i} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded bg-pnw-cream/30">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] font-mono text-gray-500 w-7 shrink-0">{d.pos}</span>
+                      <span className="font-semibold text-pnw-slate truncate">{d.name}</span>
+                      <span className="text-[10px] font-mono text-gray-500 shrink-0">{Math.round(d.ovr)} OVR</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={'text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ' + chip.cls}>{chip.txt}</span>
+                      <span className="text-xs text-gray-700 truncate max-w-[200px]" title={d.destination?.name}>
+                        → {d.destination?.name}
+                        {d.destination?.state && <span className="text-gray-500"> ({d.destination.state})</span>}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {ended.length > 0 && (
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">No 4-year offer — career ended ({ended.length})</div>
+            <div className="space-y-1">
+              {ended.map((d, i) => (
+                <div key={d.id || i} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded text-xs text-gray-600 bg-gray-50">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-gray-500 w-7 shrink-0">{d.pos}</span>
+                    <span className="truncate">{d.name}</span>
+                    <span className="font-mono text-gray-500 shrink-0">{Math.round(d.ovr)} OVR</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">
+          Continue
+        </button>
       </div>
     </div>
   )

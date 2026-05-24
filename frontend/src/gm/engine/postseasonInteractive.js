@@ -1554,6 +1554,11 @@ export function setupInteractivePostseasonNWAC(state) {
   const year = state.calendar.year
   const seedsByRegion = nwacSeedRegions(state)
   const userInfo = findUserSeed(seedsByRegion, userId)
+  // NWAC postseason is COMPRESSED to 2 weeks (per Nate, May 2026):
+  //   Wk 41 = Super Regionals (play-in + best-of-3 all this week)
+  //   Wk 42 = NWAC Championship at Longview
+  // 1-seed users get just ONE bye week (wk 41) before championship.
+  // 2/3/4-seed users play their super regional in wk 41 interactively.
   const ps = {
     year: year + 1, level: 'NWAC', interactive: true, stage: 'SUPER',
     userQualified: !!userInfo,
@@ -1563,36 +1568,44 @@ export function setupInteractivePostseasonNWAC(state) {
     userRegion: userInfo?.region ?? null,
     userChamp: false, userNatChamp: false, nationalChampion: null,
     seedsByRegion,
-    rounds: { PLAYIN: null, SUPER: null, WS: null },
+    rounds: { SUPER: null, WS: null },
     nwac: {
       superRegionals: [],
       championship: null,
     },
   }
   state.postseason = ps
-  // Set up Wk 40 — super regional play-in.
-  setupNwacPlayIn(state)
+  setupNwacSuper(state)
   return ps
 }
 
 export function advanceInteractivePostseasonNWAC(state, leavingWeek) {
   const ps = state.postseason
   if (!ps || !ps.interactive || ps.level !== 'NWAC') return
-  if (leavingWeek === 39)      { ps.stage = 'SUPER';   setupNwacSuperBo3(state) }
-  else if (leavingWeek === 40) { ps.stage = 'SUPER';   setupNwacSuperBo3(state) }
-  else if (leavingWeek === 41) { ps.stage = 'WS';      setupNwacChampionship(state) }
+  // Wk 41 → 42: super regional done, set up championship.
+  if (leavingWeek === 41) { ps.stage = 'WS'; setupNwacChampionship(state) }
+  // Wk 42 → 43: finalize.
   else if (leavingWeek === 42) { finalizeNwac(state) }
 }
 
-function setupNwacPlayIn(state) {
+/**
+ * Wk 41 setup: build all 4 super-regional brackets. Auto-sim play-ins
+ * (the #3 vs #4 visitor game) so the user's bo3 has a known opponent.
+ * Then either:
+ *   - User is #1 seed: bye this week, no round set up.
+ *   - User is #2 seed: host bo3 vs auto-simmed play-in winner.
+ *   - User is #3/#4 seed: their play-in is auto-resolved by rating + a
+ *     small noise factor. If they win → bo3 visiting the #2 seed.
+ *     If they lose → eliminated.
+ */
+function setupNwacSuper(state) {
   const ps = state.postseason
   const userId = state.userSchoolId
   const year = state.calendar.year
   const sim = makeNwacSim(state)
   const seedFn = (region, n) => ps.seedsByRegion[region]?.[n - 1] || null
 
-  // Build 4 super-regional records. Each has a host (#2 seed), a play-in
-  // game between two visitors, then a best-of-3 final at the host.
+  // Build 4 super-regional records.
   ps.nwac.superRegionals = NWAC_SR_LAYOUT.map(sr => ({
     host: sr.host,
     hostId: seedFn(sr.host, 2),
@@ -1603,30 +1616,10 @@ function setupNwacPlayIn(state) {
     isUser: false,
   }))
 
-  // If user is a 1-seed they auto-advance to the championship (no SR action).
-  if (ps.userSeed === 1) {
-    return
-  }
-
-  // Mark whichever SR involves the user. Determines whether they play a
-  // play-in (3/4-seed) or wait for one (2-seed).
-  const userSrIdx = ps.nwac.superRegionals.findIndex(sr =>
-    sr.hostId === userId || sr.playInA === userId || sr.playInB === userId,
-  )
-  if (userSrIdx < 0) return
-  const userSr = ps.nwac.superRegionals[userSrIdx]
-  userSr.isUser = true
-
-  // User as a 2-seed: no play-in game this week — they wait. Other SRs
-  // sim their play-ins now; the user's SR play-in also sims (visitors
-  // facing off, user doesn't play).
-  // User as a 3/4-seed: they play the play-in game this week, interactive.
-  const userIsVisitor = (userSr.playInA === userId || userSr.playInB === userId)
-
-  // Auto-sim all non-user play-ins.
+  // Auto-sim every super-regional's play-in. (Play-in interactivity is a
+  // future enhancement — focus here is making the bo3 interactive.)
   for (let i = 0; i < ps.nwac.superRegionals.length; i++) {
     const sr = ps.nwac.superRegionals[i]
-    if (i === userSrIdx && userIsVisitor) continue   // user plays this one
     if (!sr.playInA || !sr.playInB) {
       sr.playInWinner = sr.playInA || sr.playInB
       continue
@@ -1634,56 +1627,42 @@ function setupNwacPlayIn(state) {
     sr.playInWinner = sim(sr.playInA, sr.playInB, `pi_${year}_${i}`)
   }
 
-  // Set up user's play-in as an interactive single game at the host site.
-  if (userIsVisitor) {
-    const opp = userSr.playInA === userId ? userSr.playInB : userSr.playInA
-    ps.rounds.PLAYIN = {
-      format: 'SINGLE', aId: userId, bId: opp, hostId: userSr.hostId,
-      seedKey: `nwac_pi_${year}_${userSrIdx}`, superIdx: userSrIdx,
-      label: `NWAC Super Regional Play-In @ ${teamNameOf(state, userSr.hostId)}`,
-      oppName: teamNameOf(state, opp),
-      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
-    }
-    tickInteractivePostseason(state)
-  }
-}
-
-function setupNwacSuperBo3(state) {
-  const ps = state.postseason
-  const userId = state.userSchoolId
-  const year = state.calendar.year
-  const sim = makeNwacSim(state)
-
-  // Resolve any pending user play-in.
-  if (ps.rounds.PLAYIN?.resolved) {
-    const sr = ps.nwac.superRegionals[ps.rounds.PLAYIN.superIdx]
-    if (sr) sr.playInWinner = ps.rounds.PLAYIN.userWon ? userId : (sr.playInA === userId ? sr.playInB : sr.playInA)
-    if (!ps.rounds.PLAYIN.userWon) {
-      ps.userAlive = false
-      ps.userEliminatedAt = 'PLAYIN'
-    }
-  }
-
-  // 1-seeds auto-advance — no SR games for them.
+  // 1-seeds: auto-advance to championship. No round to set up — wk 41 is
+  // a bye and ticking the user into the championship happens in wk 42.
   if (ps.userSeed === 1) return
 
-  // Find user's SR.
-  const userSr = ps.nwac.superRegionals.find(sr => sr.isUser)
-  if (!userSr || !ps.userAlive) {
-    // User done. Sim every remaining SR best-of-3.
+  // 3/4-seed: check if user won the play-in.
+  if (ps.userSeed === 3 || ps.userSeed === 4) {
+    const userSr = ps.nwac.superRegionals.find(sr => sr.playInA === userId || sr.playInB === userId)
+    if (!userSr || userSr.playInWinner !== userId) {
+      // User lost the play-in — eliminated before bo3.
+      ps.userAlive = false
+      ps.userEliminatedAt = 'PLAYIN'
+      // Sim all bo3s in background.
+      for (const sr of ps.nwac.superRegionals) {
+        sr.bo3Winner = runBestOf3(sr.hostId, sr.playInWinner, '__none__', () => null, sim, `bo3_${year}_${sr.host}`).champion
+      }
+      return
+    }
+  }
+
+  // 2-seed or play-in-winning 3/4: find user's super regional + set up bo3.
+  const userSr = ps.nwac.superRegionals.find(sr =>
+    sr.hostId === userId || sr.playInWinner === userId,
+  )
+  if (!userSr) {
+    // Sanity — user qualified but no SR matched. Auto-sim everything.
     for (const sr of ps.nwac.superRegionals) {
-      if (sr.bo3Winner || !sr.hostId || !sr.playInWinner) continue
       sr.bo3Winner = runBestOf3(sr.hostId, sr.playInWinner, '__none__', () => null, sim, `bo3_${year}_${sr.host}`).champion
     }
     return
   }
+  userSr.isUser = true
 
-  // User's best-of-3. They host if they're the #2 seed; otherwise they visit
-  // the #2 seed (they're a play-in winner moving up).
+  // User hosts if they're the #2 seed; otherwise they visit.
   const userIsHost = userSr.hostId === userId
   const oppId = userIsHost ? userSr.playInWinner : userSr.hostId
-  if (!oppId) return
-  const aId = userIsHost ? userId : oppId   // host
+  const aId = userIsHost ? userId : oppId   // higher seed hosts
   const bId = userIsHost ? oppId : userId
   ps.rounds.SUPER = {
     format: 'BO3', aId, bId, hostId: aId,
@@ -1694,7 +1673,7 @@ function setupNwacSuperBo3(state) {
     resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
   }
 
-  // Auto-sim other SRs' best-of-3s.
+  // Auto-sim every OTHER super regional bo3 in the background.
   for (const sr of ps.nwac.superRegionals) {
     if (sr.isUser) continue
     if (!sr.hostId || !sr.playInWinner) continue
