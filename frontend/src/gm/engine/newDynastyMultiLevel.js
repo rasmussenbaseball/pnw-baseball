@@ -453,17 +453,39 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
   //   NWAC best ~75 (Everett), worst ~62 (Grays Harbor)
   let programHistory
   if (level === 'D1' && typeof pearRank === 'number' && pearRank > 0) {
-    // RANK-BUCKETED PH. 308 D1 teams → 11 OVR values (88-98) → 28 teams per
+    // RANK-BUCKETED PH. 308 D1 teams → 19 OVR values (80-98) → ~16 teams per
     // OVR. Each bucket maps to a PH value chosen so expectedTeamOvr (which
     // rounds `75 + (ph-15)*0.27` for D1) yields the target OVR exactly.
-    // This gives the truly-even distribution Nate asked for instead of the
-    // strength-linear formula whose rounding clumped teams at 96.
+    // Range widened May 2026 per Nate: was 88-98 (11 values); user wants
+    // bottom at OVR 80 (Alcorn-tier) for a fuller D1 spread.
     const D1_TEAM_COUNT = 308
+    const D1_BUCKET_COUNT = 19
     const r = Math.max(1, Math.min(D1_TEAM_COUNT, pearRank))
-    const bucket = Math.min(10, Math.floor((r - 1) / 28))   // 0..10 inclusive
+    const bucket = Math.min(D1_BUCKET_COUNT - 1,
+      Math.floor((r - 1) * D1_BUCKET_COUNT / D1_TEAM_COUNT))
     // PH per bucket — calibrated so expectedTeamOvr rounds to the target.
-    // bucket 0 → OVR 98, bucket 10 → OVR 88.
-    const D1_BUCKET_PH = [99, 96, 93, 89, 85, 82, 78, 74, 71, 67, 63]
+    // bucket 0 → OVR 98, bucket 18 → OVR 80.
+    const D1_BUCKET_PH = [
+      99,   // OVR 98
+      96,   // OVR 97
+      93,   // OVR 96
+      89,   // OVR 95
+      85,   // OVR 94
+      82,   // OVR 93
+      78,   // OVR 92
+      74,   // OVR 91
+      71,   // OVR 90
+      67,   // OVR 89
+      63,   // OVR 88
+      60,   // OVR 87
+      56,   // OVR 86
+      52,   // OVR 85
+      48,   // OVR 84
+      45,   // OVR 83
+      41,   // OVR 82
+      37,   // OVR 81
+      34,   // OVR 80
+    ]
     programHistory = D1_BUCKET_PH[bucket]
   } else {
     const tierBase  = { D1: 74, D2: 46, D3: 30, NWAC: 44 }[level] ?? 50
