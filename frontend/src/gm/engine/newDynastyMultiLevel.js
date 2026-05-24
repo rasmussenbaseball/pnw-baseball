@@ -23,6 +23,8 @@
 
 import { generateRoster } from './generate'
 import { generateStaff, computeCoachSalary } from './coaches'
+import { teamOverall } from './playerRating'
+import { expectedTeamOvr } from './programRating'
 import { makeRng, hashSeed } from './rng'
 import { defaultBudgetForSchool } from './budget'
 import {
@@ -143,6 +145,7 @@ export function newDynastyMultiLevel(input) {
       nickname: m.nickname || (fromPool?.nickname ?? ''),
       conferenceId: memberConfId,
       strength: fromPool?.strength ?? 0,
+      pearRank: fromPool?.pearRank ?? null,
       level,
       // Prefer colors set directly on the PNW member (playoff_formats — used
       // for NWAC schools that aren't in PEAR's national dataset), fall back
@@ -281,9 +284,16 @@ export function newDynastyMultiLevel(input) {
       assistantCoachIds: teamAssistants.map(a => a.id),
       wins: 0, losses: 0, confWins: 0, confLosses: 0, runDiff: 0,
     }
-    // Team OVR is now anchored honestly at roster-generation time (see
-    // scaleRosterToTarget in generate.js) — hitting/pitching/overall all
-    // reflect the assigned program rating, so no display-time ovrOffset.
+    // Team OVR pin. scaleRosterToTarget shifts ratings to hit the expected
+    // OVR, but ratings clamp at 99 — for top-bucket teams (D1 PH=99) that
+    // clamp prevents reaching OVR 98 because top players saturate the
+    // ceiling before the full delta is applied. Compute the residual gap
+    // and stash it as ovrOffset so the displayed Team OVR exactly matches
+    // expectedTeamOvr (i.e. the team-picker tile value).
+    const expectedOvr = expectedTeamOvr(school)
+    const naturalOvr = teamOverall(teams[school.id], players).overall
+    const residual = expectedOvr - naturalOvr
+    if (Math.abs(residual) >= 1) teams[school.id].ovrOffset = residual
   }
 
   // 5. Schedule. D1/D2/D3 build the FULL division (every conference plays a
@@ -427,28 +437,39 @@ function buildUserHeadCoach(uc, school, role = 'HEAD_COACH') {
  * programHistory / scholarshipPool / facilityRating are estimated from
  * the level + strength so the rest of the engine doesn't see undefined.
  */
-function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, strength, level, colors }) {
-  // Universal-strength projection per the same mapping nwbbRating uses.
-  // Tuned May 2026 to widen the gap between strong + weak programs within
-  // each level so the Team OVR hierarchy matches real-world expectations:
-  //   Top D1 → ~92 OVR, bottom D1 → ~84-86
-  //   Top D2 → ~82 OVR, bottom D2 → ~73-75
-  //   Top NWAC → ~75 OVR, bottom NWAC → ~60-65
-  // Each level now uses a steeper strength slope and a slightly higher
-  // tierBase. See scripts/pnw-team-ovr-report.mjs to verify hierarchy.
-  // PH formula tuned for the PNW Team OVR hierarchy Nate wants:
-  //   D1   best ~98 (Georgia Tech-tier), worst ~80 (Alcorn-tier) — wider
-  //         spread per Nate (May 2026); was 85→96, too compressed.
+function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, strength, pearRank, level, colors }) {
+  // PROGRAM HISTORY computation — drives Team OVR via expectedTeamOvr().
+  //
+  // D1 uses RANK-BASED PH so the 308-team field spreads EVENLY across the
+  // OVR window. Per Nate (May 2026): "it needs to be an even spread of
+  // overalls from 98 to 88." With expectedTeamOvr = round(75 + (ph-15)*0.27)
+  // for D1, mapping rank 1→PH 99 and rank 308→PH 63 lands every team in the
+  // OVR 88-98 band with ~28 teams per integer OVR value.
+  //
+  // Other levels still use the strength-slope formula since the PNW Team OVR
+  // hierarchy there is well-calibrated:
   //   D2   best ~83 (NN Nazarene), worst ~67 (Saint Martin's)
   //   D3   best ~81 (Whitworth), worst ~65 (Willamette)
   //   NWAC best ~75 (Everett), worst ~62 (Grays Harbor)
-  // D1 slope DROPPED from 6.5 → 3.5 (was clamping everyone at PH=99 — top D1
-  // were all 96 because Georgia Tech, Oregon St., and a dozen others all hit
-  // the cap). The new slope spreads the 308 D1 teams across PH 34-100, which
-  // maps to OVR 80-98 via expectedTeamOvr.
-  const tierBase  = { D1: 74, D2: 46, D3: 30, NWAC: 44 }[level] ?? 50
-  const tierSlope = { D1: 3.5, D2: 9.0, D3: 11.0, NWAC: 4.5 }[level] ?? 2.0
-  const programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
+  let programHistory
+  if (level === 'D1' && typeof pearRank === 'number' && pearRank > 0) {
+    // RANK-BUCKETED PH. 308 D1 teams → 11 OVR values (88-98) → 28 teams per
+    // OVR. Each bucket maps to a PH value chosen so expectedTeamOvr (which
+    // rounds `75 + (ph-15)*0.27` for D1) yields the target OVR exactly.
+    // This gives the truly-even distribution Nate asked for instead of the
+    // strength-linear formula whose rounding clumped teams at 96.
+    const D1_TEAM_COUNT = 308
+    const r = Math.max(1, Math.min(D1_TEAM_COUNT, pearRank))
+    const bucket = Math.min(10, Math.floor((r - 1) / 28))   // 0..10 inclusive
+    // PH per bucket — calibrated so expectedTeamOvr rounds to the target.
+    // bucket 0 → OVR 98, bucket 10 → OVR 88.
+    const D1_BUCKET_PH = [99, 96, 93, 89, 85, 82, 78, 74, 71, 67, 63]
+    programHistory = D1_BUCKET_PH[bucket]
+  } else {
+    const tierBase  = { D1: 74, D2: 46, D3: 30, NWAC: 44 }[level] ?? 50
+    const tierSlope = { D1: 3.5, D2: 9.0, D3: 11.0, NWAC: 4.5 }[level] ?? 2.0
+    programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
+  }
 
   // Resource tier per level (rough budget proxy)
   const resourceTier = level === 'D1' ? 'D1_LITE'

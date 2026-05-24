@@ -132,12 +132,11 @@ export function diffSnapshots(before, after) {
     recordDelta: { w: after.wins - before.wins, l: after.losses - before.losses },
     runDiffDelta: after.runDiff - before.runDiff,
     // National-ranking movement — Dashboard surfaces this in the week recap
-    // EVERY week the user has a current national rank, not only when wins/
-    // losses changed. Reasoning (per Nate): user wants to see where they
-    // stand week-to-week even on a bye week or when rating shifted via
-    // other teams' results. delta will be 0 / "unchanged" when nothing
-    // moved; that's still informative.
-    rankMove: (after.nationalRank != null)
+    // ONLY during the spring season (mode = SEASON, weeks 27-39). Per Nate
+    // — outside the spring there are no games changing the rankings, so the
+    // user doesn't want to see a no-op "ranking" section every offseason /
+    // fall week. The SEASON gate suppresses it for offseason + postseason.
+    rankMove: (after.nationalRank != null && after.mode === 'SEASON')
       ? {
         before: before.nationalRank ?? after.nationalRank,
         after: after.nationalRank,

@@ -293,33 +293,46 @@ export default function Dashboard() {
     setBusy(true)
     setLastWeekRecap(null)
     if (mode === 'OFFSEASON') {
-      const prevWeek = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
-      const beforeSnap = snapshotState(save)
-      advanceOffseasonWeek(save)
-      const _commits = (save._newCommitRecruits || []).slice()
-      const _departures = (save._newDepartures || []).slice()
-      const _drafted = (save._newDraftPicks || []).slice()
-      save._newCommitRecruits = []
-      save._newDepartures = []
-      save._newDraftPicks = []
-      saveDynasty(save)
-      setSave({ ...save })
-      if (_commits.length) setCommitModal(_commits)
-      if (_departures.length) setDepartureModal(_departures)
-      if (_drafted.length) setDraftModal(_drafted)
-      const afterSnap = snapshotState(save)
-      const diff = diffSnapshots(beforeSnap, afterSnap)
-      const newWoy = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
-      setLastWeekRecap({
-        kind: 'offseason',
-        from: prevWeek,
-        to: newWoy,
-        // Use the unified 52-week phase label, not the legacy offseasonPhase()
-        // (which only knew Aug-Jan and labeled June "Spring Practice").
-        phase: phaseForWeek(newWoy)?.label || '',
-        diff,
-        autoActions: autoActionsThisAdvance,
-      })
+      // Wrap in setTimeout so React paints the busy spinner overlay BEFORE
+      // the synchronous offseason tick blocks the main thread. Without this,
+      // mobile users see a frozen UI for 1-2 seconds with no indication
+      // anything is happening (Nate's report).
+      setTimeout(() => {
+        try {
+          const prevWeek = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
+          const beforeSnap = snapshotState(save)
+          advanceOffseasonWeek(save)
+          const _commits = (save._newCommitRecruits || []).slice()
+          const _departures = (save._newDepartures || []).slice()
+          const _drafted = (save._newDraftPicks || []).slice()
+          save._newCommitRecruits = []
+          save._newDepartures = []
+          save._newDraftPicks = []
+          saveDynasty(save)
+          setSave({ ...save })
+          if (_commits.length) setCommitModal(_commits)
+          if (_departures.length) setDepartureModal(_departures)
+          if (_drafted.length) setDraftModal(_drafted)
+          const afterSnap = snapshotState(save)
+          const diff = diffSnapshots(beforeSnap, afterSnap)
+          const newWoy = save.calendar.weekOfYear ?? save.calendar.offseasonWeek
+          setLastWeekRecap({
+            kind: 'offseason',
+            from: prevWeek,
+            to: newWoy,
+            // Use the unified 52-week phase label, not the legacy offseasonPhase()
+            // (which only knew Aug-Jan and labeled June "Spring Practice").
+            phase: phaseForWeek(newWoy)?.label || '',
+            diff,
+            autoActions: autoActionsThisAdvance,
+          })
+        } catch (err) {
+          console.error('offseason advance failed:', err)
+          gmToast('Advance failed — see console for details.', 'warn')
+        }
+        setBusy(false)
+      }, 30)
+      return
     } else if (mode === 'SEASON') {
       // Crossing into the postseason: the current week is the LAST regular-
       // season week (next advance enters the playoffs). D2 ends a week earlier
@@ -449,6 +462,7 @@ export default function Dashboard() {
         />
       )}
       {progress && <ProgressModal {...progress} />}
+      {busy && !progress && <BusySpinner />}
       {tutorialOpen && (
         <TutorialOverlay school={school} level={save.level} onClose={dismissTutorial} />
       )}
@@ -3184,6 +3198,23 @@ function RecapStat({ label, value, accent }) {
     <div className="bg-gray-50 rounded p-2 text-center">
       <div className={'text-2xl font-bold ' + color}>{value}</div>
       <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
+    </div>
+  )
+}
+
+/**
+ * Lightweight spinner shown during synchronous engine ticks so mobile users
+ * see immediate feedback after tapping a button. Sits between the regular
+ * `busy` state (button label changes to "Simming…") and the full ProgressModal
+ * (used for heavier multi-step ops). Renders only when busy && !progress.
+ */
+function BusySpinner() {
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[70] pointer-events-none">
+      <div className="bg-white rounded-2xl shadow-2xl px-6 py-5 flex items-center gap-3">
+        <div className="w-6 h-6 border-[3px] border-pnw-cream border-t-pnw-green rounded-full animate-spin"></div>
+        <div className="text-sm font-semibold text-pnw-slate">Simming…</div>
+      </div>
     </div>
   )
 }
