@@ -906,7 +906,11 @@ function buildNwacSchedule(schools, year, rng) {
   const confWeeks = TOTAL_WEEKS - CROSS_REGION_WEEKS    // 10 conf-window weeks
 
   for (const div of Object.keys(byDiv)) {
-    const teams = byDiv[div]
+    // SHUFFLE the team order before circle-method so the round-robin
+    // pairings vary across new dynasties (per Nate — same Everett start
+    // shouldn't produce the same wk-4 opponent every time). The rng is
+    // dynasty-seeded so each fresh dynasty gets a different rotation.
+    const teams = shuffle(byDiv[div])
     const baseRounds = circleMethodRounds(teams)
     // Decide how many full round-robin passes fit in the conf window.
     // 6 teams → 5 rounds; 2 passes = 10 weeks (H&H exactly fills the
