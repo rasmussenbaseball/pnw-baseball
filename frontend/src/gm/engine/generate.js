@@ -597,9 +597,11 @@ export function generateRoster(school, seed, currentYear = 2026, opts = {}) {
   const rng = makeRng('roster', school.id, seed)
   const allowedClassYears = opts.allowedClassYears || ['FR', 'SO', 'JR', 'SR']
   // NWAC + level-aware: when only FR/SO are eligible (JUCO), rosters are
-  // smaller (~25-30) and split evenly between the two class years.
+  // smaller than 4-year levels but per Nate (May 2026) must land in the
+  // 28-38 band — both sides hard-capped. Was rng.int(24, 30); Everett
+  // was generating only 24 players which is short of a real NWAC roster.
   const isJuco = allowedClassYears.length === 2 && !allowedClassYears.includes('JR')
-  const rosterSize = isJuco ? rng.int(24, 30) : rng.int(40, 50)
+  const rosterSize = isJuco ? rng.int(28, 38) : rng.int(40, 50)
   const positions = makeRosterPositionList(rng)
   let classYears
   if (isJuco) {
