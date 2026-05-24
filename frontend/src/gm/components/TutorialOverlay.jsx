@@ -23,7 +23,7 @@ function buildSlides(level = 'NAIA') {
   const L = LEVEL_DETAILS[level] || LEVEL_DETAILS.NAIA
   return [
   {
-    title: 'Welcome to PNW Coach Simulator',
+    title: 'Welcome to NW Coaching Simulator',
     body: (
       <>
         <p>You're the head coach of a Pacific Northwest college baseball program. Your job is to recruit, develop, win games, and stay employed long enough to build a contender.</p>

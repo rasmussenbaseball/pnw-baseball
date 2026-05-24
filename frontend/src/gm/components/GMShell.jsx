@@ -236,7 +236,7 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
               className="hidden sm:flex items-center gap-1.5 font-pixel-display text-[10px] tracking-widest"
               style={{ color: accent }}
             >
-              <span>PNW COACH SIM</span>
+              <span>NW COACHING SIM</span>
             </div>
             <div className="font-pixel text-sm sm:text-lg md:text-xl text-white truncate max-w-[140px] sm:max-w-[200px] md:max-w-[260px]">
               {schoolName || 'Home'}

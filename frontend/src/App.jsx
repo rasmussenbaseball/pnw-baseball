@@ -76,7 +76,7 @@ function GmChunkLoading() {
     <div className="min-h-[60vh] flex items-center justify-center bg-[#1a1a2e] text-[#e8e8e8] font-pixel">
       <div className="text-center">
         <div className="font-pixel-display text-[10px] tracking-widest text-amber-300 mb-3">
-          PNW COACH SIM
+          NW COACHING SIM
         </div>
         <div className="text-lg">Loading dynasty…</div>
         <div className="text-xs text-[#a8a8c8] mt-2">First-time load, then cached.</div>
@@ -92,11 +92,11 @@ function RequireGmEarlyAccess({ children }) {
   if (!GM_EARLY_ACCESS_EMAILS.includes(user.email)) {
     return (
       <div className="max-w-xl mx-auto py-16 text-center">
-        <h1 className="text-3xl font-bold text-pnw-slate mb-4">PNW Coach Simulator</h1>
+        <h1 className="text-3xl font-bold text-pnw-slate mb-4">NW Coaching Simulator</h1>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
           <p className="text-sm text-amber-900 mb-2">🔒 <strong>Private Alpha</strong></p>
           <p className="text-sm text-gray-700">
-            PNW Coach Simulator is currently in private development. Access is restricted to the lead developer.
+            NW Coaching Simulator is currently in private development. Access is restricted to the lead developer.
             Public release coming soon.
           </p>
         </div>
@@ -353,7 +353,7 @@ export default function App() {
           <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />
 
-          {/* GM (PNW Coach Simulator — private alpha, locked to dev only) */}
+          {/* GM (NW Coaching Simulator — private alpha, locked to dev only) */}
           <Route path="/gm" element={<RequireGmEarlyAccess><GMHome /></RequireGmEarlyAccess>} />
           <Route path="/gm/new" element={<RequireGmEarlyAccess><NewDynasty /></RequireGmEarlyAccess>} />
           <Route path="/gm/dashboard" element={<RequireGmEarlyAccess><Dashboard /></RequireGmEarlyAccess>} />

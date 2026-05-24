@@ -23,14 +23,30 @@ export default function GMHome() {
     <GMShell>
       <div className="max-w-5xl mx-auto">
         <div className="mb-6">
-          <h1 className="font-pixel-display text-2xl tracking-widest text-white mb-2">PNW COACH SIMULATOR</h1>
+          <h1 className="font-pixel-display text-2xl tracking-widest text-white mb-2">NW COACHING SIMULATOR</h1>
           <p className="font-pixel text-base text-[#a8a8c8]">
             Coach a Pacific Northwest college baseball program. Recruit, manage rosters, set lineups, sim seasons.
             D1 through NWAC, regular dynasty or rise-through-the-ranks Story Mode.
           </p>
-          <span className="inline-block mt-3 px-2 py-1 bg-amber-400 text-[#1a1a2e] font-pixel-display text-[9px] tracking-widest">
-            ALPHA · V1 IN PROGRESS
-          </span>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <span className="inline-block px-2 py-1 bg-amber-400 text-[#1a1a2e] font-pixel-display text-[9px] tracking-widest">
+              ALPHA · V1 IN PROGRESS
+            </span>
+            <span className="inline-block px-2 py-1 bg-[#3a3a5e] text-amber-300 font-pixel-display text-[9px] tracking-widest border border-amber-300/40 md:hidden">
+              📱 BEST PLAYED ON DESKTOP
+            </span>
+          </div>
+          {/* Desktop-recommendation banner — surfaced more prominently on mobile
+              since the UX is rough there (tight panels, lots of clicks per
+              turn). Hidden on md+ where the screen is wide enough. */}
+          <div className="md:hidden mt-3 p-3 bg-[#23233d] border border-amber-300/30 rounded-lg">
+            <div className="text-amber-300 font-pixel-display text-[10px] tracking-widest mb-1">PLAY ON DESKTOP</div>
+            <p className="font-pixel text-xs text-[#c8c8d8] leading-relaxed">
+              This is a deep simulation with lots of data on every screen. It's
+              fully playable on mobile, but a laptop or desktop browser is the
+              way to go — denser layouts, faster clicks, better recap tables.
+            </p>
+          </div>
         </div>
 
         <div className="mb-6">
@@ -94,7 +110,7 @@ export default function GMHome() {
 
         <PixelCard accent="#fbbf24" title="THE GAME">
           <p className="text-[#e8e8e8] text-base font-pixel leading-relaxed">
-            PNW Coach Simulator is a turn-based dynasty + career simulator covering every level of
+            NW Coaching Simulator is a turn-based dynasty + career simulator covering every level of
             Pacific Northwest college baseball — NCAA D1 / D2 / D3, NAIA, and NWAC JUCO. Pick a
             program and run a full dynasty as head coach, or jump into Story Mode and grind from a
             bottom-tier NWAC bench coach up to a D1 head-coaching seat. Hire your staff, recruit
