@@ -19,7 +19,7 @@ import { runNationalTournament } from './nationalTournament'
 import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
-import { runEventsForWeek } from './events'
+import { runEventsForWeek, advanceClassYearsAndExits } from './events'
 import { buildSeasonRecap } from './seasonRecap'
 import { maybeFireRandomEvent } from './randomEvents'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
@@ -784,6 +784,19 @@ export function runEndOfYear(state) {
       wins: userTeam.wins, losses: userTeam.losses,
       runDiff: userTeam.runDiff,
     }
+  }
+
+  // Year-rollover class advancement + roster exits (per Nate, May 2026).
+  // Moved out of the wk-44 PLAYER_DEVELOPMENT hook because flipping FRs to
+  // SOs and graduating seniors mid-offseason broke the "open spots" math
+  // throughout the entire recruiting window. We do this BEFORE the season
+  // recap so the recap shows next year's class structure correctly.
+  // Also advances opponent classes + freshman backfill + refits non-user
+  // ovrOffsets to keep displayed team strength pinned to PEAR/PPI rank.
+  try {
+    advanceClassYearsAndExits(state)
+  } catch (err) {
+    console.warn('class-advance step failed:', err)
   }
 
   // Build the comprehensive Season Recap BEFORE we clear postseason / recruits

@@ -272,6 +272,10 @@ function runClassFinalize(state) {
     if (!state.players[r.id]) {
       state.players[r.id] = recruitToPlayer(r, state.calendar?.year, userId)
     }
+    // Stamp signedAt so the year-rollover class-advance step knows to
+    // SKIP this player (they're brand-new — they keep FR for the year
+    // about to start instead of being bumped to SO immediately).
+    state.players[r.id].signedAt = state.calendar.year
     if (!team.rosterPlayerIds.includes(r.id)) team.rosterPlayerIds.push(r.id)
     r.joinedAt = state.calendar.year
     r.scoutFogCleared = true
@@ -482,9 +486,7 @@ function runDevelopment(state) {
     const seasonStats = state.playerStats?.[statsKey] ?? state._archivedPlayerStats?.[statsKey]
     const paShare = top9.has(id) ? 0.8 : 0.2
     const ipShare = top5p.has(id) ? 0.8 : 0.2
-    // Injured players still age + advance class year, but don't gain ratings
-    // this offseason. Pass a 0-share ctx so endOfSeasonDevelopment's
-    // multiplier chain zeroes out the bump.
+    // Injured players still gain a tiny bit but mostly skip the bump.
     const isHurt = (p.injury?.weeksRemaining || 0) > 0
     const updated = endOfSeasonDevelopment(p, {
       coachDeveloper,
@@ -494,52 +496,24 @@ function runDevelopment(state) {
       seasonStats,
     }, state.rngSeed + state.calendar.year)
     const gain = updated._devGain || 0
-    // Potential drift — based on overperformance / underperformance. Players
-    // who crushed it gain potential; players who flopped lose some. No-play
-    // players (low PA/IP) stay flat. Skipped for injured.
+    // Potential drift + weight fluctuation. Skipped for injured.
     if (!isHurt) {
       tickPotentialEOY(updated, seasonStats, state.rngSeed + state.calendar.year)
-      // Yearly weight fluctuation — most underweight players gain, overweight
-      // lose. Triggers small rating bumps to power/velo or speed/stamina/dur.
       tickWeightFluctuation(updated, state.rngSeed + state.calendar.year)
     }
     if (gain >= 1.5) devReport.push({ player: updated, gain })
-    if (gain <= -1.5) devReport.push({ player: updated, gain })   // include big drops too
+    if (gain <= -1.5) devReport.push({ player: updated, gain })
     delete updated._devGain
-    // Class advance + redshirt. The generous "played ≤11 games → auto-redshirt"
-    // rule is NAIA-only (per Nate). At NCAA levels (D1/D2/D3) + NWAC, appearing
-    // in even ONE game burns the year — so only a player who played ZERO games
-    // can redshirt (limit 0).
-    const isNaiaLevel = !state.level || state.level === 'NAIA'
-    const REDSHIRT_GAME_LIMIT = isNaiaLevel ? 11 : 0
-    const gp = (state.playerStats?.[statsKey] ?? state._archivedPlayerStats?.[statsKey])?.gamesPlayed || 0
-    const eligibleToRedshirt = !updated.redshirtUsed && (updated.seasonsUsed || 0) < 3
-    const shouldRedshirt = eligibleToRedshirt && gp <= REDSHIRT_GAME_LIMIT
-    // NWAC eligibility: only FR/SO. SO graduates out at end of year (heads
-    // to a 4-yr program in real life; for our save state they're marked
-    // transferred and dropped from roster). FR → SO normally.
-    const isNwac = state.level === 'NWAC'
-    let nextClass
-    if (isNwac) {
-      nextClass = { FR: 'SO', SO: 'GRAD' }[updated.classYear] || 'GRAD'
-    } else {
-      nextClass = { FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[updated.classYear]
-    }
-    if (nextClass === 'GRAD') {
-      // For NWAC players, mark as transferred-out instead of graduated so
-      // the newsfeed reads correctly ("transferred to 4-yr program").
-      const exitStatus = isNwac && updated.classYear === 'SO' ? 'transferred' : 'graduated'
-      state.players[id] = { ...updated, eligibilityStatus: exitStatus }
-    } else if (shouldRedshirt) {
-      state.players[id] = { ...updated, redshirtUsed: true, semestersUsed: (updated.semestersUsed || 0) + 2 }
-      state.newsfeed.unshift({
-        id: `rs_${state.calendar.year}_${id}`, year: state.calendar.year, week: 2, type: 'AWARD',
-        headline: `${updated.firstName} ${updated.lastName} (${updated.classYear} ${updated.primaryPosition}) auto-redshirted — only ${gp} games played.`,
-        payload: { playerId: id, games: gp },
-      })
-    } else {
-      state.players[id] = { ...updated, classYear: nextClass, seasonsUsed: updated.seasonsUsed + 1, semestersUsed: updated.semestersUsed + 2 }
-    }
+    // NOTE (per Nate, May 2026 — roster-count bug): class year advancement
+    // + redshirt + GRAD/transfer handling MOVED OUT of this wk-44 hook and
+    // INTO advanceClassYears(), which runs at the year rollover (wk 52 →
+    // wk 1) inside runEndOfYear. Bumping class years mid-offseason made
+    // the recruiting "open spots" math wrong all the way from wk 44
+    // through wk 52 — returning FRs already counted as SOs and seniors
+    // had already left the roster while the user was still building
+    // the next class. Keeping the class year fixed until rollover keeps
+    // the offseason roster picture honest.
+    state.players[id] = updated
   }
   // Sort with biggest gainers AND biggest droppers — surface both ends
   devReport.sort((a, b) => Math.abs(b.gain) - Math.abs(a.gain))
@@ -555,53 +529,119 @@ function runDevelopment(state) {
       payload: { playerId: r.player.id, gain: r.gain },
     })
   }
-  // For NWAC: assign 4-year destinations to every sophomore who just
-  // got marked as transferred. Fires BEFORE the roster exit pass so
-  // the destination is recorded on the player + state.nwacAlumni.
-  if (state.level === 'NWAC') {
-    assignNwacTransferDestinations(state)
-  }
-
-  // Remove graduated + transferred players from roster
-  const exits = playerIds.filter(id => {
-    const s = state.players[id]?.eligibilityStatus
-    return s === 'graduated' || s === 'transferred'
-  })
-  if (exits.length > 0) {
-    state.teams[state.userSchoolId].rosterPlayerIds = userTeam.rosterPlayerIds.filter(id => !exits.includes(id))
-    const isNwac = state.level === 'NWAC'
-    const exitVerb = isNwac
-      ? `${exits.length} sophomore${exits.length === 1 ? '' : 's'} transferred out to 4-year programs`
-      : `${exits.length} senior${exits.length === 1 ? '' : 's'} graduated`
-    state.newsfeed.unshift({
-      id: `roster_exits_${state.calendar.year}`, year: state.calendar.year, week: 2, type: 'AWARD',
-      headline: `${exitVerb}. Roster down to ${state.teams[state.userSchoolId].rosterPlayerIds.length}.`,
-      payload: {},
-    })
-  }
-  // Age every OPPONENT team's roster — advance class years, graduate seniors,
-  // and backfill with new freshmen so opponents continue to evolve year over
-  // year. Without this, opponent rosters froze at year 1: same 18-year-olds
-  // forever, no recruiting impact, identical depth charts in year 5.
-  ageOpponentRosters(state)
-
-  // REFIT non-user team.ovrOffset (per Nate, May 2026 — NWAC opposing
-  // teams decayed into the 40s by year 2+). ovrOffset was set once at
-  // dynasty creation as the gap between displayed Team OVR (target rank)
-  // and natural roster OVR. Every offseason, departing seniors / NWAC
-  // sophomores leave + new freshmen sign — and the new freshmen roll
-  // around the level's mean rating, which sags below the original
-  // veteran-heavy roster. With a frozen offset, displayed OVR drifts
-  // down as natural drops while the offset stays the same.
-  //
-  // Re-fitting offset annually to (target - natural) keeps every non-user
-  // team's displayed + simmed strength pinned to its PEAR / PPI rank,
-  // year after year. The USER's team is intentionally NOT refit — their
-  // own development (POTW bumps, coaching, recruits) should organically
-  // grow their team beyond / below their initial rank.
-  refitNonUserOvrOffsets(state)
+  // Opponent class advancement + freshman backfill MOVED OUT of this
+  // wk-44 hook into the year rollover (see advanceClassYearsAndExits()
+  // below — called from season.js runEndOfYear). Without that split,
+  // opposing teams already showed next year's class structure during
+  // the user's offseason — which also broke the league-wide recruiting
+  // / "spots open" math. Opponent rating drift + ovrOffset refit ride
+  // along with the rollover too.
 
   return { label: 'Player development', news: devReport }
+}
+
+/**
+ * Year-rollover roster transitions (per Nate, May 2026 — class-advance-too-
+ * early bug). Runs from season.runEndOfYear when the calendar ticks
+ * wk 52 → wk 1, AFTER state.calendar.year has already incremented to the
+ * new year. Handles:
+ *
+ *   1. USER TEAM: advance every returning player's classYear (FR→SO→JR→
+ *      SR→GRAD; NWAC: FR→SO→GRAD), apply auto-redshirt for low-GP players,
+ *      mark GRAD/transferred exits, remove them from the roster.
+ *      Recruits who just signed during the prior wk-52 CLASS_FINALIZE are
+ *      skipped via the player.signedAt marker (recruitToPlayer stamps it).
+ *
+ *   2. NON-USER TEAMS: defer to ageOpponentRosters which both advances
+ *      classes and backfills freshmen up to the level's target roster size.
+ *
+ *   3. OVR-OFFSET REFIT: re-pin each non-user team's displayed Team OVR to
+ *      its PEAR/PPI rank target after the natural drift from class churn.
+ *
+ * Class advancement used to fire mid-offseason at wk 44 (inside
+ * runDevelopment) — but that flipped every returning FR to SO and dropped
+ * graduating seniors before the user finished recruiting, which broke the
+ * "open spots on roster" math from wk 44 all the way to wk 52. Moving the
+ * advance to year rollover keeps the offseason roster picture honest.
+ */
+export function advanceClassYearsAndExits(state) {
+  const userId = state.userSchoolId
+  const userTeam = state.teams?.[userId]
+  const isNwac = state.level === 'NWAC'
+  const isNaiaLevel = !state.level || state.level === 'NAIA'
+  const REDSHIRT_GAME_LIMIT = isNaiaLevel ? 11 : 0
+  // The calendar has already ticked to the new year by the time runEndOfYear
+  // calls us; recruits signed at the prior wk-52 CLASS_FINALIZE have
+  // signedAt === state.calendar.year - 1. Skip them so they stay FR.
+  const recruitsSignedAt = state.calendar.year - 1
+
+  // ── USER TEAM ────────────────────────────────────────────────────────────
+  if (userTeam) {
+    const playerIds = userTeam.rosterPlayerIds || []
+    // The just-finished season's stats live on _archivedPlayerStats
+    // (runEndOfYear archives playerStats into the year bucket BEFORE us).
+    const lastSeasonStats = state._archivedPlayerStats || state.playerStats || {}
+    for (const id of playerIds) {
+      const p = state.players[id]
+      if (!p) continue
+      // Skip brand-new recruits — they keep their FR class for the upcoming year.
+      if (p.signedAt === recruitsSignedAt) continue
+      const nextClass = isNwac
+        ? ({ FR: 'SO', SO: 'GRAD' }[p.classYear] || 'GRAD')
+        : ({ FR: 'SO', SO: 'JR', JR: 'SR', SR: 'GRAD' }[p.classYear] || 'GRAD')
+      const statsKey = p.isPitcher ? `p_${id}` : `b_${id}`
+      const gp = lastSeasonStats[statsKey]?.gamesPlayed || 0
+      const eligibleToRedshirt = !p.redshirtUsed && (p.seasonsUsed || 0) < 3
+      const shouldRedshirt = eligibleToRedshirt && gp <= REDSHIRT_GAME_LIMIT
+      if (nextClass === 'GRAD') {
+        const exitStatus = isNwac && p.classYear === 'SO' ? 'transferred' : 'graduated'
+        state.players[id] = { ...p, eligibilityStatus: exitStatus }
+      } else if (shouldRedshirt) {
+        state.players[id] = { ...p, redshirtUsed: true, semestersUsed: (p.semestersUsed || 0) + 2 }
+        state.newsfeed.unshift({
+          id: `rs_${state.calendar.year}_${id}`, year: state.calendar.year, week: 1, type: 'AWARD',
+          headline: `${p.firstName} ${p.lastName} (${p.classYear} ${p.primaryPosition}) auto-redshirted — only ${gp} games played.`,
+          payload: { playerId: id, games: gp },
+        })
+      } else {
+        state.players[id] = {
+          ...p,
+          classYear: nextClass,
+          seasonsUsed: (p.seasonsUsed || 0) + 1,
+          semestersUsed: (p.semestersUsed || 0) + 2,
+        }
+      }
+    }
+    // NWAC sophomores transferring out — record 4-year destinations BEFORE
+    // we strip exits from the roster, so each leaver gets a destination row.
+    if (isNwac) {
+      try { assignNwacTransferDestinations(state) } catch (e) { console.warn('nwac dest assignment failed:', e) }
+    }
+    // Drop graduated + transferred from the user roster.
+    const exits = playerIds.filter(id => {
+      const s = state.players[id]?.eligibilityStatus
+      return s === 'graduated' || s === 'transferred'
+    })
+    if (exits.length > 0) {
+      userTeam.rosterPlayerIds = userTeam.rosterPlayerIds.filter(id => !exits.includes(id))
+      const exitVerb = isNwac
+        ? `${exits.length} sophomore${exits.length === 1 ? '' : 's'} transferred out to 4-year programs`
+        : `${exits.length} senior${exits.length === 1 ? '' : 's'} graduated`
+      state.newsfeed.unshift({
+        id: `roster_exits_${state.calendar.year}`,
+        year: state.calendar.year, week: 1, type: 'AWARD',
+        headline: `${exitVerb}. Roster down to ${userTeam.rosterPlayerIds.length}.`,
+        payload: {},
+      })
+    }
+  }
+
+  // ── NON-USER TEAMS ───────────────────────────────────────────────────────
+  // ageOpponentRosters handles class advance + freshman backfill in one pass.
+  ageOpponentRosters(state)
+
+  // ── OVR-OFFSET REFIT ─────────────────────────────────────────────────────
+  refitNonUserOvrOffsets(state)
 }
 
 /**
