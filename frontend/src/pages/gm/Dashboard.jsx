@@ -1131,15 +1131,21 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
     : null
   const ws = nat?.worldSeries
   const is4Round = ps.level === 'D1' || ps.level === 'D2' || ps.level === 'D3'
+  const isNwac = ps.level === 'NWAC'
   const confAbbr4R = save.conferences?.[ps.userConfId]?.abbreviation
     || (ps.level === 'D3' ? 'NWC' : ps.level === 'D1' ? 'Conf' : 'GNAC')
-  // Which round is "live" this week. 4-round leagues (D2 + D3) run conf tourney
-  // wk39 → regional wk40 → super regional wk41 → WS wk42; everyone else runs 3.
+  // Which round is "live" this week. 4-round leagues (D1/D2/D3) run conf
+  // tourney wk39 → regional wk40 → super regional wk41 → WS wk42. NAIA runs
+  // 3 rounds (conf 40 → opening 41 → WS 42). NWAC runs 2 rounds (super 40 →
+  // Longview championship 41).
   const roundLabel = is4Round
     ? (highlightWeek === 39 ? 'Conference Tournament'
       : highlightWeek === 40 ? 'NCAA Regional'
       : highlightWeek === 41 ? 'Super Regional'
       : highlightWeek === 42 ? 'World Series' : null)
+    : isNwac
+    ? (highlightWeek === 40 ? 'Super Regionals'
+      : highlightWeek === 41 ? 'NWAC Championship @ Longview' : null)
     : (highlightWeek === 40 ? 'Conference Tournament'
       : highlightWeek === 41 ? 'Regionals (Opening Round)'
       : highlightWeek === 42 ? 'World Series' : null)
@@ -1155,6 +1161,7 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
         {!ps.userQualified && (
           <div className="text-[11px] text-gray-500 italic mb-2">
             {is4Round ? `Your team didn't make the ${confAbbr4R} tournament — but a strong record can still earn an at-large NCAA bid.`
+              : isNwac ? "Your team didn't finish top-4 in your NWAC region — season over. Watch the playoffs play out."
               : "Your team didn't make the conference tournament — season over. Watch the brackets play out."}
           </div>
         )}
@@ -1165,6 +1172,11 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
             <InteractiveRoundRow save={save} round={ps.rounds?.SUPER} title="Round 3 — Super Regional (best-of-3)" active={highlightWeek === 41} />
             <InteractiveRoundRow save={save} round={ps.rounds?.WS} title={`Round 4 — ${ps.level === 'D1' ? 'College' : ps.level} World Series`} active={highlightWeek === 42} />
           </>
+        ) : isNwac ? (
+          <>
+            <InteractiveRoundRow save={save} round={ps.rounds?.SUPER} title="Round 1 — NWAC Super Regional (best-of-3)" active={highlightWeek === 40} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title="Round 2 — NWAC Championship @ Longview" active={highlightWeek === 41} />
+          </>
         ) : (
           <>
             <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title="Round 1 — Conference Tournament" active={highlightWeek === 40} />
@@ -1174,13 +1186,17 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
         )}
         <div className="border-t pt-2 mt-1 text-[11px]">
           {ps.userNatChamp ? (
-            <span className="text-amber-600 font-bold">NATIONAL CHAMPIONS!</span>
+            <span className="text-amber-600 font-bold">{isNwac ? 'NWAC CHAMPIONS!' : 'NATIONAL CHAMPIONS!'}</span>
           ) : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON' ? (
-            <span className="text-gray-500">Eliminated in the {({ CONF: is4Round ? `${confAbbr4R} tournament` : 'conference tournament', REGIONAL: is4Round ? 'regional' : 'opening round', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.</span>
+            <span className="text-gray-500">Eliminated in the {(
+              isNwac
+                ? { PLAYIN: 'super regional play-in', SUPER: 'NWAC super regional', WS: 'NWAC Championship' }
+                : { CONF: is4Round ? `${confAbbr4R} tournament` : 'conference tournament', REGIONAL: is4Round ? 'regional' : 'opening round', SUPER: 'super regional', WS: 'World Series' }
+            )[ps.userEliminatedAt]}.</span>
           ) : null}
           {ps.nationalChampion && (
             <div className="mt-0.5">
-              <span className="text-gray-500">National champion: </span>
+              <span className="text-gray-500">{isNwac ? 'NWAC champion: ' : 'National champion: '}</span>
               <strong className={ps.nationalChampion === userId ? 'text-amber-600' : 'text-pnw-slate'}>
                 {save.schools[ps.nationalChampion]?.name || '—'}
               </strong>

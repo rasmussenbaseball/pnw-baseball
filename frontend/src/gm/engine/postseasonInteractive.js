@@ -275,9 +275,20 @@ function generatePendingGame(state, stage, pending, hostId = null) {
 }
 
 /**
- * The weekOfYear a given postseason stage falls on, per level. D2 runs four
- * rounds (CONF 39, REGIONAL 40, SUPER 41, WS 42); everyone else runs three
- * (CONF 40, REGIONAL 41, WS 42).
+ * The weekOfYear a given postseason stage falls on, per level.
+ *
+ *   D1 / D2 / D3 (4-round): CONF 39, REGIONAL 40, SUPER 41, WS 42
+ *   NAIA (3-round):         CONF 40, REGIONAL 41, WS 42
+ *   NWAC (2-round):         SUPER 40 (Super Regionals), WS 41 (Longview Championship)
+ *
+ * THIS HAD A SILENT BUG (per Nate, May 2026 — "only played 1 NWAC championship
+ * game" report). NWAC uses stages SUPER + WS, but the fallback returned 42 for
+ * SUPER (no entry) and 42 for WS — putting BOTH rounds of games on the same
+ * (wrong) calendar week. The user's wk-40 and wk-41 schedules came up empty,
+ * advanceWeek silently jumped them past the postseason into summer, and a
+ * stray pending game ended up surfaced once at wk 42 before finalizeNwac
+ * sim'd out the rest. Adding the NWAC entry fixes the schedule + lets the
+ * user play through their full championship bracket.
  */
 function psWeekFor(state, stage) {
   // 4-round leagues (D1 + D2 + D3) end the regular season a week early so the
@@ -285,6 +296,12 @@ function psWeekFor(state, stage) {
   if (state.level === 'D1' || state.level === 'D2' || state.level === 'D3') {
     return ({ CONF: 39, REGIONAL: 40, SUPER: 41, WS: 42 })[stage] ?? 42
   }
+  // NWAC: 2-round playoffs — super regionals at host campuses (wk 40), then
+  // the 8-team championship at Longview (wk 41).
+  if (state.level === 'NWAC') {
+    return ({ SUPER: 40, WS: 41 })[stage] ?? 41
+  }
+  // NAIA + fallback (3-round): conf 40, regional 41, WS 42.
   return ({ CONF: 40, REGIONAL: 41, WS: 42 })[stage] ?? 42
 }
 
@@ -405,6 +422,7 @@ export function tickInteractivePostseason(state) {
   const sim = state.level === 'D1' ? makeD1Sim(state)
     : state.level === 'D2' ? makeD2Sim(state)
     : state.level === 'D3' ? makeD3Sim(state)
+    : state.level === 'NWAC' ? makeNwacSim(state)
     : makeNonUserSim(ratings)
   const getUserResult = getUserResultFromSchedule(state, year, stage)
 
