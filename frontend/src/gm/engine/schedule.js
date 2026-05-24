@@ -472,8 +472,15 @@ export function openNonConfWeeks(schoolId, conferenceId, schedule, year, level =
 /**
  * @returns {{ allowed: boolean, reason?: string, mustBeMidweek?: boolean, mustBeScrimmage?: boolean }}
  */
-export function checkOpponentEligibility(opponentDivision) {
+export function checkOpponentEligibility(opponentDivision, userLevel = 'NAIA') {
   if (opponentDivision === 'NAIA') return { allowed: true }
+  // NCAA-on-NCAA cross-division is fine as a standard weekend series — the
+  // "D1 = midweek only" rule below is from a NAIA user's perspective; doesn't
+  // apply when the user is themselves at an NCAA level.
+  if (userLevel !== 'NAIA'
+    && (opponentDivision === 'D1' || opponentDivision === 'D2' || opponentDivision === 'D3')) {
+    return { allowed: true }
+  }
   if (opponentDivision === 'D1') {
     return {
       allowed: true,
@@ -564,7 +571,7 @@ export function d1MidweeksRemaining(schoolId, schedule) {
  * @returns {{ ok: boolean, games?: Game[], error?: string, info?: string }}
  */
 export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivision, week, year, schedule, opts = {}) {
-  const elig = checkOpponentEligibility(opponentDivision)
+  const elig = checkOpponentEligibility(opponentDivision, opts.userLevel)
   if (!elig.allowed) return { ok: false, error: elig.reason }
 
   // Scrimmage path (NWAC/JUCO)
@@ -1073,7 +1080,7 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
 
     const result = tryAddNonConfGame(
       userSchoolId, opp.id, opp.division, openWeeks[i].week, year,
-      [...existingSchedule, ...newGames], { userIsHome },
+      [...existingSchedule, ...newGames], { userIsHome, userLevel: level },
     )
     if (result.ok) {
       newGames.push(...result.games)

@@ -1082,8 +1082,9 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
     ? nat?.openingRound?.sites?.find(s => s.teams.some(t => t.id === userId))
     : null
   const ws = nat?.worldSeries
-  const is4Round = ps.level === 'D2' || ps.level === 'D3'
-  const confAbbr4R = save.conferences?.[ps.userConfId]?.abbreviation || (ps.level === 'D3' ? 'NWC' : 'GNAC')
+  const is4Round = ps.level === 'D1' || ps.level === 'D2' || ps.level === 'D3'
+  const confAbbr4R = save.conferences?.[ps.userConfId]?.abbreviation
+    || (ps.level === 'D3' ? 'NWC' : ps.level === 'D1' ? 'Conf' : 'GNAC')
   // Which round is "live" this week. 4-round leagues (D2 + D3) run conf tourney
   // wk39 → regional wk40 → super regional wk41 → WS wk42; everyone else runs 3.
   const roundLabel = is4Round
@@ -1111,10 +1112,10 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
         )}
         {is4Round ? (
           <>
-            <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title={`Round 1 — ${confAbbr4R} Tournament`} active={highlightWeek === 39} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title={ps.isIndependent ? 'Round 1 — No Conf Tournament (Independent)' : `Round 1 — ${confAbbr4R} Tournament`} active={highlightWeek === 39} />
             <InteractiveRoundRow save={save} round={ps.rounds?.REGIONAL} title="Round 2 — NCAA Regional" active={highlightWeek === 40} />
             <InteractiveRoundRow save={save} round={ps.rounds?.SUPER} title="Round 3 — Super Regional (best-of-3)" active={highlightWeek === 41} />
-            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title={`Round 4 — ${ps.level} World Series`} active={highlightWeek === 42} />
+            <InteractiveRoundRow save={save} round={ps.rounds?.WS} title={`Round 4 — ${ps.level === 'D1' ? 'College' : ps.level} World Series`} active={highlightWeek === 42} />
           </>
         ) : (
           <>

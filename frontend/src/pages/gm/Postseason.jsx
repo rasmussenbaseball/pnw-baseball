@@ -60,14 +60,22 @@ function FourRoundPostseasonPage({ save, ps, userSchool }) {
   const ws = ps.national?.ws
 
   // Level-specific labels.
-  const levelLbl = ps.level || 'D2'                                 // "D2" / "D3"
-  const divRoman = levelLbl === 'D3' ? 'III' : 'II'                 // "II" / "III"
-  const confAbbr = save.conferences?.[ps.userConfId]?.abbreviation || (levelLbl === 'D3' ? 'NWC' : 'GNAC')
-  const confTop = ps.rounds?.CONF?.seeds?.length || (levelLbl === 'D3' ? 4 : 3)
+  const levelLbl = ps.level || 'D2'                                 // "D1" / "D2" / "D3"
+  const divRoman = levelLbl === 'D1' ? 'I' : levelLbl === 'D3' ? 'III' : 'II'
+  const confAbbr = save.conferences?.[ps.userConfId]?.abbreviation
+    || (levelLbl === 'D3' ? 'NWC' : levelLbl === 'D1' ? 'Conf' : 'GNAC')
+  const isIndependent = !!ps.isIndependent
+  const confTop = ps.rounds?.CONF?.seeds?.length || (levelLbl === 'D3' ? 4 : levelLbl === 'D1' ? 8 : 3)
   // Regional size summary for the format blurb.
   const regSizes = [...new Set((regionals || []).map(r => (r.seeds || []).length))].filter(Boolean).sort((a, b) => b - a)
   const regSizeLbl = regSizes.length === 0 ? '4'
     : regSizes.length === 1 ? `${regSizes[0]}` : regSizes.join('-')
+  // WS name (D1 = College World Series; D2/D3 = "D2/D3 World Series") + format
+  // descriptor for the blurb.
+  const wsName = levelLbl === 'D1' ? 'College World Series' : `${levelLbl} World Series`
+  const wsFormatBlurb = levelLbl === 'D1'
+    ? 'College World Series (8 teams, two 4-team double-elim brackets → best-of-3 final)'
+    : `8-team ${levelLbl} World Series (double-elim → best-of-3 final)`
 
   const seedList = (ids) => (ids || []).map((id, i) => (
     <span key={id} className={(id === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]')}>
@@ -82,19 +90,23 @@ function FourRoundPostseasonPage({ save, ps, userSchool }) {
         <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} NCAA {levelLbl} POSTSEASON</h1>
         <p className="text-sm text-[#a8a8c8] font-pixel">
           {ps.userNatChamp ? `NCAA DIVISION ${divRoman} NATIONAL CHAMPIONS!`
-            : !ps.userQualified ? `You missed the ${confAbbr} tournament — a strong record can still earn an at-large NCAA bid.`
+            : !ps.userQualified ? (isIndependent
+              ? 'D1 Independents have no conference tournament — at-large NCAA Regional bid only.'
+              : `You missed the ${confAbbr} tournament — a strong record can still earn an at-large NCAA bid.`)
             : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON'
-              ? `Eliminated in the ${({ CONF: `${confAbbr} tournament`, REGIONAL: 'regional', SUPER: 'super regional', WS: 'World Series' })[ps.userEliminatedAt]}.`
+              ? `Eliminated in the ${({ CONF: `${confAbbr} tournament`, REGIONAL: 'regional', SUPER: 'super regional', WS: wsName })[ps.userEliminatedAt]}.`
               : 'Win each round to advance. Play (or sim) every game from the home page.'}
         </p>
         <p className="text-[11px] text-gray-500 font-pixel mt-1">
-          Format: {confAbbr} tourney (top {confTop}) → 16 NCAA regionals of {regSizeLbl} (double-elim, top seed hosts) → 8 super regionals (best-of-3) → 8-team World Series (double-elim, best-of-3 final). Your games are highlighted in green.
+          Format: {isIndependent ? 'no conf tournament (Independent — at-large only)' : `${confAbbr} tourney (top ${confTop})`} → 16 NCAA regionals of {regSizeLbl} (double-elim, top seed hosts) → 8 super regionals (best-of-3) → {wsFormatBlurb}. Your games are highlighted in green.
         </p>
       </div>
 
-      {/* Round 1 — Conference Tournament */}
-      <PSCard title={`Round 1 — ${confAbbr} Tournament (top ${confTop}, double-elim)`}>
-        {ps.rounds?.CONF ? <UserRoundGames save={save} rd={ps.rounds.CONF} />
+      {/* Round 1 — Conference Tournament (or "no tournament" for Independent) */}
+      <PSCard title={isIndependent ? 'Round 1 — No Conference Tournament (Independent)' : `Round 1 — ${confAbbr} Tournament (top ${confTop}, double-elim)`}>
+        {isIndependent
+          ? <div className="text-sm text-gray-500 italic font-pixel">D1 Independents skip straight to the NCAA Regional round if they earn an at-large bid.</div>
+          : ps.rounds?.CONF ? <UserRoundGames save={save} rd={ps.rounds.CONF} />
           : <div className="text-sm text-gray-500 italic font-pixel">Didn't make the {confAbbr} tournament.</div>}
       </PSCard>
 
@@ -140,13 +152,24 @@ function FourRoundPostseasonPage({ save, ps, userSchool }) {
       </PSCard>
 
       {/* Round 4 — World Series */}
-      <PSCard title={`Round 4 — ${levelLbl} World Series (8 teams, double-elim → best-of-3 final)`}>
+      <PSCard title={`Round 4 — ${wsName}${levelLbl === 'D1' ? ' (Omaha — two 4-team brackets → best-of-3 final)' : ' (8 teams, double-elim → best-of-3 final)'}`}>
         {ps.rounds?.WS && <div className="mb-2"><UserRoundGames save={save} rd={ps.rounds.WS} /></div>}
         {!ws ? (
           <div className="text-sm text-gray-500 italic font-pixel">Not reached.</div>
         ) : (
           <div className="text-xs font-pixel space-y-1">
-            <div><span className="text-gray-400">Field (8): </span>{seedList(ws.seeds)}</div>
+            {ws.brackets ? (
+              <>
+                <div><span className="text-gray-400">Bracket A: </span>{seedList(ws.brackets.A)}
+                  {ws.bracketChamps?.A && <span className="text-amber-300"> → {nm(ws.bracketChamps.A)}</span>}
+                </div>
+                <div><span className="text-gray-400">Bracket B: </span>{seedList(ws.brackets.B)}
+                  {ws.bracketChamps?.B && <span className="text-amber-300"> → {nm(ws.bracketChamps.B)}</span>}
+                </div>
+              </>
+            ) : (
+              <div><span className="text-gray-400">Field (8): </span>{seedList(ws.seeds)}</div>
+            )}
             {ws.finalists && (
               <div><span className="text-gray-400">Finals: </span>
                 <span className={ws.finalists[0] === userId ? 'text-pnw-green font-bold' : 'text-[#cbd5e1]'}>{nm(ws.finalists[0])}</span>
@@ -185,7 +208,7 @@ function InteractivePostseasonPage({ save, ps, userSchool }) {
   const nm = (id) => save.schools[id]?.name || '—'
   // D2 has its own 4-round structure (GNAC tourney → regional → super regional
   // → WS) + an abstract national field, so render it on a dedicated path.
-  if (ps.level === 'D2' || ps.level === 'D3') return <FourRoundPostseasonPage save={save} ps={ps} userSchool={userSchool} />
+  if (ps.level === 'D1' || ps.level === 'D2' || ps.level === 'D3') return <FourRoundPostseasonPage save={save} ps={ps} userSchool={userSchool} />
   const regionals = ps.national?.regionals || []
   const ws = ps.national?.ws
   const confRd = ps.rounds?.CONF

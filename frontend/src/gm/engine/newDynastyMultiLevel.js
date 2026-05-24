@@ -292,14 +292,24 @@ export function newDynastyMultiLevel(input) {
   // simpler per-conference builder. D2 ends a week early (postseason starts
   // wk39), so drop any regular-season games in seasonWeek 13+.
   let schedule
-  if (level === 'NWAC' || conferenceId === 'INDEPENDENT_D1' || Object.keys(schools).length < 2) {
+  if (level === 'NWAC' || Object.keys(schools).length < 2) {
     schedule = buildLevelSchedule(conferenceId, schools, level, 2027, seed)
+  } else if (conferenceId === 'INDEPENDENT_D1') {
+    // Independent D1 (e.g. Oregon State): the USER plays a full independent
+    // slate, but the rest of D1 (Big Ten, WCC, WAC, etc.) still plays its full
+    // conference round-robins so the whole league has records every week.
+    // Pass a user-only schools map to buildLevelSchedule so its INDEPENDENT
+    // path uses the actual user as the single-team "conference".
+    const userOnlySchools = { [input.userSchoolId]: schools[input.userSchoolId] }
+    const userSlate = buildLevelSchedule(conferenceId, userOnlySchools, level, 2027, seed)
+    const leagueSlate = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
+    schedule = [...userSlate, ...leagueSlate]
   } else {
     schedule = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
   }
-  // 4-round leagues (D2 + D3) end the regular season a week early — keep
+  // 4-round leagues (D1 + D2 + D3) end the regular season a week early — keep
   // seasonWeek <= 12 (wk38) so wk39 is free for the conference tournament.
-  if (level === 'D2' || level === 'D3') {
+  if (level === 'D1' || level === 'D2' || level === 'D3') {
     schedule = schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > 12))
   }
 

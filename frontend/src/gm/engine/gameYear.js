@@ -93,9 +93,11 @@ export const PHASES = {
  *   confTourney → regional → (superRegional) → ws
  */
 export function postseasonLayout(level) {
-  // 4-round leagues (D2 + D3) end the regular season a week earlier so the
-  // conf tournament → regional → super regional → WS sequence fits in wk39-42.
-  if (level === 'D2' || level === 'D3') {
+  // 4-round leagues (D1 + D2 + D3) end the regular season a week earlier so
+  // the conf tournament → regional → super regional → WS sequence fits in
+  // wk39-42. Same calendar shape across all three — only the WS format and
+  // field sizes differ.
+  if (level === 'D1' || level === 'D2' || level === 'D3') {
     return { seasonEnd: 38, confTourney: 39, regional: 40, superRegional: 41, ws: 42, start: 39, rounds: 4 }
   }
   return { seasonEnd: 39, confTourney: 40, regional: 41, superRegional: null, ws: 42, start: 40, rounds: 3 }
