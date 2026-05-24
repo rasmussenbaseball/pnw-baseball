@@ -628,14 +628,23 @@ function SortableTh({ sortKey, sortBy, setSortBy, children, title }) {
 }
 
 function RosterSnapshotPanel({ save }) {
-  const ROSTER_CAP = 50
   const team = save.teams?.[save.userSchoolId]
   if (!team) return null
   const players = (team.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
-  // Returning next year = everyone except graduating seniors. A SR with a
-  // redshirt year used + only 3 seasons played stays (they have eligibility
-  // left); a SR with 4 seasons used is done.
+  // Roster cap is level-aware. NWAC is a JUCO with smaller staffs (40 max
+  // per Nate). NAIA stays at 50; D1/D2/D3 use 45 (LEVEL_CONFIG values).
+  const ROSTER_CAP = save.level === 'NWAC' ? 40
+    : save.level === 'NAIA' ? 50
+    : 45
+  // Players NOT returning next year:
+  //   - Graduating seniors (4-year levels) — SR with full eligibility used
+  //   - NWAC sophomores — ALL SOs leave for 4-year programs after their
+  //     2nd JUCO season; no SO returns regardless of redshirt status.
   function isGraduating(p) {
+    if (save.level === 'NWAC') {
+      // Sophomores ALWAYS leave NWAC after year 2 (transfer to 4-yr).
+      return p.classYear === 'SO'
+    }
     if (p.classYear !== 'SR') return false
     if (p.redshirtUsed === true && (p.seasonsUsed ?? 0) < 4) return false
     return true
@@ -679,7 +688,7 @@ function RosterSnapshotPanel({ save }) {
           </div>
           <div className="text-[11px] text-gray-600 mt-1 leading-snug">
             <strong>{returningCount}</strong> returning · <strong>{committedRecruits}</strong> already signed ·
-            <strong className="text-amber-700"> {graduating}</strong> graduating after this season.
+            <strong className="text-amber-700"> {graduating}</strong> {save.level === 'NWAC' ? 'sophomores leaving' : 'graduating'} after this season.
           </div>
         </div>
         {/* Positional weaknesses */}

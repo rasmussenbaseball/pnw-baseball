@@ -96,11 +96,17 @@ function travelMode(miles) {
 
 /**
  * Estimate travel cost for an away series of N games over D days.
+ * Pass opts.level to apply level-specific rules (per Nate, May 2026):
+ *   NWAC — JUCO bus-only, day trips. No hotels, half per-diem, never flights.
+ *
  * @returns {{ totalCost: number, mode: 'bus'|'flight', miles: number, breakdown: object }}
  */
-export function estimateAwaySeriesCost(homeState, awayState, gameCount, daysAway) {
+export function estimateAwaySeriesCost(homeState, awayState, gameCount, daysAway, opts = {}) {
   const miles = milesBetween(homeState, awayState)
-  const mode = travelMode(miles)
+  const isNwac = opts.level === 'NWAC'
+  // NWAC is a commuter JUCO league — bus only, never flights regardless of
+  // distance. Per Nate: "within 60 miles you aren't staying in hotels."
+  const mode = isNwac ? 'bus' : travelMode(miles)
   let transit = 0
   if (mode === 'bus') {
     transit = miles * BUS_COST_PER_MILE * 2   // round trip
@@ -108,9 +114,17 @@ export function estimateAwaySeriesCost(homeState, awayState, gameCount, daysAway
     const perPax = miles >= 1500 ? FLIGHT_PER_PASSENGER_LONG : FLIGHT_PER_PASSENGER_MEDIUM
     transit = FLIGHT_BASE + perPax * ROSTER_SIZE_FOR_TRAVEL
   }
-  const hotelRooms = Math.ceil(ROSTER_SIZE_FOR_TRAVEL / 2)
-  const hotel = hotelRooms * HOTEL_PER_NIGHT_DOUBLE * (daysAway - 1)
-  const food = ROSTER_SIZE_FOR_TRAVEL * DAILY_PER_DIEM * daysAway
+  // NWAC: zero overnight hotels. Half per-diem (kids eat at home / pack
+  // lunch since they're commuting from campus). Effectively 1-day trips.
+  let hotel, food
+  if (isNwac) {
+    hotel = 0
+    food = ROSTER_SIZE_FOR_TRAVEL * (DAILY_PER_DIEM * 0.5)
+  } else {
+    const hotelRooms = Math.ceil(ROSTER_SIZE_FOR_TRAVEL / 2)
+    hotel = hotelRooms * HOTEL_PER_NIGHT_DOUBLE * (daysAway - 1)
+    food = ROSTER_SIZE_FOR_TRAVEL * DAILY_PER_DIEM * daysAway
+  }
   const total = Math.round(transit + hotel + food)
   return {
     totalCost: total,
@@ -127,9 +141,10 @@ export function estimateAwaySeriesCost(homeState, awayState, gameCount, daysAway
 /**
  * Estimate travel cost for a single midweek game (one-day trip).
  */
-export function estimateMidweekCost(homeState, awayState) {
+export function estimateMidweekCost(homeState, awayState, opts = {}) {
   const miles = milesBetween(homeState, awayState)
-  const mode = travelMode(miles)
+  const isNwac = opts.level === 'NWAC'
+  const mode = isNwac ? 'bus' : travelMode(miles)
   let transit = 0
   if (mode === 'bus') {
     transit = miles * BUS_COST_PER_MILE * 2
@@ -137,9 +152,9 @@ export function estimateMidweekCost(homeState, awayState) {
     const perPax = miles >= 1500 ? FLIGHT_PER_PASSENGER_LONG : FLIGHT_PER_PASSENGER_MEDIUM
     transit = FLIGHT_BASE + perPax * ROSTER_SIZE_FOR_TRAVEL
   }
-  const food = ROSTER_SIZE_FOR_TRAVEL * DAILY_PER_DIEM
-  // 1 night hotel if > 200 miles
-  const hotel = miles > 200 ? Math.ceil(ROSTER_SIZE_FOR_TRAVEL / 2) * HOTEL_PER_NIGHT_DOUBLE : 0
+  const food = ROSTER_SIZE_FOR_TRAVEL * (isNwac ? DAILY_PER_DIEM * 0.5 : DAILY_PER_DIEM)
+  // 1 night hotel if > 200 miles — but never for NWAC (commuter league).
+  const hotel = (!isNwac && miles > 200) ? Math.ceil(ROSTER_SIZE_FOR_TRAVEL / 2) * HOTEL_PER_NIGHT_DOUBLE : 0
   const total = Math.round(transit + food + hotel)
   return { totalCost: total, mode, miles, breakdown: { transit: Math.round(transit), food, hotel } }
 }
@@ -152,6 +167,8 @@ export function totalAnnualTravelCost(schoolId, schedule, schools, nonNaiaLookup
   // Group away games into series (by seriesId) so we don't double-count
   const seriesSeen = new Set()
   const homeState = schools[schoolId]?.state || 'OR'
+  const level = schools[schoolId]?.level
+  const opts = { level }
 
   for (const g of schedule) {
     if (g.homeId === schoolId) continue   // home games — no travel cost
@@ -163,17 +180,18 @@ export function totalAnnualTravelCost(schoolId, schedule, schools, nonNaiaLookup
     const oppState = opp.state || 'OR'
 
     if (g.type === 'D1_MIDWEEK') {
-      total += estimateMidweekCost(homeState, oppState).totalCost
+      total += estimateMidweekCost(homeState, oppState, opts).totalCost
     } else if (g.seriesId) {
       if (seriesSeen.has(g.seriesId)) continue
       seriesSeen.add(g.seriesId)
-      // 4-game series typically 3 days; 3-game 3 days
+      // 4-game series typically 3 days; 3-game 3 days. NWAC is always
+      // 1-day (commuter — series-level option zeroes out hotels).
       const seriesGames = schedule.filter(x => x.seriesId === g.seriesId).length
-      const daysAway = Math.min(4, Math.max(2, seriesGames))
-      total += estimateAwaySeriesCost(homeState, oppState, seriesGames, daysAway).totalCost
+      const daysAway = level === 'NWAC' ? 1 : Math.min(4, Math.max(2, seriesGames))
+      total += estimateAwaySeriesCost(homeState, oppState, seriesGames, daysAway, opts).totalCost
     } else {
       // Single game (scrimmage or one-off)
-      total += estimateMidweekCost(homeState, oppState).totalCost
+      total += estimateMidweekCost(homeState, oppState, opts).totalCost
     }
   }
   return Math.round(total)

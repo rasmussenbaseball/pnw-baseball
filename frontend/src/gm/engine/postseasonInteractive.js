@@ -1478,3 +1478,309 @@ function finalizeD1(state) {
     big: ps.userNatChamp,
   })
 }
+
+// ─── NWAC INTERACTIVE POSTSEASON ─────────────────────────────────────────
+//
+// NWAC bracket (per pnwPlayoffs.js + the live NWBB site):
+//   - Top 4 from each of 4 regions seed (NORTH/SOUTH/EAST/WEST)
+//   - #1 seeds: auto-bye direct to the 8-team championship at Longview
+//   - #2 seeds: host single play-in (visitors are #3 + #4 from other regions),
+//     winner then plays the #2 seed in a best-of-3 to advance
+//   - #3 / #4 seeds: travel as visitors in another region's super regional
+//   - Final 8 (4 region #1s + 4 super-regional winners) play a double-elim
+//     at Longview, WA
+//
+// Postseason weeks map (4-round NAIA-style layout):
+//   Wk 40 = SUPER_REGIONAL play-in
+//   Wk 41 = SUPER_REGIONAL best-of-3 final
+//   Wk 42 = NWAC Championship at Longview (8-team DE)
+//   (NWAC has no "conference tournament" round.)
+
+const NWAC_REGIONS = ['NWAC_NORTH', 'NWAC_SOUTH', 'NWAC_EAST', 'NWAC_WEST']
+
+// Super-regional bracket: which region's #2 hosts which other regions' play-ins.
+// Mirrors the NWAC playoff structure documented in pnwPlayoffs.js.
+const NWAC_SR_LAYOUT = [
+  { host: 'NWAC_NORTH', playInA: ['NWAC_WEST',  4], playInB: ['NWAC_SOUTH', 3] },
+  { host: 'NWAC_EAST',  playInA: ['NWAC_NORTH', 4], playInB: ['NWAC_WEST',  3] },
+  { host: 'NWAC_WEST',  playInA: ['NWAC_SOUTH', 4], playInB: ['NWAC_EAST',  3] },
+  { host: 'NWAC_SOUTH', playInA: ['NWAC_EAST',  4], playInB: ['NWAC_NORTH', 3] },
+]
+
+/** Unified rating for any NWAC team (real → NWBB rating; fallback 50). */
+function nwacRatingOf(state, id) {
+  return state.nwbbRatings?.[id]?.rating ?? 50
+}
+
+/** Deterministic background-game sim for NWAC (returns winning id). */
+function makeNwacSim(state) {
+  const mk = (x) => ({ overall_rating: (x - 60) / 5, offense_rating: (x - 60) / 10, pitching_rating: (x - 60) / 10 })
+  return (h, a, key) => {
+    const r = fastSimGame(mk(nwacRatingOf(state, h)), mk(nwacRatingOf(state, a)), `nwac_${key}`)
+    return r.homeRuns >= r.awayRuns ? h : a
+  }
+}
+
+/** Top-4 seeds per region, sorted by confWins desc → runDiff desc. */
+function nwacSeedRegions(state) {
+  const out = {}
+  for (const divId of NWAC_REGIONS) {
+    const conf = state.conferences?.[divId]
+    if (!conf) { out[divId] = []; continue }
+    const standings = (conf.schoolIds || [])
+      .map(id => ({ id, team: state.teams?.[id] }))
+      .filter(x => x.team)
+      .sort((a, b) => {
+        if (a.team.confWins !== b.team.confWins) return b.team.confWins - a.team.confWins
+        return b.team.runDiff - a.team.runDiff
+      })
+    out[divId] = standings.slice(0, 4).map(x => x.id)
+  }
+  return out
+}
+
+/** Find the user's seed (1-4) + region, or null if they missed top-4. */
+function findUserSeed(seedsByRegion, userId) {
+  for (const region of NWAC_REGIONS) {
+    const seeds = seedsByRegion[region] || []
+    const idx = seeds.indexOf(userId)
+    if (idx >= 0) return { region, seed: idx + 1 }
+  }
+  return null
+}
+
+export function setupInteractivePostseasonNWAC(state) {
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const seedsByRegion = nwacSeedRegions(state)
+  const userInfo = findUserSeed(seedsByRegion, userId)
+  const ps = {
+    year: year + 1, level: 'NWAC', interactive: true, stage: 'SUPER',
+    userQualified: !!userInfo,
+    userAlive: !!userInfo,
+    userEliminatedAt: userInfo ? null : 'REG_SEASON',
+    userSeed: userInfo?.seed ?? null,
+    userRegion: userInfo?.region ?? null,
+    userChamp: false, userNatChamp: false, nationalChampion: null,
+    seedsByRegion,
+    rounds: { PLAYIN: null, SUPER: null, WS: null },
+    nwac: {
+      superRegionals: [],
+      championship: null,
+    },
+  }
+  state.postseason = ps
+  // Set up Wk 40 — super regional play-in.
+  setupNwacPlayIn(state)
+  return ps
+}
+
+export function advanceInteractivePostseasonNWAC(state, leavingWeek) {
+  const ps = state.postseason
+  if (!ps || !ps.interactive || ps.level !== 'NWAC') return
+  if (leavingWeek === 39)      { ps.stage = 'SUPER';   setupNwacSuperBo3(state) }
+  else if (leavingWeek === 40) { ps.stage = 'SUPER';   setupNwacSuperBo3(state) }
+  else if (leavingWeek === 41) { ps.stage = 'WS';      setupNwacChampionship(state) }
+  else if (leavingWeek === 42) { finalizeNwac(state) }
+}
+
+function setupNwacPlayIn(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeNwacSim(state)
+  const seedFn = (region, n) => ps.seedsByRegion[region]?.[n - 1] || null
+
+  // Build 4 super-regional records. Each has a host (#2 seed), a play-in
+  // game between two visitors, then a best-of-3 final at the host.
+  ps.nwac.superRegionals = NWAC_SR_LAYOUT.map(sr => ({
+    host: sr.host,
+    hostId: seedFn(sr.host, 2),
+    playInA: seedFn(sr.playInA[0], sr.playInA[1]),
+    playInB: seedFn(sr.playInB[0], sr.playInB[1]),
+    playInWinner: null,
+    bo3Winner: null,
+    isUser: false,
+  }))
+
+  // If user is a 1-seed they auto-advance to the championship (no SR action).
+  if (ps.userSeed === 1) {
+    return
+  }
+
+  // Mark whichever SR involves the user. Determines whether they play a
+  // play-in (3/4-seed) or wait for one (2-seed).
+  const userSrIdx = ps.nwac.superRegionals.findIndex(sr =>
+    sr.hostId === userId || sr.playInA === userId || sr.playInB === userId,
+  )
+  if (userSrIdx < 0) return
+  const userSr = ps.nwac.superRegionals[userSrIdx]
+  userSr.isUser = true
+
+  // User as a 2-seed: no play-in game this week — they wait. Other SRs
+  // sim their play-ins now; the user's SR play-in also sims (visitors
+  // facing off, user doesn't play).
+  // User as a 3/4-seed: they play the play-in game this week, interactive.
+  const userIsVisitor = (userSr.playInA === userId || userSr.playInB === userId)
+
+  // Auto-sim all non-user play-ins.
+  for (let i = 0; i < ps.nwac.superRegionals.length; i++) {
+    const sr = ps.nwac.superRegionals[i]
+    if (i === userSrIdx && userIsVisitor) continue   // user plays this one
+    if (!sr.playInA || !sr.playInB) {
+      sr.playInWinner = sr.playInA || sr.playInB
+      continue
+    }
+    sr.playInWinner = sim(sr.playInA, sr.playInB, `pi_${year}_${i}`)
+  }
+
+  // Set up user's play-in as an interactive single game at the host site.
+  if (userIsVisitor) {
+    const opp = userSr.playInA === userId ? userSr.playInB : userSr.playInA
+    ps.rounds.PLAYIN = {
+      format: 'SINGLE', aId: userId, bId: opp, hostId: userSr.hostId,
+      seedKey: `nwac_pi_${year}_${userSrIdx}`, superIdx: userSrIdx,
+      label: `NWAC Super Regional Play-In @ ${teamNameOf(state, userSr.hostId)}`,
+      oppName: teamNameOf(state, opp),
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function setupNwacSuperBo3(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeNwacSim(state)
+
+  // Resolve any pending user play-in.
+  if (ps.rounds.PLAYIN?.resolved) {
+    const sr = ps.nwac.superRegionals[ps.rounds.PLAYIN.superIdx]
+    if (sr) sr.playInWinner = ps.rounds.PLAYIN.userWon ? userId : (sr.playInA === userId ? sr.playInB : sr.playInA)
+    if (!ps.rounds.PLAYIN.userWon) {
+      ps.userAlive = false
+      ps.userEliminatedAt = 'PLAYIN'
+    }
+  }
+
+  // 1-seeds auto-advance — no SR games for them.
+  if (ps.userSeed === 1) return
+
+  // Find user's SR.
+  const userSr = ps.nwac.superRegionals.find(sr => sr.isUser)
+  if (!userSr || !ps.userAlive) {
+    // User done. Sim every remaining SR best-of-3.
+    for (const sr of ps.nwac.superRegionals) {
+      if (sr.bo3Winner || !sr.hostId || !sr.playInWinner) continue
+      sr.bo3Winner = runBestOf3(sr.hostId, sr.playInWinner, '__none__', () => null, sim, `bo3_${year}_${sr.host}`).champion
+    }
+    return
+  }
+
+  // User's best-of-3. They host if they're the #2 seed; otherwise they visit
+  // the #2 seed (they're a play-in winner moving up).
+  const userIsHost = userSr.hostId === userId
+  const oppId = userIsHost ? userSr.playInWinner : userSr.hostId
+  if (!oppId) return
+  const aId = userIsHost ? userId : oppId   // host
+  const bId = userIsHost ? oppId : userId
+  ps.rounds.SUPER = {
+    format: 'BO3', aId, bId, hostId: aId,
+    seedKey: `nwac_sr_${year}_${userSr.host}`,
+    superHost: userSr.host,
+    label: `NWAC Super Regional — Best-of-3 @ ${teamNameOf(state, aId)}`,
+    oppName: teamNameOf(state, userIsHost ? bId : aId),
+    resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null,
+  }
+
+  // Auto-sim other SRs' best-of-3s.
+  for (const sr of ps.nwac.superRegionals) {
+    if (sr.isUser) continue
+    if (!sr.hostId || !sr.playInWinner) continue
+    sr.bo3Winner = runBestOf3(sr.hostId, sr.playInWinner, '__none__', () => null, sim, `bo3_${year}_${sr.host}`).champion
+  }
+
+  tickInteractivePostseason(state)
+}
+
+function setupNwacChampionship(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeNwacSim(state)
+  const seedFn = (region, n) => ps.seedsByRegion[region]?.[n - 1] || null
+
+  // Resolve user's SR best-of-3 if pending.
+  if (ps.rounds.SUPER?.resolved && ps.userAlive) {
+    const userSr = ps.nwac.superRegionals.find(s => s.isUser)
+    if (userSr) {
+      userSr.bo3Winner = ps.rounds.SUPER.userWon ? userId : (userSr.hostId === userId ? userSr.playInWinner : userSr.hostId)
+      if (!ps.rounds.SUPER.userWon) {
+        ps.userAlive = false
+        ps.userEliminatedAt = 'SUPER'
+      }
+    }
+  }
+
+  // Sim any leftover SR best-of-3s (user not involved).
+  for (const sr of ps.nwac.superRegionals) {
+    if (sr.bo3Winner || !sr.hostId || !sr.playInWinner) continue
+    sr.bo3Winner = runBestOf3(sr.hostId, sr.playInWinner, '__none__', () => null, sim, `bo3_${year}_${sr.host}`).champion
+  }
+
+  // Build the 8-team championship field: 4 region #1s + 4 SR winners.
+  const oneSeeds = NWAC_REGIONS.map(r => seedFn(r, 1)).filter(Boolean)
+  const srWinners = ps.nwac.superRegionals.map(sr => sr.bo3Winner).filter(Boolean)
+  const field = [...oneSeeds, ...srWinners].slice(0, 8)
+  ps.nwac.championship = { location: 'Longview, WA', qualifiers: field, champion: null }
+
+  const userInField = ps.userAlive && field.includes(userId)
+  if (userInField) {
+    const seeded = [...field].sort((a, b) => nwacRatingOf(state, b) - nwacRatingOf(state, a))
+    ps.rounds.WS = {
+      format: 'WS8', phase: 'BRACKET', seeds: seeded, spec: { ...deGraph(8), bestOf3Final: true },
+      seedKey: `nwac_champ_${year}`,
+      label: 'NWAC Championship @ Longview — 8-team double-elim → best-of-3 final',
+      resolved: false, userWon: false, pendingGameId: null, gameIds: [], champion: null, finalists: null,
+    }
+    tickInteractivePostseason(state)
+  }
+}
+
+function finalizeNwac(state) {
+  const ps = state.postseason
+  const userId = state.userSchoolId
+  const year = state.calendar.year
+  const sim = makeNwacSim(state)
+
+  if (ps.userAlive && ps.rounds.WS?.userWon) {
+    ps.userNatChamp = true
+    ps.nationalChampion = userId
+  }
+  if (!ps.nationalChampion) {
+    // User didn't win (or missed the championship) — sim it out.
+    const field = ps.nwac.championship?.qualifiers || []
+    if (field.length >= 2) {
+      const seeded = [...field].sort((a, b) => nwacRatingOf(state, b) - nwacRatingOf(state, a))
+      const res = runMatchGraph(seeded, { ...deGraph(8), bestOf3Final: true }, '__none__', () => null, sim, `nwac_champ_${year}`)
+      const finalists = res.finalists || (res.champion ? [res.champion] : [])
+      ps.nationalChampion = finalists.length >= 2
+        ? runBestOf3(finalists[0], finalists[1], '__none__', () => null, sim, `nwac_champ_${year}_final`).champion
+        : (finalists[0] || seeded[0])
+      ps.nwac.championship = ps.nwac.championship || {}
+      ps.nwac.championship.champion = ps.nationalChampion
+    }
+  }
+  ps.stage = 'DONE'
+  const champName = teamNameOf(state, ps.nationalChampion)
+  state.newsfeed = state.newsfeed || []
+  state.newsfeed.unshift({
+    id: `nwac_done_${year}_${Math.random().toString(36).slice(2, 6)}`,
+    year: year + 1, week: 16, type: 'POSTSEASON',
+    headline: ps.userNatChamp
+      ? `${state.schools[userId]?.name} WIN THE NWAC CHAMPIONSHIP!`
+      : `${champName} win the NWAC Championship at Longview.`,
+    big: ps.userNatChamp,
+  })
+}

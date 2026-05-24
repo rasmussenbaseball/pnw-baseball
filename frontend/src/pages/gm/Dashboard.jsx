@@ -470,6 +470,7 @@ export default function Dashboard() {
         <PhaseTransitionModal
           from={phaseTransitionModal.from}
           to={phaseTransitionModal.to}
+          level={save.level}
           onClose={() => setPhaseTransitionModal(null)}
         />
       )}
@@ -986,9 +987,12 @@ function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, sl
   )
 }
 
-function PhaseTransitionModal({ from, to, onClose }) {
+function PhaseTransitionModal({ from, to, level, onClose }) {
   useModalDismiss(onClose)
   const palette = SEASON_PALETTE[to.season] || SEASON_PALETTE['Late Summer']
+  // Per-level blurb override (e.g. NWAC dynasties don't see "NAIA auto-bid"
+  // copy). Falls back to the generic phase blurb if no override exists.
+  const blurb = (level && to.blurbByLevel?.[level]) || to.blurb
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4" onClick={onClose}>
       <div
@@ -998,7 +1002,7 @@ function PhaseTransitionModal({ from, to, onClose }) {
         <div className="text-[10px] uppercase tracking-widest opacity-70 font-bold">Now entering</div>
         <div className="text-3xl font-extrabold leading-tight mt-1">{to.season || to.label}</div>
         <div className="text-base font-semibold opacity-90 mt-0.5">{to.label}</div>
-        <div className="mt-4 text-sm leading-relaxed">{to.blurb}</div>
+        <div className="mt-4 text-sm leading-relaxed">{blurb}</div>
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
           <PhaseFlag label="Practice"     active={!!to.practice} />
           <PhaseFlag label="Conditioning" active={!!to.conditioning} />

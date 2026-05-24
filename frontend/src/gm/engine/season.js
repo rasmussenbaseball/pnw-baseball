@@ -12,7 +12,7 @@ import { resolveLineupForGame, lineupPlayerIds, getSavedLineup, autoLineup } fro
 import { computeFromSeason, seedFromPear } from './rankings'
 import { applyScrimmageDev, applyWeeklyDevelopment, applyOffseasonPracticeDev } from './development'
 import { runEndOfRegularSeasonAwards } from './awards'
-import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason, setupInteractivePostseasonD2, advanceInteractivePostseasonD2, setupInteractivePostseasonD3, advanceInteractivePostseasonD3, setupInteractivePostseasonD1, advanceInteractivePostseasonD1 } from './postseasonInteractive'
+import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickInteractivePostseason, setupInteractivePostseasonD2, advanceInteractivePostseasonD2, setupInteractivePostseasonD3, advanceInteractivePostseasonD3, setupInteractivePostseasonD1, advanceInteractivePostseasonD1, setupInteractivePostseasonNWAC, advanceInteractivePostseasonNWAC } from './postseasonInteractive'
 import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
@@ -1385,6 +1385,9 @@ export function advanceOneWeek(state) {
     } else if (isD1) {
       try { setupInteractivePostseasonD1(state) }
       catch (err) { console.error('D1 postseason setup failed:', err); runPostseason(state) }
+    } else if (state.level === 'NWAC') {
+      try { setupInteractivePostseasonNWAC(state) }
+      catch (err) { console.error('NWAC postseason setup failed:', err); runPostseason(state) }
     } else {
       runPostseason(state)
     }
@@ -1410,6 +1413,12 @@ export function advanceOneWeek(state) {
       else if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonD1(state, 40)
       else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonD1(state, 41)
       else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonD1(state, 42)
+    } else if (state.level === 'NWAC') {
+      // NWAC uses NAIA's 3-round window: super-regional play-in wk40,
+      // best-of-3 final wk41, championship at Longview wk42.
+      if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonNWAC(state, 40)
+      else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNWAC(state, 41)
+      else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonNWAC(state, 42)
     }
   }
 

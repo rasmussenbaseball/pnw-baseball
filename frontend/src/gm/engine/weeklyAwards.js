@@ -158,17 +158,34 @@ export function computeWeeklyAwards(state) {
   // conferences like INDEPENDENT_D1 (Oregon State alone) — a "Conf POTW"
   // award for a 1-team conf is meaningless and the user explicitly asked
   // for it to not surface.
+  //
+  // NWAC EXCEPTION (per Nate, May 2026): the 4 NWAC regions function as
+  // a single conference. Award ONE NWAC-wide POTW (best hitter + best
+  // pitcher across all 28 teams) instead of 4 per-region POTWs.
   const confWinners = {}
-  for (const confId of Object.keys(state.conferences || {})) {
-    const conf = state.conferences[confId]
-    if ((conf?.schoolIds?.length || 0) <= 1) continue
-    confWinners[confId] = {
+  const isNwacUser = state.level === 'NWAC'
+  if (isNwacUser) {
+    const nwacRegions = new Set(['NWAC_NORTH', 'NWAC_SOUTH', 'NWAC_EAST', 'NWAC_WEST'])
+    confWinners.NWAC = {
       hitter: pickBest(weekly,
-        (s) => !s.isPitcher && playerConf[s.playerId] === confId,
+        (s) => !s.isPitcher && nwacRegions.has(playerConf[s.playerId]),
         hitterWeekScore, MIN_HITTER_WEEK_SCORE),
       pitcher: pickBest(weekly,
-        (s) => s.isPitcher && playerConf[s.playerId] === confId,
+        (s) => s.isPitcher && nwacRegions.has(playerConf[s.playerId]),
         pitcherWeekScore, MIN_PITCHER_WEEK_SCORE),
+    }
+  } else {
+    for (const confId of Object.keys(state.conferences || {})) {
+      const conf = state.conferences[confId]
+      if ((conf?.schoolIds?.length || 0) <= 1) continue
+      confWinners[confId] = {
+        hitter: pickBest(weekly,
+          (s) => !s.isPitcher && playerConf[s.playerId] === confId,
+          hitterWeekScore, MIN_HITTER_WEEK_SCORE),
+        pitcher: pickBest(weekly,
+          (s) => s.isPitcher && playerConf[s.playerId] === confId,
+          pitcherWeekScore, MIN_PITCHER_WEEK_SCORE),
+      }
     }
   }
 
@@ -178,10 +195,24 @@ export function computeWeeklyAwards(state) {
     if (!winner) return
     const p = playerById[winner.playerId]
     if (!p) return
-    const schoolId = playerConf[winner.playerId]
-      ? state.conferences[playerConf[winner.playerId]]?.schoolIds?.find(sid =>
-          state.teams[sid]?.rosterPlayerIds?.includes(winner.playerId))
-      : null
+    // Look up the player's school via roster lookup. For NWAC the
+    // synthetic 'NWAC' conf doesn't exist in state.conferences, so we
+    // fall back to scanning every team. For regular confs, scope to the
+    // player's actual conferenceId for speed.
+    let schoolId = null
+    const confId = playerConf[winner.playerId]
+    if (confId && state.conferences[confId]) {
+      schoolId = state.conferences[confId].schoolIds?.find(sid =>
+        state.teams[sid]?.rosterPlayerIds?.includes(winner.playerId))
+    }
+    if (!schoolId) {
+      for (const tid of Object.keys(state.teams || {})) {
+        if (state.teams[tid]?.rosterPlayerIds?.includes(winner.playerId)) {
+          schoolId = tid
+          break
+        }
+      }
+    }
     const school = state.schools?.[schoolId]
     const line = formatStatLine(winner.stats, kind)
     out.push({
@@ -198,9 +229,11 @@ export function computeWeeklyAwards(state) {
   }
 
   for (const [confId, w] of Object.entries(confWinners)) {
-    const conf = state.conferences[confId]
-    record('CONF', 'HITTER',  w.hitter,  conf?.name || conf?.abbreviation)
-    record('CONF', 'PITCHER', w.pitcher, conf?.name || conf?.abbreviation)
+    // For the synthetic NWAC bucket use "NWAC" as the label; for real
+    // conferences use the conference's name/abbreviation.
+    const label = confId === 'NWAC' ? 'NWAC' : (state.conferences[confId]?.name || state.conferences[confId]?.abbreviation)
+    record('CONF', 'HITTER',  w.hitter,  label)
+    record('CONF', 'PITCHER', w.pitcher, label)
   }
 
   // DEFERRED REVEAL (per Nate): don't surface this week's POTW yet — queue it
@@ -239,7 +272,14 @@ export function revealWeeklyAwards(state) {
     // Apply the (small, +1) rating reward to the user's player + coach points.
     rewardUserPlayer(state, a.playerId, a.kind, a.scope)
 
-    const isUserConf = a.scope === 'CONF' && a.conferenceName === state.conferences?.[userConfId]?.name
+    // For NWAC the synthetic conference is "NWAC" (one POTW for all 28
+    // teams); regular confs match the user's own conferenceId by name.
+    const isNwacUser = state.level === 'NWAC'
+    const isUserConf = a.scope === 'CONF' && (
+      isNwacUser
+        ? a.conferenceName === 'NWAC'
+        : a.conferenceName === state.conferences?.[userConfId]?.name
+    )
     const isNaia = a.scope === 'NAIA'
     const isYours = !!userTeam?.rosterPlayerIds?.includes(a.playerId)
     if (isYours && (isNaia || a.scope === 'CONF')) userWinners.push(a)

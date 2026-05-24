@@ -349,7 +349,14 @@ export default function Postseason() {
       <div className="mb-6">
         <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} POSTSEASON</h1>
         <p className="text-sm text-gray-600">
-          {ps.userChamp ? ' You won your conference!' : ps.userQualified ? ' You qualified for your conference tournament.' : ' You missed the conference tournament.'}
+          {(() => {
+            const isNwac = ps.level === 'NWAC'
+            const qLabel = isNwac ? 'NWAC playoffs' : 'conference tournament'
+            const cLabel = isNwac ? 'NWAC region' : 'conference'
+            if (ps.userChamp) return `You won your ${cLabel}!`
+            if (ps.userQualified) return `You qualified for the ${qLabel}.`
+            return `You missed the ${qLabel}.`
+          })()}
         </p>
       </div>
 
@@ -442,8 +449,11 @@ export default function Postseason() {
         </div>
       )}
 
-      {/* National-bracket field — every level. Reads state.nationalChamps */}
-      <NationalFieldSection ps={ps} save={save} />
+      {/* National-bracket field — every level EXCEPT NWAC. NWAC has no
+          national tournament (the NWAC Championship at Longview IS the
+          national tournament for the league), so don't render a confusing
+          "0-team field — your program missed the field" box. */}
+      {ps.level !== 'NWAC' && <NationalFieldSection ps={ps} save={save} />}
 
       {/* NWAC playoff bracket */}
       {ps.level === 'NWAC' && ps.nwac && (

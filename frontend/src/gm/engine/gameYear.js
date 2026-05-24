@@ -66,13 +66,42 @@ export const PHASES = {
   CONFERENCE:        { key: 'CONFERENCE',        label: 'Conference Play',  blurb: 'Conference play — 10 series across 10 weeks, no byes.',
     season: 'Spring Season', practice: true, conditioning: false, devAllowed: true, inSeason: true },
   // ── May: postseason (Wks 40-42) ─────────────────────────────────────────
+  // `blurbByLevel` overrides the default blurb per league when the level
+  // differs from NAIA's flow. Used by the PhaseTransitionModal to swap in
+  // level-correct copy (NWAC: regional super regional NWAC Championship
+  // at Longview; D1: CWS; etc.).
   CONF_TOURNAMENT:   { key: 'CONF_TOURNAMENT',   label: 'Conf Tournament',  blurb: 'Double-elim bracket. Winner gets the NAIA auto-bid.',
+    blurbByLevel: {
+      D1:   'Double-elim conference tournament. Winner gets an auto-bid to the NCAA Regionals.',
+      D2:   'Double-elim conference tournament. Winner gets an auto-bid to the NCAA D-II Regionals.',
+      D3:   'Double-elim conference tournament. Winner gets an auto-bid to the NCAA D-III Regionals.',
+      NWAC: 'NWAC playoffs begin. Top-4 per region advance; #2 seeds host super regionals.',
+    },
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
   OPENING_ROUND:     { key: 'OPENING_ROUND',     label: 'Opening Round',    blurb: 'Regional brackets — double-elimination.',
+    blurbByLevel: {
+      D1:   'NCAA Regionals — 4-team double-elim brackets. Winners advance to Super Regionals.',
+      D2:   'NCAA D-II Regionals — 4-team double-elim brackets.',
+      D3:   'NCAA D-III Regionals — 4-team double-elim brackets.',
+      NWAC: 'NWAC super regionals — top regional seeds host best-of-3 series.',
+    },
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
   SUPER_REGIONAL:    { key: 'SUPER_REGIONAL',    label: 'Super Regional',   blurb: 'Best-of-3 series. Winner advances to the World Series.',
+    blurbByLevel: {
+      D1:   'Super Regionals — best-of-3 series. Winners advance to the College World Series.',
+      D2:   'D-II Super Regionals — best-of-3. Winners go to the D-II World Series.',
+      D3:   'D-III Super Regionals — best-of-3. Winners go to the D-III World Series.',
+      NWAC: 'NWAC Championship at Longview — 8-team double-elim. The winner is your champion.',
+    },
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
   WORLD_SERIES:      { key: 'WORLD_SERIES',      label: 'World Series',     blurb: 'National finals.',
+    blurbByLevel: {
+      D1:   'College World Series at Omaha — two 4-team double-elim brackets + best-of-3 final.',
+      D2:   'D-II World Series — national champion crowned.',
+      D3:   'D-III World Series — national champion crowned.',
+      NAIA: 'Avista NAIA World Series at Lewiston — national champion crowned.',
+      NWAC: 'NWAC Championship at Longview — title round.',
+    },
     season: 'Postseason', practice: true, conditioning: false, devAllowed: false, inSeason: true },
   // ── June-July: portal + draft (Wks 43-52) ───────────────────────────────
   PORTAL:            { key: 'PORTAL',            label: 'Summer Recruiting', blurb: 'Inbound + outbound transfers. Recruit from the portal. Summer ball runs in the background.',
