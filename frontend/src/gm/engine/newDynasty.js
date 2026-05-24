@@ -10,6 +10,8 @@
 
 import { loadSchools } from './loadSchools'
 import { generateRoster } from './generate'
+import { teamOverall } from './playerRating'
+import { expectedTeamOvr } from './programRating'
 import { generateStaff, computeCoachSalary } from './coaches'
 import { makeRng, hashSeed } from './rng'
 import { buildAllConferenceSchedules, buildNonConferenceFillers } from './schedule'
@@ -137,8 +139,14 @@ export function newDynasty(input) {
       runDiff: 0,
     }
     normalizeRosterScholarships(teams[school.id], school, players)
-    // Team OVR is anchored honestly at roster-generation time (see
-    // scaleRosterToTarget in generate.js); no display-time ovrOffset.
+    // Team OVR pin. scaleRosterToTarget shifts ratings toward the target
+    // but rating clamps at 99 / 25 can prevent reaching the exact value
+    // (especially for very high or very low buckets). Stash the residual
+    // as ovrOffset so the displayed Team OVR matches the picker exactly.
+    const expectedOvr = expectedTeamOvr(school)
+    const naturalOvr = teamOverall(teams[school.id], players).overall
+    const residual = expectedOvr - naturalOvr
+    if (Math.abs(residual) >= 1) teams[school.id].ovrOffset = residual
   }
 
   // 4. Calendar — dynasty starts first week of August 2026 (offseason) fall

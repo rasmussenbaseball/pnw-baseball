@@ -268,6 +268,22 @@ export function loadSchools() {
     }
   }
 
+  // ── Rank-stamping ─────────────────────────────────────────────────────
+  // NAIA schools don't have a pre-computed rank in their data, so we sort
+  // by pearRating desc and assign pearRank 1..N. The downstream OVR system
+  // (expectedTeamOvr in programRating.js) uses this rank to bucket every
+  // NAIA team into one of 25 OVR slots between 60 and 84 — same even-spread
+  // treatment D1/D2/D3 get. Schools with no PEAR rating are sorted to the
+  // bottom of their level (tied at 0). Stamp `level: 'NAIA'` too so the
+  // OVR system can route them through the right window.
+  const naiaSchools = Object.values(schools)
+    .slice()
+    .sort((a, b) => (b.pearRating ?? 0) - (a.pearRating ?? 0))
+  naiaSchools.forEach((s, idx) => {
+    s.pearRank = idx + 1
+    s.level = 'NAIA'
+  })
+
   // Track any PEAR teams we didn't match — useful for debugging
   const matchedKeys = new Set(
     Object.values(schools)

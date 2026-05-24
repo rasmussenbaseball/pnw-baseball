@@ -24,7 +24,7 @@
 import { generateRoster } from './generate'
 import { generateStaff, computeCoachSalary } from './coaches'
 import { teamOverall } from './playerRating'
-import { expectedTeamOvr } from './programRating'
+import { expectedTeamOvr, phForTargetOvr, ovrForLevelRank } from './programRating'
 import { makeRng, hashSeed } from './rng'
 import { defaultBudgetForSchool } from './budget'
 import {
@@ -146,6 +146,10 @@ export function newDynastyMultiLevel(input) {
       conferenceId: memberConfId,
       strength: fromPool?.strength ?? 0,
       pearRank: fromPool?.pearRank ?? null,
+      // NWAC schools use ppiRank (set on the member entry in
+      // pnw_playoff_formats.json) since they aren't in non_naia_teams' PEAR
+      // dataset. Other levels ignore this.
+      ppiRank: m.ppiRank ?? null,
       level,
       // Prefer colors set directly on the PNW member (playoff_formats — used
       // for NWAC schools that aren't in PEAR's national dataset), fall back
@@ -437,7 +441,7 @@ function buildUserHeadCoach(uc, school, role = 'HEAD_COACH') {
  * programHistory / scholarshipPool / facilityRating are estimated from
  * the level + strength so the rest of the engine doesn't see undefined.
  */
-function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, strength, pearRank, level, colors }) {
+function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, strength, pearRank, ppiRank, level, colors }) {
   // PROGRAM HISTORY computation — drives Team OVR via expectedTeamOvr().
   //
   // D1 uses RANK-BASED PH so the 308-team field spreads EVENLY across the
@@ -451,46 +455,30 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
   //   D2   best ~83 (NN Nazarene), worst ~67 (Saint Martin's)
   //   D3   best ~81 (Whitworth), worst ~65 (Willamette)
   //   NWAC best ~75 (Everett), worst ~62 (Grays Harbor)
+  // RANK-BUCKETED PH (May 2026 — per Nate). Every level (D1/D2/D3/NWAC)
+  // now gets an even OVR spread by mapping rank-in-level → target OVR via
+  // ovrForLevelRank(), then back-calculating the PH that yields it from
+  // expectedTeamOvr's formula. Each level has its own OVR window:
+  //   D1   80-98 (308 teams)
+  //   D2   60-84 (256 teams)
+  //   D3   58-82 (384 teams)
+  //   NWAC 51-75 (25 teams — 1 per OVR, unique)
+  // For NWAC the input field is ppiRank (NWBB Stats Power Index), not pearRank.
   let programHistory
-  if (level === 'D1' && typeof pearRank === 'number' && pearRank > 0) {
-    // RANK-BUCKETED PH. 308 D1 teams → 19 OVR values (80-98) → ~16 teams per
-    // OVR. Each bucket maps to a PH value chosen so expectedTeamOvr (which
-    // rounds `75 + (ph-15)*0.27` for D1) yields the target OVR exactly.
-    // Range widened May 2026 per Nate: was 88-98 (11 values); user wants
-    // bottom at OVR 80 (Alcorn-tier) for a fuller D1 spread.
-    const D1_TEAM_COUNT = 308
-    const D1_BUCKET_COUNT = 19
-    const r = Math.max(1, Math.min(D1_TEAM_COUNT, pearRank))
-    const bucket = Math.min(D1_BUCKET_COUNT - 1,
-      Math.floor((r - 1) * D1_BUCKET_COUNT / D1_TEAM_COUNT))
-    // PH per bucket — calibrated so expectedTeamOvr rounds to the target.
-    // bucket 0 → OVR 98, bucket 18 → OVR 80.
-    const D1_BUCKET_PH = [
-      99,   // OVR 98
-      96,   // OVR 97
-      93,   // OVR 96
-      89,   // OVR 95
-      85,   // OVR 94
-      82,   // OVR 93
-      78,   // OVR 92
-      74,   // OVR 91
-      71,   // OVR 90
-      67,   // OVR 89
-      63,   // OVR 88
-      60,   // OVR 87
-      56,   // OVR 86
-      52,   // OVR 85
-      48,   // OVR 84
-      45,   // OVR 83
-      41,   // OVR 82
-      37,   // OVR 81
-      34,   // OVR 80
-    ]
-    programHistory = D1_BUCKET_PH[bucket]
-  } else {
+  const rankInLevel = level === 'NWAC' ? ppiRank : pearRank
+  if (typeof rankInLevel === 'number' && rankInLevel > 0) {
+    const targetOvr = ovrForLevelRank(level, rankInLevel)
+    if (typeof targetOvr === 'number') {
+      programHistory = phForTargetOvr(level, targetOvr)
+    }
+  }
+  if (programHistory == null) {
+    // Fallback — no rank available (legacy / custom data). Use the
+    // strength-slope formula. Clamp lifted from [15, 99] → [0, 99] so
+    // very-low-rated teams aren't artificially floored.
     const tierBase  = { D1: 74, D2: 46, D3: 30, NWAC: 44 }[level] ?? 50
     const tierSlope = { D1: 3.5, D2: 9.0, D3: 11.0, NWAC: 4.5 }[level] ?? 2.0
-    programHistory = Math.max(15, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
+    programHistory = Math.max(0, Math.min(99, Math.round(tierBase + (strength || 0) * tierSlope)))
   }
 
   // Resource tier per level (rough budget proxy)
@@ -569,6 +557,13 @@ function buildSyntheticSchool({ id, name, city, state, nickname, conferenceId, s
     region: stateToRegion(state),
     metroSize: 'small',
     pearRating: strength || 0,
+    // Rank within level — surface on the school so expectedTeamOvr can do
+    // its rank-bucketed lookup at any call site (picker, scaleRosterToTarget,
+    // recompute on roster change, etc.). pearRank for D1/D2/D3 from PEAR data;
+    // ppiRank for NWAC from playoff_formats data. Both surface as `pearRank`
+    // since expectedTeamOvr reads a single field — NWAC level gates the
+    // ppiRank lookup separately.
+    pearRank: pearRank ?? ppiRank ?? null,
     level,
   }
 }
