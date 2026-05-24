@@ -58,7 +58,15 @@ function RequireAdmin({ children }) {
 }
 
 // GM early-access guard — locks the GM game to a single user during private alpha.
-const GM_EARLY_ACCESS_EMAILS = ['nate.rasmussen26@gmail.com', 'jawomack@bushnell.edu']
+const GM_EARLY_ACCESS_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+  'jawomack@bushnell.edu',
+  'ethan.stacy@gmail.com',
+  'jhussey1703@gmail.com',
+  'dylanthomasha@gmail.com',
+  'miyazawajoshua@gmail.com',
+  'maxo2326@gmail.com',
+]
 
 // Loading screen shown while the lazy-loaded GM chunk is downloading.
 // Triggered on the FIRST navigation to any /gm/* route (after that, the
