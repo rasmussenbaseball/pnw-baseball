@@ -921,7 +921,11 @@ function tickD2WorldSeries(state, ps, round, userId, getUserResult, sim) {
     }
     round.finalists = res.finalists || (res.champion ? [res.champion] : [])
     round.phase = 'FINAL'
-    ps.national.ws.finalists = round.finalists
+    // NWAC reuses this function but stores bracket state on ps.nwac.championship
+    // instead of ps.national.ws — guard the D2-specific write so a NWAC user
+    // doesn't crash (which previously swallowed the recursive tick and skipped
+    // the bo3 final entirely, dropping the user into summer after wbf).
+    if (ps.national?.ws) ps.national.ws.finalists = round.finalists
     if (round.finalists.length < 2 || !round.finalists.includes(userId)) {
       // User didn't reach the final — sim the best-of-3 + crown the champion.
       ps.userAlive = false; ps.userEliminatedAt = 'WS'
@@ -930,7 +934,8 @@ function tickD2WorldSeries(state, ps, round, userId, getUserResult, sim) {
         ? runBestOf3(round.finalists[0], round.finalists[1], '__none__', () => null, sim, `${round.seedKey}_final`)
         : { champion: round.finalists[0] }
       round.champion = fr.champion
-      ps.national.ws.champion = fr.champion
+      if (ps.national?.ws) ps.national.ws.champion = fr.champion
+      if (ps.nwac?.championship) ps.nwac.championship.champion = fr.champion
       ps.nationalChampion = fr.champion
       return
     }
@@ -950,7 +955,8 @@ function tickD2WorldSeries(state, ps, round, userId, getUserResult, sim) {
     round.resolved = true; round.pendingGameId = null
     round.champion = res.champion
     round.userWon = res.champion === userId
-    ps.national.ws.champion = res.champion
+    if (ps.national?.ws) ps.national.ws.champion = res.champion
+    if (ps.nwac?.championship) ps.nwac.championship.champion = res.champion
     ps.nationalChampion = res.champion
     if (round.userWon) ps.userNatChamp = true
     else { ps.userAlive = false; ps.userEliminatedAt = 'WS' }

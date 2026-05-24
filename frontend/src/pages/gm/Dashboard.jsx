@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [draftModal, setDraftModal] = useState(null)           // MLB draft popup
   const [potwModal, setPotwModal] = useState(null)             // user-player Player-of-the-Week popup
   const [seasonRecapModal, setSeasonRecapModal] = useState(null)  // year-rollover comprehensive recap
+  const [championModal, setChampionModal] = useState(null)  // championship-won celebration popup
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -123,6 +124,28 @@ export default function Dashboard() {
     if (!save?.lastSeasonRecap) return
     setSeasonRecapModal(save.lastSeasonRecap)
     save.lastSeasonRecap = null
+    saveDynasty(save)
+  }, [save])
+
+  // Championship-won celebration popup. Fires once per championship year
+  // when ps.userNatChamp becomes true and we haven't shown it yet. The
+  // shown-year flag dedupes against reloads + repeated Dashboard mounts so
+  // the popup doesn't re-appear every navigation.
+  useEffect(() => {
+    const ps = save?.postseason
+    if (!ps?.userNatChamp) return
+    const shownFor = save.flags?.lastShownChampYear
+    if (shownFor === ps.year) return
+    setChampionModal({
+      year: ps.year,
+      level: ps.level || save.level || 'NAIA',
+      teamName: save.schools?.[save.userSchoolId]?.name || 'Your team',
+      record: save.teams?.[save.userSchoolId]
+        ? `${save.teams[save.userSchoolId].wins}-${save.teams[save.userSchoolId].losses}`
+        : null,
+    })
+    if (!save.flags) save.flags = {}
+    save.flags.lastShownChampYear = ps.year
     saveDynasty(save)
   }, [save])
 
@@ -574,6 +597,9 @@ export default function Dashboard() {
       )}
       {seasonRecapModal && (
         <SeasonRecapModal recap={seasonRecapModal} onClose={() => setSeasonRecapModal(null)} />
+      )}
+      {championModal && (
+        <ChampionshipModal data={championModal} school={school} onClose={() => setChampionModal(null)} />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
           stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
@@ -2437,6 +2463,48 @@ function DepartureModal({ departures, onClose }) {
           ))}
         </div>
         <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Got it</button>
+      </div>
+    </div>
+  )
+}
+
+// Championship celebration popup — fires once when ps.userNatChamp goes
+// true (final game resolved with the user winning). Headline + level-
+// appropriate label (NWAC users see "NWAC Champions!"; everyone else
+// sees "NATIONAL CHAMPIONS!"). Confetti-tier moment, biggest of the
+// year — don't make it small.
+function ChampionshipModal({ data, school, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  const isNwac = data.level === 'NWAC'
+  const titleTop = isNwac ? 'NWAC CHAMPIONS!' : 'NATIONAL CHAMPIONS!'
+  const titleSub = isNwac
+    ? `${data.year} NWAC Championship @ Longview, WA`
+    : data.level === 'D1' ? `${data.year} College World Series`
+    : data.level === 'D2' ? `${data.year} NCAA Division II World Series`
+    : data.level === 'D3' ? `${data.year} NCAA Division III World Series`
+    : `${data.year} NAIA World Series @ Avista`
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[80] p-4" {...backdropProps}>
+      <div className="bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-600 rounded-2xl p-8 shadow-2xl w-full max-w-lg text-center text-white" {...stopProps}>
+        <div className="text-6xl mb-3">🏆</div>
+        <div className="text-xs uppercase tracking-[0.3em] opacity-90 mb-1">Champions</div>
+        <h2 className="text-3xl sm:text-4xl font-bold leading-tight">{titleTop}</h2>
+        <div className="mt-3 text-base font-semibold opacity-95">
+          {data.teamName}
+        </div>
+        {data.record && (
+          <div className="text-sm opacity-90 mt-0.5">{data.record} on the season</div>
+        )}
+        <div className="text-xs opacity-80 mt-3">{titleSub}</div>
+        <div className="bg-white/15 rounded-lg p-3 mt-5 text-sm leading-snug">
+          Your program is on top of the {isNwac ? 'NWAC' : data.level || 'NAIA'}. Hang the banner.
+        </div>
+        <button
+          onClick={onClose}
+          className="mt-5 px-6 py-2.5 bg-white text-amber-700 rounded-lg font-bold text-sm hover:bg-amber-50 shadow-lg"
+        >
+          Raise the trophy
+        </button>
       </div>
     </div>
   )

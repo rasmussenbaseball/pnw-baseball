@@ -25,6 +25,8 @@ import { applyHsAttrition, generatePortalPool, academicRatingToGpa } from './rec
 import { simMlbDraft, summarizeDraft } from './draft'
 import { endOfSeasonDevelopment, tickPotentialEOY, tickWeightFluctuation } from './development'
 import { generatePlayer } from './generate'
+import { expectedTeamOvr } from './programRating'
+import { hitterOverall, pitcherOverall } from './playerRating'
 import { makeRng } from './rng'
 import { budgetCategoryEffects } from './budget'
 import { totalAnnualTravelCost } from './travel'
@@ -583,7 +585,48 @@ function runDevelopment(state) {
   // forever, no recruiting impact, identical depth charts in year 5.
   ageOpponentRosters(state)
 
+  // REFIT non-user team.ovrOffset (per Nate, May 2026 — NWAC opposing
+  // teams decayed into the 40s by year 2+). ovrOffset was set once at
+  // dynasty creation as the gap between displayed Team OVR (target rank)
+  // and natural roster OVR. Every offseason, departing seniors / NWAC
+  // sophomores leave + new freshmen sign — and the new freshmen roll
+  // around the level's mean rating, which sags below the original
+  // veteran-heavy roster. With a frozen offset, displayed OVR drifts
+  // down as natural drops while the offset stays the same.
+  //
+  // Re-fitting offset annually to (target - natural) keeps every non-user
+  // team's displayed + simmed strength pinned to its PEAR / PPI rank,
+  // year after year. The USER's team is intentionally NOT refit — their
+  // own development (POTW bumps, coaching, recruits) should organically
+  // grow their team beyond / below their initial rank.
+  refitNonUserOvrOffsets(state)
+
   return { label: 'Player development', news: devReport }
+}
+
+/**
+ * Recompute team.ovrOffset for every non-user team so the displayed OVR
+ * matches the team's expected target (from PEAR / PPI rank). Runs once
+ * a year after roster turnover (aging + new freshmen) so the offset
+ * absorbs the natural rating drift from class churn.
+ */
+function refitNonUserOvrOffsets(state) {
+  const userId = state.userSchoolId
+  const avg = arr => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0)
+  for (const team of Object.values(state.teams || {})) {
+    if (!team || team.schoolId === userId) continue
+    const school = state.schools?.[team.schoolId]
+    if (!school) continue
+    const roster = (team.rosterPlayerIds || []).map(id => state.players?.[id]).filter(Boolean)
+    if (roster.length === 0) continue
+    const hitters = roster.filter(p => p.isHitter).map(hitterOverall).sort((a, b) => b - a).slice(0, 9)
+    const pitchers = roster.filter(p => p.isPitcher).map(pitcherOverall).sort((a, b) => b - a).slice(0, 5)
+    const natural = Math.round(avg(hitters) * 0.55 + avg(pitchers) * 0.45)
+    if (!natural) continue
+    const target = expectedTeamOvr(school)
+    if (typeof target !== 'number' || !Number.isFinite(target)) continue
+    team.ovrOffset = target - natural
+  }
 }
 
 /**
