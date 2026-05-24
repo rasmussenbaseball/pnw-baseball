@@ -828,11 +828,10 @@ function buildNwacSchedule(schools, year, rng) {
   }
   const games = []
   const seasonStartWeek = 27
-  // NWAC regular season is 14 spring weeks (vs NAIA's 13) — playoffs only
-  // run 2 weeks for NWAC (super regionals wk41 + championship wk42) so the
-  // extra game week fills the calendar without leaving the user idle. Per
-  // Nate (May 2026): "no 2 weeks off before playoffs."
-  const TOTAL_WEEKS = 14
+  // NWAC regular season = 13 weekend series (52 games). Playoffs follow
+  // IMMEDIATELY in calendar weeks 40 + 41 (regionals + championship at
+  // Longview) — no idle weeks. Per Nate.
+  const TOTAL_WEEKS = 13
   const CROSS_REGION_WEEKS = 3   // first 3 weeks reserved for cross-region
 
   // Helper — build a 4-game weekend series (Fri DH + Sat DH) between two teams.

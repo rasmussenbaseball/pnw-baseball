@@ -1414,14 +1414,14 @@ export function advanceOneWeek(state) {
       else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonD1(state, 41)
       else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonD1(state, 42)
     } else if (state.level === 'NWAC') {
-      // NWAC postseason is 2 weeks: super-regional wk41, championship wk42.
-      // Setup of wk41's super-regional happens via the POSTSEASON START
-      // hook (setupInteractivePostseasonNWAC), so this only handles the
-      // round-to-round transitions:
-      //   41 → 42 : super resolved → set up Longview championship
-      //   42 → 43 : championship resolved → finalize
-      if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNWAC(state, 41)
-      else if (nextWeek === 43 && prevWeek === 42) advanceInteractivePostseasonNWAC(state, 42)
+      // NWAC postseason is 2 weeks: regionals wk40, championship wk41.
+      // Setup of wk40's regionals happens via the POSTSEASON START hook
+      // (setupInteractivePostseasonNWAC) — runs when crossing wk 39 → 40.
+      // This block handles the round-to-round transitions:
+      //   40 → 41 : regionals resolved → set up Longview championship
+      //   41 → 42 : championship resolved → finalize
+      if (nextWeek === 41 && prevWeek === 40) advanceInteractivePostseasonNWAC(state, 40)
+      else if (nextWeek === 42 && prevWeek === 41) advanceInteractivePostseasonNWAC(state, 41)
     }
   }
 

@@ -1582,10 +1582,10 @@ export function setupInteractivePostseasonNWAC(state) {
 export function advanceInteractivePostseasonNWAC(state, leavingWeek) {
   const ps = state.postseason
   if (!ps || !ps.interactive || ps.level !== 'NWAC') return
-  // Wk 41 → 42: super regional done, set up championship.
-  if (leavingWeek === 41) { ps.stage = 'WS'; setupNwacChampionship(state) }
-  // Wk 42 → 43: finalize.
-  else if (leavingWeek === 42) { finalizeNwac(state) }
+  // Wk 40 → 41: regionals done, set up Longview championship.
+  if (leavingWeek === 40) { ps.stage = 'WS'; setupNwacChampionship(state) }
+  // Wk 41 → 42: finalize (championship resolved).
+  else if (leavingWeek === 41) { finalizeNwac(state) }
 }
 
 /**

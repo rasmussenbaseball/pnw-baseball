@@ -129,13 +129,14 @@ export function postseasonLayout(level) {
   if (level === 'D1' || level === 'D2' || level === 'D3') {
     return { seasonEnd: 38, confTourney: 39, regional: 40, superRegional: 41, ws: 42, start: 39, rounds: 4 }
   }
-  // NWAC is a 2-round playoff (regionals + final 8 at Longview) — per
-  // Nate, no idle weeks before playoffs. Regular season runs ONE extra
-  // week (through wk40) so super-regionals fall on wk41 + championship
-  // on wk42. The #1 region seeds get just 1 bye week (wk41) before
-  // their final-8 first game, not the 2-week dead zone they had before.
+  // NWAC is a 2-round playoff (regionals + final 8 at Longview) per Nate.
+  // 13-week regular season (ends wk39 = season wk 13), then playoffs
+  // immediately:
+  //   wk 40 (season wk 14) = NWAC regionals (super regional bo3)
+  //   wk 41 (season wk 15) = NWAC Championship at Longview
+  // Postseason wraps wk 41 — offseason proper starts wk 42.
   if (level === 'NWAC') {
-    return { seasonEnd: 40, confTourney: null, regional: 41, superRegional: null, ws: 42, start: 41, rounds: 2 }
+    return { seasonEnd: 39, confTourney: null, regional: 40, superRegional: null, ws: 41, start: 40, rounds: 2 }
   }
   // NAIA (and any other unrecognized level) keeps the 3-round window.
   return { seasonEnd: 39, confTourney: 40, regional: 41, superRegional: null, ws: 42, start: 40, rounds: 3 }

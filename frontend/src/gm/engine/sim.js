@@ -380,10 +380,16 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     const relieverRuns = Math.max(0, runsAllowed - starterRuns)
     const starterHits = Math.round(oppHits * starterRunShare)
     const relieverHits = Math.max(0, oppHits - starterHits)
-    // K + BB split proportionally to outs (the staff's K/BB == the opposing
-    // batters' K/BB totals).
+    // K + BB split. Per Nate (May 2026 — POTW always going to the user
+    // bug): the prior outs-proportional split UNDERSELLS the starter's
+    // K total (5-IP start with team K=6 got only 3 Ks → never qualified
+    // for POTW). Real-life, starters are the K specialists and take
+    // ~70% of team Ks, not the ~55% their out-share implies. Bump the
+    // starter share so fastSim pitchers' POTW lines compete with the
+    // user's full-sim pitcher.
     const outShare = starterOuts / Math.max(1, totalOuts)
-    const sK = Math.round((oppK || 0) * outShare)
+    const starterKShare = clamp(outShare * 1.3, 0.45, 0.85)   // ~70-80% K share
+    const sK = Math.round((oppK || 0) * starterKShare)
     const sBB = Math.round((oppBB || 0) * outShare)
     let kLeft = Math.max(0, (oppK || 0) - sK)
     let bbLeft = Math.max(0, (oppBB || 0) - sBB)

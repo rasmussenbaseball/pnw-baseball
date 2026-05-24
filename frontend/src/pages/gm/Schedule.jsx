@@ -380,9 +380,14 @@ export default function Schedule() {
         <div className="flex items-center justify-between">
           <span> Postseason begins Week {lastRegWeek + 1}</span>
           <span className="text-xs font-normal opacity-80">
-            {(save.level === 'D1' || save.level === 'D2' || save.level === 'D3')
-              ? `Conf Tournament → Regional → Super Regional → ${save.level === 'D1' ? 'College' : save.level} World Series`
-              : 'Wk 14 Conf Tournament • Wk 15 Opening Round • Wk 16 NAIA World Series'}
+            {(() => {
+              if (save.level === 'D1') return 'Conf Tournament → Regional → Super Regional → College World Series'
+              if (save.level === 'D2') return 'Conf Tournament → Regional → Super Regional → D-II World Series'
+              if (save.level === 'D3') return 'Conf Tournament → Regional → Super Regional → D-III World Series'
+              if (save.level === 'NWAC') return `Wk ${lastRegWeek + 1} NWAC Regionals • Wk ${lastRegWeek + 2} NWAC Championship`
+              // NAIA (or unknown) — keep the original 3-round wording
+              return `Wk ${lastRegWeek + 1} Conf Tournament • Wk ${lastRegWeek + 2} Opening Round • Wk ${lastRegWeek + 3} NAIA World Series`
+            })()}
           </span>
         </div>
       </div>
