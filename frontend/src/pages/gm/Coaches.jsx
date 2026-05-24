@@ -197,7 +197,7 @@ export default function Coaches() {
       <ContextBox storageKey="coachesHelp" title="How your coaching staff drives the program">
         <p>Your staff is the engine behind weekly Action Points + player development. Build it right and you stay near the 50 AP cap; build it wrong and you're scraping by at 20.</p>
         <ul className="list-disc list-inside space-y-1 mt-2">
-          <li><strong>Required roles</strong> — Pitching Coach, Hitting Coach, Bench Coach. NAIA programs must carry all three.</li>
+          <li><strong>Required roles</strong> — Pitching Coach, Hitting Coach, Bench Coach. Every program must carry all three.</li>
           <li><strong>Optional support staff</strong> — DOO, S&C, GA, Data Analytics, Recruiting Coordinator. Each unlocks a small program-wide effect (extra budget, fewer injuries, +1 AP/wk, etc).</li>
           <li><strong>Four ratings</strong> per coach: <strong>Developer</strong> (drives player skill growth), <strong>Motivator</strong> (drives happiness + end-of-term GPA bumps), <strong>Recruiter</strong> (drives weekly AP + how fast you build recruit interest + closing rate), <strong>Tactician</strong> (in-game decisions).</li>
           <li><strong>Salary matters</strong>. Top-of-market coaches won't sign for league-minimum money. Use the Strong Coaching budget preset if you want the best.</li>
@@ -219,7 +219,8 @@ export default function Coaches() {
             <div className="mt-2 text-xs">
               The more you pay your coaches, the better they are — but every dollar
               here is a dollar you can't spend on facilities, travel, equipment, or
-              scholarships in Wk 3. A typical NAIA program pays about <strong>${(AVERAGE_COACHING_PAYROLL / 1000).toFixed(0)}K total</strong> for
+              scholarships in Wk 3. A typical program at your level pays about
+              <strong> ${(AVERAGE_COACHING_PAYROLL / 1000).toFixed(0)}K total</strong> for
               their assistants combined.
             </div>
           </div>
@@ -249,8 +250,8 @@ export default function Coaches() {
             {overAverage > 20_000
               ? ' Significantly over average — will eat into your Wk 3 budget for everything else.'
               : overAverage > 0
-                ? 'Slightly over the typical NAIA spend.'
-                : 'Within typical NAIA spend — leaves $ for facilities, travel, scholarships.'}
+                ? 'Slightly over the typical spend at your level.'
+                : 'Within typical spend at your level — leaves $ for facilities, travel, scholarships.'}
           </div>
         </div>
       )}
@@ -258,7 +259,7 @@ export default function Coaches() {
       {/* Minimum-assistants warning — support staff don't count */}
       {weekOfYear >= 2 && realAssistants.length < MIN_ASSISTANTS && (
         <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-4 text-sm text-red-900">
-          <strong> Below the {MIN_ASSISTANTS}-assistant minimum.</strong> NAIA programs are required to
+          <strong> Below the {MIN_ASSISTANTS}-assistant minimum.</strong> Every program is required to
           carry at least three assistants (Pitching, Hitting, Bench). Hire to fill before sim.
         </div>
       )}

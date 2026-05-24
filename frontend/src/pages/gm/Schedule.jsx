@@ -188,10 +188,12 @@ export default function Schedule() {
 
       <ContextBox storageKey="scheduleHelp" title="How the schedule works">
         <ul className="list-disc list-inside space-y-1">
-          <li><strong>Conference games are auto-generated</strong> — 3-4 game weekend series against every other team in your conference, alternating home/away year-over-year.</li>
-          <li><strong>You fill the non-conference weekends</strong>. Pre-conference (Wks 27-29) usually has 2-3 open weekends. Use Auto-create for a smart starter slate, or pick opponents manually.</li>
-          <li><strong>Midweek games</strong> — you can add up to 2/year vs D1 opponents (single-game format). Big tests, but they don't count toward your conf record.</li>
-          <li><strong>NAIA cap is 55 record-counting games</strong>. Scrimmages and byes don't count.</li>
+          <li><strong>Conference games are auto-generated</strong> — weekend series against every other team in your conference, alternating home/away year-over-year.</li>
+          <li><strong>You fill the non-conference weekends</strong>. Pre-conference weeks usually have 2-3 open weekends. Use Auto-create for a smart starter slate, or pick opponents manually.</li>
+          {save.level !== 'NWAC' && (
+            <li><strong>Midweek games</strong> — optional Tue/Wed single games for extra reps. Don't count toward your conf record.</li>
+          )}
+          <li><strong>Regular-season cap is {NAIA_GAME_CAP} record-counting games</strong>. Scrimmages and byes don't count.</li>
         </ul>
         <p className="mt-2 text-xs text-gray-300">Travel costs come straight from your schedule and lock the travel allocation in your budget. Bigger trips = less $ for other categories.</p>
       </ContextBox>
@@ -214,8 +216,11 @@ export default function Schedule() {
           </div>
           <div className="mt-3 pt-3 border-t border-amber-300 flex items-center justify-between gap-3">
             <div className="text-xs text-amber-800 leading-snug">
-               Picks 2+ in-region NAIA opponents, 1 out-of-region for variety,
-              plus 1-2 midweek home games. Mixes home/away to keep travel cost reasonable.
+              {save.level === 'NWAC'
+                ? 'Picks cross-region NWAC opponents for your preseason weeks. Conference (in-region) games are already auto-built.'
+                : save.level === 'NAIA'
+                  ? 'Picks 2+ in-region NAIA opponents + 1 out-of-region for variety, plus 1-2 midweek home games. Mixes home/away.'
+                  : 'Builds a mix of rivalry (within 25 rank), regional, and cupcake opponents — plus midweek games. Roughly half home / half away.'}
             </div>
             <button
               onClick={handleAutoCreate}
@@ -227,7 +232,11 @@ export default function Schedule() {
         </div>
       )}
 
-      {/* MIDWEEK section — moved up so people actually see it */}
+      {/* MIDWEEK section — hidden entirely for NWAC (JUCO teams don't play
+          midweek games; they're weekend-only with 4-game series). For other
+          levels the description text is level-aware to drop NAIA-vs-D1 cap
+          language for non-NAIA users. */}
+      {save.level !== 'NWAC' && (
       <div className={'rounded-xl p-4 border mb-4 ' + (scheduleIncomplete ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200')}>
         <div className="flex justify-between items-start mb-2">
           <div>
@@ -237,7 +246,9 @@ export default function Schedule() {
             <div className={'text-xs ' + (scheduleIncomplete ? 'text-gray-400' : 'text-blue-700')}>
               {scheduleIncomplete
                 ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tue/Wed) for more reps.'
-                : `Optional. NAIA vs D1 hard cap of ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left). NAIA-vs-NAIA or D2/D3 single games allowed.`
+                : save.level === 'NAIA'
+                  ? `Optional Tuesday/Wednesday single games. NAIA-vs-D1 hard-capped at ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left); NAIA-vs-NAIA or D2/D3 unrestricted.`
+                  : `Optional Tue/Wed single games against any ${save.level || 'level-eligible'} opponent. Don't count toward conference record.`
               }
             </div>
           </div>
@@ -268,6 +279,7 @@ export default function Schedule() {
           </div>
         )}
       </div>
+      )}
 
       {/* COMPLETE — mark-done button to satisfy Wk 1 phase-gate */}
       {!scheduleIncomplete && !save.scheduleComplete && (
@@ -623,7 +635,17 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
         </div>
 
         <div className="flex gap-1 mb-3 flex-wrap">
-          {['ALL', 'NAIA', 'D2', 'D3', ...(midweekMode ? ['D1'] : [])].map(d => (
+          {/* Division filter pills — level-aware. NWAC plays only other NWAC
+              teams. D1/D2/D3 users see all four NCAA-eligible levels (the
+              user's level is the default series partner; others are
+              cross-division series). NAIA users get the legacy NAIA-centric
+              pill set with D1 only in midweek mode (NAIA-vs-D1 cap). */}
+          {(userLevel === 'NWAC'
+            ? ['NWAC']
+            : userLevel === 'NAIA'
+              ? ['ALL', 'NAIA', 'D2', 'D3', ...(midweekMode ? ['D1'] : [])]
+              : ['ALL', 'D1', 'D2', 'D3', 'NAIA']
+          ).map(d => (
             <button
               key={d}
               onClick={() => setDivFilter(d)}
@@ -646,7 +668,8 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
 
         {midweekMode && (
           <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-3 text-xs text-blue-900">
-            Midweek single game. D1 opponents are capped at {NAIA_D1_MIDWEEK_CAP}/year.
+            Midweek single game.
+            {userLevel === 'NAIA' && ` D1 opponents are capped at ${NAIA_D1_MIDWEEK_CAP}/year.`}
           </div>
         )}
 

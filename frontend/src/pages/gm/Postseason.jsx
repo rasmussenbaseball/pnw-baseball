@@ -206,9 +206,13 @@ function PSCard({ title, children }) {
 function InteractivePostseasonPage({ save, ps, userSchool }) {
   const userId = save.userSchoolId
   const nm = (id) => save.schools[id]?.name || '—'
-  // D2 has its own 4-round structure (GNAC tourney → regional → super regional
-  // → WS) + an abstract national field, so render it on a dedicated path.
+  // D1/D2/D3 have a 4-round structure (conf tourney → regional → super
+  // regional → WS) + abstract national field — separate component.
   if (ps.level === 'D1' || ps.level === 'D2' || ps.level === 'D3') return <FourRoundPostseasonPage save={save} ps={ps} userSchool={userSchool} />
+  // NWAC has a unique 2-round structure (regionals at #2-seed sites →
+  // NWAC Championship at Longview) — its own component avoids the NAIA
+  // "Avista NAIA World Series" branding for NWAC users.
+  if (ps.level === 'NWAC') return <NwacPostseasonPage save={save} ps={ps} userSchool={userSchool} />
   const regionals = ps.national?.regionals || []
   const ws = ps.national?.ws
   const confRd = ps.rounds?.CONF
@@ -306,6 +310,115 @@ function InteractivePostseasonPage({ save, ps, userSchool }) {
           <strong className={'font-pixel ' + (ps.nationalChampion === userId ? 'text-amber-400' : 'text-white')}>
             {nm(ps.nationalChampion)}
           </strong>
+        </div>
+      )}
+    </div>
+    </GMShell>
+  )
+}
+
+/**
+ * NWAC postseason page — 2-round structure unique to JUCO baseball.
+ *   Round 1: 4 super regionals at the #2-seed sites in each region
+ *     (each: single play-in game between #3/#4 visitors, then best-of-3
+ *     final at the host)
+ *   Round 2: NWAC Championship at Longview (8-team double-elim → BO3 final)
+ *   Field for round 2 = 4 region #1 seeds (auto-bye) + 4 super-regional winners
+ */
+function NwacPostseasonPage({ save, ps, userSchool }) {
+  const userId = save.userSchoolId
+  const nm = (id) => save.schools[id]?.name || '—'
+  const superRd = ps.rounds?.SUPER
+  const wsRd = ps.rounds?.WS
+  const superRegionals = ps.nwac?.superRegionals || []
+  const championship = ps.nwac?.championship
+  return (
+    <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
+    <div className="max-w-3xl mx-auto">
+      <div className="mb-5">
+        <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">{ps.year} NWAC POSTSEASON</h1>
+        <p className="text-sm text-[#a8a8c8] font-pixel">
+          {ps.userNatChamp ? 'NWAC CHAMPIONS!'
+            : !ps.userQualified ? 'Your region didn\'t place you in the top 4 — the championship plays out below.'
+            : ps.userEliminatedAt && ps.userEliminatedAt !== 'REG_SEASON'
+              ? `Eliminated in ${({ PLAYIN: 'the play-in', SUPER: 'super regionals', WS: 'the championship' })[ps.userEliminatedAt] || 'the playoffs'} — the rest of the bracket continues below.`
+              : ps.userSeed === 1
+                ? `Auto-bye as the #1 ${ps.userRegion?.replace('NWAC_', '')} seed. Skip super regionals — your first games are at Longview.`
+                : 'Win each round to advance. Play (or sim) every game from the home page.'}
+        </p>
+      </div>
+
+      {/* ── Round 1: 4 Super Regionals (at #2-seed sites) ────────────── */}
+      <div className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+        <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">
+          Round 1 — Super Regionals · 4 sites
+        </div>
+        {superRegionals.length === 0 ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Super regionals haven't started yet.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {superRegionals.map((sr, i) => {
+              const userInSr = sr.isUser || sr.hostId === userId || sr.playInA === userId || sr.playInB === userId
+              const regionLbl = sr.host?.replace('NWAC_', '') || '?'
+              return (
+                <div key={i} className={'rounded p-2 border ' + (userInSr ? 'border-pnw-green bg-pnw-green/10' : 'border-[#3a3a5e]')}>
+                  <div className="text-[10px] uppercase tracking-wider text-[#a8a8c8] font-pixel mb-1">
+                    {regionLbl} Regional · host {nm(sr.hostId)}
+                    {userInSr && <span className="text-pnw-green"> (yours)</span>}
+                  </div>
+                  <div className="text-[11px] text-[#c8c8e8] font-pixel leading-tight">
+                    <div>Play-in: {nm(sr.playInA)} vs {nm(sr.playInB)}
+                      {sr.playInWinner && <span className="text-pnw-green"> → {nm(sr.playInWinner)}</span>}
+                    </div>
+                    <div className="mt-0.5">
+                      Best-of-3: {nm(sr.hostId)} vs {sr.playInWinner ? nm(sr.playInWinner) : '—'}
+                      {sr.bo3Winner && <span className={sr.bo3Winner === userId ? 'text-pnw-green font-bold' : 'text-white'}> → {nm(sr.bo3Winner)} advances</span>}
+                    </div>
+                  </div>
+                  {userInSr && superRd && <div className="mt-2"><UserRoundGames save={save} rd={superRd} /></div>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Round 2: NWAC Championship at Longview ──────────────────── */}
+      <div className="bg-[#23233d] border-2 border-[#3a3a5e] rounded-lg p-4 mb-3">
+        <div className="font-pixel-display text-[10px] tracking-widest text-[#a8a8c8] mb-2">
+          Round 2 — NWAC Championship @ Longview · 8-team double-elim
+        </div>
+        {!championship?.qualifiers?.length ? (
+          <div className="text-sm text-gray-500 italic font-pixel">Championship field set after super regionals.</div>
+        ) : (
+          <>
+            <div className="text-[11px] text-[#c8c8e8] font-pixel leading-tight mb-2">
+              <div className="text-[10px] uppercase tracking-wider text-[#a8a8c8] mb-1">Qualifiers (8)</div>
+              <div className="grid grid-cols-2 gap-x-3">
+                {(championship.qualifiers || []).map((id, i) => (
+                  <div key={id + '_' + i} className={id === userId ? 'text-pnw-green font-bold' : ''}>
+                    {nm(id)}{championship.champion === id ? ' 🏆' : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {wsRd && <div className="mt-2"><UserRoundGames save={save} rd={wsRd} /></div>}
+            {championship.champion && (
+              <div className="text-[12px] text-[#a8a8c8] font-pixel mt-2 pt-2 border-t border-[#3a3a5e]">
+                NWAC Champion:{' '}
+                <strong className={championship.champion === userId ? 'text-pnw-green' : 'text-white'}>
+                  {nm(championship.champion)}
+                </strong>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {ps.userNatChamp && (
+        <div className="bg-[#23233d] border-2 border-amber-500/50 rounded-lg p-4 text-center">
+          <div className="text-[10px] uppercase tracking-widest text-amber-400 mb-1">🏆 Trophy in the case</div>
+          <strong className="font-pixel text-lg text-amber-400">{nm(ps.nationalChampion)} — NWAC Champions</strong>
         </div>
       )}
     </div>
