@@ -802,20 +802,24 @@ export function buildFullDivisionSchedule(conferences, schools, level, year, see
 }
 
 /**
- * NWAC schedule builder.
+ * NWAC schedule builder (rewritten May 2026 per Nate's spec):
  *
- *   - Conference: 1 series (3 games) vs every team in the same division.
- *     Each division has a different team count so conf-game totals vary
- *     by team (~18-24 conf games).
- *   - Non-conference: 3 series vs randomly-drawn teams from OTHER NWAC
- *     divisions. Adds ~9 games, brings the total slate to ~27-33 games.
- *   - Never schedules a non-NWAC opponent.
+ *   - 4-GAME WEEKEND SERIES every week. Friday doubleheader (g0, g1) +
+ *     Saturday doubleheader (g2, g3). No midweek games at any time —
+ *     NWAC teams travel to a single opponent + play 4 games over Fri/Sat.
+ *   - Weeks 1-3: OUT-OF-REGION NWAC opponents (everyone gets 3 cross-
+ *     region "preseason" series before conference play starts).
+ *   - Weeks 4-13: IN-REGION conference games via circle-method round-
+ *     robin. Each team plays every region peer once.
+ *   - For undersized regions (NWAC_WEST has 5 teams = 4 conf rounds),
+ *     remaining weeks 4-13 fill with cross-region series too. Teams in
+ *     larger regions naturally have fewer/zero fill weeks.
  *
- * Per Nate: division/region champ = conf record. Final 8 bracket lives in
+ * Per Nate: region champ = conf record. Final 8 bracket lives in
  * pnwPlayoffs — this builder is regular-season only.
  */
 function buildNwacSchedule(schools, year, rng) {
-  // Group teams by their conferenceId (division).
+  // Group teams by region (their conferenceId).
   const byDiv = {}
   for (const id of Object.keys(schools)) {
     const div = schools[id].conferenceId || 'NWAC_NORTH'
@@ -823,87 +827,137 @@ function buildNwacSchedule(schools, year, rng) {
     byDiv[div].push(id)
   }
   const games = []
-  let seriesIdx = 0
-  const seasonStartWeek = 27   // matches buildLevelSchedule's regular-season window
+  const seasonStartWeek = 27
+  const TOTAL_WEEKS = 13      // NAIA/NWAC regular season is 13 spring weeks
+  const CROSS_REGION_WEEKS = 3   // first 3 weeks reserved for cross-region
 
-  // 1. Within-division round-robin — 1 series per opponent pair.
+  // Helper — build a 4-game weekend series (Fri DH + Sat DH) between two teams.
+  function pushFourGameSeries(seriesId, type, weekIdx, homeId, awayId) {
+    const wk = seasonStartWeek + (weekIdx - 1)
+    const seasonWeek = weekIdx
+    // dayOffset 4 = Fri, 5 = Sat (matches dateForWeek convention used elsewhere).
+    const slots = [
+      { day: 4, sub: 0, dh: false },   // Fri Game 1
+      { day: 4, sub: 1, dh: true },    // Fri Game 2 (DH cap)
+      { day: 5, sub: 0, dh: false },   // Sat Game 1
+      { day: 5, sub: 1, dh: true },    // Sat Game 2 (DH cap)
+    ]
+    slots.forEach((s, idx) => {
+      games.push({
+        id: `${seriesId}_g${idx}`,
+        year,
+        seasonWeek,
+        weekOfYear: wk,
+        date: dateForWeek(year, wk, s.day),
+        homeId, awayId,
+        type,
+        seriesId,
+        countsTowardRecord: true,
+        isDoubleheader: s.dh,
+        played: false,
+        homeRuns: null, awayRuns: null,
+      })
+    })
+  }
+
+  // Shuffle helper using the seeded rng (deterministic per dynasty).
+  function shuffle(arr) {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng.next() * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+
+  // ── Step 1: build per-team week-by-week assignments ─────────────────
+  // We assign each team an opponent for each of the 13 weeks. Slots that
+  // are still empty after region round-robin scheduling get filled with
+  // cross-region opponents.
+  const allIds = Object.keys(schools)
+  /** week → { teamId → oppId } */
+  const weekly = {}
+  for (let w = 1; w <= TOTAL_WEEKS; w++) weekly[w] = {}
+
+  // ── Step 2: region round-robin (circle method) for weeks 4-13 ───────
+  // Each region plays its rounds in chronological order starting at week 4.
+  // Teams in oversized regions (more rounds than 10) drop the tail.
+  function circleMethodRounds(teams) {
+    const arr = [...teams]
+    if (arr.length < 2) return []
+    if (arr.length % 2 === 1) arr.push('__BYE__')
+    const n = arr.length
+    const rounds = []
+    for (let r = 0; r < n - 1; r++) {
+      const pairs = []
+      for (let i = 0; i < n / 2; i++) {
+        const a = arr[i], b = arr[n - 1 - i]
+        if (a !== '__BYE__' && b !== '__BYE__') pairs.push([a, b])
+      }
+      rounds.push(pairs)
+      // Rotate everyone but the first slot.
+      arr.splice(1, 0, arr.pop())
+    }
+    return rounds
+  }
+  const playCount = new Map()   // pairKey → count (drives home/away alternation)
+  function pairKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}` }
   for (const div of Object.keys(byDiv)) {
     const teams = byDiv[div]
-    for (let i = 0; i < teams.length; i++) {
-      for (let j = i + 1; j < teams.length; j++) {
-        // Alternate home by deterministic index so it's not always the lower-
-        // indexed team hosting.
-        const homeFirst = (i + j) % 2 === 0
-        const homeId = homeFirst ? teams[i] : teams[j]
-        const awayId = homeFirst ? teams[j] : teams[i]
-        const wk = seasonStartWeek + (seriesIdx % 14)
-        const seriesId = `${div}_${year}_${seriesIdx}`
-        for (let g = 0; g < 3; g++) {
-          games.push({
-            id: `${seriesId}_g${g}`,
-            year,
-            seasonWeek: (seriesIdx % 14) + 1,
-            weekOfYear: wk,
-            date: dateForWeek(year, wk, g),
-            homeId, awayId,
-            type: 'CONFERENCE',
-            seriesId,
-            countsTowardRecord: true,
-            isDoubleheader: false,
-            played: false,
-            homeRuns: null, awayRuns: null,
-          })
-        }
-        seriesIdx++
+    const rounds = circleMethodRounds(teams)
+    // Lay each round into a week. Place region rounds at the front of the
+    // conference window (week 4 onwards) and stop once we hit week 13.
+    const confWeeks = TOTAL_WEEKS - CROSS_REGION_WEEKS    // 10
+    for (let r = 0; r < Math.min(rounds.length, confWeeks); r++) {
+      const week = CROSS_REGION_WEEKS + 1 + r   // weeks 4..13
+      for (const [t1, t2] of rounds[r]) {
+        // Alternate home based on times-played count (always 0 for single
+        // round-robin, but kept here in case we extend to home-and-home).
+        const pk = pairKey(t1, t2)
+        const n = playCount.get(pk) || 0
+        playCount.set(pk, n + 1)
+        const homeId = (n % 2) === 0 ? t1 : t2
+        const awayId = (n % 2) === 0 ? t2 : t1
+        const seriesId = `${div}_${year}_w${week}_${homeId}`
+        pushFourGameSeries(seriesId, 'CONFERENCE', week, homeId, awayId)
+        weekly[week][t1] = t2
+        weekly[week][t2] = t1
       }
     }
   }
 
-  // 2. Cross-division NWAC non-conference. Each team plays ~3 series
-  // against a random non-division NWAC opponent. Track pairings to avoid
-  // duplicate matchups within the cross-div pool.
-  const SERIES_PER_TEAM = 3
-  const seenPair = new Set()
-  function pairKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}` }
-  const allTeamIds = Object.keys(schools)
-  for (const teamId of allTeamIds) {
-    const myDiv = schools[teamId].conferenceId
-    // Candidates = NWAC teams NOT in my division
-    const candidates = allTeamIds.filter(other =>
-      other !== teamId
-      && schools[other].conferenceId !== myDiv
-      && !seenPair.has(pairKey(teamId, other))
-    )
-    // Shuffle deterministically using the rng
-    for (let i = candidates.length - 1; i > 0; i--) {
-      const j = Math.floor(rng.next() * (i + 1))
-      ;[candidates[i], candidates[j]] = [candidates[j], candidates[i]]
-    }
-    const opps = candidates.slice(0, SERIES_PER_TEAM)
-    for (const oppId of opps) {
-      seenPair.add(pairKey(teamId, oppId))
+  // ── Step 3: fill cross-region weeks (1-3) + any open in-region weeks ──
+  // Each team needs an opponent every week. For weeks 1-3, all opponents
+  // must be cross-region. For weeks 4-13, fill ANY empty slot (small-
+  // region byes) with cross-region opponents too.
+  // Algorithm per week: pair every UNASSIGNED team with another unassigned
+  // team that's NOT in their region. Use shuffled iteration so we don't
+  // hit the same matchups every year.
+  let xRegSeriesIdx = 0
+  for (let w = 1; w <= TOTAL_WEEKS; w++) {
+    const isCrossWeek = w <= CROSS_REGION_WEEKS
+    const unassigned = shuffle(allIds.filter(t => !weekly[w][t]))
+    const used = new Set()
+    for (const t of unassigned) {
+      if (used.has(t)) continue
+      const myRegion = schools[t].conferenceId
+      // Find a cross-region peer that's also unassigned this week.
+      const partner = unassigned.find(o =>
+        o !== t && !used.has(o) && schools[o].conferenceId !== myRegion,
+      )
+      if (!partner) continue   // odd one out — sits this week
+      used.add(t)
+      used.add(partner)
       const homeFirst = rng.chance(0.5)
-      const homeId = homeFirst ? teamId : oppId
-      const awayId = homeFirst ? oppId : teamId
-      const wk = seasonStartWeek + (seriesIdx % 14)
-      const seriesId = `NWAC_XDIV_${year}_${seriesIdx}`
-      for (let g = 0; g < 3; g++) {
-        games.push({
-          id: `${seriesId}_g${g}`,
-          year,
-          seasonWeek: (seriesIdx % 14) + 1,
-          weekOfYear: wk,
-          date: dateForWeek(year, wk, g),
-          homeId, awayId,
-          type: 'NON_CONFERENCE',
-          seriesId,
-          countsTowardRecord: true,
-          isDoubleheader: false,
-          played: false,
-          homeRuns: null, awayRuns: null,
-        })
-      }
-      seriesIdx++
+      const homeId = homeFirst ? t : partner
+      const awayId = homeFirst ? partner : t
+      const seriesId = `NWAC_XREG_${year}_w${w}_${xRegSeriesIdx++}`
+      // Cross-region series in weeks 1-3 are NON_CONFERENCE; cross-region
+      // fillers in weeks 4-13 are also NON_CONFERENCE (don't count toward
+      // region standings even though they happen during conf-play weeks).
+      pushFourGameSeries(seriesId, 'NON_CONFERENCE', w, homeId, awayId)
+      weekly[w][t] = partner
+      weekly[w][partner] = t
     }
   }
 

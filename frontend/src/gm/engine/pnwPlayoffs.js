@@ -97,7 +97,12 @@ export function pnwProgramsAtLevel(level) {
         conferenceName: conf.name,
         level,
         strength,
-        pearRank: enrich.pearRank ?? null,
+        // Rank within level. D1/D2/D3 get pearRank from non_naia_teams.json
+        // (already on the enrich record); NWAC gets ppiRank from
+        // pnw_playoff_formats.json (lives on `m` itself). Surface BOTH as
+        // pearRank so expectedTeamOvr's single-field lookup works uniformly.
+        pearRank: enrich.pearRank ?? m.ppiRank ?? null,
+        ppiRank: m.ppiRank ?? null,
         programHistory,
         // Prefer the colors set directly on the PNW member (pnw_playoff_formats),
         // then fall back to the PEAR-enriched colors (non_naia_teams.json). Means

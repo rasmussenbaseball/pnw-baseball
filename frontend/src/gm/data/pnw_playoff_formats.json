@@ -524,7 +524,7 @@
             "primary": "#003B5C",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 1
+          "ppiRank": 16
         },
         {
           "id": "nwac-edmonds",
@@ -535,7 +535,7 @@
             "primary": "#003C71",
             "secondary": "#FFFFFF"
           },
-          "ppiRank": 16
+          "ppiRank": 4
         },
         {
           "id": "nwac-everett",
@@ -546,7 +546,7 @@
             "primary": "#005A9C",
             "secondary": "#FFD200"
           },
-          "ppiRank": 10
+          "ppiRank": 1
         },
         {
           "id": "nwac-olympic",
@@ -557,7 +557,7 @@
             "primary": "#1A2D5B",
             "secondary": "#A0A2A4"
           },
-          "ppiRank": 17
+          "ppiRank": 20
         },
         {
           "id": "nwac-shoreline",
@@ -612,7 +612,7 @@
             "primary": "#1F3A68",
             "secondary": "#FFC72C"
           },
-          "ppiRank": 8
+          "ppiRank": 3
         },
         {
           "id": "nwac-mt-hood",
@@ -623,7 +623,7 @@
             "primary": "#1F3A68",
             "secondary": "#C8102E"
           },
-          "ppiRank": 4
+          "ppiRank": 12
         },
         {
           "id": "nwac-umpqua",
@@ -634,7 +634,7 @@
             "primary": "#003B5C",
             "secondary": "#C8102E"
           },
-          "ppiRank": 14
+          "ppiRank": 9
         },
         {
           "id": "nwac-treasure-valley",
@@ -645,7 +645,7 @@
             "primary": "#FF6A13",
             "secondary": "#003B5C"
           },
-          "ppiRank": 20
+          "ppiRank": 15
         },
         {
           "id": "nwac-lower-columbia",
@@ -667,7 +667,7 @@
             "primary": "#FF6A13",
             "secondary": "#000000"
           },
-          "ppiRank": 11
+          "ppiRank": 23
         },
         {
           "id": "nwac-chemeketa",
@@ -678,7 +678,7 @@
             "primary": "#003366",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 21
+          "ppiRank": 26
         },
         {
           "id": "nwac-lane",
@@ -689,7 +689,7 @@
             "primary": "#1B5E3F",
             "secondary": "#FFD200"
           },
-          "ppiRank": 15
+          "ppiRank": 5
         },
         {
           "id": "nwac-sw-oregon",
@@ -700,7 +700,7 @@
             "primary": "#003B5C",
             "secondary": "#C8102E"
           },
-          "ppiRank": 23
+          "ppiRank": 14
         }
       ]
     },
@@ -722,7 +722,7 @@
             "primary": "#003B5C",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 9
+          "ppiRank": 6
         },
         {
           "id": "nwac-walla-walla",
@@ -733,7 +733,7 @@
             "primary": "#1F3A68",
             "secondary": "#FFD200"
           },
-          "ppiRank": 5
+          "ppiRank": 24
         },
         {
           "id": "nwac-wenatchee-valley",
@@ -744,7 +744,7 @@
             "primary": "#005A9C",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 19
+          "ppiRank": 7
         },
         {
           "id": "nwac-yakima-valley",
@@ -755,7 +755,7 @@
             "primary": "#1F3A68",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 7
+          "ppiRank": 8
         },
         {
           "id": "nwac-big-bend",
@@ -766,7 +766,7 @@
             "primary": "#7B0828",
             "secondary": "#FFD200"
           },
-          "ppiRank": 24
+          "ppiRank": 22
         },
         {
           "id": "nwac-blue-mountain",
@@ -777,7 +777,7 @@
             "primary": "#005A9C",
             "secondary": "#FFFFFF"
           },
-          "ppiRank": 26
+          "ppiRank": 21
         },
         {
           "id": "nwac-columbia-basin",
@@ -788,7 +788,7 @@
             "primary": "#7B0828",
             "secondary": "#1A2D5B"
           },
-          "ppiRank": 6
+          "ppiRank": 11
         }
       ]
     },
@@ -810,7 +810,7 @@
             "primary": "#005A9C",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 12
+          "ppiRank": 17
         },
         {
           "id": "nwac-grays-harbor",
@@ -832,7 +832,7 @@
             "primary": "#7B0828",
             "secondary": "#FFFFFF"
           },
-          "ppiRank": 13
+          "ppiRank": 10
         },
         {
           "id": "nwac-tacoma",
@@ -843,7 +843,7 @@
             "primary": "#1F3A68",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 3
+          "ppiRank": 13
         },
         {
           "id": "nwac-clark",
@@ -854,7 +854,7 @@
             "primary": "#003366",
             "secondary": "#FFC72C"
           },
-          "ppiRank": 22
+          "ppiRank": 19
         }
       ]
     }

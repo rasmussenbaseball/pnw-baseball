@@ -615,6 +615,7 @@ function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelec
         level: 'NAIA',
         // Needed by the Team-OVR badge on each program tile.
         programHistory: s.programHistory,
+        pearRank: s.pearRank,
         colors: s.colors,
       }))
   }, [schools, conferences])
@@ -666,7 +667,15 @@ function StoryCustomStartStep({ schools, conferences, selectedSchoolId, setSelec
             )}
             {programsForLevel.map(p => {
               const isSelected = selectedSchoolId === p.id
-              const teamOvr = expectedTeamOvr({ programHistory: p.programHistory, level: p.level })
+              // Pass pearRank so expectedTeamOvr uses the rank-bucketed
+              // primary path (matches what the loaded team will show).
+              // Without this, the PH formula fallback was producing a
+              // different OVR than the actual loaded team. Per Nate.
+              const teamOvr = expectedTeamOvr({
+                programHistory: p.programHistory,
+                level: p.level,
+                pearRank: p.pearRank,
+              })
               const stars = teamOvrToStars(teamOvr)
               return (
                 <button
@@ -744,8 +753,11 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
         level: 'NAIA',
         // programHistory drives the expected-Team-OVR badge + star rating
         // on the program tile. NAIA values come from loadSchools.js (PEAR
-        // + hand-coded overrides).
+        // + hand-coded overrides). pearRank (also from loadSchools.js,
+        // sorted by pearRating) feeds the rank-bucketed OVR primary path
+        // so the displayed badge matches the loaded team exactly.
         programHistory: s.programHistory,
+        pearRank: s.pearRank,
       }))
   }, [schools, conferences])
 
