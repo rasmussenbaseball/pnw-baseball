@@ -160,17 +160,49 @@ function autoFulfillSchedule(save, summary) {
   const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
     div.teams.map(t => ({ ...t, division: div.id })),
   )
+  // Parity feed: pass the union of the LAST 2 years' non-conf opponents so
+  // the scheduler can demote them and pick fresh neighbors this year.
+  const recent = unionRecentOpponents(save)
   const result = autoCreateSchedule(
     userSchoolId, conf, save.schools, flatNonNaia,
     save.schedule || [], save.calendar.year + 1, save.seed || 1,
-    save.nwbbRatings || {},
+    save.nwbbRatings || {}, recent,
   )
   if (result?.games?.length > 0) {
     if (!save.schedule) save.schedule = []
     save.schedule.push(...result.games)
     summary.actionsTaken.push(`Auto-scheduled the ${save.calendar.year + 1} season (${result.games.length} games added)`)
   }
+  if (result?.usedOpponentIds?.length > 0) {
+    recordYearOpponents(save, save.calendar.year + 1, result.usedOpponentIds)
+  }
   save.scheduleComplete = true
+}
+
+/**
+ * Pull the union of opponent school ids from save.recentNonConfOpponents
+ * (last 2 years' picks), so the auto-scheduler can avoid repeating them.
+ *
+ * Shape: save.recentNonConfOpponents = { [year]: [schoolId, ...] }
+ */
+function unionRecentOpponents(save) {
+  const map = save.recentNonConfOpponents || {}
+  const years = Object.keys(map).map(Number).sort((a, b) => b - a).slice(0, 2)
+  const u = new Set()
+  for (const y of years) for (const id of (map[y] || [])) u.add(id)
+  return Array.from(u)
+}
+
+/**
+ * Persist this year's non-conf opponent ids so next year's auto-scheduler
+ * can demote them. Keep a rolling history of the last 3 years (older drops
+ * off so a long dynasty doesn't accumulate forever).
+ */
+function recordYearOpponents(save, seasonYear, ids) {
+  if (!save.recentNonConfOpponents) save.recentNonConfOpponents = {}
+  save.recentNonConfOpponents[seasonYear] = Array.from(new Set(ids))
+  const years = Object.keys(save.recentNonConfOpponents).map(Number).sort((a, b) => b - a)
+  for (const y of years.slice(3)) delete save.recentNonConfOpponents[y]
 }
 
 function autoFulfillHire(save, summary) {

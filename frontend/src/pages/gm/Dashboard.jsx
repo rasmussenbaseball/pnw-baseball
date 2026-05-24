@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [departureModal, setDepartureModal] = useState(null)   // outbound-transfer popup
   const [draftModal, setDraftModal] = useState(null)           // MLB draft popup
   const [potwModal, setPotwModal] = useState(null)             // user-player Player-of-the-Week popup
+  const [seasonRecapModal, setSeasonRecapModal] = useState(null)  // year-rollover comprehensive recap
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -110,6 +111,17 @@ export default function Dashboard() {
     }
     setPhaseTransitionModal({ from: PHASES[t.from], to: toPhase })
     delete save._phaseTransition
+    saveDynasty(save)
+  }, [save])
+
+  // Year-rollover Season Recap — runEndOfYear stamps state.lastSeasonRecap
+  // when the calendar wraps wk52→wk1. We pop it once, then clear the marker
+  // so the user can re-open last year's recap from history if needed but it
+  // doesn't auto-re-appear on every reload.
+  useEffect(() => {
+    if (!save?.lastSeasonRecap) return
+    setSeasonRecapModal(save.lastSeasonRecap)
+    save.lastSeasonRecap = null
     saveDynasty(save)
   }, [save])
 
@@ -534,6 +546,9 @@ export default function Dashboard() {
       )}
       {potwModal && potwModal.length > 0 && (
         <PotwModal winners={potwModal} slot={slot} onClose={() => setPotwModal(null)} />
+      )}
+      {seasonRecapModal && (
+        <SeasonRecapModal recap={seasonRecapModal} onClose={() => setSeasonRecapModal(null)} />
       )}
       {/* HERO — team identity, dynasty year, current phase, AP, and quick
           stat strip. Pulled toward a sports-broadcast aesthetic: dark slate
@@ -2429,6 +2444,249 @@ function PotwModal({ winners, slot, onClose }) {
         </div>
         <p className="text-xs text-gray-500 mb-4">Award winners get a small permanent rating bump. Nice work.</p>
         <button onClick={onClose} className="w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90">Let's go!</button>
+      </div>
+    </div>
+  )
+}
+
+// End-of-year COMPREHENSIVE Season Recap. Pops the first time the user
+// advances from Wk 52 into Wk 1 of the next year. Pulls from
+// state.lastSeasonRecap (built in engine/seasonRecap.js).
+function SeasonRecapModal({ recap, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  if (!recap) return null
+  const toneColor = recap.expectationTone === 'overperformed' ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    : recap.expectationTone === 'underperformed' ? 'text-red-700 bg-red-50 border-red-200'
+    : 'text-gray-700 bg-gray-50 border-gray-200'
+  const toneLabel = recap.expectationTone === 'overperformed' ? 'OVERPERFORMED'
+    : recap.expectationTone === 'underperformed' ? 'UNDERPERFORMED'
+    : 'AS EXPECTED'
+
+  const dep = recap.departed || { graduated: [], drafted: [], transferred: [], other: [] }
+  const depTotal = dep.graduated.length + dep.drafted.length + dep.transferred.length + dep.other.length
+  const arrivals = recap.arrivals || []
+  const cls = recap.classSummary || {}
+  const budget = recap.budget
+
+  const PlayerRow = ({ p, right }) => (
+    <div className="flex items-center justify-between gap-2 py-1 px-2 rounded text-xs hover:bg-white">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-[10px] uppercase tracking-wider text-gray-500 font-mono shrink-0 w-7">{p.classYear || '—'}</span>
+        <span className="text-[10px] uppercase tracking-wider text-gray-500 font-mono shrink-0 w-7">{p.pos}</span>
+        <span className="font-medium text-pnw-slate truncate">{p.name}</span>
+      </div>
+      <div className="shrink-0">{right}</div>
+    </div>
+  )
+
+  const numFmt = (n) => n == null ? '—' : Math.round(n)
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[80] p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto" {...stopProps}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-pnw-slate via-pnw-slate to-pnw-green text-white p-5 rounded-t-xl flex justify-between items-start gap-3 sticky top-0 z-10">
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">Season Recap</div>
+            <h3 className="text-2xl sm:text-3xl font-extrabold mt-1">{recap.schoolName} — {recap.finishedYear} season</h3>
+            <div className="text-xs opacity-80 mt-1">Welcome to the {recap.nextYear} year. Here's how {recap.finishedYear} closed out.</div>
+          </div>
+          <ModalCloseButton onClick={onClose} dark className="!border-white/40 !text-white" />
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* ── Headline: record + final rank + postseason ───────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-pnw-cream/40 border border-pnw-cream rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Final Record</div>
+              <div className="text-2xl font-extrabold text-pnw-slate mt-0.5">
+                {recap.record.wins}-{recap.record.losses}
+              </div>
+              <div className="text-[11px] text-gray-600 mt-0.5">
+                Run diff {recap.record.runDiff > 0 ? '+' : ''}{recap.record.runDiff}
+              </div>
+            </div>
+            <div className="bg-pnw-cream/40 border border-pnw-cream rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Final National Rank</div>
+              <div className="text-2xl font-extrabold text-pnw-slate mt-0.5">
+                {recap.finalRank != null ? `#${recap.finalRank}` : '—'}
+              </div>
+              <div className="text-[11px] text-gray-600 mt-0.5">
+                {recap.finalRating != null ? `Rating ${recap.finalRating.toFixed(1)}` : ''}
+                {recap.expectedRank != null && (
+                  <span className="ml-1">· Preseason #{recap.expectedRank}</span>
+                )}
+              </div>
+            </div>
+            <div className="bg-pnw-cream/40 border border-pnw-cream rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Postseason</div>
+              <div className={'text-base font-bold mt-0.5 ' + (recap.natChamp ? 'text-amber-600' : recap.confChamp ? 'text-emerald-700' : 'text-pnw-slate')}>
+                {recap.postseasonLabel}
+              </div>
+              {recap.natChamp && <div className="text-[11px] text-amber-700 mt-0.5">🏆 Trophy in the case.</div>}
+            </div>
+          </div>
+
+          {/* ── Expectations callout ──────────────────────────────────────── */}
+          {recap.expectationBlurb && (
+            <div className={'rounded-lg p-3 border ' + toneColor}>
+              <div className="text-[10px] uppercase tracking-widest font-bold">{toneLabel}</div>
+              <div className="text-sm mt-1">{recap.expectationBlurb}</div>
+            </div>
+          )}
+
+          {/* ── Roster turnover: side-by-side departures + arrivals ───────── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* OUT */}
+            <div className="bg-red-50/60 border border-red-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-red-700 mb-2">
+                Out — {depTotal} player{depTotal === 1 ? '' : 's'}
+              </div>
+              {dep.graduated.length > 0 && (
+                <div className="mb-2">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-600 font-semibold mb-0.5">🎓 Graduated ({dep.graduated.length})</div>
+                  <div className="space-y-0.5">
+                    {dep.graduated.slice(0, 12).map(p => (
+                      <PlayerRow key={p.id} p={p} right={<span className="text-[10px] font-mono text-gray-500">{numFmt(p.ovr)} OVR</span>} />
+                    ))}
+                    {dep.graduated.length > 12 && <div className="text-[10px] text-gray-500 italic px-2 mt-0.5">+ {dep.graduated.length - 12} more</div>}
+                  </div>
+                </div>
+              )}
+              {dep.drafted.length > 0 && (
+                <div className="mb-2">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-600 font-semibold mb-0.5">⚾ MLB Draft ({dep.drafted.length})</div>
+                  <div className="space-y-0.5">
+                    {dep.drafted.map(p => (
+                      <PlayerRow key={p.id} p={p} right={
+                        <span className="text-[10px] font-mono text-amber-700 font-bold">R{p.round || '?'} · {numFmt(p.ovr)} OVR</span>
+                      } />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {dep.transferred.length > 0 && (
+                <div className="mb-2">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-600 font-semibold mb-0.5">📤 Portal / Transferred ({dep.transferred.length})</div>
+                  <div className="space-y-0.5">
+                    {dep.transferred.slice(0, 10).map(p => (
+                      <PlayerRow key={p.id} p={p} right={<span className="text-[10px] font-mono text-gray-500">{numFmt(p.ovr)} OVR</span>} />
+                    ))}
+                    {dep.transferred.length > 10 && <div className="text-[10px] text-gray-500 italic px-2 mt-0.5">+ {dep.transferred.length - 10} more</div>}
+                  </div>
+                </div>
+              )}
+              {depTotal === 0 && <div className="text-xs text-gray-500 italic">No departures.</div>}
+            </div>
+
+            {/* IN */}
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-700 mb-2">
+                In — {arrivals.length} player{arrivals.length === 1 ? '' : 's'}
+              </div>
+              {arrivals.length === 0 && <div className="text-xs text-gray-500 italic">No new arrivals.</div>}
+              <div className="space-y-0.5">
+                {arrivals.slice(0, 18).map(p => (
+                  <PlayerRow key={p.id} p={p} right={
+                    <span className="text-[10px] font-mono">
+                      <span className="text-emerald-700 font-bold">{numFmt(p.ovr)} OVR</span>
+                      <span className="text-gray-400"> · </span>
+                      <span className="text-blue-700 font-bold">{numFmt(p.pot)} POT</span>
+                      <span className="text-[9px] uppercase tracking-wider text-gray-500 ml-1">
+                        {p.kind === 'TRANSFER' ? 'PORTAL' : 'HS'}
+                      </span>
+                    </span>
+                  } />
+                ))}
+                {arrivals.length > 18 && <div className="text-[10px] text-gray-500 italic px-2 mt-1">+ {arrivals.length - 18} more on roster</div>}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Recruiting class summary ──────────────────────────────────── */}
+          {cls.total > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">Incoming Class — by the numbers</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-emerald-50 rounded p-2 text-center">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Total</div>
+                  <div className="text-xl font-extrabold text-emerald-800">{cls.total}</div>
+                  <div className="text-[10px] text-gray-500">{cls.pitchers}P · {cls.hitters}POS</div>
+                </div>
+                <div className="bg-emerald-50 rounded p-2 text-center">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">HS Signees</div>
+                  <div className="text-xl font-extrabold text-emerald-800">{cls.recruits}</div>
+                </div>
+                <div className="bg-emerald-50 rounded p-2 text-center">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Portal In</div>
+                  <div className="text-xl font-extrabold text-emerald-800">{cls.transfers}</div>
+                </div>
+                <div className="bg-emerald-50 rounded p-2 text-center">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Avg / Top</div>
+                  <div className="text-xl font-extrabold text-emerald-800">
+                    {numFmt(cls.avgOvr)}<span className="text-xs text-gray-500"> / </span>{numFmt(cls.topOvr)}
+                  </div>
+                  <div className="text-[10px] text-gray-500">OVR</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Budget summary ────────────────────────────────────────────── */}
+          {budget && (
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">Budget — entering {recap.nextYear}</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="bg-pnw-cream/40 rounded p-2">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Total Athletic</div>
+                  <div className="text-base font-bold text-pnw-slate mt-0.5">${(budget.total / 1000).toFixed(0)}K</div>
+                </div>
+                <div className="bg-pnw-cream/40 rounded p-2">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Job Security</div>
+                  <div className={'text-base font-bold mt-0.5 ' + (
+                    budget.jobSecurity >= 65 ? 'text-emerald-700'
+                    : budget.jobSecurity >= 40 ? 'text-amber-700' : 'text-red-700'
+                  )}>
+                    {budget.jobSecurity}/100
+                  </div>
+                </div>
+                {budget.allocations.scholarships != null && (
+                  <div className="bg-pnw-cream/40 rounded p-2">
+                    <div className="text-[10px] uppercase tracking-wider text-gray-500">Scholarships</div>
+                    <div className="text-base font-bold text-pnw-slate mt-0.5">${(budget.allocations.scholarships / 1000).toFixed(0)}K</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── MLB Draftees (highlight strip if any user players were drafted) ── */}
+          {recap.userDraftPicks && recap.userDraftPicks.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-amber-700 mb-1.5">
+                🏆 {recap.userDraftPicks.length} of your players drafted to MLB
+              </div>
+              <div className="space-y-0.5">
+                {recap.userDraftPicks.map((p, i) => (
+                  <div key={i} className="text-xs flex items-center justify-between text-amber-900">
+                    <span className="font-medium">{p.pos} · {p.name}</span>
+                    <span className="font-mono">Round {p.round}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Continue */}
+          <div className="pt-2 border-t border-gray-200">
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-3 bg-pnw-green text-white rounded-lg text-sm font-bold hover:opacity-90 uppercase tracking-wider"
+            >
+              Start the {recap.nextYear} season →
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

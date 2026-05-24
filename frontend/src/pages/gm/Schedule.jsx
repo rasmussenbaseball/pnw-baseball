@@ -100,16 +100,32 @@ export default function Schedule() {
     const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
       div.teams.map(t => ({ ...t, division: div.id })),
     )
+    // Parity: feed the prior 2 years' opponents so the scheduler can demote
+    // them and pick fresh neighbors. Persisted on save.recentNonConfOpponents.
+    const recentMap = save.recentNonConfOpponents || {}
+    const recentYears = Object.keys(recentMap).map(Number).sort((a, b) => b - a).slice(0, 2)
+    const recent = Array.from(new Set(recentYears.flatMap(y => recentMap[y] || [])))
     const result = autoCreateSchedule(
       userSchoolId, userSchool.conferenceId, save.schools, flatNonNaia,
       save.schedule, seasonYear, save.seed || Date.now(),
-      save.nwbbRatings || {},
+      save.nwbbRatings || {}, recent,
     )
     if (result.games.length === 0) {
       gmToast('Nothing to auto-fill — schedule already complete or no eligible opponents found.', 'info')
       return
     }
     save.schedule.push(...result.games)
+    if (result.usedOpponentIds?.length > 0) {
+      if (!save.recentNonConfOpponents) save.recentNonConfOpponents = {}
+      // Merge with anything already recorded for this year (e.g. the user
+      // ran auto-create twice) instead of overwriting.
+      const prior = new Set(save.recentNonConfOpponents[seasonYear] || [])
+      for (const id of result.usedOpponentIds) prior.add(id)
+      save.recentNonConfOpponents[seasonYear] = Array.from(prior)
+      // Trim to last 3 years
+      const allYears = Object.keys(save.recentNonConfOpponents).map(Number).sort((a, b) => b - a)
+      for (const y of allYears.slice(3)) delete save.recentNonConfOpponents[y]
+    }
     saveDynasty(save)
     setSave({ ...save })
     gmToast(result.summary + ' — review + adjust if you want.', 'success')

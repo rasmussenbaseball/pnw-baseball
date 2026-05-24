@@ -795,11 +795,13 @@ export function autoScheduleFallGames(/* userSchoolId, schools, nonNaiaTeams, ye
  * @param {Game[]} existingSchedule
  * @param {number} year                              season year
  * @param {number} seed
- * @returns {{ games: Game[], summary: string }}
+ * @param {Object} ratings                            { id: { rating, nationalRank } }
+ * @param {string[]} recentOpponents                  opponent school ids from prior 1-2 yrs
+ * @returns {{ games: Game[], summary: string, usedOpponentIds: string[] }}
  */
-export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaTeams, existingSchedule, year, seed, ratings = {}) {
+export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaTeams, existingSchedule, year, seed, ratings = {}, recentOpponents = []) {
   const userSchool = schools[userSchoolId]
-  if (!userSchool) return { games: [], summary: 'No user school.' }
+  if (!userSchool) return { games: [], summary: 'No user school.', usedOpponentIds: [] }
 
   // Non-NAIA dynasties (D1/D2/D3): the `schools` map only holds the user's own
   // conference, so there are no in-`schools` non-conf opponents. Draw weekend
@@ -809,9 +811,15 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   if (userLevel !== 'NAIA') {
     return autoCreateScheduleNonNaia(
       userSchoolId, conferenceId, userSchool, schools, nonNaiaTeams,
-      existingSchedule, year, seed, ratings, userLevel,
+      existingSchedule, year, seed, ratings, userLevel, recentOpponents,
     )
   }
+  // Parity: opponents played in the LAST 1-2 years get a sortKey penalty so
+  // the auto-scheduler doesn't book the same neighbors every season. Anyone
+  // in the recent set gets pushed down ~10 sortKey units; everyone else stays
+  // priced on proximity + rating + jitter.
+  const recentSet = new Set(recentOpponents || [])
+  const recentPenalty = (id) => recentSet.has(id) ? 10 : 0
 
   const userState = userSchool.state
   const userRegion = userSchool.region
@@ -852,8 +860,10 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
       return {
         id: s.id, name: s.name, state: s.state, region: s.region,
         proximity, rating, rank: rankOf(s.id),
-        // soft sort key: proximity + jitter, adjusted for rating fit
-        sortKey: proximity + rng.next() * 8 + cupcakePenalty + similarBonus,
+        // soft sort key: proximity + jitter, adjusted for rating fit. Bumped
+        // jitter ceiling (was 8 -> 14) so the same closest 3 teams don't lock
+        // in every year. Recent-opponent penalty pushes prior-year picks down.
+        sortKey: proximity + rng.next() * 14 + cupcakePenalty + similarBonus + recentPenalty(s.id),
       }
     })
 
@@ -878,7 +888,7 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   // Find which slots are open after conference is built. Auto-fills ONLY
   // weekend slots; doesn't touch any games already on the schedule.
   const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year)
-  if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.' }
+  if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.', usedOpponentIds: [] }
 
   // Pick opponents: at least 2 in-region, at least 1 out-of-region. Shuffle
   // the in-region pool slightly so the user isn't seeing the same matchups
@@ -890,12 +900,32 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   const inPool = [...inRegion]
   const outPool = [...outRegion]
 
+  // ── COMPETITIVE / RIVALRY pool ────────────────────────────────────────
+  // Per Nate: each year the user should play 1-2 "competitive" non-conf games
+  // against teams within ~25 national-rank spots. The rest stay geographic.
+  // Compute this pool from all candidates, filter to within-25 rank, sort by
+  // rating-fit (closest first) with recent-opponent penalty + jitter so the
+  // same rivals don't repeat year over year.
+  const RANK_WINDOW = 25
+  const compPool = naiaCandidates
+    .filter(c => typeof c.rank === 'number' && c.rank < 999
+              && Math.abs(c.rank - userRank) <= RANK_WINDOW)
+    .map(c => ({
+      ...c,
+      // Closer rank-distance ranks first; recent opponents pushed down hard;
+      // jitter mixes the field so it's not literally always the same team.
+      compSortKey: Math.abs(c.rank - userRank) + recentPenalty(c.id) * 1.5 + rng.next() * 6,
+    }))
+    .sort((a, b) => a.compSortKey - b.compSortKey)
+  const wantedCompetitive = Math.min(2, compPool.length, Math.max(0, openWeeks.length - 1))
+
   // Build the assignment: alternate home/away so the user has a mix. Half
   // home / half away by default, leaning home (saves $$ early dynasty).
   const newGames = []
   const used = new Set()
   let placedIn = 0
   let placedOut = 0
+  let placedComp = 0
   let homeCount = 0
 
   /**
@@ -934,9 +964,26 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
       : homesLeft <= 0 ? false
       : rng.chance(0.55)   // mild home lean
 
-    // Out-of-region first slot for variety (only if we still need to add one)
+    // COMPETITIVE / RIVALRY game(s) — place these in early/middle slots so
+    // they don't always end up at the tail of the schedule.
     let placed = false
-    if (placedOut < wantedOutRegion && outPool.length > 0 && i === sortedOpenWeeks.length - 1) {
+    if (placedComp < wantedCompetitive && compPool.length > 0
+        && i < Math.ceil(sortedOpenWeeks.length / 2)) {
+      // Peek + try; if the top comp candidate was already used elsewhere this
+      // year, scan forward until we find a fresh one.
+      let compIdx = compPool.findIndex(c => !used.has(c.id))
+      if (compIdx >= 0) {
+        const opp = compPool.splice(compIdx, 1)[0]
+        // Drop the same opponent from in-region / out-region pools so the
+        // remaining slots don't re-pick them.
+        const inIdx = inPool.findIndex(c => c.id === opp.id); if (inIdx >= 0) inPool.splice(inIdx, 1)
+        const outIdx = outPool.findIndex(c => c.id === opp.id); if (outIdx >= 0) outPool.splice(outIdx, 1)
+        placed = tryPlace(slot.week, opp, userIsHome, 'NAIA')
+        if (placed) placedComp++
+      }
+    }
+    // Out-of-region slot for variety (only if we still need to add one)
+    if (!placed && placedOut < wantedOutRegion && outPool.length > 0 && i === sortedOpenWeeks.length - 1) {
       const opp = outPool.shift()
       placed = tryPlace(slot.week, opp, userIsHome, 'NAIA')
       if (placed) placedOut++
@@ -999,8 +1046,8 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
   }
 
   const summary = `Auto-built ${newGames.filter(g => g.type === 'NON_CONFERENCE').length} non-conf games` +
-    ` (${placedIn} in-region, ${placedOut} out-of-region) and ${midweeksAdded} midweek game${midweeksAdded === 1 ? '' : 's'}.`
-    return { games: newGames, summary }
+    ` (${placedComp} rivalry, ${placedIn} in-region, ${placedOut} out-of-region) and ${midweeksAdded} midweek game${midweeksAdded === 1 ? '' : 's'}.`
+  return { games: newGames, summary, usedOpponentIds: Array.from(used) }
 }
 
 /**
@@ -1014,7 +1061,7 @@ export function autoCreateSchedule(userSchoolId, conferenceId, schools, nonNaiaT
  * in-conference bye weeks), prefers similarly-rated opponents, proximity as a
  * secondary tiebreak, with a roughly half-home split.
  */
-function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schools, nonNaiaTeams, existingSchedule, year, seed, ratings, level) {
+function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schools, nonNaiaTeams, existingSchedule, year, seed, ratings, level, recentOpponents = []) {
   const rng = makeRng('autoSchedML', userSchoolId, year, seed)
   const userState = userSchool.state
 
@@ -1024,8 +1071,18 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
   // NWBB rating fall back to a strength-derived universal rating.
   const ratingOf = (id, strength) =>
     ratings?.[id]?.rating ?? nonNaiaToUniversal({ strength: strength ?? 0, division: level })
+  const rankOf = (id) => (ratings?.[id]?.nationalRank ?? 999)
   const userRating = ratings?.[userSchoolId]?.rating
     ?? nonNaiaToUniversal({ strength: userSchool.pearRating ?? 0, division: level })
+  const userRank = rankOf(userSchoolId)
+
+  // Parity: opponents the user played in the prior 1-2 years get pushed down
+  // so the auto-scheduler doesn't lock in the same closest neighbors every
+  // year. ~12 sortKey units (relative to typical sort range ~5-25) is enough
+  // to demote-but-not-ban — they can still come back when there's no better
+  // option.
+  const recentSet = new Set(recentOpponents || [])
+  const recentPenalty = (id) => recentSet.has(id) ? 12 : 0
 
   // Candidate opponents: every REAL same-level program outside the user's
   // conference. (Full-division dynasties have all teams real here.) If none
@@ -1043,34 +1100,68 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
     const rating = ratingOf(c.id, c.strength)
     const ratingGap = rating - userRating         // + stronger, - weaker than user
     const proximity = stateProximity(userState, c.state)
-    // Push cupcakes down; nudge similar-rated teams up.
+    const rank = rankOf(c.id)
+    // Push cupcakes down; nudge similar-rated teams up. Proximity is the
+    // primary driver of the rest-of-slate picks (per Nate: "the other games
+    // should probably just be based on geographical closeness").
     const cupcakePenalty = ratingGap < -12 ? (-12 - ratingGap) * 0.5 : 0
     const similarBonus = Math.abs(ratingGap) <= 6 ? -4 : 0
     return {
-      id: c.id, name: c.name, state: c.state, division: level, rating,
-      // Rating fit dominates, proximity is the secondary tiebreak, small jitter.
-      sortKey: Math.abs(ratingGap) * 0.5 + proximity * 0.6 + rng.next() * 2 + cupcakePenalty + similarBonus,
+      id: c.id, name: c.name, state: c.state, division: level, rating, rank,
+      // Proximity-dominant (the "geographical closeness" bucket) with rating
+      // fit as a soft tiebreak and a heftier jitter ceiling (was 2 -> 9) so
+      // the closest 3 teams don't lock in every year. Recent-opponent penalty
+      // pushes prior-year picks further down.
+      sortKey: proximity * 0.9 + Math.abs(ratingGap) * 0.3 + rng.next() * 9 + cupcakePenalty + similarBonus + recentPenalty(c.id),
     }
   })
   pool.sort((a, b) => a.sortKey - b.sortKey)
 
   const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year, level)
     .sort((a, b) => a.week - b.week)
-  if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.' }
-  if (pool.length === 0) return { games: [], summary: 'No non-conference opponents available.' }
+  if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.', usedOpponentIds: [] }
+  if (pool.length === 0) return { games: [], summary: 'No non-conference opponents available.', usedOpponentIds: [] }
+
+  // ── COMPETITIVE / RIVALRY pool (within ±25 national rank) ─────────────
+  // Per Nate: each year the user should play 1-2 competitive games against
+  // teams within ~25 rank-spots. Picked separately from the proximity-based
+  // main pool — these are quality matchups, not necessarily nearest neighbors.
+  const RANK_WINDOW = 25
+  const compPool = pool
+    .filter(c => typeof c.rank === 'number' && c.rank < 999
+              && Math.abs(c.rank - userRank) <= RANK_WINDOW)
+    .map(c => ({
+      ...c,
+      compSortKey: Math.abs(c.rank - userRank) + recentPenalty(c.id) * 1.5 + rng.next() * 6,
+    }))
+    .sort((a, b) => a.compSortKey - b.compSortKey)
+  const wantedCompetitive = Math.min(2, compPool.length, Math.max(0, openWeeks.length - 1))
 
   const newGames = []
   const used = new Set()
   const targetHome = Math.ceil(openWeeks.length / 2)
   let homeCount = 0
+  let placedComp = 0
   let poolCursor = 0
 
   for (let i = 0; i < openWeeks.length; i++) {
-    // Next distinct opponent (wrap + allow reuse only if the pool is exhausted).
+    // First 1-2 early slots get a "rivalry" pick from the rank-window pool
+    // — competitive game (within 25 ranks) to break up the proximity slate.
     let opp = null
-    for (let scan = 0; scan < pool.length; scan++) {
-      const cand = pool[(poolCursor + scan) % pool.length]
-      if (!used.has(cand.id)) { opp = cand; poolCursor = (poolCursor + scan + 1) % pool.length; break }
+    if (placedComp < wantedCompetitive && i < Math.ceil(openWeeks.length / 2)) {
+      const compIdx = compPool.findIndex(c => !used.has(c.id))
+      if (compIdx >= 0) {
+        opp = compPool.splice(compIdx, 1)[0]
+        placedComp++
+      }
+    }
+    if (!opp) {
+      // Next distinct proximity opponent (wrap + allow reuse only if the pool
+      // is exhausted).
+      for (let scan = 0; scan < pool.length; scan++) {
+        const cand = pool[(poolCursor + scan) % pool.length]
+        if (!used.has(cand.id)) { opp = cand; poolCursor = (poolCursor + scan + 1) % pool.length; break }
+      }
     }
     if (!opp) opp = pool[i % pool.length]   // pool exhausted — reuse
 
@@ -1092,7 +1183,8 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
   const seriesCount = Math.round(newGames.filter(g => g.type === 'NON_CONFERENCE').length / 3)
   return {
     games: newGames,
-    summary: `Auto-built ${seriesCount} non-conference series to fill every open week.`,
+    summary: `Auto-built ${seriesCount} non-conference series (${placedComp} rivalry · ${seriesCount - placedComp} proximity) to fill every open week.`,
+    usedOpponentIds: Array.from(used),
   }
 }
 

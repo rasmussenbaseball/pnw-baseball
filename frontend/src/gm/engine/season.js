@@ -20,6 +20,7 @@ import { playerOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek } from './events'
+import { buildSeasonRecap } from './seasonRecap'
 import { maybeFireRandomEvent } from './randomEvents'
 import { tryAdvanceRecruit, rollSignedSteal } from './recruits'
 import { recomputeNwbbRatings } from './nwbbRating'
@@ -747,6 +748,16 @@ export function runEndOfYear(state) {
       wins: userTeam.wins, losses: userTeam.losses,
       runDiff: userTeam.runDiff,
     }
+  }
+
+  // Build the comprehensive Season Recap BEFORE we clear postseason / recruits
+  // / playerStats below — Dashboard pops the recap modal the first time the
+  // user advances into the new year. See engine/seasonRecap.js.
+  try {
+    state.lastSeasonRecap = buildSeasonRecap(state)
+  } catch (err) {
+    console.warn('season recap build failed:', err)
+    state.lastSeasonRecap = null
   }
 
   // Carry the FINAL NWBB ratings forward as next year's preseason seed, so the
