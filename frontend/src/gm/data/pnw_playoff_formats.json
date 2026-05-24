@@ -579,7 +579,7 @@
             "primary": "#005A9C",
             "secondary": "#FFFFFF"
           },
-          "ppiRank": 22
+          "ppiRank": 25
         },
         {
           "id": "nwac-douglas",
@@ -590,7 +590,7 @@
             "primary": "#003B5C",
             "secondary": "#C8102E"
           },
-          "ppiRank": 24
+          "ppiRank": 27
         }
       ]
     },
@@ -668,6 +668,39 @@
             "secondary": "#000000"
           },
           "ppiRank": 11
+        },
+        {
+          "id": "nwac-chemeketa",
+          "name": "Chemeketa",
+          "city": "Salem",
+          "state": "OR",
+          "colors": {
+            "primary": "#003366",
+            "secondary": "#FFB81C"
+          },
+          "ppiRank": 21
+        },
+        {
+          "id": "nwac-lane",
+          "name": "Lane",
+          "city": "Eugene",
+          "state": "OR",
+          "colors": {
+            "primary": "#1B5E3F",
+            "secondary": "#FFD200"
+          },
+          "ppiRank": 15
+        },
+        {
+          "id": "nwac-sw-oregon",
+          "name": "SW Oregon",
+          "city": "Coos Bay",
+          "state": "OR",
+          "colors": {
+            "primary": "#003B5C",
+            "secondary": "#C8102E"
+          },
+          "ppiRank": 23
         }
       ]
     },
@@ -733,7 +766,7 @@
             "primary": "#7B0828",
             "secondary": "#FFD200"
           },
-          "ppiRank": 21
+          "ppiRank": 24
         },
         {
           "id": "nwac-blue-mountain",
@@ -744,7 +777,7 @@
             "primary": "#005A9C",
             "secondary": "#FFFFFF"
           },
-          "ppiRank": 23
+          "ppiRank": 26
         },
         {
           "id": "nwac-columbia-basin",
@@ -788,7 +821,7 @@
             "primary": "#003B5C",
             "secondary": "#FFB81C"
           },
-          "ppiRank": 25
+          "ppiRank": 28
         },
         {
           "id": "nwac-pierce",
@@ -802,17 +835,6 @@
           "ppiRank": 13
         },
         {
-          "id": "nwac-south-puget-sound",
-          "name": "South Puget Sound",
-          "city": "Olympia",
-          "state": "WA",
-          "colors": {
-            "primary": "#005A9C",
-            "secondary": "#FFB81C"
-          },
-          "ppiRank": 15
-        },
-        {
           "id": "nwac-tacoma",
           "name": "Tacoma",
           "city": "Tacoma",
@@ -822,6 +844,17 @@
             "secondary": "#FFB81C"
           },
           "ppiRank": 3
+        },
+        {
+          "id": "nwac-clark",
+          "name": "Clark",
+          "city": "Vancouver",
+          "state": "WA",
+          "colors": {
+            "primary": "#003366",
+            "secondary": "#FFC72C"
+          },
+          "ppiRank": 22
         }
       ]
     }

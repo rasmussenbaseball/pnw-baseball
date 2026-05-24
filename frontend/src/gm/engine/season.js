@@ -242,19 +242,30 @@ export function simWeek(state, schedule, ratings) {
         : autoLineup(state, g.awayId, g.id)
       const homeHC = state.coaches[homeTeam.headCoachId]
       const awayHC = state.coaches[awayTeam.headCoachId]
-      // autoLineup already orders each rotation so index 0 is today's
-      // starter (freshest-rested for the user, series-rotated for others),
-      // so simGame just starts rotation[0] (default starterIdx 0).
-      // MIDWEEK exception: D1 midweek games shift the starter to slot 3+
-      // so the ace + #2/3 SPs don't burn on Tuesday before a weekend
-      // series. Real-life behavior per Nate.
+      // MIDWEEK pitcher exclusion (per Nate): for D1_MIDWEEK games, the top
+      // 4 arms by skill (the weekend rotation — Fri/Sat/Sun SPs + the
+      // swingman) are NEVER allowed to throw. Real teams pitch deep bullpen
+      // arms on Tuesdays and save their Fri/Sat/Sun SPs for the weekend
+      // series. We enforce that here by slicing the top 4 off both
+      // pitcherRotation arrays before sim — leaving only slots 4+ as the
+      // entire available staff for the midweek game. simGame then picks
+      // rotation[0] (now the 5th-best arm overall) as the starter and uses
+      // the rest as relief.
       const isMidweekGame = g.type === 'D1_MIDWEEK'
-      const midweekStarter = isMidweekGame ? 3 : 0
+      if (isMidweekGame) {
+        homeLineup.pitcherRotation = (homeLineup.pitcherRotation || []).slice(4)
+        awayLineup.pitcherRotation = (awayLineup.pitcherRotation || []).slice(4)
+      }
       result = simGame(homeLineup, awayLineup, {
         homeMotivator: homeHC?.motivator ?? 50,
         awayMotivator: awayHC?.motivator ?? 50,
-        homeStarterIdx: midweekStarter,
-        awayStarterIdx: midweekStarter,
+        homeStarterIdx: 0,    // already the deep arm — rotation was sliced for midweek
+        awayStarterIdx: 0,
+        // Team OVR offsets — bring the sim in line with the displayed
+        // Team OVR. Without this, a 98-OVR team whose roster naturally
+        // landed at 95 (due to 99 rating clamps) was simming as a 95.
+        homeOvrOffset: homeTeam.ovrOffset ?? 0,
+        awayOvrOffset: awayTeam.ovrOffset ?? 0,
         getEnergy: energyAccessor,
         neutralSite: !!g.neutralSite,   // postseason neutral-site games get no home edge
         level: state.level || state.schools?.[userSchoolId]?.level || 'NAIA',
@@ -1412,14 +1423,25 @@ export function advanceOneWeek(state) {
   tickWeeklyBookkeeping(state)
   tickTeamGPAWeekly(state)
 
-  // Energy recovery — every player who accrued fatigue bounces back some each
-  // week. This now covers the user's roster PLUS any opponent players who got
-  // charged energy facing the user (see the symmetric-fatigue change in
-  // simWeek). Recovering only the user would let opponents drain to empty over
-  // a season and over-correct the balance. Pitchers recover slower than
-  // position players. See energy.js.
+  // Energy recovery — every player who accrued fatigue bounces back each
+  // week. Covers the user's roster PLUS any opponent players who got
+  // charged energy facing the user (symmetric-fatigue change in simWeek).
+  //
+  // IN-SEASON FULL RESET (May 2026 — per Nate): during the spring season
+  // we FULLY reset every player's energy to 100 between weeks. The intent:
+  // Tue midweek + Fri/Sat/Sun weekend should not compound fatigue across
+  // weeks — each weekly cycle starts fresh so the auto-manager can ride
+  // the same Fri/Sat/Sun rotation + same midweek bullpen pool. Combined
+  // with the "midweek excludes top-4 SPs" rule (in simWeek), this means
+  // weekend SPs are NEVER asked to throw Tuesday and the deep bullpen has
+  // 3 days to recover before Friday.
+  const isSpringSeason = state.calendar?.mode === 'SEASON'
   const energyIds = Object.keys(state.playerEnergy || {})
-  if (energyIds.length > 0) {
+  if (isSpringSeason) {
+    // Full reset to 100 — wipe the whole energy map so any straggler is
+    // implicitly at the DEFAULT_ENERGY when read.
+    state.playerEnergy = {}
+  } else if (energyIds.length > 0) {
     tickWeeklyRecovery(state, energyIds)
   } else {
     const userTeamForRecovery = state.teams?.[state.userSchoolId]

@@ -353,17 +353,19 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
   function distributePitchers(lineup, runsAllowed, oppHits, oppK, oppBB) {
     const allP = (lineup.pitcherRotation || lineup.pitchers || []).filter(Boolean)
     if (allP.length === 0) return
-    // MIDWEEK pitching: real teams DON'T start an ace on Tuesday. They slot
-    // a #4 SP (or sometimes a "midweek starter") and bullpen with arms that
-    // didn't throw on the weekend. Skip slots 0-2 (weekend SPs) entirely;
-    // start at slot 3 and pull bullpen from slot 4+ so weekend arms rest.
-    // Per Nate.
-    const starterSlot = isMidweek ? Math.min(3, allP.length - 1) : 0
-    const starter = allP[starterSlot] || allP[0]
-    const bullpen = isMidweek
-      // Midweek bullpen: deeper arms (slot 4+) that didn't pitch on weekend
-      ? allP.slice(starterSlot + 1, starterSlot + 4).filter(Boolean)
-      : allP.slice(1, 4)
+    // MIDWEEK pitching (per Nate): the top 4 arms by skill (weekend SPs +
+    // swingman) NEVER throw on Tuesday. They're saved for Fri/Sat/Sun.
+    // Slice slots 0-3 off the rotation entirely for midweek games — the
+    // remaining slot-4+ pool is the FULL staff available. Starter = the
+    // best of the deep arms, bullpen = the rest.
+    const pool = isMidweek ? allP.slice(4) : allP
+    if (pool.length === 0) {
+      // Fallback — very thin staff. Use slot 3 (#4 SP / swingman) as a
+      // last-resort midweek arm. Shouldn't happen at D1 rostercaps.
+      pool.push(...allP.slice(3))
+    }
+    const starter = pool[0] || allP[0]
+    const bullpen = pool.slice(1, 4)
     // Starter goes ~5.2 IP unless they got hammered. Midweek starters are
     // typically shorter outings (3-4 IP) — they're a tandem with multiple
     // relievers. Burn fewer IP on the midweek starter so the bullpen carries
@@ -466,16 +468,26 @@ export function simPA(batter, pitcher, ctx, rng) {
   // Energy regression: tired stars' (rating - 50) deviation shrinks
   // toward 50. At 100 energy reg = identity, at 0 energy ~28% compressed.
   const reg = (raw, mult) => 50 + (raw - 50) * mult
-  // Pull ratings — fallback to neutral 50 if missing. Apply energy dampener.
-  const contact = reg(batter.hitter[`contact_${oppHand}`] ?? 50, batMult)
-  const power = reg(batter.hitter[`power_${oppHand}`] ?? 50, batMult)
-  const discipline = reg(batter.hitter.discipline ?? 50, batMult)
-  const speed = reg(batter.hitter.speed ?? 50, batMult)
+  // TEAM OVR BOOST (per Nate, May 2026). Each side carries an `ovrOffset`
+  // that bridges the gap between the picker's expectedTeamOvr and the
+  // naturally-generated roster (clamped at rating 99). Without this, OSU at
+  // displayed 98 OVR actually simmed as ~95 because the picker offset was
+  // display-only. We now apply it as a uniform per-rating bump for that
+  // side's players during the PA — so OSU's 98-OVR roster plays like a 98.
+  const batBoost = ctx.batterTeamBoost ?? 0
+  const pitBoost = ctx.pitcherTeamBoost ?? 0
+  // Pull ratings — fallback to neutral 50 if missing. Apply energy dampener,
+  // then add team boost AFTER reg so the boost is a hard add (not dampened
+  // by fatigue).
+  const contact = reg(batter.hitter[`contact_${oppHand}`] ?? 50, batMult) + batBoost
+  const power = reg(batter.hitter[`power_${oppHand}`] ?? 50, batMult) + batBoost
+  const discipline = reg(batter.hitter.discipline ?? 50, batMult) + batBoost
+  const speed = reg(batter.hitter.speed ?? 50, batMult) + batBoost
 
-  const stuff = reg(pitcher.pitcher.stuff ?? 50, pitMult)
-  const control = reg(pitcher.pitcher.control ?? 50, pitMult)
-  const command = reg(pitcher.pitcher.command ?? 50, pitMult)
-  const vsBatter = reg(pitcher.pitcher[`vs_${oppHand}`] ?? 50, pitMult)
+  const stuff = reg(pitcher.pitcher.stuff ?? 50, pitMult) + pitBoost
+  const control = reg(pitcher.pitcher.control ?? 50, pitMult) + pitBoost
+  const command = reg(pitcher.pitcher.command ?? 50, pitMult) + pitBoost
+  const vsBatter = reg(pitcher.pitcher[`vs_${oppHand}`] ?? 50, pitMult) + pitBoost
 
   // Velocity (mph spread) — separate from stuff. Higher velo:
   //   - drives K rate up (hard to catch up to a heater)
@@ -674,6 +686,12 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     // Home-field edge: home batting gets a small lift, away batting a small
     // dip. Zero at a neutral site.
     const siteEdge = ctx.neutralSite ? 0 : (state.top ? -HOME_PA_EDGE : HOME_PA_EDGE)
+    // Team OVR offsets — applied as a per-rating bump in simPA. Bridges
+    // the gap between displayed Team OVR (which includes ovrOffset for
+    // teams whose roster ratings couldn't naturally reach the target due
+    // to the 99 clamp) and the sim's effective team strength.
+    const batterTeamBoost = state.top ? (ctx.awayOvrOffset ?? 0) : (ctx.homeOvrOffset ?? 0)
+    const pitcherTeamBoost = state.top ? (ctx.homeOvrOffset ?? 0) : (ctx.awayOvrOffset ?? 0)
     let result = simPA(batter, pitcher, {
       leverage,
       coachMotivator: motivator,
@@ -682,6 +700,8 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
       batterEnergy,
       pitcherEnergy,
       siteEdge,
+      batterTeamBoost,
+      pitcherTeamBoost,
       level: ctx.level,           // per-level BASE_RATES
     }, rng)
     // Apply sub-outcome resolution (SAC_FLY, SAC_BUNT, GIDP) for OUTs

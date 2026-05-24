@@ -35,7 +35,7 @@ export const LEVEL_OVR_WINDOW = {
   D2:   { top: 84, bottom: 60, totalTeams: 256 },
   D3:   { top: 82, bottom: 58, totalTeams: 384 },
   NAIA: { top: 84, bottom: 60, totalTeams: 195 },
-  NWAC: { top: 75, bottom: 51, totalTeams: 25 },   // 1 team per OVR (25 unique)
+  NWAC: { top: 75, bottom: 48, totalTeams: 28 },   // 1 team per OVR (28 unique)
 }
 
 /**
