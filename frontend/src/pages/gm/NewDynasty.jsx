@@ -818,11 +818,16 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
           const isSelected = selectedSchoolId === p.id
           // Compute expected starting Team OVR — same number the Roster
           // page will show once the dynasty is created. Stars derived
-          // directly from Team OVR (0.5★ ≈ 66 OVR, 5★ ≈ 91 OVR). NAIA
-          // tiles read programHistory off the loaded school object;
-          // D1/D2/D3/NWAC tiles get programHistory pre-computed in
-          // pnwProgramsAtLevel from PEAR strength + level formula.
-          const teamOvr = expectedTeamOvr({ programHistory: p.programHistory, level: p.level })
+          // directly from Team OVR (0.5★ ≈ 66 OVR, 5★ ≈ 91 OVR). pearRank
+          // is REQUIRED so expectedTeamOvr uses the rank-bucketed primary
+          // path (D1 80-98, D2/NAIA 60-84, D3 58-82, NWAC 51-75) — without
+          // it the PH formula fallback returns a stale value that doesn't
+          // match the loaded team. Per Nate (Everett-OVR-mismatch fix).
+          const teamOvr = expectedTeamOvr({
+            programHistory: p.programHistory,
+            level: p.level,
+            pearRank: p.pearRank,
+          })
           const stars = teamOvrToStars(teamOvr)
           const rating = programRatings?.[p.id]
           const nationalRank = rating?.nationalRank ?? p.pearRank
