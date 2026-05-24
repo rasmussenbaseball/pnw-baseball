@@ -370,12 +370,17 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
   //              the same talent tier, no bump)
   //   NAIA   0   (baseline)
   //   D3   - 6   no athletic $ → only walk-on-quality + the rare gem
-  //   NWAC - 3   wide spread; mostly lower than NAIA HS but with star outliers
+  //   NWAC + 3   (per Nate, May 2026 — opp NWAC teams decayed to OVR 40s/50s
+  //              by year 2). Was -3, which made replacement freshmen weaker
+  //              than the departing sophomores year over year, dragging
+  //              opposing rosters below their PEAR/PPI band. Lifted to +3
+  //              so each year's incoming class roughly matches the band a
+  //              mid-tier NWAC team is expected to land at (51-75).
   // Cap shift:
   //   D1   +5    can find 95+ ceilings
   //   D3   -5    cap at 86
   //   NWAC handled below — wider stddev for the spread
-  const LEVEL_MEAN_SHIFT = { D1: 12, D2: 0, NAIA: 0, D3: -6, NWAC: -3 }
+  const LEVEL_MEAN_SHIFT = { D1: 12, D2: 0, NAIA: 0, D3: -6, NWAC: 3 }
   const LEVEL_CAP_SHIFT  = { D1: 5,  D2: 0, NAIA: 0, D3: -5, NWAC: -2 }
   meanRating += LEVEL_MEAN_SHIFT[userLevel] ?? 0
   cap = Math.min(99, Math.max(50, cap + (LEVEL_CAP_SHIFT[userLevel] ?? 0)))

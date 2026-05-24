@@ -649,8 +649,13 @@ export function advanceClassYearsAndExits(state) {
  * matches the team's expected target (from PEAR / PPI rank). Runs once
  * a year after roster turnover (aging + new freshmen) so the offset
  * absorbs the natural rating drift from class churn.
+ *
+ * Exported so the Dashboard can call it as a self-heal on save load —
+ * existing pre-fix saves had ovrOffset frozen at year-1 values and were
+ * left displaying decayed OVRs (40s/50s for NWAC) until the next
+ * rollover. The retroactive call applies the fix immediately.
  */
-function refitNonUserOvrOffsets(state) {
+export function refitNonUserOvrOffsets(state) {
   const userId = state.userSchoolId
   const avg = arr => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0)
   for (const team of Object.values(state.teams || {})) {
@@ -689,9 +694,10 @@ function ageOpponentRosters(state) {
   // Target rostered count after EOY attrition + freshman refill (per Nate):
   // 4-year baseball rosters should sit in the 36-50 range; bump non-NAIA to
   // 42 so post-attrition + in-season churn keeps every team comfortably above
-  // the 36 floor. NWAC target raised 28 → 33 (midpoint of the 28-38 hard
-  // cap) so post-attrition rosters don't sag below the new floor.
-  const TARGET_ROSTER = isNwac ? 33 : level === 'NAIA' ? 45 : 42
+  // the 36 floor. NWAC target raised 33 → 38 (top of the 28-38 cap) so opp
+  // teams stay comfortably above the 28-player floor every year — mirrors
+  // the user's roster cap.
+  const TARGET_ROSTER = isNwac ? 38 : level === 'NAIA' ? 45 : 42
   const rng = makeRng('ageOpp', state.rngSeed, state.calendar.year, level)
   let aged = 0
   let graduated = 0

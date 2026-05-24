@@ -21,6 +21,7 @@ import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMod
 import { teamNameOf } from '../../gm/engine/postseasonInteractive'
 import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
+import { refitNonUserOvrOffsets } from '../../gm/engine/events'
 import { resolveEvent } from '../../gm/engine/randomEvents'
 import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
@@ -124,6 +125,24 @@ export default function Dashboard() {
     if (!save?.lastSeasonRecap) return
     setSeasonRecapModal(save.lastSeasonRecap)
     save.lastSeasonRecap = null
+    saveDynasty(save)
+  }, [save])
+
+  // Retroactive ovrOffset self-heal (per Nate, May 2026). Existing saves
+  // created before the annual refit fix had non-user team.ovrOffset frozen
+  // at year-1 values, dragging displayed OVRs into the 40s/50s by year 2+
+  // even though the underlying targets (PEAR/PPI rank) hadn't moved. Refit
+  // once per dynasty-year on load — idempotent, cheap, applies the fix
+  // immediately to any save that hasn't crossed a year rollover with the
+  // new code yet. Tracked via save.flags.lastOvrRefitYear so we only do it
+  // once per year per save.
+  useEffect(() => {
+    if (!save) return
+    const curYear = save.calendar?.year ?? 1
+    if (save.flags?.lastOvrRefitYear === curYear) return
+    try { refitNonUserOvrOffsets(save) } catch (e) { console.warn('ovr refit failed:', e) }
+    if (!save.flags) save.flags = {}
+    save.flags.lastOvrRefitYear = curYear
     saveDynasty(save)
   }, [save])
 
