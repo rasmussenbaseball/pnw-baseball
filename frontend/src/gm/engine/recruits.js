@@ -498,6 +498,30 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
     weightLbs: profile.measurables.weightLbs,
     targetMatureWeightLbs: profile.measurables.targetMatureWeightLbs,
   }
+  // ── User-level measurable boost ────────────────────────────────────────
+  // Per Nate: D1 boards should be a different tier physically — most pitchers
+  // sit 88+ (some 95+, a handful at 100), most hitters max-EV 100+. The pool
+  // baseline (above) was NAIA-tuned; we layer a level boost on top so the
+  // same generator produces a believable D1 board for a D1 user.
+  //   D1   velo +6 mph, EV +5 mph
+  //   D2   velo +1, EV +1
+  //   NAIA baseline
+  //   D3   velo -2, EV -2
+  //   NWAC velo -2, EV -2
+  const VELO_LEVEL_BOOST = { D1: 6, D2: 1, NAIA: 0, D3: -2, NWAC: -2 }
+  const EV_LEVEL_BOOST   = { D1: 5, D2: 1, NAIA: 0, D3: -2, NWAC: -2 }
+  // Higher level caps so the very top D1 arms can reach 100 mph (real life:
+  // a handful per class). D1 HS recruits cap at 93+7=100, and the noise
+  // tail can push past with poolCap absolute ceiling of 103.
+  const VELO_CAP_BOOST   = { D1: 7, D2: 1, NAIA: 0, D3: -1, NWAC: -1 }
+  // Wider velo spread for D1 — produces the long tail (a few 99s + 100s per
+  // class) Nate's looking for. Lower-tier pools stay tighter.
+  const VELO_SPREAD_BOOST = { D1: 0.9, D2: 0.2, NAIA: 0, D3: -0.1, NWAC: -0.1 }
+  const veloLevelBoost = VELO_LEVEL_BOOST[userLevel] ?? 0
+  const evLevelBoost   = EV_LEVEL_BOOST[userLevel] ?? 0
+  const veloCapBoost   = VELO_CAP_BOOST[userLevel] ?? 0
+  const veloSpreadBoost = VELO_SPREAD_BOOST[userLevel] ?? 0
+
   if (!isPitcher) {
     const sp = trueHitter.speed
     // 60-yard: elite 6.4, average 7.0. Formula: speed 50 7.0, speed 99 6.41.
@@ -521,8 +545,10 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
     // Baseline 89 (was 86) + per-power-pt 0.30 (was 0.50). This compresses
     // the spread upward — even pw 30 lands ~88, and pw 50 (avg) hits 93-94.
     // Stronger power retains the same top-end (pw 85 ≈ 104, pw 95 ≈ 107).
-    const maxEvBase = 89 + (pw - 50) * 0.30 + sizeBoost + poolEvBoost
-    // Floor at 88 — boards never show sub-88 max EV.
+    // Level boost adds the D1-board lift (D1 baseline ~94, top ~110).
+    const maxEvBase = 89 + (pw - 50) * 0.30 + sizeBoost + poolEvBoost + evLevelBoost
+    // Floor at 88 — boards never show sub-88 max EV. D1 board floor effectively
+    // 88 + 5 = 93 because of the level boost.
     measurables.maxEvMph = Math.max(88, Math.round((maxEvBase + rng.gaussian(0, 1.3)) * 10) / 10)
 
     if (primaryPosition === 'C') {
@@ -558,16 +584,19 @@ function makeRecruit(pool, idx, year, rng, stateWeights, subtype = null, opts = 
     else if (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') poolBase = 86.0
     else poolBase = 89.0   // D1 transfer
 
-    const baseMean = poolBase + velocityBias + stuffCorrelation + sizeBoost
-    const baseSpread = 1.6
+    const baseMean = poolBase + velocityBias + stuffCorrelation + sizeBoost + veloLevelBoost
+    const baseSpread = 1.6 + veloSpreadBoost   // wider tail for D1 → 100 mph appearances
 
     // Pool caps — applied after archetype bias so FLAMETHROWER can blow
     // through them slightly. HS top 93 (was 92), JUCO 95, NAIA/D2/D3 96,
     // D1 transfer 99. SOFT_TOSSING_VETERAN has its own floor at ~78.
-    const poolCap = pool === 'HS_SR' ? 93
+    // Level cap boost: D1 HS recruits cap at ~100; FLAMETHROWERS with size
+    // boost can blow through to 103 (real-life D1 board has a few each yr).
+    const basePoolCap = pool === 'HS_SR' ? 93
       : pool === 'JUCO' ? 95
       : (pool === 'NAIA_TRANSFER' || pool === 'D2_TRANSFER' || pool === 'D3_TRANSFER') ? 96
       : 99
+    const poolCap = Math.min(103, basePoolCap + veloCapBoost)
     const veloMean = clamp(baseMean + rng.gaussian(0, baseSpread), 75, poolCap)
     measurables.fbVeloMph = Math.round(veloMean * 10) / 10
     measurables.fbVeloMinMph = Math.round((veloMean - 2) * 10) / 10

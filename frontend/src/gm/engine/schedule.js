@@ -1096,38 +1096,53 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
       .map(t => ({ id: t.id, name: t.name, state: t.state, strength: t.strength ?? 0 }))
   }
 
-  const pool = candidates.map(c => {
+  // Enrich every candidate with rating + proximity + rank so we can sort
+  // into proximity AND strength buckets separately.
+  const enriched = candidates.map(c => {
     const rating = ratingOf(c.id, c.strength)
     const ratingGap = rating - userRating         // + stronger, - weaker than user
     const proximity = stateProximity(userState, c.state)
     const rank = rankOf(c.id)
-    // Push cupcakes down; nudge similar-rated teams up. Proximity is the
-    // primary driver of the rest-of-slate picks (per Nate: "the other games
-    // should probably just be based on geographical closeness").
-    const cupcakePenalty = ratingGap < -12 ? (-12 - ratingGap) * 0.5 : 0
-    const similarBonus = Math.abs(ratingGap) <= 6 ? -4 : 0
-    return {
-      id: c.id, name: c.name, state: c.state, division: level, rating, rank,
-      // Proximity-dominant (the "geographical closeness" bucket) with rating
-      // fit as a soft tiebreak and a heftier jitter ceiling (was 2 -> 9) so
-      // the closest 3 teams don't lock in every year. Recent-opponent penalty
-      // pushes prior-year picks further down.
-      sortKey: proximity * 0.9 + Math.abs(ratingGap) * 0.3 + rng.next() * 9 + cupcakePenalty + similarBonus + recentPenalty(c.id),
-    }
+    return { id: c.id, name: c.name, state: c.state, division: level, rating, ratingGap, rank, proximity }
   })
-  pool.sort((a, b) => a.sortKey - b.sortKey)
+
+  // Pure-proximity pool (the "geographical closeness" bucket) — used for the
+  // bulk of mid-tier picks. Jittered so the same closest 3 teams don't lock
+  // in every year. Recent-opponent penalty pushes prior-year picks down.
+  const proxPool = enriched.map(c => ({
+    ...c,
+    sortKey: c.proximity + rng.next() * 9 + recentPenalty(c.id),
+  })).sort((a, b) => a.sortKey - b.sortKey)
 
   const openWeeks = openNonConfWeeks(userSchoolId, conferenceId, existingSchedule, year, level)
     .sort((a, b) => a.week - b.week)
   if (openWeeks.length === 0) return { games: [], summary: 'No open weeks to fill.', usedOpponentIds: [] }
-  if (pool.length === 0) return { games: [], summary: 'No non-conference opponents available.', usedOpponentIds: [] }
+  if (enriched.length === 0) return { games: [], summary: 'No non-conference opponents available.', usedOpponentIds: [] }
 
-  // ── COMPETITIVE / RIVALRY pool (within ±25 national rank) ─────────────
+  // ── PARITY: strength buckets so the slate has a real mix ─────────────
+  // Per Nate: every team OSU was scheduled against was top-100 → boring
+  // gauntlet schedule. Real D1 slates have marquees + mids + cupcakes. Sort
+  // candidates by program rating and chunk into 3 buckets, then explicitly
+  // draw a CUPCAKE for every ~5th slot.
+  const byRating = [...enriched].sort((a, b) => b.rating - a.rating)
+  const qTop = byRating.slice(0, Math.floor(byRating.length * 0.20))                                       // top 20% (marquee)
+  const qMid = byRating.slice(Math.floor(byRating.length * 0.20), Math.floor(byRating.length * 0.70))      // middle 50%
+  const qBot = byRating.slice(Math.floor(byRating.length * 0.70))                                          // bottom 30% (cupcakes)
+  function shuffle(arr) {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = rng.int(0, i)
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+  const sTop = shuffle(qTop), sMid = shuffle(qMid), sBot = shuffle(qBot)
+
+  // ── RIVALRY pool (within ±25 national rank) ──────────────────────────
   // Per Nate: each year the user should play 1-2 competitive games against
-  // teams within ~25 rank-spots. Picked separately from the proximity-based
-  // main pool — these are quality matchups, not necessarily nearest neighbors.
+  // teams within ~25 rank-spots — quality matchups, not just neighbors.
   const RANK_WINDOW = 25
-  const compPool = pool
+  const compPool = enriched
     .filter(c => typeof c.rank === 'number' && c.rank < 999
               && Math.abs(c.rank - userRank) <= RANK_WINDOW)
     .map(c => ({
@@ -1135,35 +1150,74 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
       compSortKey: Math.abs(c.rank - userRank) + recentPenalty(c.id) * 1.5 + rng.next() * 6,
     }))
     .sort((a, b) => a.compSortKey - b.compSortKey)
-  const wantedCompetitive = Math.min(2, compPool.length, Math.max(0, openWeeks.length - 1))
+  const wantedRivalry = Math.min(2, compPool.length, Math.max(0, openWeeks.length - 1))
 
   const newGames = []
   const used = new Set()
   const targetHome = Math.ceil(openWeeks.length / 2)
   let homeCount = 0
-  let placedComp = 0
-  let poolCursor = 0
+  let placedRivalry = 0
+  let placedCupcake = 0
+  let placedMarquee = 0
+  let placedMid = 0
+  // Slot-type pattern across the season's open weekends. Real OSU 2025
+  // had roughly 25% marquee, 25% rivalry-tier, 35% mid, 15% cupcake.
+  // Sequence is rotated so cupcakes/marquees don't clump in one stretch.
+  const totalSlots = openWeeks.length
+  const cupcakeEvery = 5    // ~20% of slots are cupcakes
+  const marqueeEvery = 4    // ~25% of slots are top-20% marquee
+  let topIdx = 0, midIdx = 0, botIdx = 0
+  function nextFrom(pool, cursor) {
+    for (let scan = 0; scan < pool.length; scan++) {
+      const c = pool[(cursor + scan) % pool.length]
+      if (!used.has(c.id)) return { pick: c, nextCursor: (cursor + scan + 1) % pool.length }
+    }
+    return { pick: null, nextCursor: cursor }
+  }
 
   for (let i = 0; i < openWeeks.length; i++) {
-    // First 1-2 early slots get a "rivalry" pick from the rank-window pool
-    // — competitive game (within 25 ranks) to break up the proximity slate.
     let opp = null
-    if (placedComp < wantedCompetitive && i < Math.ceil(openWeeks.length / 2)) {
+    let slotKind = 'mid'
+
+    // 1) Rivalry picks first (1-2 per year, placed in first half so they're
+    //    not always the season finale).
+    if (placedRivalry < wantedRivalry && i < Math.ceil(totalSlots / 2)) {
       const compIdx = compPool.findIndex(c => !used.has(c.id))
       if (compIdx >= 0) {
         opp = compPool.splice(compIdx, 1)[0]
-        placedComp++
+        slotKind = 'rivalry'
+        placedRivalry++
+      }
+    }
+    // 2) Cupcake slot — every ~5th week. Forces a weaker-program game so
+    //    the schedule isn't a gauntlet.
+    if (!opp && (i + 2) % cupcakeEvery === 0 && sBot.length > 0) {
+      const r = nextFrom(sBot, botIdx); botIdx = r.nextCursor
+      if (r.pick) { opp = r.pick; slotKind = 'cupcake'; placedCupcake++ }
+    }
+    // 3) Marquee slot — every ~4th week. A premium top-20% opponent.
+    if (!opp && i % marqueeEvery === 0 && sTop.length > 0) {
+      const r = nextFrom(sTop, topIdx); topIdx = r.nextCursor
+      if (r.pick) { opp = r.pick; slotKind = 'marquee'; placedMarquee++ }
+    }
+    // 4) Default — mid-tier with proximity bias. Use proxPool so closer
+    //    teams win the tiebreak.
+    if (!opp) {
+      // Prefer mid-bucket teams that also rank well by proximity.
+      const midIds = new Set(sMid.map(c => c.id))
+      const proxMid = proxPool.filter(c => midIds.has(c.id) && !used.has(c.id))
+      if (proxMid.length > 0) {
+        opp = proxMid[0]
+        slotKind = 'mid'
+        placedMid++
       }
     }
     if (!opp) {
-      // Next distinct proximity opponent (wrap + allow reuse only if the pool
-      // is exhausted).
-      for (let scan = 0; scan < pool.length; scan++) {
-        const cand = pool[(poolCursor + scan) % pool.length]
-        if (!used.has(cand.id)) { opp = cand; poolCursor = (poolCursor + scan + 1) % pool.length; break }
-      }
+      // Fallback — any unused proximity pick.
+      const r = nextFrom(proxPool, 0)
+      if (r.pick) opp = r.pick
     }
-    if (!opp) opp = pool[i % pool.length]   // pool exhausted — reuse
+    if (!opp) opp = enriched[i % enriched.length]   // pool exhausted — reuse
 
     const homesLeft = targetHome - homeCount
     const slotsLeft = openWeeks.length - i
@@ -1180,10 +1234,74 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
     }
   }
 
+  // ── MIDWEEK GAMES ─────────────────────────────────────────────────────
+  // D1 teams play one midweek game (Tue/Wed) most weeks — adds ~10-12 games
+  // to a 36-game weekend slate, bringing the total to a realistic ~46-50.
+  // Pick mid + bottom-bucket regional opponents (cheaper travel, less risk).
+  // Non-NAIA path didn't have midweek logic before; that's why OSU only had
+  // 36 games on the schedule.
+  const isNAIA = level === 'NAIA'
+  if (!isNAIA) {
+    // Build a midweek opponent pool — bias toward proximity, prefer mid
+    // and bottom buckets so it's a winnable game, dedupe vs weekend picks.
+    const midweekRng = makeRng('midweek_ml', userSchoolId, year, seed + 11)
+    const midweekIds = new Set([...sMid, ...sBot].map(c => c.id))
+    const midweekPool = proxPool
+      .filter(c => midweekIds.has(c.id) && !used.has(c.id))
+      .slice(0, 60)   // top-60 closest mid/bot teams — bigger pool keeps
+                      // the midweek slate from running dry mid-season
+    // Schedule a midweek for every week that has a game already (weekend
+    // series). Drop only the final week (rest before postseason); keep the
+    // opener — D1 teams open with a weekend + Tuesday opener regularly.
+    const allUserGames = [...existingSchedule, ...newGames]
+      .filter(g => (g.homeId === userSchoolId || g.awayId === userSchoolId))
+    const weekendWeeks = Array.from(new Set(
+      allUserGames
+        .filter(g => g.type === 'NON_CONFERENCE' || g.type === 'CONFERENCE')
+        .map(g => g.seasonWeek)
+    )).sort((a, b) => a - b)
+    // Drop just the last week so the team rests before the postseason.
+    // Per Nate: "most weeks should have a midweek game" → keep opening
+    // week + nearly every other regular-season week as midweek-eligible.
+    const midweekTargets = weekendWeeks.slice(0, -1)
+    let midweeksAdded = 0
+    let mwCursor = 0
+    for (const week of midweekTargets) {
+      if (midweekPool.length === 0) break
+      // 90% of weeks get a midweek — nearly every week per Nate.
+      if (!midweekRng.chance(0.9)) continue
+      // Pick next unused from the rotation
+      let oppIdx = -1
+      for (let scan = 0; scan < midweekPool.length; scan++) {
+        const idx = (mwCursor + scan) % midweekPool.length
+        if (!used.has(midweekPool[idx].id)) { oppIdx = idx; mwCursor = (idx + 1) % midweekPool.length; break }
+      }
+      if (oppIdx < 0) break
+      const opp = midweekPool[oppIdx]
+      // Midweeks are 70% home (cheaper travel, normal D1 behavior).
+      const userIsHome = midweekRng.chance(0.7)
+      const midweekGame = buildMidweekSingle(userSchoolId, opp.id, week, year, userIsHome)
+      // Tag as D1_MIDWEEK so the game-cap counter knows it's a single game,
+      // not a series.
+      midweekGame.type = 'D1_MIDWEEK'
+      midweekGame.division = opp.division
+      newGames.push(midweekGame)
+      used.add(opp.id)
+      midweeksAdded++
+    }
+    const seriesCount = Math.round(newGames.filter(g => g.type === 'NON_CONFERENCE').length / 3)
+    return {
+      games: newGames,
+      summary: `Auto-built ${seriesCount} weekend series (${placedRivalry} rivalry · ${placedMarquee} marquee · ${placedMid} mid · ${placedCupcake} cupcake) + ${midweeksAdded} midweek game${midweeksAdded === 1 ? '' : 's'}.`,
+      usedOpponentIds: Array.from(used),
+    }
+  }
+  // NAIA fallback (won't actually reach here — the NAIA branch is in
+  // autoCreateSchedule), but keep the return shape.
   const seriesCount = Math.round(newGames.filter(g => g.type === 'NON_CONFERENCE').length / 3)
   return {
     games: newGames,
-    summary: `Auto-built ${seriesCount} non-conference series (${placedComp} rivalry · ${seriesCount - placedComp} proximity) to fill every open week.`,
+    summary: `Auto-built ${seriesCount} weekend series (${placedRivalry} rivalry · ${placedMarquee} marquee · ${placedMid} mid · ${placedCupcake} cupcake).`,
     usedOpponentIds: Array.from(used),
   }
 }

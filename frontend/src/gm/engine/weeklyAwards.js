@@ -154,9 +154,14 @@ export function computeWeeklyAwards(state) {
 
   // CONFERENCE-ONLY awards (per Nate): no national/NAIA Player of the Week —
   // only conference Hitter/Pitcher of the Week honors.
-  // Conference winners — one set per conference
+  // Conference winners — one set per conference. SKIP single-team
+  // conferences like INDEPENDENT_D1 (Oregon State alone) — a "Conf POTW"
+  // award for a 1-team conf is meaningless and the user explicitly asked
+  // for it to not surface.
   const confWinners = {}
   for (const confId of Object.keys(state.conferences || {})) {
+    const conf = state.conferences[confId]
+    if ((conf?.schoolIds?.length || 0) <= 1) continue
     confWinners[confId] = {
       hitter: pickBest(weekly,
         (s) => !s.isPitcher && playerConf[s.playerId] === confId,
