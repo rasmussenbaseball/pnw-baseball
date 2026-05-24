@@ -549,17 +549,6 @@
           "ppiRank": 1
         },
         {
-          "id": "nwac-olympic",
-          "name": "Olympic",
-          "city": "Bremerton",
-          "state": "WA",
-          "colors": {
-            "primary": "#1A2D5B",
-            "secondary": "#A0A2A4"
-          },
-          "ppiRank": 20
-        },
-        {
           "id": "nwac-shoreline",
           "name": "Shoreline",
           "city": "Shoreline",
@@ -635,17 +624,6 @@
             "secondary": "#C8102E"
           },
           "ppiRank": 9
-        },
-        {
-          "id": "nwac-treasure-valley",
-          "name": "Treasure Valley",
-          "city": "Ontario",
-          "state": "OR",
-          "colors": {
-            "primary": "#FF6A13",
-            "secondary": "#003B5C"
-          },
-          "ppiRank": 15
         },
         {
           "id": "nwac-lower-columbia",
@@ -789,6 +767,17 @@
             "secondary": "#1A2D5B"
           },
           "ppiRank": 11
+        },
+        {
+          "id": "nwac-treasure-valley",
+          "name": "Treasure Valley",
+          "city": "Ontario",
+          "state": "OR",
+          "colors": {
+            "primary": "#FF6A13",
+            "secondary": "#003B5C"
+          },
+          "ppiRank": 15
         }
       ]
     },
@@ -855,6 +844,17 @@
             "secondary": "#FFC72C"
           },
           "ppiRank": 19
+        },
+        {
+          "id": "nwac-olympic",
+          "name": "Olympic",
+          "city": "Bremerton",
+          "state": "WA",
+          "colors": {
+            "primary": "#1A2D5B",
+            "secondary": "#A0A2A4"
+          },
+          "ppiRank": 20
         }
       ]
     }
