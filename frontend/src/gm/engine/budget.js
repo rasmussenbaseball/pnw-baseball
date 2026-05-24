@@ -198,7 +198,16 @@ export const BUDGET_GUIDANCE = GUIDANCE_BY_LEVEL.NAIA
  */
 export function defaultBudgetForSchool(school, actualCoachPayroll = null) {
   const level = school.level || 'NAIA'
-  const levelAlloc = defaultAllocationForLevel(level)
+  const isD1Indep = school.conferenceId === 'INDEPENDENT_D1'
+  // D1 Independents fly for nearly every series (no nearby conference bus
+  // trips), so their realistic travel share is much higher than the D1
+  // default. Shift travel up + pull from facilities to keep the slate at
+  // 100%.
+  const levelAlloc = isD1Indep
+    ? { ...defaultAllocationForLevel(level),
+        travel:     0.20,    // was 0.12
+        facilities: 0.03 }   // was 0.09
+    : defaultAllocationForLevel(level)
   const pool = school.scholarshipPool || 0
 
   // ── Total budget resolution ──────────────────────────────────────────
@@ -253,10 +262,17 @@ export function defaultBudgetForSchool(school, actualCoachPayroll = null) {
   // actually running the schedule. If the proportional split landed below
   // the floor, raise travel to the floor and pull the shortfall from
   // coachingSalaries (the next-largest discretionary line).
+  // D1 INDEPENDENTS (e.g. Oregon State post-Pac-12) play a fully national
+  // non-conf slate — every series is travel-eligible, no nearby conference
+  // bus trips. Real-world OSU travel is roughly 2x a typical Big-Ten team's.
+  // Bump the floor accordingly so the default budget reflects that reality.
   const TRAVEL_FLOOR_BY_LEVEL = {
     D1: 80000, D2: 45000, D3: 38000, NAIA: 40000, NWAC: 25000,
   }
-  const travelFloor = TRAVEL_FLOOR_BY_LEVEL[level] || 30000
+  const isD1Independent = school.conferenceId === 'INDEPENDENT_D1'
+  const travelFloor = isD1Independent
+    ? 175000   // OSU-tier independent — full national slate, lots of flights
+    : (TRAVEL_FLOOR_BY_LEVEL[level] || 30000)
   if (allocations.travel < travelFloor) {
     const shortfall = travelFloor - allocations.travel
     const reclaim = Math.min(shortfall, allocations.coachingSalaries || 0)

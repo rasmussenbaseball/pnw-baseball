@@ -538,19 +538,26 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
   const [divFilter, setDivFilter] = useState('ALL')
 
   const allCandidates = useMemo(() => {
-    const naia = Object.values(save.schools)
+    // In-tree candidates (other teams from save.schools — for NAIA dynasties
+    // that's other NAIA conferences; for D1/D2/D3 it's same-level teams
+    // outside the user's conference). Use the school's actual `level` if
+    // present; fall back to NAIA only for legacy saves without it.
+    const inTree = Object.values(save.schools)
       .filter(s => s.id !== save.userSchoolId)
       .filter(s => s.conferenceId !== userSchool.conferenceId)
       .map(s => ({
         id: s.id, name: s.name, city: s.city, state: s.state,
         colors: s.colors, nickname: s.nickname,
-        division: 'NAIA',
+        division: s.level || 'NAIA',
         strength: s.pearRating ?? 0,
       }))
+    // Dedupe vs the abstract national pool — full-division D1/D2/D3 saves
+    // already have every team in save.schools; don't show them twice.
+    const inTreeIds = new Set(inTree.map(c => c.id))
     const nonNaia = nonNaiaRaw.divisions.flatMap(div =>
       div.teams.map(t => ({ ...t, division: div.id, strength: t.strength ?? 0 })),
-    )
-    return [...naia, ...nonNaia]
+    ).filter(t => !inTreeIds.has(t.id))
+    return [...inTree, ...nonNaia]
   }, [save, userSchool])
 
   // Compute rank within each division so the user can see "#14 NAIA",
@@ -575,6 +582,7 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
   // less to travel to and reflect realistic non-conf scheduling patterns.
   // Strength is the tiebreaker within the same proximity bucket.
   const userState = userSchool.state
+  const userLevel = save.level || 'NAIA'
   const filtered = sortByProximity(
     userState,
     candidatesByDivisionRanked
@@ -582,7 +590,12 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
       .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
       .filter(t => t.division !== 'JUCO_NWAC')
       .filter(t => {
-        // D1 only allowed in midweek mode
+        // The "D1 only allowed in midweek" rule is from the NAIA-user
+        // perspective (D1 series are a hard logistical no for NAIA programs).
+        // When the user IS a D1 program (e.g. Oregon State independent),
+        // every weekend opponent is a D1 — so this filter would empty the
+        // list. Skip it for D1 users.
+        if (userLevel === 'D1') return true
         if (t.division === 'D1') return midweekMode && d1Remaining > 0
         return true
       }),

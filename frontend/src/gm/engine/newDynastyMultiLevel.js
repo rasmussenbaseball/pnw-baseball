@@ -295,15 +295,14 @@ export function newDynastyMultiLevel(input) {
   if (level === 'NWAC' || Object.keys(schools).length < 2) {
     schedule = buildLevelSchedule(conferenceId, schools, level, 2027, seed)
   } else if (conferenceId === 'INDEPENDENT_D1') {
-    // Independent D1 (e.g. Oregon State): the USER plays a full independent
-    // slate, but the rest of D1 (Big Ten, WCC, WAC, etc.) still plays its full
-    // conference round-robins so the whole league has records every week.
-    // Pass a user-only schools map to buildLevelSchedule so its INDEPENDENT
-    // path uses the actual user as the single-team "conference".
-    const userOnlySchools = { [input.userSchoolId]: schools[input.userSchoolId] }
-    const userSlate = buildLevelSchedule(conferenceId, userOnlySchools, level, 2027, seed)
-    const leagueSlate = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
-    schedule = [...userSlate, ...leagueSlate]
+    // Independent D1 (e.g. Oregon State): the user has NO conference games and
+    // NO pre-filled non-conf slate at dynasty creation (per Nate: filling the
+    // entire slate auto-decided opponents — and only top-25 ones at that).
+    // The user fills the schedule game-by-game on the Schedule page, or hits
+    // the Auto Create Schedule button which uses the parity-aware
+    // autoCreateSchedule. The rest of D1 still plays its full conference
+    // round-robins so the whole league has records every week.
+    schedule = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
   } else {
     schedule = buildFullDivisionSchedule(conferences, schools, level, 2027, seed, input.userSchoolId)
   }
@@ -904,14 +903,43 @@ function conferenceAbbreviation(confId) {
 function buildIndependentSchedule(userSchoolId, level, year, rng, targetGames) {
   if (!userSchoolId) return []
   // Build opponent pool — every D1 team in the non-NAIA universe that
-  // ISN'T the user. Bias toward mid+ teams (skip the bottom 50) so the
-  // schedule has some teeth.
+  // ISN'T the user. PARITY FIX (per Nate): previously sorted by strength desc
+  // + walked from the top, so the user ended up playing only top-25 teams.
+  // Now we keep the whole D1 universe (~310 teams) and shuffle deterministically
+  // so the slate has a mix — couple of marquees, several mid-tier, a couple of
+  // weaker programs.
   const allD1 = (nonNaiaRaw.divisions || []).find(d => d.id === 'D1')?.teams || []
-  const opponents = allD1
-    .filter(t => t.id !== userSchoolId)
-    .sort((a, b) => (b.strength || 0) - (a.strength || 0))
-    .slice(0, 220)
-  if (opponents.length === 0) return []
+  const candidates = allD1.filter(t => t.id !== userSchoolId)
+  if (candidates.length === 0) return []
+  // Build 3 strength buckets — top quartile, middle half, bottom quartile —
+  // and draw a realistic mix. Real-world OSU 2025 had ~25% marquee, ~50% mid,
+  // ~25% bottom (e.g. Indiana St. + UC Santa Barbara + Sacramento St.).
+  const byStrength = [...candidates].sort((a, b) => (b.strength || 0) - (a.strength || 0))
+  const q1 = byStrength.slice(0, Math.floor(byStrength.length * 0.25))    // top
+  const q2 = byStrength.slice(Math.floor(byStrength.length * 0.25), Math.floor(byStrength.length * 0.75))   // mid
+  const q3 = byStrength.slice(Math.floor(byStrength.length * 0.75))       // bottom
+  // Shuffle each bucket via the seeded rng so it's not the same team every yr.
+  function shuffle(arr) {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = rng.int(0, i)
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+  // Interleave: 1 marquee → 2 mid → 1 bottom → 2 mid → ... so the user gets
+  // a believable mix across the season's weekends.
+  const sQ1 = shuffle(q1), sQ2 = shuffle(q2), sQ3 = shuffle(q3)
+  const pattern = ['Q1', 'Q2', 'Q2', 'Q3', 'Q2', 'Q1', 'Q2', 'Q3', 'Q2', 'Q1', 'Q2', 'Q3', 'Q2']
+  const opponents = []
+  let i1 = 0, i2 = 0, i3 = 0
+  for (const p of pattern) {
+    let pick = null
+    if (p === 'Q1') pick = sQ1[i1++ % sQ1.length]
+    else if (p === 'Q3') pick = sQ3[i3++ % sQ3.length]
+    else pick = sQ2[i2++ % sQ2.length]
+    if (pick) opponents.push(pick)
+  }
 
   // ~13 weekends of regular-season slots starting wk 27.
   const games = []
