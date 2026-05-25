@@ -1889,26 +1889,20 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
   let primary
   if (inOffseason) {
     primary = (
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-2xl shrink-0">
-          {offseasonIcon(woy)}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
+          Week {woy}/52{date ? ` · ${formatShortDate(date)}` : ''}
         </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
-            Week {woy}/52{date ? ` · ${formatShortDate(date)}` : ''}
-          </div>
-          <div className="text-sm font-semibold mt-0.5">{ph?.label || 'Offseason'}</div>
-        </div>
+        <div className="text-sm font-semibold mt-0.5">{ph?.label || 'Offseason'}</div>
       </div>
     )
   } else if (nextGame) {
     const opp = nextGame.homeId === userSchoolId ? nextGame.awayId : nextGame.homeId
-    const oppName = (save.schools[opp] || NON_NAIA_DISPLAY[opp])?.name || 'TBD'
+    const oppSchool = save.schools[opp] || NON_NAIA_DISPLAY[opp] || { id: opp, name: 'TBD' }
+    const oppName = oppSchool?.name || 'TBD'
     primary = (
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-pnw-green flex items-center justify-center text-2xl shrink-0">
-          ⚾
-        </div>
+        {oppSchool && <TeamLogo school={oppSchool} size={40} className="shrink-0" />}
         <div>
           <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">
             Next Game · Wk {nextGame.seasonWeek}
@@ -1937,18 +1931,13 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
       : ps.stage === 'WS' ? 'World Series'
       : 'Postseason'
     primary = (
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center text-2xl shrink-0">
-          🏆
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">Postseason · Wk {woy}</div>
-          <div className="text-sm font-semibold mt-0.5">
-            {pendingRound?.oppName ? `${ps_label} vs ${pendingRound.oppName}` : ps_label}
-            {!pendingRound && ps.userAlive && (
-              <span className="text-[10px] opacity-70 ml-2 font-normal">Open the bracket to play</span>
-            )}
-          </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">Postseason · Wk {woy}</div>
+        <div className="text-sm font-semibold mt-0.5">
+          {pendingRound?.oppName ? `${ps_label} vs ${pendingRound.oppName}` : ps_label}
+          {!pendingRound && ps.userAlive && (
+            <span className="text-[10px] opacity-70 ml-2 font-normal">Open the bracket to play</span>
+          )}
         </div>
       </div>
     )
