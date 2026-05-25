@@ -100,18 +100,48 @@ export default function NWACChampionshipBracket() {
   }
 
   // ── Tournament status summary ──
+  //
+  // Champion-detection has to handle two distinct bracket paths:
+  //
+  //   STANDARD PATH (WB-Final winner reaches G14 by winning G13):
+  //     G14 = W12 vs W11. If W11 wins G14, they're champion (0 losses
+  //     vs 2). If W11 loses G14, a reset G15 plays for the title.
+  //
+  //   3-TEAM PATH (WB-Final winner loses G13):
+  //     The official NWAC rule byes W11 past G14. G14 is now an
+  //     elimination between W12 and W13. G15 = W11 vs W14 decides
+  //     the championship. G14 alone never crowns a champion here.
+  //
+  // Previous logic checked G14 unconditionally as a fallback to G15,
+  // which was correct for the standard path but called a champion
+  // prematurely in the 3-team path (the case we hit IRL on 2026-05-25).
   const status = useMemo(() => {
     if (!outcomes) return { label: 'Loading…', tone: 'idle' }
-    // Count all 15 games. In the 3-team scenario G15 is the actual title
-    // game (not just "if necessary"), so it belongs in the denominator.
     const real = TOURNEY.games
     const finals = real.filter((g) => outcomes.get(g.num)?.status === 'final')
-    const champOutcome =
-      outcomes.get(IF_NEC_GAME)?.winner_id != null
-        ? outcomes.get(IF_NEC_GAME)
-        : outcomes.get(CHAMP_GAME)
-    if (champOutcome?.winner_id) {
-      const champ = TOURNEY.seeds.find((s) => s.team_id === champOutcome.winner_id)
+
+    const wbFinalWinnerId = outcomes.get(11)?.winner_id
+    const g13WinnerId     = outcomes.get(13)?.winner_id
+    const g14              = outcomes.get(CHAMP_GAME)    // G14
+    const g15              = outcomes.get(IF_NEC_GAME)   // G15
+
+    let champId = null
+    if (g15?.winner_id != null) {
+      // Whether played as a reset or as the actual 3-team title game,
+      // G15 always crowns the champion when it's been played.
+      champId = g15.winner_id
+    } else if (
+      wbFinalWinnerId != null &&
+      g13WinnerId === wbFinalWinnerId &&
+      g14?.winner_id === wbFinalWinnerId
+    ) {
+      // Standard path AND WB-Final winner has now beaten everyone:
+      // WB Final + G13 + G14 with no losses. They're champion outright.
+      champId = wbFinalWinnerId
+    }
+
+    if (champId != null) {
+      const champ = TOURNEY.seeds.find((s) => s.team_id === champId)
       return { label: `Champion: ${champ?.name || 'TBD'}`, tone: 'champ' }
     }
     if (finals.length === 0) {
