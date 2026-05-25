@@ -18,8 +18,55 @@ export const BUDGET_CATEGORIES = [
   'facilities',
   'medical',
   'recruiting',
-  // 'misc' removed — every slider should have a concrete game effect.
+  // Emergency fund — user-allocated buffer for random in-season events
+  // (booster requests, equipment theft, hotel mix-ups, etc.). Random-
+  // event apply()s draw from this pool FIRST via spendFromBudget() so
+  // the user can see exactly how much "rainy-day money" is on hand
+  // before they decide. Per Nate, May 2026.
+  'emergencyFund',
 ]
+
+/**
+ * Spend `amount` from the budget. Drains the emergency fund first
+ * (which is what it exists for), then falls back to the affected
+ * category allocation if the fund is short. Returns an object
+ * { fromEmergency, fromCategory, total } so callers can surface
+ * the split to the user.
+ *
+ * Used by random-event apply()s — call this instead of mutating
+ * state.budget.totalAthleticBudget or state.budget.allocations[cat]
+ * directly. Emergency fund visibility on the PendingEventModal is
+ * driven by state.budget.allocations.emergencyFund — keep it real.
+ */
+export function spendFromBudget(state, amount, fallbackCategory = null) {
+  if (!state?.budget?.allocations) return { fromEmergency: 0, fromCategory: 0, total: 0 }
+  const result = { fromEmergency: 0, fromCategory: 0, total: amount }
+  const allocs = state.budget.allocations
+  const have = allocs.emergencyFund || 0
+  if (amount <= have) {
+    allocs.emergencyFund = have - amount
+    result.fromEmergency = amount
+    return result
+  }
+  // Drain emergency first, then pull the shortfall from the fallback
+  // category (or totalAthleticBudget if no category specified).
+  allocs.emergencyFund = 0
+  result.fromEmergency = have
+  const shortfall = amount - have
+  if (fallbackCategory && allocs[fallbackCategory] != null) {
+    allocs[fallbackCategory] = Math.max(0, (allocs[fallbackCategory] || 0) - shortfall)
+  } else {
+    state.budget.totalAthleticBudget = Math.max(0, (state.budget.totalAthleticBudget || 0) - shortfall)
+  }
+  result.fromCategory = shortfall
+  return result
+}
+
+/** Add `amount` back into the emergency fund (e.g. boosters refund a cost). */
+export function addToEmergencyFund(state, amount) {
+  if (!state?.budget?.allocations) return
+  state.budget.allocations.emergencyFund = (state.budget.allocations.emergencyFund || 0) + amount
+}
 
 /**
  * LEVEL-AWARE default allocations. Each block is % of total athletic budget
@@ -41,7 +88,7 @@ export const BUDGET_CATEGORIES = [
  */
 const LEVEL_DEFAULT_ALLOCATION = {
   D1: {
-    scholarships:     0.30,
+    scholarships:     0.27,
     coachingSalaries: 0.30,
     travel:           0.12,
     equipment:        0.04,
@@ -50,9 +97,10 @@ const LEVEL_DEFAULT_ALLOCATION = {
     facilities:       0.09,
     medical:          0.04,
     recruiting:       0.06,
+    emergencyFund:    0.03,
   },
   D2: {
-    scholarships:     0.40,
+    scholarships:     0.37,
     coachingSalaries: 0.22,
     travel:           0.12,
     equipment:        0.05,
@@ -61,10 +109,11 @@ const LEVEL_DEFAULT_ALLOCATION = {
     facilities:       0.05,
     medical:          0.03,
     recruiting:       0.08,
+    emergencyFund:    0.03,
   },
   D3: {
     scholarships:     0.00,    // ZERO athletic aid at D3
-    coachingSalaries: 0.38,
+    coachingSalaries: 0.35,
     travel:           0.20,
     equipment:        0.08,
     uniforms:         0.03,
@@ -72,9 +121,10 @@ const LEVEL_DEFAULT_ALLOCATION = {
     facilities:       0.13,
     medical:          0.04,
     recruiting:       0.10,
+    emergencyFund:    0.03,
   },
   NAIA: {
-    scholarships:     0.54,
+    scholarships:     0.51,
     coachingSalaries: 0.19,
     travel:           0.14,
     equipment:        0.027,
@@ -83,10 +133,11 @@ const LEVEL_DEFAULT_ALLOCATION = {
     facilities:       0.034,
     medical:          0.013,
     recruiting:       0.017,
+    emergencyFund:    0.03,
   },
   NWAC: {
     scholarships:     0.00,    // ZERO at JUCO
-    coachingSalaries: 0.42,
+    coachingSalaries: 0.39,
     travel:           0.25,
     equipment:        0.08,
     uniforms:         0.03,
@@ -94,6 +145,7 @@ const LEVEL_DEFAULT_ALLOCATION = {
     facilities:       0.06,
     medical:          0.03,
     recruiting:       0.08,
+    emergencyFund:    0.03,
   },
 }
 
@@ -513,8 +565,8 @@ export const BUDGET_PRESETS = [
     label: 'Balanced',
     blurb: 'Even mix — no category neglected. Safe default for a program with no clear weakness.',
     allocations: {
-      scholarships: 0.57, coachingSalaries: 0.18, equipment: 0.03, uniforms: 0.015,
-      meals: 0.025, facilities: 0.035, medical: 0.015, recruiting: 0.02,
+      scholarships: 0.54, coachingSalaries: 0.18, equipment: 0.03, uniforms: 0.015,
+      meals: 0.025, facilities: 0.035, medical: 0.015, recruiting: 0.02, emergencyFund: 0.03,
     },
   },
   {
@@ -522,8 +574,8 @@ export const BUDGET_PRESETS = [
     label: 'Dev-focused',
     blurb: 'Heavy facilities, S&C, meals. Trade off recruiting for faster player growth — pays off over years.',
     allocations: {
-      scholarships: 0.52, coachingSalaries: 0.18, equipment: 0.04, uniforms: 0.015,
-      meals: 0.04, facilities: 0.065, medical: 0.025, recruiting: 0.015,
+      scholarships: 0.49, coachingSalaries: 0.18, equipment: 0.04, uniforms: 0.015,
+      meals: 0.04, facilities: 0.065, medical: 0.025, recruiting: 0.015, emergencyFund: 0.03,
     },
   },
   {
@@ -531,8 +583,8 @@ export const BUDGET_PRESETS = [
     label: 'Recruiting-focused',
     blurb: 'Big scholarship + recruiting pools. Aggressive talent acquisition; lighter player-dev infrastructure.',
     allocations: {
-      scholarships: 0.62, coachingSalaries: 0.17, equipment: 0.025, uniforms: 0.015,
-      meals: 0.02, facilities: 0.025, medical: 0.01, recruiting: 0.04,
+      scholarships: 0.59, coachingSalaries: 0.17, equipment: 0.025, uniforms: 0.015,
+      meals: 0.02, facilities: 0.025, medical: 0.01, recruiting: 0.04, emergencyFund: 0.03,
     },
   },
   {
@@ -540,17 +592,17 @@ export const BUDGET_PRESETS = [
     label: 'Win-now',
     blurb: 'Heavy travel cushion + meals + medical. Senior-laden teams that need to peak THIS year.',
     allocations: {
-      scholarships: 0.55, coachingSalaries: 0.18, equipment: 0.035, uniforms: 0.02,
-      meals: 0.035, facilities: 0.025, medical: 0.025, recruiting: 0.015,
+      scholarships: 0.52, coachingSalaries: 0.18, equipment: 0.035, uniforms: 0.02,
+      meals: 0.035, facilities: 0.025, medical: 0.025, recruiting: 0.015, emergencyFund: 0.03,
     },
   },
   {
     key: 'PINCH_PENNIES',
     label: 'Pinch pennies',
-    blurb: 'Bare minimum on extras, banked $ rolls over to next year. Use when rebuilding or saving up.',
+    blurb: 'Bare minimum on extras, fat emergency cushion. Use when rebuilding — rainy-day money piles up.',
     allocations: {
-      scholarships: 0.55, coachingSalaries: 0.16, equipment: 0.02, uniforms: 0.01,
-      meals: 0.015, facilities: 0.02, medical: 0.005, recruiting: 0.01,
+      scholarships: 0.50, coachingSalaries: 0.16, equipment: 0.02, uniforms: 0.01,
+      meals: 0.015, facilities: 0.02, medical: 0.005, recruiting: 0.01, emergencyFund: 0.08,
     },
   },
   {
@@ -558,8 +610,8 @@ export const BUDGET_PRESETS = [
     label: 'Strong coaching',
     blurb: 'Top-of-market salaries to keep + attract elite assistants. Drives weekly AP and dev quality.',
     allocations: {
-      scholarships: 0.54, coachingSalaries: 0.24, equipment: 0.025, uniforms: 0.015,
-      meals: 0.025, facilities: 0.03, medical: 0.015, recruiting: 0.02,
+      scholarships: 0.51, coachingSalaries: 0.24, equipment: 0.025, uniforms: 0.015,
+      meals: 0.025, facilities: 0.03, medical: 0.015, recruiting: 0.02, emergencyFund: 0.03,
     },
   },
 ]

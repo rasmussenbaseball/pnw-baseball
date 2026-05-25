@@ -84,6 +84,12 @@ const CATEGORIES = {
     effect: 'Boosts weekly AP earned + recruit pool size. Up to +5 AP/wk.',
     icon: '',
   },
+  emergencyFund: {
+    label: 'Emergency Fund',
+    blurb: 'Rainy-day buffer. Drawn FIRST when random in-season events cost money (booster grants, equipment theft, hotel mix-ups, etc.).',
+    effect: 'Higher = more wiggle room before random-event costs eat into other categories. Surfaced on every popup that involves money so you see what\'s available.',
+    icon: '',
+  },
 }
 
 const ADJUST_STEP = 1000

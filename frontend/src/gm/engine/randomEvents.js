@@ -24,6 +24,7 @@
 
 import { makeRng } from './rng'
 import { playerOverall } from './playerRating'
+import { spendFromBudget, addToEmergencyFund } from './budget'
 
 // ─── Level + level-fit helpers ─────────────────────────────────────────────
 // Used by event conditions to gate events that don't make sense at a level.
@@ -963,7 +964,10 @@ export const EVENT_CATALOG = {
       body: 'Vandals tore up the infield grass after Sunday\'s game. Groundskeeper needs $4K of materials to patch it before the weekend.',
       choices: [
         { id: 'pay-from-budget', label: 'Pay from operations budget', blurb: 'Quick fix. -$4K from your budget.',
-          apply: (state) => { if (state.budget) state.budget.totalAthleticBudget = Math.max(0, state.budget.totalAthleticBudget - 4000) } },
+          apply: (state) => {
+            const spent = spendFromBudget(state, 4000)
+            pushNews(state, `Paid the $4K field repair. ${spent.fromEmergency > 0 ? `$${(spent.fromEmergency / 1000).toFixed(1)}K from emergency fund` : ''}${spent.fromCategory > 0 ? `${spent.fromEmergency > 0 ? ' + ' : ''}$${(spent.fromCategory / 1000).toFixed(1)}K from athletic budget` : ''}.`)
+          } },
         { id: 'beg-AD', label: 'Ask the AD to cover it', blurb: '70% chance AD picks it up. 30% chance they say "your problem".',
           apply: (state, rng) => { if (rng.chance(0.7)) { pushNews(state, 'AD covered the field repair bill. Coach owes a favor.') } else { applyJobSecurity(state, -2); if (state.budget) state.budget.totalAthleticBudget -= 4000 } } },
         { id: 'play-on-damaged', label: 'Play on the damaged field', blurb: 'Higher injury risk all weekend. Looks unprofessional.',

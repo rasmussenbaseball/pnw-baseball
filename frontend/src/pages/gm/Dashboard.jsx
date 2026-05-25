@@ -1545,6 +1545,12 @@ function PlayerInfoBanner({ player }) {
 function PendingEventModal({ event, save, onResolve }) {
   if (!event) return null
   const involvedPlayer = event.playerId ? save?.players?.[event.playerId] : null
+  // Emergency fund — surface the current balance so the user knows what
+  // buffer they have before picking a $-cost option. The event's body /
+  // choice blurbs mention dollar costs ("-$3K from pool", "-$2K", etc.);
+  // showing the cushion makes those costs legible without doing math.
+  const emergencyFund = save?.budget?.allocations?.emergencyFund || 0
+  const eventCostsMoney = /\$|\bcost|fund\b|donat|charter|grant/i.test(`${event.title} ${event.body}`)
   return (
     <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-team-accent">
@@ -1554,6 +1560,12 @@ function PendingEventModal({ event, save, onResolve }) {
         <div className="p-5">
           <h2 className="text-lg font-bold text-pnw-slate mb-2">{event.title}</h2>
           {involvedPlayer && <PlayerInfoBanner player={involvedPlayer} />}
+          {eventCostsMoney && (
+            <div className="mb-3 px-3 py-2 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-2">
+              <span><span className="font-semibold">💰 Emergency fund:</span> ${(emergencyFund / 1000).toFixed(1)}K available</span>
+              <span className="text-[10px] opacity-70">Drawn first on any $-cost choice</span>
+            </div>
+          )}
           <p className="text-sm text-gray-700 mb-4 leading-snug">{event.body}</p>
           <div className="space-y-2">
             {(event.choices || []).map(choice => (
