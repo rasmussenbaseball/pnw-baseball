@@ -1614,6 +1614,7 @@ function EventOutcomeModal({ outcome, save, onClose }) {
       TRAVEL: '✈️',
       ROSTER: '👥',
       TEAM_HAPPINESS: '😊',
+      TEAM_DURABILITY: '💪',
     })[eff.kind] || '·'
   }
   return (

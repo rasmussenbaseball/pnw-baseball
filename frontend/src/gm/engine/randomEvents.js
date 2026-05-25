@@ -388,8 +388,11 @@ export const EVENT_CATALOG = {
           {
             id: 'decline-midweek',
             label: 'Decline — rest is more important',
-            blurb: 'Keep the legs fresh for conference weekend.',
-            apply: () => {},
+            blurb: 'Team +1 durability (rested arms). No game added.',
+            apply: (state) => {
+              applyTeamDurability(state, +1)
+              pushNews(state, `Coach declined the midweek vs ${opponentName}. Arms stay fresh for the weekend series.`)
+            },
           },
         ],
       }
@@ -585,8 +588,11 @@ export const EVENT_CATALOG = {
           {
             id: 'reschedule',
             label: 'Reschedule his visit',
-            blurb: 'Standard play. Small risk he drifts to another program.',
-            apply: () => {},
+            blurb: '~70% he reschedules. ~30% he drifts to another school.',
+            apply: (state, rng) => {
+              if (rng.chance(0.7)) pushNews(state, 'Recruit rescheduled the visit for the following weekend. Pipeline intact.')
+              else { applyJobSecurity(state, -1); pushNews(state, 'Recruit lost interest after the reschedule and committed elsewhere.') }
+            },
           },
           {
             id: 'pass',
@@ -878,10 +884,17 @@ export const EVENT_CATALOG = {
         body: `${player.firstName} ${player.lastName} was in a minor accident on the way to practice. He's okay, but his arm is sore. He could play this weekend if needed.`,
         playerId: player.id,
         choices: [
-          { id: 'rest-week', label: 'Sit him a week to be safe', blurb: 'Smart move. Player appreciates the patience.',
-            apply: (state) => { applyPlayerMorale(player, +5); player._minorInjuryFlag = { weeks: 1, year: state.calendar.year } } },
-          { id: 'play-if-able', label: 'Play if the trainer clears him', blurb: 'Standard process. Trust the medical staff.',
-            apply: () => {} },
+          { id: 'rest-week', label: 'Sit him a week to be safe', blurb: 'Player happiness +5. Misses next 1 week.',
+            apply: (state) => {
+              applyPlayerMorale(player, +5)
+              player._minorInjuryFlag = { weeks: 1, year: state.calendar.year }
+              pushNews(state, `${player.firstName} ${player.lastName} (${player.classYear}) sat out a week to be safe. Player happiness +5; available again next series.`)
+            } },
+          { id: 'play-if-able', label: 'Play if the trainer clears him', blurb: '~70% he plays through. ~30% the soreness flares mid-game.',
+            apply: (state, rng) => {
+              if (rng.chance(0.7)) pushNews(state, `Trainer cleared ${player.firstName} ${player.lastName} (${player.classYear}). Played through the soreness.`)
+              else { player._minorInjuryFlag = { weeks: 1, year: state.calendar.year }; applyPlayerMorale(player, -4); pushNews(state, `${player.firstName} ${player.lastName} (${player.classYear}) re-aggravated the sore arm mid-game. Out a week.`) }
+            } },
         ],
       }
     },
@@ -1378,8 +1391,8 @@ export const EVENT_CATALOG = {
             apply: (state, rng) => { if (state.budget?.allocations) { state.budget.allocations.scholarships = Math.max(0, state.budget.allocations.scholarships - 8000); state.budget.allocations.travel = (state.budget.allocations.travel || 0) + 1500 } if (rng.chance(0.6)) pushNews(state, 'Portal gem signed. Coach\'s pitch worked.'); else pushNews(state, 'Portal gem went elsewhere. $1.5K travel wasted.') } },
           { id: 'phone-only', label: 'Phone-only recruitment, lower offer', blurb: 'Cheap try. 25% close rate.',
             apply: (state, rng) => { if (rng.chance(0.25)) pushNews(state, 'Portal gem accepted the smaller deal. Steal of an offseason.'); else pushNews(state, 'Portal gem passed on the cheap offer.') } },
-          { id: 'pass', label: 'Pass — too expensive', blurb: 'Stay disciplined with the budget.',
-            apply: () => {} },
+          { id: 'pass', label: 'Pass — too expensive', blurb: 'Job sec +1 (AD likes the budget discipline). No scholarship spent.',
+            apply: (state) => { applyJobSecurity(state, +1); pushNews(state, `Passed on the ${fromSchool} portal gem. AD respects the budget restraint.`) } },
         ],
       }
     },
@@ -1450,8 +1463,8 @@ export const EVENT_CATALOG = {
       choices: [
         { id: 'sign-extension', label: 'Sign the 2-year extension', blurb: '+Facility upgrade, +long-term job security. Can\'t leave for 2 years even if a D1 calls.',
           apply: (state) => { applyJobSecurity(state, +15); if (state.budget) state.budget.totalAthleticBudget += 30000; state._facilityExtension = { years: 2, year: state.calendar.year } } },
-        { id: 'decline-keep-options', label: 'Decline — preserve options', blurb: 'No upgrade. Free to take offers next offseason.',
-          apply: () => {} },
+        { id: 'decline-keep-options', label: 'Decline — preserve options', blurb: 'No facility, no extension. Career flexibility intact.',
+          apply: (state) => { pushNews(state, 'Coach declined the 2-year extension. No facility upgrade. Free to take outside offers next offseason.') } },
       ],
     }),
   },
@@ -1568,8 +1581,8 @@ export const EVENT_CATALOG = {
       choices: [
         { id: 'go-on', label: 'Accept, talk shop honestly', blurb: 'Recruiting boost — high schoolers listen.',
           apply: (state) => { applyJobSecurity(state, +2); if (state.budget?.allocations) state.budget.allocations.recruiting += 1000; pushNews(state, 'Coach\'s podcast appearance got positive buzz. Recruiting bump.') } },
-        { id: 'decline-politely', label: 'Decline — too risky', blurb: 'Safe. Boring.',
-          apply: () => {} },
+        { id: 'decline-politely', label: 'Decline — too risky', blurb: 'No upside, no risk. Producer notes the snub.',
+          apply: (state) => { applyJobSecurity(state, -1); pushNews(state, 'Coach declined the podcast invite. Show host mentioned the snub on a later episode.') } },
         { id: 'go-on-bash-rival', label: 'Accept and take shots at rival programs', blurb: 'Big risk. Big reward — or big consequences.',
           apply: (state, rng) => { if (rng.chance(0.4)) { applyJobSecurity(state, +5); pushNews(state, 'Coach\'s rival-bashing podcast went viral. Fan favorite.') } else { applyJobSecurity(state, -6); pushNews(state, 'Coach\'s rival comments backfired. AD furious.') } } },
       ],
@@ -1720,8 +1733,8 @@ export const EVENT_CATALOG = {
       choices: [
         { id: 'accept', label: 'Accept the keynote', blurb: '+Visibility, +$2K, future job offers more likely.',
           apply: (state) => { if (state.budget) state.budget.totalAthleticBudget += 2000; applyJobSecurity(state, +2) } },
-        { id: 'decline', label: 'Decline — focus on team', blurb: 'Boring but safe.',
-          apply: () => {} },
+        { id: 'decline', label: 'Decline — focus on team', blurb: 'No $, no profile bump. Clinic board notes you said no.',
+          apply: (state) => { applyJobSecurity(state, -1); pushNews(state, 'Coach declined the clinic keynote. Other coaches snagged the slot.') } },
       ],
     }),
   },
@@ -1743,10 +1756,19 @@ export const EVENT_CATALOG = {
             if (user) user.tactician = Math.min(99, (user.tactician || 60) + 1)
           },
         },
-        { id: 'send-assistant', label: 'Send your bench coach', blurb: 'Cheap delegation. Less personal upside.',
-          apply: () => {} },
-        { id: 'pass', label: 'Pass — stick with practice', blurb: 'Old-school. Practice is everything.',
-          apply: () => {} },
+        { id: 'send-assistant', label: 'Send your bench coach', blurb: '+1 to bench coach\'s tactician rating. No personal upside.',
+          apply: (state) => {
+            const team = state.teams?.[state.userSchoolId]
+            const bench = (team?.assistantCoachIds || [])
+              .map(id => state.coaches?.[id])
+              .find(c => c?.role === 'BENCH_COACH') || (team?.assistantCoachIds || []).map(id => state.coaches?.[id]).filter(Boolean)[0]
+            if (bench) {
+              bench.tactician = Math.min(99, (bench.tactician || 60) + 1)
+              pushNews(state, `${bench.firstName || 'Bench'} ${bench.lastName || 'coach'} attended the sabermetrics conference. Tactician +1.`)
+            } else pushNews(state, 'No assistant available to send. Conference slot wasted.')
+          } },
+        { id: 'pass', label: 'Pass — stick with practice', blurb: 'No rating bump. Practice volume preserved.',
+          apply: (state) => { applyTeamMorale(state, +1); pushNews(state, 'Coach passed on the conference. Extra practice reps booked instead.') } },
       ],
     }),
   },
@@ -1768,8 +1790,8 @@ export const EVENT_CATALOG = {
           apply: (state) => { applyJobSecurity(state, +3) } },
         { id: 'oppose', label: 'Oppose — current alignment is good', blurb: 'AD frustrated but baseball traditionalists love it.',
           apply: (state) => { applyJobSecurity(state, -3) } },
-        { id: 'no-comment', label: 'No public comment', blurb: 'Politically safe.',
-          apply: () => {} },
+        { id: 'no-comment', label: 'No public comment', blurb: 'Job sec +1 (no political risk taken).',
+          apply: (state) => { applyJobSecurity(state, +1); pushNews(state, 'Coach gave the realignment "no comment". AD respected the discretion.') } },
       ],
     }),
   },
@@ -1786,8 +1808,11 @@ export const EVENT_CATALOG = {
       choices: [
         { id: 'all-in', label: 'Restructure practices to adapt fast', blurb: 'Painful short-term, advantage long-term.',
           apply: (state) => { applyTeamMorale(state, -2); applyJobSecurity(state, +4) } },
-        { id: 'wait-see', label: 'Wait and see how others adapt', blurb: 'Conservative. Late mover sometimes wins.',
-          apply: () => {} },
+        { id: 'wait-see', label: 'Wait and see how others adapt', blurb: '50/50: late mover wins (job sec +2) OR you fall behind (job sec -3).',
+          apply: (state, rng) => {
+            if (rng.chance(0.5)) { applyJobSecurity(state, +2); pushNews(state, 'Wait-and-see paid off. Other coaches over-corrected; your steady hand looked smart.') }
+            else { applyJobSecurity(state, -3); pushNews(state, 'Other programs adapted faster. Coach got caught flat-footed.') }
+          } },
       ],
     }),
   },
@@ -1893,8 +1918,12 @@ export const EVENT_CATALOG = {
           apply: (state) => { applyJobSecurity(state, +2) } },
         { id: 'defer-postgame', label: 'Only postgame, never pre', blurb: 'Smart routine protection.',
           apply: (state) => { applyJobSecurity(state, +1) } },
-        { id: 'decline', label: 'Decline entirely', blurb: 'Lost recruiting touch. Sometimes the right call.',
-          apply: () => {} },
+        { id: 'decline', label: 'Decline entirely', blurb: '-$500 recruiting budget (lost touchpoint). Job sec -1 (station noticed).',
+          apply: (state) => {
+            if (state.budget?.allocations) state.budget.allocations.recruiting = Math.max(0, (state.budget.allocations.recruiting || 0) - 500)
+            applyJobSecurity(state, -1)
+            pushNews(state, 'Coach declined the TV sit-down. Station ran the story without him; recruiting touchpoint lost.')
+          } },
       ],
     }),
   },
@@ -2998,11 +3027,17 @@ export function maybeFireRandomEvent(state) {
 function snapshotEventState(state) {
   const team = state.teams?.[state.userSchoolId]
   let teamHappiness = 0
-  let count = 0
+  let teamHitterDur = 0
+  let teamPitcherDur = 0
+  let happinessCount = 0
+  let durCount = 0
   if (team) {
     for (const pid of (team.rosterPlayerIds || [])) {
       const p = state.players?.[pid]
-      if (p?.happiness?.value != null) { teamHappiness += p.happiness.value; count++ }
+      if (!p) continue
+      if (p.happiness?.value != null) { teamHappiness += p.happiness.value; happinessCount++ }
+      if (p.isPitcher && p.pitcher?.durability != null) { teamPitcherDur += p.pitcher.durability; durCount++ }
+      else if (p.hitter?.durability != null) { teamHitterDur += p.hitter.durability; durCount++ }
     }
   }
   return {
@@ -3012,7 +3047,8 @@ function snapshotEventState(state) {
     recruiting: state.budget?.allocations?.recruiting ?? 0,
     travel: state.budget?.allocations?.travel ?? 0,
     rosterSize: team?.rosterPlayerIds?.length ?? 0,
-    teamHappinessAvg: count > 0 ? teamHappiness / count : 0,
+    teamHappinessAvg: happinessCount > 0 ? teamHappiness / happinessCount : 0,
+    teamDurabilityAvg: durCount > 0 ? (teamHitterDur + teamPitcherDur) / durCount : 0,
     newsLen: state.newsfeed?.length ?? 0,
   }
 }
@@ -3062,6 +3098,11 @@ function buildEffectsFromDelta(before, after) {
   if (Math.abs(happDelta) >= 0.5) {
     const d = happDelta
     out.push({ kind: 'TEAM_HAPPINESS', delta: d, label: `Team happiness ${d > 0 ? '+' : ''}${d.toFixed(1)}` })
+  }
+  const durDelta = after.teamDurabilityAvg - before.teamDurabilityAvg
+  if (Math.abs(durDelta) >= 0.3) {
+    const d = durDelta
+    out.push({ kind: 'TEAM_DURABILITY', delta: d, label: `Team durability ${d > 0 ? '+' : ''}${d.toFixed(1)}` })
   }
   return out
 }
