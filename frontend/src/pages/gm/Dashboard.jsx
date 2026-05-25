@@ -672,11 +672,14 @@ export default function Dashboard() {
         <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-pnw-green/30 to-transparent pointer-events-none"></div>
         <div className="absolute top-0 left-0 w-2 h-full bg-pnw-green"></div>
 
-        <div className="relative p-4 sm:p-6 flex flex-col md:flex-row md:justify-between md:items-stretch gap-4 md:gap-6">
+        <div className="relative p-4 sm:p-6 flex flex-col md:flex-row md:justify-between md:items-stretch gap-4 md:gap-8">
           {/* Identity */}
-          <div className="flex gap-3 sm:gap-5 items-center flex-1 min-w-0">
-            <div className="bg-white/10 rounded-2xl p-2 sm:p-3 backdrop-blur-sm shadow-inner ring-1 ring-white/15 shrink-0">
-              <TeamLogo school={school} size={64} />
+          <div className="flex gap-5 sm:gap-7 md:gap-8 items-center flex-1 min-w-0">
+            {/* Logo — large + no background tile (per Nate, hero looked
+                cramped with the white/10 box behind it). Lets the team
+                colors carry the visual weight on their own. */}
+            <div className="shrink-0">
+              <TeamLogo school={school} size={120} />
             </div>
             <div className="min-w-0">
               <Link to="/gm" className="text-[10px] opacity-60 hover:underline tracking-wider uppercase">Dynasties</Link>
