@@ -687,6 +687,13 @@ export default function Header() {
                         {user.email}
                       </div>
                       <Link
+                        to="/account"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        My Account
+                      </Link>
+                      <Link
                         to="/favorites"
                         onClick={() => setUserMenuOpen(false)}
                         className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -832,6 +839,13 @@ export default function Header() {
               {user ? (
                 <>
                   <div className="px-3 py-1 text-xs text-teal-200/50 truncate">{user.email}</div>
+                  <Link
+                    to="/account"
+                    onClick={() => setMobileOpen(false)}
+                    className="block px-3 py-2 rounded text-sm text-teal-100 hover:text-white hover:bg-white/10"
+                  >
+                    My Account
+                  </Link>
                   <Link
                     to="/favorites"
                     onClick={() => setMobileOpen(false)}

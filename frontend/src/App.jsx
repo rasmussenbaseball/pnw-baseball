@@ -190,6 +190,7 @@ import ArticlesList from './pages/portal/ArticlesList'
 import ArticleEditor from './pages/portal/ArticleEditor'
 import EmailComposer from './pages/portal/EmailComposer'
 import Unsubscribe from './pages/Unsubscribe'
+import Account from './pages/Account'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'
@@ -365,6 +366,9 @@ export default function App() {
           {/* Email broadcasts (author-allowlist only) + public unsubscribe page */}
           <Route path="/broadcasts" element={<RequireArticleAuthor><EmailComposer /></RequireArticleAuthor>} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
+
+          {/* "My Account" — auth required */}
+          <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
