@@ -1556,7 +1556,11 @@ function PendingEventModal({ event, save, onResolve }) {
   // choice blurbs mention dollar costs ("-$3K from pool", "-$2K", etc.);
   // showing the cushion makes those costs legible without doing math.
   const emergencyFund = save?.budget?.allocations?.emergencyFund || 0
-  const eventCostsMoney = /\$|\bcost|fund\b|donat|charter|grant/i.test(`${event.title} ${event.body}`)
+  // Tighter regex than the original — was matching "fund" inside
+  // "fundraiser" and surfacing the emergency-fund chip on events that
+  // don't actually spend program money. Now requires a real money cue
+  // (dollar sign, cost, donation, charter, grant, paid, extension).
+  const eventCostsMoney = /\$\d|\bcost\b|\bcosts\b|\bdonat|\bcharter\b|\bgrant\b|\bextension\b|\bpaid\b/i.test(`${event.title} ${event.body}`)
   return (
     <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-team-accent">

@@ -450,11 +450,10 @@ export const EVENT_CATALOG = {
       if (!team) return null
       const players = (team.rosterPlayerIds || []).map(id => state.players?.[id]).filter(Boolean)
       if (players.length === 0) return null
-      const star = players.sort((a, b) => {
-        const ovrA = a.isPitcher ? (a.pitcher?.stuff || 0) : (a.hitter?.contact_r || 0)
-        const ovrB = b.isPitcher ? (b.pitcher?.stuff || 0) : (b.hitter?.contact_r || 0)
-        return ovrB - ovrA
-      })[0]
+      // Use the full playerOverall() instead of just contact_r / stuff —
+      // a power-only slugger or command artist could otherwise dodge the
+      // "star" pick. Per launch audit nice-to-have, May 2026.
+      const star = players.sort((a, b) => (playerOverall(b) || 0) - (playerOverall(a) || 0))[0]
       return {
         id: `evt_STAR_INJURED_${star.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'STAR_INJURED',
@@ -1466,8 +1465,14 @@ export const EVENT_CATALOG = {
         .some(r => r && r.status === 'signed' && r.signedTo === userId)
     },
     builder: (state, rng) => {
-      const recruit = pickSignedRecruit(state, rng)
-      if (!recruit) return null
+      // Title says "top recruit" — actually pick the top-rated signee
+      // rather than a random one (audit nice-to-have, May 2026).
+      const userId = state.userSchoolId
+      const signed = Object.values(state.recruits || {})
+        .filter(r => r && r.status === 'signed' && r.signedTo === userId)
+      if (signed.length === 0) return null
+      signed.sort((a, b) => (b.scoutedOvr || 0) - (a.scoutedOvr || 0))
+      const recruit = signed[0]
       const name = `${recruit.firstName} ${recruit.lastName}`
       const pos = recruit.primaryPosition || '?'
       const scholarship = recruit.liveOffer?.amount || recruit.scholarshipOffered || 0
@@ -1968,11 +1973,11 @@ export const EVENT_CATALOG = {
   SCHOLARSHIP_BOOST: {
     id: 'SCHOLARSHIP_BOOST',
     weight: 0.2,
-    condition: (state) => isOffseasonWeek(state),
+    // Gate to scholarship levels via state.level (matches the rest of the
+    // catalog — was reading school.level which could drift if a career
+    // swap is mid-flight).
+    condition: (state) => isOffseasonWeek(state) && state.level !== 'D3' && state.level !== 'NWAC',
     builder: (state) => {
-      const school = state.schools?.[state.userSchoolId]
-      const noScholar = school?.level === 'D3' || school?.level === 'NWAC'
-      if (noScholar) return null   // D3/NWAC have no scholarships, irrelevant
       return {
         id: `evt_SCHOL_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'SCHOLARSHIP_BOOST',
@@ -3215,7 +3220,11 @@ export function maybeFireRandomEvent(state) {
   if (!card) return false
 
   state.pendingEvent = card
-  state.eventCooldown.recentTemplateIds = [pick.id, ...(state.eventCooldown.recentTemplateIds || [])].slice(0, 3)
+  // Cooldown — keep the LAST 8 templates blocked so the same event doesn't
+  // re-fire 2-3 times in a short window. With ~90 templates in the catalog
+  // an 8-deep cooldown still leaves plenty of variety (vs the previous 3,
+  // which felt repetitive in playtests).
+  state.eventCooldown.recentTemplateIds = [pick.id, ...(state.eventCooldown.recentTemplateIds || [])].slice(0, 8)
   return true
 }
 

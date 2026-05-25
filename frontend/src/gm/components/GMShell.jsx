@@ -256,7 +256,10 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
             >
               <span>NW COACHING SIM</span>
             </div>
-            <div className="font-pixel text-sm sm:text-lg md:text-xl text-white truncate max-w-[140px] sm:max-w-[200px] md:max-w-[260px]">
+            <div
+              className="font-pixel text-sm sm:text-lg md:text-xl text-white truncate max-w-[140px] sm:max-w-[200px] md:max-w-[260px]"
+              title={schoolName || 'Home'}
+            >
               {schoolName || 'Home'}
             </div>
           </div>
