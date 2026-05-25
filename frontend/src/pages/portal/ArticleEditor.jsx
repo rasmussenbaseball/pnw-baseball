@@ -37,6 +37,8 @@ export default function ArticleEditor() {
 
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
+  const heroInputRef = useRef(null)
+  const [uploadingHero, setUploadingHero] = useState(false)
 
   useEffect(() => {
     if (!existing) return
@@ -119,35 +121,50 @@ export default function ArticleEditor() {
     insertAtCursor(md)
   }
 
+  // Shared upload helper — POST a file to the article-images bucket via
+  // the backend and return { url, path, filename }. Throws on failure.
+  async function uploadImage(file) {
+    if (!session?.access_token) throw new Error('Not authenticated; refresh and try again.')
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`${API_BASE}/portal/articles/upload-image`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: fd,
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.detail || `Upload failed (${res.status})`)
+    }
+    return res.json()
+  }
+
+  // Body-image upload — inserts a markdown image at the cursor.
   async function handleFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (!session?.access_token) {
-      setError('Not authenticated; refresh and try again.')
-      return
-    }
     setUploading(true); setError(null)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch(`${API_BASE}/portal/articles/upload-image`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: fd,
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(j.detail || `Upload failed (${res.status})`)
-      }
-      const data = await res.json()
+      const data = await uploadImage(file)
       const alt = (file.name || 'image').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ')
       insertAtCursor(`\n\n![${alt}](${data.url})\n\n`)
-    } catch (e) {
-      setError(e.message || 'Image upload failed')
-    } finally {
-      setUploading(false)
-    }
+    } catch (e) { setError(e.message || 'Image upload failed') }
+    finally { setUploading(false) }
+  }
+
+  // Hero-image upload — sets the cover image shown on /news and at the
+  // top of /news/[slug]. Same backend endpoint as body images.
+  async function handleHeroFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploadingHero(true); setError(null)
+    try {
+      const data = await uploadImage(file)
+      setHero(data.url)
+    } catch (e) { setError(e.message || 'Hero upload failed') }
+    finally { setUploadingHero(false) }
   }
 
   // ── Save / publish ───────────────────────────────────────────
@@ -274,13 +291,62 @@ export default function ArticleEditor() {
             className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">Hero image URL (optional)</label>
-          <input
-            type="url" value={hero} onChange={(e) => setHero(e.target.value)}
-            placeholder="https://…"
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-          />
+        <div className="md:col-span-2">
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">
+            Cover image (shown on /news)
+          </label>
+          <div className="flex items-stretch gap-3">
+            {/* Preview */}
+            <div className="w-32 h-20 rounded border border-gray-300 bg-gray-50 overflow-hidden shrink-0">
+              {hero ? (
+                <img src={hero} alt="cover"
+                     className="w-full h-full object-cover"
+                     onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">
+                  No cover yet
+                </div>
+              )}
+            </div>
+            {/* Actions + URL field */}
+            <div className="flex-1 min-w-0 flex flex-col justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => heroInputRef.current?.click()}
+                  disabled={uploadingHero}
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded
+                             bg-nw-teal text-white hover:bg-nw-teal-dark
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadingHero ? 'Uploading…' : (hero ? 'Replace photo' : 'Upload photo')}
+                </button>
+                {hero && (
+                  <button
+                    type="button"
+                    onClick={() => setHero('')}
+                    className="text-[11px] font-semibold text-rose-600 hover:underline px-2"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              <input
+                type="url"
+                value={hero}
+                onChange={(e) => setHero(e.target.value)}
+                placeholder="…or paste an image URL"
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-600"
+              />
+            </div>
+            <input
+              ref={heroInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={handleHeroFile}
+              className="hidden"
+            />
+          </div>
         </div>
       </div>
 
