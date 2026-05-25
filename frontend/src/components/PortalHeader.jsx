@@ -56,6 +56,15 @@ const NAV_SECTIONS = [
         desc: 'Print cards for an entire roster (or a subset) in one job' },
     ],
   },
+  {
+    label: 'Articles',
+    items: [
+      { to: '/portal/articles', label: 'My Articles',
+        desc: 'Your drafts and published posts' },
+      { to: '/portal/articles/new', label: 'New Article',
+        desc: 'Start writing — markdown editor with live preview' },
+    ],
+  },
 ]
 
 

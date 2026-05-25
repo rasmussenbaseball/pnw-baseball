@@ -1,0 +1,365 @@
+"""
+Articles / News backend.
+
+A small CMS-lite for the public /news section. Articles are stored in
+the `articles` table; the public side reads only `status='published'`,
+and the portal-gated editor lets any authenticated user write drafts and
+publish them.
+
+Body is plain markdown — the frontend renders it with react-markdown.
+Hero images and any inline images are pasted in as URLs for Phase 1; a
+later phase will wire Supabase Storage uploads.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from ..models.database import get_connection
+from .auth import get_current_user
+
+router = APIRouter()
+
+
+# ─────────────────────────────────────────────────────────────────
+# Schemas
+# ─────────────────────────────────────────────────────────────────
+
+class ArticleCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    subtitle: Optional[str] = Field(None, max_length=300)
+    body_md: str = Field(default="")
+    hero_image_url: Optional[str] = None
+    author_name: str = Field(..., min_length=1, max_length=120)
+    slug: Optional[str] = None  # auto-generated from title if omitted
+
+
+class ArticleUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    subtitle: Optional[str] = Field(None, max_length=300)
+    body_md: Optional[str] = None
+    hero_image_url: Optional[str] = None
+    author_name: Optional[str] = Field(None, min_length=1, max_length=120)
+    slug: Optional[str] = None
+
+
+class ArticlePublishToggle(BaseModel):
+    publish: bool
+
+
+# ─────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(text: str) -> str:
+    """Turn a title into a URL-safe slug. Trims to 80 chars to keep URLs sane."""
+    s = (text or "").lower()
+    s = _SLUG_RE.sub("-", s).strip("-")
+    return s[:80] or "untitled"
+
+
+def _unique_slug(cur, base: str, ignore_id: Optional[int] = None) -> str:
+    """Append -2, -3, ... until the slug is unique. Idempotent on updates
+    via the optional `ignore_id` exclusion."""
+    candidate = base
+    n = 2
+    while True:
+        if ignore_id is None:
+            cur.execute("SELECT 1 FROM articles WHERE slug = %s LIMIT 1", (candidate,))
+        else:
+            cur.execute("SELECT 1 FROM articles WHERE slug = %s AND id <> %s LIMIT 1",
+                        (candidate, ignore_id))
+        if not cur.fetchone():
+            return candidate
+        candidate = f"{base}-{n}"
+        n += 1
+
+
+def _read_excerpt(body_md: str, max_chars: int = 200) -> str:
+    """First-line-ish summary stripped of basic markdown syntax. Plenty good
+    for an article-card preview; the full body is rendered on the detail page."""
+    if not body_md:
+        return ""
+    # Drop markdown headings/quotes/list markers from the leading lines.
+    stripped = re.sub(r"^[#>*\-\s]+", "", body_md.strip().splitlines()[0])
+    # Collapse inline `code`, **bold**, *italics*, [text](url) → text.
+    stripped = re.sub(r"`([^`]+)`", r"\1", stripped)
+    stripped = re.sub(r"\*\*([^*]+)\*\*", r"\1", stripped)
+    stripped = re.sub(r"\*([^*]+)\*", r"\1", stripped)
+    stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
+    if len(stripped) > max_chars:
+        stripped = stripped[: max_chars - 1].rsplit(" ", 1)[0] + "…"
+    return stripped
+
+
+def _row_to_summary(r: dict) -> dict:
+    """Shape for list endpoints — no body_md to keep payloads small."""
+    return {
+        "id": r["id"],
+        "slug": r["slug"],
+        "title": r["title"],
+        "subtitle": r["subtitle"],
+        "hero_image_url": r["hero_image_url"],
+        "author_name": r["author_name"],
+        "status": r["status"],
+        "published_at": r["published_at"].isoformat() if r["published_at"] else None,
+        "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+        "excerpt": _read_excerpt(r.get("body_md") or ""),
+    }
+
+
+def _row_to_full(r: dict) -> dict:
+    return {**_row_to_summary(r), "body_md": r["body_md"] or ""}
+
+
+# ─────────────────────────────────────────────────────────────────
+# Public endpoints
+# ─────────────────────────────────────────────────────────────────
+
+@router.get("/articles")
+def list_published_articles(limit: int = 50):
+    """List all published articles, newest first. Public."""
+    limit = max(1, min(int(limit), 100))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+                   author_id, author_name, status, published_at,
+                   created_at, updated_at
+            FROM articles
+            WHERE status = 'published'
+            ORDER BY published_at DESC NULLS LAST, id DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return {"articles": [_row_to_summary(dict(r)) for r in cur.fetchall()]}
+
+
+@router.get("/articles/{slug}")
+def get_published_article(slug: str):
+    """Fetch one published article by slug. Public."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+                   author_id, author_name, status, published_at,
+                   created_at, updated_at
+            FROM articles
+            WHERE slug = %s AND status = 'published'
+            """,
+            (slug,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+        return _row_to_full(dict(row))
+
+
+# ─────────────────────────────────────────────────────────────────
+# Portal (authenticated) endpoints
+# ─────────────────────────────────────────────────────────────────
+#
+# Any authenticated Supabase user can write articles in Phase 1.
+# A stricter author allowlist can layer on later via env var or a
+# users-extension table; for now we lean on the existing portal gate.
+
+@router.get("/portal/articles")
+def list_my_articles(user_id: str = Depends(get_current_user)):
+    """List THIS author's articles (any status). Newest first."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+                   author_id, author_name, status, published_at,
+                   created_at, updated_at
+            FROM articles
+            WHERE author_id = %s
+            ORDER BY COALESCE(published_at, updated_at) DESC, id DESC
+            """,
+            (user_id,),
+        )
+        return {"articles": [_row_to_summary(dict(r)) for r in cur.fetchall()]}
+
+
+@router.get("/portal/articles/{article_id}")
+def get_my_article(article_id: int, user_id: str = Depends(get_current_user)):
+    """Fetch an article by ID for editing. Must be authored by current user."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+                   author_id, author_name, status, published_at,
+                   created_at, updated_at
+            FROM articles WHERE id = %s
+            """,
+            (article_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+        if str(row["author_id"]) != str(user_id):
+            raise HTTPException(status_code=403, detail="Not your article")
+        return _row_to_full(dict(row))
+
+
+@router.post("/portal/articles")
+def create_article(body: ArticleCreate, user_id: str = Depends(get_current_user)):
+    """Create a new article as a draft. The author can publish it later."""
+    base = _slugify(body.slug or body.title)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        slug = _unique_slug(cur, base)
+        cur.execute(
+            """
+            INSERT INTO articles
+              (slug, title, subtitle, body_md, hero_image_url,
+               author_id, author_name, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft')
+            RETURNING id, slug, title, subtitle, body_md, hero_image_url,
+                      author_id, author_name, status, published_at,
+                      created_at, updated_at
+            """,
+            (slug, body.title.strip(), (body.subtitle or "").strip() or None,
+             body.body_md or "", body.hero_image_url, user_id, body.author_name.strip()),
+        )
+        row = dict(cur.fetchone())
+        conn.commit()
+        return _row_to_full(row)
+
+
+@router.put("/portal/articles/{article_id}")
+def update_article(
+    article_id: int,
+    body: ArticleUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    """Update title / subtitle / body / hero / slug. Author-only."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT author_id, slug FROM articles WHERE id = %s", (article_id,))
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Article not found")
+        if str(existing["author_id"]) != str(user_id):
+            raise HTTPException(status_code=403, detail="Not your article")
+
+        # Build the SET clause from non-None fields. If the slug is being
+        # updated, run it through uniqueness check (excluding this row).
+        sets, params = [], []
+        if body.title is not None:
+            sets.append("title = %s"); params.append(body.title.strip())
+        if body.subtitle is not None:
+            sets.append("subtitle = %s"); params.append((body.subtitle or "").strip() or None)
+        if body.body_md is not None:
+            sets.append("body_md = %s"); params.append(body.body_md)
+        if body.hero_image_url is not None:
+            sets.append("hero_image_url = %s"); params.append(body.hero_image_url or None)
+        if body.author_name is not None:
+            sets.append("author_name = %s"); params.append(body.author_name.strip())
+        if body.slug is not None:
+            new_slug = _unique_slug(cur, _slugify(body.slug), ignore_id=article_id)
+            sets.append("slug = %s"); params.append(new_slug)
+
+        if not sets:
+            # No-op; still return the current row.
+            cur.execute(
+                """SELECT id, slug, title, subtitle, body_md, hero_image_url,
+                          author_id, author_name, status, published_at,
+                          created_at, updated_at
+                   FROM articles WHERE id = %s""",
+                (article_id,),
+            )
+            return _row_to_full(dict(cur.fetchone()))
+
+        sets.append("updated_at = NOW()")
+        params.append(article_id)
+        cur.execute(
+            f"""UPDATE articles SET {', '.join(sets)} WHERE id = %s
+                RETURNING id, slug, title, subtitle, body_md, hero_image_url,
+                          author_id, author_name, status, published_at,
+                          created_at, updated_at""",
+            tuple(params),
+        )
+        row = dict(cur.fetchone())
+        conn.commit()
+        return _row_to_full(row)
+
+
+@router.patch("/portal/articles/{article_id}/publish")
+def toggle_publish(
+    article_id: int,
+    body: ArticlePublishToggle,
+    user_id: str = Depends(get_current_user),
+):
+    """Flip an article between draft and published. Author-only.
+
+    When transitioning draft->published the published_at stamp is set;
+    going back to draft preserves the original stamp (so re-publishing
+    later doesn't shuffle the public ordering needlessly)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT author_id, status, published_at FROM articles WHERE id = %s",
+            (article_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Article not found")
+        if str(row["author_id"]) != str(user_id):
+            raise HTTPException(status_code=403, detail="Not your article")
+
+        if body.publish:
+            new_status = "published"
+            stamp = row["published_at"] or datetime.now(timezone.utc)
+        else:
+            new_status = "draft"
+            stamp = row["published_at"]
+
+        cur.execute(
+            """UPDATE articles
+               SET status = %s, published_at = %s, updated_at = NOW()
+               WHERE id = %s
+               RETURNING id, slug, title, subtitle, body_md, hero_image_url,
+                         author_id, author_name, status, published_at,
+                         created_at, updated_at""",
+            (new_status, stamp, article_id),
+        )
+        out = dict(cur.fetchone())
+        conn.commit()
+        return _row_to_full(out)
+
+
+@router.delete("/portal/articles/{article_id}")
+def archive_article(article_id: int, user_id: str = Depends(get_current_user)):
+    """Soft-delete: mark archived so it stops appearing anywhere public.
+
+    Phase 1 keeps the row around (so undelete is just a status flip) — a
+    later hard-delete admin endpoint can purge truly unwanted rows."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT author_id FROM articles WHERE id = %s", (article_id,))
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Article not found")
+        if str(existing["author_id"]) != str(user_id):
+            raise HTTPException(status_code=403, detail="Not your article")
+        cur.execute(
+            "UPDATE articles SET status = 'archived', updated_at = NOW() WHERE id = %s",
+            (article_id,),
+        )
+        conn.commit()
+        return {"ok": True}

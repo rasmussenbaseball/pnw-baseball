@@ -41,6 +41,8 @@ const NAV = [
       { to: '/recruiting/field', label: 'Field', desc: 'Field-level visualization', locked: true },
     ],
   },
+  // Flat top-level link — articles & site news.
+  { label: 'News', to: '/news' },
   {
     label: 'Coaching',
     authRequired: true,

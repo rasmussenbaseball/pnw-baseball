@@ -164,6 +164,10 @@ import PortalPDFs from './pages/PortalPDFs'
 import BullpenSheet from './pages/BullpenSheet'
 import CatcherCards from './pages/CatcherCards'
 import NWACTournamentSheet from './pages/NWACTournamentSheet'
+import NewsList from './pages/NewsList'
+import NewsArticle from './pages/NewsArticle'
+import ArticlesList from './pages/portal/ArticlesList'
+import ArticleEditor from './pages/portal/ArticleEditor'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'
@@ -327,6 +331,15 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/nwac-tournament-sheet"
                  element={<RequirePortalAccess><PortalLayout><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
+          {/* News / Articles */}
+          <Route path="/news" element={<NewsList />} />
+          <Route path="/news/:slug" element={<NewsArticle />} />
+          <Route path="/portal/articles"
+                 element={<RequirePortalAccess><PortalLayout><ArticlesList /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/articles/new"
+                 element={<RequirePortalAccess><PortalLayout><ArticleEditor /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/articles/edit/:id"
+                 element={<RequirePortalAccess><PortalLayout><ArticleEditor /></PortalLayout></RequirePortalAccess>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
