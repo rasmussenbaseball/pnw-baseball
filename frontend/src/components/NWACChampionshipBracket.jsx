@@ -28,7 +28,12 @@ const COLUMNS = [
   { key: 'wb2',   label: 'WB Round 2',  side: 'wb',    games: [7, 8] },
   { key: 'wbf',   label: 'WB Final',    side: 'wb',    games: [11] },
   { key: 'semi',  label: 'Semifinal',   side: 'wb',    games: [13] },
-  { key: 'champ', label: 'Championship', side: 'champ', games: [14] },
+  // Championship column holds BOTH G14 and G15. In the standard path
+  // (WB-Final winner wins G13) G14 IS the title game; in the 3-team
+  // scenario (WB-Final winner loses G13) G14 is an elimination game and
+  // G15 — WB-Final winner vs winner of G14 — is the real title. Showing
+  // both boxes keeps the bracket honest no matter which path plays out.
+  { key: 'champ', label: 'Championship', side: 'champ', games: [14, 15] },
   { key: 'lbf',   label: 'LB Final',    side: 'lb',    games: [12] },
   { key: 'lb2',   label: 'LB Round 2',  side: 'lb',    games: [9, 10] },
   { key: 'lb1',   label: 'LB Round 1',  side: 'lb',    games: [5, 6] },
@@ -163,10 +168,14 @@ export default function NWACChampionshipBracket() {
                     gameNum={num}
                     outcomes={outcomes}
                     teamForRef={teamForRef}
-                    championship={col.side === 'champ'}
+                    // Both G14 and G15 sit in the gold championship column,
+                    // but only G15 wears the "Title Game" label — G14 is the
+                    // extra elimination game before the title in the 3-team
+                    // scenario.
+                    gold={col.side === 'champ'}
+                    titleGame={col.side === 'champ' && num === IF_NEC_GAME}
                   />
                 ))}
-                {col.side === 'champ' && <IfNecessaryNote outcomes={outcomes} />}
               </RoundColumn>
             ))}
           </div>
@@ -227,7 +236,7 @@ function RoundColumn({ label, children, side }) {
 }
 
 // ── A single game card ──
-function GameCard({ gameNum, outcomes, teamForRef, championship }) {
+function GameCard({ gameNum, outcomes, teamForRef, gold, titleGame }) {
   const g = TOURNEY.games.find((x) => x.num === gameNum)
   if (!g) return null
   const o = outcomes?.get(gameNum)
@@ -239,14 +248,14 @@ function GameCard({ gameNum, outcomes, teamForRef, championship }) {
   const card = (
     <div
       className={`rounded-lg overflow-hidden border transition-all ${
-        championship
+        gold
           ? 'border-amber-400/70 bg-amber-400/5 shadow-[0_0_0_1px_rgba(251,191,36,0.25)]'
           : 'border-white/10 bg-white/[0.04]'
       } ${o?.db_game_id ? 'hover:border-pnw-teal hover:bg-white/[0.08] cursor-pointer' : ''}`}
     >
       <div className="flex items-center justify-between px-2 pt-1.5 pb-1">
         <span className="text-[8px] font-bold uppercase tracking-wider text-white/35">
-          {championship ? 'Title Game' : `Game ${gameNum}`}
+          {titleGame ? 'Title Game' : `Game ${gameNum}`}
         </span>
         {isLive ? (
           <span className="text-[8px] font-bold text-red-400 animate-pulse">LIVE</span>
