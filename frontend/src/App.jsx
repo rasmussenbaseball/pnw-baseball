@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
+import EmailPrefsPopup from './components/EmailPrefsPopup'
 
 // Auth guard - shows blurred teaser with signup prompt if not signed in
 function RequireAuth({ children }) {
@@ -258,6 +259,7 @@ export default function App() {
     <div className={`min-h-screen ${isPortal ? 'bg-portal-cream' : isGm ? 'bg-gray-50' : 'bg-nw-cream'}`}>
       {!isPortal && !isGm && <Header />}
       <SignupPopup />
+      <EmailPrefsPopup />
       <RouteContainer isPortal={isPortal} isGm={isGm}>
         <Routes>
           {/* Homepage */}
