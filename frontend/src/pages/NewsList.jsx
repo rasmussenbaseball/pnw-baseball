@@ -5,7 +5,6 @@
 
 import { Link } from 'react-router-dom'
 import { usePublishedArticles } from '../hooks/useArticles'
-import NewsTabs from '../components/NewsTabs'
 
 function fmtDate(iso) {
   if (!iso) return ''
@@ -22,14 +21,12 @@ export default function NewsList() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold text-gray-900">News</h1>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Articles</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Commitments, recaps, and notes from around PNW college baseball.
+          Stories, recaps, and notes from around PNW college baseball.
         </p>
       </div>
-
-      <NewsTabs active="articles" />
 
       {loading && (
         <div className="text-gray-500 animate-pulse">Loading articles…</div>

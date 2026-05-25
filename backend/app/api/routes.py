@@ -21502,15 +21502,19 @@ def portal_bullpen_sheet(
 @router.get("/commitments")
 @cached_endpoint(ttl_seconds=300)
 def list_commitments(
+    season: int = Query(2026, description="Season to pull stats from"),
     level: str = Query("JUCO", description="Division level filter (default JUCO/NWAC)"),
     limit: int = Query(200, ge=1, le=500),
 ):
     """List committed players, newest commitment first.
 
-    Powers the public /news/commitments page. Returns every active player
-    with `is_committed=1` and a non-null `committed_to`, scoped to the
-    requested division (NWAC=JUCO by default; we'll expand to high-school
-    commitments to PNW schools once that data starts flowing in).
+    Powers the public /news/commitments page. Each row includes:
+      • Player meta (name, current team, position, year, ht/wt, headshot).
+      • Light current-season stats — hitting (AVG/HR/RBI/PA) and pitching
+        (IP/K/ERA) — so visitors get a feel for who's committing.
+      • If the school they're committing to matches a PNW team we track,
+        a `committed_team` block with that team's id + logo. Otherwise
+        the school is shown as plain text (no logo).
     Sorted by `updated_at DESC` so the freshest commitments rise to top.
     """
     with get_connection() as conn:
@@ -21549,9 +21553,113 @@ def list_commitments(
             (level, limit),
         )
         rows = [dict(r) for r in cur.fetchall()]
+        if not rows:
+            return {"season": season, "level": level, "count": 0, "commitments": []}
+
+        player_ids = [r["player_id"] for r in rows]
+
+        # ── Season stats (batting + pitching) for every committed player.
+        cur.execute(
+            """
+            SELECT player_id, plate_appearances, at_bats, hits, home_runs,
+                   rbi, stolen_bases, batting_avg, on_base_pct, slugging_pct
+            FROM batting_stats
+            WHERE season = %s AND player_id = ANY(%s)
+              AND COALESCE(plate_appearances, 0) > 0
+            """,
+            (season, player_ids),
+        )
+        bat_by_pid = {r["player_id"]: dict(r) for r in cur.fetchall()}
+
+        cur.execute(
+            """
+            SELECT player_id, innings_pitched, strikeouts, walks,
+                   earned_runs, era, fip
+            FROM pitching_stats
+            WHERE season = %s AND player_id = ANY(%s)
+              AND COALESCE(innings_pitched, 0) > 0
+            """,
+            (season, player_ids),
+        )
+        pit_by_pid = {r["player_id"]: dict(r) for r in cur.fetchall()}
+
+        # ── School logo: try to match committed_to to a team we track.
+        # Strict-then-fuzzy in one query: exact short_name match wins, then
+        # short_name with periods stripped (Oregon St. -> Oregon St), then
+        # school_name contains the committed_to phrase. Limit 1 by best rank.
+        committed_strings = sorted({r["committed_to"] for r in rows if r["committed_to"]})
+        school_lookup = {}
+        for s in committed_strings:
+            # Three-tier rank: exact short_name → period-stripped match →
+            # full school_name contains the phrase. Match against
+            # `school_name` (e.g. "Pacific Lutheran University") rather than
+            # `name` (e.g. "PLU Lutes") so phrases like "Pacific Lutheran"
+            # find PLU instead of accidentally matching D3 Pacific.
+            cur.execute(
+                """
+                SELECT id, short_name, school_name, logo_url,
+                       CASE
+                         WHEN LOWER(short_name) = LOWER(%s)                                          THEN 1
+                         WHEN LOWER(REPLACE(short_name, '.', '')) = LOWER(REPLACE(%s, '.', ''))      THEN 2
+                         WHEN LOWER(school_name) ILIKE '%%' || LOWER(%s) || '%%'                     THEN 3
+                         ELSE 99
+                       END AS rank
+                FROM teams
+                WHERE is_active = 1
+                  AND (
+                    LOWER(short_name) = LOWER(%s)
+                    OR LOWER(REPLACE(short_name, '.', '')) = LOWER(REPLACE(%s, '.', ''))
+                    OR LOWER(school_name) ILIKE '%%' || LOWER(%s) || '%%'
+                  )
+                ORDER BY rank ASC, LENGTH(school_name) ASC
+                LIMIT 1
+                """,
+                (s, s, s, s, s, s),
+            )
+            m = cur.fetchone()
+            if m:
+                school_lookup[s] = {
+                    "team_id": m["id"],
+                    "short_name": m["short_name"],
+                    "school_name": m["school_name"],
+                    "logo_url": m["logo_url"],
+                }
+
+        # ── Compose response rows.
         for r in rows:
             r["commitment_date"] = r["commitment_date"].isoformat() if r["commitment_date"] else None
-        return {"level": level, "count": len(rows), "commitments": rows}
+
+            b = bat_by_pid.get(r["player_id"])
+            p = pit_by_pid.get(r["player_id"])
+
+            # Include batting if they have at least 30 PA OR if there's no
+            # meaningful pitching to show (so two-way players still surface).
+            if b and ((b["plate_appearances"] or 0) >= 30 or not p):
+                avg = float(b["batting_avg"]) if b["batting_avg"] is not None else None
+                r["batting"] = {
+                    "pa": b["plate_appearances"], "ab": b["at_bats"],
+                    "h": b["hits"], "hr": b["home_runs"], "rbi": b["rbi"],
+                    "sb": b["stolen_bases"],
+                    "avg": round(avg, 3) if avg is not None else None,
+                }
+            else:
+                r["batting"] = None
+
+            # Include pitching if they have at least 10 IP OR no batting.
+            if p and ((float(p["innings_pitched"] or 0) >= 10) or not b):
+                era = float(p["era"]) if p["era"] is not None else None
+                r["pitching"] = {
+                    "ip": float(p["innings_pitched"]) if p["innings_pitched"] is not None else None,
+                    "k": p["strikeouts"], "bb": p["walks"],
+                    "er": p["earned_runs"],
+                    "era": round(era, 2) if era is not None else None,
+                }
+            else:
+                r["pitching"] = None
+
+            r["committed_team"] = school_lookup.get(r["committed_to"])  # None if not a PNW team
+
+        return {"season": season, "level": level, "count": len(rows), "commitments": rows}
 
 
 @router.get("/portal/scouting-sheet/{team_id}")
