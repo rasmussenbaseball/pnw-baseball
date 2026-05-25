@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NW Baseball Stats — Email Signature Builder</title>
+<style>
+  :root {
+    --teal: #0f766e;
+    --teal-dark: #115e59;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f3f4f6;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 20px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  .brand {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 4px;
+  }
+  h1 { font-size: 28px; font-weight: 800; color: #111; margin: 0 0 6px; }
+  .lede { font-size: 15px; color: var(--muted); margin: 0 0 24px; }
+
+  .card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    margin-bottom: 16px;
+  }
+  .card-label {
+    font-size: 11px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--muted); margin-bottom: 12px;
+  }
+
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+  }
+  .field input {
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+    font-size: 14px; font-family: inherit; color: var(--text);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field input:focus {
+    outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(15,118,110,0.15);
+  }
+  .field .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .preview-wrap {
+    background: #fafafa; border: 1px dashed #d1d5db; border-radius: 8px;
+    padding: 24px; margin-top: 8px;
+  }
+
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 18px; }
+  button {
+    background: var(--teal); color: white; border: 0; padding: 11px 22px;
+    font-weight: 700; font-size: 14px; border-radius: 6px; cursor: pointer;
+    letter-spacing: 0.02em; transition: background .15s, transform .05s;
+  }
+  button:hover { background: var(--teal-dark); }
+  button:active { transform: scale(0.98); }
+  button.copied { background: #059669; }
+  button.secondary {
+    background: #f3f4f6; color: var(--text);
+  }
+  button.secondary:hover { background: #e5e7eb; }
+  .status { font-size: 12px; color: var(--muted); }
+
+  ol { padding-left: 22px; margin: 0; }
+  ol li { margin: 8px 0; font-size: 14px; }
+  code {
+    background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
+    font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--teal);
+  }
+  details { margin-top: 12px; font-size: 13px; }
+  details summary {
+    cursor: pointer; color: var(--muted); padding: 6px 0;
+    font-weight: 600;
+  }
+  details summary:hover { color: var(--text); }
+  pre {
+    background: #1f2937; color: #e5e7eb; padding: 14px; border-radius: 6px;
+    overflow-x: auto; font-size: 11px; line-height: 1.4;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-height: 280px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="brand">NW Baseball Stats</div>
+  <h1>Email Signature Builder</h1>
+  <p class="lede">Fill in your details, copy the signature, and paste it into Gmail. Takes 30 seconds.</p>
+
+  <!-- ──────── Form + preview ──────── -->
+  <div class="card">
+    <div class="card-label">Your details</div>
+
+    <div class="field">
+      <label for="f_name">Full name *</label>
+      <input id="f_name" type="text" placeholder="e.g. Jane Doe" autocomplete="name">
+    </div>
+
+    <div class="field">
+      <label for="f_title">Role / title</label>
+      <input id="f_title" type="text" placeholder="e.g. Editor, Recruiting Analyst, Intern" autocomplete="organization-title">
+    </div>
+
+    <div class="field">
+      <label for="f_email">Your work email <span style="color:#9ca3af;font-weight:500;text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <input id="f_email" type="email" placeholder="e.g. jane@nwbaseballstats.com" autocomplete="email">
+      <div class="hint">Leave blank if you don't have one yet, your personal email signature will still work.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Live preview</div>
+    <div class="preview-wrap">
+      <div id="preview"></div>
+    </div>
+
+    <div class="row">
+      <button id="copy-btn">Copy signature to clipboard</button>
+      <span class="status" id="status"></span>
+    </div>
+
+    <details>
+      <summary>Show raw HTML (if you prefer to paste source)</summary>
+      <pre id="raw-html"></pre>
+    </details>
+  </div>
+
+  <!-- ──────── Install instructions ──────── -->
+  <div class="card">
+    <div class="card-label">Install in Gmail</div>
+    <ol>
+      <li>Click <strong>Copy signature to clipboard</strong> above.</li>
+      <li>Open <a href="https://mail.google.com" target="_blank" rel="noopener" style="color:var(--teal);font-weight:600;">Gmail</a> (signed in as your <code>@nwbaseballstats.com</code> account if you have one, otherwise your personal Gmail).</li>
+      <li>Click the gear icon <strong>⚙</strong> in the top right → <strong>See all settings</strong>.</li>
+      <li>Stay on the <strong>General</strong> tab. Scroll down to the <strong>Signature</strong> section.</li>
+      <li>Click <strong>+ Create new</strong>. Name it something like <code>NWBB</code>. Click Create.</li>
+      <li>Click inside the empty signature editor box, then paste (<code>Cmd+V</code> on Mac, <code>Ctrl+V</code> on Windows).</li>
+      <li>Under <strong>Signature defaults</strong> (just below the editor), set both dropdowns to <code>NWBB</code>:
+        <ul style="margin-top:4px;">
+          <li><strong>For new emails use:</strong> NWBB</li>
+          <li><strong>On reply/forward use:</strong> NWBB</li>
+        </ul>
+      </li>
+      <li>Optional: check <strong>"Insert signature before quoted text in replies"</strong>.</li>
+      <li>Scroll to the bottom and click <strong>Save Changes</strong>.</li>
+    </ol>
+    <p style="font-size:13px;color:var(--muted);margin-top:14px;margin-bottom:0;">
+      Send yourself a test email after saving to make sure the logo renders and links work.
+    </p>
+  </div>
+</div>
+
+<script>
+  const nameEl   = document.getElementById('f_name')
+  const titleEl  = document.getElementById('f_title')
+  const emailEl  = document.getElementById('f_email')
+  const preview  = document.getElementById('preview')
+  const rawPre   = document.getElementById('raw-html')
+  const copyBtn  = document.getElementById('copy-btn')
+  const status   = document.getElementById('status')
+
+  // ─── Render the signature HTML from current inputs ───
+  // Table-based layout so Gmail / Apple Mail / Outlook all render
+  // consistently. Inline styles for the same reason — email clients
+  // strip <style> blocks.
+  function buildSignatureHTML(name, title, email) {
+    const safeName  = escapeHTML(name)  || 'Your Name'
+    const safeTitle = escapeHTML(title) || ''
+    const safeEmail = escapeHTML(email)
+    const role = safeTitle
+      ? `${safeTitle} · NW Baseball Stats`
+      : 'NW Baseball Stats'
+
+    // Email line — only render if they supplied one.
+    const emailLine = safeEmail
+      ? `<span style="color:#d1d5db;margin:0 6px;">·</span>
+         <a href="mailto:${safeEmail}" style="color:#6b7280;text-decoration:none;">${safeEmail}</a>`
+      : ''
+
+    return [
+      `<table cellpadding="0" cellspacing="0" border="0" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">`,
+      `  <tr>`,
+      `    <td style="vertical-align:middle;padding-right:16px;">`,
+      `      <a href="https://nwbaseballstats.com" style="text-decoration:none;">`,
+      `        <img src="https://nwbaseballstats.com/favicon.png" alt="NW Baseball Stats" width="60" height="60" style="display:block;border-radius:12px;width:60px;height:60px;">`,
+      `      </a>`,
+      `    </td>`,
+      `    <td style="vertical-align:middle;border-left:3px solid #0f766e;padding:2px 0 2px 16px;">`,
+      `      <div style="font-size:16px;font-weight:700;color:#111111;line-height:1.2;">${safeName}</div>`,
+      `      <div style="font-size:13px;color:#6b7280;line-height:1.4;margin-top:2px;">${role}</div>`,
+      `      <div style="font-size:12px;margin-top:6px;">`,
+      `        <a href="https://nwbaseballstats.com" style="color:#0f766e;text-decoration:none;font-weight:600;">nwbaseballstats.com</a>`,
+      `        ${emailLine}`,
+      `      </div>`,
+      `      <div style="font-size:12px;margin-top:4px;">`,
+      `        <a href="https://x.com/NWBBStats" style="color:#6b7280;text-decoration:none;">𝕏 @NWBBStats</a>`,
+      `        <span style="color:#d1d5db;margin:0 6px;">·</span>`,
+      `        <a href="https://instagram.com/nwbbstats" style="color:#6b7280;text-decoration:none;">@nwbbstats</a>`,
+      `      </div>`,
+      `    </td>`,
+      `  </tr>`,
+      `</table>`,
+    ].join('\n')
+  }
+
+  function escapeHTML(s) {
+    return (s || '').toString()
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  }
+
+  function render() {
+    const html = buildSignatureHTML(nameEl.value, titleEl.value, emailEl.value)
+    preview.innerHTML = html
+    rawPre.textContent = html
+  }
+
+  // ─── Copy as rich HTML (so Gmail keeps formatting / images) ───
+  async function copySignature() {
+    const html = preview.innerHTML
+    const text = preview.innerText
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html':  new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' }),
+          }),
+        ])
+      } else {
+        // Older browsers — fall back to selecting the rendered element
+        // and using execCommand('copy'). Loses some fidelity but works.
+        const range = document.createRange()
+        range.selectNodeContents(preview)
+        const sel = window.getSelection()
+        sel.removeAllRanges(); sel.addRange(range)
+        document.execCommand('copy')
+        sel.removeAllRanges()
+      }
+      copyBtn.textContent = '✓ Copied!'
+      copyBtn.classList.add('copied')
+      status.textContent = 'Now paste it into Gmail signature settings.'
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy signature to clipboard'
+        copyBtn.classList.remove('copied')
+        status.textContent = ''
+      }, 4000)
+    } catch (e) {
+      status.textContent = 'Copy failed — use the "Show raw HTML" option below.'
+    }
+  }
+
+  nameEl.addEventListener('input', render)
+  titleEl.addEventListener('input', render)
+  emailEl.addEventListener('input', render)
+  copyBtn.addEventListener('click', copySignature)
+
+  render()
+</script>
+</body>
+</html>
