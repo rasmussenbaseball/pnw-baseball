@@ -133,7 +133,7 @@ export default function EmailComposer() {
         <h1 className="text-3xl font-bold text-gray-900">Email broadcasts</h1>
         <p className="text-sm text-gray-500 mt-1">
           Compose and send to opted-in subscribers. Sends as{' '}
-          <span className="font-mono">info@nwbaseballstats.com</span> via Google Workspace SMTP relay.
+          <span className="font-mono">info@nwbaseballstats.com</span> via Resend.
         </p>
       </div>
 

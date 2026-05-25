@@ -1,9 +1,9 @@
 """
 Email broadcasts — admin compose & send (Phase 2 of the newsletter
-pipeline). Sends through Google Workspace SMTP relay (see
-services/email_sender.py). Endpoints are gated by the same email
-allowlist used for Articles (ARTICLE_AUTHOR_EMAILS env var, default
-just nate.rasmussen26@gmail.com).
+pipeline). Sends through Resend (HTTPS API — DigitalOcean blocks all
+outbound SMTP, so SMTP-based providers can't reach us). Endpoints are
+gated by the same email allowlist used for Articles (ARTICLE_AUTHOR_EMAILS
+env var, default just nate.rasmussen26@gmail.com).
 
 Flow:
   1. Author writes a subject + markdown body in the composer UI.

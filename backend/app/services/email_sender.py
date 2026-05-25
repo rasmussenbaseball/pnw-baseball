@@ -1,48 +1,39 @@
 """
-Email sender via Google Workspace SMTP relay.
+Resend email sender (Phase 2 of the newsletter pipeline).
 
-Talks to `smtp-relay.gmail.com:587` over STARTTLS, authenticating with
-an app-password generated for the Workspace user that owns the
-`info@nwbaseballstats.com` alias.
-
-Why Workspace and not a dedicated provider:
-  • Already paying for Workspace ($0 marginal cost vs $20/mo Resend Pro)
-  • SMTP relay caps at 10,000 / day per user — 10x our heaviest send
-  • DKIM/SPF for nwbaseballstats.com are already set up under Google
-  • Best deliverability into Gmail (most of our subscribers are there)
+Talks to https://resend.com via their REST API. We use Resend rather than
+SES/Mailgun because the setup is dead simple (DKIM TXT + one API key) and
+the free tier (3k/mo, 100/day) is plenty for an opt-in mailing list of a
+few hundred subscribers.
 
 Each email is personalized: the unsubscribe link in the footer and the
 RFC 8058 List-Unsubscribe header both use the recipient's per-row
 `unsubscribe_token` so one click flips THEIR row, not anyone else's.
 
-Sends are sequential over a single keep-alive SMTP connection. At our
-scale (max ~1k/day, typical sends 600/blast) that's well under any rate
-limit and finishes in well under a minute.
+We use Resend's /emails/batch endpoint (up to 100 messages per call) so
+a broadcast of a few hundred names goes out in 2-3 round-trips rather
+than N individual API calls.
 
 Env vars:
-  WORKSPACE_RELAY_USER     — full Workspace user email (e.g.
-                              nate@nwbaseballstats.com — the underlying
-                              account, NOT the info@ alias)
-  WORKSPACE_RELAY_PASSWORD — 16-char Google app password
-  EMAIL_FROM               — header from address, default
-                              "NW Baseball Stats <info@nwbaseballstats.com>"
-  SITE_URL                 — base URL for unsubscribe links, default
-                              https://nwbaseballstats.com
+  RESEND_API_KEY    — API key from resend.com → API Keys
+  EMAIL_FROM        — "Display Name <info@nwbaseballstats.com>"
+                      defaults to "NW Baseball Stats <info@nwbaseballstats.com>"
+  SITE_URL          — base URL for unsubscribe links (defaults to
+                      https://nwbaseballstats.com)
 """
 
 from __future__ import annotations
 
 import os
 import re
-import smtplib
 from dataclasses import dataclass
-from email.message import EmailMessage
-from email.utils import make_msgid
 from typing import Iterable, List, Optional
 
+import httpx
 
-SMTP_HOST = "smtp-relay.gmail.com"
-SMTP_PORT = 587
+
+_RESEND_URL = "https://api.resend.com/emails/batch"
+_BATCH_SIZE = 100
 
 
 def _site_url() -> str:
@@ -53,15 +44,11 @@ def _from_address() -> str:
     return os.getenv("EMAIL_FROM", "NW Baseball Stats <info@nwbaseballstats.com>")
 
 
-def _relay_credentials() -> tuple[str, str]:
-    user = os.getenv("WORKSPACE_RELAY_USER", "")
-    pwd = os.getenv("WORKSPACE_RELAY_PASSWORD", "")
-    if not user or not pwd:
-        raise RuntimeError(
-            "WORKSPACE_RELAY_USER / WORKSPACE_RELAY_PASSWORD not configured. "
-            "Set both in the server's .env to enable broadcasts."
-        )
-    return user, pwd
+def _api_key() -> str:
+    key = os.getenv("RESEND_API_KEY", "")
+    if not key:
+        raise RuntimeError("RESEND_API_KEY not configured on the server.")
+    return key
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -269,37 +256,6 @@ def build_text(body_md: str, unsub_url: str) -> str:
     )
 
 
-def _build_message(
-    *,
-    subject: str,
-    body_md: str,
-    body_html_inner: str,
-    recipient: Recipient,
-    from_addr: str,
-    reply_to: Optional[str],
-) -> EmailMessage:
-    """Build one EmailMessage for one recipient. Sets the personalized
-    List-Unsubscribe header so Gmail/Apple Mail show their native
-    "Unsubscribe" button at the top of the message."""
-    unsub = unsubscribe_url(recipient.token)
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"]    = from_addr
-    msg["To"]      = recipient.email
-    msg["Message-ID"] = make_msgid(domain="nwbaseballstats.com")
-    if reply_to:
-        msg["Reply-To"] = reply_to
-    # RFC 8058 one-click unsubscribe — Gmail shows this as a native
-    # "Unsubscribe" link at the top of the email.
-    msg["List-Unsubscribe"] = f"<{unsub}>"
-    msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-
-    # Build the text + html multipart body.
-    msg.set_content(build_text(body_md, unsub))
-    msg.add_alternative(build_html(subject, body_html_inner, unsub), subtype="html")
-    return msg
-
-
 # ─────────────────────────────────────────────────────────────────
 # Send
 # ─────────────────────────────────────────────────────────────────
@@ -315,10 +271,8 @@ def send_broadcast(
     {sent: int, failed: int, errors: [str]}. Each email is personalized
     with the recipient's unsubscribe URL + List-Unsubscribe header.
 
-    Sends sequentially over a single keep-alive SMTP connection so a
-    600-recipient blast completes in roughly 30-90 seconds depending on
-    network latency."""
-    relay_user, relay_pwd = _relay_credentials()
+    Batched 100/request via Resend's /emails/batch endpoint."""
+    api_key = _api_key()
     from_addr = _from_address()
     body_html_inner = md_to_html(body_md)
 
@@ -326,52 +280,67 @@ def send_broadcast(
     if not rcpts:
         return {"sent": 0, "failed": 0, "errors": []}
 
+    def make_email(r: Recipient) -> dict:
+        unsub = unsubscribe_url(r.token)
+        email = {
+            "from": from_addr,
+            "to": [r.email],
+            "subject": subject,
+            "html": build_html(subject, body_html_inner, unsub),
+            "text": build_text(body_md, unsub),
+            "headers": {
+                # RFC 8058 one-click unsubscribe. Gmail/Apple Mail show
+                # this as a native "Unsubscribe" link in the message header.
+                "List-Unsubscribe": f"<{unsub}>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+        }
+        if reply_to:
+            email["reply_to"] = reply_to
+        return email
+
     sent = 0
     failed = 0
     errors: List[str] = []
 
-    try:
-        # `with` ensures the connection is closed even if we throw.
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            smtp.login(relay_user, relay_pwd)
+    # Batch in chunks of _BATCH_SIZE. Resend's batch endpoint accepts an
+    # array body and returns a parallel array of per-email IDs.
+    for start in range(0, len(rcpts), _BATCH_SIZE):
+        batch = rcpts[start:start + _BATCH_SIZE]
+        payload = [make_email(r) for r in batch]
+        try:
+            resp = httpx.post(
+                _RESEND_URL,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30.0,
+            )
+        except httpx.RequestError as e:
+            failed += len(batch)
+            errors.append(f"network error on batch starting at {start}: {e}")
+            continue
 
-            for r in rcpts:
-                try:
-                    msg = _build_message(
-                        subject=subject,
-                        body_md=body_md,
-                        body_html_inner=body_html_inner,
-                        recipient=r,
-                        from_addr=from_addr,
-                        reply_to=reply_to,
-                    )
-                    smtp.send_message(msg)
-                    sent += 1
-                except (smtplib.SMTPRecipientsRefused,
-                        smtplib.SMTPDataError,
-                        smtplib.SMTPSenderRefused) as e:
-                    failed += 1
-                    if len(errors) < 10:
-                        errors.append(f"{r.email}: {e}")
-                except smtplib.SMTPServerDisconnected as e:
-                    # Server kicked us — record what's left as failed and
-                    # bail out of the loop. Re-connect logic would be a
-                    # nice add-on if this happens regularly.
-                    failed += 1
-                    if len(errors) < 10:
-                        errors.append(f"{r.email}: server disconnected ({e})")
-                    remaining = len(rcpts) - sent - failed
-                    if remaining > 0:
-                        failed += remaining
-                        errors.append(f"abandoned {remaining} more recipients after disconnect")
-                    break
-    except (smtplib.SMTPAuthenticationError, smtplib.SMTPException, OSError) as e:
-        # Connection / auth-level failure: everyone is unsent.
-        unsent = len(rcpts) - sent
-        failed += unsent
-        errors.insert(0, f"SMTP connection failed: {e}")
+        if resp.status_code >= 300:
+            failed += len(batch)
+            errors.append(f"HTTP {resp.status_code} on batch starting at {start}: {resp.text[:200]}")
+            continue
 
-    return {"sent": sent, "failed": failed, "errors": errors[:10]}
+        # Resend returns {data: [{id: ...}, ...]} on success. We count
+        # only entries that came back with an id; anything else is a
+        # silent fail.
+        try:
+            data = resp.json().get("data") or []
+        except Exception:
+            data = []
+        ok = sum(1 for d in data if isinstance(d, dict) and d.get("id"))
+        sent += ok
+        if ok < len(batch):
+            failed += len(batch) - ok
+            errors.append(
+                f"batch starting at {start}: only {ok}/{len(batch)} emails accepted"
+            )
+
+    return {"sent": sent, "failed": failed, "errors": errors[:10]}  # cap error list
