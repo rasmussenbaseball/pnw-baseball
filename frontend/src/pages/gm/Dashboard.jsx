@@ -18,7 +18,7 @@ import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/
 import { ARCHETYPES, inferArchetype, staffRatings } from '../../gm/engine/archetypes'
 import { cutsWindowOpen, cutTrustTier, ensureCutsState, isMandatoryCutMode } from '../../gm/engine/cuts'
 import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMode'
-import { teamNameOf } from '../../gm/engine/postseasonInteractive'
+import { teamNameOf, tickInteractivePostseason } from '../../gm/engine/postseasonInteractive'
 import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { refitNonUserOvrOffsets } from '../../gm/engine/events'
@@ -145,6 +145,26 @@ export default function Dashboard() {
     if (!save.flags) save.flags = {}
     save.flags.lastOvrRefitYear = curYear
     saveDynasty(save)
+  }, [save])
+
+  // Postseason self-heal (per Nate, May 2026 — NWAC #2 seed reported "no
+  // games to play"). On dashboard mount, if we're in postseason mode with
+  // an active interactive bracket + a live user round that has no pending
+  // game in the schedule, re-tick the bracket. This regenerates the next
+  // game without disturbing already-played games (tick is idempotent on
+  // resolved rounds, and reads existing results from the schedule).
+  useEffect(() => {
+    if (!save) return
+    const ps = save.postseason
+    if (!ps?.interactive || !ps.userAlive || ps.stage === 'DONE') return
+    const round = ps.rounds?.[ps.stage]
+    if (!round || round.resolved) return
+    // Already has a pending game in the schedule → nothing to fix.
+    if (round.pendingGameId && (save.schedule || []).some(g => g.id === round.pendingGameId && !g.played)) return
+    try {
+      tickInteractivePostseason(save)
+      saveDynasty(save)
+    } catch (e) { console.warn('postseason self-heal tick failed:', e) }
   }, [save])
 
   // Championship-won celebration popup. Fires once per championship year
@@ -1223,6 +1243,20 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
               : "Your team didn't make the conference tournament — season over. Watch the brackets play out."}
           </div>
         )}
+        {/* NWAC seed banner — show user's region + seed explicitly so they
+            know what role they have in the bracket (host #2, play-in #3/#4,
+            or auto-bye #1). Per Nate's playtest — a #2 seed was confused
+            about whether they made the regional round. */}
+        {isNwac && ps.userQualified && ps.userSeed && ps.userRegion && (
+          <div className="text-[11px] mb-3 px-2.5 py-2 rounded bg-pnw-green/10 border border-pnw-green/30 text-pnw-slate">
+            <span className="font-semibold">You\'re the #{ps.userSeed} seed in NWAC {ps.userRegion.replace('NWAC_', '')}.</span>{' '}
+            {ps.userSeed === 1
+              ? 'Auto-bye through super regionals — your first game is at the Longview championship.'
+              : ps.userSeed === 2
+                ? 'You HOST your region\'s super regional (best-of-3). Game scheduled this week.'
+                : 'You travel to your region\'s super regional. The play-in (#3 vs #4) is auto-resolved.'}
+          </div>
+        )}
         {is4Round ? (
           <>
             <InteractiveRoundRow save={save} round={ps.rounds?.CONF} title={ps.isIndependent ? 'Round 1 — No Conf Tournament (Independent)' : `Round 1 — ${confAbbr4R} Tournament`} active={highlightWeek === 39} />
@@ -1866,6 +1900,37 @@ function SimActionBar({ mode, inOffseason, nextGame, userSchoolId, save, busy, b
             {nextGame.homeId === userSchoolId ? 'vs' : '@'} {oppName}
             <TeamRankChip save={save} schoolId={opp} />
             <span className="text-[10px] opacity-70 ml-1 font-normal">{nextGame.type === 'CONFERENCE' ? 'Conf' : 'Non-conf'} · {nextGame.date}</span>
+          </div>
+        </div>
+      </div>
+    )
+  } else if (mode === 'POSTSEASON' && save?.postseason?.interactive) {
+    // Postseason mode: surface the pending bracket game instead of the
+    // generic "No upcoming game" (per Nate — NWAC #2 seed saw "no games
+    // to play" even though they were hosting their super regional).
+    const ps = save.postseason
+    const pendingRound = ps.rounds?.SUPER?.pendingGameId
+      ? ps.rounds.SUPER : ps.rounds?.WS?.pendingGameId
+      ? ps.rounds.WS : null
+    const ps_label = ps.level === 'NWAC' && ps.stage === 'SUPER' ? 'NWAC Super Regional'
+      : ps.level === 'NWAC' && ps.stage === 'WS' ? 'NWAC Championship'
+      : ps.stage === 'CONF' ? 'Conference Tournament'
+      : ps.stage === 'REGIONAL' ? 'NCAA Regional'
+      : ps.stage === 'SUPER' ? 'Super Regional'
+      : ps.stage === 'WS' ? 'World Series'
+      : 'Postseason'
+    primary = (
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center text-2xl shrink-0">
+          🏆
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider opacity-70 font-semibold">Postseason · Wk {woy}</div>
+          <div className="text-sm font-semibold mt-0.5">
+            {pendingRound?.oppName ? `${ps_label} vs ${pendingRound.oppName}` : ps_label}
+            {!pendingRound && ps.userAlive && (
+              <span className="text-[10px] opacity-70 ml-2 font-normal">Open the bracket to play</span>
+            )}
           </div>
         </div>
       </div>
