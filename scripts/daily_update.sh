@@ -173,3 +173,8 @@ else
     fail "$ERRORS step(s) had errors. Check output above."
 fi
 echo "============================================"
+
+# Re-derive WPA after scrapes — idempotent (only games with
+# wpa_derived_at IS NULL get processed). Self-heals when scrape_pbp
+# re-INSERTs game_events rows and clears the wpa_* columns.
+PYTHONPATH=backend python3 scripts/compute_wpa.py --season 2026
