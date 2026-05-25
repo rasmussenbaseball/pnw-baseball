@@ -23,6 +23,30 @@
  */
 
 import { makeRng } from './rng'
+import { playerOverall } from './playerRating'
+
+// ─── Level + level-fit helpers ─────────────────────────────────────────────
+// Used by event conditions to gate events that don't make sense at a level.
+// E.g. NWAC teams don't fly (bus-only per Nate), so PLANE_DELAYED and
+// CHARTER_FLIGHT_OFFER should never fire for an NWAC user.
+
+function isNwacUser(state) { return state.level === 'NWAC' }
+function isD1User(state) { return state.level === 'D1' }
+function isFourYearUser(state) {
+  return ['D1', 'D2', 'D3', 'NAIA'].includes(state.level)
+}
+/** Programs that realistically charter flights. NWAC + D3 + small NAIA = bus. */
+function isFlyingProgram(state) {
+  return state.level === 'D1' || state.level === 'D2'
+}
+/** Format a player for popup bodies — name + class year + position + OVR. */
+function playerLabel(player) {
+  if (!player) return 'Unknown player'
+  const ovr = Math.round(playerOverall(player) || 50)
+  const yr = player.classYear || 'FR'
+  const pos = player.primaryPosition || 'OF'
+  return `${player.firstName} ${player.lastName} (${yr} ${pos}, ${ovr} OVR)`
+}
 
 // ─── Helpers reusable by event apply()s ────────────────────────────────────
 
@@ -174,7 +198,7 @@ export const EVENT_CATALOG = {
         id: `evt_PLAYER_INCIDENT_${player.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'PLAYER_INCIDENT',
         title: 'Off-Field Incident',
-        body: `${player.firstName} ${player.lastName} was ${offense}. The story is on its way to the local paper. How do you handle it?`,
+        body: `${playerLabel(player)} was ${offense}. The story is on its way to the local paper. How do you handle it?`,
         playerId: player.id,
         choices: [
           {
@@ -184,20 +208,22 @@ export const EVENT_CATALOG = {
             apply: (state) => {
               applyPlayerMorale(player, -12)
               applyTeamMorale(state, +2)
-              pushNews(state, `${player.firstName} ${player.lastName} suspended 3 games for an off-field incident.`)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) SUSPENDED 3 games. Available to return for next series.`)
               player.suspended = { weeks: 3, year: state.calendar.year }
             },
           },
           {
             id: 'private-warning',
             label: 'Private warning, no public action',
-            blurb: 'Player stays available. Risk: media finds out anyway.',
+            blurb: '~65% it stays quiet. ~35% media breaks the cover-up.',
             apply: (state, rng) => {
               applyPlayerMorale(player, +4)
               applyTeamMorale(state, -3)
               if (rng.chance(0.35)) {
-                pushNews(state, `Local paper broke the cover-up of ${player.firstName} ${player.lastName}'s off-field incident. AD furious.`)
+                pushNews(state, `Outcome: COVER-UP EXPOSED. Local paper broke the story on ${player.firstName} ${player.lastName} (${player.classYear}). AD furious.`)
                 applyJobSecurity(state, -10)
+              } else {
+                pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) received private warning. Stayed quiet. Player remains available.`)
               }
             },
           },
@@ -210,7 +236,7 @@ export const EVENT_CATALOG = {
               team.rosterPlayerIds = (team.rosterPlayerIds || []).filter(id => id !== player.id)
               player.eligibilityStatus = 'dismissed'
               applyTeamMorale(state, -6)
-              pushNews(state, `${player.firstName} ${player.lastName} dismissed from the team. Coach says: 'Our standards are non-negotiable.'`, 'AWARD', true)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) DISMISSED — removed from the roster. Coach: 'Standards are non-negotiable.'`, 'AWARD', true)
               applyJobSecurity(state, +3)
             },
           },
@@ -223,7 +249,8 @@ export const EVENT_CATALOG = {
   PLANE_DELAYED: {
     id: 'PLANE_DELAYED',
     weight: 0.6,
-    condition: (state) => isSeasonWeek(state),
+    // NWAC + D3 + small NAIA bus everywhere — no flights to delay.
+    condition: (state) => isSeasonWeek(state) && isFlyingProgram(state),
     builder: (state) => ({
       id: `evt_PLANE_DELAYED_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'PLANE_DELAYED',
@@ -718,13 +745,28 @@ export const EVENT_CATALOG = {
         id: `evt_ACADEMIC_${player.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'ACADEMIC_DISHONESTY',
         title: 'Plagiarism Caught',
-        body: `${player.firstName} ${player.lastName}'s professor caught him using AI to write a 10-page paper. Academic affairs is recommending a 1-semester suspension.`,
+        body: `${playerLabel(player)}'s professor caught him using AI to write a 10-page paper. Academic affairs is recommending a 1-semester suspension.`,
         playerId: player.id,
         choices: [
-          { id: 'fight-it', label: 'Advocate for him with academic affairs', blurb: 'Coach uses his political capital. 50/50 chance of getting it reduced.',
-            apply: (state, rng) => { if (rng.chance(0.5)) { applyPlayerMorale(player, +10); pushNews(state, `Coach successfully advocated for ${player.firstName} ${player.lastName}. Academic warning only.`) } else { applyJobSecurity(state, -3); player.eligibilityStatus = 'ineligible'; pushNews(state, `${player.firstName} ${player.lastName} suspended one semester for plagiarism.`) } } },
-          { id: 'accept-suspension', label: 'Accept the suspension', blurb: 'Player rides the pine all spring. Sends a message.',
-            apply: (state) => { player.eligibilityStatus = 'ineligible'; applyTeamMorale(state, +1) } },
+          { id: 'fight-it', label: 'Advocate for him with academic affairs', blurb: '50% reduced to a warning. 50% suspension stands.',
+            apply: (state, rng) => {
+              if (rng.chance(0.5)) {
+                applyPlayerMorale(player, +10)
+                pushNews(state, `Outcome: Advocacy succeeded — ${player.firstName} ${player.lastName} (${player.classYear}) received only an academic warning. NO suspension. Eligibility intact.`)
+              } else {
+                applyJobSecurity(state, -3)
+                player.eligibilityStatus = 'ineligible'
+                pushNews(state, `Outcome: Advocacy failed — ${player.firstName} ${player.lastName} (${player.classYear}) SUSPENDED one full semester. Marked ineligible.`)
+              }
+            },
+          },
+          { id: 'accept-suspension', label: 'Accept the suspension', blurb: 'Player marked ineligible all spring. Sends a clear message.',
+            apply: (state) => {
+              player.eligibilityStatus = 'ineligible'
+              applyTeamMorale(state, +1)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) SUSPENDED — marked ineligible for the season. Team got the message.`)
+            },
+          },
         ],
       }
     },
@@ -741,13 +783,22 @@ export const EVENT_CATALOG = {
         id: `evt_GAMBLING_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'GAMBLING_QUESTIONING',
         title: 'NCAA Compliance Knocks',
-        body: `Compliance flagged ${player.firstName} ${player.lastName} for placing DraftKings bets — including a parlay on a college baseball game (not yours). They want a sit-down interview.`,
+        body: `Compliance flagged ${playerLabel(player)} for placing DraftKings bets — including a parlay on a college baseball game (not yours). They want a sit-down interview.`,
         playerId: player.id,
         choices: [
-          { id: 'lawyer-up', label: 'Get him a lawyer + cooperate', blurb: 'By the book. Probably a 6-game suspension; reputation intact.',
-            apply: (state) => { applyJobSecurity(state, +2); pushNews(state, `${player.firstName} ${player.lastName} suspended 6 games per NCAA gambling rules.`) } },
-          { id: 'stall', label: 'Tell him to lawyer up but stall the meeting', blurb: 'Buy him a few weeks to play. AD will hear about the foot-dragging.',
-            apply: (state) => { applyJobSecurity(state, -8) } },
+          { id: 'lawyer-up', label: 'Get him a lawyer + cooperate', blurb: '6-game suspension. Reputation intact.',
+            apply: (state) => {
+              applyJobSecurity(state, +2)
+              player.suspended = { weeks: 2, year: state.calendar.year }
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) SUSPENDED 6 games per NCAA gambling rules.`)
+            },
+          },
+          { id: 'stall', label: 'Tell him to lawyer up but stall the meeting', blurb: 'Buys him weeks. AD will absolutely hear about it.',
+            apply: (state) => {
+              applyJobSecurity(state, -8)
+              pushNews(state, `Outcome: Coach stalled NCAA on ${player.firstName} ${player.lastName} (${player.classYear}). AD furious about the foot-dragging.`)
+            },
+          },
         ],
       }
     },
@@ -919,7 +970,8 @@ export const EVENT_CATALOG = {
   HOTEL_MIXUP: {
     id: 'HOTEL_MIXUP',
     weight: 0.25,
-    condition: (state) => isSeasonWeek(state),
+    // NWAC is bus-only, no overnight road trips per Nate — skip them.
+    condition: (state) => isSeasonWeek(state) && !isNwacUser(state),
     builder: (state) => ({
       id: `evt_HOTEL_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'HOTEL_MIXUP',
@@ -1027,13 +1079,25 @@ export const EVENT_CATALOG = {
         id: `evt_BREAK_${player.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'BREAKTHROUGH',
         title: 'A Player Just Figured It Out',
-        body: `${player.firstName} ${player.lastName} has had three straight breakthrough practices. The hitting coach swears he's a different player. Promote him to a starting role?`,
+        body: `${playerLabel(player)} has had three straight breakthrough practices. The hitting coach swears he's a different player. Promote him to a starting role?`,
         playerId: player.id,
         choices: [
           { id: 'start-him', label: 'Move him into the starting lineup', blurb: 'Reward the work. Big morale boost; small team-chemistry risk.',
-            apply: (state) => { applyPlayerMorale(player, +12); applyTeamMorale(state, -1) } },
-          { id: 'keep-developing', label: 'Keep him in development reps', blurb: 'Stay patient. Player keeps growing.',
-            apply: (state, rng) => { if (player.hitter) { player.hitter.contact_r = Math.min(99, (player.hitter.contact_r || 50) + 2); player.hitter.contact_l = Math.min(99, (player.hitter.contact_l || 50) + 2) } if (player.pitcher) player.pitcher.stuff = Math.min(99, (player.pitcher.stuff || 50) + 2) } },
+            apply: (state) => {
+              applyPlayerMorale(player, +12); applyTeamMorale(state, -1)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) PROMOTED to starting lineup. Other guys noticed the leap.`)
+            },
+          },
+          { id: 'keep-developing', label: 'Keep him in development reps', blurb: 'No promotion. +2 to his headline ratings instead.',
+            apply: (state) => {
+              if (player.hitter) {
+                player.hitter.contact_r = Math.min(99, (player.hitter.contact_r || 50) + 2)
+                player.hitter.contact_l = Math.min(99, (player.hitter.contact_l || 50) + 2)
+              }
+              if (player.pitcher) player.pitcher.stuff = Math.min(99, (player.pitcher.stuff || 50) + 2)
+              pushNews(state, `Outcome: Kept ${player.firstName} ${player.lastName} (${player.classYear}) in development. Contact/Stuff +2 from the focused reps.`)
+            },
+          },
         ],
       }
     },
@@ -1050,15 +1114,38 @@ export const EVENT_CATALOG = {
         id: `evt_SLUMP_${player.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'SLUMP',
         title: 'Starter in a Deep Slump',
-        body: `${player.firstName} ${player.lastName} is 2-for-32 over his last 8 games. Confidence is shot. Vets are starting to notice.`,
+        body: `${playerLabel(player)} is 2-for-32 over his last 8 games. Confidence is shot. Vets are starting to notice.`,
         playerId: player.id,
         choices: [
-          { id: 'bench-reset', label: 'Bench him a week to reset', blurb: 'Tough love. He returns hungry — or breaks fully.',
-            apply: (state, rng) => { if (rng.chance(0.65)) applyPlayerMorale(player, +6); else applyPlayerMorale(player, -10) } },
-          { id: 'extra-cage-work', label: 'Hitting-coach 1-on-1 work', blurb: 'Show you have his back. Slow climb back.',
-            apply: (state) => { applyPlayerMorale(player, +4); if (player.hitter) { player.hitter.contact_r = Math.min(99, (player.hitter.contact_r || 50) + 1) } } },
-          { id: 'just-play', label: 'Keep running him out there', blurb: 'Faith builds character — or destroys it.',
-            apply: (state, rng) => { applyPlayerMorale(player, rng.chance(0.5) ? +3 : -6) } },
+          { id: 'bench-reset', label: 'Bench him a week to reset', blurb: '65% he returns hungry. 35% confidence breaks fully.',
+            apply: (state, rng) => {
+              if (rng.chance(0.65)) {
+                applyPlayerMorale(player, +6)
+                pushNews(state, `Outcome: Reset worked — ${player.firstName} ${player.lastName} (${player.classYear}) returned hungry after a week off.`)
+              } else {
+                applyPlayerMorale(player, -10)
+                pushNews(state, `Outcome: Reset failed — ${player.firstName} ${player.lastName} (${player.classYear}) returned even more in his head. Slump worsens.`)
+              }
+            },
+          },
+          { id: 'extra-cage-work', label: 'Hitting-coach 1-on-1 work', blurb: 'No bench. +1 contact rating, slow morale climb.',
+            apply: (state) => {
+              applyPlayerMorale(player, +4)
+              if (player.hitter) player.hitter.contact_r = Math.min(99, (player.hitter.contact_r || 50) + 1)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) got extra cage work. Contact +1; slowly climbing back.`)
+            },
+          },
+          { id: 'just-play', label: 'Keep running him out there', blurb: '50/50: faith builds him up or destroys him.',
+            apply: (state, rng) => {
+              if (rng.chance(0.5)) {
+                applyPlayerMorale(player, +3)
+                pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) appreciated the trust. Slowly came back around.`)
+              } else {
+                applyPlayerMorale(player, -6)
+                pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) pressed harder and harder. Slump getting worse.`)
+              }
+            },
+          },
         ],
       }
     },
@@ -1075,15 +1162,38 @@ export const EVENT_CATALOG = {
         id: `evt_THREAT_${player.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'TRANSFER_THREAT',
         title: 'Player Threatening to Transfer',
-        body: `${player.firstName} ${player.lastName} told his pitching coach he\'s entering the portal if things don\'t change. A bigger program has been DM\'ing him.`,
+        body: `${playerLabel(player)} told his position coach he\'s entering the portal if things don\'t change. A bigger program has been DM\'ing him.`,
         playerId: player.id,
         choices: [
-          { id: 'meet-and-promise', label: 'Sit down, promise more touches', blurb: 'Defuse for now. You may not be able to deliver.',
-            apply: (state) => { applyPlayerMorale(player, +8) } },
-          { id: 'call-his-bluff', label: 'Call his bluff', blurb: 'High variance. Player either grows up or leaves.',
-            apply: (state, rng) => { if (rng.chance(0.5)) { applyPlayerMorale(player, -15); pushNews(state, `${player.firstName} ${player.lastName} entered the transfer portal.`) } else applyPlayerMorale(player, +4) } },
-          { id: 'bump-scholarship', label: 'Bump his scholarship $1K', blurb: 'Cost: $1K out of next year\'s pool. Player feels valued.',
-            apply: (state) => { applyPlayerMorale(player, +12); if (state.budget?.allocations) state.budget.allocations.scholarships = Math.max(0, (state.budget.allocations.scholarships || 0) - 1000) } },
+          { id: 'meet-and-promise', label: 'Sit down, promise more touches', blurb: 'Player STAYS. Now you have to deliver on the touches.',
+            apply: (state) => {
+              applyPlayerMorale(player, +8)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) STAYED — accepted the promise of more PT. He\'s expecting you to deliver.`)
+            },
+          },
+          { id: 'call-his-bluff', label: 'Call his bluff', blurb: '50% he stays put. 50% he LEAVES the roster.',
+            apply: (state, rng) => {
+              if (rng.chance(0.5)) {
+                // Bluff successfully called — player stays.
+                applyPlayerMorale(player, +4)
+                pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) STAYED — your bluff worked. He didn\'t enter the portal.`)
+              } else {
+                // Player actually enters the portal — remove from roster.
+                const team = state.teams[state.userSchoolId]
+                if (team) team.rosterPlayerIds = (team.rosterPlayerIds || []).filter(id => id !== player.id)
+                player.eligibilityStatus = 'transferred'
+                applyPlayerMorale(player, -15)
+                pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) LEFT — entered the transfer portal. Removed from roster.`, 'AWARD', true)
+              }
+            },
+          },
+          { id: 'bump-scholarship', label: 'Bump his scholarship $1K', blurb: 'Player STAYS. Costs $1K from next year\'s pool.',
+            apply: (state) => {
+              applyPlayerMorale(player, +12)
+              if (state.budget?.allocations) state.budget.allocations.scholarships = Math.max(0, (state.budget.allocations.scholarships || 0) - 1000)
+              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) STAYED — accepted the $1K scholarship bump. -$1K from next year\'s pool.`)
+            },
+          },
         ],
       }
     },
@@ -1206,7 +1316,8 @@ export const EVENT_CATALOG = {
   TRANSFER_PORTAL_GEM: {
     id: 'TRANSFER_PORTAL_GEM',
     weight: 0.45,
-    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14,
+    // SEC/Big-12 portal kids don't drop to NWAC — 4-year programs only.
+    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14 && isFourYearUser(state),
     builder: (state, rng) => {
       const fromSchool = rng.pick(['a Big 12 program', 'a SEC program', 'a Pac-12 program', 'a top JUCO'])
       return {
@@ -1468,15 +1579,19 @@ export const EVENT_CATALOG = {
         id: `evt_PARENT_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'PARENT_COMPLAINT',
         title: 'Parent in Your Inbox',
-        body: `${player.firstName} ${player.lastName}\'s dad wrote a multi-page email complaining about pitch counts. He CC\'d the AD and the trainer.`,
+        body: `${playerLabel(player)}\'s dad wrote a multi-page email complaining about pitch counts. He CC\'d the AD and the trainer.`,
         playerId: player.id,
         choices: [
           { id: 'professional-response', label: 'Send a professional, data-backed reply', blurb: 'Slow but bulletproof. Sets a precedent.',
-            apply: (state) => { applyJobSecurity(state, +2) } },
-          { id: 'phone-call', label: 'Call the dad directly', blurb: 'Disarms quicker. Might get heated.',
-            apply: (state, rng) => { if (rng.chance(0.6)) applyJobSecurity(state, +3); else { applyJobSecurity(state, -3); pushNews(state, 'Parent recorded the phone call and shared it. Embarrassing for the program.') } } },
+            apply: (state) => { applyJobSecurity(state, +2); pushNews(state, `Outcome: Coach sent a data-backed reply re: ${player.firstName} ${player.lastName} (${player.classYear}). Dad backed off. AD impressed.`) } },
+          { id: 'phone-call', label: 'Call the dad directly', blurb: '60% it works. 40% gets recorded and shared.',
+            apply: (state, rng) => {
+              if (rng.chance(0.6)) { applyJobSecurity(state, +3); pushNews(state, `Outcome: Direct call to ${player.firstName}'s dad worked. Defused.`) }
+              else { applyJobSecurity(state, -3); pushNews(state, `Outcome: ${player.firstName}'s dad recorded the phone call and shared it. Embarrassing for the program.`) }
+            },
+          },
           { id: 'ad-handles', label: 'Let the AD handle it', blurb: 'Pass the buck. AD doesn\'t love it.',
-            apply: (state) => { applyJobSecurity(state, -2) } },
+            apply: (state) => { applyJobSecurity(state, -2); pushNews(state, `Outcome: Punted ${player.firstName}'s dad to the AD. AD noted it as duck-the-tough-call.`) } },
         ],
       }
     },
@@ -2199,7 +2314,8 @@ export const EVENT_CATALOG = {
   // ── Travel / Weather / Facilities ───────────────────────────────────
   CHARTER_FLIGHT_OFFER: {
     id: 'CHARTER_FLIGHT_OFFER', weight: 0.25,
-    condition: (state) => isSeasonWeek(state),
+    // Charters only make sense at flying programs (D1/D2).
+    condition: (state) => isSeasonWeek(state) && isFlyingProgram(state),
     builder: (state) => ({
       id: `evt_CHARTER_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'CHARTER_FLIGHT_OFFER',
@@ -2216,7 +2332,8 @@ export const EVENT_CATALOG = {
 
   TURF_INSTALL: {
     id: 'TURF_INSTALL', weight: 0.15,
-    condition: (state) => isOffseasonWeek(state),
+    // $400K turf install only fits programs with the budget — D3 + NWAC budgets are too small.
+    condition: (state) => isOffseasonWeek(state) && (state.level === 'D1' || state.level === 'D2' || state.level === 'NAIA'),
     builder: (state) => ({
       id: `evt_TURF_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'TURF_INSTALL',
@@ -2904,12 +3021,15 @@ export function resolveEvent(state, choiceId) {
   }
 
   // Stamp the outcome onto state so the UI can pop a clear results modal.
+  // playerId carries over so the modal can show "John Smith (JR OF, 78 OVR)"
+  // as a banner — the user always knows who the call was actually about.
   state._lastEventOutcome = {
     templateId: pending.templateId,
     eventTitle: pending.title,
     choiceLabel: choice.label,
     effects,
     narrative: newNewsLines,
+    playerId: pending.playerId || null,
     year: state.calendar?.year,
     week: state.calendar?.weekOfYear,
   }

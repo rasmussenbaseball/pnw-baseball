@@ -504,6 +504,7 @@ export default function Dashboard() {
       {save.pendingEvent && (
         <PendingEventModal
           event={save.pendingEvent}
+          save={save}
           onResolve={(choiceId) => {
             resolveEvent(save, choiceId)
             // Surface the outcome popup so the user sees the actual
@@ -520,7 +521,7 @@ export default function Dashboard() {
         />
       )}
       {eventOutcomeModal && (
-        <EventOutcomeModal outcome={eventOutcomeModal} onClose={() => setEventOutcomeModal(null)} />
+        <EventOutcomeModal outcome={eventOutcomeModal} save={save} onClose={() => setEventOutcomeModal(null)} />
       )}
       {progress && <ProgressModal {...progress} />}
       {busy && !progress && <BusySpinner />}
@@ -1460,8 +1461,40 @@ function BracketLine({ save, game, userId }) {
  * Each choice has a blurb describing the trade-off so the user can make
  * informed picks rather than rolling blind.
  */
-function PendingEventModal({ event, onResolve }) {
+/**
+ * PlayerInfoBanner — compact "PLAYER INVOLVED" card showing classYear,
+ * position, OVR, and current happiness. Surfaced at the top of every
+ * player-tied event so the user always knows exactly who the decision
+ * is about before they make it (per Nate — "give the user the players
+ * grade/year and their overall").
+ */
+function PlayerInfoBanner({ player }) {
+  if (!player) return null
+  const ovr = Math.round(playerOverall(player) || 50)
+  const yr = player.classYear || 'FR'
+  const pos = player.primaryPosition || 'OF'
+  const happy = player.happiness?.value ?? 65
+  const happyColor = happy >= 70 ? 'text-emerald-700' : happy >= 50 ? 'text-amber-700' : 'text-red-700'
+  return (
+    <div className="bg-pnw-slate/5 border border-pnw-slate/15 rounded-lg p-3 mb-3 flex items-center gap-3">
+      <div className="text-2xl">👤</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Player involved</div>
+        <div className="font-bold text-pnw-slate truncate">{player.firstName} {player.lastName}</div>
+        <div className="text-xs text-gray-600 flex items-center gap-2 flex-wrap mt-0.5">
+          <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">{yr}</span>
+          <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">{pos}</span>
+          <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">{ovr} OVR</span>
+          <span className={'font-mono text-[10px] ' + happyColor}>Happiness {happy}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PendingEventModal({ event, save, onResolve }) {
   if (!event) return null
+  const involvedPlayer = event.playerId ? save?.players?.[event.playerId] : null
   return (
     <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-amber-400">
@@ -1470,6 +1503,7 @@ function PendingEventModal({ event, onResolve }) {
         </div>
         <div className="p-5">
           <h2 className="text-lg font-bold text-pnw-slate mb-2">{event.title}</h2>
+          {involvedPlayer && <PlayerInfoBanner player={involvedPlayer} />}
           <p className="text-sm text-gray-700 mb-4 leading-snug">{event.body}</p>
           <div className="space-y-2">
             {(event.choices || []).map(choice => (
@@ -1502,11 +1536,12 @@ function PendingEventModal({ event, onResolve }) {
  * the newsfeed. Replaces the old "click a choice and silently move on"
  * UX where the user had no idea if their walk-on tryout panned out.
  */
-function EventOutcomeModal({ outcome, onClose }) {
+function EventOutcomeModal({ outcome, save, onClose }) {
   const { backdropProps, stopProps } = useModalDismiss(onClose)
   if (!outcome) return null
   const effects = Array.isArray(outcome.effects) ? outcome.effects : []
   const narrative = Array.isArray(outcome.narrative) ? outcome.narrative : []
+  const involvedPlayer = outcome.playerId ? save?.players?.[outcome.playerId] : null
   function effectStyle(eff) {
     const positive = eff.delta > 0
     const negative = eff.delta < 0
@@ -1544,6 +1579,7 @@ function EventOutcomeModal({ outcome, onClose }) {
           <h2 className="text-lg font-bold text-pnw-slate mb-1">
             You chose: <span className="text-emerald-700">{outcome.choiceLabel}</span>
           </h2>
+          {involvedPlayer && <PlayerInfoBanner player={involvedPlayer} />}
           <div className="border-t my-3" />
           {narrative.length > 0 && (
             <div className="space-y-1.5 mb-3">
