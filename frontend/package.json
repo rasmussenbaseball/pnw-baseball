@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^10.53.1",
     "@supabase/supabase-js": "^2.42.0",
     "@tanstack/react-table": "^8.11.0",
     "lz-string": "^1.5.0",

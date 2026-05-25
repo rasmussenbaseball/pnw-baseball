@@ -3,11 +3,38 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './styles/index.css'
+import { initSentry, Sentry } from './lib/sentry'
+
+// Initialize Sentry before mounting React so init runs before any component
+// code that might throw. No-ops in dev and when VITE_SENTRY_DSN is unset.
+initSentry()
+
+function CrashFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-2xl font-bold text-pnw-slate mb-2">Something went wrong</h1>
+        <p className="text-gray-600 mb-6">
+          We hit an unexpected error and have been notified. Try reloading the page.
+          If it keeps happening, email nate.rasmussen26@gmail.com so we can take a look.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-5 py-2.5 bg-pnw-green text-white rounded-lg font-semibold hover:bg-pnw-forest transition-colors"
+        >
+          Reload
+        </button>
+      </div>
+    </div>
+  )
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <Sentry.ErrorBoundary fallback={<CrashFallback />} showDialog={false}>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </Sentry.ErrorBoundary>
   </React.StrictMode>,
 )
