@@ -310,7 +310,8 @@ export default function App() {
           <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
 
           {/* Coaching (auth required) */}
-          <Route path="/juco-tracker" element={<RequireAuth><JucoTracker /></RequireAuth>} />
+          {/* Old standalone JUCO route → redirect to portal-wrapped version. */}
+          <Route path="/juco-tracker" element={<Navigate to="/portal/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
           <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
 
@@ -362,6 +363,10 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/nwac-tournament-sheet"
                  element={<RequirePortalAccess><PortalLayout><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
+          {/* JUCO Tracker moved into the Coach & Scout portal (2026-05-25).
+              Old /juco-tracker still works via the redirect above. */}
+          <Route path="/portal/juco-tracker"
+                 element={<RequirePortalAccess><PortalLayout><JucoTracker /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
           <Route path="/news/commitments" element={<NewsCommitments />} />

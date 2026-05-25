@@ -70,7 +70,7 @@ const TIERS = [
       'All paywalled articles',
       'Recruiting tools, draft board, hometown search',
       'Park factors & advanced research',
-      'The coaching simulator (NAIA GM)',
+      'The coaching simulator',
     ],
   },
   {
@@ -120,7 +120,7 @@ const FEATURES = [
   { feat: 'Draft board',                    tiers: { none: false, free: false, premium: true, coach: true } },
   { feat: 'Park factors',                   tiers: { none: false, free: false, premium: true, coach: true } },
   { feat: 'Historic matchups',              tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: 'NAIA Coaching Simulator (GM)',   tiers: { none: false, free: false, premium: true, coach: true } },
+  { feat: 'Coaching simulator (GM)',         tiers: { none: false, free: false, premium: true, coach: true } },
 
   { section: 'Coach & Scout portal' },
   { feat: 'JUCO tracker',                              tiers: { none: false, free: false, premium: false, coach: true } },

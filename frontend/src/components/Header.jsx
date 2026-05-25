@@ -70,7 +70,6 @@ const NAV = [
     items: [
       { to: '/portal', label: 'Coach & Scouting Portal',
         desc: 'Trends, opponent scouting, and PDFs in one workspace' },
-      { to: '/juco-tracker', label: 'JUCO Tracker', desc: 'Track JUCO transfer talent' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
       { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board' },
