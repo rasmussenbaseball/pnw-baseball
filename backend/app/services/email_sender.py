@@ -213,10 +213,49 @@ def unsubscribe_url(token: str) -> str:
     return f"{_site_url()}/unsubscribe?token={token}"
 
 
+def build_signature_html() -> str:
+    """Branded sign-off block appended after the article body in every
+    broadcast. Uses an inline image table layout so Gmail / Apple Mail /
+    Outlook all render the logo next to the text consistently.
+
+    The logo URL points at the public favicon.png served by the FastAPI
+    SPA-fallback handler. If we ever publish a higher-res sender logo
+    we can swap this single URL."""
+    site = _site_url()
+    logo_url = f"{site}/favicon.png"
+    return f"""
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+               style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e7eb;">
+          <tr>
+            <td width="60" style="vertical-align:middle;padding-right:14px;">
+              <a href="{site}" style="text-decoration:none;">
+                <img src="{logo_url}" alt="NW Baseball Stats"
+                     width="48" height="48"
+                     style="display:block;border-radius:10px;width:48px;height:48px;">
+              </a>
+            </td>
+            <td style="vertical-align:middle;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+              <div style="font-weight:800;color:#0f766e;font-size:14px;letter-spacing:0.04em;line-height:1.2;">
+                NW Baseball Stats
+              </div>
+              <div style="font-size:12px;color:#6b7280;line-height:1.4;margin-top:2px;">
+                College baseball analytics for the Pacific Northwest.
+              </div>
+              <div style="font-size:12px;margin-top:4px;">
+                <a href="{site}" style="color:#0f766e;text-decoration:none;font-weight:600;">nwbaseballstats.com</a>
+              </div>
+            </td>
+          </tr>
+        </table>
+    """.strip()
+
+
 def build_html(subject: str, body_html: str, unsub_url: str) -> str:
     """Wrap rendered body HTML in a clean, table-based email shell so
-    Gmail/Apple Mail/Outlook all render it consistently. Footer carries
-    the unsubscribe link."""
+    Gmail/Apple Mail/Outlook all render it consistently. Includes a
+    branded signature block after the body and an unsubscribe footer
+    below that."""
+    signature = build_signature_html()
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{_escape_html(subject)}</title></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
@@ -226,8 +265,9 @@ def build_html(subject: str, body_html: str, unsub_url: str) -> str:
         <tr><td style="padding:24px 28px 8px 28px;">
           <a href="{_site_url()}" style="text-decoration:none;color:#0f766e;font-weight:800;font-size:14px;letter-spacing:0.08em;text-transform:uppercase;">NW Baseball Stats</a>
         </td></tr>
-        <tr><td style="padding:8px 28px 24px 28px;font-size:15px;color:#1f2937;">
+        <tr><td style="padding:8px 28px 12px 28px;font-size:15px;color:#1f2937;">
           {body_html}
+          {signature}
         </td></tr>
         <tr><td style="padding:18px 28px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;">
           You're receiving this because you subscribed at <a href="{_site_url()}" style="color:#0f766e;">nwbaseballstats.com</a>.<br>
