@@ -668,9 +668,8 @@ export default function Dashboard() {
           gradient, glowing accent stripe, big team logo, dense info on the
           right. */}
       <div className="relative bg-gradient-to-br from-pnw-slate via-pnw-slate to-pnw-green text-white rounded-2xl mb-4 shadow-2xl overflow-hidden">
-        {/* Decorative diagonal accent stripe */}
+        {/* Decorative diagonal accent stripe on the right side */}
         <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-pnw-green/30 to-transparent pointer-events-none"></div>
-        <div className="absolute top-0 left-0 w-2 h-full bg-pnw-green"></div>
 
         <div className="relative p-4 sm:p-6 flex flex-col md:flex-row md:justify-between md:items-stretch gap-4 md:gap-8">
           {/* Identity */}
@@ -1054,7 +1053,7 @@ function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, sl
   if (phase.devAllowed) chips.push('Players can improve')
   else chips.push('No improvement')
   return (
-    <div className={`${palette.bg} ${palette.text} rounded-xl mb-4 px-4 py-3 border-l-4 ${palette.accent} shadow-md`}>
+    <div className={`${palette.bg} ${palette.text} rounded-xl mb-4 px-4 py-3 shadow-md`}>
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-widest opacity-75 font-bold">
