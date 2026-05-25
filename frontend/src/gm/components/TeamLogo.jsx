@@ -33,11 +33,16 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
   const fill = isPnw ? brand.primary : NON_PNW_FILL
   const stroke = isPnw ? brand.secondary : NON_PNW_STROKE
 
-  // Letter sizing — pixel fonts are wide, 2-letter abbrs need a smaller
-  // glyph than a single letter so the logo lands at roughly the same
-  // visual footprint regardless of how many characters it has.
+  // Letter sizing — pixel fonts are wide, longer abbrs need a smaller
+  // glyph so the logo lands at roughly the same visual footprint
+  // regardless of character count (1, 2, or 3 letters all fit the same
+  // tile size). L&C is 3 chars including the ampersand.
   const len = abbr.length || 1
-  const fontSize = Math.max(10, Math.round(size * (len === 1 ? 0.80 : 0.60)))
+  const scale = len <= 1 ? 0.80
+    : len === 2 ? 0.60
+    : len === 3 ? 0.44
+    : 0.36
+  const fontSize = Math.max(8, Math.round(size * scale))
 
   // Outline width scales with logo size — at tiny sizes (≤16px) a 1px
   // stroke is plenty; at large sizes (64px team-banner) the outline

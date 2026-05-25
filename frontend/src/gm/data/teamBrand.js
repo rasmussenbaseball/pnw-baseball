@@ -17,39 +17,39 @@ export const TEAM_BRAND = {
   // ─── D1 (7 PNW programs) ─────────────────────────────────────────────
   'oregon-d1':              { abbr: 'UO', primary: '#154733', secondary: '#FEE123' },  // green / yellow
   'washington-d1':          { abbr: 'UW', primary: '#4B2E83', secondary: '#B7A57A' },  // purple / gold
-  'oregon-st-d1':           { abbr: 'OS', primary: '#DC4405', secondary: '#000000' },  // orange / black
-  'washington-state-d1':    { abbr: 'WS', primary: '#981E32', secondary: '#5E6A71' },  // crimson / gray
+  'oregon-st-d1':           { abbr: 'OSU', primary: '#DC4405', secondary: '#000000' },  // orange / black
+  'washington-state-d1':    { abbr: 'WSU', primary: '#981E32', secondary: '#5E6A71' },  // crimson / gray
   'gonzaga-d1':             { abbr: 'GU', primary: '#041E42', secondary: '#C8102E' },  // navy / red
   'portland-d1':            { abbr: 'UP', primary: '#502D7F', secondary: '#FFFFFF' },  // purple / white
   'seattle-u-d1':           { abbr: 'SU', primary: '#AA0000', secondary: '#000000' },  // red / black
 
   // ─── D2 (5 PNW programs) ─────────────────────────────────────────────
-  'central-washington-d2':  { abbr: 'CW', primary: '#A8002A', secondary: '#000000' },  // crimson / black
-  'saint-martins-d2':       { abbr: 'SM', primary: '#A50034', secondary: '#000000' },  // red / black
-  'western-oregon-d2':      { abbr: 'WO', primary: '#C8102E', secondary: '#000000' },  // red / black
-  'northwest-nazarene-d2':  { abbr: 'NN', primary: '#A6192E', secondary: '#000000' },  // red / black
-  'msu-billings-d2':        { abbr: 'MB', primary: '#003D7C', secondary: '#FFD200' },  // light navy / golden yellow
+  'central-washington-d2':  { abbr: 'CWU', primary: '#A8002A', secondary: '#000000' },  // crimson / black
+  'saint-martins-d2':       { abbr: 'SMU', primary: '#A50034', secondary: '#000000' },  // red / black
+  'western-oregon-d2':      { abbr: 'WOU', primary: '#C8102E', secondary: '#000000' },  // red / black
+  'northwest-nazarene-d2':  { abbr: 'NNU', primary: '#A6192E', secondary: '#000000' },  // red / black
+  'msu-billings-d2':        { abbr: 'MSB', primary: '#003D7C', secondary: '#FFD200' },  // light navy / golden yellow
 
   // ─── D3 (9 PNW programs) ─────────────────────────────────────────────
-  'puget-sound-d3':         { abbr: 'PS', primary: '#760023', secondary: '#FFFFFF' },  // maroon / white
-  'pacific-lutheran-d3':    { abbr: 'PL', primary: '#000000', secondary: '#FFD200' },  // black / yellow
-  'whitman-d3':             { abbr: 'WM', primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy
-  'whitworth-d3':           { abbr: 'WH', primary: '#C20430', secondary: '#000000' },  // red / black
-  'linfield-d3':            { abbr: 'LI', primary: '#5B0F1C', secondary: '#7C7E80' },  // maroon / silver
-  'lewis-and-clark-d3':     { abbr: 'LK', primary: '#FE5000', secondary: '#000000' },  // orange / black
-  'willamette-d3':          { abbr: 'WI', primary: '#9D2235', secondary: '#FFC72C' },  // cardinal / gold
-  'pacific-or-d3':          { abbr: 'PO', primary: '#A6192E', secondary: '#FFFFFF' },  // red / white
-  'george-fox-d3':          { abbr: 'GF', primary: '#003366', secondary: '#FFD700' },  // navy / gold
+  'puget-sound-d3':         { abbr: 'UPS', primary: '#760023', secondary: '#FFFFFF' },  // maroon / white
+  'pacific-lutheran-d3':    { abbr: 'PLU', primary: '#000000', secondary: '#FFD200' },  // black / yellow
+  'whitman-d3':             { abbr: 'WU',  primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy — COLLIDES with Willamette
+  'whitworth-d3':           { abbr: 'WW',  primary: '#C20430', secondary: '#000000' },  // red / black — COLLIDES with NWAC Walla Walla
+  'linfield-d3':            { abbr: 'LU',  primary: '#5B0F1C', secondary: '#7C7E80' },  // maroon / silver
+  'lewis-and-clark-d3':     { abbr: 'L&C', primary: '#FE5000', secondary: '#000000' },  // orange / black
+  'willamette-d3':          { abbr: 'WU',  primary: '#9D2235', secondary: '#FFC72C' },  // cardinal / gold — COLLIDES with Whitman
+  'pacific-or-d3':          { abbr: 'PU',  primary: '#A6192E', secondary: '#FFFFFF' },  // red / white
+  'george-fox-d3':          { abbr: 'GF',  primary: '#003366', secondary: '#FFD700' },  // navy / gold
 
   // ─── NAIA (8 PNW programs — Cascade Conference) ─────────────────────
   'lewis-clark-state':      { abbr: 'LC', primary: '#00205B', secondary: '#FFC72C' },  // navy / gold
   'bushnell':               { abbr: 'BU', primary: '#1D3D6F', secondary: '#FFC72C' },  // navy / gold
-  'college-of-idaho':       { abbr: 'CI', primary: '#582C83', secondary: '#FFFFFF' },  // purple / white
-  'corban':                 { abbr: 'CR', primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy
-  'eastern-oregon':         { abbr: 'EO', primary: '#003B5C', secondary: '#B5A363' },  // blue / dark gold
-  'oregon-tech':            { abbr: 'OT', primary: '#003F87', secondary: '#FFD200' },  // blue / yellow
-  'warner-pacific':         { abbr: 'WP', primary: '#008080', secondary: '#000000' },  // teal / black
-  'british-columbia':       { abbr: 'UB', primary: '#002145', secondary: '#FFB81C' },  // navy / gold
+  'college-of-idaho':       { abbr: 'COI', primary: '#582C83', secondary: '#FFFFFF' },  // purple / white
+  'corban':                 { abbr: 'CR',  primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy
+  'eastern-oregon':         { abbr: 'EOU', primary: '#003B5C', secondary: '#B5A363' },  // blue / dark gold
+  'oregon-tech':            { abbr: 'OIT', primary: '#003F87', secondary: '#FFD200' },  // blue / yellow
+  'warner-pacific':         { abbr: 'WP',  primary: '#008080', secondary: '#000000' },  // teal / black
+  'british-columbia':       { abbr: 'UBC', primary: '#002145', secondary: '#FFB81C' },  // navy / gold
 
   // ─── NWAC (28 PNW programs — JUCO) ───────────────────────────────────
   'nwac-bellevue':          { abbr: 'BV', primary: '#003B5C', secondary: '#C8102E' },  // navy / red
