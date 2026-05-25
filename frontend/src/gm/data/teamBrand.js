@@ -33,8 +33,8 @@ export const TEAM_BRAND = {
   // ─── D3 (9 PNW programs) ─────────────────────────────────────────────
   'puget-sound-d3':         { abbr: 'UPS', primary: '#760023', secondary: '#FFFFFF' },  // maroon / white
   'pacific-lutheran-d3':    { abbr: 'PLU', primary: '#000000', secondary: '#FFD200' },  // black / yellow
-  'whitman-d3':             { abbr: 'WU',  primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy — COLLIDES with Willamette
-  'whitworth-d3':           { abbr: 'WW',  primary: '#C20430', secondary: '#000000' },  // red / black — COLLIDES with NWAC Walla Walla
+  'whitman-d3':             { abbr: 'WT',  primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy
+  'whitworth-d3':           { abbr: 'WH',  primary: '#C20430', secondary: '#000000' },  // red / black
   'linfield-d3':            { abbr: 'LU',  primary: '#5B0F1C', secondary: '#7C7E80' },  // maroon / silver
   'lewis-and-clark-d3':     { abbr: 'L&C', primary: '#FE5000', secondary: '#000000' },  // orange / black
   'willamette-d3':          { abbr: 'WU',  primary: '#9D2235', secondary: '#FFC72C' },  // cardinal / gold — COLLIDES with Whitman
