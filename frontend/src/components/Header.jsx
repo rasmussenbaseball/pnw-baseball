@@ -40,8 +40,17 @@ const NAV = [
       { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
     ],
   },
-  // Flat top-level link — articles & site news.
-  { label: 'News', to: '/news' },
+  // News splits into Articles (the original /news list) and Commitments
+  // (running list of new college commitments — JUCO now, HS soon).
+  {
+    label: 'News',
+    items: [
+      { to: '/news', label: 'Articles',
+        desc: 'Stories, recaps, and notes from around PNW college baseball' },
+      { to: '/news/commitments', label: 'Commitments',
+        desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)' },
+    ],
+  },
   // Games is public — PNW Grid / Team Quiz / Coaching Sim. Auth-gated
   // items (the sim) enforce their own gate at the route level.
   {

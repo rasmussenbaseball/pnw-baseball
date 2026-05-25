@@ -183,6 +183,7 @@ import CatcherCards from './pages/CatcherCards'
 import NWACTournamentSheet from './pages/NWACTournamentSheet'
 import NewsList from './pages/NewsList'
 import NewsArticle from './pages/NewsArticle'
+import NewsCommitments from './pages/NewsCommitments'
 import GraphicsHub from './pages/GraphicsHub'
 import ArticlesList from './pages/portal/ArticlesList'
 import ArticleEditor from './pages/portal/ArticleEditor'
@@ -351,6 +352,7 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
+          <Route path="/news/commitments" element={<NewsCommitments />} />
           <Route path="/news/:slug" element={<NewsArticle />} />
           <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
           <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />

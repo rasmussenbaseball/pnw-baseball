@@ -21499,6 +21499,61 @@ def portal_bullpen_sheet(
         return result
 
 
+@router.get("/commitments")
+@cached_endpoint(ttl_seconds=300)
+def list_commitments(
+    level: str = Query("JUCO", description="Division level filter (default JUCO/NWAC)"),
+    limit: int = Query(200, ge=1, le=500),
+):
+    """List committed players, newest commitment first.
+
+    Powers the public /news/commitments page. Returns every active player
+    with `is_committed=1` and a non-null `committed_to`, scoped to the
+    requested division (NWAC=JUCO by default; we'll expand to high-school
+    commitments to PNW schools once that data starts flowing in).
+    Sorted by `updated_at DESC` so the freshest commitments rise to top.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT p.id            AS player_id,
+                   p.first_name,
+                   p.last_name,
+                   p.position,
+                   p.year_in_school,
+                   p.height,
+                   p.weight,
+                   p.headshot_url,
+                   p.committed_to,
+                   p.updated_at     AS commitment_date,
+                   t.id             AS team_id,
+                   t.short_name     AS team_short,
+                   t.name           AS team_name,
+                   t.logo_url       AS team_logo,
+                   c.abbreviation   AS conference_abbrev,
+                   d.level          AS division_level
+            FROM players p
+            JOIN teams t       ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions  d  ON d.id = c.division_id
+            WHERE p.is_committed = 1
+              AND p.committed_to IS NOT NULL
+              AND p.committed_to <> ''
+              AND COALESCE(p.is_phantom, FALSE) = FALSE
+              AND t.is_active = 1
+              AND d.level = %s
+            ORDER BY p.updated_at DESC, p.last_name ASC
+            LIMIT %s
+            """,
+            (level, limit),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["commitment_date"] = r["commitment_date"].isoformat() if r["commitment_date"] else None
+        return {"level": level, "count": len(rows), "commitments": rows}
+
+
 @router.get("/portal/scouting-sheet/{team_id}")
 def portal_scouting_sheet(
     team_id: int,
