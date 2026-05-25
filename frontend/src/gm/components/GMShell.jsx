@@ -44,7 +44,7 @@ class GMErrorBoundary extends Component {
             {String(this.state.error?.message || this.state.error)}
           </pre>
           <div className="flex gap-2 mt-3">
-            <a href="/gm" className="bg-amber-400 text-[#1a1a2e] font-pixel-display text-[10px] tracking-widest uppercase px-3 py-2 rounded">
+            <a href="/gm" className="bg-team-accent text-team-accent-fg font-pixel-display text-[10px] tracking-widest uppercase px-3 py-2 rounded">
               ← GM Home
             </a>
             <button
@@ -107,7 +107,7 @@ export default function GMShell({ children, schoolName, schoolColors }) {
   const [params] = useSearchParams()
   const slot = params.get('slot') || '1'
   const location = useLocation()
-  const accent = schoolColors?.[0] || '#fbbf24'
+  const accent = 'var(--team-accent, #fbbf24)'
   const { user } = useAuth()
   // Apply the user's team theme as CSS variables on every GM page so
   // the entire experience (buttons, accents, hero gradients) picks up
@@ -233,7 +233,9 @@ function ToastContainer() {
 }
 
 function PixelHeader({ slot, schoolName, schoolColors }) {
-  const accent = schoolColors?.[0] || '#fbbf24'   // gold default
+  // Header accent now reads from the team theme (set by applyTeamTheme on
+  // mount). Falls back to the legacy gold when no team is themed.
+  const accent = 'var(--team-accent, #fbbf24)'
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   return (
     <header
@@ -504,7 +506,7 @@ export function ContextBox({ storageKey, title, children }) {
         onClick={toggle}
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#2a2a4a] transition"
       >
-        <span className="font-pixel-display text-[11px] tracking-widest text-amber-300">
+        <span className="font-pixel-display text-[11px] tracking-widest text-team-accent">
           {open ? '▾' : '▸'}  {title}
         </span>
         <span className="text-[10px] uppercase tracking-wider text-[#a8a8c8]">

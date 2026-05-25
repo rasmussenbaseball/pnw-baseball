@@ -684,7 +684,7 @@ export default function Dashboard() {
                 <span>{school.name}</span>
                 {userNwbb && (
                   <span
-                    className="text-base font-bold tracking-normal bg-amber-400 text-[#1a1a2e] px-2 py-0.5 rounded leading-none"
+                    className="text-base font-bold tracking-normal bg-team-accent text-team-accent-fg px-2 py-0.5 rounded leading-none"
                     title={`NWBB Rating ${userNwbb.rating.toFixed(1)} · SOS #${userNwbb.sosRank}`}
                   >
                     #{userNwbb.nationalRank}
@@ -1019,15 +1019,19 @@ export default function Dashboard() {
 
 // ─── Season period banner (always visible below the hero) ─────────────────
 
+// Season banner palette — every season now renders in the user's team
+// primary color + team accent (per Nate, May 2026 — "current period
+// banner should use team colors too"). The icon + label still vary by
+// season so the user can tell at-a-glance what phase they're in.
 const SEASON_PALETTE = {
-  'Late Summer':       { bg: 'bg-amber-700/90',   text: 'text-amber-50',    accent: 'border-amber-400' },
-  'Fall Camp':         { bg: 'bg-orange-700/90',  text: 'text-orange-50',   accent: 'border-orange-400' },
-  'November':          { bg: 'bg-amber-900/90',   text: 'text-amber-100',   accent: 'border-amber-600' },
-  'December':          { bg: 'bg-slate-800/90',   text: 'text-slate-100',   accent: 'border-slate-500' },
-  'January':           { bg: 'bg-sky-800/90',     text: 'text-sky-50',      accent: 'border-sky-400' },
-  'Spring Season':     { bg: 'bg-emerald-700/90', text: 'text-emerald-50',  accent: 'border-emerald-400' },
-  'Postseason':        { bg: 'bg-rose-700/90',    text: 'text-rose-50',     accent: 'border-rose-400' },
-  'Summer Recruiting': { bg: 'bg-yellow-700/90',  text: 'text-yellow-50',   accent: 'border-yellow-400' },
+  'Late Summer':       { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'Fall Camp':         { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'November':          { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'December':          { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'January':           { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'Spring Season':     { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'Postseason':        { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
+  'Summer Recruiting': { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
 }
 
 function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, slot, autoOn }) {
@@ -1541,8 +1545,8 @@ function PendingEventModal({ event, save, onResolve }) {
   const involvedPlayer = event.playerId ? save?.players?.[event.playerId] : null
   return (
     <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-amber-400">
-        <div className="bg-amber-400 text-[#1a1a2e] px-4 py-2 font-pixel-display tracking-widest text-sm">
+      <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-team-accent">
+        <div className="bg-team-accent text-team-accent-fg px-4 py-2 font-pixel-display tracking-widest text-sm">
           PROGRAM EVENT — DECISION REQUIRED
         </div>
         <div className="p-5">
@@ -1711,7 +1715,7 @@ function NwacAlumniWidget({ save }) {
 
   // Tier badge styling
   const tierStyles = {
-    ELITE: 'bg-amber-400 text-[#1a1a2e] font-bold',
+    ELITE: 'bg-team-accent text-team-accent-fg font-bold',
     HIGH:  'bg-emerald-500/80 text-white',
     MID:   'bg-blue-500/80 text-white',
     AVG:   'bg-gray-500/80 text-white',
