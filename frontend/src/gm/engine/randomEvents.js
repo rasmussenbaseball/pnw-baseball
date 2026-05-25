@@ -1160,10 +1160,10 @@ export const EVENT_CATALOG = {
       id: `evt_FACUP_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'FACILITY_UPGRADE_OFFER',
       title: 'Indoor Facility Grant',
-      body: 'A booster will fund a new indoor hitting facility ($150K) if you commit to a 5-year contract extension. AD likes the idea; you\'d be locked in.',
+      body: 'A booster will fund a new indoor hitting facility ($150K) if you commit to a 2-year contract extension. AD likes the idea; you\'d be locked in.',
       choices: [
-        { id: 'sign-extension', label: 'Sign the 5-year extension', blurb: '+Facility upgrade, +long-term JS. Can\'t leave for 5 years even if a D1 calls.',
-          apply: (state) => { applyJobSecurity(state, +15); if (state.budget) state.budget.totalAthleticBudget += 30000; state._facilityExtension = { years: 5, year: state.calendar.year } } },
+        { id: 'sign-extension', label: 'Sign the 2-year extension', blurb: '+Facility upgrade, +long-term job security. Can\'t leave for 2 years even if a D1 calls.',
+          apply: (state) => { applyJobSecurity(state, +15); if (state.budget) state.budget.totalAthleticBudget += 30000; state._facilityExtension = { years: 2, year: state.calendar.year } } },
         { id: 'decline-keep-options', label: 'Decline — preserve options', blurb: 'No upgrade. Free to take offers next offseason.',
           apply: () => {} },
       ],
@@ -1686,9 +1686,92 @@ export function maybeFireRandomEvent(state) {
 }
 
 /**
+ * Snapshot the state values that story-mode events most commonly touch.
+ * Used to compute a before/after delta so the OutcomeModal can show the
+ * user a clear "this is what your choice did" summary, instead of
+ * relying on each apply() to construct a description manually.
+ */
+function snapshotEventState(state) {
+  const team = state.teams?.[state.userSchoolId]
+  let teamHappiness = 0
+  let count = 0
+  if (team) {
+    for (const pid of (team.rosterPlayerIds || [])) {
+      const p = state.players?.[pid]
+      if (p?.happiness?.value != null) { teamHappiness += p.happiness.value; count++ }
+    }
+  }
+  return {
+    jobSecurity: state.budget?.jobSecurity ?? 50,
+    totalBudget: state.budget?.totalAthleticBudget ?? 0,
+    scholarships: state.budget?.allocations?.scholarships ?? 0,
+    recruiting: state.budget?.allocations?.recruiting ?? 0,
+    travel: state.budget?.allocations?.travel ?? 0,
+    rosterSize: team?.rosterPlayerIds?.length ?? 0,
+    teamHappinessAvg: count > 0 ? teamHappiness / count : 0,
+    newsLen: state.newsfeed?.length ?? 0,
+  }
+}
+
+function fmtMoney(n) {
+  const abs = Math.abs(n)
+  if (abs >= 1000) return `$${(abs / 1000).toFixed(abs >= 10_000 ? 0 : 1)}K`
+  return `$${abs}`
+}
+
+/**
+ * Diff a before/after snapshot into a user-friendly effects array. Each
+ * entry is { kind, delta, label } — kind drives the icon/color, delta is
+ * raw numeric change, label is the prebuilt human string.
+ */
+function buildEffectsFromDelta(before, after) {
+  const out = []
+  if (after.jobSecurity !== before.jobSecurity) {
+    const d = after.jobSecurity - before.jobSecurity
+    out.push({ kind: 'JOB_SECURITY', delta: d, label: `Job security ${d > 0 ? '+' : ''}${d}` })
+  }
+  if (after.totalBudget !== before.totalBudget) {
+    const d = after.totalBudget - before.totalBudget
+    out.push({ kind: 'BUDGET', delta: d, label: `Athletic budget ${d > 0 ? '+' : '−'}${fmtMoney(d)}` })
+  }
+  if (after.scholarships !== before.scholarships) {
+    const d = after.scholarships - before.scholarships
+    out.push({ kind: 'SCHOLARSHIPS', delta: d, label: `Scholarship pool ${d > 0 ? '+' : '−'}${fmtMoney(d)}` })
+  }
+  if (after.recruiting !== before.recruiting) {
+    const d = after.recruiting - before.recruiting
+    out.push({ kind: 'RECRUITING', delta: d, label: `Recruiting budget ${d > 0 ? '+' : '−'}${fmtMoney(d)}` })
+  }
+  if (after.travel !== before.travel) {
+    const d = after.travel - before.travel
+    out.push({ kind: 'TRAVEL', delta: d, label: `Travel budget ${d > 0 ? '+' : '−'}${fmtMoney(d)}` })
+  }
+  if (after.rosterSize !== before.rosterSize) {
+    const d = after.rosterSize - before.rosterSize
+    out.push({
+      kind: 'ROSTER', delta: d,
+      label: d > 0 ? `Added ${d} player${d === 1 ? '' : 's'} to the roster`
+                   : `Lost ${Math.abs(d)} player${Math.abs(d) === 1 ? '' : 's'} from the roster`,
+    })
+  }
+  const happDelta = after.teamHappinessAvg - before.teamHappinessAvg
+  if (Math.abs(happDelta) >= 0.5) {
+    const d = happDelta
+    out.push({ kind: 'TEAM_HAPPINESS', delta: d, label: `Team happiness ${d > 0 ? '+' : ''}${d.toFixed(1)}` })
+  }
+  return out
+}
+
+/**
  * Resolve the currently-pending event by choice id. Looks up the choice on
  * the template's catalog entry (choices are statically defined on the
  * builder output, but apply() refs were stored there) and runs it.
+ *
+ * After the apply() mutates state, we diff a state snapshot to derive a
+ * user-friendly effects list and stamp it onto state._lastEventOutcome.
+ * The Dashboard's EventOutcomeModal reads that and shows the user a
+ * clear "this is what your choice did" popup, so the chain is:
+ *   PendingEvent modal → click choice → resolveEvent → Outcome modal.
  */
 export function resolveEvent(state, choiceId) {
   const pending = state.pendingEvent
@@ -1696,11 +1779,39 @@ export function resolveEvent(state, choiceId) {
   const choice = (pending.choices || []).find(c => c.id === choiceId)
   if (!choice) return { ok: false, error: 'Choice not found.' }
   const rng = makeRng('eventResolve', pending.id, state.rngSeed || 1)
+
+  // Snapshot state before applying the choice — we'll diff after.
+  const before = snapshotEventState(state)
   try {
     choice.apply(state, rng)
   } catch (err) {
     console.warn('Event apply threw:', err)
   }
+  const after = snapshotEventState(state)
+  const effects = buildEffectsFromDelta(before, after)
+  // Any newsfeed entries the apply() pushed are flavor lines for the
+  // outcome popup. Capture them in order so the user sees the same
+  // narrative the apply() recorded.
+  const newNewsLines = []
+  const addedCount = after.newsLen - before.newsLen
+  if (addedCount > 0) {
+    for (let i = 0; i < Math.min(addedCount, 4); i++) {
+      const entry = state.newsfeed?.[i]
+      if (entry?.headline) newNewsLines.push(entry.headline)
+    }
+  }
+
+  // Stamp the outcome onto state so the UI can pop a clear results modal.
+  state._lastEventOutcome = {
+    templateId: pending.templateId,
+    eventTitle: pending.title,
+    choiceLabel: choice.label,
+    effects,
+    narrative: newNewsLines,
+    year: state.calendar?.year,
+    week: state.calendar?.weekOfYear,
+  }
+
   // Log to history
   state.eventHistory = state.eventHistory || []
   state.eventHistory.unshift({
@@ -1710,6 +1821,7 @@ export function resolveEvent(state, choiceId) {
     title: pending.title,
     choiceId,
     choiceLabel: choice.label,
+    effects,
   })
   state.eventHistory = state.eventHistory.slice(0, 50)
   state.pendingEvent = null

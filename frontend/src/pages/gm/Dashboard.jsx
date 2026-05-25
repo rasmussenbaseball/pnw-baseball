@@ -77,6 +77,7 @@ export default function Dashboard() {
   const [potwModal, setPotwModal] = useState(null)             // user-player Player-of-the-Week popup
   const [seasonRecapModal, setSeasonRecapModal] = useState(null)  // year-rollover comprehensive recap
   const [championModal, setChampionModal] = useState(null)  // championship-won celebration popup
+  const [eventOutcomeModal, setEventOutcomeModal] = useState(null)  // after-choice "here's what happened" popup
   // Phase-transition popup. advanceOneWeek stamps state._phaseTransition
   // when the user crosses a phase boundary. Dashboard reads it here, opens
   // the modal, then clears the marker so the popup only fires once.
@@ -505,10 +506,21 @@ export default function Dashboard() {
           event={save.pendingEvent}
           onResolve={(choiceId) => {
             resolveEvent(save, choiceId)
+            // Surface the outcome popup so the user sees the actual
+            // effect of their choice (job sec changes, roster changes,
+            // morale shifts, etc.). resolveEvent stamps it onto
+            // save._lastEventOutcome — pull, show, clear.
+            if (save._lastEventOutcome) {
+              setEventOutcomeModal(save._lastEventOutcome)
+              save._lastEventOutcome = null
+            }
             saveDynasty(save)
             setSave({ ...save })
           }}
         />
+      )}
+      {eventOutcomeModal && (
+        <EventOutcomeModal outcome={eventOutcomeModal} onClose={() => setEventOutcomeModal(null)} />
       )}
       {progress && <ProgressModal {...progress} />}
       {busy && !progress && <BusySpinner />}
@@ -1476,6 +1488,92 @@ function PendingEventModal({ event, onResolve }) {
           <p className="text-[10px] text-gray-400 mt-3 italic">
             You must resolve this event before you can advance another week.
           </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * EventOutcomeModal — shown immediately after the user resolves a
+ * story-mode random event. Displays a clear, structured summary of what
+ * actually happened: roster changes, budget changes, job security shifts,
+ * team-happiness moves, plus the narrative lines the apply() pushed to
+ * the newsfeed. Replaces the old "click a choice and silently move on"
+ * UX where the user had no idea if their walk-on tryout panned out.
+ */
+function EventOutcomeModal({ outcome, onClose }) {
+  const { backdropProps, stopProps } = useModalDismiss(onClose)
+  if (!outcome) return null
+  const effects = Array.isArray(outcome.effects) ? outcome.effects : []
+  const narrative = Array.isArray(outcome.narrative) ? outcome.narrative : []
+  function effectStyle(eff) {
+    const positive = eff.delta > 0
+    const negative = eff.delta < 0
+    // For some kinds (e.g. SCHOLARSHIPS, TRAVEL, RECRUITING) "+" really
+    // means "we spent / committed" which is informational, not positive.
+    // Visual color: green for positive job sec / morale / roster /
+    // budget; red for losses; gray for neutral spending.
+    const cashSpend = ['SCHOLARSHIPS', 'RECRUITING', 'TRAVEL'].includes(eff.kind)
+    if (cashSpend) return 'text-gray-700 bg-gray-50 border-gray-200'
+    if (positive) return 'text-emerald-800 bg-emerald-50 border-emerald-200'
+    if (negative) return 'text-red-800 bg-red-50 border-red-200'
+    return 'text-gray-700 bg-gray-50 border-gray-200'
+  }
+  function effectIcon(eff) {
+    return ({
+      JOB_SECURITY: '🛡️',
+      BUDGET: '💰',
+      SCHOLARSHIPS: '🎓',
+      RECRUITING: '🎯',
+      TRAVEL: '✈️',
+      ROSTER: '👥',
+      TEAM_HAPPINESS: '😊',
+    })[eff.kind] || '·'
+  }
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[65] flex items-center justify-center p-4" {...backdropProps}>
+      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-emerald-400" {...stopProps}>
+        <div className="bg-emerald-400 text-pnw-slate px-4 py-2 font-pixel-display tracking-widest text-sm">
+          DECISION OUTCOME
+        </div>
+        <div className="p-5">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1">
+            {outcome.eventTitle}
+          </div>
+          <h2 className="text-lg font-bold text-pnw-slate mb-1">
+            You chose: <span className="text-emerald-700">{outcome.choiceLabel}</span>
+          </h2>
+          <div className="border-t my-3" />
+          {narrative.length > 0 && (
+            <div className="space-y-1.5 mb-3">
+              {narrative.map((line, i) => (
+                <div key={i} className="text-sm text-pnw-slate leading-snug">
+                  {line}
+                </div>
+              ))}
+            </div>
+          )}
+          {effects.length > 0 ? (
+            <div className="space-y-1.5">
+              {effects.map((eff, i) => (
+                <div key={i} className={'text-xs px-3 py-2 rounded border ' + effectStyle(eff)}>
+                  <span className="mr-2">{effectIcon(eff)}</span>
+                  <span className="font-semibold">{eff.label}</span>
+                </div>
+              ))}
+            </div>
+          ) : narrative.length === 0 ? (
+            <div className="text-xs text-gray-500 italic">
+              No measurable program impact this time. Decision logged.
+            </div>
+          ) : null}
+          <button
+            onClick={onClose}
+            className="mt-4 w-full px-4 py-2.5 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
+          >
+            Got it
+          </button>
         </div>
       </div>
     </div>
