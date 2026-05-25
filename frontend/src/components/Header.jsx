@@ -27,7 +27,6 @@ const NAV = [
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
       { to: '/team-history', label: 'History', desc: 'Historical team performance' },
-      { to: '/playoff-projections', label: 'Playoff Projections', desc: 'Projected standings & playoff fields' },
     ],
   },
   {
@@ -76,8 +75,6 @@ const NAV = [
         desc: 'Pick from every social-media graphic generator on the site' },
       { to: '/top-moments', label: 'Top Moments',
         desc: "The season's biggest WPA swings and clutch leaderboards" },
-      { to: '/all-conference', label: 'All-Conference Generator',
-        desc: 'Build mock first, second, and HM teams from season stats' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
       // Author-only — hidden from the dropdown unless the current user's
@@ -85,6 +82,13 @@ const NAV = [
       { to: '/articles', label: 'Write Articles',
         desc: 'Draft, edit, and publish site articles',
         requireEmail: ['nate.rasmussen26@gmail.com'] },
+      // Visual divider — items below are kept around for reference but
+      // are no longer the active tools used regularly.
+      { heading: 'Archived' },
+      { to: '/all-conference', label: 'All-Conference Generator',
+        desc: 'Build mock first, second, and HM teams from season stats' },
+      { to: '/playoff-projections', label: 'Playoff Projections',
+        desc: 'Projected standings & playoff fields' },
     ],
   },
 ]
@@ -455,28 +459,39 @@ function DropdownPanel({ items, onClose }) {
   const visible = filterItemsForUser(items, user?.email)
   return (
     <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
-      {visible.map(item => (
-        <Link
-          key={item.to}
-          to={item.to}
-          onClick={onClose}
-          className={`flex flex-col px-2.5 py-1.5 rounded-md transition-colors group ${
-            item.locked ? 'opacity-50 hover:bg-white/5' : 'hover:bg-white/10'
-          }`}
-        >
-          <span className="text-[13px] font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5 leading-tight">
-            {item.label}
-            {item.locked && (
-              <svg className="w-3 h-3 text-teal-300/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0110 0v4" />
-              </svg>
-            )}
-          </span>
-          <span className="text-[11px] text-teal-300/60 mt-0 leading-tight">
-            {item.locked ? 'Coming soon' : item.desc}
-          </span>
-        </Link>
+      {visible.map((item, i) => (
+        // Items with a `heading` render as a labeled divider instead of a
+        // clickable link — used to group "Archived" tools at the bottom
+        // of the Misc dropdown.
+        item.heading ? (
+          <div key={`h-${i}`} className="px-2.5 pt-3 pb-1 mt-1 border-t border-white/10">
+            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-teal-300/60">
+              {item.heading}
+            </span>
+          </div>
+        ) : (
+          <Link
+            key={item.to}
+            to={item.to}
+            onClick={onClose}
+            className={`flex flex-col px-2.5 py-1.5 rounded-md transition-colors group ${
+              item.locked ? 'opacity-50 hover:bg-white/5' : 'hover:bg-white/10'
+            }`}
+          >
+            <span className="text-[13px] font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5 leading-tight">
+              {item.label}
+              {item.locked && (
+                <svg className="w-3 h-3 text-teal-300/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0110 0v4" />
+                </svg>
+              )}
+            </span>
+            <span className="text-[11px] text-teal-300/60 mt-0 leading-tight">
+              {item.locked ? 'Coming soon' : item.desc}
+            </span>
+          </Link>
+        )
       ))}
     </div>
   )
@@ -765,26 +780,34 @@ export default function Header() {
                   </button>
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-0.5 border-l border-white/10 pl-3">
-                      {filterItemsForUser(section.items, user?.email).map(item => (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => { setMobileOpen(false); setMobileExpanded(null) }}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors
-                            ${item.locked ? 'opacity-50' : ''}
-                            ${location.pathname === item.to
-                              ? 'bg-white/15 text-white font-medium'
-                              : 'text-teal-200/70 hover:text-white hover:bg-white/10'
-                            }`}
-                        >
-                          {item.label}
-                          {item.locked && (
-                            <svg className="w-3 h-3 text-teal-300/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                              <path d="M7 11V7a5 5 0 0110 0v4" />
-                            </svg>
-                          )}
-                        </Link>
+                      {filterItemsForUser(section.items, user?.email).map((item, i) => (
+                        item.heading ? (
+                          <div key={`mh-${i}`} className="px-3 pt-2 pb-1 mt-1 border-t border-white/10">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-teal-300/60">
+                              {item.heading}
+                            </span>
+                          </div>
+                        ) : (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => { setMobileOpen(false); setMobileExpanded(null) }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors
+                              ${item.locked ? 'opacity-50' : ''}
+                              ${location.pathname === item.to
+                                ? 'bg-white/15 text-white font-medium'
+                                : 'text-teal-200/70 hover:text-white hover:bg-white/10'
+                              }`}
+                          >
+                            {item.label}
+                            {item.locked && (
+                              <svg className="w-3 h-3 text-teal-300/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0110 0v4" />
+                              </svg>
+                            )}
+                          </Link>
+                        )
                       ))}
                     </div>
                   )}
