@@ -300,6 +300,61 @@ def build_text(body_md: str, unsub_url: str) -> str:
 # Send
 # ─────────────────────────────────────────────────────────────────
 
+def send_notification(
+    to_email: str,
+    subject: str,
+    body_text: str,
+    body_html: Optional[str] = None,
+    *,
+    reply_to: Optional[str] = None,
+) -> dict:
+    """Send a single transactional email through Resend (e.g. a feature
+    request notification landing in the admin inbox). Distinct from
+    send_broadcast — no unsubscribe footer, no signature block, no
+    audience targeting. Returns {sent, failed, error?, id?}.
+
+    Errors are returned in the result rather than raised so callers
+    using a background thread won't crash on transient send failures."""
+    try:
+        api_key = _api_key()
+    except RuntimeError as e:
+        return {"sent": 0, "failed": 1, "error": str(e)}
+
+    payload = {
+        "from": _from_address(),
+        "to": [to_email],
+        "subject": subject,
+        "text": body_text,
+    }
+    if body_html:
+        payload["html"] = body_html
+    if reply_to:
+        payload["reply_to"] = reply_to
+
+    try:
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=15.0,
+        )
+    except httpx.RequestError as e:
+        return {"sent": 0, "failed": 1, "error": f"network error: {e}"}
+
+    if resp.status_code >= 300:
+        return {"sent": 0, "failed": 1,
+                "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+
+    try:
+        rid = (resp.json() or {}).get("id")
+    except Exception:
+        rid = None
+    return {"sent": 1, "failed": 0, "id": rid}
+
+
 def send_broadcast(
     subject: str,
     body_md: str,

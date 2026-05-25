@@ -13,11 +13,8 @@ import json
 import math
 import os
 import re
-import smtplib
 import threading
 from bisect import bisect_left, bisect_right
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, date, timedelta
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -16465,37 +16462,82 @@ def summer_available_seasons():
 # ════════════════════════════════════════════════════════════════
 
 def _send_feature_request_email(req_id, email, category, message):
-    """Send email notification for a new feature request."""
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_pass = os.getenv("SMTP_PASS")
-    notify_email = os.getenv("NOTIFY_EMAIL")
-
-    if not all([smtp_user, smtp_pass, notify_email]):
-        return  # Skip if email not configured
-
+    """Notify info@nwbaseballstats.com of a new feature request / bug
+    report / feedback via Resend. Sets Reply-To to the submitter so
+    hitting Reply in Gmail emails the user directly. Fails silently
+    (caller runs this in a background thread)."""
+    # Inline import keeps the routes module light at startup — the
+    # service is only loaded when a feedback form is actually submitted.
     try:
-        msg = MIMEMultipart()
-        msg["From"] = smtp_user
-        msg["To"] = notify_email
-        msg["Subject"] = f"[NWBB Stats] New {category}: #{req_id}"
-
-        body = f"""New {category} submitted on NWBB Stats:
-
-From: {email or 'Anonymous'}
-Category: {category}
-Request ID: #{req_id}
-
-Message:
-{message}
-"""
-        msg.attach(MIMEText(body, "plain"))
-
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
+        from ..services.email_sender import send_notification
     except Exception:
-        pass  # Don't fail the request if email fails
+        return
+
+    cat_display = (category or "feedback").replace("_", " ").title()
+    from_label = email or "Anonymous"
+
+    # Subject: short enough to read in the Gmail list view.
+    snippet = message[:60].strip()
+    if len(message) > 60:
+        snippet += "…"
+    subject = f"[NWBB] {cat_display} #{req_id}: {snippet}"
+
+    # Plain-text fallback (everything important; clients without HTML
+    # support still get a fully readable email).
+    body_text = (
+        f"New {cat_display} submitted on NW Baseball Stats\n"
+        f"{'=' * 50}\n\n"
+        f"From: {from_label}\n"
+        f"Category: {cat_display}\n"
+        f"Request ID: #{req_id}\n\n"
+        f"Message:\n{message}\n\n"
+        f"{'=' * 50}\n"
+        f"Reply to this email to respond directly to the user.\n"
+    )
+
+    # Tiny HTML version. Inline styles so Gmail renders consistently;
+    # no external CSS / images so it loads instantly.
+    def _esc(s):
+        return (str(s or "")
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    body_html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="background:#fff;border-radius:12px;max-width:560px;width:100%;">
+        <tr><td style="padding:20px 24px;border-bottom:1px solid #e5e7eb;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:#0f766e;text-transform:uppercase;">NW Baseball Stats</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:2px;">New {_esc(cat_display)} from the website</div>
+        </td></tr>
+        <tr><td style="padding:18px 24px;font-size:14px;color:#1f2937;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:13px;">
+            <tr><td style="padding:3px 0;color:#6b7280;width:90px;">From</td>
+                <td style="padding:3px 0;font-weight:600;color:#111;">{_esc(from_label)}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280;">Category</td>
+                <td style="padding:3px 0;font-weight:600;color:#111;">{_esc(cat_display)}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280;">Request ID</td>
+                <td style="padding:3px 0;font-weight:600;color:#111;">#{_esc(req_id)}</td></tr>
+          </table>
+          <div style="margin-top:14px;padding:14px 16px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;white-space:pre-wrap;line-height:1.55;">{_esc(message)}</div>
+        </td></tr>
+        <tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;">
+          Reply to this email to respond directly to the user.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>"""
+
+    send_notification(
+        to_email="info@nwbaseballstats.com",
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+        # Reply-To is the submitter's email if they were logged in.
+        # If anonymous, omit so Reply goes back to info@ (where the
+        # admin can then craft a real outbound reply if they want).
+        reply_to=email or None,
+    )
 
 
 @router.post("/feature-requests")
