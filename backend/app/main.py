@@ -33,6 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from .api.routes import router
 from .api.articles import router as articles_router
 from .api.email_prefs import router as email_prefs_router
+from .api.email_broadcasts import router as email_broadcasts_router
 from .models.database import init_db, seed_divisions_and_conferences
 
 class DecimalJSONResponse(JSONResponse):
@@ -67,6 +68,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api/v1")
 app.include_router(articles_router, prefix="/api/v1")
 app.include_router(email_prefs_router, prefix="/api/v1")
+app.include_router(email_broadcasts_router, prefix="/api/v1")
 
 
 # ── Edge cache headers ───────────────────────────────────────────

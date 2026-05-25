@@ -91,6 +91,9 @@ const NAV = [
       { to: '/articles', label: 'Write Articles',
         desc: 'Draft, edit, and publish site articles',
         requireEmail: ['nate.rasmussen26@gmail.com'] },
+      { to: '/broadcasts', label: 'Email Broadcasts',
+        desc: 'Compose and send to opted-in subscribers',
+        requireEmail: ['nate.rasmussen26@gmail.com'] },
       // Visual divider — items below are kept around for reference but
       // are no longer the active tools used regularly.
       { heading: 'Archived' },

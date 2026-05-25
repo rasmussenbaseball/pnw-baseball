@@ -188,6 +188,8 @@ import NewsCommitments from './pages/NewsCommitments'
 import GraphicsHub from './pages/GraphicsHub'
 import ArticlesList from './pages/portal/ArticlesList'
 import ArticleEditor from './pages/portal/ArticleEditor'
+import EmailComposer from './pages/portal/EmailComposer'
+import Unsubscribe from './pages/Unsubscribe'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'
@@ -359,6 +361,10 @@ export default function App() {
           <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
           <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
           <Route path="/articles/edit/:id" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
+
+          {/* Email broadcasts (author-allowlist only) + public unsubscribe page */}
+          <Route path="/broadcasts" element={<RequireArticleAuthor><EmailComposer /></RequireArticleAuthor>} />
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
