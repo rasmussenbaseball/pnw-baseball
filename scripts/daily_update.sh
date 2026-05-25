@@ -73,11 +73,17 @@ echo ""
 run_step "D1 stats (Pac-12 / WCC PNW teams)" \
     python3 scripts/scrape_d1.py --season "$SEASON"
 
-run_step "D2 stats (GNAC)" \
-    python3 scripts/scrape_d2.py --season "$SEASON"
-
-run_step "D3 stats (NWC)" \
-    python3 scripts/scrape_d3.py --season "$SEASON"
+# ── D2 / D3 paused: their 2026 regular seasons are over (May 2026) and
+# both leagues froze on conference-freeze day. Re-enable when the next
+# season opens (typically late January / early February). To turn back
+# on, just uncomment the two run_step blocks below AND change the
+# box-score line further down from D1+NAIA back to default ("all").
+# ──
+# run_step "D2 stats (GNAC)" \
+#     python3 scripts/scrape_d2.py --season "$SEASON"
+#
+# run_step "D3 stats (NWC)" \
+#     python3 scripts/scrape_d3.py --season "$SEASON"
 
 run_step "NAIA stats (CCC)" \
     python3 scripts/scrape_naia.py --season "$SEASON"
@@ -87,9 +93,14 @@ run_step "NAIA stats (CCC)" \
 
 # ── Step 2: Scrape box scores (game-by-game stats) ─────────
 # Fetches individual game batting/pitching lines from schedule pages.
+# Scoped to D1 + NAIA while D2/D3 seasons are over — flip back to the
+# default (no --division) when D2/D3 stats scrapes are re-enabled above.
 
-run_step "Box scores (all divisions)" \
-    python3 scripts/scrape_boxscores.py --season "$SEASON"
+run_step "Box scores (D1)" \
+    python3 scripts/scrape_boxscores.py --season "$SEASON" --division D1
+
+run_step "Box scores (NAIA)" \
+    python3 scripts/scrape_boxscores.py --season "$SEASON" --division NAIA
 
 # ── Step 2b: Update player positions from game logs ────────
 # Uses most-played position from box scores instead of generic roster data.
