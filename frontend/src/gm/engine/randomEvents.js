@@ -354,7 +354,8 @@ export const EVENT_CATALOG = {
   OPPONENT_CANCELS: {
     id: 'OPPONENT_CANCELS',
     weight: 0.6,
-    condition: (state) => isSeasonWeek(state),
+    // NWAC doesn't play midweeks — gate this out for them.
+    condition: (state) => isSeasonWeek(state) && !isNwacUser(state),
     builder: (state) => ({
       id: `evt_OPPONENT_CANCELS_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'OPPONENT_CANCELS',
@@ -398,7 +399,9 @@ export const EVENT_CATALOG = {
   MIDWEEK_INVITE: {
     id: 'MIDWEEK_INVITE',
     weight: 0.6,
-    condition: (state) => isSeasonWeek(state),
+    // NWAC doesn't play midweeks (per the cross-level branding sweep —
+    // JUCOs don't have Tuesday games). Gate to non-NWAC programs.
+    condition: (state) => isSeasonWeek(state) && !isNwacUser(state),
     builder: (state, rng) => {
       const opponentName = rng.pick(['George Fox', 'Concordia', 'Linfield', 'Pacific Lutheran', 'Saint Martin\'s', 'Whitworth'])
       return {
@@ -938,7 +941,10 @@ export const EVENT_CATALOG = {
   WEATHER_DOUBLEHEADER: {
     id: 'WEATHER_DOUBLEHEADER',
     weight: 0.7,
-    condition: (state) => isSeasonWeek(state),
+    // NWAC already plays Fri DH + Sat DH every weekend — the "stack into a
+    // doubleheader" decision doesn't apply (per Nate, May 2026). Gate to
+    // 3-game weekend programs only.
+    condition: (state) => isSeasonWeek(state) && !isNwacUser(state),
     builder: (state) => ({
       id: `evt_WEATHER_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'WEATHER_DOUBLEHEADER',
@@ -2226,7 +2232,11 @@ export const EVENT_CATALOG = {
 
   RAINOUT_RESCHEDULE: {
     id: 'RAINOUT_RESCHEDULE', weight: 0.4,
-    condition: (state) => isSeasonWeek(state),
+    // "Stack a Sunday DH" and "neutral-site Tuesday midweek" both assume
+    // a 3-game weekend with no DHs and a midweek-eligible Tuesday — that
+    // matches D1/D2/D3/NAIA but NOT NWAC (already DH-saturated, no
+    // midweeks). Gate to non-NWAC programs.
+    condition: (state) => isSeasonWeek(state) && !isNwacUser(state),
     builder: (state) => ({
       id: `evt_RAINOUT_${state.calendar.year}_${state.calendar.weekOfYear}`,
       templateId: 'RAINOUT_RESCHEDULE',
