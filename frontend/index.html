@@ -23,6 +23,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- No-flash dark mode bootstrap: runs synchronously before React
+         mounts so the page paints in the correct theme on first load
+         (otherwise users would see a brief light-mode flash on a dark
+         setup). ThemeContext is the source of truth after mount. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme') || 'system';
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (t === 'dark' || (t === 'system' && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) { /* localStorage disabled — default to light */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

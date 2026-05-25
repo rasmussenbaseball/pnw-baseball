@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { ThemeProvider } from './context/ThemeContext'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
@@ -258,8 +259,13 @@ export default function App() {
   const isGm = pathname.startsWith('/gm')
 
   return (
+    <ThemeProvider>
     <AuthProvider>
-    <div className={`min-h-screen ${isPortal ? 'bg-portal-cream' : isGm ? 'bg-gray-50' : 'bg-nw-cream'}`}>
+    <div className={`min-h-screen transition-colors ${
+      isPortal ? 'bg-portal-cream'
+      : isGm ? 'bg-gray-50'
+      : 'bg-nw-cream dark:bg-gray-900'
+    }`}>
       {!isPortal && !isGm && <Header />}
       <SignupPopup />
       <EmailPrefsPopup />
@@ -496,6 +502,7 @@ export default function App() {
       )}
     </div>
     </AuthProvider>
+    </ThemeProvider>
   )
 }
 

@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 
 const API_BASE = '/api/v1'
 
@@ -22,6 +23,7 @@ function authHeaders(session) {
 
 export default function Account() {
   const { user, session, loading: authLoading } = useAuth()
+  const { theme, resolvedTheme, setTheme } = useTheme()
 
   // Email preferences state
   const [news, setNews] = useState(false)
@@ -100,14 +102,59 @@ export default function Account() {
 
   return (
     <PageShell>
-      <h1 className="text-3xl font-bold text-gray-900 mb-1">My Account</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        Manage your subscription and how we email you.
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">My Account</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+        Manage your subscription, appearance, and how we email you.
       </p>
 
       {/* ─── Account block ─── */}
       <Section title="Account">
         <Row label="Email" value={<span className="font-mono text-sm">{user.email}</span>} />
+      </Section>
+
+      {/* ─── Appearance block ─── */}
+      <Section
+        title="Appearance"
+        right={
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100
+                           dark:text-amber-300 dark:bg-amber-900/40 px-2 py-0.5 rounded">
+            Beta
+          </span>
+        }
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <ThemeOption
+            value="system"
+            current={theme}
+            onPick={setTheme}
+            label="System"
+            desc="Match my device"
+            icon={<IconSystem />}
+          />
+          <ThemeOption
+            value="light"
+            current={theme}
+            onPick={setTheme}
+            label="Light"
+            desc="Always light"
+            icon={<IconSun />}
+          />
+          <ThemeOption
+            value="dark"
+            current={theme}
+            onPick={setTheme}
+            label="Dark"
+            desc="Always dark"
+            icon={<IconMoon />}
+          />
+        </div>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-3 leading-snug">
+          Dark mode is rolling out gradually. The header and a few key pages support it; other
+          pages will be updated in coming releases.
+          {theme === 'system' && (
+            <> Currently following your device ({resolvedTheme}).</>
+          )}
+        </p>
       </Section>
 
       {/* ─── Subscription block ─── */}
@@ -225,9 +272,12 @@ function PageShell({ children }) {
 
 function Section({ title, right, children }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 sm:p-6 mb-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
+                    rounded-2xl shadow-sm p-5 sm:p-6 mb-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-gray-700">{title}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-gray-700 dark:text-gray-300">
+          {title}
+        </h2>
         {right}
       </div>
       {children}
@@ -238,9 +288,62 @@ function Section({ title, right, children }) {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between py-1">
-      <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
-      <span className="text-gray-900">{value}</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
+      <span className="text-gray-900 dark:text-gray-100">{value}</span>
     </div>
+  )
+}
+
+// ─── Appearance toggle pieces ───
+function ThemeOption({ value, current, onPick, label, desc, icon }) {
+  const active = current === value
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(value)}
+      className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-center
+                  transition-colors ${
+        active
+          ? 'border-nw-teal bg-nw-teal/5 dark:bg-nw-teal/15'
+          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+      }`}
+    >
+      <div className={active ? 'text-nw-teal' : 'text-gray-500 dark:text-gray-400'}>{icon}</div>
+      <div className={`text-sm font-bold ${active ? 'text-nw-teal' : 'text-gray-900 dark:text-gray-100'}`}>
+        {label}
+      </div>
+      <div className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug">{desc}</div>
+    </button>
+  )
+}
+
+function IconSystem() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <line x1="8" y1="20" x2="16" y2="20" />
+      <line x1="12" y1="16" x2="12" y2="20" />
+    </svg>
+  )
+}
+
+function IconSun() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  )
+}
+
+function IconMoon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
   )
 }
 
@@ -261,8 +364,8 @@ function Choice({ checked, onChange, title, desc }) {
     <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer
                        transition-colors ${
                          checked
-                           ? 'border-nw-teal bg-nw-teal/5'
-                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                           ? 'border-nw-teal bg-nw-teal/5 dark:bg-nw-teal/15'
+                           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/40'
                        }`}>
       <input
         type="checkbox"
@@ -271,8 +374,8 @@ function Choice({ checked, onChange, title, desc }) {
         className="mt-0.5 h-4 w-4 accent-nw-teal cursor-pointer shrink-0"
       />
       <div className="min-w-0">
-        <div className="text-sm font-bold text-gray-900">{title}</div>
-        <p className="text-[12px] text-gray-500 leading-snug mt-0.5">{desc}</p>
+        <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{title}</div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 leading-snug mt-0.5">{desc}</p>
       </div>
     </label>
   )

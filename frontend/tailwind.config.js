@@ -1,6 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
+  // 'class' strategy means dark mode toggles when the <html> element
+  // has class="dark" applied. ThemeContext writes that class based on
+  // the user's saved preference (Light / Dark / System).
+  darkMode: 'class',
   theme: {
     extend: {
       // Add an `xs` breakpoint between Tailwind defaults of base (mobile)

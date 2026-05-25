@@ -681,28 +681,33 @@ export default function Header() {
                     </svg>
                   </button>
                   {userMenuOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg
-                                    border py-1 z-50">
-                      <div className="px-3 py-2 text-xs text-gray-400 truncate border-b">
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800
+                                    rounded-lg shadow-lg border border-gray-200 dark:border-gray-700
+                                    py-1 z-50">
+                      <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 truncate
+                                      border-b border-gray-200 dark:border-gray-700">
                         {user.email}
                       </div>
                       <Link
                         to="/account"
                         onClick={() => setUserMenuOpen(false)}
-                        className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200
+                                   hover:bg-gray-50 dark:hover:bg-gray-700"
                       >
                         My Account
                       </Link>
                       <Link
                         to="/favorites"
                         onClick={() => setUserMenuOpen(false)}
-                        className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200
+                                   hover:bg-gray-50 dark:hover:bg-gray-700"
                       >
                         My Favorites
                       </Link>
                       <button
                         onClick={() => { signOut(); setUserMenuOpen(false) }}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-200
+                                   hover:bg-gray-50 dark:hover:bg-gray-700"
                       >
                         Log Out
                       </button>

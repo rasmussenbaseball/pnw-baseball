@@ -7,6 +7,14 @@ body {
   @apply bg-nw-cream text-gray-900 font-sans;
 }
 
+/* ── Dark mode base ─────────────────────────────────────────────
+   Activated via class="dark" on <html> (set by ThemeContext). Only
+   the global root surfaces flip here; specific components opt in
+   to dark via `dark:` variants on their own className strings. */
+html.dark body {
+  @apply bg-gray-900 text-gray-100;
+}
+
 /* Stat table styles */
 .stat-table {
   @apply w-full text-xs sm:text-sm border-collapse;
