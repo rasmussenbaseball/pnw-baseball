@@ -75,6 +75,8 @@ const NAV = [
         desc: 'Pick from every social-media graphic generator on the site' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
+      { to: '/about', label: 'About',
+        desc: 'Methodology, stat glossary, run environments, site updates' },
       // Author-only — hidden from the dropdown unless the current user's
       // email is on the article-author allowlist.
       { to: '/articles', label: 'Write Articles',
