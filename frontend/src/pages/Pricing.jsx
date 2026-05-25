@@ -68,8 +68,8 @@ const TIERS = [
     highlights: [
       'Everything in Free, plus:',
       'All paywalled articles',
-      'Recruiting tools, draft board, JUCO tracker',
-      'Park factors, hometown search, advanced research',
+      'Recruiting tools, draft board, hometown search',
+      'Park factors & advanced research',
       'The coaching simulator (NAIA GM)',
     ],
   },
@@ -84,9 +84,10 @@ const TIERS = [
     highlights: [
       'Everything in Premium, plus:',
       'Full Coach & Scout portal',
-      'NWAC tournament sheet + bullpen / lineup helpers',
-      'Player card PDFs, catcher cards, bulk exports',
-      'All-conference generator, opponent trends',
+      'JUCO tracker + advanced player & team scouting',
+      'All printables, PDFs, and scouting sheets',
+      'TrackMan integration (coming soon)',
+      'Custom tools built on request',
     ],
   },
 ]
@@ -118,19 +119,19 @@ const FEATURES = [
   { feat: 'Hometown & geo search',          tiers: { none: false, free: false, premium: true, coach: true } },
   { feat: 'Draft board',                    tiers: { none: false, free: false, premium: true, coach: true } },
   { feat: 'Park factors',                   tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: 'JUCO tracker',                   tiers: { none: false, free: false, premium: true, coach: true } },
   { feat: 'Historic matchups',              tiers: { none: false, free: false, premium: true, coach: true } },
   { feat: 'NAIA Coaching Simulator (GM)',   tiers: { none: false, free: false, premium: true, coach: true } },
 
   { section: 'Coach & Scout portal' },
-  { feat: 'NWAC tournament scouting sheet', tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Bullpen / pitcher scouting',     tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Lineup helper',                  tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Player card PDFs',               tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Catcher cards',                  tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Bulk player card export',        tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'All-conference generator',       tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Opponent trends',                tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'JUCO tracker',                              tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'Advanced player & team scouting reports',   tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'NWAC tournament scouting sheet',            tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'Bullpen, lineup & opponent-trends tools',   tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'All printables & PDF exports (player cards, catcher cards, bulk)',
+                                                        tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'All-conference generator',                  tiers: { none: false, free: false, premium: false, coach: true } },
+  { feat: 'TrackMan integration',                      tiers: { none: false, free: false, premium: false, coach: true }, note: 'Coming soon' },
+  { feat: 'Custom tools built on request',             tiers: { none: false, free: false, premium: false, coach: true } },
 ]
 
 const FAQ = [
@@ -413,7 +414,16 @@ function ComparisonTable({ currentTier }) {
                 </tr>
               ) : (
                 <tr key={`f-${i}`} className="border-t border-gray-100 dark:border-gray-700/50">
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 text-[13px]">{row.feat}</td>
+                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 text-[13px]">
+                    {row.feat}
+                    {row.note && (
+                      <span className="ml-2 text-[10px] font-bold uppercase tracking-wider
+                                       text-amber-700 bg-amber-100 dark:text-amber-300
+                                       dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
+                        {row.note}
+                      </span>
+                    )}
+                  </td>
                   {tierKeys.map(k => (
                     <td key={k} className="text-center px-3 py-2.5">
                       <Check value={row.tiers[k]} title={tierLabels[k]} />
