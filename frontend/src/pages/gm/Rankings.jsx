@@ -147,7 +147,7 @@ export default function Rankings() {
 
         <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-[#0f0f1e]">
                 <tr className="text-left text-[10px] font-pixel uppercase tracking-widest text-amber-300">
                   <th className="py-2 px-3 w-12">#</th>

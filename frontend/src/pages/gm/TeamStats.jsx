@@ -313,7 +313,7 @@ function TeamComparisonTable({ rows, slot, hasAnalyticsMgr }) {
   const sorted = sortRows(rows)
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-base font-pixel">
+      <table className="w-full min-w-[640px] text-base font-pixel">
         <thead>
           <tr className="text-left font-pixel-display text-[10px] tracking-widest">
             <SortableHeader k="name"    sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="TEAM"    className="py-1 pr-2" />
@@ -486,7 +486,7 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId,
   return (
     <PixelCard accent={accent} title={title}>
       <div className="overflow-x-auto">
-        <table className="w-full text-base font-pixel">
+        <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
               <th className="py-1 pr-2">#</th>

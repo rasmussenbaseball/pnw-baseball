@@ -114,7 +114,7 @@ export default function Standings() {
       <div className="mb-6">
         <h1 className="font-pixel-display text-xl tracking-widest text-white mb-1">STANDINGS</h1>
         <p className="font-pixel text-base text-[#a8a8c8]">
-          {isNwac ? 'NWAC · 4-region conference' : userConf.name}
+          {isNwac ? 'NWAC · 4-region conference' : (userConf?.name || 'Unknown conference')}
         </p>
       </div>
 

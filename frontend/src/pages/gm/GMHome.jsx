@@ -29,11 +29,11 @@ export default function GMHome() {
             D1 through NWAC, regular dynasty or rise-through-the-ranks Story Mode.
           </p>
           <div className="flex flex-wrap gap-2 mt-3">
-            <span className="inline-block px-2 py-1 bg-amber-400 text-[#1a1a2e] font-pixel-display text-[9px] tracking-widest">
-              ALPHA · V1 IN PROGRESS
+            <span className="inline-block px-2 py-1 bg-team-accent text-team-accent-fg font-pixel-display text-[9px] tracking-widest">
+              EARLY ACCESS
             </span>
-            <span className="inline-block px-2 py-1 bg-[#3a3a5e] text-amber-300 font-pixel-display text-[9px] tracking-widest border border-amber-300/40 md:hidden">
-              📱 BEST PLAYED ON DESKTOP
+            <span className="inline-block px-2 py-1 bg-[#3a3a5e] text-[#c8c8e8] font-pixel-display text-[9px] tracking-widest border border-[#5a5a8e] md:hidden">
+              PLAYS BEST ON DESKTOP
             </span>
           </div>
           {/* Desktop-recommendation banner — surfaced more prominently on mobile

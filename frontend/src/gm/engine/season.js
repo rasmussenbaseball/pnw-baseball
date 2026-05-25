@@ -129,6 +129,34 @@ const NON_NAIA_LOOKUP = (() => {
 /** @typedef {import('./schedule.js').Game} Game */
 
 /**
+ * Tick down story-mode game-week holds — suspensions + minor injuries
+ * stamped by random events (PLAYER_INCIDENT, CAR_ACCIDENT, GAMBLING,
+ * CONCUSSION_PROTOCOL, etc.). autoLineup reads these flags to exclude
+ * the player from the lineup + rotation. We decrement once per simWeek
+ * call so a "3-game suspension" actually expires after 3 simmed
+ * weekends (mirrors real baseball week granularity).
+ *
+ * Stamped year check: holds only count when they were set in the
+ * CURRENT year. Mid-offseason flags from a previous year are stale
+ * and ignored (don't carry over a 1-week sit through 30 offseason ticks).
+ */
+function decrementStoryHolds(state) {
+  const curYear = state.calendar?.year ?? 0
+  for (const pid of Object.keys(state.players || {})) {
+    const p = state.players[pid]
+    if (!p) continue
+    if (p.suspended && p.suspended.year === curYear && (p.suspended.weeks || 0) > 0) {
+      p.suspended.weeks -= 1
+      if (p.suspended.weeks <= 0) delete p.suspended
+    }
+    if (p._minorInjuryFlag && p._minorInjuryFlag.year === curYear && (p._minorInjuryFlag.weeks || 0) > 0) {
+      p._minorInjuryFlag.weeks -= 1
+      if (p._minorInjuryFlag.weeks <= 0) delete p._minorInjuryFlag
+    }
+  }
+}
+
+/**
  * Sim a single week of games.
  * Mutates the SaveState in place. Returns a summary.
  *
@@ -145,6 +173,13 @@ export function simWeek(state, schedule, ratings) {
   let gamesPlayed = 0
 
   ensureEnergyState(state)
+  // Decrement story-mode game-week holds (suspensions + minor injuries).
+  // These flags are READ by autoLineup() to keep flagged players out of
+  // the lineup + rotation; here we tick them down by 1 week so a
+  // "suspended 3 games" hold actually expires after 3 weeks of play
+  // (instead of lasting forever, which was the launch-audit lying-
+  // outcome bug — per Nate, May 2026).
+  decrementStoryHolds(state)
   // Reset the weekly-stats accumulator at the start of every simWeek so
   // weeklyAwards has just THIS week's box scores to choose from.
   state.weeklyStats = {}
@@ -778,6 +813,34 @@ export function runEndOfYear(state) {
       }
     }
   }
+  // Win-or-die promise resolution (from AD_MEETING). If the user took the
+  // "Promise immediate results" choice, check that promise against the
+  // just-finished year's record. Below the threshold → big job sec hit +
+  // news line. Above → drop the flag silently (kept their word).
+  if (state._winOrDiePromise && state._winOrDiePromise.year === archivedYear) {
+    const ut = state.teams[state.userSchoolId]
+    const games = (ut?.wins || 0) + (ut?.losses || 0)
+    const winPct = games > 0 ? ut.wins / games : 0
+    const threshold = state._winOrDiePromise.winThreshold ?? 0.5
+    if (winPct < threshold) {
+      if (state.budget) state.budget.jobSecurity = Math.max(0, (state.budget.jobSecurity || 50) - 15)
+      state.newsfeed?.unshift({
+        id: `wod_fail_${archivedYear}`,
+        year: archivedYear, week: 52, type: 'AWARD', big: true,
+        headline: `AD recap: you promised immediate results and finished ${ut?.wins || 0}-${ut?.losses || 0} (${(winPct * 100).toFixed(0)}%). Job security -15.`,
+        payload: {},
+      })
+    } else {
+      state.newsfeed?.unshift({
+        id: `wod_kept_${archivedYear}`,
+        year: archivedYear, week: 52, type: 'AWARD',
+        headline: `You kept the "win-or-die" promise to the AD. Trust earned.`,
+        payload: {},
+      })
+    }
+    state._winOrDiePromise = null
+  }
+
   const userTeam = state.teams[state.userSchoolId]
   if (userTeam) {
     userTeam._lastSeason = {
@@ -1285,6 +1348,11 @@ function refreshWeeklyAP(state) {
   for (const a of assistants) total += contribution(a)
   total += TIER_BONUS[school?.resourceTier] || 0
   total += experienceBonus
+  // Story-mode GA hire (from the GA_HIRE event) — +3 AP/week while the
+  // GA is still on staff (3 dynasty years from the hire year).
+  if (state.flags?.gaHelperUntilYear && (state.calendar?.year ?? 0) <= state.flags.gaHelperUntilYear) {
+    total += 3
+  }
   let weekly = Math.max(20, Math.min(50, Math.round(total)))
   // Difficulty actually bites in a regular dynasty now: it scales your weekly
   // AP, so harder = fewer Action Points to spend on recruiting + development.

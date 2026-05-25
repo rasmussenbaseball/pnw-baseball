@@ -66,7 +66,7 @@ export default function Calendar() {
       // Title = month + the most common SEASON umbrella across the bucket
       // (Fall Camp, November, December, Spring Season, etc). Falls back to
       // phase labels if seasons aren't set.
-      const seasons = b.weeks.map(w => phaseForWeek(w)?.season || phaseForWeek(w)?.label || '')
+      const seasons = b.weeks.map(w => phaseForWeek(w, save?.level)?.season || phaseForWeek(w, save?.level)?.label || '')
       const distinct = [...new Set(seasons)].filter(Boolean)
       const title = distinct.length <= 2 ? distinct.join(' / ') : distinct[0]
       return {
@@ -74,7 +74,7 @@ export default function Calendar() {
         weeks: b.weeks,
       }
     })
-  }, [year])
+  }, [year, save?.level])
 
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>

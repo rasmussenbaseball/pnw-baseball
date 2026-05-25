@@ -257,7 +257,7 @@ function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, em
   return (
     <PixelCard accent={accent} title="HITTING">
       <div className="overflow-x-auto">
-        <table className="w-full text-base font-pixel">
+        <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
               <th className="py-1 pr-2">PLAYER</th>
@@ -320,7 +320,7 @@ function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, e
   return (
     <PixelCard accent={accent} title="PITCHING">
       <div className="overflow-x-auto">
-        <table className="w-full text-base font-pixel">
+        <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
               <th className="py-1 pr-2">PLAYER</th>

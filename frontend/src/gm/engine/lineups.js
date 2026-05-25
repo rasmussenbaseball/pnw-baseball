@@ -58,9 +58,37 @@ function gameIndexOf(gameId) {
 export function autoLineup(state, teamId, gameId) {
   const team = state.teams?.[teamId]
   if (!team) return { batters: [], batterPositions: [], pitcherRotation: [], bench: [] }
+  // Story-mode side-effects also pull players out of the lineup:
+  //   - PLAYER_INCIDENT "suspend 3 games" / GAMBLING / etc. stamps
+  //     player.suspended = { weeks, year } — must sit while weeks > 0
+  //     IN THE STAMPED YEAR. (Outside that year the flag is stale.)
+  //   - CAR_ACCIDENT "rest a week" / CONCUSSION_PROTOCOL stamps
+  //     player._minorInjuryFlag = { weeks, year } — same semantics.
+  //   - ACADEMIC_DISHONESTY / SCANDAL_RUMOR set eligibilityStatus =
+  //     'ineligible'. Treated like a season-long sit.
+  //   - MAJOR_CHANGE_REQUEST sets 'quit' → already off the roster, but
+  //     belt-and-suspenders here in case the roster mutation slipped.
+  // Suspensions / minor injuries auto-decrement once per spring week —
+  // see decrementStoryHolds() in season.js.
+  const curYear = state.calendar?.year ?? 0
+  const isSuspended = p => {
+    const s = p?.suspended
+    return s && s.year === curYear && (s.weeks || 0) > 0
+  }
+  const isMinorHurt = p => {
+    const m = p?._minorInjuryFlag
+    return m && m.year === curYear && (m.weeks || 0) > 0
+  }
   const elig = p => p
     && (p.injury?.weeksRemaining || 0) === 0
-    && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed'
+    && p.eligibilityStatus !== 'cut'
+    && p.eligibilityStatus !== 'dismissed'
+    && p.eligibilityStatus !== 'ineligible'
+    && p.eligibilityStatus !== 'quit'
+    && p.eligibilityStatus !== 'transferred'
+    && p.eligibilityStatus !== 'graduated'
+    && !isSuspended(p)
+    && !isMinorHurt(p)
   const roster = (team.rosterPlayerIds || []).map(id => state.players[id]).filter(elig)
   const hitters = roster.filter(p => p.isHitter)
   const pitchers = roster.filter(p => p.isPitcher)

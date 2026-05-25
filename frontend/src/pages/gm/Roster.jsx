@@ -50,9 +50,10 @@ export default function Roster() {
     setSave({ ...save })
   }
 
-  const team = save.teams[save.userSchoolId]
-  const school = save.schools[save.userSchoolId]
-  const players = team.rosterPlayerIds.map(id => save.players[id]).filter(Boolean)
+  const team = save.teams?.[save.userSchoolId]
+  const school = save.schools?.[save.userSchoolId]
+  if (!team || !school) return <Navigate to="/gm" replace />
+  const players = (team.rosterPlayerIds || []).map(id => save.players?.[id]).filter(Boolean)
 
   const filtered = players.filter(POSITION_GROUPS[group])
 

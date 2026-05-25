@@ -43,13 +43,16 @@ export default function Coaches() {
 
   if (!save) return <Navigate to="/gm" replace />
 
-  const userTeam = save.teams[save.userSchoolId]
-  const userSchool = save.schools[save.userSchoolId]
-  const headCoach = save.coaches[userTeam.headCoachId]
-  const assistants = userTeam.assistantCoachIds.map(id => save.coaches[id]).filter(Boolean)
+  const userTeam = save.teams?.[save.userSchoolId]
+  const userSchool = save.schools?.[save.userSchoolId]
+  if (!userTeam || !userSchool) return <Navigate to="/gm" replace />
+  const headCoach = userTeam.headCoachId ? save.coaches?.[userTeam.headCoachId] : null
+  const assistants = (userTeam.assistantCoachIds || []).map(id => save.coaches?.[id]).filter(Boolean)
 
   const realAssistants = assistants.filter(c => !c.isSupportStaff)
-  const filledRoles = new Set([headCoach.role, ...assistants.map(c => c.role)])
+  // headCoach may be null mid-career-swap / post-firing — its role just
+  // contributes "HEAD_COACH" to the filled set so missing-roles logic works.
+  const filledRoles = new Set([headCoach?.role || 'HEAD_COACH', ...assistants.map(c => c.role)])
   const missingStarting = STARTING_ROLES.filter(r => !filledRoles.has(r))
   const optionalAvailable = OPTIONAL_ROLES.filter(r => !filledRoles.has(r))
   const hasAnalyticsMgr = filledRoles.has('DATA_ANALYTICS_MANAGER')

@@ -45,8 +45,11 @@ export default function Schedule() {
   if (!save) return <Navigate to="/gm" replace />
 
   const userSchoolId = save.userSchoolId
-  const userSchool = save.schools[userSchoolId]
-  const seasonYear = save.calendar.year + 1
+  const userSchool = save.schools?.[userSchoolId]
+  // Guard against corrupted saves where the user's school id no longer
+  // resolves (would crash getConferenceRules(undefined)). Send them home.
+  if (!userSchool) return <Navigate to="/gm" replace />
+  const seasonYear = (save.calendar?.year || 1) + 1
   const confRules = getConferenceRules(userSchool.conferenceId)
   const schedule = save.schedule || []
 

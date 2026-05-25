@@ -299,9 +299,14 @@ export const EVENT_CATALOG = {
             label: 'Cut him from the roster',
             blurb: 'Extreme. Sets a hard line. Team is shaken.',
             apply: (state) => {
-              const team = state.teams[state.userSchoolId]
-              team.rosterPlayerIds = (team.rosterPlayerIds || []).filter(id => id !== player.id)
+              const team = state.teams?.[state.userSchoolId]
+              if (team) team.rosterPlayerIds = (team.rosterPlayerIds || []).filter(id => id !== player.id)
               player.eligibilityStatus = 'dismissed'
+              // Cleanup — drop the cut player's energy entry + clear any
+              // pending suspension/injury holds so nothing references them.
+              if (state.playerEnergy && state.playerEnergy[player.id] != null) delete state.playerEnergy[player.id]
+              delete player.suspended
+              delete player._minorInjuryFlag
               applyTeamMorale(state, -6)
               pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) DISMISSED — removed from the roster. Coach: 'Standards are non-negotiable.'`, 'AWARD', true)
               applyJobSecurity(state, +3)
@@ -713,10 +718,14 @@ export const EVENT_CATALOG = {
         {
           id: 'win-or-die',
           label: 'Promise immediate results',
-          blurb: 'Risky — sets a hard short-term standard. Higher upside if you deliver.',
+          blurb: '+3 job sec now. If you finish under .500 this season, additional -15 job sec at year end.',
           apply: (state) => {
             applyJobSecurity(state, +3)
-            state._winOrDiePromise = { year: state.calendar.year }
+            // Flag for runEndOfYear to read — if win % < 0.500 in the
+            // CURRENT year, fire a -15 job sec hit + a "you didn't
+            // deliver" newsfeed line. Otherwise the flag silently clears.
+            state._winOrDiePromise = { year: state.calendar?.year, winThreshold: 0.5 }
+            pushNews(state, 'Coach promised immediate results to the AD. Higher stakes now.')
           },
         },
         {
@@ -1276,13 +1285,28 @@ export const EVENT_CATALOG = {
               }
             },
           },
-          { id: 'bump-scholarship', label: 'Bump his scholarship $1K', blurb: 'Player STAYS. Costs $1K from next year\'s pool.',
-            apply: (state) => {
-              applyPlayerMorale(player, +12)
-              if (state.budget?.allocations) state.budget.allocations.scholarships = Math.max(0, (state.budget.allocations.scholarships || 0) - 1000)
-              pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) STAYED — accepted the $1K scholarship bump. -$1K from next year\'s pool.`)
-            },
-          },
+          // D3 / NWAC have no scholarship pool — show a "promise a starting
+          // role" alternative instead (immediate morale boost; player stays).
+          ...(state.level === 'D3' || state.level === 'NWAC'
+            ? [{
+                id: 'promise-role',
+                label: 'Promise him a starting role',
+                blurb: 'Player STAYS. Coaching reputation on the line if you bench him.',
+                apply: (state) => {
+                  applyPlayerMorale(player, +12)
+                  pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) STAYED — promised a starting role. Now you have to deliver on it.`)
+                },
+              }]
+            : [{
+                id: 'bump-scholarship',
+                label: 'Bump his scholarship $1K',
+                blurb: "Player STAYS. Costs $1K from next year's pool.",
+                apply: (state) => {
+                  applyPlayerMorale(player, +12)
+                  if (state.budget?.allocations) state.budget.allocations.scholarships = Math.max(0, (state.budget.allocations.scholarships || 0) - 1000)
+                  pushNews(state, `Outcome: ${player.firstName} ${player.lastName} (${player.classYear}) STAYED — accepted the $1K scholarship bump. -$1K from next year's pool.`)
+                },
+              }]),
         ],
       }
     },
@@ -1474,8 +1498,10 @@ export const EVENT_CATALOG = {
   TRANSFER_PORTAL_GEM: {
     id: 'TRANSFER_PORTAL_GEM',
     weight: 0.45,
-    // SEC/Big-12 portal kids don't drop to NWAC — 4-year programs only.
-    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14 && isFourYearUser(state),
+    // SEC/Big-12 portal kids don't drop to NWAC, and D3 doesn't have a
+    // scholarship pool to spend $8K from. D1 / D2 / NAIA only.
+    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14
+      && (state.level === 'D1' || state.level === 'D2' || state.level === 'NAIA'),
     builder: (state, rng) => {
       const fromSchool = rng.pick(['a Big 12 program', 'a SEC program', 'a Pac-12 program', 'a top JUCO'])
       return {
@@ -1611,11 +1637,36 @@ export const EVENT_CATALOG = {
         body: `${assistant.firstName} ${assistant.lastName} got a higher-paying offer at a D1. They\'d stay for a $10K raise. What do you do?`,
         choices: [
           { id: 'match-raise', label: 'Match the raise — $10K out of your budget', blurb: 'Keep your guy. Costs from coaching salary line.',
-            apply: (state) => { if (state.budget?.allocations) state.budget.allocations.coachingSalaries = (state.budget.allocations.coachingSalaries || 0) + 10000; if (assistant) assistant.salary = (assistant.salary || 50000) + 10000 } },
+            apply: (state) => {
+              // Look the team UP again at apply time — the user may have
+              // switched schools via a career offer between builder + apply,
+              // and the closed-over `team` would point at the old roster.
+              const curTeam = state.teams?.[state.userSchoolId]
+              const curAssist = state.coaches?.[assistant.id]
+              if (!curAssist) { pushNews(state, `${assistant.firstName} ${assistant.lastName} already gone — match offer moot.`); return }
+              if (state.budget?.allocations) state.budget.allocations.coachingSalaries = (state.budget.allocations.coachingSalaries || 0) + 10000
+              curAssist.salary = (curAssist.salary || 50000) + 10000
+              pushNews(state, `Matched the $10K raise. ${curAssist.firstName} ${curAssist.lastName} staying put.`)
+            } },
           { id: 'wish-well', label: 'Let them go — wish them well', blurb: 'Save the money. Now you need a hire mid-year.',
-            apply: (state) => { team.assistantCoachIds = team.assistantCoachIds.filter(id => id !== assistant.id); delete state.coaches[assistant.id]; pushNews(state, `${assistant.firstName} ${assistant.lastName} left for a D1 job. Need a replacement.`) } },
+            apply: (state) => {
+              const curTeam = state.teams?.[state.userSchoolId]
+              if (curTeam?.assistantCoachIds?.includes(assistant.id)) {
+                curTeam.assistantCoachIds = curTeam.assistantCoachIds.filter(id => id !== assistant.id)
+              }
+              delete state.coaches?.[assistant.id]
+              pushNews(state, `${assistant.firstName} ${assistant.lastName} left for a D1 job. Need a replacement.`)
+            } },
           { id: 'promote-internal', label: 'Promote a GA to take their spot', blurb: 'Cheap solution. Quality of staff dips short-term.',
-            apply: (state) => { team.assistantCoachIds = team.assistantCoachIds.filter(id => id !== assistant.id); delete state.coaches[assistant.id]; applyJobSecurity(state, -1); pushNews(state, 'Coach promoted internally to fill assistant vacancy.') } },
+            apply: (state) => {
+              const curTeam = state.teams?.[state.userSchoolId]
+              if (curTeam?.assistantCoachIds?.includes(assistant.id)) {
+                curTeam.assistantCoachIds = curTeam.assistantCoachIds.filter(id => id !== assistant.id)
+              }
+              delete state.coaches?.[assistant.id]
+              applyJobSecurity(state, -1)
+              pushNews(state, 'Coach promoted internally to fill assistant vacancy.')
+            } },
         ],
       }
     },
@@ -2526,8 +2577,16 @@ export const EVENT_CATALOG = {
             apply: (state) => { applyPlayerMorale(player, +12); applyTeamMorale(state, -2); pushNews(state, `${player.firstName} ${player.lastName} got a flex schedule for ${newMajor}. Vets noticed.`) } },
           { id: 'no-exception', label: 'Practice attendance is mandatory', blurb: '50% he stays, 50% he quits.',
             apply: (state, rng) => {
-              if (rng.chance(0.5)) { applyPlayerMorale(player, -8); pushNews(state, `${player.firstName} ${player.lastName} chose ${newMajor} over baseball. Off the roster.`); const t = state.teams[state.userSchoolId]; t.rosterPlayerIds = (t.rosterPlayerIds || []).filter(id => id !== player.id); player.eligibilityStatus = 'quit' }
-              else { applyPlayerMorale(player, -5); pushNews(state, `${player.firstName} ${player.lastName} grudgingly stayed in his current major to keep playing.`) }
+              if (rng.chance(0.5)) {
+                applyPlayerMorale(player, -8)
+                pushNews(state, `${player.firstName} ${player.lastName} chose ${newMajor} over baseball. Off the roster.`)
+                const t = state.teams?.[state.userSchoolId]
+                if (t) t.rosterPlayerIds = (t.rosterPlayerIds || []).filter(id => id !== player.id)
+                player.eligibilityStatus = 'quit'
+              } else {
+                applyPlayerMorale(player, -5)
+                pushNews(state, `${player.firstName} ${player.lastName} grudgingly stayed in his current major to keep playing.`)
+              }
             } },
         ],
       }
@@ -2664,8 +2723,16 @@ export const EVENT_CATALOG = {
         title: 'Graduate Assistant Application',
         body: `${name}, a sharp grad assistant candidate, would join for $5K/yr. Frees up your time, helps with film + scouting.`,
         choices: [
-          { id: 'hire', label: `Hire ${name}`, blurb: '-$5K, +AP each week, +developer rating long-term.',
-            apply: (state) => { if (state.budget?.allocations) state.budget.allocations.coachingSalaries = (state.budget.allocations.coachingSalaries || 0) + 5000; if (state.ap) state.ap.weeklyBaseline = (state.ap.weeklyBaseline || 30) + 3; applyJobSecurity(state, +2); pushNews(state, `${name} hired as GA. Weekly AP +3.`) } },
+          { id: 'hire', label: `Hire ${name}`, blurb: '+$5K coaching salary line. +3 AP every week for 3 years.',
+            apply: (state) => {
+              if (state.budget?.allocations) state.budget.allocations.coachingSalaries = (state.budget.allocations.coachingSalaries || 0) + 5000
+              // Flag the GA hire so the weekly AP recompute can read it.
+              // Lasts 3 dynasty years (typical GA tenure before they move on).
+              if (!state.flags) state.flags = {}
+              state.flags.gaHelperUntilYear = (state.calendar?.year || 0) + 3
+              applyJobSecurity(state, +2)
+              pushNews(state, `${name} hired as GA. Weekly AP +3 for 3 seasons.`)
+            } },
           { id: 'pass', label: 'Pass — stretch staff handles it', blurb: 'Save the money.',
             apply: (state) => pushNews(state, `Passed on the GA candidate. Staff stays small.`),
           },
@@ -2859,7 +2926,10 @@ export const EVENT_CATALOG = {
 
   TRANSFER_PORTAL_BIG_LOSS: {
     id: 'TRANSFER_PORTAL_BIG_LOSS', weight: 0.25,
-    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14,
+    // NWAC has no transfer portal — players move via the JUCO 4-year
+    // pipeline at year end, handled by assignNwacTransferDestinations.
+    // 4-year programs only for this event.
+    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14 && isFourYearUser(state),
     builder: (state, rng) => {
       const player = pickRandomRosterPlayer(state, rng, p => p && p.classYear !== 'SR' && p.classYear !== 'FR')
       if (!player) return null

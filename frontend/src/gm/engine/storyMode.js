@@ -277,8 +277,16 @@ export function runCareerReview(state) {
   // ── Offer generation ─────────────────────────────────────────────────
   const yearsAsCoach = state.career.trajectory.filter(t => t.result !== 'started').length
   const tooEarly = yearsAsCoach < tuning.firstOfferAfterYears
+  // Facility-extension lock-in (FACILITY_UPGRADE_OFFER "sign-extension"
+  // choice). If the user signed a 2-year contract extension within the
+  // last 2 years, no outside offers come in — they're locked to the
+  // school. Per Nate, May 2026 — the lock was previously stamped on
+  // state._facilityExtension but never read. Now it actually means
+  // something.
+  const ext = state._facilityExtension
+  const lockedByExtension = ext && (year - (ext.year || 0)) < (ext.years || 2)
   let offers = []
-  if (!tooEarly) {
+  if (!tooEarly && !lockedByExtension) {
     const rng = makeRng('careerOffers', year, state.rngSeed || 1)
     const careerWinPct = multiYearWinPct(state.career.trajectory)
     offers = generateOffersForYear({

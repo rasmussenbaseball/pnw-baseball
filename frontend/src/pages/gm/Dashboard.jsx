@@ -205,11 +205,17 @@ export default function Dashboard() {
   const nwbbRatings = ensureNwbbRatings(save)
   const userNwbb = nwbbRatings[save.userSchoolId]
 
-  const school = save.schools[save.userSchoolId]
-  const conf = save.conferences[school.conferenceId]
-  const team = save.teams[save.userSchoolId]
-  const headCoach = save.coaches[team.headCoachId]
-  const assistants = team.assistantCoachIds.map(id => save.coaches[id]).filter(Boolean)
+  // Defensive lookups — older saves (pre-realignment, post-career-swap, or
+  // mid-state-shape-migration) can have null/missing keys. Without guards
+  // any one of these would white-screen the Dashboard on mount. We let
+  // a missing school fall through to the loadDynasty `<Navigate to="/gm">`
+  // below; everything else uses empty fallbacks so the page renders.
+  const school = save.schools?.[save.userSchoolId]
+  if (!school) return <Navigate to="/gm" replace />
+  const conf = save.conferences?.[school.conferenceId] || { name: school.conferenceId || 'Unknown' }
+  const team = save.teams?.[save.userSchoolId] || { rosterPlayerIds: [], assistantCoachIds: [], wins: 0, losses: 0 }
+  const headCoach = team.headCoachId ? save.coaches?.[team.headCoachId] : null
+  const assistants = (team.assistantCoachIds || []).map(id => save.coaches?.[id]).filter(Boolean)
 
   const mode = save.calendar.mode
   const inOffseason = mode === 'OFFSEASON'
@@ -699,7 +705,7 @@ export default function Dashboard() {
                   Year {save.dynastyYear || 1}
                 </div>
                 <div className="text-[11px] opacity-80">
-                  {headCoach.firstName} {headCoach.lastName} · HC
+                  {headCoach ? `${headCoach.firstName} ${headCoach.lastName} · HC` : 'HC vacancy'}
                 </div>
               </div>
             </div>
@@ -1265,12 +1271,12 @@ function PostseasonBracketWidget({ save, slot, highlightWeek }) {
             about whether they made the regional round. */}
         {isNwac && ps.userQualified && ps.userSeed && ps.userRegion && (
           <div className="text-[11px] mb-3 px-2.5 py-2 rounded bg-pnw-green/10 border border-pnw-green/30 text-pnw-slate">
-            <span className="font-semibold">You\'re the #{ps.userSeed} seed in NWAC {ps.userRegion.replace('NWAC_', '')}.</span>{' '}
+            <span className="font-semibold">{`You're the #${ps.userSeed} seed in NWAC ${ps.userRegion.replace('NWAC_', '')}.`}</span>{' '}
             {ps.userSeed === 1
               ? 'Auto-bye through super regionals — your first game is at the Longview championship.'
               : ps.userSeed === 2
-                ? 'You HOST your region\'s super regional (best-of-3). Game scheduled this week.'
-                : 'You travel to your region\'s super regional. The play-in (#3 vs #4) is auto-resolved.'}
+                ? "You HOST your region's super regional (best-of-3). Game scheduled this week."
+                : "You travel to your region's super regional. The play-in (#3 vs #4) is auto-resolved."}
           </div>
         )}
         {is4Round ? (
@@ -3848,8 +3854,8 @@ function CutsBanner({ save, slot }) {
   const mandatory = isMandatoryCutMode(save)
   if (mandatory) {
     // Mandatory cuts at Wk 52 — this is a hard block, surface it HOT.
-    const needed = save.mandatoryCuts.needed
-    const overflow = save.mandatoryCuts.overByAtFlag
+    const needed = save.mandatoryCuts?.needed || 0
+    const overflow = save.mandatoryCuts?.overByAtFlag || 0
     return (
       <div className="bg-red-100 border-2 border-red-700 text-red-900 p-4 rounded mb-4 flex justify-between items-center shadow-lg">
         <div>

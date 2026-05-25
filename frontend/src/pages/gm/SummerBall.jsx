@@ -46,9 +46,10 @@ export default function SummerBall() {
 
   if (!save) return <Navigate to="/gm" replace />
 
-  const team = save.teams[save.userSchoolId]
+  const team = save.teams?.[save.userSchoolId]
+  if (!team) return <Navigate to="/gm" replace />
   const sb = save.summerBall || { status: 'PLANNING', assignments: {} }
-  const players = (team.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
+  const players = (team.rosterPlayerIds || []).map(id => save.players?.[id]).filter(Boolean)
   const eligiblePlayers = players.filter(isPlayerEligibleForSummerBall)
   const status = sb.status
   const week = save.calendar?.weekOfYear ?? 1

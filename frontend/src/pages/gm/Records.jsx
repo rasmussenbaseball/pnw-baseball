@@ -292,7 +292,7 @@ function DraftView({ save, team, accent, slot }) {
   return (
     <PixelCard accent={accent} title="MLB DRAFT PICKS">
       <div className="overflow-x-auto">
-        <table className="w-full text-base font-pixel">
+        <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
               <th className="py-1 pr-2">YEAR</th>
@@ -463,7 +463,7 @@ function RecordTable({ title, accent, slot, rows, columns, emptyMsg, career = fa
   return (
     <PixelCard accent={accent} title={title}>
       <div className="overflow-x-auto">
-        <table className="w-full text-base font-pixel">
+        <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
               <th className="py-1 pr-2">RECORD</th>

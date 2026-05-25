@@ -454,7 +454,7 @@ export default function Postseason() {
   }
 
   const userConfId = save.schools[save.userSchoolId]?.conferenceId
-  const userTournament = ps.tournaments.find(t => t.conferenceId === userConfId)
+  const userTournament = (ps.tournaments || []).find(t => t.conferenceId === userConfId)
 
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
@@ -924,8 +924,12 @@ function NwacBracketSection({ ps, save }) {
 
 function NationalSection({ ps, save }) {
   const nat = ps.national
+  // Bail out early when the national-bracket block isn't populated on this
+  // save (legacy / corrupted state). Without this guard the page used to
+  // white-screen on any pre-interactive NAIA save.
+  if (!nat?.openingRound?.sites) return null
   const userSite = ps.userInField
-    ? nat.openingRound.sites.find(s => s.teams.some(t => t.id === save.userSchoolId))
+    ? nat.openingRound.sites.find(s => s.teams?.some(t => t.id === save.userSchoolId))
     : null
 
   return (

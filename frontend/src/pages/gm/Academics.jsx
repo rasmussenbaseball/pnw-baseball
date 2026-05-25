@@ -199,7 +199,7 @@ function AcademicsTable({ rows, slot, defaultSort = 'gpa', defaultDir = 'asc' })
   const sorted = sortRows(rows)
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-base font-pixel">
+      <table className="w-full min-w-[640px] text-base font-pixel">
         <thead>
           <tr className="text-left font-pixel-display text-[10px] tracking-widest">
             <SortableHeader k="name"     sortKey={sortKey} dir={sortDir} onSort={toggleSort} label="PLAYER" className="py-1 pr-2" />

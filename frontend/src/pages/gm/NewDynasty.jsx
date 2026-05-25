@@ -321,7 +321,15 @@ export default function NewDynasty() {
             conf={
               levelInfo.level === 'NAIA'
                 ? conferences[levelInfo.school.conferenceId]
-                : { name: (PNW_CONFERENCES_FOR_CONFIRM[levelInfo.conferenceId]?.name || levelInfo.conferenceId), abbreviation: levelInfo.conferenceId }
+                : {
+                    name: (
+                      PNW_CONFERENCES_FOR_CONFIRM[levelInfo.conferenceId]?.name
+                      // Prettify ids like "NWAC_NORTH" → "NWAC North" when no
+                      // lookup hit (avoids displaying raw schema ids per Nate).
+                      || (levelInfo.conferenceId || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/Nwac/g, 'NWAC').replace(/Wcc/g, 'WCC').replace(/Naia/g, 'NAIA').replace(/Ccc/g, 'CCC').replace(/Gnac/g, 'GNAC').replace(/Nwc/g, 'NWC')
+                    ),
+                    abbreviation: levelInfo.conferenceId,
+                  }
             }
             level={levelInfo.level}
             mode={GAME_MODE_PRESETS[modeKey].label}
@@ -903,11 +911,6 @@ function PreviewBlurb({ level, program }) {
       </div>
       <div className="text-[#e8e8e8]">
         <strong className="text-amber-200">Postseason:</strong> {conf?.tournament?.details}
-      </div>
-      <div className="text-amber-300/80 italic mt-2 text-[10px]">
-        Engine integration in progress: schedule generation, recruiting pools, and
-        national-bracket routing for non-NAIA levels are still being wired in. Selection works;
-        season flow may have gaps until full integration ships.
       </div>
     </div>
   )

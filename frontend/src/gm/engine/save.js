@@ -175,6 +175,25 @@ export function deleteDynasty(userId, slot) {
  */
 function migrateSave(data) {
   if (!data.saveVersion) data.saveVersion = 1
-  // Add migrations here when SAVE_VERSION bumps.
+
+  // ── Forward-compat field defaults ────────────────────────────────────
+  // Older saves may lack new state fields the engine reads on every tick.
+  // Backfill them here so legacy saves don't break when new features ship.
+
+  // Emergency Fund — added in commit 0e3797d. Pre-existing saves have
+  // no allocations.emergencyFund; without this backfill the Budget page
+  // slider would start at $0 and the modal banner reads "$0 available".
+  // Default to 3% of the total athletic budget (matches new-save default).
+  if (data.budget?.allocations && data.budget.allocations.emergencyFund == null) {
+    const total = data.budget.totalAthleticBudget || 0
+    data.budget.allocations.emergencyFund = Math.round(total * 0.03)
+  }
+
+  // Flags bag — used for Dashboard self-heal markers (lastOvrRefitYear,
+  // lastShownChampYear) added across May 2026. Ensure the object exists
+  // so guards like `save.flags?.lastShownChampYear === ps.year` don't trip
+  // on undefined when the very first read happens.
+  if (data.flags == null) data.flags = {}
+
   return data
 }
