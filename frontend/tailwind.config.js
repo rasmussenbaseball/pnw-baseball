@@ -18,13 +18,23 @@ export default {
         'nw-brown-light': '#5c3a0a',
         'nw-cream': '#faf8f5',
         'nw-white': '#ffffff',
-        // Functional aliases
-        'pnw-green': '#00687a',    // teal replaces old green
-        'pnw-forest': '#004d5a',   // darker teal
-        'pnw-sky': '#008a9e',      // lighter teal for links/accents
-        'pnw-slate': '#00687a',    // header background
-        'pnw-teal': '#008a9e',     // bright teal for values/accents on slate cards
-        'pnw-cream': '#faf8f5',
+        // Functional aliases — read CSS variables when set by the GM
+        // theming layer (lib/teamTheme.js) so the entire GM experience
+        // picks up the user's school colors. Fall back to NW teal when
+        // no team theme is applied (main site, login, etc.).
+        'pnw-green':    'var(--team-primary, #00687a)',
+        'pnw-green-fg': 'var(--team-primary-fg, #FFFFFF)',
+        'pnw-forest':   'var(--team-primary-dim, #004d5a)',
+        'pnw-sky':      'var(--team-secondary, #008a9e)',
+        'pnw-sky-fg':   'var(--team-secondary-fg, #1a1a2e)',
+        'pnw-slate':    'var(--team-primary-dim, #00687a)',
+        'pnw-teal':     'var(--team-secondary, #008a9e)',
+        'pnw-cream':    '#faf8f5',
+        // Accent — auto-picks whichever of the team's two colors makes
+        // a better "highlight" (avoids using white or near-black as
+        // an accent since they read flat in a UI).
+        'team-accent':  'var(--team-accent, #FFD200)',
+        'team-accent-fg': 'var(--team-accent-fg, #1a1a2e)',
 
         // Coach & Scouting Portal palette — deep indigo / antique gold.
         // Hex values estimated from the reference logos; tweak in this

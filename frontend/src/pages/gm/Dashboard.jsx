@@ -22,6 +22,7 @@ import { teamNameOf, tickInteractivePostseason } from '../../gm/engine/postseaso
 import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
 import { refitNonUserOvrOffsets } from '../../gm/engine/events'
+import { applyTeamTheme, clearTeamTheme } from '../../gm/lib/teamTheme'
 import { resolveEvent } from '../../gm/engine/randomEvents'
 import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
@@ -128,6 +129,15 @@ export default function Dashboard() {
     save.lastSeasonRecap = null
     saveDynasty(save)
   }, [save])
+
+  // Team-color theming — apply the user's school colors as CSS variables
+  // so the entire GM experience (hero, buttons, accents) picks them up
+  // via the rewired pnw-green / pnw-slate / team-accent Tailwind aliases.
+  // Falls back to the NW teal palette when no team is loaded.
+  useEffect(() => {
+    if (save?.userSchoolId) applyTeamTheme(save.userSchoolId)
+    return () => clearTeamTheme()
+  }, [save?.userSchoolId])
 
   // Retroactive ovrOffset self-heal (per Nate, May 2026). Existing saves
   // created before the annual refit fix had non-user team.ovrOffset frozen

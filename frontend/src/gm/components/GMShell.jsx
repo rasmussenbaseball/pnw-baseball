@@ -10,6 +10,9 @@
 
 import { useState, useRef, useEffect, Component } from 'react'
 import { Link, useSearchParams, useLocation, useNavigate, matchPath } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
+import { loadDynasty } from '../engine/save'
+import { applyTeamTheme, clearTeamTheme } from '../lib/teamTheme'
 
 /**
  * Catches render-time crashes on any GM page so the user gets a recoverable
@@ -105,6 +108,19 @@ export default function GMShell({ children, schoolName, schoolColors }) {
   const slot = params.get('slot') || '1'
   const location = useLocation()
   const accent = schoolColors?.[0] || '#fbbf24'
+  const { user } = useAuth()
+  // Apply the user's team theme as CSS variables on every GM page so
+  // the entire experience (buttons, accents, hero gradients) picks up
+  // their school colors via the rewired Tailwind aliases. Cleared on
+  // unmount so the main site reverts to NW teal. Per Nate, May 2026.
+  useEffect(() => {
+    try {
+      const save = loadDynasty(user?.id || 'guest', parseInt(slot, 10))
+      if (save?.userSchoolId) applyTeamTheme(save.userSchoolId)
+      else clearTeamTheme()
+    } catch (e) { clearTeamTheme() }
+    return () => clearTeamTheme()
+  }, [user?.id, slot])
   // Hide the back-strip on the dashboard (it IS the home) and on the
   // top-level GM landing. Everywhere else it gives a 1-tap escape.
   const showBackStrip = location.pathname !== '/gm' && !location.pathname.startsWith('/gm/dashboard')
