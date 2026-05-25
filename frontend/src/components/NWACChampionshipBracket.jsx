@@ -102,7 +102,9 @@ export default function NWACChampionshipBracket() {
   // ── Tournament status summary ──
   const status = useMemo(() => {
     if (!outcomes) return { label: 'Loading…', tone: 'idle' }
-    const real = TOURNEY.games.filter((g) => !g.ifNecessary)
+    // Count all 15 games. In the 3-team scenario G15 is the actual title
+    // game (not just "if necessary"), so it belongs in the denominator.
+    const real = TOURNEY.games
     const finals = real.filter((g) => outcomes.get(g.num)?.status === 'final')
     const champOutcome =
       outcomes.get(IF_NEC_GAME)?.winner_id != null
@@ -144,13 +146,13 @@ export default function NWACChampionshipBracket() {
           {/* Weights mirror the 8 columns below: winners = wb1/wb2/wbf/semi
               (4), title = championship (1), losers = lbf/lb2/lb1 (3). */}
           <div className="flex items-end mb-2 gap-2 sm:gap-3">
-            <div className="flex-[4] text-[10px] font-bold uppercase tracking-[0.15em] text-pnw-teal/80">
+            <div className="flex-[4] text-[10px] font-bold uppercase tracking-[0.15em] text-pnw-teal">
               Winners Bracket →
             </div>
             <div className="flex-1 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">
               Title
             </div>
-            <div className="flex-[3] text-right text-[10px] font-bold uppercase tracking-[0.15em] text-rose-300/70">
+            <div className="flex-[3] text-right text-[10px] font-bold uppercase tracking-[0.15em] text-rose-300">
               ← Losers Bracket (elimination)
             </div>
           </div>
@@ -225,8 +227,8 @@ function StatusPill({ status }) {
 function RoundColumn({ label, children, side }) {
   const labelTone =
     side === 'champ' ? 'text-amber-300'
-    : side === 'lb' ? 'text-rose-300/60'
-    : 'text-pnw-teal/60'
+    : side === 'lb' ? 'text-rose-300'
+    : 'text-pnw-teal'
   return (
     <div className="flex-1 min-w-[96px] flex flex-col">
       <div className={`text-[8px] font-bold uppercase tracking-wider mb-1.5 text-center ${labelTone}`}>
