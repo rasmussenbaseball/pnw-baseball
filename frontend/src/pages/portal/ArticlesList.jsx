@@ -1,4 +1,4 @@
-// Portal /portal/articles — the author's article shelf.
+// Portal /articles — the author's article shelf.
 //
 // Shows every article authored by the current user (draft / published /
 // archived) with quick actions: open editor, publish/unpublish, archive.
@@ -51,7 +51,7 @@ export default function ArticlesList() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/portal/articles/new')}
+          onClick={() => navigate('/articles/new')}
           className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
                      bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
         >
@@ -80,7 +80,7 @@ export default function ArticlesList() {
                 </span>
               </div>
               <Link
-                to={`/portal/articles/edit/${a.id}`}
+                to={`/articles/edit/${a.id}`}
                 className="text-sm font-bold text-gray-900 hover:text-portal-purple block truncate"
               >
                 {a.title || <span className="italic text-gray-400">Untitled draft</span>}

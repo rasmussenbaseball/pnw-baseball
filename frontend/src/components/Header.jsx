@@ -87,6 +87,11 @@ const NAV = [
       { to: '/all-conference', label: 'All-Conference Generator', desc: 'Build mock first, second, and HM teams from season stats' },
       { to: '/feature-request', label: 'Request a Feature', desc: 'Submit ideas and feedback' },
       { to: '/about', label: 'About', desc: 'About PNW Baseball Stats' },
+      // Author-only — hidden from the dropdown unless the current user's
+      // email is on the article-author allowlist.
+      { to: '/articles', label: 'Write Articles',
+        desc: 'Draft, edit, and publish site articles',
+        requireEmail: ['nate.rasmussen26@gmail.com'] },
     ],
   },
 ]
@@ -443,11 +448,21 @@ function SearchBar({ mobile = false }) {
 }
 
 
+// Items can carry a `requireEmail` list — only render the link when the
+// current user's email is on it. Keeps private tools out of the menu for
+// everyone else while still letting them sit alongside public items.
+function filterItemsForUser(items, userEmail) {
+  const email = (userEmail || '').toLowerCase()
+  return items.filter(i => !i.requireEmail || i.requireEmail.map(e => e.toLowerCase()).includes(email))
+}
+
 // ─── Dropdown panel component ───
 function DropdownPanel({ items, onClose }) {
+  const { user } = useAuth()
+  const visible = filterItemsForUser(items, user?.email)
   return (
     <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
-      {items.map(item => (
+      {visible.map(item => (
         <Link
           key={item.to}
           to={item.to}
@@ -757,7 +772,7 @@ export default function Header() {
                   </button>
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-0.5 border-l border-white/10 pl-3">
-                      {section.items.map(item => (
+                      {filterItemsForUser(section.items, user?.email).map(item => (
                         <Link
                           key={item.to}
                           to={item.to}

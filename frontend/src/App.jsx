@@ -68,6 +68,23 @@ const GM_EARLY_ACCESS_EMAILS = [
   'maxo2326@gmail.com',
 ]
 
+// Article-author allowlist — only these emails see the "Articles" item
+// in the Misc dropdown and reach /articles management routes. Public
+// reading at /news stays open to everyone.
+export const ARTICLE_AUTHOR_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+]
+
+function RequireArticleAuthor({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (!ARTICLE_AUTHOR_EMAILS.includes((user.email || '').toLowerCase())) {
+    return <Navigate to="/news" replace />
+  }
+  return children
+}
+
 // Loading screen shown while the lazy-loaded GM chunk is downloading.
 // Triggered on the FIRST navigation to any /gm/* route (after that, the
 // whole game bundle is cached so subsequent pages render instantly).
@@ -331,15 +348,12 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/nwac-tournament-sheet"
                  element={<RequirePortalAccess><PortalLayout><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
-          {/* News / Articles */}
+          {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
           <Route path="/news/:slug" element={<NewsArticle />} />
-          <Route path="/portal/articles"
-                 element={<RequirePortalAccess><PortalLayout><ArticlesList /></PortalLayout></RequirePortalAccess>} />
-          <Route path="/portal/articles/new"
-                 element={<RequirePortalAccess><PortalLayout><ArticleEditor /></PortalLayout></RequirePortalAccess>} />
-          <Route path="/portal/articles/edit/:id"
-                 element={<RequirePortalAccess><PortalLayout><ArticleEditor /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
+          <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
+          <Route path="/articles/edit/:id" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />

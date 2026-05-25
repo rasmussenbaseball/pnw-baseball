@@ -13,17 +13,71 @@ later phase will wire Supabase Storage uploads.
 
 from __future__ import annotations
 
+import os
 import re
+import time
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+
 from pydantic import BaseModel, Field
 
 from ..models.database import get_connection
-from .auth import get_current_user
+from .auth import _extract_token, _get_supabase_url
 
 router = APIRouter()
+
+
+# ─────────────────────────────────────────────────────────────────
+# Author allowlist — only these emails can write/publish articles or
+# upload article images. Override via env var if needed (comma-separated).
+# ─────────────────────────────────────────────────────────────────
+
+_DEFAULT_AUTHORS = "nate.rasmussen26@gmail.com"
+
+
+def _allowed_emails() -> set[str]:
+    raw = os.getenv("ARTICLE_AUTHOR_EMAILS", _DEFAULT_AUTHORS)
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def _resolve_author(request: Request) -> dict:
+    """Verify the Supabase token, fetch the user's profile, and confirm the
+    user's email is on the article-author allowlist. Returns
+    {user_id, email} on success. Raises 401 (no token), 403 (not author)."""
+    token = _extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    supabase_url = _get_supabase_url()
+    try:
+        resp = httpx.get(
+            f"{supabase_url}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "apikey": os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+            },
+            timeout=5.0,
+        )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Auth check failed")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    data = resp.json() or {}
+    user_id = data.get("id")
+    email = (data.get("email") or "").strip().lower()
+    if not user_id or not email:
+        raise HTTPException(status_code=401, detail="No user info")
+
+    if email not in _allowed_emails():
+        raise HTTPException(status_code=403, detail="Not an authorized article author")
+
+    return {"user_id": user_id, "email": email}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -176,7 +230,7 @@ def get_published_article(slug: str):
 # users-extension table; for now we lean on the existing portal gate.
 
 @router.get("/portal/articles")
-def list_my_articles(user_id: str = Depends(get_current_user)):
+def list_my_articles(author: dict = Depends(_resolve_author)):
     """List THIS author's articles (any status). Newest first."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -189,13 +243,13 @@ def list_my_articles(user_id: str = Depends(get_current_user)):
             WHERE author_id = %s
             ORDER BY COALESCE(published_at, updated_at) DESC, id DESC
             """,
-            (user_id,),
+            (author["user_id"],),
         )
         return {"articles": [_row_to_summary(dict(r)) for r in cur.fetchall()]}
 
 
 @router.get("/portal/articles/{article_id}")
-def get_my_article(article_id: int, user_id: str = Depends(get_current_user)):
+def get_my_article(article_id: int, author: dict = Depends(_resolve_author)):
     """Fetch an article by ID for editing. Must be authored by current user."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -211,13 +265,13 @@ def get_my_article(article_id: int, user_id: str = Depends(get_current_user)):
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(row["author_id"]) != str(user_id):
+        if str(row["author_id"]) != str(author["user_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
         return _row_to_full(dict(row))
 
 
 @router.post("/portal/articles")
-def create_article(body: ArticleCreate, user_id: str = Depends(get_current_user)):
+def create_article(body: ArticleCreate, author: dict = Depends(_resolve_author)):
     """Create a new article as a draft. The author can publish it later."""
     base = _slugify(body.slug or body.title)
     with get_connection() as conn:
@@ -234,7 +288,7 @@ def create_article(body: ArticleCreate, user_id: str = Depends(get_current_user)
                       created_at, updated_at
             """,
             (slug, body.title.strip(), (body.subtitle or "").strip() or None,
-             body.body_md or "", body.hero_image_url, user_id, body.author_name.strip()),
+             body.body_md or "", body.hero_image_url, author["user_id"], body.author_name.strip()),
         )
         row = dict(cur.fetchone())
         conn.commit()
@@ -245,7 +299,7 @@ def create_article(body: ArticleCreate, user_id: str = Depends(get_current_user)
 def update_article(
     article_id: int,
     body: ArticleUpdate,
-    user_id: str = Depends(get_current_user),
+    author: dict = Depends(_resolve_author),
 ):
     """Update title / subtitle / body / hero / slug. Author-only."""
     with get_connection() as conn:
@@ -254,7 +308,7 @@ def update_article(
         existing = cur.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(existing["author_id"]) != str(user_id):
+        if str(existing["author_id"]) != str(author["user_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
 
         # Build the SET clause from non-None fields. If the slug is being
@@ -303,7 +357,7 @@ def update_article(
 def toggle_publish(
     article_id: int,
     body: ArticlePublishToggle,
-    user_id: str = Depends(get_current_user),
+    author: dict = Depends(_resolve_author),
 ):
     """Flip an article between draft and published. Author-only.
 
@@ -319,7 +373,7 @@ def toggle_publish(
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(row["author_id"]) != str(user_id):
+        if str(row["author_id"]) != str(author["user_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
 
         if body.publish:
@@ -343,8 +397,75 @@ def toggle_publish(
         return _row_to_full(out)
 
 
+_BUCKET = "article-images"
+_ALLOWED_IMAGE_MIME = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB — plenty for in-article photos.
+
+
+@router.post("/portal/articles/upload-image")
+async def upload_article_image(
+    request: Request,
+    file: UploadFile = File(...),
+    author: dict = Depends(_resolve_author),
+):
+    """Upload an image to the article-images Supabase Storage bucket
+    (public read) and return its public URL. The frontend inserts the
+    URL into the markdown body as `![alt](url)`.
+
+    Authorized authors only (same allowlist as the article-write endpoints)."""
+    ctype = (file.content_type or "").lower()
+    if ctype not in _ALLOWED_IMAGE_MIME:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ctype}")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(contents) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (8 MB max)")
+
+    ext = _ALLOWED_IMAGE_MIME[ctype]
+    # Path: <author_id>/<timestamp>-<random>.<ext> — namespaces per author
+    # and avoids collisions even on rapid back-to-back uploads.
+    key = f"{author['user_id']}/{int(time.time())}-{uuid.uuid4().hex[:8]}.{ext}"
+
+    supabase_url = _get_supabase_url()
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not service_key:
+        raise HTTPException(status_code=500, detail="Server missing storage credentials")
+
+    upload_url = f"{supabase_url}/storage/v1/object/{_BUCKET}/{key}"
+    try:
+        resp = httpx.post(
+            upload_url,
+            content=contents,
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey": service_key,
+                "Content-Type": ctype,
+                "x-upsert": "false",
+            },
+            timeout=30.0,
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
+
+    if resp.status_code >= 300:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Storage upload failed ({resp.status_code}): {resp.text[:200]}",
+        )
+
+    public_url = f"{supabase_url}/storage/v1/object/public/{_BUCKET}/{key}"
+    return {"url": public_url, "path": key, "filename": file.filename}
+
+
 @router.delete("/portal/articles/{article_id}")
-def archive_article(article_id: int, user_id: str = Depends(get_current_user)):
+def archive_article(article_id: int, author: dict = Depends(_resolve_author)):
     """Soft-delete: mark archived so it stops appearing anywhere public.
 
     Phase 1 keeps the row around (so undelete is just a status flip) — a
@@ -355,7 +476,7 @@ def archive_article(article_id: int, user_id: str = Depends(get_current_user)):
         existing = cur.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(existing["author_id"]) != str(user_id):
+        if str(existing["author_id"]) != str(author["user_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
         cur.execute(
             "UPDATE articles SET status = 'archived', updated_at = NOW() WHERE id = %s",
