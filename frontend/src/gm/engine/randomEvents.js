@@ -96,6 +96,41 @@ function pushNews(state, headline, type = 'AWARD', big = false) {
   })
 }
 
+/**
+ * Pick the top N best players on the user's roster by OVR. Used by
+ * events that should affect "captains" / "best players" specifically —
+ * e.g. the paintball outing where the BEST players (the captains who
+ * pushed for it) are most disappointed when it's denied. Returns named
+ * players so the outcome modal can surface a specific "Captain Smith
+ * happiness -8" line rather than a generic team-wide morale tick.
+ */
+function topNRosterPlayers(state, n, predicate) {
+  const team = state.teams?.[state.userSchoolId]
+  if (!team) return []
+  const roster = (team.rosterPlayerIds || [])
+    .map(id => state.players?.[id])
+    .filter(p => p && (!predicate || predicate(p)))
+  roster.sort((a, b) => (playerOverall(b) || 0) - (playerOverall(a) || 0))
+  return roster.slice(0, n)
+}
+
+/**
+ * Apply a happiness delta to each of the user's top-N best players AND
+ * push a named outcome line per player to the newsfeed (so the outcome
+ * modal shows "Captain X happiness -8" instead of a generic team-wide
+ * average shift). `reason` is the short flavor phrase that fills the
+ * outcome line.
+ */
+function applyCaptainMorale(state, delta, reason, n = 3, predicate) {
+  const captains = topNRosterPlayers(state, n, predicate)
+  if (captains.length === 0) return
+  const sign = delta > 0 ? '+' : ''
+  for (const c of captains) {
+    applyPlayerMorale(c, delta)
+    pushNews(state, `${c.firstName} ${c.lastName} (${c.classYear} ${c.primaryPosition}, ${Math.round(playerOverall(c))} OVR) happiness ${sign}${delta} — ${reason}.`)
+  }
+}
+
 function pickRandomRosterPlayer(state, rng, predicate) {
   const team = state.teams?.[state.userSchoolId]
   if (!team) return null
@@ -1209,12 +1244,25 @@ export const EVENT_CATALOG = {
       title: 'Team Captain Vote',
       body: 'Time to name captains for the upcoming season. The team\'s expecting a vote, but you can override and pick yourself.',
       choices: [
-        { id: 'team-vote', label: 'Let the team vote', blurb: 'Democratic. The popular vote may not pick your best leader.',
-          apply: (state) => { applyTeamMorale(state, +5) } },
-        { id: 'coach-pick', label: 'You pick the captains', blurb: 'Decisive. Some guys will resent it.',
-          apply: (state) => { applyTeamMorale(state, -2); applyJobSecurity(state, +1) } },
-        { id: 'hybrid', label: 'Team votes from a list you approve', blurb: 'Best of both. Diplomatic, slow.',
-          apply: (state) => { applyTeamMorale(state, +3) } },
+        { id: 'team-vote', label: 'Let the team vote', blurb: 'Team +5. Top 3 vets get +6 happiness (they ran the locker room and earned the votes).',
+          apply: (state) => {
+            applyTeamMorale(state, +5)
+            applyCaptainMorale(state, +6, 'won the team captain vote', 3, p => p.classYear === 'SR' || p.classYear === 'JR')
+          } },
+        { id: 'coach-pick', label: 'You pick the captains', blurb: 'Team -2 happiness. Job sec +1. Vets you skipped lose -10 happiness.',
+          apply: (state) => {
+            applyTeamMorale(state, -2)
+            applyJobSecurity(state, +1)
+            // The "skipped" captains — vets who would have won the vote
+            // but didn't get named. Penalize the 2 highest-OVR seniors
+            // by name so the user sees the locker-room cost.
+            applyCaptainMorale(state, -10, 'expected to be named captain and was passed over', 2, p => p.classYear === 'SR')
+          } },
+        { id: 'hybrid', label: 'Team votes from a list you approve', blurb: 'Team +3. Top vet on your list +5 happiness.',
+          apply: (state) => {
+            applyTeamMorale(state, +3)
+            applyCaptainMorale(state, +5, 'won captain vote off coach\'s approved list', 2, p => p.classYear === 'SR' || p.classYear === 'JR')
+          } },
       ],
     }),
   },
@@ -1615,12 +1663,24 @@ export const EVENT_CATALOG = {
       title: 'Players Want a Bus Sing-Along',
       body: 'After a walk-off win, the team wants to skip the cooldown and crank music for the bus ride home. Captains say it\'ll set the tone for the playoff run.',
       choices: [
-        { id: 'let-them-sing', label: 'Let them celebrate', blurb: 'Vibe is everything. Big morale boost.',
-          apply: (state) => { applyTeamMorale(state, +6) } },
-        { id: 'cooldown-first', label: 'Cooldown first, then celebrate', blurb: 'Best of both. Veteran move.',
-          apply: (state) => { applyTeamMorale(state, +3) } },
-        { id: 'keep-routine', label: 'Stick to routine, no music', blurb: 'Discipline. Captains will lobby harder next time.',
-          apply: (state) => { applyTeamMorale(state, -2) } },
+        { id: 'let-them-sing', label: 'Let them celebrate', blurb: 'Team +5. Captains +8 each — they led the push.',
+          apply: (state) => {
+            applyTeamMorale(state, +5)
+            applyCaptainMorale(state, +8, 'captain ran the postgame bus celebration', 3)
+            pushNews(state, 'Bus rolled home with the music on. Vibes electric.')
+          } },
+        { id: 'cooldown-first', label: 'Cooldown first, then celebrate', blurb: 'Team +3. Captains +4 each (got the celebration eventually).',
+          apply: (state) => {
+            applyTeamMorale(state, +3)
+            applyCaptainMorale(state, +4, 'captain appreciated the post-cooldown celebration', 3)
+            pushNews(state, 'Coach made the team cool down first, THEN gave them the music. Veteran move.')
+          } },
+        { id: 'keep-routine', label: 'Stick to routine, no music', blurb: 'Team -2. Captains -7 each (they pitched for it).',
+          apply: (state) => {
+            applyTeamMorale(state, -2)
+            applyCaptainMorale(state, -7, 'captain pitched the celebration and got shut down', 3)
+            pushNews(state, 'Coach said no music — routine wins. Captains are pissed.')
+          } },
       ],
     }),
   },
@@ -2201,17 +2261,27 @@ export const EVENT_CATALOG = {
       title: 'Captains Propose a Team Paintball Day',
       body: 'Captains want a Saturday paintball outing to build chemistry. Costs $2K from the team account; injury risk is low but non-zero.',
       choices: [
-        { id: 'approve', label: 'Approve the outing', blurb: '-$2K, big morale boost. Small injury risk.',
+        { id: 'approve', label: 'Approve the outing', blurb: '-$2K. Team +7 happiness, captains +10 each. ~15% one player tweaks something.',
           apply: (state, rng) => {
             if (state.budget) state.budget.totalAthleticBudget = Math.max(0, state.budget.totalAthleticBudget - 2000)
-            applyTeamMorale(state, +7)
+            applyTeamMorale(state, +5)
+            applyCaptainMorale(state, +10, 'captain pushed for the outing and loved the green light', 3)
             if (rng.chance(0.15)) { applyTeamDurability(state, -1); pushNews(state, 'Paintball outing rocked — but one player tweaked his shoulder.') }
             else pushNews(state, 'Paintball outing was a huge bonding day. Team chemistry through the roof.')
           } },
-        { id: 'deny', label: 'Deny — injury risk too high', blurb: 'Safe. Captains disappointed.',
-          apply: (state) => { applyTeamMorale(state, -3); pushNews(state, 'Coach denied the paintball outing. Captains rolled their eyes.') } },
-        { id: 'counter-bowling', label: 'Counter-propose: bowling night', blurb: 'Lower risk, lower upside.',
-          apply: (state) => { if (state.budget) state.budget.totalAthleticBudget -= 800; applyTeamMorale(state, +3); pushNews(state, 'Bowling night replaced paintball. Tame but fun.') } },
+        { id: 'deny', label: 'Deny — injury risk too high', blurb: 'Team -2 happiness. Captains -8 each (they led the push).',
+          apply: (state) => {
+            applyTeamMorale(state, -2)
+            applyCaptainMorale(state, -8, 'captain led the paintball push and feels shut down', 3)
+            pushNews(state, 'Coach denied the paintball outing. Captains rolled their eyes; vets are quietly annoyed.')
+          } },
+        { id: 'counter-bowling', label: 'Counter-propose: bowling night', blurb: '-$800. Team +3 happiness, captains +4 each.',
+          apply: (state) => {
+            if (state.budget) state.budget.totalAthleticBudget -= 800
+            applyTeamMorale(state, +3)
+            applyCaptainMorale(state, +4, 'captain appreciated the bowling compromise', 3)
+            pushNews(state, 'Bowling night replaced paintball. Tame but fun.')
+          } },
       ],
     }),
   },
@@ -2229,12 +2299,27 @@ export const EVENT_CATALOG = {
         body: `Seniors are complaining about ${player.firstName} ${player.lastName} and other freshmen — say they\'re entitled and don\'t respect the program\'s grind.`,
         playerId: player.id,
         choices: [
-          { id: 'side-with-vets', label: 'Make freshmen do extra grunt work', blurb: 'Old-school. Vets love it; freshmen don\'t.',
-            apply: (state) => { applyTeamMorale(state, -1); applyJobSecurity(state, +1); pushNews(state, 'Coach sided with the vets. Freshmen on bus-loading + equipment duty for 2 weeks.') } },
-          { id: 'address-team', label: 'Address the team as one unit', blurb: 'Diplomatic. Generally lands well.',
-            apply: (state) => { applyTeamMorale(state, +4); pushNews(state, 'Coach addressed the team about respect and unity. Tension defused.') } },
-          { id: 'side-with-rookies', label: 'Tell the vets to stop hazing', blurb: 'Pro-freshman. Vets resent it.',
-            apply: (state) => { applyTeamMorale(state, -3); applyJobSecurity(state, -1); pushNews(state, 'Coach defended the freshmen. Senior leaders are quietly seething.') } },
+          { id: 'side-with-vets', label: 'Make freshmen do extra grunt work', blurb: 'Job sec +1. Top vets +6 happiness, top freshmen -8.',
+            apply: (state) => {
+              applyJobSecurity(state, +1)
+              applyCaptainMorale(state, +6, 'vets felt heard by the coach', 2, p => p.classYear === 'SR' || p.classYear === 'JR')
+              applyCaptainMorale(state, -8, 'freshman stuck with extra grunt work', 2, p => p.classYear === 'FR')
+              pushNews(state, 'Coach sided with the vets. Freshmen on bus-loading + equipment duty for 2 weeks.')
+            } },
+          { id: 'address-team', label: 'Address the team as one unit', blurb: 'Team +4 happiness. Top vets +3, top freshmen +3 (everyone feels heard).',
+            apply: (state) => {
+              applyTeamMorale(state, +3)
+              applyCaptainMorale(state, +3, 'team meeting defused the tension', 2, p => p.classYear === 'SR' || p.classYear === 'JR')
+              applyCaptainMorale(state, +3, 'freshman felt defended in the team meeting', 2, p => p.classYear === 'FR')
+              pushNews(state, 'Coach addressed the team about respect and unity. Tension defused.')
+            } },
+          { id: 'side-with-rookies', label: 'Tell the vets to stop hazing', blurb: 'Job sec -1. Top freshmen +6, top vets -8.',
+            apply: (state) => {
+              applyJobSecurity(state, -1)
+              applyCaptainMorale(state, +6, 'freshman felt protected by the coach', 2, p => p.classYear === 'FR')
+              applyCaptainMorale(state, -8, 'vet got publicly told to back off — feels disrespected', 2, p => p.classYear === 'SR' || p.classYear === 'JR')
+              pushNews(state, 'Coach defended the freshmen. Senior leaders are quietly seething.')
+            } },
         ],
       }
     },
@@ -3014,7 +3099,7 @@ export function resolveEvent(state, choiceId) {
   const newNewsLines = []
   const addedCount = after.newsLen - before.newsLen
   if (addedCount > 0) {
-    for (let i = 0; i < Math.min(addedCount, 4); i++) {
+    for (let i = 0; i < Math.min(addedCount, 8); i++) {
       const entry = state.newsfeed?.[i]
       if (entry?.headline) newNewsLines.push(entry.headline)
     }
