@@ -1,31 +1,28 @@
 /**
- * Pixelated 2-letter monogram team logos (per Nate, May 2026 — visuals
- * overhaul).
+ * Outlined pixel-letter team logos (per Nate, May 2026 — visuals
+ * iteration 2). No background tile — the 2-letter abbreviation renders
+ * directly with the team's PRIMARY color as the letter fill and the
+ * SECONDARY color as the outline stroke. "Press Start 2P" pixel font.
  *
  * PNW programs (57 teams):
- *   - 2-letter abbreviation pulled from TEAM_BRAND in data/teamBrand.js
- *   - Square tile with the team's PRIMARY color as background and SECONDARY
- *     color as the letter color
- *   - Pixel-display font (font-pixel-display) for the retro look
- *   - Thin secondary-color outline ring on the tile
+ *   - 2-letter abbreviation from TEAM_BRAND in data/teamBrand.js
+ *   - Primary color = letter fill, secondary color = outline stroke
  *
  * Non-PNW teams (1,100+):
- *   - Single white letter (first letter of the team name) on a neutral
- *     dark-slate tile. Same shape + font as PNW logos so they slot in
- *     visually without each carrying bespoke branding.
+ *   - Single white letter (first letter of name) with a thin dark
+ *     outline so it stays legible on both light + dark surfaces.
  *
- * Contract is unchanged from the previous component: pass `school` (or
- * any object with id + name), get back a rendered logo. Every existing
- * <TeamLogo school={...} size={n} /> call site keeps working.
+ * Contract unchanged — pass `school`, get back a rendered logo at the
+ * requested `size`. Every existing <TeamLogo school={...} size={n} />
+ * call site keeps working.
  */
 
 import { TEAM_BRAND, brandAbbr } from '../data/teamBrand'
 
-// Neutral fallback for any non-PNW team. Dark slate matches the rest of
-// the GM screen palette so single-letter logos still feel like the same
-// product, just without team-specific branding.
-const NON_PNW_BG = '#1F2937'      // pnw-slate-ish dark
-const NON_PNW_FG = '#FFFFFF'
+// Neutral outline for non-PNW (lets the white letter sit on either
+// light or dark backgrounds).
+const NON_PNW_FILL = '#FFFFFF'
+const NON_PNW_STROKE = '#1F2937'   // pnw-slate-ish dark
 
 export default function TeamLogo({ school, size = 32, className = '' }) {
   if (!school) return null
@@ -33,23 +30,20 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
   const brand = TEAM_BRAND[school.id]
   const isPnw = !!brand
   const abbr = isPnw ? brand.abbr : brandAbbr(school.id, school.name || school.nickname)
-  const primary = isPnw ? brand.primary : NON_PNW_BG
-  const secondary = isPnw ? brand.secondary : NON_PNW_FG
+  const fill = isPnw ? brand.primary : NON_PNW_FILL
+  const stroke = isPnw ? brand.secondary : NON_PNW_STROKE
 
-  // Two letters need a smaller font than one. Pixel fonts are wide.
+  // Letter sizing — pixel fonts are wide, 2-letter abbrs need a smaller
+  // glyph than a single letter so the logo lands at roughly the same
+  // visual footprint regardless of how many characters it has.
   const len = abbr.length || 1
-  const fontSize = Math.max(8, Math.round(size * (len === 1 ? 0.58 : 0.46)))
+  const fontSize = Math.max(10, Math.round(size * (len === 1 ? 0.80 : 0.60)))
 
-  // Tile shape: square with slightly rounded corners (~12% radius).
-  // This is the "pixel chip" look — no circle, no soft edges.
-  const radius = Math.max(2, Math.round(size * 0.12))
-
-  // Outline: thin secondary-color border for definition. When the primary
-  // is very light (white, near-white) we add an inner darkish ring instead
-  // so the logo doesn't disappear on light surfaces.
-  const isLightPrimary = isVeryLight(primary)
-  const ringColor = isLightPrimary ? '#1F2937' : secondary
-  const ringWidth = Math.max(1, Math.round(size * 0.06))
+  // Outline width scales with logo size — at tiny sizes (≤16px) a 1px
+  // stroke is plenty; at large sizes (64px team-banner) the outline
+  // needs to be thicker to still read as an "outline" instead of a
+  // hairline. Caps at 3px so the letter shape stays readable.
+  const strokeWidth = Math.max(1, Math.min(3, Math.round(size * 0.05)))
 
   return (
     <span
@@ -57,18 +51,14 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
       style={{
         width: size,
         height: size,
-        backgroundColor: primary,
-        color: secondary,
-        border: `${ringWidth}px solid ${ringColor}`,
-        borderRadius: radius,
+        color: fill,
         fontSize,
         lineHeight: 1,
         letterSpacing: '0.02em',
-        // Crisp pixel rendering on retina displays.
-        imageRendering: 'pixelated',
-        // Subtle inset shadow + outer shadow to give the tile depth without
-        // breaking the flat pixel-art feel.
-        boxShadow: `inset 0 -${Math.max(1, Math.round(size * 0.06))}px 0 rgba(0,0,0,0.20)`,
+        // -webkit-text-stroke is the cleanest cross-browser way to draw
+        // an outline on text. Supported in Chrome / Safari / Firefox 49+
+        // / Edge. Paints the stroke OUTSIDE the letter shape.
+        WebkitTextStroke: `${strokeWidth}px ${stroke}`,
       }}
       aria-label={school.name}
       title={school.name}
@@ -76,18 +66,4 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
       {abbr}
     </span>
   )
-}
-
-/** Hex luminance helper — used to swap the ring color so logos like
- * Wenatchee Valley (white background) still have a visible outline. */
-function isVeryLight(hex) {
-  if (!hex || typeof hex !== 'string') return false
-  const m = hex.replace('#', '')
-  if (m.length !== 6) return false
-  const r = parseInt(m.slice(0, 2), 16)
-  const g = parseInt(m.slice(2, 4), 16)
-  const b = parseInt(m.slice(4, 6), 16)
-  // Standard relative-luminance approximation (0-255 scale).
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b
-  return lum > 220
 }
