@@ -836,13 +836,13 @@ function ProgramStep({ schools, conferences, programRatings, selectedSchoolId, s
               key={p.id}
               onClick={() => setSelectedSchoolId(p.id)}
               className={
-                'flex items-center gap-3 p-2.5 rounded-lg border-2 text-left transition ' +
+                'flex items-center gap-4 p-3 rounded-lg border-2 text-left transition ' +
                 (isSelected
                   ? 'border-amber-300 bg-[#3a3a5e]'
                   : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
               }
             >
-              <TeamLogo school={p} size={36} />
+              <TeamLogo school={p} size={64} className="shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
                   <div className="text-white font-bold text-sm truncate">{p.name}</div>

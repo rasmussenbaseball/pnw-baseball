@@ -44,11 +44,21 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
     : 0.36
   const fontSize = Math.max(8, Math.round(size * scale))
 
-  // Outline width scales with logo size — at tiny sizes (≤16px) a 1px
-  // stroke is plenty; at large sizes (64px team-banner) the outline
-  // needs to be thicker to still read as an "outline" instead of a
-  // hairline. Caps at 3px so the letter shape stays readable.
-  const strokeWidth = Math.max(1, Math.min(3, Math.round(size * 0.05)))
+  // Outline width scales with BOTH logo size AND abbr length. 3-letter
+  // codes (OSU, WSU, UBC, COI, OIT, MSB, PLU, UPS, EOU, CWU, SMU, NNU,
+  // WOU, L&C) have thinner letters than 2-letter codes at the same tile
+  // size — so we ALSO need a thinner stroke or the outline overwhelms
+  // the letter shape (per Nate — "3 letter teams have too heavy of a
+  // shadow").
+  //   1-char: 6% of size (1-3px range)
+  //   2-char: 5% (1-3px)
+  //   3-char: 3% (1-2px)
+  //   4-char: 2.5% (1-2px) — L&C with the ampersand
+  const strokeScale = len <= 1 ? 0.06
+    : len === 2 ? 0.05
+    : len === 3 ? 0.03
+    : 0.025
+  const strokeWidth = Math.max(1, Math.min(3, Math.round(size * strokeScale)))
 
   return (
     <span

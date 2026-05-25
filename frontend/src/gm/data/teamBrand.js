@@ -42,7 +42,7 @@ export const TEAM_BRAND = {
   'george-fox-d3':          { abbr: 'GF',  primary: '#003366', secondary: '#FFD700' },  // navy / gold
 
   // ─── NAIA (8 PNW programs — Cascade Conference) ─────────────────────
-  'lewis-clark-state':      { abbr: 'LC', primary: '#00205B', secondary: '#FFC72C' },  // navy / gold
+  'lewis-clark-state':      { abbr: 'LC', primary: '#C8102E', secondary: '#002B5C' },  // red / navy
   'bushnell':               { abbr: 'BU', primary: '#1D3D6F', secondary: '#FFC72C' },  // navy / gold
   'college-of-idaho':       { abbr: 'COI', primary: '#582C83', secondary: '#FFFFFF' },  // purple / white
   'corban':                 { abbr: 'CR',  primary: '#FFD200', secondary: '#003B5C' },  // yellow / navy
