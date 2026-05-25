@@ -162,10 +162,11 @@ export default function Account() {
         title="Subscription"
         right={
           <Link
-            to="/about"
-            className="text-[11px] font-semibold text-gray-500 hover:text-nw-teal uppercase tracking-wider"
+            to="/pricing"
+            className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:text-nw-teal
+                       uppercase tracking-wider"
           >
-            What's included →
+            Compare plans →
           </Link>
         }
       >
@@ -173,25 +174,25 @@ export default function Account() {
           <div>
             <div className="flex items-center gap-2">
               <TierBadge tier={tier} />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-gray-700 dark:text-gray-300">
                 {tier === 'paid' ? 'Paid subscriber' : 'Free account'}
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-1.5">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
               {tier === 'paid'
                 ? 'Thanks for supporting NW Baseball Stats.'
-                : 'You have full access to all public stats, leaderboards, and tools. A paid tier with advanced scouting features is coming soon.'}
+                : 'You have full access to all public stats, leaderboards, and tools. Paid tiers with advanced scouting features are launching soon.'}
             </p>
           </div>
           {tier !== 'paid' && (
-            <button
-              disabled
-              title="Coming soon"
+            <Link
+              to="/pricing"
               className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
-                         border border-gray-200 text-gray-400 cursor-not-allowed"
+                         border border-nw-teal text-nw-teal hover:bg-nw-teal hover:text-white
+                         dark:hover:bg-nw-teal dark:hover:text-white transition-colors"
             >
-              Upgrade · soon
-            </button>
+              See plans →
+            </Link>
           )}
         </div>
       </Section>

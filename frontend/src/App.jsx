@@ -192,6 +192,7 @@ import ArticleEditor from './pages/portal/ArticleEditor'
 import EmailComposer from './pages/portal/EmailComposer'
 import Unsubscribe from './pages/Unsubscribe'
 import Account from './pages/Account'
+import Pricing from './pages/Pricing'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'
@@ -375,6 +376,8 @@ export default function App() {
 
           {/* "My Account" — auth required */}
           <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
+          {/* Pricing / tier comparison — public so anyone can see what each tier gets */}
+          <Route path="/pricing" element={<Pricing />} />
 
           {/* Draft (auth required) */}
           <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />

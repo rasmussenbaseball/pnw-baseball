@@ -82,6 +82,8 @@ const NAV = [
     items: [
       { to: '/graphics-hub', label: 'Graphics',
         desc: 'Pick from every social-media graphic generator on the site' },
+      { to: '/pricing', label: 'Pricing',
+        desc: 'Compare Free, Premium, and Coach & Scout tiers' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
       { to: '/about', label: 'About',
