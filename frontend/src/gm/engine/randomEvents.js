@@ -131,6 +131,37 @@ function applyCaptainMorale(state, delta, reason, n = 3, predicate) {
   }
 }
 
+/**
+ * Pick a real SIGNED recruit (status='signed', signedTo === userSchoolId)
+ * from state.recruits. Used by events like "Signed Recruit Tore His ACL"
+ * that need to reference an actual person the coach has committed to —
+ * not a randomly invented name. Returns null if there are no signed
+ * recruits yet (e.g. early in the offseason before commits roll in).
+ */
+function pickSignedRecruit(state, rng, predicate) {
+  const userId = state.userSchoolId
+  const signed = Object.values(state.recruits || {})
+    .filter(r => r && r.status === 'signed' && r.signedTo === userId)
+    .filter(r => !predicate || predicate(r))
+  if (signed.length === 0) return null
+  return rng.pick(signed)
+}
+
+/**
+ * Pick a recruit the user has a LIVE OFFER on (status='active',
+ * liveOffer.schoolId === userSchoolId). Used by events like
+ * "Top Recruit on the Fence" + "Top Commit Off-Field Incident"
+ * that should fire ONLY when the user has open offers in play.
+ */
+function pickActiveOffer(state, rng, predicate) {
+  const userId = state.userSchoolId
+  const open = Object.values(state.recruits || {})
+    .filter(r => r && r.liveOffer?.schoolId === userId && r.status !== 'signed' && r.status !== 'lost')
+    .filter(r => !predicate || predicate(r))
+  if (open.length === 0) return null
+  return rng.pick(open)
+}
+
 function pickRandomRosterPlayer(state, rng, predicate) {
   const team = state.teams?.[state.userSchoolId]
   if (!team) return null
@@ -1321,21 +1352,54 @@ export const EVENT_CATALOG = {
   TOP_RECRUIT_DECOMMIT: {
     id: 'TOP_RECRUIT_DECOMMIT',
     weight: 0.3,
-    condition: (state) => isOffseasonWeek(state) && (state.calendar?.weekOfYear || 0) >= 14,
-    builder: (state) => ({
-      id: `evt_DECOMMIT_${state.calendar.year}_${state.calendar.weekOfYear}`,
-      templateId: 'TOP_RECRUIT_DECOMMIT',
-      title: 'Top Recruit on the Fence',
-      body: 'Your highest-rated commit just got a late offer from a power-conference D1. He says he\'s thinking. What\'s your play?',
-      choices: [
-        { id: 'home-visit', label: 'Drive to his house this weekend', blurb: '-$1K recruiting, but real loyalty signal.',
-          apply: (state, rng) => { if (state.budget?.allocations) state.budget.allocations.recruiting = Math.max(0, (state.budget.allocations.recruiting || 0) - 1000); if (rng.chance(0.65)) pushNews(state, 'Top commit held firm after home visit. Crisis averted.'); else { pushNews(state, 'Top commit flipped to a D1 despite the home visit. Tough loss.'); applyJobSecurity(state, -3) } } },
-          { id: 'bump-scholarship', label: 'Increase his scholarship offer', blurb: 'Cost: $3K of pool. Often works.',
-          apply: (state, rng) => { if (state.budget?.allocations) state.budget.allocations.scholarships = Math.max(0, state.budget.allocations.scholarships - 3000); if (rng.chance(0.75)) pushNews(state, 'Top commit signed after a scholarship bump.'); else pushNews(state, 'Top commit flipped despite the bump. $3K wasted.') } },
-        { id: 'let-him-decide', label: 'Let him decide on his own', blurb: 'Don\'t chase. If he wants to leave, let him.',
-          apply: (state, rng) => { if (rng.chance(0.35)) pushNews(state, 'Top commit appreciated the lack of pressure. Stayed firm.'); else { pushNews(state, 'Top commit flipped. Coach didn\'t chase, fans are mad.'); applyJobSecurity(state, -4) } } },
-      ],
-    }),
+    // Only fire if the user has a real signed recruit. Was inventing
+    // fake "top commit" names before — per Nate, May 2026.
+    condition: (state) => {
+      if (!isOffseasonWeek(state) || (state.calendar?.weekOfYear || 0) < 14) return false
+      const userId = state.userSchoolId
+      return Object.values(state.recruits || {})
+        .some(r => r && r.status === 'signed' && r.signedTo === userId)
+    },
+    builder: (state, rng) => {
+      // Pick the user's HIGHEST-rated signed recruit (the realistic
+      // "top commit" target for a power-conf flip).
+      const userId = state.userSchoolId
+      const signed = Object.values(state.recruits || {})
+        .filter(r => r && r.status === 'signed' && r.signedTo === userId)
+      if (signed.length === 0) return null
+      signed.sort((a, b) => (b.scoutedOvr || 0) - (a.scoutedOvr || 0))
+      const recruit = signed[0]
+      const name = `${recruit.firstName} ${recruit.lastName}`
+      const pos = recruit.primaryPosition || '?'
+      const ovr = Math.round(recruit.scoutedOvr || recruit.trueOvr || 70)
+      return {
+        id: `evt_DECOMMIT_${recruit.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
+        templateId: 'TOP_RECRUIT_DECOMMIT',
+        title: 'Top Recruit on the Fence',
+        body: `${name} (${pos}, ${ovr} OVR), your highest-rated commit, just got a late offer from a power-conference D1. He says he\'s thinking. What\'s your play?`,
+        choices: [
+          { id: 'home-visit', label: 'Drive to his house this weekend', blurb: '-$1K recruiting. 65% he holds firm.',
+            apply: (state, rng) => {
+              if (state.budget?.allocations) state.budget.allocations.recruiting = Math.max(0, (state.budget.allocations.recruiting || 0) - 1000)
+              if (rng.chance(0.65)) pushNews(state, `${name} held firm after the home visit. Crisis averted.`)
+              else { recruit.status = 'lost'; recruit.signedTo = null; applyJobSecurity(state, -3); pushNews(state, `${name} flipped to a D1 despite the home visit. Lost the commit.`) }
+            } },
+          { id: 'bump-scholarship', label: 'Increase his scholarship offer', blurb: '-$3K from pool. 75% he stays.',
+            apply: (state, rng) => {
+              if (state.budget?.allocations) state.budget.allocations.scholarships = Math.max(0, state.budget.allocations.scholarships - 3000)
+              if (rng.chance(0.75)) {
+                if (recruit.liveOffer) recruit.liveOffer.amount = (recruit.liveOffer.amount || 0) + 3000
+                pushNews(state, `${name} signed after the $3K scholarship bump.`)
+              } else { recruit.status = 'lost'; recruit.signedTo = null; pushNews(state, `${name} flipped despite the bump. $3K wasted; commit lost.`) }
+            } },
+          { id: 'let-him-decide', label: 'Let him decide on his own', blurb: 'No cost. 35% he stays out of respect for not chasing.',
+            apply: (state, rng) => {
+              if (rng.chance(0.35)) pushNews(state, `${name} appreciated the no-pressure approach. Stayed firm.`)
+              else { recruit.status = 'lost'; recruit.signedTo = null; applyJobSecurity(state, -4); pushNews(state, `${name} flipped. Coach didn\'t chase; fans are mad.`) }
+            } },
+        ],
+      }
+    },
   },
 
   COMMITMENT_AT_VISIT: {
@@ -1359,19 +1423,42 @@ export const EVENT_CATALOG = {
   RECRUIT_INCIDENT: {
     id: 'RECRUIT_INCIDENT',
     weight: 0.25,
-    condition: (state) => isOffseasonWeek(state),
-    builder: (state) => ({
-      id: `evt_RECINCID_${state.calendar.year}_${state.calendar.weekOfYear}`,
-      templateId: 'RECRUIT_INCIDENT',
-      title: 'Top Recruit Off-Field Incident',
-      body: 'Your #1 verbal commit got picked up at a HS party. Local paper has it. Do you stand by him or pull the offer?',
-      choices: [
-        { id: 'stand-by', label: 'Stand by the commit', blurb: 'Loyalty matters in recruiting. Could backfire badly.',
-          apply: (state, rng) => { if (rng.chance(0.7)) pushNews(state, 'Top commit thanked the coach for the loyalty. Bond strengthened.'); else { applyJobSecurity(state, -6); pushNews(state, 'Top commit got in MORE trouble. Coach\'s loyalty looks bad now.') } } },
-        { id: 'pull-offer', label: 'Pull the offer', blurb: 'Sends a hard message about standards. Recruit network notices.',
-          apply: (state) => { applyJobSecurity(state, +3); pushNews(state, 'Coach pulled scholarship from troubled commit. Standards reinforced.') } },
-      ],
-    }),
+    // Only fire when the user has at least one signed recruit — was
+    // inventing a fake "#1 verbal commit" otherwise (per Nate, May 2026).
+    condition: (state) => {
+      if (!isOffseasonWeek(state)) return false
+      const userId = state.userSchoolId
+      return Object.values(state.recruits || {})
+        .some(r => r && r.status === 'signed' && r.signedTo === userId)
+    },
+    builder: (state, rng) => {
+      const recruit = pickSignedRecruit(state, rng)
+      if (!recruit) return null
+      const name = `${recruit.firstName} ${recruit.lastName}`
+      const pos = recruit.primaryPosition || '?'
+      const scholarship = recruit.liveOffer?.amount || recruit.scholarshipOffered || 0
+      return {
+        id: `evt_RECINCID_${recruit.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
+        templateId: 'RECRUIT_INCIDENT',
+        title: 'Top Recruit Off-Field Incident',
+        body: `${name} (${pos}, your $${(scholarship / 1000).toFixed(1)}K commit) got picked up at a HS party. Local paper has it. Do you stand by him or pull the offer?`,
+        choices: [
+          { id: 'stand-by', label: 'Stand by the commit', blurb: '70% he locks in. 30% he gets in MORE trouble (job sec -6).',
+            apply: (state, rng) => {
+              if (rng.chance(0.7)) pushNews(state, `${name} thanked the coach for the loyalty. Bond strengthened.`)
+              else { applyJobSecurity(state, -6); pushNews(state, `${name} got in MORE trouble. Coach\'s loyalty looks bad now.`) }
+            } },
+          { id: 'pull-offer', label: 'Pull the offer', blurb: `Job sec +3. +$${(scholarship / 1000).toFixed(1)}K freed. Recruit released.`,
+            apply: (state) => {
+              applyJobSecurity(state, +3)
+              if (state.budget?.allocations) state.budget.allocations.scholarships = (state.budget.allocations.scholarships || 0) + scholarship
+              recruit.status = 'lost'
+              recruit.signedTo = null
+              pushNews(state, `Coach pulled ${name}\'s scholarship. Standards reinforced; -$${(scholarship / 1000).toFixed(1)}K freed.`)
+            } },
+        ],
+      }
+    },
   },
 
   TRANSFER_PORTAL_GEM: {
@@ -2189,21 +2276,51 @@ export const EVENT_CATALOG = {
 
   COMMITTED_RECRUIT_INJURY: {
     id: 'COMMITTED_RECRUIT_INJURY', weight: 0.25,
-    condition: (state) => isOffseasonWeek(state),
+    // Only fire when the user has ACTUALLY signed at least one recruit
+    // (per Nate, May 2026 — "this player doesn\'t exist yet"). Without
+    // this gate the event invented a fake "top signee" name in week 2
+    // before the user had even opened recruiting.
+    condition: (state) => {
+      if (!isOffseasonWeek(state)) return false
+      const userId = state.userSchoolId
+      return Object.values(state.recruits || {})
+        .some(r => r && r.status === 'signed' && r.signedTo === userId)
+    },
     builder: (state, rng) => {
-      const name = rng.pick(['Brayden Cook', 'Jaxon Maddox', 'Tristan Owens', 'Cole Whitmore'])
+      const recruit = pickSignedRecruit(state, rng)
+      if (!recruit) return null
+      const name = `${recruit.firstName} ${recruit.lastName}`
+      const pos = recruit.primaryPosition || '?'
+      // Compute the actual scholarship $ committed so the choices show
+      // the real freed amount, not a placeholder.
+      const scholarship = recruit.liveOffer?.amount || recruit.scholarshipOffered || 0
+      const halfScholarship = Math.round(scholarship / 2)
       return {
-        id: `evt_COMMITINJ_${state.calendar.year}_${state.calendar.weekOfYear}`,
+        id: `evt_COMMITINJ_${recruit.id}_${state.calendar.year}_${state.calendar.weekOfYear}`,
         templateId: 'COMMITTED_RECRUIT_INJURY',
         title: 'Signed Recruit Tore His ACL',
-        body: `${name}, your top signee, tore his ACL playing HS football. He\'ll miss most of next spring. Compliance says you can pull the scholarship or honor it.`,
+        body: `${name} (${pos}, your signed recruit at $${(scholarship / 1000).toFixed(1)}K) tore his ACL playing HS football. He\'ll miss most of next spring. Compliance says you can pull the scholarship or honor it.`,
         choices: [
-          { id: 'honor-scholarship', label: 'Honor the scholarship', blurb: 'Big loyalty signal. Recruiting reputation soars.',
-            apply: (state) => { applyJobSecurity(state, +5); pushNews(state, `Honored ${name}\'s scholarship despite the ACL. Recruiting network noticed.`) } },
-          { id: 'reduce-scholarship', label: 'Reduce the offer 50%', blurb: 'Fair compromise. -$3K from pool freed.',
-            apply: (state) => { if (state.budget?.allocations) state.budget.allocations.scholarships = (state.budget.allocations.scholarships || 0) + 3000; pushNews(state, `Reduced ${name}\'s scholarship 50% after the injury. He accepted.`) } },
-          { id: 'pull-scholarship', label: 'Pull the scholarship entirely', blurb: 'Frees the spot. Reputation hit.',
-            apply: (state) => { applyJobSecurity(state, -8); pushNews(state, `Pulled ${name}\'s scholarship after the ACL. Local HS coaches are furious.`) } },
+          { id: 'honor-scholarship', label: 'Honor the scholarship', blurb: 'Job sec +5. Big loyalty signal. Recruiting reputation soars.',
+            apply: (state) => {
+              applyJobSecurity(state, +5)
+              pushNews(state, `Honored ${name}\'s scholarship despite the ACL. Recruiting network noticed.`)
+            } },
+          { id: 'reduce-scholarship', label: 'Reduce the offer 50%', blurb: `+$${(halfScholarship / 1000).toFixed(1)}K freed from pool. He accepts the cut.`,
+            apply: (state) => {
+              if (state.budget?.allocations) state.budget.allocations.scholarships = (state.budget.allocations.scholarships || 0) + halfScholarship
+              if (recruit.liveOffer) recruit.liveOffer.amount = scholarship - halfScholarship
+              pushNews(state, `Reduced ${name}\'s scholarship 50%. -$${(halfScholarship / 1000).toFixed(1)}K freed. He accepted.`)
+            } },
+          { id: 'pull-scholarship', label: 'Pull the scholarship entirely', blurb: `Job sec -8. +$${(scholarship / 1000).toFixed(1)}K freed. Recruit released from commitment.`,
+            apply: (state) => {
+              applyJobSecurity(state, -8)
+              if (state.budget?.allocations) state.budget.allocations.scholarships = (state.budget.allocations.scholarships || 0) + scholarship
+              // Release the recruit so they no longer count as signed.
+              recruit.status = 'lost'
+              recruit.signedTo = null
+              pushNews(state, `Pulled ${name}\'s scholarship after the ACL. -$${(scholarship / 1000).toFixed(1)}K freed; recruit released. Local HS coaches are furious.`)
+            } },
         ],
       }
     },
