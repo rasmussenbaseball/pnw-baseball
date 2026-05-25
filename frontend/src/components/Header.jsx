@@ -16,6 +16,7 @@ const NAV = [
       { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings' },
       { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
       { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
+      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
     ],
   },
   {
@@ -37,7 +38,6 @@ const NAV = [
       { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
       { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
       { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
-      { to: '/recruiting/field', label: 'Field', desc: 'Field-level visualization', locked: true },
     ],
   },
   // Flat top-level link — articles & site news.
@@ -47,12 +47,12 @@ const NAV = [
   {
     label: 'Games',
     items: [
+      { to: '/gm', label: 'NW Coaching Simulator',
+        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
       { to: '/pnw-grid', label: 'PNW Grid',
         desc: 'Immaculate Grid for PNW baseball' },
       { to: '/team-quiz', label: 'Team Quiz',
         desc: 'Test your knowledge of a PNW team across one or more seasons' },
-      { to: '/gm', label: 'NW Coaching Simulator',
-        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
     ],
   },
   {
@@ -73,8 +73,6 @@ const NAV = [
     items: [
       { to: '/graphics-hub', label: 'Graphics',
         desc: 'Pick from every social-media graphic generator on the site' },
-      { to: '/top-moments', label: 'Top Moments',
-        desc: "The season's biggest WPA swings and clutch leaderboards" },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
       // Author-only — hidden from the dropdown unless the current user's
