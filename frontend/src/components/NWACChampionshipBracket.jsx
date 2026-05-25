@@ -27,13 +27,15 @@ const COLUMNS = [
   { key: 'wb1',   label: 'WB Round 1',  side: 'wb',    games: [1, 2, 3, 4] },
   { key: 'wb2',   label: 'WB Round 2',  side: 'wb',    games: [7, 8] },
   { key: 'wbf',   label: 'WB Final',    side: 'wb',    games: [11] },
-  { key: 'semi',  label: 'Semifinal',   side: 'wb',    games: [13] },
-  // Championship column holds BOTH G14 and G15. In the standard path
-  // (WB-Final winner wins G13) G14 IS the title game; in the 3-team
-  // scenario (WB-Final winner loses G13) G14 is an elimination game and
-  // G15 — WB-Final winner vs winner of G14 — is the real title. Showing
-  // both boxes keeps the bracket honest no matter which path plays out.
-  { key: 'champ', label: 'Championship', side: 'champ', games: [14, 15] },
+  // Semifinal column carries G13 (the WB-Final-winner vs LB survivor
+  // semifinal) plus G14 stacked above it — in the 3-team scenario G14 is
+  // an elimination game between W12 and W13, which slots cleanly as
+  // another "semifinal-style" round before the title.
+  { key: 'semi',  label: 'Semifinal',   side: 'wb',    games: [14, 13] },
+  // Championship column now holds only G15 (the actual title game).
+  // In the standard path where G15 isn't needed, this box stays as an
+  // "If Necessary" placeholder; in the 3-team path it's the real title.
+  { key: 'champ', label: 'Championship', side: 'champ', games: [15] },
   { key: 'lbf',   label: 'LB Final',    side: 'lb',    games: [12] },
   { key: 'lb2',   label: 'LB Round 2',  side: 'lb',    games: [9, 10] },
   { key: 'lb1',   label: 'LB Round 1',  side: 'lb',    games: [5, 6] },
@@ -254,22 +256,22 @@ function GameCard({ gameNum, outcomes, teamForRef, gold, titleGame }) {
       } ${o?.db_game_id ? 'hover:border-pnw-teal hover:bg-white/[0.08] cursor-pointer' : ''}`}
     >
       <div className="flex items-center justify-between px-2 pt-1.5 pb-1">
-        <span className="text-[8px] font-bold uppercase tracking-wider text-white/35">
+        <span className="text-[8px] font-bold uppercase tracking-wider text-white/60">
           {titleGame ? 'Title Game' : `Game ${gameNum}`}
         </span>
         {isLive ? (
           <span className="text-[8px] font-bold text-red-400 animate-pulse">LIVE</span>
         ) : isFinal ? (
-          <span className="text-[8px] font-bold text-white/35">FINAL</span>
+          <span className="text-[8px] font-bold text-white/60">FINAL</span>
         ) : (
-          <span className="text-[8px] font-medium text-white/35">{g.time}</span>
+          <span className="text-[8px] font-medium text-white/60">{g.time}</span>
         )}
       </div>
       <TeamRow team={away} score={o?.away_score} won={isFinal && o.winner_id === away.team_id} isFinal={isFinal} />
       <div className="h-px bg-white/10 mx-2" />
       <TeamRow team={home} score={o?.home_score} won={isFinal && o.winner_id === home.team_id} isFinal={isFinal} />
       {!isFinal && !isLive && (
-        <div className="text-center text-[8px] text-white/30 pb-1 pt-0.5">{g.day}</div>
+        <div className="text-center text-[8px] text-white/55 pb-1 pt-0.5">{g.day}</div>
       )}
     </div>
   )
@@ -309,7 +311,7 @@ function TeamRow({ team, score, won, isFinal }) {
             ? 'font-bold text-white'
             : dimmed
             ? 'text-white/40'
-            : 'font-medium text-white/90'
+            : 'font-semibold text-white'
         }`}
       >
         {team.name}
