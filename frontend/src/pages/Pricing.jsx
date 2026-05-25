@@ -16,10 +16,15 @@
 // see NONE flagged.
 
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const API_BASE = '/api/v1'
+
+function authHeaders(session) {
+  if (!session?.access_token) return {}
+  return { Authorization: `Bearer ${session.access_token}` }
+}
 
 // ─── Tier metadata ──────────────────────────────────────────────
 //
@@ -27,14 +32,15 @@ const API_BASE = '/api/v1'
 // comparison table below is a separate data structure (FEATURES) so we
 // can group related features and check each one against the tier slug.
 
+// Tier definitions. The `monthlyPrice` / `yearlyPrice` / `yearlySaving`
+// fields drive the price strip on each card. Anything with monthlyPrice=null
+// is free (Anonymous / Free).
 const TIERS = [
   {
     slug: 'none',
     name: 'Anonymous',
     tagline: 'Browse without an account',
-    price: '$0',
-    cadence: '',
-    accent: 'gray',
+    monthlyPrice: null, yearlyPrice: null, yearlySaving: 0,
     highlights: [
       'Homepage + scoreboards',
       'Stat leaders & leaderboards',
@@ -46,9 +52,7 @@ const TIERS = [
     slug: 'free',
     name: 'Free',
     tagline: 'Sign in for the full public site',
-    price: '$0',
-    cadence: 'forever',
-    accent: 'teal',
+    monthlyPrice: null, yearlyPrice: null, yearlySaving: 0,
     highlights: [
       'Everything in Anonymous, plus:',
       'Advanced player metrics (WAR, savant)',
@@ -60,11 +64,8 @@ const TIERS = [
     slug: 'premium',
     name: 'Premium',
     tagline: 'For die-hard fans + analysts',
-    price: '$5',
-    cadence: '/ month',
-    accent: 'gold',
+    monthlyPrice: 5,  yearlyPrice: 50,  yearlySaving: 10,
     badge: 'Most popular',
-    comingSoon: true,
     highlights: [
       'Everything in Free, plus:',
       'All paywalled articles',
@@ -77,10 +78,7 @@ const TIERS = [
     slug: 'coach',
     name: 'Coach & Scout',
     tagline: 'For programs & professional scouts',
-    price: '$25',
-    cadence: '/ month',
-    accent: 'indigo',
-    comingSoon: true,
+    monthlyPrice: 25, yearlyPrice: 250, yearlySaving: 50,
     highlights: [
       'Everything in Premium, plus:',
       'Full Coach & Scout portal',
@@ -155,18 +153,27 @@ const FAQ = [
 
 // ─── Component ──────────────────────────────────────────────────
 
-function authHeaders(session) {
-  if (!session?.access_token) return {}
-  return { Authorization: `Bearer ${session.access_token}` }
-}
-
 export default function Pricing() {
   const { user, session } = useAuth()
-  // 'none' for anonymous; '/me/subscription' returns 'free' | 'paid' for
-  // logged-in users. The tier slug we use locally is one of
-  // 'none' | 'free' | 'premium' | 'coach' — we coerce the backend's
-  // simple 'paid' into 'premium' until the backend distinguishes.
+  const navigate = useNavigate()
+
+  // 'none' for anonymous; '/me/subscription' returns 'free' | 'premium'
+  // | 'coach' for logged-in users (with legacy 'paid' coerced to 'premium').
   const [currentTier, setCurrentTier] = useState(user ? 'free' : 'none')
+
+  // Interval toggle: persists in localStorage so users come back to the
+  // same view next time. Yearly is the default — the discount story is
+  // the easier sell.
+  const [interval, setInterval] = useState(() => {
+    try { return localStorage.getItem('pricing_interval') || 'yearly' } catch { return 'yearly' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('pricing_interval', interval) } catch {}
+  }, [interval])
+
+  // Checkout state
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     if (!user || !session) { setCurrentTier('none'); return }
@@ -175,12 +182,43 @@ export default function Pricing() {
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(d => {
         if (!alive) return
-        if (d.tier === 'paid') setCurrentTier('premium')
+        if (d.tier === 'premium') setCurrentTier('premium')
+        else if (d.tier === 'coach') setCurrentTier('coach')
+        else if (d.tier === 'paid') setCurrentTier('premium')  // legacy
         else setCurrentTier('free')
       })
       .catch(() => { if (alive) setCurrentTier('free') })
     return () => { alive = false }
   }, [user, session])
+
+  // ─── Checkout → Stripe ────────────────────────────────────
+  async function startCheckout(tier) {
+    if (busy) return
+    // Anonymous users need to sign in first; redirect to login with
+    // a `next` parameter so they bounce back to /pricing afterward.
+    if (!user || !session) {
+      navigate(`/login?next=${encodeURIComponent('/pricing')}`)
+      return
+    }
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/billing/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+        body: JSON.stringify({ tier, interval }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.detail || `Checkout failed (${res.status})`)
+      }
+      const { url } = await res.json()
+      if (!url) throw new Error('No checkout URL returned')
+      window.location.href = url   // Stripe Checkout
+    } catch (e) {
+      setError(e.message || 'Could not start checkout')
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
@@ -198,10 +236,30 @@ export default function Pricing() {
         </p>
       </div>
 
+      {/* ── Billing interval toggle ── */}
+      <div className="flex justify-center mb-6">
+        <IntervalToggle value={interval} onChange={setInterval} />
+      </div>
+
+      {error && (
+        <div className="max-w-md mx-auto mb-4 bg-rose-50 border border-rose-200 text-rose-700
+                        text-sm px-3 py-2 rounded">
+          {error}
+        </div>
+      )}
+
       {/* ── Tier cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
         {TIERS.map(tier => (
-          <TierCard key={tier.slug} tier={tier} isCurrent={tier.slug === currentTier} user={user} />
+          <TierCard
+            key={tier.slug}
+            tier={tier}
+            interval={interval}
+            isCurrent={tier.slug === currentTier}
+            user={user}
+            busy={busy}
+            onSubscribe={() => startCheckout(tier.slug)}
+          />
         ))}
       </div>
 
@@ -256,7 +314,7 @@ export default function Pricing() {
 
 // ─── Tier card ──────────────────────────────────────────────────
 
-function TierCard({ tier, isCurrent, user }) {
+function TierCard({ tier, interval, isCurrent, user, busy, onSubscribe }) {
   const ring = isCurrent
     ? 'border-nw-teal ring-2 ring-nw-teal/30'
     : 'border-gray-200 dark:border-gray-700'
@@ -264,13 +322,20 @@ function TierCard({ tier, isCurrent, user }) {
     ? <Badge color="teal">Current plan</Badge>
     : tier.badge
     ? <Badge color="gold">{tier.badge}</Badge>
-    : tier.comingSoon
-    ? <Badge color="gray">Coming soon</Badge>
     : null
+
+  // Pull the right price for the active billing interval. Free / Anonymous
+  // tiers have monthlyPrice=null and render a "$0" line with no cadence.
+  const isPaid = tier.monthlyPrice != null
+  const amount = isPaid
+    ? (interval === 'yearly' ? tier.yearlyPrice : tier.monthlyPrice)
+    : 0
+  const cadence = isPaid
+    ? (interval === 'yearly' ? '/ year' : '/ month')
+    : (tier.slug === 'free' ? 'forever' : '')
 
   return (
     <div className={`relative bg-white dark:bg-gray-800 rounded-2xl border ${ring} p-5 flex flex-col`}>
-      {/* Badge floats top-right */}
       {badge && <div className="absolute -top-2.5 right-4">{badge}</div>}
 
       {/* Tier name + price */}
@@ -279,11 +344,19 @@ function TierCard({ tier, isCurrent, user }) {
           {tier.name}
         </div>
         <div className="flex items-baseline gap-1 mt-1">
-          <span className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">{tier.price}</span>
-          {tier.cadence && (
-            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">{tier.cadence}</span>
+          <span className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">
+            ${amount}
+          </span>
+          {cadence && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">{cadence}</span>
           )}
         </div>
+        {/* Yearly savings hint */}
+        {isPaid && interval === 'yearly' && tier.yearlySaving > 0 && (
+          <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 mt-1">
+            Save ${tier.yearlySaving} / year vs monthly
+          </div>
+        )}
         <p className="text-[12px] text-gray-600 dark:text-gray-400 mt-1 leading-snug">{tier.tagline}</p>
       </div>
 
@@ -301,12 +374,15 @@ function TierCard({ tier, isCurrent, user }) {
       </ul>
 
       {/* CTA */}
-      <TierCTA tier={tier} isCurrent={isCurrent} user={user} />
+      <TierCTA
+        tier={tier} interval={interval} isCurrent={isCurrent}
+        user={user} busy={busy} onSubscribe={onSubscribe}
+      />
     </div>
   )
 }
 
-function TierCTA({ tier, isCurrent, user }) {
+function TierCTA({ tier, interval, isCurrent, user, busy, onSubscribe }) {
   if (isCurrent) {
     return (
       <button
@@ -318,7 +394,6 @@ function TierCTA({ tier, isCurrent, user }) {
       </button>
     )
   }
-  // Anonymous → can sign up free
   if (tier.slug === 'free' && !user) {
     return (
       <Link
@@ -330,7 +405,6 @@ function TierCTA({ tier, isCurrent, user }) {
       </Link>
     )
   }
-  // Anonymous, no sign up needed for None tier
   if (tier.slug === 'none') {
     return (
       <div className="w-full text-center px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
@@ -339,20 +413,56 @@ function TierCTA({ tier, isCurrent, user }) {
       </div>
     )
   }
-  // Paid tiers — Coming Soon, email for early access
-  if (tier.comingSoon) {
-    return (
-      <a
-        href={`mailto:info@nwbaseballstats.com?subject=${encodeURIComponent(tier.name + ' early access')}`}
-        className="block w-full text-center px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
-                   border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200
-                   hover:border-nw-teal hover:text-nw-teal transition-colors"
-      >
-        Request early access
-      </a>
-    )
-  }
-  return null
+
+  // Paid tiers (Premium / Coach): real Stripe checkout button.
+  // Premium monthly gets a "7-day free trial" hint because that's the
+  // only path that ships with a trial per spec.
+  const trialHint = tier.slug === 'premium' && interval === 'monthly'
+  return (
+    <button
+      onClick={onSubscribe}
+      disabled={busy}
+      className="block w-full text-center px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
+                 bg-nw-teal hover:bg-nw-teal-dark text-white transition-colors
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {busy
+        ? 'Loading…'
+        : trialHint
+          ? 'Start 7-day free trial'
+          : `Subscribe ${interval === 'yearly' ? 'yearly' : 'monthly'}`}
+    </button>
+  )
+}
+
+
+// ─── Monthly / Yearly toggle ───────────────────────────────────
+
+function IntervalToggle({ value, onChange }) {
+  const opts = [
+    { v: 'monthly', label: 'Monthly' },
+    { v: 'yearly',  label: 'Yearly · save up to $50' },
+  ]
+  return (
+    <div className="inline-flex items-center gap-1 p-1 bg-white dark:bg-gray-800 border
+                    border-gray-200 dark:border-gray-700 rounded-full shadow-sm">
+      {opts.map(o => (
+        <button
+          key={o.v}
+          onClick={() => onChange(o.v)}
+          type="button"
+          className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-full
+                      transition-colors ${
+            value === o.v
+              ? 'bg-nw-teal text-white shadow'
+              : 'text-gray-600 dark:text-gray-300 hover:text-nw-teal'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 

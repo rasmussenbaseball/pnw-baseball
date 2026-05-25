@@ -170,31 +170,7 @@ export default function Account() {
           </Link>
         }
       >
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <TierBadge tier={tier} />
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                {tier === 'paid' ? 'Paid subscriber' : 'Free account'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-              {tier === 'paid'
-                ? 'Thanks for supporting NW Baseball Stats.'
-                : 'You have full access to all public stats, leaderboards, and tools. Paid tiers with advanced scouting features are launching soon.'}
-            </p>
-          </div>
-          {tier !== 'paid' && (
-            <Link
-              to="/pricing"
-              className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
-                         border border-nw-teal text-nw-teal hover:bg-nw-teal hover:text-white
-                         dark:hover:bg-nw-teal dark:hover:text-white transition-colors"
-            >
-              See plans →
-            </Link>
-          )}
-        </div>
+        <SubscriptionDetails session={session} tier={tier} tierStartedAt={tierStartedAt} />
       </Section>
 
       {/* ─── Email preferences block ─── */}
@@ -349,14 +325,100 @@ function IconMoon() {
 }
 
 function TierBadge({ tier }) {
-  const styles = tier === 'paid'
-    ? 'bg-amber-100 text-amber-800 border-amber-200'
-    : 'bg-gray-100 text-gray-700 border-gray-200'
-  const label = tier === 'paid' ? 'Paid' : 'Free'
+  // Map every possible tier value to a badge style. Legacy 'paid' renders
+  // the same as 'premium' since those rows were never differentiated.
+  const palette = {
+    free:    { cls: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600',         label: 'Free' },
+    premium: { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700', label: 'Premium' },
+    coach:   { cls: 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700', label: 'Coach & Scout' },
+    paid:    { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700', label: 'Paid' },
+  }[tier] || { cls: 'bg-gray-100 text-gray-700 border-gray-200', label: tier || '—' }
   return (
-    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${styles}`}>
-      {label}
+    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${palette.cls}`}>
+      {palette.label}
     </span>
+  )
+}
+
+
+// ─── Subscription detail block ────────────────────────────────────
+//
+// Shows current tier + start date for paid users, with a "Manage
+// subscription" button that opens the Stripe Customer Portal. For free
+// users, shows a "See plans →" CTA pointing at /pricing.
+
+function SubscriptionDetails({ session, tier, tierStartedAt }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const isPaid = tier === 'premium' || tier === 'coach' || tier === 'paid'
+
+  async function openPortal() {
+    if (busy) return
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/billing/portal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.detail || `Could not open portal (${res.status})`)
+      }
+      const { url } = await res.json()
+      if (!url) throw new Error('No portal URL returned')
+      window.location.href = url
+    } catch (e) {
+      setError(e.message || 'Could not open billing portal')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <TierBadge tier={tier} />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              {tier === 'coach'   ? 'Coach & Scout subscriber'
+               : isPaid           ? 'Premium subscriber'
+                                  : 'Free account'}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+            {isPaid
+              ? `Thanks for supporting NW Baseball Stats${tierStartedAt ? ` since ${new Date(tierStartedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}.`
+              : 'You have full access to all public stats, leaderboards, and tools. Upgrade for premium content, recruiting tools, and the Coach & Scout portal.'}
+          </p>
+        </div>
+        {isPaid ? (
+          <button
+            onClick={openPortal}
+            disabled={busy}
+            className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
+                       border border-nw-teal text-nw-teal hover:bg-nw-teal hover:text-white
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {busy ? 'Loading…' : 'Manage subscription'}
+          </button>
+        ) : (
+          <Link
+            to="/pricing"
+            className="shrink-0 px-3 py-2 text-xs font-bold uppercase tracking-wider rounded
+                       border border-nw-teal text-nw-teal hover:bg-nw-teal hover:text-white
+                       dark:hover:bg-nw-teal dark:hover:text-white transition-colors"
+          >
+            See plans →
+          </Link>
+        )}
+      </div>
+
+      {error && (
+        <div className="mt-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3 py-2 rounded">
+          {error}
+        </div>
+      )}
+    </>
   )
 }
 
