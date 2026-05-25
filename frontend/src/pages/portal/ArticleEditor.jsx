@@ -1,9 +1,16 @@
-// /articles/new and /articles/edit/:id —
-// markdown editor with toolbar (B/I/H2/Link/Image/Quote/List/Code) and
-// a live preview pane. Image uploads go through the backend
-// /portal/articles/upload-image endpoint, which writes to the
-// `article-images` Supabase Storage bucket and returns a public URL —
-// the URL is inserted at the cursor as `![filename](url)`.
+// /articles/new and /articles/edit/:id — full-page document editor.
+//
+// Layout is one centered "page" (max-w 800px on a soft gray background)
+// so writing feels like a Google Doc / Medium post rather than a form:
+//   • Cover image at top, full-bleed across the page (click to upload).
+//   • Big borderless title, then a smaller borderless subtitle.
+//   • A compact byline strip (author name + status).
+//   • A clean, borderless, auto-growing textarea for the body.
+//   • A sticky toolbar at the top of the viewport: ← My Articles, status,
+//     formatting buttons (H2 / B / I / link / image / quote / list / code),
+//     Preview toggle, Save, Publish.
+// Toggle Preview to swap the body textarea for the fully rendered
+// markdown so you can review the article exactly as readers will see it.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -31,15 +38,27 @@ export default function ArticleEditor() {
   const [authorName, setAuthorName] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingHero, setUploadingHero] = useState(false)
   const [status, setStatus] = useState('draft')
   const [savedSlug, setSavedSlug] = useState(null)
   const [error, setError] = useState(null)
+  const [isPreview, setIsPreview] = useState(false)
 
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
   const heroInputRef = useRef(null)
-  const [uploadingHero, setUploadingHero] = useState(false)
 
+  // Auto-grow the body textarea to match its content so the editor reads
+  // like a flowing document instead of a fixed-height box with a scrollbar.
+  function autoGrow() {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.max(ta.scrollHeight, 480)}px`
+  }
+  useEffect(() => { autoGrow() }, [bodyMd, isPreview])
+
+  // Hydrate form from existing article on edit.
   useEffect(() => {
     if (!existing) return
     setTitle(existing.title || '')
@@ -51,6 +70,7 @@ export default function ArticleEditor() {
     setSavedSlug(existing.slug || null)
   }, [existing])
 
+  // Default author name on a brand-new article from the user's email.
   useEffect(() => {
     if (isNew && !authorName && user?.email) {
       const local = user.email.split('@')[0]
@@ -63,10 +83,7 @@ export default function ArticleEditor() {
     [title, authorName]
   )
 
-  // ── Toolbar helpers ──────────────────────────────────────────
-  // All operate on textarea selection so the cursor lands somewhere
-  // predictable after the insert.
-
+  // ── Toolbar / textarea helpers ───────────────────────────────
   function wrapSelection(before, after = before, placeholder = 'text') {
     const ta = textareaRef.current
     if (!ta) return
@@ -81,7 +98,6 @@ export default function ArticleEditor() {
       ta.setSelectionRange(ns, ns + sel.length)
     })
   }
-
   function insertAtCursor(text) {
     const ta = textareaRef.current
     if (!ta) return
@@ -95,7 +111,6 @@ export default function ArticleEditor() {
       ta.setSelectionRange(pos, pos)
     })
   }
-
   function prefixLine(prefix) {
     const ta = textareaRef.current
     if (!ta) return
@@ -109,7 +124,6 @@ export default function ArticleEditor() {
       ta.setSelectionRange(pos, pos)
     })
   }
-
   function insertLink() {
     const ta = textareaRef.current
     if (!ta) return
@@ -117,12 +131,9 @@ export default function ArticleEditor() {
     const url = window.prompt('Link URL', 'https://')
     if (!url) return
     const text = sel || window.prompt('Link text', '') || 'link'
-    const md = `[${text}](${url})`
-    insertAtCursor(md)
+    insertAtCursor(`[${text}](${url})`)
   }
 
-  // Shared upload helper — POST a file to the article-images bucket via
-  // the backend and return { url, path, filename }. Throws on failure.
   async function uploadImage(file) {
     if (!session?.access_token) throw new Error('Not authenticated; refresh and try again.')
     const fd = new FormData()
@@ -138,8 +149,6 @@ export default function ArticleEditor() {
     }
     return res.json()
   }
-
-  // Body-image upload — inserts a markdown image at the cursor.
   async function handleFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -152,9 +161,6 @@ export default function ArticleEditor() {
     } catch (e) { setError(e.message || 'Image upload failed') }
     finally { setUploading(false) }
   }
-
-  // Hero-image upload — sets the cover image shown on /news and at the
-  // top of /news/[slug]. Same backend endpoint as body images.
   async function handleHeroFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -168,7 +174,6 @@ export default function ArticleEditor() {
   }
 
   // ── Save / publish ───────────────────────────────────────────
-
   const save = async () => {
     if (!canSave || saving) return
     setError(null); setSaving(true)
@@ -185,16 +190,10 @@ export default function ArticleEditor() {
         : await create(payload)
       setSavedSlug(saved.slug)
       setStatus(saved.status)
-      if (isNew) {
-        navigate(`/articles/edit/${saved.id}`, { replace: true })
-      }
-    } catch (e) {
-      setError(e.message || 'Save failed.')
-    } finally {
-      setSaving(false)
-    }
+      if (isNew) navigate(`/articles/edit/${saved.id}`, { replace: true })
+    } catch (e) { setError(e.message || 'Save failed.') }
+    finally { setSaving(false) }
   }
-
   const onPublishToggle = async () => {
     if (!editId) { await save(); return }
     setSaving(true); setError(null)
@@ -214,32 +213,66 @@ export default function ArticleEditor() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-5">
-      {/* Header */}
-      <div className="flex items-baseline justify-between mb-4 gap-2 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">
-            {isNew ? 'New Article' : 'Edit Article'}
-          </h1>
-          <p className="text-[11px] text-gray-500 mt-0.5">
-            {status === 'published' ? 'Published' : status === 'archived' ? 'Archived' : 'Draft'}
-            {savedSlug && status === 'published' && (
-              <> · <a href={`/news/${savedSlug}`} target="_blank" rel="noreferrer"
-                       className="text-nw-teal hover:underline">/news/{savedSlug}</a></>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="min-h-screen bg-gray-100 -mt-4 sm:-mt-5">
+      {/* ── Sticky top toolbar ─────────────────────────────────── */}
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
+          {/* Left cluster */}
           <button
             onClick={() => navigate('/articles')}
-            className="text-xs font-semibold text-gray-600 hover:text-gray-900 px-3 py-2"
+            className="text-xs font-semibold text-gray-600 hover:text-gray-900 px-2 py-1 rounded
+                       hover:bg-gray-100 transition-colors"
           >
             ← My Articles
+          </button>
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+            status === 'published'
+              ? 'bg-emerald-100 text-emerald-800'
+              : status === 'archived'
+              ? 'bg-rose-100 text-rose-700'
+              : 'bg-gray-200 text-gray-700'
+          }`}>
+            {status}
+          </span>
+          {savedSlug && status === 'published' && (
+            <a href={`/news/${savedSlug}`} target="_blank" rel="noreferrer"
+               className="text-[11px] text-nw-teal hover:underline">View on /news →</a>
+          )}
+
+          {/* Middle cluster — markdown formatting */}
+          <div className="flex items-center gap-0.5 ml-auto mr-auto sm:ml-4 sm:mr-auto">
+            <ToolBtn label="H2"    title="Heading 2"        onClick={() => prefixLine('## ')} disabled={isPreview} />
+            <ToolBtn label="B"     title="Bold"             onClick={() => wrapSelection('**')} disabled={isPreview} bold />
+            <ToolBtn label="I"     title="Italic"           onClick={() => wrapSelection('*')} disabled={isPreview} italic />
+            <ToolDivider />
+            <ToolBtn label="Link"  title="Insert link"      onClick={insertLink} disabled={isPreview} />
+            <ToolBtn label="Image" title="Insert image"
+                     onClick={() => fileInputRef.current?.click()}
+                     disabled={isPreview || uploading} />
+            {uploading && <span className="text-[10px] text-gray-500 ml-1">Uploading…</span>}
+            <ToolDivider />
+            <ToolBtn label="❝"     title="Block quote"      onClick={() => prefixLine('> ')} disabled={isPreview} />
+            <ToolBtn label="•"     title="Bullet list"      onClick={() => prefixLine('- ')} disabled={isPreview} />
+            <ToolBtn label="1."    title="Numbered list"    onClick={() => prefixLine('1. ')} disabled={isPreview} />
+            <ToolBtn label="</>"   title="Inline code"      onClick={() => wrapSelection('`')} disabled={isPreview} mono />
+          </div>
+
+          {/* Right cluster */}
+          <button
+            onClick={() => setIsPreview((v) => !v)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded transition-colors ${
+              isPreview
+                ? 'bg-gray-900 text-white hover:bg-black'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            title={isPreview ? 'Back to editing' : 'Preview as published'}
+          >
+            {isPreview ? 'Editing' : 'Preview'}
           </button>
           <button
             onClick={save}
             disabled={!canSave || saving}
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded
                        bg-gray-200 text-gray-800 hover:bg-gray-300
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -248,7 +281,7 @@ export default function ArticleEditor() {
           <button
             onClick={onPublishToggle}
             disabled={!canSave || saving}
-            className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded text-white
+            className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded text-white
                         disabled:opacity-50 disabled:cursor-not-allowed ${
               status === 'published'
                 ? 'bg-rose-600 hover:bg-rose-700'
@@ -257,156 +290,185 @@ export default function ArticleEditor() {
           >
             {status === 'published' ? 'Unpublish' : 'Publish'}
           </button>
+
+          <input ref={fileInputRef} type="file"
+                 accept="image/png,image/jpeg,image/webp,image/gif"
+                 onChange={handleFile} className="hidden" />
         </div>
+
+        {error && (
+          <div className="bg-rose-50 border-t border-rose-200 text-rose-700 text-xs px-4 py-2">
+            {error}
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3 py-2 rounded mb-3">
-          {error}
-        </div>
-      )}
+      {/* ── The "page" ─────────────────────────────────────────── */}
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="bg-white shadow-md rounded-lg overflow-hidden">
+          {/* Cover image — full-bleed across the page width */}
+          <CoverArea
+            hero={hero}
+            uploading={uploadingHero}
+            onUploadClick={() => heroInputRef.current?.click()}
+            onClear={() => setHero('')}
+            disabled={isPreview}
+          />
+          <input ref={heroInputRef} type="file"
+                 accept="image/png,image/jpeg,image/webp,image/gif"
+                 onChange={handleHeroFile} className="hidden" />
 
-      {/* Bio / hero fields */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-        <div className="md:col-span-2">
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">Title</label>
-          <input
-            type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-            placeholder="Headline"
-            className="w-full rounded border border-gray-300 px-3 py-2 text-base font-bold"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">Subtitle (optional)</label>
-          <input
-            type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
-            placeholder="One-line dek"
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">Author name</label>
-          <input
-            type="text" value={authorName} onChange={(e) => setAuthorName(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">
-            Cover image (shown on /news)
-          </label>
-          <div className="flex items-stretch gap-3">
-            {/* Preview */}
-            <div className="w-32 h-20 rounded border border-gray-300 bg-gray-50 overflow-hidden shrink-0">
-              {hero ? (
-                <img src={hero} alt="cover"
-                     className="w-full h-full object-cover"
-                     onError={(e) => { e.currentTarget.style.display = 'none' }} />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">
-                  No cover yet
-                </div>
-              )}
-            </div>
-            {/* Actions + URL field */}
-            <div className="flex-1 min-w-0 flex flex-col justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => heroInputRef.current?.click()}
-                  disabled={uploadingHero}
-                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded
-                             bg-nw-teal text-white hover:bg-nw-teal-dark
-                             disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {uploadingHero ? 'Uploading…' : (hero ? 'Replace photo' : 'Upload photo')}
-                </button>
-                {hero && (
-                  <button
-                    type="button"
-                    onClick={() => setHero('')}
-                    className="text-[11px] font-semibold text-rose-600 hover:underline px-2"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-              <input
-                type="url"
-                value={hero}
-                onChange={(e) => setHero(e.target.value)}
-                placeholder="…or paste an image URL"
-                className="w-full rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-600"
+          <div className="px-8 sm:px-12 py-8 sm:py-10">
+            {isPreview ? (
+              <PreviewView
+                title={title} subtitle={subtitle} authorName={authorName}
+                publishedAt={existing?.published_at} bodyMd={bodyMd}
               />
-            </div>
-            <input
-              ref={heroInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              onChange={handleHeroFile}
-              className="hidden"
-            />
+            ) : (
+              <>
+                {/* Title — borderless, looks like a real headline */}
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Article title"
+                  className="w-full border-0 outline-none focus:ring-0 text-3xl sm:text-4xl font-extrabold
+                             text-gray-900 leading-tight placeholder-gray-300 px-0 py-1 bg-transparent"
+                />
+                {/* Subtitle */}
+                <input
+                  type="text"
+                  value={subtitle}
+                  onChange={(e) => setSubtitle(e.target.value)}
+                  placeholder="Optional subtitle / dek"
+                  className="w-full border-0 outline-none focus:ring-0 text-lg sm:text-xl font-normal
+                             text-gray-600 leading-snug placeholder-gray-300 px-0 py-1 mt-1 bg-transparent"
+                />
+                {/* Byline strip */}
+                <div className="flex items-center gap-2 mt-3 mb-6 pb-4 border-b border-gray-200">
+                  <span className="text-[11px] uppercase tracking-wider text-gray-500">By</span>
+                  <input
+                    type="text"
+                    value={authorName}
+                    onChange={(e) => setAuthorName(e.target.value)}
+                    placeholder="Author name"
+                    className="border-0 outline-none focus:ring-0 text-sm font-semibold text-gray-800
+                               placeholder-gray-400 px-0 py-0.5 bg-transparent"
+                  />
+                </div>
+                {/* Body — borderless, prose-styled, auto-growing */}
+                <textarea
+                  ref={textareaRef}
+                  value={bodyMd}
+                  onChange={(e) => { setBodyMd(e.target.value); autoGrow() }}
+                  onFocus={autoGrow}
+                  spellCheck="true"
+                  placeholder="Start writing your article. Use the toolbar to format. Click Preview at any time to see how it'll look on /news."
+                  className="w-full border-0 outline-none focus:ring-0 resize-none
+                             text-base sm:text-[17px] leading-relaxed text-gray-800
+                             placeholder-gray-300 px-0 py-1 bg-transparent
+                             font-sans"
+                  style={{ minHeight: '480px' }}
+                />
+              </>
+            )}
           </div>
         </div>
+
+        <p className="text-[11px] text-gray-400 mt-4 text-center">
+          {isPreview
+            ? 'Showing the article exactly as it will appear on /news. Click Editing to keep writing.'
+            : 'Tip: highlight text first, then click B / I / Link to wrap your selection. Images (PNG/JPG/WebP/GIF up to 8 MB) upload to Supabase Storage and get inserted at your cursor.'}
+        </p>
       </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-1 flex-wrap mb-0 bg-gray-50 border border-gray-300 border-b-0 rounded-t px-2 py-1.5">
-        <ToolBtn label="H2"    title="Heading 2"        onClick={() => prefixLine('## ')} />
-        <ToolBtn label="B"     title="Bold (wraps **)"  onClick={() => wrapSelection('**')} bold />
-        <ToolBtn label="I"     title="Italic (wraps *)" onClick={() => wrapSelection('*')} italic />
-        <ToolDivider />
-        <ToolBtn label="Link"  title="Insert link"      onClick={insertLink} />
-        <ToolBtn label="Image" title="Upload an image"
-                 onClick={() => fileInputRef.current?.click()}
-                 disabled={uploading} />
-        {uploading && <span className="text-[11px] text-gray-500 ml-1">Uploading…</span>}
-        <ToolDivider />
-        <ToolBtn label="❝"     title="Block quote"      onClick={() => prefixLine('> ')} />
-        <ToolBtn label="•"     title="Bullet list"      onClick={() => prefixLine('- ')} />
-        <ToolBtn label="1."    title="Numbered list"    onClick={() => prefixLine('1. ')} />
-        <ToolBtn label="</>"   title="Inline code"      onClick={() => wrapSelection('`')} mono />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          onChange={handleFile}
-          className="hidden"
-        />
-      </div>
-
-      {/* Markdown editor + live preview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <textarea
-            ref={textareaRef}
-            value={bodyMd}
-            onChange={(e) => setBodyMd(e.target.value)}
-            spellCheck="true"
-            placeholder="Write your article in Markdown.
-
-Use the toolbar above to add headings, bold, links, and images.
-Select text first, then click Bold / Italic / Link to wrap your selection."
-            className="w-full h-[60vh] rounded-b border border-gray-300 border-t-0 px-3 py-2 text-sm font-mono leading-relaxed"
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">
-            Preview
-          </label>
-          <div className="markdown prose prose-sm max-w-none h-[60vh] overflow-y-auto rounded border border-gray-200 px-3 py-2 bg-white">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {bodyMd || '_Nothing to preview yet — start typing on the left._'}
-            </ReactMarkdown>
-          </div>
-        </div>
-      </div>
-
-      <p className="text-[11px] text-gray-400 mt-3">
-        Image uploads (PNG / JPG / WebP / GIF, up to 8 MB) go to Supabase Storage and
-        the public URL is inserted at your cursor as a markdown image.
-      </p>
     </div>
+  )
+}
+
+
+// ── Cover image area at the top of the page ────────────────────
+function CoverArea({ hero, uploading, onUploadClick, onClear, disabled }) {
+  if (hero) {
+    return (
+      <div className="relative group">
+        <img src={hero} alt="cover"
+             className="w-full aspect-[16/9] object-cover bg-gray-100"
+             onError={(e) => { e.currentTarget.style.display = 'none' }} />
+        {!disabled && (
+          <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={onUploadClick}
+              disabled={uploading}
+              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded
+                         bg-white/90 text-gray-900 hover:bg-white shadow-sm
+                         disabled:opacity-60"
+            >
+              {uploading ? 'Uploading…' : 'Replace'}
+            </button>
+            <button
+              type="button"
+              onClick={onClear}
+              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded
+                         bg-white/90 text-rose-700 hover:bg-white shadow-sm"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+  if (disabled) {
+    // In preview mode with no cover, show nothing rather than an empty
+    // "add cover" prompt — keeps the preview honest.
+    return null
+  }
+  return (
+    <button
+      type="button"
+      onClick={onUploadClick}
+      disabled={uploading}
+      className="w-full aspect-[16/9] bg-gradient-to-br from-gray-50 to-gray-100
+                 border-b border-gray-200 flex items-center justify-center
+                 hover:bg-gray-50 transition-colors disabled:opacity-60"
+    >
+      <div className="text-center">
+        <div className="text-3xl text-gray-300 mb-1">+</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+          {uploading ? 'Uploading…' : 'Add cover image'}
+        </div>
+        <div className="text-[10px] text-gray-400 mt-1">
+          Shown on the /news card and at the top of the article
+        </div>
+      </div>
+    </button>
+  )
+}
+
+
+// ── Read-only preview view ─────────────────────────────────────
+function PreviewView({ title, subtitle, authorName, publishedAt, bodyMd }) {
+  const date = publishedAt
+    ? new Date(publishedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  return (
+    <article>
+      <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-tight">
+        {title || <span className="text-gray-300">Untitled article</span>}
+      </h1>
+      {subtitle && (
+        <p className="text-lg sm:text-xl text-gray-600 mt-2 leading-snug">{subtitle}</p>
+      )}
+      <p className="text-[11px] text-gray-500 mt-3 mb-6 uppercase tracking-wider pb-4 border-b border-gray-200">
+        By {authorName || 'Author'} · {date}
+      </p>
+      <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {bodyMd || '_Nothing written yet._'}
+        </ReactMarkdown>
+      </div>
+    </article>
   )
 }
 
@@ -420,7 +482,7 @@ function ToolBtn({ label, title, onClick, disabled, bold, italic, mono }) {
       onClick={onClick}
       disabled={disabled}
       className={`px-2 py-1 rounded text-xs hover:bg-gray-200 transition-colors
-                  disabled:opacity-40 disabled:cursor-not-allowed
+                  disabled:opacity-30 disabled:cursor-not-allowed
                   ${bold ? 'font-extrabold' : ''}
                   ${italic ? 'italic font-bold' : ''}
                   ${mono ? 'font-mono' : ''}`}
