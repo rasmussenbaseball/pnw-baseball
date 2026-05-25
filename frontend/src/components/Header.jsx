@@ -43,6 +43,19 @@ const NAV = [
   },
   // Flat top-level link — articles & site news.
   { label: 'News', to: '/news' },
+  // Games is public — PNW Grid / Team Quiz / Coaching Sim. Auth-gated
+  // items (the sim) enforce their own gate at the route level.
+  {
+    label: 'Games',
+    items: [
+      { to: '/pnw-grid', label: 'PNW Grid',
+        desc: 'Immaculate Grid for PNW baseball' },
+      { to: '/team-quiz', label: 'Team Quiz',
+        desc: 'Test your knowledge of a PNW team across one or more seasons' },
+      { to: '/gm', label: 'NW Coaching Simulator',
+        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
+    ],
+  },
   {
     label: 'Coaching',
     authRequired: true,
@@ -52,41 +65,21 @@ const NAV = [
       { to: '/juco-tracker', label: 'JUCO Tracker', desc: 'Track JUCO transfer talent' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
-    ],
-  },
-  {
-    label: 'Draft',
-    to: '/draft',
-  },
-  {
-    label: 'Graphics',
-    authRequired: true,
-    items: [
-      { to: '/graphics', label: 'Leaderboards', desc: 'Create social media images' },
-      { to: '/scatter', label: 'Scatter Plot', desc: 'Compare stats visually' },
-      { to: '/daily-scores', label: 'Daily Scoreboard', desc: 'Download daily scoreboard graphic' },
-      { to: '/key-matchup', label: 'Key Matchup', desc: 'Matchup of the day graphic' },
-      { to: '/series-recap', label: 'Weekly Series Recap', desc: 'Weekly series recap graphics' },
-      { to: '/tournament-bracket', label: 'Tournament Bracket', desc: 'Conference tournament bracket graphic' },
-      { to: '/daily-recap', label: 'Daily Game Recap', desc: 'Daily game recap graphics' },
-      { to: '/player-pages', label: 'Player Pages', desc: 'Shareable player stat graphics' },
-      { to: '/conference-standings', label: 'Standings', desc: 'Conference standings graphics' },
-      { to: '/all-conference-graphic', label: 'All-Conference Teams', desc: 'All-conference team graphics' },
-      { to: '/top-performers-graphic', label: 'Top Performers', desc: 'Weekly top 10 hitters and pitchers' },
-      { to: '/team-info-graphic', label: 'Team Info', desc: 'Full team overview graphic' },
+      { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board' },
     ],
   },
   {
     label: 'Misc',
     authRequired: true,
     items: [
-      { to: '/gm', label: 'NW Coaching Simulator', desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
-      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
-      { to: '/pnw-grid', label: 'PNW Grid', desc: 'Immaculate Grid for PNW baseball' },
-      { to: '/team-quiz', label: 'Team Quiz', desc: 'Test your knowledge of a PNW team across one or more seasons' },
-      { to: '/all-conference', label: 'All-Conference Generator', desc: 'Build mock first, second, and HM teams from season stats' },
-      { to: '/feature-request', label: 'Request a Feature', desc: 'Submit ideas and feedback' },
-      { to: '/about', label: 'About', desc: 'About PNW Baseball Stats' },
+      { to: '/graphics-hub', label: 'Graphics',
+        desc: 'Pick from every social-media graphic generator on the site' },
+      { to: '/top-moments', label: 'Top Moments',
+        desc: "The season's biggest WPA swings and clutch leaderboards" },
+      { to: '/all-conference', label: 'All-Conference Generator',
+        desc: 'Build mock first, second, and HM teams from season stats' },
+      { to: '/feature-request', label: 'Request a Feature',
+        desc: 'Submit ideas and feedback' },
       // Author-only — hidden from the dropdown unless the current user's
       // email is on the article-author allowlist.
       { to: '/articles', label: 'Write Articles',

@@ -183,6 +183,7 @@ import CatcherCards from './pages/CatcherCards'
 import NWACTournamentSheet from './pages/NWACTournamentSheet'
 import NewsList from './pages/NewsList'
 import NewsArticle from './pages/NewsArticle'
+import GraphicsHub from './pages/GraphicsHub'
 import ArticlesList from './pages/portal/ArticlesList'
 import ArticleEditor from './pages/portal/ArticleEditor'
 import OpponentTrends from './pages/OpponentTrends'
@@ -367,6 +368,7 @@ export default function App() {
           <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
+          <Route path="/graphics-hub" element={<GraphicsHub />} />
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
           <Route path="/key-matchup" element={<RequireAuth><KeyMatchupGraphic /></RequireAuth>} />
           <Route path="/series-recap" element={<RequireAuth><SeriesRecapGraphic /></RequireAuth>} />
@@ -429,6 +431,10 @@ export default function App() {
               </div>
               <p className="text-xs text-white/70 leading-relaxed mb-3">
                 Advanced analytics for every level of Pacific Northwest college baseball.
+              </p>
+              <p className="text-xs text-white/70 mb-3">
+                For more info on the site, go here:{' '}
+                <a href="/about" className="text-white font-semibold hover:underline">About →</a>
               </p>
               <p className="text-xs text-white/70">
                 Created by{' '}
