@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { PreviewProvider } from './context/PreviewContext'
 import PreviewBanner from './components/PreviewBanner'
+import { isDeveloper } from './lib/tiers'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
@@ -51,17 +52,22 @@ function RequireAuth({ children }) {
   return children
 }
 
-// Admin-only guard - only allows specific email(s)
+// Admin-only guard - only allows specific email(s). Site developers
+// (DEVELOPER_EMAILS in lib/tiers.js) always pass through.
 const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com', 'pnwcbr@gmail.com']
 function RequireAdmin({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  if (!ADMIN_EMAILS.includes(user.email)) return <Navigate to="/" replace />
+  const email = (user.email || '').toLowerCase()
+  if (!ADMIN_EMAILS.includes(email) && !isDeveloper(email)) {
+    return <Navigate to="/" replace />
+  }
   return children
 }
 
 // GM early-access guard — locks the GM game to a single user during private alpha.
+// Site devs (DEVELOPER_EMAILS) also get in automatically, regardless of allowlist.
 const GM_EARLY_ACCESS_EMAILS = [
   'nate.rasmussen26@gmail.com',
   'jawomack@bushnell.edu',
@@ -74,7 +80,8 @@ const GM_EARLY_ACCESS_EMAILS = [
 
 // Article-author allowlist — only these emails see the "Articles" item
 // in the Misc dropdown and reach /articles management routes. Public
-// reading at /news stays open to everyone.
+// reading at /news stays open to everyone. All site developers are
+// granted authoring access too (handled in the guard below).
 export const ARTICLE_AUTHOR_EMAILS = [
   'nate.rasmussen26@gmail.com',
 ]
@@ -83,7 +90,8 @@ function RequireArticleAuthor({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  if (!ARTICLE_AUTHOR_EMAILS.includes((user.email || '').toLowerCase())) {
+  const email = (user.email || '').toLowerCase()
+  if (!ARTICLE_AUTHOR_EMAILS.includes(email) && !isDeveloper(email)) {
     return <Navigate to="/news" replace />
   }
   return children
@@ -122,7 +130,8 @@ function RequireGmEarlyAccess({ children }) {
   if (!user) return <Navigate to="/login" replace />
 
   const onAllowlist = GM_EARLY_ACCESS_EMAILS.includes(user.email)
-  const hasPaidTier = tier === 'premium' || tier === 'coach'
+  // Site devs (tier 'dev') always pass — they see everything.
+  const hasPaidTier = tier === 'premium' || tier === 'coach' || tier === 'dev'
 
   if (!onAllowlist && !hasPaidTier) {
     return (

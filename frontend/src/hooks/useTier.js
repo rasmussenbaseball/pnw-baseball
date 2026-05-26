@@ -21,6 +21,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { usePreview, AUTHOR_EMAILS } from '../context/PreviewContext'
+import { isDeveloper } from '../lib/tiers'
 
 const API_BASE = '/api/v1'
 const CACHE_KEY = 'tier_cache_v1'
@@ -98,6 +99,16 @@ export function useTier() {
         : previewTier === 'coach'    ? 'coach'
         : tier
     return { tier: mapped, loading: false, user, isPreview: true }
+  }
+
+  // Developer override: anyone on the DEVELOPER_EMAILS allowlist gets
+  // the 'dev' tier regardless of their subscription state. dev outranks
+  // every other tier in tierMeets() so RequireTier gates pass and
+  // dev-only menu items are visible. We check realUser (not the
+  // preview-aware `user`) so previewing as anonymous still works for
+  // devs who want to test the signed-out experience.
+  if (realUser?.email && isDeveloper(realUser.email)) {
+    return { tier: 'dev', loading: false, user, isDev: true }
   }
 
   return { tier, loading: loading || authLoading, user }

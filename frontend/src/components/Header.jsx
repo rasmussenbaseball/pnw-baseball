@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../hooks/useTier'
-import { tierMeets, TIER_META } from '../lib/tiers'
+import { tierMeets, TIER_META, DEVELOPER_EMAILS } from '../lib/tiers'
 
 // ─── Navigation structure ───
 const NAV = [
@@ -109,14 +109,14 @@ const NAV = [
         requires: 'free' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
-      // Author-only — hidden from the dropdown unless the current user's
-      // email is on the article-author allowlist.
+      // Authoring tools — visible only to site developers (DEVELOPER_EMAILS
+      // in lib/tiers.js). Editing this list there propagates everywhere.
       { to: '/articles', label: 'Write Articles',
         desc: 'Draft, edit, and publish site articles',
-        requireEmail: ['nate.rasmussen26@gmail.com'] },
+        requireEmail: DEVELOPER_EMAILS },
       { to: '/broadcasts', label: 'Email Broadcasts',
         desc: 'Compose and send to opted-in subscribers',
-        requireEmail: ['nate.rasmussen26@gmail.com'] },
+        requireEmail: DEVELOPER_EMAILS },
       // Visual divider — items below are kept around for reference but
       // are no longer the active tools used regularly.
       { heading: 'Archived' },
@@ -482,12 +482,24 @@ function SearchBar({ mobile = false }) {
 }
 
 
-// Items can carry a `requireEmail` list — only render the link when the
-// current user's email is on it. Keeps private tools out of the menu for
-// everyone else while still letting them sit alongside public items.
-function filterItemsForUser(items, userEmail) {
+// Visibility filtering on dropdown items:
+//   - requireEmail: ['...']  → only render for matching emails (case-insensitive).
+//   - requires: 'dev'        → hide from non-devs entirely (in-progress /
+//                              internal tools). The lock-icon model in the
+//                              other `requires` values doesn't apply here
+//                              because non-devs have no upgrade path.
+// Other requires values ('free' | 'premium' | 'coach') leave the item
+// visible and let the dropdown render decide whether to show a lock.
+function filterItemsForUser(items, userEmail, tier) {
   const email = (userEmail || '').toLowerCase()
-  return items.filter(i => !i.requireEmail || i.requireEmail.map(e => e.toLowerCase()).includes(email))
+  const isDev = tier === 'dev'
+  return items.filter(i => {
+    if (i.requireEmail && !i.requireEmail.map(e => e.toLowerCase()).includes(email)) {
+      return false
+    }
+    if (i.requires === 'dev' && !isDev) return false
+    return true
+  })
 }
 
 // ─── Dropdown panel component ───
@@ -502,7 +514,7 @@ function filterItemsForUser(items, userEmail) {
 function DropdownPanel({ items, onClose }) {
   const { user } = useAuth()
   const { tier } = useTier()
-  const visible = filterItemsForUser(items, user?.email)
+  const visible = filterItemsForUser(items, user?.email, tier)
   return (
     <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
       {visible.map((item, i) => {
@@ -846,7 +858,7 @@ export default function Header() {
                   </button>
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-0.5 border-l border-white/10 pl-3">
-                      {filterItemsForUser(section.items, user?.email).map((item, i) => (
+                      {filterItemsForUser(section.items, user?.email, tier).map((item, i) => (
                         item.heading ? (
                           <div key={`mh-${i}`} className="px-3 pt-2 pb-1 mt-1 border-t border-white/10">
                             <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-teal-300/60">

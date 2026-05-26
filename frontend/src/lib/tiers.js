@@ -26,14 +26,46 @@
 // Tier definitions
 // ──────────────────────────────────────────────────────────────
 
-export const TIERS = ['none', 'free', 'premium', 'coach']
+export const TIERS = ['none', 'free', 'premium', 'coach', 'dev']
 
 // Display metadata for each tier.
+// `dev` is a hidden internal tier above coach. It's not sold and is
+// never shown on /pricing or the signup popup; it exists so site
+// developers and interns (DEVELOPER_EMAILS below) can bypass every
+// gate and preview in-progress features. tierMeets() naturally handles
+// it because dev's rank is the highest.
 export const TIER_META = {
   none:    { label: 'Anonymous',    short: 'Anon',    rank: 0 },
   free:    { label: 'Free',         short: 'Free',    rank: 1 },
   premium: { label: 'Premium',      short: 'Premium', rank: 2 },
   coach:   { label: 'Coach & Scout', short: 'Coach',  rank: 3 },
+  dev:     { label: 'Developer',    short: 'Dev',    rank: 99 },
+}
+
+
+// ──────────────────────────────────────────────────────────────
+// Developer allowlist
+// ──────────────────────────────────────────────────────────────
+//
+// Anyone whose Supabase account email matches one of these gets the
+// `dev` tier from useTier(), bypassing every RequireTier gate AND
+// seeing items the menu hides from non-devs (requires: 'dev').
+//
+// Lowercased comparison. Add or remove emails here; no DB migration
+// needed. Site developers + interns only.
+export const DEVELOPER_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+  'zackaryahn2026@gmail.com',
+  'naterpetz@gmail.com',
+  'kai.malloch@gmail.com',
+  'oliver.duthie1010@gmail.com',
+  'connorbroschard@gmail.com',
+  'trevorkazahaya@gmail.com',
+]
+
+export function isDeveloper(email) {
+  if (!email) return false
+  return DEVELOPER_EMAILS.includes(email.toLowerCase())
 }
 
 

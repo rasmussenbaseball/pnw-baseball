@@ -30,9 +30,13 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 
 const PREVIEW_KEY = 'nwbb-preview-tier'
 
-// Whose home page shows the preview widget. Keep tight: this is a
-// debug tool, not a feature.
-export const AUTHOR_EMAILS = ['nate.rasmussen26@gmail.com']
+// Whose home page shows the preview widget. Re-exports the dev
+// allowlist from lib/tiers.js so adding a new developer there
+// automatically gives them the bug-hunt toggle too. The export is
+// kept under the AUTHOR_EMAILS name for backwards-compat with any
+// existing imports.
+import { DEVELOPER_EMAILS } from '../lib/tiers'
+export const AUTHOR_EMAILS = DEVELOPER_EMAILS
 
 // Allowed preview values. null = no preview, render normally.
 const VALID = new Set(['anonymous', 'free', 'premium', 'coach'])
