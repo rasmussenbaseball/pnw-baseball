@@ -185,18 +185,41 @@ def _tier_meets(actual: str, required: str) -> bool:
     return rank.get(actual, 0) >= rank.get(required, 0)
 
 
-def _viewer_tier(request) -> str:
-    """Best-effort tier lookup for the request's caller. Returns 'none'
-    for anonymous requests, 'free' for signed-in users with no row,
-    or whatever's in user_subscriptions.
+def _viewer_context(request) -> dict:
+    """Resolve the request's viewer: their user_id (if any) and tier.
 
     Honors TIER_GATING_ENABLED — when gating is off, returns 'coach'
-    (max access) so paywalls are inert in soft mode."""
+    (max access) so paywalls are inert in soft mode.
+
+    Returns {'user_id': str|None, 'tier': str}. Tier is one of
+    'none' / 'free' / 'premium' / 'coach'."""
     if os.getenv("TIER_GATING_ENABLED", "").strip().lower() != "true":
-        return "coach"
+        # Soft mode: we still want user_id so the author-bypass works
+        # for unpublished article previews, but tier is effectively max.
+        token = _extract_token(request)
+        if not token:
+            return {"user_id": None, "tier": "coach"}
+        supabase_url = _get_supabase_url()
+        try:
+            resp = httpx.get(
+                f"{supabase_url}/auth/v1/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+                },
+                timeout=5.0,
+            )
+        except httpx.RequestError:
+            return {"user_id": None, "tier": "coach"}
+        if resp.status_code != 200:
+            return {"user_id": None, "tier": "coach"}
+        uid = (resp.json() or {}).get("id")
+        return {"user_id": uid, "tier": "coach"}
+
+    # Hard mode
     token = _extract_token(request)
     if not token:
-        return "none"
+        return {"user_id": None, "tier": "none"}
     supabase_url = _get_supabase_url()
     try:
         resp = httpx.get(
@@ -208,17 +231,23 @@ def _viewer_tier(request) -> str:
             timeout=5.0,
         )
     except httpx.RequestError:
-        return "none"
+        return {"user_id": None, "tier": "none"}
     if resp.status_code != 200:
-        return "none"
-    user_id = (resp.json() or {}).get("id")
-    if not user_id:
-        return "none"
+        return {"user_id": None, "tier": "none"}
+    uid = (resp.json() or {}).get("id")
+    if not uid:
+        return {"user_id": None, "tier": "none"}
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT tier FROM user_subscriptions WHERE user_id = %s", (user_id,))
+        cur.execute("SELECT tier FROM user_subscriptions WHERE user_id = %s", (uid,))
         row = cur.fetchone()
-    return (row or {}).get("tier") or "free"
+    tier = (row or {}).get("tier") or "free"
+    return {"user_id": uid, "tier": tier}
+
+
+# Kept for back-compat — call sites that only need the tier still work.
+def _viewer_tier(request) -> str:
+    return _viewer_context(request).get("tier", "none")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -270,16 +299,20 @@ def get_published_article(slug: str, request: Request):
             raise HTTPException(status_code=404, detail="Article not found")
         r = dict(row)
         required = r.get("requires_tier") or "free"
-        actual = _viewer_tier(request)
+        ctx = _viewer_context(request)
+        actual = ctx["tier"]
+        viewer_user_id = ctx["user_id"]
+        is_author = bool(viewer_user_id) and str(r.get("author_id")) == str(viewer_user_id)
         full = _row_to_full(r)
-        if not _tier_meets(actual, required):
-            # Strip the body, mark locked. Frontend uses this to render
-            # the paywall card with the excerpt visible.
+        # Authors always see their own articles unlocked — even paywalled
+        # ones — so they can preview the rendered output. The published
+        # version still locks for everyone else.
+        if is_author or _tier_meets(actual, required):
+            full["locked"] = False
+        else:
             full["body_md"] = ""
             full["locked"] = True
             full["viewer_tier"] = actual
-        else:
-            full["locked"] = False
         return full
 
 

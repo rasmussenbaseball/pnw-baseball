@@ -62,6 +62,18 @@ export default function NewsList() {
               </div>
             )}
             <div className="p-4">
+              {/* Tier badge floats above the title for paywalled articles
+                  so users know it's gated before they click in. */}
+              {a.requires_tier && a.requires_tier !== 'free' && (
+                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider
+                                  px-2 py-0.5 rounded mb-1.5 ${
+                  a.requires_tier === 'coach'
+                    ? 'bg-indigo-100 text-indigo-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {a.requires_tier === 'coach' ? 'Coach & Scout' : 'Premium'}
+                </span>
+              )}
               <h2 className="text-base font-bold text-gray-900 group-hover:text-nw-teal leading-snug line-clamp-2">
                 {a.title}
               </h2>
