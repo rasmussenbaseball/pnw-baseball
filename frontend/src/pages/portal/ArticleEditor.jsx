@@ -21,6 +21,17 @@ import { useMyArticle, useArticleMutations } from '../../hooks/useArticles'
 
 const API_BASE = '/api/v1'
 
+// Image uploads bypass Vercel's /api/v1/* rewrite and POST directly to
+// the backend domain. Vercel's free-tier proxy caps request bodies at
+// 4.5 MB and returns 413 for anything bigger; hitting the backend
+// directly lets us use FastAPI's real 8 MB limit. The backend has
+// nwbaseballstats.com listed in CORS allow_origins so this cross-origin
+// POST works.
+const DIRECT_API_BASE =
+  typeof window !== 'undefined' && window.location.hostname.endsWith('nwbaseballstats.com')
+    ? 'https://api.nwbaseballstats.com/api/v1'
+    : '/api/v1'  // local dev keeps using the Vite proxy
+
 // HTML comment used as the free-preview break marker. Mirrors
 // PAYWALL_MARKER in backend articles.py. Invisible in any markdown
 // renderer; we use a custom <ReactMarkdown> component to swap it for
@@ -164,7 +175,7 @@ export default function ArticleEditor() {
     if (!session?.access_token) throw new Error('Not authenticated; refresh and try again.')
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`${API_BASE}/portal/articles/upload-image`, {
+    const res = await fetch(`${DIRECT_API_BASE}/portal/articles/upload-image`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: fd,

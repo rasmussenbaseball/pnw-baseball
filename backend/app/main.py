@@ -55,12 +55,19 @@ app = FastAPI(
     default_response_class=DecimalJSONResponse,
 )
 
-# CORS - allow React dev server (local development)
+# CORS - production frontend + local dev server.
+# Most production traffic goes same-origin via Vercel's /api/v1/* rewrite,
+# so CORS isn't normally exercised in prod. The exception is large file
+# uploads: Vercel's free tier caps proxied request bodies at 4.5 MB and
+# returns 413, so the editor uploads images directly to api.nwbaseballstats.com,
+# which is a cross-origin call that needs explicit CORS allowance here.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
+        "https://nwbaseballstats.com",
+        "https://www.nwbaseballstats.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
