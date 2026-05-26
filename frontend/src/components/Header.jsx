@@ -79,14 +79,14 @@ const NAV = [
     label: 'Misc',
     authRequired: true,
     items: [
+      { to: '/about', label: 'About',
+        desc: 'The team, the build, the stat glossary, the run environments' },
+      { to: '/pricing', label: 'Subscriptions',
+        desc: 'Compare Free, Premium, and Coach & Scout tiers' },
       { to: '/graphics-hub', label: 'Graphics',
         desc: 'Pick from every social-media graphic generator on the site' },
-      { to: '/pricing', label: 'Pricing',
-        desc: 'Compare Free, Premium, and Coach & Scout tiers' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
-      { to: '/about', label: 'About',
-        desc: 'Methodology, stat glossary, run environments, site updates' },
       // Author-only — hidden from the dropdown unless the current user's
       // email is on the article-author allowlist.
       { to: '/articles', label: 'Write Articles',
