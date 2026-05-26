@@ -10,7 +10,7 @@
 // only shows when the user has no row, and saving here creates the row).
 
 import { useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
@@ -24,6 +24,14 @@ function authHeaders(session) {
 export default function Account() {
   const { user, session, loading: authLoading } = useAuth()
   const { theme, resolvedTheme, setTheme } = useTheme()
+
+  // ?upgraded=true is the redirect target from Stripe Checkout's
+  // success_url. Show a one-time welcome banner and poll
+  // /me/subscription briefly so the new tier appears even if the
+  // webhook is mid-flight when the user lands.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const justUpgraded = searchParams.get('upgraded') === 'true'
+  const [bannerOpen, setBannerOpen] = useState(justUpgraded)
 
   // Email preferences state
   const [news, setNews] = useState(false)
@@ -68,22 +76,44 @@ export default function Account() {
       })
       .catch(() => { if (alive) setPrefsLoaded(true) })
 
-    fetch(`${API_BASE}/me/subscription`, { headers: authHeaders(session) })
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(d => {
-        if (!alive) return
-        setTier(d.tier || 'free')
-        setTierStartedAt(d.started_at || null)
-        setSubInfo({
-          interval: d.interval || null,
-          current_period_end: d.current_period_end || null,
-          cancel_at_period_end: !!d.cancel_at_period_end,
+    // Polling — when we just came back from Stripe checkout, the
+    // subscription.created webhook can be a few seconds behind the
+    // redirect. Poll /me/subscription every 2s for up to 20s, stopping
+    // as soon as we see a paid tier appear.
+    let attempts = 0
+    const maxAttempts = justUpgraded ? 10 : 1
+    let timer = null
+    function fetchSub() {
+      fetch(`${API_BASE}/me/subscription`, { headers: authHeaders(session) })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then(d => {
+          if (!alive) return
+          setTier(d.tier || 'free')
+          setTierStartedAt(d.started_at || null)
+          setSubInfo({
+            interval: d.interval || null,
+            current_period_end: d.current_period_end || null,
+            cancel_at_period_end: !!d.cancel_at_period_end,
+          })
+          attempts += 1
+          const isPaid = d.tier === 'premium' || d.tier === 'coach' || d.tier === 'paid'
+          if (justUpgraded && !isPaid && attempts < maxAttempts) {
+            timer = setTimeout(fetchSub, 2000)
+          } else if (justUpgraded && isPaid) {
+            // Tier confirmed — clean the URL so a future reload doesn't
+            // re-trigger the success banner.
+            setSearchParams({}, { replace: true })
+          }
         })
-      })
-      .catch(() => { if (alive) setTier('free') })
+        .catch(() => { if (alive) setTier('free') })
+    }
+    fetchSub()
 
-    return () => { alive = false }
-  }, [session])
+    return () => {
+      alive = false
+      if (timer) clearTimeout(timer)
+    }
+  }, [session, justUpgraded])
 
   if (authLoading) return <PageShell><div className="text-gray-500 animate-pulse">Loading…</div></PageShell>
   if (!user) return <Navigate to="/login" replace />
@@ -112,6 +142,11 @@ export default function Account() {
 
   return (
     <PageShell>
+      {/* Upgrade success banner — appears once after Stripe checkout. */}
+      {bannerOpen && (
+        <UpgradeBanner tier={tier} onClose={() => setBannerOpen(false)} />
+      )}
+
       <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">My Account</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         Manage your subscription, appearance, and how we email you.
@@ -306,6 +341,50 @@ function ThemeOption({ value, current, onPick, label, desc, icon }) {
       </div>
       <div className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug">{desc}</div>
     </button>
+  )
+}
+
+// ─── Upgrade success banner (?upgraded=true) ──────────────────
+function UpgradeBanner({ tier, onClose }) {
+  const tierName = tier === 'coach' ? 'Coach & Scout'
+                 : tier === 'premium' ? 'Premium'
+                 : 'paid'
+  const isConfirmed = tier === 'premium' || tier === 'coach' || tier === 'paid'
+  return (
+    <div className="mb-5 bg-gradient-to-r from-emerald-50 to-teal-50
+                    dark:from-emerald-900/30 dark:to-teal-900/30
+                    border border-emerald-200 dark:border-emerald-800
+                    rounded-xl p-4 sm:p-5 relative">
+      <button
+        onClick={onClose}
+        className="absolute top-2 right-2 text-emerald-700/60 hover:text-emerald-900
+                   dark:text-emerald-300/60 dark:hover:text-emerald-100 text-xl leading-none"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+      <div className="flex items-start gap-3">
+        <div className="shrink-0 w-10 h-10 rounded-full bg-emerald-500/15 dark:bg-emerald-400/20
+                        flex items-center justify-center">
+          <svg className="w-5 h-5 text-emerald-700 dark:text-emerald-300"
+               fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-base sm:text-lg font-extrabold text-emerald-900 dark:text-emerald-100">
+            {isConfirmed
+              ? `Welcome to NW Baseball Stats ${tierName}!`
+              : `Thanks — finalizing your subscription…`}
+          </h3>
+          <p className="text-[13px] sm:text-sm text-emerald-800/90 dark:text-emerald-200/90 mt-0.5 leading-snug">
+            {isConfirmed
+              ? `Your subscription is active. You'll get a welcome email at your account address shortly.`
+              : `Stripe confirmed the payment — your account is being upgraded. This usually takes a few seconds.`}
+          </p>
+        </div>
+      </div>
+    </div>
   )
 }
 
