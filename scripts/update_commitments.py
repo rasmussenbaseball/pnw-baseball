@@ -9,7 +9,7 @@ from app.models.database import get_connection
 
 # (last_name, first_name, team_short_name) -> committed_to
 COMMITMENTS = [
-    ("Davidson", "Samuel", "Lower Columbia", "Utah Tech"),
+    ("Davidson", "Sam", "Lower Columbia", "Utah Tech"),
     ("Hubbs", "Quinn", "Lower Columbia", "Gonzaga"),
     ("Kosderka", "Matthew", "Lower Columbia", "Western Kentucky"),
     ("Rowe", "Harlan", "Lower Columbia", "Old Dominion"),
