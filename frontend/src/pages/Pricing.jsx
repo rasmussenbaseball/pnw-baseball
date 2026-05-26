@@ -493,15 +493,15 @@ function ComparisonTable({ currentTier }) {
                     rounded-2xl overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
             <tr>
-              <th className="text-left px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Feature</th>
+              <th className="text-left px-4 py-3 font-bold text-gray-700 dark:text-gray-200">Feature</th>
               {tierKeys.map(k => (
                 <th key={k} className={`text-center px-3 py-3 text-[11px] font-extrabold uppercase
                                         tracking-wider ${
                   currentTier === k
                     ? 'text-nw-teal'
-                    : 'text-gray-600 dark:text-gray-400'
+                    : 'text-gray-600 dark:text-gray-300'
                 }`}>
                   {tierLabels[k]}
                   {currentTier === k && (

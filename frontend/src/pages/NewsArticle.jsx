@@ -34,7 +34,7 @@ export default function NewsArticle() {
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="text-gray-500 animate-pulse">Loading…</div>
+        <div className="text-gray-500 dark:text-gray-400 animate-pulse">Loading…</div>
       </div>
     )
   }
@@ -42,7 +42,7 @@ export default function NewsArticle() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
         <Link to="/news" className="text-sm text-nw-teal hover:underline">← All articles</Link>
-        <div className="text-rose-600 mt-4">Article not found.</div>
+        <div className="text-rose-600 dark:text-rose-400 mt-4">Article not found.</div>
       </div>
     )
   }
@@ -55,7 +55,7 @@ export default function NewsArticle() {
       <Link to="/news" className="text-sm text-nw-teal hover:underline">← All articles</Link>
 
       {data.hero_image_url && (
-        <div className="mt-4 rounded-xl overflow-hidden bg-gray-100 aspect-[16/9]">
+        <div className="mt-4 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 aspect-[16/9]">
           <img
             src={data.hero_image_url}
             alt=""
@@ -65,37 +65,35 @@ export default function NewsArticle() {
         </div>
       )}
 
-      <header className="mt-5 mb-4 border-b border-gray-200 pb-4">
+      <header className="mt-5 mb-4 border-b border-gray-200 dark:border-gray-700 pb-4">
         <div className="flex items-center gap-2 mb-2">
           {requiredTier !== 'free' && (
             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
               requiredTier === 'coach'
-                ? 'bg-indigo-100 text-indigo-800'
-                : 'bg-amber-100 text-amber-800'
+                ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
             }`}>
               {TIER_LABELS[requiredTier]} only
             </span>
           )}
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100 leading-tight">
           {data.title}
         </h1>
         {data.subtitle && (
-          <p className="text-lg text-gray-600 mt-2">{data.subtitle}</p>
+          <p className="text-lg text-gray-600 dark:text-gray-400 mt-2">{data.subtitle}</p>
         )}
-        <p className="text-[11px] text-gray-500 mt-3 uppercase tracking-wider">
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-3 uppercase tracking-wider">
           By {data.author_name} · {fmtDate(data.published_at)}
         </p>
       </header>
 
-      {/* Excerpt is always visible — it's metadata, not body. */}
       {isLocked && data.excerpt && (
-        <p className="text-base sm:text-lg text-gray-700 leading-relaxed mb-6 italic">
+        <p className="text-base sm:text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6 italic">
           {data.excerpt}
         </p>
       )}
 
-      {/* Body or paywall card */}
       {isLocked ? (
         <PaywallCard
           requiredTier={requiredTier}
@@ -103,7 +101,7 @@ export default function NewsArticle() {
           from={location.pathname}
         />
       ) : (
-        <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800">
+        <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {data.body_md || ''}
           </ReactMarkdown>
@@ -117,19 +115,20 @@ export default function NewsArticle() {
 function PaywallCard({ requiredTier, signedIn, from }) {
   const label = TIER_LABELS[requiredTier] || requiredTier
   return (
-    <div className="bg-gradient-to-br from-nw-teal/5 to-nw-teal/10 border border-nw-teal/30
-                    rounded-2xl p-6 sm:p-8 text-center">
+    <div className="bg-gradient-to-br from-nw-teal/5 to-nw-teal/10
+                    dark:from-nw-teal/15 dark:to-nw-teal/5
+                    border border-nw-teal/30 rounded-2xl p-6 sm:p-8 text-center">
       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full
-                      bg-nw-teal/10 text-nw-teal mb-3">
+                      bg-nw-teal/10 dark:bg-nw-teal/20 text-nw-teal mb-3">
         <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round"
                 d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
       </div>
-      <h3 className="text-xl font-extrabold text-gray-900 mb-1">
+      <h3 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 mb-1">
         This article is for {label} subscribers
       </h3>
-      <p className="text-sm text-gray-600 mb-5 max-w-sm mx-auto">
+      <p className="text-sm text-gray-600 dark:text-gray-300 mb-5 max-w-sm mx-auto">
         {signedIn
           ? `Upgrade to ${label} to read this article and unlock every paywalled story.`
           : 'Sign in or subscribe to read this article and unlock every paywalled story.'}
