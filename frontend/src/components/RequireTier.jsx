@@ -19,18 +19,53 @@ import { Link, useLocation } from 'react-router-dom'
 import { useTier } from '../hooks/useTier'
 import { TIER_META, tierMeets } from '../lib/tiers'
 
+// Vite build-time flag. When 'true', tier checks are enforced and
+// users below `minTier` see the upsell card. When ANYTHING ELSE
+// (default), we run in "soft mode" — anonymous still get an
+// upsell/sign-in nudge, but every signed-in user passes through.
+//
+// This lets us wire <RequireTier> around premium routes RIGHT NOW
+// without locking out our current free users. When payments go live,
+// set VITE_TIER_GATING_ENABLED=true in the build environment and
+// rebuild. One flag flips the whole paywall on.
+const GATING_ENABLED = (import.meta.env.VITE_TIER_GATING_ENABLED || '')
+  .toString().toLowerCase() === 'true'
+
+
 export default function RequireTier({ minTier = 'free', children, fallback }) {
   const { tier, loading, user } = useTier()
   const location = useLocation()
 
   if (loading) return null
 
+  // ── SOFT MODE (default, pre-launch) ─────────────────────────
+  // Just keep anonymous users out of authenticated pages. Every
+  // signed-in user — regardless of subscription — passes through.
+  if (!GATING_ENABLED) {
+    if (minTier === 'none') return children
+    if (user) return children
+    return fallback || (
+      <DefaultUpsell
+        userTier="none"
+        minTier={minTier}
+        signedIn={false}
+        from={location.pathname}
+      />
+    )
+  }
+
+  // ── HARD MODE (post-launch) ─────────────────────────────────
+  // Enforce the full tier ladder.
   if (tierMeets(tier, minTier)) return children
-
-  // Custom fallback wins if provided; otherwise show the default upsell.
   if (fallback) return fallback
-
-  return <DefaultUpsell userTier={tier} minTier={minTier} signedIn={!!user} from={location.pathname} />
+  return (
+    <DefaultUpsell
+      userTier={tier}
+      minTier={minTier}
+      signedIn={!!user}
+      from={location.pathname}
+    />
+  )
 }
 
 

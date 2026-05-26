@@ -142,3 +142,70 @@ def require_admin(request: Request) -> str:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     return user_id
+
+
+# ──────────────────────────────────────────────────────────────
+# Tier gating
+# ──────────────────────────────────────────────────────────────
+#
+# Subscription-tier enforcement at the API layer. Mirrors the frontend
+# <RequireTier> behavior:
+#   • If TIER_GATING_ENABLED env var is NOT 'true', behaves like
+#     get_current_user — just enforces auth. Lets us deploy the
+#     dependencies everywhere ahead of payments-launch without
+#     locking out current free users.
+#   • If TIER_GATING_ENABLED='true', additionally checks the
+#     user's tier in `user_subscriptions` and rejects (402 Payment
+#     Required) if below `min_tier`.
+#
+# Usage:
+#   from .auth import require_tier
+#
+#   @router.get("/draft-board")
+#   def get_draft_board(user_id: str = Depends(require_tier("premium"))):
+#       ...
+#
+# The dependency returns the user_id so callers can use it normally
+# — no extra parameters needed.
+
+_TIER_RANK = {"free": 1, "premium": 2, "coach": 3}
+
+
+def require_tier(min_tier: str):
+    """Build a FastAPI dependency that enforces a minimum subscription
+    tier. See module docstring for behavior under TIER_GATING_ENABLED."""
+    if min_tier not in _TIER_RANK:
+        raise ValueError(f"Invalid min_tier {min_tier!r}; expected one of {list(_TIER_RANK)}")
+
+    def _dep(request: Request) -> str:
+        # Always verify the user first.
+        token = _extract_token(request)
+        if not token:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        user_id = _verify_token(token)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        # Soft mode (default pre-launch): auth is enough.
+        if os.getenv("TIER_GATING_ENABLED", "").strip().lower() != "true":
+            return user_id
+
+        # Hard mode: look up the user's tier in user_subscriptions and
+        # compare to the required minimum.
+        from ..models.database import get_connection  # local import — avoids circular
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT tier FROM user_subscriptions WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+        user_tier = (row or {}).get("tier") or "free"
+        if _TIER_RANK.get(user_tier, 0) < _TIER_RANK.get(min_tier, 0):
+            raise HTTPException(
+                status_code=402,
+                detail=f"Requires {min_tier} subscription",
+            )
+        return user_id
+
+    return _dep

@@ -193,6 +193,7 @@ import EmailComposer from './pages/portal/EmailComposer'
 import Unsubscribe from './pages/Unsubscribe'
 import Account from './pages/Account'
 import Pricing from './pages/Pricing'
+import RequireTier from './components/RequireTier'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'
@@ -297,9 +298,9 @@ export default function App() {
           <Route path="/team-ratings" element={<TeamRatings />} />
           <Route path="/national-rankings" element={<NationalRankings />} />
           <Route path="/team-history" element={<TeamHistory />} />
-          <Route path="/recruiting-classes" element={<RecruitingClasses />} />
-          <Route path="/recruiting/breakdown" element={<RequireAuth><RecruitingBreakdown /></RequireAuth>} />
-          <Route path="/recruiting/hometown" element={<RequireAuth><HometownSearch /></RequireAuth>} />
+          <Route path="/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClasses /></RequireTier>} />
+          <Route path="/recruiting/breakdown" element={<RequireTier minTier="premium"><RecruitingBreakdown /></RequireTier>} />
+          <Route path="/recruiting/hometown" element={<RequireTier minTier="premium"><HometownSearch /></RequireTier>} />
 
           {/* Recruiting (admin only) */}
           <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />
@@ -313,7 +314,7 @@ export default function App() {
           {/* Old standalone JUCO route → redirect to portal-wrapped version. */}
           <Route path="/juco-tracker" element={<Navigate to="/portal/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
-          <Route path="/park-factors" element={<RequireAuth><ParkFactors /></RequireAuth>} />
+          <Route path="/park-factors" element={<RequireTier minTier="premium"><ParkFactors /></RequireTier>} />
 
           {/* Team Scouting + Enhanced Scouting moved into the portal; redirect
               old top-level URLs so any external links and bookmarks still work. */}
@@ -385,10 +386,10 @@ export default function App() {
           <Route path="/pricing" element={<Pricing />} />
 
           {/* Draft (auth required) */}
-          <Route path="/draft" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
-          <Route path="/draft/2026" element={<RequireAuth><DraftBoard year="26" /></RequireAuth>} />
-          <Route path="/draft/2027" element={<RequireAuth><DraftBoard year="27" /></RequireAuth>} />
-          <Route path="/draft/2028" element={<RequireAuth><DraftBoard year="28" /></RequireAuth>} />
+          <Route path="/draft" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
+          <Route path="/draft/2026" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
+          <Route path="/draft/2027" element={<RequireTier minTier="premium"><DraftBoard year="27" /></RequireTier>} />
+          <Route path="/draft/2028" element={<RequireTier minTier="premium"><DraftBoard year="28" /></RequireTier>} />
 
           {/* Misc (auth required) */}
           <Route path="/top-moments" element={<RequireAuth><TopMoments /></RequireAuth>} />
