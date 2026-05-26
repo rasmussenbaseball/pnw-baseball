@@ -143,7 +143,7 @@ export default function Scoreboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             Scoreboard
             {hasLiveGames && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold animate-pulse">
@@ -209,7 +209,7 @@ export default function Scoreboard() {
               )}
 
               {todayGames.length === 0 && !loading && (
-                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center mb-6">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center mb-6">
                   <div className="text-3xl mb-2">&#9918;</div>
                   <p className="text-gray-500 font-medium">No PNW games today</p>
                   <p className="text-gray-400 text-sm mt-1">Check back on game days for live scores</p>
@@ -230,7 +230,7 @@ export default function Scoreboard() {
                   ))}
                 </>
               ) : (
-                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center mb-6">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center mb-6">
                   <div className="text-3xl mb-2">&#9918;</div>
                   <p className="text-gray-500 font-medium">No games on {formatDateLabel(selectedDate)}</p>
                 </div>
@@ -251,7 +251,7 @@ function DatePicker({ selectedDate, onChange, today }) {
     <div className="flex items-center justify-center gap-2 mb-5">
       <button
         onClick={() => onChange(shiftDate(selectedDate, -1))}
-        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
         title="Previous day"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -279,7 +279,7 @@ function DatePicker({ selectedDate, onChange, today }) {
 
       <button
         onClick={() => onChange(shiftDate(selectedDate, 1))}
-        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
         title="Next day"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -295,7 +295,7 @@ function Section({ title, count, children }) {
   return (
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">{title}</h2>
+        <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{title}</h2>
         <span className="text-xs text-gray-400">({count})</span>
       </div>
       {children}
@@ -311,7 +311,7 @@ function DivisionSection({ division, label, count, children }) {
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${DIV_COLORS[division] || 'bg-gray-500'}`}>
           {division}
         </span>
-        <h2 className="text-sm font-bold text-gray-700 tracking-wider">{label}</h2>
+        <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 tracking-wider">{label}</h2>
         <span className="text-xs text-gray-400">({count})</span>
       </div>
       {children}
@@ -441,7 +441,7 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
               <img src={game.team_logo} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className={`${teamText} font-semibold text-gray-800 truncate`}>{game.team}</span>
+            <span className={`${teamText} font-semibold text-gray-800 dark:text-gray-200 truncate`}>{game.team}</span>
             {teamWp && (
               <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${
                 teamWpRaw >= 0.5 ? 'text-emerald-600' : 'text-gray-400'
@@ -450,7 +450,7 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
           </div>
           <div className="flex items-center gap-0 shrink-0">
             {teamScore != null ? (
-              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${teamWon ? 'text-gray-900' : 'text-gray-500'}`}>
+              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${teamWon ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
                 {teamScore}
               </span>
             ) : isScheduled ? (
@@ -471,7 +471,7 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
               <img src={game.opponent_logo || game.opponent_image} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className={`${teamText} font-semibold text-gray-800 truncate`}>
+            <span className={`${teamText} font-semibold text-gray-800 dark:text-gray-200 truncate`}>
               {game.location === 'away' ? '@ ' : ''}{game.opponent_display || game.opponent}
             </span>
             {oppWp && (
@@ -482,7 +482,7 @@ function LiveGameCard({ game: rawGame, isLive, isFinal, isScheduled, statusInfo,
           </div>
           <div className="flex items-center gap-0 shrink-0">
             {oppScore != null ? (
-              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${oppWon ? 'text-gray-900' : 'text-gray-500'}`}>
+              <span className={`${scoreText} font-bold tabular-nums w-8 text-center ${oppWon ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
                 {oppScore}
               </span>
             ) : isScheduled ? (
@@ -566,7 +566,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
   const rowPad = compact ? 'py-0.5' : 'py-1'
 
   const cardContent = (
-    <div className={`bg-white ${compact ? 'rounded-lg' : 'rounded-xl'} border overflow-hidden transition-shadow hover:shadow-md border-gray-200`}>
+    <div className={`bg-white dark:bg-gray-800 ${compact ? 'rounded-lg' : 'rounded-xl'} border overflow-hidden transition-shadow hover:shadow-md border-gray-200 dark:border-gray-700`}>
       {/* Status bar */}
       <div className={`flex items-center justify-between ${cardPadX} py-0.5 bg-gray-50`}>
         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${statusInfo.class}`}>
@@ -609,7 +609,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
               <img src={game.away_logo} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className={`${teamText} font-semibold text-gray-800 truncate`}>
+            <span className={`${teamText} font-semibold text-gray-800 dark:text-gray-200 truncate`}>
               {game.away_short || game.away_team_name || 'Away'}
             </span>
             {awayWp && (
@@ -642,7 +642,7 @@ function DBGameCard({ game, isFinal, isScheduled, statusInfo, wp, compact = fals
               <img src={game.home_logo} alt="" className={`${logoSize} object-contain shrink-0`}
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <span className={`${teamText} font-semibold text-gray-800 truncate`}>
+            <span className={`${teamText} font-semibold text-gray-800 dark:text-gray-200 truncate`}>
               {game.home_short || game.home_team_name || 'Home'}
             </span>
             {homeWp && (

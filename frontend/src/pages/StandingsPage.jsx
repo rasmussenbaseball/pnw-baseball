@@ -52,13 +52,13 @@ function ConferenceTable({ conference, clinchedTeams, frozenInfo }) {
   const clinched = clinchedTeams || new Set()
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header */}
-      <div className="px-2.5 py-1.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+      <div className="px-2.5 py-1.5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 flex-wrap">
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
           {conference.division_level}
         </span>
-        <h3 className="text-xs font-bold text-gray-800 truncate">
+        <h3 className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">
           {conference.conference_name}
         </h3>
         {frozenInfo && (
@@ -188,16 +188,16 @@ function ConferenceTable({ conference, clinchedTeams, frozenInfo }) {
 function OverallTable({ teams, clinchedTeams }) {
   const clinched = clinchedTeams || new Set()
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-3 py-2 border-b border-gray-100">
-        <h3 className="text-sm font-bold text-gray-800">Overall PNW Standings</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">Overall PNW Standings</h3>
         <p className="text-[10px] text-gray-500 mt-0.5">All PNW teams ranked by overall win percentage</p>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-[9px] text-gray-400 uppercase tracking-wider bg-gray-50">
+            <tr className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/40">
               <th className="text-center pl-2 pr-0.5 py-1.5 font-semibold w-6">#</th>
               <th className="text-left pl-2 pr-1 py-1.5 font-semibold">Team</th>
               <th className="text-center px-1 py-1.5 font-semibold w-9">Div</th>
@@ -226,7 +226,7 @@ function OverallTable({ teams, clinchedTeams }) {
                         <img src={team.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
-                      <span className="font-medium text-gray-800">{team.short_name}</span>
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{team.short_name}</span>
                       {clinched.has(team.id) && (
                         <span
                           title="Clinched playoff spot"
@@ -260,7 +260,7 @@ function OverallTable({ teams, clinchedTeams }) {
                   <td className="text-center px-0.5 py-1 text-gray-600 font-medium">
                     {team.wins}-{team.losses}
                   </td>
-                  <td className="text-center px-0.5 pr-2 py-1 font-mono text-[10px] text-gray-700 font-medium">
+                  <td className="text-center px-0.5 pr-2 py-1 font-mono text-[10px] text-gray-700 dark:text-gray-300 font-medium">
                     {formatPct(team.win_pct)}
                   </td>
                 </tr>
@@ -344,13 +344,13 @@ export default function StandingsPage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-pnw-slate">Standings</h1>
-        <div className="flex bg-gray-100 rounded-lg p-0.5">
+        <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
           <button
             onClick={() => setView('conference')}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               view === 'conference'
-                ? 'bg-white text-nw-teal shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-white dark:bg-gray-900 text-nw-teal shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
           >
             Conference
@@ -359,8 +359,8 @@ export default function StandingsPage() {
             onClick={() => setView('overall')}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               view === 'overall'
-                ? 'bg-white text-nw-teal shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-white dark:bg-gray-900 text-nw-teal shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
           >
             Overall PNW

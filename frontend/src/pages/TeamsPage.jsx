@@ -79,7 +79,7 @@ function TeamCard({ team }) {
   return (
     <Link
       to={`/team/${team.id}`}
-      className="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow block"
+      className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow block"
     >
       {/* Team header */}
       <div className="flex items-center justify-between mb-2">
@@ -127,7 +127,7 @@ function TeamCard({ team }) {
       <div className="space-y-1.5">
         {h ? (
           <div className="flex items-center justify-between text-xs">
-            <div className="text-gray-700 truncate mr-2">
+            <div className="text-gray-700 dark:text-gray-300 truncate mr-2">
               <span className="text-[10px] uppercase font-bold text-pnw-teal mr-1.5">TOP BAT</span>
               {h.first_name} {h.last_name}
               <span className="text-gray-400 ml-1">{h.position}</span>
@@ -143,7 +143,7 @@ function TeamCard({ team }) {
 
         {p ? (
           <div className="flex items-center justify-between text-xs">
-            <div className="text-gray-700 truncate mr-2">
+            <div className="text-gray-700 dark:text-gray-300 truncate mr-2">
               <span className="text-[10px] uppercase font-bold text-pnw-teal mr-1.5">TOP ARM</span>
               {p.first_name} {p.last_name}
             </div>
