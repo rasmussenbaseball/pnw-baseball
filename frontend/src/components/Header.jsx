@@ -2,12 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
+import { useTier } from '../hooks/useTier'
+import { tierMeets, TIER_META } from '../lib/tiers'
 
 // ─── Navigation structure ───
 const NAV = [
   {
     // Visibility model: main tabs are always open so anonymous visitors
-    // can SEE what's available. Individual items carry `needsAuth: true`
+    // can SEE what's available. Individual items carry `requires: 'free'`
     // to show a lock icon for anonymous users and route-level gates
     // (RequireTier minTier="free") handle the actual block.
     label: 'Stats',
@@ -15,12 +17,12 @@ const NAV = [
       { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 10 in key categories' },
       { to: '/hitting', label: 'Hitting', desc: 'Batting leaderboards & stats' },
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
-      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats', needsAuth: true },
+      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats', requires: 'free' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
-      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings', needsAuth: true },
-      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)', needsAuth: true },
-      { to: '/records', label: 'Records', desc: 'Single-season & career record holders', needsAuth: true },
-      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards", needsAuth: true },
+      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings', requires: 'free' },
+      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)', requires: 'free' },
+      { to: '/records', label: 'Records', desc: 'Single-season & career record holders', requires: 'free' },
+      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards", requires: 'free' },
     ],
   },
   {
@@ -31,7 +33,7 @@ const NAV = [
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
-      { to: '/team-history', label: 'History', desc: 'Historical team performance', needsAuth: true },
+      { to: '/team-history', label: 'History', desc: 'Historical team performance', requires: 'free' },
     ],
   },
   {
@@ -40,10 +42,10 @@ const NAV = [
     // clicking sends them to the upsell card.
     label: 'Recruiting',
     items: [
-      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', needsAuth: true },
-      { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', needsAuth: true },
-      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis', needsAuth: true },
-      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations', needsAuth: true },
+      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', requires: 'premium' },
+      { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', requires: 'premium' },
+      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis', requires: 'premium' },
+      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations', requires: 'premium' },
       { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
     ],
   },
@@ -56,7 +58,7 @@ const NAV = [
         desc: 'Stories, recaps, and notes from around PNW college baseball' },
       { to: '/news/commitments', label: 'Commitments',
         desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)',
-        needsAuth: true },
+        requires: 'premium' },
     ],
   },
   // Tab is open so anonymous can browse; each item enforces its own
@@ -66,13 +68,13 @@ const NAV = [
     items: [
       { to: '/gm', label: 'NW Coaching Simulator',
         desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)',
-        needsAuth: true },
+        requires: 'premium' },
       { to: '/pnw-grid', label: 'PNW Grid',
         desc: 'Immaculate Grid for PNW baseball',
-        needsAuth: true },
+        requires: 'free' },
       { to: '/team-quiz', label: 'Team Quiz',
         desc: 'Test your knowledge of a PNW team across one or more seasons',
-        needsAuth: true },
+        requires: 'free' },
     ],
   },
   {
@@ -82,13 +84,13 @@ const NAV = [
     items: [
       { to: '/portal', label: 'Coach & Scouting Portal',
         desc: 'Trends, opponent scouting, and PDFs in one workspace',
-        needsAuth: true },
+        requires: 'premium' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons',
-        needsAuth: true },
+        requires: 'free' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats',
-        needsAuth: true },
+        requires: 'premium' },
       { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board',
-        needsAuth: true },
+        requires: 'premium' },
     ],
   },
   {
@@ -104,7 +106,7 @@ const NAV = [
         desc: 'Compare Free, Premium, and Coach & Scout tiers' },
       { to: '/graphics-hub', label: 'Graphics',
         desc: 'Pick from every social-media graphic generator on the site',
-        needsAuth: true },
+        requires: 'free' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
       // Author-only — hidden from the dropdown unless the current user's
@@ -120,10 +122,10 @@ const NAV = [
       { heading: 'Archived' },
       { to: '/all-conference', label: 'All-Conference Generator',
         desc: 'Build mock first, second, and HM teams from season stats',
-        needsAuth: true },
+        requires: 'free' },
       { to: '/playoff-projections', label: 'Playoff Projections',
         desc: 'Projected standings & playoff fields',
-        needsAuth: true },
+        requires: 'free' },
     ],
   },
 ]
@@ -490,15 +492,17 @@ function filterItemsForUser(items, userEmail) {
 
 // ─── Dropdown panel component ───
 // Three states a sub-item can be in:
-//   - locked: true       → "Coming soon", always opaque + locked icon
-//   - needsAuth: true    → lock icon shown ONLY for anonymous users so
-//                          they can see what they're missing. Signed-in
-//                          users see it as a normal item.
-//   - (default)          → fully open
+//   - locked: true        → "Coming soon", always opaque + locked icon
+//   - requires: '<tier>'  → lock icon when the viewer's tier is below
+//                           the item's required tier. So requires='free'
+//                           locks for anonymous; requires='premium' locks
+//                           for anonymous and free; requires='coach'
+//                           locks for everyone below Coach & Scout.
+//   - (default)           → fully open
 function DropdownPanel({ items, onClose }) {
   const { user } = useAuth()
+  const { tier } = useTier()
   const visible = filterItemsForUser(items, user?.email)
-  const isAnon = !user
   return (
     <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
       {visible.map((item, i) => {
@@ -511,10 +515,13 @@ function DropdownPanel({ items, onClose }) {
             </div>
           )
         }
-        const showLock = item.locked || (item.needsAuth && isAnon)
+        const needsUpgrade = item.requires && !tierMeets(tier, item.requires)
+        const showLock = item.locked || needsUpgrade
         const subtext = item.locked
           ? 'Coming soon'
-          : (item.needsAuth && isAnon ? 'Free account required' : item.desc)
+          : (needsUpgrade
+              ? `${TIER_META[item.requires]?.label || item.requires} required`
+              : item.desc)
         return (
           <Link
             key={item.to}
@@ -641,6 +648,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileExpanded, setMobileExpanded] = useState(null)
   const { user, signOut } = useAuth()
+  const { tier } = useTier()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef(null)
 
@@ -847,7 +855,8 @@ export default function Header() {
                           </div>
                         ) : (
                           (() => {
-                            const showLock = item.locked || (item.needsAuth && !user)
+                            const needsUpgrade = item.requires && !tierMeets(tier, item.requires)
+                            const showLock = item.locked || needsUpgrade
                             return (
                               <Link
                                 key={item.to}

@@ -149,15 +149,13 @@ function RequireGmEarlyAccess({ children }) {
   return <Suspense fallback={<GmChunkLoading />}>{children}</Suspense>
 }
 
-// Portal access - any signed-in user with a free account. The PORTAL_OWNERS
-// list is retained as documentation but no longer used for gating; tighten
-// this back up by re-adding the includes() check if a paid tier ships.
+// Portal access — premium tier (Premium or Coach & Scout). The portal
+// holds the coaching tools that justify the paid subscription, so it
+// gets gated above the free tier. Anonymous → sign-in nudge, Free →
+// upsell card pointing to /pricing.
 const PORTAL_OWNERS = ['nate.rasmussen26@gmail.com']  // legacy / reference
 function RequirePortalAccess({ children }) {
-  const { user, loading } = useAuth()
-  if (loading) return null
-  if (!user) return <Navigate to="/login" replace />
-  return children
+  return <RequireTier minTier="premium">{children}</RequireTier>
 }
 
 // ─── Existing pages ───
@@ -394,7 +392,7 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><JucoTracker /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
-          <Route path="/news/commitments" element={<RequireTier minTier="free"><NewsCommitments /></RequireTier>} />
+          <Route path="/news/commitments" element={<RequireTier minTier="premium"><NewsCommitments /></RequireTier>} />
           <Route path="/news/:slug" element={<NewsArticle />} />
           <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
           <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
