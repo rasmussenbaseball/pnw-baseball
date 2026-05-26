@@ -105,9 +105,14 @@ tr:hover td.sticky-col {
    Light theme styling lives above. When the <html> element gets
    the .dark class (from ThemeContext), every stat-table on the
    site flips its row backgrounds, borders, and hover state to
-   match. This is the single highest-leverage dark-mode change —
-   covers leaderboards, team stat tables, player pages, scouting
-   sheets, and anywhere else .stat-table is rendered. */
+   match. Covers leaderboards, team stat tables, player pages,
+   scouting sheets, and anywhere else .stat-table is rendered.
+   IMPORTANT: we INHERIT text color from the parent surface rather
+   than force light text here. Reason: if a wrapping card forgot
+   its dark:bg-gray-800 variant, forcing light text would render
+   it invisible on the still-white card surface. Letting the text
+   follow the parent's text-color (which Tailwind's dark: variants
+   manage on individual components) is safer. */
 html.dark .stat-table tbody td {
   border-color: #374151;            /* gray-700 */
 }
@@ -117,6 +122,10 @@ html.dark .stat-table tbody tr:nth-child(even) {
 html.dark .stat-table tbody tr:hover {
   background-color: rgba(13, 148, 136, 0.18);  /* teal-700 alpha */
 }
+/* Sticky-col backgrounds — only apply when the surrounding card is
+   ALSO dark (signaled by the html.dark class itself; we rely on the
+   wrapper having dark:bg-gray-800 so this dark sticky background
+   matches it). */
 html.dark .stat-table tbody td.sticky-col {
   background-color: #1f2937;        /* gray-800 */
 }
@@ -126,10 +135,6 @@ html.dark .stat-table tbody tr:nth-child(even) td.sticky-col {
 html.dark .stat-table tbody tr:hover td.sticky-col,
 html.dark tr:hover td.sticky-col {
   background-color: rgba(13, 148, 136, 0.25);
-}
-html.dark .stat-table tbody td,
-html.dark .stat-table tbody td.sticky-col {
-  color: #e5e7eb;                   /* gray-200 — body text */
 }
 
 /* Player name link style */

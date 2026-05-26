@@ -34,10 +34,10 @@ export default function PitchLevelStatsCard({ playerId, season }) {
   const trackedShare = d.total_pa ? Math.round((d.tracked_pa / d.total_pa) * 100) : 0
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mt-6 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mt-6 overflow-hidden">
       {/* ── Header ── */}
       <div className="flex items-center gap-2 mb-1">
-        <h3 className="text-lg font-bold text-gray-900">Pitch-Level Stats</h3>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pitch-Level Stats</h3>
         <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
           Beta
         </span>
@@ -298,7 +298,7 @@ function DataTable({ children, minWidth = 700, className = '' }) {
 
 function HeaderRow({ children }) {
   return (
-    <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px] border-b border-gray-200">
+    <tr className="bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 uppercase tracking-wide text-[10px] border-b border-gray-200 dark:border-gray-700">
       {children}
     </tr>
   )
@@ -315,22 +315,22 @@ function Th({ children, align = 'center', sticky = false }) {
 }
 
 function BodyRow({ children }) {
-  return <tr className="border-b border-gray-100 last:border-0">{children}</tr>
+  return <tr className="border-b border-gray-100 dark:border-gray-700 last:border-0">{children}</tr>
 }
 
 function CountCell({ label, detail }) {
   // Sticky to the left so the row label stays visible when the table
   // scrolls horizontally on mobile.
   return (
-    <td className="sticky left-0 bg-white z-10 px-3 py-2.5 align-middle whitespace-nowrap border-r border-gray-100">
-      <span className="font-medium text-gray-900">{label}</span>
+    <td className="sticky left-0 bg-white dark:bg-gray-800 z-10 px-3 py-2.5 align-middle whitespace-nowrap border-r border-gray-100">
+      <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
       {detail && <span className="text-gray-400 ml-1.5">· {detail}</span>}
     </td>
   )
 }
 
 function NumCell({ value, muted = false }) {
-  const cls = `text-center px-3 py-2.5 align-middle tabular-nums ${muted ? 'text-gray-400' : 'text-gray-700'}`
+  const cls = `text-center px-3 py-2.5 align-middle tabular-nums ${muted ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`
   return <td className={cls}>{value ?? '-'}</td>
 }
 
@@ -443,7 +443,7 @@ function Tile({ label, value, sub }) {
       <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold text-center">
         {label}
       </div>
-      <div className="text-base sm:text-lg font-bold text-gray-900 tabular-nums my-0.5">
+      <div className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums my-0.5">
         {value ?? '-'}
       </div>
       <div className="text-[9px] text-gray-400 text-center">{sub}</div>

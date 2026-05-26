@@ -118,11 +118,13 @@ export default function WarLeaderboard() {
       <StatsLastUpdated className="mb-2" />
 
       {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 animate-pulse">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700
+                        p-8 text-center text-gray-400 dark:text-gray-500 animate-pulse">
           Loading WAR data...
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border overflow-auto max-h-[80vh]">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700
+                        overflow-auto max-h-[80vh]">
           <table className="stat-table">
             <thead className="sticky top-0 z-30">
               <tr>

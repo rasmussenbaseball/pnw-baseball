@@ -102,7 +102,8 @@ export default function StatsTable({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700
+                      p-8 text-center text-gray-400 dark:text-gray-500">
         <div className="animate-pulse">Loading stats...</div>
       </div>
     )
@@ -110,7 +111,8 @@ export default function StatsTable({
 
   if (!data.length) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-500">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700
+                      p-8 text-center text-gray-500 dark:text-gray-400">
         No data found. Try adjusting your filters or check back when data has been loaded.
       </div>
     )
@@ -149,7 +151,7 @@ export default function StatsTable({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border overflow-auto max-h-[80vh]">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-auto max-h-[80vh]">
       <table className="stat-table">
         <thead className="sticky top-0 z-30">
           <tr>

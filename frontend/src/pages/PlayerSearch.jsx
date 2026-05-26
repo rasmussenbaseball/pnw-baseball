@@ -76,7 +76,7 @@ export default function PlayerSearch() {
       )}
 
       {data && data.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <table className="stat-table">
             <thead>
               <tr>
