@@ -2,6 +2,8 @@ import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { PreviewProvider } from './context/PreviewContext'
+import PreviewBanner from './components/PreviewBanner'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
@@ -282,7 +284,9 @@ export default function App() {
 
   return (
     <ThemeProvider>
+    <PreviewProvider>
     <AuthProvider>
+    <PreviewBanner />
     <div className={`min-h-screen transition-colors ${
       isPortal ? 'bg-portal-cream'
       : isGm ? 'bg-gray-50'
@@ -531,6 +535,7 @@ export default function App() {
       )}
     </div>
     </AuthProvider>
+    </PreviewProvider>
     </ThemeProvider>
   )
 }

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import NWACChampionshipBracket from '../components/NWACChampionshipBracket'
 import NWACChampionshipOdds from '../components/NWACChampionshipOdds'
 import NWACMvpTracker from '../components/NWACMvpTracker'
+import PreviewTierWidget from '../components/PreviewTierWidget'
 
 const SEASON = 2026
 
@@ -51,6 +52,10 @@ export default function Homepage() {
 
   return (
     <div>
+      {/* Author-only "view as tier" toggle. Renders nothing for
+          non-authors, so other users never see it. */}
+      <PreviewTierWidget />
+
       {/* Hero ticker - stat leaders marquee */}
       <LeaderTicker leaders={leaders} />
 

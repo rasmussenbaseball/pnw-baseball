@@ -17,6 +17,7 @@
 
 import { Link, useLocation } from 'react-router-dom'
 import { useTier } from '../hooks/useTier'
+import { usePreview } from '../context/PreviewContext'
 import { TIER_META, tierMeets } from '../lib/tiers'
 
 // Vite build-time flag. When 'true', tier checks are enforced and
@@ -34,14 +35,20 @@ const GATING_ENABLED = (import.meta.env.VITE_TIER_GATING_ENABLED || '')
 
 export default function RequireTier({ minTier = 'free', children, fallback }) {
   const { tier, loading, user } = useTier()
+  const { previewTier } = usePreview()
   const location = useLocation()
 
   if (loading) return null
 
+  // Author-preview mode: behave AS IF gating is hard-on. This is what
+  // makes "View as free" actually block premium pages even while we're
+  // pre-launch in soft mode. Falls through to the HARD MODE block below.
+  const effectiveHardMode = GATING_ENABLED || !!previewTier
+
   // ── SOFT MODE (default, pre-launch) ─────────────────────────
   // Just keep anonymous users out of authenticated pages. Every
   // signed-in user — regardless of subscription — passes through.
-  if (!GATING_ENABLED) {
+  if (!effectiveHardMode) {
     if (minTier === 'none') return children
     if (user) return children
     return fallback || (

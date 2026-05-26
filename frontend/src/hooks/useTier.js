@@ -20,6 +20,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { usePreview, AUTHOR_EMAILS } from '../context/PreviewContext'
 
 const API_BASE = '/api/v1'
 const CACHE_KEY = 'tier_cache_v1'
@@ -41,7 +42,10 @@ function writeCache(userId, tier) {
 }
 
 export function useTier() {
-  const { user, session, loading: authLoading } = useAuth()
+  const { user, session, realUser, loading: authLoading } = useAuth()
+  const { previewTier } = usePreview()
+  const isAuthor = !!realUser?.email && AUTHOR_EMAILS.includes(realUser.email)
+
   const [tier, setTier] = useState(() => {
     if (!user) return 'none'
     const cached = readCache()
@@ -49,6 +53,20 @@ export function useTier() {
     return 'free'  // safe default for signed-in users until we know better
   })
   const [loading, setLoading] = useState(true)
+
+  // Preview override: when the author has picked a preview tier, return
+  // it instead of the real tier. 'anonymous' maps to 'none'. Note: when
+  // preview === 'anonymous', AuthContext already hides the user object,
+  // so this path is only hit for free/premium/coach previews.
+  if (isAuthor && previewTier) {
+    const mapped =
+      previewTier === 'anonymous' ? 'none'
+        : previewTier === 'free'     ? 'free'
+        : previewTier === 'premium'  ? 'premium'
+        : previewTier === 'coach'    ? 'coach'
+        : tier
+    return { tier: mapped, loading: false, user, isPreview: true }
+  }
 
   useEffect(() => {
     if (authLoading) return
