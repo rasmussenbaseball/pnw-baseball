@@ -91,6 +91,7 @@ class ArticleCreate(BaseModel):
     hero_image_url: Optional[str] = None
     author_name: str = Field(..., min_length=1, max_length=120)
     slug: Optional[str] = None  # auto-generated from title if omitted
+    requires_tier: Optional[str] = Field(default="free", pattern="^(free|premium|coach)$")
 
 
 class ArticleUpdate(BaseModel):
@@ -100,6 +101,7 @@ class ArticleUpdate(BaseModel):
     hero_image_url: Optional[str] = None
     author_name: Optional[str] = Field(None, min_length=1, max_length=120)
     slug: Optional[str] = None
+    requires_tier: Optional[str] = Field(None, pattern="^(free|premium|coach)$")
 
 
 class ArticlePublishToggle(BaseModel):
@@ -164,6 +166,7 @@ def _row_to_summary(r: dict) -> dict:
         "hero_image_url": r["hero_image_url"],
         "author_name": r["author_name"],
         "status": r["status"],
+        "requires_tier": r.get("requires_tier") or "free",
         "published_at": r["published_at"].isoformat() if r["published_at"] else None,
         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
@@ -173,6 +176,49 @@ def _row_to_summary(r: dict) -> dict:
 
 def _row_to_full(r: dict) -> dict:
     return {**_row_to_summary(r), "body_md": r["body_md"] or ""}
+
+
+def _tier_meets(actual: str, required: str) -> bool:
+    """Mirror of frontend lib/tiers.js tierMeets — true if `actual` is
+    at-or-above `required` on the tier ladder."""
+    rank = {"none": 0, "free": 1, "premium": 2, "coach": 3}
+    return rank.get(actual, 0) >= rank.get(required, 0)
+
+
+def _viewer_tier(request) -> str:
+    """Best-effort tier lookup for the request's caller. Returns 'none'
+    for anonymous requests, 'free' for signed-in users with no row,
+    or whatever's in user_subscriptions.
+
+    Honors TIER_GATING_ENABLED — when gating is off, returns 'coach'
+    (max access) so paywalls are inert in soft mode."""
+    if os.getenv("TIER_GATING_ENABLED", "").strip().lower() != "true":
+        return "coach"
+    token = _extract_token(request)
+    if not token:
+        return "none"
+    supabase_url = _get_supabase_url()
+    try:
+        resp = httpx.get(
+            f"{supabase_url}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "apikey": os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+            },
+            timeout=5.0,
+        )
+    except httpx.RequestError:
+        return "none"
+    if resp.status_code != 200:
+        return "none"
+    user_id = (resp.json() or {}).get("id")
+    if not user_id:
+        return "none"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT tier FROM user_subscriptions WHERE user_id = %s", (user_id,))
+        row = cur.fetchone()
+    return (row or {}).get("tier") or "free"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -188,8 +234,8 @@ def list_published_articles(limit: int = 50):
         cur.execute(
             """
             SELECT id, slug, title, subtitle, body_md, hero_image_url,
-                   author_id, author_name, status, published_at,
-                   created_at, updated_at
+                   author_id, author_name, status, requires_tier,
+                   published_at, created_at, updated_at
             FROM articles
             WHERE status = 'published'
             ORDER BY published_at DESC NULLS LAST, id DESC
@@ -201,15 +247,19 @@ def list_published_articles(limit: int = 50):
 
 
 @router.get("/articles/{slug}")
-def get_published_article(slug: str):
-    """Fetch one published article by slug. Public."""
+def get_published_article(slug: str, request: Request):
+    """Fetch one published article by slug. Public, but the body_md is
+    only returned if the viewer's tier meets the article's requires_tier
+    (which defaults to 'free'). For paywalled articles, lower-tier
+    viewers get back metadata + excerpt + locked=true; the frontend
+    renders the paywall card."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
             SELECT id, slug, title, subtitle, body_md, hero_image_url,
-                   author_id, author_name, status, published_at,
-                   created_at, updated_at
+                   author_id, author_name, status, requires_tier,
+                   published_at, created_at, updated_at
             FROM articles
             WHERE slug = %s AND status = 'published'
             """,
@@ -218,7 +268,19 @@ def get_published_article(slug: str):
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
-        return _row_to_full(dict(row))
+        r = dict(row)
+        required = r.get("requires_tier") or "free"
+        actual = _viewer_tier(request)
+        full = _row_to_full(r)
+        if not _tier_meets(actual, required):
+            # Strip the body, mark locked. Frontend uses this to render
+            # the paywall card with the excerpt visible.
+            full["body_md"] = ""
+            full["locked"] = True
+            full["viewer_tier"] = actual
+        else:
+            full["locked"] = False
+        return full
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -237,8 +299,8 @@ def list_my_articles(author: dict = Depends(_resolve_author)):
         cur.execute(
             """
             SELECT id, slug, title, subtitle, body_md, hero_image_url,
-                   author_id, author_name, status, published_at,
-                   created_at, updated_at
+                   author_id, author_name, status, requires_tier,
+                   published_at, created_at, updated_at
             FROM articles
             WHERE author_id = %s
             ORDER BY COALESCE(published_at, updated_at) DESC, id DESC
@@ -256,8 +318,8 @@ def get_my_article(article_id: int, author: dict = Depends(_resolve_author)):
         cur.execute(
             """
             SELECT id, slug, title, subtitle, body_md, hero_image_url,
-                   author_id, author_name, status, published_at,
-                   created_at, updated_at
+                   author_id, author_name, status, requires_tier,
+                   published_at, created_at, updated_at
             FROM articles WHERE id = %s
             """,
             (article_id,),
@@ -281,14 +343,15 @@ def create_article(body: ArticleCreate, author: dict = Depends(_resolve_author))
             """
             INSERT INTO articles
               (slug, title, subtitle, body_md, hero_image_url,
-               author_id, author_name, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft')
+               author_id, author_name, status, requires_tier)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft', %s)
             RETURNING id, slug, title, subtitle, body_md, hero_image_url,
-                      author_id, author_name, status, published_at,
-                      created_at, updated_at
+                      author_id, author_name, status, requires_tier,
+                      published_at, created_at, updated_at
             """,
             (slug, body.title.strip(), (body.subtitle or "").strip() or None,
-             body.body_md or "", body.hero_image_url, author["user_id"], body.author_name.strip()),
+             body.body_md or "", body.hero_image_url, author["user_id"],
+             body.author_name.strip(), body.requires_tier or "free"),
         )
         row = dict(cur.fetchone())
         conn.commit()
@@ -327,13 +390,15 @@ def update_article(
         if body.slug is not None:
             new_slug = _unique_slug(cur, _slugify(body.slug), ignore_id=article_id)
             sets.append("slug = %s"); params.append(new_slug)
+        if body.requires_tier is not None:
+            sets.append("requires_tier = %s"); params.append(body.requires_tier)
 
         if not sets:
             # No-op; still return the current row.
             cur.execute(
                 """SELECT id, slug, title, subtitle, body_md, hero_image_url,
-                          author_id, author_name, status, published_at,
-                          created_at, updated_at
+                          author_id, author_name, status, requires_tier,
+                          published_at, created_at, updated_at
                    FROM articles WHERE id = %s""",
                 (article_id,),
             )
@@ -344,8 +409,8 @@ def update_article(
         cur.execute(
             f"""UPDATE articles SET {', '.join(sets)} WHERE id = %s
                 RETURNING id, slug, title, subtitle, body_md, hero_image_url,
-                          author_id, author_name, status, published_at,
-                          created_at, updated_at""",
+                          author_id, author_name, status, requires_tier,
+                          published_at, created_at, updated_at""",
             tuple(params),
         )
         row = dict(cur.fetchone())
@@ -388,8 +453,8 @@ def toggle_publish(
                SET status = %s, published_at = %s, updated_at = NOW()
                WHERE id = %s
                RETURNING id, slug, title, subtitle, body_md, hero_image_url,
-                         author_id, author_name, status, published_at,
-                         created_at, updated_at""",
+                         author_id, author_name, status, requires_tier,
+                         published_at, created_at, updated_at""",
             (new_status, stamp, article_id),
         )
         out = dict(cur.fetchone())

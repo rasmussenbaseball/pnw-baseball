@@ -30,7 +30,9 @@ def get_my_subscription(user_id: str = Depends(get_current_user)):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT tier, started_at, ends_at, external_ref
+            SELECT tier, started_at, ends_at, external_ref,
+                   interval, current_period_end, cancel_at_period_end,
+                   subscription_id, customer_id
             FROM user_subscriptions
             WHERE user_id = %s
             """,
@@ -44,9 +46,17 @@ def get_my_subscription(user_id: str = Depends(get_current_user)):
             "started_at": None,
             "ends_at": None,
             "external_ref": None,
+            "interval": None,
+            "current_period_end": None,
+            "cancel_at_period_end": False,
+            "has_stripe_customer": False,
         }
 
     r = dict(row)
-    for k in ("started_at", "ends_at"):
+    for k in ("started_at", "ends_at", "current_period_end"):
         r[k] = r[k].isoformat() if r.get(k) else None
+    r["has_stripe_customer"] = bool(r.get("customer_id"))
+    # Don't leak the raw customer_id / subscription_id to the frontend.
+    r.pop("customer_id", None)
+    r.pop("subscription_id", None)
     return r

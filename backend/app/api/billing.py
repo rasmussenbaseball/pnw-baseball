@@ -45,6 +45,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..models.database import get_connection
+from ..services.email_sender import send_notification
 from .auth import get_current_user, _extract_token, _get_supabase_url
 
 router = APIRouter()
@@ -129,6 +130,197 @@ def _user_id_from_customer(customer_id: str) -> Optional[str]:
         )
         row = cur.fetchone()
     return str(row["user_id"]) if row else None
+
+
+def _email_for_user(user_id: str) -> Optional[str]:
+    """Look up a user's email from auth.users by their user_id. We use
+    the postgres connection (not a Supabase auth API call) since this
+    runs from background webhook handlers without a bearer token."""
+    if not user_id:
+        return None
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT email FROM auth.users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+        return (row or {}).get("email")
+    except Exception:
+        log.exception("could not fetch email for user %s", user_id)
+        return None
+
+
+# ─── Email templates (transactional) ────────────────────────────
+#
+# Plain-text + inline-styled HTML. Sent via the same Resend pipeline
+# used for broadcasts but without the unsubscribe footer / broadcast
+# signature shell (it's transactional, not marketing).
+
+def _tier_display(tier: str) -> str:
+    return {"premium": "Premium", "coach": "Coach & Scout"}.get(tier, tier.title())
+
+
+def _send_welcome_email(user_id: str, tier: str, is_trial: bool):
+    email = _email_for_user(user_id)
+    if not email:
+        return
+    tier_name = _tier_display(tier)
+    subject = (
+        f"Your NW Baseball Stats {tier_name} trial is on"
+        if is_trial else
+        f"Welcome to NW Baseball Stats {tier_name}"
+    )
+    site = _site_url()
+    body_text = (
+        f"Thanks for subscribing to NW Baseball Stats {tier_name}.\n\n"
+        + ("Your 7-day free trial is active — you have full access right now. "
+           "You'll only be charged if you stay subscribed past day 7.\n\n"
+           if is_trial else
+           "Your subscription is active and you have full access right now.\n\n")
+        + "Start here:\n"
+        + f"  Homepage: {site}\n"
+        + f"  Your account: {site}/account\n"
+        + (f"  Coach portal: {site}/portal\n" if tier == "coach" else "")
+        + "\n"
+        + "Reply to this email if you have any questions.\n\n"
+        + "— Nate · NW Baseball Stats\n"
+    )
+    body_html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:24px 0;">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" border="0" width="560" style="background:#fff;border-radius:12px;max-width:560px;">
+        <tr><td style="padding:24px 28px;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:#0f766e;text-transform:uppercase;">NW Baseball Stats</div>
+          <h1 style="font-size:22px;margin:8px 0 6px;color:#111;">{subject}</h1>
+          <p style="margin:6px 0 12px;font-size:14px;line-height:1.5;color:#374151;">
+            {'Your 7-day free trial is active — you have full access right now. You will only be charged if you stay subscribed past day 7.' if is_trial else 'Your subscription is active and you have full access right now.'}
+          </p>
+          <p style="margin:16px 0 6px;font-weight:700;font-size:13px;color:#111;">Jump in:</p>
+          <p style="margin:0;font-size:14px;line-height:1.7;">
+            • <a href="{site}" style="color:#0f766e;font-weight:600;text-decoration:none;">Homepage</a><br>
+            • <a href="{site}/account" style="color:#0f766e;font-weight:600;text-decoration:none;">Your account</a><br>
+            {f'• <a href="{site}/portal" style="color:#0f766e;font-weight:600;text-decoration:none;">Coach &amp; Scout portal</a>' if tier == 'coach' else ''}
+          </p>
+          <p style="margin:18px 0 0;font-size:12px;color:#6b7280;">
+            Reply to this email if you have any questions.<br>— Nate · NW Baseball Stats
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>"""
+    try:
+        send_notification(
+            to_email=email, subject=subject,
+            body_text=body_text, body_html=body_html,
+        )
+    except Exception:
+        log.exception("welcome email failed for %s", email)
+
+
+def _send_cancel_email(user_id: str, tier: str, period_end_iso: Optional[str]):
+    email = _email_for_user(user_id)
+    if not email:
+        return
+    tier_name = _tier_display(tier)
+    when = ""
+    if period_end_iso:
+        try:
+            when = " on " + datetime.fromisoformat(period_end_iso.replace("Z", "+00:00")).strftime("%b %d, %Y")
+        except Exception:
+            pass
+    subject = f"Your NW Baseball Stats {tier_name} subscription will end{when}"
+    site = _site_url()
+    body_text = (
+        f"Your {tier_name} subscription is set to cancel{when}.\n\n"
+        f"You'll keep full access until then. If you change your mind, you can resume "
+        f"any time from your account page:\n"
+        f"  {site}/account\n\n"
+        f"Reply to this email if there's anything I can help with — feedback is the only "
+        f"way I know what to fix or build next.\n\n"
+        f"— Nate · NW Baseball Stats\n"
+    )
+    body_html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:24px 0;">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" border="0" width="560" style="background:#fff;border-radius:12px;max-width:560px;">
+        <tr><td style="padding:24px 28px;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:#0f766e;text-transform:uppercase;">NW Baseball Stats</div>
+          <h1 style="font-size:20px;margin:8px 0 6px;color:#111;">Subscription canceled</h1>
+          <p style="margin:6px 0 12px;font-size:14px;line-height:1.5;color:#374151;">
+            Your <strong>{tier_name}</strong> subscription is set to cancel{when}. You will keep full access until then.
+          </p>
+          <p style="margin:12px 0;font-size:14px;line-height:1.5;color:#374151;">
+            Change your mind? You can resume from your account page anytime:
+          </p>
+          <p style="margin:6px 0 14px;">
+            <a href="{site}/account" style="display:inline-block;padding:8px 16px;background:#0f766e;color:#fff;font-weight:700;font-size:13px;border-radius:6px;text-decoration:none;">Manage subscription</a>
+          </p>
+          <p style="margin:18px 0 0;font-size:12px;color:#6b7280;">
+            Reply with feedback if you have any — it's the most direct way I learn what to fix.<br>— Nate · NW Baseball Stats
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>"""
+    try:
+        send_notification(
+            to_email=email, subject=subject,
+            body_text=body_text, body_html=body_html,
+        )
+    except Exception:
+        log.exception("cancel email failed for %s", email)
+
+
+def _send_payment_failed_email(user_id: str):
+    email = _email_for_user(user_id)
+    if not email:
+        return
+    subject = "Action needed: payment problem on your NW Baseball Stats subscription"
+    site = _site_url()
+    body_text = (
+        f"Stripe couldn't bill the card on file for your NW Baseball Stats subscription.\n\n"
+        f"This is usually because the card expired, was replaced, or hit a daily limit. "
+        f"Stripe will retry automatically over the next several days, but updating your "
+        f"card now will fix it instantly:\n\n"
+        f"  {site}/account → Manage subscription\n\n"
+        f"If retries fail, your subscription will eventually be canceled and you'll lose "
+        f"access. No charge is in dispute — Stripe just needs a card it can charge.\n\n"
+        f"Reply if you need help.\n\n"
+        f"— Nate · NW Baseball Stats\n"
+    )
+    body_html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:24px 0;">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" border="0" width="560" style="background:#fff;border-radius:12px;max-width:560px;">
+        <tr><td style="padding:24px 28px;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:#b45309;text-transform:uppercase;">Payment problem</div>
+          <h1 style="font-size:20px;margin:8px 0 6px;color:#111;">We couldn't bill your card</h1>
+          <p style="margin:6px 0 12px;font-size:14px;line-height:1.5;color:#374151;">
+            Stripe couldn't bill the card on file for your subscription. Usually that means the card expired,
+            was replaced, or hit a daily limit. Stripe will retry, but updating your card now fixes it instantly.
+          </p>
+          <p style="margin:14px 0;">
+            <a href="{site}/account" style="display:inline-block;padding:8px 16px;background:#0f766e;color:#fff;font-weight:700;font-size:13px;border-radius:6px;text-decoration:none;">Update payment method</a>
+          </p>
+          <p style="margin:14px 0 0;font-size:12px;color:#6b7280;">
+            If retries fail, your subscription will eventually be canceled. Reply if you need help.<br>— Nate · NW Baseball Stats
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>"""
+    try:
+        send_notification(
+            to_email=email, subject=subject,
+            body_text=body_text, body_html=body_html,
+        )
+    except Exception:
+        log.exception("payment-failed email failed for %s", email)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -328,7 +520,8 @@ def _tier_from_subscription(sub) -> Optional[tuple[str, str]]:
 
 
 def _handle_subscription_change(sub):
-    """A subscription was created or modified. Sync our DB row."""
+    """A subscription was created or modified. Sync our DB row and fire
+    a welcome / cancel email when state transitions warrant it."""
     customer_id = sub.get("customer")
     sub_id      = sub.get("id")
     status      = sub.get("status")  # active|trialing|past_due|canceled|unpaid|incomplete|incomplete_expired
@@ -348,15 +541,24 @@ def _handle_subscription_change(sub):
         return
     target_tier, target_interval = ti
 
-    # If status indicates the subscription is no longer providing access,
-    # downgrade to free.
     if status in ("canceled", "unpaid", "incomplete_expired"):
         new_tier = "free"
     else:
-        new_tier = target_tier  # active, trialing, past_due → still has access
+        new_tier = target_tier
 
+    # Read prior state BEFORE the upsert so we can detect transitions
+    # (e.g., free → premium, premium → premium-but-canceling).
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute(
+            """SELECT tier, cancel_at_period_end FROM user_subscriptions
+               WHERE user_id = %s""",
+            (user_id,),
+        )
+        prior = cur.fetchone() or {}
+        prior_tier = prior.get("tier") or "free"
+        prior_cancel = bool(prior.get("cancel_at_period_end") or False)
+
         cur.execute(
             """
             INSERT INTO user_subscriptions
@@ -382,6 +584,19 @@ def _handle_subscription_change(sub):
             ),
         )
         conn.commit()
+
+    # ── Side effects: transactional emails ──
+    # Welcome — fire when tier transitions free → premium/coach. We send
+    # once on the very first paying activation. Stripe sends both
+    # subscription.created AND subscription.updated for the initial
+    # event in some cases; the prior-tier check prevents duplicates.
+    is_trial = status == "trialing"
+    if prior_tier == "free" and new_tier in ("premium", "coach"):
+        _send_welcome_email(user_id, new_tier, is_trial)
+
+    # Cancellation — fire when cancel_at_period_end FLIPS from false→true.
+    if not prior_cancel and cancel_at_period_end:
+        _send_cancel_email(user_id, new_tier, period_end_iso)
 
 
 def _handle_subscription_deleted(sub):
@@ -411,12 +626,17 @@ def _handle_payment_failed(invoice):
     """A subscription's payment failed. Stripe will retry automatically
     (Smart Retries). We don't change access here — Stripe will fire a
     subscription.updated with status='past_due' for that, and eventually
-    subscription.deleted if retries exhaust. We do log for visibility."""
+    subscription.deleted if retries exhaust.
+
+    We DO email the customer so they can update their card before
+    retries are exhausted."""
     sub_id = invoice.get("subscription")
     customer_id = invoice.get("customer")
     log.warning("payment_failed: sub=%s customer=%s amount_due=%s",
                 sub_id, customer_id, invoice.get("amount_due"))
-    # TODO (next phase): send an email to the customer via send_notification
+    user_id = _user_id_from_customer(customer_id) if customer_id else None
+    if user_id:
+        _send_payment_failed_email(user_id)
 
 
 # ─────────────────────────────────────────────────────────────────

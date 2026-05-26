@@ -34,6 +34,11 @@ export default function Account() {
   // Subscription state
   const [tier, setTier] = useState(null)
   const [tierStartedAt, setTierStartedAt] = useState(null)
+  const [subInfo, setSubInfo] = useState({
+    interval: null,
+    current_period_end: null,
+    cancel_at_period_end: false,
+  })
 
   // Save UI
   const [saving, setSaving] = useState(false)
@@ -69,6 +74,11 @@ export default function Account() {
         if (!alive) return
         setTier(d.tier || 'free')
         setTierStartedAt(d.started_at || null)
+        setSubInfo({
+          interval: d.interval || null,
+          current_period_end: d.current_period_end || null,
+          cancel_at_period_end: !!d.cancel_at_period_end,
+        })
       })
       .catch(() => { if (alive) setTier('free') })
 
@@ -170,7 +180,12 @@ export default function Account() {
           </Link>
         }
       >
-        <SubscriptionDetails session={session} tier={tier} tierStartedAt={tierStartedAt} />
+        <SubscriptionDetails
+          session={session}
+          tier={tier}
+          tierStartedAt={tierStartedAt}
+          subInfo={subInfo}
+        />
       </Section>
 
       {/* ─── Email preferences block ─── */}
@@ -347,7 +362,7 @@ function TierBadge({ tier }) {
 // subscription" button that opens the Stripe Customer Portal. For free
 // users, shows a "See plans →" CTA pointing at /pricing.
 
-function SubscriptionDetails({ session, tier, tierStartedAt }) {
+function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const isPaid = tier === 'premium' || tier === 'coach' || tier === 'paid'
@@ -373,24 +388,59 @@ function SubscriptionDetails({ session, tier, tierStartedAt }) {
     }
   }
 
+  // Period-end formatted: "June 1, 2026"
+  const periodEndFmt = subInfo?.current_period_end
+    ? new Date(subInfo.current_period_end).toLocaleDateString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric',
+      })
+    : null
+
+  const intervalLabel = subInfo?.interval === 'yearly' ? 'Yearly'
+                      : subInfo?.interval === 'monthly' ? 'Monthly'
+                      : null
+
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
             <TierBadge tier={tier} />
             <span className="text-sm text-gray-700 dark:text-gray-300">
               {tier === 'coach'   ? 'Coach & Scout subscriber'
                : isPaid           ? 'Premium subscriber'
                                   : 'Free account'}
             </span>
+            {intervalLabel && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded
+                              bg-gray-100 text-gray-600 border border-gray-200
+                              dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600">
+                {intervalLabel}
+              </span>
+            )}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+
+          {/* Status line: shows the next billing date OR the cancellation date */}
+          {isPaid && periodEndFmt && (
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+              {subInfo.cancel_at_period_end ? (
+                <span className="text-rose-700 dark:text-rose-300 font-semibold">
+                  Cancels on {periodEndFmt}
+                </span>
+              ) : (
+                <>Next billing on <span className="font-semibold text-gray-800 dark:text-gray-200">{periodEndFmt}</span></>
+              )}
+            </p>
+          )}
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
             {isPaid
-              ? `Thanks for supporting NW Baseball Stats${tierStartedAt ? ` since ${new Date(tierStartedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}.`
+              ? (subInfo?.cancel_at_period_end
+                  ? 'Your subscription is set to cancel at the end of the current period. You\'ll keep full access until then.'
+                  : `Thanks for supporting NW Baseball Stats${tierStartedAt ? ` since ${new Date(tierStartedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}.`)
               : 'You have full access to all public stats, leaderboards, and tools. Upgrade for premium content, recruiting tools, and the Coach & Scout portal.'}
           </p>
         </div>
+
         {isPaid ? (
           <button
             onClick={openPortal}

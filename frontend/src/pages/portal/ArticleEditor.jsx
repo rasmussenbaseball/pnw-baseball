@@ -43,6 +43,10 @@ export default function ArticleEditor() {
   const [savedSlug, setSavedSlug] = useState(null)
   const [error, setError] = useState(null)
   const [isPreview, setIsPreview] = useState(false)
+  // Article paywall tier — 'free' (default), 'premium', or 'coach'.
+  // Locks article BODY behind the chosen tier; metadata + excerpt remain
+  // public so search and link-previews still work.
+  const [requiresTier, setRequiresTier] = useState('free')
 
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -68,6 +72,7 @@ export default function ArticleEditor() {
     setAuthorName(existing.author_name || '')
     setStatus(existing.status || 'draft')
     setSavedSlug(existing.slug || null)
+    setRequiresTier(existing.requires_tier || 'free')
   }, [existing])
 
   // Default author name on a brand-new article from the user's email.
@@ -184,6 +189,7 @@ export default function ArticleEditor() {
         body_md: bodyMd,
         hero_image_url: hero.trim() || null,
         author_name: authorName.trim(),
+        requires_tier: requiresTier,
       }
       const saved = editId
         ? await update(editId, payload)
@@ -234,6 +240,26 @@ export default function ArticleEditor() {
           }`}>
             {status}
           </span>
+
+          {/* Tier picker — sets articles.requires_tier. Body is locked
+              behind this tier; metadata stays public. */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Access</span>
+            <select
+              value={requiresTier}
+              onChange={(e) => setRequiresTier(e.target.value)}
+              disabled={isPreview}
+              className="text-[11px] font-semibold text-gray-800 bg-gray-100 hover:bg-gray-200
+                         rounded px-1.5 py-0.5 border-0 outline-none focus:ring-1 focus:ring-nw-teal/30
+                         cursor-pointer transition-colors"
+              title="Minimum tier required to read the article body"
+            >
+              <option value="free">Free</option>
+              <option value="premium">Premium</option>
+              <option value="coach">Coach</option>
+            </select>
+          </div>
+
           {savedSlug && status === 'published' && (
             <a href={`/news/${savedSlug}`} target="_blank" rel="noreferrer"
                className="text-[11px] text-nw-teal hover:underline">View on /news →</a>
