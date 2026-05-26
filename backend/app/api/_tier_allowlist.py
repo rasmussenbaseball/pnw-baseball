@@ -42,6 +42,7 @@ COMPED_COACH_EMAILS = {
     "miyazawajoshua@gmail.com",
     "maxo2326@gmail.com",
     "jawomack@bushnell.edu",
+    "pnwcbr@gmail.com",
 }
 
 

@@ -496,10 +496,10 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
                                      : 'Free account'}
             </span>
             {isComped ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded
                               bg-emerald-100 text-emerald-800 border border-emerald-200
                               dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700">
-                Lifetime
+                Free Forever
               </span>
             ) : intervalLabel && (
               <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded
