@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
-from .auth import require_admin
+from .auth import require_admin, require_tier
 from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,
@@ -693,8 +693,12 @@ def stats_last_updated_top(season: int = 2026):
 # ============================================================
 
 @router.get("/hometown-search")
-def hometown_search(q: str = Query("", min_length=0)):
-    """Search players by hometown. Returns players whose hometown contains the query string."""
+def hometown_search(
+    q: str = Query("", min_length=0),
+    _user: str = Depends(require_tier("premium")),
+):
+    """Search players by hometown. Returns players whose hometown contains the query string.
+    Premium-gated (soft mode = auth-only)."""
     with get_connection() as conn:
         cur = conn.cursor()
 
@@ -8119,6 +8123,7 @@ def get_park_factors(
     state: Optional[str] = Query(None),
     division_id: Optional[int] = Query(None),
     conference_id: Optional[int] = Query(None),
+    _user: str = Depends(require_tier("premium")),
 ):
     """
     Return park factor data for all PNW teams.
@@ -17303,7 +17308,10 @@ def get_recruiting_guide(team_id: int):
 # ============================================================
 
 @router.get("/recruiting/breakdown")
-def recruiting_breakdown(season: int = 2026):
+def recruiting_breakdown(
+    season: int = 2026,
+    _user: str = Depends(require_tier("premium")),
+):
     """
     Team-level recruiting breakdown table.
     Returns per-team: record, W-L%, 3-year trend, freshman PA%, freshman IP%,

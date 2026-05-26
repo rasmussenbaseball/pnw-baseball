@@ -1,7 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CURRENT_SEASON } from '../utils/constants'
+import { supabase } from '../lib/supabase'
 
 const API_BASE = '/api/v1'
+
+// Pull the current Supabase access token (if any) and shape it as a
+// Bearer header. Returns {} for anonymous so the fetch goes out
+// without an Authorization header at all. This lets the backend
+// distinguish anon from signed-in callers; tier-gated endpoints can
+// reject anon, while public endpoints just ignore the token.
+async function _authHeaders() {
+  try {
+    const { data } = await supabase.auth.getSession()
+    const t = data?.session?.access_token
+    return t ? { Authorization: `Bearer ${t}` } : {}
+  } catch { return {} }
+}
 
 /**
  * Generic API hook for fetching data with loading/error states.
@@ -33,7 +47,7 @@ export function useApi(endpoint, params = {}, deps = []) {
       })
 
       const url = `${API_BASE}${endpoint}?${searchParams.toString()}`
-      const response = await fetch(url)
+      const response = await fetch(url, { headers: await _authHeaders() })
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`)
