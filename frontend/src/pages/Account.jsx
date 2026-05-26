@@ -527,7 +527,7 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
             {isComped
               ? (tier === 'dev'
                   ? 'Site-developer access. You can see every page on the site, including in-progress features hidden from the public. Thanks for building this with us.'
-                  : 'Lifetime Coach & Scout access for being part of the private alpha. No payment required, no expiration. Thank you.')
+                  : 'Complimentary lifetime Coach & Scout access. No payment, no expiration. Enjoy the full site.')
               : isPaid
               ? (subInfo?.cancel_at_period_end
                   ? 'Your subscription is set to cancel at the end of the current period. You\'ll keep full access until then.'

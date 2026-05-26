@@ -7,8 +7,8 @@ normal Stripe-billed subscription system. Two non-paying categories:
                        and the signup popup.
 
   COMPED_COACH_EMAILS → tier='coach' (free Coach & Scout forever).
-                       Currently used for the GM beta testers who
-                       helped during the private alpha.
+                       Friends-of-the-site grant: complimentary
+                       lifetime access, no payment, no expiration.
 
 Both lists are case-insensitive (we lowercase on compare). They live
 here as Python constants so updates don't require a DB migration.

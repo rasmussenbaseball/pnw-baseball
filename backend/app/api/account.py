@@ -57,7 +57,7 @@ def get_my_subscription(request: Request, user_id: str = Depends(get_current_use
             "comped_label": (
                 "Developer · Free Forever"
                 if comped_tier == "dev"
-                else "Beta Tester · Free Forever"
+                else "Coach & Scout · Free Forever"
             ),
         }
 
