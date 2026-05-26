@@ -4,6 +4,7 @@ import { useStatLeaders, useNationalRankings, useTeamRatings, useSummerStatLeade
 import { divisionBadgeClass, formatGameTime } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import PreviewTierWidget from '../components/PreviewTierWidget'
+import MaintenanceBanner from '../components/MaintenanceBanner'
 
 const SEASON = 2026
 
@@ -49,6 +50,10 @@ export default function Homepage() {
 
   return (
     <div>
+      {/* Construction notice (auto-expires after May 27). Renders for
+          every visitor; dismissible for the session. */}
+      <MaintenanceBanner />
+
       {/* Author-only "view as tier" toggle. Renders nothing for
           non-authors, so other users never see it. */}
       <PreviewTierWidget />

@@ -169,7 +169,7 @@ const FEATURES = [
 const FAQ = [
   {
     q: "When does Premium launch?",
-    a: "Soon — we're finalizing the payment flow. Email info@nwbaseballstats.com if you want an early-access seat.",
+    a: "Soon. We're finalizing the payment flow. Email info@nwbaseballstats.com if you want an early-access seat.",
   },
   {
     q: "Can I cancel anytime?",
@@ -177,7 +177,7 @@ const FAQ = [
   },
   {
     q: "What if I'm a coach at a current PNW program?",
-    a: "Reach out — discounted bulk seats are available for college programs. Email info@nwbaseballstats.com.",
+    a: "Reach out. Discounted bulk seats are available for college programs. Email info@nwbaseballstats.com.",
   },
   {
     q: "Will free features ever be moved behind a paywall?",
@@ -612,8 +612,8 @@ function FeatureHighlights() {
     },
     {
       icon: '🎮',
-      title: 'NAIA-style coaching simulator',
-      desc: 'Build a dynasty as the head coach of an NAIA program — recruit, set lineups, coach against a sim of the actual PNW season.',
+      title: 'NW Coaching Simulator',
+      desc: 'Build a dynasty as the head coach of any Pacific Northwest program (D1 through NWAC). Recruit, set lineups, and coach against a sim of the actual PNW season.',
     },
   ]
 

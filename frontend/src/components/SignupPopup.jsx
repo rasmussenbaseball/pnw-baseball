@@ -157,12 +157,14 @@ export default function SignupPopup() {
               return (
                 <div
                   key={t.name}
-                  className={`relative rounded-lg border ${tone.card} p-3 flex flex-col`}
+                  className={`relative rounded-lg border ${tone.card} p-3 flex flex-col
+                              ${t.badge ? 'pt-5' : ''}`}
                 >
                   {t.badge && (
-                    <span className={`absolute -top-2 left-1/2 -translate-x-1/2
+                    <span className={`absolute -top-2.5 left-1/2 -translate-x-1/2
                                       text-[9px] font-bold uppercase tracking-wider
-                                      px-2 py-0.5 rounded-full ${tone.pill}`}>
+                                      px-2 py-1 rounded-full ${tone.pill}
+                                      whitespace-nowrap shadow-sm`}>
                       {t.badge}
                     </span>
                   )}
