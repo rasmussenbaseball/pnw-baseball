@@ -168,12 +168,16 @@ const FEATURES = [
 
 const FAQ = [
   {
-    q: "When does Premium launch?",
-    a: "Soon. We're finalizing the payment flow. Email info@nwbaseballstats.com if you want an early-access seat.",
+    q: "How does billing work?",
+    a: "Card billed through Stripe on the same day each month (or each year for the annual plan). You can switch plans, update your card, or cancel anytime from your account page. Premium monthly includes a 7-day free trial.",
   },
   {
     q: "Can I cancel anytime?",
-    a: "Yes. Once Premium and Coach/Scout launch, you'll be able to cancel or downgrade from your account page. No annual commitment.",
+    a: "Yes. Cancel or downgrade from your account page anytime. You keep full access through the end of the period you've already paid for. No annual commitment.",
+  },
+  {
+    q: "Do you offer refunds?",
+    a: "If something isn't working as advertised, email info@nwbaseballstats.com within 7 days of charge and we'll refund you. Past that, the cancel-anytime policy applies.",
   },
   {
     q: "What if I'm a coach at a current PNW program?",
@@ -182,6 +186,10 @@ const FAQ = [
   {
     q: "Will free features ever be moved behind a paywall?",
     a: "No. The features currently free will stay free. New advanced features will roll out into the paid tiers.",
+  },
+  {
+    q: "Where can I see what's coming next?",
+    a: "Follow @RasmussenBase on X for site updates, or check the About page for what's already built. Subscribers get early access to new features as they ship.",
   },
 ]
 
