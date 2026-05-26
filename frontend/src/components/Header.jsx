@@ -534,13 +534,17 @@ function DropdownPanel({ items, onClose }) {
           : (needsUpgrade
               ? `${TIER_META[item.requires]?.label || item.requires} required`
               : item.desc)
+        // Visual treatment for locked rows: knock down opacity so they
+        // read as clearly inaccessible without removing them from the
+        // menu (the whole point of showing them is discoverability).
+        const dimmed = item.locked || needsUpgrade
         return (
           <Link
             key={item.to}
             to={item.to}
             onClick={onClose}
             className={`flex flex-col px-2.5 py-1.5 rounded-md transition-colors group ${
-              item.locked ? 'opacity-50 hover:bg-white/5' : 'hover:bg-white/10'
+              dimmed ? 'opacity-55 hover:opacity-90 hover:bg-white/5' : 'hover:bg-white/10'
             }`}
           >
             <span className="text-[13px] font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5 leading-tight">
@@ -869,13 +873,14 @@ export default function Header() {
                           (() => {
                             const needsUpgrade = item.requires && !tierMeets(tier, item.requires)
                             const showLock = item.locked || needsUpgrade
+                            const dimmed = item.locked || needsUpgrade
                             return (
                               <Link
                                 key={item.to}
                                 to={item.to}
                                 onClick={() => { setMobileOpen(false); setMobileExpanded(null) }}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors
-                                  ${item.locked ? 'opacity-50' : ''}
+                                  ${dimmed ? 'opacity-55' : ''}
                                   ${location.pathname === item.to
                                     ? 'bg-white/15 text-white font-medium'
                                     : 'text-teal-200/70 hover:text-white hover:bg-white/10'
