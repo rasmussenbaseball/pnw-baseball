@@ -7263,9 +7263,11 @@ def uncommitted_juco_players(
     bats: Optional[str] = Query(None, description="Filter by batting hand: L, R, or S"),
     throws: Optional[str] = Query(None, description="Filter by throwing hand: L or R"),
     limit: int = Query(500),
+    _user: str = Depends(require_tier("coach")),
 ):
     """
     Find uncommitted JUCO players - the primary recruiting tool.
+    Coach-tier gated (the JUCO tracker lives in the Coach & Scout portal).
     Shows sophomores (or specified class) who haven't committed to a 4-year school.
     Year filter groups: 'So' matches So and R-So, 'Fr' matches Fr and R-Fr.
     """
@@ -21520,6 +21522,7 @@ class BuildLineupRequest(BaseModel):
 def portal_team_scouting(
     team_id: int = Query(..., description="Team to scout"),
     season: int = Query(2026, description="Season year"),
+    _user: str = Depends(require_tier("coach")),
 ):
     """Comprehensive team scouting page data: team-level stats with conference
     percentiles, per-player breakdowns, auto-generated writeup, last-10 form."""
@@ -21535,6 +21538,7 @@ def portal_team_scouting(
 def portal_bullpen_sheet(
     team_id: int,
     season: int = Query(2026, description="Season year"),
+    _user: str = Depends(require_tier("coach")),
 ):
     """Printable Bullpen Sheet for one team — coaching tool for in-game
     bullpen decisions. Returns full pitcher roster with situational
@@ -21552,6 +21556,7 @@ def portal_bullpen_sheet(
 @router.get("/commitments")
 @cached_endpoint(ttl_seconds=300)
 def list_commitments(
+    _user: str = Depends(require_tier("premium")),
     season: int = Query(2026, description="Season to pull stats from"),
     level: str = Query("JUCO", description="Division level filter (default JUCO/NWAC)"),
     limit: int = Query(200, ge=1, le=500),
@@ -21716,6 +21721,7 @@ def list_commitments(
 def portal_scouting_sheet(
     team_id: int,
     season: int = Query(2026, description="Season year"),
+    _user: str = Depends(require_tier("coach")),
 ):
     """Printable per-team scouting sheet — every hitter on one page,
     every pitcher on another. Returns full roster with the 13 hitter
@@ -21734,6 +21740,7 @@ def portal_scouting_sheet(
 @cached_endpoint(ttl_seconds=1800)
 def portal_nwac_tournament_sheet(
     season: int = Query(2026, description="Season year"),
+    _user: str = Depends(require_tier("coach")),
 ):
     """Cross-team scouting board for the 8 NWAC Championship teams.
     Two ranked-by-WAR boards (pitchers, then hitters) pooling every
