@@ -33,6 +33,18 @@ const LOC = {
 LOC.total = LOC.frontend + LOC.backend + LOC.scripts
 
 
+// ───────────────────────────────────────────────────────────────────
+//  Hours spent pair-coding with Claude on this project.
+//  Source: parse ~/.claude/projects/**/*.jsonl session logs and group
+//  consecutive message timestamps into "active sessions" (gap >10min
+//  closes a session). Local logs retain ~14 days of sessions; the
+//  full project has 53 active commit-days at a measured 3.8h/active-day
+//  rate, so 200+ is a conservative lower bound.
+//  Update by re-running the audit script periodically.
+// ───────────────────────────────────────────────────────────────────
+const CLAUDE_HOURS = 200
+
+
 // ─── Interns (placeholder roster — fill in headshots + blurbs as
 //     each person comes on board). Set "joining" to true to show the
 //     "coming soon" treatment.
@@ -178,8 +190,9 @@ function HeroStats({ siteStats }) {
           color="pnw-slate"
         />
         <StatChip
-          label="Box Scores Parsed"
-          value={siteStats.box_scores_parsed?.toLocaleString() ?? '—'}
+          label="Hours with Claude"
+          value={`${CLAUDE_HOURS}+`}
+          sub="AI pair-coding sessions"
           color="pnw-slate"
         />
         <StatChip
@@ -220,7 +233,7 @@ function TeamSection() {
                 Former pitcher at{' '}
                 <Link to="/player/5882" className="text-nw-teal hover:underline">Bellevue College</Link> and{' '}
                 <Link to="/player/3925" className="text-nw-teal hover:underline">Bushnell University</Link>.
-                Amateur scout with Over-Slot Baseball. MiLB content creator with Just Baseball.
+                Amateur scout with Over-Slot Baseball.
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
                 Nate built NW Baseball Stats from scratch in early 2026 to close the analytics gap between MLB-level data and PNW college baseball. The same advanced metrics that FanGraphs, Baseball Reference, and Baseball Savant make trivial at the big-league level were essentially nonexistent for D2, D3, NAIA, and JUCO programs in this region. This site fills that gap.
@@ -571,7 +584,7 @@ function CoverageSection() {
           <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold text-gray-700 dark:text-gray-200">D1, D2, D3, NAIA:</span> Sidearm Sports team athletics pages (legacy ASP.NET and modern Nuxt URLs)</p>
           <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold text-gray-700 dark:text-gray-200">NWAC:</span> PrestoSports (nwacsports.com), via ScraperAPI to bypass the WAF</p>
           <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold text-gray-700 dark:text-gray-200">Summer ball:</span> PointStreak and league-hosted stat pages</p>
-          <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold text-gray-700 dark:text-gray-200">National rankings:</span> D3baseball.com, NAIA Coaches Poll, NWAC official polls</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold text-gray-700 dark:text-gray-200">National rankings:</span> Pear Ratings and CollegeBaseballRatings (CBR)</p>
         </div>
       </Card>
     </div>
@@ -583,12 +596,7 @@ function CoverageSection() {
 // RUN ENVIRONMENT SECTION
 // ============================================================
 function EnvironmentSection() {
-  const compareData = Object.entries(ENVIRONMENTS).map(([key, e]) => ({
-    name: key,
-    OPS: Math.round(e.ops * 1000),  // x1000 for chart scale alongside ERA
-    ERA: e.era,
-    'K/9': e.k9,
-  }))
+  const leagues = Object.entries(ENVIRONMENTS).map(([key, e]) => ({ key, ...e }))
   return (
     <div>
       <Card title="What is a Run Environment?" subtitle="Why context matters when comparing stats across divisions">
@@ -603,23 +611,38 @@ function EnvironmentSection() {
         </P>
       </Card>
 
-      <Card title="Run Environments Compared" subtitle="OPS (×1000), ERA, and K/9 by league">
-        <div className="h-[280px] my-3">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={compareData} margin={{ top: 4, right: 10, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280', fontWeight: 600 }} />
-              <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} />
-              <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="OPS" fill="#0d9488" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="ERA" fill="#dc2626" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="K/9" fill="#0f766e" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      <Card title="Run Environments Compared" subtitle="OPS, ERA, and K/9 by league, each on its own scale">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-3">
+          <MiniBar
+            title="Avg OPS"
+            note="Higher = more offense"
+            data={leagues.map(l => ({ name: l.key, value: l.ops }))}
+            fill="#0d9488"
+            domain={[0.6, 0.9]}
+            tickFmt={(v) => v.toFixed(3)}
+            valueFmt={(v) => v.toFixed(3)}
+          />
+          <MiniBar
+            title="Avg ERA"
+            note="Lower = better pitching"
+            data={leagues.map(l => ({ name: l.key, value: l.era }))}
+            fill="#dc2626"
+            domain={[3.5, 6.5]}
+            tickFmt={(v) => v.toFixed(1)}
+            valueFmt={(v) => v.toFixed(2)}
+          />
+          <MiniBar
+            title="Avg K/9"
+            note="Higher = strikeout pitching"
+            data={leagues.map(l => ({ name: l.key, value: l.k9 }))}
+            fill="#0f766e"
+            domain={[6.5, 9.5]}
+            tickFmt={(v) => v.toFixed(1)}
+            valueFmt={(v) => v.toFixed(1)}
+          />
         </div>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">
-          OPS is multiplied by 1000 to scale alongside ERA and K/9 on a single axis. NAIA is the highest-scoring environment. NWAC and WCL are wood-bat leagues, which suppress offense substantially.
+          NAIA is the highest-scoring environment (highest OPS, highest ERA). NWAC and WCL are wood-bat leagues, which suppress offense substantially while keeping pitching strikeout rates competitive.
         </p>
       </Card>
 
@@ -662,6 +685,45 @@ function EnvironmentSection() {
     </div>
   )
 }
+
+// MiniBar — small standalone bar chart card. Each metric (OPS / ERA / K/9)
+// gets its own scale and color so visual comparisons aren't distorted by
+// the wildly different unit ranges. Used in EnvironmentSection.
+function MiniBar({ title, note, data, fill, domain, tickFmt, valueFmt }) {
+  return (
+    <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
+      <p className="text-xs font-bold text-gray-800 dark:text-gray-100 mb-0.5">{title}</p>
+      <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2">{note}</p>
+      <div className="h-[180px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+            <XAxis
+              dataKey="name"
+              tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }}
+              axisLine={{ stroke: '#d1d5db' }}
+              tickLine={false}
+            />
+            <YAxis
+              domain={domain}
+              tick={{ fontSize: 9, fill: '#9ca3af' }}
+              tickFormatter={tickFmt}
+              axisLine={false}
+              tickLine={false}
+              width={40}
+            />
+            <Tooltip
+              contentStyle={{ fontSize: 11, borderRadius: 6 }}
+              formatter={(v) => [valueFmt(v), title]}
+            />
+            <Bar dataKey="value" fill={fill} radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
 
 function EnvironmentCard({ title, subtitle, e, copy }) {
   return (
