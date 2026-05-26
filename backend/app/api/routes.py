@@ -602,7 +602,7 @@ router.include_router(quiz_router)
 @router.get("/site-stats")
 @cached_endpoint(ttl_seconds=3600)
 def site_stats():
-    """Return aggregate counts and a random player for the homepage."""
+    """Return aggregate counts and a random player for the About page."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) AS cnt FROM players")
@@ -611,6 +611,48 @@ def site_stats():
         total_games = cur.fetchone()["cnt"]
         cur.execute("SELECT COUNT(DISTINCT team_id) AS cnt FROM batting_stats")
         total_teams = cur.fetchone()["cnt"]
+
+        # Big counting stats from per-game tables (the "wow" numbers)
+        cur.execute("""
+            SELECT
+              COALESCE(SUM(home_runs), 0)        AS total_home_runs,
+              COALESCE(SUM(hits), 0)             AS total_hits,
+              COALESCE(SUM(doubles), 0)          AS total_doubles,
+              COALESCE(SUM(triples), 0)          AS total_triples,
+              COALESCE(SUM(at_bats), 0)          AS total_at_bats,
+              COALESCE(SUM(walks), 0)            AS total_walks,
+              COALESCE(SUM(strikeouts), 0)       AS total_batter_ks,
+              COALESCE(SUM(stolen_bases), 0)     AS total_stolen_bases,
+              COALESCE(SUM(runs), 0)             AS total_runs_scored
+            FROM game_batting
+        """)
+        bat = cur.fetchone()
+
+        # Innings pitched stored as decimal-baseball notation (6.2 = 6.667 IP).
+        # Convert to outs for an honest aggregate, then back to a normal float.
+        cur.execute("""
+            SELECT
+              COALESCE(SUM(FLOOR(innings_pitched) * 3
+                           + ((innings_pitched - FLOOR(innings_pitched)) * 10)), 0)
+                AS total_outs,
+              COALESCE(SUM(strikeouts), 0) AS total_pitcher_ks
+            FROM game_pitching
+        """)
+        pit = cur.fetchone()
+        total_outs = int(pit["total_outs"] or 0)
+        total_innings = round(total_outs / 3.0, 0)  # whole-IP rounded
+
+        # Play-by-play events (huge differentiating number)
+        cur.execute("SELECT COUNT(*) AS cnt FROM game_events")
+        total_pbp_events = cur.fetchone()["cnt"]
+
+        # How many distinct seasons we've parsed
+        cur.execute("SELECT COUNT(DISTINCT season) AS cnt FROM batting_stats")
+        seasons_tracked = cur.fetchone()["cnt"]
+
+        # How many box scores parsed (distinct games with batting rows)
+        cur.execute("SELECT COUNT(DISTINCT game_id) AS cnt FROM game_batting")
+        box_scores_parsed = cur.fetchone()["cnt"]
 
         # Random player - pick someone with real stats so the card is interesting
         cur.execute("""
@@ -636,6 +678,19 @@ def site_stats():
         "total_players": total_players,
         "total_games": total_games,
         "total_teams": total_teams,
+        "total_home_runs": int(bat["total_home_runs"]),
+        "total_hits": int(bat["total_hits"]),
+        "total_doubles": int(bat["total_doubles"]),
+        "total_triples": int(bat["total_triples"]),
+        "total_at_bats": int(bat["total_at_bats"]),
+        "total_walks": int(bat["total_walks"]),
+        "total_strikeouts": int(pit["total_pitcher_ks"] or bat["total_batter_ks"]),
+        "total_stolen_bases": int(bat["total_stolen_bases"]),
+        "total_runs_scored": int(bat["total_runs_scored"]),
+        "total_innings_pitched": int(total_innings),
+        "total_pbp_events": int(total_pbp_events),
+        "seasons_tracked": int(seasons_tracked),
+        "box_scores_parsed": int(box_scores_parsed),
         "random_player": dict(random_player) if random_player else None,
     }
 
