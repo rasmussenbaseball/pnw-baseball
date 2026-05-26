@@ -84,7 +84,7 @@ const NAV = [
     items: [
       { to: '/portal', label: 'Coach & Scouting Portal',
         desc: 'Trends, opponent scouting, and PDFs in one workspace',
-        requires: 'premium' },
+        requires: 'coach' },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons',
         requires: 'free' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats',

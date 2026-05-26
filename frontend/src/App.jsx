@@ -149,13 +149,14 @@ function RequireGmEarlyAccess({ children }) {
   return <Suspense fallback={<GmChunkLoading />}>{children}</Suspense>
 }
 
-// Portal access — premium tier (Premium or Coach & Scout). The portal
-// holds the coaching tools that justify the paid subscription, so it
-// gets gated above the free tier. Anonymous → sign-in nudge, Free →
-// upsell card pointing to /pricing.
+// Portal access — Coach & Scout tier only. The portal is the
+// dedicated coaching workspace (lineup helpers, scouting sheets,
+// catcher cards, PDFs) and is the headline justification for the
+// top-tier subscription. Anonymous / Free / Premium → upsell card
+// pointing to /pricing.
 const PORTAL_OWNERS = ['nate.rasmussen26@gmail.com']  // legacy / reference
 function RequirePortalAccess({ children }) {
-  return <RequireTier minTier="premium">{children}</RequireTier>
+  return <RequireTier minTier="coach">{children}</RequireTier>
 }
 
 // ─── Existing pages ───
