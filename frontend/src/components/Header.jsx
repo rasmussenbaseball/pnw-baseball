@@ -32,6 +32,9 @@ const NAV = [
   },
   {
     label: 'Recruiting',
+    // Anonymous gate: recruiting tools (guides, hometown search, map,
+    // breakdowns) require at minimum a free account.
+    authRequired: true,
     items: [
       { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends' },
       { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city' },
@@ -51,10 +54,12 @@ const NAV = [
         desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)' },
     ],
   },
-  // Games is public — PNW Grid / Team Quiz / Coaching Sim. Auth-gated
-  // items (the sim) enforce their own gate at the route level.
+  // Games is auth-gated for anonymous users — PNW Grid and Team Quiz
+  // need a free account to play. Coaching Sim has its own premium gate
+  // on top of that.
   {
     label: 'Games',
+    authRequired: true,
     items: [
       { to: '/gm', label: 'NW Coaching Simulator',
         desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
@@ -77,7 +82,10 @@ const NAV = [
   },
   {
     label: 'Misc',
-    authRequired: true,
+    // Public: anonymous users need to be able to read About and the
+    // Subscriptions/pricing page (otherwise they can't convert!).
+    // Individual items inside (Graphics, Feature Request) can enforce
+    // their own gate at the route level when needed.
     items: [
       { to: '/about', label: 'About',
         desc: 'The team, the build, the stat glossary, the run environments' },
