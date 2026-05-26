@@ -38,6 +38,7 @@ COMMITMENTS = [
     ("Hendrix", "Basil", "Everett", "George Mason"),
     ("Wickstrom", "Sawyer", "Everett", "East Carolina"),
     ("Stenerson", "Silas", "Olympic", "Freed-Hardeman"),
+    ("Allen", "Hunter", "Mt. Hood", "Western Oregon"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.
