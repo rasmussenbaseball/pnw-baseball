@@ -21611,7 +21611,10 @@ def portal_bullpen_sheet(
 @router.get("/commitments")
 @cached_endpoint(ttl_seconds=300)
 def list_commitments(
-    _user: str = Depends(require_tier("premium")),
+    # PUBLIC endpoint — powers the /news/commitments page that anyone
+    # (signed-in or not) can view. Do NOT gate this behind require_tier();
+    # commitments are a discovery/visibility feature for recruits and
+    # belong on the free side of the paywall.
     season: int = Query(2026, description="Season to pull stats from"),
     level: str = Query("JUCO", description="Division level filter (default JUCO/NWAC)"),
     limit: int = Query(200, ge=1, le=500),

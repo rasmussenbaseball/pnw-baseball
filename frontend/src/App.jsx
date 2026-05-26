@@ -495,10 +495,10 @@ export default function App() {
             <div>
               <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Site</p>
               <div className="space-y-1.5">
-                <a href="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About & Methodology</a>
+                <a href="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About & The Team</a>
+                <a href="/about#behind" className="block text-xs text-white/80 hover:text-white transition-colors">Behind the Curtain</a>
                 <a href="/about#glossary" className="block text-xs text-white/80 hover:text-white transition-colors">Stat Glossary</a>
                 <a href="/about#environments" className="block text-xs text-white/80 hover:text-white transition-colors">Run Environments</a>
-                <a href="/about#updates" className="block text-xs text-white/80 hover:text-white transition-colors">Site Updates</a>
               </div>
             </div>
 
