@@ -88,11 +88,11 @@ export default function EmailPrefsPopup() {
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-7 relative">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-7 relative">
         {/* Close (X) button — counts as "No thanks" so the modal doesn't come back */}
         <button
           onClick={() => save(false)}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl leading-none"
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 text-xl leading-none"
           aria-label="Close"
         >
           ×
@@ -104,10 +104,10 @@ export default function EmailPrefsPopup() {
               Email signup
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-gray-100 leading-tight">
             Stay in the loop with NW Baseball Stats
           </h2>
-          <p className="text-sm text-gray-600 mt-1 leading-snug">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 leading-snug">
             Get site news, occasional promotions, and announcements about new
             features delivered to your inbox. Pick what you want; unsubscribe
             any time from any email.
@@ -145,7 +145,7 @@ export default function EmailPrefsPopup() {
           <button
             onClick={() => save(false)}
             disabled={submitting}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900
+            className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
             No thanks
@@ -161,7 +161,7 @@ export default function EmailPrefsPopup() {
           </button>
         </div>
 
-        <p className="text-[10px] text-gray-400 mt-3 text-center">
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-3 text-center">
           We'll only email what you ask for, from info@nwbaseballstats.com.
         </p>
       </div>
@@ -176,7 +176,7 @@ function Choice({ checked, onChange, title, desc }) {
                        transition-colors ${
                          checked
                            ? 'border-nw-teal bg-nw-teal/5'
-                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/40'
                        }`}>
       <input
         type="checkbox"
@@ -185,8 +185,8 @@ function Choice({ checked, onChange, title, desc }) {
         className="mt-0.5 h-4 w-4 accent-nw-teal cursor-pointer shrink-0"
       />
       <div className="min-w-0">
-        <div className="text-sm font-bold text-gray-900">{title}</div>
-        <p className="text-[12px] text-gray-500 leading-snug mt-0.5">{desc}</p>
+        <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{title}</div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 leading-snug mt-0.5">{desc}</p>
       </div>
     </label>
   )

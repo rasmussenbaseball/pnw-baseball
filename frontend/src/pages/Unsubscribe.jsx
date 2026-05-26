@@ -86,22 +86,22 @@ export default function Unsubscribe() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-12">
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 sm:p-8">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm p-6 sm:p-8">
         <div className="mb-5">
           <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-nw-teal mb-1">
             NW Baseball Stats
           </div>
-          <h1 className="text-2xl font-extrabold text-gray-900 leading-tight">
+          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100 leading-tight">
             Email preferences
           </h1>
           {redactedEmail && (
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Managing preferences for <span className="font-mono">{redactedEmail}</span>
             </p>
           )}
         </div>
 
-        {loading && <div className="text-gray-500 animate-pulse">Loading…</div>}
+        {loading && <div className="text-gray-500 dark:text-gray-400 animate-pulse">Loading…</div>}
 
         {!loading && error && (
           <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2 rounded">
@@ -161,7 +161,7 @@ export default function Unsubscribe() {
               </button>
             </div>
 
-            <p className="text-[11px] text-gray-400 mt-4 leading-snug">
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-4 leading-snug">
               Changes apply immediately. You can resubscribe any time from your account.
             </p>
           </>
@@ -178,7 +178,7 @@ function Choice({ checked, onChange, title, desc }) {
                        transition-colors ${
                          checked
                            ? 'border-nw-teal bg-nw-teal/5'
-                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/40'
                        }`}>
       <input
         type="checkbox"
@@ -187,8 +187,8 @@ function Choice({ checked, onChange, title, desc }) {
         className="mt-0.5 h-4 w-4 accent-nw-teal cursor-pointer shrink-0"
       />
       <div className="min-w-0">
-        <div className="text-sm font-bold text-gray-900">{title}</div>
-        <p className="text-[12px] text-gray-500 leading-snug mt-0.5">{desc}</p>
+        <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{title}</div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 leading-snug mt-0.5">{desc}</p>
       </div>
     </label>
   )
