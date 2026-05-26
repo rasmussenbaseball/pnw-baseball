@@ -38,7 +38,11 @@ export default function NewsList() {
         <div className="text-gray-500 dark:text-gray-400 italic">No articles yet.</div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {/* items-start keeps each card at its natural height instead of
+          stretching short cards to match tall ones. Combined with the
+          native-aspect-ratio cover image below, square / portrait /
+          banner covers all display full-size and cards size to fit. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-start">
         {articles.map(a => (
           <Link
             key={a.id}
@@ -48,14 +52,15 @@ export default function NewsList() {
                        hover:border-nw-teal hover:shadow-md transition-all"
           >
             {a.hero_image_url ? (
-              // Card preserves a 16:9 box so the grid stays uniform, but
-              // uses object-contain so non-banner covers (square, portrait)
-              // display fully on a soft background instead of being cropped.
-              <div className="aspect-[16/9] bg-gray-100 dark:bg-gray-900 overflow-hidden flex items-center justify-center">
+              // Cover renders at its native aspect ratio, full card width.
+              // Square images make taller cards; banner images stay short.
+              // overflow-hidden + group-hover scale on the img keeps the
+              // existing zoom-on-hover effect.
+              <div className="bg-gray-100 dark:bg-gray-900 overflow-hidden">
                 <img
                   src={a.hero_image_url}
                   alt=""
-                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                  className="block w-full h-auto group-hover:scale-105 transition-transform duration-300"
                   onError={(e) => { e.currentTarget.style.display = 'none' }}
                 />
               </div>
