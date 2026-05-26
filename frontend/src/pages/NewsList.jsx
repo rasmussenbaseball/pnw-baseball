@@ -48,11 +48,14 @@ export default function NewsList() {
                        hover:border-nw-teal hover:shadow-md transition-all"
           >
             {a.hero_image_url ? (
-              <div className="aspect-[16/9] bg-gray-100 dark:bg-gray-900 overflow-hidden">
+              // Card preserves a 16:9 box so the grid stays uniform, but
+              // uses object-contain so non-banner covers (square, portrait)
+              // display fully on a soft background instead of being cropped.
+              <div className="aspect-[16/9] bg-gray-100 dark:bg-gray-900 overflow-hidden flex items-center justify-center">
                 <img
                   src={a.hero_image_url}
                   alt=""
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                   onError={(e) => { e.currentTarget.style.display = 'none' }}
                 />
               </div>

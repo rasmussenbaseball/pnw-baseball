@@ -441,12 +441,17 @@ export default function ArticleEditor() {
 
 
 // ── Cover image area at the top of the page ────────────────────
+// We don't force an aspect ratio on the actual image. The cover is
+// shown at its native aspect ratio (centered, with a soft gray
+// background for any letterbox space) so square / portrait /
+// banner-style covers all render without being aggressively cropped.
+// A max-height keeps very tall portraits from dominating the page.
 function CoverArea({ hero, uploading, onUploadClick, onClear, disabled }) {
   if (hero) {
     return (
-      <div className="relative group">
+      <div className="relative group bg-gray-100 dark:bg-gray-900/60 flex items-center justify-center">
         <img src={hero} alt="cover"
-             className="w-full aspect-[16/9] object-cover bg-gray-100"
+             className="max-w-full max-h-[640px] w-auto h-auto object-contain"
              onError={(e) => { e.currentTarget.style.display = 'none' }} />
         {!disabled && (
           <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -493,7 +498,7 @@ function CoverArea({ hero, uploading, onUploadClick, onClear, disabled }) {
           {uploading ? 'Uploading…' : 'Add cover image'}
         </div>
         <div className="text-[10px] text-gray-400 mt-1">
-          Shown on the /news card and at the top of the article
+          Square, banner, or any aspect ratio — shown full at the top of the article
         </div>
       </div>
     </button>

@@ -55,11 +55,15 @@ export default function NewsArticle() {
       <Link to="/news" className="text-sm text-nw-teal hover:underline">← All articles</Link>
 
       {data.hero_image_url && (
-        <div className="mt-4 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 aspect-[16/9]">
+        // Cover renders at its native aspect ratio (centered, with a
+        // soft gray panel behind for any letterbox space). Lets square,
+        // banner, and portrait covers all display without being cropped.
+        // max-h cap prevents very tall portraits from dominating the page.
+        <div className="mt-4 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
           <img
             src={data.hero_image_url}
             alt=""
-            className="w-full h-full object-cover"
+            className="max-w-full max-h-[640px] w-auto h-auto object-contain"
             onError={(e) => { e.currentTarget.parentElement.style.display = 'none' }}
           />
         </div>
