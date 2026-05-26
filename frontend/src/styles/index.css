@@ -783,3 +783,114 @@ html.dark tr:hover td.sticky-col {
 .gm-pixel-shell .font-pixel-display.text-\[10px\] { font-size: 10px !important; }
 .gm-pixel-shell .font-pixel-display.text-\[11px\] { font-size: 11px !important; }
 .gm-pixel-shell .font-pixel-display.text-xs       { font-size: 11px !important; }
+
+
+/* ── Article body typography ──────────────────────────────────────
+   ReactMarkdown emits real <p>/<h>/<ul> tags inside .markdown
+   wrappers. The "prose" class names from Tailwind Typography
+   *would* style these, but we don't ship that plugin — so we
+   spell out the margins explicitly here. Without this rule,
+   consecutive paragraphs render with no gap between them.
+
+   Targets: ArticleEditor preview pane, NewsArticle body, and
+   anywhere else we wrap react-markdown output in .markdown.
+   Dark mode is inherited from the parent text color. */
+.markdown p {
+  margin-top: 0;
+  margin-bottom: 1.1em;
+  line-height: 1.7;
+}
+.markdown p:last-child { margin-bottom: 0; }
+
+.markdown h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
+  line-height: 1.25;
+}
+.markdown h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+.markdown h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 1.4em;
+  margin-bottom: 0.4em;
+}
+.markdown h1:first-child,
+.markdown h2:first-child,
+.markdown h3:first-child { margin-top: 0; }
+
+.markdown ul, .markdown ol {
+  margin-top: 0;
+  margin-bottom: 1.1em;
+  padding-left: 1.4em;
+}
+.markdown ul { list-style: disc; }
+.markdown ol { list-style: decimal; }
+.markdown li { margin-bottom: 0.35em; }
+.markdown li > p { margin-bottom: 0.35em; }
+
+.markdown blockquote {
+  margin: 1.1em 0;
+  padding-left: 1em;
+  border-left: 3px solid #e5e7eb;
+  color: #4b5563;
+  font-style: italic;
+}
+html.dark .markdown blockquote {
+  border-left-color: #4b5563;
+  color: #9ca3af;
+}
+
+.markdown a {
+  color: #00687a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown a:hover { color: #008a9e; }
+html.dark .markdown a { color: #5eead4; }
+html.dark .markdown a:hover { color: #99f6e4; }
+
+.markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1.2em auto;
+}
+
+.markdown code {
+  background: #f3f4f6;
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.92em;
+}
+html.dark .markdown code {
+  background: #1f2937;
+}
+.markdown pre {
+  background: #f3f4f6;
+  padding: 0.9em 1em;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1.2em 0;
+}
+html.dark .markdown pre {
+  background: #1f2937;
+}
+.markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.6em 0;
+}
+html.dark .markdown hr { border-top-color: #374151; }
