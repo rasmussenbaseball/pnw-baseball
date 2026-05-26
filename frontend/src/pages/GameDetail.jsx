@@ -28,7 +28,7 @@ function LineScore({ game }) {
             {Array.from({ length: maxInnings }, (_, i) => (
               <th key={i} className="text-center px-1.5 py-1.5 font-semibold w-7">{i + 1}</th>
             ))}
-            <th className="text-center px-2 py-1.5 font-bold w-8 border-l border-gray-200">R</th>
+            <th className="text-center px-2 py-1.5 font-bold w-8 border-l border-gray-200 dark:border-gray-700">R</th>
             <th className="text-center px-2 py-1.5 font-semibold w-8">H</th>
             <th className="text-center px-2 py-1.5 font-semibold w-8">E</th>
           </tr>
@@ -42,7 +42,7 @@ function LineScore({ game }) {
                   <img src={game.away_logo} alt="" className="w-4 h-4 object-contain"
                     onError={(e) => { e.target.style.display = 'none' }} />
                 )}
-                <span className="text-gray-800 truncate">
+                <span className="text-gray-800 dark:text-gray-200 truncate">
                   {game.away_short || game.away_team_name || 'Away'}
                 </span>
               </div>
@@ -52,7 +52,7 @@ function LineScore({ game }) {
                 {awayLine[i] != null ? awayLine[i] : (i < awayLine.length ? 'x' : '-')}
               </td>
             ))}
-            <td className="text-center px-2 py-2 font-bold font-mono border-l border-gray-200">
+            <td className="text-center px-2 py-2 font-bold font-mono border-l border-gray-200 dark:border-gray-700">
               {game.away_score}
             </td>
             <td className="text-center px-2 py-2 font-mono text-gray-600">{game.away_hits ?? '-'}</td>
@@ -66,7 +66,7 @@ function LineScore({ game }) {
                   <img src={game.home_logo} alt="" className="w-4 h-4 object-contain"
                     onError={(e) => { e.target.style.display = 'none' }} />
                 )}
-                <span className="text-gray-800 truncate">
+                <span className="text-gray-800 dark:text-gray-200 truncate">
                   {game.home_short || game.home_team_name || 'Home'}
                 </span>
               </div>
@@ -76,7 +76,7 @@ function LineScore({ game }) {
                 {homeLine[i] != null ? homeLine[i] : (i < homeLine.length ? 'x' : '-')}
               </td>
             ))}
-            <td className="text-center px-2 py-2 font-bold font-mono border-l border-gray-200">
+            <td className="text-center px-2 py-2 font-bold font-mono border-l border-gray-200 dark:border-gray-700">
               {game.home_score}
             </td>
             <td className="text-center px-2 py-2 font-mono text-gray-600">{game.home_hits ?? '-'}</td>
@@ -92,18 +92,18 @@ function BattingTable({ players, teamName, teamLogo }) {
   if (!players || players.length === 0) return null
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
         {teamLogo && (
           <img src={teamLogo} alt="" className="w-4 h-4 object-contain"
             onError={(e) => { e.target.style.display = 'none' }} />
         )}
-        <h3 className="text-sm font-bold text-gray-800">{teamName} - Batting</h3>
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">{teamName} - Batting</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] text-gray-500 uppercase tracking-wider bg-gray-50">
+            <tr className="text-[10px] text-gray-500 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/40">
               <th className="text-left pl-3 pr-1 py-1.5 font-semibold">Player</th>
               <th className="text-center px-1 py-1.5 font-semibold w-8">Pos</th>
               <th className="text-center px-1 py-1.5 font-semibold w-7">AB</th>
@@ -118,14 +118,14 @@ function BattingTable({ players, teamName, teamLogo }) {
           </thead>
           <tbody>
             {players.map((p, i) => (
-              <tr key={i} className="border-t border-gray-50 hover:bg-gray-50/50">
+              <tr key={i} className="border-t border-gray-50 hover:bg-gray-50 dark:bg-gray-900/40/50">
                 <td className="pl-3 pr-1 py-1.5">
                   {p.player_id ? (
                     <Link to={`/player/${p.player_id}`} className="text-nw-teal hover:underline font-medium">
                       {p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.player_name}
                     </Link>
                   ) : (
-                    <span className="text-gray-700">{p.player_name}</span>
+                    <span className="text-gray-700 dark:text-gray-300">{p.player_name}</span>
                   )}
                 </td>
                 <td className="text-center px-1 py-1.5 text-gray-400 text-[10px]">{p.position || '-'}</td>
@@ -150,18 +150,18 @@ function PitchingTable({ players, teamName, teamLogo }) {
   if (!players || players.length === 0) return null
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
         {teamLogo && (
           <img src={teamLogo} alt="" className="w-4 h-4 object-contain"
             onError={(e) => { e.target.style.display = 'none' }} />
         )}
-        <h3 className="text-sm font-bold text-gray-800">{teamName} - Pitching</h3>
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">{teamName} - Pitching</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] text-gray-500 uppercase tracking-wider bg-gray-50">
+            <tr className="text-[10px] text-gray-500 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/40">
               <th className="text-left pl-3 pr-1 py-1.5 font-semibold">Pitcher</th>
               <th className="text-center px-1 py-1.5 font-semibold w-8">Dec</th>
               <th className="text-center px-1 py-1.5 font-semibold w-10">IP</th>
@@ -178,7 +178,7 @@ function PitchingTable({ players, teamName, teamLogo }) {
           </thead>
           <tbody>
             {players.map((p, i) => (
-              <tr key={i} className={`border-t border-gray-50 hover:bg-gray-50/50 ${
+              <tr key={i} className={`border-t border-gray-50 hover:bg-gray-50 dark:bg-gray-900/40/50 ${
                 p.is_quality_start ? 'bg-green-50/30' : ''
               }`}>
                 <td className="pl-3 pr-1 py-1.5">
@@ -187,7 +187,7 @@ function PitchingTable({ players, teamName, teamLogo }) {
                       {p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.player_name}
                     </Link>
                   ) : (
-                    <span className="text-gray-700">{p.player_name}</span>
+                    <span className="text-gray-700 dark:text-gray-300">{p.player_name}</span>
                   )}
                 </td>
                 <td className="text-center px-1 py-1.5">
@@ -196,7 +196,7 @@ function PitchingTable({ players, teamName, teamLogo }) {
                       p.decision === 'W' ? 'bg-green-100 text-green-700' :
                       p.decision === 'L' ? 'bg-red-100 text-red-700' :
                       p.decision === 'S' ? 'bg-blue-100 text-blue-700' :
-                      'bg-gray-100 text-gray-600'
+                      'bg-gray-100 dark:bg-gray-700 text-gray-600'
                     }`}>
                       {p.decision}
                     </span>
@@ -258,7 +258,7 @@ export default function GameDetail() {
       </Link>
 
       {/* Game header */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-4">
         <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">
           {formatDate(game.game_date)}
           {game.is_conference_game && (
@@ -280,18 +280,18 @@ export default function GameDetail() {
               <img src={game.away_logo} alt="" className="w-12 h-12 object-contain mx-auto mb-1"
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <div className="text-sm font-bold text-gray-800">{awayName}</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-200">{awayName}</div>
             {game.away_division && (
               <div className="text-[10px] text-gray-400">{game.away_division}</div>
             )}
           </div>
 
           <div className="flex items-baseline gap-3">
-            <span className={`text-4xl font-bold font-mono ${awayWon ? 'text-gray-900' : 'text-gray-400'}`}>
+            <span className={`text-4xl font-bold font-mono ${awayWon ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400'}`}>
               {game.away_score}
             </span>
             <span className="text-lg text-gray-300">-</span>
-            <span className={`text-4xl font-bold font-mono ${homeWon ? 'text-gray-900' : 'text-gray-400'}`}>
+            <span className={`text-4xl font-bold font-mono ${homeWon ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400'}`}>
               {game.home_score}
             </span>
           </div>
@@ -301,7 +301,7 @@ export default function GameDetail() {
               <img src={game.home_logo} alt="" className="w-12 h-12 object-contain mx-auto mb-1"
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <div className="text-sm font-bold text-gray-800">{homeName}</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-200">{homeName}</div>
             {game.home_division && (
               <div className="text-[10px] text-gray-400">{game.home_division}</div>
             )}
@@ -311,7 +311,7 @@ export default function GameDetail() {
 
       {/* Line score */}
       {(game.home_line_score || game.away_line_score) && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
           <LineScore game={game} />
         </div>
       )}

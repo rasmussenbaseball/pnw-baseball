@@ -79,7 +79,7 @@ export default function TeamDetail() {
       <Link to="/teams" className="text-sm text-pnw-teal hover:underline mb-3 inline-block">&larr; All Teams</Link>
 
       {/* Team header */}
-      <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-5 mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 sm:p-5 mb-4">
         <div className="flex items-center gap-2 sm:gap-3 mb-2">
           {team.logo_url && (
             <img
@@ -102,13 +102,13 @@ export default function TeamDetail() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 rounded-lg p-1">
+      <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
         <button
           onClick={() => setActiveTab('season')}
           className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
             activeTab === 'season'
-              ? 'bg-white text-pnw-slate shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
           }`}
         >
           {season} Season
@@ -117,8 +117,8 @@ export default function TeamDetail() {
           onClick={() => setActiveTab('history')}
           className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
             activeTab === 'history'
-              ? 'bg-white text-pnw-slate shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
+              ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
           }`}
         >
           Program History
@@ -129,7 +129,7 @@ export default function TeamDetail() {
       {activeTab === 'season' && (
         <div>
           {/* Summary row */}
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
             <div className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-3">{season} Season</div>
             <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm">
               <SummaryCell label="Batters" value={batting.length} />
@@ -149,7 +149,7 @@ export default function TeamDetail() {
 
           {/* Upcoming Games */}
           {futureData?.games?.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
               <h2 className="text-base sm:text-lg font-bold text-pnw-slate mb-3">Upcoming Games</h2>
               <div className="space-y-2">
                 {futureData.games.map((g, i) => {
@@ -168,7 +168,7 @@ export default function TeamDetail() {
                         <img src={oppLogo} alt="" className="w-5 h-5 object-contain shrink-0"
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
-                      <span className="text-sm font-semibold text-gray-800">{oppName}</span>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{oppName}</span>
                       {g.is_postseason ? (
                         <span className="text-[9px] font-bold text-white bg-rose-600 px-1.5 py-0.5 rounded">PLAYOFFS</span>
                       ) : g.is_conference ? (
@@ -250,7 +250,7 @@ function ChampionshipBanner({ teamId }) {
   if (!titles.length) return null
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
       <h2 className="text-lg font-bold text-pnw-slate mb-3">Conference Championships</h2>
       <div className="flex flex-wrap gap-2">
         {titles.map((t, i) => (
@@ -293,7 +293,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
   return (
     <div>
       {/* All-Time Summary */}
-      <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
         <h2 className="text-lg font-bold text-pnw-slate mb-1">Program Overview</h2>
         <div className="text-xs text-gray-400 mb-4">
           {numSeasons} season{numSeasons !== 1 ? 's' : ''} tracked
@@ -333,7 +333,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
       <ChampionshipBanner teamId={teamId} />
 
       {/* Year-by-Year Records */}
-      <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
         <h2 className="text-lg font-bold text-pnw-slate mb-4">Year-by-Year</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -361,7 +361,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
                 const winPct = w + l > 0 ? (w / (w + l)).toFixed(3) : '-'
                 const diff = s.run_differential || 0
                 return (
-                  <tr key={s.season} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={s.season} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:bg-gray-900/40">
                     <td className="py-2 px-2 font-semibold text-pnw-slate">{s.season}</td>
                     <td className="text-center py-2 px-2">
                       {w}-{l}{s.ties ? `-${s.ties}` : ''}
@@ -406,7 +406,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
       </div>
 
       {/* Season Stat Leaders */}
-      <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
         <h2 className="text-lg font-bold text-pnw-slate mb-4">Season Award Leaders</h2>
         {seasons.map((s) => {
           const leaders = season_leaders[String(s.season)]
@@ -439,7 +439,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
                           <Link
                             key={cat}
                             to={`/player/${l.player_id}`}
-                            className="text-xs hover:bg-gray-50 rounded px-1"
+                            className="text-xs hover:bg-gray-50 dark:bg-gray-900/40 rounded px-1"
                           >
                             <span className="text-gray-500">{cat}:</span>{' '}
                             <span className="font-semibold text-pnw-slate">{val}</span>{' '}
@@ -464,7 +464,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
                           <Link
                             key={cat}
                             to={`/player/${l.player_id}`}
-                            className="text-xs hover:bg-gray-50 rounded px-1"
+                            className="text-xs hover:bg-gray-50 dark:bg-gray-900/40 rounded px-1"
                           >
                             <span className="text-gray-500">{cat}:</span>{' '}
                             <span className="font-semibold text-pnw-slate">{val}</span>{' '}
@@ -482,19 +482,19 @@ function TeamHistoryTab({ history, loading, teamId }) {
       </div>
 
       {/* All-Time Career Leaders */}
-      <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-bold text-pnw-slate">All-Time Career Leaders</h2>
             <p className="text-xs text-gray-400 mt-0.5">Stats tracked since 2022 season</p>
           </div>
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
             <button
               onClick={() => setLeaderCategory('batting')}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 leaderCategory === 'batting'
-                  ? 'bg-white text-pnw-slate shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
               }`}
             >
               Batting
@@ -503,8 +503,8 @@ function TeamHistoryTab({ history, loading, teamId }) {
               onClick={() => setLeaderCategory('pitching')}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 leaderCategory === 'pitching'
-                  ? 'bg-white text-pnw-slate shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
               }`}
             >
               Pitching
@@ -521,19 +521,19 @@ function TeamHistoryTab({ history, loading, teamId }) {
       </div>
 
       {/* Single-Season Records */}
-      <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-bold text-pnw-slate">Single-Season Records</h2>
             <p className="text-xs text-gray-400 mt-0.5">Top 5 single-season performances · min 50 PA / 20 IP</p>
           </div>
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
             <button
               onClick={() => setLeaderCategory('batting')}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 leaderCategory === 'batting'
-                  ? 'bg-white text-pnw-slate shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
               }`}
             >
               Batting
@@ -542,8 +542,8 @@ function TeamHistoryTab({ history, loading, teamId }) {
               onClick={() => setLeaderCategory('pitching')}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 leaderCategory === 'pitching'
-                  ? 'bg-white text-pnw-slate shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
               }`}
             >
               Pitching
@@ -587,7 +587,7 @@ function SingleSeasonRecords({ leaders, type }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {categories.map((cat) => (
-        <div key={cat} className="bg-gray-50 rounded-lg p-3">
+        <div key={cat} className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{cat}</div>
           <div className="space-y-1">
             {leaders[cat].slice(0, 5).map((player, i) => (
@@ -632,7 +632,7 @@ function CareerLeaderboards({ leaders, type }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {categories.map((cat) => (
-        <div key={cat} className="bg-gray-50 rounded-lg p-3">
+        <div key={cat} className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{cat}</div>
           <div className="space-y-1">
             {leaders[cat].slice(0, 5).map((player, i) => {
@@ -695,12 +695,12 @@ function RankingsCard({ rankings }) {
   const totalTeams = Math.max(pear?.total_teams || 0, cbr?.total_teams || 0)
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-5 mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
       <h2 className="text-lg font-bold text-pnw-slate mb-4">Rankings</h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         {/* National Rank */}
-        <div className="bg-gray-50 rounded-lg p-4 text-center">
+        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 text-center">
           <div className="text-3xl font-bold text-pnw-slate">
             #{Math.round(comp.composite_rank)}
           </div>
@@ -725,7 +725,7 @@ function RankingsCard({ rankings }) {
         </div>
 
         {/* Conference Rank */}
-        <div className="bg-gray-50 rounded-lg p-4 text-center">
+        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 text-center">
           <div className="text-3xl font-bold text-pnw-slate">
             {rankings.conference_rank ? `#${rankings.conference_rank}` : '-'}
           </div>
@@ -761,7 +761,7 @@ function RankingsCard({ rankings }) {
         </div>
 
         {/* Strength of Schedule */}
-        <div className="bg-gray-50 rounded-lg p-4 text-center">
+        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 text-center">
           <div className="text-3xl font-bold text-pnw-slate">
             {comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
           </div>
