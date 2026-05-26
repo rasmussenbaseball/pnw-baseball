@@ -15,6 +15,32 @@ html.dark body {
   @apply bg-gray-900 text-gray-100;
 }
 
+/* Form inputs that don't explicitly opt-in to dark variants on their
+   own className. Common pattern: places that use raw <input> with
+   minimal styling get a dark background + readable text instead of
+   defaulting to white (which would be a glaring rectangle on a dark
+   page background). Components that DO have their own dark: classes
+   override these via higher CSS specificity. */
+html.dark input:not([type='checkbox']):not([type='radio']):not([type='range']):not([class*='dark:']),
+html.dark textarea:not([class*='dark:']),
+html.dark select:not([class*='dark:']) {
+  background-color: #1f2937;            /* gray-800 */
+  color: #f3f4f6;                       /* gray-100 */
+  border-color: #4b5563;                /* gray-600 */
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #6b7280;                       /* gray-500 */
+}
+
+/* Scrollbar — dark theme defaults look funky on Chromium-on-Mac
+   because the default scrollbar track is white. Themed scrollbar
+   for the dark surface. */
+html.dark ::-webkit-scrollbar { width: 12px; height: 12px; }
+html.dark ::-webkit-scrollbar-track { background: #111827; }
+html.dark ::-webkit-scrollbar-thumb { background: #374151; border-radius: 6px; border: 2px solid #111827; }
+html.dark ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
 /* Stat table styles */
 .stat-table {
   @apply w-full text-xs sm:text-sm border-collapse;

@@ -105,19 +105,38 @@ function GmChunkLoading() {
 }
 
 function RequireGmEarlyAccess({ children }) {
+  // GM access tiers:
+  //   1. Beta allowlist (GM_EARLY_ACCESS_EMAILS) — current testers
+  //      stay grandfathered in regardless of subscription.
+  //   2. Premium/Coach subscribers — auto-admitted once tier gating
+  //      is enabled. Until then, useTier returns 'coach' in soft mode
+  //      so the gate is inert for any signed-in user via this branch.
+  // This means: today, anyone signed in can reach /gm/* (soft mode
+  // bypasses the tier check). When VITE_TIER_GATING_ENABLED=true,
+  // only allowlisted testers + premium subscribers will get in.
   const { user, loading } = useAuth()
-  if (loading) return null
+  const { tier, loading: tierLoading } = useTier()
+  if (loading || tierLoading) return null
   if (!user) return <Navigate to="/login" replace />
-  if (!GM_EARLY_ACCESS_EMAILS.includes(user.email)) {
+
+  const onAllowlist = GM_EARLY_ACCESS_EMAILS.includes(user.email)
+  const hasPaidTier = tier === 'premium' || tier === 'coach'
+
+  if (!onAllowlist && !hasPaidTier) {
     return (
       <div className="max-w-xl mx-auto py-16 text-center">
-        <h1 className="text-3xl font-bold text-pnw-slate mb-4">NW Coaching Simulator</h1>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
-          <p className="text-sm text-amber-900 mb-2">🔒 <strong>Private Alpha</strong></p>
-          <p className="text-sm text-gray-700">
-            NW Coaching Simulator is currently in private development. Access is restricted to the lead developer.
-            Public release coming soon.
+        <h1 className="text-3xl font-bold text-pnw-slate dark:text-gray-100 mb-4">NW Coaching Simulator</h1>
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
+          <p className="text-sm text-amber-900 dark:text-amber-200 mb-2">🔒 <strong>Premium feature</strong></p>
+          <p className="text-sm text-gray-700 dark:text-gray-300">
+            The NW Coaching Simulator is included with any Premium or Coach &amp; Scout subscription.
+            Upgrade to start running your own dynasty.
           </p>
+          <Link to="/pricing"
+                className="mt-4 inline-block px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                           bg-nw-teal hover:bg-nw-teal-dark text-white transition-colors">
+            See plans →
+          </Link>
         </div>
         <a href="/" className="mt-6 inline-block text-sm text-pnw-green hover:underline">← Back to NW Baseball Stats</a>
       </div>
@@ -194,6 +213,7 @@ import Unsubscribe from './pages/Unsubscribe'
 import Account from './pages/Account'
 import Pricing from './pages/Pricing'
 import RequireTier from './components/RequireTier'
+import { useTier } from './hooks/useTier'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'

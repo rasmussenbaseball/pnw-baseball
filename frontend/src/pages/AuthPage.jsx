@@ -54,36 +54,37 @@ export default function AuthPage() {
 
   return (
     <div className="max-w-md mx-auto mt-12">
-      <div className="bg-white rounded-xl shadow-sm border p-8">
-        <h1 className="text-2xl font-bold text-pnw-slate mb-1 text-center">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+        <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-1 text-center">
           {mode === 'login' ? 'Log In' : 'Create Account'}
         </h1>
-        <p className="text-sm text-gray-400 text-center mb-6">
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center mb-6">
           {mode === 'login'
             ? 'Sign in to follow teams and players.'
             : 'Sign up to unlock favorites and more.'}
         </p>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
             {error}
           </div>
         )}
 
         {message && (
-          <div className="mb-4 p-3 rounded-lg bg-teal-50 border border-teal-200 text-teal-700 text-sm">
+          <div className="mb-4 p-3 rounded-lg bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-sm">
             {message}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600
+                         bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-nw-teal/30 focus:border-nw-teal"
               placeholder="you@example.com"
               autoComplete="email"
@@ -91,12 +92,13 @@ export default function AuthPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Password</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600
+                         bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-nw-teal/30 focus:border-nw-teal"
               placeholder={mode === 'signup' ? 'At least 6 characters' : ''}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -105,12 +107,13 @@ export default function AuthPage() {
 
           {mode === 'signup' && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Confirm Password</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Confirm Password</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600
+                           bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
                            focus:outline-none focus:ring-2 focus:ring-nw-teal/30 focus:border-nw-teal"
                 autoComplete="new-password"
               />
@@ -131,7 +134,7 @@ export default function AuthPage() {
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-500">
+        <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
           {mode === 'login' ? (
             <>
               Don't have an account?{' '}

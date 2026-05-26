@@ -50,21 +50,21 @@ export default function FeatureRequest() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">Request a Feature</h1>
-      <p className="text-sm text-gray-500 mb-6">
+      <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-2">Request a Feature</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         NW Baseball Stats is a work in progress and your feedback shapes what gets built next.
         Have an idea for a new feature, found a bug, or notice a data issue? Let us know below.
       </p>
 
       {submitted ? (
-        <div className="bg-white rounded-xl shadow-sm border border-green-200 p-6 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-green-200 dark:border-green-800 p-6 text-center">
           <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-pnw-slate mb-1">Thanks for the feedback!</h2>
-          <p className="text-sm text-gray-500 mb-4">
+          <h2 className="text-lg font-bold text-pnw-slate dark:text-gray-100 mb-1">Thanks for the feedback!</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Your submission has been received. We review every request.
           </p>
           <button
@@ -75,10 +75,10 @@ export default function FeatureRequest() {
           </button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
           {/* Category selector */}
           <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
               What type of feedback?
             </label>
             <div className="flex flex-wrap gap-2">
@@ -90,7 +90,7 @@ export default function FeatureRequest() {
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     category === cat.value
                       ? 'bg-pnw-green text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                   }`}
                 >
                   {cat.label}
@@ -101,7 +101,7 @@ export default function FeatureRequest() {
 
           {/* Message */}
           <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
               Your message
             </label>
             <textarea
@@ -115,23 +115,23 @@ export default function FeatureRequest() {
               }
               rows={5}
               maxLength={2000}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pnw-green/30 focus:border-pnw-green resize-y"
+              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pnw-green/30 focus:border-pnw-green resize-y"
               required
             />
-            <div className="text-right text-[10px] text-gray-400 mt-1">
+            <div className="text-right text-[10px] text-gray-400 dark:text-gray-500 mt-1">
               {message.length}/2000
             </div>
           </div>
 
           {/* Logged-in email note */}
           {user?.email && (
-            <p className="text-xs text-gray-400 mb-4">
-              Submitting as <span className="font-medium text-gray-600">{user.email}</span>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+              Submitting as <span className="font-medium text-gray-600 dark:text-gray-300">{user.email}</span>
             </p>
           )}
 
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-4">
+            <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-300 rounded-lg px-3 py-2 mb-4">
               {error}
             </div>
           )}
@@ -147,9 +147,9 @@ export default function FeatureRequest() {
       )}
 
       {/* Social links */}
-      <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h3 className="text-sm font-bold text-pnw-slate mb-2">Other ways to reach us</h3>
-        <p className="text-xs text-gray-500 mb-3">
+      <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+        <h3 className="text-sm font-bold text-pnw-slate dark:text-gray-100 dark:text-gray-100 mb-2">Other ways to reach us</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Want to chat directly or follow along with development?
         </p>
         <div className="flex gap-3">
@@ -157,7 +157,7 @@ export default function FeatureRequest() {
             href="https://x.com/NWBBStats"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-pnw-green hover:bg-pnw-sky/10 transition-colors text-sm text-gray-700"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-pnw-green hover:bg-pnw-sky/10 transition-colors text-sm text-gray-700 dark:text-gray-300"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             @NWBBStats
@@ -166,7 +166,7 @@ export default function FeatureRequest() {
             href="https://instagram.com/nwbbstats"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-pnw-green hover:bg-pnw-sky/10 transition-colors text-sm text-gray-700"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-pnw-green hover:bg-pnw-sky/10 transition-colors text-sm text-gray-700 dark:text-gray-300"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
             @nwbbstats

@@ -263,6 +263,9 @@ export default function Pricing() {
         ))}
       </div>
 
+      {/* ── Feature highlights showcase ── */}
+      <FeatureHighlights />
+
       {/* ── Full comparison table ── */}
       <div className="mb-12">
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2 px-1">
@@ -548,6 +551,122 @@ function ComparisonTable({ currentTier }) {
     </div>
   )
 }
+
+// ─── Feature highlights showcase ───────────────────────────────
+//
+// More selling than the comparison table — pull out the marquee
+// features for Premium and Coach with paragraph descriptions. Sits
+// between the tier cards and the full comparison table for shoppers
+// who don't want to read a whole grid of checkmarks.
+
+function FeatureHighlights() {
+  const premiumFeatures = [
+    {
+      icon: '📰',
+      title: 'Every paywalled article',
+      desc: 'Long-form analysis, weekly recaps, recruiting profiles, and breakdowns that don\'t appear on social media.',
+    },
+    {
+      icon: '🎯',
+      title: 'Recruiting tools',
+      desc: 'Class rankings, hometown / geo search, commitments tracker, and an aggregated draft board for every PNW conference.',
+    },
+    {
+      icon: '🏟️',
+      title: 'Park factors & advanced research',
+      desc: 'Park-adjusted hitting numbers, historic matchups, and a database of every PNW college baseball season since the data started flowing.',
+    },
+    {
+      icon: '🎮',
+      title: 'NAIA-style coaching simulator',
+      desc: 'Build a dynasty as the head coach of an NAIA program — recruit, set lineups, coach against a sim of the actual PNW season.',
+    },
+  ]
+
+  const coachFeatures = [
+    {
+      icon: '📋',
+      title: 'Printable scouting sheets',
+      desc: 'Full hitter + pitcher rosters with conference percentiles, ready to print and bring to the dugout. Bullpen sheet, catcher cards, single-page player cards.',
+    },
+    {
+      icon: '🔍',
+      title: 'Advanced player & team scouting',
+      desc: 'Pitch-level data, batted-ball type, spray charts, situational splits, leverage index. The same stuff MLB front offices look at, applied to PNW college baseball.',
+    },
+    {
+      icon: '🎓',
+      title: 'JUCO transfer tracker',
+      desc: 'Every uncommitted NWAC player with stats, position, hand, and percentiles. Filter by class year, sort by WAR. The recruiting tool we built for ourselves.',
+    },
+    {
+      icon: '🛠️',
+      title: 'Custom tools on request',
+      desc: 'Coach & Scout subscribers get to ask for the report or sheet you actually need. We build it. TrackMan integration coming soon.',
+    },
+  ]
+
+  return (
+    <div className="mb-12">
+      {/* Premium feature highlights */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-3">
+          <Badge color="gold">Premium · $5/mo</Badge>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">
+            What you unlock with Premium
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {premiumFeatures.map((f, i) => (
+            <FeatureCard key={i} {...f} accent="amber" />
+          ))}
+        </div>
+      </div>
+
+      {/* Coach & Scout feature highlights */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full
+                           bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300">
+            Coach & Scout · $25/mo
+          </span>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">
+            For programs &amp; pro scouts
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {coachFeatures.map((f, i) => (
+            <FeatureCard key={i} {...f} accent="indigo" />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FeatureCard({ icon, title, desc, accent }) {
+  // Accent colors picked so the card chrome reads as "this is part
+  // of the highlighted tier" without overpowering the description.
+  const accentBg = accent === 'indigo'
+    ? 'bg-indigo-50/40 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/60'
+    : 'bg-amber-50/40 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/60'
+  return (
+    <div className={`rounded-2xl border ${accentBg} p-4 sm:p-5`}>
+      <div className="flex items-start gap-3">
+        <div className="text-2xl shrink-0 leading-none">{icon}</div>
+        <div className="min-w-0">
+          <h3 className="text-sm sm:text-base font-extrabold text-gray-900 dark:text-gray-100 leading-tight">
+            {title}
+          </h3>
+          <p className="text-[13px] sm:text-sm text-gray-700 dark:text-gray-300 leading-snug mt-1">
+            {desc}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 function Check({ value, title }) {
   if (value) {

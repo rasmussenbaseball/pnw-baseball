@@ -265,14 +265,14 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
   if (!available.length) return null
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col ${fillHeight ? 'h-full' : ''}`}>
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col ${fillHeight ? 'h-full' : ''}`}>
       {/* Header bar */}
       <div className="px-3 sm:px-5 pt-4 sm:pt-5 pb-2 sm:pb-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h3 className="text-base sm:text-lg font-bold text-gray-800">{title}</h3>
+          <h3 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-200">{title}</h3>
           {/* Season filter chips (passed in) — render inside the rectangle */}
           {seasonFilter}
-          <span className="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wide">
+          <span className="text-[10px] sm:text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">
             vs. {divisionLevel || 'Division'}
           </span>
         </div>
@@ -287,8 +287,8 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
               <span style={{ color: 'rgb(36,90,163)', fontSize: 8 }}>&#9650;</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="text-gray-400">AVERAGE</span>
-              <span className="text-gray-400" style={{ fontSize: 8 }}>&#9650;</span>
+              <span className="text-gray-400 dark:text-gray-500">AVERAGE</span>
+              <span className="text-gray-400 dark:text-gray-500" style={{ fontSize: 8 }}>&#9650;</span>
             </div>
             <div className="flex flex-col items-center">
               <span style={{ color: 'rgb(193,58,55)' }}>GREAT</span>
@@ -310,13 +310,13 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
             <div key={metric.key}>
               {/* Dashed separator */}
               {idx > 0 && (
-                <div className="border-t border-dashed border-gray-200 ml-16 sm:ml-[120px]" />
+                <div className="border-t border-dashed border-gray-200 dark:border-gray-700 ml-16 sm:ml-[120px]" />
               )}
 
               <div className="flex items-center h-8 sm:h-9">
                 {/* Stat label - right aligned */}
                 <div className="shrink-0 text-right pr-2 sm:pr-3 w-16 sm:w-[120px]">
-                  <span className="text-[11px] sm:text-[13px] font-medium text-gray-600">
+                  <span className="text-[11px] sm:text-[13px] font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">
                     {metric.label}
                   </span>
                 </div>
@@ -325,7 +325,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
                 <div className="flex-1 relative h-6 sm:h-7">
                   {/* Track background */}
                   <div
-                    className="absolute top-1/2 left-0 right-0 bg-gray-100 rounded"
+                    className="absolute top-1/2 left-0 right-0 bg-gray-100 dark:bg-gray-700 rounded"
                     style={{ height: 6, transform: 'translateY(-50%)' }}
                   />
 
@@ -363,7 +363,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
 
                 {/* Stat value - right side */}
                 <div className="shrink-0 text-right pl-1.5 sm:pl-2 w-11 sm:w-[52px]">
-                  <span className="text-[11px] sm:text-[13px] font-medium text-gray-700 tabular-nums">
+                  <span className="text-[11px] sm:text-[13px] font-medium text-gray-700 dark:text-gray-300 tabular-nums">
                     {formatStat(value, metric.format)}
                   </span>
                 </div>
@@ -375,7 +375,7 @@ function PercentileBars({ percentiles, metrics, title, divisionLevel, seasonFilt
 
       {/* Footer */}
       <div className="px-3 sm:px-5 pb-3 flex items-center justify-end">
-        <span className="text-[10px] text-gray-400 italic">
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">
           vs. {divisionLevel || 'division'}
         </span>
       </div>
@@ -397,7 +397,7 @@ function StatsTable({ rows, columns, careerRow }) {
             {columns.map((col, ci) => (
               <th
                 key={col.key}
-                className={`px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right first:text-left ${ci === 0 ? 'sticky-col sticky-col-last bg-white' : ''}`}
+                className={`px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right first:text-left ${ci === 0 ? 'sticky-col sticky-col-last bg-white dark:bg-gray-800' : ''}`}
                 style={ci === 0 ? { position: 'sticky', left: 0, zIndex: 10 } : undefined}
               >
                 {col.label}
@@ -407,11 +407,11 @@ function StatsTable({ rows, columns, careerRow }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+            <tr key={i} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:bg-gray-900/40">
               {columns.map((col, ci) => (
                 <td
                   key={col.key}
-                  className={`px-2 py-1.5 text-right first:text-left whitespace-nowrap ${ci === 0 ? 'sticky-col sticky-col-last bg-white' : ''}`}
+                  className={`px-2 py-1.5 text-right first:text-left whitespace-nowrap ${ci === 0 ? 'sticky-col sticky-col-last bg-white dark:bg-gray-800' : ''}`}
                   style={ci === 0 ? { position: 'sticky', left: 0, zIndex: 5 } : undefined}
                 >
                   {col.format ? formatStat(row[col.key], col.format) : (row[col.key] ?? '-')}
@@ -420,11 +420,11 @@ function StatsTable({ rows, columns, careerRow }) {
             </tr>
           ))}
           {careerRow && (
-            <tr className="border-t-2 border-nw-teal/30 font-semibold bg-gray-50">
+            <tr className="border-t-2 border-nw-teal/30 font-semibold bg-gray-50 dark:bg-gray-900/40">
               {columns.map((col, ci) => (
                 <td
                   key={col.key}
-                  className={`px-2 py-1.5 text-right first:text-left whitespace-nowrap ${ci === 0 ? 'sticky-col sticky-col-last bg-gray-50' : ''}`}
+                  className={`px-2 py-1.5 text-right first:text-left whitespace-nowrap ${ci === 0 ? 'sticky-col sticky-col-last bg-gray-50 dark:bg-gray-900/40' : ''}`}
                   style={ci === 0 ? { position: 'sticky', left: 0, zIndex: 5 } : undefined}
                 >
                   {col.format ? formatStat(careerRow[col.key], col.format) : (careerRow[col.key] ?? '')}
@@ -493,7 +493,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
   const Wrapper = embedded
     ? ({ children }) => <>{children}</>
     : ({ children }) => (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
           {children}
         </div>
       )
@@ -502,8 +502,8 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
     <Wrapper>
       {/* Season Awards */}
       {hasSeasonAwards && (
-        <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100' : ''}>
-          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100 dark:border-gray-700' : ''}>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
             Season Awards
           </h3>
           <div className="space-y-2">
@@ -512,7 +512,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
               return (
                 <div key={key} className="flex items-start gap-2">
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs font-bold text-pnw-slate bg-gray-100 px-2 py-1 rounded w-10 text-center">
+                    <span className="text-xs font-bold text-pnw-slate bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded w-10 text-center">
                       {String(group.season).slice(-2)}
                     </span>
                     <TeamLogo logo={group.team_logo} name={group.team_short} />
@@ -536,14 +536,14 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
               )
             })}
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">Team leader in category per season</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Team leader in category per season</p>
         </div>
       )}
 
       {/* PNW Rankings */}
       {hasPnwRankings && (
-        <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100' : ''}>
-          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100 dark:border-gray-700' : ''}>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
             PNW Rankings
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -555,7 +555,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
                     ? 'bg-teal-50 text-teal-800 border-teal-300'
                     : r.rank <= 3
                     ? 'bg-teal-50 text-teal-700 border-teal-200'
-                    : 'bg-gray-50 text-teal-700 border-teal-200'
+                    : 'bg-gray-50 dark:bg-gray-900/40 text-teal-700 border-teal-200'
                 }`}
               >
                 <img src="/favicon.png" alt="NW" className="w-4 h-4 object-contain shrink-0" />
@@ -567,14 +567,14 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">Top 10 across all PNW divisions (2026, qualified)</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Top 10 across all PNW divisions (2026, qualified)</p>
         </div>
       )}
 
       {/* Career Rankings */}
       {hasCareerRankings && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
             Career Rankings
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -585,10 +585,10 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
                   r.rank === 1
                     ? 'bg-amber-50 text-amber-800 border-amber-200'
                     : r.rank === 2
-                    ? 'bg-gray-50 text-gray-600 border-gray-300'
+                    ? 'bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-400 dark:text-gray-500 border-gray-300 dark:border-gray-600'
                     : r.rank === 3
                     ? 'bg-orange-50 text-orange-700 border-orange-200'
-                    : 'bg-gray-50 text-gray-600 border-gray-200'
+                    : 'bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700'
                 }`}
               >
                 <TeamLogo logo={r.team_logo} name={r.team_short} />
@@ -600,7 +600,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">All-time team career rankings (since 2022, min 50 PA / 20 IP)</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">All-time team career rankings (since 2022, min 50 PA / 20 IP)</p>
         </div>
       )}
     </Wrapper>
@@ -621,7 +621,7 @@ const POS_COLORS = {
 // proper rounded corners — no half-cut card visuals.
 function ScrollableCard({ children }) {
   return (
-    <div className="flex-1 min-h-0 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto p-5">
         {children}
       </div>
@@ -736,10 +736,10 @@ function RecentGames({ batting, pitching, limit = 6, className = '' }) {
 
   // Decision-style decoration for hitter games (W/L/T)
   function resultColor(g) {
-    if (g.team_score == null || g.opp_score == null) return 'text-gray-400'
+    if (g.team_score == null || g.opp_score == null) return 'text-gray-400 dark:text-gray-500'
     if (g.team_score > g.opp_score)  return 'text-green-600'
     if (g.team_score < g.opp_score)  return 'text-red-500'
-    return 'text-gray-400'
+    return 'text-gray-400 dark:text-gray-500'
   }
   function resultLetter(g) {
     if (g.team_score == null || g.opp_score == null) return ''
@@ -749,32 +749,32 @@ function RecentGames({ batting, pitching, limit = 6, className = '' }) {
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${className}`}>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 ${className}`}>
+      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
         Recent Games
       </h3>
       <div className="space-y-1.5">
         {bat.map((g, i) => (
           <div key={`b-${i}`} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 text-[11px] py-1 border-b border-gray-50 last:border-0">
-            <span className="text-gray-400 tabular-nums">{shortDate(g.game_date)}</span>
-            <span className="text-gray-700 truncate">
+            <span className="text-gray-400 dark:text-gray-500 tabular-nums">{shortDate(g.game_date)}</span>
+            <span className="text-gray-700 dark:text-gray-300 truncate">
               <span className={`font-bold ${resultColor(g)} mr-1`}>{resultLetter(g)}</span>
-              <span className="text-gray-500">{g.home_away}{g.opponent_short || '?'}</span>
-              <span className="text-gray-400 ml-1.5 text-[10px]">{g.team_score}-{g.opp_score}</span>
+              <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500">{g.home_away}{g.opponent_short || '?'}</span>
+              <span className="text-gray-400 dark:text-gray-500 ml-1.5 text-[10px]">{g.team_score}-{g.opp_score}</span>
             </span>
-            <span className="text-gray-700 tabular-nums text-right text-[11px]">{batLine(g)}</span>
+            <span className="text-gray-700 dark:text-gray-300 tabular-nums text-right text-[11px]">{batLine(g)}</span>
           </div>
         ))}
         {pit.map((g, i) => (
           <div key={`p-${i}`} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 text-[11px] py-1 border-b border-gray-50 last:border-0">
-            <span className="text-gray-400 tabular-nums">{shortDate(g.game_date)}</span>
-            <span className="text-gray-700 truncate">
-              <span className={`font-bold ${g.decision === 'W' ? 'text-green-600' : g.decision === 'L' ? 'text-red-500' : g.decision === 'S' ? 'text-blue-500' : 'text-gray-400'} mr-1`}>
+            <span className="text-gray-400 dark:text-gray-500 tabular-nums">{shortDate(g.game_date)}</span>
+            <span className="text-gray-700 dark:text-gray-300 truncate">
+              <span className={`font-bold ${g.decision === 'W' ? 'text-green-600' : g.decision === 'L' ? 'text-red-500' : g.decision === 'S' ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'} mr-1`}>
                 {g.decision || '·'}
               </span>
-              <span className="text-gray-500">{g.home_away}{g.opponent_short || '?'}</span>
+              <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500">{g.home_away}{g.opponent_short || '?'}</span>
             </span>
-            <span className="text-gray-700 tabular-nums text-right text-[11px]">{pitLine(g)}</span>
+            <span className="text-gray-700 dark:text-gray-300 tabular-nums text-right text-[11px]">{pitLine(g)}</span>
           </div>
         ))}
       </div>
@@ -817,15 +817,15 @@ function SeasonGlance({ bat, pit, season, className = '' }) {
   if (tiles.length === 0) return null
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${className}`}>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 flex flex-col ${className}`}>
+      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
         {season ? `${season} Season Glance` : 'Season Glance'}
       </h3>
       <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 flex-grow content-start">
         {tiles.map((t, i) => (
-          <div key={i} className="bg-gray-50 rounded border border-gray-100 px-2 py-2 text-center">
-            <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">{t.label}</div>
-            <div className="text-base font-bold text-gray-900 tabular-nums">{t.value}</div>
+          <div key={i} className="bg-gray-50 dark:bg-gray-900/40 rounded border border-gray-100 dark:border-gray-700 px-2 py-2 text-center">
+            <div className="text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400 dark:text-gray-500 font-semibold">{t.label}</div>
+            <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums">{t.value}</div>
           </div>
         ))}
       </div>
@@ -843,12 +843,12 @@ function PositionPieChart({ breakdown }) {
   const maxFrac = rows[0].games / total
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider">
           Position Breakdown
         </h3>
-        <span className="text-[10px] text-gray-400">{total} games tracked</span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500">{total} games tracked</span>
       </div>
       <div className="space-y-2">
         {rows.map((row) => {
@@ -868,7 +868,7 @@ function PositionPieChart({ breakdown }) {
                 {row.position}
               </div>
               {/* Bar */}
-              <div className="flex-1 relative h-7 bg-gray-50 rounded overflow-hidden">
+              <div className="flex-1 relative h-7 bg-gray-50 dark:bg-gray-900/40 rounded overflow-hidden">
                 <div
                   className="absolute inset-y-0 left-0 rounded"
                   style={{
@@ -886,10 +886,10 @@ function PositionPieChart({ breakdown }) {
                   }}
                 />
                 <div className="absolute inset-0 flex items-center justify-between px-2.5 text-[11px]">
-                  <span className="font-semibold text-gray-700 tabular-nums">
+                  <span className="font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
                     {(frac * 100).toFixed(1)}%
                   </span>
-                  <span className="text-gray-400 tabular-nums">{row.games}g</span>
+                  <span className="text-gray-400 dark:text-gray-500 tabular-nums">{row.games}g</span>
                 </div>
               </div>
             </div>
@@ -952,20 +952,20 @@ function GameLogTable({ title, logs, columns }) {
   if (!logs || logs.length === 0) return null
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 sm:mb-3">
         {title}
       </h3>
       <div className="overflow-x-auto -mx-3 sm:mx-0 max-h-[500px] overflow-y-auto">
         <div className="min-w-[700px] px-3 sm:px-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white z-10">
+              <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10">
                 <tr className="border-b-2 border-nw-teal/30">
                   {columns.map(col => (
                     <th
                       key={col.key}
-                      className="px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right first:text-left bg-white"
+                      className="px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right first:text-left bg-white dark:bg-gray-800"
                     >
                       {col.label}
                     </th>
@@ -978,7 +978,7 @@ function GameLogTable({ title, logs, columns }) {
                   const resultText = `${won ? 'W' : 'L'} ${row.team_score}-${row.opp_score}`
 
                   return (
-                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={i} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:bg-gray-900/40">
                       {columns.map(col => {
                         let val
                         if (col.key === 'game_date') {
@@ -1086,21 +1086,21 @@ function SplitsSection({ splits }) {
   if (!batting && !pitching) return null
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
         Home / Road Splits
       </h3>
 
       {batting && (batting.home.g > 0 || batting.away.g > 0) && (
         <div className="mb-4">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Batting</h4>
+          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Batting</h4>
           <div className="overflow-x-auto -mx-3 sm:mx-0">
             <div className="min-w-[650px] px-3 sm:px-0">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-200">
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
                     {BATTING_SPLIT_COLS.map(col => (
-                      <th key={col.key} className={`px-2 py-1.5 font-semibold text-gray-500 ${col.key === 'split' ? 'text-left' : 'text-right'}`}>
+                      <th key={col.key} className={`px-2 py-1.5 font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 ${col.key === 'split' ? 'text-left' : 'text-right'}`}>
                         {col.label}
                       </th>
                     ))}
@@ -1111,9 +1111,9 @@ function SplitsSection({ splits }) {
                     { ...batting.home, split: 'Home' },
                     { ...batting.away, split: 'Road' },
                   ].map(row => (
-                    <tr key={row.split} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={row.split} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:bg-gray-900/40">
                       {BATTING_SPLIT_COLS.map(col => (
-                        <td key={col.key} className={`px-2 py-1.5 ${col.key === 'split' ? 'text-left font-semibold text-gray-700' : 'text-right tabular-nums'}`}>
+                        <td key={col.key} className={`px-2 py-1.5 ${col.key === 'split' ? 'text-left font-semibold text-gray-700 dark:text-gray-300' : 'text-right tabular-nums'}`}>
                           {col.key === 'split' ? row.split : formatSplitVal(row[col.key], col.key)}
                         </td>
                       ))}
@@ -1128,14 +1128,14 @@ function SplitsSection({ splits }) {
 
       {pitching && (pitching.home.g > 0 || pitching.away.g > 0) && (
         <div>
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Pitching</h4>
+          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Pitching</h4>
           <div className="overflow-x-auto -mx-3 sm:mx-0">
             <div className="min-w-[700px] px-3 sm:px-0">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-200">
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
                     {PITCHING_SPLIT_COLS.map(col => (
-                      <th key={col.key} className={`px-2 py-1.5 font-semibold text-gray-500 ${col.key === 'split' ? 'text-left' : 'text-right'}`}>
+                      <th key={col.key} className={`px-2 py-1.5 font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 ${col.key === 'split' ? 'text-left' : 'text-right'}`}>
                         {col.label}
                       </th>
                     ))}
@@ -1146,9 +1146,9 @@ function SplitsSection({ splits }) {
                     { ...pitching.home, split: 'Home' },
                     { ...pitching.away, split: 'Road' },
                   ].map(row => (
-                    <tr key={row.split} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={row.split} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:bg-gray-900/40">
                       {PITCHING_SPLIT_COLS.map(col => (
-                        <td key={col.key} className={`px-2 py-1.5 ${col.key === 'split' ? 'text-left font-semibold text-gray-700' : 'text-right tabular-nums'}`}>
+                        <td key={col.key} className={`px-2 py-1.5 ${col.key === 'split' ? 'text-left font-semibold text-gray-700 dark:text-gray-300' : 'text-right tabular-nums'}`}>
                           {col.key === 'split' ? row.split : formatSplitVal(row[col.key], col.key)}
                         </td>
                       ))}
@@ -1188,29 +1188,29 @@ function StreaksCard({ playerId, season = 2026 }) {
   if (!anyValue) return null
 
   const tile = (label, val, accent) => (
-    <div className="text-center px-2 py-3 rounded-lg bg-gray-50 border border-gray-100">
-      <div className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">
+    <div className="text-center px-2 py-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700">
+      <div className="text-[10px] sm:text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider">
         {label}
       </div>
       <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${accent}`}>
         {val ?? 0}
       </div>
-      <div className="text-[10px] text-gray-400 mt-0.5">
+      <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
         {(val ?? 0) === 1 ? 'game' : 'games'}
       </div>
     </div>
   )
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
         {season} Streaks
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {tile('Current Hit',     data.current_hit_streak, 'text-emerald-600')}
         {tile('Current On-Base', data.current_ob_streak,  'text-teal-600')}
-        {tile('Longest Hit',     data.best_hit_streak,    'text-gray-900')}
-        {tile('Longest On-Base', data.best_ob_streak,     'text-gray-900')}
+        {tile('Longest Hit',     data.best_hit_streak,    'text-gray-900 dark:text-gray-100')}
+        {tile('Longest On-Base', data.best_ob_streak,     'text-gray-900 dark:text-gray-100')}
       </div>
     </div>
   )
@@ -1272,7 +1272,7 @@ export default function PlayerDetail() {
 
   if (error || !data) {
     return (
-      <div className="text-center py-20 text-gray-500">
+      <div className="text-center py-20 text-gray-500 dark:text-gray-400 dark:text-gray-500">
         {error || 'Player not found.'}
       </div>
     )
@@ -1325,29 +1325,29 @@ export default function PlayerDetail() {
   return (
     <div>
       {/* ── Player Header ── */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-4 sm:mb-6">
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {/* Player Headshot */}
           {player.headshot_url && !headshotError ? (
             <img
               src={player.headshot_url}
               alt={`${player.first_name} ${player.last_name}`}
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border-2 border-gray-200 shrink-0"
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border-2 border-gray-200 dark:border-gray-700 shrink-0"
               onError={() => setHeadshotError(true)}
             />
           ) : (
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shrink-0 border-2 border-gray-200">
-              <span className="text-lg sm:text-xl font-bold text-gray-500">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shrink-0 border-2 border-gray-200 dark:border-gray-700">
+              <span className="text-lg sm:text-xl font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500">
                 {(player.first_name?.[0] || '')}{(player.last_name?.[0] || '')}
               </span>
             </div>
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
                 {player.first_name} {player.last_name}
                 {player.jersey_number && (
-                  <span className="text-gray-400 font-normal ml-2">#{player.jersey_number}</span>
+                  <span className="text-gray-400 dark:text-gray-500 font-normal ml-2">#{player.jersey_number}</span>
                 )}
               </h1>
               <FavoriteButton type="player" targetId={player.id} />
@@ -1363,7 +1363,7 @@ export default function PlayerDetail() {
                 Player Page
               </Link>
             </div>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-sm text-gray-600">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">
               <Link
                 to={`/team/${player.team_id}`}
                 className="text-nw-teal hover:underline font-medium flex items-center gap-1.5"
@@ -1386,37 +1386,37 @@ export default function PlayerDetail() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-x-3 sm:gap-x-6 gap-y-1 text-xs sm:text-sm text-gray-600">
+          <div className="flex flex-wrap gap-x-3 sm:gap-x-6 gap-y-1 text-xs sm:text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">
             {player.position && (
-              <div><span className="text-gray-400">Pos</span> <span className="font-medium">{player.position}</span></div>
+              <div><span className="text-gray-400 dark:text-gray-500">Pos</span> <span className="font-medium">{player.position}</span></div>
             )}
             {player.year_in_school && (
-              <div><span className="text-gray-400">Yr</span> <span className="font-medium">{player.year_in_school}</span></div>
+              <div><span className="text-gray-400 dark:text-gray-500">Yr</span> <span className="font-medium">{player.year_in_school}</span></div>
             )}
             {(player.bats || player.throws) && (
-              <div><span className="text-gray-400">B/T</span> <span className="font-medium">{player.bats || '-'}/{player.throws || '-'}</span></div>
+              <div><span className="text-gray-400 dark:text-gray-500">B/T</span> <span className="font-medium">{player.bats || '-'}/{player.throws || '-'}</span></div>
             )}
             {player.height && (
-              <div><span className="text-gray-400">Ht</span> <span className="font-medium">{player.height}</span></div>
+              <div><span className="text-gray-400 dark:text-gray-500">Ht</span> <span className="font-medium">{player.height}</span></div>
             )}
             {player.hometown && (
-              <div><span className="text-gray-400">From</span> <span className="font-medium">{player.hometown}</span></div>
+              <div><span className="text-gray-400 dark:text-gray-500">From</span> <span className="font-medium">{player.hometown}</span></div>
             )}
             {player.previous_school && (
-              <div><span className="text-gray-400">Prev</span> <span className="font-medium">{player.previous_school}</span></div>
+              <div><span className="text-gray-400 dark:text-gray-500">Prev</span> <span className="font-medium">{player.previous_school}</span></div>
             )}
           </div>
 
           {/* Multi-school career path — inline in header (was a separate card) */}
           {isTransfer && (
-            <div className="basis-full flex flex-wrap items-center gap-1.5 mt-2 text-xs text-gray-600">
-              <span className="text-gray-400 mr-1">Career</span>
+            <div className="basis-full flex flex-wrap items-center gap-1.5 mt-2 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+              <span className="text-gray-400 dark:text-gray-500 mr-1">Career</span>
               {linked_players.map((lp, idx) => (
                 <span key={lp.id} className="inline-flex items-center gap-1">
                   {idx > 0 && <span className="text-gray-300 mr-0.5">→</span>}
                   <Link
                     to={`/team/${lp.team_id}`}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-50 rounded border border-gray-200 hover:border-nw-teal hover:text-nw-teal transition-colors"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-50 dark:bg-gray-900/40 rounded border border-gray-200 dark:border-gray-700 hover:border-nw-teal hover:text-nw-teal transition-colors"
                   >
                     {lp.logo_url && (
                       <img src={lp.logo_url} alt="" className="w-3.5 h-3.5 object-contain"
@@ -1443,7 +1443,7 @@ export default function PlayerDetail() {
                   Committed to {player.committed_to}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-50 border border-gray-200 text-sm font-medium text-gray-500">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
                   Uncommitted
                 </span>
               )}
@@ -1463,11 +1463,11 @@ export default function PlayerDetail() {
             pitcher who took 10 PA defaults to the pitching view), and
             single-side players never see this toggle. */}
       {isTwoWay && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3 mb-4 sm:mb-6 flex flex-wrap items-center gap-3">
-          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-2 sm:p-3 mb-4 sm:mb-6 flex flex-wrap items-center gap-3">
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 dark:text-gray-500">
             Two-way player
           </span>
-          <div className="inline-flex rounded-full bg-gray-100 p-0.5">
+          <div className="inline-flex rounded-full bg-gray-100 dark:bg-gray-700 p-0.5">
             {[
               { id: 'batting',  label: 'Hitting',
                 hint: `oWAR ${totalBattingWar.toFixed(1)}` },
@@ -1480,7 +1480,7 @@ export default function PlayerDetail() {
                 className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all ${
                   activeSide === opt.id
                     ? 'bg-nw-teal text-white shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    : 'text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:text-gray-100'
                 }`}
                 title={`${opt.label} (${opt.hint})`}
               >
@@ -1537,7 +1537,7 @@ export default function PlayerDetail() {
                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
                   (percentileSeason === String(season)) || (!percentileSeason && activePercentileSeason === String(season))
                     ? 'bg-nw-teal text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-200'
                 }`}
               >
                 {season}
@@ -1548,7 +1548,7 @@ export default function PlayerDetail() {
               className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
                 percentileSeason === 'career'
                   ? 'bg-nw-teal text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-200'
               }`}
             >
               Career
@@ -1668,8 +1668,8 @@ export default function PlayerDetail() {
       {/* ── Batting blocks (gated by toggle for two-way players) ── */}
       {hasBatting && (!isTwoWay || activeSide === 'batting') && (
         <>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
+            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 sm:mb-3">
               {batting_stats.length > 1 ? 'Career Batting Stats' : 'Batting Stats'}
             </h3>
             <div className="overflow-x-auto -mx-3 sm:mx-0">
@@ -1686,8 +1686,8 @@ export default function PlayerDetail() {
       {/* ── Pitching blocks (gated by toggle for two-way players) ── */}
       {hasPitching && (!isTwoWay || activeSide === 'pitching') && (
         <>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
-            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2 sm:mb-3">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
+            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 sm:mb-3">
               {pitching_stats.length > 1 ? 'Career Pitching Stats' : 'Pitching Stats'}
             </h3>
             <div className="overflow-x-auto -mx-3 sm:mx-0">
@@ -1721,7 +1721,7 @@ export default function PlayerDetail() {
             {showSummerBatting && (
               <div className="mb-4">
                 <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Batting</h4>
-                <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-amber-100 overflow-x-auto">
                   <div className="min-w-[650px]">
                     <StatsTable rows={summer_batting} columns={SUMMER_BATTING_TABLE_COLS} />
                   </div>
@@ -1732,7 +1732,7 @@ export default function PlayerDetail() {
             {showSummerPitching && (
               <div>
                 <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Pitching</h4>
-                <div className="bg-white rounded-lg border border-amber-100 overflow-x-auto">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-amber-100 overflow-x-auto">
                   <div className="min-w-[650px]">
                     <StatsTable rows={summer_pitching} columns={SUMMER_PITCHING_TABLE_COLS} />
                   </div>
@@ -1764,7 +1764,7 @@ export default function PlayerDetail() {
 
       {/* ── Empty state ── */}
       {!hasBatting && !hasPitching && (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500">
           No stats recorded for this player yet.
         </div>
       )}
