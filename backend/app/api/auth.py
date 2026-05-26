@@ -168,7 +168,10 @@ def require_admin(request: Request) -> str:
 # The dependency returns the user_id so callers can use it normally
 # — no extra parameters needed.
 
-_TIER_RANK = {"free": 1, "premium": 2, "coach": 3}
+# Mirrors lib/tiers.js TIER_META ranks. 'dev' is the internal top-of-
+# ladder tier site developers + interns are mapped onto; it outranks
+# every paid tier so devs pass every gate.
+_TIER_RANK = {"free": 1, "premium": 2, "coach": 3, "dev": 99}
 
 
 def require_tier(min_tier: str):
@@ -190,17 +193,23 @@ def require_tier(min_tier: str):
         if os.getenv("TIER_GATING_ENABLED", "").strip().lower() != "true":
             return user_id
 
-        # Hard mode: look up the user's tier in user_subscriptions and
-        # compare to the required minimum.
-        from ..models.database import get_connection  # local import — avoids circular
-        with get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT tier FROM user_subscriptions WHERE user_id = %s",
-                (user_id,),
-            )
-            row = cur.fetchone()
-        user_tier = (row or {}).get("tier") or "free"
+        # Hard mode: respect the comped-email allowlists first (devs +
+        # GM-beta lifetime coaches). Falls through to user_subscriptions
+        # for everyone else.
+        from ._tier_allowlist import email_for_token, resolve_comped_tier
+        comped_tier = resolve_comped_tier(email_for_token(token))
+        if comped_tier:
+            user_tier = comped_tier
+        else:
+            from ..models.database import get_connection  # local import — avoids circular
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT tier FROM user_subscriptions WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+            user_tier = (row or {}).get("tier") or "free"
         if _TIER_RANK.get(user_tier, 0) < _TIER_RANK.get(min_tier, 0):
             raise HTTPException(
                 status_code=402,

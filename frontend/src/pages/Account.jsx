@@ -426,6 +426,7 @@ function TierBadge({ tier }) {
     premium: { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700', label: 'Premium' },
     coach:   { cls: 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700', label: 'Coach & Scout' },
     paid:    { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700', label: 'Paid' },
+    dev:     { cls: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700', label: 'Developer' },
   }[tier] || { cls: 'bg-gray-100 text-gray-700 border-gray-200', label: tier || '—' }
   return (
     <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${palette.cls}`}>
@@ -444,7 +445,11 @@ function TierBadge({ tier }) {
 function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const isPaid = tier === 'premium' || tier === 'coach' || tier === 'paid'
+  // Comped accounts (devs + lifetime coaches granted via the backend
+  // allowlist) have no Stripe customer to manage. They get a Free
+  // Forever badge and skip the billing / portal UI entirely.
+  const isComped = !!subInfo?.comped || tier === 'dev'
+  const isPaid = !isComped && (tier === 'premium' || tier === 'coach' || tier === 'paid')
 
   async function openPortal() {
     if (busy) return
@@ -485,11 +490,18 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
           <div className="flex items-center gap-2 flex-wrap">
             <TierBadge tier={tier} />
             <span className="text-sm text-gray-700 dark:text-gray-300">
-              {tier === 'coach'   ? 'Coach & Scout subscriber'
-               : isPaid           ? 'Premium subscriber'
-                                  : 'Free account'}
+              {isComped              ? (subInfo?.comped_label || 'Free Forever')
+               : tier === 'coach'    ? 'Coach & Scout subscriber'
+               : isPaid              ? 'Premium subscriber'
+                                     : 'Free account'}
             </span>
-            {intervalLabel && (
+            {isComped ? (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded
+                              bg-emerald-100 text-emerald-800 border border-emerald-200
+                              dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700">
+                Lifetime
+              </span>
+            ) : intervalLabel && (
               <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded
                               bg-gray-100 text-gray-600 border border-gray-200
                               dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600">
@@ -512,7 +524,11 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
           )}
 
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
-            {isPaid
+            {isComped
+              ? (tier === 'dev'
+                  ? 'Site-developer access. You can see every page on the site, including in-progress features hidden from the public. Thanks for building this with us.'
+                  : 'Lifetime Coach & Scout access for being part of the private alpha. No payment required, no expiration. Thank you.')
+              : isPaid
               ? (subInfo?.cancel_at_period_end
                   ? 'Your subscription is set to cancel at the end of the current period. You\'ll keep full access until then.'
                   : `Thanks for supporting NW Baseball Stats${tierStartedAt ? ` since ${new Date(tierStartedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}.`)
@@ -520,7 +536,7 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
           </p>
         </div>
 
-        {isPaid ? (
+        {isComped ? null : isPaid ? (
           <button
             onClick={openPortal}
             disabled={busy}
